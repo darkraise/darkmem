@@ -273,3 +273,65 @@ export function transformToGraphData(
 
   return { nodes, links }
 }
+
+
+/**
+ * What a ForceAtlas2 run is computed for.
+ *
+ * The node set actually being drawn, plus the two force sliders. Adding or
+ * dropping the entity overlay genuinely changes the graph, so it belongs here
+ * and the simulation should re-settle around it.
+ *
+ * What it must NOT change on is a fetch in flight. Toggling the layer starts a
+ * request, and the render that happens in between draws the same nodes as
+ * before -- same signature, no re-run, nothing moves. The signature moves when
+ * the data lands, which is when there is something new to arrange.
+ */
+export function layoutSignature(
+  spacing: number,
+  clusterTightness: number,
+  memoryIds: string[],
+  entityIds: string[] = [],
+): string {
+  // Sorted, because the server may return the same set in a different order
+  // and that is not a reason to re-simulate.
+  return [
+    spacing,
+    clusterTightness,
+    ...[...memoryIds].sort(),
+    "|entities|",
+    ...[...entityIds].sort(),
+  ].join("|")
+}
+
+
+/**
+ * What the entity overlay would draw, as a string.
+ *
+ * The renderer keys its rebuild on this rather than on the toggle, because the
+ * two are not the same thing. Flipping the switch on starts a fetch, and until
+ * it lands there are no entities in hand -- the overlay would draw exactly what
+ * it drew before. Rebuilding for that tears down and recreates sigma's WebGL
+ * canvases to produce an identical picture.
+ *
+ * Empty means "nothing to overlay", whether the layer is off or its data has
+ * not arrived. Those two states look the same, so they key the same.
+ */
+export function entityRenderKey(
+  enabled: boolean,
+  entities: { id: string; entity_type: string }[],
+): string {
+  if (!enabled) return ""
+  // Type is in the key because it picks the node's colour: an entity whose
+  // type changed is a different picture even at the same id.
+  return entities.map((e) => `${e.id}:${e.entity_type}`).join("|")
+}
+
+/** The same, for the relations drawn between those entities. */
+export function relationRenderKey(
+  enabled: boolean,
+  relations: { source: string; target: string; type: string }[],
+): string {
+  if (!enabled) return ""
+  return relations.map((r) => `${r.source}>${r.target}:${r.type}`).join("|")
+}

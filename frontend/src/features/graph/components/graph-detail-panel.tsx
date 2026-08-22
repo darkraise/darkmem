@@ -3,6 +3,7 @@ import { Button } from "darkraise-ui/components/button"
 import { cn } from "darkraise-ui/lib"
 import type { UnifiedMemory, GraphEntity, EntityRelation } from "@/hooks/api"
 import { resolveNodeColor, entityTypeColor, clusterColor } from "@/features/graph/lib/graph-colors"
+import { EntityTypeSwatch } from "./entity-type-swatch"
 import type { ColorMode } from "@/features/graph/lib/graph-colors"
 import { useMemoryGraphTheme } from "@/features/graph/lib/memory-graph-theme"
 
@@ -554,13 +555,7 @@ function GraphSummary({
           <div className="space-y-1.5">
             {sortedEntityTypes.map(([etype, count]) => (
               <div key={etype} className="flex items-center gap-2 text-sm">
-                <span
-                  className="h-2.5 w-2.5 shrink-0"
-                  style={{
-                    backgroundColor: entityTypeColor(etype, palette),
-                    clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
-                  }}
-                />
+                <EntityTypeSwatch entityType={etype} palette={palette} />
                 <span className="text-foreground flex-1 capitalize">
                   {etype}
                 </span>

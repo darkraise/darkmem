@@ -67,12 +67,37 @@ const TIERS: Record<"dark" | "light", { l: number; s: number }[]> = {
   ],
 }
 
+// One hue per `app.taxonomy.ENTITY_TYPES` value; a test pins the key set
+// against that list, because the map previously carried `technology` — a name
+// `normalize_entity_type` rewrites to `tool` before storage, so the entry was
+// unreachable and `tool` itself had no colour at all.
+//
+// Four identities predate this table and must not move: person, service,
+// project, organization. `tool` takes 27 because that was `technology`'s hue,
+// and `tool` is what `technology` becomes.
+//
+// Ordered so the tech tier (27-189) and the real-world subjects (213-330) each
+// hold a contiguous band and the taxonomy's two fallbacks sit past it. Minimum
+// pairwise separation is 19 degrees.
 const ENTITY_HUES: Record<string, number> = {
-  person: 213,
+  // Tech stack
+  tool: 27,
+  language: 56,
+  algorithm: 85,
+  artifact: 113,
   service: 142,
+  protocol: 166,
+  database: 189,
+  // Real-world subjects
+  person: 213,
+  place: 234,
   project: 255,
-  technology: 27,
+  event: 280,
+  paper: 305,
   organization: 330,
+  // Taxonomy fallbacks
+  concept: 349,
+  entity: 8,
 }
 
 // One index per MEMORY_TYPES value; a type missing here would fall through to
@@ -92,6 +117,10 @@ const KNOWN_TYPE_INDICES: Record<string, number> = {
 export interface MemoryPalette {
   palette: string[]
   unclustered: string
+  // Body colour for every entity node. The entity's own hue rides its border
+  // instead, so the type reads as an outline against one shared neutral body
+  // and an entity is never mistaken for a memory carrying that colour.
+  entityFill: string
   entityTypeColor: (entityType: string) => string
 }
 
@@ -109,7 +138,7 @@ export function buildMemoryPalette(t: GraphThemeTokens): MemoryPalette {
     const hue = ENTITY_HUES[entityType]
     return hue === undefined ? unclustered : hslToHex(hue, tier0.s, tier0.l)
   }
-  return { palette, unclustered, entityTypeColor }
+  return { palette, unclustered, entityFill: t.muted, entityTypeColor }
 }
 
 export function resolveNodeColor(

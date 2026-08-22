@@ -2,11 +2,12 @@ import { useRef, useEffect, useCallback } from "react"
 import Graph from "graphology"
 import Sigma from "sigma"
 import EdgeCurveProgram from "@sigma/edge-curve"
+import { NodeCircleProgram } from "sigma/rendering"
 import {
   NodeDiamondProgram,
   drawDiamondNodeHover,
 } from "@/features/graph/lib/node-diamond-program"
-import { drawThemedDiscNodeHover } from "@/features/graph/lib/node-hover"
+import { drawNodeLabel, drawThemedDiscNodeHover } from "@/features/graph/lib/node-hover"
 import type { ChromeKind } from "@/features/graph/lib/node-hover"
 import type { NodeDisplayData } from "sigma/types"
 import {
@@ -20,7 +21,12 @@ import {
 import { useGraphPrefs } from "@/features/graph/lib/graph-prefs"
 import FA2Layout from "graphology-layout-forceatlas2/worker"
 import { inferSettings } from "graphology-layout-forceatlas2"
-import { computeSize } from "@/features/graph/lib/graph-utils"
+import {
+  computeSize,
+  entityRenderKey,
+  layoutSignature,
+  relationRenderKey,
+} from "@/features/graph/lib/graph-utils"
 import {
   computeHullGroups,
   drawHullForSigma,
@@ -80,6 +86,13 @@ interface Graph2DRendererProps {
 const FOCUS_SCALE = 1.22
 const HOVER_SCALE = 1.08
 
+/** Entity nodes are the overlay, so they must not outweigh the memories they
+ *  annotate. A diamond's half-diagonal is `size * sqrt(2)` in px, so 6 renders
+ *  ~8.5px against a memory disc's 6-13px radius. Not lower: sigma's
+ *  `labelRenderedSizeThreshold` (6) culls labels before the node reducer is
+ *  consulted, so a smaller entity could never be labelled on selection. */
+const ENTITY_NODE_SIZE = 6
+
 /** Degree at or above which a node's label survives at any zoom. */
 const HUB_DEGREE = 5
 
@@ -100,10 +113,14 @@ const HOVER_EDGE_SIZE = 4.5
 const SELECTED_EDGE_SIZE = 6.5
 
 /** The edge hierarchy: relation over similarity over membership. */
+/** Memory-to-memory similarity is what this page is about, so it carries the
+ *  heaviest line; the entity overlay's own edges sit under it. The knowledge
+ *  graph keeps the opposite order on purpose -- there entities ARE the
+ *  subject -- so its copy of this function is not the same function. */
 function edgeWeight(kind: unknown): number {
-  if (kind === "relation") return 3.4
-  if (kind === "membership") return 2.2
-  return 2.8
+  if (kind === "relation") return 2.4
+  if (kind === "membership") return 1.6
+  return 3.4
 }
 
 export function Graph2DRenderer({
@@ -130,6 +147,14 @@ export function Graph2DRenderer({
   const graphRef = useRef<Graph | null>(null)
   const fa2Ref = useRef<FA2Layout | null>(null)
   const fa2StopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Where every node had settled when the last graph was torn down. A rebuild
+  // that re-seeds from scratch throws the layout away and makes the canvas
+  // lurch, which is what toggling the entity layer used to do -- twice, once
+  // on the switch and again when the new data landed.
+  const positionsRef = useRef<Map<string, { x: number; y: number }>>(new Map())
+  // What the last layout was computed for. ForceAtlas2 only needs to re-run
+  // when this changes; adding or dropping an overlay does not change it.
+  const layoutSigRef = useRef<string | null>(null)
   const selectedNodeIdRef = useRef(selectedNodeId)
   const hoveredNodeRef = useRef<string | null>(null)
   const colorModeRef = useRef(colorMode)
@@ -152,26 +177,49 @@ export function Graph2DRenderer({
   // ordinary label tier.
   const zoomRatioRef = useRef(1)
 
-  const nodeBaseColor = (attrs: Record<string, unknown>): string => {
+  // An entity puts its type colour on its border and keeps a shared neutral
+  // body, so it is never read as a memory that happens to carry that colour.
+  // Memory nodes run on sigma's stock disc program, which draws no border, so
+  // only their fill is ever painted.
+  const nodeColors = (
+    attrs: Record<string, unknown>,
+  ): { color: string; borderColor: string } => {
     if (attrs._kind === "entity") {
       const et =
         (attrs._entityData as { entity_type: string } | undefined)
           ?.entity_type ?? ""
-      return entityTypeColor(et, paletteRef.current)
+      const p = paletteRef.current
+      return { color: p.entityFill, borderColor: entityTypeColor(et, p) }
     }
     const m = attrs._mem as {
       cluster: number
       memory_type: string | null
       tags: string[]
     }
-    return resolveNodeColor(m, colorModeRef.current, paletteRef.current)
+    const color = resolveNodeColor(m, colorModeRef.current, paletteRef.current)
+    return { color, borderColor: darkenHex(color) }
   }
+
+  // An entity's identity colour lives on its border, so an edge leaving one
+  // has to read the border — taking `color` would flatten every relation to
+  // the one shared neutral body.
+  const endpointTint = (attrs: Record<string, unknown>): string =>
+    attrs._kind === "entity"
+      ? (attrs.borderColor as string)
+      : (attrs.color as string)
   const edgeBaseColor = (kind: string, srcHex: string): string => {
     if (kind === "relation") return relationEdgeColor(tokensRef.current, srcHex)
     if (kind === "membership")
       return membershipEdgeColor(tokensRef.current, srcHex)
     return memoryEdgeColor(srcHex, tokensRef.current)
   }
+
+  // Empty whenever there is nothing to overlay -- layer off, or layer on with
+  // the fetch still in flight. Two renders that would draw the same entities
+  // produce the same key, so the effect below does not re-run and no canvas is
+  // torn down.
+  const entitiesKey = entityRenderKey(entityLayerEnabled, entities)
+  const relationsKey = relationRenderKey(entityLayerEnabled, entityRelations)
 
   const buildGraph = useCallback(() => {
     if (!containerRef.current) return
@@ -203,9 +251,29 @@ export function Graph2DRenderer({
       connMap.set(e.target, (connMap.get(e.target) ?? 0) + 1)
     }
 
+    const layoutSig = layoutSignature(
+      spacing,
+      clusterTightness,
+      filteredMemories.map((m) => m.id),
+      entitiesKey === "" ? [] : entities.map((e) => e.id),
+    )
+    const layoutChanged = layoutSigRef.current !== layoutSig
+    layoutSigRef.current = layoutSig
+
+    const settled = positionsRef.current
+    // Every rebuild starts from where the nodes already are, changed layout or
+    // not. Only something never seen before is seeded. That is what makes a
+    // re-arrangement read as the graph settling rather than as it being thrown
+    // across the canvas and reassembling.
+    const placeSeeded = (id: string) => ({
+      x: (seededUnit(id, 0) - 0.5) * 10,
+      y: (seededUnit(id, 1) - 0.5) * 10,
+    })
+    const place = (id: string) => settled.get(id) ?? placeSeeded(id)
+
     const allNodeIds = new Set<string>()
     for (const m of filteredMemories) {
-      const color = nodeBaseColor({
+      const { color, borderColor } = nodeColors({
         _kind: "memory",
         _mem: { cluster: m.cluster, memory_type: m.memory_type, tags: m.tags },
       })
@@ -213,13 +281,13 @@ export function Graph2DRenderer({
       const size = computeSize(sizeMode, conns, m.importance)
       allNodeIds.add(m.id)
       graph.addNode(m.id, {
-        x: (seededUnit(m.id, 0) - 0.5) * 10,
-        y: (seededUnit(m.id, 1) - 0.5) * 10,
+        ...place(m.id),
         label: m.content.slice(0, 30) + (m.content.length > 30 ? "…" : ""),
         size: size * 0.5,
+        type: "disc",
         _degree: conns,
         color,
-        borderColor: darkenHex(color),
+        borderColor,
         _kind: "memory",
         _mem: { cluster: m.cluster, memory_type: m.memory_type, tags: m.tags },
       })
@@ -242,22 +310,47 @@ export function Graph2DRenderer({
       }
     }
 
-    if (entityLayerEnabled) {
+    if (entitiesKey !== "") {
       const visibleEntities = entities.filter((ent) =>
         ent.memory_ids.some((mid) => allNodeIds.has(mid)),
       )
+
+      // A first-time entity lands on the centroid of the memories asserting
+      // it -- which is roughly where the simulation would have dragged it
+      // anyway, so the overlay can appear without one.
+      const placeEntity = (ent: { id: string; memory_ids: string[] }) => {
+        const known = settled.get(`entity:${ent.id}`)
+        if (known) return known
+        const anchors = ent.memory_ids
+          .filter((mid) => graph.hasNode(mid))
+          .map((mid) => ({
+            x: graph.getNodeAttribute(mid, "x") as number,
+            y: graph.getNodeAttribute(mid, "y") as number,
+          }))
+        if (anchors.length === 0) return placeSeeded(`entity:${ent.id}`)
+        const cx = anchors.reduce((t, a) => t + a.x, 0) / anchors.length
+        const cy = anchors.reduce((t, a) => t + a.y, 0) / anchors.length
+        // Deterministic jitter: two entities on one memory would otherwise
+        // stack exactly, and a stack reads as a single node.
+        return {
+          x: cx + (seededUnit(`entity:${ent.id}`, 2) - 0.5) * 1.5,
+          y: cy + (seededUnit(`entity:${ent.id}`, 3) - 0.5) * 1.5,
+        }
+      }
       const entityIdSet = new Set(visibleEntities.map((ent) => ent.id))
 
       for (const ent of visibleEntities) {
-        const bg = entityTypeColor(ent.entity_type, paletteRef.current)
+        const { color: bg, borderColor } = nodeColors({
+          _kind: "entity",
+          _entityData: ent,
+        })
         graph.addNode(`entity:${ent.id}`, {
-          x: (seededUnit(`entity:${ent.id}`, 0) - 0.5) * 10,
-          y: (seededUnit(`entity:${ent.id}`, 1) - 0.5) * 10,
+          ...placeEntity(ent),
           label: ent.name,
-          size: 10,
+          size: ENTITY_NODE_SIZE,
           _degree: ent.memory_ids.length,
           color: bg,
-          borderColor: darkenHex(bg),
+          borderColor,
           type: "diamond",
           _kind: "entity",
           _entityData: ent,
@@ -268,7 +361,10 @@ export function Graph2DRenderer({
         if (entityIdSet.has(r.source) && entityIdSet.has(r.target)) {
           try {
             const relSrc =
-              graph.getNodeAttribute(`entity:${r.source}`, "color") || ""
+              (graph.getNodeAttribute(
+                `entity:${r.source}`,
+                "borderColor",
+              ) as string) || ""
             graph.addEdge(`entity:${r.source}`, `entity:${r.target}`, {
               color: edgeBaseColor("relation", relSrc),
               size: 2.5,
@@ -292,7 +388,10 @@ export function Graph2DRenderer({
                 color: edgeBaseColor(
                   "membership",
                   graph.getNodeAttribute(mid, "color") ||
-                    entityTypeColor(ent.entity_type, paletteRef.current),
+                    (graph.getNodeAttribute(
+                      `entity:${ent.id}`,
+                      "borderColor",
+                    ) as string),
                 ),
                 size: 2.5,
                 _edgeKind: "membership",
@@ -315,7 +414,11 @@ export function Graph2DRenderer({
       labelColor: { attribute: "labelColor", color: labelColorToken },
       labelFont: "Inter, sans-serif",
       defaultEdgeType: "curve",
-      nodeProgramClasses: { diamond: NodeDiamondProgram },
+      // Order matters and is the whole point: sigma draws program by program
+      // in registration order, and zIndex only sorts WITHIN a program. Giving
+      // memories their own key after "diamond" is what puts the subject on top
+      // of the overlay where they overlap.
+      nodeProgramClasses: { diamond: NodeDiamondProgram, disc: NodeCircleProgram },
       edgeProgramClasses: { curve: EdgeCurveProgram },
       defaultDrawNodeHover: (context, data, settings) => {
         // `_chromeKind` rides the reducer output: sigma mutates the reduced
@@ -333,6 +436,7 @@ export function Graph2DRenderer({
       },
       stagePadding: 40,
       labelRenderedSizeThreshold: 6,
+      defaultDrawNodeLabel: drawNodeLabel,
       defaultNodeColor: mutedColor,
       nodeReducer(node, data) {
         const t = tokensRef.current
@@ -340,6 +444,7 @@ export function Graph2DRenderer({
         const res: Partial<NodeDisplayData> & {
           _chromeKind?: ChromeKind
           labelColor?: string
+          borderColor?: string
         } = {
           ...data,
         }
@@ -367,20 +472,25 @@ export function Graph2DRenderer({
 
         // Ground recedes but is never repainted: hue and position survive, so
         // the surrounding map stays readable as context.
-        if (tier === "ground") {
-          res.color = recede(
-            data.color || t.mutedForeground,
+        // The border recedes with the fill for the same reason the label
+        // does below: an entity dimmed to the background but still wearing a
+        // full-strength outline reads as picked out, not as receded.
+        const dim = (alpha: number) => {
+          res.color = recede(data.color || t.mutedForeground, t.background, alpha)
+          res.borderColor = recede(
+            (data as { borderColor?: string }).borderColor ||
+              data.color ||
+              t.mutedForeground,
             t.background,
-            groundNodeAlpha(dimUnrelated),
+            alpha,
           )
+        }
+        if (tier === "ground") {
+          dim(groundNodeAlpha(dimUnrelated))
         } else if (!sel && hov && hov !== node && !hoverNeighbour) {
           // Nothing selected, but the pointer is on something: sort the
           // canvas the same way, half as far.
-          res.color = recede(
-            data.color || t.mutedForeground,
-            t.background,
-            hoverGroundAlpha(dimUnrelated),
-          )
+          dim(hoverGroundAlpha(dimUnrelated))
         }
 
         // A dimmed node with an undimmed label reads as a label floating over
@@ -594,6 +704,14 @@ export function Graph2DRenderer({
     sigma.on("afterRender", drawHulls)
     sigma.on("kill", () => hullCanvas.remove())
 
+    // Nothing new to arrange -- this is the render that happens while a fetch
+    // is in flight, drawing the same nodes as the last one. Re-simulating here
+    // is what scattered the canvas the moment the switch was touched.
+    if (!layoutChanged) {
+      onReady()
+      return
+    }
+
     const fa2 = new FA2Layout(graph, {
       settings: {
         ...inferSettings(graph),
@@ -626,9 +744,10 @@ export function Graph2DRenderer({
     colorMode,
     spacing,
     clusterTightness,
-    entityLayerEnabled,
-    entities,
-    entityRelations,
+    // The keys, not the arrays: `filteredEntities` is a fresh array on every
+    // data change, and its identity moving is not a reason to rebuild.
+    entitiesKey,
+    relationsKey,
     onNodeSelect,
     onEntitySelect,
     onReady,
@@ -638,6 +757,17 @@ export function Graph2DRenderer({
     const frame = requestAnimationFrame(() => buildGraph())
     return () => {
       cancelAnimationFrame(frame)
+      // Before anything is torn down: React runs this cleanup ahead of the
+      // next buildGraph, so this is the last moment the settled coordinates
+      // exist.
+      if (graphRef.current) {
+        const settled = positionsRef.current
+        graphRef.current.forEachNode((id, attrs) => {
+          const x = attrs.x as number
+          const y = attrs.y as number
+          if (Number.isFinite(x) && Number.isFinite(y)) settled.set(id, { x, y })
+        })
+      }
       if (fa2StopTimerRef.current !== null) {
         clearTimeout(fa2StopTimerRef.current)
         fa2StopTimerRef.current = null
@@ -682,8 +812,7 @@ export function Graph2DRenderer({
     if (!sigma || !graph) return // initial mount: buildGraph already painted
 
     graph.forEachNode((id, attrs) => {
-      const color = nodeBaseColor(attrs)
-      graph.mergeNodeAttributes(id, { color, borderColor: darkenHex(color) })
+      graph.mergeNodeAttributes(id, nodeColors(attrs))
     })
     graph.forEachEdge((edge, attrs, _s, _t, sAttrs, tAttrs) => {
       const kind = (attrs._edgeKind as string) ?? "memory"
@@ -691,8 +820,8 @@ export function Graph2DRenderer({
       // it is the one the active colour mode is encoding.
       const tint =
         kind === "membership" && tAttrs._kind !== "entity"
-          ? (tAttrs.color as string)
-          : (sAttrs.color as string)
+          ? endpointTint(tAttrs)
+          : endpointTint(sAttrs)
       graph.setEdgeAttribute(
         edge,
         "color",
