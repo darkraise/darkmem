@@ -137,6 +137,34 @@ export function drawHullForGroup(
   ctx.restore()
 }
 
+
+export interface Point {
+  x: number
+  y: number
+}
+
+/**
+ * Where a region's name chip hangs.
+ *
+ * The topmost point of the territory — smallest y, since the viewport counts
+ * downward — with ties broken leftward so the chip does not jitter between
+ * two equally-high nodes as the layout settles.
+ */
+export function hullTopAnchor(points: Point[]): Point | null {
+  let best: Point | null = null
+  for (const p of points) {
+    if (!best || p.y < best.y || (p.y === best.y && p.x < best.x)) best = p
+  }
+  return best
+}
+
+/** A region's name and its size. The name may be a derived cluster label or a
+ *  bare group key; passing the key through is more honest than inventing a
+ *  name for it. */
+export function regionChipLabel(name: string, count: number): string {
+  return `${name} \u00b7 ${count}`
+}
+
 export function drawHullForSigma(
   ctx: CanvasRenderingContext2D,
   sigma: Sigma,
@@ -144,7 +172,7 @@ export function drawHullForSigma(
   color: string,
   fillAlpha: number,
   strokeAlpha: number,
-) {
+): Point[] {
   const positions: { x: number; y: number }[] = []
   for (const id of memberIds) {
     const data = sigma.getNodeDisplayData(id)
@@ -153,7 +181,7 @@ export function drawHullForSigma(
       positions.push({ x: vp.x, y: vp.y })
     }
   }
-  if (positions.length < 2) return
+  if (positions.length < 2) return positions
 
   if (positions.length === 2) {
     const [a, b] = positions as [
@@ -174,7 +202,7 @@ export function drawHullForSigma(
     ctx.lineWidth = 1.5
     ctx.stroke()
     ctx.restore()
-    return
+    return positions
   }
 
   const hull = expandHull(convexHull(positions), 25)
@@ -183,8 +211,45 @@ export function drawHullForSigma(
   ctx.fillStyle = hexToRgba(color, fillAlpha)
   ctx.fill()
   ctx.strokeStyle = hexToRgba(color, strokeAlpha)
-  ctx.lineWidth = 1.5
+  ctx.lineWidth = 1
+  ctx.setLineDash([5, 4])
   ctx.stroke()
+  ctx.restore()
+  return hull
+}
+
+/**
+ * A region's name, hung off the top of its territory.
+ *
+ * The zone always draws; only this gates on zoom. The territory is the
+ * structure and stays legible at any scale — a name too small to read is
+ * only clutter.
+ */
+export function drawRegionChip(
+  ctx: CanvasRenderingContext2D,
+  anchor: Point,
+  text: string,
+  opts: { fill: string; stroke: string; text: string; font: string },
+): void {
+  ctx.save()
+  ctx.font = `500 10px ${opts.font}`
+  const w = Math.round(ctx.measureText(text).width + 14)
+  const h = 17
+  const x = anchor.x - w / 2
+  const y = anchor.y - h - 8
+
+  ctx.beginPath()
+  ctx.roundRect(x, y, w, h, 8.5)
+  ctx.fillStyle = opts.fill
+  ctx.fill()
+  ctx.strokeStyle = opts.stroke
+  ctx.lineWidth = 1
+  ctx.stroke()
+
+  ctx.fillStyle = opts.text
+  ctx.textAlign = "center"
+  ctx.textBaseline = "middle"
+  ctx.fillText(text, x + w / 2, y + h / 2 + 0.5)
   ctx.restore()
 }
 

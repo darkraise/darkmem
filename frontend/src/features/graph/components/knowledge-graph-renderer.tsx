@@ -9,11 +9,20 @@ import {
 } from "@sigma/edge-curve"
 import { DEFAULT_EDGE_ARROW_HEAD_PROGRAM_OPTIONS } from "sigma/rendering"
 import { drawThemedDiscNodeHover } from "@/features/graph/lib/node-hover"
+import type { ChromeKind } from "@/features/graph/lib/node-hover"
+import type { NodeDisplayData } from "sigma/types"
+import {
+  focusTier,
+  groundEdgeAlpha,
+  groundNodeAlpha,
+  labelVisible,
+} from "@/features/graph/lib/focus-model"
+import { useGraphPrefs } from "@/features/graph/lib/graph-prefs"
 import FA2Layout from "graphology-layout-forceatlas2/worker"
 import { inferSettings } from "graphology-layout-forceatlas2"
 import {
   entityTypeColor,
-  lightenHex,
+  hexToRgba,
   darkenHex,
   membershipEdgeColor,
 } from "@/features/graph/lib/graph-colors"
@@ -42,6 +51,20 @@ interface KnowledgeGraphRendererProps {
   onSelect: (selected: KGSelection | null) => void
 }
 
+const FOCUS_SCALE = 1.22
+const HOVER_SCALE = 1.08
+const HUB_DEGREE = 5
+const LABEL_ZOOM_RATIO = 0.72
+const FOCUS_EDGE_SIZE = 2.2
+
+/** Relation over similarity over membership — the same hierarchy the memory
+ *  graph draws, so one corpus does not read two ways across two views. */
+function edgeWeight(kind: unknown): number {
+  if (kind === "relation") return 1.8
+  if (kind === "membership") return 1
+  return 1.1
+}
+
 export function KnowledgeGraphRenderer({
   entities,
   relations,
@@ -59,6 +82,14 @@ export function KnowledgeGraphRenderer({
   const { tokens, palette } = useMemoryGraphTheme()
   const tokensRef = useRef(tokens)
   tokensRef.current = tokens
+
+  const selectionTreatment = useGraphPrefs((s) => s.selectionTreatment)
+  const dimUnrelated = useGraphPrefs((s) => s.dimUnrelated)
+  const prefsRef = useRef({ selectionTreatment, dimUnrelated })
+  prefsRef.current = { selectionTreatment, dimUnrelated }
+
+  // Sigma's camera ratio counts down as you move in.
+  const zoomRatioRef = useRef(1)
   const paletteRef = useRef(palette)
   paletteRef.current = palette
 
@@ -130,67 +161,99 @@ export function KnowledgeGraphRenderer({
         ...DEFAULT_EDGE_CURVE_PROGRAM_OPTIONS,
         arrowHead: DEFAULT_EDGE_ARROW_HEAD_PROGRAM_OPTIONS,
       }),
-      defaultDrawNodeHover: (context, data, settings) =>
-        drawThemedDiscNodeHover(context, data, settings, tokensRef.current),
+      defaultDrawNodeHover: (context, data, settings) => {
+        const kind =
+          (data as { _chromeKind?: ChromeKind })._chromeKind ?? "hover"
+        drawThemedDiscNodeHover(
+          context,
+          data,
+          settings,
+          tokensRef.current,
+          prefsRef.current.selectionTreatment,
+          kind,
+        )
+      },
       stagePadding: 40,
       labelRenderedSizeThreshold: 6,
       defaultNodeColor: t.mutedForeground,
       nodeReducer(node, data) {
         const tk = tokensRef.current
-        const res = { ...data }
+        const { dimUnrelated } = prefsRef.current
+        const res: Partial<NodeDisplayData> & { _chromeKind?: ChromeKind } = {
+          ...data,
+        }
         const hov = hoveredNodeRef.current
         const sel = selectedIdRef.current
-        if (hov === node) {
-          res.color = lightenHex(data.color || tk.mutedForeground, 0.4)
-          res.size = (data.size || 14) * 1.4
+        const isNeighbour =
+          !!sel && (graph.hasEdge(sel, node) || graph.hasEdge(node, sel))
+        const tier = focusTier(node, sel, isNeighbour)
+
+        if (tier === "focus") {
+          res.size = (data.size || 14) * FOCUS_SCALE
           res.highlighted = true
-        } else if (sel === node) {
-          res.color = lightenHex(data.color || tk.mutedForeground, 0.4)
-          res.size = (data.size || 14) * 1.4
+          res._chromeKind = "focus"
+        } else if (hov === node) {
+          res.size = (data.size || 14) * HOVER_SCALE
           res.highlighted = true
-          res.borderColor = tk.foreground
-          res.borderSize = 3
-        } else if (sel && sel !== node) {
-          const isNeighbor =
-            graph.hasEdge(sel, node) || graph.hasEdge(node, sel)
-          if (!isNeighbor) {
-            res.color = tk.border
-            res.label = ""
-          }
+          res._chromeKind = "hover"
         }
+
+        if (tier === "ground") {
+          res.color = hexToRgba(
+            data.color || tk.mutedForeground,
+            groundNodeAlpha(dimUnrelated),
+          )
+        }
+
+        if (
+          !labelVisible({
+            tier,
+            isHub: (data._degree ?? 0) >= HUB_DEGREE,
+            zoomedIn: zoomRatioRef.current < LABEL_ZOOM_RATIO,
+            isHovered: hov === node,
+          })
+        ) {
+          res.label = ""
+        }
+
         return res
       },
       edgeReducer(edge, data) {
         const tk = tokensRef.current
+        const { dimUnrelated } = prefsRef.current
         const res = { ...data }
         const hov = hoveredNodeRef.current
         const sel = selectedIdRef.current
         const src = graph.source(edge)
         const tgt = graph.target(edge)
 
+        res.size = edgeWeight(data._edgeKind)
+
         if (sel) {
           if (src === sel || tgt === sel) {
-            res.size = (data.size || 1.5) * 2
-            const neighborColor =
-              graph.getNodeAttribute(src === sel ? tgt : src, "color") ||
-              tk.mutedForeground
-            res.color = lightenHex(neighborColor, 0.3)
+            res.size = FOCUS_EDGE_SIZE
+            res.color = tk.primary
           } else {
-            res.color = tk.border
-            res.size = (data.size || 1.5) * 0.5
+            res.color = hexToRgba(tk.border, groundEdgeAlpha(dimUnrelated))
           }
         }
 
         if (hov && (src === hov || tgt === hov)) {
-          res.size = (data.size || 1.5) * 2
-          const neighborColor =
-            graph.getNodeAttribute(src === hov ? tgt : src, "color") ||
-            tk.mutedForeground
-          res.color = lightenHex(neighborColor, 0.3)
+          res.size = FOCUS_EDGE_SIZE
+          res.color = tk.primary
         }
 
         return res
       },
+    })
+
+    zoomRatioRef.current = sigma.getCamera().ratio
+    sigma.getCamera().on("updated", () => {
+      const next = sigma.getCamera().ratio
+      const crossed =
+        next < LABEL_ZOOM_RATIO !== zoomRatioRef.current < LABEL_ZOOM_RATIO
+      zoomRatioRef.current = next
+      if (crossed) sigma.refresh()
     })
 
     sigma.on("enterNode", ({ node }) => {

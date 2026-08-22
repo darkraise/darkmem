@@ -1,5 +1,6 @@
 import { X } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
+import { cn } from "darkraise-ui/lib"
 import type { UnifiedMemory, GraphEntity, EntityRelation } from "@/hooks/api"
 import { resolveNodeColor, entityTypeColor, clusterColor } from "@/features/graph/lib/graph-colors"
 import type { ColorMode } from "@/features/graph/lib/graph-colors"
@@ -197,6 +198,37 @@ interface MemoryDetailProps {
   colorMode: ColorMode
 }
 
+
+/** The lifecycle rung, in words.
+ *
+ *  Deliberately not drawn on the canvas: a graph that fades and dashes half
+ *  its nodes stops being a picture of structure. Here there is room to say
+ *  what `superseded` actually means, which a dashed ring never could.
+ */
+const STATUS_STYLES: Record<string, string> = {
+  active: "border-success/50 bg-success/10 text-success",
+  superseded: "border-warning/60 border-dashed bg-warning/5 text-warning",
+  deprecated: "border-border border-dashed bg-muted/40 text-muted-foreground",
+}
+
+function MemoryStatus({ status }: { status: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-muted-foreground text-sm">Status:</span>
+      <span
+        data-testid="memory-status"
+        className={cn(
+          "inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wide uppercase",
+          STATUS_STYLES[status] ??
+            "border-border bg-muted/40 text-muted-foreground",
+        )}
+      >
+        {status}
+      </span>
+    </div>
+  )
+}
+
 function MemoryDetail({
   memory,
   clusterName,
@@ -222,6 +254,8 @@ function MemoryDetail({
           ))}
         </div>
       )}
+
+      {memory.status && <MemoryStatus status={memory.status} />}
 
       <div className="text-muted-foreground space-y-0.5 text-sm">
         <div className="flex items-center gap-1">

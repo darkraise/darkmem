@@ -1,15 +1,25 @@
 import type { Settings } from "sigma/settings"
 import type { NodeDisplayData, PartialButFor } from "sigma/types"
 import type { GraphThemeTokens } from "./code-graph-theme"
-import { hexToRgba } from "./graph-colors"
+import type { SelectionTreatment } from "./graph-prefs"
+
+/** Focus is what you clicked; hover is what the pointer is over. They must
+ *  never look alike — reading one as the other is the defect this model
+ *  replaces. */
+export type ChromeKind = "focus" | "hover"
 
 export interface HoverChrome {
-  /** The label plate. */
+  /** Label plate fill. */
   fill: string
   /** Label text, chosen for measured contrast against `fill`. */
   text: string
-  /** Plate outline, so the plate still reads where a node shares its hue. */
-  stroke: string
+  /** Plate outline, for the treatments whose plate shares the page's colour. */
+  plateStroke: string | null
+  /** The ring drawn around the node itself. */
+  ring: string
+  ringWidth: number
+  ringDash: number[] | null
+  glow: boolean
   shadow: string
 }
 
@@ -28,37 +38,92 @@ function luminance(hex: string): number {
 function contrastRatio(a: string, b: string): number {
   const la = luminance(a)
   const lb = luminance(b)
-  const hi = Math.max(la, lb)
-  const lo = Math.min(la, lb)
-  return (hi + 0.05) / (lo + 0.05)
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+}
+
+/** Whichever of the theme's two poles reads better on `plate`. An accent may
+ *  land anywhere on the lightness scale — `accentIntensity` alone moves it —
+ *  so neither pole is safe to hardcode. */
+function readableOn(plate: string, tokens: GraphThemeTokens): string {
+  return contrastRatio(plate, tokens.background) >= contrastRatio(plate, tokens.foreground)
+    ? tokens.background
+    : tokens.foreground
 }
 
 /**
- * The chrome for the plate behind a hovered or selected node's label.
+ * The chrome for the plate and ring around a hovered or selected node.
  *
- * The plate is the **accent**, not a surface token. Both `--popover` and
- * `--card` sit within a few percent lightness of `--background` by design —
- * that is what makes them read as the same sheet of paper — so a plate
- * painted in one is invisible against the graph canvas in either theme, and
- * a selection that paints nothing visible is indistinguishable from one that
- * did not register. The accent is the one token guaranteed to differ from the
- * page in both themes, and it is already the app's selection colour.
+ * The plate is never a surface token. `--popover` and `--card` sit within a
+ * few percent lightness of `--background` by design — that is what makes them
+ * read as the same sheet of paper — so a plate painted in one is invisible
+ * against the graph canvas in either theme, and a selection that paints
+ * nothing visible cannot be told from one that did not register.
  *
- * Text is picked by measured contrast rather than assumed: an accent may land
- * anywhere on the lightness scale (`accentIntensity` alone moves it), so
- * neither `--foreground` nor `--background` is safe to hardcode.
+ * Every treatment rings the node rather than repainting it: sigma redraws
+ * highlighted nodes on the `hoverNodes` layer above this one, so the node
+ * keeps its own fill and the ring reads as an addition to it.
  */
-export function hoverChrome(tokens: GraphThemeTokens): HoverChrome {
-  const fill = tokens.primary
-  const text =
-    contrastRatio(fill, tokens.background) >= contrastRatio(fill, tokens.foreground)
-      ? tokens.background
-      : tokens.foreground
+export function hoverChrome(
+  tokens: GraphThemeTokens,
+  treatment: SelectionTreatment,
+  kind: ChromeKind,
+  nodeColor: string,
+): HoverChrome {
+  const shadow = tokens.isDark ? "#000000" : tokens.border
+
+  // Hover is deliberately uniform across treatments: it is not a selection,
+  // and giving it three personalities would be three more chances to mistake
+  // it for one.
+  if (kind === "hover") {
+    return {
+      fill: tokens.background,
+      text: tokens.foreground,
+      plateStroke: tokens.primary,
+      ring: tokens.primary,
+      ringWidth: 1.5,
+      ringDash: null,
+      glow: false,
+      shadow,
+    }
+  }
+
+  if (treatment === "keyline") {
+    // The quiet option: rings in the node's own hue, leaving the accent free
+    // to mean "relation edge" everywhere else on the canvas.
+    return {
+      fill: tokens.background,
+      text: tokens.foreground,
+      plateStroke: nodeColor,
+      ring: nodeColor,
+      ringWidth: 1.6,
+      ringDash: [3, 2.5],
+      glow: false,
+      shadow,
+    }
+  }
+
+  if (treatment === "invert") {
+    return {
+      fill: tokens.foreground,
+      text: tokens.background,
+      plateStroke: null,
+      ring: tokens.foreground,
+      ringWidth: 3.5,
+      ringDash: null,
+      glow: false,
+      shadow,
+    }
+  }
+
   return {
-    fill,
-    text,
-    stroke: hexToRgba(text, 0.25),
-    shadow: hexToRgba("#000000", 0.55),
+    fill: tokens.primary,
+    text: readableOn(tokens.primary, tokens),
+    plateStroke: null,
+    ring: tokens.primary,
+    ringWidth: 3,
+    ringDash: null,
+    glow: true,
+    shadow,
   }
 }
 
@@ -81,24 +146,47 @@ export function drawPlatedLabel(
   )
 }
 
+/** The ring around the node. Drawn after the plate so the plate's own shadow
+ *  cannot smear it. */
+export function drawFocusRing(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  radius: number,
+  chrome: HoverChrome,
+): void {
+  context.save()
+  context.beginPath()
+  context.arc(x, y, radius + chrome.ringWidth, 0, Math.PI * 2)
+  context.strokeStyle = chrome.ring
+  context.lineWidth = chrome.ringWidth
+  if (chrome.ringDash) context.setLineDash(chrome.ringDash)
+  if (chrome.glow) {
+    context.shadowBlur = 10
+    context.shadowColor = chrome.ring
+  }
+  context.stroke()
+  context.restore()
+}
+
 /** Themed replacement for sigma's `drawDiscNodeHover`, geometry unchanged. */
 export function drawThemedDiscNodeHover(
   context: CanvasRenderingContext2D,
   data: PartialButFor<NodeDisplayData, "x" | "y" | "size" | "label" | "color">,
   settings: Settings,
   tokens: GraphThemeTokens,
+  treatment: SelectionTreatment,
+  kind: ChromeKind,
 ): void {
   const size = settings.labelSize
-  const { fill, text, stroke, shadow } = hoverChrome(tokens)
+  const chrome = hoverChrome(tokens, treatment, kind, data.color)
   context.font = `${settings.labelWeight} ${size}px ${settings.labelFont}`
 
-  context.fillStyle = fill
-  context.strokeStyle = stroke
-  context.lineWidth = 1
+  context.fillStyle = chrome.fill
   context.shadowOffsetX = 0
   context.shadowOffsetY = 0
   context.shadowBlur = 8
-  context.shadowColor = shadow
+  context.shadowColor = chrome.shadow
 
   const PADDING = 2
   if (typeof data.label === "string") {
@@ -127,6 +215,12 @@ export function drawThemedDiscNodeHover(
   }
 
   context.shadowBlur = 0
-  context.stroke()
-  drawPlatedLabel(context, data, settings, text)
+  if (chrome.plateStroke) {
+    context.strokeStyle = chrome.plateStroke
+    context.lineWidth = 1
+    context.stroke()
+  }
+
+  drawFocusRing(context, data.x, data.y, data.size, chrome)
+  drawPlatedLabel(context, data, settings, chrome.text)
 }

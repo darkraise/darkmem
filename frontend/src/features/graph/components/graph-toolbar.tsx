@@ -15,6 +15,7 @@ import { Settings, RotateCcw } from "lucide-react"
 import type { SizeMode } from "@/features/graph/lib/graph-utils"
 import type { ColorMode } from "@/features/graph/lib/graph-colors"
 import type { HullMode } from "@/features/graph/lib/graph-geometry"
+import { SelectionSettings } from "./selection-settings"
 
 type ViewMode = "2d" | "3d"
 
@@ -227,6 +228,12 @@ export function GraphToolbar({
               </span>
             </div>
             <div className="space-y-3">
+              {/* Selection sits at the top because it is the only control in
+                  here that changes how the graph responds to *you* rather
+                  than what it draws. Same component as Settings > Appearance,
+                  over the same store, so the two cannot drift. */}
+              <SelectionSettings compact />
+              <div className="bg-border h-px" />
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground w-14 shrink-0 text-right text-sm">
                   Size
