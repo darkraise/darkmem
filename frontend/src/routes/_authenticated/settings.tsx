@@ -17,7 +17,10 @@ import {
   Wrench,
 } from "lucide-react"
 import { PageChrome } from "@/components/app-chrome"
-import { AppearanceTab } from "@/features/settings/components/appearance-tab"
+import {
+  AppearanceTab,
+  GraphAppearanceCard,
+} from "@/features/settings/components/appearance-tab"
 import { FlagsTab } from "@/features/settings/components/flags-tab"
 import { LLMTab } from "@/features/settings/components/llm-tab"
 import { SecurityTab } from "@/features/settings/components/security-tab"
@@ -148,8 +151,9 @@ function SettingsPage() {
         <TabsContent value="research" className="pt-4">
           <ResearchTab />
         </TabsContent>
-        <TabsContent value="appearance" className="pt-4">
+        <TabsContent value="appearance" className="space-y-4 pt-4">
           <AppearanceTab />
+          <GraphAppearanceCard />
         </TabsContent>
       </Tabs>
     </div>

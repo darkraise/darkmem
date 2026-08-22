@@ -196,6 +196,7 @@ export function RealMemoryGraphPage() {
                   onEntitySelect={selection.handleEntitySelect}
                   tokens={tokens}
                   palette={palette}
+                  clusterNames={data?.cluster_names ?? {}}
                 />
               )}
               {dimensions && viewMode === "3d" && (
