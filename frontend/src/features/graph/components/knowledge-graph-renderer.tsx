@@ -162,7 +162,9 @@ export function KnowledgeGraphRenderer({
       renderLabels: true,
       renderEdgeLabels: true,
       labelSize: 12,
-      labelColor: { color: t.foreground },
+      // Per-node so a grounded label can recede with its node; sigma's
+      // label renderer reads this attribute and falls back to `color`.
+      labelColor: { attribute: "labelColor", color: t.foreground },
       labelFont: "Inter, sans-serif",
       edgeLabelSize: 10,
       edgeLabelColor: { color: t.mutedForeground },
@@ -190,7 +192,10 @@ export function KnowledgeGraphRenderer({
       nodeReducer(node, data) {
         const tk = tokensRef.current
         const { dimUnrelated } = prefsRef.current
-        const res: Partial<NodeDisplayData> & { _chromeKind?: ChromeKind } = {
+        const res: Partial<NodeDisplayData> & {
+          _chromeKind?: ChromeKind
+          labelColor?: string
+        } = {
           ...data,
         }
         const hov = hoveredNodeRef.current
@@ -222,6 +227,22 @@ export function KnowledgeGraphRenderer({
           // canvas the same way, half as far.
           res.color = recede(
             data.color || tk.mutedForeground,
+            tk.background,
+            hoverGroundAlpha(dimUnrelated),
+          )
+        }
+
+        // A dimmed node with an undimmed label reads as a label floating over
+        // nothing -- the label has to recede with the thing it names.
+        if (tier === "ground") {
+          res.labelColor = recede(
+            tk.foreground,
+            tk.background,
+            groundNodeAlpha(dimUnrelated),
+          )
+        } else if (!sel && hov && hov !== node && !hoverNeighbour) {
+          res.labelColor = recede(
+            tk.foreground,
             tk.background,
             hoverGroundAlpha(dimUnrelated),
           )
@@ -386,7 +407,11 @@ export function KnowledgeGraphRenderer({
         membershipEdgeColor(tokensRef.current),
       )
     })
-    sigma.setSetting("labelColor", { color: tokensRef.current.foreground })
+    // Attribute form, or per-node label dimming is undone on theme change.
+    sigma.setSetting("labelColor", {
+      attribute: "labelColor",
+      color: tokensRef.current.foreground,
+    })
     sigma.setSetting("edgeLabelColor", {
       color: tokensRef.current.mutedForeground,
     })
