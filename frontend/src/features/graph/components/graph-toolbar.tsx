@@ -1,5 +1,6 @@
 import { Toggle } from "darkraise-ui/components/toggle"
 import { Switch } from "darkraise-ui/components/switch"
+import { Spinner } from "darkraise-ui/components/spinner"
 import {
   SegmentGroup,
   SegmentGroupIndicator,
@@ -32,6 +33,9 @@ interface GraphToolbarProps {
   onHullModeChange: (mode: HullMode) => void
   entityLayer: boolean
   onEntityLayerChange: (v: boolean) => void
+  /** A graph refetch is in flight. Reported beside the switch that started it
+   *  rather than only on the canvas, so the control answers when you use it. */
+  entityLayerLoading?: boolean
   sharedEntitiesOnly: boolean
   onSharedEntitiesOnlyChange: (v: boolean) => void
   sizeMode: SizeMode
@@ -156,6 +160,7 @@ export function GraphToolbar({
   onHullModeChange,
   entityLayer,
   onEntityLayerChange,
+  entityLayerLoading = false,
   sharedEntitiesOnly,
   onSharedEntitiesOnlyChange,
   sizeMode,
@@ -231,6 +236,7 @@ export function GraphToolbar({
                 onCheckedChange={onEntityLayerChange}
                 aria-label="Entity layer"
               />
+              {entityLayerLoading && <Spinner size="sm" />}
             </div>
             {entityLayer && (
               <div className="text-muted-foreground flex items-center gap-2 text-sm">

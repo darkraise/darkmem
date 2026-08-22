@@ -1,168 +1,131 @@
-interface SkelCluster {
-  color: string
-  hull: { cx: string; cy: string; rx: string; ry: string; rotate: string }
-  nodes: { top: string; left: string; size: string; delay: string }[]
-}
+import { Skeleton } from "darkraise-ui/components/skeleton"
 
-const SKEL_CLUSTERS: SkelCluster[] = [
-  {
-    color: "168,85,247",
-    hull: { cx: "22%", cy: "38%", rx: "14%", ry: "18%", rotate: "-10deg" },
-    nodes: [
-      { top: "32%", left: "18%", size: "44px", delay: "0s" },
-      { top: "24%", left: "26%", size: "34px", delay: "0.3s" },
-      { top: "44%", left: "28%", size: "28px", delay: "0.6s" },
-      { top: "28%", left: "12%", size: "26px", delay: "0.9s" },
-      { top: "40%", left: "14%", size: "22px", delay: "0.4s" },
-      { top: "48%", left: "22%", size: "20px", delay: "0.7s" },
-      { top: "36%", left: "30%", size: "24px", delay: "0.2s" },
-    ],
-  },
-  {
-    color: "63,185,80",
-    hull: { cx: "65%", cy: "42%", rx: "15%", ry: "16%", rotate: "8deg" },
-    nodes: [
-      { top: "38%", left: "62%", size: "42px", delay: "0.2s" },
-      { top: "30%", left: "72%", size: "32px", delay: "0.5s" },
-      { top: "48%", left: "68%", size: "28px", delay: "0.8s" },
-      { top: "46%", left: "56%", size: "30px", delay: "0.4s" },
-      { top: "36%", left: "76%", size: "22px", delay: "0.1s" },
-      { top: "52%", left: "60%", size: "20px", delay: "0.6s" },
-      { top: "42%", left: "74%", size: "24px", delay: "0.3s" },
-    ],
-  },
-  {
-    color: "88,166,255",
-    hull: { cx: "46%", cy: "20%", rx: "13%", ry: "12%", rotate: "5deg" },
-    nodes: [
-      { top: "16%", left: "44%", size: "36px", delay: "0.1s" },
-      { top: "12%", left: "36%", size: "26px", delay: "0.7s" },
-      { top: "22%", left: "52%", size: "28px", delay: "0.4s" },
-      { top: "18%", left: "56%", size: "22px", delay: "0.8s" },
-      { top: "10%", left: "46%", size: "20px", delay: "0.5s" },
-      { top: "24%", left: "40%", size: "24px", delay: "0.2s" },
-    ],
-  },
-  {
-    color: "255,166,87",
-    hull: { cx: "42%", cy: "68%", rx: "14%", ry: "13%", rotate: "-5deg" },
-    nodes: [
-      { top: "64%", left: "38%", size: "38px", delay: "0.3s" },
-      { top: "70%", left: "48%", size: "30px", delay: "0.6s" },
-      { top: "58%", left: "46%", size: "26px", delay: "0.1s" },
-      { top: "72%", left: "36%", size: "22px", delay: "0.5s" },
-      { top: "66%", left: "52%", size: "24px", delay: "0.8s" },
-      { top: "60%", left: "32%", size: "20px", delay: "0.4s" },
-    ],
-  },
-  {
-    color: "6,182,212",
-    hull: { cx: "84%", cy: "24%", rx: "10%", ry: "11%", rotate: "12deg" },
-    nodes: [
-      { top: "20%", left: "82%", size: "32px", delay: "0.2s" },
-      { top: "14%", left: "88%", size: "24px", delay: "0.6s" },
-      { top: "28%", left: "86%", size: "22px", delay: "0.9s" },
-      { top: "22%", left: "78%", size: "20px", delay: "0.4s" },
-    ],
-  },
+/**
+ * Placeholder for the graph canvas.
+ *
+ * Built from the same `Skeleton` primitive every other surface loads with, so
+ * it derives its colour from the theme rather than carrying its own. The
+ * previous version hardcoded five RGB triples that matched neither the theme
+ * tokens nor `buildMemoryPalette`, which is why it read as a different
+ * product while it was on screen.
+ *
+ * The two node shapes are the honest signal: the graph draws memories as
+ * discs and entities as diamonds, so the placeholder does too. Positions are
+ * fixed rather than random — a placeholder that reshuffles on every render
+ * reads as content arriving and then changing its mind.
+ */
+
+type Kind = "disc" | "diamond"
+
+const NODES: { top: string; left: string; size: number; kind: Kind; delay: number }[] = [
+  { top: "30%", left: "20%", size: 34, kind: "disc", delay: 0 },
+  { top: "22%", left: "28%", size: 24, kind: "disc", delay: 0.3 },
+  { top: "42%", left: "27%", size: 20, kind: "diamond", delay: 0.6 },
+  { top: "38%", left: "14%", size: 18, kind: "diamond", delay: 0.15 },
+  { top: "18%", left: "44%", size: 28, kind: "disc", delay: 0.45 },
+  { top: "26%", left: "54%", size: 20, kind: "diamond", delay: 0.75 },
+  { top: "37%", left: "62%", size: 32, kind: "disc", delay: 0.2 },
+  { top: "28%", left: "72%", size: 22, kind: "disc", delay: 0.5 },
+  { top: "48%", left: "69%", size: 18, kind: "diamond", delay: 0.8 },
+  { top: "44%", left: "48%", size: 26, kind: "disc", delay: 0.35 },
+  { top: "62%", left: "38%", size: 30, kind: "disc", delay: 0.25 },
+  { top: "68%", left: "50%", size: 20, kind: "diamond", delay: 0.55 },
+  { top: "58%", left: "58%", size: 22, kind: "disc", delay: 0.7 },
+  { top: "66%", left: "26%", size: 18, kind: "diamond", delay: 0.4 },
+  { top: "20%", left: "82%", size: 24, kind: "disc", delay: 0.6 },
 ]
 
-const SKEL_EDGES: {
-  top: string
-  left: string
-  width: string
-  rotate: string
-  delay: string
-}[] = [
-  { top: "34%", left: "20%", width: "70px", rotate: "-12deg", delay: "0.2s" },
-  { top: "30%", left: "16%", width: "55px", rotate: "35deg", delay: "0.5s" },
-  { top: "42%", left: "18%", width: "60px", rotate: "15deg", delay: "0.8s" },
-  { top: "40%", left: "60%", width: "80px", rotate: "18deg", delay: "0.3s" },
-  { top: "44%", left: "58%", width: "55px", rotate: "-25deg", delay: "0.7s" },
-  { top: "36%", left: "70%", width: "50px", rotate: "30deg", delay: "0.1s" },
-  { top: "18%", left: "40%", width: "65px", rotate: "8deg", delay: "0.4s" },
-  { top: "14%", left: "44%", width: "50px", rotate: "-18deg", delay: "0.6s" },
-  { top: "66%", left: "36%", width: "70px", rotate: "12deg", delay: "0.5s" },
-  { top: "62%", left: "42%", width: "50px", rotate: "-20deg", delay: "0.3s" },
-  { top: "46%", left: "32%", width: "120px", rotate: "5deg", delay: "0.6s" },
-  { top: "26%", left: "30%", width: "90px", rotate: "-8deg", delay: "0.4s" },
-  { top: "54%", left: "48%", width: "60px", rotate: "35deg", delay: "0.2s" },
+const EDGES: { top: string; left: string; width: string; rotate: string }[] = [
+  { top: "32%", left: "22%", width: "9%", rotate: "-14deg" },
+  { top: "36%", left: "17%", width: "7%", rotate: "26deg" },
+  { top: "24%", left: "30%", width: "13%", rotate: "-6deg" },
+  { top: "40%", left: "30%", width: "17%", rotate: "6deg" },
+  { top: "20%", left: "47%", width: "8%", rotate: "18deg" },
+  { top: "39%", left: "50%", width: "12%", rotate: "-4deg" },
+  { top: "30%", left: "65%", width: "8%", rotate: "-22deg" },
+  { top: "40%", left: "64%", width: "6%", rotate: "34deg" },
+  { top: "47%", left: "42%", width: "10%", rotate: "36deg" },
+  { top: "64%", left: "40%", width: "10%", rotate: "12deg" },
+  { top: "61%", left: "29%", width: "9%", rotate: "-8deg" },
+  { top: "60%", left: "52%", width: "7%", rotate: "-24deg" },
 ]
 
-const SKEL_BARS = ["64px", "80px", "56px", "48px"]
+/** Faint groupings under the nodes, matching the hull layer the graph draws. */
+const HULLS = [
+  { cx: "22%", cy: "34%", rx: "13%", ry: "16%" },
+  { cx: "58%", cy: "34%", rx: "15%", ry: "14%" },
+  { cx: "40%", cy: "64%", rx: "14%", ry: "12%" },
+]
 
 export function GraphSkeleton({
-  label = "Loading graph data...",
+  label = "Loading graph",
 }: {
   label?: string
 }) {
   return (
     <div className="relative h-full min-h-0 flex-1">
-      <div className="absolute inset-0 overflow-hidden bg-background">
-        <div className="bg-card/70 border-border absolute top-3 left-1/2 z-10 flex -translate-x-1/2 gap-2 rounded-md border px-3 py-1.5">
-          {SKEL_BARS.map((w, i) => (
-            <div
-              key={i}
-              className="h-2 animate-pulse rounded-full bg-muted"
-              style={{ width: w, animationDelay: `${i * 0.15}s` }}
-            />
-          ))}
-        </div>
-
-        {SKEL_CLUSTERS.map((c, ci) => (
+      <div className="bg-background absolute inset-0 overflow-hidden">
+        {HULLS.map((h, i) => (
           <div
-            key={`hull-${ci}`}
-            className="absolute animate-pulse rounded-[50%]"
+            key={`h-${i}`}
+            className="border-border/50 bg-muted/30 absolute rounded-[50%] border"
             style={{
-              left: c.hull.cx,
-              top: c.hull.cy,
-              width: `calc(${c.hull.rx} * 2)`,
-              height: `calc(${c.hull.ry} * 2)`,
-              transform: `translate(-50%, -50%) rotate(${c.hull.rotate})`,
-              background: `radial-gradient(ellipse at center, rgba(${c.color},0.06) 0%, rgba(${c.color},0.02) 70%, transparent 100%)`,
-              border: `1px solid rgba(${c.color},0.08)`,
-              animationDelay: `${ci * 0.2}s`,
+              left: h.cx,
+              top: h.cy,
+              width: `calc(${h.rx} * 2)`,
+              height: `calc(${h.ry} * 2)`,
+              transform: "translate(-50%, -50%)",
             }}
           />
         ))}
 
-        {SKEL_EDGES.map((e, i) => (
+        {EDGES.map((e, i) => (
           <div
             key={`e-${i}`}
-            className="absolute h-px animate-pulse"
+            className="bg-border absolute h-px"
             style={{
               top: e.top,
               left: e.left,
               width: e.width,
               transform: `rotate(${e.rotate})`,
               transformOrigin: "0 0",
-              background: "hsl(var(--border) / 0.5)",
-              animationDelay: e.delay,
             }}
           />
         ))}
 
-        {SKEL_CLUSTERS.map((c, ci) =>
-          c.nodes.map((n, ni) => (
-            <div
-              key={`n-${ci}-${ni}`}
-              className="absolute animate-pulse rounded-full"
-              style={{
-                top: n.top,
-                left: n.left,
-                width: n.size,
-                height: n.size,
-                background: `rgba(${c.color},0.25)`,
-                boxShadow: `0 0 16px rgba(${c.color},0.15)`,
-                animationDelay: n.delay,
-              }}
-            />
-          )),
-        )}
+        {NODES.map((n, i) => (
+          <Skeleton
+            key={`n-${i}`}
+            className={`absolute ${n.kind === "disc" ? "rounded-full" : "rounded-[2px]"}`}
+            style={{
+              top: n.top,
+              left: n.left,
+              width: n.size,
+              height: n.size,
+              // The graph's entity nodes are squares turned 45 degrees; so are
+              // these, rather than an approximation with a different outline.
+              transform: n.kind === "diamond" ? "rotate(45deg)" : undefined,
+              animationDelay: `${n.delay}s`,
+            }}
+          />
+        ))}
 
-        <div className="text-muted-foreground absolute bottom-4 left-1/2 -translate-x-1/2 animate-pulse text-sm tracking-wide">
-          {label}
+        {/* Placed where the real controls are — top-left filter, top-right
+            settings cluster — so the chrome does not appear to move when the
+            graph replaces this. */}
+        <Skeleton className="absolute top-3 left-3 h-9 w-9" />
+        <div className="absolute top-3 right-3 flex gap-1.5">
+          <Skeleton className="h-9 w-9" />
+          <Skeleton className="h-9 w-9" />
+          <Skeleton className="h-9 w-9" />
         </div>
+
+        <p
+          className="text-muted-foreground absolute bottom-5 left-1/2 -translate-x-1/2 text-sm"
+          role="status"
+        >
+          {label}
+        </p>
       </div>
     </div>
   )

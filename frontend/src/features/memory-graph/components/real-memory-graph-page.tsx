@@ -6,6 +6,7 @@ import { Button } from "darkraise-ui/components/button"
 import { Filter, PanelRightClose, Waypoints } from "lucide-react"
 import { useSetPageChrome } from "@/components/app-chrome"
 import { GraphSkeleton } from "@/features/graph/components/graph-skeleton"
+import { Spinner } from "darkraise-ui/components/spinner"
 import { MiniGraph } from "@/features/graph/components/mini-graph"
 import { GraphFilterPanel } from "@/features/graph/components/graph-filter-panel"
 import { GraphDetailPanel } from "@/features/graph/components/graph-detail-panel"
@@ -55,11 +56,18 @@ export function RealMemoryGraphPage() {
     new Set(),
   )
 
-  const { data, isLoading } = useUnifiedGraph(
+  const { data, isLoading, isFetching } = useUnifiedGraph(
     debouncedSimilarity,
     debouncedMinSize,
     entityLayerEnabled,
   )
+
+  // `placeholderData: keepPreviousData` deliberately keeps the graph on screen
+  // when the entity toggle changes the query key, so `isLoading` stays false
+  // and the fetch was previously invisible. This is that fetch, and the only
+  // thing it drives is an affordance -- the graph, its camera and its layout
+  // all stay put.
+  const isRefetching = isFetching && !isLoading
 
   const layout = useGraphLayout()
   const filters = useGraphFilters(data, entityLayerEnabled, selectedEntityTypes)
@@ -218,7 +226,17 @@ export function RealMemoryGraphPage() {
 
             {isLoading && (
               <div className="absolute inset-0 z-30 bg-background">
-                <GraphSkeleton label="Loading graph data..." />
+                <GraphSkeleton />
+              </div>
+            )}
+
+            {isRefetching && (
+              <div
+                className="bg-card/90 border-border text-muted-foreground absolute top-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-md border px-3 py-1.5 text-sm shadow-sm"
+                role="status"
+              >
+                <Spinner size="sm" />
+                {entityLayerEnabled ? "Loading entities" : "Updating graph"}
               </div>
             )}
 
@@ -243,6 +261,7 @@ export function RealMemoryGraphPage() {
               hullMode={layout.hullMode}
               onHullModeChange={layout.setHullMode}
               entityLayer={entityLayerEnabled}
+              entityLayerLoading={isRefetching}
               sharedEntitiesOnly={filters.sharedEntitiesOnly}
               onSharedEntitiesOnlyChange={filters.setSharedEntitiesOnly}
               onEntityLayerChange={setEntityLayerEnabled}
