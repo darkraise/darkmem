@@ -41,6 +41,7 @@ const AXIS_STORAGE_KEYS: Partial<Record<string, readonly string[]>> = {
   radius: ["theme-radius"],
   fontSize: ["theme-font-size"],
   accentIntensity: ["theme-accent-intensity", "theme-accent-vibrancy"],
+  controlDepth: ["theme-control-depth"],
   outerGlow: ["theme-outer-glow"],
   innerGlow: ["theme-inner-glow"],
 }

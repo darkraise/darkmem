@@ -1162,6 +1162,9 @@ class ThemeSettingsPayload(BaseModel):
     accent_intensity: str | None = Field(
         default=None, alias="accentIntensity", pattern=_AXIS_VALUE
     )
+    control_depth: str | None = Field(
+        default=None, alias="controlDepth", pattern=_AXIS_VALUE
+    )
     outer_glow: str | None = Field(
         default=None, alias="outerGlow", pattern=_AXIS_VALUE
     )

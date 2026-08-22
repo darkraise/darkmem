@@ -1,6 +1,7 @@
 export { AppPageHeader } from "./app-page-header"
 export { BackToTop } from "./back-to-top"
 export { ContextChip } from "./context-chip"
+export { MinimalThemeSwitcher } from "./minimal-theme-switcher"
 export { ProjectSwitcher } from "./project-switcher"
 export {
   PageChrome,

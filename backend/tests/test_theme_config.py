@@ -19,6 +19,7 @@ VALID_SETTINGS = {
     "fontSize": "medium",
     "surfaceIntensity": "balanced",
     "accentIntensity": "balanced",
+    "controlDepth": "recessed",
     "outerGlow": "none",
     "innerGlow": "none",
     "presetAxisValues": {"glass": {"opacity": "medium", "blur": "low"}},
