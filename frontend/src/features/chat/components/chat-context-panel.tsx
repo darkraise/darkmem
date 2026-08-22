@@ -65,7 +65,10 @@ export function ChatContextPanel({
   const factNumber = factNumbers(facts)
 
   return (
-    <div className="border-border bg-card space-y-2.5 rounded-md border p-3">
+    // `overflow-y-auto` + `min-h-0`: as a full-height grid column this pane
+    // has a bounded height, and a turn that retrieved a dozen rows must scroll
+    // inside it rather than stretch the page it no longer owns the height of.
+    <div className="border-border bg-card min-h-0 space-y-2.5 overflow-y-auto rounded-md border p-3">
       <div className="flex items-center gap-2">
         <span className="text-sm font-semibold">
           Context used for this turn

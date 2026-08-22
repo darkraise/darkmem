@@ -75,13 +75,20 @@ export function RealChatPage({ initialId }: { initialId?: string }) {
   }
 
   return (
-    <div className="space-y-4">
+    // Fills the scrollport at `lg` (see FULL_HEIGHT_ROUTES in
+    // routes/_authenticated.tsx) so the three panes scroll inside themselves
+    // and the input stays put. Below `lg` the columns stack and the page
+    // scrolls normally — three panes sharing one viewport height would leave
+    // each of them too short to read.
+    <div className="flex flex-col gap-4 lg:h-full lg:min-h-0">
       <PageChrome
         icon={MessageSquare}
         title="Chat"
         description="Conversation over memory — every turn's retrieval context stays visible, labelled with the same vocabulary Memories uses."
       />
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[14rem_minmax(0,1fr)_18rem]">
+      {/* No `items-start`: the three columns are one surface, so they share a
+          height rather than each ending where its own content does. */}
+      <div className="grid grid-cols-1 gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[14rem_minmax(0,1fr)_18rem]">
         <ChatSidebar
           conversations={conversations}
           activeId={activeId}
@@ -99,7 +106,10 @@ export function RealChatPage({ initialId }: { initialId?: string }) {
           onRetry={() => refetchConversations()}
         />
 
-        <div className="border-border bg-card flex min-h-[24rem] flex-col overflow-hidden rounded-md border">
+        {/* `min-h-0` is what lets ChatMessages' own `overflow-auto` engage: a
+            flex child defaults to `min-height: auto`, which would grow this
+            card to its content and push the input off the bottom. */}
+        <div className="border-border bg-card flex min-h-[24rem] flex-col overflow-hidden rounded-md border lg:min-h-0">
           <ChatMessages
             messages={messages}
             streamingContent={stream.streamingContent}

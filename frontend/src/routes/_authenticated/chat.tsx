@@ -47,13 +47,14 @@ function DemoChatPage({ initialId }: { initialId?: string }) {
   }
 
   return (
-    <div className="space-y-4">
+    // Same full-height shape as RealChatPage — one route, one layout.
+    <div className="flex flex-col gap-4 lg:h-full lg:min-h-0">
       <PageChrome
         icon={MessageSquare}
         title="Chat"
         description="Conversation over memory — every turn's retrieval context stays visible, labelled with the same vocabulary Memories uses."
       />
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[14rem_minmax(0,1fr)_18rem]">
+      <div className="grid grid-cols-1 gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[14rem_minmax(0,1fr)_18rem]">
         <DemoThreadList
           threads={threads}
           activeId={activeId}

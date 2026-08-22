@@ -25,7 +25,7 @@ export function DemoThreadList({
   }, [threads, query])
 
   return (
-    <div className="border-border bg-card flex flex-col overflow-hidden rounded-md border">
+    <div className="border-border bg-card flex min-h-0 flex-col overflow-hidden rounded-md border">
       <div className="border-border flex items-center justify-between gap-2 border-b px-3 py-2">
         <span className="text-sm font-semibold">Conversations</span>
         <Button className="rounded-full" onClick={onNew}>
