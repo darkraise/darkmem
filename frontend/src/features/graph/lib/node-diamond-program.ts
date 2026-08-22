@@ -1,7 +1,8 @@
 import { NodeSquareProgram } from "@sigma/node-square"
-import { drawDiscNodeLabel } from "sigma/rendering"
 import type { Settings } from "sigma/settings"
 import type { NodeDisplayData, PartialButFor } from "sigma/types"
+import type { GraphThemeTokens } from "./code-graph-theme"
+import { drawPlatedLabel, hoverChrome } from "./node-hover"
 
 const DIAMOND_VERTEX_SHADER = /* glsl */ `
 attribute vec4 a_id;
@@ -46,8 +47,7 @@ export function drawDiamondNodeHover(
   context: CanvasRenderingContext2D,
   data: PartialButFor<NodeDisplayData, "x" | "y" | "size" | "label" | "color">,
   settings: Settings,
-  fill = "#FFF",
-  shadow = "#000",
+  tokens: GraphThemeTokens,
 ): void {
   const size = settings.labelSize
   const font = settings.labelFont
@@ -56,8 +56,11 @@ export function drawDiamondNodeHover(
 
   const PADDING = 2
   const r = data.size + PADDING
+  const { fill, text, stroke, shadow } = hoverChrome(tokens)
 
   context.fillStyle = fill
+  context.strokeStyle = stroke
+  context.lineWidth = 1
   context.shadowOffsetX = 0
   context.shadowOffsetY = 0
   context.shadowBlur = 8
@@ -91,7 +94,8 @@ export function drawDiamondNodeHover(
   }
 
   context.shadowBlur = 0
-  drawDiscNodeLabel(context, data, settings)
+  context.stroke()
+  drawPlatedLabel(context, data, settings, text)
 }
 
 export class NodeDiamondProgram extends NodeSquareProgram {

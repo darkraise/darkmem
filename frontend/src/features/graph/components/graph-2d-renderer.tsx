@@ -243,13 +243,7 @@ export function Graph2DRenderer({
       edgeProgramClasses: { curve: EdgeCurveProgram },
       defaultDrawNodeHover: (context, data, settings) => {
         if (data.type === "diamond") {
-          drawDiamondNodeHover(
-            context,
-            data,
-            settings,
-            tokensRef.current.popover,
-            tokensRef.current.isDark ? "#000" : tokensRef.current.border,
-          )
+          drawDiamondNodeHover(context, data, settings, tokensRef.current)
         } else {
           drawThemedDiscNodeHover(context, data, settings, tokensRef.current)
         }

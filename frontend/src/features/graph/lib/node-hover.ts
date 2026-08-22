@@ -1,33 +1,71 @@
 import type { Settings } from "sigma/settings"
 import type { NodeDisplayData, PartialButFor } from "sigma/types"
 import type { GraphThemeTokens } from "./code-graph-theme"
+import { hexToRgba } from "./graph-colors"
 
 export interface HoverChrome {
+  /** The label plate. */
   fill: string
+  /** Label text, chosen for measured contrast against `fill`. */
+  text: string
+  /** Plate outline, so the plate still reads where a node shares its hue. */
+  stroke: string
   shadow: string
 }
 
+function channel(hex: string, at: number): number {
+  const c = parseInt(hex.slice(at, at + 2), 16) / 255
+  return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
+}
+
+/** WCAG relative luminance. */
+function luminance(hex: string): number {
+  return (
+    0.2126 * channel(hex, 1) + 0.7152 * channel(hex, 3) + 0.0722 * channel(hex, 5)
+  )
+}
+
+function contrastRatio(a: string, b: string): number {
+  const la = luminance(a)
+  const lb = luminance(b)
+  const hi = Math.max(la, lb)
+  const lo = Math.min(la, lb)
+  return (hi + 0.05) / (lo + 0.05)
+}
+
 /**
- * The hover/selection label plate, in the app's own theme.
+ * The chrome for the plate behind a hovered or selected node's label.
  *
- * Sigma's built-in `drawDiscNodeHover` hardcodes a `#FFF` plate and a `#000`
- * shadow while drawing the label in `settings.labelColor` — which every
- * renderer here sets to `--foreground`. Under a dark theme that is
- * near-white text on a white plate: the label of the node you just selected
- * is the one thing you cannot read. So the plate takes `--popover`, the
- * surface `--foreground` is the contrast partner for.
+ * The plate is the **accent**, not a surface token. Both `--popover` and
+ * `--card` sit within a few percent lightness of `--background` by design —
+ * that is what makes them read as the same sheet of paper — so a plate
+ * painted in one is invisible against the graph canvas in either theme, and
+ * a selection that paints nothing visible is indistinguishable from one that
+ * did not register. The accent is the one token guaranteed to differ from the
+ * page in both themes, and it is already the app's selection colour.
+ *
+ * Text is picked by measured contrast rather than assumed: an accent may land
+ * anywhere on the lightness scale (`accentIntensity` alone moves it), so
+ * neither `--foreground` nor `--background` is safe to hardcode.
  */
 export function hoverChrome(tokens: GraphThemeTokens): HoverChrome {
+  const fill = tokens.primary
+  const text =
+    contrastRatio(fill, tokens.background) >= contrastRatio(fill, tokens.foreground)
+      ? tokens.background
+      : tokens.foreground
   return {
-    fill: tokens.popover,
-    shadow: tokens.isDark ? "#000" : tokens.border,
+    fill,
+    text,
+    stroke: hexToRgba(text, 0.25),
+    shadow: hexToRgba("#000000", 0.55),
   }
 }
 
-/** Sigma's `drawDiscNodeLabel`, with the plate's own foreground rather than
- *  `settings.labelColor` — the two are the same token today, but the plate is
- *  what the text has to read against. */
-function drawLabel(
+/** Sigma's `drawDiscNodeLabel`, in the plate's own text colour rather than
+ *  `settings.labelColor` — the plate is what the text has to read against,
+ *  and the unplated labels elsewhere on the canvas read against the page. */
+export function drawPlatedLabel(
   context: CanvasRenderingContext2D,
   data: PartialButFor<NodeDisplayData, "x" | "y" | "size" | "label" | "color">,
   settings: Settings,
@@ -36,7 +74,11 @@ function drawLabel(
   if (!data.label) return
   context.fillStyle = color
   context.font = `${settings.labelWeight} ${settings.labelSize}px ${settings.labelFont}`
-  context.fillText(data.label, data.x + data.size + 3, data.y + settings.labelSize / 3)
+  context.fillText(
+    data.label,
+    data.x + data.size + 3,
+    data.y + settings.labelSize / 3,
+  )
 }
 
 /** Themed replacement for sigma's `drawDiscNodeHover`, geometry unchanged. */
@@ -47,10 +89,12 @@ export function drawThemedDiscNodeHover(
   tokens: GraphThemeTokens,
 ): void {
   const size = settings.labelSize
-  const { fill, shadow } = hoverChrome(tokens)
+  const { fill, text, stroke, shadow } = hoverChrome(tokens)
   context.font = `${settings.labelWeight} ${size}px ${settings.labelFont}`
 
   context.fillStyle = fill
+  context.strokeStyle = stroke
+  context.lineWidth = 1
   context.shadowOffsetX = 0
   context.shadowOffsetY = 0
   context.shadowBlur = 8
@@ -83,5 +127,6 @@ export function drawThemedDiscNodeHover(
   }
 
   context.shadowBlur = 0
-  drawLabel(context, data, settings, tokens.popoverForeground)
+  context.stroke()
+  drawPlatedLabel(context, data, settings, text)
 }
