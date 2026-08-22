@@ -6,7 +6,7 @@ import {
   NodeDiamondProgram,
   drawDiamondNodeHover,
 } from "@/features/graph/lib/node-diamond-program"
-import { drawDiscNodeHover } from "sigma/rendering"
+import { drawThemedDiscNodeHover } from "@/features/graph/lib/node-hover"
 import FA2Layout from "graphology-layout-forceatlas2/worker"
 import { inferSettings } from "graphology-layout-forceatlas2"
 import { computeSize } from "@/features/graph/lib/graph-utils"
@@ -251,7 +251,7 @@ export function Graph2DRenderer({
             tokensRef.current.isDark ? "#000" : tokensRef.current.border,
           )
         } else {
-          drawDiscNodeHover(context, data, settings)
+          drawThemedDiscNodeHover(context, data, settings, tokensRef.current)
         }
       },
       stagePadding: 40,
