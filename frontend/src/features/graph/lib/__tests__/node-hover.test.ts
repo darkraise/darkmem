@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { drawThemedDiscNodeHover, hoverChrome } from "../node-hover"
 import { hslToHex } from "../graph-colors"
-import type { SelectionTreatment } from "../graph-prefs"
+import type { SelectionColor } from "../graph-prefs"
 import type { GraphThemeTokens } from "../code-graph-theme"
 
 function channel(hex: string, at: number): number {
@@ -49,7 +49,7 @@ const LIGHT = tokens({
 })
 
 const NODE_COLOR = hslToHex(152, 68, 58)
-const TREATMENTS: SelectionTreatment[] = ["halo", "keyline", "invert"]
+const COLORS: SelectionColor[] = ["accent", "inverted"]
 const TABLE: [string, GraphThemeTokens][] = [
   ["dark", DARK],
   ["light", LIGHT],
@@ -61,22 +61,19 @@ describe("hoverChrome", () => {
   // within a few percent lightness of --background by design.
   it.each(
     TABLE.flatMap(([theme, t]) =>
-      TREATMENTS.map((tr) => [theme, tr, t] as [string, SelectionTreatment, GraphThemeTokens]),
+      COLORS.map((c) => [theme, c, t] as [string, SelectionColor, GraphThemeTokens]),
     ),
-  )("keeps the %s %s label readable on its own plate", (_theme, treatment, t) => {
-    const c = hoverChrome(t, treatment, "focus", NODE_COLOR)
+  )("keeps the %s %s label readable on its own plate", (_theme, color, t) => {
+    const c = hoverChrome(t, color, "focus", NODE_COLOR)
     expect(contrast(c.text, c.fill)).toBeGreaterThanOrEqual(4.5)
   })
 
-  // A plate must be distinguishable from the page — either by its own fill or
-  // by an outline. An outlined plate whose fill matches the canvas is fine;
-  // an unoutlined one that matches it is the original bug.
   it.each(
     TABLE.flatMap(([theme, t]) =>
-      TREATMENTS.map((tr) => [theme, tr, t] as [string, SelectionTreatment, GraphThemeTokens]),
+      COLORS.map((c) => [theme, c, t] as [string, SelectionColor, GraphThemeTokens]),
     ),
-  )("separates the %s %s plate from the page", (_theme, treatment, t) => {
-    const c = hoverChrome(t, treatment, "focus", NODE_COLOR)
+  )("separates the %s %s plate from the page", (_theme, color, t) => {
+    const c = hoverChrome(t, color, "focus", NODE_COLOR)
     const standsAlone = contrast(c.fill, t.background) > 1.6
     expect(standsAlone || c.plateStroke !== null).toBe(true)
   })
@@ -84,43 +81,32 @@ describe("hoverChrome", () => {
   it("picks the text colour by contrast, not by theme polarity", () => {
     const pale = tokens({ primary: hslToHex(217, 91, 88) })
     const deep = tokens({ primary: hslToHex(217, 91, 22) })
-    expect(hoverChrome(pale, "halo", "focus", NODE_COLOR).text).toBe(pale.background)
-    expect(hoverChrome(deep, "halo", "focus", NODE_COLOR).text).toBe(deep.foreground)
+    expect(hoverChrome(pale, "accent", "focus", NODE_COLOR).text).toBe(pale.background)
+    expect(hoverChrome(deep, "accent", "focus", NODE_COLOR).text).toBe(deep.foreground)
   })
 
-  it("gives the halo an accent ring and a glow", () => {
-    const c = hoverChrome(DARK, "halo", "focus", NODE_COLOR)
-    expect(c.ring).toBe(DARK.primary)
-    expect(c.glow).toBe(true)
+  it("rings in the accent, or inverts against the page", () => {
+    expect(hoverChrome(DARK, "accent", "focus", NODE_COLOR).ring).toBe(DARK.primary)
+    expect(hoverChrome(DARK, "inverted", "focus", NODE_COLOR).ring).toBe(DARK.foreground)
   })
 
-  // The keyline is the quiet option: it leaves the accent free for relation
-  // edges by drawing the ring in the node's own colour instead.
-  it("draws the keyline ring in the node's own colour", () => {
-    const c = hoverChrome(DARK, "keyline", "focus", NODE_COLOR)
-    expect(c.ring).toBe(NODE_COLOR)
-    expect(c.glow).toBe(false)
+  // The halo is a ring around the node, not a collar on it: without a gap it
+  // reads as a thick border and the node looks recoloured.
+  it.each(["focus", "hover"] as const)("holds the %s halo off the node", (kind) => {
+    expect(hoverChrome(DARK, "accent", kind, NODE_COLOR).ringGap).toBeGreaterThan(0)
   })
 
-  it("backs the inverted treatment with the foreground", () => {
-    const c = hoverChrome(DARK, "invert", "focus", NODE_COLOR)
-    expect(c.fill).toBe(DARK.foreground)
-    expect(c.text).toBe(DARK.background)
-  })
-
-  // Hover reading as selection is the defect this whole model replaces, so
-  // the two must differ under every treatment.
-  it.each(TREATMENTS)("makes hover distinguishable from focus under %s", (treatment) => {
-    const focus = hoverChrome(DARK, treatment, "focus", NODE_COLOR)
-    const hover = hoverChrome(DARK, treatment, "hover", NODE_COLOR)
+  // Hover reading as selection is the defect this model replaces.
+  it.each(COLORS)("makes hover lighter than focus under %s", (color) => {
+    const focus = hoverChrome(DARK, color, "focus", NODE_COLOR)
+    const hover = hoverChrome(DARK, color, "hover", NODE_COLOR)
     expect(hover.ringWidth).toBeLessThan(focus.ringWidth)
     expect(hover).not.toEqual(focus)
   })
 
-  it("keeps hover identical across treatments — it is not a selection", () => {
-    const [a, b, c] = TREATMENTS.map((tr) => hoverChrome(DARK, tr, "hover", NODE_COLOR))
+  it("keeps hover identical across colours — it is not a selection", () => {
+    const [a, b] = COLORS.map((c) => hoverChrome(DARK, c, "hover", NODE_COLOR))
     expect(a).toEqual(b)
-    expect(b).toEqual(c)
   })
 })
 
@@ -159,9 +145,9 @@ const SETTINGS = { labelSize: 12, labelFont: "Inter", labelWeight: "400" } as ne
 describe("drawThemedDiscNodeHover", () => {
   it("paints the plate and label in the chrome's own colours", () => {
     const { ctx, painted } = recordingContext()
-    drawThemedDiscNodeHover(ctx as never, NODE as never, SETTINGS, DARK, "halo", "focus")
+    drawThemedDiscNodeHover(ctx as never, NODE as never, SETTINGS, DARK, "accent", "focus")
 
-    const chrome = hoverChrome(DARK, "halo", "focus", NODE_COLOR)
+    const chrome = hoverChrome(DARK, "accent", "focus", NODE_COLOR)
     expect(painted.find((p) => p.op === "fill")?.style).toBe(chrome.fill)
     expect(painted.find((p) => p.op === "fillText")?.style).toBe(chrome.text)
   })
@@ -170,7 +156,7 @@ describe("drawThemedDiscNodeHover", () => {
   // which is the page's own colour.
   it("never paints the default plate in a surface token", () => {
     const { ctx, painted } = recordingContext()
-    drawThemedDiscNodeHover(ctx as never, NODE as never, SETTINGS, DARK, "halo", "focus")
+    drawThemedDiscNodeHover(ctx as never, NODE as never, SETTINGS, DARK, "accent", "focus")
 
     const plate = painted.find((p) => p.op === "fill")?.style
     expect(plate).not.toBe(DARK.popover)

@@ -1,7 +1,7 @@
 import type { Settings } from "sigma/settings"
 import type { NodeDisplayData, PartialButFor } from "sigma/types"
 import type { GraphThemeTokens } from "./code-graph-theme"
-import type { SelectionTreatment } from "./graph-prefs"
+import type { SelectionColor } from "./graph-prefs"
 
 /** Focus is what you clicked; hover is what the pointer is over. They must
  *  never look alike — reading one as the other is the defect this model
@@ -15,10 +15,13 @@ export interface HoverChrome {
   text: string
   /** Plate outline, for the treatments whose plate shares the page's colour. */
   plateStroke: string | null
-  /** The ring drawn around the node itself. */
+  /** The halo drawn around the node itself. */
   ring: string
   ringWidth: number
-  ringDash: number[] | null
+  /** Clear space between the node's edge and the halo. Without it the halo
+   *  reads as a thick border and the node looks recoloured rather than
+   *  ringed. */
+  ringGap: number
   glow: boolean
   shadow: string
 }
@@ -65,15 +68,16 @@ function readableOn(plate: string, tokens: GraphThemeTokens): string {
  */
 export function hoverChrome(
   tokens: GraphThemeTokens,
-  treatment: SelectionTreatment,
+  color: SelectionColor,
   kind: ChromeKind,
-  nodeColor: string,
+  _nodeColor: string,
 ): HoverChrome {
   const shadow = tokens.isDark ? "#000000" : tokens.border
+  const inverted = color === "inverted"
+  const ring = inverted ? tokens.foreground : tokens.primary
 
-  // Hover is deliberately uniform across treatments: it is not a selection,
-  // and giving it three personalities would be three more chances to mistake
-  // it for one.
+  // Hover is deliberately uniform: it is not a selection, and giving it a
+  // personality per colour would be another chance to mistake it for one.
   if (kind === "hover") {
     return {
       fill: tokens.background,
@@ -81,48 +85,20 @@ export function hoverChrome(
       plateStroke: tokens.primary,
       ring: tokens.primary,
       ringWidth: 1.5,
-      ringDash: null,
-      glow: false,
-      shadow,
-    }
-  }
-
-  if (treatment === "keyline") {
-    // The quiet option: rings in the node's own hue, leaving the accent free
-    // to mean "relation edge" everywhere else on the canvas.
-    return {
-      fill: tokens.background,
-      text: tokens.foreground,
-      plateStroke: nodeColor,
-      ring: nodeColor,
-      ringWidth: 1.6,
-      ringDash: [3, 2.5],
-      glow: false,
-      shadow,
-    }
-  }
-
-  if (treatment === "invert") {
-    return {
-      fill: tokens.foreground,
-      text: tokens.background,
-      plateStroke: null,
-      ring: tokens.foreground,
-      ringWidth: 3.5,
-      ringDash: null,
+      ringGap: 2.5,
       glow: false,
       shadow,
     }
   }
 
   return {
-    fill: tokens.primary,
-    text: readableOn(tokens.primary, tokens),
+    fill: ring,
+    text: readableOn(ring, tokens),
     plateStroke: null,
-    ring: tokens.primary,
+    ring,
     ringWidth: 3,
-    ringDash: null,
-    glow: true,
+    ringGap: 4,
+    glow: !inverted,
     shadow,
   }
 }
@@ -157,10 +133,15 @@ export function drawFocusRing(
 ): void {
   context.save()
   context.beginPath()
-  context.arc(x, y, radius + chrome.ringWidth, 0, Math.PI * 2)
+  context.arc(
+    x,
+    y,
+    radius + chrome.ringGap + chrome.ringWidth / 2,
+    0,
+    Math.PI * 2,
+  )
   context.strokeStyle = chrome.ring
   context.lineWidth = chrome.ringWidth
-  if (chrome.ringDash) context.setLineDash(chrome.ringDash)
   if (chrome.glow) {
     context.shadowBlur = 10
     context.shadowColor = chrome.ring
@@ -175,11 +156,11 @@ export function drawThemedDiscNodeHover(
   data: PartialButFor<NodeDisplayData, "x" | "y" | "size" | "label" | "color">,
   settings: Settings,
   tokens: GraphThemeTokens,
-  treatment: SelectionTreatment,
+  color: SelectionColor,
   kind: ChromeKind,
 ): void {
   const size = settings.labelSize
-  const chrome = hoverChrome(tokens, treatment, kind, data.color)
+  const chrome = hoverChrome(tokens, color, kind, data.color)
   context.font = `${settings.labelWeight} ${size}px ${settings.labelFont}`
 
   context.fillStyle = chrome.fill

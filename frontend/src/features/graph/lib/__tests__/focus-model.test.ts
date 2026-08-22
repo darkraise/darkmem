@@ -66,6 +66,13 @@ describe("labelVisible", () => {
   it("names whatever the pointer is on", () => {
     expect(labelVisible({ ...base, isHovered: true })).toBe(true)
   })
+
+  // With a node selected, everything unrelated is ground -- but pointing at
+  // one is a direct request to know what it is, and the ground rule was
+  // swallowing it before the hover rule could answer.
+  it("names a grounded node while the pointer is on it", () => {
+    expect(labelVisible({ ...base, tier: "ground", isHovered: true })).toBe(true)
+  })
 })
 
 describe("recede", () => {

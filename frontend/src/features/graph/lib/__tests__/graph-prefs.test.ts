@@ -3,7 +3,7 @@ import {
   useGraphPrefs,
   DIM_MIN,
   DIM_MAX,
-  DEFAULT_TREATMENT,
+  DEFAULT_SELECTION_COLOR,
   DEFAULT_DIM,
 } from "../graph-prefs"
 
@@ -11,19 +11,19 @@ describe("graphPrefs", () => {
   beforeEach(() => {
     localStorage.clear()
     useGraphPrefs.setState({
-      selectionTreatment: DEFAULT_TREATMENT,
+      selectionColor: DEFAULT_SELECTION_COLOR,
       dimUnrelated: DEFAULT_DIM,
     })
   })
 
-  it("defaults to the halo treatment at 15% dim", () => {
-    expect(useGraphPrefs.getState().selectionTreatment).toBe("halo")
+  it("defaults to an accent halo at 15% dim", () => {
+    expect(useGraphPrefs.getState().selectionColor).toBe("accent")
     expect(useGraphPrefs.getState().dimUnrelated).toBe(15)
   })
 
-  it("setSelectionTreatment records the choice", () => {
-    useGraphPrefs.getState().setSelectionTreatment("invert")
-    expect(useGraphPrefs.getState().selectionTreatment).toBe("invert")
+  it("setSelectionColor records the choice", () => {
+    useGraphPrefs.getState().setSelectionColor("inverted")
+    expect(useGraphPrefs.getState().selectionColor).toBe("inverted")
   })
 
   // Below the floor the ground is gone rather than dimmed, and above the
@@ -44,10 +44,10 @@ describe("graphPrefs", () => {
   })
 
   it("persists under the darkmem-graph-prefs key", () => {
-    useGraphPrefs.getState().setSelectionTreatment("keyline")
+    useGraphPrefs.getState().setSelectionColor("inverted")
     useGraphPrefs.getState().setDimUnrelated(25)
     const stored = JSON.parse(localStorage.getItem("darkmem-graph-prefs") ?? "{}")
-    expect(stored.state.selectionTreatment).toBe("keyline")
+    expect(stored.state.selectionColor).toBe("inverted")
     expect(stored.state.dimUnrelated).toBe(25)
   })
 })

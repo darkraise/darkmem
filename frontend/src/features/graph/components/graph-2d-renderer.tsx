@@ -87,9 +87,12 @@ const HUB_DEGREE = 5
 const LABEL_ZOOM_RATIO = 0.72
 
 /** A connected edge must be unmistakably heavier than its neighbours -- that
- *  emphasis is most of what makes a selection legible. Scaled off each kind's
- *  own weight so the relation/similarity/membership hierarchy survives it. */
-const FOCUS_EDGE_FACTOR = 2.6
+ *  emphasis is most of what makes a selection legible. Both are scaled off
+ *  each kind's own weight so the relation/similarity/membership hierarchy
+ *  survives the emphasis, and hovering stays lighter than selecting so the
+ *  two remain distinguishable while a selection is held. */
+const HOVER_EDGE_FACTOR = 2
+const SELECTED_EDGE_FACTOR = 3.4
 
 /** The edge hierarchy: relation over similarity over membership. */
 function edgeWeight(kind: unknown): number {
@@ -134,10 +137,10 @@ export function Graph2DRenderer({
   const clusterNamesRef = useRef(clusterNames)
   clusterNamesRef.current = clusterNames
 
-  const selectionTreatment = useGraphPrefs((s) => s.selectionTreatment)
+  const selectionColor = useGraphPrefs((s) => s.selectionColor)
   const dimUnrelated = useGraphPrefs((s) => s.dimUnrelated)
-  const prefsRef = useRef({ selectionTreatment, dimUnrelated })
-  prefsRef.current = { selectionTreatment, dimUnrelated }
+  const prefsRef = useRef({ selectionColor, dimUnrelated })
+  prefsRef.current = { selectionColor, dimUnrelated }
 
   // Camera ratio, not a zoom "level": sigma counts down as you move in, so
   // below the threshold is closer. Read in the node reducer to gate the
@@ -304,11 +307,11 @@ export function Graph2DRenderer({
         // node you selected from the one under the pointer.
         const kind =
           (data as { _chromeKind?: ChromeKind })._chromeKind ?? "hover"
-        const treatment = prefsRef.current.selectionTreatment
+        const color = prefsRef.current.selectionColor
         if (data.type === "diamond") {
-          drawDiamondNodeHover(context, data, settings, tokensRef.current, treatment, kind)
+          drawDiamondNodeHover(context, data, settings, tokensRef.current, color, kind)
         } else {
-          drawThemedDiscNodeHover(context, data, settings, tokensRef.current, treatment, kind)
+          drawThemedDiscNodeHover(context, data, settings, tokensRef.current, color, kind)
         }
       },
       stagePadding: 40,
@@ -379,7 +382,7 @@ export function Graph2DRenderer({
 
         if (sel) {
           if (src === sel || tgt === sel) {
-            res.size = edgeWeight(data._edgeKind) * FOCUS_EDGE_FACTOR
+            res.size = edgeWeight(data._edgeKind) * SELECTED_EDGE_FACTOR
             res.color = t.primary
           } else {
             res.color = recede(t.border, t.background, groundEdgeAlpha(dimUnrelated))
@@ -387,7 +390,10 @@ export function Graph2DRenderer({
         }
 
         if (hov && (src === hov || tgt === hov)) {
-          res.size = edgeWeight(data._edgeKind) * FOCUS_EDGE_FACTOR
+          res.size = Math.max(
+            res.size ?? 0,
+            edgeWeight(data._edgeKind) * HOVER_EDGE_FACTOR,
+          )
           res.color = t.primary
         }
 

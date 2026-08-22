@@ -56,9 +56,12 @@ const HOVER_SCALE = 1.08
 const HUB_DEGREE = 5
 const LABEL_ZOOM_RATIO = 0.72
 /** A connected edge must be unmistakably heavier than its neighbours -- that
- *  emphasis is most of what makes a selection legible. Scaled off each kind's
- *  own weight so the relation/similarity/membership hierarchy survives it. */
-const FOCUS_EDGE_FACTOR = 2.6
+ *  emphasis is most of what makes a selection legible. Both are scaled off
+ *  each kind's own weight so the relation/similarity/membership hierarchy
+ *  survives the emphasis, and hovering stays lighter than selecting so the
+ *  two remain distinguishable while a selection is held. */
+const HOVER_EDGE_FACTOR = 2
+const SELECTED_EDGE_FACTOR = 3.4
 
 /** Relation over similarity over membership — the same hierarchy the memory
  *  graph draws, so one corpus does not read two ways across two views. */
@@ -86,10 +89,10 @@ export function KnowledgeGraphRenderer({
   const tokensRef = useRef(tokens)
   tokensRef.current = tokens
 
-  const selectionTreatment = useGraphPrefs((s) => s.selectionTreatment)
+  const selectionColor = useGraphPrefs((s) => s.selectionColor)
   const dimUnrelated = useGraphPrefs((s) => s.dimUnrelated)
-  const prefsRef = useRef({ selectionTreatment, dimUnrelated })
-  prefsRef.current = { selectionTreatment, dimUnrelated }
+  const prefsRef = useRef({ selectionColor, dimUnrelated })
+  prefsRef.current = { selectionColor, dimUnrelated }
 
   // Sigma's camera ratio counts down as you move in.
   const zoomRatioRef = useRef(1)
@@ -172,7 +175,7 @@ export function KnowledgeGraphRenderer({
           data,
           settings,
           tokensRef.current,
-          prefsRef.current.selectionTreatment,
+          prefsRef.current.selectionColor,
           kind,
         )
       },
@@ -235,7 +238,7 @@ export function KnowledgeGraphRenderer({
 
         if (sel) {
           if (src === sel || tgt === sel) {
-            res.size = edgeWeight(data._edgeKind) * FOCUS_EDGE_FACTOR
+            res.size = edgeWeight(data._edgeKind) * SELECTED_EDGE_FACTOR
             res.color = tk.primary
           } else {
             res.color = recede(tk.border, tk.background, groundEdgeAlpha(dimUnrelated))
@@ -243,7 +246,10 @@ export function KnowledgeGraphRenderer({
         }
 
         if (hov && (src === hov || tgt === hov)) {
-          res.size = edgeWeight(data._edgeKind) * FOCUS_EDGE_FACTOR
+          res.size = Math.max(
+            res.size ?? 0,
+            edgeWeight(data._edgeKind) * HOVER_EDGE_FACTOR,
+          )
           res.color = tk.primary
         }
 
