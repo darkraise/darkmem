@@ -88,6 +88,32 @@ async def session(setup_database):
 
 
 @pytest_asyncio.fixture
+async def session_factory(session):
+    """Sessions on the test's own connection.
+
+    ``session`` runs inside an outer transaction that is rolled back after each
+    test. A recorder opening a genuinely independent session would write on a
+    different connection — invisible to the test *and* not rolled back, leaking
+    rows across the suite. Binding the factory to the same connection keeps
+    recorder writes both visible and undone. Production binds the real engine;
+    this fixture is the only place the two differ.
+    """
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def factory():
+        # `session.bind` is the AsyncConnection the fixture opened;
+        # `get_bind()` would hand back the sync one, which AsyncSession rejects.
+        nested = AsyncSession(bind=session.bind, expire_on_commit=False)
+        try:
+            yield nested
+        finally:
+            await nested.close()
+
+    return factory
+
+
+@pytest_asyncio.fixture
 async def client(session):
     async def override():
         yield session

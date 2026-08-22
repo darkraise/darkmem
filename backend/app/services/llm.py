@@ -1,6 +1,8 @@
 import asyncio
 import json
 import logging
+import time
+from contextlib import asynccontextmanager
 
 import httpx
 
@@ -122,8 +124,11 @@ class LLMOrchestrator:
     # and DNS/connect flakiness against cloud vendors. Timeouts are unchanged.
     _TRANSPORT_RETRIES = 2
 
-    def __init__(self, config: dict[str, LLMPurposeConfig]):
+    def __init__(self, config: dict[str, LLMPurposeConfig], recorder=None):
         self.config = config
+        #: Optional ``UsageRecorder``. None in tests and in any construction
+        #: that has no session to write with; metering is never load-bearing.
+        self._recorder = recorder
         self._client = httpx.AsyncClient(
             # Split timeout instead of a single 300s scalar. connect/write/pool
             # fail fast so a black-hole endpoint or an exhausted connection pool
@@ -136,6 +141,48 @@ class LLMOrchestrator:
             # simultaneous requests at a rate-limited vendor.
             limits=httpx.Limits(max_connections=64, max_keepalive_connections=16),
             transport=httpx.AsyncHTTPTransport(retries=self._TRANSPORT_RETRIES),
+        )
+
+
+    @asynccontextmanager
+    async def _meter(self, purpose: str, cfg, subject=None):
+        """Time one vendor call and record what it cost, success or failure.
+
+        Wraps the request/response cycle rather than living at the end of it:
+        every error path here raises, so a recorder placed after the response
+        would see only the calls that worked — and a failed call is exactly the
+        waste this measurement exists to find.
+
+        The caller sets ``box["payload"]`` to the parsed response body; leaving
+        it None records the call as unmeasured, which is not the same as free.
+        """
+        started = time.perf_counter()
+        box: dict = {"payload": None, "extra_raw": None}
+        try:
+            yield box
+        except Exception as exc:
+            await self._report(purpose, cfg, subject, None, started, False,
+                               type(exc).__name__, box.get("extra_raw"))
+            raise
+        else:
+            await self._report(purpose, cfg, subject, box["payload"], started,
+                               True, None, box.get("extra_raw"))
+
+    async def _report(self, purpose, cfg, subject, payload, started, ok,
+                      error_kind, extra_raw):
+        if self._recorder is None:
+            return
+        await self._recorder.record(
+            purpose=purpose,
+            model=cfg.model,
+            provider=getattr(cfg, "provider_name", None),
+            api_kind=cfg.api_kind,
+            payload=payload,
+            subject=subject,
+            duration_ms=int((time.perf_counter() - started) * 1000),
+            ok=ok,
+            error_kind=error_kind,
+            extra_raw=extra_raw,
         )
 
     @staticmethod
@@ -226,32 +273,40 @@ class LLMOrchestrator:
         """
         cfg = self.config["embedding"]
         headers = self._headers(cfg)
-        if quirks_for(cfg.api_kind).native_protocol:
-            url = embeddings_url(cfg.api_kind, cfg.base_url)
-            response = await self._client.post(
-                url, headers=headers, json={"model": cfg.model, "input": text},
-            )
-            try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError as e:
-                raise RuntimeError(
-                    f"Ollama embed failed ({e.response.status_code}): {e.request.url.host}"
-                ) from e
-            vec = response.json()["embeddings"][0]
-        else:
-            self._assert_can_embed(cfg)
-            response = await self._client.post(
-                embeddings_url(cfg.api_kind, cfg.base_url),
-                headers=headers,
-                json={"input": text, "model": cfg.model},
-            )
-            try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError as e:
-                raise RuntimeError(
-                    f"LLM embedding call failed ({e.response.status_code}): {e.request.url.host}"
-                ) from e
-            vec = response.json()["data"][0]["embedding"]
+        async with self._meter("embedding", cfg) as meter:
+            if quirks_for(cfg.api_kind).native_protocol:
+                url = embeddings_url(cfg.api_kind, cfg.base_url)
+                response = await self._client.post(
+                    url, headers=headers, json={"model": cfg.model, "input": text},
+                )
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as e:
+                    raise RuntimeError(
+                        f"Ollama embed failed ({e.response.status_code}): {e.request.url.host}"
+                    ) from e
+                body = response.json()
+                vec = body["embeddings"][0]
+            else:
+                self._assert_can_embed(cfg)
+                response = await self._client.post(
+                    embeddings_url(cfg.api_kind, cfg.base_url),
+                    headers=headers,
+                    json={"input": text, "model": cfg.model},
+                )
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as e:
+                    raise RuntimeError(
+                        f"LLM embedding call failed ({e.response.status_code}): {e.request.url.host}"
+                    ) from e
+                body = response.json()
+                vec = body["data"][0]["embedding"]
+            # The envelope both protocols already send and this method used to
+            # discard: OpenAI-compat as ``usage``, Ollama as
+            # ``prompt_eval_count``. Without it, embeddings -- one of the four
+            # cost sources -- were structurally unmeasurable.
+            meter["payload"] = body
         self._check_dims(cfg, len(vec))
         return vec, self._fingerprint(cfg.model, len(vec))
 
@@ -260,38 +315,46 @@ class LLMOrchestrator:
             return [], self.llm_fingerprint()
         cfg = self.config["embedding"]
         headers = self._headers(cfg)
-        if quirks_for(cfg.api_kind).native_protocol:
-            url = embeddings_url(cfg.api_kind, cfg.base_url)
-            response = await self._client.post(
-                url, headers=headers, json={"model": cfg.model, "input": texts},
-            )
-            try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError as e:
-                raise RuntimeError(
-                    f"Ollama embed_batch failed ({e.response.status_code}): {e.request.url.host}"
-                ) from e
-            vectors = response.json()["embeddings"]
-        else:
-            self._assert_can_embed(cfg)
-            response = await self._client.post(
-                embeddings_url(cfg.api_kind, cfg.base_url),
-                headers=headers,
-                json={"input": texts, "model": cfg.model},
-            )
-            try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError as e:
-                raise RuntimeError(
-                    f"LLM embed_batch failed ({e.response.status_code}): {e.request.url.host}"
-                ) from e
-            data = response.json()["data"]
-            # Sort by ``index`` to restore input order, but fall back to the
-            # element's existing position when a vendor omits the field.
-            ordered = sorted(
-                enumerate(data), key=lambda pair: pair[1].get("index", pair[0])
-            )
-            vectors = [d["embedding"] for _, d in ordered]
+        async with self._meter("embedding", cfg) as meter:
+            if quirks_for(cfg.api_kind).native_protocol:
+                url = embeddings_url(cfg.api_kind, cfg.base_url)
+                response = await self._client.post(
+                    url, headers=headers, json={"model": cfg.model, "input": texts},
+                )
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as e:
+                    raise RuntimeError(
+                        f"Ollama embed_batch failed ({e.response.status_code}): {e.request.url.host}"
+                    ) from e
+                body = response.json()
+                vectors = body["embeddings"]
+            else:
+                self._assert_can_embed(cfg)
+                response = await self._client.post(
+                    embeddings_url(cfg.api_kind, cfg.base_url),
+                    headers=headers,
+                    json={"input": texts, "model": cfg.model},
+                )
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as e:
+                    raise RuntimeError(
+                        f"LLM embed_batch failed ({e.response.status_code}): {e.request.url.host}"
+                    ) from e
+                body = response.json()
+                data = body["data"]
+                # Sort by ``index`` to restore input order, but fall back to the
+                # element's existing position when a vendor omits the field.
+                ordered = sorted(
+                    enumerate(data), key=lambda pair: pair[1].get("index", pair[0])
+                )
+                vectors = [d["embedding"] for _, d in ordered]
+            meter["payload"] = body
+            # How many texts one call covered. The per-memory view uses this to
+            # say "batched" rather than dividing a shared cost N ways and
+            # presenting the arithmetic as an observation.
+            meter["extra_raw"] = {"batch_size": len(texts)}
         dims = len(vectors[0]) if vectors else (cfg.dimensions or 0)
         if vectors:
             self._check_dims(cfg, dims)
@@ -335,6 +398,39 @@ class LLMOrchestrator:
         return flat, fingerprint
 
     async def chat_completion(
+        self,
+        purpose: str,
+        messages: list[dict],
+        response_format: dict | None = None,
+        seed: int | None = None,
+        raise_on_truncation: bool = False,
+        return_meta: bool = False,
+        usage_subject=None,
+    ) -> str | tuple[str, dict]:
+        """Meter one chat call, then delegate.
+
+        The metering rides ``return_meta``, which already carries the usage
+        envelope for both the compat and the native path — so this wrapper
+        needs no second parse and no duplicated extraction. Callers keep the
+        signature they had; ``usage_subject`` is the only addition, and it is
+        how ingest attributes a call to its own memory rather than to whatever
+        ambient scope the batch is running under.
+        """
+        cfg = self.config[purpose]
+        async with self._meter(purpose, cfg, usage_subject) as meter:
+            content, meta = await self._chat_completion_inner(
+                purpose,
+                messages,
+                response_format=response_format,
+                seed=seed,
+                raise_on_truncation=raise_on_truncation,
+                return_meta=True,
+            )
+            usage = meta.get("usage") if isinstance(meta, dict) else None
+            meter["payload"] = {"usage": usage} if usage else None
+        return (content, meta) if return_meta else content
+
+    async def _chat_completion_inner(
         self,
         purpose: str,
         messages: list[dict],
@@ -630,65 +726,94 @@ class LLMOrchestrator:
         purpose: str,
         messages: list[dict],
     ):
-        """Yields token strings as they arrive from the LLM."""
+        """Yields token strings as they arrive from the LLM.
+
+        Metered in a ``finally`` rather than through ``_meter``: this is a
+        generator, and a consumer that stops early (a client disconnect) never
+        reaches the end of the body. The vendor billed for the call either way,
+        so the row is written on the way out whatever happened -- with
+        ``tokens_measured=false`` when no usage frame arrived.
+        """
         cfg = self.config[purpose]
         headers = self._headers(cfg)
+        started = time.perf_counter()
+        final_payload: dict | None = None
+        ok = True
+        error_kind: str | None = None
+        try:
+            if quirks_for(cfg.api_kind).native_protocol:
+                url = chat_url(cfg.api_kind, cfg.base_url)
+                body: dict = {
+                    "model": cfg.model,
+                    "messages": messages,
+                    "stream": True,
+                }
+                if not cfg.reasoning:
+                    body["think"] = False
+                options: dict = {}
+                for key, value in cfg.params.items():
+                    if key == "extra_body":
+                        continue
+                    if key in ("temperature", "top_p", "top_k", "num_predict",
+                               "num_ctx", "seed", "repeat_penalty", "stop"):
+                        options[key] = value
+                if options:
+                    body["options"] = options
 
-        if quirks_for(cfg.api_kind).native_protocol:
-            url = chat_url(cfg.api_kind, cfg.base_url)
-            body: dict = {
-                "model": cfg.model,
-                "messages": messages,
-                "stream": True,
-            }
-            if not cfg.reasoning:
-                body["think"] = False
-            options: dict = {}
-            for key, value in cfg.params.items():
-                if key == "extra_body":
-                    continue
-                if key in ("temperature", "top_p", "top_k", "num_predict",
-                           "num_ctx", "seed", "repeat_penalty", "stop"):
-                    options[key] = value
-            if options:
-                body["options"] = options
+                async with self._client.stream(
+                    "POST", url, headers=headers, json=body,
+                ) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if not line.strip():
+                            continue
+                        chunk = json.loads(line)
+                        if chunk.get("done"):
+                            # Ollama puts prompt_eval_count/eval_count on exactly
+                            # this chunk. Breaking first threw the counts away one
+                            # line before they could be read, which is why chat
+                            # cost was unmeasurable on the local path.
+                            final_payload = chunk
+                            break
+                        msg = chunk.get("message", {})
+                        content = msg.get("content")
+                        if content:
+                            yield content
+                return
+
+            body = self._build_openai_chat_body(cfg, messages, stream=True)
+            if quirks_for(cfg.api_kind).stream_usage_option:
+                # Without this a streamed compat response carries no usage envelope
+                # at all -- the cost is not merely unrecorded, it is never sent.
+                body["stream_options"] = {"include_usage": True}
 
             async with self._client.stream(
-                "POST", url, headers=headers, json=body,
+                "POST",
+                chat_url(cfg.api_kind, cfg.base_url),
+                headers=headers,
+                json=body,
             ) as response:
                 response.raise_for_status()
                 async for line in response.aiter_lines():
-                    if not line.strip():
+                    if not line.startswith("data: "):
                         continue
-                    chunk = json.loads(line)
-                    if chunk.get("done"):
+                    data = line[6:]
+                    if data.strip() == "[DONE]":
                         break
-                    msg = chunk.get("message", {})
-                    content = msg.get("content")
+                    chunk = json.loads(data)
+                    if chunk.get("usage"):
+                        # The usage frame arrives last, with an empty choices list.
+                        final_payload = chunk
+                    delta = (chunk.get("choices") or [{}])[0].get("delta", {})
+                    content = delta.get("content")
                     if content:
                         yield content
-            return
-
-        body = self._build_openai_chat_body(cfg, messages, stream=True)
-
-        async with self._client.stream(
-            "POST",
-            chat_url(cfg.api_kind, cfg.base_url),
-            headers=headers,
-            json=body,
-        ) as response:
-            response.raise_for_status()
-            async for line in response.aiter_lines():
-                if not line.startswith("data: "):
-                    continue
-                data = line[6:]
-                if data.strip() == "[DONE]":
-                    break
-                chunk = json.loads(data)
-                delta = chunk.get("choices", [{}])[0].get("delta", {})
-                content = delta.get("content")
-                if content:
-                    yield content
+        except Exception as exc:
+            ok, error_kind = False, type(exc).__name__
+            raise
+        finally:
+            await self._report(purpose, cfg, None, final_payload, started,
+                               ok, error_kind, None)
 
     async def close(self):
         await self._client.aclose()
