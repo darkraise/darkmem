@@ -55,6 +55,16 @@ class VendorQuirks:
     reasoning_disable_effort: str | None = None
     output_cap_key: str = "max_tokens"
     requires_api_key: bool = True
+    # Whether the compat streaming body accepts
+    # ``stream_options: {"include_usage": true}``. Without it a streamed
+    # response carries no usage envelope at all, and chat generation cost is
+    # unmeasurable rather than merely unrecorded.
+    stream_usage_option: bool = False
+    # Where this vendor reports the cached-input count, in the order to try.
+    # Dotted paths descend into nested objects. Empty means the vendor
+    # surfaces none: z.ai through the compat path, and Anthropic, whose
+    # caching needs the native endpoint this orchestrator does not use.
+    cache_hit_fields: tuple[str, ...] = ()
 
 
 _QUIRKS: dict[str, VendorQuirks] = {
@@ -65,11 +75,16 @@ _QUIRKS: dict[str, VendorQuirks] = {
         # still carries it 400s on every request.
         reasoning_efforts=("none", "low", "medium", "high", "xhigh"),
         retired_reasoning_efforts=("minimal",),
+        stream_usage_option=True,
+        cache_hit_fields=("prompt_tokens_details.cached_tokens",),
     ),
     "ollama": VendorQuirks(
         native_protocol=True,
         output_cap_key="num_predict",
         requires_api_key=False,
+        # Native protocol: the counts ride the ``done`` chunk, not an envelope
+        # requested up front.
+        stream_usage_option=False,
     ),
     "anthropic": VendorQuirks(
         auth=AUTH_X_API_KEY,
@@ -93,6 +108,8 @@ _QUIRKS: dict[str, VendorQuirks] = {
     "deepseek": VendorQuirks(
         supports_embedding=False,
         thinking_flag=True,
+        stream_usage_option=True,
+        cache_hit_fields=("prompt_cache_hit_tokens",),
     ),
     "zai": VendorQuirks(
         thinking_flag=True,

@@ -27,6 +27,68 @@ def _output_cap(params: dict, api_kind: str | None = None) -> int | None:
     return None
 
 
+
+def _dig(payload: dict, dotted: str):
+    """Descend a dotted path, returning None rather than raising on a miss."""
+    node = payload
+    for part in dotted.split("."):
+        if not isinstance(node, dict):
+            return None
+        node = node.get(part)
+    return node
+
+
+def extract_usage(payload: dict | None, quirks) -> dict | None:
+    """Normalise one vendor response into the four counts, or None.
+
+    None means "this vendor told us nothing", which is **not** zero — the
+    doctrine ``benchlib/twin.py`` sets, where a report prints
+    ``tokens: not measured`` rather than a fabricated 0. A vendor that stops
+    surfacing usage must not read as a free model.
+
+    Handles both shapes: the OpenAI-compat ``usage`` envelope, and Ollama's
+    native ``prompt_eval_count``/``eval_count``, which ride the ``done`` chunk
+    on the streaming path. Where the cached count lives is a vendor difference,
+    so it is read from the quirk row rather than from a comparison against a
+    vendor name — ``tests/test_api_kind_dispatch.py`` fails the build on the
+    latter.
+    """
+    if not payload:
+        return None
+    usage = payload.get("usage")
+    if isinstance(usage, dict) and (
+        usage.get("prompt_tokens") is not None
+        or usage.get("completion_tokens") is not None
+    ):
+        cached = 0
+        for field_path in quirks.cache_hit_fields:
+            value = _dig(usage, field_path)
+            if value:
+                cached = int(value)
+                break
+        reasoning = _dig(usage, "completion_tokens_details.reasoning_tokens")
+        return {
+            "prompt_tokens": usage.get("prompt_tokens"),
+            "cached_tokens": cached,
+            "completion_tokens": usage.get("completion_tokens"),
+            "reasoning_tokens": int(reasoning) if reasoning else None,
+            "raw": usage,
+        }
+    if payload.get("prompt_eval_count") is not None or payload.get("eval_count") is not None:
+        return {
+            "prompt_tokens": payload.get("prompt_eval_count"),
+            "cached_tokens": 0,
+            "completion_tokens": payload.get("eval_count"),
+            "reasoning_tokens": None,
+            "raw": {
+                k: payload.get(k)
+                for k in ("prompt_eval_count", "eval_count")
+                if payload.get(k) is not None
+            },
+        }
+    return None
+
+
 class LLMTruncationError(RuntimeError):
     """Raised when a completion stops at its output-token cap.
 
