@@ -259,6 +259,20 @@ export function RealMemoryGraphPage() {
               clusterTightness={layout.clusterTightness}
               onClusterTightnessChange={layout.setClusterTightness}
               onReset={handleReset}
+              trailing={
+                !selection.showPanel && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label="Show details panel"
+                    title="Show details panel"
+                    className="bg-card/80 pointer-events-auto h-8 w-8 rounded-md border shadow-lg backdrop-blur-sm"
+                    onClick={() => selection.setShowPanel(true)}
+                  >
+                    <PanelRightClose className="h-4 w-4" />
+                  </Button>
+                )
+              }
             />
 
             {entityLayerEnabled && (
@@ -272,24 +286,6 @@ export function RealMemoryGraphPage() {
                     Entity overlay truncated — showing a partial view.
                   </p>
                 )}
-              </div>
-            )}
-
-            {!selection.showPanel && (
-              // Sits left of the settings/reset cluster, which is pinned to
-              // right-3: this button is the conditional one, so it is the one
-              // that gets out of the way. The offset is that cluster's width.
-              <div className="absolute top-3 right-[5.25rem] z-30">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  aria-label="Show details panel"
-                  title="Show details panel"
-                  className="bg-card/80 h-8 w-8 rounded-md shadow-lg backdrop-blur-sm"
-                  onClick={() => selection.setShowPanel(true)}
-                >
-                  <PanelRightClose className="h-4 w-4" />
-                </Button>
               </div>
             )}
 

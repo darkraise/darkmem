@@ -96,14 +96,14 @@ const LABEL_ZOOM_RATIO = 0.72
  *  the same factor made connected relation edges visibly heavier than
  *  connected similarity ones, which reads as "some of these matter more"
  *  rather than as one highlight. The hierarchy still holds at rest. */
-const HOVER_EDGE_SIZE = 3
-const SELECTED_EDGE_SIZE = 4.5
+const HOVER_EDGE_SIZE = 4.5
+const SELECTED_EDGE_SIZE = 6.5
 
 /** The edge hierarchy: relation over similarity over membership. */
 function edgeWeight(kind: unknown): number {
-  if (kind === "relation") return 2.2
-  if (kind === "membership") return 1.3
-  return 1.7
+  if (kind === "relation") return 3.4
+  if (kind === "membership") return 2.2
+  return 2.8
 }
 
 export function Graph2DRenderer({
