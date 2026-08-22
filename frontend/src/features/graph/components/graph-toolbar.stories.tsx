@@ -29,6 +29,8 @@ const defaultArgs = {
   hullMode: "cluster" as HullMode,
   onHullModeChange: () => {},
   entityLayer: true,
+  sharedEntitiesOnly: true,
+  onSharedEntitiesOnlyChange: () => {},
   onEntityLayerChange: () => {},
   sizeMode: "connections" as SizeMode,
   onSizeModeChange: () => {},
@@ -72,6 +74,7 @@ function InteractiveToolbar() {
   const [colorMode, setColorMode] = useState<ColorMode>("type")
   const [hullMode, setHullMode] = useState<HullMode>("cluster")
   const [entityLayer, setEntityLayer] = useState(true)
+  const [sharedOnly, setSharedOnly] = useState(true)
   const [sizeMode, setSizeMode] = useState<SizeMode>("connections")
   const [threshold, setThreshold] = useState(0.65)
   const [minCluster, setMinCluster] = useState(3)
@@ -88,6 +91,8 @@ function InteractiveToolbar() {
         hullMode={hullMode}
         onHullModeChange={setHullMode}
         entityLayer={entityLayer}
+        sharedEntitiesOnly={sharedOnly}
+        onSharedEntitiesOnlyChange={setSharedOnly}
         onEntityLayerChange={setEntityLayer}
         sizeMode={sizeMode}
         onSizeModeChange={setSizeMode}

@@ -32,6 +32,8 @@ interface GraphToolbarProps {
   onHullModeChange: (mode: HullMode) => void
   entityLayer: boolean
   onEntityLayerChange: (v: boolean) => void
+  sharedEntitiesOnly: boolean
+  onSharedEntitiesOnlyChange: (v: boolean) => void
   sizeMode: SizeMode
   onSizeModeChange: (mode: SizeMode) => void
   similarityThreshold: number
@@ -154,6 +156,8 @@ export function GraphToolbar({
   onHullModeChange,
   entityLayer,
   onEntityLayerChange,
+  sharedEntitiesOnly,
+  onSharedEntitiesOnlyChange,
   sizeMode,
   onSizeModeChange,
   similarityThreshold,
@@ -228,6 +232,19 @@ export function GraphToolbar({
                 aria-label="Entity layer"
               />
             </div>
+            {entityLayer && (
+              <div className="text-muted-foreground flex items-center gap-2 text-sm">
+                <Label className="w-16 shrink-0 text-right font-normal">
+                  Shared only
+                </Label>
+                <Switch
+                  checked={sharedEntitiesOnly}
+                  onCheckedChange={onSharedEntitiesOnlyChange}
+                  aria-label="Shared entities only"
+                />
+                <span className="text-sm opacity-60">2+ memories</span>
+              </div>
+            )}
           </div>
 
           <SectionLabel className="mt-4">Selection</SectionLabel>

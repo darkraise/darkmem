@@ -243,6 +243,8 @@ export function RealMemoryGraphPage() {
               hullMode={layout.hullMode}
               onHullModeChange={layout.setHullMode}
               entityLayer={entityLayerEnabled}
+              sharedEntitiesOnly={filters.sharedEntitiesOnly}
+              onSharedEntitiesOnlyChange={filters.setSharedEntitiesOnly}
               onEntityLayerChange={setEntityLayerEnabled}
               sizeMode={layout.sizeMode}
               onSizeModeChange={layout.setSizeMode}

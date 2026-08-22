@@ -15,6 +15,11 @@ export function useGraphFilters(
     new Set(),
   )
   const [showFilters, setShowFilters] = useState(false)
+  // On by default: an entity asserted by exactly one memory adds a node and a
+  // spoke and joins nothing, and on a real corpus that is almost all of them
+  // (94.6% of production's 74 at the time this landed). Showing them by
+  // default buries the memories the page is actually about.
+  const [sharedEntitiesOnly, setSharedEntitiesOnly] = useState(true)
 
   const debouncedSearchText = useDebouncedValue(searchText, 1000)
 
@@ -82,9 +87,20 @@ export function useGraphFilters(
         !selectedEntityTypes.has(e.entity_type)
       )
         return false
-      return e.memory_ids.some((mid) => memoryIdSet.has(mid))
+      // Counted against the memories actually on screen, not the entity's
+      // whole memory_ids: an entity joining two memories of which one is
+      // filtered out is not bridging anything you can see.
+      let visible = 0
+      for (const mid of e.memory_ids) if (memoryIdSet.has(mid)) visible++
+      return sharedEntitiesOnly ? visible >= 2 : visible > 0
     })
-  }, [data, entityLayerEnabled, filteredMemories, selectedEntityTypes])
+  }, [
+    data,
+    entityLayerEnabled,
+    filteredMemories,
+    selectedEntityTypes,
+    sharedEntitiesOnly,
+  ])
 
   const filteredEntityRelations = useMemo((): EntityRelation[] => {
     if (!data?.entity_relations || !entityLayerEnabled) return []
@@ -165,6 +181,8 @@ export function useGraphFilters(
     setSelectedClusters,
     showFilters,
     setShowFilters,
+    sharedEntitiesOnly,
+    setSharedEntitiesOnly,
     debouncedSearchText,
     filteredMemories,
     filteredEdges,

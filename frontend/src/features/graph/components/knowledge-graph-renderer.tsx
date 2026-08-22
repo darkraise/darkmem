@@ -70,6 +70,9 @@ const SELECTED_EDGE_SIZE = 6.5
 
 /** Relation over similarity over membership — the same hierarchy the memory
  *  graph draws, so one corpus does not read two ways across two views. */
+/** Entities are the subject here, so a typed relation outranks everything --
+ *  the opposite of the memory graph, whose subject is its memories. The two
+ *  orders are deliberately different; do not "unify" them. */
 function edgeWeight(kind: unknown): number {
   if (kind === "relation") return 3.4
   if (kind === "membership") return 2.2

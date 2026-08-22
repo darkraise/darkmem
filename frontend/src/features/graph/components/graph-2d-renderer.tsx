@@ -2,6 +2,7 @@ import { useRef, useEffect, useCallback } from "react"
 import Graph from "graphology"
 import Sigma from "sigma"
 import EdgeCurveProgram from "@sigma/edge-curve"
+import { NodeCircleProgram } from "sigma/rendering"
 import {
   NodeDiamondProgram,
   drawDiamondNodeHover,
@@ -80,6 +81,13 @@ interface Graph2DRendererProps {
 const FOCUS_SCALE = 1.22
 const HOVER_SCALE = 1.08
 
+/** Entity nodes are the overlay, so they must not outweigh the memories they
+ *  annotate. A diamond's half-diagonal is `size * sqrt(2)` in px, so 6 renders
+ *  ~8.5px against a memory disc's 6-13px radius. Not lower: sigma's
+ *  `labelRenderedSizeThreshold` (6) culls labels before the node reducer is
+ *  consulted, so a smaller entity could never be labelled on selection. */
+const ENTITY_NODE_SIZE = 6
+
 /** Degree at or above which a node's label survives at any zoom. */
 const HUB_DEGREE = 5
 
@@ -100,10 +108,14 @@ const HOVER_EDGE_SIZE = 4.5
 const SELECTED_EDGE_SIZE = 6.5
 
 /** The edge hierarchy: relation over similarity over membership. */
+/** Memory-to-memory similarity is what this page is about, so it carries the
+ *  heaviest line; the entity overlay's own edges sit under it. The knowledge
+ *  graph keeps the opposite order on purpose -- there entities ARE the
+ *  subject -- so its copy of this function is not the same function. */
 function edgeWeight(kind: unknown): number {
-  if (kind === "relation") return 3.4
-  if (kind === "membership") return 2.2
-  return 2.8
+  if (kind === "relation") return 2.4
+  if (kind === "membership") return 1.6
+  return 3.4
 }
 
 export function Graph2DRenderer({
@@ -233,6 +245,7 @@ export function Graph2DRenderer({
         y: (seededUnit(m.id, 1) - 0.5) * 10,
         label: m.content.slice(0, 30) + (m.content.length > 30 ? "…" : ""),
         size: size * 0.5,
+        type: "disc",
         _degree: conns,
         color,
         borderColor,
@@ -273,7 +286,7 @@ export function Graph2DRenderer({
           x: (seededUnit(`entity:${ent.id}`, 0) - 0.5) * 10,
           y: (seededUnit(`entity:${ent.id}`, 1) - 0.5) * 10,
           label: ent.name,
-          size: 10,
+          size: ENTITY_NODE_SIZE,
           _degree: ent.memory_ids.length,
           color: bg,
           borderColor,
@@ -340,7 +353,11 @@ export function Graph2DRenderer({
       labelColor: { attribute: "labelColor", color: labelColorToken },
       labelFont: "Inter, sans-serif",
       defaultEdgeType: "curve",
-      nodeProgramClasses: { diamond: NodeDiamondProgram },
+      // Order matters and is the whole point: sigma draws program by program
+      // in registration order, and zIndex only sorts WITHIN a program. Giving
+      // memories their own key after "diamond" is what puts the subject on top
+      // of the overlay where they overlap.
+      nodeProgramClasses: { diamond: NodeDiamondProgram, disc: NodeCircleProgram },
       edgeProgramClasses: { curve: EdgeCurveProgram },
       defaultDrawNodeHover: (context, data, settings) => {
         // `_chromeKind` rides the reducer output: sigma mutates the reduced
