@@ -1,5 +1,6 @@
 import { useState } from "react"
-import { resolveNodeColor, entityTypeColor, clusterColor } from "@/features/graph/lib/graph-colors"
+import { resolveNodeColor, clusterColor } from "@/features/graph/lib/graph-colors"
+import { EntityTypeSwatch } from "./entity-type-swatch"
 import type { ColorMode } from "@/features/graph/lib/graph-colors"
 import { useMemoryGraphTheme } from "@/features/graph/lib/memory-graph-theme"
 import { Input } from "darkraise-ui/components/input"
@@ -338,7 +339,6 @@ export function GraphFilterPanel({
                 </p>
                 <div className="space-y-0.5">
                   {allEntityTypes.map(([etype, count]) => {
-                    const color = entityTypeColor(etype, palette)
                     return (
                       <Label
                         key={etype}
@@ -349,13 +349,10 @@ export function GraphFilterPanel({
                           onCheckedChange={() => onEntityTypeToggle?.(etype)}
                           className="h-3.5 w-3.5"
                         />
-                        <span
-                          className="h-2 w-2 flex-shrink-0"
-                          style={{
-                            backgroundColor: color,
-                            clipPath:
-                              "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
-                          }}
+                        <EntityTypeSwatch
+                          entityType={etype}
+                          palette={palette}
+                          size={8}
                         />
                         <span
                           className={`flex-1 truncate capitalize ${

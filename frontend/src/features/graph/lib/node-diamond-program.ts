@@ -1,4 +1,5 @@
 import { NodeSquareProgram } from "@sigma/node-square"
+import { floatColor } from "sigma/utils"
 import type { Settings } from "sigma/settings"
 import type { NodeDisplayData, PartialButFor } from "sigma/types"
 import type { GraphThemeTokens } from "./code-graph-theme"
@@ -9,6 +10,7 @@ import type { SelectionColor } from "./graph-prefs"
 const DIAMOND_VERTEX_SHADER = /* glsl */ `
 attribute vec4 a_id;
 attribute vec4 a_color;
+attribute vec4 a_borderColor;
 attribute vec2 a_position;
 attribute float a_size;
 attribute float a_angle;
@@ -19,6 +21,9 @@ uniform float u_cameraAngle;
 uniform float u_correctionRatio;
 
 varying vec4 v_color;
+varying vec4 v_borderColor;
+varying vec2 v_diffVector;
+varying float v_size;
 
 const float bias = 255.0 / 254.0;
 const float sqrt_8 = sqrt(8.0);
@@ -35,13 +40,64 @@ void main() {
     1
   );
 
+  // Handed to the fragment shader so it can tell body from border. The quad's
+  // four corners ARE the diamond's, so the L1 norm of this vector is exactly
+  // v_size along the outline and 0 at the centre.
+  v_diffVector = diffVector;
+  v_size = size;
+
   #ifdef PICKING_MODE
   v_color = a_id;
+  v_borderColor = a_id;
   #else
   v_color = a_color;
+  v_borderColor = a_borderColor;
   #endif
 
   v_color.a *= bias;
+  v_borderColor.a *= bias;
+}
+`
+
+const DIAMOND_FRAGMENT_SHADER = /* glsl */ `
+// highp, not mediump: the vertex stage declares u_correctionRatio too, where
+// uniforms default to highp, and GLSL refuses to link a program whose two
+// stages disagree on a shared uniform's precision.
+precision highp float;
+
+varying vec4 v_color;
+varying vec4 v_borderColor;
+varying vec2 v_diffVector;
+varying float v_size;
+
+uniform float u_correctionRatio;
+
+const float sqrt_2 = sqrt(2.0);
+const float BORDER_PX = 2.0;
+const float FEATHER_PX = 1.0;
+
+void main(void) {
+  float dist = abs(v_diffVector.x) + abs(v_diffVector.y);
+
+  #ifdef PICKING_MODE
+  // Body and border answer the pick alike, so hit-testing is untouched by the
+  // hollow look — clicking the middle of an entity still selects it.
+  gl_FragColor = v_color;
+  #else
+  // The sqrt(2) converts a perpendicular width into this L1 metric: a
+  // diamond's edges run at 45 degrees, so an L1 step of d crosses only
+  // d / sqrt(2) of actual width. Widths go through u_correctionRatio and NOT
+  // u_sizeRatio, which is what holds the border at a constant pixel weight
+  // while the camera zooms.
+  float border = u_correctionRatio * BORDER_PX * sqrt_2;
+  float feather = u_correctionRatio * FEATHER_PX * sqrt_2;
+  float inner = v_size - border;
+  gl_FragColor = mix(
+    v_color,
+    v_borderColor,
+    smoothstep(inner - feather, inner + feather, dist)
+  );
+  #endif
 }
 `
 
@@ -106,6 +162,8 @@ export function drawDiamondNodeHover(
   drawPlatedLabel(context, data, settings, chrome.text)
 }
 
+const { UNSIGNED_BYTE, FLOAT } = WebGLRenderingContext
+
 export class NodeDiamondProgram extends NodeSquareProgram {
   constructor(...args: ConstructorParameters<typeof NodeSquareProgram>) {
     super(...args)
@@ -124,6 +182,34 @@ export class NodeDiamondProgram extends NodeSquareProgram {
     return {
       ...def,
       VERTEX_SHADER_SOURCE: DIAMOND_VERTEX_SHADER,
+      FRAGMENT_SHADER_SOURCE: DIAMOND_FRAGMENT_SHADER,
+      // Inserted after a_color, and processVisibleItem below writes the
+      // interleaved array in exactly this order — the two must move together
+      // or every node reads its neighbour's bytes.
+      ATTRIBUTES: [
+        { name: "a_position", size: 2, type: FLOAT },
+        { name: "a_size", size: 1, type: FLOAT },
+        { name: "a_color", size: 4, type: UNSIGNED_BYTE, normalized: true },
+        { name: "a_borderColor", size: 4, type: UNSIGNED_BYTE, normalized: true },
+        { name: "a_id", size: 4, type: UNSIGNED_BYTE, normalized: true },
+      ],
     }
+  }
+
+  processVisibleItem(nodeIndex: number, startIndex: number, data: NodeDisplayData) {
+    const array = this.array
+    // borderColor rides the node attributes and survives the reducer's object
+    // spread; falling back to the fill means a node that never set one renders
+    // exactly as it did before this program grew a border.
+    const border =
+      (data as NodeDisplayData & { borderColor?: string }).borderColor ||
+      data.color
+    let i = startIndex
+    array[i++] = data.x
+    array[i++] = data.y
+    array[i++] = data.size
+    array[i++] = floatColor(data.color)
+    array[i++] = floatColor(border)
+    array[i++] = nodeIndex
   }
 }

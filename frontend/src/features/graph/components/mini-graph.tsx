@@ -45,7 +45,8 @@ export function MiniGraph({
                 key={e.id}
                 className="rounded px-1.5 py-0.5"
                 style={{
-                  backgroundColor: entityTypeColor(e.entity_type, palette) + "30",
+                  backgroundColor: palette.entityFill,
+                  border: `1px solid ${entityTypeColor(e.entity_type, palette)}`,
                   color: entityTypeColor(e.entity_type, palette),
                 }}
                 onClick={() => onEntitySelect?.(e.id)}

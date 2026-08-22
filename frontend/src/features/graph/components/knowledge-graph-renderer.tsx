@@ -22,9 +22,9 @@ import {
 import { useGraphPrefs } from "@/features/graph/lib/graph-prefs"
 import FA2Layout from "graphology-layout-forceatlas2/worker"
 import { inferSettings } from "graphology-layout-forceatlas2"
+import { NodeCircleBorderedProgram } from "@/features/graph/lib/node-circle-bordered-program"
 import {
   entityTypeColor,
-  darkenHex,
   membershipEdgeColor,
 } from "@/features/graph/lib/graph-colors"
 import { seededUnit } from "@/features/graph/lib/code-graph-theme"
@@ -125,14 +125,14 @@ export function KnowledgeGraphRenderer({
     for (const e of entities) {
       const nodeId = e.id || e.name
       if (graph.hasNode(nodeId)) continue
-      const color = entityTypeColor(e.entity_type, paletteRef.current)
+      const borderColor = entityTypeColor(e.entity_type, paletteRef.current)
       graph.addNode(nodeId, {
         x: (seededUnit(nodeId, 0) - 0.5) * 10,
         y: (seededUnit(nodeId, 1) - 0.5) * 10,
         label: e.name,
         size: 14,
-        color,
-        borderColor: darkenHex(color),
+        color: paletteRef.current.entityFill,
+        borderColor,
         _entityType: e.entity_type,
       })
     }
@@ -169,6 +169,8 @@ export function KnowledgeGraphRenderer({
       edgeLabelSize: 10,
       edgeLabelColor: { color: t.mutedForeground },
       defaultEdgeType: "curvedArrow",
+      defaultNodeType: "bordered",
+      nodeProgramClasses: { bordered: NodeCircleBorderedProgram },
       edgeProgramClasses: { curvedArrow: EdgeCurvedArrowProgram },
       defaultDrawEdgeLabel: createDrawCurvedEdgeLabel({
         ...DEFAULT_EDGE_CURVE_PROGRAM_OPTIONS,
@@ -195,6 +197,7 @@ export function KnowledgeGraphRenderer({
         const res: Partial<NodeDisplayData> & {
           _chromeKind?: ChromeKind
           labelColor?: string
+          borderColor?: string
         } = {
           ...data,
         }
@@ -216,20 +219,29 @@ export function KnowledgeGraphRenderer({
           res._chromeKind = "hover"
         }
 
-        if (tier === "ground") {
+        // The border recedes with the fill for the same reason the label
+        // does below: a node dimmed to the background but still wearing a
+        // full-strength outline reads as picked out, not as receded.
+        const dim = (alpha: number) => {
           res.color = recede(
             data.color || tk.mutedForeground,
             tk.background,
-            groundNodeAlpha(dimUnrelated),
+            alpha,
           )
+          res.borderColor = recede(
+            (data as { borderColor?: string }).borderColor ||
+              data.color ||
+              tk.mutedForeground,
+            tk.background,
+            alpha,
+          )
+        }
+        if (tier === "ground") {
+          dim(groundNodeAlpha(dimUnrelated))
         } else if (!sel && hov && hov !== node && !hoverNeighbour) {
           // Nothing selected, but the pointer is on something: sort the
           // canvas the same way, half as far.
-          res.color = recede(
-            data.color || tk.mutedForeground,
-            tk.background,
-            hoverGroundAlpha(dimUnrelated),
-          )
+          dim(hoverGroundAlpha(dimUnrelated))
         }
 
         // A dimmed node with an undimmed label reads as a label floating over
@@ -394,11 +406,13 @@ export function KnowledgeGraphRenderer({
     if (!sigma || !graph) return
 
     graph.forEachNode((id, attrs) => {
-      const color = entityTypeColor(
-        attrs._entityType as string,
-        paletteRef.current,
-      )
-      graph.mergeNodeAttributes(id, { color, borderColor: darkenHex(color) })
+      graph.mergeNodeAttributes(id, {
+        color: paletteRef.current.entityFill,
+        borderColor: entityTypeColor(
+          attrs._entityType as string,
+          paletteRef.current,
+        ),
+      })
     })
     graph.forEachEdge((edge) => {
       graph.setEdgeAttribute(

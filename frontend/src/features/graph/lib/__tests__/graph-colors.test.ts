@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs"
+import { fileURLToPath } from "node:url"
+import path from "node:path"
 import { describe, it, expect } from "vitest"
 import {
   buildMemoryPalette,
@@ -51,6 +54,25 @@ function lightnessOf(hex: string): number {
   const g = parseInt(hex.slice(3, 5), 16) / 255
   const b = parseInt(hex.slice(5, 7), 16) / 255
   return (Math.max(r, g, b) + Math.min(r, g, b)) / 2
+}
+
+// The backend owns the entity vocabulary and the frontend keeps no copy, which
+// is how ENTITY_HUES came to carry `technology` (rewritten to `tool` before
+// storage, so never stored) while `tool` had no colour. Read the closed set
+// straight from the taxonomy rather than duplicating it here.
+function backendEntityTypes(): string[] {
+  const here = path.dirname(fileURLToPath(import.meta.url))
+  const taxonomy = path.resolve(here, "../../../../../../backend/app/taxonomy.py")
+  const src = readFileSync(taxonomy, "utf8")
+  const block = /ENTITY_TYPES:\s*list\[str\]\s*=\s*\[([\s\S]*?)\]/.exec(src)
+  if (!block) throw new Error(`ENTITY_TYPES not found in ${taxonomy}`)
+  return [...block[1]!.matchAll(/"([a-z_]+)"/g)].map((m) => m[1]!)
+}
+
+// Smallest circular distance between two hues, in degrees.
+function hueGap(a: number, b: number): number {
+  const d = Math.abs(a - b) % 360
+  return Math.min(d, 360 - d)
 }
 
 const node = (memory_type: string | null) => ({
@@ -114,10 +136,64 @@ describe("clusterColor", () => {
 })
 
 describe("entityTypeColor", () => {
-  it("returns the neutral for concept and unknown types", () => {
+  it("colours every type the backend taxonomy can store", () => {
     const p = buildMemoryPalette(tokens(true))
-    expect(entityTypeColor("concept", p)).toBe(p.unclustered)
-    expect(entityTypeColor("nonsense", p)).toBe(p.unclustered)
+    for (const etype of backendEntityTypes()) {
+      expect(entityTypeColor(etype, p), etype).not.toBe(p.unclustered)
+    }
+  })
+
+  it("colours nothing the taxonomy cannot store", () => {
+    const p = buildMemoryPalette(tokens(true))
+    const known = new Set(backendEntityTypes())
+    // `technology` is the specific regression: a legacy name normalised to
+    // `tool` on write, so a hue keyed on it can never be reached.
+    for (const dead of ["technology", "framework", "nonsense", ""]) {
+      expect(known.has(dead), dead).toBe(false)
+      expect(entityTypeColor(dead, p), dead).toBe(p.unclustered)
+    }
+  })
+
+  it("keeps the hues far enough apart to tell apart", () => {
+    const p = buildMemoryPalette(tokens(true))
+    const types = backendEntityTypes()
+    const hues = types.map((t) => hueOf(entityTypeColor(t, p)))
+    for (let i = 0; i < types.length; i++) {
+      for (let j = i + 1; j < types.length; j++) {
+        expect(
+          hueGap(hues[i]!, hues[j]!),
+          `${types[i]} vs ${types[j]}`,
+        ).toBeGreaterThanOrEqual(18)
+      }
+    }
+  })
+
+  it("keeps the four identities that predate the widened table", () => {
+    const p = buildMemoryPalette(tokens(true))
+    const fixed: Record<string, number> = {
+      person: 213,
+      service: 142,
+      project: 255,
+      organization: 330,
+    }
+    for (const [etype, hue] of Object.entries(fixed)) {
+      expect(hueGap(hueOf(entityTypeColor(etype, p)), hue), etype).toBeLessThan(6)
+    }
+  })
+
+  it("gives tool the hue the retired technology key held", () => {
+    const p = buildMemoryPalette(tokens(true))
+    expect(hueGap(hueOf(entityTypeColor("tool", p)), 27)).toBeLessThan(6)
+  })
+})
+
+describe("entityFill", () => {
+  it("is the muted surface token, not a type colour", () => {
+    const p = buildMemoryPalette(tokens(true))
+    expect(p.entityFill).toBe(tokens(true).muted)
+    for (const etype of backendEntityTypes()) {
+      expect(entityTypeColor(etype, p), etype).not.toBe(p.entityFill)
+    }
   })
 })
 

@@ -152,20 +152,36 @@ export function Graph2DRenderer({
   // ordinary label tier.
   const zoomRatioRef = useRef(1)
 
-  const nodeBaseColor = (attrs: Record<string, unknown>): string => {
+  // An entity puts its type colour on its border and keeps a shared neutral
+  // body, so it is never read as a memory that happens to carry that colour.
+  // Memory nodes run on sigma's stock disc program, which draws no border, so
+  // only their fill is ever painted.
+  const nodeColors = (
+    attrs: Record<string, unknown>,
+  ): { color: string; borderColor: string } => {
     if (attrs._kind === "entity") {
       const et =
         (attrs._entityData as { entity_type: string } | undefined)
           ?.entity_type ?? ""
-      return entityTypeColor(et, paletteRef.current)
+      const p = paletteRef.current
+      return { color: p.entityFill, borderColor: entityTypeColor(et, p) }
     }
     const m = attrs._mem as {
       cluster: number
       memory_type: string | null
       tags: string[]
     }
-    return resolveNodeColor(m, colorModeRef.current, paletteRef.current)
+    const color = resolveNodeColor(m, colorModeRef.current, paletteRef.current)
+    return { color, borderColor: darkenHex(color) }
   }
+
+  // An entity's identity colour lives on its border, so an edge leaving one
+  // has to read the border — taking `color` would flatten every relation to
+  // the one shared neutral body.
+  const endpointTint = (attrs: Record<string, unknown>): string =>
+    attrs._kind === "entity"
+      ? (attrs.borderColor as string)
+      : (attrs.color as string)
   const edgeBaseColor = (kind: string, srcHex: string): string => {
     if (kind === "relation") return relationEdgeColor(tokensRef.current, srcHex)
     if (kind === "membership")
@@ -205,7 +221,7 @@ export function Graph2DRenderer({
 
     const allNodeIds = new Set<string>()
     for (const m of filteredMemories) {
-      const color = nodeBaseColor({
+      const { color, borderColor } = nodeColors({
         _kind: "memory",
         _mem: { cluster: m.cluster, memory_type: m.memory_type, tags: m.tags },
       })
@@ -219,7 +235,7 @@ export function Graph2DRenderer({
         size: size * 0.5,
         _degree: conns,
         color,
-        borderColor: darkenHex(color),
+        borderColor,
         _kind: "memory",
         _mem: { cluster: m.cluster, memory_type: m.memory_type, tags: m.tags },
       })
@@ -249,7 +265,10 @@ export function Graph2DRenderer({
       const entityIdSet = new Set(visibleEntities.map((ent) => ent.id))
 
       for (const ent of visibleEntities) {
-        const bg = entityTypeColor(ent.entity_type, paletteRef.current)
+        const { color: bg, borderColor } = nodeColors({
+          _kind: "entity",
+          _entityData: ent,
+        })
         graph.addNode(`entity:${ent.id}`, {
           x: (seededUnit(`entity:${ent.id}`, 0) - 0.5) * 10,
           y: (seededUnit(`entity:${ent.id}`, 1) - 0.5) * 10,
@@ -257,7 +276,7 @@ export function Graph2DRenderer({
           size: 10,
           _degree: ent.memory_ids.length,
           color: bg,
-          borderColor: darkenHex(bg),
+          borderColor,
           type: "diamond",
           _kind: "entity",
           _entityData: ent,
@@ -268,7 +287,10 @@ export function Graph2DRenderer({
         if (entityIdSet.has(r.source) && entityIdSet.has(r.target)) {
           try {
             const relSrc =
-              graph.getNodeAttribute(`entity:${r.source}`, "color") || ""
+              (graph.getNodeAttribute(
+                `entity:${r.source}`,
+                "borderColor",
+              ) as string) || ""
             graph.addEdge(`entity:${r.source}`, `entity:${r.target}`, {
               color: edgeBaseColor("relation", relSrc),
               size: 2.5,
@@ -292,7 +314,10 @@ export function Graph2DRenderer({
                 color: edgeBaseColor(
                   "membership",
                   graph.getNodeAttribute(mid, "color") ||
-                    entityTypeColor(ent.entity_type, paletteRef.current),
+                    (graph.getNodeAttribute(
+                      `entity:${ent.id}`,
+                      "borderColor",
+                    ) as string),
                 ),
                 size: 2.5,
                 _edgeKind: "membership",
@@ -340,6 +365,7 @@ export function Graph2DRenderer({
         const res: Partial<NodeDisplayData> & {
           _chromeKind?: ChromeKind
           labelColor?: string
+          borderColor?: string
         } = {
           ...data,
         }
@@ -367,20 +393,25 @@ export function Graph2DRenderer({
 
         // Ground recedes but is never repainted: hue and position survive, so
         // the surrounding map stays readable as context.
-        if (tier === "ground") {
-          res.color = recede(
-            data.color || t.mutedForeground,
+        // The border recedes with the fill for the same reason the label
+        // does below: an entity dimmed to the background but still wearing a
+        // full-strength outline reads as picked out, not as receded.
+        const dim = (alpha: number) => {
+          res.color = recede(data.color || t.mutedForeground, t.background, alpha)
+          res.borderColor = recede(
+            (data as { borderColor?: string }).borderColor ||
+              data.color ||
+              t.mutedForeground,
             t.background,
-            groundNodeAlpha(dimUnrelated),
+            alpha,
           )
+        }
+        if (tier === "ground") {
+          dim(groundNodeAlpha(dimUnrelated))
         } else if (!sel && hov && hov !== node && !hoverNeighbour) {
           // Nothing selected, but the pointer is on something: sort the
           // canvas the same way, half as far.
-          res.color = recede(
-            data.color || t.mutedForeground,
-            t.background,
-            hoverGroundAlpha(dimUnrelated),
-          )
+          dim(hoverGroundAlpha(dimUnrelated))
         }
 
         // A dimmed node with an undimmed label reads as a label floating over
@@ -682,8 +713,7 @@ export function Graph2DRenderer({
     if (!sigma || !graph) return // initial mount: buildGraph already painted
 
     graph.forEachNode((id, attrs) => {
-      const color = nodeBaseColor(attrs)
-      graph.mergeNodeAttributes(id, { color, borderColor: darkenHex(color) })
+      graph.mergeNodeAttributes(id, nodeColors(attrs))
     })
     graph.forEachEdge((edge, attrs, _s, _t, sAttrs, tAttrs) => {
       const kind = (attrs._edgeKind as string) ?? "memory"
@@ -691,8 +721,8 @@ export function Graph2DRenderer({
       // it is the one the active colour mode is encoding.
       const tint =
         kind === "membership" && tAttrs._kind !== "entity"
-          ? (tAttrs.color as string)
-          : (sAttrs.color as string)
+          ? endpointTint(tAttrs)
+          : endpointTint(sAttrs)
       graph.setEdgeAttribute(
         edge,
         "color",
