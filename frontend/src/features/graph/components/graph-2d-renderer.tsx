@@ -285,10 +285,14 @@ export function Graph2DRenderer({
         for (const mid of ent.memory_ids) {
           if (allNodeIds.has(mid)) {
             try {
+              // Prefer the memory's colour over the entity's: the memory is
+              // the thing the current colour mode is actually encoding, and
+              // an entity's tint says only what type of entity it is.
               graph.addEdge(`entity:${ent.id}`, mid, {
                 color: edgeBaseColor(
                   "membership",
-                  entityTypeColor(ent.entity_type, paletteRef.current),
+                  graph.getNodeAttribute(mid, "color") ||
+                    entityTypeColor(ent.entity_type, paletteRef.current),
                 ),
                 size: 2.5,
                 _edgeKind: "membership",
@@ -306,7 +310,9 @@ export function Graph2DRenderer({
       renderLabels: true,
       renderEdgeLabels: false,
       labelSize: 12,
-      labelColor: { color: labelColorToken },
+      // Per-node so a grounded label can recede with its node; sigma's
+      // label renderer reads this attribute and falls back to `color`.
+      labelColor: { attribute: "labelColor", color: labelColorToken },
       labelFont: "Inter, sans-serif",
       defaultEdgeType: "curve",
       nodeProgramClasses: { diamond: NodeDiamondProgram },
@@ -331,7 +337,10 @@ export function Graph2DRenderer({
       nodeReducer(node, data) {
         const t = tokensRef.current
         const { dimUnrelated } = prefsRef.current
-        const res: Partial<NodeDisplayData> & { _chromeKind?: ChromeKind } = {
+        const res: Partial<NodeDisplayData> & {
+          _chromeKind?: ChromeKind
+          labelColor?: string
+        } = {
           ...data,
         }
         const hov = hoveredNodeRef.current
@@ -369,6 +378,22 @@ export function Graph2DRenderer({
           // canvas the same way, half as far.
           res.color = recede(
             data.color || t.mutedForeground,
+            t.background,
+            hoverGroundAlpha(dimUnrelated),
+          )
+        }
+
+        // A dimmed node with an undimmed label reads as a label floating over
+        // nothing -- the label has to recede with the thing it names.
+        if (tier === "ground") {
+          res.labelColor = recede(
+            t.foreground,
+            t.background,
+            groundNodeAlpha(dimUnrelated),
+          )
+        } else if (!sel && hov && hov !== node && !hoverNeighbour) {
+          res.labelColor = recede(
+            t.foreground,
             t.background,
             hoverGroundAlpha(dimUnrelated),
           )
@@ -660,13 +685,26 @@ export function Graph2DRenderer({
       const color = nodeBaseColor(attrs)
       graph.mergeNodeAttributes(id, { color, borderColor: darkenHex(color) })
     })
-    graph.forEachEdge((edge, attrs, _s, _t, sAttrs) => {
+    graph.forEachEdge((edge, attrs, _s, _t, sAttrs, tAttrs) => {
       const kind = (attrs._edgeKind as string) ?? "memory"
-      const srcHex =
-        (sAttrs.color as string) ?? tokensRef.current.mutedForeground
-      graph.setEdgeAttribute(edge, "color", edgeBaseColor(kind, srcHex))
+      // Same preference as the build path: the memory endpoint wins, because
+      // it is the one the active colour mode is encoding.
+      const tint =
+        kind === "membership" && tAttrs._kind !== "entity"
+          ? (tAttrs.color as string)
+          : (sAttrs.color as string)
+      graph.setEdgeAttribute(
+        edge,
+        "color",
+        edgeBaseColor(kind, tint ?? tokensRef.current.mutedForeground),
+      )
     })
-    sigma.setSetting("labelColor", { color: tokensRef.current.foreground })
+    // Keeps the attribute form: a plain `{ color }` here would silently undo
+    // per-node label dimming on every theme change.
+    sigma.setSetting("labelColor", {
+      attribute: "labelColor",
+      color: tokensRef.current.foreground,
+    })
     sigma.setSetting("edgeLabelColor", {
       color: tokensRef.current.mutedForeground,
     })

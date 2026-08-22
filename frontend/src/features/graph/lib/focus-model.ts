@@ -1,5 +1,3 @@
-import { blendHex } from "./graph-colors"
-
 /**
  * The three-tier focus model the graph renderers share.
  *
@@ -64,7 +62,60 @@ export function groundEdgeAlpha(dimPercent: number): number {
  * themes by construction rather than by a per-theme number.
  */
 export function recede(color: string, background: string, strength: number): string {
-  return blendHex(color, background, 1 - strength)
+  const src = parseChannels(color)
+  const bg = parseChannels(background)
+  if (!src || !bg) return background
+
+  // Composite the source over the ground using its own alpha first, then push
+  // it back by `strength`. Relation and membership edges carry rgba() rather
+  // than hex, so ignoring alpha here would make a faint edge recede as if it
+  // were solid.
+  const keep = src.a * strength
+  const mix = (c: keyof Channels) =>
+    Math.round(Number(src[c]) * keep + Number(bg[c]) * (1 - keep))
+
+  return `#${[mix("r"), mix("g"), mix("b")]
+    .map((v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, "0"))
+    .join("")}`
+}
+
+interface Channels {
+  r: number
+  g: number
+  b: number
+  a: number
+}
+
+/** Hex or rgb()/rgba(). Anything else returns null, and the caller falls back
+ *  to the ground rather than emitting a colour built from NaN. */
+function parseChannels(color: string): Channels | null {
+  const value = color.trim()
+
+  if (value.startsWith("#")) {
+    const hex =
+      value.length === 4
+        ? value
+            .slice(1)
+            .split("")
+            .map((c) => c + c)
+            .join("")
+        : value.slice(1)
+    if (hex.length < 6) return null
+    const r = parseInt(hex.slice(0, 2), 16)
+    const g = parseInt(hex.slice(2, 4), 16)
+    const b = parseInt(hex.slice(4, 6), 16)
+    const a = hex.length >= 8 ? parseInt(hex.slice(6, 8), 16) / 255 : 1
+    if ([r, g, b].some(Number.isNaN)) return null
+    return { r, g, b, a }
+  }
+
+  const m = value.match(
+    /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:[\s,/]+([\d.]+))?\s*\)$/i,
+  )
+  if (!m) return null
+  const [r, g, b] = [Number(m[1]), Number(m[2]), Number(m[3])]
+  if ([r, g, b].some(Number.isNaN)) return null
+  return { r, g, b, a: m[4] === undefined ? 1 : Number(m[4]) }
 }
 
 export interface LabelContext {

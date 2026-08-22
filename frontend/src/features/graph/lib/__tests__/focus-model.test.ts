@@ -121,6 +121,33 @@ describe("recede", () => {
 
   // The failure the user saw: a dimmed node on a dark page stayed as bright as
   // an undimmed one.
+  // Relation and membership edges carry rgba() strings, not hex. The first
+  // version did hex arithmetic on `.slice(1,3)`, which reads "gb" out of
+  // "rgba(...)" and yields NaN channels — a dimmed grey edge came back blue
+  // on dark and near-black on light.
+  it("handles an rgba source without corrupting the colour", () => {
+    const grey = "rgba(148,163,184,0.3)"
+    expect(recede(grey, DARK_BG, 0.15)).toMatch(/^#[0-9a-f]{6}$/i)
+    expect(recede(grey, DARK_BG, 0.15)).not.toContain("NaN")
+  })
+
+  it("keeps a grey edge grey rather than tinting it", () => {
+    const out = recede("rgba(148,163,184,0.9)", "#0b1013", 0.5)
+    const r = parseInt(out.slice(1, 3), 16)
+    const g = parseInt(out.slice(3, 5), 16)
+    const b = parseInt(out.slice(5, 7), 16)
+    // Channels stay within a few points of each other: still neutral.
+    expect(Math.max(r, g, b) - Math.min(r, g, b)).toBeLessThan(24)
+  })
+
+  it("folds the source alpha into the result", () => {
+    const opaque = recede("rgba(255,255,255,1)", "#000000", 1)
+    const faint = recede("rgba(255,255,255,0.2)", "#000000", 1)
+    expect(parseInt(opaque.slice(1, 3), 16)).toBeGreaterThan(
+      parseInt(faint.slice(1, 3), 16),
+    )
+  })
+
   it("darkens a bright node against a dark ground", () => {
     const dimmed = recede(NODE, DARK_BG, 0.15)
     const brightness = (hex: string) =>
