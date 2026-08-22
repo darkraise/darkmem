@@ -6,7 +6,12 @@ import { Input } from "darkraise-ui/components/input"
 import { Checkbox } from "darkraise-ui/components/checkbox"
 import { Label } from "darkraise-ui/components/label"
 import { Button } from "darkraise-ui/components/button"
-import { ScrollArea } from "darkraise-ui/components/scroll-area"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "darkraise-ui/components/popover"
+import { ChevronDown, Tags } from "lucide-react"
 
 export interface GraphFilterPanelProps {
   tagGroups: [string, [string, number][]][]
@@ -55,7 +60,12 @@ export function GraphFilterPanel({
   selectedEntityTypes,
   onEntityTypeToggle,
 }: GraphFilterPanelProps) {
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  // Collapsed by default -- inside the popover the groups are a menu, and an
+  // expanded menu of every tag in the corpus is the thing this change exists
+  // to stop showing.
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
+    () => new Set(tagGroups.map(([category]) => category)),
+  )
   const { palette } = useMemoryGraphTheme()
 
   function toggleGroup(group: string) {
@@ -75,7 +85,7 @@ export function GraphFilterPanel({
     selectedClusters.size > 0
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col w-[280px] max-w-[calc(100vw-1.5rem)]">
+    <div className="flex h-full max-h-full min-h-0 w-[280px] max-w-[calc(100vw-1.5rem)] flex-col">
       <div className="border-border shrink-0 border-b p-3 pb-2">
         <p className="text-muted-foreground mb-1.5 text-sm font-semibold tracking-wider uppercase">
           Search
@@ -88,77 +98,113 @@ export function GraphFilterPanel({
         />
       </div>
 
-      <ScrollArea className="min-h-0 flex-1">
+      {/* Native overflow rather than ScrollArea: this sits inside an
+          absolutely-positioned max-height wrapper, where the viewport
+          ScrollArea renders had no bounded height to scroll within. */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="space-y-4 p-3">
           {tagGroups.length > 0 && (
             <div>
               <p className="text-muted-foreground mb-1.5 text-sm font-semibold tracking-wider uppercase">
                 Tags
               </p>
-              <div className="space-y-2">
-                {tagGroups.map(([category, tags]) => (
-                  <div key={category}>
-                    <Button
-                      variant="ghost"
-                      className="text-muted-foreground hover:text-foreground mb-1 flex w-full items-center gap-1.5 text-left"
-                      onClick={() => toggleGroup(category)}
-                    >
-                      <span
-                        className="h-2 w-2 flex-shrink-0 rounded-full"
-                        style={{
-                          backgroundColor:
-                            colorMode === "tag"
-                              ? resolveNodeColor(
-                                  {
-                                    cluster: -1,
-                                    memory_type: null,
-                                    tags: [category + "/x"],
-                                  },
-                                  "tag",
-                                  palette,
-                                )
-                              : palette.unclustered,
-                        }}
-                      />
-                      <span className="font-medium capitalize">{category}</span>
-                      <span className="ml-auto opacity-60">
-                        {collapsedGroups.has(category) ? "▶" : "▼"}
+              {/* Collapsed by default and opened in a popover: the tag list is
+                  the longest thing in this panel by far, and left inline it
+                  pushed every other filter below the fold. */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="flex w-full items-center gap-2 text-left"
+                  >
+                    <Tags aria-hidden className="h-3.5 w-3.5 shrink-0" />
+                    <span className="flex-1 truncate">
+                      {selectedTags.size > 0 ? "Tags selected" : "Any tag"}
+                    </span>
+                    {selectedTags.size > 0 && (
+                      <span className="bg-primary/20 text-primary rounded-full px-1.5 py-0.5 font-mono text-[10px] tabular-nums">
+                        {selectedTags.size}
                       </span>
-                    </Button>
-                    {!collapsedGroups.has(category) && (
-                      <div className="space-y-0.5 pl-1">
-                        {tags.map(([tag, count]) => (
-                          <Label
-                            key={tag}
-                            className="group flex cursor-pointer items-center gap-2 py-0.5 font-normal"
-                          >
-                            <Checkbox
-                              checked={selectedTags.has(tag)}
-                              onCheckedChange={() => onTagToggle(tag)}
-                              className="h-3.5 w-3.5"
-                            />
-                            <span
-                              className={`flex-1 truncate ${
-                                selectedTags.has(tag)
-                                  ? "text-foreground"
-                                  : "text-muted-foreground group-hover:text-foreground"
-                              }`}
-                              title={tag}
-                            >
-                              {tag.includes("/")
-                                ? tag.split("/").slice(1).join("/")
-                                : tag}
-                            </span>
-                            <span className="text-sm opacity-40">
-                              {count}
-                            </span>
-                          </Label>
-                        ))}
-                      </div>
                     )}
+                    <ChevronDown
+                      aria-hidden
+                      className="text-muted-foreground h-3.5 w-3.5 shrink-0"
+                    />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  side="right"
+                  align="start"
+                  className="bg-card border-border max-h-[min(60vh,26rem)] w-[260px] overflow-y-auto rounded-lg border p-2 shadow-xl"
+                >
+                  <div className="space-y-2">
+                    {tagGroups.map(([category, tags]) => (
+                      <div key={category}>
+                        <Button
+                          variant="ghost"
+                          className="text-muted-foreground hover:text-foreground mb-1 flex w-full items-center gap-1.5 text-left"
+                          onClick={() => toggleGroup(category)}
+                        >
+                          <span
+                            className="h-2 w-2 flex-shrink-0 rounded-full"
+                            style={{
+                              backgroundColor:
+                                colorMode === "tag"
+                                  ? resolveNodeColor(
+                                      {
+                                        cluster: -1,
+                                        memory_type: null,
+                                        tags: [category + "/x"],
+                                      },
+                                      "tag",
+                                      palette,
+                                    )
+                                  : palette.unclustered,
+                            }}
+                          />
+                          <span className="font-medium capitalize">
+                            {category}
+                          </span>
+                          <span className="ml-auto opacity-60">
+                            {collapsedGroups.has(category) ? "\u25b6" : "\u25bc"}
+                          </span>
+                        </Button>
+                        {!collapsedGroups.has(category) && (
+                          <div className="space-y-0.5 pl-1">
+                            {tags.map(([tag, count]) => (
+                              <Label
+                                key={tag}
+                                className="group flex cursor-pointer items-center gap-2 py-0.5 font-normal"
+                              >
+                                <Checkbox
+                                  checked={selectedTags.has(tag)}
+                                  onCheckedChange={() => onTagToggle(tag)}
+                                  className="h-3.5 w-3.5"
+                                />
+                                <span
+                                  className={`flex-1 truncate ${
+                                    selectedTags.has(tag)
+                                      ? "text-foreground"
+                                      : "text-muted-foreground group-hover:text-foreground"
+                                  }`}
+                                  title={tag}
+                                >
+                                  {tag.includes("/")
+                                    ? tag.split("/").slice(1).join("/")
+                                    : tag}
+                                </span>
+                                <span className="text-sm opacity-40">
+                                  {count}
+                                </span>
+                              </Label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </PopoverContent>
+              </Popover>
             </div>
           )}
 
@@ -329,7 +375,7 @@ export function GraphFilterPanel({
               </div>
             )}
         </div>
-      </ScrollArea>
+      </div>
 
       <div className="border-border shrink-0 border-t p-3">
         <Button

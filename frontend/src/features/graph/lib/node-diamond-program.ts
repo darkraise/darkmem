@@ -4,7 +4,7 @@ import type { NodeDisplayData, PartialButFor } from "sigma/types"
 import type { GraphThemeTokens } from "./code-graph-theme"
 import { drawFocusRing, drawPlatedLabel, hoverChrome } from "./node-hover"
 import type { ChromeKind } from "./node-hover"
-import type { SelectionTreatment } from "./graph-prefs"
+import type { SelectionColor } from "./graph-prefs"
 
 const DIAMOND_VERTEX_SHADER = /* glsl */ `
 attribute vec4 a_id;
@@ -50,7 +50,7 @@ export function drawDiamondNodeHover(
   data: PartialButFor<NodeDisplayData, "x" | "y" | "size" | "label" | "color">,
   settings: Settings,
   tokens: GraphThemeTokens,
-  treatment: SelectionTreatment,
+  color: SelectionColor,
   kind: ChromeKind,
 ): void {
   const size = settings.labelSize
@@ -60,7 +60,7 @@ export function drawDiamondNodeHover(
 
   const PADDING = 2
   const r = data.size + PADDING
-  const chrome = hoverChrome(tokens, treatment, kind, data.color)
+  const chrome = hoverChrome(tokens, color, kind, data.color)
 
   context.fillStyle = chrome.fill
   context.shadowOffsetX = 0

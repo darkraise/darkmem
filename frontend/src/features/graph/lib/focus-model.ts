@@ -76,8 +76,11 @@ export function labelVisible({
   zoomedIn,
   isHovered,
 }: LabelContext): boolean {
-  if (tier === "ground") return false
+  // Hover first: pointing at a node is a direct request to know what it is,
+  // and it must outrank the ground rule that would otherwise swallow it while
+  // something else is selected.
   if (isHovered) return true
+  if (tier === "ground") return false
   if (tier === "focus" || tier === "adjacent") return true
   return isHub || zoomedIn
 }
