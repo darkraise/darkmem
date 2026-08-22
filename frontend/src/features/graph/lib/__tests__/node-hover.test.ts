@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest"
-import { drawThemedDiscNodeHover, hoverChrome } from "../node-hover"
+import {
+  LABEL_CLEARANCE,
+  drawNodeLabel,
+  drawThemedDiscNodeHover,
+  hoverChrome,
+} from "../node-hover"
 import { hslToHex } from "../graph-colors"
 import type { SelectionColor } from "../graph-prefs"
 import type { GraphThemeTokens } from "../code-graph-theme"
@@ -113,7 +118,7 @@ describe("hoverChrome", () => {
 /** Records what was painted, in order, so the assertions are about the plate
  *  the renderer actually draws rather than about the helper alone. */
 function recordingContext() {
-  const painted: { op: string; style: unknown }[] = []
+  const painted: { op: string; style: unknown; x?: number; y?: number }[] = []
   const ctx = {
     font: "",
     fillStyle: "" as unknown,
@@ -134,7 +139,8 @@ function recordingContext() {
     setLineDash: () => {},
     fill: () => painted.push({ op: "fill", style: ctx.fillStyle }),
     stroke: () => painted.push({ op: "stroke", style: ctx.strokeStyle }),
-    fillText: () => painted.push({ op: "fillText", style: ctx.fillStyle }),
+    fillText: (_t: string, x: number, y: number) =>
+      painted.push({ op: "fillText", style: ctx.fillStyle, x, y }),
   }
   return { ctx, painted }
 }
@@ -163,5 +169,54 @@ describe("drawThemedDiscNodeHover", () => {
     expect(plate).not.toBe(DARK.card)
     expect(plate).not.toBe(DARK.background)
     expect(plate).not.toBe("#FFF")
+  })
+})
+
+
+// The defect this pins: both label paths sat at sigma's hardcoded 3px, which
+// is inside the hover ring (gap 2.5 + width 1.5 = 4) and well inside the focus
+// ring (gap 4 + width 3 = 7), so the text was drawn under the selection ring.
+describe("label clearance", () => {
+  const ringOuterEdge = (kind: "hover" | "focus") => {
+    const c = hoverChrome(DARK, "accent", kind, NODE_COLOR)
+    return c.ringGap + c.ringWidth
+  }
+
+  it.each(["hover", "focus"] as const)(
+    "clears the %s ring rather than sitting under it",
+    (kind) => {
+      expect(LABEL_CLEARANCE).toBeGreaterThan(ringOuterEdge(kind))
+    },
+  )
+
+  it("puts the resting label at the same offset as the plated one", () => {
+    const resting = recordingContext()
+    drawNodeLabel(resting.ctx as never, NODE as never, {
+      ...(SETTINGS as object),
+      labelColor: { color: "#fff" },
+    } as never)
+
+    const plated = recordingContext()
+    drawThemedDiscNodeHover(
+      plated.ctx as never, NODE as never, SETTINGS, DARK, "accent", "focus",
+    )
+
+    const x = (r: typeof resting) => r.painted.find((p) => p.op === "fillText")?.x
+    // Equal, not merely both-large: a label that shifts when you point at a
+    // node reads as the node moving.
+    expect(x(resting)).toBe(x(plated))
+    expect(x(resting)).toBe(NODE.x + NODE.size + LABEL_CLEARANCE)
+  })
+
+  it("keeps the plate wide enough for the text it now holds", () => {
+    const { ctx, painted } = recordingContext()
+    const widths: number[] = []
+    const spy = { ...ctx, lineTo: (x: number) => widths.push(x) }
+    drawThemedDiscNodeHover(
+      spy as never, NODE as never, SETTINGS, DARK, "accent", "focus",
+    )
+    const textX = painted.find((p) => p.op === "fillText")!.x!
+    // measureText is stubbed at 40, and the plate is drawn before the label.
+    expect(Math.max(...widths)).toBeGreaterThanOrEqual(textX + 40)
   })
 })

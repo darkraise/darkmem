@@ -8,7 +8,7 @@ import {
   DEFAULT_EDGE_CURVE_PROGRAM_OPTIONS,
 } from "@sigma/edge-curve"
 import { DEFAULT_EDGE_ARROW_HEAD_PROGRAM_OPTIONS } from "sigma/rendering"
-import { drawThemedDiscNodeHover } from "@/features/graph/lib/node-hover"
+import { drawNodeLabel, drawThemedDiscNodeHover } from "@/features/graph/lib/node-hover"
 import type { ChromeKind } from "@/features/graph/lib/node-hover"
 import type { NodeDisplayData } from "sigma/types"
 import {
@@ -190,6 +190,7 @@ export function KnowledgeGraphRenderer({
       },
       stagePadding: 40,
       labelRenderedSizeThreshold: 6,
+      defaultDrawNodeLabel: drawNodeLabel,
       defaultNodeColor: t.mutedForeground,
       nodeReducer(node, data) {
         const tk = tokensRef.current

@@ -6,7 +6,7 @@ import {
   NodeDiamondProgram,
   drawDiamondNodeHover,
 } from "@/features/graph/lib/node-diamond-program"
-import { drawThemedDiscNodeHover } from "@/features/graph/lib/node-hover"
+import { drawNodeLabel, drawThemedDiscNodeHover } from "@/features/graph/lib/node-hover"
 import type { ChromeKind } from "@/features/graph/lib/node-hover"
 import type { NodeDisplayData } from "sigma/types"
 import {
@@ -358,6 +358,7 @@ export function Graph2DRenderer({
       },
       stagePadding: 40,
       labelRenderedSizeThreshold: 6,
+      defaultDrawNodeLabel: drawNodeLabel,
       defaultNodeColor: mutedColor,
       nodeReducer(node, data) {
         const t = tokensRef.current

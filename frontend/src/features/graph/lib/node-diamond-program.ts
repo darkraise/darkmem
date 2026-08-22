@@ -3,7 +3,12 @@ import { floatColor } from "sigma/utils"
 import type { Settings } from "sigma/settings"
 import type { NodeDisplayData, PartialButFor } from "sigma/types"
 import type { GraphThemeTokens } from "./code-graph-theme"
-import { drawFocusRing, drawPlatedLabel, hoverChrome } from "./node-hover"
+import {
+  PLATE_INSET,
+  drawFocusRing,
+  drawPlatedLabel,
+  hoverChrome,
+} from "./node-hover"
 import type { ChromeKind } from "./node-hover"
 import type { SelectionColor } from "./graph-prefs"
 
@@ -115,7 +120,7 @@ export function drawDiamondNodeHover(
   context.font = `${weight} ${size}px ${font}`
 
   const PADDING = 2
-  const r = data.size + PADDING
+  const r = data.size + PLATE_INSET
   const chrome = hoverChrome(tokens, color, kind, data.color)
 
   context.fillStyle = chrome.fill
@@ -175,6 +180,11 @@ export class NodeDiamondProgram extends NodeSquareProgram {
     // function, so clearing it is outside the declared type while being
     // exactly what the renderer supports.
     this.drawHover = undefined as unknown as typeof this.drawHover
+    // Same reason, same cast: clearing the inherited drawSquareNodeLabel lets
+    // sigma fall through to defaultDrawNodeLabel, where the renderers install
+    // the ring-clearing offset. Without this a diamond's resting label sits at
+    // sigma's hardcoded 3px while every disc's sits outside the ring.
+    this.drawLabel = undefined as unknown as typeof this.drawLabel
   }
 
   getDefinition() {

@@ -26,6 +26,32 @@ export interface HoverChrome {
   shadow: string
 }
 
+/** Ring geometry per chrome kind. Hoisted out of `hoverChrome` because
+ *  LABEL_CLEARANCE below is derived from it: a ring widened in one place and a
+ *  label offset left in another is how the text ended up under the ring. */
+const RING = {
+  hover: { width: 1.5, gap: 2.5 },
+  focus: { width: 3, gap: 4 },
+} as const
+
+/** Breathing room between the ring's outer edge and the start of the text. */
+const LABEL_TEXT_GAP = 3
+
+/**
+ * Clear space between a node's edge and the left edge of its label.
+ *
+ * Sized to clear the *focus* ring, the wider of the two, and used for the
+ * unhovered label as well — one offset in the resting state and another under
+ * the chrome would make the label jump sideways the moment you point at a
+ * node. Sigma's own `drawDiscNodeLabel` hardcodes 3, which put the text
+ * inside both rings, so the renderers pass `drawNodeLabel` below instead.
+ */
+export const LABEL_CLEARANCE =
+  RING.focus.gap + RING.focus.width + LABEL_TEXT_GAP
+
+/** Left edge of the label plate: where the focus ring ends. */
+export const PLATE_INSET = RING.focus.gap + RING.focus.width
+
 function channel(hex: string, at: number): number {
   const c = parseInt(hex.slice(at, at + 2), 16) / 255
   return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
@@ -84,8 +110,8 @@ export function hoverChrome(
       text: tokens.foreground,
       plateStroke: tokens.primary,
       ring: tokens.primary,
-      ringWidth: 1.5,
-      ringGap: 2.5,
+      ringWidth: RING.hover.width,
+      ringGap: RING.hover.gap,
       glow: false,
       shadow,
     }
@@ -96,8 +122,8 @@ export function hoverChrome(
     text: readableOn(ring, tokens),
     plateStroke: null,
     ring,
-    ringWidth: 3,
-    ringGap: 4,
+    ringWidth: RING.focus.width,
+    ringGap: RING.focus.gap,
     glow: !inverted,
     shadow,
   }
@@ -117,8 +143,36 @@ export function drawPlatedLabel(
   context.font = `${settings.labelWeight} ${settings.labelSize}px ${settings.labelFont}`
   context.fillText(
     data.label,
-    data.x + data.size + 3,
+    data.x + data.size + LABEL_CLEARANCE,
     data.y + settings.labelSize / 3,
+  )
+}
+
+/**
+ * The resting label, at the same offset the plated one uses.
+ *
+ * Replaces sigma's `drawDiscNodeLabel`, which is identical but for the
+ * hardcoded 3px offset. Colour resolution matches it exactly: the per-node
+ * `labelColor` attribute when the setting names one, so a grounded label still
+ * recedes with its node.
+ */
+export function drawNodeLabel(
+  context: CanvasRenderingContext2D,
+  data: PartialButFor<NodeDisplayData, "x" | "y" | "size" | "label" | "color">,
+  settings: Settings,
+): void {
+  if (!data.label) return
+  const { labelSize, labelFont, labelWeight, labelColor } = settings
+  context.fillStyle = labelColor.attribute
+    ? (data as unknown as Record<string, string>)[labelColor.attribute] ||
+      labelColor.color ||
+      "#000"
+    : (labelColor.color ?? "#000")
+  context.font = `${labelWeight} ${labelSize}px ${labelFont}`
+  context.fillText(
+    data.label,
+    data.x + data.size + LABEL_CLEARANCE,
+    data.y + labelSize / 3,
   )
 }
 
@@ -185,7 +239,7 @@ export function drawThemedDiscNodeHover(
     const textWidth = context.measureText(data.label).width
     const boxWidth = Math.round(textWidth + 5)
     const boxHeight = Math.round(size + 2 * PADDING)
-    const radius = Math.max(data.size, size / 2) + PADDING
+    const radius = Math.max(data.size + PLATE_INSET, size / 2 + PADDING)
     const angleRadian = Math.asin(boxHeight / 2 / radius)
     const xDeltaCoord = Math.sqrt(
       Math.abs(Math.pow(radius, 2) - Math.pow(boxHeight / 2, 2)),
