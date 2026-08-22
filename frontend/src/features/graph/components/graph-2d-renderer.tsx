@@ -14,6 +14,7 @@ import {
   groundEdgeAlpha,
   groundNodeAlpha,
   labelVisible,
+  recede,
 } from "@/features/graph/lib/focus-model"
 import { useGraphPrefs } from "@/features/graph/lib/graph-prefs"
 import FA2Layout from "graphology-layout-forceatlas2/worker"
@@ -85,7 +86,10 @@ const HUB_DEGREE = 5
  *  closer. 0.72 is the 1.4x of the spec, inverted. */
 const LABEL_ZOOM_RATIO = 0.72
 
-const FOCUS_EDGE_SIZE = 2.2
+/** A connected edge must be unmistakably heavier than its neighbours -- that
+ *  emphasis is most of what makes a selection legible. Scaled off each kind's
+ *  own weight so the relation/similarity/membership hierarchy survives it. */
+const FOCUS_EDGE_FACTOR = 2.6
 
 /** The edge hierarchy: relation over similarity over membership. */
 function edgeWeight(kind: unknown): number {
@@ -339,8 +343,9 @@ export function Graph2DRenderer({
         // Ground recedes but is never repainted: hue and position survive, so
         // the surrounding map stays readable as context.
         if (tier === "ground") {
-          res.color = hexToRgba(
+          res.color = recede(
             data.color || t.mutedForeground,
+            t.background,
             groundNodeAlpha(dimUnrelated),
           )
         }
@@ -374,15 +379,15 @@ export function Graph2DRenderer({
 
         if (sel) {
           if (src === sel || tgt === sel) {
-            res.size = FOCUS_EDGE_SIZE
+            res.size = edgeWeight(data._edgeKind) * FOCUS_EDGE_FACTOR
             res.color = t.primary
           } else {
-            res.color = hexToRgba(t.border, groundEdgeAlpha(dimUnrelated))
+            res.color = recede(t.border, t.background, groundEdgeAlpha(dimUnrelated))
           }
         }
 
         if (hov && (src === hov || tgt === hov)) {
-          res.size = FOCUS_EDGE_SIZE
+          res.size = edgeWeight(data._edgeKind) * FOCUS_EDGE_FACTOR
           res.color = t.primary
         }
 

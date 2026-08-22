@@ -4,6 +4,7 @@ import {
   groundNodeAlpha,
   groundEdgeAlpha,
   labelVisible,
+  recede,
 } from "../focus-model"
 
 describe("focusTier", () => {
@@ -64,5 +65,43 @@ describe("labelVisible", () => {
 
   it("names whatever the pointer is on", () => {
     expect(labelVisible({ ...base, isHovered: true })).toBe(true)
+  })
+})
+
+describe("recede", () => {
+  const DARK_BG = "#0b1013"
+  const LIGHT_BG = "#ffffff"
+  const NODE = "#4ade80"
+
+  // Sigma blends premultiplied (gl.ONE, gl.ONE_MINUS_SRC_ALPHA), so a colour
+  // carrying a low alpha contributes at FULL intensity: result = src + dst*(1-a).
+  // Against a dark ground that is no dimming at all, which is exactly how the
+  // first attempt failed. Receding toward the background needs no alpha and so
+  // cannot depend on the blend mode.
+  it("returns an opaque colour, never an alpha one", () => {
+    expect(recede(NODE, DARK_BG, 0.15)).toMatch(/^#[0-9a-f]{6}$/i)
+  })
+
+  it("moves the colour toward the ground it sits on", () => {
+    expect(recede(NODE, DARK_BG, 0.15)).not.toBe(recede(NODE, LIGHT_BG, 0.15))
+  })
+
+  it("keeps the node itself at full strength", () => {
+    expect(recede(NODE, DARK_BG, 1)).toBe(NODE)
+  })
+
+  it("lands on the background when nothing is left", () => {
+    expect(recede(NODE, DARK_BG, 0)).toBe(DARK_BG)
+  })
+
+  // The failure the user saw: a dimmed node on a dark page stayed as bright as
+  // an undimmed one.
+  it("darkens a bright node against a dark ground", () => {
+    const dimmed = recede(NODE, DARK_BG, 0.15)
+    const brightness = (hex: string) =>
+      parseInt(hex.slice(1, 3), 16) +
+      parseInt(hex.slice(3, 5), 16) +
+      parseInt(hex.slice(5, 7), 16)
+    expect(brightness(dimmed)).toBeLessThan(brightness(NODE) * 0.4)
   })
 })

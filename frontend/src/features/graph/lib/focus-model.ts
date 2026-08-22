@@ -1,3 +1,5 @@
+import { blendHex } from "./graph-colors"
+
 /**
  * The three-tier focus model the graph renderers share.
  *
@@ -35,6 +37,23 @@ const GROUND_EDGE_FACTOR = 0.35
 
 export function groundEdgeAlpha(dimPercent: number): number {
   return groundNodeAlpha(dimPercent) * GROUND_EDGE_FACTOR
+}
+
+/**
+ * Push a colour back toward the ground it sits on.
+ *
+ * Not alpha. Sigma blends premultiplied — `gl.ONE, gl.ONE_MINUS_SRC_ALPHA` —
+ * so a colour carrying a low alpha still contributes at full intensity:
+ * `result = src + dst * (1 - a)`. Against a dark page `dst` is ~0, so the node
+ * renders as bright as an undimmed one and nothing recedes at all. Against a
+ * light page it washes toward white and merely looks like it worked.
+ *
+ * Blending toward the background instead is independent of the blend mode,
+ * keeps the hue that is carrying cluster or type, and is correct in both
+ * themes by construction rather than by a per-theme number.
+ */
+export function recede(color: string, background: string, strength: number): string {
+  return blendHex(color, background, 1 - strength)
 }
 
 export interface LabelContext {

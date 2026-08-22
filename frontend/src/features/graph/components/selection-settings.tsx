@@ -3,6 +3,11 @@ import {
   RadioGroup,
   RadioGroupItem,
 } from "darkraise-ui/components/radio-group"
+import {
+  SegmentGroup,
+  SegmentGroupIndicator,
+  SegmentGroupItem,
+} from "darkraise-ui/components/segment-group"
 import { Slider } from "darkraise-ui/components/slider"
 import { cn } from "darkraise-ui/lib"
 import {
@@ -57,70 +62,78 @@ export function SelectionSettings({
   const setDim = useGraphPrefs((s) => s.setDimUnrelated)
 
   return (
-    <div className={cn("flex flex-col gap-3.5", className)}>
-      <div className="flex flex-col gap-2">
-        <Label className="text-sm font-medium">Selection</Label>
-        {!compact && (
+    <div className={cn("flex flex-col gap-3", className)}>
+      {compact ? (
+        // The popover is narrow and the choice is one-of-three, which is
+        // segmented-control territory: three stacked radio rows ate half its
+        // height for a decision that fits on one line.
+        <SegmentGroup
+          color="accent"
+          value={treatment}
+          onValueChange={(v) => setTreatment(v as SelectionTreatment)}
+          className="w-full"
+        >
+          <SegmentGroupIndicator />
+          {TREATMENTS.map((t) => (
+            <SegmentGroupItem key={t.value} value={t.value} className="flex-1">
+              {t.label}
+            </SegmentGroupItem>
+          ))}
+        </SegmentGroup>
+      ) : (
+        <>
           <p className="text-muted-foreground text-sm">
             How the graph marks the node you clicked. It never repaints the
             node — that colour is already carrying cluster or type.
           </p>
-        )}
-        <RadioGroup
-          value={treatment}
-          onValueChange={(v) => setTreatment(v as SelectionTreatment)}
-          className="flex flex-col gap-1.5"
-        >
-          {TREATMENTS.map((t) => (
-            <label
-              key={t.value}
-              className="hover:bg-muted/40 flex cursor-pointer items-start gap-2.5 rounded-md px-1.5 py-1 transition-colors"
-            >
-              <RadioGroupItem value={t.value} className="mt-0.5 shrink-0" />
-              <span className="min-w-0">
-                <span className="text-foreground block text-sm">{t.label}</span>
-                {!compact && (
+          <RadioGroup
+            value={treatment}
+            onValueChange={(v) => setTreatment(v as SelectionTreatment)}
+            className="flex flex-col gap-1.5"
+          >
+            {TREATMENTS.map((t) => (
+              <label
+                key={t.value}
+                className="hover:bg-muted/40 flex cursor-pointer items-start gap-2.5 rounded-md px-1.5 py-1 transition-colors"
+              >
+                <RadioGroupItem value={t.value} className="mt-0.5 shrink-0" />
+                <span className="min-w-0">
+                  <span className="text-foreground block text-sm">
+                    {t.label}
+                  </span>
                   <span className="text-muted-foreground block text-sm">
                     {t.hint}
                   </span>
-                )}
-              </span>
-            </label>
-          ))}
-        </RadioGroup>
-      </div>
+                </span>
+              </label>
+            ))}
+          </RadioGroup>
+        </>
+      )}
 
-      <div className="flex flex-col gap-2">
-        <div className="flex items-baseline gap-2">
-          <Label className="text-sm font-medium">Dim unrelated</Label>
-          <span className="text-foreground ml-auto font-mono text-sm tabular-nums">
-            {dim}%
-          </span>
-        </div>
-        {!compact && (
-          <p className="text-muted-foreground text-sm">
-            How far the rest of the map recedes when something is focused. It
-            keeps its colours and its shape — edges recede with it.
-          </p>
-        )}
-        <div className="flex items-center gap-2.5">
-          <span className="text-muted-foreground font-mono text-xs tabular-nums">
-            {DIM_MIN}
-          </span>
-          <Slider
-            value={[dim]}
-            onValueChange={([v]) => setDim(v ?? dim)}
-            min={DIM_MIN}
-            max={DIM_MAX}
-            step={DIM_STEP}
-            aria-label="Dim unrelated nodes, percent"
-            className="flex-1"
-          />
-          <span className="text-muted-foreground font-mono text-xs tabular-nums">
-            {DIM_MAX}
-          </span>
-        </div>
+      {/* One row shape shared with the layout sliders below it in the popover:
+          label column, track, value column, all three aligned. */}
+      <div className="text-muted-foreground flex items-center gap-2 text-sm">
+        <Label className="w-16 shrink-0 text-right font-normal">Dim</Label>
+        <Slider
+          value={[dim]}
+          onValueChange={([v]) => setDim(v ?? dim)}
+          min={DIM_MIN}
+          max={DIM_MAX}
+          step={DIM_STEP}
+          aria-label="Dim unrelated nodes, percent"
+          className="flex-1"
+        />
+        <span className="text-foreground w-10 shrink-0 text-right font-mono tabular-nums">
+          {dim}%
+        </span>
       </div>
+      {!compact && (
+        <p className="text-muted-foreground -mt-1 text-sm">
+          How far the rest of the map recedes when something is focused. It
+          keeps its colours and its shape — edges recede with it.
+        </p>
+      )}
     </div>
   )
 }

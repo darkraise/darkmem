@@ -16,13 +16,13 @@ import {
   groundEdgeAlpha,
   groundNodeAlpha,
   labelVisible,
+  recede,
 } from "@/features/graph/lib/focus-model"
 import { useGraphPrefs } from "@/features/graph/lib/graph-prefs"
 import FA2Layout from "graphology-layout-forceatlas2/worker"
 import { inferSettings } from "graphology-layout-forceatlas2"
 import {
   entityTypeColor,
-  hexToRgba,
   darkenHex,
   membershipEdgeColor,
 } from "@/features/graph/lib/graph-colors"
@@ -55,7 +55,10 @@ const FOCUS_SCALE = 1.22
 const HOVER_SCALE = 1.08
 const HUB_DEGREE = 5
 const LABEL_ZOOM_RATIO = 0.72
-const FOCUS_EDGE_SIZE = 2.2
+/** A connected edge must be unmistakably heavier than its neighbours -- that
+ *  emphasis is most of what makes a selection legible. Scaled off each kind's
+ *  own weight so the relation/similarity/membership hierarchy survives it. */
+const FOCUS_EDGE_FACTOR = 2.6
 
 /** Relation over similarity over membership — the same hierarchy the memory
  *  graph draws, so one corpus does not read two ways across two views. */
@@ -199,8 +202,9 @@ export function KnowledgeGraphRenderer({
         }
 
         if (tier === "ground") {
-          res.color = hexToRgba(
+          res.color = recede(
             data.color || tk.mutedForeground,
+            tk.background,
             groundNodeAlpha(dimUnrelated),
           )
         }
@@ -231,15 +235,15 @@ export function KnowledgeGraphRenderer({
 
         if (sel) {
           if (src === sel || tgt === sel) {
-            res.size = FOCUS_EDGE_SIZE
+            res.size = edgeWeight(data._edgeKind) * FOCUS_EDGE_FACTOR
             res.color = tk.primary
           } else {
-            res.color = hexToRgba(tk.border, groundEdgeAlpha(dimUnrelated))
+            res.color = recede(tk.border, tk.background, groundEdgeAlpha(dimUnrelated))
           }
         }
 
         if (hov && (src === hov || tgt === hov)) {
-          res.size = FOCUS_EDGE_SIZE
+          res.size = edgeWeight(data._edgeKind) * FOCUS_EDGE_FACTOR
           res.color = tk.primary
         }
 
