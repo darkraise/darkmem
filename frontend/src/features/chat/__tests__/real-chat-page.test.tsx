@@ -69,6 +69,22 @@ describe("RealChatPage", () => {
     expect(screen.getByText("No context yet")).toBeInTheDocument()
   })
 
+  // The pane used to render an empty scroll region above the input while both
+  // columns beside it stated their own absence, so a fresh conversation read
+  // as a broken pane rather than an empty one.
+  it("states the absence in the message pane when no turn has run", () => {
+    mockUseConversations.mockReturnValue({
+      data: { conversations: [] },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    })
+
+    render(<RealChatPage />, { wrapper })
+
+    expect(screen.getByText("Ask about your memories")).toBeInTheDocument()
+  })
+
   it("selecting a different conversation re-fetches via useConversation with the new id, not stale", async () => {
     const user = userEvent.setup()
     mockUseConversations.mockReturnValue({

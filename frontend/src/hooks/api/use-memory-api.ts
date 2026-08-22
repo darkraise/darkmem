@@ -95,6 +95,9 @@ export function useMemories() {
     queryFn: () =>
       apiFetch("/memories/search", {
         method: "POST",
+        // `project: null` is the wire spelling of every project —
+        // `MemorySearchRequest.project` is `str | None` and None applies no
+        // scope filter, so this needs no special case.
         body: JSON.stringify({ limit: 50, project }),
       }),
   })

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useMemo } from "react"
 import ReactMarkdown, { type Components } from "react-markdown"
-import { Bot, User, FileText, Diamond } from "lucide-react"
+import { Bot, User, FileText, Diamond, MessageCircle } from "lucide-react"
 import { Avatar, AvatarFallback } from "darkraise-ui/components/avatar"
 import { Button } from "darkraise-ui/components/button"
 import { Spinner } from "darkraise-ui/components/spinner"
+import { EmptyState } from "@/components/darkmem"
 import { SourceBadges } from "./source-badges"
 import { findEntityMatches } from "../lib/entity-match"
 import { LifecycleDot } from "@/features/memories/components/lifecycle-badge"
@@ -268,6 +269,13 @@ export function ChatMessages({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages.length, streamingContent])
 
+  // A turn in flight already renders (the pending bubble, then the spinner),
+  // so "nothing to show" is only true when none of the three are present.
+  // Without this the pane was a blank region above the input on every new
+  // conversation, while both columns beside it stated their own absence.
+  const empty =
+    messages.length === 0 && !isStreaming && !pendingUserMessage
+
   return (
     <div
       className="flex-1 space-y-6 overflow-auto px-4 py-5"
@@ -275,6 +283,16 @@ export function ChatMessages({
       aria-live="polite"
       aria-busy={isStreaming}
     >
+      {empty && (
+        <EmptyState
+          kind="empty"
+          icon={MessageCircle}
+          scope="page"
+          title="Ask about your memories"
+          description="Chat answers from the same ranked, labelled rows Memories and the vault serve — and every turn shows what it retrieved in the panel beside this one."
+        />
+      )}
+
       {messages.map((msg) => (
         <div key={msg.id} className="animate-in fade-in duration-200">
           {msg.role === "user" ? (

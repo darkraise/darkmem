@@ -6,21 +6,22 @@ async function importFresh() {
   return import("@/theme.config")
 }
 
-/** The three axes that stay adjustable. Everything else is pinned. */
-const VISIBLE_AXES = ["mode", "accentColor", "surfaceColor"]
-
 describe("theme.config", () => {
   beforeEach(() => {
     window.localStorage.clear()
   })
 
-  it("offers only the three adjustable axes in the switcher", async () => {
+  // Every axis is adjustable, because this one config gates both surfaces the
+  // library renders from it — the popover switcher and `ThemeSettingsPanel` —
+  // and turning an axis off here would remove it from Settings → Appearance
+  // too. The header's narrowing lives in `MinimalThemeSwitcher`.
+  it("leaves every library axis adjustable", async () => {
     const { themeConfig } = await importFresh()
     expect(themeConfig.switcher.enabled).toBe(true)
-    const visible = Object.entries(themeConfig.switcher.axes)
-      .filter(([, enabled]) => enabled)
+    const off = Object.entries(themeConfig.switcher.axes)
+      .filter(([, enabled]) => !enabled)
       .map(([axis]) => axis)
-    expect(visible.sort()).toEqual([...VISIBLE_AXES].sort())
+    expect(off).toEqual([])
   })
 
   // Drift guard: an axis added by a library upgrade would otherwise stay
@@ -36,6 +37,15 @@ describe("theme.config", () => {
     )
   })
 
+  // The header's three are a subset of the adjustable set, never a separate
+  // vocabulary: a name here that no axis matches would render nothing.
+  it("names header-switcher axes that exist in the config", async () => {
+    const { themeConfig, SWITCHER_AXES } = await importFresh()
+    for (const axis of SWITCHER_AXES) {
+      expect(themeConfig.switcher.axes[axis]).toBe(true)
+    }
+  })
+
   it("keeps darkmem's own default look", async () => {
     const { themeConfig } = await importFresh()
     expect(themeConfig.defaults).toMatchObject({
@@ -47,6 +57,7 @@ describe("theme.config", () => {
       density: "cozy",
       fontSize: "medium",
       accentIntensity: "vivid",
+      controlDepth: "recessed",
       elevation: "medium",
       buttonElevation: "flat",
       surfaceIntensity: "flat",
@@ -56,33 +67,23 @@ describe("theme.config", () => {
     })
   })
 
-  // A value persisted while an axis was still adjustable would otherwise keep
-  // applying with no control left to change it.
-  it("scrubs persisted values for hidden axes on import", async () => {
-    window.localStorage.setItem("theme-preset", "glass")
-    window.localStorage.setItem("theme-density", "compact")
-    window.localStorage.setItem("theme-outer-glow", "vivid")
-    window.localStorage.setItem("theme-accent-vibrancy", "calm")
-
-    await importFresh()
-
-    expect(window.localStorage.getItem("theme-preset")).toBeNull()
-    expect(window.localStorage.getItem("theme-density")).toBeNull()
-    expect(window.localStorage.getItem("theme-outer-glow")).toBeNull()
-    // The pre-rename spelling too: the library migrates it forward, so
-    // leaving it would let it be re-applied over the pin.
-    expect(window.localStorage.getItem("theme-accent-vibrancy")).toBeNull()
-  })
-
-  it("leaves persisted values for the adjustable axes alone", async () => {
+  // The scrub is inert while nothing is hidden, and stays wired so that
+  // hiding an axis again cannot leave a value applying with no control.
+  it("leaves persisted values alone while every axis is adjustable", async () => {
     window.localStorage.setItem("mode", "light")
     window.localStorage.setItem("theme-accent", "rose")
     window.localStorage.setItem("theme-surface-color", "teal")
+    window.localStorage.setItem("theme-preset", "glass")
+    window.localStorage.setItem("theme-density", "compact")
+    window.localStorage.setItem("theme-control-depth", "flat")
 
     await importFresh()
 
     expect(window.localStorage.getItem("mode")).toBe("light")
     expect(window.localStorage.getItem("theme-accent")).toBe("rose")
     expect(window.localStorage.getItem("theme-surface-color")).toBe("teal")
+    expect(window.localStorage.getItem("theme-preset")).toBe("glass")
+    expect(window.localStorage.getItem("theme-density")).toBe("compact")
+    expect(window.localStorage.getItem("theme-control-depth")).toBe("flat")
   })
 })

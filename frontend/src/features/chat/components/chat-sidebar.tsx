@@ -3,9 +3,7 @@ import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { EmptyState } from "@/components/darkmem"
-import { Plus, Trash2, Search,
-  MessageCircle,
-} from "lucide-react"
+import { MessageCircle, Plus, Search, Trash2 } from "lucide-react"
 import type { ChatConversation } from "@/hooks/api"
 import { relativeTime } from "@/lib/format"
 
@@ -39,7 +37,19 @@ export function ChatSidebar({
     : conversations
 
   return (
-    <div className="border-border bg-card flex h-full max-h-56 w-full flex-col overflow-y-auto border-b md:max-h-none md:w-72 md:shrink-0 md:overflow-visible md:border-r md:border-b-0">
+    /* This is a column of the Chat page's grid, and its only consumer is
+       RealChatPage — it is not the flush left rail of a bordered panel, which
+       is the shape it was written for. Two things followed from that and both
+       were visible: `md:w-72` is 64px wider than the `14rem` grid track, so
+       the New button rendered under the message pane; and `border-b` /
+       `md:border-r` in place of a card edge left the column unbounded, with a
+       stray rule hanging past its content. It now carries the same card as
+       DemoThreadList and ChatContextPanel, and takes its width from the track.
+
+       The breakpoint is `lg`, matching where the page grid actually goes
+       three-column. It read `md`, so between 768px and 1023px this behaved
+       like a desktop rail inside a single-column stack. */
+    <div className="border-border bg-card flex max-h-56 w-full flex-col overflow-hidden rounded-md border lg:max-h-none">
       <div className="border-border space-y-2 border-b p-3">
         <div className="flex items-center justify-between">
           <span className="text-sm font-semibold">Conversations</span>
@@ -83,7 +93,7 @@ export function ChatSidebar({
         {!isLoading && !isError && conversations.length === 0 && (
           <EmptyState
             kind="empty"
-          icon={MessageCircle}
+            icon={MessageCircle}
             title="No conversations yet"
             description='Click "New" to start one.'
           />
@@ -127,7 +137,7 @@ export function ChatSidebar({
               variant="ghost"
               size="icon"
               aria-label="Delete conversation"
-              className="text-muted-foreground hover:text-destructive h-8 w-8 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100"
+              className="text-muted-foreground hover:text-destructive h-8 w-8 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 max-lg:opacity-100"
               onClick={(e) => {
                 e.stopPropagation()
                 onDelete(conv.id)

@@ -241,6 +241,7 @@ EXPECTED_STATUS = {
     ("GET", "/api/v1/setup/status"): 200,
     ("GET", "/api/v1/system/fs/list"): 200,
     ("GET", "/api/v1/system/fs/roots"): 200,
+    ("GET", "/api/v1/projects"): 200,
     ("GET", "/api/v1/tags"): 200,
     ("GET", "/api/v1/vectors/projection"): 200,
     ("GET", "/health"): 200,

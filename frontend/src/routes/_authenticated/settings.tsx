@@ -8,6 +8,7 @@ import {
 import {
   Bot,
   Flag,
+  Palette,
   Plug,
   Search,
   Bell,
@@ -16,6 +17,7 @@ import {
   Wrench,
 } from "lucide-react"
 import { PageChrome } from "@/components/app-chrome"
+import { AppearanceTab } from "@/features/settings/components/appearance-tab"
 import { FlagsTab } from "@/features/settings/components/flags-tab"
 import { LLMTab } from "@/features/settings/components/llm-tab"
 import { SecurityTab } from "@/features/settings/components/security-tab"
@@ -32,6 +34,7 @@ const TAB_VALUES = [
   "integration",
   "research",
   "notifications",
+  "appearance",
 ] as const
 export type SettingsTab = (typeof TAB_VALUES)[number]
 
@@ -53,7 +56,7 @@ function SettingsPage() {
       <PageChrome
         icon={Settings}
         title="Settings"
-        description="Configuration: tunables, LLM purposes, security posture, maintenance, and integration."
+        description="Configuration: tunables, LLM purposes, security posture, maintenance, integration, and appearance."
       />
       <Tabs
         border="accent"
@@ -117,6 +120,10 @@ function SettingsPage() {
                 <Search aria-hidden className="size-[var(--icon-size)]" />
                 Research
               </TabsTrigger>
+              <TabsTrigger className="flex-1 gap-2" value="appearance">
+                <Palette aria-hidden className="size-[var(--icon-size)]" />
+                Appearance
+              </TabsTrigger>
             </TabsList>
           </div>
         </div>
@@ -140,6 +147,9 @@ function SettingsPage() {
         </TabsContent>
         <TabsContent value="research" className="pt-4">
           <ResearchTab />
+        </TabsContent>
+        <TabsContent value="appearance" className="pt-4">
+          <AppearanceTab />
         </TabsContent>
       </Tabs>
     </div>

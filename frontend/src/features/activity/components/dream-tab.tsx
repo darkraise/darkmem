@@ -2,7 +2,6 @@ import { useState } from "react"
 import {
   ArrowRight,
   ChevronDown,
-  CircleAlert,
   CircleX,
   Link2,
   Lock,
@@ -67,7 +66,7 @@ import {
   type DreamObjectGroup,
   type UndoOutcome,
 } from "../use-dream-digest"
-import { SurfaceStateChip } from "./module-surface"
+import { ModuleSurface } from "./module-surface"
 
 const GROUP_ICONS: Record<DreamActionType, LucideIcon> = {
   supersede: ArrowRight,
@@ -305,15 +304,13 @@ function DemoDreamDigest() {
         resurrection.
       </p>
 
-      <div className="border-border flex flex-wrap items-center gap-2.5 border-b border-dashed pb-3">
-        <span className="font-mono text-sm font-semibold">
-          cycle #{cycle.id}
-        </span>
-        <SurfaceStateChip state="populated" />
-        <span className="text-muted-foreground font-mono text-sm">
-          {cycle.window_label}
-        </span>
-        <span className="text-muted-foreground ml-auto text-sm">
+      <ModuleSurface
+        title={`Dream digest — cycle #${cycle.id}`}
+        state="populated"
+        meta={cycle.window_label}
+      >
+      <div className="flex flex-wrap items-center gap-2.5">
+        <span className="text-muted-foreground text-sm">
           {cycle.trigger_label}
         </span>
       </div>
@@ -407,6 +404,7 @@ function DemoDreamDigest() {
           </CollapsibleContent>
         </div>
       </Collapsible>
+      </ModuleSurface>
     </div>
   )
 }
@@ -724,7 +722,12 @@ export function LiveDreamDigest() {
         re-reads from the server after every attempt.
       </p>
 
-      <div className="border-border flex flex-wrap items-center gap-2.5 border-b border-dashed pb-3">
+      <ModuleSurface
+        title="Dream digest"
+        state={digestError ? "error" : digest ? "populated" : "empty"}
+        meta={`${cycles.length} of ${cyclesTotal} cycles loaded`}
+      >
+      <div className="flex flex-wrap items-center gap-2.5">
         <Select
           value={selectedCycleId ?? undefined}
           onValueChange={selectCycle}
@@ -750,28 +753,12 @@ export function LiveDreamDigest() {
             ))}
           </SelectContent>
         </Select>
-        {digestError ? (
-          // SurfaceState has no error value (module-surface.tsx) — adding one
-          // is a cross-surface change (pipeline-tab, jobs-tab already
-          // conflate loading with empty the same way) outside this fix's
-          // scope, so this chip stays local to the dream tab rather than
-          // widening the shared type.
-          <span className="border-destructive/50 text-destructive inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wide uppercase">
-            <CircleAlert aria-hidden className="h-3 w-3" />
-            error
-          </span>
-        ) : (
-          <SurfaceStateChip state={digest ? "populated" : "empty"} />
-        )}
         {activeCycle && (
           <span className="text-muted-foreground font-mono text-sm">
             {relativeTime(activeCycle.started_at)} –{" "}
             {relativeTime(activeCycle.ended_at)}
           </span>
         )}
-        <span className="text-muted-foreground ml-auto font-mono text-sm">
-          {cycles.length} of {cyclesTotal} cycles loaded
-        </span>
         {cyclesHasMore && (
           <Button
             variant="outline"
@@ -845,6 +832,7 @@ export function LiveDreamDigest() {
           </div>
         </>
       )}
+      </ModuleSurface>
 
       <AlertDialog
         open={confirmGroup !== null}

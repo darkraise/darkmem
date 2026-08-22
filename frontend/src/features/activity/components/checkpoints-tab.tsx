@@ -10,7 +10,7 @@ import {
   type CheckpointDigestData,
   type CheckpointRunData,
 } from "../use-checkpoint-runs"
-import { SurfaceStateChip } from "./module-surface"
+import { ModuleSurface, SurfaceStateChip } from "./module-surface"
 
 // A checkpoint is an OPERATIONAL session digest, not verified knowledge —
 // it carries NO verification badge anywhere in this tab; the vault's badge
@@ -265,40 +265,48 @@ export function CheckpointsTab() {
         not vault knowledge — they carry no verification badge, and every
         save/resume is journaled to events.
       </p>
-      {isError ? (
-        <p className="text-destructive text-sm">
-          The checkpoint journal could not be read.
-        </p>
-      ) : isLoading ? (
-        <p className="text-muted-foreground text-sm">Loading runs…</p>
-      ) : runs.length === 0 ? (
-        <EmptyState
-          kind="empty"
-          icon={Bookmark}
-          title="No runs have checkpointed yet"
-          description="A run appears here the moment it saves its first digest — over REST or over MCP. Nothing else creates one, so an empty list means no agent has checkpointed against this instance."
-        />
-      ) : (
-        <>
-          <div className="space-y-2">
-            {runs.map((run) => (
-              <RunCard
-                key={run.id}
-                run={run}
-                advanced={advanced}
-                selected={run.id === selected?.id}
-                onSelect={() => setSelectedId(run.id)}
-              />
-            ))}
-          </div>
-          {selected && (
-            <RunDetail
-              run={selected}
-              digest={digest}
-              isLoading={digestLoading}
+      <ModuleSurface
+        title="Checkpointed runs"
+        state={isLoading ? "empty" : runs.length > 0 ? "populated" : "empty"}
+        meta={`${runs.length} ${runs.length === 1 ? "run" : "runs"}`}
+      >
+        {isError ? (
+          <p className="text-destructive text-sm">
+            The checkpoint journal could not be read.
+          </p>
+        ) : isLoading ? (
+          <p className="text-muted-foreground text-sm">Loading runs…</p>
+        ) : runs.length === 0 ? (
+          <EmptyState
+            kind="empty"
+            icon={Bookmark}
+            title="No runs have checkpointed yet"
+            description="A run appears here the moment it saves its first digest — over REST or over MCP. Nothing else creates one, so an empty list means no agent has checkpointed against this instance."
+          />
+        ) : (
+          runs.map((run) => (
+            <RunCard
+              key={run.id}
+              run={run}
+              advanced={advanced}
+              selected={run.id === selected?.id}
+              onSelect={() => setSelectedId(run.id)}
             />
-          )}
-        </>
+          ))
+        )}
+      </ModuleSurface>
+      {!isError && !isLoading && selected && (
+        <ModuleSurface
+          title="Run digest"
+          state={digestLoading ? "empty" : digest ? "populated" : "empty"}
+          meta={selected.id}
+        >
+          <RunDetail
+            run={selected}
+            digest={digest}
+            isLoading={digestLoading}
+          />
+        </ModuleSurface>
       )}
     </div>
   )

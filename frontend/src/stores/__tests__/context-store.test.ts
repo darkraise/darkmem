@@ -7,7 +7,6 @@ describe("contextStore", () => {
     useContextStore.setState({ declared: null })
     useProjectStore.setState({
       activeProject: DEFAULT_PROJECT,
-      knownProjects: [DEFAULT_PROJECT],
     })
   })
 

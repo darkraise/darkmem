@@ -33,7 +33,7 @@ export function DemoMessagePane({
   }
 
   return (
-    <div className="border-border bg-card flex min-h-[24rem] flex-col overflow-hidden rounded-md border">
+    <div className="border-border bg-card flex min-h-[24rem] flex-col overflow-hidden rounded-md border lg:min-h-0">
       <div className="border-border flex flex-wrap items-center gap-2 border-b px-3.5 py-2.5">
         <span className="mr-auto text-sm font-semibold">
           {thread?.title ?? "New conversation"}

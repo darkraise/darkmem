@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
 import { useProjectScopedKey } from "@/lib/query-keys"
-import { useProjectStore } from "@/stores/project-store"
+import { ALL_PROJECTS, useProjectStore } from "@/stores/project-store"
 
 export interface UnifiedMemory {
   id: string
@@ -81,7 +81,13 @@ export function useUnifiedGraph(
     queryKey,
     queryFn: () =>
       apiFetch(
-        `/graph/unified?similarity_threshold=${similarityThreshold}&min_cluster_size=${minClusterSize}&include_entities=${includeEntities}&project=${encodeURIComponent(project)}`,
+        `/graph/unified?similarity_threshold=${similarityThreshold}&min_cluster_size=${minClusterSize}&include_entities=${includeEntities}` +
+          // Omitted, never sent empty: `project=` would ask for a project
+          // *named* the empty string, while an absent param is what the route
+          // reads as every project.
+          (project === ALL_PROJECTS
+            ? ""
+            : `&project=${encodeURIComponent(project)}`),
       ),
   })
 }

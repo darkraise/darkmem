@@ -7,10 +7,8 @@ import {
   createDrawCurvedEdgeLabel,
   DEFAULT_EDGE_CURVE_PROGRAM_OPTIONS,
 } from "@sigma/edge-curve"
-import {
-  drawDiscNodeHover,
-  DEFAULT_EDGE_ARROW_HEAD_PROGRAM_OPTIONS,
-} from "sigma/rendering"
+import { DEFAULT_EDGE_ARROW_HEAD_PROGRAM_OPTIONS } from "sigma/rendering"
+import { drawThemedDiscNodeHover } from "@/features/graph/lib/node-hover"
 import FA2Layout from "graphology-layout-forceatlas2/worker"
 import { inferSettings } from "graphology-layout-forceatlas2"
 import {
@@ -132,7 +130,8 @@ export function KnowledgeGraphRenderer({
         ...DEFAULT_EDGE_CURVE_PROGRAM_OPTIONS,
         arrowHead: DEFAULT_EDGE_ARROW_HEAD_PROGRAM_OPTIONS,
       }),
-      defaultDrawNodeHover: drawDiscNodeHover,
+      defaultDrawNodeHover: (context, data, settings) =>
+        drawThemedDiscNodeHover(context, data, settings, tokensRef.current),
       stagePadding: 40,
       labelRenderedSizeThreshold: 6,
       defaultNodeColor: t.mutedForeground,

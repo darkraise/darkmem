@@ -1,5 +1,6 @@
 import type { ReactNode } from "react"
 import {
+  CircleAlert,
   CircleDashed,
   Clock,
   List,
@@ -7,7 +8,7 @@ import {
 } from "lucide-react"
 import { cn } from "darkraise-ui/lib"
 
-export type SurfaceState = "populated" | "empty" | "staged"
+export type SurfaceState = "populated" | "empty" | "staged" | "error"
 
 const STATE_STYLES: Record<
   SurfaceState,
@@ -21,6 +22,12 @@ const STATE_STYLES: Record<
   staged: {
     icon: Clock,
     className: "text-warning border-warning/50 border-dashed",
+  },
+  // A failed read is not an empty one, and a surface that renders it as
+  // `empty` asserts an absence it never observed (invariant 14).
+  error: {
+    icon: CircleAlert,
+    className: "text-destructive border-destructive/50",
   },
 }
 

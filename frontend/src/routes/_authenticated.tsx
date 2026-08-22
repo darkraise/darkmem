@@ -42,6 +42,7 @@ import {
   AppPageHeader,
   BackToTop,
   ContextChip,
+  MinimalThemeSwitcher,
   ProjectSwitcher,
 } from "@/components/app-chrome"
 
@@ -121,6 +122,22 @@ function LiveUpdates() {
  *  full width of the viewport. */
 const FULL_BLEED_ROUTES = ["/memory-graph", "/code/graph"] as const
 
+/** Routes that fill the scrollport instead of growing with their content, so
+ *  the page's own panes scroll rather than the page. `h-full` resolves here
+ *  because the library's `.dr-sidebar-layout-content` is a `flex-1` child of a
+ *  fixed-height column — which is why this beats a `calc(100vh - Nrem)` guess
+ *  that the theme's density axis would invalidate.
+ *
+ *  Every FULL_BLEED_ROUTE is implicitly one of these and does not need listing:
+ *  a canvas page measures its own container with a ResizeObserver and mounts
+ *  the renderer only once that container reports a non-zero box. Without a
+ *  definite height on `main` the page root's `h-full` resolves against an
+ *  auto-height parent, the absolutely-positioned canvas layer collapses to 0,
+ *  and the observer never fires — so the graph renders nothing, with no error
+ *  and an empty-looking page. That stayed invisible while those pages had no
+ *  data to draw, because the empty state carries its own height. */
+const FULL_HEIGHT_ROUTES = ["/chat"] as const
+
 function AuthenticatedLayout() {
   const layout = useLayoutStore((s) => s.layout)
   const router = useRouter()
@@ -136,6 +153,8 @@ function AuthenticatedLayout() {
   const fullBleed = FULL_BLEED_ROUTES.some((route) =>
     pathname.startsWith(route),
   )
+  const fullHeight =
+    fullBleed || FULL_HEIGHT_ROUTES.some((route) => pathname.startsWith(route))
 
   const handleLogout = async () => {
     if (!DEMO) {
@@ -167,12 +186,19 @@ function AuthenticatedLayout() {
         // "pinned" is the honest spelling. Ignored by the two sidebar-less
         // layouts. Requires darkraise-ui >= 6.2.0.
         activeBar="both"
+        // Off in favour of `MinimalThemeSwitcher` below. The shell's own
+        // switcher renders every axis in `themeConfig.switcher.axes`, and all
+        // of them are on so Settings -> Appearance can offer the full panel;
+        // the header wants three. See `minimal-theme-switcher.tsx` for the
+        // library gap that forces the split.
+        showThemeSwitcher={false}
         headerSlot={
           <>
             <AppPageHeader />
             <ProjectSwitcher />
             <ContextChip />
             <DetailLevelToggle />
+            <MinimalThemeSwitcher />
           </>
         }
         user={{ name: DEMO ? "Demo" : "Admin", email: "" }}
@@ -185,7 +211,13 @@ function AuthenticatedLayout() {
         onLogout={handleLogout}
       >
         {!DEMO && <LiveUpdates />}
-        <main className={cn("w-full", !fullBleed && "mx-auto max-w-[1400px]")}>
+        <main
+          className={cn(
+            "w-full",
+            !fullBleed && "mx-auto max-w-[1400px]",
+            fullHeight && "h-full",
+          )}
+        >
           <Outlet />
         </main>
         <BackToTop />
