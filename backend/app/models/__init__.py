@@ -12,6 +12,7 @@ from .llm_provider import LLMProviderRow
 from .memory import Memory, MemoryBuffer, Tag, memory_tags
 from .pipeline_failure import PipelineFailure
 from .job_run import JobRun
+from .llm_usage import LLMUsage
 from .project import Project
 
 __all__ = [
@@ -40,4 +41,5 @@ __all__ = [
     "LLMProviderRow",
     "PipelineFailure",
     "JobRun",
+    "LLMUsage",
 ]

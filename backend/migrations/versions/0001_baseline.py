@@ -1006,6 +1006,58 @@ def _pass_two() -> None:
         "WHERE resolved_at IS NULL"
     )
 
+    # ── llm_usage ────────────────────────────────────────────────────────
+    # Token and cost telemetry: one row per vendor call. Sibling of job_runs,
+    # and for the same reason it is not `events` — that substrate is
+    # append-only by trigger and permanent by ruling, and doc 17 section 5.1's
+    # metrics are SQL over it alone. This is high-volume telemetry that wants
+    # pruning, so DELETE is ordinary here and `llm_usage_cleanup` holds it to
+    # a configured ceiling.
+    #
+    # subject_id is TEXT, not UUID: a job run is `{job_key}@{started_at}`
+    # because the job_runs row is written only after the runner returns — and
+    # a run reporting nothing writes no row at all — while search and chat
+    # subjects are request ids.
+    #
+    # Token columns are nullable so an unmeasured call stores NULL rather than
+    # 0; a vendor that stops reporting usage must never render as free.
+    # cost_micros is BIGINT micro-USD: money never touches a float.
+    op.execute(
+        """
+        CREATE TABLE llm_usage (
+            id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            occurred_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+            purpose           VARCHAR(32) NOT NULL,
+            model             VARCHAR(128) NOT NULL,
+            provider          VARCHAR(128),
+            api_kind          VARCHAR(32) NOT NULL,
+            subject_type      VARCHAR(16) NOT NULL,
+            subject_id        TEXT,
+            project           TEXT,
+            prompt_tokens     INTEGER,
+            cached_tokens     INTEGER,
+            completion_tokens INTEGER,
+            reasoning_tokens  INTEGER,
+            tokens_measured   BOOLEAN NOT NULL DEFAULT false,
+            cost_micros       BIGINT,
+            rates_used        JSONB NOT NULL DEFAULT '{}'::jsonb,
+            usage_raw         JSONB NOT NULL DEFAULT '{}'::jsonb,
+            ok                BOOLEAN NOT NULL DEFAULT true,
+            error_kind        VARCHAR(64),
+            duration_ms       INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    # The per-memory and per-job detail views read by subject; the overview and
+    # the retention sweep read by time; the by-purpose rollup reads both.
+    op.execute(
+        "CREATE INDEX ix_llm_usage_subject ON llm_usage (subject_type, subject_id)"
+    )
+    op.execute("CREATE INDEX ix_llm_usage_occurred ON llm_usage (occurred_at)")
+    op.execute(
+        "CREATE INDEX ix_llm_usage_purpose_occurred ON llm_usage (purpose, occurred_at)"
+    )
+
     # ── job_runs ─────────────────────────────────────────────────────────
     # Job telemetry lives here rather than in `events`. That table is the
     # audit substrate: append-only by trigger and permanent by ruling, and
@@ -1417,6 +1469,7 @@ def downgrade() -> None:
     for table in (
         # pass two — dropped before the pass-one tables they reference
         "job_runs",
+        "llm_usage",
         "events",
         "llm_purpose_configs",
         "messages",
