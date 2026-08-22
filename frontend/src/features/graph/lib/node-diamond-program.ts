@@ -102,7 +102,7 @@ export function drawDiamondNodeHover(
     context.stroke()
   }
 
-  drawFocusRing(context, data.x, data.y, data.size, chrome)
+  drawFocusRing(context, data.x, data.y, data.size, chrome, "diamond")
   drawPlatedLabel(context, data, settings, chrome.text)
 }
 

@@ -26,6 +26,17 @@ export function groundNodeAlpha(dimPercent: number): number {
 }
 
 /**
+ * Strength of the ground while hovering with nothing selected.
+ *
+ * Hovering sorts the canvas the same way a selection does, but it is a
+ * transient gesture rather than a committed one, so it recedes half as far --
+ * twice the configured strength left standing.
+ */
+export function hoverGroundAlpha(dimPercent: number): number {
+  return Math.min(1, groundNodeAlpha(dimPercent) * 2)
+}
+
+/**
  * Opacity of a grounded edge.
  *
  * Derived from the same number rather than carried separately: two knobs for
