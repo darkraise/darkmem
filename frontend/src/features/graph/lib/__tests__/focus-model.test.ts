@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import {
   focusTier,
   groundNodeAlpha,
+  hoverGroundAlpha,
   groundEdgeAlpha,
   labelVisible,
   recede,
@@ -37,6 +38,23 @@ describe("ground alphas", () => {
     for (const dim of [5, 10, 15, 25, 50]) {
       expect(groundEdgeAlpha(dim)).toBeLessThan(groundNodeAlpha(dim))
     }
+  })
+})
+
+describe("hoverGroundAlpha", () => {
+  // Hovering with nothing selected still sorts the canvas, but it is a
+  // transient gesture, so it recedes half as far as a committed selection.
+  it("is twice the configured strength", () => {
+    expect(hoverGroundAlpha(15)).toBeCloseTo(0.3)
+    expect(hoverGroundAlpha(25)).toBeCloseTo(0.5)
+  })
+
+  it("leaves more standing than a selection does", () => {
+    expect(hoverGroundAlpha(15)).toBeGreaterThan(groundNodeAlpha(15))
+  })
+
+  it("never exceeds full strength", () => {
+    expect(hoverGroundAlpha(50)).toBeLessThanOrEqual(1)
   })
 })
 

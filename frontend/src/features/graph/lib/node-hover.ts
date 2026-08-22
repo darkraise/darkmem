@@ -122,26 +122,37 @@ export function drawPlatedLabel(
   )
 }
 
-/** The ring around the node. Drawn after the plate so the plate's own shadow
- *  cannot smear it. */
+/** The node shapes a halo has to be able to trace. */
+export type HaloShape = "circle" | "diamond"
+
+/** The halo around the node.
+ *
+ *  It follows the node's own shape: a circle drawn round a diamond reads as a
+ *  bubble the node happens to sit in rather than as that node being picked
+ *  out. Drawn after the plate so the plate's shadow cannot smear it. */
 export function drawFocusRing(
   context: CanvasRenderingContext2D,
   x: number,
   y: number,
   radius: number,
   chrome: HoverChrome,
+  shape: HaloShape = "circle",
 ): void {
+  const r = radius + chrome.ringGap + chrome.ringWidth / 2
   context.save()
   context.beginPath()
-  context.arc(
-    x,
-    y,
-    radius + chrome.ringGap + chrome.ringWidth / 2,
-    0,
-    Math.PI * 2,
-  )
+  if (shape === "diamond") {
+    context.moveTo(x, y - r)
+    context.lineTo(x + r, y)
+    context.lineTo(x, y + r)
+    context.lineTo(x - r, y)
+    context.closePath()
+  } else {
+    context.arc(x, y, r, 0, Math.PI * 2)
+  }
   context.strokeStyle = chrome.ring
   context.lineWidth = chrome.ringWidth
+  context.lineJoin = "round"
   if (chrome.glow) {
     context.shadowBlur = 10
     context.shadowColor = chrome.ring
@@ -202,6 +213,6 @@ export function drawThemedDiscNodeHover(
     context.stroke()
   }
 
-  drawFocusRing(context, data.x, data.y, data.size, chrome)
+  drawFocusRing(context, data.x, data.y, data.size, chrome, "circle")
   drawPlatedLabel(context, data, settings, chrome.text)
 }

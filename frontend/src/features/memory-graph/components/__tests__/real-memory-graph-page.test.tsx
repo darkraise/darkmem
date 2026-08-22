@@ -62,7 +62,7 @@ async function enableEntityLayer(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByRole("switch", { name: /entity layer/i }))
 }
 
-describe("RealMemoryGraphPage: entity-overlay honesty captions", () => {
+describe("RealMemoryGraphPage: entity-overlay truncation banner", () => {
   beforeEach(() => {
     mockUseUnifiedGraph.mockReset()
   })
@@ -75,22 +75,6 @@ describe("RealMemoryGraphPage: entity-overlay honesty captions", () => {
     ).not.toBeInTheDocument()
   })
 
-  it("shows the permanent scope caption once the entity layer is toggled on, with no truncation", async () => {
-    const user = userEvent.setup()
-    mockUseUnifiedGraph.mockReturnValue({
-      data: { ...ONE_MEMORY, entities_truncated: false },
-      isLoading: false,
-    })
-    render(<RealMemoryGraphPage />, { wrapper })
-
-    await enableEntityLayer(user)
-
-    expect(
-      screen.getByText(/shared across every project/),
-    ).toBeInTheDocument()
-    expect(screen.queryByText(/truncated/)).not.toBeInTheDocument()
-  })
-
   it("also shows the truncation banner when entities_truncated is true", async () => {
     const user = userEvent.setup()
     mockUseUnifiedGraph.mockReturnValue({
@@ -101,9 +85,12 @@ describe("RealMemoryGraphPage: entity-overlay honesty captions", () => {
 
     await enableEntityLayer(user)
 
+    // The standing scope caption was removed on the owner's instruction; the
+    // truncation banner is a different signal and stays, because nothing else
+    // on the page reports that the view is missing data.
     expect(
-      screen.getByText(/shared across every project/),
-    ).toBeInTheDocument()
+      screen.queryByText(/shared across every project/),
+    ).not.toBeInTheDocument()
     expect(
       screen.getByText(/Entity overlay truncated/),
     ).toBeInTheDocument()

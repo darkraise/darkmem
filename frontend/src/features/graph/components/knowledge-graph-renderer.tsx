@@ -15,6 +15,7 @@ import {
   focusTier,
   groundEdgeAlpha,
   groundNodeAlpha,
+  hoverGroundAlpha,
   labelVisible,
   recede,
 } from "@/features/graph/lib/focus-model"
@@ -60,15 +61,19 @@ const LABEL_ZOOM_RATIO = 0.72
  *  each kind's own weight so the relation/similarity/membership hierarchy
  *  survives the emphasis, and hovering stays lighter than selecting so the
  *  two remain distinguishable while a selection is held. */
-const HOVER_EDGE_FACTOR = 2
-const SELECTED_EDGE_FACTOR = 3.4
+/** Emphasis is a flat width, not a per-kind multiple. Scaling each kind by
+ *  the same factor made connected relation edges visibly heavier than
+ *  connected similarity ones, which reads as "some of these matter more"
+ *  rather than as one highlight. The hierarchy still holds at rest. */
+const HOVER_EDGE_SIZE = 3
+const SELECTED_EDGE_SIZE = 4.5
 
 /** Relation over similarity over membership — the same hierarchy the memory
  *  graph draws, so one corpus does not read two ways across two views. */
 function edgeWeight(kind: unknown): number {
-  if (kind === "relation") return 1.8
-  if (kind === "membership") return 1
-  return 1.1
+  if (kind === "relation") return 2.2
+  if (kind === "membership") return 1.3
+  return 1.7
 }
 
 export function KnowledgeGraphRenderer({
@@ -193,6 +198,8 @@ export function KnowledgeGraphRenderer({
         const isNeighbour =
           !!sel && (graph.hasEdge(sel, node) || graph.hasEdge(node, sel))
         const tier = focusTier(node, sel, isNeighbour)
+        const hoverNeighbour =
+          !!hov && (graph.hasEdge(hov, node) || graph.hasEdge(node, hov))
 
         if (tier === "focus") {
           res.size = (data.size || 14) * FOCUS_SCALE
@@ -209,6 +216,14 @@ export function KnowledgeGraphRenderer({
             data.color || tk.mutedForeground,
             tk.background,
             groundNodeAlpha(dimUnrelated),
+          )
+        } else if (!sel && hov && hov !== node && !hoverNeighbour) {
+          // Nothing selected, but the pointer is on something: sort the
+          // canvas the same way, half as far.
+          res.color = recede(
+            data.color || tk.mutedForeground,
+            tk.background,
+            hoverGroundAlpha(dimUnrelated),
           )
         }
 
@@ -236,21 +251,33 @@ export function KnowledgeGraphRenderer({
 
         res.size = edgeWeight(data._edgeKind)
 
+        // Emphasis never recolours an edge: its colour is its endpoints', and
+        // repainting it the selection colour threw that away exactly when the
+        // neighbourhood mattered most.
         if (sel) {
           if (src === sel || tgt === sel) {
-            res.size = edgeWeight(data._edgeKind) * SELECTED_EDGE_FACTOR
-            res.color = tk.primary
+            res.size = SELECTED_EDGE_SIZE
           } else {
-            res.color = recede(tk.border, tk.background, groundEdgeAlpha(dimUnrelated))
+            res.color = recede(
+              data.color || tk.border,
+              tk.background,
+              groundEdgeAlpha(dimUnrelated),
+            )
           }
         }
 
-        if (hov && (src === hov || tgt === hov)) {
-          res.size = Math.max(
-            res.size ?? 0,
-            edgeWeight(data._edgeKind) * HOVER_EDGE_FACTOR,
-          )
-          res.color = tk.primary
+        if (hov) {
+          if (src === hov || tgt === hov) {
+            res.size = Math.max(res.size ?? 0, HOVER_EDGE_SIZE)
+          } else if (!sel) {
+            // Hovering with nothing selected sorts the canvas too, half as
+            // far as a committed selection does.
+            res.color = recede(
+              data.color || tk.border,
+              tk.background,
+              hoverGroundAlpha(dimUnrelated) * 0.35,
+            )
+          }
         }
 
         return res

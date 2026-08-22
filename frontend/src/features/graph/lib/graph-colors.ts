@@ -166,14 +166,24 @@ export function memoryEdgeColor(srcHex: string, t: GraphThemeTokens): string {
   return darkenHex(srcHex, t.isDark ? 0.55 : 0.3)
 }
 
-export function relationEdgeColor(t: GraphThemeTokens): string {
-  // entity-relation edges: accent-tinted, semi-transparent.
-  return hexToRgba(t.primary, t.isDark ? 0.55 : 0.5)
+export function relationEdgeColor(
+  t: GraphThemeTokens,
+  srcHex?: string,
+): string {
+  // Takes the colour of the entity it leaves, so an edge reads as belonging
+  // to its endpoints. The accent is deliberately NOT used here: it is the
+  // selection colour, and an edge wearing it permanently makes every
+  // relation look picked out.
+  return hexToRgba(srcHex || t.mutedForeground, t.isDark ? 0.6 : 0.55)
 }
 
-export function membershipEdgeColor(t: GraphThemeTokens): string {
-  // entity↔memory membership edges: faint, derived from the border token.
-  return hexToRgba(t.border, t.isDark ? 0.25 : 0.4)
+export function membershipEdgeColor(
+  t: GraphThemeTokens,
+  srcHex?: string,
+): string {
+  // entity↔memory membership edges: the same endpoint tint, held well back
+  // because this is the most numerous and least meaningful of the three.
+  return hexToRgba(srcHex || t.mutedForeground, t.isDark ? 0.3 : 0.35)
 }
 
 export function hexToRgba(hex: string, alpha: number): string {

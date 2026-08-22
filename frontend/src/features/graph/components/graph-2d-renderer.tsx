@@ -13,6 +13,7 @@ import {
   focusTier,
   groundEdgeAlpha,
   groundNodeAlpha,
+  hoverGroundAlpha,
   labelVisible,
   recede,
 } from "@/features/graph/lib/focus-model"
@@ -91,14 +92,18 @@ const LABEL_ZOOM_RATIO = 0.72
  *  each kind's own weight so the relation/similarity/membership hierarchy
  *  survives the emphasis, and hovering stays lighter than selecting so the
  *  two remain distinguishable while a selection is held. */
-const HOVER_EDGE_FACTOR = 2
-const SELECTED_EDGE_FACTOR = 3.4
+/** Emphasis is a flat width, not a per-kind multiple. Scaling each kind by
+ *  the same factor made connected relation edges visibly heavier than
+ *  connected similarity ones, which reads as "some of these matter more"
+ *  rather than as one highlight. The hierarchy still holds at rest. */
+const HOVER_EDGE_SIZE = 3
+const SELECTED_EDGE_SIZE = 4.5
 
 /** The edge hierarchy: relation over similarity over membership. */
 function edgeWeight(kind: unknown): number {
-  if (kind === "relation") return 1.8
-  if (kind === "membership") return 1
-  return 1.1
+  if (kind === "relation") return 2.2
+  if (kind === "membership") return 1.3
+  return 1.7
 }
 
 export function Graph2DRenderer({
@@ -162,8 +167,9 @@ export function Graph2DRenderer({
     return resolveNodeColor(m, colorModeRef.current, paletteRef.current)
   }
   const edgeBaseColor = (kind: string, srcHex: string): string => {
-    if (kind === "relation") return relationEdgeColor(tokensRef.current)
-    if (kind === "membership") return membershipEdgeColor(tokensRef.current)
+    if (kind === "relation") return relationEdgeColor(tokensRef.current, srcHex)
+    if (kind === "membership")
+      return membershipEdgeColor(tokensRef.current, srcHex)
     return memoryEdgeColor(srcHex, tokensRef.current)
   }
 
@@ -261,8 +267,10 @@ export function Graph2DRenderer({
       for (const r of entityRelations) {
         if (entityIdSet.has(r.source) && entityIdSet.has(r.target)) {
           try {
+            const relSrc =
+              graph.getNodeAttribute(`entity:${r.source}`, "color") || ""
             graph.addEdge(`entity:${r.source}`, `entity:${r.target}`, {
-              color: edgeBaseColor("relation", ""),
+              color: edgeBaseColor("relation", relSrc),
               size: 2.5,
               label: r.type,
               _edgeKind: "relation",
@@ -278,7 +286,10 @@ export function Graph2DRenderer({
           if (allNodeIds.has(mid)) {
             try {
               graph.addEdge(`entity:${ent.id}`, mid, {
-                color: edgeBaseColor("membership", ""),
+                color: edgeBaseColor(
+                  "membership",
+                  entityTypeColor(ent.entity_type, paletteRef.current),
+                ),
                 size: 2.5,
                 _edgeKind: "membership",
               })
@@ -328,6 +339,8 @@ export function Graph2DRenderer({
         const isNeighbour =
           !!sel && (graph.hasEdge(sel, node) || graph.hasEdge(node, sel))
         const tier = focusTier(node, sel, isNeighbour)
+        const hoverNeighbour =
+          !!hov && (graph.hasEdge(hov, node) || graph.hasEdge(node, hov))
 
         // A focused node keeps its own fill. Selection is announced by what is
         // drawn around it, never by repainting it — the fill is already
@@ -350,6 +363,14 @@ export function Graph2DRenderer({
             data.color || t.mutedForeground,
             t.background,
             groundNodeAlpha(dimUnrelated),
+          )
+        } else if (!sel && hov && hov !== node && !hoverNeighbour) {
+          // Nothing selected, but the pointer is on something: sort the
+          // canvas the same way, half as far.
+          res.color = recede(
+            data.color || t.mutedForeground,
+            t.background,
+            hoverGroundAlpha(dimUnrelated),
           )
         }
 
@@ -380,21 +401,33 @@ export function Graph2DRenderer({
         // the heaviest line, so the heaviest line is the most meaningful one.
         res.size = edgeWeight(data._edgeKind)
 
+        // Emphasis never recolours an edge: its colour is its endpoints', and
+        // repainting it the selection colour threw that away exactly when the
+        // neighbourhood mattered most.
         if (sel) {
           if (src === sel || tgt === sel) {
-            res.size = edgeWeight(data._edgeKind) * SELECTED_EDGE_FACTOR
-            res.color = t.primary
+            res.size = SELECTED_EDGE_SIZE
           } else {
-            res.color = recede(t.border, t.background, groundEdgeAlpha(dimUnrelated))
+            res.color = recede(
+              data.color || t.border,
+              t.background,
+              groundEdgeAlpha(dimUnrelated),
+            )
           }
         }
 
-        if (hov && (src === hov || tgt === hov)) {
-          res.size = Math.max(
-            res.size ?? 0,
-            edgeWeight(data._edgeKind) * HOVER_EDGE_FACTOR,
-          )
-          res.color = t.primary
+        if (hov) {
+          if (src === hov || tgt === hov) {
+            res.size = Math.max(res.size ?? 0, HOVER_EDGE_SIZE)
+          } else if (!sel) {
+            // Hovering with nothing selected sorts the canvas too, half as
+            // far as a committed selection does.
+            res.color = recede(
+              data.color || t.border,
+              t.background,
+              hoverGroundAlpha(dimUnrelated) * 0.35,
+            )
+          }
         }
 
         return res

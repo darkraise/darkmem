@@ -60,12 +60,11 @@ export function GraphFilterPanel({
   selectedEntityTypes,
   onEntityTypeToggle,
 }: GraphFilterPanelProps) {
-  // Collapsed by default -- inside the popover the groups are a menu, and an
-  // expanded menu of every tag in the corpus is the thing this change exists
-  // to stop showing.
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
-    () => new Set(tagGroups.map(([category]) => category)),
-  )
+  // Open by default. Collapsing them made the popover show a list of group
+  // headers to click through, when opening the popover was already the click
+  // that asked for the tags. Folding the whole thing away is the trigger row's
+  // job, not this one's.
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const { palette } = useMemoryGraphTheme()
 
   function toggleGroup(group: string) {
