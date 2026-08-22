@@ -12,6 +12,8 @@ import { Slider } from "darkraise-ui/components/slider"
 import { Button } from "darkraise-ui/components/button"
 import { Label } from "darkraise-ui/components/label"
 import { Settings, RotateCcw } from "lucide-react"
+import { cn } from "darkraise-ui/lib"
+import type React from "react"
 import type { SizeMode } from "@/features/graph/lib/graph-utils"
 import type { ColorMode } from "@/features/graph/lib/graph-colors"
 import type { HullMode } from "@/features/graph/lib/graph-geometry"
@@ -41,6 +43,27 @@ interface GraphToolbarProps {
   onReset: () => void
 }
 
+/** The mono-uppercase section header the settings cards use, so the popover
+ *  reads as the same product rather than as a stray widget. */
+function SectionLabel({
+  children,
+  className,
+}: {
+  children: React.ReactNode
+  className?: string
+}) {
+  return (
+    <div
+      className={cn(
+        "text-muted-foreground mb-2 font-mono text-[10px] font-semibold tracking-[0.14em] uppercase",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  )
+}
+
 interface SliderRowProps {
   label: string
   min: number
@@ -62,7 +85,7 @@ function SliderRow({
 }: SliderRowProps) {
   return (
     <div className="text-muted-foreground flex items-center gap-2 text-sm">
-      <Label className="w-14 shrink-0 text-right">{label}</Label>
+      <Label className="w-16 shrink-0 text-right font-normal">{label}</Label>
       <Slider
         value={[value]}
         onValueChange={([v]) => {
@@ -74,7 +97,9 @@ function SliderRow({
         step={step}
         className="flex-1"
       />
-      <span className="w-8 text-right font-mono">{value}</span>
+      <span className="text-foreground w-10 shrink-0 text-right font-mono tabular-nums">
+        {value}
+      </span>
     </div>
   )
 }
@@ -222,20 +247,20 @@ export function GraphToolbar({
             align="end"
             className="bg-card/95 border-border w-[340px] rounded-lg border px-4 py-3 shadow-xl backdrop-blur-sm"
           >
-            <div className="mb-3 flex items-center justify-between">
-              <span className="text-foreground text-sm font-semibold">
-                Settings
-              </span>
-            </div>
+            {/* Two sections, because these are two different kinds of
+                control: what the graph draws, and how it responds to you.
+                Selection leads -- it is the only one of the second kind. */}
+            <SectionLabel>Selection</SectionLabel>
             <div className="space-y-3">
-              {/* Selection sits at the top because it is the only control in
-                  here that changes how the graph responds to *you* rather
-                  than what it draws. Same component as Settings > Appearance,
-                  over the same store, so the two cannot drift. */}
+              {/* Same component as Settings > Appearance, over the same store,
+                  so the two surfaces cannot drift. */}
               <SelectionSettings compact />
-              <div className="bg-border h-px" />
+            </div>
+
+            <SectionLabel className="mt-4">Layout</SectionLabel>
+            <div className="space-y-3">
               <div className="flex items-center gap-2">
-                <span className="text-muted-foreground w-14 shrink-0 text-right text-sm">
+                <span className="text-muted-foreground w-16 shrink-0 text-right text-sm">
                   Size
                 </span>
                 <ToggleGroup
@@ -244,26 +269,26 @@ export function GraphToolbar({
                   onValueChange={(v) => {
                     if (v) onSizeModeChange(v as SizeMode)
                   }}
-                  className="gap-0"
+                  className="min-w-0 flex-1 gap-0"
                 >
                   <ToggleGroupItem
                     value="connections"
                     variant="outline"
-                    className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2"
+                    className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 min-w-0 flex-1 px-1.5 text-xs"
                   >
                     Connections
                   </ToggleGroupItem>
                   <ToggleGroupItem
                     value="importance"
                     variant="outline"
-                    className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2"
+                    className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 min-w-0 flex-1 px-1.5 text-xs"
                   >
                     Importance
                   </ToggleGroupItem>
                   <ToggleGroupItem
                     value="uniform"
                     variant="outline"
-                    className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2"
+                    className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 min-w-0 flex-1 px-1.5 text-xs"
                   >
                     Uniform
                   </ToggleGroupItem>
