@@ -225,11 +225,13 @@ export function RealMemoryGraphPage() {
             <div className="absolute top-3 left-3 z-30">
               <Button
                 variant="outline"
-                className={`shadow-lg ${filters.showFilters ? "bg-primary/20 border-primary text-primary hover:bg-primary/30 hover:text-primary" : "bg-card/80 backdrop-blur-sm"}`}
+                size="icon"
+                aria-label="Filters"
+                title="Filters"
+                className={`h-8 w-8 rounded-md shadow-lg ${filters.showFilters ? "bg-primary/20 border-primary text-primary hover:bg-primary/30 hover:text-primary" : "bg-card/80 backdrop-blur-sm"}`}
                 onClick={() => filters.setShowFilters((v) => !v)}
               >
-                <Filter className="mr-1.5 h-4 w-4" />
-                Filters
+                <Filter className="h-4 w-4" />
               </Button>
             </div>
 
@@ -261,16 +263,10 @@ export function RealMemoryGraphPage() {
 
             {entityLayerEnabled && (
               <div className="pointer-events-none absolute top-16 right-0 left-0 z-20 flex flex-col items-center gap-1.5 px-3">
-                {/* F8/I1 disposition (T1.60): entities are not memory-scoped
-                    (CLAUDE.md) — a standing fact about the surface, not a
-                    per-request signal, so this renders whenever the layer
-                    is on regardless of entities_truncated. */}
-                <p className="bg-card/80 border-border text-muted-foreground rounded-md border px-2.5 py-1 text-sm shadow-lg backdrop-blur-sm">
-                  Entities and their relationships are shared across every
-                  project; only memories themselves are project-scoped.
-                </p>
-                {/* F10's honesty half: visible only while the under-return is
-                    actually happening, not always-on noise. */}
+                {/* The standing "entities are not project-scoped" caption was
+                    removed on the owner's instruction. The truncation banner
+                    below is a different thing and stays: it reports that this
+                    view is missing data, which nothing else on the page says. */}
                 {data?.entities_truncated && (
                   <p className="bg-warning/12 border-warning/55 text-warning rounded-md border px-2.5 py-1 text-sm shadow-lg backdrop-blur-sm">
                     Entity overlay truncated — showing a partial view.
@@ -280,10 +276,16 @@ export function RealMemoryGraphPage() {
             )}
 
             {!selection.showPanel && (
-              <div className="absolute top-3 right-3 z-30">
+              // Sits left of the settings/reset cluster, which is pinned to
+              // right-3: this button is the conditional one, so it is the one
+              // that gets out of the way. The offset is that cluster's width.
+              <div className="absolute top-3 right-[5.25rem] z-30">
                 <Button
                   variant="outline"
-                  className="bg-card/80 shadow-lg backdrop-blur-sm"
+                  size="icon"
+                  aria-label="Show details panel"
+                  title="Show details panel"
+                  className="bg-card/80 h-8 w-8 rounded-md shadow-lg backdrop-blur-sm"
                   onClick={() => selection.setShowPanel(true)}
                 >
                   <PanelRightClose className="h-4 w-4" />
