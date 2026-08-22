@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest"
-import { layoutSignature } from "../graph-utils"
+import {
+  entityRenderKey,
+  layoutSignature,
+  relationRenderKey,
+} from "../graph-utils"
 
 const MEM = ["m3", "m1", "m2"]
 const ENT = ["e1", "e2"]
@@ -69,6 +73,55 @@ describe("layoutSignature", () => {
     // string and one of the two states would be invisible.
     expect(layoutSignature(100, 300, ["a"], ["b"])).not.toBe(
       layoutSignature(100, 300, ["a", "b"], []),
+    )
+  })
+})
+
+describe("entityRenderKey", () => {
+  const E = [
+    { id: "e1", entity_type: "tool" },
+    { id: "e2", entity_type: "person" },
+  ]
+
+  // The point of the key: a rebuild costs a sigma teardown and a fresh WebGL
+  // canvas, so two renders that would draw the same overlay must key the same.
+  it("keys the layer-off and fetch-in-flight states identically", () => {
+    const off = entityRenderKey(false, E)
+    const onButNothingYet = entityRenderKey(true, [])
+    expect(onButNothingYet).toBe(off)
+    expect(off).toBe("")
+  })
+
+  it("keys the arrived overlay differently", () => {
+    expect(entityRenderKey(true, E)).not.toBe(entityRenderKey(true, []))
+  })
+
+  it("ignores the entity array's identity, only its contents", () => {
+    expect(entityRenderKey(true, [...E])).toBe(entityRenderKey(true, E))
+  })
+
+  it("changes when an entity's type does, because the type is its colour", () => {
+    expect(entityRenderKey(true, [{ id: "e1", entity_type: "tool" }])).not.toBe(
+      entityRenderKey(true, [{ id: "e1", entity_type: "person" }]),
+    )
+  })
+
+  it("stays empty when the layer is off, whatever data is in hand", () => {
+    expect(entityRenderKey(false, E)).toBe("")
+  })
+})
+
+describe("relationRenderKey", () => {
+  const R = [{ source: "e1", target: "e2", type: "USES" }]
+
+  it("is empty while there is nothing to draw", () => {
+    expect(relationRenderKey(false, R)).toBe("")
+    expect(relationRenderKey(true, [])).toBe("")
+  })
+
+  it("changes with the relation type, which is its label", () => {
+    expect(relationRenderKey(true, R)).not.toBe(
+      relationRenderKey(true, [{ source: "e1", target: "e2", type: "REPLACES" }]),
     )
   })
 })

@@ -21,7 +21,12 @@ import {
 import { useGraphPrefs } from "@/features/graph/lib/graph-prefs"
 import FA2Layout from "graphology-layout-forceatlas2/worker"
 import { inferSettings } from "graphology-layout-forceatlas2"
-import { computeSize, layoutSignature } from "@/features/graph/lib/graph-utils"
+import {
+  computeSize,
+  entityRenderKey,
+  layoutSignature,
+  relationRenderKey,
+} from "@/features/graph/lib/graph-utils"
 import {
   computeHullGroups,
   drawHullForSigma,
@@ -209,6 +214,13 @@ export function Graph2DRenderer({
     return memoryEdgeColor(srcHex, tokensRef.current)
   }
 
+  // Empty whenever there is nothing to overlay -- layer off, or layer on with
+  // the fetch still in flight. Two renders that would draw the same entities
+  // produce the same key, so the effect below does not re-run and no canvas is
+  // torn down.
+  const entitiesKey = entityRenderKey(entityLayerEnabled, entities)
+  const relationsKey = relationRenderKey(entityLayerEnabled, entityRelations)
+
   const buildGraph = useCallback(() => {
     if (!containerRef.current) return
 
@@ -243,7 +255,7 @@ export function Graph2DRenderer({
       spacing,
       clusterTightness,
       filteredMemories.map((m) => m.id),
-      entityLayerEnabled ? entities.map((e) => e.id) : [],
+      entitiesKey === "" ? [] : entities.map((e) => e.id),
     )
     const layoutChanged = layoutSigRef.current !== layoutSig
     layoutSigRef.current = layoutSig
@@ -298,7 +310,7 @@ export function Graph2DRenderer({
       }
     }
 
-    if (entityLayerEnabled) {
+    if (entitiesKey !== "") {
       const visibleEntities = entities.filter((ent) =>
         ent.memory_ids.some((mid) => allNodeIds.has(mid)),
       )
@@ -732,9 +744,10 @@ export function Graph2DRenderer({
     colorMode,
     spacing,
     clusterTightness,
-    entityLayerEnabled,
-    entities,
-    entityRelations,
+    // The keys, not the arrays: `filteredEntities` is a fresh array on every
+    // data change, and its identity moving is not a reason to rebuild.
+    entitiesKey,
+    relationsKey,
     onNodeSelect,
     onEntitySelect,
     onReady,
