@@ -88,7 +88,6 @@ describe("query-key layer: every 'auto' domain mechanically carries the active p
   beforeEach(() => {
     useProjectStore.setState({
       activeProject: DEFAULT_PROJECT,
-      knownProjects: [DEFAULT_PROJECT],
     })
   })
 

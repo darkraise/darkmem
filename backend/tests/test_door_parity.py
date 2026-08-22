@@ -221,6 +221,23 @@ PARITY_TABLE: tuple[Surface, ...] = (
         mcp=("memory_tags",),
     ),
     Surface(
+        name="project.catalog",
+        status=REST_ONLY,
+        rest=(("GET", f"{V1}/projects"),),
+        mcp=(),
+        reason=(
+            "The scope picker's list, for a human choosing which project the "
+            "UI is looking at. An MCP caller never browses for its scope: it "
+            "passes `project` explicitly on every capture and recall tool, "
+            "because the agent is the thing that decides which project its "
+            "work belongs to. Its sibling tag.histogram above is two-door for "
+            "the opposite reason -- tags are a retrieval filter an agent picks "
+            "from, so it has to be able to see which ones exist. Revisit this "
+            "if an agent ever needs to recall across a corpus whose projects "
+            "it did not author."
+        ),
+    ),
+    Surface(
         name="repo.list",
         status=TWO_DOOR,
         rest=(("GET", f"{V1}/repos"),),

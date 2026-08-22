@@ -6,7 +6,25 @@ import { persist } from "zustand/middleware"
  *  unscoped capture lands. */
 export const DEFAULT_PROJECT = "default"
 
-const MAX_KNOWN_PROJECTS = 8
+/**
+ * "Every project" — the absence of a scope, not a project named something.
+ *
+ * `null` rather than a reserved string because `memories.project` is free
+ * text: any sentinel spelling could also be a real project name, and the two
+ * would then be indistinguishable at the request boundary. A null scope is
+ * simply not sent, and every consuming endpoint already reads an absent
+ * `project` as wide (`MemorySearchRequest.project` and `/graph/unified`'s
+ * query param are both `str | None`, and the graph service applies no memory
+ * filter at all when it is None).
+ */
+export const ALL_PROJECTS = null
+
+export type ProjectScope = string | typeof ALL_PROJECTS
+
+/** What the scope is called in the chrome. */
+export function projectLabel(project: ProjectScope): string {
+  return project ?? "all projects"
+}
 
 interface ProjectState {
   /**
@@ -15,32 +33,26 @@ interface ProjectState {
    * `src/lib/query-keys.ts`. This is NOT the session `applies_when`
    * context declaration; see `context-store.ts` for that, and never let
    * the two read from or write into each other.
+   *
+   * `null` means every project; see `ALL_PROJECTS`.
    */
-  activeProject: string
-  /**
-   * Most-recently-used projects, newest first, `activeProject` always
-   * included. No backend project-list endpoint exists yet (T1.65's own
-   * scope is frontend-only), so the switcher offers what this session has
-   * actually visited rather than a fabricated catalog.
-   */
-  knownProjects: string[]
-  setProject: (project: string) => void
+  activeProject: ProjectScope
+  setProject: (project: ProjectScope) => void
 }
 
 export const useProjectStore = create<ProjectState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       activeProject: DEFAULT_PROJECT,
-      knownProjects: [DEFAULT_PROJECT],
 
-      setProject: (project: string) => {
+      setProject: (project: ProjectScope) => {
+        if (project === ALL_PROJECTS) {
+          set({ activeProject: ALL_PROJECTS })
+          return
+        }
         const trimmed = project.trim()
         if (!trimmed) return
-        const known = [
-          trimmed,
-          ...get().knownProjects.filter((p) => p !== trimmed),
-        ].slice(0, MAX_KNOWN_PROJECTS)
-        set({ activeProject: trimmed, knownProjects: known })
+        set({ activeProject: trimmed })
       },
     }),
     { name: "darkmem-project" },

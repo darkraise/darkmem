@@ -1,13 +1,19 @@
 import { useState } from "react"
-import { Globe } from "lucide-react"
-import { Button } from "darkraise-ui/components/button"
-import { Input } from "darkraise-ui/components/input"
+import { Globe, Globe2, Check } from "lucide-react"
+import { Skeleton } from "darkraise-ui/components/skeleton"
 import {
   Popover,
   PopoverTrigger,
   PopoverContent,
 } from "darkraise-ui/components/popover"
-import { useProjectStore } from "@/stores/project-store"
+import { cn } from "darkraise-ui/lib"
+import { useProjects } from "@/hooks/api"
+import {
+  ALL_PROJECTS,
+  projectLabel,
+  useProjectStore,
+  type ProjectScope,
+} from "@/stores/project-store"
 
 /**
  * The global isolation scope (doc 13 §3). Lives in the app chrome, writes
@@ -18,19 +24,26 @@ import { useProjectStore } from "@/stores/project-store"
  *
  * A solid pill, deliberately styled distinctly from `ContextChip`'s dashed
  * one (Ruling 3): this control sets *scope*, never a session context hint.
+ *
+ * The list is exactly the corpus's own (`GET /api/v1/projects`) — a scope is
+ * offered only once a memory carries it. There is no free-text field: a
+ * project comes into existence by being captured into, so a name typed here
+ * would switch every project-scoped view to a scope guaranteed to be empty,
+ * which reads as a broken filter rather than as a new project.
  */
 export function ProjectSwitcher() {
   const activeProject = useProjectStore((s) => s.activeProject)
-  const knownProjects = useProjectStore((s) => s.knownProjects)
   const setProject = useProjectStore((s) => s.setProject)
-  const [draft, setDraft] = useState("")
+  const { data: projects, isLoading } = useProjects()
   const [open, setOpen] = useState(false)
 
-  const switchTo = (project: string) => {
+  const switchTo = (project: ProjectScope) => {
     setProject(project)
-    setDraft("")
     setOpen(false)
   }
+
+  const rows = projects ?? []
+  const isAll = activeProject === ALL_PROJECTS
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -41,13 +54,13 @@ export function ProjectSwitcher() {
           className="border-border bg-muted hover:bg-muted/70 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm transition-colors"
         >
           <Globe aria-hidden className="text-muted-foreground h-3.5 w-3.5" />
-          project: {activeProject}
+          project: {projectLabel(activeProject)}
         </button>
       </PopoverTrigger>
       <PopoverContent
         side="bottom"
         align="end"
-        className="bg-card border-border w-64 space-y-3 rounded-lg border p-3 shadow-xl"
+        className="bg-card border-border w-72 space-y-3 rounded-lg border p-3 shadow-xl"
       >
         <div className="space-y-1.5">
           <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
@@ -58,39 +71,74 @@ export function ProjectSwitcher() {
             it. This is not a context declaration.
           </p>
         </div>
-        <form
-          className="flex gap-1.5"
-          onSubmit={(e) => {
-            e.preventDefault()
-            if (draft.trim()) switchTo(draft)
-          }}
-        >
-          <Input
-            aria-label="New project name"
-            placeholder={activeProject}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            groupClassName="flex-1"
+
+        <div className="max-h-64 space-y-0.5 overflow-y-auto">
+          <ScopeRow
+            label="All projects"
+            hint="every scope at once"
+            icon={Globe2}
+            active={isAll}
+            onSelect={() => switchTo(ALL_PROJECTS)}
           />
-          <Button type="submit" disabled={!draft.trim()}>
-            Switch
-          </Button>
-        </form>
-        {knownProjects.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {knownProjects.map((project) => (
-              <Button
-                key={project}
-                type="button"
-                variant={project === activeProject ? "secondary" : "ghost"}
-                onClick={() => switchTo(project)}
-              >
-                {project}
-              </Button>
+
+          {isLoading && (
+            <div className="space-y-1 py-1">
+              <Skeleton className="h-8 w-full rounded-md" />
+              <Skeleton className="h-8 w-full rounded-md" />
+            </div>
+          )}
+
+          {!isLoading &&
+            rows.map((row) => (
+              <ScopeRow
+                key={row.name}
+                label={row.name}
+                hint={`${row.memory_count} ${row.memory_count === 1 ? "memory" : "memories"}`}
+                active={activeProject === row.name}
+                onSelect={() => switchTo(row.name)}
+              />
             ))}
-          </div>
-        )}
+
+          {!isLoading && rows.length === 0 && (
+            <p className="text-muted-foreground px-2 py-3 text-center text-xs">
+              No project holds a memory yet.
+            </p>
+          )}
+        </div>
       </PopoverContent>
     </Popover>
+  )
+}
+
+function ScopeRow({
+  label,
+  hint,
+  icon: Icon,
+  active,
+  onSelect,
+}: {
+  label: string
+  hint: string
+  icon?: typeof Globe2
+  active: boolean
+  onSelect: () => void
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onSelect}
+      className={cn(
+        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
+        active
+          ? "bg-primary/10 text-foreground"
+          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+      )}
+    >
+      {Icon && <Icon aria-hidden className="h-3.5 w-3.5 shrink-0" />}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span className="text-muted-foreground/70 shrink-0 text-xs">{hint}</span>
+      {active && <Check aria-hidden className="text-primary h-3.5 w-3.5 shrink-0" />}
+    </button>
   )
 }

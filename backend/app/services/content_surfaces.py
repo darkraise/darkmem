@@ -750,6 +750,12 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "POST /api/v1/setup/probe-models",
     "GET /api/v1/system/fs/list",
     "GET /api/v1/system/fs/roots",
+    # The project catalog (the scope switcher's list). Sibling of the tags
+    # histogram directly below: it aggregates over `memories` and serves a
+    # distinct `project` value plus a row count. No `content`, no summary, no
+    # memory id -- the scoping question this registry answers cannot arise on
+    # a door whose whole response is the set of scopes.
+    "GET /api/v1/projects",
     "GET /api/v1/tags",
 })
 

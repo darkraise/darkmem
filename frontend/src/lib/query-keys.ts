@@ -120,6 +120,11 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
     kind: "global",
     reason: "GET /graph/memory-context/{id} takes no project param; addressed by id",
   },
+  projects: {
+    kind: "global",
+    reason:
+      "GET /api/v1/projects IS the scope catalog the switcher reads — scoping it by the active project would leave the switcher able to offer only the scope you are already in",
+  },
   fullGraph: { kind: "global" },
   graphEntities: { kind: "global" },
   vectorProjection: { kind: "global" },

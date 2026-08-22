@@ -19,7 +19,6 @@ describe("useUnifiedGraph: switching the active project never serves the previou
     vi.clearAllMocks()
     useProjectStore.setState({
       activeProject: DEFAULT_PROJECT,
-      knownProjects: [DEFAULT_PROJECT],
     })
   })
 

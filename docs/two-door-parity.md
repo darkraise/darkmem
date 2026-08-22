@@ -10,7 +10,7 @@ aspirational. It is exhaustive over the Phase-1 surface — every REST route on
 `app.routes` and every tool in the live FastMCP registry appears in exactly one
 row.
 
-**65 surfaces: 20 two-door, 45 single-door with a stated reason (38 REST-only, 7 MCP-only), 0 divergent.**
+**66 surfaces: 20 two-door, 46 single-door with a stated reason (39 REST-only, 7 MCP-only), 0 divergent.**
 
 ## How to read a row, and what each status costs
 
@@ -62,6 +62,7 @@ the test rather than quietly joining the surface.
 | `memory.reason` | `POST /api/v1/memories/reason` | `memory_reason` | two-door | — |
 | `memory.duplicates` | `GET /api/v1/memories/{memory_id}/duplicates` | `memory_find_duplicates` | two-door | — |
 | `tag.histogram` | `GET /api/v1/tags` | `memory_tags` | two-door | — |
+| `project.catalog` | `GET /api/v1/projects` | — | REST single-door | The scope picker's list, for a human choosing which project the UI is looking at. An MCP caller never browses for its scope: it passes `project` explicitly on every capture and recall tool, because the agent is the thing that decides which project its work belongs to. Its sibling tag.histogram above is two-door for the opposite reason -- tags are a retrieval filter an agent picks from, so it has to be able to see which ones exist. Revisit this if an agent ever needs to recall across a corpus whose projects it did not author. |
 | `repo.list` | `GET /api/v1/repos` | `list_repos` | two-door | — |
 | `code.search` | `POST /api/v1/code/search` | `code_search` | two-door | Both doors fuse through CodeQueryService.search_code and publish the same rrf_score under the same score key (T1.42c). With no embedder configured the doors answer differently on purpose: the tool returns doc 12 section 3's typed degradation envelope, the route degrades to the keyword arm. |
 | `code.blast_radius` | `POST /api/v1/code/blast-radius` | `code_blast_radius` | two-door | Only the name-to-id resolution is the tool's; the recursive traversal is the service's (T1.42c). |
