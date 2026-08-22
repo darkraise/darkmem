@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
+import { DEMO } from "@/lib/demo-flag"
 
 export interface ProjectSummary {
   name: string
@@ -17,5 +18,10 @@ export function useProjects() {
   return useQuery<ProjectSummary[]>({
     queryKey: ["projects"],
     queryFn: () => apiFetch<ProjectSummary[]>("/projects"),
+    // Demo mode runs with no backend at all. This hook mounts in the app
+    // chrome, so on every route it was the one request the demo still made —
+    // and `handleUnauthorized` turns its 401 into a hard redirect to /login,
+    // which made the whole demo unreachable rather than merely unscoped.
+    enabled: !DEMO,
   })
 }
