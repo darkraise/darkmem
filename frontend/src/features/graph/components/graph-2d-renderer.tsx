@@ -243,19 +243,21 @@ export function Graph2DRenderer({
       spacing,
       clusterTightness,
       filteredMemories.map((m) => m.id),
+      entityLayerEnabled ? entities.map((e) => e.id) : [],
     )
     const layoutChanged = layoutSigRef.current !== layoutSig
     layoutSigRef.current = layoutSig
 
     const settled = positionsRef.current
-    // A node keeps where it was. Only something genuinely new is seeded, and
-    // only a changed layout is re-simulated.
+    // Every rebuild starts from where the nodes already are, changed layout or
+    // not. Only something never seen before is seeded. That is what makes a
+    // re-arrangement read as the graph settling rather than as it being thrown
+    // across the canvas and reassembling.
     const placeSeeded = (id: string) => ({
       x: (seededUnit(id, 0) - 0.5) * 10,
       y: (seededUnit(id, 1) - 0.5) * 10,
     })
-    const place = (id: string) =>
-      layoutChanged ? placeSeeded(id) : (settled.get(id) ?? placeSeeded(id))
+    const place = (id: string) => settled.get(id) ?? placeSeeded(id)
 
     const allNodeIds = new Set<string>()
     for (const m of filteredMemories) {
@@ -306,7 +308,7 @@ export function Graph2DRenderer({
       // anyway, so the overlay can appear without one.
       const placeEntity = (ent: { id: string; memory_ids: string[] }) => {
         const known = settled.get(`entity:${ent.id}`)
-        if (known && !layoutChanged) return known
+        if (known) return known
         const anchors = ent.memory_ids
           .filter((mid) => graph.hasNode(mid))
           .map((mid) => ({
@@ -690,9 +692,9 @@ export function Graph2DRenderer({
     sigma.on("afterRender", drawHulls)
     sigma.on("kill", () => hullCanvas.remove())
 
-    // No re-simulation for an overlay: the memories are already where the
-    // last run left them, and the entities were placed on their anchors.
-    // Running it anyway is what moved the whole canvas on every toggle.
+    // Nothing new to arrange -- this is the render that happens while a fetch
+    // is in flight, drawing the same nodes as the last one. Re-simulating here
+    // is what scattered the canvas the moment the switch was touched.
     if (!layoutChanged) {
       onReady()
       return
