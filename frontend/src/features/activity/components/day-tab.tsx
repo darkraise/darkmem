@@ -12,7 +12,7 @@ import { EmptyState } from "@/components/darkmem"
 import { useState } from "react"
 import { useDetailLevel, VerificationBadge } from "@/components/darkmem"
 import { shiftDay } from "@/demo/activity"
-import { SurfaceStateChip } from "./module-surface"
+import { ModuleSurface } from "./module-surface"
 import {
   useDayEvents,
   type DayRowData,
@@ -197,49 +197,48 @@ export function DayTab({
         events substrate — the same event-row component the per-object timeline
         renders.
       </p>
-      <div className="border-border flex flex-wrap items-center gap-2.5 border-b border-dashed pb-2.5">
-        <Button variant="ghost" asChild>
-          <Link to="/">
-            <ChevronLeft className="mr-1 size-3.5" />
-            Activity calendar
-          </Link>
-        </Button>
-        <span className="border-border bg-muted rounded-sm border px-2.5 py-1 font-mono text-sm">
-          /activity · day {day}
-        </span>
-        <SurfaceStateChip
-          state={
-            isLoading
-              ? "empty"
-              : events && events.length > 0
-                ? "populated"
-                : "empty"
-          }
-        />
-        <div className="ml-auto flex items-center gap-1.5">
-          <Button
-            variant="outline"
-            onClick={() => onDayChange(shiftDay(day, -1))}
-          >
-            <ChevronLeft className="mr-1 size-3.5" />
-            {shiftDay(day, -1)}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => onDayChange(shiftDay(day, 1))}
-          >
-            {shiftDay(day, 1)}
-            <ChevronRight className="ml-1 size-3.5" />
-          </Button>
-        </div>
-        <span className="text-muted-foreground flex basis-full items-center gap-1.5 text-sm">
+      <ModuleSurface
+        title="Day drill"
+        state={
+          isLoading
+            ? "empty"
+            : events && events.length > 0
+              ? "populated"
+              : "empty"
+        }
+        meta={`day ${day}`}
+        actions={
+          <>
+            <Button variant="ghost" asChild>
+              <Link to="/">
+                <ChevronLeft className="mr-1 size-3.5" />
+                Activity calendar
+              </Link>
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => onDayChange(shiftDay(day, -1))}
+            >
+              <ChevronLeft className="mr-1 size-3.5" />
+              {shiftDay(day, -1)}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => onDayChange(shiftDay(day, 1))}
+            >
+              {shiftDay(day, 1)}
+              <ChevronRight className="ml-1 size-3.5" />
+            </Button>
+          </>
+        }
+      >
+        <span className="text-muted-foreground flex items-center gap-1.5 text-sm">
           <Clock aria-hidden className="h-3.5 w-3.5 shrink-0" />
           <span>
             <b className="text-foreground font-semibold">Days are UTC</b> — this
             list is the UTC calendar date, not your local one.
           </span>
         </span>
-      </div>
       {isError ? (
         <EmptyState
           kind="failed"
@@ -267,6 +266,7 @@ export function DayTab({
           description={`No events rows fall in the UTC bucket for ${day} — nothing was created, verified, injected, or synced in this project on that date. The bucket boundary is the UTC calendar date, so a late-night local capture may land on the neighbouring day here.`}
         />
       )}
+      </ModuleSurface>
     </div>
   )
 }

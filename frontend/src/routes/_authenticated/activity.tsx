@@ -5,7 +5,17 @@ import {
   TabsList,
   TabsTrigger,
 } from "darkraise-ui/components/tabs"
-import { Activity } from "lucide-react"
+import {
+  Activity,
+  Bookmark,
+  Bug,
+  CalendarDays,
+  Gauge,
+  Moon,
+  Radio,
+  Rss,
+  Timer,
+} from "lucide-react"
 import { PageChrome } from "@/components/app-chrome"
 import { DAY_DRILL_DEFAULT } from "@/demo/data-exports"
 import { isValidDay } from "@/demo/activity"
@@ -59,6 +69,7 @@ function ActivityPage() {
         description="What the system is doing: pipeline runs, jobs, monitors, and digests."
       />
       <Tabs
+        border="accent"
         value={tab ?? "pipeline"}
         onValueChange={(value) => {
           if (TAB_VALUES.includes(value as ActivityTab)) {
@@ -68,17 +79,49 @@ function ActivityPage() {
           }
         }}
       >
-        <div className="overflow-x-auto">
-          <TabsList>
-            <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
-            <TabsTrigger value="feed">Feed</TabsTrigger>
-            <TabsTrigger value="triage">Triage</TabsTrigger>
-            <TabsTrigger value="jobs">Jobs</TabsTrigger>
-            <TabsTrigger value="monitors">Monitors</TabsTrigger>
-            <TabsTrigger value="dream">Dream digest</TabsTrigger>
-            <TabsTrigger value="day">Day drill</TabsTrigger>
-            <TabsTrigger value="checkpoints">Session checkpoints</TabsTrigger>
-          </TabsList>
+        {/* The same sticky strip Settings uses, and for the same reasons:
+            `sticky` on this wrapper with `overflow-x-auto` on the one inside,
+            because a scroll container clips its own overflow and a sticky
+            element inside one pins to that container rather than to the page.
+            The `before` band paints the shell's top padding, which sticky
+            leaves as a gap that scrolling rows would otherwise show through. */}
+        <div className="bg-background before:bg-background sticky top-0 z-20 pb-2 before:absolute before:inset-x-0 before:bottom-full before:h-8 before:content-['']">
+          <div className="overflow-x-auto">
+            <TabsList className="w-full">
+              <TabsTrigger className="flex-1 gap-2" value="pipeline">
+                <Gauge aria-hidden className="size-[var(--icon-size)]" />
+                Pipeline
+              </TabsTrigger>
+              <TabsTrigger className="flex-1 gap-2" value="feed">
+                <Rss aria-hidden className="size-[var(--icon-size)]" />
+                Feed
+              </TabsTrigger>
+              <TabsTrigger className="flex-1 gap-2" value="triage">
+                <Bug aria-hidden className="size-[var(--icon-size)]" />
+                Triage
+              </TabsTrigger>
+              <TabsTrigger className="flex-1 gap-2" value="jobs">
+                <Timer aria-hidden className="size-[var(--icon-size)]" />
+                Jobs
+              </TabsTrigger>
+              <TabsTrigger className="flex-1 gap-2" value="monitors">
+                <Radio aria-hidden className="size-[var(--icon-size)]" />
+                Monitors
+              </TabsTrigger>
+              <TabsTrigger className="flex-1 gap-2" value="dream">
+                <Moon aria-hidden className="size-[var(--icon-size)]" />
+                Dream digest
+              </TabsTrigger>
+              <TabsTrigger className="flex-1 gap-2" value="day">
+                <CalendarDays aria-hidden className="size-[var(--icon-size)]" />
+                Day drill
+              </TabsTrigger>
+              <TabsTrigger className="flex-1 gap-2" value="checkpoints">
+                <Bookmark aria-hidden className="size-[var(--icon-size)]" />
+                Checkpoints
+              </TabsTrigger>
+            </TabsList>
+          </div>
         </div>
         <TabsContent value="pipeline" className="pt-4">
           <PipelineTab />
