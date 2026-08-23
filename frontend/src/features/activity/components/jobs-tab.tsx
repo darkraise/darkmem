@@ -26,6 +26,8 @@ import { cn } from "darkraise-ui/lib"
 import { NumberField } from "@/components/darkmem"
 import { validateJobConfig } from "@/demo/activity"
 import type { DemoJob } from "@/features/activity/types"
+import { useUsageByJob, type JobUsageRow } from "@/hooks/api"
+import { UsageChip } from "@/features/usage/components/usage-chip"
 import { useJobBoard } from "../use-job-board"
 import { ModuleSurface } from "./module-surface"
 
@@ -227,12 +229,16 @@ function JobRow({
   onTrigger,
   onConfigure,
   onDismissBusy,
+  usage,
+  usagePending,
 }: {
   job: DemoJob
   busy: BusyOutcome | null
   onTrigger: (key: string) => Promise<boolean>
   onConfigure: (key: string) => void
   onDismissBusy: () => void
+  usage: JobUsageRow | undefined
+  usagePending: boolean
 }) {
   const status = jobStatus(job)
   const { icon: Icon, label, className } = STATUS_STYLES[status]
@@ -255,7 +261,15 @@ function JobRow({
           {Icon && <Icon aria-hidden className="h-3 w-3" />}
           {label}
         </Badge>
-        <span className="text-muted-foreground ml-auto font-mono text-sm whitespace-nowrap">
+        {/* Every run this job has made in the window, not the last one: a
+            job's cost is a rate, and one run's number invites reading a cheap
+            tick as a cheap job. The tooltip carries the run count. */}
+        <UsageChip
+          className="ml-auto"
+          pending={usagePending}
+          totals={usage}
+        />
+        <span className="text-muted-foreground font-mono text-sm whitespace-nowrap">
           {job.next_run_label}
         </span>
       </div>
@@ -352,6 +366,10 @@ export function JobsTab() {
   const [busy, setBusy] = useState<BusyOutcome | null>(null)
   const [configKey, setConfigKey] = useState<string | null>(null)
   const configJob = jobs.find((j) => j.key === configKey)
+  const jobUsage = useUsageByJob("30d")
+  const usageByJob = new Map(
+    (jobUsage.data?.jobs ?? []).map((j) => [j.job_key, j]),
+  )
 
   const running = jobs.filter((j) => j.running).length
   const failed = jobs.filter(
@@ -384,6 +402,8 @@ export function JobsTab() {
               key={job.key}
               job={job}
               busy={busy}
+              usage={usageByJob.get(job.key)}
+              usagePending={jobUsage.isLoading}
               onTrigger={async (key) => {
                 let result: Awaited<ReturnType<typeof trigger>>
                 try {

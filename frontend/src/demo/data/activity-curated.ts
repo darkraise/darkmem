@@ -18,6 +18,7 @@ import type {
 export const CURATED_PIPELINE_RUNS: DemoPipelineRun[] = [
   {
     id: "mem_7c4e19",
+    memory_id: null,
     content:
       '"DATABASE_URL is derived from the DB_* vars with percent-encoded credentials unless an explicit DATABASE_URL overrides it"',
     time_label: "claimed 12s ago",
@@ -29,6 +30,7 @@ export const CURATED_PIPELINE_RUNS: DemoPipelineRun[] = [
   },
   {
     id: "mem_2a9f04",
+    memory_id: null,
     content:
       '"cookie_secure is tri-state: unset means Secure only when environment=production; an explicit false allows login over plain-HTTP LAN"',
     time_label: "2026-07-23 18:41",
@@ -40,6 +42,7 @@ export const CURATED_PIPELINE_RUNS: DemoPipelineRun[] = [
   },
   {
     id: "mem_5b13d0",
+    memory_id: null,
     content:
       '"REPLACES targets are lowercased before the supersession detector compares them against memories.technologies"',
     time_label: "2026-07-24 09:03",
@@ -51,6 +54,7 @@ export const CURATED_PIPELINE_RUNS: DemoPipelineRun[] = [
   },
   {
     id: "mem_9e02f7",
+    memory_id: null,
     content:
       '"confidence defaults to 0.75 and feeds _apply_confidence_weighting once confidence_rank_gamma is raised above zero"',
     time_label: "2026-07-24 09:07",
@@ -62,6 +66,7 @@ export const CURATED_PIPELINE_RUNS: DemoPipelineRun[] = [
   },
   {
     id: "mem_e41a88",
+    memory_id: null,
     content:
       '"the two-tier entity-embedding cache checks the in-memory layer before the DB layer, falling back to embedding cache misses directly"',
     time_label: "2026-07-24 03:52",

@@ -70,6 +70,7 @@ function fromPipelineLog(log: PipelineLog): DemoPipelineRun {
 
   return {
     id: String(log.id),
+    memory_id: log.memory_id ?? null,
     content: log.memory_id ? `memory ${log.memory_id.slice(0, 8)}` : "(memory deleted)",
     time_label: relativeTime(log.timestamp),
     steps: [

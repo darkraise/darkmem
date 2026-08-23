@@ -29,6 +29,7 @@ import {
   useModelPrices,
   useSaveModelPrices,
   useUsageOverview,
+  useUsageSeries,
   useUsageSubject,
   useUsageTop,
   type UsageWindow,
@@ -140,6 +141,9 @@ export function UsagePage() {
     { subjectType: string; subjectId: string } | null
   >(null)
   const overview = useUsageOverview(window)
+  // Hourly buckets for a one-day window: a 24h span drawn in days is
+  // one column, which says nothing.
+  const series = useUsageSeries(window, window === "24h" ? "hour" : "day")
   const prices = useModelPrices()
   const savePrices = useSaveModelPrices()
 
@@ -198,7 +202,10 @@ export function UsagePage() {
               description="A failed read is not an empty one; this is not a claim that nothing was spent."
             />
           ) : (
-            <UsageOverview data={overview.data} />
+            <UsageOverview
+              data={overview.data}
+              series={series.data?.buckets ?? []}
+            />
           )}
         </TabsContent>
 

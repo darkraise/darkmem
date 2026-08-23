@@ -86,7 +86,7 @@ export function ModelPricesPanel({
               <TableRow>
                 <TableHead>Model</TableHead>
                 {FIELDS.map(([field, label]) => (
-                  <TableHead key={field} className="text-right">
+                  <TableHead key={field} className="w-32 text-right">
                     {label}
                   </TableHead>
                 ))}
@@ -104,22 +104,28 @@ export function ModelPricesPanel({
                     ) : null}
                   </TableCell>
                   {FIELDS.map(([field, label]) => (
-                    <TableCell key={field} className="text-right">
-                      <Input
-                        aria-label={`${row.model} ${label} rate`}
-                        className="w-28 text-right font-mono text-xs"
-                        inputMode="decimal"
-                        value={valueFor(row, field)}
-                        onChange={(e) =>
-                          setDraft((d) => ({
-                            ...d,
-                            [row.model]: {
-                              ...d[row.model],
-                              [field]: e.target.value,
-                            },
-                          }))
-                        }
-                      />
+                    <TableCell key={field}>
+                      {/* `text-right` on the cell does not move the input:
+                          it is a block box of fixed width, and text-align
+                          positions inline content only. Right-aligning the
+                          box itself is what puts it under its header. */}
+                      <div className="flex justify-end">
+                        <Input
+                          aria-label={`${row.model} ${label} rate`}
+                          className="w-28 text-right font-mono text-xs"
+                          inputMode="decimal"
+                          value={valueFor(row, field)}
+                          onChange={(e) =>
+                            setDraft((d) => ({
+                              ...d,
+                              [row.model]: {
+                                ...d[row.model],
+                                [field]: e.target.value,
+                              },
+                            }))
+                          }
+                        />
+                      </div>
                     </TableCell>
                   ))}
                 </TableRow>

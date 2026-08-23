@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest"
 
 import type { UsageOverview as UsageOverviewData } from "@/hooks/api"
 import { UsageOverview } from "../components/usage-overview"
-import { formatUsd } from "../format"
+import { costCell, formatUsd } from "../format"
 
 const BASE: UsageOverviewData = {
   window_start: "2026-07-24T00:00:00Z",
@@ -104,5 +104,37 @@ describe("formatUsd", () => {
     // as zero.
     expect(formatUsd(1_200)).toBe("$0.0012")
     expect(formatUsd(0)).toBe("$0.00")
+  })
+})
+
+
+describe("costCell", () => {
+  const row = {
+    cost_micros: 0,
+    calls: 3,
+    unmeasured_calls: 0,
+    unpriced_calls: 0,
+  }
+
+  it("never renders an all-unpriced group as free", () => {
+    // SUM(cost_micros) is 0 when every call in the group priced to NULL, so
+    // the arithmetic and "this model is free" are indistinguishable without
+    // this. Caught by looking at the rendered page, not by a test.
+    expect(costCell({ ...row, unpriced_calls: 3 })).toBe("not priced")
+  })
+
+  it("never renders an all-unmeasured group as free", () => {
+    expect(costCell({ ...row, unmeasured_calls: 3 })).toBe("not measured")
+  })
+
+  it("keeps the number for a mixed group, which is a real floor", () => {
+    expect(
+      costCell({ ...row, cost_micros: 2_000_000, unpriced_calls: 1 }),
+    ).toBe("$2.00")
+  })
+
+  it("reports a measured zero as zero", () => {
+    // The local embedders bill nothing and say so; that is not "unpriced".
+    expect(costCell(row)).toBe("$0.00")
   })
 })

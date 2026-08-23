@@ -19,3 +19,22 @@ export function formatTokens(count: number): string {
 export function formatRate(microsPerMtok: number): string {
   return `$${(microsPerMtok / 1_000_000).toFixed(2)}/Mtok`
 }
+
+/** What a breakdown row's cost cell should say.
+ *
+ * `SUM(cost_micros)` is 0 when every call in the group priced to NULL, so a
+ * model with no rate renders as free -- the exact confusion the unpriced
+ * count exists to prevent. A group that is *entirely* unmeasured or unpriced
+ * says so instead of showing a total it does not have; a mixed group keeps its
+ * number, which is a real floor, and carries the row's warning mark.
+ */
+export function costCell(row: {
+  cost_micros: number
+  calls: number
+  unmeasured_calls: number
+  unpriced_calls: number
+}): string {
+  if (row.calls > 0 && row.unmeasured_calls === row.calls) return "not measured"
+  if (row.calls > 0 && row.unpriced_calls === row.calls) return "not priced"
+  return formatUsd(row.cost_micros)
+}

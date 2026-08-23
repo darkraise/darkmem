@@ -94,6 +94,29 @@ export interface UsageTop {
   items: UsageTopRow[]
 }
 
+export interface SubjectTotalRow {
+  subject_id: string
+  cost_micros: number
+  calls: number
+  prompt_tokens: number
+  cached_tokens: number
+  completion_tokens: number
+  unmeasured_calls: number
+  unpriced_calls: number
+}
+
+export interface JobUsageRow {
+  job_key: string
+  runs: number
+  cost_micros: number
+  calls: number
+  prompt_tokens: number
+  cached_tokens: number
+  completion_tokens: number
+  unmeasured_calls: number
+  unpriced_calls: number
+}
+
 export interface ModelPriceRow {
   model: string
   input_micros_per_mtok: number
@@ -150,6 +173,43 @@ export function useUsageSubject(
     queryFn: () =>
       apiFetch(`/usage/by-subject/${subjectType}/${encodeURIComponent(subjectId!)}`),
     enabled: Boolean(subjectId),
+  })
+}
+
+/** `POST /usage/subject-totals` — totals for the rows a page is already
+ *  drawing, in one request rather than one per row.
+ *
+ *  Returns a Map keyed by subject id. A subject with no recorded calls is
+ *  **absent**, never a zero: the caller must say "no spend recorded" rather
+ *  than assert a measurement it does not have. */
+export function useSubjectTotals(subjectType: string, subjectIds: string[]) {
+  const ids = [...new Set(subjectIds)].sort()
+  return useQuery<Map<string, SubjectTotalRow>>({
+    queryKey: ["usage", "subjectTotals", subjectType, ids],
+    enabled: ids.length > 0,
+    queryFn: async () => {
+      const body = await apiFetch<{ totals: SubjectTotalRow[] }>(
+        "/usage/subject-totals",
+        {
+          method: "POST",
+          // The route caps the list; slicing here keeps a long page from
+          // getting a 422 instead of the rows it can have.
+          body: JSON.stringify({
+            subject_type: subjectType,
+            subject_ids: ids.slice(0, 200),
+          }),
+        },
+      )
+      return new Map(body.totals.map((t) => [t.subject_id, t]))
+    },
+  })
+}
+
+/** `GET /usage/by-job` — spend per job key over the window. */
+export function useUsageByJob(window: UsageWindow = "30d") {
+  return useQuery<{ jobs: JobUsageRow[] }>({
+    queryKey: ["usage", "byJob", window],
+    queryFn: () => apiFetch(`/usage/by-job?window=${window}`),
   })
 }
 

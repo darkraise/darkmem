@@ -70,6 +70,10 @@ export type PipelineTerminal = "running" | "completed" | "partial" | "failed"
 
 export interface DemoPipelineRun {
   id: string
+  /** The memory this run processed, or null once it has been deleted. The
+   *  usage subject for a Phase-2 call is this id, so a row cannot show what it
+   *  cost without carrying it. */
+  memory_id: string | null
   content: string
   time_label: string
   /** The five phases in fixed order: content embed → extract & classify →
