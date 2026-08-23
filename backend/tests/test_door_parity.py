@@ -140,6 +140,19 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="documents.write",
+        status=REST_ONLY,
+        rest=(
+            ("POST", f"{V1}/documents"),
+            ("DELETE", f"{V1}/documents/{{document_id}}"),
+        ),
+        mcp=(),
+        reason=(
+            "The MCP twins for filing and deleting a document land in the "
+            "same epic; this row stays REST-only until they ship."
+        ),
+    ),
+    Surface(
         name="checkpoint.save",
         status=TWO_DOOR,
         rest=(("POST", f"{V1}/checkpoints"),),

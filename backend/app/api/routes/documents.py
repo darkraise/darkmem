@@ -36,7 +36,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.auth import require_auth
 from app.api.deps import get_llm
 from app.database import get_session
+from app.services.block_pipeline import UnsupportedSource
 from app.services.document_connections import connections_for_document
+from app.services.document_door import DocumentTooLarge, put_document
+from app.services.document_ingest import UNCHANGED
 from app.services.document_summary import read_summary
 from app.services.faithfulness_gate import FaithfulnessGate, Outcome
 from app.services.grounded_qa import GroundedQaService
@@ -117,6 +120,27 @@ class QaResponse(BaseModel):
     judged: bool
     reason: str | None
     sentences: list[QaSentence] = Field(default_factory=list)
+    horizon: bool = True
+
+
+class DocumentPutRequest(BaseModel):
+    project: str = Field(min_length=1, max_length=200)
+    uri: str = Field(min_length=1, max_length=500)
+    content: str = Field(min_length=1)
+    title: str | None = None
+    source_type: str | None = None
+
+
+class DocumentPutResponse(BaseModel):
+    document_id: str
+    outcome: str
+    blocks_filed: int
+    blocks_embedded: int
+    # False only when `outcome == "unchanged"`: `file_document`'s
+    # content-hash gate short-circuits before any row write runs, so a
+    # re-filed identical document's explicit `title` (or any other field) is
+    # never applied, and nothing else on the wire says so (Task 1 review, M6).
+    title_applied: bool
     horizon: bool = True
 
 
@@ -249,3 +273,56 @@ async def grounded_qa(
         reason=gated.reason,
         sentences=sentences,
     )
+
+
+@router.post("", response_model=DocumentPutResponse, status_code=status.HTTP_201_CREATED)
+async def put_document_route(
+    body: DocumentPutRequest,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+    llm=Depends(get_llm),
+) -> DocumentPutResponse:
+    """File one document, then embed its blocks.
+
+    201 on every outcome including `unchanged`: the document exists at a
+    known id either way, and a caller distinguishing the cases reads
+    `outcome`.
+    """
+    try:
+        result = await put_document(
+            session, llm,
+            project=body.project, uri=body.uri, content=body.content,
+            title=body.title, source_type=body.source_type, source="api",
+        )
+    except DocumentTooLarge as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    except UnsupportedSource as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+
+    return DocumentPutResponse(
+        document_id=result.document_id,
+        outcome=result.outcome,
+        blocks_filed=result.blocks_filed,
+        blocks_embedded=result.blocks_embedded,
+        title_applied=result.outcome != UNCHANGED,
+    )
+
+
+@router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_document_route(
+    document_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    _user=Depends(require_auth),
+) -> None:
+    """Remove a document, its block subtree and its vectors.
+
+    `blocks.document_id` cascades and `block_embeddings__<slug>` cascades
+    from there, so one delete takes all three in every partition.
+    """
+    result = await session.execute(
+        text("DELETE FROM documents WHERE id = CAST(:id AS uuid)"),
+        {"id": str(document_id)},
+    )
+    if result.rowcount == 0:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "document not found")
+    await session.commit()

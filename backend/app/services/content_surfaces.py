@@ -604,6 +604,12 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "GET /api/v1/documents/{document_id}/summary",
     "GET /api/v1/documents/{document_id}/connections",
     "POST /api/v1/documents/qa",
+    # The write door: filing and deleting a document. Same classification as
+    # the reads above and for the same reason -- the `documents`/`blocks`
+    # tables cross these, never a `memories` row, so there is no memory
+    # content for an isolation probe to drive against.
+    "POST /api/v1/documents",
+    "DELETE /api/v1/documents/{document_id}",
     # Session checkpoints (T3.16). No memory content crosses: a checkpoint is
     # the agent's own note about its run, written by the agent and never
     # derived from a `memories` row — this surface reads that table and no

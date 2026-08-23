@@ -50,6 +50,8 @@ EXPECTED_STATUS = {
     ("GET", "/api/v1/documents/{document_id}/summary"): 200,
     ("GET", "/api/v1/documents/{document_id}/connections"): 200,
     ("POST", "/api/v1/documents/qa"): 200,
+    ("POST", "/api/v1/documents"): 201,
+    ("DELETE", "/api/v1/documents/{document_id}"): 204,
     ("POST", "/api/v1/api-keys"): 201,
     ("GET", "/api/v1/api-keys"): 200,
     # 204 and a revocation rather than a row removal: `events.api_key_id`
