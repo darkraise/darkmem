@@ -172,7 +172,10 @@ async def test_search_serves_the_heading_path_on_the_wire(client, auth_headers, 
     assert body["horizon"] is True
     deepest = next(item for item in body["items"] if item["text"].strip() == "Use the msi.")
     assert deepest["heading_path"] == ["Guide", "Setup", "Windows"]
+    assert deepest["path_truncated"] is False
     assert deepest["title"] == "Guide"
+    assert deepest["id_kind"] == "block"
+    assert deepest["layer"] == "document"
 
 
 @pytest.mark.asyncio

@@ -158,14 +158,17 @@ PARITY_TABLE: tuple[Surface, ...] = (
         rest=(("POST", f"{V1}/documents/search"),),
         mcp=(),
         reason=(
-            "Same firewall as documents.reads and documents.grounded_qa: EH1 "
-            "is a horizon lane behind its own eval gate (doc 16 §1's "
-            "firewall), and `block_query.py`'s own docstring records that a "
-            "separate tool is what lets G-F gate this channel without "
-            "touching the core ranking path. An MCP twin would hand every "
-            "agent a horizon retrieval capability before the gate that "
-            "governs it has run -- the reason is the channel's own, not a "
-            "schedule for when a twin appears."
+            "This route serves raw section hits over the same block channel "
+            "`block_query.py` keeps separate from the memory/vault "
+            "composition by construction (`BLOCK_ID_KIND`/`BLOCK_LAYER` stay "
+            "out of `layer_composition.ID_KINDS`), the same separation "
+            "`documents.reads` and `documents.grounded_qa` above already "
+            "carry. What G-F actually gates is the labelled, "
+            "faithfulness-checked answer at `POST /documents/qa`, not this "
+            "raw retrieval -- nothing here sits behind that gate, and no "
+            "design decision bars an MCP twin. It stays single-door only "
+            "because the MCP side of this capability has no tool registered "
+            "today; Task 5 records the owner's ruling that adds one."
         ),
     ),
     Surface(

@@ -165,11 +165,19 @@ class SectionHitModel(BaseModel):
     uri: str | None
     title: str | None
     heading_path: list[str]
+    path_truncated: bool
     type: str | None
     text: str
     order_index: int | None
     char_span: tuple[int, int] | None
     score: float
+    # The block channel's own addendum labels (`block_query.py`), carried
+    # through unchanged: this route is the first surface where an
+    # `id_kind="block"` row reaches a caller outside that channel, and
+    # `block_query.py`'s docstring is explicit that a row travelling alone
+    # into a surface like this one must still say what kind of thing it is.
+    id_kind: str
+    layer: str
 
 
 class DocumentSearchResponse(BaseModel):

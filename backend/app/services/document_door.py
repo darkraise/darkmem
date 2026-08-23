@@ -28,6 +28,7 @@ from app.services.block_embeddings import (
 )
 from app.services.block_fact_sources import withdraw_document
 from app.services.block_pipeline import ingest_document
+from app.services.block_query import BlockQueryService
 from app.services.document_ingest import UNCHANGED
 from app.services.embedder_registry import child_table
 from app.services.events import record_event
@@ -101,23 +102,25 @@ _DELETE_DOCUMENT = text("DELETE FROM documents WHERE id = CAST(:id AS uuid)")
 # with no depth bound loops forever against a cyclic parent chain -- rather
 # than de-duplicate rows (a plain UNION still can't dedupe here, since
 # `depth` makes every row of a cycle distinct), the WHERE clause below caps
-# the walk. `_heading_path`'s own visited-set guard is the second, separate
-# layer: it protects the *reconstruction* over these (possibly still
-# self-referencing, within the cap) rows from looping too.
+# the walk. The cap is fetched one hop past the guaranteed range on purpose
+# (`up.depth < :limit` lets depth reach exactly `_ANCESTOR_DEPTH_LIMIT`, one
+# more than the guaranteed 0..limit-1 range): that sentinel row is how
+# `_heading_path` tells "the tree ends here" from "the tree keeps going and
+# was cut off", instead of returning a truncated path that looks complete.
 _ANCESTOR_DEPTH_LIMIT = 64
 
 _ANCESTORS = text(
-    f"""
+    """
     WITH RECURSIVE up AS (
         SELECT id, parent_id, text, type, 0 AS depth
         FROM blocks WHERE id = ANY(CAST(:ids AS uuid[]))
         UNION ALL
         SELECT b.id, b.parent_id, b.text, b.type, up.depth + 1
         FROM blocks b JOIN up ON b.id = up.parent_id
-        WHERE up.depth < {_ANCESTOR_DEPTH_LIMIT}
+        WHERE up.depth < CAST(:limit AS integer)
     )
     SELECT CAST(id AS text) AS id, CAST(parent_id AS text) AS parent_id,
-           text, type
+           text, type, depth
     FROM up
     """
 )
@@ -132,11 +135,18 @@ _DOCUMENT_TITLES = text(
 class SectionHit:
     """A ranked block plus where it sits in its document's heading tree.
 
-    Mirrors `block_query.BlockHit` field-for-field and adds `title` (the
-    owning document's) and `heading_path` (outermost to innermost, headings
-    only — a hit under no heading gets `[]`). `block_query.py` cannot resolve
-    this itself: it is under a structural test keeping the block channel out
-    of the memory composition, so the ancestry walk lives here instead.
+    Carries every `block_query.BlockHit` field, `id_kind`/`layer` included:
+    `block_query.py`'s own docstring says those two labels ride the row
+    rather than the envelope specifically so a row that travels alone into
+    "a future document surface" — this one — still carries what kind of
+    thing it is. On top of that this adds `title` (the owning document's),
+    `heading_path` (outermost to innermost, headings only; a hit under no
+    heading gets `()`), and `path_truncated` (True when the ancestor walk
+    hit its depth cap before reaching a root — the returned path is real as
+    far as it goes, never invented, but may be missing outer levels).
+    `block_query.py` cannot resolve any of this itself: it is under a
+    structural test keeping the block channel out of the memory
+    composition, so the ancestry walk lives here instead.
     """
 
     block_id: str
@@ -144,25 +154,55 @@ class SectionHit:
     project: str
     uri: str | None
     title: str | None
-    heading_path: list[str]
+    heading_path: tuple[str, ...]
+    path_truncated: bool
     type: str | None
     text: str
     order_index: int | None
     char_span: tuple[int, int] | None
     score: float
+    id_kind: str
+    layer: str
 
 
-def _heading_path(block_id: str, by_id: dict) -> list[str]:
+def _heading_path(block_id: str, by_id: dict) -> tuple[tuple[str, ...], bool]:
+    """Walk `by_id` from `block_id` up to the document root.
+
+    Bounded by an explicit iteration count, not only by the `seen` cycle
+    guard below: a `for` loop over a fixed `range` terminates on its own
+    even if a future edit broke `seen` entirely, where a `while ... not in
+    seen` loop alone would not -- it would spin the event loop forever on
+    that regression, since nothing here awaits. (Proving the `seen` guard
+    load-bearing required an OS-level kill of exactly that hang; the `for`
+    bound means a future regression fails as a wrong return value instead.)
+
+    Returns `(path, truncated)`. `truncated` is True when the walk stopped
+    without reaching a genuine root: either the sentinel row one hop past
+    `_ANCESTOR_DEPTH_LIMIT` (see `_ANCESTORS`), or a repeated id (a cycle in
+    `blocks.parent_id`, which carries no constraint against one).
+    """
     path: list[str] = []
     seen: set[str] = set()
     node = by_id.get(block_id)
-    while node is not None and node["id"] not in seen:
+    truncated = False
+    for _ in range(_ANCESTOR_DEPTH_LIMIT + 2):
+        if node is None:
+            break
+        if node["id"] in seen or node["depth"] >= _ANCESTOR_DEPTH_LIMIT:
+            truncated = True
+            break
         seen.add(node["id"])
-        if node["type"] == "heading" and node["text"]:
-            path.append(node["text"])
+        if node["type"] == "heading":
+            path.append(node["text"] or "")
         parent_id = node["parent_id"]
         node = by_id.get(parent_id) if parent_id else None
-    return list(reversed(path))
+    else:
+        # Unreachable given the depth check above -- every chain hits either
+        # `node is None` or the sentinel's depth check within the bound --
+        # but a hard ceiling that could silently pass unnoticed is worse
+        # than one that announces it.
+        truncated = True
+    return tuple(reversed(path)), truncated
 
 
 async def search_sections(
@@ -181,8 +221,6 @@ async def search_sections(
     on its caller). It runs entirely inside whatever transaction the caller
     already holds.
     """
-    from app.services.block_query import BlockQueryService
-
     hits = await BlockQueryService(session, llm).search(
         query, project=project, limit=limit, document_id=document_id,
     )
@@ -190,9 +228,22 @@ async def search_sections(
         return []
 
     rows = (await session.execute(
-        _ANCESTORS, {"ids": [h.block_id for h in hits]}
+        _ANCESTORS, {"ids": [h.block_id for h in hits], "limit": _ANCESTOR_DEPTH_LIMIT}
     )).mappings().all()
-    by_id = {r["id"]: r for r in rows}
+    # A cycle in `blocks.parent_id` makes the recursive CTE revisit the same
+    # id at ever-increasing depths (UNION ALL does not dedupe, and `depth`
+    # makes every visit a distinct row), so a plain `{r["id"]: r for r in
+    # rows}` would keep whichever occurrence Postgres happens to emit last --
+    # an implementation-defined order this file must not depend on. Keeping
+    # the shallowest occurrence per id instead is deterministic and is also
+    # the only one that means anything: it is the nearest ancestor actually
+    # reachable from the hit, the same single answer a non-cyclic tree would
+    # have given regardless of row order.
+    by_id: dict = {}
+    for row in rows:
+        existing = by_id.get(row["id"])
+        if existing is None or row["depth"] < existing["depth"]:
+            by_id[row["id"]] = row
 
     titles = {
         r["id"]: r["title"]
@@ -201,22 +252,26 @@ async def search_sections(
         )).mappings().all()
     }
 
-    return [
-        SectionHit(
+    results = []
+    for h in hits:
+        heading_path, truncated = _heading_path(h.block_id, by_id)
+        results.append(SectionHit(
             block_id=h.block_id,
             document_id=h.document_id,
             project=h.project,
             uri=h.uri,
             title=titles.get(h.document_id),
-            heading_path=_heading_path(h.block_id, by_id),
+            heading_path=heading_path,
+            path_truncated=truncated,
             type=h.type,
             text=h.text,
             order_index=h.order_index,
             char_span=h.char_span,
             score=h.score,
-        )
-        for h in hits
-    ]
+            id_kind=h.id_kind,
+            layer=h.layer,
+        ))
+    return results
 
 
 def _unembedded_sql(fingerprint: str):

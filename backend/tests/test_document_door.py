@@ -424,6 +424,33 @@ NESTED = (
     "## Teardown\n\nDelete the folder.\n"
 )
 
+DOC_ALPHA = "# Alpha\n\n## Nested A\n\nBody A mentions installer.\n"
+DOC_BETA = "# Beta\n\n## Nested B\n\nBody B mentions installer.\n"
+
+EMPTY_HEADING_DOC = "# Guide\n\n## \n\nContent under a blank heading.\n"
+
+
+def test_heading_path_terminates_on_a_synthetic_cycle():
+    """Pure unit test of `_heading_path`, no DB round trip: a 2-node cycle
+    (a's parent is b, b's parent is a) fed straight into `by_id`.
+
+    This is the target used to prove the `for`-bounded walk is load-bearing
+    (see the docstring on `_heading_path` and this task's report): removing
+    the `seen` visited-set check but keeping the `for _ in range(...)` bound
+    still terminates -- fast, deterministically -- but returns a path far
+    longer than 2 elements, so the assertion below goes red on a plain
+    mismatch rather than requiring a wall-clock timeout to notice a hang.
+    """
+    from app.services.document_door import _heading_path
+
+    by_id = {
+        "a": {"id": "a", "parent_id": "b", "text": "A", "type": "heading", "depth": 0},
+        "b": {"id": "b", "parent_id": "a", "text": "B", "type": "heading", "depth": 1},
+    }
+    path, truncated = _heading_path("a", by_id)
+    assert path == ("B", "A")
+    assert truncated is True
+
 
 @pytest.mark.asyncio
 async def test_search_returns_the_heading_path_of_each_hit(session):
@@ -433,22 +460,29 @@ async def test_search_returns_the_heading_path_of_each_hit(session):
     hits = await search_sections(session, llm, query="installer", project="p")
     assert hits, "the stub embedder ranks everything equally; expect all blocks"
     deepest = next(h for h in hits if h.text.strip() == "Use the msi.")
-    assert deepest.heading_path == ["Guide", "Setup", "Windows"]
+    assert deepest.heading_path == ("Guide", "Setup", "Windows")
+    assert deepest.path_truncated is False
     assert deepest.uri == "docs/g.md"
+    assert deepest.id_kind == "block"
+    assert deepest.layer == "document"
 
 
 @pytest.mark.asyncio
-async def test_search_gives_a_top_level_hit_a_single_element_path(session):
+async def test_search_includes_a_headings_own_text_in_its_path(session):
+    """A heading block's own path includes itself, last -- `heading_path` is
+    "the path down to and including this block if it is itself a heading",
+    not merely its ancestors, so a two-level heading gets a two-element
+    path, not a one-element one."""
     llm = StubEmbedder()
     await put_document(session, llm, project="p", uri="docs/g2.md", content=NESTED)
 
     hits = await search_sections(session, llm, query="teardown", project="p")
     teardown_heading = next(h for h in hits if h.text.strip() == "Teardown")
-    assert teardown_heading.heading_path == ["Guide", "Teardown"]
+    assert teardown_heading.heading_path == ("Guide", "Teardown")
     assert teardown_heading.title == "Guide"
 
     delete_para = next(h for h in hits if h.text.strip() == "Delete the folder.")
-    assert delete_para.heading_path == ["Guide", "Teardown"]
+    assert delete_para.heading_path == ("Guide", "Teardown")
 
 
 @pytest.mark.asyncio
@@ -465,6 +499,31 @@ async def test_search_scopes_by_document_id(session):
 
 
 @pytest.mark.asyncio
+async def test_ancestors_do_not_mix_across_documents_with_different_trees(session):
+    """`test_search_scopes_by_document_id` above uses two documents with
+    byte-identical content, which would not notice ancestors bleeding
+    between documents (any mix-up would look the same as the correct
+    answer). Use two genuinely different heading trees instead, so a
+    cross-document mix-up in `_ANCESTORS`' `by_id` dict would show up as a
+    wrong path rather than passing by coincidence."""
+    llm = StubEmbedder()
+    alpha = await put_document(session, llm, project="p", uri="docs/alpha.md", content=DOC_ALPHA)
+    beta = await put_document(session, llm, project="p", uri="docs/beta.md", content=DOC_BETA)
+
+    hits = await search_sections(session, llm, query="installer", project="p")
+    hit_a = next(
+        h for h in hits
+        if h.document_id == alpha.document_id and h.text.strip() == "Body A mentions installer."
+    )
+    hit_b = next(
+        h for h in hits
+        if h.document_id == beta.document_id and h.text.strip() == "Body B mentions installer."
+    )
+    assert hit_a.heading_path == ("Alpha", "Nested A")
+    assert hit_b.heading_path == ("Beta", "Nested B")
+
+
+@pytest.mark.asyncio
 async def test_search_with_no_matching_blocks_returns_empty(session):
     llm = StubEmbedder()
     hits = await search_sections(session, llm, query="anything", project="empty-project")
@@ -472,32 +531,49 @@ async def test_search_with_no_matching_blocks_returns_empty(session):
 
 
 @pytest.mark.asyncio
+async def test_an_empty_heading_still_counts_as_a_level(session):
+    """`## ` with nothing after it still parses to a heading block, with
+    `text == ""`. Dropping it from the path (rather than appending the
+    empty string) would silently shallow every path under it -- the same
+    honesty failure `path_truncated` exists to flag for the depth cap, so
+    the level must be preserved even though its title is blank."""
+    llm = StubEmbedder()
+    await put_document(session, llm, project="p", uri="docs/blank.md", content=EMPTY_HEADING_DOC)
+
+    hits = await search_sections(session, llm, query="content", project="p")
+    para = next(h for h in hits if h.text.strip() == "Content under a blank heading.")
+    assert para.heading_path == ("Guide", "")
+
+
+@pytest.mark.asyncio
 async def test_a_parent_cycle_does_not_hang_the_walk(session):
     """`blocks.parent_id` has no constraint forbidding a cycle. Force one
-    directly in the database and confirm the walk terminates instead of
-    looping forever -- the whole reason `_heading_path` carries its own
-    visited-set guard rather than trusting the tree."""
+    directly in the database (Guide's parent becomes Setup, whose own
+    parent is already Guide) and assert on the *returned path*, not merely
+    that the call completes within some wall-clock budget: `_heading_path`
+    is now bounded by a `for` loop with a hard iteration ceiling, so it
+    cannot hang the event loop even if `seen` regressed, and a wrong
+    result -- not a timeout -- is what a regression would look like."""
     llm = StubEmbedder()
     doc = await put_document(session, llm, project="p", uri="docs/cycle.md", content=NESTED)
 
-    block_rows = (await session.execute(
+    heading_rows = (await session.execute(
         text(
-            "SELECT CAST(id AS text) AS id FROM blocks "
+            "SELECT CAST(id AS text) AS id, text FROM blocks "
             "WHERE document_id = CAST(:document_id AS uuid) AND type = 'heading' "
             "ORDER BY order_index"
         ),
         {"document_id": doc.document_id},
-    )).scalars().all()
-    assert len(block_rows) >= 2
-    first, second = block_rows[0], block_rows[1]
+    )).mappings().all()
+    guide = next(r["id"] for r in heading_rows if r["text"] == "Guide")
+    setup = next(r["id"] for r in heading_rows if r["text"] == "Setup")
     await session.execute(
         text("UPDATE blocks SET parent_id = CAST(:p AS uuid) WHERE id = CAST(:c AS uuid)"),
-        {"p": second, "c": first},
+        {"p": setup, "c": guide},
     )
 
-    import asyncio
+    hits = await search_sections(session, llm, query="installer", project="p")
 
-    hits = await asyncio.wait_for(
-        search_sections(session, llm, query="installer", project="p"), timeout=5,
-    )
-    assert hits
+    deepest = next(h for h in hits if h.text.strip() == "Use the msi.")
+    assert deepest.heading_path == ("Guide", "Setup", "Windows")
+    assert deepest.path_truncated is True
