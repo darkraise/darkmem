@@ -777,30 +777,37 @@ flaky.
 ## Jobs (`JobRegistry`)
 
 Periodic work is unified under `JobRegistry` and dispatched by cron
-expressions. **Twenty-two** registered jobs (`app/main.py`) in two groups
+expressions. **Twenty-three** registered jobs (`app/main.py`) in two groups
 (count corrected 2026-08-07: it had read "Sixteen" / "ten live ones" since
 T2.49 landed `relation_embedding_refresh` without updating it, and four
 concurrent lanes each found it stale independently — a stale count on a
 "here is the full list" sentence is exactly invariant 23's concern.
 `tests/test_code_deriver.py` now derives the roster from `app/main.py`'s
 AST, so the next job added cannot silently desynchronise this list).
-The sixteen live ones: `repo_sync`,
+The seventeen live ones: `repo_sync`,
 `buffer_flush`, `code_enrichment`, `code_reconcile`, `code_deriver`,
 `token_blocklist_cleanup`, `pipeline_failure_cleanup`,
 `graph_orphan_cleanup`, `tag_orphan_cleanup`,
 `expired_memory_cleanup`, `ppr_snapshot`,
 `relation_embedding_refresh`, `repo_entity_anchoring`,
-`repo_entity_merge`, `citation_reverify`, `job_run_cleanup`. Note
+`repo_entity_merge`, `citation_reverify`, `job_run_cleanup`,
+`llm_usage_cleanup`. Note
 `buffer_flush`, `code_reconcile`, `code_deriver`, `ppr_snapshot`,
 `relation_embedding_refresh`, `repo_entity_anchoring`,
-`repo_entity_merge`, `citation_reverify` and `job_run_cleanup` register via
+`repo_entity_merge`, `citation_reverify`, `job_run_cleanup` and
+`llm_usage_cleanup` register via
 the constants `BUFFER_FLUSH_JOB_KEY`, `CODE_RECONCILE_JOB_KEY`,
 `CODE_DERIVER_JOB_KEY`, `PPR_SNAPSHOT_JOB_KEY`,
 `RELATION_EMBEDDING_JOB_KEY`, `REPO_ENTITY_ANCHORING_JOB_KEY`,
-`REPO_ENTITY_MERGE_JOB_KEY`, `CITATION_REVERIFY_JOB_KEY` and
-`JOB_RUN_CLEANUP_JOB_KEY` rather
+`REPO_ENTITY_MERGE_JOB_KEY`, `CITATION_REVERIFY_JOB_KEY`,
+`JOB_RUN_CLEANUP_JOB_KEY` and `LLM_USAGE_CLEANUP_JOB_KEY` rather
 than string literals, so a grep for quoted keys undercounts the list —
 which is precisely how this sentence went stale for four landings.
+**`llm_usage_cleanup` prunes by age where `job_run_cleanup` beside it
+prunes by row count**, and the difference is deliberate: `llm_usage`
+exists to answer "what did the last N days cost", so a row ceiling would
+shorten that answer during exactly the busy period worth investigating.
+The accepted cost is that a burst inside the window is unbounded on disk.
 **`ppr_snapshot`, `relation_embedding_refresh`, `repo_entity_anchoring`,
 `repo_entity_merge`, `code_deriver` and `citation_reverify` are Tier C but
 are deliberately not dream-job family members** (T2.32, T2.49, T2.97,
