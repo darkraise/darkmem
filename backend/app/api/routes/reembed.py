@@ -24,6 +24,7 @@ from app.api.auth import require_auth
 from app.api.websocket import event_manager
 from app.utils.background import spawn
 from app.database import async_session_factory, get_session
+from app.services.usage_recorder import UsageSubject, subject_scope
 from app.services.reembed import (
     CachePruneFingerprintUnresolved,
     ReembedService,
@@ -157,32 +158,38 @@ async def _dispatch_single_category(
         method_name = method_name_map[category]
 
         async def _run():
-            from app.services.events import record_maintenance_run
-            try:
-                flags = await _get_flags()
-                async with async_session_factory() as bg_session:
-                    bg_svc = ReembedService(bg_session)
-                    method = getattr(bg_svc, method_name)
-                    result = await method(
-                        current_fingerprint=snapshot_fingerprint,
-                        llm=snapshot_llm,
-                        batch_id=batch_id,
-                        broadcast=event_manager.broadcast,
-                        flags=flags,
+            # Set inside the task, not around its creation: the request
+            # scope this was spawned from is long gone by the time the
+            # embeds run.
+            with subject_scope(UsageSubject(
+                "maintenance", f"reembed_{category}:{batch_id}", None,
+            )):
+                from app.services.events import record_maintenance_run
+                try:
+                    flags = await _get_flags()
+                    async with async_session_factory() as bg_session:
+                        bg_svc = ReembedService(bg_session)
+                        method = getattr(bg_svc, method_name)
+                        result = await method(
+                            current_fingerprint=snapshot_fingerprint,
+                            llm=snapshot_llm,
+                            batch_id=batch_id,
+                            broadcast=event_manager.broadcast,
+                            flags=flags,
+                        )
+                    await record_maintenance_run(
+                        async_session_factory,
+                        operation=f"reembed_{category}",
+                        outcome="ok" if not result.get("errors") else "error",
+                        detail=result,
                     )
-                await record_maintenance_run(
-                    async_session_factory,
-                    operation=f"reembed_{category}",
-                    outcome="ok" if not result.get("errors") else "error",
-                    detail=result,
-                )
-            except Exception:
-                logger.exception("Re-embed %s background task failed", category)
-                await record_maintenance_run(
-                    async_session_factory, operation=f"reembed_{category}", outcome="error",
-                )
-            finally:
-                reembed_locks.release(category)
+                except Exception:
+                    logger.exception("Re-embed %s background task failed", category)
+                    await record_maintenance_run(
+                        async_session_factory, operation=f"reembed_{category}", outcome="error",
+                    )
+                finally:
+                    reembed_locks.release(category)
 
         spawn(_run(), name="reembed-category")
     except Exception:
@@ -259,44 +266,47 @@ async def reembed_all(
         totals = await svc.count_missing(snapshot_fingerprint)
 
         async def _run_all():
-            from app.services.events import record_maintenance_run
-            try:
-                flags = await _get_flags()
-                async with async_session_factory() as bg_session:
-                    bg_svc = ReembedService(bg_session)
-                    sequence = [
-                        ("memories", bg_svc.reembed_memories),
-                        ("entities", bg_svc.reembed_entities),
-                        ("code_chunks", bg_svc.reembed_code_chunks),
-                    ]
-                    for category, method in sequence:
-                        try:
-                            result = await method(
-                                current_fingerprint=snapshot_fingerprint,
-                                llm=snapshot_llm,
-                                batch_id=batch_id,
-                                broadcast=event_manager.broadcast,
-                                flags=flags,
-                            )
-                            await record_maintenance_run(
-                                async_session_factory,
-                                operation=f"reembed_{category}",
-                                outcome="ok" if not result.get("errors") else "error",
-                                detail={**result, "batch_id": batch_id},
-                            )
-                        except Exception:
-                            logger.exception(
-                                "Re-embed %s failed under batch %s", category, batch_id,
-                            )
-                            await record_maintenance_run(
-                                async_session_factory,
-                                operation=f"reembed_{category}",
-                                outcome="error",
-                                detail={"batch_id": batch_id},
-                            )
-            finally:
-                for cat in ("memories", "entities", "code_chunks"):
-                    reembed_locks.release(cat)
+            with subject_scope(UsageSubject(
+                "maintenance", f"reembed_all:{batch_id}", None,
+            )):
+                from app.services.events import record_maintenance_run
+                try:
+                    flags = await _get_flags()
+                    async with async_session_factory() as bg_session:
+                        bg_svc = ReembedService(bg_session)
+                        sequence = [
+                            ("memories", bg_svc.reembed_memories),
+                            ("entities", bg_svc.reembed_entities),
+                            ("code_chunks", bg_svc.reembed_code_chunks),
+                        ]
+                        for category, method in sequence:
+                            try:
+                                result = await method(
+                                    current_fingerprint=snapshot_fingerprint,
+                                    llm=snapshot_llm,
+                                    batch_id=batch_id,
+                                    broadcast=event_manager.broadcast,
+                                    flags=flags,
+                                )
+                                await record_maintenance_run(
+                                    async_session_factory,
+                                    operation=f"reembed_{category}",
+                                    outcome="ok" if not result.get("errors") else "error",
+                                    detail={**result, "batch_id": batch_id},
+                                )
+                            except Exception:
+                                logger.exception(
+                                    "Re-embed %s failed under batch %s", category, batch_id,
+                                )
+                                await record_maintenance_run(
+                                    async_session_factory,
+                                    operation=f"reembed_{category}",
+                                    outcome="error",
+                                    detail={"batch_id": batch_id},
+                                )
+                finally:
+                    for cat in ("memories", "entities", "code_chunks"):
+                        reembed_locks.release(cat)
 
         spawn(_run_all(), name="reembed-all")
     except Exception:

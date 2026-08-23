@@ -23,6 +23,7 @@ class ClassificationService:
         enabled_areas: list[str],
         system_prompt: str,
         mode: str = "simple",
+        usage_subject=None,
     ) -> dict:
         llm_types = get_merged_llm_types(enabled_areas, mode=mode)
         valid_names = sorted(llm_types.keys())
@@ -63,6 +64,7 @@ class ClassificationService:
                 ],
                 response_format={"type": "json_object"},
                 seed=seed,
+                usage_subject=usage_subject,
             )
             result = json.loads(_strip_json_fences(response))
             classified_type = result.get("type", "fact")

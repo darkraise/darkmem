@@ -146,7 +146,7 @@ async def test_classifier_kind_local_extraction_request_omits_classification_fie
         captured_requests: list[str] = []
 
         async def fake_extract(content, *, system_prompt=None, relation_rescue=True,
-                                with_classification=False):
+                                with_classification=False, usage_subject=None):
             request = ExtractionService.build_extraction_request(
                 content, system_prompt=system_prompt,
                 with_classification=with_classification,

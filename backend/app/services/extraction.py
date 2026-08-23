@@ -84,6 +84,7 @@ class ExtractionService:
         *,
         with_classification: bool = False,
         return_meta: bool = False,
+        usage_subject=None,
     ) -> dict | tuple[dict, dict]:
         """Dispatch the extraction call and return the parsed raw dict.
 
@@ -101,6 +102,12 @@ class ExtractionService:
             seed=request.seed,
             raise_on_truncation=True,
             return_meta=return_meta,
+            usage_subject=usage_subject,
+            # The merged call is one request doing two purposes' work. Splitting
+            # its tokens across an extraction row and a classification row would
+            # be arithmetic presented as a measurement, so it stays one row that
+            # says what it carried.
+            usage_extra={"merged_classification": True} if with_classification else None,
         )
         response, meta = result if return_meta else (result, None)
         try:
@@ -119,10 +126,12 @@ class ExtractionService:
         *,
         relation_rescue: bool = True,
         with_classification: bool = False,
+        usage_subject=None,
     ) -> dict:
         try:
             raw = await self.extract_raw(
                 content, system_prompt, with_classification=with_classification,
+                usage_subject=usage_subject,
             )
             return clean_extraction(raw, content, relation_rescue=relation_rescue)
         except LLMTruncationError as e:

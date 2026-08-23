@@ -1,4 +1,4 @@
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.exceptions import RequestValidationError
@@ -19,6 +19,7 @@ from app.schemas.memory import MemoryBatchCreate, MemoryBulkDelete, MemoryBulkDe
 from app.schemas.reason import ReasonRequest, ReasonResponse
 from app.schemas.retrieval_trace import MemoryResultTrace
 from app.services.memory import MemoryService
+from app.services.usage_recorder import UsageSubject, subject_scope
 
 router = APIRouter(prefix="/api/v1/memories", tags=["memories"])
 
@@ -263,7 +264,11 @@ async def search_memories(
     _user=Depends(require_auth),
     service: MemoryService = Depends(get_memory_service),
 ):
-    memories = await service.search_memories(body)
+    # A search spends tokens twice over -- the query embed, and the reranker
+    # when it is on -- and neither has a memory to charge. The request is the
+    # unit of work, so it is what the cost is attributed to.
+    with subject_scope(UsageSubject("search", str(uuid4()), body.project)):
+        memories = await service.search_memories(body)
     return [_to_response(m) for m in memories]
 
 
@@ -274,7 +279,8 @@ async def search_memories_paginated(
     _user=Depends(_require_read),
     service: MemoryService = Depends(get_memory_service),
 ):
-    result = await service.search_memories_paginated(body, headers=request.headers)
+    with subject_scope(UsageSubject("search", str(uuid4()), body.project)):
+        result = await service.search_memories_paginated(body, headers=request.headers)
     if body.with_trace:
         items = []
         for row in result["items"]:

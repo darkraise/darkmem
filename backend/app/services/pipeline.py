@@ -4,7 +4,7 @@ import time
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import select
 
@@ -18,6 +18,7 @@ from app.services.llm import LLMOrchestrator
 from app.services.confidence import CONFIDENCE_DEFAULT, estimate_confidence
 from app.services.events import record_event
 from app.services.stated_expiry import derive_stated_expiry
+from app.services.usage_recorder import UsageSubject, subject_scope
 from app.services.fact_provenance import (
     reconcile_memory_sources,
     withdraw_memory_sources,
@@ -899,6 +900,18 @@ class ProcessingPipeline:
         return normalized
 
     async def _run_phases(self, entries: list[dict]) -> list[dict]:
+        # The unit of work the batched embeds belong to. Phase 1 embeds every
+        # content in one call and Phase 3 embeds a set of entity names deduped
+        # and cache-hit across the whole batch, so neither has a per-memory
+        # share to divide -- an undefined quantity, not merely an imprecise one.
+        # A mixed-project batch claims no project rather than the first entry's,
+        # which would be a wrong answer where None is a missing one.
+        batch_projects = {e.get("project") for e in entries}
+        batch_subject = UsageSubject(
+            "batch",
+            str(uuid4()),
+            batch_projects.pop() if len(batch_projects) == 1 else None,
+        )
         flags = await _get_feature_flags_cached(self.session_factory)
         pipeline_concurrency = flags.get("pipeline_concurrency", 5)
         embed_chunk_size = flags.get("embedding_batch_size", 20)
@@ -915,9 +928,10 @@ class ProcessingPipeline:
         contents = [e["content"] for e in entries]
         embedding_fingerprint: str | None = None
         try:
-            vectors, embedding_fingerprint = await self.llm.embed_batch_chunked(
-                contents, embed_chunk_size, embed_concurrency,
-            )
+            with subject_scope(batch_subject):
+                vectors, embedding_fingerprint = await self.llm.embed_batch_chunked(
+                    contents, embed_chunk_size, embed_concurrency,
+                )
             if len(vectors) != len(entries):
                 # Position is the only thing binding a vector to its content, so
                 # a short or long return leaves us unable to say which vector
@@ -964,13 +978,26 @@ class ProcessingPipeline:
         cls_prompt = prompt.get("classification")
         semaphore = asyncio.Semaphore(pipeline_concurrency)
 
-        async def run_extract(content: str, with_classification: bool = False):
+        def _entry_subject(entry: dict) -> UsageSubject:
+            """Passed explicitly, never scoped.
+
+            ``asyncio.gather`` wraps each coroutine in a Task and every Task
+            copies the *same* parent context, so a subject set around the gather
+            reaches all of them identically. Only a value carried into the call
+            can say which memory paid for it.
+            """
+            return UsageSubject(
+                "memory", str(entry.get("memory_id")), entry.get("project"),
+            )
+
+        async def run_extract(entry: dict, with_classification: bool = False):
             async with semaphore:
                 try:
                     return await self.extraction.extract(
-                        content, system_prompt=ext_prompt,
+                        entry["content"], system_prompt=ext_prompt,
                         relation_rescue=relation_rescue,
                         with_classification=with_classification,
+                        usage_subject=_entry_subject(entry),
                     )
                 except Exception as exc:
                     return exc
@@ -980,12 +1007,15 @@ class ProcessingPipeline:
         # short TTL so it isn't re-resolved with a DB round-trip on every batch.
         classifier = await self._resolve_classifier()
 
-        async def run_classify(content: str):
+        async def run_classify(entry: dict):
             async with semaphore:
                 try:
                     areas = flags.get("classification_areas", ["general"])
                     mode = flags.get("classification_mode", "simple")
-                    return await classifier.classify(content, areas, cls_prompt, mode=mode)
+                    return await classifier.classify(
+                        entry["content"], areas, cls_prompt, mode=mode,
+                        usage_subject=_entry_subject(entry),
+                    )
                 except Exception as exc:
                     logger.warning("Classification failed: %s", exc)
                     return None
@@ -1006,7 +1036,7 @@ class ProcessingPipeline:
         classifications: list[dict | None]
         if can_merge:
             extractions = await asyncio.gather(
-                *[run_extract(e["content"], with_classification=True) for e in entries]
+                *[run_extract(e, with_classification=True) for e in entries]
             )
             classifications = []
             for ext in extractions:
@@ -1022,8 +1052,8 @@ class ProcessingPipeline:
                     "flags": ext_flags if isinstance(ext_flags, list) else [],
                 })
         else:
-            extract_tasks = [run_extract(e["content"]) for e in entries]
-            classify_tasks = [run_classify(e["content"]) for e in entries]
+            extract_tasks = [run_extract(e) for e in entries]
+            classify_tasks = [run_classify(e) for e in entries]
             all_results = await asyncio.gather(*extract_tasks, *classify_tasks)
             extractions = all_results[: len(entries)]
             classifications = all_results[len(entries) :]
@@ -1056,10 +1086,11 @@ class ProcessingPipeline:
         entity_fingerprint = embedding_fingerprint
 
         if unique_names_list and entity_fingerprint:
-            name_to_embedding, entity_fingerprint = await self._embed_entity_names(
-                unique_names_list, entity_fingerprint, ttl_seconds,
-                embed_chunk_size, embed_concurrency,
-            )
+            with subject_scope(batch_subject):
+                name_to_embedding, entity_fingerprint = await self._embed_entity_names(
+                    unique_names_list, entity_fingerprint, ttl_seconds,
+                    embed_chunk_size, embed_concurrency,
+                )
         else:
             logger.info("Phase 3 skipped: no entities to embed")
 

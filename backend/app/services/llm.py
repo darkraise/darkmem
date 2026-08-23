@@ -406,6 +406,7 @@ class LLMOrchestrator:
         raise_on_truncation: bool = False,
         return_meta: bool = False,
         usage_subject=None,
+        usage_extra: dict | None = None,
     ) -> str | tuple[str, dict]:
         """Meter one chat call, then delegate.
 
@@ -414,10 +415,13 @@ class LLMOrchestrator:
         needs no second parse and no duplicated extraction. Callers keep the
         signature they had; ``usage_subject`` is the only addition, and it is
         how ingest attributes a call to its own memory rather than to whatever
-        ambient scope the batch is running under.
+        ambient scope the batch is running under. ``usage_extra`` is for a
+        caller that knows something about the call the orchestrator cannot see
+        — that this one request is carrying two purposes' work, for instance.
         """
         cfg = self.config[purpose]
         async with self._meter(purpose, cfg, usage_subject) as meter:
+            meter["extra_raw"] = usage_extra
             content, meta = await self._chat_completion_inner(
                 purpose,
                 messages,
@@ -725,6 +729,7 @@ class LLMOrchestrator:
         self,
         purpose: str,
         messages: list[dict],
+        usage_subject=None,
     ):
         """Yields token strings as they arrive from the LLM.
 
@@ -733,6 +738,10 @@ class LLMOrchestrator:
         reaches the end of the body. The vendor billed for the call either way,
         so the row is written on the way out whatever happened -- with
         ``tokens_measured=false`` when no usage frame arrived.
+
+        ``usage_subject`` is passed rather than read off the ambient scope for
+        the same reason: the ``finally`` below can run at ``aclose`` or at
+        collection, which is not guaranteed to be the context the caller set.
         """
         cfg = self.config[purpose]
         headers = self._headers(cfg)
@@ -812,8 +821,8 @@ class LLMOrchestrator:
             ok, error_kind = False, type(exc).__name__
             raise
         finally:
-            await self._report(purpose, cfg, None, final_payload, started,
-                               ok, error_kind, None)
+            await self._report(purpose, cfg, usage_subject, final_payload,
+                               started, ok, error_kind, None)
 
     async def close(self):
         await self._client.aclose()
