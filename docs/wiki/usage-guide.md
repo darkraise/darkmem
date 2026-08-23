@@ -199,6 +199,7 @@ claude mcp add --transport http darkmem http://localhost:8000/mcp
 | Memory | `memory_add`, `memory_batch_add`, `memory_search`, `memory_get`, `memory_update`, `memory_delete`, `memory_find_duplicates`, `memory_stats`, `memory_tags`, `memory_overview`, `memory_reason` |
 | Code | `code_search`, `code_symbol`, `code_file_symbols`, `code_blast_radius`, `code_dependencies`, `code_context`, `code_changes`, `code_communities`, `code_processes`, `code_rename`, `list_repos` |
 | Knowledge | `knowledge_search`, `fact_get`, `article_get` |
+| Documents | `document_put`, `document_search`, `document_outline`, `document_get`, `document_delete` |
 | Session | `checkpoint_save`, `checkpoint_latest` |
 | Research | `research_run` |
 
@@ -212,6 +213,14 @@ and its reasoning, not a running commentary.
 
 **Checkpoint long sessions.** `checkpoint_save` stores a summary and next
 steps; `checkpoint_latest` picks it back up in the next session.
+
+**Search a document before reading it off disk.** `document_put` files a
+markdown or plain-text file under its repo-relative path, and `document_search`
+answers with the matching sections rather than the whole file. The keyed verbs
+take that path instead of an id — `document_outline(project, uri)` gives the
+heading map and `document_get` pulls only the blocks you name — so an agent
+resuming work needs the filename it already knows and nothing it saw in a
+previous session.
 
 **Batch related captures.** `memory_batch_add` takes up to 100 in one
 round-trip, which is one buffered batch rather than 100.

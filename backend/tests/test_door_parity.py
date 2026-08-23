@@ -73,19 +73,34 @@ _DOCUMENTS_RULING = (
     "not clear G-F and no bar moved."
 )
 
-# The wire difference, recorded rather than left to be discovered: doc 12 §3
-# allows a tool and its route to differ in shape and nowhere else, and the
-# `memory.search` row below already settles this exact one.
-_DOCUMENTS_WIRE_SHAPE = (
-    "Stated wire asymmetry: the tools answer bare JSON where the routes "
-    "answer an envelope carrying `horizon` and the resolved `document_id`, "
-    "the same difference the memory.search row records. A section hit still "
-    "says what it is on both doors -- `id_kind` and `layer` ride the row, not "
-    "the envelope -- while an outline node and a block row carry no label of "
-    "their own, so they reach a tool caller unlabelled where the route's "
-    "envelope says `horizon`. Ranking, scope, and every refusal come from one "
-    "service call: both doors resolve a document through "
-    "`document_door.resolve_document_target`, by id or by (project, uri)."
+# The wire differences, recorded rather than left to be discovered, and one
+# per row because the two rows serve different shapes: doc 12 §3 allows a tool
+# and its route to differ in shape and nowhere else, and the `memory.search`
+# row below already settles the array-versus-envelope half.
+_RETRIEVAL_WIRE_SHAPE = (
+    "Stated wire asymmetry: the three tools answer bare JSON arrays where the "
+    "routes answer an envelope carrying `horizon` and, on the two keyed "
+    "reads, the resolved `document_id` -- the same difference the "
+    "memory.search row records. A section hit still says what it is on both "
+    "doors, since `id_kind` and `layer` ride the row rather than the "
+    "envelope, while an outline node and a block row carry no label of their "
+    "own and so reach a tool caller unlabelled. Ranking, scope and every "
+    "refusal come from one service call: all three verbs resolve their "
+    "`document_id` through `document_door.resolve_document_target`, which is "
+    "also what lets the two keyed reads take a (project, uri) pair instead."
+)
+
+_WRITE_WIRE_SHAPE = (
+    "Stated wire asymmetry, and it runs both ways here. The filing route "
+    "answers 201 with `horizon` on the body; the tool answers the same five "
+    "fields without it, `title_applied` included, because `PutResult` "
+    "produces them once for both doors. The delete route answers 204 with no "
+    "body while `document_delete` answers `{document_id, deleted}` -- the "
+    "tool carries more, a bare 204 being nothing for an agent to read. Both "
+    "doors call `put_document` and `delete_document`, so the provenance "
+    "withdrawal a delete owes has one implementation, and both resolve the "
+    "document to delete through `document_door.resolve_document_target`, by "
+    "id or by (project, uri)."
 )
 
 
@@ -148,11 +163,24 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
         mcp=(),
         reason=(
-            "The list, summary and connection reads have no MCP twin yet -- "
-            "scope, not gate. The 'single-door until G-F clears' clause that "
-            "stood here was superseded by the owner ruling of 2026-08-23; see "
-            "the documents.write and documents.retrieval rows. "
-            "documents.grounded_qa below is the row G-F still governs."
+            "Three browsing reads with a reason each, and the 'single-door "
+            "until G-F clears' clause that stood here is superseded by the "
+            "owner ruling of 2026-08-23 -- documents.grounded_qa below is the "
+            "row G-F still governs. The list is the list/detail split "
+            "knowledge.articles_list already carries: a page of documents in "
+            "filing order carrying titles, uris and block counts and no text "
+            "is a browsing surface, and the agent's list-shaped read of this "
+            "corpus is the ranked document_search on documents.retrieval "
+            "below. The summary is on-demand unbadged prose -- "
+            "`DocumentSummary` declares no verification field at all, the "
+            "response says `badged: false`, no caller in `backend/app` "
+            "generates one, and the route 404s until a human asks -- so a "
+            "tool would advertise a report that does not exist for every "
+            "document in the corpus. Connections serves L1 entity names read "
+            "off `entities.memory_ids`, which is what graph.candidate_read is "
+            "single-door for: doc 12 section 4 fixes L1 as never directly "
+            "served on a retrieval surface, and this is the same rows reached "
+            "by a different key."
         ),
     ),
     Surface(
@@ -178,7 +206,7 @@ PARITY_TABLE: tuple[Surface, ...] = (
             ("DELETE", f"{V1}/documents/by-uri"),
         ),
         mcp=("document_put", "document_delete"),
-        note=f"{_DOCUMENTS_RULING} {_DOCUMENTS_WIRE_SHAPE}",
+        note=f"{_DOCUMENTS_RULING} {_WRITE_WIRE_SHAPE}",
     ),
     Surface(
         name="documents.retrieval",
@@ -191,7 +219,7 @@ PARITY_TABLE: tuple[Surface, ...] = (
             ("GET", f"{V1}/documents/by-uri"),
         ),
         mcp=("document_search", "document_outline", "document_get"),
-        note=f"{_DOCUMENTS_RULING} {_DOCUMENTS_WIRE_SHAPE}",
+        note=f"{_DOCUMENTS_RULING} {_RETRIEVAL_WIRE_SHAPE}",
     ),
     Surface(
         name="checkpoint.save",
@@ -1284,6 +1312,11 @@ _NON_REASONS = (
     "coming soon",
     "no reason",
     "n/a",
+    # The two spellings that got a schedule past this list once (Task 5 fix
+    # round 1). A reason naming what a row does not have yet is the same
+    # sentence as "not yet built" with the tense moved.
+    "no mcp twin yet",
+    "twin yet",
 )
 
 _MIN_REASON_CHARS = 80

@@ -673,6 +673,15 @@ async def document_get(
     """
     from app.services.document_door import document_blocks, resolve_document_target
 
+    # Parsed here rather than handed to `CAST(:ids AS uuid[])`: the REST twin
+    # declares `list[UUID]` and answers 422 for a malformed one, and this door
+    # has to reach the same refusal by hand because a tool argument carries no
+    # validation of its own. An unparsed id reaches asyncpg as a DataError with
+    # a SQL traceback, which is the least readable thing this door can hand a
+    # caller that is a machine. `None` stays `None`; `[]` names zero blocks.
+    if block_ids is not None:
+        block_ids = [str(_validate_uuid(str(block_id))) for block_id in block_ids]
+
     async with async_session_factory() as session:
         target = await resolve_document_target(
             session, document_id=document_id, project=project, uri=uri,
@@ -707,8 +716,8 @@ async def document_delete(
 
     async with async_session_factory() as session:
         # Resolved outside the rollback guard: naming no document writes
-        # nothing, and rolling back for it would discard an in-process
-        # caller's own uncommitted work on what is only a caller error.
+        # nothing, so there is nothing for a rollback to undo and the raise
+        # leaves the session as it found it.
         target = await resolve_document_target(
             session, document_id=document_id, project=project, uri=uri,
         )

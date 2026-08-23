@@ -605,9 +605,14 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "GET /api/v1/documents/{document_id}/connections",
     "POST /api/v1/documents/qa",
     # The write door: filing and deleting a document. Same classification as
-    # the reads above and for the same reason -- the `documents`/`blocks`
-    # tables cross these, never a `memories` row, so there is no memory
-    # content for an isolation probe to drive against.
+    # the reads above and for the same reason -- never a `memories` row, so
+    # there is no memory content for an isolation probe to drive against.
+    # The tables these touch are wider than `documents`/`blocks`: a delete
+    # withdraws the document's `fact_sources` rows, expires a
+    # `knowledge_triples` row left with none, and journals `events`. None of
+    # that reads or returns memory content, which is the claim this bucket
+    # makes; it is named here so the next reader does not take the narrower
+    # sentence as the inventory.
     "POST /api/v1/documents",
     "DELETE /api/v1/documents/{document_id}",
     "DELETE /api/v1/documents/by-uri",

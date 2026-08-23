@@ -803,3 +803,137 @@ async def test_the_tools_degrade_rather_than_raise_with_no_embedder(session, mon
     search = json.loads(await mcp_server.document_search(query="x", project="p"))
     assert put["status"] == "unavailable" and put["document_id"] is None
     assert search["status"] == "unavailable" and search["results"] == []
+
+
+# ── fix round 1: the doors compared on every verb, not only search ────
+
+
+@pytest.mark.asyncio
+async def test_the_keyed_reads_serve_the_same_rows_on_both_doors(
+    client, auth_headers, both_doors
+):
+    """Whole-payload comparison, the shape `test_fact_detail_doors_serve_the
+    _same_row` established: comparing only that both doors answered leaves a
+    door free to drop or reshape a field. What legitimately differs is the
+    envelope, which the parity row records -- so the envelope is unwrapped
+    here rather than ignored."""
+    import json
+
+    from app.api.mcp import server as mcp_server
+
+    document_id = await _put_nested(client, auth_headers)
+
+    rest_outline = await client.get(
+        f"{V1}/documents/{document_id}/outline", headers=auth_headers,
+    )
+    tool_outline = json.loads(await mcp_server.document_outline(document_id=document_id))
+    assert rest_outline.json()["items"] == tool_outline
+    assert rest_outline.json()["document_id"] == document_id
+
+    rest_blocks = await client.get(f"{V1}/documents/{document_id}", headers=auth_headers)
+    tool_blocks = json.loads(await mcp_server.document_get(document_id=document_id))
+    assert rest_blocks.json()["blocks"] == tool_blocks
+
+    named = [row["block_id"] for row in tool_blocks[:2]]
+    rest_named = await client.get(
+        f"{V1}/documents/{document_id}",
+        params=[("block_ids", block_id) for block_id in named],
+        headers=auth_headers,
+    )
+    tool_named = json.loads(await mcp_server.document_get(
+        document_id=document_id, block_ids=named,
+    ))
+    assert rest_named.json()["blocks"] == tool_named == [
+        row for row in tool_blocks if row["block_id"] in named
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_write_verbs_agree_on_both_doors(client, auth_headers, both_doors):
+    """`title_applied`, `outcome` and both counts come from `PutResult`, so
+    the tool cannot report a filing the route would describe differently.
+    The delete side is compared on its effect: 204 carries no body."""
+    import json
+
+    from app.api.mcp import server as mcp_server
+
+    rest = await client.post(
+        f"{V1}/documents",
+        json={"project": "p", "uri": "docs/same.md", "content": NESTED},
+        headers=auth_headers,
+    )
+    tool = json.loads(await mcp_server.document_put(
+        project="p", uri="docs/same.md", content=NESTED,
+    ))
+
+    body = rest.json()
+    # The second filing is the unchanged path, so only the fields that do not
+    # describe *which* filing this was may be compared directly.
+    assert tool["document_id"] == body["document_id"]
+    assert tool["outcome"] == "unchanged" and body["outcome"] == "created"
+    assert set(tool) == set(body) - {"horizon"}
+
+    deleted = json.loads(await mcp_server.document_delete(project="p", uri="docs/same.md"))
+    assert deleted == {"document_id": body["document_id"], "deleted": True}
+    assert (await client.get(
+        f"{V1}/documents/{body['document_id']}", headers=auth_headers,
+    )).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_block_id_is_refused_by_name_not_by_a_database_error(
+    client, auth_headers, both_doors
+):
+    """The REST twin declares `list[UUID]` and answers 422; the tool has to
+    reach the same refusal by hand, because a tool argument carries no
+    validation of its own and asyncpg's uuid cast raises a SQL traceback at a
+    caller that is a machine."""
+    from app.api.mcp import server as mcp_server
+
+    document_id = await _put_nested(client, auth_headers)
+
+    rest = await client.get(
+        f"{V1}/documents/{document_id}",
+        params={"block_ids": "not-a-uuid"},
+        headers=auth_headers,
+    )
+    assert rest.status_code == 422
+
+    with pytest.raises(ValueError) as caught:
+        await mcp_server.document_get(document_id=document_id, block_ids=["not-a-uuid"])
+    assert "not-a-uuid" in str(caught.value)
+
+
+@pytest.mark.asyncio
+async def test_search_refuses_a_document_id_that_names_nothing(
+    client, auth_headers, both_doors
+):
+    """An empty page for a document that is gone is the one answer a caller
+    cannot tell from a genuine no-match, which is the distinction every other
+    verb keyed on a document already draws."""
+    import uuid
+
+    from app.api.mcp import server as mcp_server
+    from app.services.document_door import DocumentTargetUnresolved
+
+    document_id = await _put_nested(client, auth_headers)
+    missing = str(uuid.uuid4())
+
+    scoped = await client.post(
+        f"{V1}/documents/search",
+        json={"query": "installer", "project": "p", "document_id": document_id},
+        headers=auth_headers,
+    )
+    assert scoped.status_code == 200 and scoped.json()["items"]
+
+    for bad in (missing, "not-a-uuid"):
+        response = await client.post(
+            f"{V1}/documents/search",
+            json={"query": "installer", "project": "p", "document_id": bad},
+            headers=auth_headers,
+        )
+        assert response.status_code == 404, bad
+        with pytest.raises(DocumentTargetUnresolved):
+            await mcp_server.document_search(
+                query="installer", project="p", document_id=bad,
+            )

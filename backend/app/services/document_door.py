@@ -294,11 +294,25 @@ async def search_sections(
 ) -> list[SectionHit]:
     """Rank blocks, then resolve each hit's heading path.
 
+    `document_id` confines the search to one document and is resolved
+    through `resolve_document_target` before the probe, so an id naming no
+    document refuses instead of ranking an empty corpus. Passing it straight
+    into the SQL filter -- which is what this did until the two doors' verbs
+    were reconciled -- makes "that document is gone" and "nothing in it
+    matched" the same empty list, the distinction every other verb keyed on
+    a document already draws, and sends a malformed id to asyncpg's uuid
+    cast as an unhandled database error besides.
+
     Read-only: this function commits nothing and never opens a savepoint,
     unlike `put_document` (commits internally) or `delete_document` (relies
     on its caller). It runs entirely inside whatever transaction the caller
     already holds.
     """
+    if document_id is not None:
+        document_id = await resolve_document_target(
+            session, document_id=document_id,
+        )
+
     hits = await BlockQueryService(session, llm).search(
         query, project=project, limit=limit, document_id=document_id,
     )

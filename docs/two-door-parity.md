@@ -49,10 +49,10 @@ the test rather than quietly joining the surface.
 | `distribution.config` | `GET /api/v1/distribution`<br>`PUT /api/v1/distribution/policy` | — | REST single-door | Configures what agents are *told*, and the curb stops push entirely. Exposing 'stop telling agents things' to an agent inverts the control it exists to give a human, so this is single-door on purpose rather than by omission. |
 | `config.auto_research` | `GET /api/v1/config/auto-research`<br>`PUT /api/v1/config/auto-research` | — | REST single-door | Arming the research loop is an operator act, and the loop's own door is an MCP tool — so an MCP twin here would let the caller that runs the loop also switch it on, which is the control this row exists to keep with the human. Same shape as the distribution config above and for the same reason. |
 | `config.research_runs` | `GET /api/v1/config/auto-research/runs`<br>`POST /api/v1/config/auto-research/runs/{event_id}/rerun` | — | REST single-door | The operator's view of what the loop has already filed, and a re-derivation of one run's evidence. Single-door for the sibling reason to the config rows above: the MCP caller is the one that runs the loop, and handing it the surface that inspects and re-derives its own past runs is the review step folded back into the reviewed. Re-derivation also files nothing and gathers nothing, so doc 09 §6's gatherer argument -- which is what keeps `research_run` itself off REST -- does not reach it. |
-| `documents.reads` | `GET /api/v1/documents`<br>`GET /api/v1/documents/{document_id}/summary`<br>`GET /api/v1/documents/{document_id}/connections` | — | REST single-door | The list, summary and connection reads have no MCP twin yet -- scope, not gate. The 'single-door until G-F clears' clause that stood here was superseded by the owner ruling of 2026-08-23; see the documents.write and documents.retrieval rows. documents.grounded_qa below is the row G-F still governs. |
+| `documents.reads` | `GET /api/v1/documents`<br>`GET /api/v1/documents/{document_id}/summary`<br>`GET /api/v1/documents/{document_id}/connections` | — | REST single-door | Three browsing reads with a reason each, and the 'single-door until G-F clears' clause that stood here is superseded by the owner ruling of 2026-08-23 -- documents.grounded_qa below is the row G-F still governs. The list is the list/detail split knowledge.articles_list already carries: a page of documents in filing order carrying titles, uris and block counts and no text is a browsing surface, and the agent's list-shaped read of this corpus is the ranked document_search on documents.retrieval below. The summary is on-demand unbadged prose -- `DocumentSummary` declares no verification field at all, the response says `badged: false`, no caller in `backend/app` generates one, and the route 404s until a human asks -- so a tool would advertise a report that does not exist for every document in the corpus. Connections serves L1 entity names read off `entities.memory_ids`, which is what graph.candidate_read is single-door for: doc 12 section 4 fixes L1 as never directly served on a retrieval surface, and this is the same rows reached by a different key. |
 | `documents.grounded_qa` | `POST /api/v1/documents/qa` | — | REST single-door | Same firewall as the reads above, plus a sharper reason of its own: the answer is served, labelled or withheld by the faithfulness gate, and an agent twin would be a second consumer of a judge role that has no qualification record yet. Every answer is withheld today; publishing that to agents as a tool would advertise a capability the gate does not license. |
-| `documents.write` | `POST /api/v1/documents`<br>`DELETE /api/v1/documents/{document_id}`<br>`DELETE /api/v1/documents/by-uri` | `document_put`<br>`document_delete` | two-door | Owner ruling 2026-08-23. G-F gates the faithfulness judge, which governs documents.grounded_qa -- an answer that is generated, labelled and served. These verbs generate nothing and label nothing: they file a document and return its own text with a cosine score, as code.search returns source. The doc 16 firewall is against block rows reaching the verified vault unlifted, and tests/test_block_retrieval.py bars that structurally. This does not clear G-F and no bar moved. Stated wire asymmetry: the tools answer bare JSON where the routes answer an envelope carrying `horizon` and the resolved `document_id`, the same difference the memory.search row records. A section hit still says what it is on both doors -- `id_kind` and `layer` ride the row, not the envelope -- while an outline node and a block row carry no label of their own, so they reach a tool caller unlabelled where the route's envelope says `horizon`. Ranking, scope, and every refusal come from one service call: both doors resolve a document through `document_door.resolve_document_target`, by id or by (project, uri). |
-| `documents.retrieval` | `POST /api/v1/documents/search`<br>`GET /api/v1/documents/{document_id}/outline`<br>`GET /api/v1/documents/{document_id}`<br>`GET /api/v1/documents/by-uri/outline`<br>`GET /api/v1/documents/by-uri` | `document_search`<br>`document_outline`<br>`document_get` | two-door | Owner ruling 2026-08-23. G-F gates the faithfulness judge, which governs documents.grounded_qa -- an answer that is generated, labelled and served. These verbs generate nothing and label nothing: they file a document and return its own text with a cosine score, as code.search returns source. The doc 16 firewall is against block rows reaching the verified vault unlifted, and tests/test_block_retrieval.py bars that structurally. This does not clear G-F and no bar moved. Stated wire asymmetry: the tools answer bare JSON where the routes answer an envelope carrying `horizon` and the resolved `document_id`, the same difference the memory.search row records. A section hit still says what it is on both doors -- `id_kind` and `layer` ride the row, not the envelope -- while an outline node and a block row carry no label of their own, so they reach a tool caller unlabelled where the route's envelope says `horizon`. Ranking, scope, and every refusal come from one service call: both doors resolve a document through `document_door.resolve_document_target`, by id or by (project, uri). |
+| `documents.write` | `POST /api/v1/documents`<br>`DELETE /api/v1/documents/{document_id}`<br>`DELETE /api/v1/documents/by-uri` | `document_put`<br>`document_delete` | two-door | Owner ruling 2026-08-23. G-F gates the faithfulness judge, which governs documents.grounded_qa -- an answer that is generated, labelled and served. These verbs generate nothing and label nothing: they file a document and return its own text with a cosine score, as code.search returns source. The doc 16 firewall is against block rows reaching the verified vault unlifted, and tests/test_block_retrieval.py bars that structurally. This does not clear G-F and no bar moved. Stated wire asymmetry, and it runs both ways here. The filing route answers 201 with `horizon` on the body; the tool answers the same five fields without it, `title_applied` included, because `PutResult` produces them once for both doors. The delete route answers 204 with no body while `document_delete` answers `{document_id, deleted}` -- the tool carries more, a bare 204 being nothing for an agent to read. Both doors call `put_document` and `delete_document`, so the provenance withdrawal a delete owes has one implementation, and both resolve the document to delete through `document_door.resolve_document_target`, by id or by (project, uri). |
+| `documents.retrieval` | `POST /api/v1/documents/search`<br>`GET /api/v1/documents/{document_id}/outline`<br>`GET /api/v1/documents/{document_id}`<br>`GET /api/v1/documents/by-uri/outline`<br>`GET /api/v1/documents/by-uri` | `document_search`<br>`document_outline`<br>`document_get` | two-door | Owner ruling 2026-08-23. G-F gates the faithfulness judge, which governs documents.grounded_qa -- an answer that is generated, labelled and served. These verbs generate nothing and label nothing: they file a document and return its own text with a cosine score, as code.search returns source. The doc 16 firewall is against block rows reaching the verified vault unlifted, and tests/test_block_retrieval.py bars that structurally. This does not clear G-F and no bar moved. Stated wire asymmetry: the three tools answer bare JSON arrays where the routes answer an envelope carrying `horizon` and, on the two keyed reads, the resolved `document_id` -- the same difference the memory.search row records. A section hit still says what it is on both doors, since `id_kind` and `layer` ride the row rather than the envelope, while an outline node and a block row carry no label of their own and so reach a tool caller unlabelled. Ranking, scope and every refusal come from one service call: all three verbs resolve their `document_id` through `document_door.resolve_document_target`, which is also what lets the two keyed reads take a (project, uri) pair instead. |
 | `checkpoint.save` | `POST /api/v1/checkpoints` | `checkpoint_save` | two-door | — |
 | `checkpoint.latest` | `GET /api/v1/checkpoints/latest` | `checkpoint_latest` | two-door | — |
 | `memory.capture` | `POST /api/v1/memories` | `memory_add` | two-door | — |
@@ -163,8 +163,9 @@ rather than an opportunistic edit.
 
 The direction invariant 17 most fears — a capability shipped on REST with the
 MCP twin "planned" — did not appear. Every REST-single-door row above is
-single-door for a trust, curation, operator-power or rendering reason, not
-because the tool has not been written yet. The asymmetries that do exist run
+single-door for a trust, curation, operator-power, rendering or eval-gate
+reason, not because the tool has not been written yet. (The eval-gate kind is
+the fourth one below, and it arrived after this audit was written.) The asymmetries that do exist run
 the other way: six code tools ahead of their routes.
 
 **The owner's ruling of 2026-08-23 flipped the two document rows to
@@ -175,10 +176,11 @@ away, and the write row said exactly that in place of a reason. The ruling
 settles that nothing was keeping them apart — G-F gates the faithfulness judge,
 which governs `POST /documents/qa`, and these verbs neither generate nor label.
 Both rows are two-door as of this edit, and the ruling clears no gate.
-`documents.reads` stays REST-only on a narrower and more honest reason: those
-three verbs have no MCP twin in this epic's scope. That is the nearest thing on
-this table to a schedule, and it is recorded as one rather than dressed as a
-principle.
+`documents.reads` stays REST-only, and its reason was rewritten in the same
+change from a schedule ("no MCP twin yet") to the three surfaces' own
+properties: a list/detail split, an unbadged on-demand report nothing
+generates, and an L1 entity read doc 12 §4 keeps off retrieval surfaces. The
+two spellings that got the schedule past `_NON_REASONS` were added to it.
 
 **T2.72 (2026-08-03) found the one instance where it nearly did, and closed
 it.** `GET /api/v1/knowledge/facts/{fact_id}` shipped with T2.36a filed
@@ -241,8 +243,10 @@ document from both doors, and the composed read compares the whole document
 Doc 12 §1 names two sanctioned kinds: the **confirmed-power writes** (ratify,
 review-resolve — target-new, not on the Phase-1 surface yet) and the
 **human-observability reads** (the review queue, the events stream). The audit
-finds the shipped surface uses three, and the third is not new — it is the same
-reasoning applied to a different noun:
+finds the shipped surface uses four. The third is not new — it is the same
+reasoning applied to a different noun — and the fourth arrived with the EH1
+documents surface, which is why this section says four where it said three
+until 2026-08-23:
 
 1. **Trust boundary.** `/mcp` is unauthenticated on the LAN behind only the Host
    allowlist (invariant 20), so auth, setup, config, filesystem browse, chat
@@ -257,6 +261,15 @@ reasoning applied to a different noun:
    trigger and job config all spend the operator's provider budget or churn the
    corpus. This is the trust boundary argument applied to money and durability
    rather than to secrets, and it is why these are called out separately here.
+4. **An answer an eval gate governs.** `documents.grounded_qa` alone. Its
+   answer is generated, labelled or withheld by the faithfulness gate, whose
+   judge role has no qualification record, so every answer is withheld today
+   and an agent tool would advertise a capability the gate does not license.
+   It is not the trust boundary — the power is not reserved for a human, it is
+   reserved until a measurement clears. The distinction matters because the
+   owner's ruling of 2026-08-23 turned on it: the sibling document rows
+   generate nothing and label nothing, so this kind never reached them, and
+   both are two-door.
 
 The mirrored kind — **agent-shaped projections** of rows the REST door serves
 whole — covers the six MCP-single-door code tools. It is the kind doc 12 §3

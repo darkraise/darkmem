@@ -477,11 +477,18 @@ async def search_documents_route(
     one arm (`block_query.py`'s own rule), so a failure raises rather than
     degrading to `[]`. Read-only: writes nothing and commits nothing, same
     as `search_sections` itself.
+
+    404 when `document_id` names no document, through the same resolver the
+    keyed verbs use: an empty page for a document that is gone is the one
+    answer a caller cannot tell from a genuine no-match.
     """
-    hits = await search_sections(
-        session, llm, query=body.query, project=body.project,
-        limit=body.limit, document_id=body.document_id,
-    )
+    try:
+        hits = await search_sections(
+            session, llm, query=body.query, project=body.project,
+            limit=body.limit, document_id=body.document_id,
+        )
+    except DocumentTargetUnresolved as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     return DocumentSearchResponse(
         items=[SectionHitModel(**vars(h)) for h in hits]
     )
