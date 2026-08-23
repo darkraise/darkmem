@@ -1004,7 +1004,26 @@ git commit -m "feat(documents): outline and block fetch"
 
 ---
 
-### Task 5: The MCP tools
+### Task 5: The MCP tools and `?uri=` resolution
+
+**Plan defect being repaired here.** The spec says every route taking a
+`{document_id}` also accepts `?uri=` resolution against the same project,
+"since a caller that pushed by path has a path and not an id". That clause sits
+in the spec's read-door prose and never reached any task's file list, so Task 4
+correctly matched its sibling routes and left it out. It belongs in this task
+rather than a fix round on Task 4, for a reason that is not convenience: the
+MCP tools are the surface where path-not-id is the normal case — an agent
+resuming work knows `docs/plans/x.md`, not a UUID it saw in a previous
+session's response — so both doors should reach one resolver rather than REST
+growing its own.
+
+Add `resolve_document_id(session, *, project, uri) -> str | None` to
+`document_door.py`, and let every `{document_id}` verb on both doors accept
+either an id or a `(project, uri)` pair. A request naming neither, or naming a
+uri that resolves to nothing, is a 404 on REST and an error on the tool — never
+a silent empty result.
+
+
 
 **Files:**
 - Modify: `backend/app/api/mcp/server.py`
