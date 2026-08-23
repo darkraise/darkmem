@@ -94,11 +94,11 @@ async def test_unchanged_repush_embeds_blocks_that_lack_a_vector(session):
     first = await put_document(
         session, llm, project="p", uri="docs/a.md", content=DOC,
     )
-    await session.execute(
-        __import__("sqlalchemy").text(
-            f"DELETE FROM block_embeddings__{FINGERPRINT.replace('-', '_')}"
-        )
-    )
+    from sqlalchemy import text
+    from app.services.block_embeddings import PARENT_TABLE
+    from app.services.embedder_registry import child_table
+
+    await session.execute(text(f"DELETE FROM {child_table(PARENT_TABLE, FINGERPRINT)}"))
     repair = await put_document(
         session, llm, project="p", uri="docs/a.md", content=DOC,
     )
@@ -158,7 +158,7 @@ async def test_block_count_over_the_bound_is_refused(session):
     assert "blocks" in str(excinfo.value)
 ```
 
-Note on the partition name in the repair test: resolve the child table with `child_table("block_embeddings", fingerprint)` rather than the string arithmetic above if the slug rule differs — read `app/services/embedder_registry.py`'s `child_table` and use it.
+Every partition name — in code and in tests — resolves through `child_table(PARENT_TABLE, fingerprint)`. Invariant 2 forbids naming a child table directly, and the slug rule is not string substitution you can assume.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -305,7 +305,19 @@ async def put_document(
     await session.commit()
 
     if filed.outcome == UNCHANGED:
-        _, fingerprint = await llm.embed("")
+        from app.repositories.vector import (
+            EmbedderFingerprintUnresolved, resolve_read_fingerprint,
+        )
+
+        try:
+            fingerprint = await resolve_read_fingerprint(session, llm)
+        except EmbedderFingerprintUnresolved:
+            # Nothing has ever been embedded on this install, so there is no
+            # partition to find gaps in. The next real filing registers one.
+            return PutResult(
+                document_id=str(filed.document_id), outcome=filed.outcome,
+                blocks_filed=filed.blocks_written, blocks_embedded=0,
+            )
         rows = await session.execute(
             _unembedded_sql(fingerprint), {"document_id": str(filed.document_id)}
         )
@@ -1252,12 +1264,20 @@ shipped. Tier C -- never on the capture or retrieval hot path.
 """
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.repositories.vector import (
+    EmbedderFingerprintUnresolved,
+    resolve_read_fingerprint,
+)
 from app.services.block_embeddings import PARENT_TABLE, embed_blocks
 from app.services.embedder_registry import child_table
 from app.services.job_registry import FieldDescriptor
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "BLOCK_EMBEDDING_CONFIG_SCHEMA",
@@ -1294,14 +1314,22 @@ async def refresh_block_embeddings(
 ) -> int:
     """Embed up to `batch` blocks lacking a vector under the active embedder.
 
-    The active fingerprint is read from the embedder itself rather than
-    resolved separately: those two can differ across a rotation, and a probe
-    built against the wrong partition has no defined cosine distance.
+    The fingerprint is resolved by data through `resolve_read_fingerprint`,
+    the same way `refresh_relation_embeddings` does it.
     """
     if batch <= 0:
         return 0
 
-    _, fingerprint = await llm.embed("")
+    # Resolved by data, never from static config, and never by spending an
+    # embed call: an install where nothing has been embedded has no
+    # fingerprint to key on, and this arm has nothing to cover until one
+    # exists. Same mechanism as `refresh_relation_embeddings`.
+    try:
+        fingerprint = await resolve_read_fingerprint(session, llm)
+    except EmbedderFingerprintUnresolved:
+        logger.info("block_embedding_refresh: no fingerprint holds data yet")
+        return 0
+    await _ensure_partition(session, fingerprint)
     child = child_table(PARENT_TABLE, fingerprint)
     rows = (await session.execute(
         text(
@@ -1320,9 +1348,7 @@ async def refresh_block_embeddings(
     return result.written if result is not None else 0
 ```
 
-`FieldDescriptor`'s real import path and field names must be checked against `app/services/job_registry.py` before running — copy the shape `RELATION_EMBEDDING_CONFIG_SCHEMA` uses in `app/services/relation_embeddings.py`.
-
-The `LEFT JOIN` against a child table that does not exist yet raises rather than returning zero rows. Guard it: if `embedder_registry` has never registered this fingerprint, there are no blocks to sweep for it — catch the undefined-table error and return 0, or call `embedder_registry.register` first. Pick the second; it is the same register-before-read the rest of the tree does.
+`FieldDescriptor`'s real import path and field names must be checked against `app/services/job_registry.py` before running — copy the shape `RELATION_EMBEDDING_CONFIG_SCHEMA` uses in `app/services/relation_embeddings.py`. Likewise `_ensure_partition`: copy how `relation_embeddings` defines and calls its own.
 
 - [ ] **Step 5: Add the runner and register the job**
 
