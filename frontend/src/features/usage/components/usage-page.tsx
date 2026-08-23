@@ -3,20 +3,6 @@ import { DollarSign } from "lucide-react"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { toast } from "darkraise-ui/components/sonner"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "darkraise-ui/components/tabs"
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "darkraise-ui/components/card"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "darkraise-ui/components/table"
 
 import { PageChrome } from "@/components/app-chrome"
 import { EmptyState, HelpTip } from "@/components/darkmem"
@@ -34,8 +20,8 @@ import {
   useUsageTop,
   type UsageWindow,
 } from "@/hooks/api"
-import { formatUsd } from "../format"
 import { ModelPricesPanel } from "./model-prices-panel"
+import { OutliersPanel, type OutlierAxis } from "./outliers-panel"
 import { UsageOverview } from "./usage-overview"
 import { UsageSubjectPanel } from "./usage-subject-panel"
 
@@ -45,74 +31,6 @@ const WINDOWS: ReadonlyArray<{ value: UsageWindow; label: string }> = [
   { value: "30d", label: "30d" },
   { value: "all", label: "All" },
 ]
-
-function TopSpenders({
-  window,
-  onSelect,
-}: {
-  window: UsageWindow
-  onSelect: (subjectType: string, subjectId: string) => void
-}) {
-  const { data, isLoading, isError } = useUsageTop(window, "cost", 20)
-  if (isLoading) return <Skeleton className="h-40 w-full" />
-  if (isError) {
-    return (
-      <EmptyState
-        kind="failed"
-        title="Could not read the outlier list"
-        description="A failed read is not an empty one; nothing is being asserted about spend here."
-      />
-    )
-  }
-  const items = data?.items ?? []
-  if (items.length === 0) {
-    return <EmptyState kind="empty" title="No recorded calls in this window" />
-  }
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-sm">Most expensive subjects</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Subject</TableHead>
-                <TableHead>Id</TableHead>
-                <TableHead className="text-right">Cost</TableHead>
-                <TableHead className="text-right">Calls</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.map((row) => (
-                <TableRow
-                  key={`${row.subject_type}:${row.subject_id}`}
-                  className="cursor-pointer"
-                  onClick={() =>
-                    row.subject_id &&
-                    onSelect(row.subject_type, row.subject_id)
-                  }
-                >
-                  <TableCell className="text-xs">{row.subject_type}</TableCell>
-                  <TableCell className="max-w-[24rem] truncate font-mono text-xs">
-                    {row.subject_id ?? "—"}
-                  </TableCell>
-                  <TableCell className="text-right font-mono text-xs">
-                    {formatUsd(row.cost_micros)}
-                  </TableCell>
-                  <TableCell className="text-right font-mono text-xs">
-                    {row.calls}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
 
 function SubjectDetail({
   subjectType,
@@ -140,11 +58,22 @@ export function UsagePage() {
   const [selected, setSelected] = useState<
     { subjectType: string; subjectId: string } | null
   >(null)
+  const [axis, setAxis] = useState<OutlierAxis>("cost")
+  const [typeFilter, setTypeFilter] = useState<string | null>(null)
   const overview = useUsageOverview(window)
   // Hourly buckets for a one-day window: a 24h span drawn in days is
   // one column, which says nothing.
   const series = useUsageSeries(window, window === "24h" ? "hour" : "day")
+  const top = useUsageTop(window, axis, 20)
   const prices = useModelPrices()
+  const topRows = top.data?.items ?? []
+  // Filtered client-side rather than by refetching: the list is already capped
+  // at twenty rows, so a round-trip per chip would cost a request to narrow
+  // something the page is holding.
+  const availableTypes = [...new Set(topRows.map((r) => r.subject_type))].sort()
+  const visibleRows = typeFilter
+    ? topRows.filter((r) => r.subject_type === typeFilter)
+    : topRows
   const savePrices = useSaveModelPrices()
 
   return (
@@ -209,19 +138,44 @@ export function UsagePage() {
           )}
         </TabsContent>
 
-        <TabsContent className="space-y-4 pt-4" value="outliers">
-          <TopSpenders
-            window={window}
+        <TabsContent className="pt-4" value="outliers">
+          <div
+            className={
+              selected
+                ? "grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:items-start"
+                : "grid gap-4"
+            }
+          >
+          <OutliersPanel
+            availableTypes={availableTypes}
+            axis={axis}
+            isError={top.isError}
+            isLoading={top.isLoading}
+            onAxisChange={setAxis}
             onSelect={(subjectType, subjectId) =>
               setSelected({ subjectType, subjectId })
             }
+            onTypeFilterChange={(t) => {
+              setTypeFilter(t)
+              setSelected(null)
+            }}
+            rows={visibleRows}
+            selectedKey={
+              selected ? `${selected.subjectType}:${selected.subjectId}` : null
+            }
+            typeFilter={typeFilter}
+            windowCalls={overview.data?.total_calls ?? 0}
+            windowTotal={overview.data?.total_cost_micros ?? 0}
           />
           {selected ? (
-            <SubjectDetail
-              subjectId={selected.subjectId}
-              subjectType={selected.subjectType}
-            />
+            <div className="xl:sticky xl:top-4">
+              <SubjectDetail
+                subjectId={selected.subjectId}
+                subjectType={selected.subjectType}
+              />
+            </div>
           ) : null}
+          </div>
         </TabsContent>
 
         <TabsContent className="pt-4" value="prices">
