@@ -534,8 +534,10 @@ _BLOCKS = """
 async def document_blocks(
     session: AsyncSession, *, document_id: str, block_ids: list[str] | None = None
 ) -> list[BlockRow]:
-    """The document's blocks, in document order — every one, or only the ids
-    named in `block_ids` (the drill-down after an outline). `block_ids`
+    """The document's blocks, in document order — every one when
+    `block_ids` is `None`, or only the ids named in `block_ids` (the
+    drill-down after an outline) when it is not — including an explicit `[]`,
+    which names zero blocks and returns zero, never "no filter". `block_ids`
     scopes strictly: a row not in the list is excluded even if it belongs to
     this document, and a listed id from another document never appears
     because the `document_id` predicate applies either way.
@@ -544,9 +546,9 @@ async def document_blocks(
     `search_sections` and `document_outline`; it runs entirely inside
     whatever transaction the caller already holds.
     """
-    clause = "AND id = ANY(CAST(:ids AS uuid[]))" if block_ids else ""
+    clause = "AND id = ANY(CAST(:ids AS uuid[]))" if block_ids is not None else ""
     params: dict = {"document_id": document_id}
-    if block_ids:
+    if block_ids is not None:
         params["ids"] = block_ids
     rows = (await session.execute(
         text(_BLOCKS.format(clause=clause)), params
@@ -557,7 +559,8 @@ async def document_blocks(
             order_index=r["order_index"],
             char_span=(
                 (r["span_start"], r["span_end"])
-                if r["span_start"] is not None else None
+                if r["span_start"] is not None and r["span_end"] is not None
+                else None
             ),
         )
         for r in rows

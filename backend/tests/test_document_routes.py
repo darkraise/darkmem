@@ -240,6 +240,19 @@ async def test_outline_requires_auth(client):
 
 
 @pytest.mark.asyncio
+async def test_outline_of_a_missing_document_is_404(client, auth_headers):
+    """A made-up id must not be answered with a fabricated 200 -- the same
+    distinction `get_document_summary` draws between "no summary yet" and an
+    empty one, and the same condition the delete route already 404s on for
+    this exact id (Task 4 review, I1)."""
+    response = await client.get(
+        f"{V1}/documents/00000000-0000-0000-0000-000000000000/outline",
+        headers=auth_headers,
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_get_returns_every_block_in_document_order_by_default(
     client, auth_headers, stub_llm
 ):
@@ -253,11 +266,49 @@ async def test_get_returns_every_block_in_document_order_by_default(
     response = await client.get(f"{V1}/documents/{document_id}", headers=auth_headers)
     assert response.status_code == 200
     body = response.json()
+    assert body["horizon"] is True
     assert body["document_id"] == document_id
     blocks = body["blocks"]
     assert len(blocks) >= 6
     order_indices = [b["order_index"] for b in blocks]
     assert order_indices == sorted(order_indices)
+
+    # char_span is a citation anchor into the SOURCE, not the retrievable
+    # text (document_parsers.py's own rule) -- for a plain paragraph with no
+    # markdown decoration to strip, the two must agree exactly, which
+    # actually proves the bounds rather than merely their presence/shape.
+    installer = next(b for b in blocks if b["text"].strip() == "Run the installer.")
+    start, end = installer["char_span"]
+    assert NESTED[start:end] == "Run the installer."
+
+
+@pytest.mark.asyncio
+async def test_get_of_a_missing_document_is_404(client, auth_headers):
+    response = await client.get(
+        f"{V1}/documents/00000000-0000-0000-0000-000000000000",
+        headers=auth_headers,
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_with_a_malformed_block_id_is_422(client, auth_headers, stub_llm):
+    """`block_ids` is `list[UUID]`, so a caller's typo fails FastAPI's own
+    validation instead of reaching `CAST(:ids AS uuid[])` and surfacing as an
+    unhandled 500 (Task 4 review, I2)."""
+    created = await client.post(
+        f"{V1}/documents",
+        json={"project": "p", "uri": "docs/g.md", "content": NESTED},
+        headers=auth_headers,
+    )
+    document_id = created.json()["document_id"]
+
+    response = await client.get(
+        f"{V1}/documents/{document_id}",
+        params={"block_ids": "not-a-uuid"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -284,8 +335,50 @@ async def test_get_returns_only_the_blocks_named(client, auth_headers, stub_llm)
         headers=auth_headers,
     )
     assert response.status_code == 200
-    blocks = response.json()["blocks"]
+    body = response.json()
+    assert body["horizon"] is True
+    blocks = body["blocks"]
     assert [b["block_id"] for b in blocks] == [first["block_id"], second["block_id"]]
+
+
+@pytest.mark.asyncio
+async def test_get_excludes_a_block_from_another_document(client, auth_headers, stub_llm):
+    """The `document_id` predicate must apply even when `block_ids` is given,
+    so a caller cannot pull a block out of a document it does not belong to
+    by naming it alongside one that does. Not exercised by any other test:
+    a single-document `block_ids` set can pass this whole suite even if the
+    predicate moved into an `else` branch that only ran when `block_ids` was
+    absent (Task 4 review, I3)."""
+    doc_a = await client.post(
+        f"{V1}/documents",
+        json={"project": "p", "uri": "docs/a.md", "content": NESTED},
+        headers=auth_headers,
+    )
+    document_a_id = doc_a.json()["document_id"]
+    doc_b = await client.post(
+        f"{V1}/documents",
+        json={"project": "p", "uri": "docs/b.md", "content": "# Other\n\nUnrelated text.\n"},
+        headers=auth_headers,
+    )
+    document_b_id = doc_b.json()["document_id"]
+
+    a_blocks = (await client.get(
+        f"{V1}/documents/{document_a_id}", headers=auth_headers
+    )).json()["blocks"]
+    b_blocks = (await client.get(
+        f"{V1}/documents/{document_b_id}", headers=auth_headers
+    )).json()["blocks"]
+    a_block_id = a_blocks[0]["block_id"]
+    b_block_id = b_blocks[0]["block_id"]
+
+    response = await client.get(
+        f"{V1}/documents/{document_a_id}",
+        params={"block_ids": [b_block_id, a_block_id]},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    blocks = response.json()["blocks"]
+    assert [b["block_id"] for b in blocks] == [a_block_id]
 
 
 @pytest.mark.asyncio

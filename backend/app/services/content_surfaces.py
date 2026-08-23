@@ -617,11 +617,13 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # against.
     "POST /api/v1/documents/search",
     # The outline and fetch doors: a document's heading tree, and its blocks
-    # (all of them, or only the ids named). Same classification and same
-    # reason as the write and search doors immediately above -- both read
-    # `blocks`/`documents` directly (not even through `block_query.py`),
-    # never a `memories` row, so there is nothing here for a memory-content
-    # isolation probe to drive against.
+    # (all of them, or only the ids named). Same classification as the write
+    # and search doors immediately above for the same underlying reason --
+    # never a `memories` row -- but not the same query shape: both read
+    # `blocks` only (no join to `documents`, unlike the search door), and
+    # unlike either door above they carry no `project` predicate at all --
+    # they resolve by `document_id`, so there is no project-filtered query
+    # here for a memory-content isolation probe to drive against either.
     "GET /api/v1/documents/{document_id}/outline",
     "GET /api/v1/documents/{document_id}",
     # Session checkpoints (T3.16). No memory content crosses: a checkpoint is

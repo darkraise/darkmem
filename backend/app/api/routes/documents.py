@@ -41,6 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.auth import require_auth
 from app.api.deps import get_llm
 from app.database import get_session
+from app.repositories.documents import resolve_by_id
 from app.services.block_pipeline import UnsupportedSource
 from app.services.document_connections import connections_for_document
 from app.services.document_door import (
@@ -441,7 +442,16 @@ async def document_outline_route(
     """The heading tree, no body text -- the map before an agent decides
     what to pull with `GET /{document_id}` below. Read-only, same as
     `search_documents_route`: writes and commits nothing.
+
+    404 when the document does not exist, distinguishing "deleted or never
+    filed" from "filed but has no headings" -- the same distinction
+    `get_document_summary` draws between "no summary yet" and an empty one,
+    and the same condition `delete_document_route` already 404s on for this
+    exact id.
     """
+    if await resolve_by_id(session, document_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "document not found")
+
     nodes = await document_outline(session, document_id=str(document_id))
     return DocumentOutlineResponse(
         document_id=str(document_id),
@@ -452,16 +462,27 @@ async def document_outline_route(
 @router.get("/{document_id}", response_model=DocumentBlocksResponse)
 async def document_blocks_route(
     document_id: UUID,
-    block_ids: list[str] | None = Query(default=None),
+    block_ids: list[UUID] | None = Query(default=None),
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ) -> DocumentBlocksResponse:
     """The whole document's blocks in order, or only the ones named in
     `block_ids` -- the drill-down after an outline. Read-only, same as
     `search_documents_route`: writes and commits nothing.
+
+    `block_ids` is `list[UUID]`, not `list[str]`: a malformed value fails
+    FastAPI's own validation (422) instead of reaching
+    `CAST(:ids AS uuid[])` and surfacing as an unhandled 500, the same
+    validation `document_id: UUID` on this signature already earns.
+
+    404 when the document does not exist -- see `document_outline_route`.
     """
+    if await resolve_by_id(session, document_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "document not found")
+
     rows = await document_blocks(
-        session, document_id=str(document_id), block_ids=block_ids,
+        session, document_id=str(document_id),
+        block_ids=[str(b) for b in block_ids] if block_ids is not None else None,
     )
     return DocumentBlocksResponse(
         document_id=str(document_id),
