@@ -279,6 +279,8 @@ async def put_document(
             f"{MAX_CONTENT_CHARS}"
         )
 
+    # The ingest and the bound check share one savepoint; see the comment on
+    # the raise below for why the filing is not otherwise rollback-able.
     resolved_title = await _resolve_title(
         session, project=project, uri=uri, title=title, content=content,
     )
@@ -295,8 +297,13 @@ async def put_document(
     )
     if filed.blocks_written > MAX_BLOCKS:
         # Refused after the parse because the count is what the parse
-        # produces; the SAVEPOINT in `file_document` has not committed yet,
-        # so raising here leaves the document as it was.
+        # produces. This must be raised from INSIDE a `begin_nested()` that
+        # wraps the ingest above: `file_document`'s own SAVEPOINT is already
+        # RELEASED by the time it returns, and a released savepoint merges its
+        # writes into the outer transaction rather than discarding them — so
+        # without this one, a refused filing stays staged and the first caller
+        # to commit (which REST's `get_session` does on every non-raising path)
+        # commits the document the caller was told was refused.
         raise DocumentTooLarge(
             f"document parses to {filed.blocks_written} blocks; the bound is "
             f"{MAX_BLOCKS} blocks"
