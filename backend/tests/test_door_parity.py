@@ -78,16 +78,24 @@ _DOCUMENTS_RULING = (
 # and its route to differ in shape and nowhere else, and the `memory.search`
 # row below already settles the array-versus-envelope half.
 _RETRIEVAL_WIRE_SHAPE = (
-    "Stated wire asymmetry: the three tools answer bare JSON arrays where the "
-    "routes answer an envelope carrying `horizon` and, on the two keyed "
-    "reads, the resolved `document_id` -- the same difference the "
-    "memory.search row records. A section hit still says what it is on both "
-    "doors, since `id_kind` and `layer` ride the row rather than the "
-    "envelope, while an outline node and a block row carry no label of their "
-    "own and so reach a tool caller unlabelled. Ranking, scope and every "
-    "refusal come from one service call: all three verbs resolve their "
-    "`document_id` through `document_door.resolve_document_target`, which is "
-    "also what lets the two keyed reads take a (project, uri) pair instead."
+    "Stated wire asymmetries, none of them a capability. The three tools "
+    "answer bare JSON arrays where the routes answer an envelope carrying "
+    "`horizon` and, on the two keyed reads, the resolved `document_id` -- the "
+    "same difference the memory.search row records. A section hit still says "
+    "what it is on both doors, since `id_kind` and `layer` ride the row "
+    "rather than the envelope, while an outline node and a block row carry no "
+    "label of their own and so reach a tool caller unlabelled. Search carries "
+    "two more, the pair knowledge.composed_search already records: the tool "
+    "clamps an out-of-range limit to the shared cap while the route 422s on "
+    "it, and unavailability is a 503 from the route's llm dependency against "
+    "a tool payload carrying the MCP envelope's schema_version -- which is "
+    "also the one shape in which document_search answers an object rather "
+    "than an array. Neither reaches the keyed reads, which take no llm "
+    "dependency on either door. What one service call does produce is the "
+    "ranking, the scope and the document-resolution refusals: all three verbs "
+    "resolve a supplied `document_id` through "
+    "`document_door.resolve_document_target`, which is also what lets the two "
+    "keyed reads take a (project, uri) pair instead."
 )
 
 _WRITE_WIRE_SHAPE = (
@@ -189,12 +197,17 @@ PARITY_TABLE: tuple[Surface, ...] = (
         rest=(("POST", f"{V1}/documents/qa"),),
         mcp=(),
         reason=(
-            "Same firewall as the reads above, plus a sharper reason of its "
-            "own: the answer is served, labelled or withheld by the "
-            "faithfulness gate, and an agent twin would be a second consumer "
-            "of a judge role that has no qualification record yet. Every "
-            "answer is withheld today; publishing that to agents as a tool "
-            "would advertise a capability the gate does not license."
+            "The one row an eval gate governs, and it states its own gate "
+            "rather than pointing at a neighbour's: the answer is served, "
+            "labelled or withheld by the faithfulness gate, and an agent twin "
+            "would be a second consumer of a judge role that has no "
+            "qualification record yet. Every answer is withheld today; "
+            "publishing that to agents as a tool would advertise a capability "
+            "the gate does not license. This used to open by borrowing the "
+            "reads' firewall clause, which the owner ruling of 2026-08-23 "
+            "removed from that row -- doc 16 section 1's firewall is real and "
+            "is about block rows reaching the verified vault unlifted, which "
+            "is not what keeps this surface single-door."
         ),
     ),
     Surface(
