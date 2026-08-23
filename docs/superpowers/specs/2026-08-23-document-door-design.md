@@ -331,7 +331,7 @@ cannot: an embed that failed after its filing committed, an embedder rotation
 that strands every existing block in a dead partition, and documents filed
 before this ships.
 
-This makes the roster twenty-four jobs. `tests/test_code_deriver.py` compares
+This makes the roster twenty-three registered jobs (seventeen live). `tests/test_code_deriver.py` compares
 `app/main.py`'s registrations against a hardcoded expected set in the test, so
 the build fails until that set is updated; CLAUDE.md's count is prose the test
 documents rather than machine-reads, and both move in the same change — a
