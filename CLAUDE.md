@@ -1396,6 +1396,99 @@ phase 03 skips them and the drain deletes nothing. Both the deferral
 and the drain journal a `repo_indexed` `events` row and surface on
 `RepoResponse.index_debt`.
 
+## Documents (`app/services/document_door.py`, block channel)
+
+A document is filed markdown, plain text or PDF, parsed into a `blocks`
+tree (headings, paragraphs, lists, code, quotes) that is deliberately
+**not** run through the memory pipeline: filing a document never extracts
+entities or relationships. `tests/test_block_pipeline.py` walks this
+module's transitive import closure and fails the build if
+`app.services.pipeline` is reachable from it — a document is candidate
+signal, not an asserted graph.
+
+**Five verbs, both doors.** `put`, `search`, `outline`, `get` and
+`delete` are reachable from REST (`POST /api/v1/documents`,
+`POST .../search`, `GET .../{id}/outline`, `GET .../{id}` and the
+`by-uri` twins, `DELETE .../{id}` and `DELETE .../by-uri`) and from MCP
+(`document_put`, `document_search`, `document_outline`, `document_get`,
+`document_delete`). Both doors call the same `document_door` functions
+and resolve a caller-named target the same way, `resolve_document_target`,
+by id or by `(project, uri)`. **`(project, uri)` is the document's
+identity**: re-filing the same path updates the existing row in place
+rather than creating a second one, the same upsert shape memory capture
+gives `origin_key`-scoped content.
+
+**Bounds, refused at the door.** `MAX_CONTENT_CHARS` (1,000,000
+characters) and `MAX_BLOCKS` (5,000) are both checked in `put_document`.
+The character bound is checked first, before any parse or write starts.
+The block-count bound can only be known after parsing, so it is checked
+inside a SAVEPOINT wrapped around the filing itself: a document that
+parses to too many blocks raises `DocumentTooLarge` from inside that
+SAVEPOINT, rolling the document row, its blocks and the `document_filed`
+event back — never leaving a half-filed, oversized document staged for
+the caller's next commit.
+
+**An edit re-embeds the whole document.** Filing a `(project, uri)` that
+already exists strips every prior block row and writes a fresh set —
+`strip_blocks` then a plain `INSERT INTO blocks` that mints a new `id`
+for every row — so there is no per-block identity carried across a
+change: block N in the new tree is not "the same row" as block N in the
+old one even when its text is unchanged. There is no diffing and no
+partial re-embed; the cost of editing one paragraph in a large document
+is the same as filing it from scratch. State this as the cost model, not
+a defect — the door has no cheaper path today.
+
+**`unchanged` still embeds.** `ingest_document`'s content-hash gate
+returns `UNCHANGED` before touching any block when a re-push is
+byte-identical to what is already filed, which means it also does
+nothing for a filing whose block write committed but whose *embed* failed
+afterward (embedding runs after the filing commits, never inside it, so
+that split is possible). Stopping at `UNCHANGED` would make the caller's
+one natural repair — re-push the same content — a silent no-op, so this
+path additionally finds the document's blocks that carry no vector under
+the active embedder fingerprint and embeds those. Resolving that
+fingerprint costs a real embed call (never a cheap data probe: a probe
+answers "which fingerprint holds data", which is biased toward a stale,
+already-complete partition after a rotation rather than the active one
+retrieval reads), so **every `unchanged` re-push spends one embed call**,
+unconditionally, even on a document that already has nothing to repair —
+where the door used to spend a cheap database probe instead. A caller
+re-pushing N unchanged documents in a pass now makes N embedding calls;
+the hourly sweep still pays this once, this door pays it once per
+request.
+
+**Delete withdraws provenance before removing the row.**
+`fact_sources.source_ref` carries no foreign key, so deleting a document
+does not cascade to any fact a block corroborated. `delete_document`
+withdraws the block sources first, then expires any fact left with no
+surviving source (never one still sourced some other way, never one
+already expired), and journals a `sources_changed` event per affected
+fact so the Tier-C recompute's fast arm — not its slow reconciliation
+backstop — is what ordinarily reaches it. Neither this function nor the
+withdrawal it calls writes `verification_status`; the rung stays the
+ladder's decision.
+
+**Owner ruling, 2026-08-23: `documents.write` and `documents.retrieval`
+are two-door.** `docs/two-door-parity.md` is the audit of record. The
+five verbs above generate nothing and label nothing — they file a
+document or return its own text with a cosine score, the way `code.search`
+returns source — so they do not touch the faithfulness judge that gates
+`POST /api/v1/documents/qa` (single-door, still G-F-gated, unaffected by
+this ruling). Landing both verbs on both doors **clears no gate and moves
+no bar**; it is a parity decision, not a capability one. `documents.reads`
+(the list/summary/connections browsing routes) stays REST-only for its
+own, unrelated reasons.
+
+**The block channel is firewalled from memory composition.** A block row
+is retrievable only through the verbs above; it is never fused into
+`HybridSearchService` or `LayerCompositionService`'s ranking, and never
+lifted into the L1 graph except through the on-demand lift doc 16 §5
+owns. `tests/test_block_retrieval.py` enforces this structurally — it
+walks the fusion modules' own imports and the composition's channel and
+id-kind registries and fails the build if a block becomes reachable from
+either, rather than only checking that today's ranked results happen not
+to contain one.
+
 ## Cross-cutting invariants
 
 - **memory_id type drift.** Hybrid search returns string ids; the
