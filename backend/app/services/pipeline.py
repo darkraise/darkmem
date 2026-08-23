@@ -846,12 +846,14 @@ class ProcessingPipeline:
         tags: list[str],
         memory_type: str | None,
         created_at: str,
+        project: str | None = None,
     ) -> dict:
         """Process a single memory. Delegates to process_batch for consistent phasing."""
         entry = {
             "memory_id": memory_id,
             "content": content,
             "source": source,
+            "project": project,
             "tags": tags,
             "memory_type": memory_type,
             "created_at": created_at,

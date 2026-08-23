@@ -265,3 +265,35 @@ async def test_the_scope_is_gone_once_the_run_ends(setup_database):
         async with factory() as s:
             await s.execute(text("DELETE FROM config WHERE key = 'job:usage_attr_leak'"))
             await s.commit()
+
+
+@pytest.mark.asyncio
+async def test_a_materialized_capture_carries_its_project(clean_llm_usage, session):
+    """Measured in production on 2026-08-23: every ingest usage row reported
+    project NULL, because `materialize` dropped the column when it built the
+    `process_batch` entry. The cost view's project filter answered zero for a
+    corpus that was entirely one project's."""
+    from app.services.buffer_flush import ClaimedCapture, materialize
+
+    capture = ClaimedCapture(
+        buffer_id=uuid.uuid4(),
+        memory_id=uuid.uuid4(),
+        content="a captured note",
+        project="attr-project",
+        source="mcp",
+        replay={},
+    )
+    entries = await materialize(session, [capture])
+    assert entries and entries[0]["project"] == "attr-project"
+
+
+def test_process_memory_takes_a_project():
+    """The single-memory door delegates to process_batch, so a signature that
+    cannot carry a project makes every reprocessed memory unattributable."""
+    import inspect
+
+    from app.services.pipeline import ProcessingPipeline
+
+    assert "project" in inspect.signature(
+        ProcessingPipeline.process_memory
+    ).parameters
