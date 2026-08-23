@@ -1499,8 +1499,10 @@ import closure of every module that mints a fact, moves one on the ladder
 or synthesises an article from the vault, and fails the build if one can
 reach a module that reads a block row — doc 16 §5's lift is left as the
 only route from a block to a fact, and `block_fact_sources`, which is that
-lift, is excluded from the forbidden set on the tested ground that it reads
-no block row itself. Scoped to minting rather than to "writes
+lift, is excluded from the forbidden set on a narrower ground than "it
+never touches a block": it does query `blocks`, but only to resolve ids —
+no block text crosses into the vault through it — and the scan checks that
+it reaches no module that could fetch any. Scoped to minting rather than to "writes
 `knowledge_triples`" deliberately: `document_door` does both write the
 vault and read blocks, expiring a fact whose last source its own delete
 withdrew, and that withdrawal direction can only demote.

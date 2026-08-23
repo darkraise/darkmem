@@ -350,9 +350,12 @@ BLOCK_CHANNEL_MODULES = frozenset({
 
 # `block_fact_sources` is deliberately absent from that set: it *is* doc 16
 # §5's lift, so forbidding it would forbid the sanctioned crossing rather than
-# the unsanctioned one. Leaving it out is safe for a reason the test below
-# checks rather than assumes — it reads no block row itself, taking block ids
-# from whoever calls it.
+# the unsanctioned one. What makes leaving it out safe is narrower than "it
+# never touches a block". It does query `blocks`, in two SELECTs that project
+# ids and nothing else (`_BLOCK_DOCUMENT_SQL` resolves a block's document,
+# `_DOCUMENT_BLOCKS_SQL` a document's blocks) — no block text crosses into the
+# vault through it, and it reaches no module that could go and fetch any,
+# which is the half the test below checks.
 SANCTIONED_LIFT = "app.services.block_fact_sources"
 
 _VAULT_RULES = ReachabilityRules(
@@ -394,10 +397,16 @@ def test_no_vault_writers_import_closure_reaches_the_block_channel(writer):
     )
 
 
-def test_the_sanctioned_lift_cannot_read_a_block_row_either():
+def test_the_sanctioned_lift_reaches_no_module_that_can_fetch_a_block():
     """Why `block_fact_sources` is safe to leave out of the forbidden set: it
-    records and withdraws provenance for block ids it is handed, and reaches
-    no module that can go and fetch the rows behind them."""
+    resolves block and document ids against `blocks` and reaches nothing that
+    could turn one into content.
+
+    The closure is what this asserts. That its own two SELECTs project ids and
+    never `text` is read off the module, not enforced here — stated that way
+    rather than folded into the assertion's name, since a test that checks one
+    of two properties must not be cited for both.
+    """
     reachable = import_closure(BACKEND, SANCTIONED_LIFT)
     assert reachable & BLOCK_CHANNEL_MODULES == set()
 

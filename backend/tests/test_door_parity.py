@@ -74,8 +74,9 @@ _DOCUMENTS_RULING = (
     "synthesises an article from the vault can reach, through its own "
     "import closure, a module that reads a block row -- doc 16 section "
     "5's on-demand lift is the only route from a block to a fact, and "
-    "it reads no block itself. This does not clear G-F and no bar "
-    "moved."
+    "that lift carries no block text into the vault and reaches no "
+    "module that can search or fetch a block. This does not clear G-F "
+    "and no bar moved."
 )
 
 # The wire differences, recorded rather than left to be discovered, and one
