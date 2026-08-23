@@ -69,13 +69,26 @@ class CachingLLMOrchestrator(LLMOrchestrator):
     def _embed_key(self, text: str) -> str:
         return _key("embed", [text, _purpose_identity(self.config, "embedding")])
 
+    #: Arguments that steer *metering*, not the model. ``usage_subject`` carries
+    #: the memory id that paid for the call and ``usage_extra`` a note about what
+    #: the call bundled; neither reaches the vendor and neither can change the
+    #: response. Folding them in would key every entry to the run that produced
+    #: it -- a fresh corpus has fresh ids -- so a replay would miss every entry
+    #: and reach live, which is exactly the property G-C's clear rests on not
+    #: happening. Excluded by name so a new kwarg is cached by default and has
+    #: to be argued out, rather than silently ignored.
+    _NON_CACHE_KWARGS = ("usage_subject", "usage_extra")
+
     def _chat_key(self, purpose, messages, kwargs) -> str:
         """The single definition of the chat cache key. Subclasses that
         override chat_completion resolve the key through here rather than
         recomposing the payload list, so a change to what the key folds in
         can never fork one class's entries away from another's."""
+        keyed = {
+            k: v for k, v in kwargs.items() if k not in self._NON_CACHE_KWARGS
+        }
         return _key("chat", [
-            purpose, _purpose_identity(self.config, purpose), messages, sorted(kwargs.items()),
+            purpose, _purpose_identity(self.config, purpose), messages, sorted(keyed.items()),
         ])
 
     def _read(self, key: str):
