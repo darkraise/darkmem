@@ -154,30 +154,37 @@ async def _ensure_partition(session: AsyncSession, fingerprint: str) -> None:
 
 
 async def resolve_read_fingerprint(session: AsyncSession, llm) -> str:
-    """The fingerprint a block-partition read may safely key on.
+    """The fingerprint a block-partition read may safely key on, resolved
+    cheaply (a data probe, never an embed call) — the shape that fits this
+    function's one remaining caller, ``document_door.put_document``'s
+    ``unchanged`` gap-fill repair.
 
     Delegated to the same resolver every other family uses, never re-derived:
     ``llm_fingerprint()`` is a pure formatter over static config and can name a
-    partition no real embed ever wrote to. **Probes this family's own
-    ``block_embeddings`` partitions, not the memory ones** (T-doc-door.6
-    review, 2026-08-24) — an earlier version of this wrapper resolved against
-    the memory partitions on the theory that "the fingerprint identifies the
-    embedder, not the parent table, so it is the same answer for every
-    family". That is true of *which fingerprint the embedder currently
-    produces*, but resolution here is not "what does the embedder produce" —
-    it is "which live fingerprint actually holds this family's data", and an
-    install can carry real block traffic with no memory traffic at all (or
-    the reverse). Checking the wrong family's partition can hand back a
-    fingerprint with nothing under it for blocks while a different live
-    sibling holds every real block vector, or hand back a stale sibling whose
-    block partition merely happens to already be complete while the true
-    current fingerprint is still missing rows — wrong in both directions.
-    Raises :class:`~app.repositories.vector.EmbedderFingerprintUnresolved`
-    rather than proceeding on an unconfirmed key.
+    partition no real embed ever wrote to, so this defers to
+    :meth:`PostgresVectorRepository.resolve_read_fingerprint`'s own
+    data-probe algorithm exactly as every sibling family does (it checks the
+    ``memory_embeddings`` partition, since that is where real embed traffic
+    is heaviest on almost every install). Raises
+    :class:`~app.repositories.vector.EmbedderFingerprintUnresolved` rather
+    than proceeding on an unconfirmed key — the caller here already treats
+    that as "nothing to repair yet", not a hard failure.
+
+    **This function briefly probed this family's own ``block_embeddings``
+    partition instead of the memory one (T-doc-door.6 review, round 1), and
+    that was reverted in round 2** (2026-08-24): a data probe of *any*
+    family is structurally biased toward whichever fingerprint already has
+    content, which is exactly wrong for a backstop whose job is filling an
+    EMPTY partition — see ``block_embedding_refresh._resolve_active_fingerprint``,
+    which resolves that job's fingerprint from a real embed call instead,
+    the same way retrieval does, rather than from any data probe. That same
+    structural bias is still live here, on this narrower question ("does
+    this already-filed document have gaps"), and repairing it is out of this
+    task's scope — recorded rather than fixed, per the round-2 ruling that
+    the "avoid a paid embed call" trade explicitly still stands for this
+    caller.
     """
-    return await PostgresVectorRepository(session).resolve_read_fingerprint(
-        llm, parent_table=PARENT_TABLE,
-    )
+    return await PostgresVectorRepository(session).resolve_read_fingerprint(llm)
 
 
 async def search_blocks(

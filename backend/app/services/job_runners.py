@@ -844,10 +844,13 @@ def make_block_embedding_runner(
 ):
     """Keep document blocks embedded under the active fingerprint (spec 2026-08-23).
 
-    Tier C: the backstop `put_document`'s inline embed cannot be — an embed
-    call that failed after its filing already committed, an embedder
-    rotation that strands existing blocks in a dead partition, or a document
-    filed before this door shipped. Off the hot path, never inside capture.
+    Tier C, and deliberately not a dreaming-family member: contract 6 fixes
+    that family at six, and this is an artefact refresh in the same class as
+    `ppr_snapshot` and `relation_embedding_refresh`. It is the backstop
+    `put_document`'s inline embed cannot be — an embed call that failed
+    after its filing already committed, an embedder rotation that strands
+    existing blocks in a dead partition, or a document filed before this
+    door shipped. Off the hot path, never inside capture.
 
     Without an orchestrator there is nothing to embed with, so the run is a
     no-op rather than a failure — the same stance every other model-spending
@@ -873,10 +876,12 @@ def make_block_embedding_runner(
             knobs.update(cfg.config or {})
 
         # A mismatched fingerprint raises out of refresh_block_embeddings and
-        # is deliberately NOT caught here: it should be unreachable after the
-        # block-aware probe (T-doc-door.6 review), and letting it propagate is
-        # what lands it in job_runs.last_error where an operator sees it,
-        # rather than silently re-spending embed calls every tick.
+        # is deliberately NOT caught here: with the fingerprint resolved from
+        # a real embed call (T-doc-door.6 review, round 2), a mismatch can
+        # only mean the active embedder's config changed mid-run, and letting
+        # it propagate is what lands it in job_runs.last_error where an
+        # operator sees it, rather than silently reporting a batch converged
+        # under a fingerprint this run never verified.
         async with session_factory() as session:
             outcome = await refresh_block_embeddings(
                 session, llm, batch=int(knobs["batch"]),

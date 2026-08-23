@@ -11,31 +11,49 @@ and is unfindable with no symptom:
 - a document filed before this door shipped at all.
 
 This module is the exact-arm sweep that closes all three: find blocks with no
-vector under the active fingerprint, embed them, converge to zero. It is Tier
-C — off the hot path, never reachable from capture or retrieval (invariant
-15) — and it never decides *when* inline embedding runs; it only cleans up
-after it.
+vector under the active fingerprint, embed them, converge to zero. Tier C,
+and deliberately not a dreaming-family member: contract 6 fixes that family
+at six, and this is an artefact refresh in the same class as
+``ppr_snapshot`` and ``relation_embedding_refresh`` — off the hot path, never
+reachable from capture or retrieval (invariant 15), and it never decides
+*when* inline embedding runs; it only cleans up after it.
 
-**Fingerprint resolution is block-family-aware, not merely reused as-is**
-(T-doc-door.6 review, 2026-08-24). ``resolve_read_fingerprint`` is the one
-shared resolver every embedding family wraps
-(:meth:`~app.repositories.vector.PostgresVectorRepository.resolve_read_fingerprint`),
-and this module never re-derives its walk-the-live-fingerprints algorithm —
-but the resolver's own "does this candidate actually hold data" check now
-takes a ``parent_table`` argument, and ``block_embeddings.resolve_read_fingerprint``
-passes ``"block_embeddings"``. An earlier version of that wrapper always
-checked the ``memory_embeddings`` partition, which is wrong in both
-directions on an install whose block and memory traffic diverge: it could
-report the configured fingerprint as empty-and-unconfirmed while a different,
-already-registered fingerprint held every real block vector (this sweep would
-never converge, forever re-embedding the whole corpus), or it could report a
-stale sibling fingerprint whose *block* partition happened to already be
-complete while the true current fingerprint was still missing rows (this
-sweep would report 0 and look converged while retrieval, which derives its
-fingerprint from a real ``embed()`` call, searched an empty partition — a
-document filed and never found, with no symptom, which is exactly the class
-of bug this whole job exists to close). Probing the block partition removes
-both directions for the case a real block-family fingerprint holds real data.
+**Fingerprint resolution is a real embed call, not a data probe — and that
+took two review rounds to land on** (T-doc-door.6 review, 2026-08-24).
+
+Round 1 pointed ``resolve_read_fingerprint``'s "does this candidate hold
+data" check at the block family's own partition instead of the memory one it
+was hardcoded to, on the reasoning that an install can carry real block
+traffic with none on the memory side. That closed the direction where the
+sweep never converges, but reopened the OTHER headline case in this module's
+own second bullet above: an embedder rotation. Walk it — a dims rotation on
+one ``model_id`` leaves ``F_old`` holding every existing block; config moves
+to ``F_new``; nothing has re-filed a document since, so ``F_new``'s own block
+partition is empty. A data probe of *any* family — block included — prefers
+whichever candidate already has rows, so it hands back ``F_old``, the anti-
+join finds nothing missing there, and the sweep reports ``converged=True``
+while retrieval (which derives its fingerprint from a real ``embed()`` call,
+same as this module now does) reads ``F_new`` and finds nothing. Silent at
+every log level, for the exact document-unfindable failure this whole job
+exists to close.
+
+**The structural fix is what changed, not just which partition gets
+checked.** A backstop *writer*, whose entire purpose is filling an EMPTY
+partition, cannot resolve its target by asking "which live fingerprint holds
+data" — that question is biased toward the wrong answer by construction, on
+every family, not only the block one. So this module no longer calls
+``resolve_read_fingerprint`` (``block_embeddings.resolve_read_fingerprint``,
+in turn, reverted to its original memory-partition probe — see its own
+docstring; it still serves ``document_door.put_document``'s ``unchanged``
+gap-fill repair, a narrower, out-of-scope-for-this-task case where the
+"never spend an embed call to learn a fingerprint" rule still stands).
+Instead it resolves the fingerprint the same way ``BlockQueryService.search``
+resolves the one it searches under: a real embed call. See
+``_resolve_active_fingerprint`` below. This reverses this job's own original
+"never spend an embed call to learn a fingerprint" instruction for exactly
+this one call site — one embed call per scheduled run buys a correctness
+property (sweep and search targeting the same partition) that no read-only
+probe, on any family, can guarantee.
 """
 from __future__ import annotations
 
@@ -45,13 +63,7 @@ from dataclasses import dataclass
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.repositories.vector import EmbedderFingerprintUnresolved
-from app.services.block_embeddings import (
-    PARENT_TABLE,
-    _ensure_partition,
-    embed_blocks,
-    resolve_read_fingerprint,
-)
+from app.services.block_embeddings import PARENT_TABLE, _ensure_partition, embed_blocks
 from app.services.embedder_registry import child_table
 from app.services.job_registry import FieldDescriptor
 
@@ -73,6 +85,12 @@ BLOCK_EMBEDDING_MIN_INTERVAL_SECONDS = 300
 BLOCK_EMBEDDING_MAX_RUN_SECONDS = 900
 
 DEFAULT_BATCH = 500
+
+# Never written anywhere and never compared against real block text — its
+# only job is to make the active embedder name the fingerprint it would
+# currently produce, the same role a real search query plays in
+# `BlockQueryService.search`.
+_PROBE_TEXT = "darkmem block_embedding_refresh liveness probe"
 
 BLOCK_EMBEDDING_CONFIG_SCHEMA: list[FieldDescriptor] = [
     FieldDescriptor(
@@ -115,46 +133,47 @@ class RefreshOutcome:
     converged: bool
 
 
+async def _resolve_active_fingerprint(llm) -> str:
+    """The fingerprint the active embedder produces right now, established
+    the same way retrieval does (`BlockQueryService.search`): a real embed
+    call, never a data probe.
+
+    A data probe answers "which live fingerprint holds data", which is
+    biased toward a stale partition for a job whose entire purpose is
+    filling an empty one — see the module docstring for the rotation case
+    this dissolves. A real embed always yields a real fingerprint, so the
+    bootstrap gap `resolve_read_fingerprint` guards against
+    (`EmbedderFingerprintUnresolved`, an unconfirmed configured fingerprint
+    with nothing registered under it anywhere) cannot occur here either:
+    there is no "unconfirmed" fingerprint once an embed call has actually
+    produced one.
+    """
+    _, fingerprint = await llm.embed(_PROBE_TEXT)
+    return fingerprint
+
+
 async def refresh_block_embeddings(
     session: AsyncSession, llm, *, batch: int = DEFAULT_BATCH
 ) -> RefreshOutcome:
     """Embed up to `batch` blocks lacking a vector under the active embedder.
 
-    The fingerprint is resolved **by data** through `resolve_read_fingerprint`
-    — the same resolver every other embedding family wraps, asked here about
-    the block family specifically (see module docstring) — never spending an
-    embed call just to learn it, and never re-derived here.
-
-    Residual risk, honestly stated rather than papered over: the resolver's
-    "prefer the fingerprint that already has data" strategy can still, in
-    principle, return a stale live sibling fingerprint if two fingerprints
-    share one ``model_id`` (a real rotation still in flight, or two model
-    generations both still registered) AND the true current fingerprint's
-    block partition holds *zero* rows so far — e.g. every inline embed since
-    the rotation has failed. That state is genuinely ambiguous from data
-    alone, the same way a fresh, correctly configured install is
-    indistinguishable from a wrong one with nothing embedded yet
-    (invariant 14's own accepted gap). A misconfigured embedding
-    ``dimensions`` value is NOT part of this risk: ``LLMOrchestrator._check_dims``
-    refuses any embed whose real length disagrees with the configured one, so
-    a wrong-dims install dies at the embed call inside `embed_blocks`, never
-    reaching the comparison below.
+    The fingerprint is resolved from one real embed call
+    (`_resolve_active_fingerprint`), the same way `BlockQueryService.search`
+    resolves the fingerprint it reads under — see the module docstring for
+    why a data probe cannot do this job correctly, on any family.
 
     Raises ``RuntimeError`` when the fingerprint `embed_blocks` actually
-    writes under disagrees with the one resolved above — that should be
-    unreachable given the block-aware probe, so surfacing it as a failed run
-    (visible in `job_runs.last_error`) is correct: silently absorbing it would
-    re-spend up to `batch` embed calls against a paid embedder every tick,
-    forever, with only a log line to show for it.
+    writes the batch under disagrees with the one the probe call resolved.
+    With both calls now real embeds, this should only ever fire if the
+    active embedder's configuration changes mid-run (a race, not a resolver
+    defect) — surfacing it as a failed run (visible in `job_runs.last_error`)
+    is still correct: silently absorbing it would let the batch's vectors
+    land under a fingerprint this run never verified converges.
     """
     if batch <= 0:
         return RefreshOutcome(embedded=0, fingerprint=None, converged=True)
 
-    try:
-        fingerprint = await resolve_read_fingerprint(session, llm)
-    except EmbedderFingerprintUnresolved:
-        logger.info("block_embedding_refresh: no fingerprint holds data yet")
-        return RefreshOutcome(embedded=0, fingerprint=None, converged=True)
+    fingerprint = await _resolve_active_fingerprint(llm)
 
     await _ensure_partition(session, fingerprint)
     table = child_table(PARENT_TABLE, fingerprint)
@@ -176,13 +195,12 @@ async def refresh_block_embeddings(
 
     if result.fingerprint != fingerprint:
         raise RuntimeError(
-            f"block_embedding_refresh: resolved fingerprint {fingerprint!r} "
-            f"but the embed call wrote under {result.fingerprint!r} instead "
-            "— resolve_read_fingerprint returned a live sibling fingerprint "
-            "rather than the one blocks are actually embedded under. This "
-            "should be unreachable after the block-aware data probe; refusing "
-            "rather than re-spending embed calls against the wrong partition "
-            "every tick."
+            f"block_embedding_refresh: the probe resolved fingerprint "
+            f"{fingerprint!r} but the batch embed call wrote under "
+            f"{result.fingerprint!r} instead — the active embedder's "
+            "configuration changed between the two calls within this one "
+            "run. Refusing rather than reporting a batch as converged under "
+            "a fingerprint this run never actually verified."
         )
 
     return RefreshOutcome(

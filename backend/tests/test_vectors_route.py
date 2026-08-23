@@ -212,20 +212,27 @@ async def test_resolve_read_fingerprint_passes_through_an_unconfirmable_wrong_di
     assert resolved == WRONG_FINGERPRINT
 
 
-# ── parent_table parameterisation (T-doc-door.6 review, finding I2) ────────
+# ── the memory-only probe stays the shared default (T-doc-door.6 review) ───
 #
-# ``_partition_has_data``/``resolve_read_fingerprint`` used to hardcode the
-# "does this candidate hold real data" probe to ``memory_embeddings``, no
-# matter which family asked. That is wrong for a caller like
-# ``block_embeddings.resolve_read_fingerprint`` on an install whose block and
-# memory traffic diverge: it can report a fingerprint as unconfirmed while a
-# different live fingerprint holds every real block vector (never
-# converges), or report a stale sibling fingerprint whose block partition
-# happens to already be complete while the true current one is still missing
-# rows (looks converged, is not — a document filed and never found, with no
-# symptom). These tests pin the fix directly: the SAME two live fingerprints,
-# resolved two different ways depending only on which ``parent_table`` is
-# asked about.
+# ``_partition_has_data``/``resolve_read_fingerprint`` hardcode the "does
+# this candidate hold real data" probe to ``memory_embeddings``. A round-1
+# fix gave this a ``parent_table`` parameter so a caller like
+# ``block_embeddings.resolve_read_fingerprint`` could point the probe at its
+# own family instead — closing the direction where a block-only install
+# never converges, but reopening the WORSE direction on an embedder
+# rotation: a data probe of *any* family prefers whichever fingerprint
+# already has rows, which is exactly the stale, pre-rotation one, not the
+# active-but-still-empty one retrieval actually reads. Round 2 reverted the
+# parameter entirely — a backstop sweep cannot resolve its fingerprint from
+# any data probe and instead resolves it from a real embed call
+# (`block_embedding_refresh._resolve_active_fingerprint`; see
+# `tests/test_block_embedding_refresh.py::test_refresh_targets_the_rotated_fingerprint_not_the_stale_full_one`
+# for the rotation case pinned end to end). This resolver, and the test
+# below, are back to exactly their pre-T-doc-door.6 shape: the memory-only
+# probe is still what every other caller (relation, entity-anchoring,
+# entity-merge, triple embeddings, and `block_embeddings.resolve_read_fingerprint`
+# itself, on behalf of `document_door`'s ``unchanged`` gap-fill repair) gets,
+# unchanged.
 
 BLOCK_MODEL_ID = "vectors-route-block-model"
 # Two live fingerprints sharing one model_id, exactly the residual shape
@@ -344,10 +351,13 @@ async def _seed_diverged_family_traffic(session) -> None:
     await session.flush()
 
 
-async def test_resolve_read_fingerprint_defaults_to_memory_for_every_old_caller(session):
-    """Every caller written before ``parent_table`` existed must see exactly
-    the old behaviour: the fingerprint whose MEMORY partition has data,
-    ignoring block data entirely."""
+async def test_resolve_read_fingerprint_still_only_asks_memory(session):
+    """The shared resolver reads only the memory partition, even when a
+    sibling fingerprint for the same model_id holds real BLOCK data and no
+    memory data — that block data is invisible to this method by design; a
+    caller whose family needs to see it must resolve some other way (a real
+    embed call, not a data probe of any family — see
+    `block_embedding_refresh._resolve_active_fingerprint`)."""
     await _seed_diverged_family_traffic(session)
 
     resolved = await PostgresVectorRepository(session).resolve_read_fingerprint(
@@ -355,21 +365,7 @@ async def test_resolve_read_fingerprint_defaults_to_memory_for_every_old_caller(
     )
 
     assert resolved == MEMORY_ONLY_FINGERPRINT
-
-
-async def test_resolve_read_fingerprint_asks_the_named_family_not_memory(session):
-    """T-doc-door.6 review (I2): the block family must resolve to the
-    fingerprint holding real BLOCK data, even though a sibling fingerprint
-    for the same model_id holds real memory data and would win under the
-    old, memory-only probe."""
-    await _seed_diverged_family_traffic(session)
-
-    resolved = await PostgresVectorRepository(session).resolve_read_fingerprint(
-        _SharedModelLLM(), parent_table="block_embeddings",
-    )
-
-    assert resolved == BLOCK_ONLY_FINGERPRINT
-    assert resolved != MEMORY_ONLY_FINGERPRINT
+    assert resolved != BLOCK_ONLY_FINGERPRINT
 
 
 # ── reproduced on unmodified code: what a bare sentinel read actually does ──
