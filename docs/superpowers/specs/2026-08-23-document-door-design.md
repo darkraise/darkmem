@@ -91,8 +91,12 @@ text with a cosine score, as `code_search` returns source. The firewall doc 16
 single-door: that surface is what G-F actually gates, and its answers are
 withheld today.
 
-This supersedes the "single-door until G-F clears" clause for the reads and
-for the verbs this spec adds — it does not clear G-F, and no bar moved.
+This supersedes the "single-door until G-F clears" clause for the verbs this
+spec adds. It does not clear G-F and no bar moved. The existing
+`documents.reads` row keeps its REST-only status — its MCP twins are simply
+not in this slice — but its recorded reason is rewritten in the same commit,
+because leaving "single-door until G-F clears" beside four new MCP rows would
+be a stale ruling sitting next to the rows that contradict it.
 
 **Mechanically**, the parity table in `docs/two-door-parity.md` is generated:
 `PARITY_TABLE` in `backend/tests/test_door_parity.py` is the source of truth,
