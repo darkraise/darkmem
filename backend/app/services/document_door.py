@@ -254,9 +254,11 @@ def _heading_path(block_id: str, by_id: dict) -> tuple[tuple[str, ...], bool]:
     bound means a future regression fails as a wrong return value instead.)
 
     Returns `(path, truncated)`. `truncated` is True when the walk stopped
-    without reaching a genuine root: either the sentinel row one hop past
-    `_ANCESTOR_DEPTH_LIMIT` (see `_ANCESTORS`), or a repeated id (a cycle in
-    `blocks.parent_id`, which carries no constraint against one).
+    without reaching a genuine root, on any of three routes: the sentinel row
+    one hop past `_ANCESTOR_DEPTH_LIMIT` (see `_ANCESTORS`), a repeated id (a
+    cycle in `blocks.parent_id`, which carries no constraint against one), or
+    the iteration bound running out with neither of those having fired -- see
+    the `else` below, which is reachable rather than defensive.
     """
     path: list[str] = []
     seen: set[str] = set()
@@ -274,10 +276,13 @@ def _heading_path(block_id: str, by_id: dict) -> tuple[tuple[str, ...], bool]:
         parent_id = node["parent_id"]
         node = by_id.get(parent_id) if parent_id else None
     else:
-        # Unreachable given the depth check above -- every chain hits either
-        # `node is None` or the sentinel's depth check within the bound --
-        # but a hard ceiling that could silently pass unnoticed is worse
-        # than one that announces it.
+        # Reached whenever the depth check cannot fire: every hit block is a
+        # seed of the ancestors CTE at depth 0 and `by_id` keeps the
+        # shallowest occurrence, so a parent chain whose every block is
+        # itself a search hit carries depth 0 throughout. A chain longer than
+        # the bound then exhausts the range with no root and no sentinel, and
+        # a hard ceiling that passed unnoticed would serve a cut-off path
+        # looking complete.
         truncated = True
     return tuple(reversed(path)), truncated
 

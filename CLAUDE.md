@@ -1398,13 +1398,18 @@ and the drain journal a `repo_indexed` `events` row and surface on
 
 ## Documents (`app/services/document_door.py`, block channel)
 
-A document is filed markdown, plain text or PDF, parsed into a `blocks`
+A document is filed markdown or plain text, parsed into a `blocks`
 tree (headings, paragraphs, lists, code, quotes) that is deliberately
 **not** run through the memory pipeline: filing a document never extracts
-entities or relationships. `tests/test_block_pipeline.py` walks this
-module's transitive import closure and fails the build if
-`app.services.pipeline` is reachable from it — a document is candidate
-signal, not an asserted graph.
+entities or relationships. The parser stack also handles PDF, but no
+production caller can deliver one — `content` is `str` on both doors and
+`parse_pdf` takes bytes, so a PDF is a designed 422 rather than an
+unimplemented case. `tests/test_block_pipeline.py` walks the transitive
+import closure of **this module and `block_pipeline` both** and fails the
+build if `app.services.pipeline` is reachable from either — rooted at the
+door as well as the pipeline, since the door imports the pipeline and a
+seed of the pipeline alone would leave the door itself unscanned. A
+document is candidate signal, not an asserted graph.
 
 **Five verbs, both doors.** `put`, `search`, `outline`, `get` and
 `delete` are reachable from REST (`POST /api/v1/documents`,
@@ -1415,8 +1420,10 @@ signal, not an asserted graph.
 and resolve a caller-named target the same way, `resolve_document_target`,
 by id or by `(project, uri)`. **`(project, uri)` is the document's
 identity**: re-filing the same path updates the existing row in place
-rather than creating a second one, the same upsert shape memory capture
-gives `origin_key`-scoped content.
+rather than creating a second one. That upsert is this door's own shape
+and has no analogue on the memory side, where all four capture doors
+append a row per capture and `origin_key` is corroboration identity, never
+a dedup key.
 
 **Bounds, refused at the door.** `MAX_CONTENT_CHARS` (1,000,000
 characters) and `MAX_BLOCKS` (5,000) are both checked in `put_document`.
@@ -1483,11 +1490,20 @@ own, unrelated reasons.
 is retrievable only through the verbs above; it is never fused into
 `HybridSearchService` or `LayerCompositionService`'s ranking, and never
 lifted into the L1 graph except through the on-demand lift doc 16 §5
-owns. `tests/test_block_retrieval.py` enforces this structurally — it
-walks the fusion modules' own imports and the composition's channel and
-id-kind registries and fails the build if a block becomes reachable from
-either, rather than only checking that today's ranked results happen not
-to contain one.
+owns. `tests/test_block_retrieval.py` enforces both halves
+structurally, rather than only checking that today's ranked results happen
+not to contain a block. The retrieval half walks the fusion modules' own
+imports and the composition's channel and id-kind registries and fails the
+build if a block becomes reachable from either. The vault half walks the
+import closure of every module that mints a fact, moves one on the ladder
+or synthesises an article from the vault, and fails the build if one can
+reach a module that reads a block row — doc 16 §5's lift is left as the
+only route from a block to a fact, and `block_fact_sources`, which is that
+lift, is excluded from the forbidden set on the tested ground that it reads
+no block row itself. Scoped to minting rather than to "writes
+`knowledge_triples`" deliberately: `document_door` does both write the
+vault and read blocks, expiring a fact whose last source its own delete
+withdrew, and that withdrawal direction can only demote.
 
 ## Cross-cutting invariants
 

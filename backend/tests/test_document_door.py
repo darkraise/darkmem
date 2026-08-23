@@ -582,6 +582,32 @@ def test_heading_path_terminates_on_a_synthetic_cycle():
     assert truncated is True
 
 
+def test_heading_path_truncates_when_the_iteration_bound_runs_out():
+    """The third truncation route, and the one that was long documented as
+    unreachable: `_ANCESTORS` seeds every search hit at depth 0 and `by_id`
+    keeps the shallowest occurrence, so a parent chain whose every block is
+    itself a hit carries depth 0 throughout. Neither `node is None` nor the
+    depth check fires, the `for` bound is what stops the walk, and the
+    caller must still be told the path is cut off.
+    """
+    from app.services.document_door import _ANCESTOR_DEPTH_LIMIT, _heading_path
+
+    length = _ANCESTOR_DEPTH_LIMIT + 5
+    by_id = {
+        str(i): {
+            "id": str(i),
+            "parent_id": str(i + 1) if i + 1 < length else None,
+            "text": f"H{i}",
+            "type": "heading",
+            "depth": 0,
+        }
+        for i in range(length)
+    }
+    path, truncated = _heading_path("0", by_id)
+    assert truncated is True
+    assert len(path) < length
+
+
 @pytest.mark.asyncio
 async def test_search_returns_the_heading_path_of_each_hit(session):
     llm = StubEmbedder()

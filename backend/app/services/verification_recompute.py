@@ -10,10 +10,19 @@ scope here. This module owns only *which* facts get called with it and *when*
 **Two arms, cooperating under one job.**
 
 The **fast arm** (``_drain_sources_changed``) drains ``sources_changed``
-events — emitted by ``fact_lift`` (birth) and ``fact_provenance``
-(withdrawal) whenever a fact's evidence actually changed — past a watermark,
+events — emitted by ``fact_lift`` (birth), ``fact_provenance`` (a memory
+withdrawn), the Tier-C citation re-verifier (a code citation going stale or
+resolving again) and ``document_door`` (a document deleted, taking its
+blocks' provenance with it) whenever a fact's evidence actually changed —
+past a watermark,
 dedups the affected ``fact_id``s, and calls ``recompute_fact`` on each. This
 is the doc 08 §4.3 path and is O(evidence churn), not O(vault size).
+
+The citation re-verifier is named in words rather than by its module
+basename on purpose: ``tests/test_citation_reverifier.py`` scans every file
+under ``app/`` for that basename against an allowlist of its wiring, prose
+included, so spelling it here would either red the build or buy this module
+an allowlist entry it has no reason to hold.
 
 The **slow arm** (``_reconcile_from_fact_sources``) is the backstop
 ``record_event`` makes necessary. ``record_event`` degrades loudly but never
@@ -80,14 +89,17 @@ dropped promotion delays, it never fabricates one), and it is caught for
 that specific fact by the slow arm's next pass regardless — but it quietly
 promotes the slow arm's rotation period from a rare-corruption backstop to a
 load-bearing bound for *ordinary* concurrent operation, since ``fact_lift``
-ticks and ``fact_provenance`` emits overlap by construction, not only under
+ticks and the withdrawal emits overlap by construction, not only under
 failure. **Hardening: the fast arm never reads an event newer than
 ``moment - _COMMIT_SKEW_MARGIN`` (5s)**, so a drain never advances the
 watermark past a timestamp an in-flight, earlier-started transaction might
 still land behind. As long as no producer transaction takes longer than the
-margin to go from ``BEGIN`` to ``COMMIT`` — true for every producer today
-(``fact_lift`` and ``fact_provenance`` write single-digit rows per
-savepoint, no LLM call on this path) — this closes the gap outright rather
+margin to go from ``BEGIN`` to ``COMMIT`` — true for all four producers
+today (``fact_lift`` and ``fact_provenance`` write single-digit rows per
+savepoint, the citation re-verifier one row per stale citation, and
+``document_door``'s delete is set-based SQL plus one event per fact that
+lost a source; none of them makes an LLM call on this path) — this closes
+the gap outright rather
 than merely bounding its cost; a producer that ever became slower than the
 margin would reopen it, at which point the margin is the number to raise,
 not the mechanism to abandon.
