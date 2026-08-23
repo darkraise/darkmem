@@ -108,7 +108,7 @@ async def _run_batch(monkeypatch, ids, project):
 
 
 @pytest.mark.asyncio
-async def test_each_memory_in_a_batch_gets_its_own_subject(setup_database, monkeypatch):
+async def test_each_memory_in_a_batch_gets_its_own_subject(clean_llm_usage, monkeypatch):
     """The trap this pins: asyncio.gather wraps each coroutine in a Task, and
     every Task copies the SAME parent context. Without an explicit per-entry
     value, all three memories attribute to whatever the batch scope held."""
@@ -127,7 +127,7 @@ async def test_each_memory_in_a_batch_gets_its_own_subject(setup_database, monke
 
 @pytest.mark.asyncio
 async def test_a_merged_call_records_once_and_says_it_was_merged(
-    setup_database, monkeypatch
+    clean_llm_usage, monkeypatch
 ):
     """Splitting one call's tokens across two purposes would be invention, so
     the merged call stays one extraction row that declares the merge."""
@@ -145,7 +145,7 @@ async def test_a_merged_call_records_once_and_says_it_was_merged(
 
 @pytest.mark.asyncio
 async def test_batched_embeds_attribute_to_the_batch_not_a_memory(
-    setup_database, monkeypatch
+    clean_llm_usage, monkeypatch
 ):
     """One embed call covers the whole batch, and entity-name embeds are
     deduped and cache-hit across memories, so a per-memory share is undefined,
@@ -165,7 +165,7 @@ async def test_batched_embeds_attribute_to_the_batch_not_a_memory(
 
 
 @pytest.mark.asyncio
-async def test_a_mixed_project_batch_claims_no_project(setup_database, monkeypatch):
+async def test_a_mixed_project_batch_claims_no_project(clean_llm_usage, monkeypatch):
     """The per-memory rows still carry their own project; the batch-level embed
     has no single one, and guessing the first entry's would be a wrong answer
     rather than a missing one."""

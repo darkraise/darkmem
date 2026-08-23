@@ -48,7 +48,7 @@ def _row(**kw) -> LLMUsage:
 
 
 @pytest_asyncio.fixture
-async def authed(client):
+async def authed(clean_llm_usage, client):
     app.dependency_overrides[require_auth] = lambda: {"sub": "admin"}
     yield client
     app.dependency_overrides.pop(require_auth, None)
@@ -237,3 +237,12 @@ async def test_an_empty_window_is_zero_not_an_error(authed):
     assert body["total_calls"] == 0
     assert body["total_cost_micros"] == 0
     assert body["cache_hit_ratio"] is None
+
+
+@pytest.mark.asyncio
+async def test_a_subject_with_no_calls_claims_nothing(authed):
+    """`batched_embedding` on an empty result would describe work nothing
+    observed -- an absence rendered as a finding."""
+    body = (await authed.get("/api/v1/usage/by-subject/memory/does-not-exist")).json()
+    assert body["calls"] == []
+    assert body["batched_embedding"] is False

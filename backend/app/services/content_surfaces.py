@@ -623,6 +623,21 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "POST /api/v1/api-keys",
     "GET /api/v1/api-keys",
     "DELETE /api/v1/api-keys/{key_id}",
+    # Token and cost telemetry (the usage surface). No memory content crosses:
+    # `llm_usage` stores what a call cost, never what it said. The prompt and
+    # the completion are not recorded at all -- only their token counts -- and
+    # `usage_raw` holds the vendor's own envelope, which is counts too. What
+    # does cross is a memory *id*, as `subject_id`, and the same reasoning the
+    # entity browser records applies: an id is not content, and the surface is
+    # operator-wide because a cost review that hid another project's spend
+    # would report a fraction of the bill as the bill.
+    "GET /api/v1/usage/overview",
+    "GET /api/v1/usage/series",
+    "GET /api/v1/usage/by-subject/{subject_type}/{subject_id}",
+    "GET /api/v1/usage/top",
+    # The price table is pure configuration -- dollars per million tokens.
+    "GET /api/v1/usage/prices",
+    "PUT /api/v1/usage/prices",
     "GET /health",
     "GET /api/v1/analytics/stats",
     "POST /api/v1/analytics/reprocess",

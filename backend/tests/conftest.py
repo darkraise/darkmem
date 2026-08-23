@@ -114,6 +114,30 @@ async def session_factory(session):
 
 
 @pytest_asyncio.fixture
+async def clean_llm_usage(setup_database):
+    """Empty ``llm_usage`` before a test that asserts on whole-table counts.
+
+    The recorder writes on its own session by design, and since it is wired
+    into the production orchestrator any test that drives a real LLM call
+    through ``app.state.llm`` commits rows that outlive it -- the rollback the
+    ``session`` fixture gives everything else does not reach them. A test that
+    counts the whole table therefore cannot assume it starts empty; this makes
+    it so rather than weakening the assertion to a filter.
+    """
+    from sqlalchemy import text as sa_text
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    async with factory() as s:
+        await s.execute(sa_text("DELETE FROM llm_usage"))
+        await s.commit()
+    yield
+    async with factory() as s:
+        await s.execute(sa_text("DELETE FROM llm_usage"))
+        await s.commit()
+
+
+@pytest_asyncio.fixture
 async def client(session):
     async def override():
         yield session

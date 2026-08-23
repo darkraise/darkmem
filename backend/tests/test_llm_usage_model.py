@@ -8,7 +8,7 @@ from app.models.llm_usage import LLMUsage
 
 
 @pytest.mark.asyncio
-async def test_row_round_trips_with_unmeasured_tokens(session):
+async def test_row_round_trips_with_unmeasured_tokens(clean_llm_usage, session):
     """An unmeasured call stores NULL tokens, not zeros: a vendor that stops
     reporting usage must never render as a free model."""
     row = LLMUsage(
@@ -36,7 +36,7 @@ async def test_row_round_trips_with_unmeasured_tokens(session):
 
 
 @pytest.mark.asyncio
-async def test_cost_is_an_integer_column(session):
+async def test_cost_is_an_integer_column(clean_llm_usage, session):
     """Money is micro-USD as BigInteger. `memories.confidence` being REAL is
     not a precedent for currency."""
     col = inspect(LLMUsage).columns["cost_micros"]
