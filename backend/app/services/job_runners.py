@@ -836,3 +836,60 @@ def make_job_run_cleanup_runner(app, session_factory: async_sessionmaker[AsyncSe
         logger.info("job_run_cleanup: trimmed %s row(s) to ceiling %s", deleted, retain)
         return {"deleted": deleted, "retained": retain}
     return run
+
+
+def make_block_embedding_runner(
+    app,
+    session_factory: async_sessionmaker[AsyncSession],
+):
+    """Keep document blocks embedded under the active fingerprint (spec 2026-08-23).
+
+    Tier C: the backstop `put_document`'s inline embed cannot be — an embed
+    call that failed after its filing already committed, an embedder
+    rotation that strands existing blocks in a dead partition, or a document
+    filed before this door shipped. Off the hot path, never inside capture.
+
+    Without an orchestrator there is nothing to embed with, so the run is a
+    no-op rather than a failure — the same stance every other model-spending
+    runner takes in Postgres-only mode.
+    """
+    async def run() -> None:
+        from app.services.block_embedding_refresh import (
+            BLOCK_EMBEDDING_CONFIG_SCHEMA,
+            BLOCK_EMBEDDING_JOB_KEY,
+            refresh_block_embeddings,
+        )
+        from app.services.events import record_event
+
+        llm = getattr(app.state, "llm", None)
+        if llm is None:
+            logger.info("block_embedding_refresh skipped: no LLM orchestrator")
+            return
+
+        registry = getattr(app.state, "job_registry", None)
+        knobs = {fd.key: fd.default for fd in BLOCK_EMBEDDING_CONFIG_SCHEMA}
+        if registry is not None:
+            cfg = await registry.load_config(BLOCK_EMBEDDING_JOB_KEY)
+            knobs.update(cfg.config or {})
+
+        async with session_factory() as session:
+            embedded = await refresh_block_embeddings(
+                session, llm, batch=int(knobs["batch"]),
+            )
+            if embedded:
+                journalled = await record_event(
+                    session,
+                    event_type="block_embeddings_refreshed",
+                    object_type="system",
+                    payload={"embedded": embedded},
+                )
+                await session.commit()
+                if not journalled:
+                    logger.warning(
+                        "block_embedding_refresh: embedded %d block(s) unjournalled",
+                        embedded,
+                    )
+
+        if embedded:
+            logger.info("Block embeddings: %d embedded", embedded)
+    return run

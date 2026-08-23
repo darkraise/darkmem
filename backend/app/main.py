@@ -227,6 +227,7 @@ async def lifespan(app: FastAPI):
         make_repo_entity_merge_runner,
         make_code_deriver_runner,
         make_citation_reverify_runner,
+        make_block_embedding_runner,
     )
     from app.services.entity_anchoring import (
         REPO_ENTITY_ANCHORING_CONFIG_SCHEMA,
@@ -250,6 +251,13 @@ async def lifespan(app: FastAPI):
     from app.services.relation_embeddings import (
         RELATION_EMBEDDING_CONFIG_SCHEMA,
         RELATION_EMBEDDING_JOB_KEY,
+    )
+    from app.services.block_embedding_refresh import (
+        BLOCK_EMBEDDING_CONFIG_SCHEMA,
+        BLOCK_EMBEDDING_CRON,
+        BLOCK_EMBEDDING_JOB_KEY,
+        BLOCK_EMBEDDING_MAX_RUN_SECONDS,
+        BLOCK_EMBEDDING_MIN_INTERVAL_SECONDS,
     )
     from app.services.code_reconcile import (
         CODE_RECONCILE_CRON,
@@ -461,6 +469,22 @@ async def lifespan(app: FastAPI):
         runner=make_relation_embedding_runner(app, async_session_factory),
         max_run_seconds=900,
         config_schema=RELATION_EMBEDDING_CONFIG_SCHEMA,
+    ))
+    job_registry.register(Job(
+        key=BLOCK_EMBEDDING_JOB_KEY,
+        display_name="Block Embedding Refresh",
+        description=(
+            "Embeds document blocks that have no vector under the active "
+            "embedder: an embed that failed after its filing committed, an "
+            "embedder rotation, or documents filed before the door shipped. "
+            "Off the hot path. Each run spends embedding calls, so 0 disables "
+            "it."
+        ),
+        default_cron=BLOCK_EMBEDDING_CRON,
+        min_interval_seconds=BLOCK_EMBEDDING_MIN_INTERVAL_SECONDS,
+        runner=make_block_embedding_runner(app, async_session_factory),
+        max_run_seconds=BLOCK_EMBEDDING_MAX_RUN_SECONDS,
+        config_schema=BLOCK_EMBEDDING_CONFIG_SCHEMA,
     ))
     job_registry.register(Job(
         key=REPO_ENTITY_ANCHORING_JOB_KEY,

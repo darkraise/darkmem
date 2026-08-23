@@ -138,6 +138,9 @@ EVENT_TYPES: list[str] = [
     CONTRADICTION_SCANNED,
     CONTRADICTION_DISMISSED,
     "document_filed",
+    # The block-embedding backstop job's run summary (T-doc-door.6). Landed
+    # ahead of its emitter, taxonomy-first, same as every other value here.
+    "block_embeddings_refreshed",
     "repo_registered",
     "repo_synced",
     "repo_indexed",

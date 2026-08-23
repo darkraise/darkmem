@@ -120,6 +120,11 @@ const EVENT_TYPES_WITHOUT_TAB = new Set<string>([
   // Generic system housekeeping (re-embed sweeps, maintenance jobs) —
   // not a memory/fact/repo lifecycle step any of the five tabs models.
   "maintenance_run",
+  // The block-embedding backstop job's run summary (spec 2026-08-23):
+  // how many document blocks it embedded this tick. Same reasoning as
+  // maintenance_run above — housekeeping on the embedding partitions, not
+  // a memory/fact/repo lifecycle step any of the five tabs models.
+  "block_embeddings_refreshed",
   // A human accepting/dismissing a topic pin suggestion — curation on a
   // subject, not a memory or fact transition; no tab covers that surface
   // yet and T2.53's scheduler that would drive it hasn't landed.
