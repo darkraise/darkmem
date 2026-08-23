@@ -16,17 +16,69 @@ rows share no locks with the caller's transaction.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import NamedTuple
 
+from sqlalchemy import select
+
+from app.models.config import Config
 from app.models.llm_usage import LLMUsage
 from app.services.llm import extract_usage
 from app.services.llm_quirks import quirks_for
-from app.services.usage_pricing import compute_cost_micros, resolve_rates
+from app.services.usage_pricing import (
+    MODEL_PRICES_CONFIG_KEY,
+    compute_cost_micros,
+    resolve_rates,
+)
 
 logger = logging.getLogger(__name__)
+
+#: Prices are read from the config row rather than frozen at construction, so
+#: an operator's edit takes effect on the next call instead of the next boot.
+#: Short TTL for the same reason the feature-flag cache has one: this runs on
+#: every vendor call, and a per-call SELECT would make metering cost more than
+#: some of the calls it meters.
+_PRICE_CACHE_TTL = 30.0
+_price_cache: dict = {"value": None, "at": 0.0}
+_price_lock = asyncio.Lock()
+
+
+async def _read_price_overrides(session_factory) -> dict:
+    async with session_factory() as session:
+        row = (await session.execute(
+            select(Config).where(Config.key == MODEL_PRICES_CONFIG_KEY)
+        )).scalar_one_or_none()
+    return dict(row.value) if row and isinstance(row.value, dict) else {}
+
+
+async def get_price_overrides(session_factory) -> dict:
+    now = time.monotonic()
+    value = _price_cache["value"]
+    if value is not None and now - _price_cache["at"] < _PRICE_CACHE_TTL:
+        return value
+    async with _price_lock:
+        value = _price_cache["value"]
+        if value is not None and now - _price_cache["at"] < _PRICE_CACHE_TTL:
+            return value
+        fresh = await _read_price_overrides(session_factory)
+        _price_cache["value"] = fresh
+        _price_cache["at"] = time.monotonic()
+        return fresh
+
+
+def price_cache_reset() -> None:
+    """Drop the cached price table.
+
+    Called by the price write path so an operator's edit is visible on the next
+    call rather than up to the TTL later -- a settings form that takes half a
+    minute to mean anything reads as a form that did not work. Tests use it too.
+    """
+    _price_cache["value"] = None
+    _price_cache["at"] = 0.0
 
 #: What a call is recorded against when nobody claimed it. Still counted in
 #: totals — an unattributed cost is a real cost.
@@ -62,7 +114,15 @@ def subject_scope(subject: UsageSubject):
 class UsageRecorder:
     def __init__(self, session_factory, price_overrides: dict | None = None):
         self._session_factory = session_factory
-        self._price_overrides = price_overrides or {}
+        #: An explicit table pins the rates (tests, and any caller that wants a
+        #: fixed price basis). ``None`` means read the live config row.
+        self._price_overrides = price_overrides
+
+    async def _rates_for(self, model: str):
+        overrides = self._price_overrides
+        if overrides is None:
+            overrides = await get_price_overrides(self._session_factory)
+        return resolve_rates(model, overrides)
 
     async def record(
         self,
@@ -86,7 +146,7 @@ class UsageRecorder:
                 or UsageSubject(UNATTRIBUTED, None, None)
             )
             usage = extract_usage(payload, quirks_for(api_kind))
-            rates = resolve_rates(model, self._price_overrides)
+            rates = await self._rates_for(model)
             cost = compute_cost_micros(
                 rates,
                 usage["prompt_tokens"] if usage else None,

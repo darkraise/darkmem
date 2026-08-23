@@ -10,13 +10,25 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
 from app.database import get_session
 from app.models.llm_usage import LLMUsage
 from app.repositories.usage_repository import UsageRepository, window_start
+from app.services.usage_pricing import (
+    DEFAULT_MODEL_PRICES,
+    MODEL_PRICES_CONFIG_KEY,
+    normalise_price_overrides,
+    resolve_rates,
+)
+from app.services.usage_recorder import price_cache_reset
+from app.models.config import Config
 from app.schemas.usage import (
+    ModelPriceRow,
+    ModelPricesResponse,
+    ModelPricesUpdate,
     UsageBreakdownRow,
     UsageCallRow,
     UsageOverviewResponse,
@@ -103,7 +115,10 @@ async def usage_by_subject(
         # A memory's content and entity-name embeds are paid for by the batch it
         # arrived in. Reporting the memory's own embedding cost as zero would be
         # as wrong as inventing a share of the batch's, so the panel says which.
-        batched_embedding=not any(c.purpose == "embedding" for c in calls),
+        # Only claimed for a subject that actually has calls: asserting it for
+        # an empty result would describe work nothing here observed.
+        batched_embedding=bool(calls)
+        and not any(c.purpose == "embedding" for c in calls),
         calls=[
             UsageCallRow(
                 id=str(c.id),
@@ -150,3 +165,64 @@ async def usage_top(
         by, _start(window), project, subject_type, limit,
     )
     return UsageTopResponse(by=by, items=[UsageTopRow(**r) for r in rows])
+
+
+@router.get("/prices", response_model=ModelPricesResponse)
+async def get_model_prices(
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    """The effective price table: shipped defaults with the config row merged
+    over them, plus every model the operator priced that ships no default."""
+    row = (await session.execute(
+        select(Config).where(Config.key == MODEL_PRICES_CONFIG_KEY)
+    )).scalar_one_or_none()
+    overrides = dict(row.value) if row and isinstance(row.value, dict) else {}
+    models = sorted(set(DEFAULT_MODEL_PRICES) | set(overrides))
+    rows = []
+    for model in models:
+        rates = resolve_rates(model, overrides)
+        if rates is None:
+            # A partial override for a model with no shipped default cannot be
+            # completed; reporting invented rates would be worse than omitting
+            # a row the operator can see is incomplete in their own input.
+            continue
+        rows.append(ModelPriceRow(
+            model=model,
+            input_micros_per_mtok=rates.input_micros_per_mtok,
+            cached_micros_per_mtok=rates.cached_micros_per_mtok,
+            output_micros_per_mtok=rates.output_micros_per_mtok,
+            overridden=model in overrides,
+        ))
+    return ModelPricesResponse(models=rows)
+
+
+@router.put("/prices", response_model=ModelPricesResponse)
+async def put_model_prices(
+    body: ModelPricesUpdate,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    """Replace the override layer wholesale, on the config-singleton pattern.
+
+    Rates are validated rather than coerced: an unknown field silently dropped
+    leaves an operator looking at a form that accepted their number and did
+    nothing with it.
+    """
+    try:
+        clean = normalise_price_overrides(body.prices)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    row = (await session.execute(
+        select(Config).where(Config.key == MODEL_PRICES_CONFIG_KEY)
+    )).scalar_one_or_none()
+    if row is None:
+        session.add(Config(key=MODEL_PRICES_CONFIG_KEY, value=clean))
+    else:
+        row.value = clean
+    await session.commit()
+    # The recorder caches this table for a short TTL; a settings form that
+    # takes half a minute to mean anything reads as a form that did not work.
+    price_cache_reset()
+    return await get_model_prices(session=session)

@@ -587,8 +587,12 @@ async def setup_finalize(
         # 4. Rebuild the live orchestrator if the LLM block landed.
         if body.llm is not None and llm_status.ok:
             from app.api.routes.config import _replace_orchestrator
+            from app.database import async_session_factory
+            from app.services.usage_recorder import UsageRecorder
             new_config = await fetch_llm_config(session)
-            new_llm = LLMOrchestrator(new_config)
+            new_llm = LLMOrchestrator(
+                new_config, recorder=UsageRecorder(async_session_factory),
+            )
             _replace_orchestrator(request, new_llm)
 
         # 5. Audit log

@@ -118,3 +118,24 @@ class UsageTopRow(BaseModel):
 class UsageTopResponse(BaseModel):
     by: str
     items: list[UsageTopRow]
+
+
+class ModelPriceRow(BaseModel):
+    model: str
+    input_micros_per_mtok: int
+    cached_micros_per_mtok: int
+    output_micros_per_mtok: int
+    #: Whether the config row moved this model off its shipped rates. A form
+    #: that cannot show this makes a corrected price indistinguishable from a
+    #: default that happens to match.
+    overridden: bool
+
+
+class ModelPricesResponse(BaseModel):
+    models: list[ModelPriceRow]
+
+
+class ModelPricesUpdate(BaseModel):
+    #: Full replace of the override layer, per the config-singleton convention.
+    #: Partial per-model rates are still merged over the shipped defaults.
+    prices: dict[str, dict[str, float]]

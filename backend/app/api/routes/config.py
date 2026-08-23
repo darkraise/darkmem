@@ -136,10 +136,17 @@ async def apply_llm_config_change(
     go through this; two copies would drift and one of them would keep
     calling the old endpoint until restart.
     """
+    from app.database import async_session_factory
     from app.services.llm import LLMOrchestrator
+    from app.services.usage_recorder import UsageRecorder
 
     updated_config = await fetch_llm_config(session)
-    new_llm = LLMOrchestrator(updated_config)
+    # Carry the recorder across the swap. Losing it here would turn metering
+    # off on a settings save, and the symptom -- a cost graph that stops --
+    # looks exactly like an absence of spend.
+    new_llm = LLMOrchestrator(
+        updated_config, recorder=UsageRecorder(async_session_factory),
+    )
     _replace_orchestrator(request, new_llm)
 
     # Resolve the dimensions of the new embedder before updating the

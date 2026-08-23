@@ -46,6 +46,40 @@ DEFAULT_MODEL_PRICES: dict[str, ModelRates] = {
 }
 
 
+#: The `config` row the operator's price edits live in. Prices are config, not
+#: schema: a vendor changing its rate must not need a migration, and a
+#: deployment on a discount must not need a fork.
+MODEL_PRICES_CONFIG_KEY = "model_prices"
+
+
+def normalise_price_overrides(raw: dict) -> dict[str, dict[str, int]]:
+    """Validate an operator-supplied price table, or raise ``ValueError``.
+
+    Rejects rather than drops. An unknown rate field silently ignored leaves an
+    operator looking at a form that accepted their number and did nothing with
+    it, and a negative rate produces a negative cost -- a total a per-model edit
+    can drive below zero is not a total.
+    """
+    if not isinstance(raw, dict):
+        raise ValueError("prices must be an object keyed by model name")
+    out: dict[str, dict[str, int]] = {}
+    for model, rates in raw.items():
+        if not isinstance(rates, dict):
+            raise ValueError(f"{model}: rates must be an object")
+        unknown = set(rates) - set(_RATE_FIELDS)
+        if unknown:
+            raise ValueError(f"{model}: unknown rate field(s) {sorted(unknown)}")
+        clean: dict[str, int] = {}
+        for field, value in rates.items():
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(f"{model}.{field}: rate must be a number")
+            if value < 0:
+                raise ValueError(f"{model}.{field}: rate must not be negative")
+            clean[field] = int(value)
+        out[model] = clean
+    return out
+
+
 def resolve_rates(model: str, overrides: dict) -> ModelRates | None:
     """The operator's row merged over the shipped default, per model.
 
