@@ -97,6 +97,8 @@ PARITY_TABLE: tuple[Surface, ...] = (
             ("GET", f"{V1}/usage/series"),
             ("GET", f"{V1}/usage/by-subject/{{subject_type}}/{{subject_id}}"),
             ("GET", f"{V1}/usage/top"),
+            ("POST", f"{V1}/usage/subject-totals"),
+            ("GET", f"{V1}/usage/by-job"),
         ),
         mcp=(),
         reason=(

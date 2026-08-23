@@ -176,6 +176,69 @@ class UsageRepository:
         )
         return dict((await self.session.execute(stmt)).one()._mapping)
 
+    async def totals_for_subjects(
+        self, subject_type: str, subject_ids: list[str]
+    ) -> list[dict]:
+        """Per-id totals for a page that already knows which rows it is drawing.
+
+        One grouped query rather than one request per row: an Activity page
+        showing fifty pipeline runs would otherwise open fifty connections to
+        answer a column.
+        """
+        if not subject_ids:
+            return []
+        stmt = (
+            select(
+                LLMUsage.subject_id,
+                _sum(LLMUsage.cost_micros).label("cost_micros"),
+                func.count().label("calls"),
+                _sum(LLMUsage.prompt_tokens).label("prompt_tokens"),
+                _sum(LLMUsage.cached_tokens).label("cached_tokens"),
+                _sum(LLMUsage.completion_tokens).label("completion_tokens"),
+                _counted(_UNMEASURED).label("unmeasured_calls"),
+                _counted(_UNPRICED).label("unpriced_calls"),
+            )
+            .where(
+                LLMUsage.subject_type == subject_type,
+                LLMUsage.subject_id.in_(subject_ids),
+            )
+            .group_by(LLMUsage.subject_id)
+        )
+        return [dict(r._mapping) for r in (await self.session.execute(stmt)).all()]
+
+    async def totals_by_job(
+        self, start: datetime | None, project: str | None
+    ) -> list[dict]:
+        """Per job *key*, not per run.
+
+        A job-run subject is ``{key}@{started_at}`` because the `job_runs` row is
+        minted only after the runner returns. Grouping on the key means splitting
+        that id rather than joining a table that may hold no row for the run.
+        """
+        key = func.split_part(LLMUsage.subject_id, "@", 1).label("job_key")
+        cost = _sum(LLMUsage.cost_micros).label("cost_micros")
+        stmt = (
+            select(
+                key,
+                cost,
+                func.count().label("calls"),
+                func.count(func.distinct(LLMUsage.subject_id)).label("runs"),
+                _sum(LLMUsage.prompt_tokens).label("prompt_tokens"),
+                _sum(LLMUsage.cached_tokens).label("cached_tokens"),
+                _sum(LLMUsage.completion_tokens).label("completion_tokens"),
+                _counted(_UNMEASURED).label("unmeasured_calls"),
+                _counted(_UNPRICED).label("unpriced_calls"),
+            )
+            .where(
+                *_filters(start, project),
+                LLMUsage.subject_type == "job_run",
+                LLMUsage.subject_id.is_not(None),
+            )
+            .group_by(key)
+            .order_by(cost.desc(), key)
+        )
+        return [dict(r._mapping) for r in (await self.session.execute(stmt)).all()]
+
     # ── outliers ────────────────────────────────────────────────────
 
     _ORDERS = {

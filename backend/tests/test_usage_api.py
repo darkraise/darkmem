@@ -246,3 +246,60 @@ async def test_a_subject_with_no_calls_claims_nothing(authed):
     body = (await authed.get("/api/v1/usage/by-subject/memory/does-not-exist")).json()
     assert body["calls"] == []
     assert body["batched_embedding"] is False
+
+
+@pytest.mark.asyncio
+async def test_subject_totals_answers_only_for_the_ids_asked_for(authed, seeded_usage):
+    r = await authed.post("/api/v1/usage/subject-totals", json={
+        "subject_type": "memory", "subject_ids": [_MEMORY_B],
+    })
+    assert r.status_code == 200
+    totals = r.json()["totals"]
+    assert [t["subject_id"] for t in totals] == [_MEMORY_B]
+    assert totals[0]["calls"] == 3
+
+
+@pytest.mark.asyncio
+async def test_a_subject_that_spent_nothing_is_absent_not_zero(authed, seeded_usage):
+    """A caller must render an absent row as "no spend recorded" rather than as
+    a zero it measured -- the same distinction the overview draws between a
+    measured zero and an unmeasured call."""
+    body = (await authed.post("/api/v1/usage/subject-totals", json={
+        "subject_type": "memory", "subject_ids": [_MEMORY_A, "no-such-memory"],
+    })).json()
+    assert {t["subject_id"] for t in body["totals"]} == {_MEMORY_A}
+
+
+@pytest.mark.asyncio
+async def test_subject_totals_refuses_an_unbounded_id_list(authed):
+    """One request per row is what this endpoint exists to prevent; the whole
+    table in one request is not the alternative."""
+    r = await authed.post("/api/v1/usage/subject-totals", json={
+        "subject_type": "memory", "subject_ids": [str(uuid.uuid4()) for _ in range(201)],
+    })
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_by_job_groups_runs_under_their_job_key(authed, session):
+    """A job-run subject is `{key}@{started_at}` because the job_runs row is
+    minted only after the runner returns -- and a run reporting nothing writes
+    no row at all. Grouping splits that id rather than joining a table that may
+    hold nothing for the run."""
+    session.add_all([
+        _row(subject_type="job_run", subject_id="memory_dream@2026-08-01T00:00:00+00:00",
+             cost_micros=100),
+        _row(subject_type="job_run", subject_id="memory_dream@2026-08-02T00:00:00+00:00",
+             cost_micros=250),
+        _row(subject_type="job_run", subject_id="fact_lift@2026-08-02T00:00:00+00:00",
+             cost_micros=40),
+    ])
+    await session.commit()
+    body = (await authed.get("/api/v1/usage/by-job?window=all")).json()
+    rows = {j["job_key"]: j for j in body["jobs"]}
+    assert rows["memory_dream"]["cost_micros"] == 350
+    assert rows["memory_dream"]["runs"] == 2
+    assert rows["memory_dream"]["calls"] == 2
+    assert rows["fact_lift"]["runs"] == 1
+    # Ordered by spend, so the job worth looking at is first.
+    assert [j["job_key"] for j in body["jobs"]][0] == "memory_dream"

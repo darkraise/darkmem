@@ -169,6 +169,9 @@ EXPECTED_STATUS = {
     ("GET", "/api/v1/usage/series"): 200,
     ("GET", "/api/v1/usage/by-subject/{subject_type}/{subject_id}"): 200,
     ("GET", "/api/v1/usage/top"): 200,
+    # A computation with a complex body, the same shape as POST .../search.
+    ("POST", "/api/v1/usage/subject-totals"): 200,
+    ("GET", "/api/v1/usage/by-job"): 200,
     ("GET", "/api/v1/usage/prices"): 200,
     # Full-replace of a config singleton, the same shape as /feature-flags.
     ("PUT", "/api/v1/usage/prices"): 200,

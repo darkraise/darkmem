@@ -635,6 +635,8 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "GET /api/v1/usage/series",
     "GET /api/v1/usage/by-subject/{subject_type}/{subject_id}",
     "GET /api/v1/usage/top",
+    "POST /api/v1/usage/subject-totals",
+    "GET /api/v1/usage/by-job",
     # The price table is pure configuration -- dollars per million tokens.
     "GET /api/v1/usage/prices",
     "PUT /api/v1/usage/prices",

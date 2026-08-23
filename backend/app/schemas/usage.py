@@ -139,3 +139,44 @@ class ModelPricesUpdate(BaseModel):
     #: Full replace of the override layer, per the config-singleton convention.
     #: Partial per-model rates are still merged over the shipped defaults.
     prices: dict[str, dict[str, float]]
+
+
+class SubjectTotalsRequest(BaseModel):
+    subject_type: str
+    subject_ids: list[str]
+
+
+class SubjectTotalRow(BaseModel):
+    subject_id: str
+    cost_micros: int
+    calls: int
+    prompt_tokens: int
+    cached_tokens: int
+    completion_tokens: int
+    unmeasured_calls: int
+    unpriced_calls: int
+
+
+class SubjectTotalsResponse(BaseModel):
+    #: Only subjects that spent something appear. A row missing from this list
+    #: has no recorded calls, which a caller must render as "no spend recorded"
+    #: rather than as a zero it measured.
+    totals: list[SubjectTotalRow]
+
+
+class JobUsageRow(BaseModel):
+    job_key: str
+    #: Distinct run subjects behind the total, so a per-run average is the
+    #: reader's to compute rather than a number this invents.
+    runs: int
+    cost_micros: int
+    calls: int
+    prompt_tokens: int
+    cached_tokens: int
+    completion_tokens: int
+    unmeasured_calls: int
+    unpriced_calls: int
+
+
+class JobUsageResponse(BaseModel):
+    jobs: list[JobUsageRow]

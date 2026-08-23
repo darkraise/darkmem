@@ -26,12 +26,17 @@ from app.services.usage_pricing import (
 from app.services.usage_recorder import price_cache_reset
 from app.models.config import Config
 from app.schemas.usage import (
+    JobUsageResponse,
+    JobUsageRow,
     ModelPriceRow,
     ModelPricesResponse,
     ModelPricesUpdate,
     UsageBreakdownRow,
     UsageCallRow,
     UsageOverviewResponse,
+    SubjectTotalRow,
+    SubjectTotalsRequest,
+    SubjectTotalsResponse,
     UsageSeriesBucket,
     UsageSeriesResponse,
     UsageSubjectResponse,
@@ -147,6 +152,40 @@ async def usage_by_subject(
         ],
         **totals,
     )
+
+
+@router.post("/subject-totals", response_model=SubjectTotalsResponse)
+async def usage_subject_totals(
+    body: SubjectTotalsRequest,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    """Totals for a page that already knows which subjects it is drawing.
+
+    A POST because the id list is the query and a page draws dozens of rows at
+    once; the alternative is one GET per row, which turns a column into a
+    connection storm. Capped so a caller cannot ask for the whole table.
+    """
+    if len(body.subject_ids) > 200:
+        raise HTTPException(
+            status_code=422, detail="at most 200 subject_ids per request",
+        )
+    rows = await UsageRepository(session).totals_for_subjects(
+        body.subject_type, body.subject_ids,
+    )
+    return SubjectTotalsResponse(totals=[SubjectTotalRow(**r) for r in rows])
+
+
+@router.get("/by-job", response_model=JobUsageResponse)
+async def usage_by_job(
+    window: str = Query(default="30d"),
+    project: str | None = None,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    """What each job has spent over the window, keyed by job rather than run."""
+    rows = await UsageRepository(session).totals_by_job(_start(window), project)
+    return JobUsageResponse(jobs=[JobUsageRow(**r) for r in rows])
 
 
 @router.get("/top", response_model=UsageTopResponse)
