@@ -1209,7 +1209,8 @@ git commit -m "feat(documents): MCP document tools"
 - Test: `backend/tests/test_block_embedding_refresh.py`
 
 **Interfaces:**
-- Consumes: `embed_blocks`, `child_table`, `PARENT_TABLE`
+- Consumes: `embed_blocks`, `child_table`, `PARENT_TABLE`, and `resolve_read_fingerprint` — which lives in `app/services/block_embeddings.py` (line 156), NOT in `app.repositories.vector`, where only the `PostgresVectorRepository` method and the `EmbedderFingerprintUnresolved` class live. Every embedding family wraps that method locally; this one is already wrapped, so import it, do not re-wrap it.
+- Consumes from Task 1's test file: `DOC`, `FINGERPRINT` (value `"test-fp-doc-door|3"` — `parse_fingerprint` requires a `model_id|dims` shape), `StubEmbedder` (which defines `llm_fingerprint()` because the resolver calls it bare). Task 1 also established an autouse `embedder_registry.forget(FINGERPRINT)` fixture; copy it — `EmbedderRegistry._known` is a process-wide cache that survives the per-test transaction rollback, and without forgetting, a later test skips the registration INSERT and dies on an undefined table.
 - Produces: `BLOCK_EMBEDDING_JOB_KEY = "block_embedding_refresh"`, `BLOCK_EMBEDDING_CONFIG_SCHEMA`, `async refresh_block_embeddings(session, llm, *, batch: int) -> int`, `make_block_embedding_runner(app, session_factory)`
 
 - [ ] **Step 1: Add the event type first**
@@ -1269,11 +1270,12 @@ import logging
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.repositories.vector import (
-    EmbedderFingerprintUnresolved,
+from app.repositories.vector import EmbedderFingerprintUnresolved
+from app.services.block_embeddings import (
+    PARENT_TABLE,
+    embed_blocks,
     resolve_read_fingerprint,
 )
-from app.services.block_embeddings import PARENT_TABLE, embed_blocks
 from app.services.embedder_registry import child_table
 from app.services.job_registry import FieldDescriptor
 
