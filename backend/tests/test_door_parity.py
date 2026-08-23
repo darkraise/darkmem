@@ -69,8 +69,13 @@ _DOCUMENTS_RULING = (
     "nothing: they file a document and return its own text with a "
     "cosine score, as code.search returns source. The doc 16 firewall "
     "is against block rows reaching the verified vault unlifted, and "
-    "tests/test_block_retrieval.py bars that structurally. This does "
-    "not clear G-F and no bar moved."
+    "tests/test_block_retrieval.py bars that structurally: no module "
+    "that mints a fact, moves one on the verification ladder or "
+    "synthesises an article from the vault can reach, through its own "
+    "import closure, a module that reads a block row -- doc 16 section "
+    "5's on-demand lift is the only route from a block to a fact, and "
+    "it reads no block itself. This does not clear G-F and no bar "
+    "moved."
 )
 
 # The wire differences, recorded rather than left to be discovered, and one

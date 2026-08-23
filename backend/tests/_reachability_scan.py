@@ -468,3 +468,59 @@ def service_modules_imported_by(source: str) -> set[str]:
                 if alias.name.startswith("app.services."):
                     modules.add(alias.name[len("app.services."):].split(".")[0])
     return {module for module in modules if module}
+
+
+def module_path(dotted: str, backend: Path) -> Path | None:
+    """The file backing an `app.*` dotted path, module or package, else None."""
+    module = backend / (dotted.replace(".", "/") + ".py")
+    if module.exists():
+        return module
+    package = backend / dotted.replace(".", "/") / "__init__.py"
+    return package if package.exists() else None
+
+
+def app_imports(dotted: str, backend: Path) -> set[str]:
+    """Every `app.*` module named by `dotted`'s own absolute imports.
+
+    `from app.services import x` is ambiguous about whether `x` is a submodule
+    or a symbol, so the candidate is kept only when a file for it exists —
+    which is also what keeps `from app.taxonomy import BLOCK_TYPES` from
+    inventing a module.
+    """
+    path = module_path(dotted, backend)
+    if path is None:
+        return set()
+    found: set[str] = set()
+    for node in ast.walk(ast.parse(path.read_text(), filename=str(path))):
+        if isinstance(node, ast.Import):
+            found.update(a.name for a in node.names if a.name.split(".")[0] == "app")
+        elif isinstance(node, ast.ImportFrom):
+            if node.level or not node.module or node.module.split(".")[0] != "app":
+                continue
+            found.add(node.module)
+            found.update(
+                f"{node.module}.{a.name}"
+                for a in node.names
+                if module_path(f"{node.module}.{a.name}", backend)
+            )
+    return found
+
+
+def import_closure(backend: Path, *seeds: str) -> set[str]:
+    """Every `app.*` module transitively reachable from `seeds` by import.
+
+    One hop is not enough for a firewall claim: a helper two hops down that
+    imported the forbidden module would defeat a direct-import check while
+    making the reach entirely real. Depth is the opposite choice from
+    `service_modules_imported_by` above, which is deliberately one hop; a
+    caller picks the one its own claim needs.
+    """
+    seen: set[str] = set()
+    pending = list(seeds)
+    while pending:
+        module = pending.pop()
+        if module in seen:
+            continue
+        seen.add(module)
+        pending.extend(app_imports(module, backend) - seen)
+    return seen

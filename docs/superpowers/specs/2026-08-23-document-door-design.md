@@ -91,6 +91,25 @@ text with a cosine score, as `code_search` returns source. The firewall doc 16
 single-door: that surface is what G-F actually gates, and its answers are
 withheld today.
 
+**Correction, 2026-08-24 — what the cited test checked when the ruling was
+made.** The ruling above, and the "for" argument it ruled on, both cite
+`tests/test_block_retrieval.py` as already barring block rows from the verified
+vault. On 2026-08-23 that test scanned only the fusion modules and the
+composition's registries — doc 16's *retrieval* half. The vault half was
+honoured behaviourally (doc 16 §1: synthesis reads only verified facts) and
+enforced by nothing, so the citation described more than the test checked. The
+ruling stands; the gap was closed rather than the citation narrowed, on the
+precedent that an overstated justification is repaired by making the sentence
+true. The test now also walks the import closure of every module that mints a
+fact, moves one on the verification ladder or synthesises an article from the
+vault, and fails the build if one can reach a module that reads a block row —
+leaving doc 16 §5's on-demand lift as the only route from a block to a fact.
+Stated precisely because the wider claim would be false: `document_door` writes
+the vault too, expiring a fact whose last source its own delete withdrew, and
+reads blocks by construction. That is the withdrawal direction, which can only
+demote, and it is not what the firewall is against. The parity table's rendered
+reason carries the same correction.
+
 This supersedes the "single-door until G-F clears" clause for the verbs this
 spec adds. It does not clear G-F and no bar moved. The existing
 `documents.reads` row keeps its REST-only status — its MCP twins are simply

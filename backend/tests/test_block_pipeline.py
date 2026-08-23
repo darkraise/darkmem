@@ -77,7 +77,9 @@ from app.services.document_parsers import (
     DocumentParseError,
 )
 
-from ._reachability_scan import ReachabilityRules, find_forbidden_reach
+from ._reachability_scan import (
+    ReachabilityRules, find_forbidden_reach, import_closure, module_path,
+)
 from .conftest import test_engine
 # TH1.03's minimal-PDF writer, reused rather than copied: a second generator
 # would be a second set of bytes to keep agreeing with pdfplumber's reader.
@@ -781,73 +783,27 @@ _FIREWALL_RULES = ReachabilityRules(
 )
 
 
-def _module_path(dotted: str) -> pathlib.Path | None:
-    module = BACKEND / (dotted.replace(".", "/") + ".py")
-    if module.exists():
-        return module
-    package = BACKEND / dotted.replace(".", "/") / "__init__.py"
-    return package if package.exists() else None
+DOCUMENT_DOOR = "app.services.document_door"
+
+# Rooted at the door as well as the pipeline, not at the pipeline alone: the
+# door is what a caller actually reaches, and it imports the pipeline rather
+# than the other way round, so a seed of `block_pipeline` alone leaves every
+# module the door reaches past it unscanned.
+FILING_CLOSURE = import_closure(BACKEND, "app.services.block_pipeline", DOCUMENT_DOOR)
 
 
-def _app_imports(dotted: str) -> set[str]:
-    """Every `app.*` module named by `dotted`'s own absolute imports.
-
-    `from app.services import x` is ambiguous about whether `x` is a submodule
-    or a symbol, so the candidate is kept only when a file for it exists —
-    which is also what keeps `from app.taxonomy import BLOCK_TYPES` from
-    inventing a module.
-    """
-    path = _module_path(dotted)
-    if path is None:
-        return set()
-    found: set[str] = set()
-    for node in ast.walk(ast.parse(path.read_text(), filename=str(path))):
-        if isinstance(node, ast.Import):
-            found.update(a.name for a in node.names if a.name.split(".")[0] == "app")
-        elif isinstance(node, ast.ImportFrom):
-            if node.level or not node.module or node.module.split(".")[0] != "app":
-                continue
-            found.add(node.module)
-            found.update(
-                f"{node.module}.{a.name}"
-                for a in node.names
-                if _module_path(f"{node.module}.{a.name}")
-            )
-    return found
-
-
-def _import_closure(*seeds: str) -> set[str]:
-    """Every `app.*` module transitively reachable from `seeds` by import.
-
-    One hop is not enough for this firewall: the claim is that filing a
-    document cannot reach `process_batch`, and a helper two hops down that
-    imported the memory pipeline would defeat a direct-import check while
-    making the reach entirely real.
-    """
-    seen: set[str] = set()
-    pending = list(seeds)
-    while pending:
-        module = pending.pop()
-        if module in seen:
-            continue
-        seen.add(module)
-        pending.extend(_app_imports(module) - seen)
-    return seen
-
-
-BLOCK_PIPELINE_CLOSURE = _import_closure("app.services.block_pipeline")
-
-
-def test_the_block_pipelines_import_closure_excludes_the_memory_pipeline():
-    assert "app.services.block_pipeline" in BLOCK_PIPELINE_CLOSURE
-    assert MEMORY_PIPELINE not in BLOCK_PIPELINE_CLOSURE, (
-        "the block pipeline can now reach the five-phase memory pipeline by "
-        "import; doc 16 §3 forbids running it over document content"
+def test_the_filing_paths_import_closure_excludes_the_memory_pipeline():
+    assert "app.services.block_pipeline" in FILING_CLOSURE
+    assert DOCUMENT_DOOR in FILING_CLOSURE
+    assert MEMORY_PIPELINE not in FILING_CLOSURE, (
+        "the document door or the block pipeline can now reach the five-phase "
+        "memory pipeline by import; doc 16 §3 forbids running it over document "
+        "content"
     )
 
 
-def test_no_file_the_block_pipeline_reaches_names_process_batch():
-    paths = [p for p in (_module_path(m) for m in sorted(BLOCK_PIPELINE_CLOSURE)) if p]
+def test_no_file_the_filing_path_reaches_names_process_batch():
+    paths = [p for p in (module_path(m, BACKEND) for m in sorted(FILING_CLOSURE)) if p]
     assert len(paths) >= 5, (
         f"the closure resolved to only {len(paths)} files — the scan below "
         "would pass vacuously"
@@ -860,9 +816,9 @@ def test_the_firewall_scan_reports_a_module_that_does_reach_the_pipeline():
     """The negative control. Without it, a scan whose rules stopped matching —
     a renamed entry point, a widened exemption — passes silently and the
     firewall becomes a comment."""
-    closure = _import_closure("app.services.memory")
+    closure = import_closure(BACKEND, "app.services.memory")
     assert MEMORY_PIPELINE in closure
-    paths = [p for p in (_module_path(m) for m in sorted(closure)) if p]
+    paths = [p for p in (module_path(m, BACKEND) for m in sorted(closure)) if p]
     assert find_forbidden_reach(paths, BACKEND, _FIREWALL_RULES)
 
 

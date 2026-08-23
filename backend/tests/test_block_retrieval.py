@@ -8,7 +8,11 @@ behavioural test could only show that today's composition happens not to
 contain a block row; it could not show that none *can*. So the fusion modules'
 own imports are walked, and the composition's channel and id-kind registries
 are read — the two places a block would have to appear before it could be
-fused.
+fused. Doc 16's firewall runs both ways, so the vault half is walked too: no
+module that mints a fact, moves one on the verification ladder, or synthesises
+an article from the vault may reach — through its own import closure — a
+module that reads a block row, leaving doc 16 §5's on-demand lift as the only
+route from a block to a fact.
 
 **"Pushed into SQL" is proven by making the Python-side alternative fail.** A
 test that filtered correctly would pass either way. Here the other project
@@ -31,6 +35,11 @@ from sqlalchemy import text
 from app.services import block_embeddings as be_mod
 from app.services.block_query import BlockQueryService
 from app.services.document_ingest import BlockDraft, file_document
+
+from ._reachability_scan import (
+    ReachabilityRules, app_sources, find_forbidden_reach, import_closure,
+    module_path,
+)
 
 BACKEND = Path(__file__).resolve().parent.parent
 
@@ -299,3 +308,136 @@ def test_the_composition_refuses_a_block_candidate_outright():
 
     with pytest.raises(KeyError):
         _ = LAYER_BY_ID_KIND["block"]
+
+
+# ── never lifted unasked: the same firewall's vault side ────────────
+#
+# The scan above is doc 16's retrieval half — a block may not be fused into a
+# ranked memory result. This is its other half: a block may not become a
+# verified fact except through the on-demand lift doc 16 §5 owns. That half
+# was honoured behaviourally and untested structurally, which is how a
+# citation to "the structural test" came to overstate what it checks.
+#
+# The seeds are the minting, ladder-moving and vault-synthesising modules,
+# not "everything that touches knowledge_triples", and the difference is not
+# tidiness: `document_door` writes the vault too — it expires a fact whose
+# last source its delete just withdrew — and reads blocks by construction.
+# That is the withdrawal direction, which removes evidence and can only
+# demote. The firewall is about a block *becoming* a verified fact, so a
+# module that only ever takes evidence away is not one of its subjects, and a
+# seed list that swept it in would assert something false about this door.
+
+VAULT_WRITERS = (
+    "app.repositories.knowledge_triples",
+    "app.services.fact_lift",
+    "app.services.verification_recompute",
+    "app.services.verification_ladder",
+    "app.services.contradiction_scan",
+    "app.services.citation_reverify",
+    "app.services.human_adjudication",
+    "app.services.entity_merge",
+    "app.services.article_synthesis",
+)
+
+BLOCK_CHANNEL_MODULES = frozenset({
+    "app.services.block_query",
+    "app.services.block_embeddings",
+    "app.services.block_pipeline",
+    "app.services.document_ingest",
+    "app.services.document_parsers",
+    "app.services.document_door",
+})
+
+# `block_fact_sources` is deliberately absent from that set: it *is* doc 16
+# §5's lift, so forbidding it would forbid the sanctioned crossing rather than
+# the unsanctioned one. Leaving it out is safe for a reason the test below
+# checks rather than assumes — it reads no block row itself, taking block ids
+# from whoever calls it.
+SANCTIONED_LIFT = "app.services.block_fact_sources"
+
+_VAULT_RULES = ReachabilityRules(
+    forbidden_modules=BLOCK_CHANNEL_MODULES,
+    forbidden_attrs=frozenset({
+        "BlockQueryService", "ingest_document", "file_document", "put_document",
+    }),
+)
+
+
+def _closure_paths(*seeds: str) -> list[Path]:
+    return [
+        path
+        for path in (module_path(m, BACKEND) for m in sorted(import_closure(BACKEND, *seeds)))
+        if path
+    ]
+
+
+@pytest.mark.parametrize("writer", VAULT_WRITERS)
+def test_no_vault_writers_import_closure_reaches_the_block_channel(writer):
+    """A module that mints or promotes a fact must not be able to read a block.
+
+    Rooted at the writers rather than at the block channel because the claim
+    is directional: the lift may reach the vault, the vault may not reach the
+    blocks. Walked transitively, since a helper two hops down that imported
+    the block channel would defeat a direct-import check while making the
+    reach entirely real.
+    """
+    paths = _closure_paths(writer)
+    assert len(paths) >= 3, (
+        f"{writer}'s closure resolved to only {len(paths)} files — either it "
+        "moved, in which case re-point this scan, or the scan is vacuous"
+    )
+    offenders = find_forbidden_reach(paths, BACKEND, _VAULT_RULES)
+    assert not offenders, (
+        f"{writer} can now reach the block channel:\n" + "\n".join(offenders) +
+        "\nA block becomes a fact only through doc 16 §5's on-demand lift; a "
+        "vault writer that can read blocks itself is a Tier-3 firewall breach."
+    )
+
+
+def test_the_sanctioned_lift_cannot_read_a_block_row_either():
+    """Why `block_fact_sources` is safe to leave out of the forbidden set: it
+    records and withdraws provenance for block ids it is handed, and reaches
+    no module that can go and fetch the rows behind them."""
+    reachable = import_closure(BACKEND, SANCTIONED_LIFT)
+    assert reachable & BLOCK_CHANNEL_MODULES == set()
+
+
+def test_the_vault_scan_covers_every_module_that_writes_the_vault():
+    """The staleness guard the hand-written seed list needs.
+
+    A new module that writes `knowledge_triples` and is in no scanned closure
+    would be scanned by nothing, and the list would go quietly stale — this
+    epic's own characteristic defect. The derivation is SQL text, so it sees a
+    writer that issues its own statement; a writer that goes through
+    `KnowledgeTripleRepository` is usually covered anyway, the repository
+    being a seed and every closure that reaches it therefore scanned. A module
+    that does neither is outside what a static derivation here can see, and a
+    withdrawal-only writer that legitimately reads blocks (the comment above
+    `VAULT_WRITERS`) belongs outside the seeds rather than inside them — so
+    this guard says "reachable by some scan", never "is a minting module".
+    """
+    covered: set[str] = set()
+    for writer in VAULT_WRITERS:
+        covered |= import_closure(BACKEND, writer)
+
+    statements = ("INSERT INTO knowledge_triples", "UPDATE knowledge_triples",
+                  "DELETE FROM knowledge_triples")
+    uncovered: list[str] = []
+    for path in app_sources(BACKEND):
+        text_ = path.read_text()
+        if not any(statement in text_ for statement in statements):
+            continue
+        dotted = str(path.relative_to(BACKEND).with_suffix("")).replace("/", ".")
+        if dotted not in covered:
+            uncovered.append(dotted)
+    assert not uncovered, (
+        f"these modules write knowledge_triples but no vault-side scan reaches "
+        f"them: {uncovered} — add them to VAULT_WRITERS"
+    )
+
+
+def test_the_vault_scan_reports_a_module_that_does_reach_the_block_channel():
+    """The negative control. A scan whose rules stopped matching — a renamed
+    block module, a moved service — passes silently and becomes a comment."""
+    paths = _closure_paths("app.services.document_door")
+    assert find_forbidden_reach(paths, BACKEND, _VAULT_RULES)
