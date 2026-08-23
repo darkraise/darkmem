@@ -56,6 +56,7 @@ async def test_put_files_and_embeds_every_block(session):
     assert result.outcome == "created"
     assert result.blocks_filed > 0
     assert result.blocks_embedded == result.blocks_filed
+    assert result.title_applied is True
 
 
 @pytest.mark.asyncio
@@ -72,6 +73,7 @@ async def test_refiling_identical_content_is_unchanged(session):
     # repair. Without this the None-vs-zero and the gap-scoping logic could
     # both silently over-report.
     assert again.blocks_embedded == 0
+    assert again.title_applied is False
 
 
 @pytest.mark.asyncio
@@ -136,6 +138,7 @@ async def test_unchanged_repush_embeds_blocks_that_lack_a_vector(session):
     assert repair.outcome == "unchanged"
     assert repair.blocks_filed == 0
     assert repair.blocks_embedded == len(stale)
+    assert repair.title_applied is False
 
     other_still_missing = (await session.execute(
         text(f"SELECT 1 FROM {table} WHERE block_id = CAST(:id AS uuid)"),

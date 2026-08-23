@@ -1,10 +1,12 @@
 """The documents read surface (TH1.16, doc 16 §6, doc 13).
 
 Provides:
-  - GET  /api/v1/documents
-  - GET  /api/v1/documents/{document_id}/summary
-  - GET  /api/v1/documents/{document_id}/connections
-  - POST /api/v1/documents/qa
+  - GET    /api/v1/documents
+  - GET    /api/v1/documents/{document_id}/summary
+  - GET    /api/v1/documents/{document_id}/connections
+  - POST   /api/v1/documents/qa
+  - POST   /api/v1/documents
+  - DELETE /api/v1/documents/{document_id}
 
 **This is the EH1 horizon's one door and it adds no semantics.** Every read is
 a call into a service that already exists and already carries the honesty rule
@@ -36,10 +38,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.auth import require_auth
 from app.api.deps import get_llm
 from app.database import get_session
+from app.services.block_fact_sources import withdraw_document
 from app.services.block_pipeline import UnsupportedSource
 from app.services.document_connections import connections_for_document
 from app.services.document_door import DocumentTooLarge, put_document
-from app.services.document_ingest import UNCHANGED
+from app.services.document_parsers import DocumentParseError
 from app.services.document_summary import read_summary
 from app.services.faithfulness_gate import FaithfulnessGate, Outcome
 from app.services.grounded_qa import GroundedQaService
@@ -133,6 +136,8 @@ class DocumentPutRequest(BaseModel):
 
 class DocumentPutResponse(BaseModel):
     document_id: str
+    # created | updated | unchanged. `unchanged` still reports an embedded
+    # count: it is the repair path for a filing whose embed failed.
     outcome: str
     blocks_filed: int
     blocks_embedded: int
@@ -298,27 +303,37 @@ async def put_document_route(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     except UnsupportedSource as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    except DocumentParseError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
 
     return DocumentPutResponse(
         document_id=result.document_id,
         outcome=result.outcome,
         blocks_filed=result.blocks_filed,
         blocks_embedded=result.blocks_embedded,
-        title_applied=result.outcome != UNCHANGED,
+        title_applied=result.title_applied,
     )
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document_route(
     document_id: UUID,
-    session: AsyncSession = Depends(get_session),
     _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
 ) -> None:
     """Remove a document, its block subtree and its vectors.
 
     `blocks.document_id` cascades and `block_embeddings__<slug>` cascades
-    from there, so one delete takes all three in every partition.
+    from there, so one delete takes all three in every partition. Neither
+    cascade reaches `fact_sources`: `source_ref` carries no foreign key, so
+    a fact a deleted document's blocks corroborated would otherwise keep
+    its origin count and its verification rung on evidence that no longer
+    exists. `withdraw_document` closes that window before the row goes;
+    the ladder, not this route, decides what the fact's remaining
+    corroboration is worth.
     """
+    await withdraw_document(session, document_id=document_id)
+
     result = await session.execute(
         text("DELETE FROM documents WHERE id = CAST(:id AS uuid)"),
         {"id": str(document_id)},

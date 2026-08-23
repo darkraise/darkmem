@@ -54,6 +54,12 @@ class PutResult:
     outcome: str
     blocks_filed: int
     blocks_embedded: int
+    # False only when `outcome == UNCHANGED`: `file_document`'s content-hash
+    # gate short-circuits before any row write runs, so a re-filed identical
+    # document's explicit `title` (or any other field) is never applied.
+    # Every transport this door reaches has to serve this signal identically,
+    # which is why it is computed here rather than by each caller.
+    title_applied: bool
 
 
 _BLOCK_IDS = text(
@@ -164,6 +170,7 @@ async def put_document(
             return PutResult(
                 document_id=str(filed.document_id), outcome=filed.outcome,
                 blocks_filed=filed.blocks_written, blocks_embedded=0,
+                title_applied=filed.outcome != UNCHANGED,
             )
         rows = await session.execute(
             _unembedded_sql(fingerprint), {"document_id": str(filed.document_id)}
@@ -189,4 +196,5 @@ async def put_document(
         outcome=filed.outcome,
         blocks_filed=filed.blocks_written,
         blocks_embedded=written,
+        title_applied=filed.outcome != UNCHANGED,
     )

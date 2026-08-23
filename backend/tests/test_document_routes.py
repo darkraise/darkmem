@@ -72,6 +72,9 @@ async def test_delete_removes_the_document_and_answers_204(client, auth_headers,
     )
     document_id = created.json()["document_id"]
 
+    before = await client.get(f"{V1}/documents", params={"project": "p"}, headers=auth_headers)
+    assert any(item["id"] == document_id for item in before.json()["items"])
+
     deleted = await client.delete(f"{V1}/documents/{document_id}", headers=auth_headers)
     assert deleted.status_code == 204
 
@@ -85,6 +88,23 @@ async def test_delete_unknown_document_is_404(client, auth_headers):
         f"{V1}/documents/00000000-0000-0000-0000-000000000000", headers=auth_headers
     )
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_a_pdf_uri_with_string_content_is_refused_with_422(
+    client, auth_headers, stub_llm
+):
+    """`parse_pdf` takes bytes; `DocumentPutRequest.content` is always `str`,
+    so a `.pdf` uri (source_type inferred from the suffix) routes to a
+    parser that cannot accept what this door can carry. This door is
+    text-only by design, and the door must say so rather than 500.
+    """
+    response = await client.post(
+        f"{V1}/documents",
+        json={"project": "p", "uri": "docs/report.pdf", "content": "not actually pdf bytes"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio
