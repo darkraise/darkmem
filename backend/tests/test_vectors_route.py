@@ -224,15 +224,20 @@ async def test_resolve_read_fingerprint_passes_through_an_unconfirmable_wrong_di
 # already has rows, which is exactly the stale, pre-rotation one, not the
 # active-but-still-empty one retrieval actually reads. Round 2 reverted the
 # parameter entirely — a backstop sweep cannot resolve its fingerprint from
-# any data probe and instead resolves it from a real embed call
-# (`block_embedding_refresh._resolve_active_fingerprint`; see
+# any data probe and instead resolves it from a real embed call,
+# ``block_embeddings.resolve_active_fingerprint`` (see
 # `tests/test_block_embedding_refresh.py::test_refresh_targets_the_rotated_fingerprint_not_the_stale_full_one`
-# for the rotation case pinned end to end). This resolver, and the test
-# below, are back to exactly their pre-T-doc-door.6 shape: the memory-only
-# probe is still what every other caller (relation, entity-anchoring,
-# entity-merge, triple embeddings, and `block_embeddings.resolve_read_fingerprint`
-# itself, on behalf of `document_door`'s ``unchanged`` gap-fill repair) gets,
-# unchanged.
+# for the sweep's rotation case pinned end to end). Round 3 found the
+# identical bias in ``document_door.put_document``'s ``unchanged`` gap-fill
+# repair and moved it onto ``resolve_active_fingerprint`` too (see
+# `tests/test_document_door.py::test_unchanged_repair_targets_the_rotated_fingerprint_not_the_stale_full_one`),
+# so that caller no longer touches this resolver either. This resolver, and
+# the test below, are back to exactly their pre-T-doc-door.6 shape: the
+# memory-only probe is still what every other family's own callers
+# (relation, entity-anchoring, entity-merge, triple embeddings) get,
+# unchanged — the block family itself has no caller left for it, and it
+# stays exported for a future one of that shape (see
+# ``block_embeddings.resolve_read_fingerprint``'s own docstring).
 
 BLOCK_MODEL_ID = "vectors-route-block-model"
 # Two live fingerprints sharing one model_id, exactly the residual shape
@@ -357,7 +362,7 @@ async def test_resolve_read_fingerprint_still_only_asks_memory(session):
     memory data — that block data is invisible to this method by design; a
     caller whose family needs to see it must resolve some other way (a real
     embed call, not a data probe of any family — see
-    `block_embedding_refresh._resolve_active_fingerprint`)."""
+    `block_embeddings.resolve_active_fingerprint`)."""
     await _seed_diverged_family_traffic(session)
 
     resolved = await PostgresVectorRepository(session).resolve_read_fingerprint(

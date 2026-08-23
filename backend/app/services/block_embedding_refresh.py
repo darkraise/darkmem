@@ -71,7 +71,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.block_embeddings import (
-    PARENT_TABLE, _ensure_partition, embed_blocks, resolve_active_fingerprint,
+    PARENT_TABLE, ensure_partition, embed_blocks, resolve_active_fingerprint,
 )
 from app.services.embedder_registry import child_table
 from app.services.job_registry import FieldDescriptor
@@ -160,7 +160,7 @@ async def refresh_block_embeddings(
 
     fingerprint = await resolve_active_fingerprint(llm)
 
-    await _ensure_partition(session, fingerprint)
+    await ensure_partition(session, fingerprint)
     table = child_table(PARENT_TABLE, fingerprint)
     rows = (await session.execute(
         text(_MISSING_SQL.format(table=table)),

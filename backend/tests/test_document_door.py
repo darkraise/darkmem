@@ -33,8 +33,13 @@ class StubEmbedder:
         return [1.0, 0.0, 0.0], self.fingerprint
 
     def llm_fingerprint(self) -> str:
-        # `resolve_read_fingerprint` calls this bare (pure, session-less) to
-        # learn what the embedder *would* produce, before trusting any data.
+        # Matches the real `LLMOrchestrator`'s shape (a pure, session-less
+        # formatter), kept for interface completeness. Nothing in
+        # `document_door`'s own call graph reaches this bare anymore
+        # (T-doc-door.6 review, round 4, 2026-08-24): both `put_document`'s
+        # `unchanged` repair and `block_embedding_refresh`'s sweep resolve
+        # their fingerprint from a real `embed()` call instead
+        # (`block_embeddings.resolve_active_fingerprint`), never from this.
         return self.fingerprint
 
 
@@ -238,6 +243,45 @@ async def test_unchanged_repair_targets_the_rotated_fingerprint_not_the_stale_fu
         assert old_count == filed.blocks_filed, "the stranded old vectors are untouched"
     finally:
         embedder_registry.forget(rotated_fingerprint)
+
+
+@pytest.mark.asyncio
+async def test_unchanged_repair_raises_when_the_embed_lands_under_a_different_fingerprint(
+    session, monkeypatch,
+):
+    """T-doc-door.6 review (round 4): mirrors `block_embedding_refresh`'s own
+    mismatch guard. `fingerprint` (used to find the gaps) and
+    `result.fingerprint` (what the batch embed call actually wrote under)
+    are two separate real embed calls; if the active embedder's
+    configuration changes between them within one request, the repair count
+    this call reports would be computed against a partition it never
+    verified the write actually landed in. Refusing loudly is correct."""
+    llm = StubEmbedder()
+    await put_document(session, llm, project="p", uri="docs/mismatch.md", content=DOC)
+
+    from app.services.block_embeddings import PARENT_TABLE
+    from app.services.embedder_registry import child_table, embedder_registry
+
+    child = child_table(PARENT_TABLE, FINGERPRINT)
+    await session.execute(text(f"DELETE FROM {child}"))
+    await session.commit()
+
+    lie_fingerprint = "a-fingerprint-nothing-writes-under|3"
+
+    async def _resolve_to_a_lie(llm):
+        return lie_fingerprint
+
+    monkeypatch.setattr(
+        "app.services.document_door.resolve_active_fingerprint", _resolve_to_a_lie,
+    )
+
+    try:
+        with pytest.raises(RuntimeError, match="resolved fingerprint"):
+            await put_document(
+                session, llm, project="p", uri="docs/mismatch.md", content=DOC,
+            )
+    finally:
+        embedder_registry.forget(lie_fingerprint)
 
 
 @pytest.mark.asyncio

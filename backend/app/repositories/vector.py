@@ -479,7 +479,7 @@ class PostgresVectorRepository:
         prefers to skip in favour of a stale sibling that already has rows.
         No parameterisation of this method can fix a backstop's resolution;
         a job with that shape must resolve its fingerprint from a real embed
-        call instead (see ``block_embedding_refresh._resolve_active_fingerprint``),
+        call instead (see ``block_embeddings.resolve_active_fingerprint``),
         the same way retrieval already does. The parameter was reverted with
         that fix, since nothing in the tree needs it once the sweep stopped
         using this method.

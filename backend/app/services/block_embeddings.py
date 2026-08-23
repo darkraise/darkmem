@@ -8,7 +8,7 @@ the shape ``relation_embeddings.embed_relations`` and
 target-new families — a batch embed call, a register-before-insert partition
 guarantee, and an upsert keyed on ``(block_id, fingerprint)``.
 
-**Register-before-insert is not advisory.** ``_ensure_partition`` runs before
+**Register-before-insert is not advisory.** ``ensure_partition`` runs before
 the first statement that names the child table; skip it and the insert fails
 outright with an undefined-relation error rather than silently landing
 somewhere else, because the table does not exist until the registry creates
@@ -120,7 +120,7 @@ async def embed_blocks(
             "they may not belong to"
         )
 
-    await _ensure_partition(session, fingerprint)
+    await ensure_partition(session, fingerprint)
     table = child_table(PARENT_TABLE, fingerprint)
     for row, vector in zip(rows, vectors):
         await session.execute(
@@ -140,7 +140,25 @@ async def embed_blocks(
     return WriteResult(fingerprint=fingerprint, written=len(rows))
 
 
-async def _ensure_partition(session: AsyncSession, fingerprint: str) -> None:
+async def ensure_partition(session: AsyncSession, fingerprint: str) -> None:
+    """Idempotently register `fingerprint` and create its per-family child
+    tables if they do not already exist.
+
+    **Exported (no leading underscore) because it is part of this family's
+    contract, not merely an internal implementation detail** (T-doc-door.6
+    review, round 4, 2026-08-24): both `document_door.put_document`'s
+    ``unchanged`` repair and `block_embedding_refresh`'s sweep must guarantee
+    a fingerprint resolved from a real embed call — which, unlike a
+    data-probe result, is not guaranteed to already be registered — has a
+    child table before they run their own anti-join read against it,
+    *before* either of them reaches `embed_blocks` (which already calls this
+    internally on the write side). Two family-external callers needing the
+    same guarantee is what promotes a helper from private to part of the
+    contract; sibling families' own `_ensure_partition` copies
+    (`relation_embeddings.py`, `triple_embeddings.py`, `entity_anchoring.py`)
+    stay private and un-shared, because nothing outside each of those
+    modules needs to reach for one directly.
+    """
     from app.services.embedder_registry import (  # noqa: PLC0415
         EmbedderInfo, embedder_registry, parse_fingerprint,
     )
@@ -218,6 +236,19 @@ async def resolve_active_fingerprint(llm) -> str:
     "unconfirmed"/bootstrap case to guard against the way
     :func:`resolve_read_fingerprint` does — this never raises
     :class:`~app.repositories.vector.EmbedderFingerprintUnresolved`.
+
+    **The cost is one embed call per caller-defined unit of work, always —
+    never skipped, even when there is nothing to repair** (T-doc-door.6
+    review, round 4, 2026-08-24). For `block_embedding_refresh`'s sweep that
+    unit is one scheduled run (at most once every
+    ``BLOCK_EMBEDDING_MIN_INTERVAL_SECONDS``), so the cost is bounded and
+    small. For `document_door.put_document`'s ``unchanged`` repair the unit
+    is one write-door request: every re-push of an already-fully-embedded,
+    unchanged document now spends one embed call it would not have spent
+    before this function existed, where it previously spent a cheap database
+    probe instead. A caller re-pushing N unchanged documents in a pass pays N
+    embed calls, unconditionally. That is the traded-away cost this function
+    is named for taking on, not a side effect to discover later.
     """
     _, fingerprint = await llm.embed(_ACTIVE_FINGERPRINT_PROBE_TEXT)
     return fingerprint

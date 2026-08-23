@@ -9,7 +9,7 @@ that reaches a live table after registration proves the writer works when the
 guard is intact; it says nothing about whether the guard is *load-bearing*.
 `test_skipping_registration_breaks_the_insert` disables the register call and
 shows the insert fails outright — the table genuinely does not exist until
-`_ensure_partition` creates it — then restores the guard and shows the same
+`ensure_partition` creates it — then restores the guard and shows the same
 call succeeds.
 
 **Naming goes through `child_table(PARENT_TABLE, fingerprint)` only.**
@@ -219,7 +219,7 @@ async def test_skipping_registration_breaks_the_insert(session, monkeypatch):
     async def _noop_ensure_partition(_session, _fingerprint):
         return None
 
-    monkeypatch.setattr(be_mod, "_ensure_partition", _noop_ensure_partition)
+    monkeypatch.setattr(be_mod, "ensure_partition", _noop_ensure_partition)
 
     with pytest.raises(Exception) as excinfo:
         await be_mod.embed_blocks(session, embedder, block_ids=block_ids)
