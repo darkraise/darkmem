@@ -154,18 +154,30 @@ async def _ensure_partition(session: AsyncSession, fingerprint: str) -> None:
 
 
 async def resolve_read_fingerprint(session: AsyncSession, llm) -> str:
-    """The fingerprint a partition read may safely key on.
+    """The fingerprint a block-partition read may safely key on.
 
     Delegated to the same resolver every other family uses, never re-derived:
     ``llm_fingerprint()`` is a pure formatter over static config and can name a
-    partition no real embed ever wrote to. The fingerprint identifies the
-    embedder, not the parent table, so resolving it against the memory
-    partitions (where real embed traffic is heaviest) is the same answer for
-    this family. Raises
-    :class:`~app.repositories.vector.EmbedderFingerprintUnresolved` rather than
-    proceeding on an unconfirmed key.
+    partition no real embed ever wrote to. **Probes this family's own
+    ``block_embeddings`` partitions, not the memory ones** (T-doc-door.6
+    review, 2026-08-24) — an earlier version of this wrapper resolved against
+    the memory partitions on the theory that "the fingerprint identifies the
+    embedder, not the parent table, so it is the same answer for every
+    family". That is true of *which fingerprint the embedder currently
+    produces*, but resolution here is not "what does the embedder produce" —
+    it is "which live fingerprint actually holds this family's data", and an
+    install can carry real block traffic with no memory traffic at all (or
+    the reverse). Checking the wrong family's partition can hand back a
+    fingerprint with nothing under it for blocks while a different live
+    sibling holds every real block vector, or hand back a stale sibling whose
+    block partition merely happens to already be complete while the true
+    current fingerprint is still missing rows — wrong in both directions.
+    Raises :class:`~app.repositories.vector.EmbedderFingerprintUnresolved`
+    rather than proceeding on an unconfirmed key.
     """
-    return await PostgresVectorRepository(session).resolve_read_fingerprint(llm)
+    return await PostgresVectorRepository(session).resolve_read_fingerprint(
+        llm, parent_table=PARENT_TABLE,
+    )
 
 
 async def search_blocks(

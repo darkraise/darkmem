@@ -212,6 +212,166 @@ async def test_resolve_read_fingerprint_passes_through_an_unconfirmable_wrong_di
     assert resolved == WRONG_FINGERPRINT
 
 
+# ── parent_table parameterisation (T-doc-door.6 review, finding I2) ────────
+#
+# ``_partition_has_data``/``resolve_read_fingerprint`` used to hardcode the
+# "does this candidate hold real data" probe to ``memory_embeddings``, no
+# matter which family asked. That is wrong for a caller like
+# ``block_embeddings.resolve_read_fingerprint`` on an install whose block and
+# memory traffic diverge: it can report a fingerprint as unconfirmed while a
+# different live fingerprint holds every real block vector (never
+# converges), or report a stale sibling fingerprint whose block partition
+# happens to already be complete while the true current one is still missing
+# rows (looks converged, is not — a document filed and never found, with no
+# symptom). These tests pin the fix directly: the SAME two live fingerprints,
+# resolved two different ways depending only on which ``parent_table`` is
+# asked about.
+
+BLOCK_MODEL_ID = "vectors-route-block-model"
+# Two live fingerprints sharing one model_id, exactly the residual shape
+# `block_embedding_refresh`'s own docstring now describes: one holds real
+# block data and no memory data, the other holds real memory data and no
+# block data.
+BLOCK_ONLY_FINGERPRINT = f"{BLOCK_MODEL_ID}|4"
+MEMORY_ONLY_FINGERPRINT = f"{BLOCK_MODEL_ID}|8"
+BLOCK_ONLY_DIMS = 4
+MEMORY_ONLY_DIMS = 8
+
+
+async def _register_fingerprint_with_child(session, fingerprint, dims, parent_table):
+    await session.execute(
+        text(
+            "INSERT INTO embedders (fingerprint, model_id, dims, source) "
+            "VALUES (:fp, :mid, :dims, 'llm') ON CONFLICT (fingerprint) DO NOTHING"
+        ),
+        {"fp": fingerprint, "mid": BLOCK_MODEL_ID, "dims": dims},
+    )
+    child = child_table(parent_table, fingerprint)
+    if parent_table == "memory_embeddings":
+        await session.execute(text(
+            f"CREATE TABLE IF NOT EXISTS {child} ("
+            " memory_id UUID NOT NULL REFERENCES memories(id) ON DELETE CASCADE,"
+            " fingerprint TEXT NOT NULL REFERENCES embedders(fingerprint),"
+            f" embedding vector({dims}) NOT NULL,"
+            " payload JSONB NOT NULL DEFAULT '{}'::jsonb,"
+            " created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
+            " PRIMARY KEY (memory_id, fingerprint))"
+        ))
+    else:
+        await session.execute(text(
+            f"CREATE TABLE IF NOT EXISTS {child} ("
+            " block_id UUID NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,"
+            " fingerprint TEXT NOT NULL REFERENCES embedders(fingerprint),"
+            f" embedding vector({dims}) NOT NULL,"
+            " payload JSONB NOT NULL DEFAULT '{}'::jsonb,"
+            " created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
+            " PRIMARY KEY (block_id, fingerprint))"
+        ))
+
+
+async def _add_block_with_vector(session) -> uuid.UUID:
+    document_id = uuid.uuid4()
+    block_id = uuid.uuid4()
+    await session.execute(
+        text("INSERT INTO documents (id, project) VALUES (:id, 'p')"),
+        {"id": document_id},
+    )
+    await session.execute(
+        text(
+            "INSERT INTO blocks (id, document_id, order_index, type, text) "
+            "VALUES (:id, :doc_id, 0, 'paragraph', 'body')"
+        ),
+        {"id": block_id, "doc_id": document_id},
+    )
+    child = child_table("block_embeddings", BLOCK_ONLY_FINGERPRINT)
+    await session.execute(
+        text(
+            f"INSERT INTO {child} (block_id, fingerprint, embedding, payload) "
+            "VALUES (:bid, :fp, CAST(:vec AS vector), CAST(:payload AS jsonb))"
+        ),
+        {
+            "bid": block_id, "fp": BLOCK_ONLY_FINGERPRINT,
+            "vec": str([1.0, 0.0, 0.0, 0.0]), "payload": "{}",
+        },
+    )
+    return block_id
+
+
+async def _add_memory_with_vector_under(session, fingerprint, dims) -> uuid.UUID:
+    memory_id = uuid.uuid4()
+    session.add(Memory(
+        id=memory_id, content="real vector, wrong family for the block probe",
+        source="test", importance=0.5, metadata_={}, project="default",
+        status="active", memory_type="decision", is_archived=False,
+    ))
+    await session.flush()
+    child = child_table("memory_embeddings", fingerprint)
+    await session.execute(
+        text(
+            f"INSERT INTO {child} (memory_id, fingerprint, embedding, payload) "
+            "VALUES (:mid, :fp, CAST(:vec AS vector), CAST(:payload AS jsonb))"
+        ),
+        {"mid": memory_id, "fp": fingerprint, "vec": str([1.0] * dims), "payload": '{"content": "x"}'},
+    )
+    return memory_id
+
+
+class _SharedModelLLM:
+    """Reports the block-only fingerprint — the real, current embedder."""
+
+    def llm_fingerprint(self) -> str:
+        return BLOCK_ONLY_FINGERPRINT
+
+
+async def _seed_diverged_family_traffic(session) -> None:
+    """Two live fingerprints, one model_id: block data under the configured
+    (current) one, memory data under the older sibling, none of the reverse.
+    """
+    await _register_fingerprint_with_child(
+        session, MEMORY_ONLY_FINGERPRINT, MEMORY_ONLY_DIMS, "memory_embeddings",
+    )
+    await _register_fingerprint_with_child(
+        session, MEMORY_ONLY_FINGERPRINT, MEMORY_ONLY_DIMS, "block_embeddings",
+    )
+    await _register_fingerprint_with_child(
+        session, BLOCK_ONLY_FINGERPRINT, BLOCK_ONLY_DIMS, "memory_embeddings",
+    )
+    await _register_fingerprint_with_child(
+        session, BLOCK_ONLY_FINGERPRINT, BLOCK_ONLY_DIMS, "block_embeddings",
+    )
+    await _add_memory_with_vector_under(session, MEMORY_ONLY_FINGERPRINT, MEMORY_ONLY_DIMS)
+    await _add_block_with_vector(session)
+    await session.flush()
+
+
+async def test_resolve_read_fingerprint_defaults_to_memory_for_every_old_caller(session):
+    """Every caller written before ``parent_table`` existed must see exactly
+    the old behaviour: the fingerprint whose MEMORY partition has data,
+    ignoring block data entirely."""
+    await _seed_diverged_family_traffic(session)
+
+    resolved = await PostgresVectorRepository(session).resolve_read_fingerprint(
+        _SharedModelLLM(),
+    )
+
+    assert resolved == MEMORY_ONLY_FINGERPRINT
+
+
+async def test_resolve_read_fingerprint_asks_the_named_family_not_memory(session):
+    """T-doc-door.6 review (I2): the block family must resolve to the
+    fingerprint holding real BLOCK data, even though a sibling fingerprint
+    for the same model_id holds real memory data and would win under the
+    old, memory-only probe."""
+    await _seed_diverged_family_traffic(session)
+
+    resolved = await PostgresVectorRepository(session).resolve_read_fingerprint(
+        _SharedModelLLM(), parent_table="block_embeddings",
+    )
+
+    assert resolved == BLOCK_ONLY_FINGERPRINT
+    assert resolved != MEMORY_ONLY_FINGERPRINT
+
+
 # ── reproduced on unmodified code: what a bare sentinel read actually does ──
 
 

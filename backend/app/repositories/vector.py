@@ -427,7 +427,9 @@ class PostgresVectorRepository:
         partition = g.community_multilevel(weights="weight")
         return partition.membership
 
-    async def resolve_read_fingerprint(self, llm) -> str:
+    async def resolve_read_fingerprint(
+        self, llm, parent_table: str = "memory_embeddings",
+    ) -> str:
         """Resolve the fingerprint a bulk-partition read (projection, clustering)
         may safely key on.
 
@@ -466,6 +468,24 @@ class PostgresVectorRepository:
            :class:`EmbedderFingerprintUnresolved` rather than let the caller
            proceed on a key nothing was ever written under.
 
+        ``parent_table`` names which family's data settles step 1-3 above —
+        default ``"memory_embeddings"`` keeps every caller that predates this
+        parameter byte-identical. **The "has data" check must be asked of the
+        same family the caller is about to read** (T-doc-door.6 review,
+        2026-08-24): a non-memory family (blocks, relations, ...) can carry
+        real traffic on an install with none on the memory side, and a probe
+        hardcoded to ``memory_embeddings`` would then judge "is this
+        fingerprint live" by a signal that family never produces, handing
+        back a sibling fingerprint that happens to hold memory rows instead
+        of the one actually holding this family's data — wrong in both
+        directions: it can name an empty partition while the real data sits
+        elsewhere (nothing ever converges), or it can name a *different*
+        live fingerprint whose own partition for this family is already
+        complete while the true current one is missing rows (looks
+        converged, is not). Passing ``parent_table`` is what lets a family's
+        own wrapper (e.g. ``block_embeddings.resolve_read_fingerprint``) ask
+        the right question instead of re-deriving this algorithm locally.
+
         Never used by retrieval — ``hybrid_search`` derives its fingerprint
         from ``embed()``'s return value (an actual vector's length), which
         structurally cannot be wrong, so it has no need of this lookup.
@@ -493,21 +513,26 @@ class PostgresVectorRepository:
             fp for fp in live if fp != fingerprint
         ]
         for candidate in candidates:
-            if await self._partition_has_data(candidate):
+            if await self._partition_has_data(candidate, parent_table):
                 return candidate
 
         if is_registered:
             return fingerprint
         raise EmbedderFingerprintUnresolved(model_id)
 
-    async def _partition_has_data(self, fingerprint: str) -> bool:
-        """Whether a live fingerprint's memory partition holds any row.
+    async def _partition_has_data(
+        self, fingerprint: str, parent_table: str = "memory_embeddings",
+    ) -> bool:
+        """Whether a live fingerprint's ``parent_table`` partition holds any row.
 
         ``fingerprint`` must already be a live row in ``embedders`` — its
-        registration is what created the table, so no ``to_regclass``
-        existence probe is needed here.
+        registration is what created every family's child table (including
+        ``parent_table``'s), so no ``to_regclass`` existence probe is needed
+        here. ``parent_table`` defaults to ``"memory_embeddings"`` so every
+        caller written before this parameter existed keeps asking exactly the
+        question it always asked.
         """
-        table = child_table("memory_embeddings", fingerprint)
+        table = child_table(parent_table, fingerprint)
         return bool(
             (
                 await self.session.execute(text(f"SELECT EXISTS(SELECT 1 FROM {table} LIMIT 1)"))

@@ -872,24 +872,36 @@ def make_block_embedding_runner(
             cfg = await registry.load_config(BLOCK_EMBEDDING_JOB_KEY)
             knobs.update(cfg.config or {})
 
+        # A mismatched fingerprint raises out of refresh_block_embeddings and
+        # is deliberately NOT caught here: it should be unreachable after the
+        # block-aware probe (T-doc-door.6 review), and letting it propagate is
+        # what lands it in job_runs.last_error where an operator sees it,
+        # rather than silently re-spending embed calls every tick.
         async with session_factory() as session:
-            embedded = await refresh_block_embeddings(
+            outcome = await refresh_block_embeddings(
                 session, llm, batch=int(knobs["batch"]),
             )
-            if embedded:
+            if outcome.embedded:
                 journalled = await record_event(
                     session,
                     event_type="block_embeddings_refreshed",
                     object_type="system",
-                    payload={"embedded": embedded},
+                    payload={
+                        "embedded": outcome.embedded,
+                        "fingerprint": outcome.fingerprint,
+                        "converged": outcome.converged,
+                    },
                 )
                 await session.commit()
                 if not journalled:
                     logger.warning(
-                        "block_embedding_refresh: embedded %d block(s) unjournalled",
-                        embedded,
+                        "block_embedding_refresh: embedded %d block(s) under %s unjournalled",
+                        outcome.embedded, outcome.fingerprint,
                     )
 
-        if embedded:
-            logger.info("Block embeddings: %d embedded", embedded)
+        if outcome.embedded:
+            logger.info(
+                "Block embeddings: %d embedded under %s (converged=%s)",
+                outcome.embedded, outcome.fingerprint, outcome.converged,
+            )
     return run
