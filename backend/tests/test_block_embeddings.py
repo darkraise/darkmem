@@ -336,3 +336,41 @@ async def test_resolve_read_fingerprint_delegates_to_the_shared_resolver(session
 
     with pytest.raises(EmbedderFingerprintUnresolved):
         await be_mod.resolve_read_fingerprint(session, NoDataEmbedder())
+
+
+@pytest.mark.asyncio
+async def test_resolve_active_fingerprint_uses_a_real_embed_not_a_probe():
+    """`resolve_active_fingerprint` is the resolver for a caller whose job
+    is to fill a possibly-EMPTY partition (the refresh sweep,
+    `document_door`'s `unchanged` repair): it must report whatever the
+    active embedder produces right now, not whatever fingerprint already
+    happens to hold data. Proven here with no database at all — the
+    fingerprint comes straight from the embed call's own return value."""
+
+    class RecordingEmbedder:
+        def __init__(self):
+            self.embedded_values: list[str] = []
+
+        async def embed(self, value):
+            self.embedded_values.append(value)
+            return [1.0, 0.0], "recorded-fingerprint|2"
+
+    llm = RecordingEmbedder()
+    resolved = await be_mod.resolve_active_fingerprint(llm)
+
+    assert resolved == "recorded-fingerprint|2"
+    assert len(llm.embedded_values) == 1, "exactly one embed call, never more"
+
+
+@pytest.mark.asyncio
+async def test_resolve_active_fingerprint_never_raises_unresolved():
+    """Unlike `resolve_read_fingerprint`, a real embed always yields a real
+    fingerprint — there is no "nothing registered under this model yet"
+    bootstrap case to guard against, even on a completely fresh install."""
+
+    class FreshInstallEmbedder:
+        async def embed(self, value):
+            return [1.0], "brand-new-model|1"
+
+    resolved = await be_mod.resolve_active_fingerprint(FreshInstallEmbedder())
+    assert resolved == "brand-new-model|1"

@@ -23,9 +23,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.documents import resolve_by_id, resolve_by_uri
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
-from app.repositories.vector import EmbedderFingerprintUnresolved
 from app.services.block_embeddings import (
-    PARENT_TABLE, embed_blocks, resolve_read_fingerprint,
+    PARENT_TABLE, _ensure_partition, embed_blocks, resolve_active_fingerprint,
 )
 from app.services.block_fact_sources import withdraw_document
 from app.services.block_pipeline import ingest_document
@@ -455,16 +454,16 @@ async def put_document(
     await session.commit()
 
     if filed.outcome == UNCHANGED:
-        try:
-            fingerprint = await resolve_read_fingerprint(session, llm)
-        except EmbedderFingerprintUnresolved:
-            # Nothing has ever been embedded on this install, so there is no
-            # partition to find gaps in. The next real filing registers one.
-            return PutResult(
-                document_id=str(filed.document_id), outcome=filed.outcome,
-                blocks_filed=filed.blocks_written, blocks_embedded=0,
-                title_applied=filed.outcome != UNCHANGED,
-            )
+        # Resolved from a real embed call, never a data probe (T-doc-door.6
+        # review, round 3): this is the identical chicken-and-egg the sweep
+        # had — finding which blocks still need embedding requires already
+        # knowing the fingerprint, and a data probe answers "which live
+        # fingerprint holds data", which is biased toward a stale, already-
+        # complete partition after a rotation rather than the active-but-
+        # still-empty one retrieval actually reads. See
+        # `block_embeddings.resolve_active_fingerprint`'s docstring.
+        fingerprint = await resolve_active_fingerprint(llm)
+        await _ensure_partition(session, fingerprint)
         rows = await session.execute(
             _unembedded_sql(fingerprint), {"document_id": str(filed.document_id)}
         )

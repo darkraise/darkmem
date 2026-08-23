@@ -156,7 +156,7 @@ async def test_refresh_raises_when_the_embed_lands_under_a_different_fingerprint
         return lie_fingerprint
 
     monkeypatch.setattr(
-        "app.services.block_embedding_refresh._resolve_active_fingerprint",
+        "app.services.block_embedding_refresh.resolve_active_fingerprint",
         _resolve_to_a_lie,
     )
 

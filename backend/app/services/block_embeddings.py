@@ -154,10 +154,8 @@ async def _ensure_partition(session: AsyncSession, fingerprint: str) -> None:
 
 
 async def resolve_read_fingerprint(session: AsyncSession, llm) -> str:
-    """The fingerprint a block-partition read may safely key on, resolved
-    cheaply (a data probe, never an embed call) — the shape that fits this
-    function's one remaining caller, ``document_door.put_document``'s
-    ``unchanged`` gap-fill repair.
+    """A cheap, data-probe fingerprint resolution for this family — never an
+    embed call.
 
     Delegated to the same resolver every other family uses, never re-derived:
     ``llm_fingerprint()`` is a pure formatter over static config and can name a
@@ -167,24 +165,62 @@ async def resolve_read_fingerprint(session: AsyncSession, llm) -> str:
     ``memory_embeddings`` partition, since that is where real embed traffic
     is heaviest on almost every install). Raises
     :class:`~app.repositories.vector.EmbedderFingerprintUnresolved` rather
-    than proceeding on an unconfirmed key — the caller here already treats
-    that as "nothing to repair yet", not a hard failure.
+    than proceeding on an unconfirmed key.
 
-    **This function briefly probed this family's own ``block_embeddings``
-    partition instead of the memory one (T-doc-door.6 review, round 1), and
-    that was reverted in round 2** (2026-08-24): a data probe of *any*
-    family is structurally biased toward whichever fingerprint already has
-    content, which is exactly wrong for a backstop whose job is filling an
-    EMPTY partition — see ``block_embedding_refresh._resolve_active_fingerprint``,
-    which resolves that job's fingerprint from a real embed call instead,
-    the same way retrieval does, rather than from any data probe. That same
-    structural bias is still live here, on this narrower question ("does
-    this already-filed document have gaps"), and repairing it is out of this
-    task's scope — recorded rather than fixed, per the round-2 ruling that
-    the "avoid a paid embed call" trade explicitly still stands for this
-    caller.
+    **Neither of this family's two callers use this anymore** (T-doc-door.6
+    review, round 3, 2026-08-24): both `block_embedding_refresh`'s sweep and
+    `document_door.put_document`'s ``unchanged`` gap-fill repair resolve from
+    :func:`resolve_active_fingerprint` instead, because both exist to fill a
+    partition that may be EMPTY, which is exactly the case any data probe —
+    of any family — is biased against finding (see
+    :func:`resolve_active_fingerprint`'s docstring). This function is kept
+    for a caller that only needs "some live, already-populated fingerprint
+    for this family" and can accept a data probe's bias, the same shape
+    every sibling family's own callers use — no such caller exists in this
+    family today. A future caller of that shape should use this rather than
+    re-deriving it; a caller whose job is to fill gaps should use
+    :func:`resolve_active_fingerprint`.
     """
     return await PostgresVectorRepository(session).resolve_read_fingerprint(llm)
+
+
+# Never written anywhere and never compared against real block text — its
+# only job is to make the active embedder name the fingerprint it would
+# currently produce, the same role a real search query plays in
+# `BlockQueryService.search`.
+_ACTIVE_FINGERPRINT_PROBE_TEXT = "darkmem block_embeddings active-fingerprint probe"
+
+
+async def resolve_active_fingerprint(llm) -> str:
+    """The fingerprint the active embedder produces right now, established
+    the same way retrieval does (`BlockQueryService.search`, which embeds the
+    query and reads whatever fingerprint that produced): a real embed call,
+    never a data probe.
+
+    **This exists because a data probe cannot correctly serve a caller whose
+    job is to fill an EMPTY partition** (T-doc-door.6 review, rounds 2-3,
+    2026-08-24). "Which live fingerprint holds data" is answered correctly by
+    :func:`resolve_read_fingerprint` for a caller that only needs *some*
+    already-populated partition — every sibling family's own resolver callers
+    are that shape. But `block_embedding_refresh`'s corpus-wide sweep and
+    `document_door.put_document`'s single-document ``unchanged`` repair are
+    both the opposite shape: their entire purpose is finding and filling the
+    gaps in a partition that may hold nothing at all for the fingerprint that
+    actually matters (the one the active embedder produces right now, which
+    is the one retrieval will read). A data probe of ANY family, asked "which
+    live fingerprint has data", is structurally biased toward a stale
+    sibling over the correct-but-still-empty one — concretely, after an
+    embedder rotation, the round-2 review's headline case. Both callers
+    resolve here instead, so the fingerprint they act on is always the one a
+    real query would land on too.
+
+    A real embed always yields a real fingerprint, so there is no
+    "unconfirmed"/bootstrap case to guard against the way
+    :func:`resolve_read_fingerprint` does — this never raises
+    :class:`~app.repositories.vector.EmbedderFingerprintUnresolved`.
+    """
+    _, fingerprint = await llm.embed(_ACTIVE_FINGERPRINT_PROBE_TEXT)
+    return fingerprint
 
 
 async def search_blocks(

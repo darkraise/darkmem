@@ -170,6 +170,77 @@ async def test_unchanged_repush_embeds_blocks_that_lack_a_vector(session):
 
 
 @pytest.mark.asyncio
+async def test_unchanged_repair_targets_the_rotated_fingerprint_not_the_stale_full_one(session):
+    """T-doc-door.6 review (round 3): the sweep's rotation case, reproduced
+    for the `unchanged` repair push. A dims rotation on one model_id leaves
+    `F_old` holding every existing block; the active embedder now reports
+    `F_new`, whose own block partition is empty because no document has
+    been re-filed since. Repair-pushing the same content must resolve to
+    `F_new` and fill it — resolving from a data probe would find `F_old`
+    already complete and report nothing to repair, exactly the "document
+    exists and is unfindable" failure this whole door exists to avoid.
+    """
+    from app.services.block_embeddings import PARENT_TABLE
+    from app.services.embedder_registry import child_table, embedder_registry
+
+    old_llm = StubEmbedder(FINGERPRINT)
+    filed = await put_document(
+        session, old_llm, project="p", uri="docs/rotate-repair.md", content=DOC,
+    )
+    assert filed.blocks_filed > 0
+    assert filed.blocks_embedded == filed.blocks_filed
+
+    rotated_fingerprint = "test-fp-doc-door|4"
+
+    class _RotatedDimsEmbedder(StubEmbedder):
+        """`StubEmbedder` hardcodes 3-dim vectors regardless of the
+        fingerprint passed to its constructor, which breaks a real "same
+        model_id, different dims" rotation — this produces vectors matching
+        its own declared dims instead."""
+
+        def __init__(self, fingerprint: str, dims: int):
+            super().__init__(fingerprint)
+            self._dims = dims
+
+        async def embed_batch_chunked(self, texts, chunk_size, concurrency):
+            self.batches.append(list(texts))
+            return ([[1.0] * self._dims for _ in texts], self.fingerprint)
+
+        async def embed(self, value: str):
+            return [1.0] * self._dims, self.fingerprint
+
+    embedder_registry.forget(rotated_fingerprint)
+    try:
+        new_llm = _RotatedDimsEmbedder(rotated_fingerprint, dims=4)
+
+        repair = await put_document(
+            session, new_llm, project="p", uri="docs/rotate-repair.md", content=DOC,
+        )
+
+        assert repair.outcome == "unchanged"
+        assert repair.blocks_filed == 0
+        assert repair.blocks_embedded == filed.blocks_filed, (
+            "every existing block is missing under the rotated fingerprint "
+            "and must be repaired there, not silently skipped because the "
+            "OLD partition happens to already be complete"
+        )
+
+        new_child = child_table(PARENT_TABLE, rotated_fingerprint)
+        new_count = (
+            await session.execute(text(f"SELECT COUNT(*) FROM {new_child}"))
+        ).scalar_one()
+        assert new_count == filed.blocks_filed
+
+        old_child = child_table(PARENT_TABLE, FINGERPRINT)
+        old_count = (
+            await session.execute(text(f"SELECT COUNT(*) FROM {old_child}"))
+        ).scalar_one()
+        assert old_count == filed.blocks_filed, "the stranded old vectors are untouched"
+    finally:
+        embedder_registry.forget(rotated_fingerprint)
+
+
+@pytest.mark.asyncio
 async def test_refile_without_a_title_does_not_null_the_stored_one(session):
     llm = StubEmbedder()
     await put_document(

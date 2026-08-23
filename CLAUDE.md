@@ -804,12 +804,14 @@ the constants `BUFFER_FLUSH_JOB_KEY`, `CODE_RECONCILE_JOB_KEY`,
 than string literals, so a grep for quoted keys undercounts the list —
 which is precisely how this sentence went stale for four landings.
 **`ppr_snapshot`, `relation_embedding_refresh`, `repo_entity_anchoring`,
-`repo_entity_merge`, `code_deriver` and `citation_reverify` are Tier C but
-are deliberately not dream-job family members** (T2.32, T2.49, T2.97,
-T2.101, T2.96, T2.48): contract 6 fixes that family as
+`repo_entity_merge`, `code_deriver`, `citation_reverify` and
+`block_embedding_refresh` are Tier C but are deliberately not dream-job
+family members** (T2.32, T2.49, T2.97, T2.101, T2.96, T2.48,
+T-doc-door.6): contract 6 fixes that family as
 the consolidation passes, while doc 07 §4 and doc 10 §6 own their
-artefact refreshes separately. Invariant 15 is unaffected either way —
-retrieval reads the cached snapshot and Phase 4 reads the entity
+artefact refreshes separately (`block_embedding_refresh` is the document
+door's own artefact refresh, doc 16 §3). Invariant 15 is unaffected either
+way — retrieval reads the cached snapshot and Phase 4 reads the entity
 partition, never the job.
 
 **`code_deriver` is the production trigger for
