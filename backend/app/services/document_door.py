@@ -36,10 +36,14 @@ from app.services.events import record_event
 __all__ = [
     "MAX_BLOCKS",
     "MAX_CONTENT_CHARS",
+    "BlockRow",
     "DocumentTooLarge",
+    "OutlineNode",
     "PutResult",
     "SectionHit",
     "delete_document",
+    "document_blocks",
+    "document_outline",
     "put_document",
     "search_sections",
 ]
@@ -463,3 +467,98 @@ async def delete_document(session: AsyncSession, *, document_id: UUID | str) -> 
 
     result = await session.execute(_DELETE_DOCUMENT, {"id": str(document_id)})
     return result.rowcount > 0
+
+
+@dataclass(frozen=True)
+class OutlineNode:
+    block_id: str
+    level: int
+    text: str
+    order_index: int | None
+
+
+@dataclass(frozen=True)
+class BlockRow:
+    block_id: str
+    type: str | None
+    text: str
+    order_index: int | None
+    char_span: tuple[int, int] | None
+
+
+_OUTLINE = text(
+    """
+    SELECT CAST(id AS text) AS id, order_index, text,
+           COALESCE((properties->>'level')::int, 1) AS level
+    FROM blocks
+    WHERE document_id = CAST(:document_id AS uuid) AND type = 'heading'
+    ORDER BY order_index
+    """
+)
+
+
+async def document_outline(
+    session: AsyncSession, *, document_id: str
+) -> list[OutlineNode]:
+    """The heading tree for a document: block id, level and heading text —
+    never a paragraph, list, code or quote block's text.
+
+    A query over the block tree the parser already built. No model call, and
+    deliberately not `document_summary`, which stays on-demand and unbadged
+    where it is. Read-only: commits nothing and opens no savepoint, same
+    posture as `search_sections`; it runs entirely inside whatever
+    transaction the caller already holds.
+    """
+    rows = (await session.execute(
+        _OUTLINE, {"document_id": document_id}
+    )).mappings().all()
+    return [
+        OutlineNode(
+            block_id=r["id"], level=r["level"], text=r["text"] or "",
+            order_index=r["order_index"],
+        )
+        for r in rows
+    ]
+
+
+_BLOCKS = """
+    SELECT CAST(id AS text) AS id, type, text, order_index,
+           lower(char_span) AS span_start, upper(char_span) AS span_end
+    FROM blocks
+    WHERE document_id = CAST(:document_id AS uuid)
+      {clause}
+    ORDER BY order_index
+"""
+
+
+async def document_blocks(
+    session: AsyncSession, *, document_id: str, block_ids: list[str] | None = None
+) -> list[BlockRow]:
+    """The document's blocks, in document order — every one, or only the ids
+    named in `block_ids` (the drill-down after an outline). `block_ids`
+    scopes strictly: a row not in the list is excluded even if it belongs to
+    this document, and a listed id from another document never appears
+    because the `document_id` predicate applies either way.
+
+    Read-only: commits nothing and opens no savepoint, same posture as
+    `search_sections` and `document_outline`; it runs entirely inside
+    whatever transaction the caller already holds.
+    """
+    clause = "AND id = ANY(CAST(:ids AS uuid[]))" if block_ids else ""
+    params: dict = {"document_id": document_id}
+    if block_ids:
+        params["ids"] = block_ids
+    rows = (await session.execute(
+        text(_BLOCKS.format(clause=clause)), params
+    )).mappings().all()
+    return [
+        BlockRow(
+            block_id=r["id"], type=r["type"], text=r["text"] or "",
+            order_index=r["order_index"],
+            char_span=(
+                (r["span_start"], r["span_end"])
+                if r["span_start"] is not None else None
+            ),
+        )
+        for r in rows
+    ]

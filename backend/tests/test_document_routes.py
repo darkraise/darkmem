@@ -203,3 +203,94 @@ async def test_search_rejects_a_blank_query(client, auth_headers, stub_llm):
         f"{V1}/documents/search", json={"query": "", "project": "p"}, headers=auth_headers,
     )
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_outline_returns_headings_with_levels_and_no_body(client, auth_headers, stub_llm):
+    created = await client.post(
+        f"{V1}/documents",
+        json={"project": "p", "uri": "docs/g.md", "content": NESTED},
+        headers=auth_headers,
+    )
+    document_id = created.json()["document_id"]
+
+    response = await client.get(f"{V1}/documents/{document_id}/outline", headers=auth_headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["horizon"] is True
+    assert body["document_id"] == document_id
+    items = body["items"]
+    assert [(i["level"], i["text"]) for i in items] == [
+        (1, "Guide"), (2, "Setup"), (3, "Windows"), (2, "Teardown"),
+    ]
+    # Presence of the headings alone would also pass against an
+    # implementation that leaked every paragraph into the outline too, so
+    # this asserts the body text's absence explicitly rather than only the
+    # headings' presence.
+    for body_text in ("Intro para.", "Run the installer.", "Use the msi.", "Delete the folder."):
+        assert body_text not in response.text
+
+
+@pytest.mark.asyncio
+async def test_outline_requires_auth(client):
+    response = await client.get(
+        f"{V1}/documents/00000000-0000-0000-0000-000000000000/outline"
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_get_returns_every_block_in_document_order_by_default(
+    client, auth_headers, stub_llm
+):
+    created = await client.post(
+        f"{V1}/documents",
+        json={"project": "p", "uri": "docs/g.md", "content": NESTED},
+        headers=auth_headers,
+    )
+    document_id = created.json()["document_id"]
+
+    response = await client.get(f"{V1}/documents/{document_id}", headers=auth_headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["document_id"] == document_id
+    blocks = body["blocks"]
+    assert len(blocks) >= 6
+    order_indices = [b["order_index"] for b in blocks]
+    assert order_indices == sorted(order_indices)
+
+
+@pytest.mark.asyncio
+async def test_get_returns_only_the_blocks_named(client, auth_headers, stub_llm):
+    created = await client.post(
+        f"{V1}/documents",
+        json={"project": "p", "uri": "docs/g.md", "content": NESTED},
+        headers=auth_headers,
+    )
+    document_id = created.json()["document_id"]
+
+    full = await client.get(f"{V1}/documents/{document_id}", headers=auth_headers)
+    all_blocks = full.json()["blocks"]
+    assert len(all_blocks) >= 4
+
+    # A strict subset -- not a single element, not "all of them" -- named in
+    # an order that is NOT document order, so a passing test cannot be
+    # explained by an implementation that just echoes the request order back
+    # or that ignores block_ids and returns everything.
+    first, second = all_blocks[1], all_blocks[3]
+    response = await client.get(
+        f"{V1}/documents/{document_id}",
+        params={"block_ids": [second["block_id"], first["block_id"]]},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    blocks = response.json()["blocks"]
+    assert [b["block_id"] for b in blocks] == [first["block_id"], second["block_id"]]
+
+
+@pytest.mark.asyncio
+async def test_get_requires_auth(client):
+    response = await client.get(
+        f"{V1}/documents/00000000-0000-0000-0000-000000000000"
+    )
+    assert response.status_code == 401

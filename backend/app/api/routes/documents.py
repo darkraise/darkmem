@@ -4,6 +4,8 @@ Provides:
   - GET    /api/v1/documents
   - GET    /api/v1/documents/{document_id}/summary
   - GET    /api/v1/documents/{document_id}/connections
+  - GET    /api/v1/documents/{document_id}/outline
+  - GET    /api/v1/documents/{document_id}
   - POST   /api/v1/documents/qa
   - POST   /api/v1/documents
   - DELETE /api/v1/documents/{document_id}
@@ -42,7 +44,8 @@ from app.database import get_session
 from app.services.block_pipeline import UnsupportedSource
 from app.services.document_connections import connections_for_document
 from app.services.document_door import (
-    DocumentTooLarge, delete_document, put_document, search_sections,
+    DocumentTooLarge, delete_document, document_blocks, document_outline,
+    put_document, search_sections,
 )
 from app.services.document_parsers import DocumentParseError
 from app.services.document_summary import read_summary
@@ -182,6 +185,33 @@ class SectionHitModel(BaseModel):
 
 class DocumentSearchResponse(BaseModel):
     items: list[SectionHitModel]
+    horizon: bool = True
+
+
+class OutlineNodeModel(BaseModel):
+    block_id: str
+    level: int
+    text: str
+    order_index: int | None
+
+
+class DocumentOutlineResponse(BaseModel):
+    document_id: str
+    items: list[OutlineNodeModel]
+    horizon: bool = True
+
+
+class BlockRowModel(BaseModel):
+    block_id: str
+    type: str | None
+    text: str
+    order_index: int | None
+    char_span: tuple[int, int] | None
+
+
+class DocumentBlocksResponse(BaseModel):
+    document_id: str
+    blocks: list[BlockRowModel]
     horizon: bool = True
 
 
@@ -399,4 +429,41 @@ async def search_documents_route(
     )
     return DocumentSearchResponse(
         items=[SectionHitModel(**vars(h)) for h in hits]
+    )
+
+
+@router.get("/{document_id}/outline", response_model=DocumentOutlineResponse)
+async def document_outline_route(
+    document_id: UUID,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+) -> DocumentOutlineResponse:
+    """The heading tree, no body text -- the map before an agent decides
+    what to pull with `GET /{document_id}` below. Read-only, same as
+    `search_documents_route`: writes and commits nothing.
+    """
+    nodes = await document_outline(session, document_id=str(document_id))
+    return DocumentOutlineResponse(
+        document_id=str(document_id),
+        items=[OutlineNodeModel(**vars(n)) for n in nodes],
+    )
+
+
+@router.get("/{document_id}", response_model=DocumentBlocksResponse)
+async def document_blocks_route(
+    document_id: UUID,
+    block_ids: list[str] | None = Query(default=None),
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+) -> DocumentBlocksResponse:
+    """The whole document's blocks in order, or only the ones named in
+    `block_ids` -- the drill-down after an outline. Read-only, same as
+    `search_documents_route`: writes and commits nothing.
+    """
+    rows = await document_blocks(
+        session, document_id=str(document_id), block_ids=block_ids,
+    )
+    return DocumentBlocksResponse(
+        document_id=str(document_id),
+        blocks=[BlockRowModel(**vars(r)) for r in rows],
     )

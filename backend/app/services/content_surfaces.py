@@ -616,6 +616,14 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # there is nothing here for a memory-content isolation probe to drive
     # against.
     "POST /api/v1/documents/search",
+    # The outline and fetch doors: a document's heading tree, and its blocks
+    # (all of them, or only the ids named). Same classification and same
+    # reason as the write and search doors immediately above -- both read
+    # `blocks`/`documents` directly (not even through `block_query.py`),
+    # never a `memories` row, so there is nothing here for a memory-content
+    # isolation probe to drive against.
+    "GET /api/v1/documents/{document_id}/outline",
+    "GET /api/v1/documents/{document_id}",
     # Session checkpoints (T3.16). No memory content crosses: a checkpoint is
     # the agent's own note about its run, written by the agent and never
     # derived from a `memories` row — this surface reads that table and no

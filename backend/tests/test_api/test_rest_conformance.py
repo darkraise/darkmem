@@ -49,6 +49,8 @@ EXPECTED_STATUS = {
     ("GET", "/api/v1/documents"): 200,
     ("GET", "/api/v1/documents/{document_id}/summary"): 200,
     ("GET", "/api/v1/documents/{document_id}/connections"): 200,
+    ("GET", "/api/v1/documents/{document_id}/outline"): 200,
+    ("GET", "/api/v1/documents/{document_id}"): 200,
     ("POST", "/api/v1/documents/qa"): 200,
     ("POST", "/api/v1/documents"): 201,
     ("DELETE", "/api/v1/documents/{document_id}"): 204,

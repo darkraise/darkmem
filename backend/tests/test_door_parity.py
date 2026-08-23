@@ -155,20 +155,27 @@ PARITY_TABLE: tuple[Surface, ...] = (
     Surface(
         name="documents.retrieval",
         status=REST_ONLY,
-        rest=(("POST", f"{V1}/documents/search"),),
+        rest=(
+            ("POST", f"{V1}/documents/search"),
+            ("GET", f"{V1}/documents/{{document_id}}/outline"),
+            ("GET", f"{V1}/documents/{{document_id}}"),
+        ),
         mcp=(),
         reason=(
-            "This route serves raw section hits over the same block channel "
-            "`block_query.py` keeps separate from the memory/vault "
-            "composition by construction (`BLOCK_ID_KIND`/`BLOCK_LAYER` stay "
-            "out of `layer_composition.ID_KINDS`), the same separation "
+            "This surface serves raw section hits, the heading tree and raw "
+            "block content, never composed into the memory/vault retrieval "
+            "layer. Section hits ride the block channel `block_query.py` "
+            "keeps separate by construction (`BLOCK_ID_KIND`/`BLOCK_LAYER` "
+            "stay out of `layer_composition.ID_KINDS`), and the outline and "
+            "fetch routes go further still -- they bypass `block_query.py` "
+            "entirely and read `blocks` directly. Same separation "
             "`documents.reads` and `documents.grounded_qa` above already "
             "carry. What G-F actually gates is the labelled, "
-            "faithfulness-checked answer at `POST /documents/qa`, not this "
-            "raw retrieval -- nothing here sits behind that gate, and no "
-            "design decision bars an MCP twin. It stays single-door only "
-            "because the MCP side of this capability has no tool registered "
-            "today; Task 5 records the owner's ruling that adds one."
+            "faithfulness-checked answer at `POST /documents/qa`, not these "
+            "raw reads -- nothing here sits behind that gate, and no design "
+            "decision bars an MCP twin. It stays single-door only because "
+            "the MCP side of this capability has no tool registered today; "
+            "Task 5 records the owner's ruling that adds one."
         ),
     ),
     Surface(
