@@ -10,7 +10,7 @@ aspirational. It is exhaustive over the Phase-1 surface — every REST route on
 `app.routes` and every tool in the live FastMCP registry appears in exactly one
 row.
 
-**67 surfaces: 20 two-door, 47 single-door with a stated reason (40 REST-only, 7 MCP-only), 0 divergent.**
+**68 surfaces: 20 two-door, 48 single-door with a stated reason (41 REST-only, 7 MCP-only), 0 divergent.**
 
 ## How to read a row, and what each status costs
 
@@ -53,6 +53,7 @@ the test rather than quietly joining the surface.
 | `documents.reads` | `GET /api/v1/documents`<br>`GET /api/v1/documents/{document_id}/summary`<br>`GET /api/v1/documents/{document_id}/connections` | — | REST single-door | EH1 is a horizon lane behind its own eval gate (doc 16 §1's firewall), and an MCP twin would put an unshipped surface in front of every agent before the gate that governs it has run. Single-door until G-F clears, then re-decided on its merits rather than inherited. |
 | `documents.grounded_qa` | `POST /api/v1/documents/qa` | — | REST single-door | Same firewall as the reads above, plus a sharper reason of its own: the answer is served, labelled or withheld by the faithfulness gate, and an agent twin would be a second consumer of a judge role that has no qualification record yet. Every answer is withheld today; publishing that to agents as a tool would advertise a capability the gate does not license. |
 | `documents.write` | `POST /api/v1/documents`<br>`DELETE /api/v1/documents/{document_id}` | — | REST single-door | The MCP twins for filing and deleting a document land in the same epic; this row stays REST-only until they ship. |
+| `documents.retrieval` | `POST /api/v1/documents/search` | — | REST single-door | Same firewall as documents.reads and documents.grounded_qa: EH1 is a horizon lane behind its own eval gate (doc 16 §1's firewall), and `block_query.py`'s own docstring records that a separate tool is what lets G-F gate this channel without touching the core ranking path. An MCP twin would hand every agent a horizon retrieval capability before the gate that governs it has run -- the reason is the channel's own, not a schedule for when a twin appears. |
 | `checkpoint.save` | `POST /api/v1/checkpoints` | `checkpoint_save` | two-door | — |
 | `checkpoint.latest` | `GET /api/v1/checkpoints/latest` | `checkpoint_latest` | two-door | — |
 | `memory.capture` | `POST /api/v1/memories` | `memory_add` | two-door | — |

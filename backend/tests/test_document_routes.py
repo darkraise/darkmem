@@ -144,3 +144,59 @@ async def test_refiling_unchanged_content_with_a_new_title_reports_it_was_not_ap
     body = again.json()
     assert body["outcome"] == "unchanged"
     assert body["title_applied"] is False
+
+
+NESTED = (
+    "# Guide\n\nIntro para.\n\n"
+    "## Setup\n\nRun the installer.\n\n"
+    "### Windows\n\nUse the msi.\n\n"
+    "## Teardown\n\nDelete the folder.\n"
+)
+
+
+@pytest.mark.asyncio
+async def test_search_serves_the_heading_path_on_the_wire(client, auth_headers, stub_llm):
+    await client.post(
+        f"{V1}/documents",
+        json={"project": "p", "uri": "docs/g.md", "content": NESTED},
+        headers=auth_headers,
+    )
+
+    response = await client.post(
+        f"{V1}/documents/search",
+        json={"query": "installer", "project": "p"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["horizon"] is True
+    deepest = next(item for item in body["items"] if item["text"].strip() == "Use the msi.")
+    assert deepest["heading_path"] == ["Guide", "Setup", "Windows"]
+    assert deepest["title"] == "Guide"
+
+
+@pytest.mark.asyncio
+async def test_search_with_no_hits_returns_an_empty_list(client, auth_headers, stub_llm):
+    response = await client.post(
+        f"{V1}/documents/search",
+        json={"query": "anything", "project": "an-empty-project"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["items"] == []
+
+
+@pytest.mark.asyncio
+async def test_search_requires_auth(client):
+    response = await client.post(
+        f"{V1}/documents/search", json={"query": "installer", "project": "p"},
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_search_rejects_a_blank_query(client, auth_headers, stub_llm):
+    response = await client.post(
+        f"{V1}/documents/search", json={"query": "", "project": "p"}, headers=auth_headers,
+    )
+    assert response.status_code == 422

@@ -37,8 +37,10 @@ __all__ = [
     "MAX_CONTENT_CHARS",
     "DocumentTooLarge",
     "PutResult",
+    "SectionHit",
     "delete_document",
     "put_document",
+    "search_sections",
 ]
 
 # An order of magnitude above any plan or ledger. These exist to refuse a
@@ -92,6 +94,129 @@ _FACT_ROWS = text("""
 """)
 
 _DELETE_DOCUMENT = text("DELETE FROM documents WHERE id = CAST(:id AS uuid)")
+
+# Recursive walk from each hit up to its document root, resolved in one
+# round trip rather than one query per ancestor. `blocks.parent_id` is a
+# plain nullable UUID column with no cycle constraint, and a recursive CTE
+# with no depth bound loops forever against a cyclic parent chain -- rather
+# than de-duplicate rows (a plain UNION still can't dedupe here, since
+# `depth` makes every row of a cycle distinct), the WHERE clause below caps
+# the walk. `_heading_path`'s own visited-set guard is the second, separate
+# layer: it protects the *reconstruction* over these (possibly still
+# self-referencing, within the cap) rows from looping too.
+_ANCESTOR_DEPTH_LIMIT = 64
+
+_ANCESTORS = text(
+    f"""
+    WITH RECURSIVE up AS (
+        SELECT id, parent_id, text, type, 0 AS depth
+        FROM blocks WHERE id = ANY(CAST(:ids AS uuid[]))
+        UNION ALL
+        SELECT b.id, b.parent_id, b.text, b.type, up.depth + 1
+        FROM blocks b JOIN up ON b.id = up.parent_id
+        WHERE up.depth < {_ANCESTOR_DEPTH_LIMIT}
+    )
+    SELECT CAST(id AS text) AS id, CAST(parent_id AS text) AS parent_id,
+           text, type
+    FROM up
+    """
+)
+
+_DOCUMENT_TITLES = text(
+    "SELECT CAST(id AS text) AS id, title FROM documents "
+    "WHERE id = ANY(CAST(:ids AS uuid[]))"
+)
+
+
+@dataclass(frozen=True)
+class SectionHit:
+    """A ranked block plus where it sits in its document's heading tree.
+
+    Mirrors `block_query.BlockHit` field-for-field and adds `title` (the
+    owning document's) and `heading_path` (outermost to innermost, headings
+    only — a hit under no heading gets `[]`). `block_query.py` cannot resolve
+    this itself: it is under a structural test keeping the block channel out
+    of the memory composition, so the ancestry walk lives here instead.
+    """
+
+    block_id: str
+    document_id: str
+    project: str
+    uri: str | None
+    title: str | None
+    heading_path: list[str]
+    type: str | None
+    text: str
+    order_index: int | None
+    char_span: tuple[int, int] | None
+    score: float
+
+
+def _heading_path(block_id: str, by_id: dict) -> list[str]:
+    path: list[str] = []
+    seen: set[str] = set()
+    node = by_id.get(block_id)
+    while node is not None and node["id"] not in seen:
+        seen.add(node["id"])
+        if node["type"] == "heading" and node["text"]:
+            path.append(node["text"])
+        parent_id = node["parent_id"]
+        node = by_id.get(parent_id) if parent_id else None
+    return list(reversed(path))
+
+
+async def search_sections(
+    session: AsyncSession,
+    llm,
+    *,
+    query: str,
+    project: str,
+    limit: int = 20,
+    document_id: str | None = None,
+) -> list[SectionHit]:
+    """Rank blocks, then resolve each hit's heading path.
+
+    Read-only: this function commits nothing and never opens a savepoint,
+    unlike `put_document` (commits internally) or `delete_document` (relies
+    on its caller). It runs entirely inside whatever transaction the caller
+    already holds.
+    """
+    from app.services.block_query import BlockQueryService
+
+    hits = await BlockQueryService(session, llm).search(
+        query, project=project, limit=limit, document_id=document_id,
+    )
+    if not hits:
+        return []
+
+    rows = (await session.execute(
+        _ANCESTORS, {"ids": [h.block_id for h in hits]}
+    )).mappings().all()
+    by_id = {r["id"]: r for r in rows}
+
+    titles = {
+        r["id"]: r["title"]
+        for r in (await session.execute(
+            _DOCUMENT_TITLES, {"ids": list({h.document_id for h in hits})},
+        )).mappings().all()
+    }
+
+    return [
+        SectionHit(
+            block_id=h.block_id,
+            document_id=h.document_id,
+            project=h.project,
+            uri=h.uri,
+            title=titles.get(h.document_id),
+            heading_path=_heading_path(h.block_id, by_id),
+            type=h.type,
+            text=h.text,
+            order_index=h.order_index,
+            char_span=h.char_span,
+            score=h.score,
+        )
+        for h in hits
+    ]
 
 
 def _unembedded_sql(fingerprint: str):

@@ -7,6 +7,7 @@ Provides:
   - POST   /api/v1/documents/qa
   - POST   /api/v1/documents
   - DELETE /api/v1/documents/{document_id}
+  - POST   /api/v1/documents/search
 
 **This is the EH1 horizon's one door and it adds no semantics.** Every read is
 a call into a service that already exists and already carries the honesty rule
@@ -40,7 +41,9 @@ from app.api.deps import get_llm
 from app.database import get_session
 from app.services.block_pipeline import UnsupportedSource
 from app.services.document_connections import connections_for_document
-from app.services.document_door import DocumentTooLarge, delete_document, put_document
+from app.services.document_door import (
+    DocumentTooLarge, delete_document, put_document, search_sections,
+)
 from app.services.document_parsers import DocumentParseError
 from app.services.document_summary import read_summary
 from app.services.faithfulness_gate import FaithfulnessGate, Outcome
@@ -145,6 +148,32 @@ class DocumentPutResponse(BaseModel):
     # re-filed identical document's explicit `title` (or any other field) is
     # never applied, and nothing else on the wire says so (Task 1 review, M6).
     title_applied: bool
+    horizon: bool = True
+
+
+class DocumentSearchRequest(BaseModel):
+    query: str = Field(min_length=1)
+    project: str = Field(min_length=1)
+    limit: int = Field(default=20, ge=1, le=100)
+    document_id: str | None = None
+
+
+class SectionHitModel(BaseModel):
+    block_id: str
+    document_id: str
+    project: str
+    uri: str | None
+    title: str | None
+    heading_path: list[str]
+    type: str | None
+    text: str
+    order_index: int | None
+    char_span: tuple[int, int] | None
+    score: float
+
+
+class DocumentSearchResponse(BaseModel):
+    items: list[SectionHitModel]
     horizon: bool = True
 
 
@@ -340,3 +369,26 @@ async def delete_document_route(
     if not existed:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "document not found")
     await session.commit()
+
+
+@router.post("/search", response_model=DocumentSearchResponse)
+async def search_documents_route(
+    body: DocumentSearchRequest,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+    llm=Depends(get_llm),
+) -> DocumentSearchResponse:
+    """Rank this project's blocks and resolve each hit's heading path.
+
+    An empty list means no match, never a failure -- the block channel has
+    one arm (`block_query.py`'s own rule), so a failure raises rather than
+    degrading to `[]`. Read-only: writes nothing and commits nothing, same
+    as `search_sections` itself.
+    """
+    hits = await search_sections(
+        session, llm, query=body.query, project=body.project,
+        limit=body.limit, document_id=body.document_id,
+    )
+    return DocumentSearchResponse(
+        items=[SectionHitModel(**vars(h)) for h in hits]
+    )

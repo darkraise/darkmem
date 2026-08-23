@@ -153,6 +153,22 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="documents.retrieval",
+        status=REST_ONLY,
+        rest=(("POST", f"{V1}/documents/search"),),
+        mcp=(),
+        reason=(
+            "Same firewall as documents.reads and documents.grounded_qa: EH1 "
+            "is a horizon lane behind its own eval gate (doc 16 §1's "
+            "firewall), and `block_query.py`'s own docstring records that a "
+            "separate tool is what lets G-F gate this channel without "
+            "touching the core ranking path. An MCP twin would hand every "
+            "agent a horizon retrieval capability before the gate that "
+            "governs it has run -- the reason is the channel's own, not a "
+            "schedule for when a twin appears."
+        ),
+    ),
+    Surface(
         name="checkpoint.save",
         status=TWO_DOOR,
         rest=(("POST", f"{V1}/checkpoints"),),

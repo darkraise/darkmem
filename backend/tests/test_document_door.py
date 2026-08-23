@@ -8,6 +8,7 @@ from app.repositories.knowledge_triples import KnowledgeTripleRepository
 from app.services.block_fact_sources import record_block_source
 from app.services.document_door import (
     DocumentTooLarge, MAX_BLOCKS, MAX_CONTENT_CHARS, delete_document, put_document,
+    search_sections,
 )
 from app.services.triple_key import compute_triple_key
 
@@ -411,3 +412,92 @@ async def test_delete_of_a_missing_document_returns_false_and_writes_nothing(ses
         text("SELECT count(*) FROM events WHERE event_type = 'sources_changed'")
     )).scalar_one()
     assert events_after == events_before
+
+
+# ── search_sections resolves each hit's heading path ───────────────────
+
+
+NESTED = (
+    "# Guide\n\nIntro para.\n\n"
+    "## Setup\n\nRun the installer.\n\n"
+    "### Windows\n\nUse the msi.\n\n"
+    "## Teardown\n\nDelete the folder.\n"
+)
+
+
+@pytest.mark.asyncio
+async def test_search_returns_the_heading_path_of_each_hit(session):
+    llm = StubEmbedder()
+    await put_document(session, llm, project="p", uri="docs/g.md", content=NESTED)
+
+    hits = await search_sections(session, llm, query="installer", project="p")
+    assert hits, "the stub embedder ranks everything equally; expect all blocks"
+    deepest = next(h for h in hits if h.text.strip() == "Use the msi.")
+    assert deepest.heading_path == ["Guide", "Setup", "Windows"]
+    assert deepest.uri == "docs/g.md"
+
+
+@pytest.mark.asyncio
+async def test_search_gives_a_top_level_hit_a_single_element_path(session):
+    llm = StubEmbedder()
+    await put_document(session, llm, project="p", uri="docs/g2.md", content=NESTED)
+
+    hits = await search_sections(session, llm, query="teardown", project="p")
+    teardown_heading = next(h for h in hits if h.text.strip() == "Teardown")
+    assert teardown_heading.heading_path == ["Guide", "Teardown"]
+    assert teardown_heading.title == "Guide"
+
+    delete_para = next(h for h in hits if h.text.strip() == "Delete the folder.")
+    assert delete_para.heading_path == ["Guide", "Teardown"]
+
+
+@pytest.mark.asyncio
+async def test_search_scopes_by_document_id(session):
+    llm = StubEmbedder()
+    a = await put_document(session, llm, project="p", uri="docs/a2.md", content=NESTED)
+    await put_document(session, llm, project="p", uri="docs/b2.md", content=NESTED)
+
+    hits = await search_sections(
+        session, llm, query="installer", project="p", document_id=a.document_id,
+    )
+    assert hits
+    assert all(h.document_id == a.document_id for h in hits)
+
+
+@pytest.mark.asyncio
+async def test_search_with_no_matching_blocks_returns_empty(session):
+    llm = StubEmbedder()
+    hits = await search_sections(session, llm, query="anything", project="empty-project")
+    assert hits == []
+
+
+@pytest.mark.asyncio
+async def test_a_parent_cycle_does_not_hang_the_walk(session):
+    """`blocks.parent_id` has no constraint forbidding a cycle. Force one
+    directly in the database and confirm the walk terminates instead of
+    looping forever -- the whole reason `_heading_path` carries its own
+    visited-set guard rather than trusting the tree."""
+    llm = StubEmbedder()
+    doc = await put_document(session, llm, project="p", uri="docs/cycle.md", content=NESTED)
+
+    block_rows = (await session.execute(
+        text(
+            "SELECT CAST(id AS text) AS id FROM blocks "
+            "WHERE document_id = CAST(:document_id AS uuid) AND type = 'heading' "
+            "ORDER BY order_index"
+        ),
+        {"document_id": doc.document_id},
+    )).scalars().all()
+    assert len(block_rows) >= 2
+    first, second = block_rows[0], block_rows[1]
+    await session.execute(
+        text("UPDATE blocks SET parent_id = CAST(:p AS uuid) WHERE id = CAST(:c AS uuid)"),
+        {"p": second, "c": first},
+    )
+
+    import asyncio
+
+    hits = await asyncio.wait_for(
+        search_sections(session, llm, query="installer", project="p"), timeout=5,
+    )
+    assert hits
