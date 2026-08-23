@@ -125,25 +125,33 @@ async def put_document(
     resolved_title = await _resolve_title(
         session, project=project, uri=uri, title=title, content=content,
     )
-    filed = await ingest_document(
-        session,
-        project=project,
-        content=content,
-        uri=uri,
-        source_type=source_type,
-        title=resolved_title,
-        properties=properties,
-        actor=actor,
-        source=source,
-    )
-    if filed.blocks_written > MAX_BLOCKS:
-        # Refused after the parse because the count is what the parse
-        # produces. Nothing has been committed yet, so raising here leaves
-        # the document as it was.
-        raise DocumentTooLarge(
-            f"document parses to {filed.blocks_written} blocks; the bound is "
-            f"{MAX_BLOCKS} blocks"
+
+    # `ingest_document` (via `file_document`) opens and RELEASES its own
+    # SAVEPOINT before returning, and a released savepoint's writes merge
+    # into whatever transaction called it rather than staying discardable
+    # on their own. So the block-count refusal below needs its own
+    # SAVEPOINT around both the filing and the check: raising out of this
+    # `async with` rolls the document row, its blocks, and the
+    # `document_filed` event back to before this call, which is what makes
+    # a refusal actually leave the document as it was rather than staging
+    # an oversized, unembedded document for the caller's next commit.
+    async with session.begin_nested():
+        filed = await ingest_document(
+            session,
+            project=project,
+            content=content,
+            uri=uri,
+            source_type=source_type,
+            title=resolved_title,
+            properties=properties,
+            actor=actor,
+            source=source,
         )
+        if filed.blocks_written > MAX_BLOCKS:
+            raise DocumentTooLarge(
+                f"document parses to {filed.blocks_written} blocks; the "
+                f"bound is {MAX_BLOCKS} blocks"
+            )
 
     await session.commit()
 

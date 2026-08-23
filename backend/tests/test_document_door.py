@@ -67,26 +67,58 @@ async def test_refiling_identical_content_is_unchanged(session):
     )
     assert again.outcome == "unchanged"
     assert again.blocks_filed == 0
+    # Every block from the first filing is already embedded, so a clean
+    # re-push — nothing deleted, nothing broken — must find no gap to
+    # repair. Without this the None-vs-zero and the gap-scoping logic could
+    # both silently over-report.
+    assert again.blocks_embedded == 0
 
 
 @pytest.mark.asyncio
 async def test_unchanged_repush_embeds_blocks_that_lack_a_vector(session):
     """The repair path: an embed that failed post-commit must be fixable by
-    pushing the same file again, which files nothing."""
+    pushing the same file again, which files nothing.
+
+    Deletes a STRICT SUBSET of one document's vectors (never the whole
+    partition) so "blocks lacking a vector" and "every block of the
+    document" cannot coincide, and files a second, fully-embedded document
+    first so an unscoped query — "any block anywhere lacking a vector" —
+    would also fail this assertion by picking up the wrong document's rows.
+    """
     llm = StubEmbedder()
     first = await put_document(
         session, llm, project="p", uri="docs/a.md", content=DOC,
     )
+    other = await put_document(
+        session, llm, project="p", uri="docs/other.md", content=DOC,
+    )
+    assert other.blocks_embedded == other.blocks_filed
+
     from app.services.block_embeddings import PARENT_TABLE
     from app.services.embedder_registry import child_table
 
-    await session.execute(text(f"DELETE FROM {child_table(PARENT_TABLE, FINGERPRINT)}"))
+    block_ids = (await session.execute(
+        text(
+            "SELECT CAST(id AS text) AS id FROM blocks "
+            "WHERE document_id = CAST(:document_id AS uuid) ORDER BY id"
+        ),
+        {"document_id": first.document_id},
+    )).scalars().all()
+    assert len(block_ids) == first.blocks_filed
+    assert len(block_ids) > 1, "need more than one block for a strict subset"
+    stale = block_ids[:-1]  # leave the last block's vector intact
+
+    table = child_table(PARENT_TABLE, FINGERPRINT)
+    await session.execute(
+        text(f"DELETE FROM {table} WHERE block_id = ANY(CAST(:ids AS uuid[]))"),
+        {"ids": stale},
+    )
     repair = await put_document(
         session, llm, project="p", uri="docs/a.md", content=DOC,
     )
     assert repair.outcome == "unchanged"
     assert repair.blocks_filed == 0
-    assert repair.blocks_embedded == first.blocks_filed
+    assert repair.blocks_embedded == len(stale)
 
 
 @pytest.mark.asyncio
@@ -134,3 +166,44 @@ async def test_block_count_over_the_bound_is_refused(session):
             content="\n\n".join(f"para {i}" for i in range(MAX_BLOCKS + 1)),
         )
     assert "blocks" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_block_count_refusal_leaves_no_document_row(session):
+    """A refusal must leave the document exactly as it was: `ingest_document`
+    releases its own SAVEPOINT before returning, so without a SAVEPOINT of
+    `put_document`'s own around the filing and the bound check, the document
+    row, its blocks and its `document_filed` event would all still be
+    staged in the caller's session for whatever commits it next — an
+    oversized, unembedded document masquerading as a refusal."""
+    llm = StubEmbedder()
+    with pytest.raises(DocumentTooLarge):
+        await put_document(
+            session, llm, project="p", uri="docs/many.md",
+            content="\n\n".join(f"para {i}" for i in range(MAX_BLOCKS + 1)),
+        )
+    row = (await session.execute(
+        text("SELECT id FROM documents WHERE project='p' AND uri='docs/many.md'")
+    )).first()
+    assert row is None
+
+
+@pytest.mark.asyncio
+async def test_embed_blocks_returning_none_reports_zero_embedded(session, monkeypatch):
+    """`embed_blocks` returning `None` means nothing was embedded and no
+    fingerprint was measured; `put_document` must report that as zero, not
+    as a successful embed of every filed block."""
+    import app.services.document_door as document_door
+
+    async def _embeds_nothing(session, llm, *, block_ids, **kwargs):
+        return None
+
+    monkeypatch.setattr(document_door, "embed_blocks", _embeds_nothing)
+
+    llm = StubEmbedder()
+    result = await put_document(
+        session, llm, project="p", uri="docs/none.md", content=DOC,
+    )
+    assert result.outcome == "created"
+    assert result.blocks_filed > 0
+    assert result.blocks_embedded == 0
