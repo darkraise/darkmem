@@ -21,6 +21,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.repositories.documents import resolve_by_id, resolve_by_uri
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
 from app.repositories.vector import EmbedderFingerprintUnresolved
 from app.services.block_embeddings import (
@@ -36,7 +37,10 @@ from app.services.events import record_event
 __all__ = [
     "MAX_BLOCKS",
     "MAX_CONTENT_CHARS",
+    "SEARCH_DEFAULT_LIMIT",
+    "SEARCH_MAX_LIMIT",
     "BlockRow",
+    "DocumentTargetUnresolved",
     "DocumentTooLarge",
     "OutlineNode",
     "PutResult",
@@ -45,6 +49,8 @@ __all__ = [
     "document_blocks",
     "document_outline",
     "put_document",
+    "resolve_document_id",
+    "resolve_document_target",
     "search_sections",
 ]
 
@@ -55,9 +61,77 @@ __all__ = [
 MAX_CONTENT_CHARS = 1_000_000
 MAX_BLOCKS = 5_000
 
+# The section-search page, named here rather than on either door: the REST
+# body model and the MCP tool's clamp are two enforcement sites for one bound,
+# and two copies of one tuning constant drift apart exactly as the RRF constant
+# already did.
+SEARCH_DEFAULT_LIMIT = 20
+SEARCH_MAX_LIMIT = 100
+
 
 class DocumentTooLarge(ValueError):
     """Refused at the door. The message names which bound was hit."""
+
+
+class DocumentTargetUnresolved(ValueError):
+    """Nothing a caller named resolves to a document that exists."""
+
+
+async def resolve_document_id(
+    session: AsyncSession, *, project: str, uri: str
+) -> str | None:
+    """The id of the document filed at `(project, uri)`, or `None`.
+
+    Read-only: commits nothing and opens no savepoint, same posture as
+    `search_sections`.
+    """
+    row = await resolve_by_uri(session, project=project, uri=uri)
+    return None if row is None else str(row.id)
+
+
+async def resolve_document_target(
+    session: AsyncSession,
+    *,
+    document_id: str | UUID | None = None,
+    project: str | None = None,
+    uri: str | None = None,
+) -> str:
+    """The document a caller named, by id or by `(project, uri)`.
+
+    One producer for both doors and for both addressing forms, because the
+    refusals are the part that must not drift. Naming nothing, naming a uri
+    nobody filed and naming an id no document carries are the same answer to
+    a caller, and a verb that met any of them with an empty outline or an
+    empty block list would be reporting a document that does not exist as one
+    that exists and is empty -- a distinction this door's siblings already
+    draw (`get_document_summary`, and every 404 below it).
+
+    Raises `DocumentTargetUnresolved` rather than returning `None` so no read
+    can run against an id nothing confirmed. Read-only: commits nothing and
+    opens no savepoint.
+    """
+    if document_id is not None:
+        try:
+            resolved = UUID(str(document_id))
+        except (ValueError, AttributeError):
+            raise DocumentTargetUnresolved(
+                f"not a document id: {document_id}"
+            ) from None
+        if await resolve_by_id(session, resolved) is None:
+            raise DocumentTargetUnresolved("document not found")
+        return str(resolved)
+
+    if project and uri:
+        found = await resolve_document_id(session, project=project, uri=uri)
+        if found is None:
+            raise DocumentTargetUnresolved(
+                f"no document is filed at uri {uri!r} in project {project!r}"
+            )
+        return found
+
+    raise DocumentTargetUnresolved(
+        "name a document: pass document_id, or both project and uri"
+    )
 
 
 @dataclass(frozen=True)
@@ -215,7 +289,7 @@ async def search_sections(
     *,
     query: str,
     project: str,
-    limit: int = 20,
+    limit: int = SEARCH_DEFAULT_LIMIT,
     document_id: str | None = None,
 ) -> list[SectionHit]:
     """Rank blocks, then resolve each hit's heading path.

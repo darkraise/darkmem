@@ -610,6 +610,7 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # content for an isolation probe to drive against.
     "POST /api/v1/documents",
     "DELETE /api/v1/documents/{document_id}",
+    "DELETE /api/v1/documents/by-uri",
     # The search door: ranks blocks and resolves each hit's heading path.
     # Same classification and same reason as the write door immediately
     # above -- it crosses `blocks`/`documents`, never a `memories` row, so
@@ -619,15 +620,18 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # The outline and fetch doors: a document's heading tree, and its blocks
     # (all of them, or only the ids named). Same classification as the write
     # and search doors immediately above for the same underlying reason --
-    # never a `memories` row. Both resolve by `document_id`: an id-keyed
-    # existence read on `documents` (404 on a missing id) plus an id-keyed
-    # read of `blocks`, no join between the two. Unlike the search door and
-    # the write door's POST half above, whose reasons cite a project-filtered
-    # query, these two carry no `project` predicate anywhere -- so there is
-    # no project-filtered query here for a memory-content isolation probe to
-    # drive against either.
+    # never a `memories` row. Each answers at two paths: a `{document_id}`
+    # form, and a `by-uri` form taking `?project=` and `?uri=`. Both forms
+    # resolve through `document_door.resolve_document_target` -- a read of
+    # `documents` that confirms the row exists (404 otherwise), then an
+    # id-keyed read of `blocks`, with no join between the two. So a `project`
+    # predicate does exist here, on the by-uri resolution only, and it
+    # identifies a document rather than filtering a result set; the block
+    # read that follows is id-keyed either way.
     "GET /api/v1/documents/{document_id}/outline",
     "GET /api/v1/documents/{document_id}",
+    "GET /api/v1/documents/by-uri/outline",
+    "GET /api/v1/documents/by-uri",
     # Session checkpoints (T3.16). No memory content crosses: a checkpoint is
     # the agent's own note about its run, written by the agent and never
     # derived from a `memories` row — this surface reads that table and no
@@ -807,6 +811,16 @@ MCP_TOOLS_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # back. Unlike `memory_add` it has no wait_process settle re-read, so
     # there is no shape in which it echoes a stored row.
     "mcp:research_run",
+    # The document door's MCP half (spec 2026-08-23), for the reason its REST
+    # twins carry above: document content crosses these -- block text, a
+    # heading tree, a filed document's own counts -- and no `memories` row
+    # does, so there is nothing here for a memory-content isolation probe to
+    # drive against.
+    "mcp:document_put",
+    "mcp:document_search",
+    "mcp:document_outline",
+    "mcp:document_get",
+    "mcp:document_delete",
 })
 
 

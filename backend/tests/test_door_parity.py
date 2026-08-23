@@ -59,6 +59,36 @@ class Surface:
 V1 = "/api/v1"
 
 
+# One text over both document rows rather than two copies of it: they were
+# flipped by one ruling, and a second copy is what lets the halves of one
+# decision drift into disagreeing about what was decided.
+_DOCUMENTS_RULING = (
+    "Owner ruling 2026-08-23. G-F gates the faithfulness judge, which "
+    "governs documents.grounded_qa -- an answer that is generated, "
+    "labelled and served. These verbs generate nothing and label "
+    "nothing: they file a document and return its own text with a "
+    "cosine score, as code.search returns source. The doc 16 firewall "
+    "is against block rows reaching the verified vault unlifted, and "
+    "tests/test_block_retrieval.py bars that structurally. This does "
+    "not clear G-F and no bar moved."
+)
+
+# The wire difference, recorded rather than left to be discovered: doc 12 §3
+# allows a tool and its route to differ in shape and nowhere else, and the
+# `memory.search` row below already settles this exact one.
+_DOCUMENTS_WIRE_SHAPE = (
+    "Stated wire asymmetry: the tools answer bare JSON where the routes "
+    "answer an envelope carrying `horizon` and the resolved `document_id`, "
+    "the same difference the memory.search row records. A section hit still "
+    "says what it is on both doors -- `id_kind` and `layer` ride the row, not "
+    "the envelope -- while an outline node and a block row carry no label of "
+    "their own, so they reach a tool caller unlabelled where the route's "
+    "envelope says `horizon`. Ranking, scope, and every refusal come from one "
+    "service call: both doors resolve a document through "
+    "`document_door.resolve_document_target`, by id or by (project, uri)."
+)
+
+
 PARITY_TABLE: tuple[Surface, ...] = (
     # ── Both doors ──────────────────────────────────────────────────
     Surface(
@@ -118,11 +148,11 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
         mcp=(),
         reason=(
-            "EH1 is a horizon lane behind its own eval gate (doc 16 §1's "
-            "firewall), and an MCP twin would put an unshipped surface in "
-            "front of every agent before the gate that governs it has run. "
-            "Single-door until G-F clears, then re-decided on its merits "
-            "rather than inherited."
+            "The list, summary and connection reads have no MCP twin yet -- "
+            "scope, not gate. The 'single-door until G-F clears' clause that "
+            "stood here was superseded by the owner ruling of 2026-08-23; see "
+            "the documents.write and documents.retrieval rows. "
+            "documents.grounded_qa below is the row G-F still governs."
         ),
     ),
     Surface(
@@ -141,42 +171,27 @@ PARITY_TABLE: tuple[Surface, ...] = (
     ),
     Surface(
         name="documents.write",
-        status=REST_ONLY,
+        status=TWO_DOOR,
         rest=(
             ("POST", f"{V1}/documents"),
             ("DELETE", f"{V1}/documents/{{document_id}}"),
+            ("DELETE", f"{V1}/documents/by-uri"),
         ),
-        mcp=(),
-        reason=(
-            "The MCP twins for filing and deleting a document land in the "
-            "same epic; this row stays REST-only until they ship."
-        ),
+        mcp=("document_put", "document_delete"),
+        note=f"{_DOCUMENTS_RULING} {_DOCUMENTS_WIRE_SHAPE}",
     ),
     Surface(
         name="documents.retrieval",
-        status=REST_ONLY,
+        status=TWO_DOOR,
         rest=(
             ("POST", f"{V1}/documents/search"),
             ("GET", f"{V1}/documents/{{document_id}}/outline"),
             ("GET", f"{V1}/documents/{{document_id}}"),
+            ("GET", f"{V1}/documents/by-uri/outline"),
+            ("GET", f"{V1}/documents/by-uri"),
         ),
-        mcp=(),
-        reason=(
-            "This surface serves raw section hits, the heading tree and raw "
-            "block content, never composed into the memory/vault retrieval "
-            "layer. Section hits ride the block channel `block_query.py` "
-            "keeps separate by construction (`BLOCK_ID_KIND`/`BLOCK_LAYER` "
-            "stay out of `layer_composition.ID_KINDS`), and the outline and "
-            "fetch routes go further still -- they bypass `block_query.py` "
-            "entirely and read `blocks` directly. Same separation "
-            "`documents.reads` and `documents.grounded_qa` above already "
-            "carry. What G-F actually gates is the labelled, "
-            "faithfulness-checked answer at `POST /documents/qa`, not these "
-            "raw reads -- nothing here sits behind that gate, and no design "
-            "decision bars an MCP twin. It stays single-door only because "
-            "the MCP side of this capability has no tool registered today; "
-            "Task 5 records the owner's ruling that adds one."
-        ),
+        mcp=("document_search", "document_outline", "document_get"),
+        note=f"{_DOCUMENTS_RULING} {_DOCUMENTS_WIRE_SHAPE}",
     ),
     Surface(
         name="checkpoint.save",

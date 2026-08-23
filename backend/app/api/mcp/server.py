@@ -22,6 +22,7 @@ from app.database import async_session_factory
 from app.schemas.envelope import ENVELOPE_SCHEMA_VERSION
 from app.schemas.memory import MemoryBatchCreate, MemoryCreate, MemorySearchRequest, MemoryUpdate
 from app.schemas.research import MAX_FINDINGS_CEILING, ResearchFindingInput
+from app.services.document_door import SEARCH_DEFAULT_LIMIT, SEARCH_MAX_LIMIT
 from app.services.memory import MemoryService
 from app.utils.graph_keys import compose_key, decompose_key
 
@@ -516,6 +517,213 @@ async def checkpoint_latest(
         return json.dumps(
             checkpoint_service.serialize(row) if row is not None else None
         )
+
+
+# ---------------------------------------------------------------------------
+# Document tools -- the MCP half of the document door (doc 16, spec 2026-08-23)
+#
+# Each one is a call into `app.services.document_door`, the same functions
+# `api/routes/documents.py` serves, for the reason the checkpoint banner above
+# states: two transports over one module, never two implementations. Session
+# handling follows each service function's own stated commit posture --
+# `put_document` commits internally, `delete_document` relies on this caller,
+# and the read verbs commit nothing.
+#
+# The three verbs keyed on a document take `document_id` OR `(project, uri)`,
+# and resolve it through `resolve_document_target` rather than through
+# `_validate_uuid`: naming nothing, naming an unfiled uri and naming a
+# vanished id are one answer to a caller, and this door's REST twin renders
+# the same refusal as a 404 from the same producer. It raises rather than
+# degrading, which is `_degraded`'s own rule -- a caller naming no document
+# made a caller's mistake, and the server is not down.
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool(
+    description=(
+        "File a markdown or plain-text document into darkmem, keyed on its "
+        "repo-relative path. Re-filing the same path updates it in place. "
+        "Returns the document id and how many blocks were filed and embedded."
+    )
+)
+async def document_put(
+    project: str,
+    uri: str,
+    content: str,
+    title: str | None = None,
+    source_type: str | None = None,
+    ctx: Context | None = None,
+) -> str:
+    """
+    Args:
+        project: Scope, the same key memory_add writes under.
+        uri: Repo-relative path, e.g. "docs/plans/2026-08-23-thing.md".
+        content: The file's text. The server never reads your filesystem.
+        title: Optional; falls back to the document's first heading.
+        source_type: Optional; inferred from the uri suffix.
+    """
+    from app.services.document_door import put_document
+
+    if not _pipeline or not _pipeline.llm:
+        return json.dumps(_degraded("embedder not configured", document_id=None))
+
+    # The same ladder every other capture tool resolves through, and for the
+    # same reason: a constant here would be a second key space for the client
+    # that declares itself.
+    source = resolve_client_source(None, ctx)
+    async with async_session_factory() as session:
+        try:
+            result = await put_document(
+                session, _pipeline.llm,
+                project=project, uri=uri, content=content,
+                title=title, source_type=source_type, source=source,
+            )
+        except Exception:
+            await session.rollback()
+            raise
+    return json.dumps(vars(result))
+
+
+@mcp.tool(
+    description=(
+        "Search documents by meaning and get back the matching sections, not "
+        "whole files. Each hit carries its document title, path and heading "
+        "path. Use this before reading a spec or plan from disk."
+    )
+)
+async def document_search(
+    query: str,
+    project: str,
+    limit: int = SEARCH_DEFAULT_LIMIT,
+    document_id: str | None = None,
+) -> str:
+    """
+    Args:
+        query: What you are looking for, in your own words.
+        project: Scope. Required and never defaulted, matching the block
+            channel, which refuses an omittable retrieval scope.
+        limit: How many sections to return.
+        document_id: Optional; confines the search to one document.
+    """
+    from app.services.document_door import search_sections
+
+    if not _pipeline or not _pipeline.llm:
+        return json.dumps(_degraded("embedder not configured", results=[]))
+
+    limit = _clamp_limit(
+        limit, default=SEARCH_DEFAULT_LIMIT, maximum=SEARCH_MAX_LIMIT,
+    )
+    async with async_session_factory() as session:
+        hits = await search_sections(
+            session, _pipeline.llm, query=query, project=project,
+            limit=limit, document_id=document_id,
+        )
+    return json.dumps([vars(h) for h in hits])
+
+
+@mcp.tool(
+    description=(
+        "List a document's headings with their levels and block ids. No body "
+        "text. Name the document by document_id, or by the project and uri "
+        "it was filed under."
+    )
+)
+async def document_outline(
+    document_id: str | None = None,
+    project: str | None = None,
+    uri: str | None = None,
+) -> str:
+    """
+    Args:
+        document_id: The document's id, if you have one.
+        project: Scope, when naming the document by uri.
+        uri: The repo-relative path it was filed under.
+    """
+    from app.services.document_door import document_outline as _outline
+    from app.services.document_door import resolve_document_target
+
+    async with async_session_factory() as session:
+        target = await resolve_document_target(
+            session, document_id=document_id, project=project, uri=uri,
+        )
+        nodes = await _outline(session, document_id=target)
+    return json.dumps([vars(n) for n in nodes])
+
+
+@mcp.tool(
+    description=(
+        "Fetch a document's blocks, or only the block ids named. Name the "
+        "document by document_id, or by the project and uri it was filed "
+        "under."
+    )
+)
+async def document_get(
+    document_id: str | None = None,
+    block_ids: list[str] | None = None,
+    project: str | None = None,
+    uri: str | None = None,
+) -> str:
+    """
+    Args:
+        document_id: The document's id, if you have one.
+        block_ids: Optional; only these blocks, the drill-down after an
+            outline. An empty list names zero blocks and returns zero.
+        project: Scope, when naming the document by uri.
+        uri: The repo-relative path it was filed under.
+    """
+    from app.services.document_door import document_blocks, resolve_document_target
+
+    async with async_session_factory() as session:
+        target = await resolve_document_target(
+            session, document_id=document_id, project=project, uri=uri,
+        )
+        rows = await document_blocks(
+            session, document_id=target, block_ids=block_ids,
+        )
+    return json.dumps([vars(r) for r in rows])
+
+
+@mcp.tool(
+    description=(
+        "Delete a document, its blocks and its vectors. Use when its file is "
+        "gone. Name the document by document_id, or by the project and uri "
+        "it was filed under."
+    )
+)
+async def document_delete(
+    document_id: str | None = None,
+    project: str | None = None,
+    uri: str | None = None,
+) -> str:
+    """
+    Args:
+        document_id: The document's id, if you have one.
+        project: Scope, when naming the document by uri.
+        uri: The repo-relative path it was filed under.
+    """
+    from app.services.document_door import (
+        DocumentTargetUnresolved, delete_document, resolve_document_target,
+    )
+
+    async with async_session_factory() as session:
+        # Resolved outside the rollback guard: naming no document writes
+        # nothing, and rolling back for it would discard an in-process
+        # caller's own uncommitted work on what is only a caller error.
+        target = await resolve_document_target(
+            session, document_id=document_id, project=project, uri=uri,
+        )
+        try:
+            # Never a raw DELETE: `fact_sources.source_ref` carries no foreign
+            # key, so the cascade cannot reach it and the shared service is
+            # what withdraws the block sources and enqueues the facts that
+            # lost one. It relies on this caller to commit.
+            if not await delete_document(session, document_id=target):
+                raise DocumentTargetUnresolved("document not found")
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+    return json.dumps({"document_id": target, "deleted": True})
 
 
 # ---------------------------------------------------------------------------

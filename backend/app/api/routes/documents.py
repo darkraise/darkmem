@@ -10,6 +10,23 @@ Provides:
   - POST   /api/v1/documents
   - DELETE /api/v1/documents/{document_id}
   - POST   /api/v1/documents/search
+  - GET    /api/v1/documents/by-uri/outline
+  - GET    /api/v1/documents/by-uri
+  - DELETE /api/v1/documents/by-uri
+
+**A caller that filed by path has a path, not an id.** The three verbs keyed
+on a document — outline, blocks, delete — each answer at two paths served by
+one handler: the `{document_id}` form and a `by-uri` form taking `?project=`
+and `?uri=`. One handler rather than two so the two addressing forms cannot
+answer differently, and `document_door.resolve_document_target` is the single
+producer of every refusal, shared with the MCP twins.
+
+**Each `by-uri` route must be registered before its `{document_id}` sibling**,
+which is why it is the lower decorator of the two: decorators apply
+bottom-up, `/{document_id}` matches the literal segment `by-uri` too, and
+whichever registers first wins the match. Reversing the pair does not fail —
+it answers 422 `invalid uuid` for every by-uri call, which is why
+`test_by_uri_is_not_shadowed_by_the_id_route` pins it.
 
 **This is the EH1 horizon's one door and it adds no semantics.** Every read is
 a call into a service that already exists and already carries the honesty rule
@@ -41,12 +58,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.auth import require_auth
 from app.api.deps import get_llm
 from app.database import get_session
-from app.repositories.documents import resolve_by_id
 from app.services.block_pipeline import UnsupportedSource
 from app.services.document_connections import connections_for_document
 from app.services.document_door import (
+    SEARCH_DEFAULT_LIMIT, SEARCH_MAX_LIMIT, DocumentTargetUnresolved,
     DocumentTooLarge, delete_document, document_blocks, document_outline,
-    put_document, search_sections,
+    put_document, resolve_document_target, search_sections,
 )
 from app.services.document_parsers import DocumentParseError
 from app.services.document_summary import read_summary
@@ -56,6 +73,28 @@ from app.services.grounded_qa import GroundedQaService
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
+
+
+async def _resolve_target(
+    session: AsyncSession,
+    *,
+    document_id: UUID | None,
+    project: str | None,
+    uri: str | None,
+) -> str:
+    """404 for every way of naming no document, in the service's own words.
+
+    `project` and `uri` are optional on the `by-uri` routes rather than
+    required so that naming nothing lands here as a 404 like the other
+    refusals, instead of splitting one answer across a 422 and a 404
+    depending on which half the caller left out.
+    """
+    try:
+        return await resolve_document_target(
+            session, document_id=document_id, project=project, uri=uri,
+        )
+    except DocumentTargetUnresolved as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
 
 
 class DocumentListItem(BaseModel):
@@ -158,7 +197,9 @@ class DocumentPutResponse(BaseModel):
 class DocumentSearchRequest(BaseModel):
     query: str = Field(min_length=1)
     project: str = Field(min_length=1)
-    limit: int = Field(default=20, ge=1, le=100)
+    limit: int = Field(
+        default=SEARCH_DEFAULT_LIMIT, ge=1, le=SEARCH_MAX_LIMIT,
+    )
     document_id: str | None = None
 
 
@@ -383,8 +424,11 @@ async def put_document_route(
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/by-uri", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document_route(
-    document_id: UUID,
+    document_id: UUID | None = None,
+    project: str | None = Query(None),
+    uri: str | None = Query(None),
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ) -> None:
@@ -403,9 +447,19 @@ async def delete_document_route(
     service, not here, so an MCP delete twin calls the same function rather
     than re-implementing this — the same reason `title_applied` has one
     producer rather than one per transport.
+
+    Answers at `/{document_id}` and at `/by-uri?project=&uri=`; see the
+    module docstring for why the pair is ordered the way it is.
     """
-    existed = await delete_document(session, document_id=document_id)
+    target = await _resolve_target(
+        session, document_id=document_id, project=project, uri=uri,
+    )
+    existed = await delete_document(session, document_id=target)
     if not existed:
+        # Unreachable through `_resolve_target`, which has already confirmed
+        # the row -- kept because the service reports it and a concurrent
+        # delete between the two statements is the one way it can still be
+        # False.
         raise HTTPException(status.HTTP_404_NOT_FOUND, "document not found")
     await session.commit()
 
@@ -434,8 +488,11 @@ async def search_documents_route(
 
 
 @router.get("/{document_id}/outline", response_model=DocumentOutlineResponse)
+@router.get("/by-uri/outline", response_model=DocumentOutlineResponse)
 async def document_outline_route(
-    document_id: UUID,
+    document_id: UUID | None = None,
+    project: str | None = Query(None),
+    uri: str | None = Query(None),
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ) -> DocumentOutlineResponse:
@@ -447,22 +504,28 @@ async def document_outline_route(
     filed" from "filed but has no headings" -- the same distinction
     `get_document_summary` draws between "no summary yet" and an empty one,
     and the same condition `delete_document_route` already 404s on for this
-    exact id.
+    exact id. Answers at `/{document_id}/outline` and at
+    `/by-uri/outline?project=&uri=`; see the module docstring for the
+    ordering the pair depends on.
     """
-    if await resolve_by_id(session, document_id) is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "document not found")
+    target = await _resolve_target(
+        session, document_id=document_id, project=project, uri=uri,
+    )
 
-    nodes = await document_outline(session, document_id=str(document_id))
+    nodes = await document_outline(session, document_id=target)
     return DocumentOutlineResponse(
-        document_id=str(document_id),
+        document_id=target,
         items=[OutlineNodeModel(**vars(n)) for n in nodes],
     )
 
 
 @router.get("/{document_id}", response_model=DocumentBlocksResponse)
+@router.get("/by-uri", response_model=DocumentBlocksResponse)
 async def document_blocks_route(
-    document_id: UUID,
+    document_id: UUID | None = None,
     block_ids: list[UUID] | None = Query(default=None),
+    project: str | None = Query(None),
+    uri: str | None = Query(None),
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ) -> DocumentBlocksResponse:
@@ -476,15 +539,17 @@ async def document_blocks_route(
     validation `document_id: UUID` on this signature already earns.
 
     404 when the document does not exist -- see `document_outline_route`.
+    Answers at `/{document_id}` and at `/by-uri?project=&uri=`.
     """
-    if await resolve_by_id(session, document_id) is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "document not found")
+    target = await _resolve_target(
+        session, document_id=document_id, project=project, uri=uri,
+    )
 
     rows = await document_blocks(
-        session, document_id=str(document_id),
+        session, document_id=target,
         block_ids=[str(b) for b in block_ids] if block_ids is not None else None,
     )
     return DocumentBlocksResponse(
-        document_id=str(document_id),
+        document_id=target,
         blocks=[BlockRowModel(**vars(r)) for r in rows],
     )

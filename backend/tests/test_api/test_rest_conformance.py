@@ -55,6 +55,11 @@ EXPECTED_STATUS = {
     ("POST", "/api/v1/documents"): 201,
     ("DELETE", "/api/v1/documents/{document_id}"): 204,
     ("POST", "/api/v1/documents/search"): 200,
+    # The by-uri half of the three document-keyed verbs: one handler each,
+    # two paths, so the statuses are the id form's by construction.
+    ("GET", "/api/v1/documents/by-uri/outline"): 200,
+    ("GET", "/api/v1/documents/by-uri"): 200,
+    ("DELETE", "/api/v1/documents/by-uri"): 204,
     ("POST", "/api/v1/api-keys"): 201,
     ("GET", "/api/v1/api-keys"): 200,
     # 204 and a revocation rather than a row removal: `events.api_key_id`
