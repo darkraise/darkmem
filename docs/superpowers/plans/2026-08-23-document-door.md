@@ -15,7 +15,8 @@
 - **Bounds:** document content ≤ 1,000,000 characters, ≤ 5,000 blocks. Refuse with 422 naming which limit was hit.
 - **Embed after commit, never inside the filing transaction.** `embedder_registry.register` commits on the session, so a filing that embedded inline would stop being rollback-able.
 - **`block_query` is not to be edited.** `backend/tests/test_block_retrieval.py` asserts no fusion module imports it and that `block` stays out of `layer_composition.ID_KINDS`. Heading-path resolution belongs in the door.
-- **Every new REST route and MCP tool needs a `Surface` row** in `PARITY_TABLE` (`backend/tests/test_door_parity.py`), the doc regenerated from it, and the doc's headline counts updated. Two tests fail otherwise.
+- **Every new REST route and MCP tool needs a `Surface` row** in `PARITY_TABLE` (`backend/tests/test_door_parity.py`), the doc regenerated from it, and the doc's headline counts updated. Two tests fail otherwise. The doc's table is generated — never hand-edit it.
+- **A new REST route must also register in two more enforced inventories**, discovered in Task 2 and not in the original file lists: `backend/tests/test_api/test_rest_conformance.py`, and `backend/app/services/content_surfaces.py` — the latter is a *decided* inventory of front doors returning memory-derived data, so its entry carries an isolation decision, not just a registration. The full backend suite fails without both.
 - **`EVENT_TYPES` is taxonomy-first:** land a new event value in `app/services/events.py` before its emitter ships.
 - **REST conventions** (`docs/api-rest-conventions.md`): 201 create, 204 delete, POST `.../search` for complex queries.
 - **Response models on this surface carry `horizon: bool = True`**, matching `DocumentListResponse`.
