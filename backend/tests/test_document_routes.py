@@ -253,6 +253,35 @@ async def test_outline_of_a_missing_document_is_404(client, auth_headers):
 
 
 @pytest.mark.asyncio
+async def test_a_document_with_zero_blocks_is_200_and_empty_not_404(
+    client, auth_headers, stub_llm
+):
+    """A document that genuinely exists but parses to no blocks (whitespace
+    -only content -- `parse_markdown` returns `[]` when `not text.strip()`,
+    and `DocumentPutRequest.content` only requires `min_length=1`, so a
+    single space clears validation) must still answer 200 with an empty
+    list on both routes -- the 404 added for I1 is about the *document*
+    existing, and `resolve_by_id` reads `documents` alone, so it must not
+    also fire on a document that exists but has nothing under it."""
+    created = await client.post(
+        f"{V1}/documents",
+        json={"project": "p", "uri": "docs/empty.md", "content": " "},
+        headers=auth_headers,
+    )
+    assert created.status_code == 201
+    assert created.json()["blocks_filed"] == 0
+    document_id = created.json()["document_id"]
+
+    outline = await client.get(f"{V1}/documents/{document_id}/outline", headers=auth_headers)
+    assert outline.status_code == 200
+    assert outline.json()["items"] == []
+
+    blocks = await client.get(f"{V1}/documents/{document_id}", headers=auth_headers)
+    assert blocks.status_code == 200
+    assert blocks.json()["blocks"] == []
+
+
+@pytest.mark.asyncio
 async def test_get_returns_every_block_in_document_order_by_default(
     client, auth_headers, stub_llm
 ):

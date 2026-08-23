@@ -7,8 +7,8 @@ from app.repositories.fact_sources import FactSourceRepository
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
 from app.services.block_fact_sources import record_block_source
 from app.services.document_door import (
-    DocumentTooLarge, MAX_BLOCKS, MAX_CONTENT_CHARS, delete_document, put_document,
-    search_sections,
+    DocumentTooLarge, MAX_BLOCKS, MAX_CONTENT_CHARS, delete_document, document_blocks,
+    put_document, search_sections,
 )
 from app.services.triple_key import compute_triple_key
 
@@ -64,6 +64,21 @@ async def test_put_files_and_embeds_every_block(session):
     assert result.blocks_filed > 0
     assert result.blocks_embedded == result.blocks_filed
     assert result.title_applied is True
+
+
+@pytest.mark.asyncio
+async def test_document_blocks_with_an_explicit_empty_list_returns_nothing(session):
+    """`block_ids=[]` names zero blocks and must return zero, distinct from
+    `block_ids=None` ("no filter", returns the whole document). Not
+    reachable through the HTTP route today -- FastAPI reports an absent
+    query parameter as `None`, never `[]` -- but this is the in-process
+    contract a future caller (e.g. an MCP tool) gets instead."""
+    llm = StubEmbedder()
+    result = await put_document(session, llm, project="p", uri="docs/a.md", content=DOC)
+    assert result.blocks_filed > 0
+
+    rows = await document_blocks(session, document_id=result.document_id, block_ids=[])
+    assert rows == []
 
 
 @pytest.mark.asyncio

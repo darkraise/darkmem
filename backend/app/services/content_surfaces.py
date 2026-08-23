@@ -619,11 +619,13 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # The outline and fetch doors: a document's heading tree, and its blocks
     # (all of them, or only the ids named). Same classification as the write
     # and search doors immediately above for the same underlying reason --
-    # never a `memories` row -- but not the same query shape: both read
-    # `blocks` only (no join to `documents`, unlike the search door), and
-    # unlike either door above they carry no `project` predicate at all --
-    # they resolve by `document_id`, so there is no project-filtered query
-    # here for a memory-content isolation probe to drive against either.
+    # never a `memories` row. Both resolve by `document_id`: an id-keyed
+    # existence read on `documents` (404 on a missing id) plus an id-keyed
+    # read of `blocks`, no join between the two. Unlike the search door and
+    # the write door's POST half above, whose reasons cite a project-filtered
+    # query, these two carry no `project` predicate anywhere -- so there is
+    # no project-filtered query here for a memory-content isolation probe to
+    # drive against either.
     "GET /api/v1/documents/{document_id}/outline",
     "GET /api/v1/documents/{document_id}",
     # Session checkpoints (T3.16). No memory content crosses: a checkpoint is
