@@ -105,6 +105,10 @@ async def test_a_pdf_uri_with_string_content_is_refused_with_422(
         headers=auth_headers,
     )
     assert response.status_code == 422
+    # Pinned to the parse failure specifically, not merely to "422 somehow":
+    # UnsupportedSource also answers 422, and its message never says "pdf
+    # parse failed" -- only DocumentParseError's does.
+    assert "pdf parse failed" in response.text
 
 
 @pytest.mark.asyncio

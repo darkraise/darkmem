@@ -38,10 +38,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.auth import require_auth
 from app.api.deps import get_llm
 from app.database import get_session
-from app.services.block_fact_sources import withdraw_document
 from app.services.block_pipeline import UnsupportedSource
 from app.services.document_connections import connections_for_document
-from app.services.document_door import DocumentTooLarge, put_document
+from app.services.document_door import DocumentTooLarge, delete_document, put_document
 from app.services.document_parsers import DocumentParseError
 from app.services.document_summary import read_summary
 from app.services.faithfulness_gate import FaithfulnessGate, Outcome
@@ -328,16 +327,16 @@ async def delete_document_route(
     cascade reaches `fact_sources`: `source_ref` carries no foreign key, so
     a fact a deleted document's blocks corroborated would otherwise keep
     its origin count and its verification rung on evidence that no longer
-    exists. `withdraw_document` closes that window before the row goes;
-    the ladder, not this route, decides what the fact's remaining
-    corroboration is worth.
+    exists, and never get recomputed until the slow reconciliation arm's
+    rotation happened to reach it. `delete_document` closes that window —
+    withdrawing the block sources, expiring any fact left with none, and
+    enqueueing every affected fact for the ordinary verification recompute
+    — before the row goes. Wire-shape production belongs in the shared
+    service, not here, so an MCP delete twin calls the same function rather
+    than re-implementing this — the same reason `title_applied` has one
+    producer rather than one per transport.
     """
-    await withdraw_document(session, document_id=document_id)
-
-    result = await session.execute(
-        text("DELETE FROM documents WHERE id = CAST(:id AS uuid)"),
-        {"id": str(document_id)},
-    )
-    if result.rowcount == 0:
+    existed = await delete_document(session, document_id=document_id)
+    if not existed:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "document not found")
     await session.commit()

@@ -16,23 +16,28 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.repositories.knowledge_triples import KnowledgeTripleRepository
 from app.repositories.vector import EmbedderFingerprintUnresolved
 from app.services.block_embeddings import (
     PARENT_TABLE, embed_blocks, resolve_read_fingerprint,
 )
+from app.services.block_fact_sources import withdraw_document
 from app.services.block_pipeline import ingest_document
 from app.services.document_ingest import UNCHANGED
 from app.services.embedder_registry import child_table
+from app.services.events import record_event
 
 __all__ = [
     "MAX_BLOCKS",
     "MAX_CONTENT_CHARS",
     "DocumentTooLarge",
     "PutResult",
+    "delete_document",
     "put_document",
 ]
 
@@ -71,6 +76,22 @@ _EXISTING_TITLE = text(
     "SELECT title FROM documents "
     "WHERE project = CAST(:project AS text) AND uri = CAST(:uri AS text)"
 )
+
+# Mirrors `fact_provenance._STILL_SOURCED` exactly: a fact still has a source
+# once its own withdrawn rows are gone, regardless of which kind survives.
+_STILL_SOURCED = text("""
+    SELECT DISTINCT fact_id
+    FROM fact_sources
+    WHERE fact_id = ANY(CAST(:ids AS uuid[]))
+""")
+
+_FACT_ROWS = text("""
+    SELECT CAST(id AS text) AS id, project, expired_at
+    FROM knowledge_triples
+    WHERE id = ANY(CAST(:ids AS uuid[]))
+""")
+
+_DELETE_DOCUMENT = text("DELETE FROM documents WHERE id = CAST(:id AS uuid)")
 
 
 def _unembedded_sql(fingerprint: str):
@@ -198,3 +219,67 @@ async def put_document(
         blocks_embedded=written,
         title_applied=filed.outcome != UNCHANGED,
     )
+
+
+async def delete_document(session: AsyncSession, *, document_id: UUID | str) -> bool:
+    """Remove a document and close the provenance window it leaves behind.
+
+    `fact_sources.source_ref` carries no foreign key, so deleting the document
+    row alone would leave a fact corroborated by its blocks still counting
+    that origin and still sitting at whatever verification rung it earned
+    with it. Models `fact_provenance._withdraw`, the memory-kind sibling that
+    already solves this: withdraw the block sources, expire any fact that
+    survival check finds bare (never a fact still sourced some other way, and
+    never one already expired — `expire` is COALESCE-idempotent but a fact
+    identically expired twice is still one transition, not two), and emit one
+    `sources_changed` event per affected fact so the Tier-C recompute's fast
+    arm — not its slow, rare-corruption-backstop reconciliation — is what
+    ordinarily reaches it. Neither this function nor `withdraw_document`
+    writes `verification_status`: the rung stays the ladder's decision.
+
+    Returns whether the document existed. `False` for a missing document
+    without having written anything — `withdraw_document` is a no-op on a
+    document with no blocks, which a missing document always is.
+    """
+    withdrawal = await withdraw_document(session, document_id=document_id)
+
+    if withdrawal.facts_enqueued:
+        fact_ids = list(withdrawal.facts_enqueued)
+        surviving = {
+            str(row) for row in (
+                await session.execute(_STILL_SOURCED, {"ids": fact_ids})
+            ).scalars().all()
+        }
+        fact_rows = {
+            row["id"]: row for row in (
+                await session.execute(_FACT_ROWS, {"ids": fact_ids})
+            ).mappings().all()
+        }
+        triples = KnowledgeTripleRepository(session)
+        for fact_id in fact_ids:
+            row = fact_rows.get(fact_id)
+            if row is None:
+                # The fact vanished by some other route between the withdrawal
+                # and this read; nothing to expire and nothing to enqueue for.
+                continue
+            if fact_id not in surviving and row["expired_at"] is None:
+                await triples.expire(UUID(fact_id))
+            await record_event(
+                session,
+                event_type="sources_changed",
+                object_type="fact",
+                object_id=UUID(fact_id),
+                project=row["project"],
+                # The document, not the block: origin for a block source is
+                # the document (block_fact_sources.py's own rule), so this is
+                # the spelling that names what actually moved. The drain
+                # itself reads only `payload["fact_id"]` — see
+                # `verification_recompute._drain_sources_changed` — so this
+                # key is for a human tracing one fact's evidence history
+                # across both spellings, the same role `memory_id` plays on
+                # the sibling payload.
+                payload={"fact_id": fact_id, "document_id": str(document_id)},
+            )
+
+    result = await session.execute(_DELETE_DOCUMENT, {"id": str(document_id)})
+    return result.rowcount > 0
