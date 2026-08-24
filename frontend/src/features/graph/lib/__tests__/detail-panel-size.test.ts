@@ -93,28 +93,58 @@ describe("panelLayout", () => {
       GRAPH_MIN_WIDTH + DETAIL_PANEL_MIN_WIDTH - 1,
     )
     expect(result.floating).toBe(true)
-    expect(result.width).toBeGreaterThan(0)
+    expect(result.width).toBeGreaterThanOrEqual(DETAIL_PANEL_MIN_WIDTH)
   })
 
   // This is the width the unfixed clampPanelWidth collapsed to 0 at.
   it("floats and never collapses to 0 at the old canvas floor", () => {
     const result = panelLayout(REQUESTED, GRAPH_MIN_WIDTH)
     expect(result.floating).toBe(true)
-    expect(result.width).toBeGreaterThan(0)
+    expect(result.width).toBeGreaterThanOrEqual(DETAIL_PANEL_MIN_WIDTH)
     expect(result.width).toBeLessThanOrEqual(GRAPH_MIN_WIDTH * 0.85)
   })
 
-  it("floats and stays within 85% of a very narrow container", () => {
+  // 300 * 0.85 = 255, under the panel's own 260px floor: the floor wins, so
+  // the panel is wider than the naive 85% cap here rather than unreadable.
+  it("floors at its own minimum when 85% of the container is smaller still", () => {
     const result = panelLayout(REQUESTED, 300)
     expect(result.floating).toBe(true)
-    expect(result.width).toBeGreaterThan(0)
-    expect(result.width).toBeLessThanOrEqual(300 * 0.85)
+    expect(result.width).toBe(DETAIL_PANEL_MIN_WIDTH)
   })
 
-  it("never exceeds 85% of the container while floating even for a huge request", () => {
+  it("holds that floor regardless of how large the request is", () => {
     const result = panelLayout(2000, 300)
     expect(result.floating).toBe(true)
-    expect(result.width).toBeLessThanOrEqual(300 * 0.85)
+    expect(result.width).toBe(DETAIL_PANEL_MIN_WIDTH)
+  })
+
+  // The exact regression this fixes: a container that has not been measured
+  // yet reports 0, and the unfixed floating branch returned
+  // `Math.min(0, ...)` -- 0 -- for it. That is precisely the failure the
+  // floating branch exists to remove, so it must never reproduce it.
+  it("never returns 0 at a zero-width container", () => {
+    const result = panelLayout(REQUESTED, 0)
+    expect(result.floating).toBe(true)
+    expect(result.width).toBe(DETAIL_PANEL_MIN_WIDTH)
+  })
+
+  // Once the container is wide enough that 85% of it clears the floor, the
+  // cap is what actually governs -- distinct from the floor winning above.
+  it("caps at 85% of the container once that exceeds the floor", () => {
+    const result = panelLayout(2000, 600)
+    expect(result.floating).toBe(true)
+    expect(result.width).toBe(600 * 0.85)
+  })
+
+  // The unmeasured-container case the page actually passes on first render
+  // (`splitWidth || Number.POSITIVE_INFINITY`). `clampPanelWidth(360,
+  // Infinity)` above pins this for the retired function; this is the
+  // function the page calls today.
+  it("falls back to the requested width with no container measured", () => {
+    expect(panelLayout(360, Number.POSITIVE_INFINITY)).toEqual({
+      width: 360,
+      floating: false,
+    })
   })
 
   it("falls back to the default width for a non-numeric request", () => {

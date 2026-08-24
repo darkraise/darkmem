@@ -58,11 +58,11 @@ export function clampPanelWidth(
  * close button disappear with it, with no way back short of a reload. (The
  * toolbar's reopen button is gated on the panel being closed at all, not on
  * its width, so it is absent whenever the panel is open regardless of size;
- * it was never the width's doing.)
- * Below the threshold the panel stops splitting the row with the canvas and
- * floats as an overlay on top of it instead, sized off the container rather
- * than off what the canvas leaves, so it is always visible and never eats
- * the graph.
+ * it was never the width's doing.) Below the threshold the panel stops
+ * splitting the row with the canvas and floats as an overlay on top of it
+ * instead, sized off the container rather than off what the canvas leaves —
+ * floored at `DETAIL_PANEL_MIN_WIDTH` even when that means exceeding 85% of
+ * the container, so it is always visible and never eats the graph.
  */
 export function panelLayout(
   requested: number,
@@ -73,13 +73,11 @@ export function panelLayout(
     : DEFAULT_DETAIL_PANEL_WIDTH
   const floating = containerWidth - GRAPH_MIN_WIDTH < DETAIL_PANEL_MIN_WIDTH
   if (floating) {
-    return {
-      width: Math.min(
-        containerWidth * 0.85,
-        Math.max(DETAIL_PANEL_MIN_WIDTH, safeRequested),
-      ),
-      floating: true,
-    }
+    const capped = Math.min(
+      containerWidth * 0.85,
+      Math.max(DETAIL_PANEL_MIN_WIDTH, safeRequested),
+    )
+    return { width: Math.max(DETAIL_PANEL_MIN_WIDTH, capped), floating: true }
   }
   const ceiling = containerWidth - GRAPH_MIN_WIDTH
   return {
