@@ -27,6 +27,7 @@ DEV_SERVER = REPO_ROOT / "scripts" / "start_dev_server.sh"
 PROD_COMPOSE = REPO_ROOT / "docker-compose.yml"
 DEV_COMPOSE = REPO_ROOT / "docker-compose.dev.yml"
 DOCKERFILE = REPO_ROOT / "Dockerfile"
+RESTORE = REPO_ROOT / "scripts" / "restore.sh"
 
 APP_SERVICE = "darkmem"
 
@@ -192,3 +193,63 @@ def test_the_entrypoint_lives_beside_the_dockerfile_and_stays_lf():
     assert not (REPO_ROOT / "backend" / "entrypoint.sh").exists()
     assert b"\r\n" not in ENTRYPOINT.read_bytes()
     assert "entrypoint.sh text eol=lf" in (REPO_ROOT / ".gitattributes").read_text()
+
+
+# ── The restore path replays into an empty database, never over a live one ──
+
+
+def _restore_lines() -> list[str]:
+    """Comment-free, so a comment naming a statement cannot be read as one."""
+    return [
+        ln for ln in _unwrapped(RESTORE).splitlines()
+        if not ln.lstrip().startswith("#")
+    ]
+
+
+def _one(lines: list[str], predicate) -> int:
+    hits = [i for i, ln in enumerate(lines) if predicate(ln)]
+    assert len(hits) == 1, hits
+    return hits[0]
+
+
+def test_restore_recreates_the_database_before_replaying_the_dump():
+    """`events` is declaratively RANGE-partitioned, so backup.sh's
+    ``--clean --if-exists`` dump carries ``ALTER TABLE IF EXISTS ONLY
+    public.events_YYYYMM DROP CONSTRAINT IF EXISTS events_YYYYMM_pkey`` for
+    every monthly child, and PostgreSQL refuses to drop an inherited
+    constraint. Replayed over a database that still holds the schema, that
+    error aborts psql under ON_ERROR_STOP partway through the DROP phase --
+    after every trigger and every foreign key above it has already been
+    dropped and before the first CREATE runs. The operator sees a non-zero
+    exit and a database that still has all its rows, none of its foreign
+    keys, and neither the events append-only guards nor the search_vector
+    trigger. Recreating the database first leaves those statements nothing
+    to match, which is the only shape that cannot reach the error."""
+    lines = _restore_lines()
+    recreate = _one(lines, lambda ln: "CREATE DATABASE" in ln)
+    replay = _one(lines, lambda ln: "gunzip -c" in ln and "psql" in ln)
+    assert recreate < replay, "the dump is replayed before the database is recreated"
+
+    statement = lines[recreate]
+    assert "-d postgres" in statement, statement
+    assert "DROP DATABASE" in statement, statement
+    assert "$DB" in statement, statement
+
+
+def test_restore_proves_the_dump_is_complete_before_dropping_the_database():
+    """Recreating means the dump is the only surviving copy from that point
+    on, so an unreadable one must be refused while the database still
+    exists. gzip of an empty stream is valid gzip, so integrity alone proves
+    nothing -- pg_dump's completion marker, the same evidence backup.sh
+    checks before it publishes a dump, is what proves there is something to
+    restore."""
+    lines = _restore_lines()
+    marker = _one(lines, lambda ln: "PostgreSQL database dump complete" in ln)
+    drop = _one(lines, lambda ln: "DROP DATABASE" in ln)
+    assert marker < drop, "the dump is validated only after the database is gone"
+
+
+def test_restore_still_stops_on_the_first_error_it_meets():
+    lines = _restore_lines()
+    replay = lines[_one(lines, lambda ln: "gunzip -c" in ln and "psql" in ln)]
+    assert "-v ON_ERROR_STOP=1" in replay, replay

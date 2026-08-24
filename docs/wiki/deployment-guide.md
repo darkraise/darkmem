@@ -82,8 +82,11 @@ everything: memories, graph, facts, code index, settings, credentials.
 that pruning: an unpruned nightly dump on the host that also runs the database
 fills the disk and takes production down with it.
 
-`restore.sh` **overwrites** the live database and prompts before doing it. Stop
-the app first.
+`restore.sh` **drops and recreates** the database and prompts before doing it.
+Stop the app first. It replays into an empty database on purpose: a
+`--clean` dump cannot be replayed over a live schema, because PostgreSQL
+refuses to drop the `events` partitions' inherited primary keys and psql
+aborts partway through the dump's DROP phase.
 
 ### Schedule it
 
