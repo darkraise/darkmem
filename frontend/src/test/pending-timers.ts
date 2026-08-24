@@ -19,26 +19,34 @@
  * the gap is a question of machine load, which is why this turned the merge gate
  * red once and passed four full runs in a row afterwards.
  *
+ * `setInterval` gets the same treatment for the same reason, and is strictly
+ * worse left untracked: it survives a `clearPendingTimers()` sweep aimed only
+ * at timeouts, and instead of firing once into the gap it fires forever.
+ *
  * Clearing what is still armed when a file ends is safe by construction: every
  * test in the file has already finished, so nothing in it is waiting on the
  * timer any more.
  */
 
 type TimeoutId = ReturnType<typeof setTimeout>
+type IntervalId = ReturnType<typeof setInterval>
 
-const pending = new Set<TimeoutId>()
+const pendingTimeouts = new Set<TimeoutId>()
+const pendingIntervals = new Set<IntervalId>()
 
 /** Captured before anything can swap the globals, so the sweep still works
  *  under `vi.useFakeTimers()`. */
 let nativeClearTimeout: typeof globalThis.clearTimeout | null = null
+let nativeClearInterval: typeof globalThis.clearInterval | null = null
 
 /** For the harness's own test; not part of the fixture surface. */
 export function pendingTimerCount(): number {
-  return pending.size
+  return pendingTimeouts.size + pendingIntervals.size
 }
 
 /**
- * Wrap `setTimeout`/`clearTimeout` so what is still armed can be cancelled.
+ * Wrap `setTimeout`/`clearTimeout` and `setInterval`/`clearInterval` so what
+ * is still armed can be cancelled.
  *
  * Called at module scope in the setup file, which runs once per test file after
  * the environment is installed. `vi.useFakeTimers()` swaps these out for its
@@ -48,6 +56,8 @@ export function pendingTimerCount(): number {
 export function trackTimers(): void {
   const nativeSetTimeout = globalThis.setTimeout
   nativeClearTimeout = globalThis.clearTimeout
+  const nativeSetInterval = globalThis.setInterval
+  nativeClearInterval = globalThis.clearInterval
 
   globalThis.setTimeout = ((
     handler: TimerHandler,
@@ -64,24 +74,53 @@ export function trackTimers(): void {
     // always assigned by the time the callback reads it.
     const id: TimeoutId = nativeSetTimeout(
       (...callbackArgs: unknown[]) => {
-        pending.delete(id)
+        pendingTimeouts.delete(id)
         handler(...callbackArgs)
       },
       timeout,
       ...args,
     )
-    pending.add(id)
+    pendingTimeouts.add(id)
     return id
   }) as typeof globalThis.setTimeout
 
   globalThis.clearTimeout = ((id: TimeoutId) => {
-    pending.delete(id)
+    pendingTimeouts.delete(id)
     nativeClearTimeout?.(id)
   }) as typeof globalThis.clearTimeout
+
+  globalThis.setInterval = ((
+    handler: TimerHandler,
+    timeout?: number,
+    ...args: unknown[]
+  ) => {
+    if (typeof handler !== "function") {
+      return nativeSetInterval(handler, timeout, ...args)
+    }
+    // Unlike a timeout, an interval's own id is never removed from the set by
+    // its callback: it keeps firing until something clears it, which is
+    // exactly the state a leaked one is stuck in.
+    const id: IntervalId = nativeSetInterval(
+      (...callbackArgs: unknown[]) => {
+        handler(...callbackArgs)
+      },
+      timeout,
+      ...args,
+    )
+    pendingIntervals.add(id)
+    return id
+  }) as typeof globalThis.setInterval
+
+  globalThis.clearInterval = ((id: IntervalId) => {
+    pendingIntervals.delete(id)
+    nativeClearInterval?.(id)
+  }) as typeof globalThis.clearInterval
 }
 
 /** Cancel everything still armed. Run from `afterAll`. */
 export function clearPendingTimers(): void {
-  for (const id of pending) nativeClearTimeout?.(id)
-  pending.clear()
+  for (const id of pendingTimeouts) nativeClearTimeout?.(id)
+  pendingTimeouts.clear()
+  for (const id of pendingIntervals) nativeClearInterval?.(id)
+  pendingIntervals.clear()
 }

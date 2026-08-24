@@ -64,11 +64,93 @@ describe("pending timer tracking", () => {
       expect(pendingTimerCount()).toBe(before + 1)
     })
   })
+
+  // An interval is strictly worse than a leaked timeout left untracked: it
+  // survives a sweep aimed only at timeouts and fires forever into the gap
+  // between files instead of once.
+  describe("interval tracking", () => {
+    it("counts an interval that is still armed", () => {
+      const before = pendingTimerCount()
+      setInterval(() => {}, 60_000)
+      expect(pendingTimerCount()).toBe(before + 1)
+    })
+
+    it("keeps counting an interval across multiple firings", async () => {
+      const before = pendingTimerCount()
+      let calls = 0
+      const id = setInterval(() => {
+        calls += 1
+      }, 1)
+      await new Promise<void>((resolve) => setTimeout(resolve, 10))
+      clearInterval(id)
+      expect(calls).toBeGreaterThan(1)
+      expect(pendingTimerCount()).toBe(before)
+    })
+
+    it("forgets an interval that was cleared", () => {
+      const before = pendingTimerCount()
+      const id = setInterval(() => {}, 60_000)
+      clearInterval(id)
+      expect(pendingTimerCount()).toBe(before)
+    })
+
+    it("still runs the interval callback it wrapped, with its arguments", async () => {
+      const seen = await new Promise<unknown[]>((resolve) => {
+        const id = setInterval(
+          (...args: unknown[]) => {
+            clearInterval(id)
+            resolve(args)
+          },
+          1,
+          "a",
+          2,
+        )
+      })
+      expect(seen).toEqual(["a", 2])
+    })
+
+    it("cancels an interval still armed", () => {
+      const ran = vi.fn()
+      setInterval(ran, 1)
+      expect(pendingTimerCount()).toBeGreaterThanOrEqual(1)
+      clearPendingTimers()
+      expect(pendingTimerCount()).toBe(0)
+    })
+
+    describe("under fake timers", () => {
+      it("still runs a faked interval", () => {
+        vi.useFakeTimers()
+        try {
+          const ran = vi.fn()
+          const id = setInterval(ran, 500)
+          vi.advanceTimersByTime(1500)
+          expect(ran).toHaveBeenCalledTimes(3)
+          clearInterval(id)
+        } finally {
+          vi.useRealTimers()
+        }
+      })
+
+      // Deliberately left armed, uncleared, with nothing after it in the
+      // file to sweep it: it is what setup.ts's afterAll hook has to cancel
+      // on the way out, the interval counterpart to the timeout the timeout
+      // suite's own last test above leaves (both survive only up to
+      // "cancels an interval still armed", which sweeps whatever is pending
+      // at that point -- this test runs after it, so nothing does).
+      it("is tracking intervals again once real timers are back", () => {
+        vi.useFakeTimers()
+        vi.useRealTimers()
+        const before = pendingTimerCount()
+        setInterval(() => {}, 60_000)
+        expect(pendingTimerCount()).toBe(before + 1)
+      })
+    })
+  })
 })
 
 // The sweep itself is asserted above rather than from an `afterAll` here:
 // vitest runs `afterAll` hooks in reverse registration order, so setup.ts's —
 // registered first, when the setup file loaded — is the last to run, and a hook
 // in this file could only ever observe the state *before* the sweep. The 60s
-// timer the first test arms is left deliberately: it is what setup.ts's hook
-// has to cancel on the way out of this file.
+// interval the final test arms is left deliberately, with nothing left in the
+// file to sweep it: it is what setup.ts's hook has to cancel on the way out.
