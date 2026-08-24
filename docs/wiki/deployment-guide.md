@@ -82,11 +82,22 @@ everything: memories, graph, facts, code index, settings, credentials.
 that pruning: an unpruned nightly dump on the host that also runs the database
 fills the disk and takes production down with it.
 
-`restore.sh` **drops and recreates** the database and prompts before doing it.
-Stop the app first. It replays into an empty database on purpose: a
-`--clean` dump cannot be replayed over a live schema, because PostgreSQL
-refuses to drop the `events` partitions' inherited primary keys and psql
-aborts partway through the dump's DROP phase.
+`restore.sh` prompts, then replays the dump into a **new side database**
+rather than onto the live one — a `--clean` dump cannot be replayed over a
+live schema, since PostgreSQL refuses to drop the `events` partitions'
+inherited primary keys and psql aborts partway through the dump's DROP
+phase. Only once that replay succeeds does it drop the live database and
+rename the side one into its place, so a bad dump (truncated, corrupt,
+rejected mid-replay) leaves the live database untouched rather than
+half-restored. Stop the app first regardless.
+
+Worth knowing: it transiently needs disk space for both databases at once;
+if it fails because the live database still has open connections, stop the
+`darkmem` service and re-run, or set `RESTORE_FORCE=1` to have it terminate
+those connections for you; and a run interrupted between the drop and the
+rename leaves the restored data in a database named `<db>_restore_<pid>`
+rather than under the live name — the script prints that name and the exact
+command to finish the rename by hand.
 
 ### Schedule it
 
