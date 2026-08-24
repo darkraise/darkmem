@@ -37,6 +37,10 @@ export function PanelResizeHandle({
   max,
 }: PanelResizeHandleProps) {
   const draggingRef = useRef(false)
+  // A plain click is a pointerdown/pointerup with no pointermove between
+  // them; committing on that would rewrite the stored width to whatever the
+  // last clamp happened to produce, even though the user never dragged.
+  const movedRef = useRef(false)
   const latestRef = useRef(width)
   latestRef.current = width
 
@@ -44,6 +48,7 @@ export function PanelResizeHandle({
     (event: React.PointerEvent<HTMLDivElement>) => {
       event.preventDefault()
       draggingRef.current = true
+      movedRef.current = false
       event.currentTarget.setPointerCapture(event.pointerId)
       // The canvas swallows pointer events and the cursor would flicker back
       // to `default` the moment the drag crosses it.
@@ -56,6 +61,7 @@ export function PanelResizeHandle({
   const handlePointerMove = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (!draggingRef.current) return
+      movedRef.current = true
       onResize(widthAt(event.clientX))
     },
     [onResize, widthAt],
@@ -68,7 +74,7 @@ export function PanelResizeHandle({
       event.currentTarget.releasePointerCapture(event.pointerId)
       document.body.style.cursor = ""
       document.body.style.userSelect = ""
-      onCommit(latestRef.current)
+      if (movedRef.current) onCommit(latestRef.current)
     },
     [onCommit],
   )
