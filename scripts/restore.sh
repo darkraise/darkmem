@@ -79,6 +79,10 @@ echo "Restoring into '$TEMP_DB'..."
 gunzip -c "$BACKUP_FILE" | $COMPOSE exec -T "$SERVICE" psql -U "$USER" -d "$TEMP_DB" -v ON_ERROR_STOP=1
 
 echo "Replacing '$DB' with the restored copy..."
+# A SIGKILL between the DROP below and the RENAME after it leaves the EXIT
+# trap unable to run, so this is printed before that window opens rather
+# than relying on the trap to explain it afterward.
+echo "If this is killed from here on, the restored data is safe in '$TEMP_DB'."
 DROP_CLAUSE="DROP DATABASE IF EXISTS \"$DB\";"
 if [ "${RESTORE_FORCE:-0}" = "1" ]; then
     DROP_CLAUSE="DROP DATABASE IF EXISTS \"$DB\" WITH (FORCE);"
