@@ -12,6 +12,7 @@ import { ChatSidebar } from "./chat-sidebar"
 import { ChatMessages } from "./chat-messages"
 import { ChatInput } from "./chat-input"
 import { ChatContextPanel, type ChatContextRow } from "./chat-context-panel"
+import { ChatPanels } from "./chat-panels"
 
 /**
  * The real-backend counterpart of the demo Chat page (Ruling 5's DEMO ?
@@ -44,7 +45,9 @@ export function RealChatPage({ initialId }: { initialId?: string }) {
   // turn that carries a context, or the explicitly selected one.
   const contextTurn =
     messages.find((m) => m.id === selectedTurnId && m.context !== undefined) ??
-    [...messages].reverse().find((m) => m.role === "assistant" && m.context !== undefined)
+    [...messages]
+      .reverse()
+      .find((m) => m.role === "assistant" && m.context !== undefined)
 
   useEffect(() => {
     setSelectedTurnId(null)
@@ -61,9 +64,7 @@ export function RealChatPage({ initialId }: { initialId?: string }) {
     : contextTurn
       ? (contextTurn.context?.memories ?? [])
       : null
-  const contextFacts = live
-    ? live.facts
-    : (contextTurn?.context?.facts ?? [])
+  const contextFacts = live ? live.facts : (contextTurn?.context?.facts ?? [])
   const contextEnvelope = live
     ? live.envelope
     : (contextTurn?.context?.envelope ?? null)
@@ -86,50 +87,55 @@ export function RealChatPage({ initialId }: { initialId?: string }) {
         title="Chat"
         description="Conversation over memory — every turn's retrieval context stays visible, labelled with the same vocabulary Memories uses."
       />
-      {/* No `items-start`: the three columns are one surface, so they share a
-          height rather than each ending where its own content does. */}
-      <div className="grid grid-cols-1 gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[14rem_minmax(0,1fr)_18rem]">
-        <ChatSidebar
-          conversations={conversations}
-          activeId={activeId}
-          onSelect={(id) => setActiveId(id)}
-          onCreate={async () => {
-            const conv = await createConversation.mutateAsync({})
-            setActiveId(conv.id)
-          }}
-          onDelete={(id) => {
-            deleteConversation.mutate(id)
-            if (id === activeId) setActiveId(null)
-          }}
-          isLoading={conversationsLoading}
-          isError={conversationsError}
-          onRetry={() => refetchConversations()}
-        />
-
-        {/* `min-h-0` is what lets ChatMessages' own `overflow-auto` engage: a
-            flex child defaults to `min-height: auto`, which would grow this
-            card to its content and push the input off the bottom. */}
-        <div className="border-border bg-card flex min-h-[24rem] flex-col overflow-hidden rounded-md border lg:min-h-0">
-          <ChatMessages
-            messages={messages}
-            streamingContent={stream.streamingContent}
-            streamingSources={stream.sources}
-            isStreaming={stream.isStreaming}
-            pendingUserMessage={stream.pendingUserMessage}
+      {/* The three panes are one surface, so they share a height rather than
+          each ending where its own content does — and above `lg` the reader
+          sets how that width is split. */}
+      <ChatPanels
+        threads={
+          <ChatSidebar
+            conversations={conversations}
+            activeId={activeId}
+            onSelect={(id) => setActiveId(id)}
+            onCreate={async () => {
+              const conv = await createConversation.mutateAsync({})
+              setActiveId(conv.id)
+            }}
+            onDelete={(id) => {
+              deleteConversation.mutate(id)
+              if (id === activeId) setActiveId(null)
+            }}
+            isLoading={conversationsLoading}
+            isError={conversationsError}
+            onRetry={() => refetchConversations()}
           />
-          <ChatInput
-            onSend={handleSend}
-            onStop={stream.abort}
-            isStreaming={stream.isStreaming}
+        }
+        conversation={
+          /* `min-h-0` is what lets ChatMessages' own `overflow-auto` engage: a
+             flex child defaults to `min-height: auto`, which would grow this
+             card to its content and push the input off the bottom. */
+          <div className="border-border bg-card flex min-h-[24rem] flex-col overflow-hidden rounded-md border lg:min-h-0">
+            <ChatMessages
+              messages={messages}
+              streamingContent={stream.streamingContent}
+              streamingSources={stream.sources}
+              isStreaming={stream.isStreaming}
+              pendingUserMessage={stream.pendingUserMessage}
+            />
+            <ChatInput
+              onSend={handleSend}
+              onStop={stream.abort}
+              isStreaming={stream.isStreaming}
+            />
+          </div>
+        }
+        context={
+          <ChatContextPanel
+            rows={contextRows}
+            facts={contextFacts}
+            envelope={contextEnvelope}
           />
-        </div>
-
-        <ChatContextPanel
-          rows={contextRows}
-          facts={contextFacts}
-          envelope={contextEnvelope}
-        />
-      </div>
+        }
+      />
     </div>
   )
 }

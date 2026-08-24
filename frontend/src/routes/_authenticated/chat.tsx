@@ -8,6 +8,7 @@ import { useDemoStore } from "@/demo/store"
 import { DemoThreadList } from "@/features/chat/components/demo-thread-list"
 import { DemoMessagePane } from "@/features/chat/components/demo-message-pane"
 import { DemoContextPanel } from "@/features/chat/components/demo-context-panel"
+import { ChatPanels } from "@/features/chat/components/chat-panels"
 import { RealChatPage } from "@/features/chat/components/real-chat-page"
 
 export const Route = createFileRoute("/_authenticated/chat")({
@@ -18,7 +19,11 @@ export const Route = createFileRoute("/_authenticated/chat")({
   }),
   component: () => {
     const { id } = Route.useSearch()
-    return DEMO ? <DemoChatPage initialId={id} /> : <RealChatPage initialId={id} />
+    return DEMO ? (
+      <DemoChatPage initialId={id} />
+    ) : (
+      <RealChatPage initialId={id} />
+    )
   },
 })
 
@@ -54,27 +59,31 @@ function DemoChatPage({ initialId }: { initialId?: string }) {
         title="Chat"
         description="Conversation over memory — every turn's retrieval context stays visible, labelled with the same vocabulary Memories uses."
       />
-      <div className="grid grid-cols-1 gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[14rem_minmax(0,1fr)_18rem]">
-        <DemoThreadList
-          threads={threads}
-          activeId={activeId}
-          onSelect={(id) => {
-            setActiveId(id)
-            setSelectedTurnId(null)
-          }}
-          onNew={() => {
-            setActiveId(null)
-            setSelectedTurnId(null)
-          }}
-        />
-        <DemoMessagePane
-          thread={activeThread}
-          selectedTurnId={contextTurn?.id ?? null}
-          onSelectTurn={setSelectedTurnId}
-          onSend={handleSend}
-        />
-        <DemoContextPanel context={contextTurn?.context} />
-      </div>
+      <ChatPanels
+        threads={
+          <DemoThreadList
+            threads={threads}
+            activeId={activeId}
+            onSelect={(id) => {
+              setActiveId(id)
+              setSelectedTurnId(null)
+            }}
+            onNew={() => {
+              setActiveId(null)
+              setSelectedTurnId(null)
+            }}
+          />
+        }
+        conversation={
+          <DemoMessagePane
+            thread={activeThread}
+            selectedTurnId={contextTurn?.id ?? null}
+            onSelectTurn={setSelectedTurnId}
+            onSend={handleSend}
+          />
+        }
+        context={<DemoContextPanel context={contextTurn?.context} />}
+      />
     </div>
   )
 }

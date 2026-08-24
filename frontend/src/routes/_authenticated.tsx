@@ -140,6 +140,14 @@ const FULL_BLEED_ROUTES = ["/memory-graph", "/code/graph"] as const
  *  data to draw, because the empty state carries its own height. */
 const FULL_HEIGHT_ROUTES = ["/chat"] as const
 
+/** Routes that drop the reading-width cap without being a pan/zoom canvas.
+ *  Chat is one: its three panes are resizable, so every capped pixel is width
+ *  the reader cannot give to the conversation or the retrieval context. Kept
+ *  separate from FULL_BLEED_ROUTES because that list also means "measures its
+ *  own container", which is a claim about the canvas pages and not about
+ *  this one. */
+const FULL_WIDTH_ROUTES = ["/chat"] as const
+
 function AuthenticatedLayout() {
   const layout = useLayoutStore((s) => s.layout)
   const router = useRouter()
@@ -157,6 +165,8 @@ function AuthenticatedLayout() {
   )
   const fullHeight =
     fullBleed || FULL_HEIGHT_ROUTES.some((route) => pathname.startsWith(route))
+  const fullWidth =
+    fullBleed || FULL_WIDTH_ROUTES.some((route) => pathname.startsWith(route))
 
   const handleLogout = async () => {
     if (!DEMO) {
@@ -216,7 +226,7 @@ function AuthenticatedLayout() {
         <main
           className={cn(
             "w-full",
-            !fullBleed && "mx-auto max-w-[1400px]",
+            !fullWidth && "mx-auto max-w-[1400px]",
             fullHeight && "h-full",
           )}
         >
