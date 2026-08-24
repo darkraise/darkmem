@@ -1,5 +1,10 @@
 import "@testing-library/jest-dom/vitest"
-import { vi, beforeAll, afterEach } from "vitest"
+import { vi, beforeAll, afterAll, afterEach } from "vitest"
+import { trackTimers, clearPendingTimers } from "./pending-timers"
+
+// Before any hook, so a timer armed at import time is tracked too. See
+// `pending-timers.ts` for what fires into the gap between two files.
+trackTimers()
 
 // Node 25's experimental localStorage (a bare object with no Storage
 // methods) shadows jsdom's implementation in the vitest environment.
@@ -105,4 +110,10 @@ beforeAll(() => {
 
 afterEach(() => {
   vi.clearAllMocks()
+})
+
+// Every test in this file has finished, so nothing is waiting on whatever is
+// still armed — and vitest is about to delete the globals those callbacks read.
+afterAll(() => {
+  clearPendingTimers()
 })
