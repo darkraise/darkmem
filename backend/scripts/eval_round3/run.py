@@ -161,6 +161,10 @@ def fmt_graph(g: dict) -> str:
 
 
 async def main():
+    # This guards the database this script *reads* (async_session_factory,
+    # driven by DATABASE_URL). It does not guard the writes below: memories
+    # are added and deleted through the MCP endpoint at MCP_URL, a separate
+    # target this check never sees.
     assert_destructive_target_allowed(
         settings.database_url, actor="eval_round3/run"
     )
