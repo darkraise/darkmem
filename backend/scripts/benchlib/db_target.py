@@ -40,7 +40,9 @@ def resolved_database_name(url: str) -> str:
     return unquote(str(override) if override else (parsed.database or ""))
 
 
-def assert_destructive_target_allowed(url: str, *, actor: str) -> None:
+def assert_destructive_target_allowed(
+    url: str, *, actor: str, env_var: str = "BENCH_DATABASE_URL"
+) -> None:
     """Refuse to aim a schema-destroying operation at a database that is not ours.
 
     ``bench_db.reset_bench_db`` runs ``DROP SCHEMA public CASCADE`` against
@@ -48,6 +50,13 @@ def assert_destructive_target_allowed(url: str, *, actor: str) -> None:
     a SQL-identifier safety check, which every real database name passes. The
     three runners reaching it (smoke, retrieval eval, contradiction miss-rate)
     inherited that gap.
+
+    ``env_var`` names the environment variable the caller actually resolved
+    ``url`` from, so the refusal points the operator back at the variable
+    they can fix. It defaults to ``BENCH_DATABASE_URL`` for ``bench_db``'s
+    original callers; a caller that resolves ``DATABASE_URL`` (or any other
+    variable) instead must pass its own name here, or the remedy misdirects
+    them to a variable unrelated to their situation.
     """
     db = resolved_database_name(url)
     if db in FORBIDDEN_TARGETS or db.startswith(LANE_TEST_PREFIX):
@@ -55,6 +64,6 @@ def assert_destructive_target_allowed(url: str, *, actor: str) -> None:
             f"{actor} refuses to run a destructive reset against {db!r}. "
             f"darkmem is the real database and darkmem_test/darkmem_test_N "
             f"belong to pytest, which drops and recreates them concurrently; "
-            f"see CLAUDE.md's three-databases rule. Point BENCH_DATABASE_URL "
-            f"at a darkmem_bench database instead."
+            f"see CLAUDE.md's three-databases rule. Point {env_var} at a "
+            f"database this operation may safely destroy instead."
         )

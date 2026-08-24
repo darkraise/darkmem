@@ -166,7 +166,7 @@ async def main():
     # are added and deleted through the MCP endpoint at MCP_URL, a separate
     # target this check never sees.
     assert_destructive_target_allowed(
-        settings.database_url, actor="eval_round3/run"
+        settings.database_url, actor="eval_round3/run", env_var="DATABASE_URL"
     )
     mem_file = sys.argv[1] if len(sys.argv) > 1 else "memories.json"
     eval_tag = sys.argv[2] if len(sys.argv) > 2 else "eval/2026-06-04-r3"

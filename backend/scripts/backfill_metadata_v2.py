@@ -144,7 +144,7 @@ async def main() -> int:
         # runs the live instance is production. The preview below is
         # read-only, so --help and a dry run stay usable everywhere.
         assert_destructive_target_allowed(
-            settings.database_url, actor="backfill_metadata_v2"
+            settings.database_url, actor="backfill_metadata_v2", env_var="DATABASE_URL"
         )
 
     async with async_session_factory() as session:

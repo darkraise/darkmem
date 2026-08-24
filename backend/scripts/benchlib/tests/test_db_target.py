@@ -70,6 +70,20 @@ class TestDestructiveGuard:
         with pytest.raises(RuntimeError, match="reset_bench_db"):
             db_target.assert_destructive_target_allowed(REAL, actor="reset_bench_db")
 
+    def test_the_default_remedy_still_names_bench_database_url(self):
+        with pytest.raises(RuntimeError, match=r"Point BENCH_DATABASE_URL"):
+            db_target.assert_destructive_target_allowed(REAL, actor="test")
+
+    def test_a_caller_that_resolves_a_different_variable_gets_that_remedy(self):
+        # eval_round3/purge_eval and friends resolve DATABASE_URL, not
+        # BENCH_DATABASE_URL -- the refusal must point back at the variable
+        # that caller can actually fix.
+        with pytest.raises(RuntimeError, match=r"Point DATABASE_URL") as exc:
+            db_target.assert_destructive_target_allowed(
+                REAL, actor="test", env_var="DATABASE_URL"
+            )
+        assert "BENCH_DATABASE_URL" not in str(exc.value)
+
 
 class TestEveryDoorReadsTheSameRule:
     """A door that reimplements the parse is how this became five readings."""

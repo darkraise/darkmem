@@ -27,7 +27,7 @@ async def main():
     # production. The lineage it destroys is decided at ingest and is not
     # recomputed on read, so there is nothing to rebuild it from.
     assert_destructive_target_allowed(
-        settings.database_url, actor="eval_round3/purge_eval"
+        settings.database_url, actor="eval_round3/purge_eval", env_var="DATABASE_URL"
     )
     async with async_session_factory() as s:
         # 0) Resurrect any superseded memory first, so deleting its superseder

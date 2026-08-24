@@ -59,7 +59,7 @@ def show(label, d):
 
 async def main():
     assert_destructive_target_allowed(
-        settings.database_url, actor="eval_round3/debug_clean"
+        settings.database_url, actor="eval_round3/debug_clean", env_var="DATABASE_URL"
     )
     want = set(sys.argv[1:]) or {"m05", "m07", "m11", "m09", "m06"}
     with open(os.path.join(HERE, "memories.json"), encoding="utf-8") as fh:
