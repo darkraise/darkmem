@@ -895,6 +895,7 @@ def make_block_embedding_runner(
                         "embedded": outcome.embedded,
                         "fingerprint": outcome.fingerprint,
                         "converged": outcome.converged,
+                        "failed": outcome.failed,
                     },
                 )
                 await session.commit()
@@ -906,7 +907,8 @@ def make_block_embedding_runner(
 
         if outcome.embedded:
             logger.info(
-                "Block embeddings: %d embedded under %s (converged=%s)",
+                "Block embeddings: %d embedded under %s (converged=%s, failed=%d)",
                 outcome.embedded, outcome.fingerprint, outcome.converged,
+                outcome.failed,
             )
     return run

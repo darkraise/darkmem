@@ -61,6 +61,14 @@ callers import it from there. ``block_embeddings.resolve_read_fingerprint``
 (the data probe) is unchanged in shape and stays exported for a caller that
 only needs *some* already-populated partition, not one that must fill gaps;
 neither of this family's two known callers is that shape today.
+
+**One block the embedder rejects must not starve the ones behind it.** The
+fetch below is ``ORDER BY b.id``, so a failing batch is the *same* failing
+batch on every subsequent tick; a run that simply raised would be loud in
+``job_runs.last_error`` and would still never sweep anything. So a failed
+batch is retried block-at-a-time (:func:`_embed_isolating`) and the poison
+row settles alone, which is the shape ``memory_buffer``'s flush already uses
+for the same reason.
 """
 from __future__ import annotations
 
@@ -125,6 +133,10 @@ _MISSING_SQL = """
 class RefreshOutcome:
     embedded: int
     fingerprint: str | None
+    # Blocks this run tried individually and could not embed. Non-zero only
+    # on the isolation path below; they stay in the backlog and are retried
+    # next tick, so a run that reports any is never `converged`.
+    failed: int
     # Whether this run's own fetch came back under the batch limit — i.e.
     # this run saw the entire backlog and cleared it, rather than merely
     # clearing one page of a larger one. Derived for free from the row count
@@ -134,6 +146,70 @@ class RefreshOutcome:
     # unavoidable full scan this exact arm already pays once convergence is
     # reached (a known, separately-tracked cost, not one to compound here).
     converged: bool
+
+
+# How many individual embeds may fail, with none yet succeeding, before the
+# isolation pass gives up and re-raises. An embedder that is simply down fails
+# every block, and walking a full batch of them would spend `batch` calls
+# against a dead endpoint every tick; a poison block is one row among many, so
+# a few successes anywhere in the pass prove the embedder is up and the walk
+# runs to the end.
+_OUTAGE_PROBE = 3
+
+
+async def _embed_isolating(
+    session: AsyncSession, llm, block_ids: list[str], batch_error: Exception,
+) -> tuple[int, str | None, list[str]]:
+    """Re-embed `block_ids` one at a time after the batch call failed.
+
+    `embed_blocks` sends its whole work set through one chunked embed, so a
+    single block the embedder rejects fails every block in the chunk. The
+    sweep's fetch is `ORDER BY b.id` and therefore deterministic, which turns
+    that into the failure this exists to stop: the same first batch fails on
+    every tick and nothing behind it is ever swept — a backlog starved by one
+    row, loud in `job_runs.last_error` but never draining. Isolating settles
+    the poison row alone, the same shape `memory_buffer`'s flush uses for the
+    same reason.
+
+    Each attempt runs in its own SAVEPOINT, so a block that fails mid-insert
+    rolls back only itself: a failed statement aborts the transaction for
+    everything after it, and the successes must not go down with it. A bare
+    ``session.rollback()`` would work on a session this job owns outright but
+    would discard whatever the caller had already written, which is a wider
+    promise than this retry needs to make.
+
+    Re-raises `batch_error` — never a per-block one — when nothing could be
+    embedded at all, so the run's `last_error` names the failure an operator
+    would recognise rather than an artefact of the retry.
+    """
+    embedded = 0
+    fingerprint: str | None = None
+    failed: list[str] = []
+
+    for block_id in block_ids:
+        try:
+            async with session.begin_nested():
+                result = await embed_blocks(session, llm, block_ids=[block_id])
+        except Exception:
+            failed.append(block_id)
+            if embedded == 0 and len(failed) >= _OUTAGE_PROBE:
+                raise batch_error from None
+            continue
+        if result is not None:
+            embedded += result.written
+            fingerprint = result.fingerprint
+
+    if embedded == 0 and failed:
+        raise batch_error from None
+
+    if failed:
+        logger.warning(
+            "block_embedding_refresh: %d of %d block(s) could not be embedded "
+            "individually and stay in the backlog; the rest of the batch was "
+            "written. Block ids: %s",
+            len(failed), len(block_ids), ", ".join(failed),
+        )
+    return embedded, fingerprint, failed
 
 
 async def refresh_block_embeddings(
@@ -147,6 +223,11 @@ async def refresh_block_embeddings(
     the module docstring for why a data probe cannot do this job correctly,
     on any family.
 
+    A batch the embedder rejects is retried one block at a time
+    (:func:`_embed_isolating`) rather than failing the run: without that, one
+    unembeddable block starves every block behind it forever, because the
+    fetch order is deterministic and the same batch comes back every tick.
+
     Raises ``RuntimeError`` when the fingerprint `embed_blocks` actually
     writes the batch under disagrees with the one the probe call resolved.
     With both calls now real embeds, this should only ever fire if the
@@ -156,7 +237,9 @@ async def refresh_block_embeddings(
     land under a fingerprint this run never verified converges.
     """
     if batch <= 0:
-        return RefreshOutcome(embedded=0, fingerprint=None, converged=True)
+        return RefreshOutcome(
+            embedded=0, fingerprint=None, failed=0, converged=True,
+        )
 
     fingerprint = await resolve_active_fingerprint(llm)
 
@@ -169,25 +252,48 @@ async def refresh_block_embeddings(
     block_ids = [row["block_id"] for row in rows]
     converged = len(block_ids) < batch
     if not block_ids:
-        return RefreshOutcome(embedded=0, fingerprint=fingerprint, converged=True)
+        return RefreshOutcome(
+            embedded=0, fingerprint=fingerprint, failed=0, converged=True,
+        )
 
-    result = await embed_blocks(session, llm, block_ids=block_ids)
-    if result is None:
+    failed: list[str] = []
+    # The SAVEPOINT is what makes the retry below possible: a batch that fails
+    # inside its inserts leaves the transaction aborted, and the isolation
+    # pass could not run a single statement in it.
+    try:
+        async with session.begin_nested():
+            result = await embed_blocks(session, llm, block_ids=block_ids)
+    except Exception as batch_error:  # noqa: BLE001 - re-raised unless isolable
+        embedded, written_fingerprint, failed = await _embed_isolating(
+            session, llm, block_ids, batch_error,
+        )
         await session.commit()
-        return RefreshOutcome(embedded=0, fingerprint=fingerprint, converged=converged)
+    else:
+        await session.commit()
+        if result is None:
+            return RefreshOutcome(
+                embedded=0, fingerprint=fingerprint, failed=0, converged=converged,
+            )
+        embedded, written_fingerprint = result.written, result.fingerprint
 
-    await session.commit()
-
-    if result.fingerprint != fingerprint:
+    # None only where every isolated id named a block that vanished mid-run,
+    # so nothing was written and there is no fingerprint to disagree with.
+    if written_fingerprint is not None and written_fingerprint != fingerprint:
         raise RuntimeError(
             f"block_embedding_refresh: the probe resolved fingerprint "
             f"{fingerprint!r} but the batch embed call wrote under "
-            f"{result.fingerprint!r} instead — the active embedder's "
+            f"{written_fingerprint!r} instead — the active embedder's "
             "configuration changed between the two calls within this one "
             "run. Refusing rather than reporting a batch as converged under "
             "a fingerprint this run never actually verified."
         )
 
     return RefreshOutcome(
-        embedded=result.written, fingerprint=result.fingerprint, converged=converged,
+        embedded=embedded,
+        fingerprint=fingerprint,
+        failed=len(failed),
+        # A block this run could not embed is still missing, so a run that
+        # left any behind has not seen the backlog cleared however short its
+        # own fetch came back.
+        converged=converged and not failed,
     )
