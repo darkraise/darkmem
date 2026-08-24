@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { apiFetch } from "@/lib/api"
+import { DEMO } from "@/lib/demo-flag"
 
 export interface UsageBreakdownRow {
   key: string
@@ -129,6 +130,14 @@ export interface ModelPrices {
   models: ModelPriceRow[]
 }
 
+/** Demo mode runs with no backend. Every usage read is REST-only, so in demo
+ *  it 401s -- and `handleUnauthorized` turns a 401 into a hard redirect to
+ *  /login, which takes the whole demo down rather than merely leaving the
+ *  usage numbers absent. Same guard, and the same reason, as `useProjects`.
+ *  Two of these hooks mount outside the Usage page (the Activity Jobs and
+ *  Pipeline tabs), so guarding only that route would not be enough. */
+const LIVE = !DEMO
+
 export type UsageWindow = "24h" | "7d" | "30d" | "all"
 
 /** `GET /usage/overview` — the window total with its breakdowns. Every number
@@ -140,6 +149,7 @@ export function useUsageOverview(window: UsageWindow = "30d", project?: string) 
   return useQuery<UsageOverview>({
     queryKey: ["usage", "overview", window, project ?? null],
     queryFn: () => apiFetch(`/usage/overview?${qs.toString()}`),
+    enabled: LIVE,
   })
 }
 
@@ -150,6 +160,7 @@ export function useUsageSeries(
   return useQuery<UsageSeries>({
     queryKey: ["usage", "series", window, bucket],
     queryFn: () => apiFetch(`/usage/series?window=${window}&bucket=${bucket}`),
+    enabled: LIVE,
   })
 }
 
@@ -161,6 +172,7 @@ export function useUsageTop(
   return useQuery<UsageTop>({
     queryKey: ["usage", "top", window, by, limit],
     queryFn: () => apiFetch(`/usage/top?window=${window}&by=${by}&limit=${limit}`),
+    enabled: LIVE,
   })
 }
 
@@ -172,7 +184,7 @@ export function useUsageSubject(
     queryKey: ["usage", "subject", subjectType, subjectId],
     queryFn: () =>
       apiFetch(`/usage/by-subject/${subjectType}/${encodeURIComponent(subjectId!)}`),
-    enabled: Boolean(subjectId),
+    enabled: LIVE && Boolean(subjectId),
   })
 }
 
@@ -186,7 +198,7 @@ export function useSubjectTotals(subjectType: string, subjectIds: string[]) {
   const ids = [...new Set(subjectIds)].sort()
   return useQuery<Map<string, SubjectTotalRow>>({
     queryKey: ["usage", "subjectTotals", subjectType, ids],
-    enabled: ids.length > 0,
+    enabled: LIVE && ids.length > 0,
     queryFn: async () => {
       const body = await apiFetch<{ totals: SubjectTotalRow[] }>(
         "/usage/subject-totals",
@@ -210,6 +222,7 @@ export function useUsageByJob(window: UsageWindow = "30d") {
   return useQuery<{ jobs: JobUsageRow[] }>({
     queryKey: ["usage", "byJob", window],
     queryFn: () => apiFetch(`/usage/by-job?window=${window}`),
+    enabled: LIVE,
   })
 }
 
@@ -217,6 +230,7 @@ export function useModelPrices() {
   return useQuery<ModelPrices>({
     queryKey: ["usage", "prices"],
     queryFn: () => apiFetch("/usage/prices"),
+    enabled: LIVE,
   })
 }
 

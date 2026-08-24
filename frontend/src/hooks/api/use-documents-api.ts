@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query"
 
 import { ApiError, apiFetch } from "@/lib/api"
+import { DEMO } from "@/lib/demo-flag"
 
 /** Every documents payload carries `horizon`. The label rides the data, not
  *  only the page chrome: a client rendering this anywhere else must still be
@@ -60,11 +61,18 @@ export interface QaResponse {
   horizon: boolean
 }
 
+/** Demo mode carries no document fixtures and no backend, so this read 401s
+ *  there — and `handleUnauthorized` answers a 401 with a hard navigation to
+ *  /login, which takes the page down rather than leaving the list empty. The
+ *  guard is the same one `useProjects` and the usage reads carry, and
+ *  `tests/demo-makes-no-api-calls.spec.ts` is what keeps the next hook from
+ *  shipping without it. */
 export function useDocuments(project?: string) {
   const qs = project ? `?project=${encodeURIComponent(project)}` : ""
   return useQuery<DocumentListResponse>({
     queryKey: ["documents", project ?? null],
     queryFn: () => apiFetch<DocumentListResponse>(`/documents${qs}`),
+    enabled: !DEMO,
   })
 }
 
@@ -74,7 +82,7 @@ export function useDocuments(project?: string) {
 export function useDocumentSummary(documentId: string | null) {
   return useQuery<DocumentSummary | null>({
     queryKey: ["documentSummary", documentId],
-    enabled: Boolean(documentId),
+    enabled: !DEMO && Boolean(documentId),
     queryFn: async () => {
       try {
         return await apiFetch<DocumentSummary>(`/documents/${documentId}/summary`)
@@ -89,7 +97,7 @@ export function useDocumentSummary(documentId: string | null) {
 export function useDocumentConnections(documentId: string | null) {
   return useQuery<{ items: DocumentConnection[]; horizon: boolean }>({
     queryKey: ["documentConnections", documentId],
-    enabled: Boolean(documentId),
+    enabled: !DEMO && Boolean(documentId),
     queryFn: () =>
       apiFetch<{ items: DocumentConnection[]; horizon: boolean }>(
         `/documents/${documentId}/connections`,

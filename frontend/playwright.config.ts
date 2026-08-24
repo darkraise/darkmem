@@ -37,6 +37,7 @@ import { defineConfig, devices } from "@playwright/test"
 // fixture is the corpus there, so the spec needs no backend.
 const DEMO_FIXTURE_SPECS = [
   "activity.spec.ts",
+  "demo-makes-no-api-calls.spec.ts",
   "activity-pipeline.spec.ts",
   "code-index-debt.spec.ts",
   "dashboard.spec.ts",
