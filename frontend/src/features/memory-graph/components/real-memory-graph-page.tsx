@@ -16,12 +16,14 @@ import { GraphToolbar } from "@/features/graph/components/graph-toolbar"
 import { ChatOverlay } from "@/features/chat/components/chat-overlay"
 import {
   transformToGraphData,
+  DEFAULT_SIZE_MODE,
   type FilterState,
 } from "@/features/graph/lib/graph-utils"
 import {
   DEFAULT_COLOR_MODE,
   type ColorMode,
 } from "@/features/graph/lib/graph-colors"
+import { DEFAULT_HULL_MODE } from "@/features/graph/lib/graph-geometry"
 import { useDebouncedValue } from "@/features/graph/hooks/use-debounced-value"
 import { useGraphFilters } from "@/features/graph/hooks/use-graph-filters"
 import { useGraphLayout } from "@/features/graph/hooks/use-graph-layout"
@@ -160,9 +162,9 @@ export function RealMemoryGraphPage() {
     layout.setClusterTightness(300)
     layout.setNodeSpacing(100)
     layout.setSpacing3D(50)
-    layout.setSizeMode("connections")
-    setColorMode("type")
-    layout.setHullMode("none")
+    layout.setSizeMode(DEFAULT_SIZE_MODE)
+    setColorMode(DEFAULT_COLOR_MODE)
+    layout.setHullMode(DEFAULT_HULL_MODE)
     setEntityLayerEnabled(false)
     setSelectedEntityTypes(new Set())
     selection.setSelectedEntityId(null)
