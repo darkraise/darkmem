@@ -4,6 +4,213 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
+## v1.1.0 — 2026-08-24
+
+**Three blocks, and none of them moves a gate.** Vendor connections became
+shared rows instead of eight inline copies; the documents door got its MCP half
+and its write verbs; and every vendor call now records what it cost. The gate
+table below is **unchanged from v1.0.0** — that is the honest headline, because
+two of these blocks touch surfaces a gate governs and neither earned anything
+from it.
+
+### Gate verdicts — unchanged
+
+| Gate | Verdict | Moved this release? |
+|---|---|---|
+| G-C — L2 → deriver | **CLEARED** 2026-08-16 | no |
+| G-D — L2 → L3 | **CLEARED on the entailment role**; contradiction still misses | no |
+| G-E — L3 → F7 | **not yet measured** — production holds 0 articles | no |
+| G-F — core → H1 | **not yet measured** — the claim/span gold does not exist | no |
+
+Two things worth stating rather than leaving to inference. **The two-door
+documents ruling clears no gate**: `documents.write` and `documents.retrieval`
+went two-door on the owner's ruling of 2026-08-23 because those verbs generate
+nothing and label nothing, not because G-F moved. `POST /documents/qa` is still
+single-door, still gated, and still withholds every answer. And **the provider
+layer did not disturb the judge**: `base_url` and `api_kind` are two of the six
+fields the entailment qualification binds to, and both moved onto a provider
+row this release. The live identity hash was re-derived from production after
+the cutover and is still `fd39e7b2c47fa375` — the record minted 2026-08-17
+stands, unre-minted.
+
+### Added
+
+- **LLM providers are shared rows again** (owner ruling 2026-08-20, reversing
+  doc 04 §7). One `llm_providers` row per vendor connection, referenced by a
+  NOT NULL `provider_name` from each of the eight purposes. The reversal rests
+  on one thing the flat shape could not do: a credential rotation or an
+  endpoint move must reach every purpose that uses it with no re-apply step,
+  and only a live reference does that. Resolution stays **one query with one
+  join returning the same flat `LLMPurposeConfig`** — a query-counting test
+  pins it — because `benchlib`'s cache key and the judge's identity hash both
+  fold the same six field *names* off the resolved object.
+- **The judge's provider is frozen field-wise, not row-wise.** `base_url` and
+  `api_kind` are refused on the provider serving `verification`; `api_key`
+  still rotates, deliberately, because rotating a credential is not a model
+  swap and freezing it would block a rotation that is owed. The
+  unauthenticated setup door refuses the seeded provider names and the same
+  exclusivity the authenticated door enforces, so the least-authenticated door
+  in the tree is not the one place the shared state can be produced.
+- **A cutover script, because a plain restore cannot cross this change**
+  (`backend/scripts/cutover/llm_providers_transition.py`). An old-schema
+  `llm_purpose_configs` dump carries columns the new table does not have, and
+  stripping them still violates the NOT NULL FK against a database holding zero
+  provider rows. The procedure is in `docs/runbook-deployment.md`, alongside a
+  new **additive-baseline** path rehearsed against a copy of production, and
+  two restore traps that cost the whole `events` journal in rehearsal — a
+  missing per-fingerprint child table, and `psql` exiting **0** over a partial
+  restore without `ON_ERROR_STOP`.
+- **The documents door's write and retrieval verbs, on both doors.** `put`,
+  `search`, `outline`, `get` and `delete` reach REST and MCP through the same
+  `document_door` functions, resolving a caller-named target by id or by
+  `(project, uri)` through one producer so the refusals cannot drift. `(project,
+  uri)` is the document's identity: re-filing a path updates in place.
+- **`block_embedding_refresh`, the backstop the inline embed needs.** It closes
+  three shapes of drift that each leave a document that exists and is
+  unfindable with no symptom — an embed that failed after its filing committed,
+  an embedder rotation, and a document filed before the door shipped. It
+  resolves its fingerprint from a **real embed call**, not a data probe: a
+  backstop writer's whole job is filling an empty partition, and "which
+  fingerprint already holds data" is biased toward the wrong answer by
+  construction. That took three review rounds to land and the reasoning is
+  recorded in the module.
+- **Token and cost tracking.** One `llm_usage` row per vendor call, written on
+  the recorder's **own session** — a usage row on the caller's session is
+  rolled back with the work it describes, which would delete the evidence for
+  exactly the failed calls this feature exists to surface. Cost is BIGINT
+  micro-USD: money never touches a float. Prices are an operator `config` row
+  over shipped defaults, with **three** rates rather than two, because a cached
+  input token bills at roughly 5% of input on DeepSeek and 50% on OpenAI.
+- **An unmeasured call stores NULL, never 0.** A vendor that stops reporting
+  usage must not read as a free model, so the token columns are nullable and
+  the surface says `not measured` rather than printing a fabricated zero. The
+  local Ollama embedders are a *measured* zero, which stays a distinguishable
+  state.
+- **A usage surface, an outliers view, a Flags tab that documents every
+  section, an Appearance tab, a project scope catalog derived from the corpus,
+  and a rebuilt graph visual language** — selection by focus rather than
+  brightness, entity-type borders, two edge tiers, and every control moved into
+  the settings panel.
+- **A `Release` workflow, and it is the only path to a registry**
+  (`.github/workflows/release.yml`). Tags only; a push to master publishes
+  nothing. It reuses the branch CI rather than copying it, builds once and
+  pushes the same digest to Docker Hub and GHCR, and creates the GitHub release
+  last so the announcement cannot precede the artifact.
+
+### Changed
+
+- **Redeploy this machine after every change that lands** (owner ruling
+  2026-08-21). This host runs the instance the owner reviews, so a
+  merged-but-undeployed change leaves them looking at the previous build —
+  reporting bugs already fixed, or missing ones that are not. The second is
+  worse, because the review reads as a pass. Scoped to changes that alter the
+  running artifact, and it is a **deploy, not a release**: no tag, no registry.
+- **The verification ladder's threshold resolution moved to
+  `app/services/ladder_config.py`, and the split is load-bearing.** Invariant
+  15's tree-wide scan matches any line naming the ladder module — prose
+  included — so the settings door could not have imported the thresholds from
+  there without an allowlist entry, and an allowlist entry buys a route the
+  whole module. Every moved name is re-exported, so no import changed.
+- **Resolution now returns a report, not just a value**, for the ladder as it
+  already did for G-C's bars: a clamp that speaks only through `logging`
+  renders identically to no clamp, so an operator who types 1 into the settings
+  form was shown 1 and never learned the ladder was still running at 3. The
+  door answers with the committed value, the effective value, and which of
+  *default* / *honoured* / *clamped* happened, per parameter. A clamped value
+  is still **written**, so a later measurement licenses the value already
+  chosen.
+- **`MEASURABLE_FLAGS` gained the five graph channels.** The comment said they
+  had no config row, which was stale from the day T2.32 landed all five in
+  `FEATURE_FLAGS_DEFAULTS` — and the Flags tab read that same absence off a
+  missing *response field* and rendered "no config row exists yet" to
+  operators. Missing field and missing row are not the same absence, and only
+  one of them was ever true.
+
+### Fixed
+
+- **The document door's `unchanged` path was a silent no-op after an embedder
+  rotation.** A re-push of byte-identical content is the caller's one natural
+  repair for a filing whose block write committed and whose embed failed
+  afterward. It resolved the fingerprint with a data probe, which after a
+  rotation prefers the stale, already-complete partition — so it reported
+  nothing to repair while retrieval read the empty one. Both callers now
+  resolve from a real embed call, which is why **every `unchanged` re-push now
+  spends one embed call** unconditionally. That is the stated cost, not a
+  regression.
+- **A block the embedder rejects no longer starves the ones behind it.** The
+  sweep fetches `ORDER BY b.id`, so a failing batch is the *same* failing batch
+  every tick; a run that simply raised would be loud in `job_runs.last_error`
+  and would still never sweep anything. A failed batch is now retried
+  block-at-a-time and the poison row settles alone — the shape
+  `memory_buffer`'s flush already uses.
+- **An oversized document no longer stages a half-filed row for the caller's
+  next commit.** `MAX_BLOCKS` can only be known after parsing, so the filing
+  runs inside a SAVEPOINT and the refusal rolls back the document, its blocks
+  and the `document_filed` event.
+- **Deleting a document withdraws its provenance first.**
+  `fact_sources.source_ref` carries no foreign key, so a cascade cannot reach
+  it. The delete withdraws the block sources, expires any fact left with no
+  surviving source — never one still sourced otherwise, never one already
+  expired — and journals a `sources_changed` event per affected fact. It writes
+  no `verification_status`: the rung stays the ladder's decision.
+- **The Flags tab lost saved values in three places**, found in the owner's own
+  review, along with three further Security-tab defects and an unparseable
+  `dimensions` value that was accepted rather than refused.
+- **Metering kwargs were leaking into benchlib's chat cache key**, which would
+  have missed every cached entry on every machine — and G-C's clear rests on an
+  independent party reproducing a run byte-identically at 0 live calls.
+- **The usage subject now carries the project through every pipeline entry**,
+  and a mixed-project batch claims **no** project rather than the first entry's
+  — a wrong answer where `None` is a missing one.
+- **`chat_completion_stream`'s metering had no test**, while
+  `test_usage_wiring.py`'s own docstring claimed both streams were pinned. Four
+  tests now cover the compat trailing usage frame (which arrives with
+  `choices: []`, an empty list rather than an absent key), Ollama's `done`
+  chunk, a client-abandoned stream (recorded unmeasured, never dropped), and a
+  failed stream.
+- **Demo mode took itself down from the Activity Jobs tab, and the symptom was
+  a wedged gate rather than an error.** The usage reads mount in the Activity
+  Jobs and Pipeline tabs and shipped without `enabled: !DEMO`, so in demo mode
+  they 401 — and `handleUnauthorized` answers a 401 with
+  `window.location.href = "/login"`, a hard navigation. The demo browser was
+  bounced off the page it was on, every later demo spec landed on a login form,
+  and the `--full` gate's Playwright leg ran into its 1800s wall reporting only
+  "TIMED OUT". Every usage read now carries the guard `useProjects` already
+  had.
+- **`/documents` had the same defect and had it since v1.0.0.** Not a
+  regression this release — it is what the new guard below found on its first
+  run, on a route no demo-project spec covered. `useDocuments` and its two
+  keyed siblings now carry the guard too.
+- **That defect class is now structural rather than remembered**
+  (`frontend/tests/demo-makes-no-api-calls.spec.ts`). It has shipped three
+  times — `useProjects`, the usage reads, the documents reads — and each time
+  the damage appeared on a page that never made the request, which is what made
+  it expensive to find. The new spec walks every route the demo fixture claims
+  to render and fails on any `/api/v1/` request, naming the URL and the route
+  that issued it, with a separate assertion on the login form so the failure
+  says *the page is gone* rather than *one stray GET*. Proven red against a
+  reverted guard before it was kept.
+- **Invariant 13's job count was stale in `CLAUDE.md`** — 21 when T4.09
+  counted, 24 today. Restated so the finding no longer rests on a number that
+  goes stale every time a job lands, which is the failure shape invariant 23
+  exists to police.
+
+### Known limits, carried forward
+
+- **G-E cannot be measured on this deployment.** Production holds 0 articles
+  and 0 documents against 50 memories and 98 triples. The research loop is
+  armed but **not driving**: it has no `JobRegistry` job on purpose, and
+  `ResearchGatherer` has no in-tree implementation, so an MCP agent with real
+  web access has to call `research_run`. Nothing in this tree produces a
+  research origin on its own.
+- **The contradiction judge role is still unqualified**, missing recall for the
+  fourth time across two vendors. No consumer may ship on its verdicts, and
+  `groundedness_gate` stays closed.
+- **Both live model keys are owed a rotation.** The repo history was rewritten
+  and the keys are out of tracked files, but both were also pasted into chat
+  transcripts — copies outside this repo's control — so rotation, not the
+  rewrite, is what actually retires them. Owed before publication.
+
 ## v1.0.0 — 2026-08-20
 
 **Everything remaining, and the gates carry verdicts — except two, which do
