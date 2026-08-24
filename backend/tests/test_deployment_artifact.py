@@ -15,7 +15,10 @@ compose ``command:``; that is verified live at execution time.
 """
 from __future__ import annotations
 
+import gzip
+import os
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -212,44 +215,123 @@ def _one(lines: list[str], predicate) -> int:
     return hits[0]
 
 
-def test_restore_recreates_the_database_before_replaying_the_dump():
-    """`events` is declaratively RANGE-partitioned, so backup.sh's
-    ``--clean --if-exists`` dump carries ``ALTER TABLE IF EXISTS ONLY
-    public.events_YYYYMM DROP CONSTRAINT IF EXISTS events_YYYYMM_pkey`` for
-    every monthly child, and PostgreSQL refuses to drop an inherited
-    constraint. Replayed over a database that still holds the schema, that
-    error aborts psql under ON_ERROR_STOP partway through the DROP phase --
-    after every trigger and every foreign key above it has already been
-    dropped and before the first CREATE runs. The operator sees a non-zero
-    exit and a database that still has all its rows, none of its foreign
-    keys, and neither the events append-only guards nor the search_vector
-    trigger. Recreating the database first leaves those statements nothing
-    to match, which is the only shape that cannot reach the error."""
-    lines = _restore_lines()
-    recreate = _one(lines, lambda ln: "CREATE DATABASE" in ln)
-    replay = _one(lines, lambda ln: "gunzip -c" in ln and "psql" in ln)
-    assert recreate < replay, "the dump is replayed before the database is recreated"
-
-    statement = lines[recreate]
-    assert "-d postgres" in statement, statement
-    assert "DROP DATABASE" in statement, statement
-    assert "$DB" in statement, statement
-
-
-def test_restore_proves_the_dump_is_complete_before_dropping_the_database():
-    """Recreating means the dump is the only surviving copy from that point
-    on, so an unreadable one must be refused while the database still
-    exists. gzip of an empty stream is valid gzip, so integrity alone proves
-    nothing -- pg_dump's completion marker, the same evidence backup.sh
-    checks before it publishes a dump, is what proves there is something to
-    restore."""
-    lines = _restore_lines()
-    marker = _one(lines, lambda ln: "PostgreSQL database dump complete" in ln)
-    drop = _one(lines, lambda ln: "DROP DATABASE" in ln)
-    assert marker < drop, "the dump is validated only after the database is gone"
-
-
 def test_restore_still_stops_on_the_first_error_it_meets():
     lines = _restore_lines()
     replay = lines[_one(lines, lambda ln: "gunzip -c" in ln and "psql" in ln)]
     assert "-v ON_ERROR_STOP=1" in replay, replay
+
+
+def test_restore_stays_lf_and_executable():
+    assert RESTORE.exists()
+    assert b"\r\n" not in RESTORE.read_bytes()
+    assert os.access(RESTORE, os.X_OK)
+    assert "*.sh text eol=lf" in (REPO_ROOT / ".gitattributes").read_text()
+
+
+# ── Behavioural: restore.sh drives docker compose, so its real safety
+# properties are proved by running it against a recording stub rather than
+# by pinning strings, which would pass on a script that greps for a marker
+# and ignores the result. No database is touched; COMPOSE_CMD points at a
+# throwaway shell script that logs its argv and exits 0. ──────────────────
+
+_STUB_TEMPLATE = """#!/usr/bin/env bash
+{
+  for a in "$@"; do
+    printf '%s\x1f' "$a"
+  done
+  printf '\n'
+} >> "__LOG_PATH__"
+cat >/dev/null
+exit 0
+"""
+
+
+def _write_stub(tmp_path: Path, log_path: Path) -> Path:
+    stub = tmp_path / "compose_stub.sh"
+    stub.write_text(_STUB_TEMPLATE.replace("__LOG_PATH__", str(log_path)))
+    stub.chmod(0o755)
+    return stub
+
+
+def _run_restore(tmp_path: Path, dump_path: Path, db: str) -> tuple[subprocess.CompletedProcess, Path]:
+    log_path = tmp_path / "invocations.log"
+    log_path.touch()
+    stub = _write_stub(tmp_path, log_path)
+    env = dict(os.environ)
+    env.update(
+        COMPOSE_CMD=str(stub),
+        POSTGRES_SERVICE="postgres",
+        POSTGRES_DB=db,
+        POSTGRES_USER="darkmem",
+    )
+    result = subprocess.run(
+        ["bash", str(RESTORE), str(dump_path)],
+        input="y\n",
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=30,
+    )
+    return result, log_path
+
+
+def _incomplete_dump(tmp_path: Path) -> Path:
+    path = tmp_path / "empty.sql.gz"
+    with gzip.open(path, "wb"):
+        pass
+    return path
+
+
+def _complete_dump(tmp_path: Path) -> Path:
+    path = tmp_path / "good.sql.gz"
+    with gzip.open(path, "wt") as fh:
+        fh.write("SELECT 1;\n--\nPostgreSQL database dump complete\n--\n")
+    return path
+
+
+def _record_fields(record: str) -> list[str]:
+    # Each record is argv joined by \x1f with a trailing separator, so
+    # splitting leaves one empty element to drop.
+    return record.split("\x1f")[:-1]
+
+
+def _arg_after(fields: list[str], flag: str) -> str | None:
+    try:
+        i = fields.index(flag)
+    except ValueError:
+        return None
+    return fields[i + 1] if i + 1 < len(fields) else None
+
+
+def test_restore_refuses_an_incomplete_dump_before_issuing_any_command(tmp_path):
+    result, log_path = _run_restore(tmp_path, _incomplete_dump(tmp_path), db="restore_refusal_test")
+    assert result.returncode == 1, result.stderr
+    assert log_path.read_text() == "", "a command reached compose before the dump was validated"
+
+
+def test_restore_orders_create_temp_then_replay_then_drop_then_rename(tmp_path):
+    db = "restore_order_test"
+    result, log_path = _run_restore(tmp_path, _complete_dump(tmp_path), db=db)
+    assert result.returncode == 0, result.stderr
+
+    records = [_record_fields(ln) for ln in log_path.read_text().splitlines() if ln]
+    temp_marker = f"{db}_restore_"
+
+    def index_of(predicate) -> int:
+        hits = [i for i, fields in enumerate(records) if predicate(fields)]
+        assert len(hits) == 1, (hits, records)
+        return hits[0]
+
+    idx_create = index_of(
+        lambda f: any("CREATE DATABASE" in x and temp_marker in x for x in f)
+    )
+    idx_replay = index_of(
+        lambda f: "-c" not in f and (_arg_after(f, "-d") or "").startswith(temp_marker)
+    )
+    idx_drop = index_of(
+        lambda f: any("DROP DATABASE" in x and temp_marker not in x and db in x for x in f)
+    )
+    idx_rename = index_of(
+        lambda f: any("ALTER DATABASE" in x and "RENAME TO" in x and temp_marker in x for x in f)
+    )
+    assert idx_create < idx_replay < idx_drop < idx_rename, records
