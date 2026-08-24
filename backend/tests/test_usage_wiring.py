@@ -91,3 +91,102 @@ async def test_an_explicit_subject_reaches_the_recorder():
                             usage_subject=("memory", "m1", "default"))
     assert spy.calls[0]["subject"] == ("memory", "m1", "default")
     await o.close()
+
+
+def _streaming_orch(lines: list[str], api_kind: str = "openai"):
+    """A stream, delivered whole. ``MockTransport`` cannot dribble chunks, but
+    ``aiter_lines`` splits the body the same way either way -- what these tests
+    pin is which line the metering reads, not the arrival schedule."""
+    cfg = LLMPurposeConfig(
+        base_url="http://mock/v1", model="m", api_kind=api_kind, dimensions=3,
+    )
+    spy = SpyRecorder()
+    o = LLMOrchestrator({"reasoning": cfg}, recorder=spy)
+    o._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, content="".join(lines).encode())
+        )
+    )
+    return o, spy
+
+
+#: The compat shape, including the trailing usage frame `stream_options`
+#: requests. It carries `choices: []` -- an empty list, not an absent key --
+#: which is why the delta read must not index a `.get("choices", [{}])` default.
+_COMPAT_STREAM = [
+    'data: {"choices":[{"delta":{"content":"he"}}]}\n',
+    'data: {"choices":[{"delta":{"content":"llo"}}]}\n',
+    'data: {"choices":[],"usage":{"prompt_tokens":7,"completion_tokens":2}}\n',
+    'data: [DONE]\n',
+]
+
+
+@pytest.mark.asyncio
+async def test_compat_stream_reports_the_trailing_usage_frame():
+    o, spy = _streaming_orch(_COMPAT_STREAM)
+    tokens = [
+        t async for t in o.chat_completion_stream(
+            "reasoning", [{"role": "user", "content": "q"}],
+        )
+    ]
+    assert tokens == ["he", "llo"]
+    assert len(spy.calls) == 1
+    assert spy.calls[0]["ok"] is True
+    assert spy.calls[0]["payload"]["usage"]["completion_tokens"] == 2
+    await o.close()
+
+
+@pytest.mark.asyncio
+async def test_native_stream_reports_the_done_chunk():
+    """Ollama puts the counts on the `done` chunk. Breaking before reading it
+    threw them away one line early, which is what made local chat free."""
+    o, spy = _streaming_orch(
+        [
+            '{"message":{"content":"hi"},"done":false}\n',
+            '{"done":true,"prompt_eval_count":5,"eval_count":3}\n',
+        ],
+        api_kind="ollama",
+    )
+    tokens = [
+        t async for t in o.chat_completion_stream(
+            "reasoning", [{"role": "user", "content": "q"}],
+        )
+    ]
+    assert tokens == ["hi"]
+    assert spy.calls[0]["payload"]["prompt_eval_count"] == 5
+    await o.close()
+
+
+@pytest.mark.asyncio
+async def test_an_abandoned_stream_still_reports():
+    """A client disconnect closes the generator part-way. The vendor billed for
+    the call either way, so the row is written on the way out -- unmeasured,
+    which is not the same as free."""
+    o, spy = _streaming_orch(_COMPAT_STREAM)
+    agen = o.chat_completion_stream("reasoning", [{"role": "user", "content": "q"}])
+    assert await agen.__anext__() == "he"
+    await agen.aclose()
+    assert len(spy.calls) == 1
+    assert spy.calls[0]["payload"] is None
+    await o.close()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_stream_reports_before_it_raises():
+    cfg = LLMPurposeConfig(base_url="http://mock/v1", model="m", dimensions=3)
+    spy = SpyRecorder()
+    o = LLMOrchestrator({"reasoning": cfg}, recorder=spy)
+    o._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(500, json={"error": "boom"})
+        )
+    )
+    with pytest.raises(httpx.HTTPStatusError):
+        async for _ in o.chat_completion_stream(
+            "reasoning", [{"role": "user", "content": "q"}],
+        ):
+            pass
+    assert len(spy.calls) == 1
+    assert spy.calls[0]["ok"] is False
+    assert spy.calls[0]["error_kind"] == "HTTPStatusError"
+    await o.close()
