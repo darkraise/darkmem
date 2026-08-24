@@ -1,5 +1,9 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
+import {
+  DEFAULT_DETAIL_PANEL_WIDTH,
+  DETAIL_PANEL_MIN_WIDTH,
+} from "./panel-resize"
 
 /**
  * What colour the halo around a focused node is painted in.
@@ -24,8 +28,12 @@ interface GraphPrefsState {
   selectionColor: SelectionColor
   /** Opacity of everything outside the focused node's neighbourhood, percent. */
   dimUnrelated: number
+  /** Width of the graph's detail panel, px. The canvas floor is applied
+   *  against the live container width, which only the page knows. */
+  detailPanelWidth: number
   setSelectionColor: (color: SelectionColor) => void
   setDimUnrelated: (percent: number) => void
+  setDetailPanelWidth: (px: number) => void
 }
 
 export const useGraphPrefs = create<GraphPrefsState>()(
@@ -33,12 +41,22 @@ export const useGraphPrefs = create<GraphPrefsState>()(
     (set) => ({
       selectionColor: DEFAULT_SELECTION_COLOR,
       dimUnrelated: DEFAULT_DIM,
+      detailPanelWidth: DEFAULT_DETAIL_PANEL_WIDTH,
 
       setSelectionColor: (selectionColor) => set({ selectionColor }),
 
       setDimUnrelated: (percent) => {
         if (!Number.isFinite(percent)) return
         set({ dimUnrelated: Math.max(DIM_MIN, Math.min(DIM_MAX, percent)) })
+      },
+
+      // Only the panel's own floor is applied here. The canvas floor needs the
+      // container width, so it is enforced where the panel is laid out — and a
+      // stored width wider than today's window is clamped on render rather than
+      // rewritten, so the panel returns to its full width on a wider screen.
+      setDetailPanelWidth: (px) => {
+        if (!Number.isFinite(px)) return
+        set({ detailPanelWidth: Math.max(DETAIL_PANEL_MIN_WIDTH, px) })
       },
     }),
     { name: "darkmem-graph-prefs" },
