@@ -55,7 +55,10 @@ export function clampPanelWidth(
  * Below `GRAPH_MIN_WIDTH + DETAIL_PANEL_MIN_WIDTH` no split satisfies both
  * floors, and `clampPanelWidth`'s answer to that — hand the canvas
  * everything, including squeezing the panel to 0 — makes the panel's own
- * close button and the toolbar's reopen affordance both disappear with it.
+ * close button disappear with it, with no way back short of a reload. (The
+ * toolbar's reopen button is gated on the panel being closed at all, not on
+ * its width, so it is absent whenever the panel is open regardless of size;
+ * it was never the width's doing.)
  * Below the threshold the panel stops splitting the row with the canvas and
  * floats as an overlay on top of it instead, sized off the container rather
  * than off what the canvas leaves, so it is always visible and never eats
