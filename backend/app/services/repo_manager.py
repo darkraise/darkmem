@@ -370,7 +370,8 @@ class RepoManager:
     async def pull_repo(self, repo: Repository) -> str | None:
         cwd = self.repo_working_dir(repo)
         # local_path repos point at the operator's OWN checkout; that working
-        # tree must never be rmtree'd or re-cloned (the reclone fallback below).
+        # tree must never be rmtree'd, re-cloned (the reclone fallback below)
+        # or rewound (the fast-forward branch below).
         is_local = bool(repo.local_path)
 
         needs_clone = not cwd.exists() or not (cwd / ".git").exists()
@@ -391,7 +392,15 @@ class RepoManager:
                     env["GIT_TERMINAL_PROMPT"] = "0"
 
                 await self._run_git(cwd, ["git", "fetch", fetch_target, repo.default_branch], env=env)
-                await self._run_git(cwd, ["git", "reset", "--hard", "FETCH_HEAD"], env=env)
+                if is_local:
+                    # `reset --hard` moves the branch ref as well as the tree, so
+                    # on the operator's own checkout it discards uncommitted edits
+                    # and any commit they have not pushed. `--ff-only` advances or
+                    # refuses; a refusal lands in the RuntimeError branch below,
+                    # which leaves the tree alone and lets the caller read HEAD.
+                    await self._run_git(cwd, ["git", "merge", "--ff-only", "FETCH_HEAD"], env=env)
+                else:
+                    await self._run_git(cwd, ["git", "reset", "--hard", "FETCH_HEAD"], env=env)
 
                 result = await self._run_git(cwd, ["git", "rev-parse", "HEAD"], env=env)
                 return result.strip() if result else None

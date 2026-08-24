@@ -265,3 +265,104 @@ def test_validate_local_path_accepts_parent_of_repos_when_must_not_be_repo(tmp_p
 
     result = validate_local_path(str(parent), must_not_be_repo=True)
     assert result == parent.resolve()
+
+
+def _git(cwd, *args) -> None:
+    import subprocess
+
+    subprocess.run(
+        ["git", "-c", "user.email=test@test.local", "-c", "user.name=Test", *args],
+        cwd=str(cwd), check=True, capture_output=True,
+    )
+
+
+def _head(cwd) -> str:
+    import subprocess
+
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=str(cwd), capture_output=True, text=True,
+    ).stdout.strip()
+
+
+def _upstream_and_checkout(tmp_path):
+    """An upstream repo one commit ahead of the operator's own clone of it.
+
+    This is the shape the setup wizard's folder picker registers: a
+    ``local_path`` repo whose ``origin`` remote resolves and fetches. The
+    remote-less checkouts in ``test_code_reconcile.py`` never reach the
+    fetch-succeeded branch of ``pull_repo`` at all.
+    """
+    import subprocess
+
+    upstream = tmp_path / "upstream"
+    upstream.mkdir()
+    _git(upstream, "init", "-q", "-b", "main")
+    (upstream / "app.py").write_text("VERSION = 1\n", encoding="utf-8")
+    _git(upstream, "add", "-A")
+    _git(upstream, "commit", "-q", "-m", "one")
+
+    checkout = tmp_path / "checkout"
+    subprocess.run(
+        ["git", "clone", "-q", str(upstream), str(checkout)],
+        check=True, capture_output=True,
+    )
+
+    (upstream / "shipped.py").write_text("SHIPPED = True\n", encoding="utf-8")
+    _git(upstream, "add", "-A")
+    _git(upstream, "commit", "-q", "-m", "two")
+    return upstream, checkout
+
+
+async def test_pull_repo_never_rewinds_a_local_checkout(session, tmp_path):
+    """`pull_repo` must not discard work in a tree the app does not own.
+
+    `local_path` points at the operator's own checkout and `git reset --hard`
+    moves the branch ref as well as the working tree, so a repo registered
+    with a live `origin` lost both the uncommitted edit and the unpushed
+    commit on the next `repo_sync` or `code_reconcile` tick -- the second of
+    those being the job whose whole purpose is to notice that edit.
+    """
+    from app.models.code import Repository
+    from app.services.repo_manager import RepoManager
+
+    _, checkout = _upstream_and_checkout(tmp_path)
+
+    (checkout / "wip.py").write_text("WIP = True\n", encoding="utf-8")
+    _git(checkout, "add", "-A")
+    _git(checkout, "commit", "-q", "-m", "operator work, not pushed")
+    operator_head = _head(checkout)
+    edit = "VERSION = 1  # operator edit\n"
+    (checkout / "app.py").write_text(edit, encoding="utf-8")
+
+    repo = Repository(
+        name="operator-checkout", local_path=str(checkout), default_branch="main",
+    )
+    session.add(repo)
+    await session.flush()
+
+    await RepoManager(session).pull_repo(repo)
+
+    assert (checkout / "app.py").read_text(encoding="utf-8") == edit
+    assert (checkout / "wip.py").exists()
+    assert _head(checkout) == operator_head
+
+
+async def test_pull_repo_fast_forwards_a_clean_local_checkout(session, tmp_path):
+    """The other half of the same branch: a checkout holding nothing of its
+    own still tracks its remote, so refusing to rewind must not turn a
+    registered folder's auto-sync into a permanent no-op."""
+    from app.models.code import Repository
+    from app.services.repo_manager import RepoManager
+
+    upstream, checkout = _upstream_and_checkout(tmp_path)
+
+    repo = Repository(
+        name="clean-checkout", local_path=str(checkout), default_branch="main",
+    )
+    session.add(repo)
+    await session.flush()
+
+    sha = await RepoManager(session).pull_repo(repo)
+
+    assert sha == _head(upstream)
+    assert (checkout / "shipped.py").exists()
