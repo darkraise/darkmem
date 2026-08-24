@@ -93,16 +93,31 @@ ticks and the withdrawal emits overlap by construction, not only under
 failure. **Hardening: the fast arm never reads an event newer than
 ``moment - _COMMIT_SKEW_MARGIN`` (5s)**, so a drain never advances the
 watermark past a timestamp an in-flight, earlier-started transaction might
-still land behind. As long as no producer transaction takes longer than the
-margin to go from ``BEGIN`` to ``COMMIT`` — true for all four producers
-today (``fact_lift`` and ``fact_provenance`` write single-digit rows per
-savepoint, the citation re-verifier one row per stale citation, and
-``document_door``'s delete is set-based SQL plus one event per fact that
-lost a source; none of them makes an LLM call on this path) — this closes
-the gap outright rather
-than merely bounding its cost; a producer that ever became slower than the
-margin would reopen it, at which point the margin is the number to raise,
-not the mechanism to abandon.
+still land behind. This closes the gap outright rather than merely
+bounding its cost, for exactly as long as no producer transaction takes
+longer than the margin to go from ``BEGIN`` to ``COMMIT``. What each of the
+four producers actually does in one transaction, since the bound rests on
+the count and not on the intent:
+
+- ``fact_lift`` and ``fact_provenance`` write single-digit rows per savepoint.
+- ``document_door``'s delete is set-based SQL plus one event per fact that
+  lost a source.
+- the **citation re-verifier is the one whose transaction scales with a
+  configurable knob**, and an earlier revision of this paragraph got its
+  quantity wrong by naming "one row per stale citation" — it issues one
+  ``UPDATE`` per *candidate*, plus an event per citation whose staleness
+  changed, so the row count is its ``batch_size``: ``500`` by default and up
+  to ``MAX_REVERIFY_BATCH`` (5000) if an operator raises it.
+
+None of the four makes an LLM call on this path, which is what keeps all of
+them in the same order of magnitude as their row counts. **The margin is
+established for the three fixed-size producers and for the re-verifier at
+its default batch; it is not established at the re-verifier's configured
+maximum**, where a transaction ten times longer is plainly closer to five
+seconds than one at the default. That is a bound to measure before raising
+``batch_size`` on a real corpus, not a reason to distrust today's default.
+A producer that ever became slower than the margin would reopen the gap, at
+which point the margin is the number to raise, not the mechanism to abandon.
 
 **The margin compares two clocks, and today that is safe only because they
 are the same clock.** ``moment`` is ``datetime.now(timezone.utc)`` in the
