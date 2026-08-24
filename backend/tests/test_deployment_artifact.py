@@ -201,26 +201,6 @@ def test_the_entrypoint_lives_beside_the_dockerfile_and_stays_lf():
 # ── The restore path replays into an empty database, never over a live one ──
 
 
-def _restore_lines() -> list[str]:
-    """Comment-free, so a comment naming a statement cannot be read as one."""
-    return [
-        ln for ln in _unwrapped(RESTORE).splitlines()
-        if not ln.lstrip().startswith("#")
-    ]
-
-
-def _one(lines: list[str], predicate) -> int:
-    hits = [i for i, ln in enumerate(lines) if predicate(ln)]
-    assert len(hits) == 1, hits
-    return hits[0]
-
-
-def test_restore_still_stops_on_the_first_error_it_meets():
-    lines = _restore_lines()
-    replay = lines[_one(lines, lambda ln: "gunzip -c" in ln and "psql" in ln)]
-    assert "-v ON_ERROR_STOP=1" in replay, replay
-
-
 def test_restore_stays_lf_and_executable():
     assert RESTORE.exists()
     assert b"\r\n" not in RESTORE.read_bytes()
@@ -253,10 +233,7 @@ def _write_stub(tmp_path: Path, log_path: Path) -> Path:
     return stub
 
 
-def _run_restore(tmp_path: Path, dump_path: Path, db: str) -> tuple[subprocess.CompletedProcess, Path]:
-    log_path = tmp_path / "invocations.log"
-    log_path.touch()
-    stub = _write_stub(tmp_path, log_path)
+def _invoke_restore(tmp_path: Path, dump_path: Path, db: str, stub: Path) -> subprocess.CompletedProcess:
     env = dict(os.environ)
     env.update(
         COMPOSE_CMD=str(stub),
@@ -264,7 +241,7 @@ def _run_restore(tmp_path: Path, dump_path: Path, db: str) -> tuple[subprocess.C
         POSTGRES_DB=db,
         POSTGRES_USER="darkmem",
     )
-    result = subprocess.run(
+    return subprocess.run(
         ["bash", str(RESTORE), str(dump_path)],
         input="y\n",
         capture_output=True,
@@ -272,6 +249,13 @@ def _run_restore(tmp_path: Path, dump_path: Path, db: str) -> tuple[subprocess.C
         env=env,
         timeout=30,
     )
+
+
+def _run_restore(tmp_path: Path, dump_path: Path, db: str) -> tuple[subprocess.CompletedProcess, Path]:
+    log_path = tmp_path / "invocations.log"
+    log_path.touch()
+    stub = _write_stub(tmp_path, log_path)
+    result = _invoke_restore(tmp_path, dump_path, db, stub)
     return result, log_path
 
 
@@ -335,3 +319,154 @@ def test_restore_orders_create_temp_then_replay_then_drop_then_rename(tmp_path):
         lambda f: any("ALTER DATABASE" in x and "RENAME TO" in x and temp_marker in x for x in f)
     )
     assert idx_create < idx_replay < idx_drop < idx_rename, records
+
+    # The replay is the one command a corrupt dump reaches, so it is the one
+    # command that must abort on the corrupt statement rather than pressing on
+    # into a partially-loaded temp database that then gets swapped in whole.
+    assert _arg_after(records[idx_replay], "-v") == "ON_ERROR_STOP=1", records[idx_replay]
+
+
+# ── The cleanup STAGE machine (scripts/restore.sh:40-68) tells an operator
+# which of three recoverable states a failed run left them in. Proven here by
+# injecting a failure at each stage boundary through the same recording stub,
+# never by pinning the script's line structure. ─────────────────────────────
+
+_FAIL_ON_MARKER_STUB_TEMPLATE = """#!/usr/bin/env bash
+{
+  for a in "$@"; do
+    printf '%s\x1f' "$a"
+  done
+  printf '\n'
+} >> "__LOG_PATH__"
+cat >/dev/null
+
+for a in "$@"; do
+  case "$a" in
+    *"__MARKER__"*) exit 1 ;;
+  esac
+done
+exit 0
+"""
+
+_FAIL_ON_REPLAY_STUB_TEMPLATE = """#!/usr/bin/env bash
+{
+  for a in "$@"; do
+    printf '%s\x1f' "$a"
+  done
+  printf '\n'
+} >> "__LOG_PATH__"
+cat >/dev/null
+
+has_c=0
+is_replay_target=0
+prev=""
+for a in "$@"; do
+  if [ "$a" = "-c" ]; then has_c=1; fi
+  if [ "$prev" = "-d" ] && [[ "$a" == __TEMP_MARKER__* ]]; then is_replay_target=1; fi
+  prev="$a"
+done
+
+if [ "$is_replay_target" = "1" ] && [ "$has_c" = "0" ]; then
+  exit 1
+fi
+exit 0
+"""
+
+
+def _write_marker_failure_stub(tmp_path: Path, log_path: Path, marker: str) -> Path:
+    """A compose stub that fails only the invocation carrying ``marker`` in
+    one of its arguments, and logs+succeeds on every other invocation."""
+    stub = tmp_path / "compose_stub.sh"
+    script = _FAIL_ON_MARKER_STUB_TEMPLATE.replace("__LOG_PATH__", str(log_path))
+    script = script.replace("__MARKER__", marker)
+    stub.write_text(script)
+    stub.chmod(0o755)
+    return stub
+
+
+def _write_replay_failure_stub(tmp_path: Path, log_path: Path, temp_marker: str) -> Path:
+    """A compose stub that fails exactly the replay invocation: the one whose
+    args carry ``-d <temp database>`` and no ``-c`` (every other invocation in
+    restore.sh is a ``-c ...`` psql command against ``postgres`` or names the
+    temp database via CREATE/RENAME rather than ``-d``)."""
+    stub = tmp_path / "compose_stub.sh"
+    script = _FAIL_ON_REPLAY_STUB_TEMPLATE.replace("__LOG_PATH__", str(log_path))
+    script = script.replace("__TEMP_MARKER__", temp_marker)
+    stub.write_text(script)
+    stub.chmod(0o755)
+    return stub
+
+
+def test_restore_never_drops_the_original_when_the_replay_fails(tmp_path):
+    """The central safety property, pinned against regression: a replay that
+    aborts partway through (a corrupt or truncated dump body, a rejected
+    statement) must never let the script proceed to drop '$DB'. Before this
+    test, a stub that always exits 0 could not distinguish a script that
+    checks the replay's exit status from one that does not."""
+    db = "restore_replay_failure_test"
+    temp_marker = f"{db}_restore_"
+    log_path = tmp_path / "invocations.log"
+    log_path.touch()
+    stub = _write_replay_failure_stub(tmp_path, log_path, temp_marker)
+    result = _invoke_restore(tmp_path, _complete_dump(tmp_path), db, stub)
+
+    assert result.returncode != 0, result.stdout
+
+    records = [_record_fields(ln) for ln in log_path.read_text().splitlines() if ln]
+    drops_original = [
+        fields for fields in records
+        if any("DROP DATABASE" in x and temp_marker not in x and db in x for x in fields)
+    ]
+    assert drops_original == [], (
+        "a failed replay must never reach the DROP DATABASE that removes "
+        f"the original: {drops_original}"
+    )
+
+    # STAGE was "temp_created" when the trap fired: the create-temp command
+    # committed (it is not the failing invocation) but the replay never
+    # finished, so the operator is told the original is untouched and only
+    # the leftover temp database needs cleaning up.
+    assert "Original database" in result.stderr and "is untouched" in result.stderr
+    assert "Drop the leftover restore copy" in result.stderr
+    assert temp_marker in result.stderr
+
+
+def test_restore_reports_nothing_to_clean_up_when_temp_creation_fails(tmp_path):
+    """STAGE stays 'none' when the very first compose command -- creating the
+    temp database -- is what fails, since the trap was armed but nothing had
+    happened yet."""
+    db = "restore_create_failure_test"
+    log_path = tmp_path / "invocations.log"
+    log_path.touch()
+    stub = _write_marker_failure_stub(tmp_path, log_path, "CREATE DATABASE")
+    result = _invoke_restore(tmp_path, _complete_dump(tmp_path), db, stub)
+
+    assert result.returncode != 0, result.stdout
+    assert "Original database" in result.stderr and "is untouched" in result.stderr
+    assert "Nothing else to clean up" in result.stderr
+
+
+def test_restore_explains_the_hand_finish_when_rename_fails(tmp_path):
+    """STAGE is 'original_dropped' when only the final RENAME fails: '$DB'
+    has already been dropped, so the operator needs the exact recovery
+    command, not just a status line."""
+    db = "restore_rename_failure_test"
+    temp_marker = f"{db}_restore_"
+    log_path = tmp_path / "invocations.log"
+    log_path.touch()
+    stub = _write_marker_failure_stub(tmp_path, log_path, "RENAME TO")
+    result = _invoke_restore(tmp_path, _complete_dump(tmp_path), db, stub)
+
+    assert result.returncode != 0, result.stdout
+
+    records = [_record_fields(ln) for ln in log_path.read_text().splitlines() if ln]
+    assert any(
+        "DROP DATABASE" in x and temp_marker not in x and db in x
+        for fields in records for x in fields
+    ), "the rename-failure scenario must have reached the original's DROP"
+
+    assert "was DROPPED" in result.stderr
+    assert "does not currently exist" in result.stderr
+    assert temp_marker in result.stderr
+    assert "Finish the restore by hand" in result.stderr
+    assert "RENAME TO" in result.stderr
