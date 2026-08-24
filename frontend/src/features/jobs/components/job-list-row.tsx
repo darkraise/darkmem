@@ -2,6 +2,7 @@ import { Switch } from "darkraise-ui/components/switch"
 import type { DemoJob } from "@/features/activity/types"
 import { JobActions } from "./job-actions"
 import { JobLastRun, JobSchedule } from "./job-schedule-state"
+import { listItemClass } from "@/components/darkmem"
 
 /**
  * One job as a row. Same data and same verbs as the card, laid out for
@@ -23,7 +24,12 @@ export function JobListRow({
   onToggleEnabled: (enabled: boolean) => void
 }) {
   return (
-    <div className="border-border bg-card flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md border px-3 py-2.5">
+    <div
+      className={listItemClass({
+        className:
+          "bg-card flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5",
+      })}
+    >
       <Switch
         checked={job.enabled}
         onCheckedChange={onToggleEnabled}

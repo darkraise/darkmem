@@ -19,7 +19,7 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from "darkraise-ui/components/toggle-group"
-import { EmptyState } from "@/components/darkmem"
+import { EmptyState, listItemClass } from "@/components/darkmem"
 import { cn } from "darkraise-ui/lib"
 import { useDemoMemoryGraph } from "@/demo/hooks"
 import {
@@ -196,7 +196,7 @@ export function MemoryGraphExplorer() {
             <div className="flex h-full items-center justify-center p-6">
               <EmptyState
                 kind="empty"
-          icon={Waypoints}
+                icon={Waypoints}
                 title="No entity graph yet"
                 description={`Project ${project} has no memories yet, so nothing has been extracted into entities or relations. The graph populates automatically as memories are captured; topic communities appear after the next clustering pass runs over it.`}
               />
@@ -420,11 +420,13 @@ export function MemoryGraphExplorer() {
                   return (
                     <div
                       key={topic.id}
-                      className={cn(
-                        "border-border flex items-start gap-2 rounded-md border p-2",
-                        focusTopic === topic.id &&
-                          "border-primary/45 bg-primary/5",
-                      )}
+                      className={listItemClass({
+                        className: cn(
+                          "flex items-start gap-2 p-2",
+                          focusTopic === topic.id &&
+                            "border-primary/45 bg-primary/5",
+                        ),
+                      })}
                     >
                       <span
                         className="mt-1 h-2.5 w-2.5 shrink-0 rounded-[3px]"

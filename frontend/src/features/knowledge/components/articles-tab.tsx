@@ -1,9 +1,14 @@
 import { useMemo, useState } from "react"
 import { Link } from "@tanstack/react-router"
-import { GitBranch,
-  FileText,
-} from "lucide-react"
-import { EmptyState } from "@/components/darkmem"
+import { GitBranch, FileText } from "lucide-react"
+import {
+  EmptyState,
+  ExclusionStrip,
+  LayerChip,
+  listItemClass,
+  VerificationBadge,
+  type VerificationStatus,
+} from "@/components/darkmem"
 import {
   Select,
   SelectContent,
@@ -11,12 +16,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "darkraise-ui/components/select"
-import {
-  ExclusionStrip,
-  LayerChip,
-  VerificationBadge,
-  type VerificationStatus,
-} from "@/components/darkmem"
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoArticles } from "@/demo/hooks"
 import { liveArticles, withheldArticles } from "@/demo/knowledge"
@@ -118,7 +117,12 @@ function CoverageReadout({ coverage }: { coverage: number | null }) {
 
 function ArticleRow({ article }: { article: ArticleView }) {
   return (
-    <div className="border-border flex flex-wrap items-start gap-3 rounded-md border p-2.5">
+    <div
+      className={listItemClass({
+        interactive: true,
+        className: "flex flex-wrap items-start gap-3 p-2.5",
+      })}
+    >
       <div className="flex shrink-0 flex-col items-start gap-1.5">
         <LayerChip layer={3} />
         <VerificationBadge
@@ -262,7 +266,7 @@ export function ArticlesTab() {
         ) : (
           <EmptyState
             kind="empty"
-          icon={FileText}
+            icon={FileText}
             title="No articles yet"
             description={
               DEMO

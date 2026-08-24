@@ -1,6 +1,6 @@
 import { Check, RefreshCw, TriangleAlert, type LucideIcon } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
-import { EmptyState } from "@/components/darkmem"
+import { EmptyState, listItemClass } from "@/components/darkmem"
 import { cn } from "darkraise-ui/lib"
 import { deriveRunFailedStep, failedStepSeverity } from "@/demo/activity"
 import type {
@@ -62,7 +62,7 @@ function PipelineRow({
   // never a collapsed batch pass/fail.
   const failedStep = deriveRunFailedStep(run)
   return (
-    <div className="border-border flex flex-col gap-2.5 rounded-md border p-3">
+    <div className={listItemClass({ className: "flex flex-col gap-2.5 p-3" })}>
       <div className="flex flex-wrap items-baseline gap-2.5">
         <span className="text-muted-foreground font-mono text-sm">
           {run.id}

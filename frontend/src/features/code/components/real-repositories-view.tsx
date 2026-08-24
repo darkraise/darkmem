@@ -2,7 +2,7 @@ import { useState } from "react"
 import { useForm } from "@tanstack/react-form"
 import { Clock, FolderGit2, Layers, RefreshCw, X } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
-import { EmptyState } from "@/components/darkmem"
+import { EmptyState, listItemClass } from "@/components/darkmem"
 import { Button } from "darkraise-ui/components/button"
 import { TextField, SwitchField } from "darkraise-ui/forms"
 import {
@@ -36,7 +36,11 @@ import {
 } from "@/hooks/api"
 import type { Repo, RepoTask, RepoUpdateParams } from "@/hooks/api"
 import { relativeTime } from "@/lib/format"
-import { editRepoSchema, type EditRepoInput, type ReindexInput } from "../schemas"
+import {
+  editRepoSchema,
+  type EditRepoInput,
+  type ReindexInput,
+} from "../schemas"
 import { AddRepoDialog } from "./add-repo-dialog"
 import { RealReindexDialog } from "./real-reindex-dialog"
 
@@ -74,8 +78,8 @@ function StaleBanner({ repo }: { repo: Repo }) {
           <span className="font-mono">
             {repo.last_indexed_commit ?? "unknown"}
           </span>
-          ) is still served to every code tool, labelled <b>stale</b>, until
-          the next run succeeds.
+          ) is still served to every code tool, labelled <b>stale</b>, until the
+          next run succeeds.
         </p>
       </div>
     </div>
@@ -318,10 +322,12 @@ function RepoRow({
 }) {
   return (
     <div
-      className={cn(
-        "border-border space-y-2 rounded-md border p-3",
-        repo.status === "stale" && "border-warning/40 bg-warning/3",
-      )}
+      className={listItemClass({
+        className: cn(
+          "space-y-2 p-3",
+          repo.status === "stale" && "border-warning/40 bg-warning/3",
+        ),
+      })}
     >
       <div className="flex flex-wrap items-center gap-2.5">
         <FolderGit2
@@ -335,7 +341,7 @@ function RepoRow({
           className={cn(
             "gap-1 font-mono uppercase",
             repo.status === "stale" &&
-              "border-warning/60 border-dashed bg-warning/10 text-warning",
+              "border-warning/60 bg-warning/10 text-warning border-dashed",
             repo.status === "error" &&
               "border-destructive/50 bg-destructive/10 text-destructive",
           )}
@@ -352,18 +358,13 @@ function RepoRow({
         <div className="flex shrink-0 gap-1">
           <Button
             variant="ghost"
-           
             disabled={repo.status === "cloning" || repo.status === "indexing"}
             onClick={() => onReindex(repo)}
           >
             <RefreshCw aria-hidden className="mr-1 h-3.5 w-3.5" />
             Reindex
           </Button>
-          <Button
-            variant="ghost"
-           
-            onClick={() => onEdit(repo)}
-          >
+          <Button variant="ghost" onClick={() => onEdit(repo)}>
             Edit
           </Button>
           <Button
@@ -378,8 +379,8 @@ function RepoRow({
 
       {repo.last_indexed_at && (
         <p className="text-muted-foreground text-sm">
-          branch <span className="font-mono">{repo.default_branch}</span> ·
-          last indexed {relativeTime(repo.last_indexed_at)}
+          branch <span className="font-mono">{repo.default_branch}</span> · last
+          indexed {relativeTime(repo.last_indexed_at)}
         </p>
       )}
 
@@ -404,9 +405,7 @@ export function RealRepositoriesView() {
 
   const [reindexingRepo, setReindexingRepo] = useState<Repo | null>(null)
   const [editingRepo, setEditingRepo] = useState<Repo | null>(null)
-  const [confirmDeleteRepo, setConfirmDeleteRepo] = useState<Repo | null>(
-    null,
-  )
+  const [confirmDeleteRepo, setConfirmDeleteRepo] = useState<Repo | null>(null)
 
   return (
     <ListSurface

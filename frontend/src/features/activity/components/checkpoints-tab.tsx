@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react"
 import { Bookmark, ChevronRight, Copy } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
-import { EmptyState } from "@/components/darkmem"
+import { EmptyState, listItemClass, useDetailLevel } from "@/components/darkmem"
 import { cn } from "darkraise-ui/lib"
-import { useDetailLevel } from "@/components/darkmem"
 import {
   useCheckpointDigest,
   useCheckpointRuns,
@@ -65,10 +64,13 @@ function RunCard({
       type="button"
       onClick={onSelect}
       aria-pressed={selected}
-      className={cn(
-        "border-border bg-card flex w-full flex-wrap items-center gap-2.5 rounded-md border p-3 text-left",
-        selected && "border-primary/45 bg-primary/5",
-      )}
+      className={listItemClass({
+        interactive: true,
+        className: cn(
+          "bg-card flex w-full flex-wrap items-center gap-2.5 p-3 text-left",
+          selected && "border-primary/45 bg-primary/5",
+        ),
+      })}
     >
       <Bookmark aria-hidden className="text-primary h-4 w-4 shrink-0" />
       <span className="flex min-w-0 flex-1 basis-56 flex-col gap-0.5">
@@ -131,7 +133,7 @@ function RunDetail({
     return (
       <EmptyState
         kind="empty"
-          icon={Bookmark}
+        icon={Bookmark}
         title="No checkpoints for this run yet"
         description="Run /darkmem-checkpoint (or let the session-end hook fire) to capture a resumable digest. Once one exists, a fresh session resumes from it with /darkmem-resume instead of reloading the whole context."
       />
@@ -301,11 +303,7 @@ export function CheckpointsTab() {
           state={digestLoading ? "empty" : digest ? "populated" : "empty"}
           meta={selected.id}
         >
-          <RunDetail
-            run={selected}
-            digest={digest}
-            isLoading={digestLoading}
-          />
+          <RunDetail run={selected} digest={digest} isLoading={digestLoading} />
         </ModuleSurface>
       )}
     </div>

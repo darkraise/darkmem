@@ -18,12 +18,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "darkraise-ui/components/dialog"
-import { EmptyState } from "@/components/darkmem"
+import { EmptyState, listItemClass, NumberField } from "@/components/darkmem"
 import { Input } from "darkraise-ui/components/input"
 import { Label } from "darkraise-ui/components/label"
 import { toast } from "darkraise-ui/components/sonner"
 import { cn } from "darkraise-ui/lib"
-import { NumberField } from "@/components/darkmem"
 import { validateJobConfig } from "@/demo/activity"
 import type { DemoJob } from "@/features/activity/types"
 import { useUsageByJob, type JobUsageRow } from "@/hooks/api"
@@ -246,10 +245,12 @@ function JobRow({
 
   return (
     <div
-      className={cn(
-        "border-border flex flex-col gap-2 rounded-md border p-3",
-        job.running && "border-primary/45 bg-primary/3",
-      )}
+      className={listItemClass({
+        className: cn(
+          "flex flex-col gap-2 p-3",
+          job.running && "border-primary/45 bg-primary/3",
+        ),
+      })}
     >
       <div className="flex flex-wrap items-center gap-2.5">
         <span className="font-mono text-sm font-semibold">{job.key}</span>
@@ -264,11 +265,7 @@ function JobRow({
         {/* Every run this job has made in the window, not the last one: a
             job's cost is a rate, and one run's number invites reading a cheap
             tick as a cheap job. The tooltip carries the run count. */}
-        <UsageChip
-          className="ml-auto"
-          pending={usagePending}
-          totals={usage}
-        />
+        <UsageChip className="ml-auto" pending={usagePending} totals={usage} />
         <span className="text-muted-foreground font-mono text-sm whitespace-nowrap">
           {job.next_run_label}
         </span>

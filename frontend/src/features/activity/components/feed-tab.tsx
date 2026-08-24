@@ -1,14 +1,16 @@
 import { useState } from "react"
-import { ArrowRight, Bell,
-  Activity,
-} from "lucide-react"
-import { EmptyState } from "@/components/darkmem"
+import { ArrowRight, Bell, Activity } from "lucide-react"
+import {
+  EmptyState,
+  LayerChip,
+  listItemClass,
+  VerificationBadge,
+} from "@/components/darkmem"
 import {
   ToggleGroup,
   ToggleGroupItem,
 } from "darkraise-ui/components/toggle-group"
 import { cn } from "darkraise-ui/lib"
-import { LayerChip, VerificationBadge } from "@/components/darkmem"
 import { FEED_CATEGORIES } from "@/demo/activity"
 import type { FeedCategory } from "@/features/activity/types"
 import { DEMO } from "@/lib/demo-flag"
@@ -18,10 +20,12 @@ import { useFeed, type FeedRowData } from "../use-feed"
 function FeedRow({ event }: { event: FeedRowData }) {
   return (
     <div
-      className={cn(
-        "border-border flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2",
-        event.toast && "border-destructive/45 bg-destructive/5",
-      )}
+      className={listItemClass({
+        className: cn(
+          "flex flex-wrap items-center gap-2.5 px-3 py-2",
+          event.toast && "border-destructive/45 bg-destructive/5",
+        ),
+      })}
     >
       <span className="border-border bg-muted text-muted-foreground rounded-sm border px-1.5 py-0.5 font-mono text-[10px] tracking-wide whitespace-nowrap">
         {event.type}
@@ -112,7 +116,7 @@ export function FeedTab() {
         ) : filtered.length === 0 ? (
           <EmptyState
             kind="empty"
-              icon={Activity}
+            icon={Activity}
             title={
               category === "all"
                 ? "No recent events"

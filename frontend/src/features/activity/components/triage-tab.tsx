@@ -1,6 +1,6 @@
 import { FileText, FolderGit2, RefreshCw, X } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
-import { EmptyState } from "@/components/darkmem"
+import { EmptyState, listItemClass } from "@/components/darkmem"
 import { cn } from "darkraise-ui/lib"
 import { groupFailuresByStep, isPoison, POISON_ATTEMPTS } from "@/demo/activity"
 import type { DemoPipelineFailure } from "@/features/activity/types"
@@ -21,10 +21,12 @@ function FailureRow({
 
   return (
     <div
-      className={cn(
-        "border-border flex flex-col gap-2 rounded-md border p-3",
-        poison && "border-warning/55 bg-warning/5",
-      )}
+      className={listItemClass({
+        className: cn(
+          "flex flex-col gap-2 p-3",
+          poison && "border-warning/55 bg-warning/5",
+        ),
+      })}
     >
       <div className="flex flex-wrap items-center gap-2.5">
         <Icon aria-hidden className="text-muted-foreground h-4 w-4 shrink-0" />

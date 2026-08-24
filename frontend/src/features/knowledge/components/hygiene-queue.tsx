@@ -26,7 +26,7 @@ import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { Checkbox } from "darkraise-ui/components/checkbox"
 import { toast } from "darkraise-ui/components/sonner"
-import { LayerChip, useDetailLevel } from "@/components/darkmem"
+import { LayerChip, listItemClass, useDetailLevel } from "@/components/darkmem"
 import { ApiError } from "@/lib/api"
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoStore } from "@/demo/store"
@@ -397,7 +397,12 @@ function MemoryRow({
   lead?: ReactNode
 }) {
   return (
-    <div className="border-border flex flex-wrap items-start gap-2.5 rounded-md border p-2">
+    <div
+      className={listItemClass({
+        interactive: true,
+        className: "flex flex-wrap items-start gap-2.5 p-2",
+      })}
+    >
       {lead}
       {row.status === "superseded" ? (
         <LifecycleBadge status="superseded" className="mt-0.5 shrink-0" />

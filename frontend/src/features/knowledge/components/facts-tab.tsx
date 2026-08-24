@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Link } from "@tanstack/react-router"
-import { Loader2, Search,
-  Archive,
-} from "lucide-react"
+import { Loader2, Search, Archive } from "lucide-react"
 import { Skeleton } from "darkraise-ui/components/skeleton"
-import { EmptyState } from "@/components/darkmem"
+import {
+  EmptyState,
+  LayerChip,
+  listItemClass,
+  useDetailLevel,
+  VerificationBadge,
+} from "@/components/darkmem"
 import { Input } from "darkraise-ui/components/input"
 import {
   Select,
@@ -15,11 +19,6 @@ import {
 } from "darkraise-ui/components/select"
 import { Button } from "darkraise-ui/components/button"
 import { cn } from "darkraise-ui/lib"
-import {
-  LayerChip,
-  useDetailLevel,
-  VerificationBadge,
-} from "@/components/darkmem"
 import { TimelineScrubber } from "@/components/timeline-scrubber"
 import { dayKeyToMs, localDayKey } from "@/lib/format"
 import { buildTimelineScale, dateToFraction } from "@/lib/timeline"
@@ -57,11 +56,17 @@ export function FactRow({
   const candidate = fact.verification_status === "candidate"
   return (
     <div
-      className={cn(
-        "border-border space-y-1.5 rounded-md border p-2.5",
-        candidate && "bg-muted/15 border-dashed",
-        focused && "ring-primary/60 ring-1",
-      )}
+      // The dashed edge is now every row's, so `candidate` keeps the tint and
+      // the badge that names it in words rather than a border nothing else
+      // contrasts with.
+      className={listItemClass({
+        interactive: true,
+        className: cn(
+          "space-y-1.5 p-2.5",
+          candidate && "bg-muted/15",
+          focused && "ring-primary/60 ring-1",
+        ),
+      })}
     >
       <div className="flex flex-wrap items-center gap-2">
         <LayerChip layer={2} />
@@ -397,10 +402,7 @@ export function FactsTab() {
                           {loaded} of {total} loaded
                         </p>
                         {subjectActive && (
-                          <Button
-                            variant="outline"
-                            onClick={fetchMore}
-                          >
+                          <Button variant="outline" onClick={fetchMore}>
                             Load more
                           </Button>
                         )}
@@ -464,7 +466,7 @@ export function FactsTab() {
               // of corroborated facts until independent origins accumulate.
               <EmptyState
                 kind="empty"
-          icon={Archive}
+                icon={Archive}
                 title="No corroborated facts yet"
                 description="no corroborated facts yet; candidates are served labelled in search — corroboration takes several independent origins across memory, code, and human review. Nothing here means not yet, not broken."
               />

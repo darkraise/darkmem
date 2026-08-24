@@ -9,8 +9,7 @@ import {
 } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
-import { EmptyState } from "@/components/darkmem"
-import { useDetailLevel } from "@/components/darkmem"
+import { EmptyState, listItemClass, useDetailLevel } from "@/components/darkmem"
 import { PRIOR_DISMISSED_NOTE } from "@/demo/data-exports"
 import {
   useTopics,
@@ -46,7 +45,7 @@ function CommunityCard({
 }) {
   const level = useDetailLevel((s) => s.level)
   return (
-    <div className="border-border space-y-2 rounded-md border p-2.5">
+    <div className={listItemClass({ className: "space-y-2 p-2.5" })}>
       <div className="flex flex-wrap items-center gap-2">
         <Waypoints
           aria-hidden
@@ -172,9 +171,7 @@ function PinSuggestionCard({
       <div className="border-border flex flex-wrap gap-2 border-t border-dashed pt-2">
         {/* Accept pins a subject; it never auto-creates an article. Both
             verbs key on the subject key, never on a community id. */}
-        <Button
-          onClick={() => onDecide(suggestion.subjectKey, "accepted")}
-        >
+        <Button onClick={() => onDecide(suggestion.subjectKey, "accepted")}>
           <MapPin className="mr-1.5 size-3.5" />
           Accept — pin subject
         </Button>
@@ -228,7 +225,7 @@ export function TopicsTab({ project = "default" }: { project?: string }) {
         ) : (
           <EmptyState
             kind="empty"
-          icon={Waypoints}
+            icon={Waypoints}
             title="No topics detected yet"
             description="Community detection clusters memories once enough of them share entities — this project has not accumulated enough yet, or the detection job has not completed its first run. Nothing here means not yet, not broken."
           />
@@ -252,7 +249,7 @@ export function TopicsTab({ project = "default" }: { project?: string }) {
         {suggestions.length === 0 && (
           <EmptyState
             kind="empty"
-          icon={MapPin}
+            icon={MapPin}
             title="Nothing to pin yet"
             description="A subject is suggested once its community is new or growing and it already anchors verified facts. None qualify in this project right now."
           />

@@ -7,6 +7,7 @@ import {
   LayerChip,
   VerificationBadge,
   WhyRetrievedTrace,
+  listItemClass,
   type KnowledgeLayer,
   type VerificationStatus,
 } from "@/components/darkmem"
@@ -48,10 +49,10 @@ export function MemoryRow({
   return (
     <div
       id={`memory-row-${memory.id}`}
-      className={cn(
-        "border-border rounded-md border p-2.5 transition-shadow",
-        focused && "ring-primary/60 ring-1",
-      )}
+      className={listItemClass({
+        interactive: true,
+        className: cn("p-2.5", focused && "ring-primary/60 ring-1"),
+      })}
     >
       <div className="flex items-start gap-2.5">
         <div className="flex shrink-0 flex-wrap items-center gap-1.5 pt-0.5">

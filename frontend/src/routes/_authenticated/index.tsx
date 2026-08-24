@@ -22,11 +22,15 @@ import {
   StatLabel,
   StatValue,
 } from "darkraise-ui/components/stat"
-import { EmptyState } from "@/components/darkmem"
+import {
+  EmptyState,
+  LayerChip,
+  listItemClass,
+  VerificationBadge,
+} from "@/components/darkmem"
 import { PageChrome } from "@/components/app-chrome"
 import { relativeTime } from "@/lib/format"
 import type { ActivityEvent } from "@/features/dashboard/types"
-import { LayerChip, VerificationBadge } from "@/components/darkmem"
 import { CalendarCard } from "@/features/dashboard/calendar-card"
 import { useContributionCalendar } from "@/features/dashboard/use-contribution-calendar"
 import { useDashboardStats } from "@/features/dashboard/use-dashboard-stats"
@@ -75,7 +79,9 @@ const KIND_ICONS: Record<ActivityEvent["kind"], LucideIcon> = {
 function ActivityFeedItem({ event }: { event: ActivityEvent }) {
   const Icon = KIND_ICONS[event.kind]
   return (
-    <div className="border-border flex items-start gap-3 rounded-md border p-2.5">
+    <div
+      className={listItemClass({ className: "flex items-start gap-3 p-2.5" })}
+    >
       <span className="bg-muted text-muted-foreground mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full">
         <Icon aria-hidden className="h-4 w-4" />
       </span>
@@ -159,7 +165,7 @@ function DashboardPage() {
           ) : (
             <EmptyState
               kind="empty"
-          icon={Activity}
+              icon={Activity}
               title="No activity yet"
               description="Nothing has been journalled on this instance. Capture a memory or wait for a scheduled job, and it appears here."
             />

@@ -24,13 +24,14 @@ import {
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { Skeleton } from "darkraise-ui/components/skeleton"
-import { EmptyState } from "@/components/darkmem"
-import { toast } from "darkraise-ui/components/sonner"
 import {
+  EmptyState,
   LayerChip,
-  VerificationBadge,
+  listItemClass,
   useDetailLevel,
+  VerificationBadge,
 } from "@/components/darkmem"
+import { toast } from "darkraise-ui/components/sonner"
 import { ApiError } from "@/lib/api"
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoStore } from "@/demo/store"
@@ -202,7 +203,7 @@ function FactRow({
 }) {
   const level = useDetailLevel((s) => s.level)
   return (
-    <div className="border-border space-y-2 rounded-md border p-3">
+    <div className={listItemClass({ className: "space-y-2 p-3" })}>
       <div className="flex flex-wrap items-center gap-2">
         <LayerChip layer={2} />
         {/* Honesty labels: unconditional in every detail level. */}
@@ -250,10 +251,7 @@ function FactRow({
           Reject
         </Button>
         {fact.suspected_contradiction != null && (
-          <Button
-            variant="outline"
-            onClick={() => onDismissSuspicion(fact)}
-          >
+          <Button variant="outline" onClick={() => onDismissSuspicion(fact)}>
             <EyeOff className="mr-1.5 size-3.5" />
             Dismiss suspicion
           </Button>
@@ -275,7 +273,7 @@ function FactRow({
 
 function ArticleRow({ article }: { article: ReviewArticleRowData }) {
   return (
-    <div className="border-border space-y-2 rounded-md border p-3">
+    <div className={listItemClass({ className: "space-y-2 p-3" })}>
       <div className="flex flex-wrap items-center gap-2">
         <LayerChip layer={3} />
         <Badge variant="outline" size="sm" className="font-mono">
@@ -517,10 +515,7 @@ export function ReviewQueue({ project }: { project?: string }) {
               facts.total === 1 ? "s" : ""
             } — go back to see them.`}
             action={
-              <Button
-                variant="outline"
-                onClick={() => setFactsOffset(0)}
-              >
+              <Button variant="outline" onClick={() => setFactsOffset(0)}>
                 Back to the first page
               </Button>
             }
@@ -585,10 +580,7 @@ export function ReviewQueue({ project }: { project?: string }) {
               articles.total === 1 ? "" : "s"
             } still remain${articles.total === 1 ? "s" : ""} — go back to see them.`}
             action={
-              <Button
-                variant="outline"
-                onClick={() => setArticlesOffset(0)}
-              >
+              <Button variant="outline" onClick={() => setArticlesOffset(0)}>
                 Back to the first page
               </Button>
             }
