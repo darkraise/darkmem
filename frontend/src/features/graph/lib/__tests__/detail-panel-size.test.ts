@@ -44,8 +44,12 @@ describe("clampPanelWidth", () => {
   })
 
   describe("a container too narrow for both floors", () => {
-    // The canvas wins: a panel that has eaten the graph is useless, while a
-    // panel under its own minimum is merely cramped.
+    // This is `clampPanelWidth`'s own retired policy, still exercised here
+    // because `widthFromPointer` still calls it during a drag: the canvas
+    // wins outright and the panel is squeezed toward zero. `panelLayout`
+    // (below) is what actually lays the panel out on the page now, and
+    // floats it instead once the container is this narrow -- see its own
+    // doc comment.
     it("never lets the panel exceed what the canvas leaves", () => {
       const container = GRAPH_MIN_WIDTH + 100
       expect(clampPanelWidth(400, container)).toBe(100)
