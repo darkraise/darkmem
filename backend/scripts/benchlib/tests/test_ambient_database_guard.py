@@ -22,7 +22,11 @@ call-graph analysis. It does **not** see:
   does not;
 - SQL loaded from a ``.sql`` file or other data file at runtime;
 - anything destructive that is not SQL at all -- exactly `run.py`'s MCP
-  `memory_delete` call, which ships in this same commit unmatched.
+  `memory_delete` call, which this scan does not match;
+- anything outside ``SCRIPTS`` (``backend/scripts``) at all -- the walk
+  below is rooted there, so a destructive harness landing in
+  ``backend/app/`` or the repo-root ``scripts/`` is invisible to the
+  population scan regardless of how its SQL is written.
 
 `_names_the_guard` has the mirror-image limitation: it proves
 `assert_destructive_target_allowed` is *named* somewhere in the module, not
