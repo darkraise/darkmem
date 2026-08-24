@@ -1556,7 +1556,9 @@ produce.
   none may appear in an ops change. The reason is T4.09's audit (38
   in-process assumptions; 17 BREAKS at N = 2), not the inert PPR
   snapshot the design docs lead with: the WebSocket fan-out, the job
-  scheduler (no lease — all 21 jobs fire N times per tick), the per-IP
+  scheduler (no lease — every registered job fires N times per tick; 21
+  when T4.09 counted, 24 today, and the number is not what the finding
+  rests on), the per-IP
   login limiter, the live orchestrator swap and seven unlocked job
   cursors all break first, and `backend/app` holds no cross-process
   serialisation primitive to build on. Raising the count is a flagged
