@@ -15,6 +15,9 @@ import {
   groundEdgeAlpha,
   groundNodeAlpha,
   hoverGroundAlpha,
+  hoverGroundEdgeAlpha,
+  edgeEmphasis,
+  litByHover,
   labelVisible,
   recede,
 } from "@/features/graph/lib/focus-model"
@@ -406,6 +409,10 @@ export function Graph2DRenderer({
 
     const sigma = new Sigma(graph, containerRef.current, {
       antiAliasingFeather: 2,
+      // Sorts each program's items by the `zIndex` the reducers emit. Only the
+      // edge reducer sets one, so node paint order is unchanged: sigma skips
+      // the sort entirely when a category's z-extent is flat.
+      zIndex: true,
       renderLabels: true,
       renderEdgeLabels: false,
       labelSize: 12,
@@ -485,7 +492,8 @@ export function Graph2DRenderer({
             alpha,
           )
         }
-        if (tier === "ground") {
+        const litNode = litByHover(node, hov, hoverNeighbour)
+        if (tier === "ground" && !litNode) {
           dim(groundNodeAlpha(dimUnrelated))
         } else if (!sel && hov && hov !== node && !hoverNeighbour) {
           // Nothing selected, but the pointer is on something: sort the
@@ -495,7 +503,7 @@ export function Graph2DRenderer({
 
         // A dimmed node with an undimmed label reads as a label floating over
         // nothing -- the label has to recede with the thing it names.
-        if (tier === "ground") {
+        if (tier === "ground" && !litNode) {
           res.labelColor = recede(
             t.foreground,
             t.background,
@@ -539,31 +547,27 @@ export function Graph2DRenderer({
         // Emphasis never recolours an edge: its colour is its endpoints', and
         // repainting it the selection colour threw that away exactly when the
         // neighbourhood mattered most.
-        if (sel) {
-          if (src === sel || tgt === sel) {
-            res.size = SELECTED_EDGE_SIZE
-          } else {
-            res.color = recede(
-              data.color || t.border,
-              t.background,
-              groundEdgeAlpha(dimUnrelated),
-            )
-          }
+        const { zIndex, ground } = edgeEmphasis(src, tgt, sel, hov)
+
+        if (sel && (src === sel || tgt === sel)) res.size = SELECTED_EDGE_SIZE
+        if (hov && (src === hov || tgt === hov)) {
+          res.size = Math.max(res.size ?? 0, HOVER_EDGE_SIZE)
         }
 
-        if (hov) {
-          if (src === hov || tgt === hov) {
-            res.size = Math.max(res.size ?? 0, HOVER_EDGE_SIZE)
-          } else if (!sel) {
-            // Hovering with nothing selected sorts the canvas too, half as
-            // far as a committed selection does.
-            res.color = recede(
-              data.color || t.border,
-              t.background,
-              hoverGroundAlpha(dimUnrelated) * 0.35,
-            )
-          }
+        if (ground) {
+          res.color = recede(
+            data.color || t.border,
+            t.background,
+            ground === "selection"
+              ? groundEdgeAlpha(dimUnrelated)
+              : hoverGroundEdgeAlpha(dimUnrelated),
+          )
         }
+
+        // Without this the ground is painted in whatever order the graph
+        // iterates and crosses over a lit spoke — the neighbourhood is
+        // emphasised and then partly painted back out.
+        res.zIndex = zIndex
 
         return res
       },

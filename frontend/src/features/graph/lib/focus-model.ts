@@ -18,6 +18,59 @@ export function focusTier(
   return isNeighbour ? "adjacent" : "ground"
 }
 
+/**
+ * Which ground an unemphasised item recedes into, if any.
+ *
+ * A committed selection sorts the canvas further than a transient hover, so
+ * the two are named rather than collapsed into a boolean.
+ */
+export type Ground = "selection" | "hover" | null
+
+export interface EdgeEmphasis {
+  /** Touches the selection or the pointer. A lit edge keeps its own colour. */
+  lit: boolean
+  /** Paint order. Every edge shares one program, so this index alone decides
+   *  whether the ground can cross over a lit spoke. */
+  zIndex: number
+  ground: Ground
+}
+
+/**
+ * How an edge is treated under the current selection and pointer.
+ *
+ * Hover lights its spokes **whether or not something is selected**: with a
+ * node committed, pointing at another one is a question about that node, and
+ * answering it means its edges leave the ground too.
+ */
+export function edgeEmphasis(
+  source: string,
+  target: string,
+  selectedId: string | null,
+  hoveredId: string | null,
+): EdgeEmphasis {
+  const touchesSelection =
+    !!selectedId && (source === selectedId || target === selectedId)
+  const touchesHover = !!hoveredId && (source === hoveredId || target === hoveredId)
+  const lit = touchesSelection || touchesHover
+  const ground: Ground = lit ? null : selectedId ? "selection" : hoveredId ? "hover" : null
+  return { lit, zIndex: lit ? 1 : 0, ground }
+}
+
+/**
+ * Whether a node leaves the ground because the pointer is on it or on a
+ * neighbour of it.
+ *
+ * Paired with `edgeEmphasis`: a lit spoke ending on a node still pushed back
+ * to the ground reads as an edge to nowhere.
+ */
+export function litByHover(
+  nodeId: string,
+  hoveredId: string | null,
+  isHoverNeighbour: boolean,
+): boolean {
+  return !!hoveredId && (hoveredId === nodeId || isHoverNeighbour)
+}
+
 /** Opacity of a grounded node — the dim preference, as a fraction. */
 export function groundNodeAlpha(dimPercent: number): number {
   return dimPercent / 100
@@ -46,6 +99,13 @@ const GROUND_EDGE_FACTOR = 0.35
 
 export function groundEdgeAlpha(dimPercent: number): number {
   return groundNodeAlpha(dimPercent) * GROUND_EDGE_FACTOR
+}
+
+/** The hover ground's edge strength. Derived from the same factor for the
+ *  reason above: the call site used to spell the 0.35 out itself, which is
+ *  the second knob this factor exists to prevent. */
+export function hoverGroundEdgeAlpha(dimPercent: number): number {
+  return hoverGroundAlpha(dimPercent) * GROUND_EDGE_FACTOR
 }
 
 /**
