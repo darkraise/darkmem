@@ -221,12 +221,21 @@ async def test_skipping_registration_breaks_the_insert(session, monkeypatch):
 
     monkeypatch.setattr(be_mod, "ensure_partition", _noop_ensure_partition)
 
+    # The failing insert runs inside its own SAVEPOINT so recovering from it
+    # rolls back that savepoint and nothing else. A bare `session.rollback()`
+    # here — which is what this test did until 2026-08-24 — deassociates the
+    # outer transaction the `session` fixture uses as its isolation boundary
+    # (the SAWarning it logged said so), so everything this test wrote after
+    # it escaped into the next test in the same process. Harmless under
+    # pytest's alphabetical file order and not under any other: it reddened
+    # four `test_block_embedding_refresh.py` tests, whose sweep is corpus-wide
+    # by design and therefore sees a stray block from any other file.
     with pytest.raises(Exception) as excinfo:
-        await be_mod.embed_blocks(session, embedder, block_ids=block_ids)
+        async with session.begin_nested():
+            await be_mod.embed_blocks(session, embedder, block_ids=block_ids)
     assert "block_embeddings__" in str(excinfo.value) or "does not exist" in str(
         excinfo.value
     ).lower()
-    await session.rollback()
 
     monkeypatch.undo()
 
