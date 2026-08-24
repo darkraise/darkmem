@@ -621,6 +621,11 @@ async def materialize(
             "memory_id": c.memory_id,
             "content": c.content,
             "source": c.source,
+            # Carried so Phase 2 can attribute this memory's spend to the
+            # project that paid for it. Without it every ingest usage row
+            # reports project NULL and the cost view's project filter answers
+            # zero for a corpus that is entirely one project's.
+            "project": c.project,
             "tags": list(c.replay.get("tags") or []),
             "memory_type": c.replay.get("memory_type"),
             "created_at": (

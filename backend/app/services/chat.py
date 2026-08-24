@@ -11,6 +11,7 @@ from app.models.chat import Conversation, Message
 from app.schemas.facts import FactBadge
 from app.schemas.retrieval_trace import RetrievalEnvelope
 from app.services.llm import LLMOrchestrator
+from app.services.usage_recorder import UsageSubject, subject_scope
 from app.services import prompt
 from app.repositories.relational import PostgresMemoryRepository
 from app.repositories.vector import MemoryFilter
@@ -155,8 +156,16 @@ class ChatService:
         self.session.add(user_msg)
         await self.session.commit()
 
+        # Everything this turn spends -- the retrieval embed, the reranker, the
+        # answer stream -- belongs to one conversation turn. The retrieval half
+        # is scoped because it fans out through several services; the stream is
+        # told explicitly, because its metering runs in a ``finally`` that may
+        # execute after this generator's context is gone.
+        subject = UsageSubject("chat", f"{conversation_id}:{user_msg.id}", None)
+
         # Retrieve context
-        retrieval = await self._retrieve(content, context)
+        with subject_scope(subject):
+            retrieval = await self._retrieve(content, context)
 
         # Emit sources event
         yield {
@@ -173,7 +182,9 @@ class ChatService:
         # Stream LLM response
         full_response = []
         try:
-            async for token in self.llm.chat_completion_stream("reasoning", llm_messages):
+            async for token in self.llm.chat_completion_stream(
+                "reasoning", llm_messages, usage_subject=subject,
+            ):
                 full_response.append(token)
                 yield {"type": "token", "content": token}
         except Exception as e:

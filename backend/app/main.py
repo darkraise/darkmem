@@ -16,7 +16,7 @@ from sqlalchemy import text
 
 from app.api.mcp.server import mcp as mcp_server, set_pipeline
 from app.api.spa import mount_spa
-from app.api.routes import analytics, api_keys as api_key_routes, articles as articles_routes, auth, buffer as buffer_routes, chat, checkpoints as checkpoint_routes, code, config, distribution as distribution_routes, documents as documents_routes, dream_digest as dream_digest_routes, events as events_routes, facts as facts_routes, graph, hygiene_queue, jobs, knowledge_search as knowledge_search_routes, llm_providers, memories, overview as overview_routes, pipeline as pipeline_routes, pipeline_failures, projects as projects_routes, ratification as ratification_routes, reembed, repos, review_queue, setup, system, tags, topics as topics_routes, vectors
+from app.api.routes import analytics, api_keys as api_key_routes, articles as articles_routes, auth, buffer as buffer_routes, chat, checkpoints as checkpoint_routes, code, config, distribution as distribution_routes, documents as documents_routes, dream_digest as dream_digest_routes, events as events_routes, facts as facts_routes, graph, hygiene_queue, jobs, knowledge_search as knowledge_search_routes, llm_providers, memories, overview as overview_routes, pipeline as pipeline_routes, pipeline_failures, projects as projects_routes, ratification as ratification_routes, reembed, repos, review_queue, setup, system, tags, topics as topics_routes, usage as usage_routes, vectors
 from app.api.websocket import websocket_endpoint
 from app.config import settings
 from app.schemas.envelope import ErrorDetail, ErrorEnvelope
@@ -68,12 +68,18 @@ async def lifespan(app: FastAPI):
 
     try:
         from app.services.config import get_llm_config
+        from app.services.usage_recorder import UsageRecorder
         from app.services.embedder_registry import (
             EmbedderInfo, embedder_registry, parse_fingerprint,
         )
         async with async_session_factory() as session:
             llm_config = await get_llm_config(session)
-        llm = LLMOrchestrator(llm_config)
+        # The recorder is what makes the metering exist at all: every spending
+        # path in the orchestrator reports to `self._recorder`, and one built
+        # without it measures nothing while looking identical from outside.
+        llm = LLMOrchestrator(
+            llm_config, recorder=UsageRecorder(async_session_factory),
+        )
 
         # Hydrate the in-process registry cache from existing rows so that
         # already-known fingerprints don't trigger redundant DDL.
@@ -211,7 +217,10 @@ async def lifespan(app: FastAPI):
     from app.services.job_registry import FieldDescriptor, Job, JobRegistry
     from app.services.job_runners import (
         JOB_RUN_CLEANUP_JOB_KEY,
+        LLM_USAGE_CLEANUP_JOB_KEY,
+        LLM_USAGE_CONFIG_SCHEMA,
         make_job_run_cleanup_runner,
+        make_llm_usage_cleanup_runner,
         make_repo_sync_runner,
         make_buffer_flush_runner,
         make_code_enrichment_runner,
@@ -320,6 +329,22 @@ async def lifespan(app: FastAPI):
             default=5000, min=100, max=1000000,
             help="Rows kept after a sweep, newest first.",
         )],
+    ))
+
+    job_registry.register(Job(
+        key=LLM_USAGE_CLEANUP_JOB_KEY,
+        display_name="LLM Usage Retention",
+        description=(
+            "Deletes llm_usage rows past the retention window. Trimmed by age "
+            "rather than by row count, because the question this table answers "
+            "is what the last N days cost -- a row ceiling would shorten that "
+            "answer during exactly the busy period worth investigating."
+        ),
+        # Nightly, after the backup timer's 03:30 so a sweep never races a dump.
+        default_cron="0 4 * * *",
+        min_interval_seconds=3600,
+        runner=make_llm_usage_cleanup_runner(app, async_session_factory),
+        config_schema=LLM_USAGE_CONFIG_SCHEMA,
     ))
 
     job_registry.register(Job(
@@ -888,6 +913,7 @@ app.include_router(events_routes.router)
 app.include_router(buffer_routes.router)
 app.include_router(documents_routes.router)
 app.include_router(reembed.router)
+app.include_router(usage_routes.router)
 app.include_router(api_key_routes.router)
 app.include_router(setup.router)
 app.include_router(system.router)

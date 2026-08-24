@@ -18,6 +18,7 @@ from app.services import index_debt
 from app.services.code_pipeline import CodePipeline
 from app.services.events import record_event
 from app.services.repo_manager import RepoManager
+from app.services.usage_recorder import UsageSubject, subject_scope
 from app.services.task_registry import TaskRegistry
 
 logger = logging.getLogger(__name__)
@@ -184,46 +185,51 @@ def _spawn_repo_index(
     llm = pipeline.llm
 
     async def _run_index():
-        try:
-            async with session_factory() as session:
-                fresh_vector_repo = None
-                if has_vector_repo:
-                    from app.repositories.vector import PostgresVectorRepository
-                    fresh_vector_repo = PostgresVectorRepository(session, collection_name)
-                idx = CodePipeline(
-                    session=session,
-                    llm=llm,
-                    vector_repo=fresh_vector_repo,
-                    repo_manager=RepoManager(session),
-                )
-                run_kwargs = {}
-                if full:
-                    run_kwargs["full"] = full
-                if enrich_symbols:
-                    run_kwargs["enrich_symbols"] = enrich_symbols
-                if generate_wiki:
-                    run_kwargs["generate_wiki"] = generate_wiki
-                await idx.run(repo_id, **run_kwargs)
-        except Exception as e:
-            logger.error(f"Background {kind} failed for {repo_id}: {e}")
-            from app.api.websocket import event_manager
-            await event_manager.broadcast("repo.indexing_failed", {"repo_id": str(repo_id), "error": str(e)[:200]})
+        # Set inside the task: the request that spawned it has returned 202
+        # and its scope is gone before the first symbol is enriched.
+        with subject_scope(UsageSubject(
+            "maintenance", f"{kind}:{repo_id}", None,
+        )):
             try:
                 async with session_factory() as session:
-                    from app.models.code import Repository
-                    from sqlalchemy import select
-                    r = (await session.execute(
-                        select(Repository).where(Repository.id == repo_id)
-                    )).scalar_one_or_none()
-                    # CodePipeline.run() already set and committed its own
-                    # terminal status (including "stale" when it kept a prior
-                    # graph); don't stomp that back to a bare "error" here.
-                    if r and r.status != "stale":
-                        r.status = "error"
-                        r.status_message = str(e)[:500]
-                        await session.commit()
-            except Exception as inner_e:
-                logger.error("Failed to set error status for repo %s: %s", repo_id, inner_e)
+                    fresh_vector_repo = None
+                    if has_vector_repo:
+                        from app.repositories.vector import PostgresVectorRepository
+                        fresh_vector_repo = PostgresVectorRepository(session, collection_name)
+                    idx = CodePipeline(
+                        session=session,
+                        llm=llm,
+                        vector_repo=fresh_vector_repo,
+                        repo_manager=RepoManager(session),
+                    )
+                    run_kwargs = {}
+                    if full:
+                        run_kwargs["full"] = full
+                    if enrich_symbols:
+                        run_kwargs["enrich_symbols"] = enrich_symbols
+                    if generate_wiki:
+                        run_kwargs["generate_wiki"] = generate_wiki
+                    await idx.run(repo_id, **run_kwargs)
+            except Exception as e:
+                logger.error(f"Background {kind} failed for {repo_id}: {e}")
+                from app.api.websocket import event_manager
+                await event_manager.broadcast("repo.indexing_failed", {"repo_id": str(repo_id), "error": str(e)[:200]})
+                try:
+                    async with session_factory() as session:
+                        from app.models.code import Repository
+                        from sqlalchemy import select
+                        r = (await session.execute(
+                            select(Repository).where(Repository.id == repo_id)
+                        )).scalar_one_or_none()
+                        # CodePipeline.run() already set and committed its own
+                        # terminal status (including "stale" when it kept a prior
+                        # graph); don't stomp that back to a bare "error" here.
+                        if r and r.status != "stale":
+                            r.status = "error"
+                            r.status_message = str(e)[:500]
+                            await session.commit()
+                except Exception as inner_e:
+                    logger.error("Failed to set error status for repo %s: %s", repo_id, inner_e)
 
     task = asyncio.create_task(_run_index())
     TaskRegistry.register(repo_id, kind, task, "Indexing repository...")

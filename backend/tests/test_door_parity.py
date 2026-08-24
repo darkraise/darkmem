@@ -149,6 +149,44 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="usage.read",
+        status=REST_ONLY,
+        rest=(
+            ("GET", f"{V1}/usage/overview"),
+            ("GET", f"{V1}/usage/series"),
+            ("GET", f"{V1}/usage/by-subject/{{subject_type}}/{{subject_id}}"),
+            ("GET", f"{V1}/usage/top"),
+            ("POST", f"{V1}/usage/subject-totals"),
+            ("GET", f"{V1}/usage/by-job"),
+        ),
+        mcp=(),
+        reason=(
+            "What the operator's own agents cost, read by the operator. An "
+            "MCP twin would hand the metered party its own meter -- the same "
+            "review-folded-back-into-the-reviewed shape the research-runs row "
+            "below records, and sharper here, because an agent that can read "
+            "which of its calls were expensive is being handed the only signal "
+            "a human has for noticing that. It is also not a capability an "
+            "agent needs: nothing an agent does with a memory depends on what "
+            "the call cost."
+        ),
+    ),
+    Surface(
+        name="usage.prices",
+        status=REST_ONLY,
+        rest=(
+            ("GET", f"{V1}/usage/prices"),
+            ("PUT", f"{V1}/usage/prices"),
+        ),
+        mcp=(),
+        reason=(
+            "Model rates are an operator setting, and the write half decides "
+            "what every later call is reported to have cost. Exposing it to "
+            "an agent would let the measured party set its own price, which is "
+            "the same control the distribution curb keeps with the human."
+        ),
+    ),
+    Surface(
         name="config.research_runs",
         status=REST_ONLY,
         rest=(

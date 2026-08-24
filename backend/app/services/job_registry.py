@@ -49,6 +49,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.models.config import Config
 
 from app.models.job_run import JobRun
+from app.services.usage_recorder import UsageSubject, subject_scope
 
 logger = logging.getLogger(__name__)
 
@@ -380,12 +381,19 @@ class JobRegistry:
             started_at = cfg.last_run_at
             result = None
             try:
-                if job.max_run_seconds is not None:
-                    result = await asyncio.wait_for(
-                        job.runner(), timeout=job.max_run_seconds
-                    )
-                else:
-                    result = await job.runner()
+                # The subject has to exist before the runner does any work, and
+                # `job_runs.id` does not: it is minted after the runner returns,
+                # and a run that reports nothing writes no row at all. Key and
+                # start time identify the run without waiting for it.
+                with subject_scope(UsageSubject(
+                    "job_run", f"{key}@{started_at.isoformat()}", None,
+                )):
+                    if job.max_run_seconds is not None:
+                        result = await asyncio.wait_for(
+                            job.runner(), timeout=job.max_run_seconds
+                        )
+                    else:
+                        result = await job.runner()
                 cfg.last_status = "ok"
                 cfg.last_error = None
             except asyncio.TimeoutError:

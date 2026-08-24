@@ -135,13 +135,13 @@ async def test_simple_llm_mode_merges_to_one_call(setup_database, monkeypatch):
     classify_calls: list[str] = []
 
     async def fake_extract(content, *, system_prompt=None, relation_rescue=True,
-                           with_classification=False):
+                           with_classification=False, usage_subject=None):
         extract_calls.append(with_classification)
         return {"entities": [], "relationships": [], "memory_type": "decision",
                 "importance": 0.7, "summary": "Chose Postgres.",
                 "emotions": ["proud"], "flags": []}
 
-    async def fake_classify(content, areas, prompt, mode="simple"):
+    async def fake_classify(content, areas, prompt, mode="simple", usage_subject=None):
         classify_calls.append(content)
         return {"hall": "fact", "summary": None, "emotions": [], "flags": []}
 
@@ -186,13 +186,13 @@ async def test_ml_classifier_keeps_two_calls(setup_database, monkeypatch):
     ml_calls: list[str] = []
 
     async def fake_extract(content, *, system_prompt=None, relation_rescue=True,
-                           with_classification=False):
+                           with_classification=False, usage_subject=None):
         extract_calls.append(with_classification)
         return {"entities": [], "relationships": [], "memory_type": "problem",
                 "importance": 0.7}
 
     class _FakeML:
-        async def classify(self, content, areas, prompt, mode="simple"):
+        async def classify(self, content, areas, prompt, mode="simple", usage_subject=None):
             ml_calls.append(content)
             return {"hall": "problem", "summary": None, "emotions": [], "flags": []}
 

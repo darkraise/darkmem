@@ -49,6 +49,7 @@ class MLClassificationService:
         enabled_areas: list[str],
         system_prompt: str,  # unused; kept for interface parity with LLM service
         mode: str = "simple",
+        usage_subject=None,  # unused; this classifier spends no tokens
     ) -> dict:
         valid_names = sorted(get_merged_llm_types(enabled_areas, mode=mode).keys())
         try:

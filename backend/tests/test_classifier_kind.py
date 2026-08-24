@@ -186,7 +186,7 @@ async def test_classifier_kind_local_skips_the_llm_classification_call(setup_dat
         extract_calls: list[bool] = []
 
         async def fake_extract(content, *, system_prompt=None, relation_rescue=True,
-                                with_classification=False):
+                                with_classification=False, usage_subject=None):
             extract_calls.append(with_classification)
             return {"entities": [], "relationships": [], "memory_type": "problem",
                     "importance": 0.7}
@@ -237,13 +237,13 @@ async def test_classifier_kind_llm_still_merges_in_simple_mode(setup_database, m
         classify_calls: list[str] = []
 
         async def fake_extract(content, *, system_prompt=None, relation_rescue=True,
-                                with_classification=False):
+                                with_classification=False, usage_subject=None):
             extract_calls.append(with_classification)
             return {"entities": [], "relationships": [], "memory_type": "decision",
                     "importance": 0.7, "summary": "Chose Redis.",
                     "emotions": [], "flags": []}
 
-        async def fake_classify(content, areas, prompt, mode="simple"):
+        async def fake_classify(content, areas, prompt, mode="simple", usage_subject=None):
             classify_calls.append(content)
             return {"hall": "fact", "summary": None, "emotions": [], "flags": []}
 

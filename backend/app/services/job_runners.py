@@ -9,10 +9,12 @@ look perpetually broken in the UI.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
+
+from app.services.job_registry import FieldDescriptor
 
 logger = logging.getLogger(__name__)
 
@@ -788,6 +790,58 @@ async def _save_ppr_cursor(
         else:
             row.value = value
         await session.commit()
+
+
+LLM_USAGE_CLEANUP_JOB_KEY = "llm_usage_cleanup"
+LLM_USAGE_RETENTION_DAYS_DEFAULT = 90
+LLM_USAGE_CONFIG_SCHEMA = [
+    FieldDescriptor(
+        key="retention_days", label="Retention (days)",
+        default=LLM_USAGE_RETENTION_DAYS_DEFAULT, min=1, max=3650,
+        help="Calls older than this are deleted. Cost history beyond it is gone.",
+    ),
+]
+
+
+def make_llm_usage_cleanup_runner(app, session_factory: async_sessionmaker[AsyncSession]):
+    """Prune ``llm_usage`` to its retention window.
+
+    Trimmed by age, not by row count -- the opposite of ``job_run_cleanup``
+    beside it, and deliberately. The question this table answers is "what did
+    the last N days cost", so a row ceiling would silently shorten the answer
+    during exactly the busy period an operator is investigating. The cost of
+    the choice is that a burst inside the window is unbounded on disk; that is
+    the right trade for a table whose whole value is its window.
+    """
+    async def run() -> dict | int:
+        from sqlalchemy import text as sa_text
+
+        registry = getattr(app.state, "job_registry", None)
+        retention = LLM_USAGE_RETENTION_DAYS_DEFAULT
+        if registry is not None:
+            cfg = await registry.load_config(LLM_USAGE_CLEANUP_JOB_KEY)
+            retention = int(
+                cfg.config.get("retention_days", LLM_USAGE_RETENTION_DAYS_DEFAULT)
+            )
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=retention)
+        async with session_factory() as session:
+            deleted = (await session.execute(
+                sa_text("DELETE FROM llm_usage WHERE occurred_at < :cutoff"),
+                {"cutoff": cutoff},
+            )).rowcount
+            await session.commit()
+
+        if not deleted:
+            # 0, not {}: the no-op signal keeps a nightly sweep over a clean
+            # table from writing a job_runs row every night to say nothing.
+            return 0
+        logger.info(
+            "llm_usage_cleanup: deleted %s row(s) older than %s days",
+            deleted, retention,
+        )
+        return {"deleted": deleted, "retention_days": retention}
+    return run
 
 
 JOB_RUN_CLEANUP_JOB_KEY = "job_run_cleanup"

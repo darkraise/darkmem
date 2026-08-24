@@ -155,7 +155,7 @@ class FakeClassifier:
     def __init__(self, results):
         self.results = results
 
-    async def classify(self, content, areas, prompt, mode="simple"):
+    async def classify(self, content, areas, prompt, mode="simple", usage_subject=None):
         result = self.results(content) if callable(self.results) else self.results
         return dict(result) if result is not None else None
 

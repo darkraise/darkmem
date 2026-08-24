@@ -179,7 +179,7 @@ async def test_reload_failure_keeps_prior_orchestrator(client, auth_headers, mon
     good_llm = LLMOrchestrator(initial_config)
     monkeypatch.setattr(app.state, "llm", good_llm, raising=False)
 
-    def boom(self, config):
+    def boom(self, config, **kwargs):
         raise RuntimeError("simulated LLMOrchestrator construction failure")
 
     monkeypatch.setattr(LLMOrchestrator, "__init__", boom)

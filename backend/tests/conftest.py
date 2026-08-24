@@ -88,6 +88,56 @@ async def session(setup_database):
 
 
 @pytest_asyncio.fixture
+async def session_factory(session):
+    """Sessions on the test's own connection.
+
+    ``session`` runs inside an outer transaction that is rolled back after each
+    test. A recorder opening a genuinely independent session would write on a
+    different connection — invisible to the test *and* not rolled back, leaking
+    rows across the suite. Binding the factory to the same connection keeps
+    recorder writes both visible and undone. Production binds the real engine;
+    this fixture is the only place the two differ.
+    """
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def factory():
+        # `session.bind` is the AsyncConnection the fixture opened;
+        # `get_bind()` would hand back the sync one, which AsyncSession rejects.
+        nested = AsyncSession(bind=session.bind, expire_on_commit=False)
+        try:
+            yield nested
+        finally:
+            await nested.close()
+
+    return factory
+
+
+@pytest_asyncio.fixture
+async def clean_llm_usage(setup_database):
+    """Empty ``llm_usage`` before a test that asserts on whole-table counts.
+
+    The recorder writes on its own session by design, and since it is wired
+    into the production orchestrator any test that drives a real LLM call
+    through ``app.state.llm`` commits rows that outlive it -- the rollback the
+    ``session`` fixture gives everything else does not reach them. A test that
+    counts the whole table therefore cannot assume it starts empty; this makes
+    it so rather than weakening the assertion to a filter.
+    """
+    from sqlalchemy import text as sa_text
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    async with factory() as s:
+        await s.execute(sa_text("DELETE FROM llm_usage"))
+        await s.commit()
+    yield
+    async with factory() as s:
+        await s.execute(sa_text("DELETE FROM llm_usage"))
+        await s.commit()
+
+
+@pytest_asyncio.fixture
 async def client(session):
     async def override():
         yield session

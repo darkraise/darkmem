@@ -169,6 +169,11 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
   codeSymbol: { kind: "global" },
   fs: { kind: "global" },
   reposPath: { kind: "global" },
+  usage: {
+    kind: "global",
+    reason:
+      "Deliberately unscoped, not an unwired switcher. Most spend carries no project at all -- a job run, a maintenance sweep and a mixed-project batch embed all write project NULL -- so a page-wide project filter would silently drop exactly the categories a cost review is looking for, and the remaining total would read as the whole bill. The hooks still take an optional `project` for drilling into one project's ingest spend, which is why it rides the key",
+  },
 }
 
 function assertAuto(domain: string): void {

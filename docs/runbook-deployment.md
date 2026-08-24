@@ -74,6 +74,123 @@ arrive as ordinary additive revisions, the revision id moves again and alembic's
 own comparison does the job. Retiring it is part of the freeze protocol
 (`docs/planning/baseline-schema-inventory.md`), not a later cleanup.
 
+## Deploying a purely additive baseline change
+
+**Read this before reaching for the drop below.** The drift-recovery procedure
+discards the database; when the baseline diff is *only* new objects, it does not
+have to be. Rehearsed against a copy of production on the dev database
+(2026-08-23, the `llm_usage` cutover).
+
+**The precondition, and it is the whole safety argument.** Diff the baseline
+against the deployed revision and confirm there are **no deletions and no
+modifications** — new `CREATE TABLE` / `CREATE INDEX` statements only:
+
+```bash
+git diff <deployed-ref>...HEAD -- backend/migrations/versions/0001_baseline.py
+```
+
+If that diff removes or changes a single line, stop and use the drop. An altered
+column, a widened constraint or a dropped index cannot be reached this way, and a
+partially applied baseline is worse than a rebuilt one.
+
+**Never transcribe the DDL by hand.** Derive it from the same code path a fresh
+install runs, so what lands on production is what `alembic upgrade head` builds:
+
+```bash
+# 1. Migrate a scratch database with the new baseline and dump the new objects.
+docker exec darkmem-prod-postgres-1 psql -U darkmem -d postgres \
+  -c 'CREATE DATABASE darkmem_ddlref OWNER darkmem;'
+cd backend && DATABASE_URL='postgresql+asyncpg://darkmem:<pw>@127.0.0.1:5432/darkmem_ddlref' \
+  .venv/bin/python -m alembic upgrade head
+docker exec darkmem-prod-postgres-1 pg_dump -U darkmem -d darkmem_ddlref \
+  --schema-only --table=public.<new_table> > /tmp/new-objects.sql
+
+# 2. Back up anyway. This path does not destroy the database; a mistake in it can.
+./scripts/backup.sh /root/darkmem-backups
+
+# 3. Apply to the live database. ON_ERROR_STOP is not optional -- see the
+#    restore trap recorded below.
+docker compose stop darkmem
+docker exec -i darkmem-prod-postgres-1 psql -U darkmem -d darkmem \
+  -v ON_ERROR_STOP=1 < /tmp/new-objects.sql
+
+# 4. Let the guard re-adopt. It stamps when it finds no row, which is the only
+#    honest thing it can do -- and here the schema it adopts is one you have
+#    just made identical to the migration's own output.
+docker exec darkmem-prod-postgres-1 psql -U darkmem -d darkmem \
+  -c "DELETE FROM config WHERE key='schema_baseline_sha';"
+docker compose up -d darkmem
+docker logs darkmem-prod-darkmem-1 2>&1 | grep 'schema baseline'   # expect "stamped"
+
+# 5. Prove the result equals a fresh migrate, rather than assuming it.
+docker exec darkmem-prod-postgres-1 pg_dump -U darkmem -d darkmem --schema-only \
+  | grep -v '^--\|^\\restrict\|^\\unrestrict\|^$' > /tmp/live.sql
+docker exec darkmem-prod-postgres-1 pg_dump -U darkmem -d darkmem_ddlref --schema-only \
+  | grep -v '^--\|^\\restrict\|^\\unrestrict\|^$' > /tmp/fresh.sql
+diff /tmp/fresh.sql /tmp/live.sql | grep '^<'          # MUST be empty
+docker exec darkmem-prod-postgres-1 psql -U darkmem -d postgres \
+  -c 'DROP DATABASE darkmem_ddlref;'
+```
+
+**`diff | grep '^<'` must print nothing.** Lines only on the `>` side are
+expected — they are the per-fingerprint embedding children and the monthly
+`events` partitions, which are created at runtime and are absent from any fresh
+migrate. A line on the `<` side is an object the new baseline builds that the
+live database does not have, which is the drift this whole file exists for.
+
+Deleting the stamp is deliberately the same act the guard refuses to give you a
+flag for, so state why it is honest here: the guard protects against a schema
+that *differs* from the baseline, and step 5 proves this one does not. Do not
+reach for step 4 without step 5.
+
+### What the rehearsal measured
+
+Against a copy of production (50 memories, 490 events, 98 triples, 8 embedding
+child tables), applying the `llm_usage` DDL this way left **every table's row
+count unchanged**, produced columns and indexes byte-identical to a fresh
+migrate, and the guard stamped on the next boot and admitted on the one after.
+
+## Restoring a data-only dump into a fresh database
+
+The drop procedure below ends in a restore, and the restore has two traps that
+cost the entire `events` journal in rehearsal. Both are recorded here because
+neither announces itself.
+
+**1. The baseline does not create the per-fingerprint embedding children.**
+`memory_embeddings__<slug>` and its seven siblings are created at runtime by
+`embedder_registry.register`, so a freshly migrated database has **none** of
+them and every `COPY` into one fails. Capture their DDL from the old database
+*before* dropping it:
+
+```bash
+docker exec darkmem-prod-postgres-1 pg_dump -U darkmem -d darkmem --schema-only \
+  $(docker exec darkmem-prod-postgres-1 psql -U darkmem -d darkmem -tAc \
+    "select string_agg('--table=public.'||table_name,' ') from information_schema.tables
+      where table_schema='public' and table_name like '%\_\_%'") > /tmp/child-tables.sql
+```
+
+and apply it after the migration, before the data.
+
+**2. A failed `COPY` silently eats the tables after it.** Without
+`ON_ERROR_STOP`, psql treats the failed copy's data rows as SQL, and keeps
+failing until it happens to resync. In rehearsal five missing child tables took
+**`entity_relations` (98 rows) and the whole `events` journal (490 rows)** down
+with them — and `psql` still exited **0**. Always:
+
+```bash
+docker exec darkmem-prod-postgres-1 pg_dump -U darkmem -d darkmem --data-only \
+  --exclude-table=alembic_version --disable-triggers > /tmp/data.sql
+docker exec -i darkmem-prod-postgres-1 psql -U darkmem -d darkmem \
+  -v ON_ERROR_STOP=1 < /tmp/data.sql
+```
+
+`--exclude-table=alembic_version` because the migration already wrote that row
+and the duplicate key halts the restore. `--disable-triggers` because `memories`
+carries a circular foreign key (`superseded_by`) that `pg_dump` itself warns
+about. Then compare row counts table by table against the pre-cutover database
+before declaring the cutover done — the failure mode here is a clean exit code
+over a partial restore.
+
 ## Recovering from schema drift
 
 Pre-freeze this is the policy's own remedy and the data is disposable by the

@@ -7,6 +7,8 @@ import type {
   DemoPipelineRun,
   PipelineTerminal,
 } from "@/features/activity/types"
+import { useSubjectTotals, type SubjectTotalRow } from "@/hooks/api"
+import { UsageChip } from "@/features/usage/components/usage-chip"
 import { usePipelineRuns } from "../use-pipeline-runs"
 import { ModuleSurface } from "./module-surface"
 import { PipelineStepper } from "./pipeline-stepper"
@@ -47,7 +49,15 @@ function TerminalChip({ terminal }: { terminal: PipelineTerminal }) {
   )
 }
 
-function PipelineRow({ run }: { run: DemoPipelineRun }) {
+function PipelineRow({
+  run,
+  totals,
+  pending,
+}: {
+  run: DemoPipelineRun
+  totals: Map<string, SubjectTotalRow> | undefined
+  pending: boolean
+}) {
   // Honesty rule: a partial/failed memory always NAMES its failed step —
   // never a collapsed batch pass/fail.
   const failedStep = deriveRunFailedStep(run)
@@ -81,10 +91,20 @@ function PipelineRow({ run }: { run: DemoPipelineRun }) {
           </span>
         )}
         {run.counts && (
-          <span className="text-muted-foreground ml-auto font-mono text-sm">
+          <span className="text-muted-foreground font-mono text-sm">
             entities: {run.counts.entities} · relations: {run.counts.relations}
           </span>
         )}
+        {/* What this memory's own extraction/classification calls cost. The
+            batch embeds are not included and are not divided into it: one
+            embed call covers the whole batch and has no per-memory share. */}
+        {run.memory_id ? (
+          <UsageChip
+            className="ml-auto"
+            pending={pending}
+            totals={totals?.get(run.memory_id)}
+          />
+        ) : null}
       </div>
       {run.note && <p className="text-muted-foreground text-sm">{run.note}</p>}
     </div>
@@ -93,6 +113,11 @@ function PipelineRow({ run }: { run: DemoPipelineRun }) {
 
 export function PipelineTab() {
   const { runs, isLoading, isError } = usePipelineRuns()
+  // One request for the whole page rather than one per row.
+  const usage = useSubjectTotals(
+    "memory",
+    runs.map((r) => r.memory_id).filter((id): id is string => Boolean(id)),
+  )
   const inFlight = runs.filter((r) => r.terminal === "running")
   const recent = runs.filter((r) => r.terminal !== "running")
   const partial = recent.filter((r) => r.terminal === "partial").length
@@ -121,7 +146,14 @@ export function PipelineTab() {
             moment the pipeline claims them.
           </p>
         ) : (
-          inFlight.map((run) => <PipelineRow key={run.id} run={run} />)
+          inFlight.map((run) => (
+            <PipelineRow
+              key={run.id}
+              pending={usage.isLoading}
+              run={run}
+              totals={usage.data}
+            />
+          ))
         )}
       </ModuleSurface>
       <ModuleSurface
@@ -136,7 +168,14 @@ export function PipelineTab() {
             description="The /analytics/pipeline-logs request failed — this is an error state, not an absence of activity."
           />
         ) : (
-          recent.map((run) => <PipelineRow key={run.id} run={run} />)
+          recent.map((run) => (
+            <PipelineRow
+              key={run.id}
+              pending={usage.isLoading}
+              run={run}
+              totals={usage.data}
+            />
+          ))
         )}
       </ModuleSurface>
     </div>
