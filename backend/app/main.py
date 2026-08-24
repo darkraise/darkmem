@@ -809,7 +809,7 @@ class ProxiedMcpGuardMiddleware:
             logger.warning("Could not journal the proxied /mcp refusal", exc_info=True)
 
 
-app = FastAPI(title="darkmem", version="1.0.0", description="Centralized memory system for AI agents", lifespan=lifespan)
+app = FastAPI(title="darkmem", version="1.1.0", description="Centralized memory system for AI agents", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
