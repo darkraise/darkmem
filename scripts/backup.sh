@@ -14,9 +14,28 @@ mkdir -p "$DEST_DIR"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 OUT="$DEST_DIR/darkmem-$STAMP.sql.gz"
 
+# Dump to a name the retention glob cannot match, and rename only once the
+# dump is known good. The redirection below creates its target before pg_dump
+# writes a byte and gzip -c exits 0 on empty input, so writing straight to
+# $OUT leaves a well-formed empty .sql.gz behind on every failure — and
+# retention sorts by mtime alone, so those artefacts are always the newest
+# files on disk and survive every prune while real dumps age past KEEP.
+PART="$OUT.part"
+trap 'rm -f -- "$PART"' EXIT
+
 echo "Dumping database '$DB' from compose service '$SERVICE' -> $OUT"
 $COMPOSE exec -T "$SERVICE" pg_dump -U "$USER" -d "$DB" --clean --if-exists \
-  | gzip -c > "$OUT"
+  | gzip -c > "$PART"
+
+# pg_dump writes this marker last and only on success, so it also catches the
+# truncated stream that still exits 0, which pipefail cannot see. A size floor
+# would not: this database's nightly dumps have ranged from 14 KB to 2.4 MB.
+if ! gunzip -c "$PART" | tail -c 512 | grep -F 'PostgreSQL database dump complete' >/dev/null; then
+    echo "Incomplete dump: no pg_dump completion marker. Nothing written to $OUT." >&2
+    exit 1
+fi
+
+mv -- "$PART" "$OUT"
 
 echo "Backup complete: $OUT ($(du -h "$OUT" | cut -f1))"
 
