@@ -326,6 +326,9 @@ def test_the_composition_refuses_a_block_candidate_outright():
 # demote. The firewall is about a block *becoming* a verified fact, so a
 # module that only ever takes evidence away is not one of its subjects, and a
 # seed list that swept it in would assert something false about this door.
+# That "only ever takes evidence away" is not left as a reading of today's
+# code: `test_no_block_channel_module_can_promote_a_fact`, at the bottom of
+# this file, pins it at the method level.
 
 VAULT_WRITERS = (
     "app.repositories.knowledge_triples",
@@ -450,3 +453,78 @@ def test_the_vault_scan_reports_a_module_that_does_reach_the_block_channel():
     block module, a moved service — passes silently and becomes a comment."""
     paths = _closure_paths("app.services.document_door")
     assert find_forbidden_reach(paths, BACKEND, _VAULT_RULES)
+
+
+# ── the withdrawal direction, pinned ─────────────────────────────────
+#
+# The seed list above leaves `document_door` out of `VAULT_WRITERS` on the
+# ground that it only ever *withdraws* — it expires a fact whose last source
+# its own delete removed, and removing evidence can only demote. That is a
+# property of today's code and of nothing else: the module holds a
+# `KnowledgeTripleRepository`, so `insert_open` or `set_verification_status`
+# is one line away, and neither scan above would notice. The coverage guard
+# derives writers from raw `knowledge_triples` SQL text, which a call through
+# the repository does not produce, and the reach scan is rooted at the
+# minting modules, which `document_door` would still not be one of by name.
+#
+# So the exclusion is pinned here directly, at the method level.
+
+# Everything a block-channel module may call on the vault repository. The
+# forbidden set is derived as the complement, never listed: a method added to
+# `KnowledgeTripleRepository` is forbidden to this channel until someone
+# classifies it here, which is the fail-closed direction. `expire` is the
+# withdrawal itself; the rest are reads.
+BLOCK_CHANNEL_MAY_CALL_ON_THE_VAULT = frozenset({
+    "as_of", "expire", "get", "get_live", "list_live",
+})
+
+
+def _promoting_vault_methods() -> frozenset[str]:
+    from app.repositories.knowledge_triples import KnowledgeTripleRepository
+
+    public = {name for name in dir(KnowledgeTripleRepository) if not name.startswith("_")}
+    assert BLOCK_CHANNEL_MAY_CALL_ON_THE_VAULT <= public, (
+        "BLOCK_CHANNEL_MAY_CALL_ON_THE_VAULT names methods the repository no "
+        "longer has — re-derive it rather than leaving it to rot: "
+        f"{sorted(BLOCK_CHANNEL_MAY_CALL_ON_THE_VAULT - public)}"
+    )
+    return frozenset(public - BLOCK_CHANNEL_MAY_CALL_ON_THE_VAULT)
+
+
+def _attributes_named(source: str) -> set[str]:
+    return {
+        node.attr for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Attribute)
+    }
+
+
+@pytest.mark.parametrize("module_name", sorted(BLOCK_CHANNEL_MODULES))
+def test_no_block_channel_module_can_promote_a_fact(module_name):
+    """A block-channel module may take evidence away from the vault; it may
+    never put a fact in one or move one up the ladder.
+
+    Named methods rather than import reach, because the import is legitimate:
+    `document_door` must hold the repository to expire an unsourced fact. It
+    is the *verbs* that are the boundary, and doc 16 §5's lift is the only
+    route from a block to a fact.
+    """
+    path = module_path(module_name, BACKEND)
+    assert path is not None, f"{module_name} moved — re-point this scan"
+    offenders = _attributes_named(path.read_text()) & _promoting_vault_methods()
+    assert not offenders, (
+        f"{module_name} names {sorted(offenders)} on the vault repository. A "
+        "block channel module may only withdraw evidence (`expire`); minting "
+        "a fact or moving one up the ladder from here would let a block "
+        "become a verified fact outside doc 16 §5's on-demand lift."
+    )
+
+
+def test_the_promoting_method_scan_catches_a_promotion():
+    """The negative control. A scan whose method names stopped matching the
+    repository's would pass silently and become a comment."""
+    promoting = _promoting_vault_methods()
+    assert "insert_open" in promoting and "set_verification_status" in promoting
+    assert "expire" not in promoting
+
+    breach = "triples = KnowledgeTripleRepository(session)\nawait triples.insert_open(row)\n"
+    assert _attributes_named(breach) & promoting == {"insert_open"}

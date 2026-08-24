@@ -1505,7 +1505,16 @@ no block text crosses into the vault through it — and the scan checks that
 it reaches no module that could fetch any. Scoped to minting rather than to "writes
 `knowledge_triples`" deliberately: `document_door` does both write the
 vault and read blocks, expiring a fact whose last source its own delete
-withdrew, and that withdrawal direction can only demote.
+withdrew, and that withdrawal direction can only demote. **That direction
+is itself pinned, not assumed:** a third scan reads every block-channel
+module's own AST and fails the build if one names any
+`KnowledgeTripleRepository` method outside a small allowlist — `expire`
+plus the reads. The forbidden set is the complement, so a method added to
+that repository is forbidden to this channel until someone classifies it.
+Without it, `insert_open` or `set_verification_status` inside
+`document_door` would satisfy both other scans: the coverage guard derives
+writers from raw SQL text, which a call through the repository does not
+produce.
 
 ## Cross-cutting invariants
 
