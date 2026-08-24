@@ -183,7 +183,12 @@ class CodePipeline:
                 if repo.status != "ready":
                     repo.status = "ready"
                     repo.status_message = None
-                    await self.session.flush()
+                    # Releasing a claim that `claim_for_indexing` committed has
+                    # to be committed too: the background indexing task
+                    # (`repos._spawn_repo_index`) closes its session without a
+                    # commit of its own, so a flush here is rolled back and the
+                    # row stays `indexing` — unclaimable by every later run.
+                    await self.session.commit()
                 return {
                     "status": "up_to_date",
                     "commit": new_sha,

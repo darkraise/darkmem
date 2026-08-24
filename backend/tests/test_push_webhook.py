@@ -495,6 +495,66 @@ class TestTheIndexClaimIsAtomic:
                 uuid.UUID(repo_id), message="free"
             ) is True
 
+    async def test_the_up_to_date_short_circuit_releases_the_claim(self, committed_repo):
+        """A run that finds nothing to do must hand the claim back, committed.
+
+        The claim is taken and committed in the route body, then the work runs
+        in `_spawn_repo_index`'s own session, which is closed without a commit
+        of its own. A short-circuit that only flushes `status='ready'` is
+        therefore rolled back with that session, and the row stays `indexing` —
+        after which every reindex, every webhook delivery and every polling
+        tick fails the claim forever.
+        """
+        from app.services.repo_manager import RepoManager
+        from tests.conftest import test_engine
+
+        sha = "sha-already-indexed"
+        repo_id = await committed_repo("claim-release-repo")
+
+        async with AsyncSession(test_engine) as setup:
+            await setup.execute(
+                update(Repository)
+                .where(Repository.id == uuid.UUID(repo_id))
+                .values(last_indexed_commit=sha)
+            )
+            await setup.commit()
+
+        async with AsyncSession(test_engine) as claim_session:
+            assert await RepoManager(claim_session).claim_for_indexing(
+                uuid.UUID(repo_id), message="Queued for indexing..."
+            ) is True
+
+        factory = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+        async with factory() as run_session:
+            manager = RepoManager(run_session)
+
+            async def _pull(_repo, _sha=sha):
+                return _sha
+
+            manager.pull_repo = _pull
+            result = await CodePipeline(
+                session=run_session, llm=None, vector_repo=None, repo_manager=manager,
+            ).run(uuid.UUID(repo_id))
+
+        assert result["status"] == "up_to_date"
+
+        async with AsyncSession(test_engine) as check:
+            status, status_message = (await check.execute(
+                select(Repository.status, Repository.status_message)
+                .where(Repository.id == uuid.UUID(repo_id))
+            )).one()
+
+        assert status == "ready", (
+            "the up-to-date short-circuit kept the committed indexing claim; "
+            "every later reindex, webhook and polling tick now fails it"
+        )
+        assert status_message is None
+
+        async with AsyncSession(test_engine) as later:
+            assert await RepoManager(later).claim_for_indexing(
+                uuid.UUID(repo_id), message="next run"
+            ) is True
+
 
 # ---------------------------------------------------------------------------
 # Signature verification happens before any work
