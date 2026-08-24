@@ -15,6 +15,10 @@ export type { ColorMode }
 
 export type SizeMode = "connections" | "importance" | "uniform"
 
+/** Sizing by weight rather than by degree: degree is already drawn, as the
+ *  spokes leaving the node, so spending radius on it says one thing twice. */
+export const DEFAULT_SIZE_MODE: SizeMode = "importance"
+
 export interface Node3D {
   id: string
   nodeKind: "memory" | "entity"

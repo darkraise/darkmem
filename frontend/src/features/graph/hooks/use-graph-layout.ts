@@ -1,13 +1,19 @@
 import { useState } from "react"
 import { useDebouncedValue } from "./use-debounced-value"
-import type { SizeMode } from "@/features/graph/lib/graph-utils"
-import type { HullMode } from "@/features/graph/lib/graph-geometry"
+import {
+  DEFAULT_SIZE_MODE,
+  type SizeMode,
+} from "@/features/graph/lib/graph-utils"
+import {
+  DEFAULT_HULL_MODE,
+  type HullMode,
+} from "@/features/graph/lib/graph-geometry"
 
 export function useGraphLayout() {
-  const [sizeMode, setSizeMode] = useState<SizeMode>("connections")
+  const [sizeMode, setSizeMode] = useState<SizeMode>(DEFAULT_SIZE_MODE)
   const [nodeSpacing, setNodeSpacing] = useState(100)
   const [clusterTightness, setClusterTightness] = useState(300)
-  const [hullMode, setHullMode] = useState<HullMode>("none")
+  const [hullMode, setHullMode] = useState<HullMode>(DEFAULT_HULL_MODE)
   const [spacing3D, setSpacing3D] = useState(50)
 
   const debouncedTightness = useDebouncedValue(clusterTightness, 500)

@@ -2,6 +2,11 @@ import type { GraphThemeTokens } from "./code-graph-theme"
 
 export type ColorMode = "type" | "cluster" | "tag"
 
+/** Cluster is what the canvas is for: the hulls, the summary's cluster
+ *  breakdown and the layout's own grouping all speak it, and opening on
+ *  `type` meant the three disagreed until someone flipped a segment. */
+export const DEFAULT_COLOR_MODE: ColorMode = "cluster"
+
 // Relocated from code-graph-theme.ts to keep all pure color math in one place
 // and break the would-be import cycle (code-graph-theme imports darkenHex here).
 export function hslToHex(h: number, s: number, l: number): string {

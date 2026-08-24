@@ -9,6 +9,10 @@ type Network = {
 
 export type HullMode = "none" | "cluster" | "tag" | "source"
 
+/** No regions by default: a hull per cluster over a dense graph hides the
+ *  edges the canvas exists to show. */
+export const DEFAULT_HULL_MODE: HullMode = "none"
+
 export function convexHull(
   pts: { x: number; y: number }[],
 ): { x: number; y: number }[] {
