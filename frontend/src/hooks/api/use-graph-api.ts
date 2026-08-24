@@ -36,11 +36,17 @@ export interface EntityRelation {
   weight: number
 }
 
+export interface SimilarityEdge {
+  source: string
+  target: string
+  score: number
+}
+
 export interface UnifiedGraphData {
   memories: UnifiedMemory[]
   clusters: Record<string, string[]>
   cluster_names: Record<string, string>
-  similarity_edges: { source: string; target: string; score: number }[]
+  similarity_edges: SimilarityEdge[]
   entities?: GraphEntity[]
   entity_relations?: EntityRelation[]
   /** True when the entity overlay's unscoped, 500-row fetch hit its limit

@@ -3,6 +3,10 @@ import { useMemoryContext } from "@/hooks/api"
 import { entityTypeColor } from "@/features/graph/lib/graph-colors"
 import { useMemoryGraphTheme } from "@/features/graph/lib/memory-graph-theme"
 
+/** The route already caps its own walk at 20 ids off an unordered set, so a
+ *  larger number here would not buy a complete list — say what is shown. */
+const NEIGHBOR_LIMIT = 5
+
 export interface MiniGraphProps {
   memoryId: string
   onNavigate: (id: string) => void
@@ -59,9 +63,16 @@ export function MiniGraph({
       )}
       {data.neighbors.length > 0 && (
         <div>
-          <p className="text-muted-foreground mb-1 text-sm">Neighbors</p>
+          <p className="text-muted-foreground mb-1 text-sm">
+            Neighbors
+            {data.neighbors.length > NEIGHBOR_LIMIT && (
+              <span className="ml-1.5 tabular-nums">
+                {NEIGHBOR_LIMIT} of {data.neighbors.length}
+              </span>
+            )}
+          </p>
           <div className="space-y-0.5">
-            {data.neighbors.slice(0, 5).map((n) => (
+            {data.neighbors.slice(0, NEIGHBOR_LIMIT).map((n) => (
               <Button
                 variant="ghost"
                 key={n.id}

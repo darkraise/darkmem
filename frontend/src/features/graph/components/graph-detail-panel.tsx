@@ -1,9 +1,14 @@
 import { X } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { cn } from "darkraise-ui/lib"
-import type { UnifiedMemory, GraphEntity, EntityRelation } from "@/hooks/api"
+import type {
+  UnifiedMemory,
+  GraphEntity,
+  EntityRelation,
+  SimilarityEdge,
+} from "@/hooks/api"
 import { resolveNodeColor, entityTypeColor, clusterColor } from "@/features/graph/lib/graph-colors"
-import { EntityTypeSwatch } from "./entity-type-swatch"
+import { GraphSummary } from "./graph-summary"
 import type { ColorMode } from "@/features/graph/lib/graph-colors"
 import { useMemoryGraphTheme } from "@/features/graph/lib/memory-graph-theme"
 
@@ -12,12 +17,18 @@ interface GraphDetailPanelProps {
   clusterName: string
   memories: UnifiedMemory[]
   clusterNames: Record<string, string>
-  visibleEdgeCount: number
+  /** Edges between visible memories. The summary derives degree and isolation
+   *  from the endpoints, which a bare count cannot carry. */
+  visibleEdges: SimilarityEdge[]
   onClose: () => void
   children?: React.ReactNode
   selectedEntity?: GraphEntity | null
   entityRelations?: EntityRelation[]
+  /** Every entity in the payload — the lookup table `EntityDetail` resolves
+   *  relation endpoints against, which the visible set cannot serve. */
   allEntities?: GraphEntity[]
+  /** The entities actually on the canvas; what the summary counts. */
+  visibleEntities?: GraphEntity[]
   onNavigateToMemory?: (memoryId: string) => void
   colorMode: ColorMode
 }
@@ -27,12 +38,13 @@ export function GraphDetailPanel({
   clusterName,
   memories,
   clusterNames,
-  visibleEdgeCount,
+  visibleEdges,
   onClose,
   children,
   selectedEntity,
   entityRelations,
   allEntities,
+  visibleEntities,
   onNavigateToMemory,
   colorMode,
 }: GraphDetailPanelProps) {
@@ -70,17 +82,23 @@ export function GraphDetailPanel({
             memory={selectedMemory}
             clusterName={clusterName}
             colorMode={colorMode}
+            similarNeighbors={similarNeighbors(
+              selectedMemory.id,
+              visibleEdges,
+              memories,
+            )}
+            onNavigateToMemory={onNavigateToMemory}
           >
             {children}
           </MemoryDetail>
         ) : (
           <GraphSummary
             memories={memories}
+            edges={visibleEdges}
+            entities={visibleEntities ?? []}
+            entityRelations={entityRelations ?? []}
             clusterNames={clusterNames}
-            visibleEdgeCount={visibleEdgeCount}
             colorMode={colorMode}
-            entities={allEntities}
-            entityRelations={entityRelations}
           />
         )}
       </div>
@@ -192,11 +210,51 @@ function EntityDetail({
   )
 }
 
+export interface SimilarNeighbor {
+  memory: UnifiedMemory
+  score: number
+}
+
+/**
+ * The memories joined to this one by an edge the canvas drew — cosine
+ * similarity over the content embeddings, above the threshold slider.
+ *
+ * Derived from the same edge list the renderer consumes, so the count here
+ * and the spokes on screen can never disagree. This is a different relation
+ * from Entity Context's neighbours, which are memories asserting a shared
+ * entity and are scoped to one project; the two legitimately differ, and
+ * before both were labelled the panel read as though one were wrong.
+ */
+function similarNeighbors(
+  memoryId: string,
+  edges: SimilarityEdge[],
+  memories: UnifiedMemory[],
+): SimilarNeighbor[] {
+  const byId = new Map(memories.map((m) => [m.id, m]))
+  const best = new Map<string, number>()
+  for (const e of edges) {
+    const other =
+      e.source === memoryId ? e.target : e.target === memoryId ? e.source : null
+    if (other === null) continue
+    best.set(other, Math.max(best.get(other) ?? 0, e.score))
+  }
+  const out: SimilarNeighbor[] = []
+  for (const [id, score] of best) {
+    const memory = byId.get(id)
+    if (memory) out.push({ memory, score })
+  }
+  return out.sort(
+    (a, b) => b.score - a.score || a.memory.id.localeCompare(b.memory.id),
+  )
+}
+
 interface MemoryDetailProps {
   memory: UnifiedMemory
   clusterName: string
   children?: React.ReactNode
   colorMode: ColorMode
+  similarNeighbors: SimilarNeighbor[]
+  onNavigateToMemory?: (memoryId: string) => void
 }
 
 
@@ -235,6 +293,8 @@ function MemoryDetail({
   clusterName,
   children,
   colorMode,
+  similarNeighbors,
+  onNavigateToMemory,
 }: MemoryDetailProps) {
   const { palette } = useMemoryGraphTheme()
   return (
@@ -332,11 +392,42 @@ function MemoryDetail({
         )}
       </div>
 
-      {children && (
-        <div className="border-border border-t pt-2">
-          <p className="text-muted-foreground mb-2 text-sm font-medium tracking-wide uppercase">
-            Entity Context
+      <div className="border-border border-t pt-3">
+        <NeighborHeading
+          label="Similar memories"
+          count={similarNeighbors.length}
+          hint="Joined by an edge on the canvas — cosine similarity above the threshold."
+        />
+        {similarNeighbors.length === 0 ? (
+          <p className="text-muted-foreground text-sm">
+            No edge above the current similarity threshold.
           </p>
+        ) : (
+          <div className="space-y-0.5">
+            {similarNeighbors.map(({ memory: n, score }) => (
+              <Button
+                key={n.id}
+                variant="ghost"
+                className="text-muted-foreground hover:text-foreground flex w-full items-baseline gap-2 py-0.5 text-left"
+                onClick={() => onNavigateToMemory?.(n.id)}
+                title={n.content}
+              >
+                <span className="flex-1 truncate">{n.content}</span>
+                <span className="text-foreground shrink-0 font-mono text-xs tabular-nums">
+                  {score.toFixed(2)}
+                </span>
+              </Button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {children && (
+        <div className="border-border border-t pt-3">
+          <NeighborHeading
+            label="Entity Context"
+            hint="Memories asserting a shared entity, within this project — a different relation from the edges above."
+          />
           {children}
           <p className="text-muted-foreground mt-1 text-sm">
             Click a neighbor node to navigate.
@@ -347,224 +438,26 @@ function MemoryDetail({
   )
 }
 
-interface GraphSummaryProps {
-  memories: UnifiedMemory[]
-  clusterNames: Record<string, string>
-  visibleEdgeCount: number
-  colorMode: ColorMode
-  entities?: GraphEntity[]
-  entityRelations?: EntityRelation[]
-}
-
-function GraphSummary({
-  memories,
-  clusterNames,
-  visibleEdgeCount,
-  colorMode,
-  entities,
-  entityRelations,
-}: GraphSummaryProps) {
-  const { palette } = useMemoryGraphTheme()
-  const clusterCounts = new Map<number, number>()
-  const typeCounts = new Map<string, number>()
-  const sourceCounts = new Map<string, number>()
-  const tagCategoryCounts = new Map<string, number>()
-
-  for (const m of memories) {
-    if (m.cluster >= 0) {
-      clusterCounts.set(m.cluster, (clusterCounts.get(m.cluster) ?? 0) + 1)
-    }
-    const t = m.memory_type || "(none)"
-    typeCounts.set(t, (typeCounts.get(t) ?? 0) + 1)
-    sourceCounts.set(m.source, (sourceCounts.get(m.source) ?? 0) + 1)
-    for (const tag of m.tags) {
-      const prefix = tag.includes("/") ? (tag.split("/")[0] ?? tag) : tag
-      tagCategoryCounts.set(prefix, (tagCategoryCounts.get(prefix) ?? 0) + 1)
-    }
-  }
-
-  const entityTypeCounts = new Map<string, number>()
-  for (const e of entities ?? []) {
-    entityTypeCounts.set(
-      e.entity_type,
-      (entityTypeCounts.get(e.entity_type) ?? 0) + 1,
-    )
-  }
-
-  const sortedClusters = [...clusterCounts.entries()].sort(
-    (a, b) => b[1] - a[1],
-  )
-  const sortedTypes = [...typeCounts.entries()].sort((a, b) => b[1] - a[1])
-  const sortedSources = [...sourceCounts.entries()].sort((a, b) => b[1] - a[1])
-  const sortedTagCategories = [...tagCategoryCounts.entries()].sort(
-    (a, b) => b[1] - a[1],
-  )
-  const sortedEntityTypes = [...entityTypeCounts.entries()].sort(
-    (a, b) => b[1] - a[1],
-  )
-
+function NeighborHeading({
+  label,
+  count,
+  hint,
+}: {
+  label: string
+  count?: number
+  hint: string
+}) {
   return (
-    <div className="space-y-4 p-4">
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-background rounded-lg p-3">
-          <p className="text-2xl font-bold">{memories.length}</p>
-          <p className="text-muted-foreground text-sm">Memories</p>
-        </div>
-        <div className="bg-background rounded-lg p-3">
-          <p className="text-2xl font-bold">{clusterCounts.size}</p>
-          <p className="text-muted-foreground text-sm">Clusters</p>
-        </div>
-        <div className="bg-background rounded-lg p-3">
-          <p className="text-2xl font-bold">{visibleEdgeCount}</p>
-          <p className="text-muted-foreground text-sm">Edges</p>
-        </div>
-        <div className="bg-background rounded-lg p-3">
-          <p className="text-2xl font-bold">{typeCounts.size}</p>
-          <p className="text-muted-foreground text-sm">Types</p>
-        </div>
-        {(entities?.length ?? 0) > 0 && (
-          <div className="bg-background rounded-lg p-3">
-            <p className="text-2xl font-bold">{entities!.length}</p>
-            <p className="text-muted-foreground text-sm">Entities</p>
-          </div>
+    <div className="mb-2">
+      <p className="text-muted-foreground text-sm font-medium tracking-wide uppercase">
+        {label}
+        {count !== undefined && (
+          <span className="ml-1.5 tabular-nums">({count})</span>
         )}
-        {(entityRelations?.length ?? 0) > 0 && (
-          <div className="bg-background rounded-lg p-3">
-            <p className="text-2xl font-bold">{entityRelations!.length}</p>
-            <p className="text-muted-foreground text-sm">Relations</p>
-          </div>
-        )}
-      </div>
-
-      {sortedClusters.length > 0 && (
-        <div>
-          <p className="text-muted-foreground mb-2 text-sm font-medium tracking-wide uppercase">
-            Clusters
-          </p>
-          <div className="space-y-1.5">
-            {sortedClusters.map(([cid, count]) => (
-              <div key={cid} className="flex items-center gap-2 text-sm">
-                <span
-                  className="h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{
-                    backgroundColor:
-                      colorMode === "cluster"
-                        ? clusterColor(palette, cid)
-                        : palette.unclustered,
-                  }}
-                />
-                <span className="text-foreground flex-1 truncate">
-                  {clusterNames[String(cid)] || `Cluster ${cid}`}
-                </span>
-                <span className="text-muted-foreground text-sm">{count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {sortedTagCategories.length > 0 && (
-        <div>
-          <p className="text-muted-foreground mb-2 text-sm font-medium tracking-wide uppercase">
-            Tag Categories
-          </p>
-          <div className="space-y-1.5">
-            {sortedTagCategories.map(([category, count]) => (
-              <div key={category} className="flex items-center gap-2 text-sm">
-                <span
-                  className="h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{
-                    backgroundColor:
-                      colorMode === "tag"
-                        ? resolveNodeColor(
-                            {
-                              cluster: -1,
-                              memory_type: null,
-                              tags: [category + "/x"],
-                            },
-                            "tag",
-                            palette,
-                          )
-                        : palette.unclustered,
-                  }}
-                />
-                <span className="text-foreground flex-1 capitalize">
-                  {category}
-                </span>
-                <span className="text-muted-foreground text-sm">{count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {sortedTypes.length > 0 && (
-        <div>
-          <p className="text-muted-foreground mb-2 text-sm font-medium tracking-wide uppercase">
-            Types
-          </p>
-          <div className="space-y-1.5">
-            {sortedTypes.map(([type, count]) => (
-              <div key={type} className="flex items-center gap-2 text-sm">
-                <span
-                  className="h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{
-                    backgroundColor:
-                      colorMode === "type"
-                        ? resolveNodeColor(
-                            {
-                              cluster: -1,
-                              memory_type: type === "(none)" ? null : type,
-                              tags: [],
-                            },
-                            "type",
-                            palette,
-                          )
-                        : palette.unclustered,
-                  }}
-                />
-                <span className="text-foreground flex-1">{type}</span>
-                <span className="text-muted-foreground text-sm">{count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {sortedSources.length > 0 && (
-        <div>
-          <p className="text-muted-foreground mb-2 text-sm font-medium tracking-wide uppercase">
-            Sources
-          </p>
-          <div className="space-y-1.5">
-            {sortedSources.map(([src, count]) => (
-              <div key={src} className="flex items-center gap-2 text-sm">
-                <span className="text-foreground flex-1">{src}</span>
-                <span className="text-muted-foreground text-sm">{count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {sortedEntityTypes.length > 0 && (
-        <div>
-          <p className="text-muted-foreground mb-2 text-sm font-medium tracking-wide uppercase">
-            Entity Types
-          </p>
-          <div className="space-y-1.5">
-            {sortedEntityTypes.map(([etype, count]) => (
-              <div key={etype} className="flex items-center gap-2 text-sm">
-                <EntityTypeSwatch entityType={etype} palette={palette} />
-                <span className="text-foreground flex-1 capitalize">
-                  {etype}
-                </span>
-                <span className="text-muted-foreground text-sm">{count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      </p>
+      <p className="text-muted-foreground/80 mt-0.5 text-xs leading-snug">
+        {hint}
+      </p>
     </div>
   )
 }

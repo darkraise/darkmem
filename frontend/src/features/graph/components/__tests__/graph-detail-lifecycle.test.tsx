@@ -23,7 +23,7 @@ function renderPanel(m: UnifiedMemory) {
       clusterName="Retrieval & ranking"
       memories={[m]}
       clusterNames={{}}
-      visibleEdgeCount={0}
+      visibleEdges={[]}
       onClose={() => {}}
       colorMode="cluster"
     />,

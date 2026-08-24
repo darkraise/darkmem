@@ -18,12 +18,23 @@ import {
   transformToGraphData,
   type FilterState,
 } from "@/features/graph/lib/graph-utils"
-import type { ColorMode } from "@/features/graph/lib/graph-colors"
+import {
+  DEFAULT_COLOR_MODE,
+  type ColorMode,
+} from "@/features/graph/lib/graph-colors"
 import { useDebouncedValue } from "@/features/graph/hooks/use-debounced-value"
 import { useGraphFilters } from "@/features/graph/hooks/use-graph-filters"
 import { useGraphLayout } from "@/features/graph/hooks/use-graph-layout"
 import { useGraphSelection } from "@/features/graph/hooks/use-graph-selection"
 import { useMemoryGraphTheme } from "@/features/graph/lib/memory-graph-theme"
+import { useGraphPrefs } from "@/features/graph/lib/graph-prefs"
+import { PanelResizeHandle } from "@/features/graph/components/panel-resize-handle"
+import {
+  clampPanelWidth,
+  widthFromPointer,
+  DETAIL_PANEL_MIN_WIDTH,
+  GRAPH_MIN_WIDTH,
+} from "@/features/graph/lib/panel-resize"
 
 type ViewMode = "2d" | "3d"
 
@@ -44,7 +55,7 @@ export function RealMemoryGraphPage() {
   const { tokens, palette } = useMemoryGraphTheme()
   const [viewMode, setViewMode] = useState<ViewMode>("2d")
   const [, setGraphReady] = useState(false)
-  const [colorMode, setColorMode] = useState<ColorMode>("type")
+  const [colorMode, setColorMode] = useState<ColorMode>(DEFAULT_COLOR_MODE)
 
   const [similarityThreshold, setSimilarityThreshold] = useState(0.5)
   const [minClusterSize, setMinClusterSize] = useState(3)
@@ -72,6 +83,44 @@ export function RealMemoryGraphPage() {
   const layout = useGraphLayout()
   const filters = useGraphFilters(data, entityLayerEnabled, selectedEntityTypes)
   const selection = useGraphSelection()
+
+  const storedPanelWidth = useGraphPrefs((s) => s.detailPanelWidth)
+  const [draggedPanelWidth, setDraggedPanelWidth] = useState<number | null>(
+    null,
+  )
+  const splitRef = useRef<HTMLDivElement>(null)
+  const [splitWidth, setSplitWidth] = useState(0)
+
+  const panelWidth = clampPanelWidth(
+    draggedPanelWidth ?? storedPanelWidth,
+    // Before the split is measured, honour the stored width rather than
+    // clamping against a zero container and collapsing the panel.
+    splitWidth || Number.POSITIVE_INFINITY,
+  )
+
+  const widthAt = useCallback((clientX: number) => {
+    const box = splitRef.current?.getBoundingClientRect()
+    if (!box) return DETAIL_PANEL_MIN_WIDTH
+    return widthFromPointer(clientX, box.right, box.width)
+  }, [])
+
+  const commitPanelWidth = useCallback((px: number) => {
+    setDraggedPanelWidth(null)
+    useGraphPrefs.getState().setDetailPanelWidth(px)
+  }, [])
+
+  // The canvas floor is a fact about the split's own width, so a narrowing
+  // window has to squeeze the panel rather than the graph.
+  useEffect(() => {
+    const el = splitRef.current
+    if (!el) return
+    const observer = new ResizeObserver((entries) => {
+      const next = entries[0]?.contentRect.width
+      if (next && next > 0) setSplitWidth(next)
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   const containerRef = useRef<HTMLDivElement>(null)
   const [dimensions, setDimensions] = useState<{
@@ -169,7 +218,12 @@ export function RealMemoryGraphPage() {
   const memoryCount = data?.memories.length ?? 0
 
   return (
-    <div className="flex h-full" style={{ minHeight: 0 }}>
+    <div
+      ref={splitRef}
+      className="flex h-full overflow-hidden"
+      style={{ minHeight: 0 }}
+      data-testid="graph-split"
+    >
       <h1 className="sr-only">Memory Graph</h1>
       <div className="flex min-w-0 flex-1 flex-col">
         {isLoading && <GraphSkeleton />}
@@ -185,7 +239,7 @@ export function RealMemoryGraphPage() {
 
         {memoryCount > 0 && (
           <div ref={containerRef} className="relative min-h-0 flex-1">
-            <div className="absolute inset-0 bg-background">
+            <div className="bg-background absolute inset-0">
               {dimensions && viewMode === "2d" && data && (
                 <Graph2DRenderer
                   filteredMemories={filters.filteredMemories}
@@ -225,7 +279,7 @@ export function RealMemoryGraphPage() {
             </div>
 
             {isLoading && (
-              <div className="absolute inset-0 z-30 bg-background">
+              <div className="bg-background absolute inset-0 z-30">
                 <GraphSkeleton />
               </div>
             )}
@@ -392,37 +446,55 @@ export function RealMemoryGraphPage() {
       </div>
 
       {selection.showPanel && memoryCount > 0 && (
-        <div className="border-border bg-card flex w-[320px] max-w-[85vw] shrink-0 flex-col overflow-hidden border-l">
-          <GraphDetailPanel
-            colorMode={colorMode}
-            selectedMemory={selectedMemory}
-            clusterName={
-              data?.cluster_names?.[String(selectedMemory?.cluster)] ?? ""
-            }
-            memories={filters.filteredMemories}
-            clusterNames={data?.cluster_names ?? {}}
-            visibleEdgeCount={filters.filteredEdges.length}
-            onClose={() => {
-              selection.setShowPanel(false)
-              selection.setSelectedNodeId(null)
-              selection.setSelectedEntityId(null)
-            }}
-            selectedEntity={selectedEntity}
-            entityRelations={filters.filteredEntityRelations}
-            allEntities={data?.entities}
-            onNavigateToMemory={selection.handleNavigate}
+        <>
+          <PanelResizeHandle
+            width={panelWidth}
+            onResize={setDraggedPanelWidth}
+            onCommit={commitPanelWidth}
+            widthAt={widthAt}
+            min={DETAIL_PANEL_MIN_WIDTH}
+            max={Math.max(DETAIL_PANEL_MIN_WIDTH, splitWidth - GRAPH_MIN_WIDTH)}
+          />
+          <div
+            data-testid="graph-detail-panel"
+            className="bg-card flex shrink-0 flex-col overflow-hidden"
+            style={{ width: panelWidth }}
           >
-            {selectedMemory && viewMode === "2d" && (
-              <MiniGraph
-                memoryId={selectedMemory.id}
-                onNavigate={selection.handleNavigate}
-                onEntitySelect={
-                  entityLayerEnabled ? selection.handleEntitySelect : undefined
-                }
-              />
-            )}
-          </GraphDetailPanel>
-        </div>
+            <GraphDetailPanel
+              colorMode={colorMode}
+              selectedMemory={selectedMemory}
+              clusterName={
+                data?.cluster_names?.[String(selectedMemory?.cluster)] ?? ""
+              }
+              memories={filters.filteredMemories}
+              clusterNames={data?.cluster_names ?? {}}
+              visibleEdges={filters.filteredEdges}
+              onClose={() => {
+                selection.setShowPanel(false)
+                selection.setSelectedNodeId(null)
+                selection.setSelectedEntityId(null)
+              }}
+              selectedEntity={selectedEntity}
+              entityRelations={filters.filteredEntityRelations}
+              allEntities={data?.entities}
+              visibleEntities={filters.filteredEntities}
+              onNavigateToMemory={selection.handleNavigate}
+            >
+              {/* Gated on the entity layer, not merely on the 2D view: this
+                section counts memories sharing an entity while the canvas
+                draws cosine edges, and shown beside a graph carrying no
+                entities at all its smaller count reads as the canvas being
+                wrong rather than as a second relation. */}
+              {selectedMemory && viewMode === "2d" && entityLayerEnabled && (
+                <MiniGraph
+                  memoryId={selectedMemory.id}
+                  onNavigate={selection.handleNavigate}
+                  onEntitySelect={selection.handleEntitySelect}
+                />
+              )}
+            </GraphDetailPanel>
+          </div>
+        </>
       )}
     </div>
   )
