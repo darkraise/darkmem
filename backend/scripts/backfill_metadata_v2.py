@@ -23,9 +23,11 @@ sys.path.insert(0, str(BACKEND))
 
 from sqlalchemy import text
 
+from app.config import settings
 from app.database import async_session_factory
 from app.services.confidence import estimate_confidence
 from app.services.relations import TECH_TYPES
+from scripts.benchlib.db_target import assert_destructive_target_allowed
 
 
 _TECH_TYPES_SQL = sorted(TECH_TYPES)
@@ -128,6 +130,12 @@ async def _apply_confidence_batch(session, batch: list[tuple[str, float]]) -> No
 
 
 async def main() -> int:
+    # --commit runs an unscoped UPDATE across every memory row in whatever
+    # database DATABASE_URL resolves to, which on the host that runs the live
+    # instance is production.
+    assert_destructive_target_allowed(
+        settings.database_url, actor="backfill_metadata_v2"
+    )
     ap = argparse.ArgumentParser()
     ap.add_argument(
         "--commit",

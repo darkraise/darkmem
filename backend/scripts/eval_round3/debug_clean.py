@@ -16,6 +16,7 @@ sys.path.insert(0, BACKEND)
 CACHE = os.path.join(HERE, ".llm_cache")
 os.makedirs(CACHE, exist_ok=True)
 
+from app.config import settings  # noqa: E402
 from app.database import async_session_factory  # noqa: E402
 from app.services.config import get_llm_config  # noqa: E402
 from app.services.llm import LLMOrchestrator  # noqa: E402
@@ -23,6 +24,7 @@ from app.services import prompt as prompt_constants  # noqa: E402
 from app.services.extraction import (  # noqa: E402
     clean_extraction, EXTRACTION_SCHEMA, _MAX_CONTENT_CHARS, _content_seed, _loads_extraction,
 )
+from scripts.benchlib.db_target import assert_destructive_target_allowed  # noqa: E402
 
 
 async def get_raw(llm, content, system_prompt):
@@ -56,6 +58,9 @@ def show(label, d):
 
 
 async def main():
+    assert_destructive_target_allowed(
+        settings.database_url, actor="eval_round3/debug_clean"
+    )
     want = set(sys.argv[1:]) or {"m05", "m07", "m11", "m09", "m06"}
     with open(os.path.join(HERE, "memories.json"), encoding="utf-8") as fh:
         spec = {m["id"]: m for m in json.load(fh)["memories"]}

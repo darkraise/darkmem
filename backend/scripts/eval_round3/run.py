@@ -22,10 +22,12 @@ sys.path.insert(0, BACKEND)
 
 from sqlalchemy import select  # noqa: E402
 
+from app.config import settings  # noqa: E402
 from app.database import async_session_factory  # noqa: E402
 from app.models.graph import Entity, EntityRelation  # noqa: E402
 from app.models.memory import Memory  # noqa: E402
 from app.services.feature_flags import get_feature_flags_dict  # noqa: E402
+from scripts.benchlib.db_target import assert_destructive_target_allowed  # noqa: E402
 
 MCP_URL = "http://localhost:8000/mcp/"
 HEADERS = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
@@ -159,6 +161,9 @@ def fmt_graph(g: dict) -> str:
 
 
 async def main():
+    assert_destructive_target_allowed(
+        settings.database_url, actor="eval_round3/run"
+    )
     mem_file = sys.argv[1] if len(sys.argv) > 1 else "memories.json"
     eval_tag = sys.argv[2] if len(sys.argv) > 2 else "eval/2026-06-04-r3"
     with open(os.path.join(HERE, mem_file), encoding="utf-8") as fh:

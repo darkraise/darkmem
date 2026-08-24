@@ -16,10 +16,19 @@ sys.path.insert(0, BACKEND)
 
 from sqlalchemy import text  # noqa: E402
 
+from app.config import settings  # noqa: E402
 from app.database import async_session_factory  # noqa: E402
+from scripts.benchlib.db_target import assert_destructive_target_allowed  # noqa: E402
 
 
 async def main():
+    # Statement 0 below resurrects every superseded memory in whatever database
+    # DATABASE_URL resolves to, which on the host that runs the live instance is
+    # production. The lineage it destroys is decided at ingest and is not
+    # recomputed on read, so there is nothing to rebuild it from.
+    assert_destructive_target_allowed(
+        settings.database_url, actor="eval_round3/purge_eval"
+    )
     async with async_session_factory() as s:
         # 0) Resurrect any superseded memory first, so deleting its superseder
         #    (FK superseded_by -> SET NULL) doesn't leave it status='superseded'
