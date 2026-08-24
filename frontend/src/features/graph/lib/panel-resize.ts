@@ -27,11 +27,15 @@ export const GRAPH_MIN_WIDTH = 420
 export const DEFAULT_DETAIL_PANEL_WIDTH = 320
 
 /**
- * The width the panel may actually take right now.
+ * The width a pure split-pane clamp would give the panel.
  *
- * Both floors are honoured, and the canvas wins when the container is too
- * narrow to satisfy both: a panel that has eaten the graph is useless, while a
- * panel below its own minimum is merely cramped.
+ * Both floors are honoured where the container can hold them both; below
+ * that, the canvas's floor wins outright and the panel is squeezed toward
+ * zero. That degenerate branch is what `panelLayout` exists to avoid — see
+ * its doc comment — so this is no longer what lays the panel out on the
+ * page. It survives for `widthFromPointer`, which only runs during an active
+ * drag, itself only possible while the split is wide enough that dragging is
+ * offered at all.
  */
 export function clampPanelWidth(
   requested: number,
@@ -43,6 +47,42 @@ export function clampPanelWidth(
     return Math.max(0, Math.min(DETAIL_PANEL_MIN_WIDTH, ceiling))
   }
   return Math.max(DETAIL_PANEL_MIN_WIDTH, Math.min(ceiling, requested))
+}
+
+/**
+ * The width the panel actually renders at, and whether it must float.
+ *
+ * Below `GRAPH_MIN_WIDTH + DETAIL_PANEL_MIN_WIDTH` no split satisfies both
+ * floors, and `clampPanelWidth`'s answer to that — hand the canvas
+ * everything, including squeezing the panel to 0 — makes the panel's own
+ * close button and the toolbar's reopen affordance both disappear with it.
+ * Below the threshold the panel stops splitting the row with the canvas and
+ * floats as an overlay on top of it instead, sized off the container rather
+ * than off what the canvas leaves, so it is always visible and never eats
+ * the graph.
+ */
+export function panelLayout(
+  requested: number,
+  containerWidth: number,
+): { width: number; floating: boolean } {
+  const safeRequested = Number.isFinite(requested)
+    ? requested
+    : DEFAULT_DETAIL_PANEL_WIDTH
+  const floating = containerWidth - GRAPH_MIN_WIDTH < DETAIL_PANEL_MIN_WIDTH
+  if (floating) {
+    return {
+      width: Math.min(
+        containerWidth * 0.85,
+        Math.max(DETAIL_PANEL_MIN_WIDTH, safeRequested),
+      ),
+      floating: true,
+    }
+  }
+  const ceiling = containerWidth - GRAPH_MIN_WIDTH
+  return {
+    width: Math.max(DETAIL_PANEL_MIN_WIDTH, Math.min(ceiling, safeRequested)),
+    floating: false,
+  }
 }
 
 /** Panel width for a pointer at `clientX`, given the container's right edge. */

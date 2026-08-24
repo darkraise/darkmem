@@ -3,6 +3,7 @@ import { useGraphPrefs } from "../graph-prefs"
 import {
   clampPanelWidth,
   widthFromPointer,
+  panelLayout,
   DETAIL_PANEL_MIN_WIDTH,
   GRAPH_MIN_WIDTH,
   DEFAULT_DETAIL_PANEL_WIDTH,
@@ -63,6 +64,64 @@ describe("clampPanelWidth", () => {
 
   it("returns the default for a width that is not a number", () => {
     expect(clampPanelWidth(Number.NaN, WIDE)).toBe(DEFAULT_DETAIL_PANEL_WIDTH)
+  })
+})
+
+describe("panelLayout", () => {
+  const REQUESTED = DEFAULT_DETAIL_PANEL_WIDTH // 320
+
+  it("splits normally in a comfortably wide container", () => {
+    expect(panelLayout(REQUESTED, 900)).toEqual({
+      width: REQUESTED,
+      floating: false,
+    })
+  })
+
+  // The exact threshold: both floors just barely coexist, so the panel is
+  // pinned at its own minimum and the split still holds.
+  it("still splits, pinned to its own floor, at the exact threshold", () => {
+    expect(panelLayout(REQUESTED, GRAPH_MIN_WIDTH + DETAIL_PANEL_MIN_WIDTH)).toEqual({
+      width: DETAIL_PANEL_MIN_WIDTH,
+      floating: false,
+    })
+  })
+
+  // One pixel narrower and no split can hold both floors at once.
+  it("floats one pixel below the threshold", () => {
+    const result = panelLayout(
+      REQUESTED,
+      GRAPH_MIN_WIDTH + DETAIL_PANEL_MIN_WIDTH - 1,
+    )
+    expect(result.floating).toBe(true)
+    expect(result.width).toBeGreaterThan(0)
+  })
+
+  // This is the width the unfixed clampPanelWidth collapsed to 0 at.
+  it("floats and never collapses to 0 at the old canvas floor", () => {
+    const result = panelLayout(REQUESTED, GRAPH_MIN_WIDTH)
+    expect(result.floating).toBe(true)
+    expect(result.width).toBeGreaterThan(0)
+    expect(result.width).toBeLessThanOrEqual(GRAPH_MIN_WIDTH * 0.85)
+  })
+
+  it("floats and stays within 85% of a very narrow container", () => {
+    const result = panelLayout(REQUESTED, 300)
+    expect(result.floating).toBe(true)
+    expect(result.width).toBeGreaterThan(0)
+    expect(result.width).toBeLessThanOrEqual(300 * 0.85)
+  })
+
+  it("never exceeds 85% of the container while floating even for a huge request", () => {
+    const result = panelLayout(2000, 300)
+    expect(result.floating).toBe(true)
+    expect(result.width).toBeLessThanOrEqual(300 * 0.85)
+  })
+
+  it("falls back to the default width for a non-numeric request", () => {
+    expect(panelLayout(Number.NaN, 900)).toEqual({
+      width: DEFAULT_DETAIL_PANEL_WIDTH,
+      floating: false,
+    })
   })
 })
 

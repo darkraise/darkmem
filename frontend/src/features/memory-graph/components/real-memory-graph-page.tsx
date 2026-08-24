@@ -32,7 +32,7 @@ import { useMemoryGraphTheme } from "@/features/graph/lib/memory-graph-theme"
 import { useGraphPrefs } from "@/features/graph/lib/graph-prefs"
 import { PanelResizeHandle } from "@/features/graph/components/panel-resize-handle"
 import {
-  clampPanelWidth,
+  panelLayout,
   widthFromPointer,
   DETAIL_PANEL_MIN_WIDTH,
   GRAPH_MIN_WIDTH,
@@ -93,7 +93,7 @@ export function RealMemoryGraphPage() {
   const splitRef = useRef<HTMLDivElement>(null)
   const [splitWidth, setSplitWidth] = useState(0)
 
-  const panelWidth = clampPanelWidth(
+  const { width: panelWidth, floating: panelFloating } = panelLayout(
     draggedPanelWidth ?? storedPanelWidth,
     // Before the split is measured, honour the stored width rather than
     // clamping against a zero container and collapsing the panel.
@@ -222,7 +222,7 @@ export function RealMemoryGraphPage() {
   return (
     <div
       ref={splitRef}
-      className="flex h-full overflow-hidden"
+      className="relative flex h-full overflow-hidden"
       style={{ minHeight: 0 }}
       data-testid="graph-split"
     >
@@ -449,17 +449,30 @@ export function RealMemoryGraphPage() {
 
       {selection.showPanel && memoryCount > 0 && (
         <>
-          <PanelResizeHandle
-            width={panelWidth}
-            onResize={setDraggedPanelWidth}
-            onCommit={commitPanelWidth}
-            widthAt={widthAt}
-            min={DETAIL_PANEL_MIN_WIDTH}
-            max={Math.max(DETAIL_PANEL_MIN_WIDTH, splitWidth - GRAPH_MIN_WIDTH)}
-          />
+          {/* Resizing an overlay against a canvas floor that no longer
+              constrains it is meaningless, so the handle only exists for the
+              split layout. */}
+          {!panelFloating && (
+            <PanelResizeHandle
+              width={panelWidth}
+              onResize={setDraggedPanelWidth}
+              onCommit={commitPanelWidth}
+              widthAt={widthAt}
+              min={DETAIL_PANEL_MIN_WIDTH}
+              max={Math.max(
+                DETAIL_PANEL_MIN_WIDTH,
+                splitWidth - GRAPH_MIN_WIDTH,
+              )}
+            />
+          )}
           <div
             data-testid="graph-detail-panel"
-            className="bg-card flex shrink-0 flex-col overflow-hidden"
+            data-floating={panelFloating}
+            className={
+              panelFloating
+                ? "bg-card border-border absolute inset-y-0 right-0 z-30 flex flex-col overflow-hidden border-l shadow-2xl"
+                : "bg-card flex shrink-0 flex-col overflow-hidden"
+            }
             style={{ width: panelWidth }}
           >
             <GraphDetailPanel
