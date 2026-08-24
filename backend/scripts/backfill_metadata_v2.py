@@ -130,12 +130,6 @@ async def _apply_confidence_batch(session, batch: list[tuple[str, float]]) -> No
 
 
 async def main() -> int:
-    # --commit runs an unscoped UPDATE across every memory row in whatever
-    # database DATABASE_URL resolves to, which on the host that runs the live
-    # instance is production.
-    assert_destructive_target_allowed(
-        settings.database_url, actor="backfill_metadata_v2"
-    )
     ap = argparse.ArgumentParser()
     ap.add_argument(
         "--commit",
@@ -143,6 +137,15 @@ async def main() -> int:
         help="Apply the backfill. Without this flag the script reports counts only.",
     )
     args = ap.parse_args()
+
+    if args.commit:
+        # --commit runs an unscoped UPDATE across every memory row in
+        # whatever database DATABASE_URL resolves to, which on the host that
+        # runs the live instance is production. The preview below is
+        # read-only, so --help and a dry run stay usable everywhere.
+        assert_destructive_target_allowed(
+            settings.database_url, actor="backfill_metadata_v2"
+        )
 
     async with async_session_factory() as session:
         counts = await _preview_counts(session)
