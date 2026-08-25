@@ -350,3 +350,36 @@ body.content-full-bleed .dr-split-panel-layout-content {
     animation: none !important;
   }
 }
+
+/* Brand mark.
+
+   darkraise-ui's `BrandLogo` hard-codes `<img src="/logo.svg">` and offers no
+   slot to replace it — `sidebarHeader` renders below the search box, not in the
+   brand row. An SVG loaded through `<img>` is an isolated document, so the file
+   cannot see `--primary` and a shipped logo would be stuck on one colour while
+   the accent picker moves. Painting the file as a mask keeps the shape in the
+   asset and the colour in the token.
+
+   Both the image and the letter-tile fallback are hidden: the fallback only
+   appears when the image 404s, and it would otherwise render alongside the
+   mask. This makes `public/logo.svg` load-bearing in a way a missing file would
+   not announce, which is what `brand-assets.test.ts` guards. */
+.dr-brand-logo-image,
+.dr-brand-logo-mark {
+  display: none;
+}
+.dr-brand-logo::before {
+  content: "";
+  flex: none;
+  height: 2rem;
+  width: 2rem;
+  background-color: hsl(var(--primary));
+  -webkit-mask: url("/logo.svg") center / contain no-repeat;
+  mask: url("/logo.svg") center / contain no-repeat;
+}
+/* The collapsed rail sizes the mark to the density cell, as the library does
+   for the image it replaces. */
+.dr-sidebar-layout-brand-slot .dr-brand-logo::before {
+  height: var(--density-cell);
+  width: var(--density-cell);
+}

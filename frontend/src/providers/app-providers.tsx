@@ -9,6 +9,7 @@ import {
 import { tanstackRouterAdapter } from "./router-adapter"
 import { themeConfig } from "@/theme.config"
 import { themePersistence } from "@/lib/theme-persistence"
+import { AccentFavicon } from "@/components/app-chrome/accent-favicon"
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -23,6 +24,9 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider config={themeConfig} persistence={themePersistence}>
+        {/* Inside the provider so it can read the resolved accent, and above
+            the router so the login screen gets the same tab icon. */}
+        <AccentFavicon />
         <RouterAdapterProvider value={tanstackRouterAdapter}>
           <FloatingPanelProvider>
             {children}
