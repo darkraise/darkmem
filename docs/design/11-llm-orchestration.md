@@ -149,12 +149,33 @@ The split timeout (a 4-tuple, not a single 300-second scalar) is the deliberate 
 
 | `api_kind` | Auth | Reasoning-disable knob | Structured output | Embeddings | Notes |
 |---|---|---|---|---|---|
-| `openai` | `Authorization: Bearer` | `reasoning_effort` param (`none…xhigh`) | `response_format: json_object` accepted | yes | `max_completion_tokens` cap key; automatic prompt caching ≥1024-token prompts |
-| `ollama` | none / Bearer | `think: false` (native; the `/no_think` soft directive is ignored by some qwen builds) | `format: "json"` | yes | params map into an `options` envelope; `num_predict` cap; `seed` in options |
+| `openai` | `Authorization: Bearer` | `reasoning_effort` param (`none…xhigh`); `none` is **injected** for a non-reasoning purpose that states no effort of its own | `response_format: json_object` accepted | yes | `max_completion_tokens` cap key; automatic prompt caching ≥1024-token prompts |
+| `ollama` | none / Bearer | `think: false` (native). The `/no_think` chat-template directive is **not** sent on any compat vendor by default — it is opt-in per purpose via the `prompt_no_think` param, for a qwen model served behind an OpenAI-compatible endpoint | `format: "json"` | yes | params map into an `options` envelope; `num_predict` cap; `seed` in options |
 | `anthropic` | `x-api-key` + `anthropic-version` | seed **ignored** (harmless); no reasoning knob on compat | `response_format` **dropped** (compat shim demands strict `json_schema`); rely on in-prompt schema + markdown-fence stripping | **no** | native `/v1/messages` + `cache_control` needed for prompt caching — does not fire on compat |
 | `google` (Gemini) | `Authorization: Bearer` | `reasoning_effort: none` — the only compat knob that disables hidden CoT (`thinking:{type:disabled}` rejected) | `response_format: json_object` accepted | yes | compat under `/v1beta/openai`; reasoning-by-default |
-| `deepseek` | `Authorization: Bearer` | `thinking:{type:disabled}` — the only flag that zeroes `reasoning_tokens` on v4 | `response_format: json_object` accepted | **no** | hidden CoT otherwise eats the whole `max_tokens` budget |
+| `deepseek` | `Authorization: Bearer` | `thinking:{type:disabled}` — zeroes `reasoning_tokens` on v4 (**measured** 2026-08-25; `reasoning_effort:"none"` does too, so it is not the only one, and a bare `thinking:false` is a 400) | `response_format: json_object` accepted | **no** | hidden CoT otherwise eats the whole `max_tokens` budget |
 | `zai` (GLM) | `Authorization: Bearer` | `thinking:{type:enabled\|disabled}` | `response_format: json_object` accepted | yes | compat at `/api/paas/v4`; `/v1/models` under-reports models (UI uses a free-text combobox) |
+
+**Measured, 2026-08-25 (`deepseek-v4-flash`, live API).** The row above used to
+call `thinking:{type:disabled}` "the only flag that zeroes `reasoning_tokens` on
+v4". It is not:
+
+| Payload | `reasoning_tokens` | `reasoning_content` |
+|---|---|---|
+| *(none)* | 32 | present |
+| `thinking:{"type":"disabled"}` | `None` | absent |
+| `reasoning_effort:"none"` | `None` | absent |
+| `thinking:false` | HTTP 400 — vendor types it as a struct | — |
+| `chat_template_kwargs:{thinking:false}` | 43 | present |
+| `enable_thinking:false` | 50 | present |
+| *(invented param name — control)* | 34 | present |
+
+The control is the load-bearing row: DeepSeek returns 200 for a parameter it has
+never heard of, so **"it did not error" is not evidence a knob works on this
+vendor** — only `reasoning_tokens` going to `None` is. Any quirk here validated
+by the absence of a 400 was never validated. Note the unit tests for this run
+against a `MockTransport`: they assert the body we *send*, which is the right
+scope for them and is why this table exists.
 
 *The whole vendor-difference surface resolved on one axis, in three orchestrator methods — a call site sees none of it:*
 
@@ -163,7 +184,7 @@ flowchart TD
     C["chat_completion(purpose, messages, response_format?, seed?)"] --> K{"cfg.api_kind"}
     K -->|ollama| O["native /api/chat<br/>think:false when not reasoning<br/>seed in options, format:json"]
     K -->|"openai + vendor kinds"| B["_build_openai_chat_body"]
-    B --> R{"not reasoning?"}
+    B --> R{"not reasoning AND params.prompt_no_think?"}
     R -->|yes| NT["append /no_think to last user msg"]
     R -->|no| P["merge params + extra_body"]
     NT --> P

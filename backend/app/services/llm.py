@@ -103,6 +103,13 @@ class LLMTruncationError(RuntimeError):
     """
 
 
+#: Purpose-param key opting a qwen-behind-compat deployment into the
+#: ``/no_think`` chat-template directive. Not a wire field — it is stripped
+#: from the request body and steers the prompt instead. Vendors that define no
+#: such directive simply never set it.
+NO_THINK_PARAM = "prompt_no_think"
+
+
 class LLMOrchestrator:
     """Routes purpose-specific calls to the right wire protocol.
 
@@ -542,7 +549,7 @@ class LLMOrchestrator:
         # Map common params into Ollama's ``options`` envelope.
         options: dict = {}
         for key, value in cfg.params.items():
-            if key == "extra_body":
+            if key in ("extra_body", NO_THINK_PARAM):
                 continue
             if key in ("temperature", "top_p", "top_k", "num_predict",
                        "num_ctx", "seed", "repeat_penalty", "stop"):
@@ -681,25 +688,34 @@ class LLMOrchestrator:
         ``llm_quirks.quirks_for``. Mutates a local copy of ``messages`` only.
         """
         quirks = quirks_for(cfg.api_kind)
-        # ``/no_think`` is a soft directive — works for some qwen variants but
-        # is silently ignored by others. The native path uses
-        # ``"think": false`` instead.
-        if not cfg.reasoning:
+        # ``/no_think`` is a qwen chat-template directive, not a wire
+        # parameter, so it is opt-in per purpose rather than applied to every
+        # compat vendor. It used to be unconditional: measured 2026-08-25,
+        # that put a literal " /no_think" on the end of every non-reasoning
+        # prompt sent to OpenAI, Anthropic, Gemini, DeepSeek and GLM, none of
+        # which have ever defined it. It is still wanted for a qwen model
+        # served behind an OpenAI-compatible endpoint (vLLM, LM Studio), which
+        # is a property of the MODEL and not of the api_kind — so it lives in
+        # the purpose's params where the model is chosen, not in the vendor
+        # quirk table where it could not be expressed.
+        if not cfg.reasoning and cfg.params.get(NO_THINK_PARAM):
             messages = self._append_no_think(messages)
 
         body: dict = {"model": cfg.model, "messages": messages}
         if stream:
             body["stream"] = True
-        # Apply standard params.
+        # Apply standard params. NO_THINK_PARAM steers the prompt above and is
+        # not a wire field; sending it would reach the vendor as an unknown
+        # key — a 400 on the strict ones and, worse, a silent no-op on the
+        # permissive ones.
         for key, value in cfg.params.items():
-            if key != "extra_body":
+            if key not in ("extra_body", NO_THINK_PARAM):
                 body[key] = value
         # Apply extra_body params (provider-specific).
         if "extra_body" in cfg.params:
             body.update(cfg.params["extra_body"])
         if response_format and quirks.accepts_response_format:
             body["response_format"] = response_format
-        assert_reasoning_effort(cfg.api_kind, body.get("reasoning_effort"))
         # Reasoning-by-default vendors silently consume the entire
         # ``max_tokens`` budget on a hidden chain-of-thought before emitting any
         # visible output. With a small budget and a long extraction prompt the
@@ -717,6 +733,10 @@ class LLMOrchestrator:
             and "reasoning_effort" not in body
         ):
             body["reasoning_effort"] = quirks.reasoning_disable_effort
+        # After the injection, not before it: validating only the configured
+        # value would let a mistyped ``reasoning_disable_effort`` in the quirk
+        # table ship a 400 to production instead of raising here.
+        assert_reasoning_effort(cfg.api_kind, body.get("reasoning_effort"))
 
         # Per-call seed override. The cfg.params.seed value, if present, can
         # also pin the seed — this overrides it so callers can supply
@@ -761,11 +781,24 @@ class LLMOrchestrator:
                     body["think"] = False
                 options: dict = {}
                 for key, value in cfg.params.items():
-                    if key == "extra_body":
+                    if key in ("extra_body", NO_THINK_PARAM):
                         continue
                     if key in ("temperature", "top_p", "top_k", "num_predict",
                                "num_ctx", "seed", "repeat_penalty", "stop"):
                         options[key] = value
+                    else:
+                        body[key] = value
+                # Same extra_body handling as the non-streaming native path.
+                # It used to be dropped here, so one purpose config produced
+                # two different Ollama bodies depending only on whether the
+                # call streamed.
+                extra = cfg.params.get("extra_body")
+                if isinstance(extra, dict):
+                    if isinstance(extra.get("options"), dict):
+                        options.update(extra["options"])
+                    for k, v in extra.items():
+                        if k != "options":
+                            body[k] = v
                 if options:
                     body["options"] = options
 

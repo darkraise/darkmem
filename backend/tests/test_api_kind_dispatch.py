@@ -17,6 +17,7 @@ from app.config import LLMApiKind, LLMPurposeConfig
 from app.services.llm import LLMOrchestrator
 from app.services.llm_quirks import (
     ANTHROPIC_VERSION,
+    assert_reasoning_effort,
     known_api_kinds,
     quirks_for,
 )
@@ -194,7 +195,10 @@ async def test_google_does_not_override_a_configured_effort():
 
 
 async def test_no_effort_is_injected_for_vendors_without_that_knob():
-    for api_kind in ("openai", "deepseek", "zai", "anthropic"):
+    # `openai` left this list 2026-08-25: gpt-5-family models reason by
+    # default, so it gained `reasoning_disable_effort="none"` like google.
+    # deepseek and zai disable through `thinking`, anthropic needs nothing.
+    for api_kind in ("deepseek", "zai", "anthropic"):
         capture = await _chat(api_kind, reasoning=False)
         assert "reasoning_effort" not in capture.body, api_kind
 
@@ -285,3 +289,73 @@ def test_no_vendor_conditional_at_any_call_site():
     assert offenders == [], "vendor conditionals outside the quirk table:\n" + "\n".join(
         offenders
     )
+
+
+# ── recorded quirk 5: `/no_think` is opt-in, not universal ─────────────
+#
+# Measured 2026-08-25: it used to be appended to every non-reasoning compat
+# prompt. It is a qwen chat-template directive; OpenAI, Anthropic, Gemini,
+# DeepSeek and GLM have never defined it, so for them it was literal text
+# glued to the user's last message.
+
+
+@pytest.mark.parametrize("api_kind", ["openai", "anthropic", "google", "deepseek", "zai"])
+async def test_no_think_is_not_appended_by_default(api_kind):
+    capture = await _chat(api_kind, reasoning=False)
+    assert capture.body["messages"][-1]["content"] == "hi"
+
+
+async def test_a_purpose_can_opt_into_the_no_think_directive():
+    """A qwen model behind an OpenAI-compatible endpoint still wants it."""
+    capture = await _chat(
+        "openai", reasoning=False, params={"prompt_no_think": True},
+    )
+    assert capture.body["messages"][-1]["content"] == "hi /no_think"
+
+
+async def test_the_opt_in_param_never_reaches_the_wire():
+    """It steers the prompt; as a body field it is an unknown key."""
+    capture = await _chat(
+        "openai", reasoning=False, params={"prompt_no_think": True},
+    )
+    assert "prompt_no_think" not in capture.body
+
+
+async def test_no_think_is_not_appended_to_a_reasoning_purpose():
+    capture = await _chat(
+        "openai", reasoning=True, params={"prompt_no_think": True},
+    )
+    assert capture.body["messages"][-1]["content"] == "hi"
+
+
+# ── recorded quirk 6: OpenAI reasons by default too ───────────────────
+
+
+async def test_openai_disables_reasoning_with_effort_none():
+    capture = await _chat("openai", reasoning=False)
+    assert capture.body["reasoning_effort"] == "none"
+
+
+async def test_openai_does_not_override_a_configured_effort():
+    capture = await _chat(
+        "openai", reasoning=False, params={"reasoning_effort": "low"},
+    )
+    assert capture.body["reasoning_effort"] == "low"
+
+
+async def test_openai_leaves_a_reasoning_purpose_alone():
+    capture = await _chat("openai", reasoning=True)
+    assert "reasoning_effort" not in capture.body
+
+
+async def test_every_injected_disable_effort_is_in_its_own_vendor_vocabulary():
+    """The injection is validated, not only the operator's own value.
+
+    A mistyped `reasoning_disable_effort` in the quirk table would otherwise
+    ship a 400 to production instead of raising locally.
+    """
+    for api_kind in known_api_kinds():
+        quirks = quirks_for(api_kind)
+        if quirks.reasoning_disable_effort is None:
+            continue
+        assert_reasoning_effort(api_kind, quirks.reasoning_disable_effort)

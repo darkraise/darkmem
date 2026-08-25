@@ -1577,6 +1577,50 @@ and this run deliberately minted none.)*
 
 **Owning task:** T2.41. **Bar lives in:** `config` + the gold set.
 
+### The judge's prompt lost an undocumented suffix (2026-08-25) — measured inert
+
+**What changed.** `_build_chat_body` appended a literal `" /no_think"` to the
+last user message of every non-reasoning compat call. `verification` is
+`reasoning=False` on an `openai` kind, so **every judge call carried it**,
+including the sitting that minted the entailment record on 2026-08-17. It is a
+qwen chat-template directive; OpenAI has never defined it. It is now opt-in per
+purpose (`prompt_no_think`) and no purpose sets it, so the judge no longer
+receives it.
+
+**Why this needed measuring rather than asserting.** `judge_identity` hashes
+`SYSTEM_PROMPT + "\x00" + USER_TEMPLATE` — the *template*, not the message that
+is sent. The suffix was applied downstream of that hash, so removing it changes
+the judge's input **without moving `fd39e7b2c47fa375`**. That is precisely the
+shape doc 17 §6 guards against: a qualification that silently stops describing
+the thing it qualified.
+
+**Measurement.** 30 gold pairs (deterministic stride over `gold.json`), judge
+`gpt-5.5` at `reasoning_effort: high`, three arms per pair — without the suffix,
+without it *again* as a control, and with it.
+
+| Arm | Verdict disagreements / 30 |
+|---|---|
+| control (identical prompt, sent twice) | **2** |
+| suffix vs no suffix | **1** |
+
+Agreement with gold was 22/30 without and 23/30 with. **The suffix's effect is
+smaller than the judge's own run-to-run noise**, and the single pair that moved
+(`eg-0698`) is one the control arm also moved, so it is unstable rather than
+suffix-sensitive. The record continues to describe the running judge, and the
+change moves the sent prompt *toward* the template the identity hashes rather
+than away from it.
+
+**The control arm is a finding in its own right, and it is not a comfortable
+one.** `gpt-5.5` at high effort is **not deterministic**: 2 of 30 verdicts
+flipped on a byte-identical request with a fixed `seed` — OpenAI's seed is
+best-effort, not a guarantee. Every number in the entailment record
+(precision 0.9906, recall 0.9545) comes from a **single sitting** of that judge,
+so each carries an unquantified re-run variance that no artifact currently
+states. Nothing here re-opens the mint; it records that the figures are one
+draw, not a constant, and that a re-run landing slightly differently would be
+the instrument, not a regression.
+
+
 | Probe | Bar | Measured | Artifact | Verdict |
 |---|---|---|---|---|
 | `verification` judge precision on labelled entailment gold | ≥ 0.95 on `entailed` (`groundedness_gate_precision_bar`, config default; stated 2026-07-31, before any gate run) | **0.9895** (deepseek) / **0.9806** (gpt-5.5) | `docs/eval/2026-08-08-judge-qualification-4d886440.md`, `-1bb9d9ba.md` | **PASS** both |

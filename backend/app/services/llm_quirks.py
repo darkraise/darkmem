@@ -75,6 +75,14 @@ _QUIRKS: dict[str, VendorQuirks] = {
         # still carries it 400s on every request.
         reasoning_efforts=("none", "low", "medium", "high", "xhigh"),
         retired_reasoning_efforts=("minimal",),
+        # gpt-5-family models reason by default, so a non-reasoning purpose
+        # needs the same net Google has. Without it the disable lived only in
+        # the seeded params, and a purpose repointed at OpenAI through the
+        # settings door with params that omit the key reasons at full effort —
+        # spending the whole output cap on a hidden trace and returning empty
+        # content. Guarded by ``"reasoning_effort" not in body`` below, so a
+        # config that states its own effort still wins.
+        reasoning_disable_effort="none",
         stream_usage_option=True,
         cache_hit_fields=("prompt_tokens_details.cached_tokens",),
     ),
@@ -96,6 +104,10 @@ _QUIRKS: dict[str, VendorQuirks] = {
         # object. Rely on the in-prompt schema plus fence stripping instead.
         accepts_response_format=False,
         honours_seed=False,
+        # No disable knob because none is needed, not because none was found:
+        # Claude's extended thinking is opt-in, so a request that does not ask
+        # for it gets no hidden trace. Recorded because an empty row otherwise
+        # reads the same as an unfinished one.
         accepts_reasoning_effort=False,
     ),
     "google": VendorQuirks(
@@ -107,6 +119,17 @@ _QUIRKS: dict[str, VendorQuirks] = {
     ),
     "deepseek": VendorQuirks(
         supports_embedding=False,
+        # Measured live against deepseek-v4-flash 2026-08-25, not read off a
+        # doc: with no flag the response carries reasoning_tokens=32 and a
+        # reasoning_content block; with this flag both are absent. Note the
+        # doc's claim that it is the ONLY such flag is false — plain
+        # ``reasoning_effort: "none"`` zeroes them too. `thinking: false`
+        # (bare boolean) is a 400: the vendor types it as a struct.
+        #
+        # The control matters more than either result: a request carrying an
+        # invented parameter name returns 200 and reasons anyway, so this
+        # vendor SILENTLY DROPS unknown params. "It did not error" is never
+        # evidence a knob works here — only reasoning_tokens going to None is.
         thinking_flag=True,
         stream_usage_option=True,
         cache_hit_fields=("prompt_cache_hit_tokens",),
