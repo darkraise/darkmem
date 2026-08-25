@@ -10,13 +10,15 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from app.services.git_accounts import GitAccountInUse
 from starlette.middleware.gzip import GZipMiddleware
 
 from sqlalchemy import text
 
 from app.api.mcp.server import mcp as mcp_server, set_pipeline
 from app.api.spa import mount_spa
-from app.api.routes import analytics, api_keys as api_key_routes, articles as articles_routes, auth, buffer as buffer_routes, chat, checkpoints as checkpoint_routes, code, config, distribution as distribution_routes, documents as documents_routes, dream_digest as dream_digest_routes, events as events_routes, facts as facts_routes, graph, hygiene_queue, jobs, knowledge_search as knowledge_search_routes, llm_providers, memories, overview as overview_routes, pipeline as pipeline_routes, pipeline_failures, projects as projects_routes, ratification as ratification_routes, reembed, repos, review_queue, setup, system, tags, topics as topics_routes, usage as usage_routes, vectors
+from app.api.routes import analytics, api_keys as api_key_routes, git_accounts as git_account_routes, articles as articles_routes, auth, buffer as buffer_routes, chat, checkpoints as checkpoint_routes, code, config, distribution as distribution_routes, documents as documents_routes, dream_digest as dream_digest_routes, events as events_routes, facts as facts_routes, graph, hygiene_queue, jobs, knowledge_search as knowledge_search_routes, llm_providers, memories, overview as overview_routes, pipeline as pipeline_routes, pipeline_failures, projects as projects_routes, ratification as ratification_routes, reembed, repos, review_queue, setup, system, tags, topics as topics_routes, usage as usage_routes, vectors
 from app.api.websocket import websocket_endpoint
 from app.config import settings
 from app.schemas.envelope import ErrorDetail, ErrorEnvelope
@@ -864,6 +866,16 @@ async def _http_exception_handler(_request, exc: StarletteHTTPException):
     return _error_response(exc.status_code, code, message, details, getattr(exc, "headers", None))
 
 
+@app.exception_handler(GitAccountInUse)
+async def _git_account_in_use_handler(_request, exc: GitAccountInUse):
+    """409 that names the repos still using the account.
+
+    Its own handler because the generic HTTPException path keeps `details` only
+    for a list and would otherwise drop both the list and the message.
+    """
+    return _error_response(409, "conflict", exc.message, exc.repos)
+
+
 @app.exception_handler(RequestValidationError)
 async def _validation_exception_handler(_request, exc: RequestValidationError):
     errors = jsonable_encoder(exc.errors())
@@ -896,6 +908,7 @@ app.include_router(pipeline_routes.router)
 app.include_router(vectors.router)
 app.include_router(chat.router)
 app.include_router(repos.router)
+app.include_router(git_account_routes.router)
 app.include_router(code.router)
 app.include_router(pipeline_failures.router)
 app.include_router(review_queue.router)

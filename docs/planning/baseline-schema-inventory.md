@@ -144,7 +144,8 @@ they are in §8, with their own vocabulary.
 | `entities` | 04 §4.1 | T0.12a | `reshaped` | `repo_ids[]` arrives with T0.13 (§5). |
 | `entity_relations` | 04 §4.2 | T0.12a | `reshaped` | `repo_ids[]` arrives with T0.13 (§5). |
 | `embedders` | 04 §5.1 | T0.12a | `carries-over` | The fingerprint registry; owns the child-table DDL (§6). |
-| `repositories` | 04 §6 | T0.12b | `reshaped` | Gains `index_debt` jsonb (§5). |
+| `git_accounts` | 04 §6 | — | `target-new` | Named forge credentials, shared across repos (§5). A token rotation is one edit rather than one per repo. |
+| `repositories` | 04 §6 | T0.12b | `reshaped` | Gains `index_debt` jsonb and `git_account_id` (§5). |
 | `code_files` | 04 §6 | T0.12b | `carries-over` | |
 | `code_symbols` | 04 §6 | T0.12b | `carries-over` | The live enrichment backlog is its partial index, not `enrichment_queue` (§8). |
 | `code_graph_nodes` | 04 §6 | T0.12b | `carries-over` | `kind` is polymorphic — communities and processes are node kinds. |
@@ -285,6 +286,9 @@ column.
 | `idx_pipeline_failures_resolved_at` | `pipeline_failures` | `CREATE INDEX idx_pipeline_failures_resolved_at ON public.pipeline_failures USING btree (resolved_at) WHERE (resolved_at IS NOT NULL)` | `carries-over` | 04 §7 | — |
 | `idx_pipeline_failures_unresolved` | `pipeline_failures` | `CREATE UNIQUE INDEX idx_pipeline_failures_unresolved ON public.pipeline_failures USING btree (entity_type, entity_id, pipeline_name) WHERE (resolved_at IS NULL)` | `carries-over` | 04 §7 | — |
 | `pipeline_failures_pkey` | `pipeline_failures` | `CREATE UNIQUE INDEX pipeline_failures_pkey ON public.pipeline_failures USING btree (id)` | `carries-over` | 04 §7 | — |
+| `ux_git_accounts_label` | `git_accounts` | `CREATE UNIQUE INDEX ux_git_accounts_label ON public.git_accounts USING btree (provider, host, label)` | `target-new` | 04 §6 | — |
+| `ux_git_accounts_default` | `git_accounts` | `CREATE UNIQUE INDEX ux_git_accounts_default ON public.git_accounts USING btree (provider, host) WHERE is_default` | `target-new` | 04 §6 | — |
+| `git_accounts_pkey` | `git_accounts` | `CREATE UNIQUE INDEX git_accounts_pkey ON public.git_accounts USING btree (id)` | `target-new` | 04 §6 | — |
 | `ix_repositories_auto_sync` | `repositories` | `CREATE INDEX ix_repositories_auto_sync ON public.repositories USING btree (id) WHERE (auto_sync = true)` | `carries-over` | 04 §6 | T0.12b |
 | `repositories_pkey` | `repositories` | `CREATE UNIQUE INDEX repositories_pkey ON public.repositories USING btree (id)` | `carries-over` | 04 §6 | T0.12b |
 | `tags_name_key` | `tags` | `CREATE UNIQUE INDEX tags_name_key ON public.tags USING btree (name)` | `carries-over` | 04 §3.2 | T0.12a |
@@ -419,6 +423,8 @@ one enum type (A.7). `Kind` is `PK` / `FK` / `UNIQUE` / `CHECK` / `trigger` / `f
 | `ml_profiles_pkey` | PK | `ml_profiles` | `PRIMARY KEY (id)` | `dropped` | 04 §7 | — |
 | `pipeline_failures_pkey` | PK | `pipeline_failures` | `PRIMARY KEY (id)` | `carries-over` | 04 §7 | — |
 | `repositories_pkey` | PK | `repositories` | `PRIMARY KEY (id)` | `carries-over` | 04 §6 | T0.12b |
+| `git_accounts_pkey` | PK | `git_accounts` | `PRIMARY KEY (id)` | `target-new` | 04 §6 | — |
+| `repositories_git_account_id_fkey` | FK | `repositories` | `FOREIGN KEY (git_account_id) REFERENCES git_accounts(id) ON DELETE SET NULL` | `target-new` | 04 §6 | — |
 | `tags_name_key` | UNIQUE | `tags` | `UNIQUE (name)` | `carries-over` | 04 §3.2 | T0.12a |
 | `tags_pkey` | PK | `tags` | `PRIMARY KEY (id)` | `carries-over` | 04 §3.2 | T0.12a |
 | `token_blocklist_jti_key` | UNIQUE | `token_blocklist` | `UNIQUE (jti)` | `carries-over` | 04 §7 | — |
@@ -461,6 +467,7 @@ behaviour change, not a tidy-up.
 | `memories_touch_updated_at` | trigger | `memories` | `BEFORE UPDATE ON memories FOR EACH ROW EXECUTE FUNCTION touch_updated_at()` — replaces SQLAlchemy's client-side `onupdate`, which no raw-SQL writer honours | `target-new` | **F-20 resolution** (§9.2) | T0.12a |
 | `conversations_touch_updated_at` | trigger | `conversations` | As above on `conversations` | `target-new` | **F-20 resolution** (§9.2) | T0.12b (F-02) |
 | `repositories_touch_updated_at` | trigger | `repositories` | As above on `repositories` | `target-new` | **F-20 resolution** (§9.2) | T0.12b |
+| `git_accounts_touch_updated_at` | trigger | `git_accounts` | As above on `git_accounts` | `target-new` | **F-20 resolution** (§9.2) | — |
 | `documents_touch_updated_at` | trigger | `documents` | As above on `documents`. Omitted from this table when F-20 was written (which named three triggers) but authored by `0001_baseline.py`; the rule is per-table, so every table carrying `updated_at` takes one. | `target-new` | **F-20 resolution** (§9.2) | T0.12b |
 | `knowledge_triples` PK | PK | `knowledge_triples` | `id uuid PRIMARY KEY`, application-generated **UUIDv7** — the rebuild keeps a name, not an object (doc 04 §8.3) | `target-new` | 04 §8.3 | T0.12b |
 | `events` composite PK | PK | `events` | `(id, created_at)` — the partition key must sit in the PK; nothing joins events by id, so folding `created_at` in costs nothing | `target-new` | 04 §8.1 | T0.12b |
@@ -522,6 +529,7 @@ disagreement rather than reconciling it silently here.
 | `entities.repo_ids` | **ADD** `uuid[] DEFAULT '{}'` | `target-new, inert` | 04 §4.1, §4.2; 19 §3 | The invariant-8 amendment: a repo id is the code-side analog of a memory id, letting code assert a graph row without a memory. Lands with **empty arrays**, so both orphan sweeps' amended `NOT EXISTS (live repo)` predicates are vacuously true and behaviour is byte-identical to today. First writer in §7. |
 | `entity_relations.repo_ids` | **ADD** `uuid[] DEFAULT '{}'` | `target-new, inert` | 04 §4.2; 19 §3 | As above. |
 | `repositories.index_debt` | **ADD** `jsonb` | `target-new, inert` | 04 §6 | Persists the T2 re-trace drain: the 500-caller cap currently drops work silently, so outstanding debt is recorded and drained in continuation batches. **Doc 19 §3's disposition table does not carry a row for it and T0.13's object list does not name it** (F-13). First writer in §7. |
+| `repositories.git_account_id` | **ADD** `uuid REFERENCES git_accounts(id) ON DELETE SET NULL` | `target-new` | 04 §6 | Which shared credential a repo authenticates with. `auth_token_ref` survives beside it as the per-repo custom-token escape hatch, and resolution prefers the account: `RepoManager.get_credential` reads the account first, the config row second. `SET NULL` rather than `RESTRICT` so an account delete cannot wedge a repo row — the service refuses the delete with a 409 naming the repos, and `SET NULL` is only the backstop. |
 | `llm_purpose_configs.provider_id`, `.profile_id`, `.ml_profile_id` | **DROP** | `dropped` (§8) | 04 §7; 19 §3 | The indirection columns doc 19 §3 calls "every `*_ref`" — none is actually named `*_ref` (F-08). |
 | `llm_purpose_configs.classifier_kind` | **ADD** `text` on the `classification` purpose row | `target-new` | 04 §7 | `llm \| local` — the in-process classifier re-homed inline, replacing the deleted `ml_profiles` reference. When the `[ml]` extra is absent, classification falls back to the LLM-backed classifier. |
 | `llm_purpose_configs.provider` | **DROPPED** (T1.01, 2026-07-27) | F-10 resolved | 04 §7 vs A.2 | A.2 showed `provider varchar NOT NULL DEFAULT 'ollama'` at HEAD; doc 04 §7's inline field list omits it and fixes `api_kind` as the sole vendor-quirk home. Decided on evidence: the wizard wrote it as a verbatim copy of `api_kind` (`pcfg.provider = body.llm.api_kind`) and no runtime dispatch read it, so a second vendor column could only drift from the one that decides behaviour. **Correction (2026-07-27, post-review):** the original claim "nothing dispatched on it" was overstated — `scripts/ensure_ollama_models.py` filtered on it in both paths. That does not change the decision: because `provider` mirrored `api_kind`, and the wizard writes `api_kind='openai'` for Ollama's OpenAI-compatible endpoint, that filter already missed genuinely Ollama-served purposes. The script now keys on `api_kind` **and** the base URL's port, which fixes a pre-existing blind spot rather than merely restoring one. Dropped end-to-end: column, ORM field, `LLMPurposeConfig`, both wire schemas, and the frontend interface. |

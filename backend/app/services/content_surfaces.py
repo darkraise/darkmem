@@ -701,6 +701,14 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "GET /api/v1/config/feature-flags",
     "GET /api/v1/config/verification-ladder",
     "GET /api/v1/config/llm",
+    # Git forge credentials. Nothing here reads or returns memory content --
+    # a row is a label, a forge username and a four-character token hint --
+    # and the token itself never leaves the process.
+    "GET /api/v1/git-accounts",
+    "POST /api/v1/git-accounts",
+    "POST /api/v1/git-accounts/verify",
+    "PUT /api/v1/git-accounts/{account_id}",
+    "DELETE /api/v1/git-accounts/{account_id}",
     "GET /api/v1/config/llm-providers",
     "POST /api/v1/config/llm-providers",
     "PUT /api/v1/config/llm-providers/{name}",

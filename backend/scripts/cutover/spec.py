@@ -313,6 +313,7 @@ TARGET_NEW_TABLES: tuple[str, ...] = (
     "project_repositories",
     "documents",
     "blocks",
+    "git_accounts",
 )
 
 # Any sentinel outside the column's value domain. string_agg SKIPS NULL rows,

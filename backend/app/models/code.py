@@ -19,6 +19,9 @@ class Repository(Base):
     provider: Mapped[str] = mapped_column(String(50), default="local")
     default_branch: Mapped[str] = mapped_column(String(100), default="main")
     auth_token_ref: Mapped[str | None] = mapped_column(String(255))
+    git_account_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("git_accounts.id", ondelete="SET NULL")
+    )
     last_indexed_commit: Mapped[str | None] = mapped_column(String(64))
     last_indexed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     index_debt: Mapped[dict | None] = mapped_column(JSONB)

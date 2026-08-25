@@ -645,6 +645,26 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="git_accounts",
+        status=REST_ONLY,
+        rest=(
+            ("GET", f"{V1}/git-accounts"),
+            ("POST", f"{V1}/git-accounts"),
+            ("POST", f"{V1}/git-accounts/verify"),
+            ("PUT", f"{V1}/git-accounts/{{account_id}}"),
+            ("DELETE", f"{V1}/git-accounts/{{account_id}}"),
+        ),
+        reason=(
+            "The same posture as config.llm_providers, for the same reason: a "
+            "git account is the operator's forge credential, and /mcp is "
+            "unauthenticated on a local-network trust model. The read half "
+            "alone would hand an agent the roster of an operator's accounts, "
+            "and the write half would let it file a token or delete one. "
+            "Cloning a repo is already reachable from an agent through the "
+            "repos surface without any of that."
+        ),
+    ),
+    Surface(
         name="config.llm_providers",
         status=REST_ONLY,
         rest=(

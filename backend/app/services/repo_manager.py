@@ -129,6 +129,26 @@ class RepoManager:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    async def _resolve_create_account(self, data: RepoCreate) -> UUID | None:
+        """Which account a new repo authenticates with.
+
+        An explicit ``auth_token`` keeps the per-repo custom-token path. An
+        explicitly sent ``git_account_id`` — including ``null`` — is honoured as
+        the caller's decision. Only an omitted field falls back to the forge's
+        default, so what a repo authenticates with is always a stored value and
+        never resolved afresh at fetch time.
+        """
+        if data.auth_token:
+            return None
+        if "git_account_id" in data.model_fields_set:
+            return data.git_account_id
+        from app.services.git_accounts import GitAccountService
+        host = urlparse(data.url).hostname if data.url else None
+        account = await GitAccountService(self.session).get_default(
+            data.provider, host,
+        )
+        return account.id if account else None
+
     async def create(self, data: RepoCreate) -> Repository:
         # Validate local_path early so a typo can't end up writing a row
         # whose indexer will walk into /etc or ~/.ssh on the next sync.
@@ -151,6 +171,7 @@ class RepoManager:
             auto_sync=data.auto_sync,
             status="cloning" if data.url else "ready",
             status_message="Cloning repository..." if data.url else None,
+            git_account_id=await self._resolve_create_account(data),
         )
         self.session.add(repo)
         await self.session.flush()
@@ -273,6 +294,12 @@ class RepoManager:
         for field, value in update_fields.items():
             setattr(repo, field, value)
 
+        # Selecting an account retires the repo's own token: leaving the config
+        # row behind would keep a credential on disk that nothing reads, and
+        # resurrect it the moment the account is cleared again.
+        if data.git_account_id is not None and data.auth_token is None:
+            await self._drop_custom_token(repo)
+
         if data.auth_token is not None:
             token_key = f"git_token_{repo.id}"
             existing = await self.session.get(Config, token_key)
@@ -281,10 +308,19 @@ class RepoManager:
             else:
                 self.session.add(Config(key=token_key, value={"token": data.auth_token}))
             repo.auth_token_ref = token_key
+            repo.git_account_id = None
 
         await self.session.commit()
         await self.session.refresh(repo)
         return repo
+
+    async def _drop_custom_token(self, repo: Repository) -> None:
+        if not repo.auth_token_ref:
+            return
+        config = await self.session.get(Config, repo.auth_token_ref)
+        if config:
+            await self.session.delete(config)
+        repo.auth_token_ref = None
 
     async def delete(self, repo_id: UUID) -> bool:
         from app.services.pipeline_failures import PipelineFailureService
@@ -359,13 +395,40 @@ class RepoManager:
         )
         return repo
 
+    async def account_labels(self) -> dict[UUID, str]:
+        """Every account id to its label, for the denormalised response field.
+
+        One query for the whole (tiny) table rather than one per repo row.
+        """
+        from app.models.git_account import GitAccount
+        rows = (
+            await self.session.execute(select(GitAccount.id, GitAccount.label))
+        ).all()
+        return {row[0]: row[1] for row in rows}
+
     async def get_auth_token(self, repo: Repository) -> str | None:
-        if not repo.auth_token_ref:
-            return None
-        config = await self.session.get(Config, repo.auth_token_ref)
-        if not config:
-            return None
-        return config.value.get("token")
+        credential = await self.get_credential(repo)
+        return credential[0] if credential else None
+
+    async def get_credential(self, repo: Repository) -> tuple[str, str] | None:
+        """``(token, provider)`` for this repo, or None.
+
+        The provider rides along because the git username in front of the token
+        differs per forge; resolving the token without it is what silently
+        breaks a non-GitHub clone.
+        """
+        if repo.git_account_id:
+            from app.models.git_account import GitAccount
+            account = await self.session.get(GitAccount, repo.git_account_id)
+            if account:
+                return account.token, account.provider
+        if repo.auth_token_ref:
+            config = await self.session.get(Config, repo.auth_token_ref)
+            if config:
+                token = config.value.get("token")
+                if token:
+                    return token, repo.provider
+        return None
 
     async def pull_repo(self, repo: Repository) -> str | None:
         cwd = self.repo_working_dir(repo)
@@ -378,7 +441,8 @@ class RepoManager:
 
         if not needs_clone:
             try:
-                token = await self.get_auth_token(repo)
+                credential = await self.get_credential(repo)
+                token = credential[0] if credential else None
                 env: dict[str, str] = {}
                 # Fetch from an explicit (optionally authed) URL rather than
                 # persisting the token into .git/config via `remote set-url`;
@@ -386,7 +450,7 @@ class RepoManager:
                 # when fetching from a bare URL.
                 fetch_target = "origin"
                 if token and repo.url:
-                    fetch_target = self._auth_url(repo.url, token)
+                    fetch_target = self._auth_url(repo.url, token, credential[1])
                     # Fail fast instead of hanging on an interactive credential
                     # prompt if the embedded token is rejected.
                     env["GIT_TERMINAL_PROMPT"] = "0"
@@ -448,9 +512,10 @@ class RepoManager:
         dest.parent.mkdir(parents=True, exist_ok=True)
 
         url = repo.url
-        token = await self.get_auth_token(repo)
+        credential = await self.get_credential(repo)
+        token = credential[0] if credential else None
         if token:
-            url = self._auth_url(repo.url, token)
+            url = self._auth_url(repo.url, token, credential[1])
 
         abs_dest = str(dest.resolve())
         cmd = ["git", "clone", "--branch", repo.default_branch, "--single-branch", url, abs_dest]
@@ -464,9 +529,15 @@ class RepoManager:
                 logger.warning("Failed to scrub auth token from %s remote URL", repo.name)
 
     @staticmethod
-    def _auth_url(url: str, token: str) -> str:
+    def _auth_url(url: str, token: str, provider: str = "github") -> str:
+        from app.services.git_forges import FORGES
         parsed = urlparse(url)
-        netloc = f"x-access-token:{token}@{parsed.hostname}"
+        # GitHub takes any username and reads the token as the password, but
+        # GitLab accepts only `oauth2`, so this is not cosmetic. An unknown
+        # provider keeps GitHub's spelling, which is the widest-accepted one.
+        forge = FORGES.get(provider)
+        git_username = forge.git_username if forge else "x-access-token"
+        netloc = f"{git_username}:{token}@{parsed.hostname}"
         if parsed.port:
             netloc += f":{parsed.port}"
         authed = parsed._replace(netloc=netloc)

@@ -32,7 +32,12 @@ router = APIRouter(prefix="/api/v1/repos", tags=["repos"])
 # the decorator would silently miss the one actually wired to the route).
 _require_repo_admin = require_scope("admin")
 
-def _to_response(repo: Repository, file_count: int = 0, symbol_count: int = 0) -> RepoResponse:
+def _to_response(
+    repo: Repository,
+    file_count: int = 0,
+    symbol_count: int = 0,
+    account_labels: dict[UUID, str] | None = None,
+) -> RepoResponse:
     return RepoResponse(
         id=repo.id,
         name=repo.name,
@@ -45,6 +50,11 @@ def _to_response(repo: Repository, file_count: int = 0, symbol_count: int = 0) -
         status=repo.status,
         status_message=repo.status_message,
         auto_sync=repo.auto_sync,
+        git_account_id=repo.git_account_id,
+        git_account_label=(account_labels or {}).get(repo.git_account_id)
+        if repo.git_account_id
+        else None,
+        has_custom_token=bool(repo.auth_token_ref),
         index_debt=IndexDebtStatus(**index_debt.summarize(repo.index_debt)),
         file_count=file_count,
         symbol_count=symbol_count,
@@ -65,7 +75,7 @@ async def create_repo(
         raise HTTPException(status_code=409, detail=f"Repository '{body.name}' already exists")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return _to_response(repo)
+    return _to_response(repo, account_labels=await manager.account_labels())
 
 
 @router.get("", response_model=list[RepoResponse])
@@ -74,7 +84,11 @@ async def list_repos(
     manager: RepoManager = Depends(get_repo_manager),
 ):
     entries = await manager.list_all()
-    return [_to_response(e["repo"], e["file_count"], e["symbol_count"]) for e in entries]
+    labels = await manager.account_labels()
+    return [
+        _to_response(e["repo"], e["file_count"], e["symbol_count"], labels)
+        for e in entries
+    ]
 
 
 @router.get("/stats")
@@ -109,7 +123,7 @@ async def get_repo(
     repo = await manager.get(repo_id)
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
-    return _to_response(repo)
+    return _to_response(repo, account_labels=await manager.account_labels())
 
 
 @router.put("/{repo_id}", response_model=RepoResponse)
@@ -139,7 +153,7 @@ async def update_repo(
         if wakeup is not None:
             wakeup.set()
 
-    return _to_response(repo)
+    return _to_response(repo, account_labels=await manager.account_labels())
 
 
 @router.delete("/{repo_id}", status_code=status.HTTP_204_NO_CONTENT)

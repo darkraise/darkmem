@@ -38,6 +38,9 @@ class RepoCreate(BaseModel):
     provider: str = "local"
     default_branch: str = "main"
     auth_token: str | None = None
+    # Omitted entirely, the forge's default account is stamped at create time.
+    # Sent explicitly — including as null — the caller's choice wins.
+    git_account_id: uuid.UUID | None = None
     auto_sync: bool = True
 
     @field_validator("url")
@@ -55,6 +58,7 @@ class RepoUpdate(BaseModel):
     name: str | None = None
     auto_sync: bool | None = None
     auth_token: str | None = None
+    git_account_id: uuid.UUID | None = None
     default_branch: str | None = None
 
     @field_validator("default_branch")
@@ -104,6 +108,11 @@ class RepoResponse(BaseModel):
     status: str = "pending"
     status_message: str | None = None
     auto_sync: bool
+    git_account_id: uuid.UUID | None = None
+    # Denormalised for display: the picker has to render a repo's current
+    # account without a second round-trip per row.
+    git_account_label: str | None = None
+    has_custom_token: bool = False
     index_debt: IndexDebtStatus = IndexDebtStatus()
     file_count: int = 0
     symbol_count: int = 0

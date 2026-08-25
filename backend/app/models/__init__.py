@@ -6,6 +6,7 @@ from .checkpoint import SessionCheckpoint
 from .code import CodeEdge, CodeFile, CodeGraphNode, CodeSymbol, Repository
 from .config import Config
 from .embedding import Embedder
+from .git_account import GitAccount
 from .graph import Entity, EntityRelation, KnowledgeTriple
 from .llm_config import LLMPurposeConfigRow
 from .llm_provider import LLMProviderRow
@@ -37,6 +38,7 @@ __all__ = [
     "EntityRelation",
     "KnowledgeTriple",
     "Embedder",
+    "GitAccount",
     "LLMPurposeConfigRow",
     "LLMProviderRow",
     "PipelineFailure",

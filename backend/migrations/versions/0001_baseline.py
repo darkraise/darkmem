@@ -835,6 +835,46 @@ def _pass_two() -> None:
     # Repo-scoped, owner-qualified, and it never joins the memory-side entity
     # graph. index_debt lands inert — no doc 19 §3 row and no task list names
     # it (inventory F-13), so it lands with the table that owns it.
+    # A named forge credential, shared by every repo that selects it, so a
+    # token rotation is one edit rather than one per repo. The token is stored
+    # in the clear, the posture llm_providers.api_key already takes.
+    op.execute(
+        """
+        CREATE TABLE git_accounts (
+            id               UUID NOT NULL,
+            label            VARCHAR(100) NOT NULL,
+            provider         VARCHAR(50) NOT NULL DEFAULT 'github',
+            host             VARCHAR(255) NOT NULL DEFAULT 'github.com',
+            username         VARCHAR(255) NOT NULL,
+            token            VARCHAR(1024) NOT NULL,
+            scopes           VARCHAR(512),
+            is_default       BOOLEAN NOT NULL DEFAULT false,
+            last_verified_at TIMESTAMPTZ,
+            created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+            CONSTRAINT git_accounts_pkey PRIMARY KEY (id)
+        )
+        """
+    )
+    # Keyed on the operator's own label rather than the forge username: two
+    # tokens for one account (a read-only and a write one, or an overlap
+    # during rotation) are legitimate rows, and the label is what distinguishes
+    # them in the picker.
+    op.execute(
+        "CREATE UNIQUE INDEX ux_git_accounts_label "
+        "ON git_accounts (provider, host, label)"
+    )
+    # At most one default per forge. Scoped to (provider, host) so github.com
+    # and a GitHub Enterprise install can each carry their own.
+    op.execute(
+        "CREATE UNIQUE INDEX ux_git_accounts_default "
+        "ON git_accounts (provider, host) WHERE is_default"
+    )
+    op.execute(
+        "CREATE TRIGGER git_accounts_touch_updated_at BEFORE UPDATE "
+        "ON git_accounts FOR EACH ROW EXECUTE FUNCTION touch_updated_at()"
+    )
+
     op.execute(
         """
         CREATE TABLE repositories (
@@ -845,6 +885,7 @@ def _pass_two() -> None:
             provider            VARCHAR(50) NOT NULL DEFAULT 'local',
             default_branch      VARCHAR(100) NOT NULL DEFAULT 'main',
             auth_token_ref      VARCHAR(255),
+            git_account_id      UUID REFERENCES git_accounts(id) ON DELETE SET NULL,
             last_indexed_commit VARCHAR(64),
             last_indexed_at     TIMESTAMPTZ,
             index_debt          JSONB,
@@ -1483,6 +1524,7 @@ def downgrade() -> None:
         "code_symbols",
         "code_files",
         "repositories",
+        "git_accounts",
         "session_checkpoints",
         "article_citations",
         "knowledge_articles",

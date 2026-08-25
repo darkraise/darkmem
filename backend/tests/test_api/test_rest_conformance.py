@@ -97,6 +97,13 @@ EXPECTED_STATUS = {
     # idempotent full-replace that should be PUT for symmetry with its
     # siblings, left as POST because fixing it breaks the frontend.
     ("POST", "/api/v1/config/llm"): 200,
+    ("GET", "/api/v1/git-accounts"): 200,
+    ("POST", "/api/v1/git-accounts"): 201,
+    # Checks a token at the forge and returns the identity; it stores nothing,
+    # so it is a 200 read-shaped POST, not a 201 create.
+    ("POST", "/api/v1/git-accounts/verify"): 200,
+    ("PUT", "/api/v1/git-accounts/{account_id}"): 200,
+    ("DELETE", "/api/v1/git-accounts/{account_id}"): 204,
     ("GET", "/api/v1/config/llm-providers"): 200,
     ("POST", "/api/v1/config/llm-providers"): 201,
     ("PUT", "/api/v1/config/llm-providers/{name}"): 200,
