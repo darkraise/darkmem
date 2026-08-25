@@ -825,6 +825,7 @@ export interface DemoStoreState {
   dayBuckets: DemoDayBucket[]
   sessionRuns: DemoSessionRun[]
   flags: DemoFlagsState
+  gitAccounts: DemoGitAccountsState
   llm: DemoLLMState
   security: DemoSecurityState
   maintenance: DemoMaintenanceState
@@ -887,4 +888,33 @@ export interface DemoStoreState {
    *  (or resumed inject) log row and updates the client's watermark. */
   setDistributionCurb: (clientId: string, curbed: boolean) => void
   resetSettings: () => void
+}
+
+// Mirrors GitAccountsResponse in use-git-accounts-api.ts. Declared here rather
+// than imported: src/demo/data/** may not reach into production modules, and
+// the fixture needs a type.
+export interface DemoGitAccount {
+  id: string
+  label: string
+  provider: string
+  host: string
+  username: string
+  token_hint: string
+  scopes: string | null
+  is_default: boolean
+  last_verified_at: string | null
+  repo_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface DemoGitForge {
+  provider: string
+  label: string
+  default_host: string
+}
+
+export interface DemoGitAccountsState {
+  accounts: DemoGitAccount[]
+  providers: DemoGitForge[]
 }

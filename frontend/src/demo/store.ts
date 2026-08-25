@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import { buildAssertedByClaim } from "./badge-grammar"
 import { resolveLadderParam } from "./settings"
+import { CURATED_GIT_ACCOUNTS } from "./data/git-accounts-curated"
 import memoriesData from "./data/memories.json"
 import reposData from "./data/repos.json"
 import jobsData from "./data/jobs.json"
@@ -186,6 +187,7 @@ const initialSettings = () => ({
   security: structuredClone(CURATED_SECURITY),
   maintenance: structuredClone(CURATED_MAINTENANCE),
   distribution: structuredClone(CURATED_DISTRIBUTION),
+  gitAccounts: structuredClone(CURATED_GIT_ACCOUNTS),
 })
 
 const countOverrides = (flags: DemoFlagsState): number => {

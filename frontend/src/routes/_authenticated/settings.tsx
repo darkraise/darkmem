@@ -8,6 +8,7 @@ import {
 import {
   Bot,
   Flag,
+  KeyRound,
   Palette,
   Plug,
   Search,
@@ -22,6 +23,7 @@ import {
   GraphAppearanceCard,
 } from "@/features/settings/components/appearance-tab"
 import { FlagsTab } from "@/features/settings/components/flags-tab"
+import { GitAccountsTab } from "@/features/settings/components/git-accounts-tab"
 import { LLMTab } from "@/features/settings/components/llm-tab"
 import { SecurityTab } from "@/features/settings/components/security-tab"
 import { MaintenanceTab } from "@/features/settings/components/maintenance-tab"
@@ -35,6 +37,7 @@ const TAB_VALUES = [
   "security",
   "maintenance",
   "integration",
+  "git-accounts",
   "research",
   "notifications",
   "appearance",
@@ -115,6 +118,10 @@ function SettingsPage() {
                 <Plug aria-hidden className="size-[var(--icon-size)]" />
                 Integration
               </TabsTrigger>
+              <TabsTrigger className="flex-1 gap-2" value="git-accounts">
+                <KeyRound aria-hidden className="size-[var(--icon-size)]" />
+                Git accounts
+              </TabsTrigger>
               <TabsTrigger className="flex-1 gap-2" value="notifications">
                 <Bell aria-hidden className="size-[var(--icon-size)]" />
                 Notifications
@@ -130,6 +137,9 @@ function SettingsPage() {
             </TabsList>
           </div>
         </div>
+        <TabsContent value="git-accounts" className="pt-4">
+          <GitAccountsTab />
+        </TabsContent>
         <TabsContent value="flags" className="pt-4">
           <FlagsTab />
         </TabsContent>

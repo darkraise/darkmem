@@ -100,6 +100,11 @@ describe("no-restricted-imports: src/demo/*", () => {
     // component without importing `@/demo/types`' `BeliefWindow`, dropping
     // the count to 115. Re-measured again when the Flags tab stopped
     // summarising job cadences and no longer needed `useDemoJobs`: 114.
-    expect(countByRule(results, "no-restricted-imports")).toBe(114)
+    // Re-measured when the Git accounts tab landed: 115. Its binding
+    // (`use-git-accounts-binding.ts`) reaches `useDemoGitAccounts` for its
+    // `if (DEMO)` branch, the same shape as the other settings-tab bindings —
+    // the fixture itself stays inside src/demo/, which is what the
+    // error-level rule above governs.
+    expect(countByRule(results, "no-restricted-imports")).toBe(115)
   })
 })

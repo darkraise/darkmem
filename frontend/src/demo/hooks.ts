@@ -23,6 +23,7 @@ export const useDemoHygiene = () => useDemoStore((s) => s.hygiene)
 export const useDemoLastDetectionRun = () =>
   useDemoStore((s) => s.lastDetectionRun)
 
+export const useDemoGitAccounts = () => useDemoStore((s) => s.gitAccounts)
 export const useDemoCodeRepos = () => useDemoStore((s) => s.codeRepos)
 export const useDemoCodeRepo = (id: string | undefined) =>
   useDemoStore((s) => s.codeRepos.find((r) => r.id === id))

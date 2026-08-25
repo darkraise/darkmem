@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   Dialog,
   DialogContent,
@@ -23,12 +23,23 @@ import { toast } from "darkraise-ui/components/sonner"
 import { Plus } from "lucide-react"
 import { useCreateRepo } from "@/hooks/api"
 import type { RepoCreateParams } from "@/hooks/api"
+import { useGitAccountsData } from "@/features/settings/use-git-accounts-binding"
+import {
+  CUSTOM_TOKEN,
+  GitAccountSelect,
+  NO_ACCOUNT,
+} from "./git-account-select"
+
+// Providers that carry no credential: a local checkout has nothing to
+// authenticate against, so the picker is hidden rather than shown empty.
+const CREDENTIAL_FREE = new Set(["local"])
 
 // Ported from routes/_authenticated/repos.tsx's AddRepoDialog (T1.59) — same
 // POST /repos shape, adapted to the Code section's own trigger/dialog chrome.
 export function AddRepoDialog() {
   const [open, setOpen] = useState(false)
   const createRepo = useCreateRepo()
+  const { data: accountData } = useGitAccountsData()
   const [form, setForm] = useState<RepoCreateParams>({
     name: "",
     url: "",
@@ -37,11 +48,37 @@ export function AddRepoDialog() {
     auth_token: "",
     auto_sync: true,
   })
+  const [accountChoice, setAccountChoice] = useState<string>(NO_ACCOUNT)
+
+  const provider = form.provider ?? "github"
+  const credentialFree = CREDENTIAL_FREE.has(provider)
+
+  // Preselect the provider's default so the common case needs no interaction.
+  // Re-runs when the provider changes, since each forge has its own default.
+  useEffect(() => {
+    if (credentialFree) return
+    const fallback = accountData.accounts.find(
+      (a) => a.provider === provider && a.is_default,
+    )
+    setAccountChoice(fallback?.id ?? NO_ACCOUNT)
+  }, [accountData, provider, credentialFree])
 
   const set = <K extends keyof RepoCreateParams>(
     field: K,
     value: RepoCreateParams[K],
   ) => setForm((prev) => ({ ...prev, [field]: value }))
+
+  const reset = () => {
+    setForm({
+      name: "",
+      url: "",
+      provider: "github",
+      default_branch: "main",
+      auth_token: "",
+      auto_sync: true,
+    })
+    setAccountChoice(NO_ACCOUNT)
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -51,21 +88,23 @@ export function AddRepoDialog() {
     if (form.url) params.url = form.url
     if (form.provider) params.provider = form.provider
     if (form.default_branch) params.default_branch = form.default_branch
-    if (form.auth_token) params.auth_token = form.auth_token
     if (form.auto_sync != null) params.auto_sync = form.auto_sync
+
+    if (credentialFree) {
+      // Send the field explicitly so the server does not stamp a default.
+      params.git_account_id = null
+    } else if (accountChoice === CUSTOM_TOKEN) {
+      if (form.auth_token) params.auth_token = form.auth_token
+      params.git_account_id = null
+    } else {
+      params.git_account_id = accountChoice === NO_ACCOUNT ? null : accountChoice
+    }
 
     createRepo.mutate(params, {
       onSuccess: () => {
         toast.success("Repository added")
         setOpen(false)
-        setForm({
-          name: "",
-          url: "",
-          provider: "github",
-          default_branch: "main",
-          auth_token: "",
-          auto_sync: true,
-        })
+        reset()
       },
       onError: () => toast.error("Failed to add repository"),
     })
@@ -103,7 +142,7 @@ export function AddRepoDialog() {
           <div>
             <Label className="text-muted-foreground">Provider</Label>
             <Select
-              value={form.provider ?? "github"}
+              value={provider}
               onValueChange={(v) => set("provider", v)}
             >
               <SelectTrigger className="h-9 w-full">
@@ -123,15 +162,24 @@ export function AddRepoDialog() {
               onChange={(e) => set("default_branch", e.target.value)}
             />
           </div>
-          <div>
-            <Label className="text-muted-foreground">Auth token</Label>
-            <Input
-              type="password"
-              value={form.auth_token ?? ""}
-              onChange={(e) => set("auth_token", e.target.value)}
-              placeholder="Optional"
+          {!credentialFree && (
+            <GitAccountSelect
+              value={accountChoice}
+              onChange={setAccountChoice}
+              provider={provider}
             />
-          </div>
+          )}
+          {!credentialFree && accountChoice === CUSTOM_TOKEN && (
+            <div>
+              <Label className="text-muted-foreground">Auth token</Label>
+              <Input
+                type="password"
+                value={form.auth_token ?? ""}
+                onChange={(e) => set("auth_token", e.target.value)}
+                placeholder="Used by this repository only"
+              />
+            </div>
+          )}
           <div className="flex items-start gap-2 rounded-md border px-3 py-2">
             <Switch
               className="mt-0.5"

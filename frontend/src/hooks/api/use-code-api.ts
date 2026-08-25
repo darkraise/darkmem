@@ -40,6 +40,12 @@ export interface Repo {
   status: string
   status_message: string | null
   auto_sync: boolean
+  git_account_id: string | null
+  // Denormalised by the server so a row renders its account without a
+  // second lookup per repo.
+  git_account_label: string | null
+  // True when this repo carries its own token instead of using an account.
+  has_custom_token: boolean
   file_count: number
   symbol_count: number
   index_debt: IndexDebtStatus
@@ -54,6 +60,9 @@ export interface RepoCreateParams {
   provider?: string
   default_branch?: string
   auth_token?: string
+  // Omitted, the server stamps the provider's default account. Sent
+  // explicitly — null included — the caller's choice wins.
+  git_account_id?: string | null
   auto_sync?: boolean
 }
 
@@ -61,6 +70,7 @@ export interface RepoUpdateParams {
   name?: string
   default_branch?: string
   auth_token?: string
+  git_account_id?: string | null
   auto_sync?: boolean
 }
 

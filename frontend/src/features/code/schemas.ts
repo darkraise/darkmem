@@ -7,6 +7,10 @@ export const editRepoSchema = z.object({
   path: z.string().min(1, "Path required"),
   branch: z.string().default("main"),
   auto_sync: z.boolean().default(true),
+  // An account id, or the NO_ACCOUNT / CUSTOM_TOKEN sentinels the picker uses.
+  account: z.string().default("__none__"),
+  // Only read when `account` is the custom-token sentinel.
+  auth_token: z.string().default(""),
 })
 export type EditRepoInput = z.infer<typeof editRepoSchema>
 

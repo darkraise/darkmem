@@ -42,6 +42,11 @@ import {
   type ReindexInput,
 } from "../schemas"
 import { AddRepoDialog } from "./add-repo-dialog"
+import {
+  CUSTOM_TOKEN,
+  GitAccountSelect,
+  NO_ACCOUNT,
+} from "./git-account-select"
 import { RealReindexDialog } from "./real-reindex-dialog"
 
 const STALE_CAUSE_MARKER = "Cause: "
@@ -210,6 +215,12 @@ function EditRepoDialog({
       path: repo?.local_path ?? "",
       branch: repo?.default_branch ?? "main",
       auto_sync: repo?.auto_sync ?? true,
+      account: repo?.git_account_id
+        ? repo.git_account_id
+        : repo?.has_custom_token
+          ? CUSTOM_TOKEN
+          : NO_ACCOUNT,
+      auth_token: "",
     },
     onSubmit: async ({ value }) => {
       if (!repo) return
@@ -220,6 +231,17 @@ function EditRepoDialog({
       if (v.name !== repo.name) data.name = v.name
       if (v.branch !== repo.default_branch) data.default_branch = v.branch
       if (v.auto_sync !== repo.auto_sync) data.auto_sync = v.auto_sync
+
+      const wasCustom = repo.has_custom_token && !repo.git_account_id
+      const currentChoice = repo.git_account_id ?? (wasCustom ? CUSTOM_TOKEN : NO_ACCOUNT)
+      if (v.account === CUSTOM_TOKEN) {
+        // A blank token on an already-custom repo means "leave it alone";
+        // there is nothing to send.
+        if (v.auth_token.trim()) data.auth_token = v.auth_token.trim()
+      } else if (v.account !== currentChoice) {
+        data.git_account_id = v.account === NO_ACCOUNT ? null : v.account
+      }
+
       if (Object.keys(data).length === 0) {
         toast.info("No changes to save")
         onOpenChange(false)
@@ -284,6 +306,38 @@ function EditRepoDialog({
               />
             )}
           </form.Field>
+          {repo.provider !== "local" && (
+            <form.Field name="account">
+              {(field) => (
+                <GitAccountSelect
+                  value={field.state.value}
+                  onChange={(v) => field.handleChange(v)}
+                  provider={repo.provider}
+                />
+              )}
+            </form.Field>
+          )}
+          <form.Subscribe selector={(state) => state.values.account}>
+            {(account) =>
+              account === CUSTOM_TOKEN ? (
+                <form.Field name="auth_token">
+                  {(field) => (
+                    <TextField
+                      name={field.name}
+                      label={
+                        repo.has_custom_token
+                          ? "Replace token (blank keeps the stored one)"
+                          : "Auth token"
+                      }
+                      value={field.state.value}
+                      onChange={(v) => field.handleChange(v)}
+                      onBlur={field.handleBlur}
+                    />
+                  )}
+                </form.Field>
+              ) : null
+            }
+          </form.Subscribe>
           <form.Field name="auto_sync">
             {(field) => (
               <SwitchField
