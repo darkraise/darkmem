@@ -4,6 +4,73 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
+## v1.2.0 — 2026-08-25
+
+**A face, and a dialog that listens.** Two blocks, neither of them near a gate.
+darkmem got an actual mark — the first one it has had that means anything — and
+the Add repository dialog stopped throwing away the account you picked. The gate
+table is **unchanged from v1.1.0**, and nothing in this release touches a
+surface a gate governs.
+
+### Gate verdicts — unchanged
+
+| Gate | Verdict | Moved this release? |
+|---|---|---|
+| G-C — L2 → deriver | **CLEARED** 2026-08-16 | no |
+| G-D — L2 → L3 | **CLEARED on the entailment role**; contradiction still misses | no |
+| G-E — L3 → F7 | **not yet measured** — production holds 0 articles | no |
+| G-F — core → H1 | **not yet measured** — the claim/span gold does not exist | no |
+
+### Added
+
+- **A brand mark that follows the accent.** An open ring enclosing three
+  tapering rungs: the ladder the verification ladder already is, inside the arc
+  of a retrieval. It replaces a purple bolt built from fifteen blurred ellipses
+  that turned to mush at the 16px a favicon is actually rendered at, and it
+  finally supplies `public/logo.svg` — the file `BrandLogo` has requested since
+  the day the sidebar shipped, which was 404ing into the fallback letter tile
+  nobody recognised as a missing asset.
+- **Colour tracks the operator's accent, one mechanism per surface**, because an
+  SVG loaded through `<img>` or `<link rel="icon">` is an isolated document that
+  cannot read `--primary`. The sidebar paints `logo.svg` as a **CSS mask** over
+  `hsl(var(--primary))`, so the shape lives in the file and the colour in the
+  token, with no JavaScript. The favicon is **rebuilt at runtime** as a data
+  URI, since no mask reaches a browser tab. That constrains the artwork to one
+  ink with alpha for tone — a mask reads only the alpha channel — which is why
+  the mark's tonal steps are opacity rather than a second colour, and it
+  constrains any future edit to it the same way.
+- **The mark's geometry has one source.** Three surfaces need byte-identical
+  shapes, so all of them derive from `src/lib/brand-mark.ts` and a test fails
+  the build when a committed asset drifts from what it emits. Regenerate with
+  `node scripts/generate-brand-assets.mjs`.
+
+### Fixed
+
+- **The Add repository dialog reverted every account you chose.**
+  `useGitAccountsData` rebuilt its return object on every render, so the
+  dialog's preselect effect — which listed that object in its dependencies —
+  re-ran after every render including the one your own click caused, and
+  overwrote the choice with the provider's default. Selecting "Custom token for
+  this repo…" appeared to do nothing at all; a non-default account never
+  reached the request. Memoising the hook fixes the cause for all four of its
+  consumers, and a ref guard makes the selection structurally un-clobberable
+  rather than merely un-clobbered by today's referential luck. The existing
+  tests missed it because they only ever asserted the *preselected* value and
+  submitted — nothing changed the selection.
+
+### Nearly shipped broken
+
+The accent-tracking favicon passed its unit tests while painting the wrong
+colour in a real browser. `ThemeProvider` writes its tokens as inline styles on
+`<html>` from its own effect, and React runs child effects **before** parent
+ones — so reading `--primary` on mount read the *previous* accent, and nothing
+re-triggered, because the component's own dependencies were already at their
+final values. The tab sat on blue while the app ran green. The fix observes the
+root element instead of subscribing to theme state, which removes the ordering
+question rather than timing around it, and is pinned by a test that fails
+against the one-shot version. Recorded because the unit tests were green
+throughout and only the browser disagreed.
+
 ## v1.1.0 — 2026-08-24
 
 **Three blocks, and none of them moves a gate.** Vendor connections became

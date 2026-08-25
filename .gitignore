@@ -28,3 +28,8 @@ backend/scripts/benchlib/entailment/cache/
 backend/scripts/benchlib/promotion/cache/
 backend/scripts/e2e/.env-e2e
 backend/scripts/benchlib/entailment/verdicts/
+
+# Playwright MCP diagnostic output (console logs, page snapshots). Tool
+# scratch that regenerates on every run, and an untracked copy of it blocks
+# release.sh, which refuses a dirty tree.
+.playwright-mcp/
