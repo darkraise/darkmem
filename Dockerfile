@@ -42,6 +42,17 @@ FROM python:3.12-slim AS runtime
 
 WORKDIR /app
 
+# Code indexing shells out to the git binary -- RepoManager._run_git runs
+# `git clone/fetch/rev-parse/diff` as a subprocess, and no pure-Python git is
+# in the lockfile. Without this the image boots, /health answers 200 and the
+# healthcheck passes, while every repository operation fails with
+# "git: not found"; the only symptom is that indexing never works.
+# ca-certificates is already in the base image, so https clones need nothing
+# further.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 

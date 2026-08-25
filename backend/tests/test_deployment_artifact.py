@@ -470,3 +470,28 @@ def test_restore_explains_the_hand_finish_when_rename_fails(tmp_path):
     assert temp_marker in result.stderr
     assert "Finish the restore by hand" in result.stderr
     assert "RENAME TO" in result.stderr
+
+
+def test_runtime_stage_installs_git():
+    """Code indexing shells out to the git binary; the runtime image shipped
+    without one until 2026-08-26.
+
+    Nothing announces the omission. The image boots, migrations run, /health
+    answers 200 and the healthcheck passes -- and every repository operation
+    fails with "git: not found", so indexing simply never works. It went
+    unnoticed because this deployment held zero repositories.
+
+    Asserted against the *runtime* stage alone: the builder installs its own
+    packages and its layers never ship, so a git that only exists there would
+    satisfy a whole-file grep while leaving the artifact exactly as broken.
+    """
+    runtime = _unwrapped(DOCKERFILE).split("AS runtime", 1)
+    assert len(runtime) == 2, "Dockerfile no longer has a stage named 'runtime'"
+    installs = [
+        line for line in runtime[1].splitlines()
+        if re.match(r"^\s*RUN\s", line) and "apt-get install" in line
+    ]
+    assert any(re.search(r"\bgit\b", line) for line in installs), (
+        "the runtime stage installs no git; RepoManager._run_git shells out to "
+        "the binary and no pure-Python git is in the lockfile"
+    )
