@@ -207,6 +207,8 @@ docker exec darkmem-prod-postgres-1 pg_dump -U darkmem -d darkmem \
 #    judge identity spans the two, and providers must be restored first because
 #    llm_purpose_configs.provider_name is a NOT NULL foreign key. Two files
 #    rather than one --table pair, so the restore order below is explicit.
+#    This dump is also the ONLY carrier of every purpose's `params` — a re-seed
+#    overwrites them with llm_seed.py's Ollama presets, silently (item 4).
 docker exec darkmem-prod-postgres-1 pg_dump -U darkmem -d darkmem \
   --data-only --table=llm_providers --column-inserts > /tmp/providers.sql
 docker exec darkmem-prod-postgres-1 pg_dump -U darkmem -d darkmem \
@@ -232,7 +234,7 @@ docker exec -i darkmem-prod-postgres-1 psql -U darkmem -d darkmem < /tmp/provide
 docker exec -i darkmem-prod-postgres-1 psql -U darkmem -d darkmem < /tmp/purposes.sql
 ```
 
-### Three rows a re-seed does not reproduce
+### Three rows a re-seed does not reproduce — and one whole column
 
 **This is the part that is easy to lose and expensive to notice.**
 
@@ -278,6 +280,48 @@ the judge — precisely the failure this section exists to prevent.
 
 3. **`admin_password_hash`.** Without it `/api/v1/setup/*` reopens — the setup
    surface is gated only by that row existing.
+
+4. **`params` on every *other* purpose row — the quiet one.** The three above
+   fail loudly or visibly; this one does not. `llm_seed.py` pins all eight
+   purposes to a **local Ollama** model, which is the right default for a fresh
+   install with no cloud credentials and the wrong one for any instance that
+   has been repointed at a cloud vendor. So a re-seed does not merely lose the
+   connection — it replaces each row's `params` with the Ollama preset.
+
+   An operator who notices the wrong endpoint and repoints the provider by hand
+   gets a working instance with **empty or mismatched `params`**, and nothing
+   reports it. That was the live state on this host between 2026-08-20 and
+   2026-08-25: all eight rows read `{}`, so `temperature: 0` was gone from
+   extraction and classification. Extraction still forwards
+   `seed = sha256(content)[:8]` and DeepSeek still honours it, but a seed at a
+   default temperature does not buy determinism — the reproducibility invariant
+   was nominal rather than real, and no test, log or health check says so
+   because an empty `params` is a legal config.
+
+   Restoring the dump from step 2 carries these values; the hazard is only on
+   the re-seed-instead-of-restore path. If you take it, the values this host
+   runs are:
+
+   | purpose | `params` |
+   |---|---|
+   | `extraction` | `{"temperature": 0, "max_tokens": 8192}` |
+   | `classification` | `{"temperature": 0}` |
+   | `reranker` | `{"temperature": 0}` |
+   | `summarization` | `{"temperature": 0.3}` |
+   | `reasoning` | `{"temperature": 0.7}` |
+   | `synthesis` | `{"temperature": 0.3}` |
+   | `embedding` | `{}` — an embed call takes neither knob |
+   | `verification` | `{"reasoning_effort": "high"}` — see row 1; identity field, restore it, never re-seed it |
+
+   Verify after any re-seed:
+
+   ```
+   docker exec darkmem-prod-postgres-1 psql -U darkmem -d darkmem -c "
+     select purpose, params from llm_purpose_configs
+      where params = '{}'::jsonb and purpose <> 'embedding';"
+   ```
+
+   Anything but zero rows means a purpose is running on vendor defaults.
 
 ### One-time: an image built before the provider layer
 
