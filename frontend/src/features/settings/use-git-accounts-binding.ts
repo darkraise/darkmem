@@ -1,3 +1,4 @@
+import { useMemo } from "react"
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoGitAccounts } from "@/demo/hooks"
 import {
@@ -20,11 +21,20 @@ export function useGitAccountsData(): {
   const demo = useDemoGitAccounts()
   const query = useGitAccounts()
   const source = DEMO ? demo : query.data
-  return {
-    data: {
-      accounts: source?.accounts ?? [],
-      providers: source?.providers ?? [],
-    },
-    isLoading: DEMO ? false : query.isLoading,
-  }
+  const isLoading = DEMO ? false : query.isLoading
+
+  // Memoised because the normalisation would otherwise mint a fresh
+  // object on every render, and a consumer that lists it in an effect's
+  // dependencies then re-runs that effect forever — which is how the Add
+  // repository dialog kept overwriting the operator's account choice.
+  return useMemo(
+    () => ({
+      data: {
+        accounts: source?.accounts ?? [],
+        providers: source?.providers ?? [],
+      },
+      isLoading,
+    }),
+    [source, isLoading],
+  )
 }

@@ -169,6 +169,17 @@ describe("AddRepoDialog account picker", () => {
     await userEvent.click(dialog.getByRole("button", { name: "Add Repository" }))
   }
 
+  /** The provider picker comes first, so the account one is the last combobox. */
+  const chooseAccount = async (
+    dialog: ReturnType<typeof within>,
+    option: RegExp,
+  ) => {
+    const combos = dialog.getAllByRole("combobox")
+    await userEvent.click(combos[combos.length - 1])
+    // The listbox portals out of the dialog, so it is found on the screen.
+    await userEvent.click(await screen.findByText(option))
+  }
+
   it("preselects the provider's default account", async () => {
     route()
     const dialog = await openDialog()
@@ -188,6 +199,44 @@ describe("AddRepoDialog account picker", () => {
       expect.objectContaining({
         method: "POST",
         body: expect.stringContaining('"git_account_id":"acc-1"'),
+      }),
+    )
+  })
+
+  it("keeps a custom-token choice instead of snapping back to the default", async () => {
+    route()
+    const dialog = await openDialog()
+    await dialog.findByText(/Personal · @octocat \(default\)/)
+    await chooseAccount(dialog, /Custom token for this repo/)
+
+    expect(dialog.getByText("Auth token")).toBeInTheDocument()
+    await userEvent.type(
+      dialog.getByPlaceholderText(/this repository only/i),
+      "ghp_secret",
+    )
+    await fillNameAndSubmit(dialog, "token-repo")
+
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/repos",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"auth_token":"ghp_secret"'),
+      }),
+    )
+  })
+
+  it("keeps a non-default account choice", async () => {
+    route()
+    const dialog = await openDialog()
+    await dialog.findByText(/Personal · @octocat \(default\)/)
+    await chooseAccount(dialog, /OSS bot · @darkmem-bot/)
+    await fillNameAndSubmit(dialog, "bot-repo")
+
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/repos",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"git_account_id":"acc-2"'),
       }),
     )
   })

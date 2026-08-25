@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
   Dialog,
   DialogContent,
@@ -39,7 +39,7 @@ const CREDENTIAL_FREE = new Set(["local"])
 export function AddRepoDialog() {
   const [open, setOpen] = useState(false)
   const createRepo = useCreateRepo()
-  const { data: accountData } = useGitAccountsData()
+  const { data: accountData, isLoading: accountsLoading } = useGitAccountsData()
   const [form, setForm] = useState<RepoCreateParams>({
     name: "",
     url: "",
@@ -53,15 +53,24 @@ export function AddRepoDialog() {
   const provider = form.provider ?? "github"
   const credentialFree = CREDENTIAL_FREE.has(provider)
 
+  // Which provider the preselect below has already run for. Without it the
+  // effect would re-apply the default on renders the operator's own choice
+  // caused, silently reverting every selection they make.
+  const preselectedFor = useRef<string | null>(null)
+
   // Preselect the provider's default so the common case needs no interaction.
-  // Re-runs when the provider changes, since each forge has its own default.
+  // Runs once per provider, and only once the accounts have actually arrived
+  // — preselecting off an empty loading response would land on NO_ACCOUNT and
+  // then never correct itself.
   useEffect(() => {
-    if (credentialFree) return
+    if (credentialFree || accountsLoading) return
+    if (preselectedFor.current === provider) return
+    preselectedFor.current = provider
     const fallback = accountData.accounts.find(
       (a) => a.provider === provider && a.is_default,
     )
     setAccountChoice(fallback?.id ?? NO_ACCOUNT)
-  }, [accountData, provider, credentialFree])
+  }, [accountData, provider, credentialFree, accountsLoading])
 
   const set = <K extends keyof RepoCreateParams>(
     field: K,
@@ -78,6 +87,8 @@ export function AddRepoDialog() {
       auto_sync: true,
     })
     setAccountChoice(NO_ACCOUNT)
+    // The next open is a fresh form, so it gets the preselect again.
+    preselectedFor.current = null
   }
 
   const handleSubmit = (e: React.FormEvent) => {
