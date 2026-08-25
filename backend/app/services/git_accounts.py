@@ -3,6 +3,19 @@
 An account is created only from a token the forge itself accepted: the username
 is what the forge reported for that token, never what the operator typed. The
 cost is that a host with no outbound network cannot add an account at all.
+
+**On SSRF.** Verification fetches an operator-named host, and there is
+deliberately no private-address blocklist: `host` exists so a self-hosted Gitea
+or GitLab on the LAN can be named, so refusing RFC1918 and loopback would refuse
+the feature's main use rather than an attack. The boundary is that both callers
+require an authenticated operator, who can already point `repos.url` and an
+`llm_providers.base_url` at any host and have the server connect. What IS closed
+is everything that makes this more than that operator's own outbound request:
+the scheme is fixed https by the forge template, `_validate_host` refuses any
+character that could steer the request off the named authority, redirects are
+not followed so the token cannot be re-sent to a host the target chose, and no
+upstream status or transport error reaches the response — those go to the log,
+because the difference between "refused" and "timed out" is a port-scan oracle.
 """
 from __future__ import annotations
 
@@ -65,31 +78,45 @@ async def verify_token(
         "Accept": "application/json",
     }
     try:
-        async with httpx.AsyncClient(timeout=VERIFY_TIMEOUT_SECONDS) as client:
+        async with httpx.AsyncClient(
+            timeout=VERIFY_TIMEOUT_SECONDS,
+            # Pinned rather than left to httpx's default: a 3xx to another host
+            # would re-send the Authorization header there, handing the
+            # operator's token to whatever the named host chose to point at.
+            follow_redirects=False,
+        ) as client:
             response = await client.get(url, headers=headers)
     except httpx.HTTPError as exc:
+        # The exception text carries the resolved address and the transport
+        # failure mode, which together answer "is there something listening on
+        # that host and port" — a probe oracle for anyone who can reach this
+        # endpoint. It goes to the log, where the operator can read it, and not
+        # into the response.
+        logger.warning("Verifying a %s token at %s failed: %s", forge.label, resolved_host, exc)
         raise GitAccountError(
-            f"Could not reach {forge.label} at {resolved_host}: {exc}",
-            status_code=502,
+            f"Could not reach {forge.label} at {resolved_host}.", status_code=502,
         ) from None
 
     if response.status_code in (401, 403):
         raise GitAccountError(
-            f"{forge.label} rejected the token ({response.status_code}). "
+            f"{forge.label} rejected the token. "
             "Check that it is current and has repository read access.",
             status_code=422,
         )
     if response.status_code >= 400:
+        logger.warning(
+            "Verifying a %s token at %s returned %s",
+            forge.label, resolved_host, response.status_code,
+        )
         raise GitAccountError(
-            f"{forge.label} returned {response.status_code} verifying the token.",
-            status_code=502,
+            f"{resolved_host} did not answer as a {forge.label} API.", status_code=502,
         )
 
     try:
         payload = response.json()
     except ValueError:
         raise GitAccountError(
-            f"{forge.label} returned a non-JSON identity response.", status_code=502,
+            f"{resolved_host} did not answer as a {forge.label} API.", status_code=502,
         ) from None
 
     username = payload.get(forge.identity_field) if isinstance(payload, dict) else None

@@ -11,9 +11,20 @@ def _validate_provider(v: str) -> str:
     return v
 
 
+# A host lands inside an f-string that builds the verification URL, so anything
+# that can end the authority component or start a new one has to be refused
+# here: `@` would redirect the request (and the token with it) to a host after
+# the userinfo, and `/ ? #` would let a crafted value reach a path or query of
+# the caller's choosing on a host of their choosing.
+_HOST_FORBIDDEN = frozenset("@/?#\\")
+
+
 def _validate_host(v: str) -> str:
-    host = v.strip().lower()
-    if not host or "/" in host or any(c.isspace() for c in host):
+    # The trailing dot of a fully-qualified name resolves to the same host but
+    # compares unequal, which would let `github.com.` sidestep any check keyed
+    # on the string.
+    host = v.strip().rstrip(".").lower()
+    if not host or any(c in _HOST_FORBIDDEN or c.isspace() for c in host):
         raise ValueError("host must be a bare hostname, e.g. github.com")
     return host
 

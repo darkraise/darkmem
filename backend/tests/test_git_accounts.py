@@ -3,12 +3,17 @@ import uuid
 
 import httpx
 import pytest
+from pydantic import ValidationError
 
 from app.models.code import Repository
 from app.models.config import Config
 from app.models.git_account import GitAccount
 from app.schemas.code import RepoCreate, RepoUpdate
-from app.schemas.git_account import GitAccountCreate, GitAccountUpdate
+from app.schemas.git_account import (
+    GitAccountCreate,
+    GitAccountUpdate,
+    GitAccountVerifyRequest,
+)
 from app.services import git_accounts as git_accounts_module
 from app.services.git_accounts import (
     GitAccountError,
@@ -511,3 +516,85 @@ async def test_repo_response_carries_the_account_label(client, auth_headers, ses
     assert body["git_account_id"] == str(account.id)
     assert body["git_account_label"] == "personal"
     assert body["has_custom_token"] is False
+
+
+# --------------------------------------------------------------------------
+# Host handling. The `host` field exists so a self-hosted forge on the LAN can
+# be named, so a private-address blocklist is deliberately absent — see the
+# security note in git_accounts.py. What is refused is a value that steers the
+# request somewhere other than the host the operator typed.
+# --------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "evil.com@github.com",      # userinfo: connects to github.com as evil.com
+        "github.com@evil.com",      # ...or the reverse, token to evil.com
+        "github.com/../../x",       # escapes the authority into a path
+        "github.com?a=b",
+        "github.com#frag",
+        "github.com\\evil.com",
+        "git hub.com",
+    ],
+)
+def test_a_host_that_could_steer_the_request_is_refused(bad):
+    with pytest.raises(ValidationError):
+        GitAccountVerifyRequest(token="t", provider="github", host=bad)
+
+
+def test_a_blank_host_means_use_the_providers_default():
+    """Falsy, so it never reaches the validator and resolves to the default."""
+    assert not GitAccountVerifyRequest(token="t", provider="github", host="").host
+
+
+def test_a_fully_qualified_trailing_dot_normalises_away():
+    """`github.com.` resolves to github.com but compares unequal to it."""
+    assert GitAccountVerifyRequest(
+        token="t", provider="github", host="GitHub.com.",
+    ).host == "github.com"
+
+
+async def test_a_lan_host_is_accepted_because_self_hosted_forges_are_the_point():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        return httpx.Response(200, json={"login": "alice"})
+
+    with _stub_transport(handler):
+        host, username, _ = await verify_token("tok", "github", "192.168.0.196:3000")
+    assert seen["url"] == "https://192.168.0.196:3000/api/v3/user"
+    assert (host, username) == ("192.168.0.196:3000", "alice")
+
+
+async def test_verification_does_not_follow_a_redirect(session):
+    """A 3xx would re-send the Authorization header at the new host."""
+    hops = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        hops.append(str(request.url))
+        return httpx.Response(302, headers={"location": "https://evil.example/user"})
+
+    with _stub_transport(handler):
+        with pytest.raises(GitAccountError) as exc:
+            await verify_token("tok", "github")
+    assert hops == ["https://api.github.com/user"]
+    assert exc.value.status_code == 502
+
+
+async def test_a_transport_failure_does_not_echo_the_probe_result(session):
+    """The failure mode answers 'is something listening there'; keep it in the log."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("[Errno 111] Connection refused to 10.0.0.7:8080")
+
+    with _stub_transport(handler):
+        with pytest.raises(GitAccountError) as exc:
+            await verify_token("tok", "github", "10.0.0.7:8080")
+    assert "Connection refused" not in exc.value.message
+    assert "Errno" not in exc.value.message
+
+
+async def test_an_upstream_status_is_not_echoed_verbatim(session):
+    with _stub_transport(_status(418)):
+        with pytest.raises(GitAccountError) as exc:
+            await verify_token("tok", "github", "10.0.0.7:8080")
+    assert "418" not in exc.value.message
