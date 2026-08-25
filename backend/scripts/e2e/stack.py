@@ -12,10 +12,12 @@ any e2e assertion can run:
    pgvector is unreachable, keep polling; a connection error means the
    server hasn't bound the port yet) or a bounded timeout expires.
 4. Seed the admin account through the real front door,
-   ``POST /api/v1/setup`` with ``{"password": ...}`` and nothing else — a
-   fresh database has no ``admin_password_hash`` row, so
-   ``require_uninitialized`` passes and this succeeds with no LLM
-   configuration at all (doc: T1.64 plan §2.1).
+   ``POST /api/v1/setup`` with ``{"password": ..., "llm": {"purposes": {}}}``
+   — a fresh database has no ``admin_password_hash`` row, so
+   ``require_uninitialized`` passes. The empty ``llm`` block is required
+   rather than cosmetic: finalize writes the seeded provider and purpose rows
+   only when it is present, and ``purposes: {}`` asks for those seeds with no
+   overlay. See ``_seed_admin``.
 5. When ``seed_facts=True`` (T2.90), seed one real Layer-2 fact through
    ``seed_facts.seed_fact_fixture`` — see that module's docstring for why
    this is a direct-DB write against the just-reset e2e database rather
@@ -54,6 +56,8 @@ for _path in (str(BACKEND_DIR), str(SCRIPTS_DIR)):
         sys.path.insert(0, _path)
 
 import httpx  # noqa: E402
+from sqlalchemy import text  # noqa: E402
+from sqlalchemy.ext.asyncio import create_async_engine  # noqa: E402
 
 # Overrides DATABASE_URL as a side effect of import — must happen before any
 # app.* import anywhere in this process.
@@ -126,8 +130,26 @@ def _wait_for_health(base_url: str, timeout_s: float) -> None:
 
 
 def _seed_admin(base_url: str, password: str) -> None:
+    """Finalize setup with the admin password AND the default LLM rows.
+
+    The `llm` block is what makes finalize write `DEFAULT_PROVIDER_ROWS` and
+    `DEFAULT_PURPOSE_CONFIGS` — the whole seed is behind `if body.llm is not
+    None`. Posting a password alone leaves `llm_providers` and
+    `llm_purpose_configs` EMPTY, so every model call resolves nothing and fails
+    with a connect error against a default that was never written. That is not
+    hypothetical: it is what reduced this suite to `3 passed, 1 skipped` with
+    the search assertion never running, under a message blaming an unreachable
+    embedder — while the embedder was up and simply had no row pointing at it.
+
+    `purposes` is sent empty on purpose. It is the overlay the wizard applies
+    on top of the seeds for whichever purposes a human filled in; empty means
+    "the defaults, verbatim", which is exactly what this harness wants and what
+    `llm_seed.OLLAMA_BASE_URL`'s own comment already assumed was happening.
+    """
     resp = httpx.post(
-        f"{base_url}/api/v1/setup", json={"password": password}, timeout=10.0,
+        f"{base_url}/api/v1/setup",
+        json={"password": password, "llm": {"purposes": {}}},
+        timeout=30.0,
     )
     if resp.status_code != 200:
         raise RuntimeError(
@@ -138,6 +160,48 @@ def _seed_admin(base_url: str, password: str) -> None:
 async def _seed_facts_async() -> SeededFact:
     async with e2e_db.session_factory() as session:
         return await seed_fact_fixture(session)
+
+
+async def _count_purpose_rows() -> int:
+    """Count the seeded purpose rows, leaving the shared pool untouched.
+
+    The engine in ``e2e_db`` is module-level, and asyncpg binds a pooled
+    connection to the loop that opened it. Borrowing from it inside this
+    ``asyncio.run`` would leave connections attached to a loop that ends here,
+    and the next ``asyncio.run`` on the boot path — ``_seed_facts_async`` —
+    picks one up and dies with "attached to a different loop". ``reset_e2e_db``
+    avoids that by disposing; this read is smaller than the dispose it would
+    otherwise owe, so it opens and closes its own engine instead.
+    """
+    engine = create_async_engine(e2e_db.TEST_DATABASE_URL)
+    try:
+        async with engine.connect() as conn:
+            return (
+                await conn.execute(text("SELECT count(*) FROM llm_purpose_configs"))
+            ).scalar_one()
+    finally:
+        await engine.dispose()
+
+
+def _assert_llm_seeded() -> None:
+    """Fail the boot if finalize wrote no purpose rows.
+
+    Without this the failure is silent in the worst way: an unseeded stack
+    still boots and still answers, every model call fails to resolve, and the
+    suite reports `3 passed, 1 skipped` — green, with the one assertion that
+    proves search never running. A boot that cannot dispatch a model call has
+    not set up the thing the suite exists to exercise, so it fails here rather
+    than being discovered as a skip nobody reads.
+    """
+    count = asyncio.run(_count_purpose_rows())
+    if count == 0:
+        raise RuntimeError(
+            "POST /api/v1/setup returned 200 but wrote no llm_purpose_configs "
+            "rows — the seed lives behind finalize's `if body.llm is not None`, "
+            "so the request must carry an `llm` block. Without those rows every "
+            "model call resolves nothing and the suite skips its search "
+            "assertion while still reporting green."
+        )
 
 
 def _assert_port_free(port: int) -> None:
@@ -195,6 +259,7 @@ def boot(
     try:
         _wait_for_health(base_url, health_timeout_s)
         _seed_admin(base_url, password)
+        _assert_llm_seeded()
         if seed_facts:
             # Direct DB write against the e2e database this run just reset —
             # never through the running app's HTTP surface, which has no
