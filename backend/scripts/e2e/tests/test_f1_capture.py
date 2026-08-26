@@ -147,7 +147,7 @@ async def test_buffer_flush_lands_row_or_records_failure(api_client, db_session)
 async def test_mcp_capture_lands_in_buffer_and_flushes(
     api_client, db_session, e2e_base_url,
 ):
-    async with streamable_http_client(f"{e2e_base_url}/mcp") as (read, write, _):
+    async with streamable_http_client(f"{e2e_base_url}/mcp") as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
             result = await session.call_tool(

@@ -54,16 +54,22 @@ async def test_put_system_prompts_refreshes_mcp_instructions(client, auth_header
 async def test_refresh_mcp_instructions_reaches_the_live_server(monkeypatch):
     """Prompt edits must take effect without a restart.
 
-    The write goes through a private SDK attribute, so an SDK upgrade can
-    break it silently: nothing raises, and the only symptom is that an edited
-    prompt never reaches a client.
+    The write goes through a private SDK attribute, so an SDK upgrade can break
+    it silently: nothing raises, and the only symptom is that an edited prompt
+    never reaches a client.
     """
     from app.api.mcp import server as mcp_module
+    import app.services.prompt as prompt_module
 
+    # Registered with its CURRENT value so monkeypatch's teardown restores it.
+    # `mcp` is a process-lifetime singleton, so a leaked sentinel would surface
+    # in an unrelated test far from this one.
     monkeypatch.setattr(
-        mcp_module, "refresh_mcp_instructions", mcp_module.refresh_mcp_instructions
+        mcp_module.mcp._lowlevel_server,
+        "instructions",
+        mcp_module.mcp._lowlevel_server.instructions,
     )
-    monkeypatch.setattr(prompt_mod, "get", lambda key: "SENTINEL INSTRUCTIONS")
+    monkeypatch.setattr(prompt_module, "get", lambda key: "SENTINEL INSTRUCTIONS")
 
     mcp_module.refresh_mcp_instructions()
 
