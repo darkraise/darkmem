@@ -172,7 +172,7 @@ async def test_mcp_capture_lands_in_buffer_and_flushes(
                     "project": PROJECT,
                 },
             )
-            assert not result.isError, f"memory_add tool call failed: {result}"
+            assert not result.is_error, f"memory_add tool call failed: {result}"
             ack = json.loads(result.content[0].text)
             assert ack["status"] == "accepted"
             assert ack["id"], "MCP memory_add ack must carry the pre-minted memory id"
