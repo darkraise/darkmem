@@ -7,11 +7,14 @@ machine whose config it edits, at a human's explicit command, and nothing in
 the request path imports it. The distinction is the whole trust posture, so it
 is stated here rather than left for a reader to reconcile.
 
-**It writes exactly the MCP server entry and nothing more privileged.** Not
-secrets, not anything outside the tool's own config file. The LAN default is
-unauthenticated behind the Host allowlist (doc 02 §8), so there is no
-credential to place; when doc 18 defines one for exposed deployments this
-consumes it, it does not design it.
+**It writes exactly the MCP server entry and nothing more privileged.**
+Nothing outside the tool's own config file. Doc 18 §5's bearer requirement
+means the entry itself now carries a credential when ``--key`` is given —
+every ``/mcp`` call needs ``Authorization: Bearer dmk_…`` regardless of
+network posture, so the alternative is a config that authenticates against
+nothing. This module *consumes* that credential (a caller-supplied key
+string); it does not mint one — minting is `POST /api/v1/api-keys` or the
+Settings > Distribution UI.
 
 **Idempotence is a merge, never an append.** Re-running must not leave two
 darkmem entries — a second entry is not merely untidy, it is a config whose
@@ -62,12 +65,21 @@ class HandshakeFailed(RuntimeError):
     """Verification failed, carrying the concrete cause rather than a summary."""
 
 
-def render_server_entry(url: str = DEFAULT_MCP_URL) -> dict:
-    """The darkmem MCP server entry, in the shape every listed tool accepts."""
-    return {"type": "http", "url": url}
+def render_server_entry(url: str = DEFAULT_MCP_URL, *, key: str | None = None) -> dict:
+    """The darkmem MCP server entry, in the shape every listed tool accepts.
+
+    ``key`` rides as a ``headers`` map rather than a bare field: every JSON
+    adapter this module targets (Claude Code, Cursor, Cline) accepts a
+    ``headers`` object on an HTTP server entry, and that is the only place an
+    ``Authorization`` bearer token has ever gone on any of them.
+    """
+    entry: dict = {"type": "http", "url": url}
+    if key:
+        entry["headers"] = {"Authorization": f"Bearer {key}"}
+    return entry
 
 
-def merge_json_config(existing: str, url: str = DEFAULT_MCP_URL) -> str:
+def merge_json_config(existing: str, url: str = DEFAULT_MCP_URL, *, key: str | None = None) -> str:
     """Merge the darkmem entry into a JSON MCP config, preserving everything else.
 
     A malformed existing file is **not** overwritten silently: it raises, so a
@@ -93,7 +105,7 @@ def merge_json_config(existing: str, url: str = DEFAULT_MCP_URL) -> str:
     servers = document.setdefault("mcpServers", {})
     if not isinstance(servers, dict):
         raise ValueError("`mcpServers` in the existing config is not an object")
-    servers[SERVER_KEY] = render_server_entry(url)
+    servers[SERVER_KEY] = render_server_entry(url, key=key)
 
     return json.dumps(document, indent=2) + "\n"
 
@@ -108,8 +120,16 @@ def _normalise_key(raw: str) -> str:
     return ".".join(part.strip().strip('"').strip("'") for part in raw.split("."))
 
 
-def merge_toml_config(existing: str, url: str = DEFAULT_MCP_URL) -> str:
+def merge_toml_config(existing: str, url: str = DEFAULT_MCP_URL, *, key: str | None = None) -> str:
     """Merge the darkmem table into Codex's TOML config.
+
+    ``key``, when given, adds ``http_headers = { Authorization = "Bearer …" }``
+    to the table — Codex's own field for a static header map on a streamable-
+    HTTP server entry, the TOML-side counterpart of the JSON adapters'
+    ``headers`` object. Codex also offers ``bearer_token_env_var`` for a token
+    already sitting in an environment variable, but that is not this
+    function's job: the CLI is handed a key value, not an env var name, and
+    ``http_headers`` is the field that actually accepts one.
 
     **Line-scanned, not byte-matched, and parsed before it is returned**
     (rewritten 2026-08-09; the first version was a Critical). A regex over the
@@ -127,6 +147,8 @@ def merge_toml_config(existing: str, url: str = DEFAULT_MCP_URL) -> str:
     and the result must parse.
     """
     section = f'[{OUR_TABLE}]\nurl = "{url}"\n'
+    if key:
+        section += f'http_headers = {{ Authorization = "Bearer {key}" }}\n'
     newline = "\r\n" if "\r\n" in existing else "\n"
     lines = existing.splitlines()
 
@@ -175,10 +197,16 @@ def merge_toml_config(existing: str, url: str = DEFAULT_MCP_URL) -> str:
             f"merging the darkmem entry would produce invalid TOML ({error}); "
             f"refusing to write. This command edits a file you also own."
         ) from error
-    if parsed.get("mcp_servers", {}).get(SERVER_KEY, {}).get("url") != url:
+    table = parsed.get("mcp_servers", {}).get(SERVER_KEY, {})
+    if table.get("url") != url:
         raise ValueError(
             "the merged config does not name darkmem's URL where expected; "
             "refusing to write a config whose effective server is unclear"
+        )
+    if key and table.get("http_headers", {}).get("Authorization") != f"Bearer {key}":
+        raise ValueError(
+            "the merged config does not carry the bearer key where expected; "
+            "refusing to write a config that would authenticate against nothing"
         )
     return merged
 

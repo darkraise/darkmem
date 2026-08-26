@@ -109,6 +109,61 @@ class TestIdempotence:
         assert "localhost" not in second
 
 
+class TestKeySupport:
+    """Fix-wave item 4: doc 18 §5 made a bearer key required on every /mcp
+    call, but this CLI's rendered config and handshake carried no
+    Authorization header and no ``--key`` flag to supply one — the
+    one-command onboarding path landed on a guaranteed 401. ``--key`` must
+    reach both the written config and `verify_handshake`'s own transport."""
+
+    async def test_render_server_entry_carries_the_key_as_a_bearer_header(self):
+        entry = cc.render_server_entry("http://localhost:8000/mcp/", key="dmk_abc_secret")
+        assert entry["headers"] == {"Authorization": "Bearer dmk_abc_secret"}
+
+    async def test_render_server_entry_omits_headers_with_no_key(self):
+        assert "headers" not in cc.render_server_entry("http://localhost:8000/mcp/")
+
+    async def test_json_config_carries_the_bearer_header(self):
+        merged = json.loads(merge_json_config("", key="dmk_abc_secret"))
+        assert merged["mcpServers"][SERVER_KEY]["headers"] == {
+            "Authorization": "Bearer dmk_abc_secret"
+        }
+
+    async def test_json_config_re_run_updates_the_key_in_place(self):
+        first = merge_json_config("", key="dmk_old_secret")
+        second = merge_json_config(first, key="dmk_new_secret")
+
+        servers = json.loads(second)["mcpServers"]
+        assert list(servers) == [SERVER_KEY]
+        assert servers[SERVER_KEY]["headers"]["Authorization"] == "Bearer dmk_new_secret"
+
+    async def test_no_key_writes_no_header_into_the_json_config(self):
+        merged = json.loads(merge_json_config(""))
+        assert "headers" not in merged["mcpServers"][SERVER_KEY]
+
+    async def test_toml_config_carries_the_bearer_header(self):
+        import tomllib
+
+        parsed = tomllib.loads(merge_toml_config("", key="dmk_abc_secret"))
+        assert parsed["mcp_servers"][SERVER_KEY]["http_headers"] == {
+            "Authorization": "Bearer dmk_abc_secret"
+        }
+
+    async def test_toml_config_re_run_replaces_the_key_rather_than_appending(self):
+        first = merge_toml_config("", key="dmk_old_secret")
+        second = merge_toml_config(first, key="dmk_new_secret")
+
+        assert second.count(f"[mcp_servers.{SERVER_KEY}]") == 1
+        assert "dmk_old_secret" not in second
+        assert "dmk_new_secret" in second
+
+    async def test_no_key_writes_no_header_into_the_toml_config(self):
+        import tomllib
+
+        parsed = tomllib.loads(merge_toml_config(""))
+        assert "http_headers" not in parsed["mcp_servers"][SERVER_KEY]
+
+
 class TestTheTomlShapesThatBrokeIt:
     """The valid-TOML shapes the byte-matched first version missed.
 

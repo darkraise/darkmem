@@ -127,6 +127,15 @@ async def main() -> int:
              "Defaults to the current directory; ~/.codex/config.toml and any "
              "absolute path ignore it.",
     )
+    parser.add_argument(
+        "--key",
+        help="the darkmem API key (dmk_…) this tool should authenticate with. "
+             "Every /mcp call requires one, including this command's own "
+             "verification handshake (doc 18 §5) — omitting it gets a 401 "
+             "before 'initialize' even completes. Mint one with "
+             "POST /api/v1/api-keys or the Settings > Distribution UI, scoped "
+             "to at least 'capture' and 'read'.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="print, write nothing")
     args = parser.parse_args()
 
@@ -181,7 +190,7 @@ async def main() -> int:
         else merge_json_config
     )
     try:
-        merged = merge(existing, url)
+        merged = merge(existing, url, key=args.key)
     except ValueError as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
@@ -193,7 +202,8 @@ async def main() -> int:
         config_path.write_text(merged)
         print(f"wrote {config_path}")
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    handshake_headers = {"Authorization": f"Bearer {args.key}"} if args.key else None
+    async with httpx.AsyncClient(timeout=10.0, headers=handshake_headers) as client:
         call, state = await _rpc_caller(client, url)
         try:
             tools = await verify_handshake(call)
