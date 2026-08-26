@@ -21,6 +21,8 @@ already shipped one ``bool("false")`` master switch on exactly that reasoning.
 from __future__ import annotations
 
 import ast
+import asyncio
+import contextlib
 import re
 import types
 import uuid
@@ -577,6 +579,119 @@ class TestAuthenticate:
         self, session, bad
     ):
         assert await authenticate(session, bad) is None
+
+
+# --------------------------------------------------------------------------
+# Task 6b — bcrypt off the event loop, no connection held across it
+# --------------------------------------------------------------------------
+
+
+class TestEventLoopNotBlocked:
+    """Single uvicorn worker (invariant 13): a synchronous ~167ms bcrypt call
+    on the event loop stalls the whole process, not just this request. These
+    tests fail against the pre-6b code, where ``verify_secret`` runs inline,
+    and pass once it is offloaded via ``asyncio.to_thread``.
+    """
+
+    async def test_authenticate_does_not_stall_the_loop_during_verify(
+        self, session
+    ):
+        _, token = await issue_key(session, name="ci", scopes=["read"])
+
+        ticks = 0
+
+        async def ticker() -> None:
+            nonlocal ticks
+            while True:
+                await asyncio.sleep(0.005)
+                ticks += 1
+
+        tick_task = asyncio.create_task(ticker())
+        try:
+            principal = await authenticate(session, token)
+        finally:
+            tick_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await tick_task
+
+        assert principal is not None
+        # A loop blocked by an inline bcrypt call never gives the ticker a
+        # turn: it stays at 0 for the whole ~167ms the verify takes. Free,
+        # the loop advances it several times over that window. 3 is well
+        # below what a healthy run measures (~30) and well above what a
+        # blocked loop can ever produce.
+        assert ticks >= 3, (
+            f"only {ticks} ticks advanced during authenticate() -- "
+            "the event loop looks blocked"
+        )
+
+    async def test_a_lookup_miss_also_does_not_stall_the_loop(self, session):
+        """The sentinel burn on an unknown key_id is the same cost and must
+        be offloaded the same way -- otherwise a client hammering invented
+        key_ids stalls the process exactly as effectively as a real key
+        would."""
+        ticks = 0
+
+        async def ticker() -> None:
+            nonlocal ticks
+            while True:
+                await asyncio.sleep(0.005)
+                ticks += 1
+
+        tick_task = asyncio.create_task(ticker())
+        try:
+            result = await authenticate(session, mint_credential().token)
+        finally:
+            tick_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await tick_task
+
+        assert result is None
+        assert ticks >= 3, f"only {ticks} ticks advanced during a lookup miss"
+
+
+class TestConnectionReleasedBeforeVerify:
+    async def test_the_fetch_transaction_is_released_before_bcrypt_runs(
+        self, session, monkeypatch
+    ):
+        """Part B: the row is fetched and the session committed before the
+        ~167ms verify runs, so that time does not also pin a pooled
+        connection idle. Proven by inspecting the session's own transaction
+        state from inside the (monkeypatched) bcrypt call."""
+        _, token = await issue_key(session, name="ci", scopes=["read"])
+
+        observed: dict[str, bool] = {}
+        real = keys_mod.bcrypt.checkpw
+
+        def spy(secret, hashed):
+            observed["in_transaction"] = session.in_transaction()
+            return real(secret, hashed)
+
+        monkeypatch.setattr(keys_mod.bcrypt, "checkpw", spy)
+
+        principal = await authenticate(session, token)
+
+        assert principal is not None
+        assert observed.get("in_transaction") is False, (
+            "verify_secret ran while the fetch transaction was still open"
+        )
+
+    async def test_a_lookup_miss_also_releases_before_the_sentinel_burn(
+        self, session, monkeypatch
+    ):
+        observed: dict[str, bool] = {}
+        real = keys_mod.bcrypt.checkpw
+
+        def spy(secret, hashed):
+            observed["in_transaction"] = session.in_transaction()
+            return real(secret, hashed)
+
+        monkeypatch.setattr(keys_mod.bcrypt, "checkpw", spy)
+
+        result = await authenticate(session, mint_credential().token)
+
+        assert result is None
+        assert observed.get("in_transaction") is False
 
 
 class TestRevoke:

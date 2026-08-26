@@ -42,6 +42,7 @@ record that it happened.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import secrets
 import uuid
@@ -183,6 +184,19 @@ async def authenticate(
     The secret is verified *before* revocation and expiry are consulted, so
     holding a revoked key's id without its secret reveals nothing that holding
     an invented id does not: both answers cost one bcrypt and say ``None``.
+
+    ``verify_secret`` runs bcrypt at the stored cost factor, which is
+    synchronous CPU work worth roughly 167ms. With darkmem's single uvicorn
+    worker (invariant 13) that would otherwise stall the event loop -- the
+    whole process, not just this request -- for every call, including the
+    sentinel burn on a lookup miss. It is offloaded to a worker thread via
+    ``asyncio.to_thread`` so the loop stays free while it runs.
+
+    The row is fetched and the fields this function needs are copied out to
+    locals *before* the bcrypt call, and the session is committed right after
+    the fetch -- releasing whatever the read was holding -- so the ~167ms in
+    the thread pool does not also hold a pooled database connection idle.
+    Nothing below the commit touches ``row`` or the session again.
     """
     parsed = parse_credential(raw)
     if parsed is None:
@@ -194,21 +208,32 @@ async def authenticate(
     ).scalar_one_or_none()
 
     if row is None:
-        verify_secret(secret, None)
+        await session.commit()
+        await asyncio.to_thread(verify_secret, secret, None)
         return None
-    if not verify_secret(secret, row.key_hash):
+
+    key_hash = row.key_hash
+    row_id = row.id
+    row_name = row.name
+    row_scopes = row.scopes
+    row_revoked_at = row.revoked_at
+    row_expires_at = row.expires_at
+
+    await session.commit()
+
+    if not await asyncio.to_thread(verify_secret, secret, key_hash):
         return None
 
     moment = now or datetime.now(timezone.utc)
-    if row.revoked_at is not None:
+    if row_revoked_at is not None:
         return None
-    if row.expires_at is not None and row.expires_at <= moment:
+    if row_expires_at is not None and row_expires_at <= moment:
         return None
 
     return KeyPrincipal(
-        api_key_id=row.id,
-        name=row.name,
-        scopes=read_scopes(row.scopes),
+        api_key_id=row_id,
+        name=row_name,
+        scopes=read_scopes(row_scopes),
     )
 
 
