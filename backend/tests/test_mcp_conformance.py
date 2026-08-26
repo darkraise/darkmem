@@ -86,15 +86,22 @@ async def _mcp_mount_lifespan():
 
 
 @pytest_asyncio.fixture
-async def client(_mcp_mount_lifespan):
-    """AsyncClient against the mounted FastAPI app.
+async def client(_mcp_mount_lifespan, mcp_credential):
+    """AsyncClient against the mounted FastAPI app, carrying a valid key.
 
     Exercises the real mount together with every guard wrapping it
     (Host allowlist, ``ProxiedMcpGuardMiddleware``), backed by the
     session-scoped lifespan above.
+
+    Every assertion below is a protocol MUST, and since /mcp requires a bearer
+    the probes have to clear the auth gate to reach the behaviour they are
+    about - otherwise each one would pass on a 401 while proving nothing. The
+    key is the conftest suite key, not a disabled check.
     """
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://localhost:8000"
+        transport=ASGITransport(app=app),
+        base_url="http://localhost:8000",
+        headers={"Authorization": f"Bearer {mcp_credential}"},
     ) as c:
         yield c
 
@@ -163,6 +170,10 @@ async def test_retired_session_headers_are_ignored(client, stale):
     }
     resp = await client.post("/mcp/", headers=headers, json=_call("memory_stats"))
     assert resp.status_code != 400, f"{stale} should be ignored, not rejected"
+    # Pinned to 200 rather than left at "not 400": once the door requires a
+    # bearer, a refusal that never reached the transport would satisfy the
+    # inequality above while proving nothing about the stale header.
+    assert resp.status_code == 200
     assert "Mcp-Session-Id" not in resp.headers
 
 

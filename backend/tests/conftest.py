@@ -17,7 +17,7 @@ os.environ["DATABASE_URL"] = os.environ.get(
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
+from sqlalchemy import delete as sa_delete, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.api.auth import create_access_token, hash_password
@@ -233,13 +233,52 @@ async def mcp_streamable_app():
         await runner
 
 
+@pytest_asyncio.fixture(scope="session")
+async def mcp_credential(setup_database):
+    """A committed API key granting both MCP scopes, for the whole session.
+
+    /mcp requires a verified bearer on every request, so a client driving the
+    door needs a real ``api_keys`` row. It has to be **committed**, not written
+    through the per-test ``session`` fixture: the token verifier opens its own
+    session on the application engine, a different physical connection, and a
+    row held inside the fixture's never-committed outer transaction is
+    invisible there. Session-scoped so the bcrypt verification cost is paid
+    once rather than per test.
+
+    Both scopes, because the door's readers and its writers are exercised from
+    the same client; a test that needs a key *lacking* a scope mints its own.
+    """
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from app.models.api_key import ApiKey
+    from app.services.api_keys import issue_key
+
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    async with factory() as s:
+        row, credential = await issue_key(
+            s, name="test-suite", scopes=["capture", "read"]
+        )
+        row_id = row.id
+        await s.commit()
+
+    yield credential
+
+    async with factory() as s:
+        await s.execute(sa_delete(ApiKey).where(ApiKey.id == row_id))
+        await s.commit()
+
+
 @pytest_asyncio.fixture
-async def mcp_http_client(session, monkeypatch, mcp_streamable_app):
+async def mcp_http_client(session, monkeypatch, mcp_streamable_app, mcp_credential):
     """JSON-RPC client for MCP tool calls, wired to the per-test session.
 
     MCP tools open sessions via the module-level async_session_factory, not
     the FastAPI get_session dependency, so the factory is patched here;
     without it tool calls commit real rows outside the test transaction.
+
+    The bearer is the suite's own key rather than a patched-out auth check: the
+    door refuses an unauthenticated call, and a fixture that disabled that
+    would leave every MCP test asserting behaviour production does not have.
     """
     from contextlib import asynccontextmanager
 
@@ -254,7 +293,10 @@ async def mcp_http_client(session, monkeypatch, mcp_streamable_app):
     async with AsyncClient(
         transport=transport,
         base_url="http://localhost:8000",
-        headers={"Accept": "application/json"},
+        headers={
+            "Accept": "application/json",
+            "Authorization": f"Bearer {mcp_credential}",
+        },
     ) as c:
         yield c
 

@@ -4,11 +4,13 @@ from contextlib import asynccontextmanager
 from typing import Annotated
 from uuid import UUID
 
+from mcp.server.auth.settings import AuthSettings
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import Field
 from sqlalchemy import select, text
 
+from app.api.mcp.auth import ApiKeyTokenVerifier
 from app.api.mcp.client_identity import (
     FALLBACK_SOURCE,
     declared_origin,
@@ -17,6 +19,7 @@ from app.api.mcp.client_identity import (
     resolve_origin_key,
     resolve_source_agent,
 )
+from app.api.mcp.scopes import ToolScopeMiddleware
 from app.config import settings
 from app.database import async_session_factory
 from app.schemas.envelope import ENVELOPE_SCHEMA_VERSION
@@ -51,9 +54,27 @@ def build_transport_security(allowed_hosts_csv: str) -> TransportSecuritySetting
     )
 
 
+# `issuer_url` is a required field on `AuthSettings` and darkmem issues no
+# OAuth tokens: the credential is a static API key the operator mints. Nothing
+# serves this URL - `create_auth_routes` needs an `auth_server_provider` and
+# `create_protected_resource_routes` needs a `resource_server_url`, and this
+# door has neither - but the SDK refuses a `token_verifier` with no
+# `AuthSettings` at all, so the block exists to turn bearer verification on.
+# `required_scopes` stays empty on purpose: the transport requires a *verified*
+# key for every request, and which scope that key must hold is per tool, which
+# a route-wide list cannot express. `ToolScopeMiddleware` decides that.
+_MCP_AUTH = AuthSettings(
+    issuer_url="http://localhost",
+    resource_server_url=None,
+    required_scopes=[],
+)
+
 mcp = MCPServer(
     "darkmem",
     instructions="",
+    auth=_MCP_AUTH,
+    token_verifier=ApiKeyTokenVerifier(),
+    middleware=[ToolScopeMiddleware()],
 )
 
 # v2 moved json_response/stateless_http/streamable_http_path/transport_security
