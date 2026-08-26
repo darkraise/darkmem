@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from typing import Annotated
 from uuid import UUID
 
-from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import Field
 from sqlalchemy import select, text
@@ -51,14 +51,23 @@ def build_transport_security(allowed_hosts_csv: str) -> TransportSecuritySetting
     )
 
 
-mcp = FastMCP(
+mcp = MCPServer(
     "darkmem",
-    json_response=True,
-    stateless_http=True,
-    streamable_http_path="/",
     instructions="",
-    transport_security=build_transport_security(settings.mcp_allowed_hosts),
 )
+
+# v2 moved json_response/stateless_http/streamable_http_path/transport_security
+# off the MCPServer constructor and onto streamable_http_app()'s own kwargs
+# (https://py.sdk.modelcontextprotocol.io/v2/migration/). Centralised here so
+# every streamable_http_app() call site (app boot, test fixtures) serves the
+# same transport posture instead of re-declaring the literals.
+def mcp_streamable_http_kwargs() -> dict:
+    return {
+        "streamable_http_path": "/",
+        "json_response": True,
+        "stateless_http": True,
+        "transport_security": build_transport_security(settings.mcp_allowed_hosts),
+    }
 
 _pipeline = None
 

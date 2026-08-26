@@ -208,13 +208,14 @@ async def mcp_streamable_app():
     cancel scopes must enter and exit in the same task, and pytest-asyncio
     tears async fixtures down in a different task than setup.
     """
-    from app.api.mcp.server import mcp as mcp_server
+    from app.api.mcp.server import mcp as mcp_server, mcp_streamable_http_kwargs
 
     # Null out the cached manager so streamable_http_app() creates a fresh
     # StreamableHTTPSessionManager; the SDK's _has_started flag makes each
     # instance single-use, so reusing one across tests raises RuntimeError.
-    mcp_server._session_manager = None
-    mcp_app = mcp_server.streamable_http_app()
+    # v2's lowlevel Server holds this attribute, not MCPServer itself.
+    mcp_server._lowlevel_server._session_manager = None
+    mcp_app = mcp_server.streamable_http_app(**mcp_streamable_http_kwargs())
     started = asyncio.Event()
     stop = asyncio.Event()
 

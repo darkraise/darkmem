@@ -16,7 +16,7 @@ from starlette.middleware.gzip import GZipMiddleware
 
 from sqlalchemy import text
 
-from app.api.mcp.server import mcp as mcp_server, set_pipeline
+from app.api.mcp.server import mcp as mcp_server, mcp_streamable_http_kwargs, set_pipeline
 from app.api.spa import mount_spa
 from app.api.routes import analytics, api_keys as api_key_routes, git_accounts as git_account_routes, articles as articles_routes, auth, buffer as buffer_routes, chat, checkpoints as checkpoint_routes, code, config, distribution as distribution_routes, documents as documents_routes, dream_digest as dream_digest_routes, events as events_routes, facts as facts_routes, graph, hygiene_queue, jobs, knowledge_search as knowledge_search_routes, llm_providers, memories, overview as overview_routes, pipeline as pipeline_routes, pipeline_failures, projects as projects_routes, ratification as ratification_routes, reembed, repos, review_queue, setup, system, tags, topics as topics_routes, usage as usage_routes, vectors
 from app.api.websocket import websocket_endpoint
@@ -935,7 +935,7 @@ app.include_router(jobs.router)
 
 app.add_api_websocket_route("/ws", websocket_endpoint)
 
-_mcp_app = mcp_server.streamable_http_app()
+_mcp_app = mcp_server.streamable_http_app(**mcp_streamable_http_kwargs())
 
 
 app.mount("/mcp", _mcp_app)
