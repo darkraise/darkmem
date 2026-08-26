@@ -1,6 +1,9 @@
 # MCP: migrate to SDK v2, then require bearer auth
 
-**Status:** proposed, 2026-08-26. Owner ruling pending.
+**Status:** proposed, 2026-08-26. Three owner rulings recorded: auth required
+by default with no opt-out flag (§5), per-tool scope gating (§5), and both parts
+in a single deploy (§8). Two open questions remain, both answerable only against
+the real server (§9).
 **Supersedes nothing. Amends:** doc 12 (API and MCP contract), doc 18 §5
 (records the second activation), CLAUDE.md's MCP section, and
 `ProxiedMcpGuardMiddleware`'s docstring premise (§4).
@@ -247,6 +250,17 @@ Auth:
 Order is load-bearing. Deploying before a key exists breaks every agent talking
 to `/mcp`.
 
+**Both parts land in a single deploy** (owner ruling, 2026-08-26). The reason
+is the one §9 named: two deploys leave a window in which the server is migrated
+and still unauthenticated, and that window is the exact condition this work
+exists to remove. The accepted cost is that a failure is harder to attribute
+between the migration and the auth, which the gate's separate test groups
+mitigate but do not erase.
+
+Rollback is therefore one step, not two: redeploy the previous image tag. That
+is only true while the migration carries no schema change — it does not, and if
+one appears the rollback story must be rewritten before this ships.
+
 1. Mint a key in the UI with both scopes.
 2. Update every MCP client config to send `Authorization: Bearer dmk_…`.
 3. Gate, build, deploy.
@@ -263,5 +277,5 @@ cost of the chosen posture and is stated here so it is not discovered later.
 - Do the deployed MCP clients negotiate a revision the v2 server serves? Dual-era
   support was proven for `2025-11-25`; the clients' actual negotiated version
   has not been observed.
-- Should the migration and the auth land as one deploy or two? Two is safer to
-  diagnose; one avoids a window where the server is migrated and still open.
+
+The one-deploy question is settled; see §8.
