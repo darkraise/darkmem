@@ -63,4 +63,10 @@ class ApiKeyTokenVerifier(TokenVerifier):
             # never "never expires".
             expires_at=None,
             subject=principal.name,
+            # `client_id` above carries the public key_id; `events.api_key_id`
+            # wants the row UUID, which `authenticate` resolves but `client_id`
+            # has no room for. Riding it in `claims` lets a later caller write
+            # `events.api_key_id` from the token it already holds, with no
+            # second SELECT per request.
+            claims={"api_key_id": str(principal.api_key_id)},
         )

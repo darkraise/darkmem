@@ -47,6 +47,9 @@ async def test_valid_key_verifies_with_its_scopes(session, verifier):
     # stores the row id, and conflating them writes an unjoinable value.
     assert token.client_id == row.key_id
     assert token.subject == "agent"
+    # The row UUID rides in claims so a later caller can write
+    # events.api_key_id from the token alone, with no second SELECT.
+    assert token.claims == {"api_key_id": str(row.id)}
 
 
 async def test_garbage_is_refused(verifier):
