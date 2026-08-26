@@ -2,7 +2,8 @@
 
 **Status:** proposed, 2026-08-26. Owner ruling pending.
 **Supersedes nothing. Amends:** doc 12 (API and MCP contract), doc 18 §5
-(records the second activation), CLAUDE.md's MCP section.
+(records the second activation), CLAUDE.md's MCP section, and
+`ProxiedMcpGuardMiddleware`'s docstring premise (§4).
 
 Two changes, deliberately sequenced. Migrating the MCP server to protocol
 revision `2026-07-28` comes first because it changes how the authentication
@@ -28,9 +29,10 @@ Protocol `2026-07-28` is an architectural change, not a point release:
 - **Stateless.** The `initialize`/`initialized` handshake and `Mcp-Session-Id`
   are retired. Each request carries its protocol version, client identity and
   capabilities in `_meta`.
-- **Required routing headers.** `MCP-Protocol-Version`, `Mcp-Method` and
-  `Mcp-Name` are REQUIRED on every POST so intermediaries can route and
-  authorize without parsing bodies.
+- **Required routing headers.** `MCP-Protocol-Version` and `Mcp-Method` are
+  REQUIRED on every POST; `Mcp-Name` is REQUIRED only for `tools/call`,
+  `resources/read` and `prompts/get`, carrying `params.name` or `params.uri`.
+  They exist so intermediaries can route and authorize without parsing bodies.
 - **MRTR** replaces server-initiated streams for elicitation, sampling, roots.
 - **Deprecated:** Roots, Sampling, Logging (twelve-month window) and the legacy
   HTTP+SSE transport.
@@ -126,10 +128,21 @@ server rather than assumed:
 
 - GET or DELETE on `/mcp` answers `405`.
 - `Mcp-Session-Id` and `Last-Event-ID` are ignored, never minted or echoed.
-- An invalid `Origin` answers `403`. Note this sits *beside* the Host
+- An `Origin` that is **present and invalid** answers `403`. An absent
+  `Origin` is not an error — most MCP agents are not browsers and send none,
+  so rejecting its absence would break every non-browser client. Note this
+  sits *beside* the Host
   allowlist's `421`, which is unchanged: `421` answers "is this a Host I
   serve", `403` answers "is this Origin allowed". Conflating them would break
   invariant 20's standing advice ("extend the allowlist, never disable it").
+
+**`ProxiedMcpGuardMiddleware` stays, and its comment must change.** T4.17
+refuses `/mcp` arriving through the proxy, and its docstring justifies itself on
+`/mcp` being "unauthenticated by design" with the bearer option "designed but
+unshipped". Auth landing makes that rationale stale while the guard itself is
+still wanted — it answers "did this arrive from outside", which a valid key does
+not answer. Keep the guard, rewrite the premise. Leaving a stale justification
+in place invites a later reader to delete the guard as obsolete.
 
 **Explicitly out of scope:** MRTR, `subscriptions/listen`, and `ttlMs` /
 `cacheScope`. darkmem's tools are request/response and use no elicitation,
@@ -147,16 +160,26 @@ off. The escape hatch is minting a key, never disabling auth.
 **The Host allowlist stays on**, exactly as doc 18 §5 requires — defence in
 depth, and the `421` rule is untouched.
 
+**Both protocol eras are authenticated.** §3 establishes that a v2 server still
+answers a legacy `initialize` handshake; that path is not an auth exemption. A
+legacy client presents the same bearer or is refused, or the migration would
+hand every unmigrated client a way around the requirement.
+
 **Verification.** One `TokenVerifier` implementation over the existing
 `api_keys` table, reusing `authenticate()` so REST and MCP cannot drift into
 two credential readers:
 
 | `AccessToken` field | Source |
 |---|---|
-| `client_id` | `api_keys.id` |
+| `client_id` | `api_keys.key_id` (the public 32-char identifier inside `dmk_<key_id>_<secret>`, not the row's UUID) |
 | `scopes` | `read_scopes(api_keys.scopes)` |
 | `expires_at` | `api_keys.expires_at` |
 | `subject` | `api_keys.name` |
+
+`api_keys` carries **both** `id` (UUID primary key) and `key_id` (the public
+identifier). They are not interchangeable: `client_id` above is `key_id`, while
+`events.api_key_id` stores the row `id`. Conflating them writes an unjoinable
+value into the journal.
 
 **Scope per tool.** `capture` for the eight writers — `memory_add`,
 `memory_batch_add`, `memory_update`, `memory_delete`, `document_put`,
@@ -169,7 +192,7 @@ refuses it at issue time, `has_scope` refuses to even test for it, and an
 import-time assertion fails the process if it ever enters the vocabulary. This
 migration adds no path around any of that.
 
-**Attribution.** The six hardcoded `api_key_id=None` call sites take the real
+**Attribution.** The four hardcoded `api_key_id=None` call sites take the real
 key id, and `events.actor` becomes the key name. The `source` ladder (explicit
 arg → `X-Darkmem-Client` → User-Agent → `mcp`) is untouched: `source` says
 *which client tool*, `actor` says *which credential*. Conflating them would
@@ -192,8 +215,12 @@ lose the client attribution the header ladder exists to produce.
 
 Migration:
 
-- Every tool still registers, and the roster is derived from source rather than
-  hand-listed, so a tool lost in the rename fails the build.
+- Every tool still registers. **The existing `test_mcp_tools_registered` is not
+  sufficient for this and must be replaced**: it hand-lists ten names and
+  asserts `len(tool_names) >= 10` against a roster of 33, so a rename losing
+  twenty tools passes it. Derive the expected roster from the module's own AST,
+  as `test_code_deriver.py` already does for the job roster, so a tool lost in
+  the migration fails the build.
 - A legacy `initialize` client and a modern stateless call both succeed against
   the real server.
 - `Mcp-Name`/body mismatch is rejected `-32020`.
@@ -204,7 +231,10 @@ Migration:
 
 Auth:
 
-- No key → refused. Invalid key → refused. Expired key → refused.
+- No key → refused. Invalid key → refused. Expired key → refused. **Revoked
+  key → refused** (`api_keys.revoked_at`, which `authenticate()` already
+  checks — omitting it would leave the revocation surface unproven on this
+  door).
 - Valid key lacking the scope → refused; holding it → succeeds.
 - A successful keyed call stamps `events.api_key_id` and `events.actor`.
 - The Host allowlist still refuses a foreign Host *with* a valid key — both
