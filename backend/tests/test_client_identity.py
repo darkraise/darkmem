@@ -4,6 +4,7 @@ from starlette.datastructures import Headers
 
 from app.api.mcp.client_identity import (
     resolve_client_source,
+    resolve_origin_key,
     resolve_source_agent,
 )
 
@@ -63,10 +64,22 @@ def test_generic_user_agents_rejected():
         "node",
         "Bun/1.3.8",
         "python-httpx/0.28.1",
+        "python-httpx2/2.12.0",
         "Mozilla/5.0 (Windows NT 10.0)",
     ]:
         ctx = _Ctx({"user-agent": ua})
         assert resolve_client_source(None, ctx) == "mcp", ua
+
+
+def test_v2_sdk_httpx2_ua_does_not_leak_as_source():
+    # The v2 SDK swapped httpx for httpx2; a client that sets no
+    # User-Agent of its own must still fold into the merged unknown-origin
+    # bucket rather than being attributed as the underlying HTTP library.
+    ctx = _Ctx({"user-agent": "python-httpx2/2.12.0"})
+    source = resolve_client_source(None, ctx)
+    assert source == "mcp"
+    origin_key = resolve_origin_key(None, ctx, source=source, project="default")
+    assert origin_key == "unknown:mcp:default"
 
 
 def test_unknown_distinctive_ua_passes_through_slugged():
