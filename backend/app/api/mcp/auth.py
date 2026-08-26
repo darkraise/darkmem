@@ -50,7 +50,7 @@ class ApiKeyTokenVerifier(TokenVerifier):
             async with async_session_factory() as session:
                 principal = await authenticate(session, token)
         except Exception:
-            logger.warning("mcp auth: verification failed", exc_info=True)
+            logger.error("mcp auth: verification failed", exc_info=True)
             return None
 
         if principal is None:
