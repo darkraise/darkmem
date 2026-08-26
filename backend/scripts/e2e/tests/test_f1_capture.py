@@ -46,7 +46,7 @@ for _path in (str(BACKEND_DIR), str(SCRIPTS_DIR)):
         sys.path.insert(0, _path)
 
 from mcp import ClientSession  # noqa: E402
-from mcp.client.streamable_http import streamablehttp_client  # noqa: E402
+from mcp.client.streamable_http import streamable_http_client  # noqa: E402
 
 PROJECT = "e2e-f1"
 BUFFER_FLUSH_TRIGGER_RETRIES = 20
@@ -147,7 +147,7 @@ async def test_buffer_flush_lands_row_or_records_failure(api_client, db_session)
 async def test_mcp_capture_lands_in_buffer_and_flushes(
     api_client, db_session, e2e_base_url,
 ):
-    async with streamablehttp_client(f"{e2e_base_url}/mcp") as (read, write, _):
+    async with streamable_http_client(f"{e2e_base_url}/mcp") as (read, write, _):
         async with ClientSession(read, write) as session:
             await session.initialize()
             result = await session.call_tool(
