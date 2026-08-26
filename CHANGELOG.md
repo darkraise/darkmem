@@ -4,6 +4,31 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
+## v1.2.1 — 2026-08-26
+
+**The published image could not index a repository, and nothing said so.**
+A one-line omission in the runtime stage, fixed here. No gate moved and no
+behaviour changed beyond the image gaining a binary it always needed.
+
+### Fixed
+
+- **`git` is installed in the runtime image.** Code indexing shells out to the
+  git binary — `RepoManager._run_git` runs `git clone/fetch/rev-parse/diff` as
+  a subprocess, and no pure-Python git is in the lockfile — but the runtime
+  stage never installed one. `build-essential` lives in the builder stage,
+  whose layers deliberately never ship, so the published image had no git at
+  all and every repository operation failed with `git: not found`.
+
+  Nothing announced it. The image boots, migrations run, `/health` answers 200
+  and the healthcheck passes; the sole symptom is that indexing never works.
+  It survived undetected because the deployment holding it had zero
+  repositories, so the path was never exercised. Found while wiring a local
+  checkout into the indexer, not by any test.
+
+  The regression test asserts against the **runtime stage alone**: a git
+  installed only in the builder would satisfy a whole-file grep while leaving
+  the shipped artifact exactly as broken.
+
 ## v1.2.0 — 2026-08-25
 
 **A face, and a dialog that listens.** Two blocks, neither of them near a gate.

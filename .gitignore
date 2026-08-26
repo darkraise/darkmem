@@ -33,3 +33,8 @@ backend/scripts/benchlib/entailment/verdicts/
 # scratch that regenerates on every run, and an untracked copy of it blocks
 # release.sh, which refuses a dirty tree.
 .playwright-mcp/
+
+# Host-specific compose overrides (bind mounts of local checkouts, etc).
+# Machine-local by nature, and an untracked copy blocks release.sh, which
+# refuses a dirty tree.
+docker-compose.override.yml
