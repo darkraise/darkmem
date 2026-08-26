@@ -47,6 +47,7 @@ for _path in (str(BACKEND_DIR), str(SCRIPTS_DIR)):
 
 from mcp import ClientSession  # noqa: E402
 from mcp.client.streamable_http import streamable_http_client  # noqa: E402
+from mcp.shared._httpx_utils import create_mcp_http_client  # noqa: E402
 
 PROJECT = "e2e-f1"
 BUFFER_FLUSH_TRIGGER_RETRIES = 20
@@ -147,7 +148,21 @@ async def test_buffer_flush_lands_row_or_records_failure(api_client, db_session)
 async def test_mcp_capture_lands_in_buffer_and_flushes(
     api_client, db_session, e2e_base_url,
 ):
-    async with streamable_http_client(f"{e2e_base_url}/mcp") as (read, write):
+    # /mcp requires a bearer key on every request. The probe mints one over the
+    # admin session it already holds rather than reading an env var, because
+    # the disposable stack this runs against boots with no keys at all.
+    minted = await api_client.post(
+        "/api/v1/api-keys", json={"name": "e2e-mcp-probe", "scopes": ["capture"]},
+    )
+    assert minted.status_code == 201, f"could not mint an MCP key: {minted.text}"
+    credential = minted.json()["token"]
+
+    http_client = create_mcp_http_client(
+        headers={"Authorization": f"Bearer {credential}"}
+    )
+    async with http_client, streamable_http_client(
+        f"{e2e_base_url}/mcp", http_client=http_client
+    ) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
             result = await session.call_tool(
