@@ -123,39 +123,39 @@ stateDiagram-v2
 
 ---
 
-## 5. Programmatic auth — the `ApiKey` activation (a named gap, not a shipped feature)
+## 5. Programmatic auth — the `ApiKey` activation, in two steps
 
-**Decision. Programmatic bearer auth is designed here and was gated to an activation; the activation fired on 2026-08-16. The `api_keys` table is wired — the push-webhook receiver (doc 10 §5) and the three memory doors the minimal client speaks are scope-gated, and every keyed call stamps `events.api_key_id` and `events.actor` (activation; invariant 23; doc 02 §11, doc 04 §9, doc 12 §9).** The design was fixed before the wiring so the activation was a wiring task, not a design task, and so no interim feature invented a second credential shape — which is what happened. **The scope set is not fully spent**: `capture` and `read` reach the minimal client's three verbs and nothing else, and widening either is a decision about what a leaked key can exfiltrate rather than a gap to close by default (T4.21). The design is fixed now so the activation is a wiring task, not a design task, and so no interim feature invents a second credential shape.
+**Decision. Programmatic bearer auth is designed here and shipped in two activations, not one. The first fired on 2026-08-16: the `api_keys` table came up wired, gating the push-webhook receiver (doc 10 §5) and REST's three memory doors, with every keyed call stamping `events.api_key_id` and `events.actor` (invariant 23; doc 02 §11, doc 04 §9, doc 12 §9). The second fired on 2026-08-26 (this epic): every `/mcp` tool call now requires the same bearer credential, scoped per tool rather than per door — `capture` on the 8 writer tools, `read` on the other 25 (doc 12 §6).** Both were wiring tasks against a design fixed before either landed, which is why neither invented a second credential shape. **`ratify` is untouched by both activations and stays outside the scope vocabulary** — a key is a machine credential on either door, and the machine never ratifies, keyed or not.
 
-The hardening path, as designed:
+The hardening path, as designed and now shipped on both doors:
 
 - **Credential shape.** A key is `dmk_<key_id>_<secret>`; the server stores the `key_id`, a hash of the secret (bcrypt, same primitive as the password path), a **scope set**, an optional expiry, and `last_used_at`. The raw secret is shown once at creation and never stored. The schema change at activation is at most adding columns to the existing `api_keys` table, never a new table (doc 04 §9).
-- **Wire form.** `Authorization: Bearer dmk_…` on REST, and — as a second, separately-flipped option — on `/mcp` (the streamable-HTTP transport carries headers per call, so a bearer requirement composes with the stateless server exactly as `X-Darkmem-Client` does). **The Host allowlist stays on even with bearer required** — defence in depth, and the `421` rule of §2 is unchanged.
-- **Scopes are a closed vocabulary, taxonomy-first (invariant 5's discipline applied to auth):** `capture` (write memories), `read` (search/vault/code reads), `admin` (config, jobs, repos). **`ratify` is deliberately not a scope and never becomes one:** `confirmed` power remains a human cookie session on the REST/UI door only (doc 12 §3, doc 13 §5) — a key is a machine credential, and the machine never ratifies, keyed or not.
-- **Journaling (convention 8).** Every keyed call stamps `events.api_key_id` and `events.actor` — the moment the activation lands is the moment those two dormant columns (doc 04 §8.1) finally carry a value. Key creation, revocation, and expiry journal as their own `events` rows; doc 13's settings surface lists keys with `last_used_at` so a stale key is visible before it is a liability.
+- **Wire form.** `Authorization: Bearer dmk_…` on REST, and — since the second activation, unconditionally — on `/mcp` (the streamable-HTTP transport carries headers per call, so the bearer requirement composes with the stateless server exactly as `X-Darkmem-Client` does). There is no flag that turns the `/mcp` requirement back off. **The Host allowlist stays on beside bearer auth, not instead of it** — defence in depth, and the `421` rule of §2 is unchanged, except that auth now evaluates first: an unkeyed request gets `401` regardless of `Host`, and only a keyed request that also fails the Host check gets `421`.
+- **Scopes are a closed vocabulary, taxonomy-first (invariant 5's discipline applied to auth):** `capture` (write memories), `read` (search/vault/code reads), `admin` (config, jobs, repos). **`ratify` is deliberately not a scope and never becomes one:** `confirmed` power remains a human cookie session on the REST/UI door only (doc 12 §3, doc 13 §5). On `/mcp`, scopes do not imply one another — a key holding only `admin` reaches no MCP tool at all, since every one of the 33 tools requires `capture` or `read` and none accepts `admin`. `tools/list` is deliberately **not** scope-filtered: any authenticated key sees the full tool catalogue, including writers it cannot invoke.
+- **Journaling (convention 8).** Every keyed call stamps `events.api_key_id` and `events.actor` on both doors — the moment each activation landed is the moment those two dormant columns (doc 04 §8.1) started carrying a value for that door. Key creation, revocation, and expiry journal as their own `events` rows; doc 13's settings surface lists keys with `last_used_at` so a stale key is visible before it is a liability.
 - **Management surface.** Key CRUD is an authenticated REST/UI surface (single-door, same reasoning as ratification: a credential mint is confirmed-grade power).
 
-**What triggers the activation (the gate doc 20 schedules):** the first exposed deployment (§9), or the repo push-webhook receiver docs 10/15 defer behind exactly this auth ("gated on doc 18's exposed-endpoint auth"), or any remote client that must reach darkmem across an untrusted network. None of these is v1. **Rejected:** OAuth/OIDC — a single-human self-hosted box has no delegation problem and no identity provider, and the machinery would dwarf the asset; mTLS — real security, unreasonable operational burden for the audience; wiring the key path now "since the table exists" — that is precisely the scaffolding-as-substrate move invariant 23 forbids, and an unused auth path is untested attack surface, not readiness.
+**What triggered the first activation:** the repo push-webhook receiver (docs 10/15) needed exactly this auth to land, and the three memory doors rode the same wiring pass. **Rejected then and still rejected:** OAuth/OIDC — a single-human self-hosted box has no delegation problem and no identity provider, and the machinery would dwarf the asset; mTLS — real security, unreasonable operational burden for the audience.
 
-Auth resolution across the two doors once the activation is live — the ladder each request walks:
+Auth resolution across the two doors, both activations live:
 
 ```mermaid
 flowchart TD
     REQ["incoming request"] --> D1{"which surface?"}
     D1 -->|"/api/v1 or /ws"| C1{"cookie JWT valid, jti not revoked?"}
     C1 -->|yes| OK1["human session — full power incl. ratify"]
-    C1 -->|no| B1{"Bearer dmk_ key? (activation only)"}
+    C1 -->|no| B1{"Bearer dmk_ key?"}
     B1 -->|"valid + scope covers route"| OK2["programmatic actor — events.api_key_id stamped, never ratify"]
     B1 -->|"absent / invalid"| D401["401"]
-    D1 -->|"/mcp"| H1{"Host allowlisted?"}
+    D1 -->|"/mcp"| M1{"Bearer dmk_ key?"}
+    M1 -->|"absent / invalid"| M401["401 — evaluated before the Host check"]
+    M1 -->|valid| H1{"Host allowlisted?"}
     H1 -->|no| R421["421 — extend the allowlist, never disable (inv 20)"]
-    H1 -->|yes| M1{"MCP bearer required? (exposed activation)"}
-    M1 -->|"no — LAN default"| OKM["unauthenticated tool call, attributed via headers"]
-    M1 -->|yes| M2{"valid key?"}
-    M2 -->|yes| OKM2["keyed tool call — journaled"]
-    M2 -->|no| M401["401"]
+    H1 -->|yes| S1{"scope covers the tool called?"}
+    S1 -->|yes| OKM2["keyed tool call — events.api_key_id/actor stamped, never ratify"]
+    S1 -->|no| SDENY["scope denied — JSON-RPC -32003"]
 ```
-*Caption: the LAN default is the left spine unchanged; the bearer rungs exist only after activation, and no rung anywhere reaches ratification except the human cookie session.*
+*Caption: no rung on either door reaches ratification except the human cookie session; `/mcp`'s bearer check now runs ahead of its Host check, so an unkeyed foreign-Host caller sees `401`, not `421`.*
 
 ---
 

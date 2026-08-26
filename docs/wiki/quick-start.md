@@ -133,10 +133,12 @@ the REST convention throughout.
 
 ## 7. Connect an agent over MCP
 
-The MCP endpoint is `http://localhost:8000/mcp`. For Claude Code:
+The MCP endpoint is `http://localhost:8000/mcp`. Mint a key first (Settings →
+API keys). For Claude Code:
 
 ```bash
-claude mcp add --transport http darkmem http://localhost:8000/mcp
+claude mcp add --transport http darkmem http://localhost:8000/mcp \
+  --header "Authorization: Bearer dmk_<key_id>_<secret>"
 ```
 
 Or in a client's config file:
@@ -144,19 +146,29 @@ Or in a client's config file:
 ```json
 {
   "mcpServers": {
-    "darkmem": { "type": "http", "url": "http://localhost:8000/mcp" }
+    "darkmem": {
+      "type": "http",
+      "url": "http://localhost:8000/mcp",
+      "headers": { "Authorization": "Bearer dmk_<key_id>_<secret>" }
+    }
   }
 }
 ```
+
+Mint the key in Settings → API keys first (both `capture` and `read`, unless
+you know you want narrower); the secret is shown once and never stored.
 
 The agent gets tools for memory (`memory_add`, `memory_search`, `memory_get`,
 …), code (`code_search`, `code_symbol`, `code_blast_radius`, …), facts and
 session checkpoints.
 
-> **`/mcp` is unauthenticated.** Its only defence is a Host allowlist, and by
-> default that allows **localhost only**. An agent on another machine gets
-> `421` until you add its host — see below. Never route `/mcp` in from the
-> public internet.
+> **`/mcp` requires that bearer key on every call**, scoped per tool — a
+> `capture`-only key can write but not search, a `read`-only key the reverse,
+> and neither reaches ratification, which stays human-only. Beside auth, the
+> Host allowlist still applies, and by default that allows **localhost only**.
+> An agent on another machine gets `421` until you add its host — see below.
+> Never route `/mcp` in from the public internet: a bearer key does not make
+> that safe (`docs/runbook-exposed-deployment.md`).
 
 **Agent on another LAN machine?** Add the host and port it dials:
 

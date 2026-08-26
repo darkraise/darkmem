@@ -733,8 +733,19 @@ _FORWARDED_MARKERS = ("x-forwarded-for", "x-real-ip", "x-forwarded-proto")
 class ProxiedMcpGuardMiddleware:
     """Refuse `/mcp` when it arrives through the proxy (T4.17).
 
-    `/mcp` is unauthenticated by design — the local-network trust model — and
-    its bearer-required option is designed but unshipped (doc 18 §5). Under
+    Every `/mcp` call has required a bearer API key since doc 18 §5's second
+    activation (2026-08-26), so this guard's original premise — an
+    unauthenticated door with no way to gate who reaches it — is gone. It
+    still earns its place, for a reason a valid key cannot answer on its own:
+    this guard asks "did this arrive from outside the trusted network",
+    which is a question about *where a request came from*, not about
+    whether its credential checks out. A leaked or intentionally shared key
+    presented from outside the LAN would pass auth and scope checks cleanly;
+    this middleware refuses it anyway, because MCP auth carries none of the
+    login door's defence in depth — no lockout on repeated bad credentials,
+    and every attempt (including a bare guess) still costs one fixed-cost
+    bcrypt verification on the shared thread executor. Publishing `/mcp` is
+    still not something a bearer requirement alone makes safe. Under
     `trust_proxy_headers` the box is exposed, and the E4 epic review's
     objection is precise: the gap was one allowlist entry from armed, and the
     standing advice for a LAN `421` ("extend the allowlist") points at exactly
@@ -744,7 +755,8 @@ class ProxiedMcpGuardMiddleware:
     So this closes it in the direction that can only ever refuse more: with the
     exposed switch off, the middleware does nothing at all, and with it on, a
     request that did *not* come through the proxy is untouched. A local or LAN
-    agent reaching `/mcp` directly keeps working in both postures.
+    agent reaching `/mcp` directly keeps working in both postures — with or
+    without a key, since this guard runs ahead of and independent of auth.
 
     This is **not** the Host allowlist and does not replace it. That guard
     answers "is this Host one I serve" and its refusal is `421`, fixed by
@@ -773,8 +785,8 @@ class ProxiedMcpGuardMiddleware:
         response = _error_response(
             403,
             "mcp_not_exposed",
-            "/mcp is not served through a proxy: it is unauthenticated by "
-            "design and must not be routed from outside the trusted network. "
+            "/mcp is not served through a proxy: it must not be routed from "
+            "outside the trusted network, even with a valid key. "
             "See docs/runbook-exposed-deployment.md.",
         )
         await response(scope, receive, send)

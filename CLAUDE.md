@@ -165,7 +165,7 @@ behavior change, not a cleanup.
 
 ## Layout
 
-`backend/app`: `api/routes` (REST), `api/mcp` (FastMCP, mounted at
+`backend/app`: `api/routes` (REST), `api/mcp` (`MCPServer`, mounted at
 `/mcp`), `services` (pipeline.py, extraction_clean.py,
 code_pipeline.py, job_registry.py, ...), `repositories`
 (graph/relational/vector), `models`, `schemas`; entry point
@@ -1235,14 +1235,33 @@ one. The audit's precision claim is unaffected; its power is not.
 
 ## MCP endpoint
 
-`/mcp` is unauthenticated (local-network trust model); its only
-network defence is DNS-rebinding protection via a Host allowlist.
-localhost is always allowed; `MCP_ALLOWED_HOSTS` (comma-separated,
-`192.168.0.195:8000` or `host:*`) adds LAN hosts; `*` disables the
-check entirely. Default (empty) is localhost-only — a foreign Host
-gets 421. Fix a LAN 421 by extending the allowlist, never by
-disabling the protection. Browser Origins are allowlisted to the same
+`/mcp` speaks MCP protocol revision `2026-07-28` on SDK `mcp==2.1.1`; the
+server object is `MCPServer` (`app.api.mcp.server`), not `FastMCP` — the v2
+SDK renamed it. **Every call requires `Authorization: Bearer
+dmk_<key_id>_<secret>`** (doc 18 §5's second activation, 2026-08-26); there
+is no flag that disables this. Auth is checked before the Host allowlist, so
+the two guards can produce different refusals for the same foreign Host: an
+unkeyed request gets `401` regardless of `Host`, and only a *keyed* request
+that also fails the Host check gets `421`. The allowlist itself is
+unchanged and still applies beside auth, not instead of it: localhost is
+always allowed; `MCP_ALLOWED_HOSTS` (comma-separated, `192.168.0.195:8000`
+or `host:*`) adds LAN hosts; `*` disables the check entirely. Default
+(empty) is localhost-only. Fix a LAN 421 by extending the allowlist, never
+by disabling either guard. Browser Origins are allowlisted to the same
 hosts. `memory_batch_add` mirrors the HTTP 1–100 batch cap.
+
+Authorization is per tool, not per door: `capture` covers the 8 writers
+(`memory_add`, `memory_batch_add`, `memory_update`, `memory_delete`,
+`document_put`, `document_delete`, `checkpoint_save`, `research_run`);
+`read` covers the other 25. Scopes do not imply one another — a key holding
+only `admin` reaches no MCP tool at all, since no tool accepts that scope.
+`ratify` stays outside the scope vocabulary, unchanged by this activation:
+no MCP tool can reach `confirmed` power no matter what a key holds.
+`tools/list` is deliberately **not** scope-filtered — any authenticated key
+sees the full 33-tool catalogue, including writers it cannot invoke; that
+is intended, not an oversight. A keyed capture call stamps
+`events.api_key_id` (the key's row UUID) and `events.actor` (the key's
+name) on the journaled row.
 
 Memory writes resolve `source` per call: explicit arg (the literal `mcp`
 counts as unspecified) > `X-Darkmem-Client` header > User-Agent product
@@ -1324,9 +1343,15 @@ the REST case alone.
   never silent: a boot warning, `session_cookie_secure_clamped`, and
   `cookie_secure_clamped` on `GET /auth/security-posture`. Operator procedure:
   `docs/runbook-exposed-deployment.md`, which also records that `/mcp` must not
-  be routed from the public side — its bearer-required option is designed
-  (doc 18 §5) and **not shipped**, so the Host allowlist is its only defence. There are no `LLM_*` env vars — all LLM config
-  lives in the DB via the setup wizard.
+  be routed from the public side. That guidance predates and now outlives the
+  bearer requirement doc 18 §5 shipped 2026-08-26: a bearer key closes the old
+  "any LAN peer can call any tool" gap, but the app's own proxied-`/mcp` guard
+  refuses a proxied call regardless of whether it carries a valid key, and MCP
+  auth has no login-style lockout — every attempt, including an invented key,
+  costs one fixed-cost bcrypt verification on the shared thread executor that
+  also serves git subprocesses, code parsing and local classification. There
+  are no `LLM_*` env vars — all LLM config lives in the DB via the setup
+  wizard.
 
 ## Live model endpoints (dev machine)
 
