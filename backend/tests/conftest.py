@@ -201,20 +201,16 @@ async def auth_headers(session):
 async def mcp_streamable_app():
     """Fresh streamable-HTTP app with its lifespan entered.
 
-    FastMCP caches one StreamableHTTPSessionManager whose run() is
-    once-per-instance, so the cached manager is dropped first; the app must
-    be built AFTER the reset so its route handler and lifespan share the
-    fresh manager. The lifespan runs in a dedicated task because anyio
-    cancel scopes must enter and exit in the same task, and pytest-asyncio
-    tears async fixtures down in a different task than setup.
+    v2's lowlevel ``Server.streamable_http_app()`` builds a new
+    ``StreamableHTTPSessionManager`` and overwrites ``_session_manager``
+    unconditionally on every call, so each call already gets a fresh,
+    unstarted manager with no reset needed first. The lifespan runs in a
+    dedicated task because anyio cancel scopes must enter and exit in the
+    same task, and pytest-asyncio tears async fixtures down in a different
+    task than setup.
     """
     from app.api.mcp.server import mcp as mcp_server, mcp_streamable_http_kwargs
 
-    # Null out the cached manager so streamable_http_app() creates a fresh
-    # StreamableHTTPSessionManager; the SDK's _has_started flag makes each
-    # instance single-use, so reusing one across tests raises RuntimeError.
-    # v2's lowlevel Server holds this attribute, not MCPServer itself.
-    mcp_server._lowlevel_server._session_manager = None
     mcp_app = mcp_server.streamable_http_app(**mcp_streamable_http_kwargs())
     started = asyncio.Event()
     stop = asyncio.Event()

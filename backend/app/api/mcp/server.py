@@ -80,16 +80,17 @@ def set_pipeline(pipeline):
 def refresh_mcp_instructions() -> None:
     """Push the current ``agent_instructions`` prompt onto the live MCP server.
 
-    FastMCP exposes ``instructions`` only as a read-only property, so the
-    low-level server attribute is the single writable path. The SDK reads it
-    per request when building the initialize response, so calling this after a
-    prompt edit makes the new text take effect without a restart.
+    ``MCPServer.instructions`` is a read-only property backed by the v2
+    lowlevel ``Server``, so ``_lowlevel_server.instructions`` is the single
+    writable path. The SDK reads it per request when building the initialize
+    response, so calling this after a prompt edit makes the new text take
+    effect without a restart.
     """
     from app.services import prompt as _prompt
 
     instructions = _prompt.get("agent_instructions")
     if instructions:
-        mcp._mcp_server.instructions = instructions
+        mcp._lowlevel_server.instructions = instructions
 
 
 @asynccontextmanager
