@@ -435,9 +435,11 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "both doors call memory_overview.get_overview -- the map "
             "selection, the single summarization reduce, the community-set "
             "cache and the declared drops are the service's, so neither door "
-            "can answer a partial overview the other reports as complete. The "
-            "REST door is auth-gated and the tool is not, the same posture "
-            "every two-door read on this table carries."
+            "can answer a partial overview the other reports as complete. Both "
+            "doors now authenticate the caller -- REST by session, the tool "
+            "by a per-tool-scoped bearer key -- the same posture every "
+            "two-door read on this table carries: a key is a credential, "
+            "not a session, not an absence of gating."
         ),
     ),
     Surface(
@@ -454,9 +456,11 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "FactDetailResponse -- the tool does not reshape the dict, so a "
             "field the model does not declare is dropped on both doors and "
             "the badge's claim sentence crosses byte for byte "
-            "(test_fact_detail_doors_serve_the_same_row). The REST door is "
-            "auth-gated and the tool is not, the same posture every two-door "
-            "read on this table carries."
+            "(test_fact_detail_doors_serve_the_same_row). Both doors now "
+            "authenticate the caller -- REST by session, the tool by a "
+            "per-tool-scoped bearer key -- the same posture every two-door "
+            "read on this table carries: a key is a credential, not a "
+            "session, not an absence of gating."
         ),
     ),
     Surface(
@@ -470,9 +474,11 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "reads on tools. Built as its sibling was rather than filed "
             "single-door: both doors call articles_read.get_article and both "
             "serialise through ArticleDetailResponse, so the coverage number, "
-            "the citations and the stale label cross byte for byte. The REST "
-            "door is auth-gated and the tool is not, the same posture every "
-            "two-door read here carries."
+            "the citations and the stale label cross byte for byte. Both doors "
+            "now authenticate the caller -- REST by session, the tool by a "
+            "per-tool-scoped bearer key -- the same posture every two-door "
+            "read here carries: a key is a credential, not a session, not "
+            "an absence of gating."
         ),
     ),
     Surface(
@@ -519,8 +525,10 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "an out-of-range limit to the shared cap while the route 422s on "
             "it, and unavailability is a 503 whose body is the shared model "
             "against a tool payload that adds the MCP envelope's "
-            "schema_version. The route is auth-gated and the tool is not, the "
-            "same posture every two-door read on this table carries."
+            "schema_version. Both doors now authenticate the caller -- REST "
+            "by session, the tool by a per-tool-scoped bearer key -- the "
+            "same posture every two-door read on this table carries: a key "
+            "is a credential, not a session, not an absence of gating."
         ),
     ),
     Surface(
