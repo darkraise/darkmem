@@ -12,7 +12,9 @@ scope check runs, would make `last_used_at` mean something different on MCP
 than it does on REST for the same key. Task 7 owns that call.
 """
 import logging
+import uuid
 
+from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 
 from app.database import async_session_factory
@@ -70,3 +72,35 @@ class ApiKeyTokenVerifier(TokenVerifier):
             # second SELECT per request.
             claims={"api_key_id": str(principal.api_key_id)},
         )
+
+
+def current_api_key_id() -> uuid.UUID | None:
+    """The row id of the key that authenticated this call, or None.
+
+    `AccessToken.client_id` carries only the public `key_id`; the row id —
+    what `events.api_key_id` actually stores — already rides in
+    `claims["api_key_id"]`, minted once by `verify_token` above. Reading it
+    from there costs no database access; a second SELECT keyed on `client_id`
+    would just re-derive what the verifier already resolved this call.
+    """
+    token = get_access_token()
+    if token is None:
+        return None
+    raw = (token.claims or {}).get("api_key_id")
+    if raw is None:
+        return None
+    try:
+        return uuid.UUID(str(raw))
+    except ValueError:
+        logger.warning("mcp auth: token carries an unusable api_key_id %r", raw)
+        return None
+
+
+def current_key_name() -> str | None:
+    """The name of the key that authenticated this call, or None.
+
+    `verify_token` above sets `subject=principal.name`, so this is also a
+    free read off the already-verified token — no lookup needed.
+    """
+    token = get_access_token()
+    return token.subject if token is not None else None

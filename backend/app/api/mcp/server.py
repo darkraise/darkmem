@@ -10,7 +10,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import Field
 from sqlalchemy import select, text
 
-from app.api.mcp.auth import ApiKeyTokenVerifier
+from app.api.mcp.auth import ApiKeyTokenVerifier, current_api_key_id, current_key_name
 from app.api.mcp.client_identity import (
     FALLBACK_SOURCE,
     declared_origin,
@@ -213,7 +213,14 @@ async def memory_add(
             memory_type=memory_type, project=resolved_project,
         )
         result = await service.create_memory(
-            data, api_key_id=None, wait_process=wait_process, actor=resolved_source,
+            data, api_key_id=current_api_key_id(), wait_process=wait_process,
+            # The authenticated key's name, not the client tool: `resolved_source`
+            # (the tool that made the call) still rides `data.source`, stored on
+            # the memory row and echoed in this event's own payload, so nothing
+            # is lost by preferring the credential's identity here — it just
+            # matches what `events.actor` already means on REST's keyed capture
+            # door (`app/api/routes/memories.py`'s `user.actor`).
+            actor=current_key_name() or resolved_source,
         )
         if result.memory is not None:
             return json.dumps(_memory_to_dict(result.memory))
@@ -311,8 +318,14 @@ async def memory_update(
         fields["memory_type"] = memory_type
     async with _memory_service_context() as service:
         data = MemoryUpdate(**fields)
-        actor = resolve_client_source(None, ctx)
-        memory = await service.update_memory(mid, data, api_key_id=None, actor=actor)
+        # Prefer the authenticated key's name (parity with `events.actor` on
+        # REST's keyed doors); fall back to the client-tool guess only when
+        # the call carries no token, which cannot happen once every tool
+        # requires a bearer key but keeps this honest if that ever changes.
+        actor = current_key_name() or resolve_client_source(None, ctx)
+        memory = await service.update_memory(
+            mid, data, api_key_id=current_api_key_id(), actor=actor,
+        )
         if not memory:
             raise ValueError(f"Memory not found: {memory_id}")
         return json.dumps(_memory_to_dict(memory))
@@ -328,8 +341,8 @@ async def memory_delete(memory_id: str, ctx: Context | None = None) -> str:
     """
     mid = _validate_uuid(memory_id)
     async with _memory_service_context() as service:
-        actor = resolve_client_source(None, ctx)
-        result = await service.delete_memory(mid, api_key_id=None, actor=actor)
+        actor = current_key_name() or resolve_client_source(None, ctx)
+        result = await service.delete_memory(mid, api_key_id=current_api_key_id(), actor=actor)
         if not result:
             raise ValueError(f"Memory not found: {memory_id}")
         return json.dumps({"deleted": True, "memory_id": memory_id})
@@ -363,8 +376,11 @@ async def memory_batch_add(
     # landing every batch-added memory in 'default'.
     async with _memory_service_context() as service:
         results = await service.batch_create_memories(
-            validated.entries, api_key_id=None, wait_process=wait_process,
-            actor=resolve_client_source(None, ctx, fallback=FALLBACK_SOURCE),
+            validated.entries, api_key_id=current_api_key_id(), wait_process=wait_process,
+            # Per-entry `source` (client tool) still rides each entry's own
+            # `data.source` and this event's own payload; see memory_add.
+            actor=current_key_name()
+            or resolve_client_source(None, ctx, fallback=FALLBACK_SOURCE),
         )
         return json.dumps([
             _memory_to_dict(r.memory) if r.memory is not None

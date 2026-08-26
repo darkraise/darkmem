@@ -425,3 +425,206 @@ def test_every_declared_scope_is_in_the_closed_set():
     from app.services.api_key_scopes import API_KEY_SCOPES
 
     assert set(TOOL_SCOPES.values()) <= set(API_KEY_SCOPES)
+
+
+# --- Task 8: a keyed call is attributed in the journal ---------------------
+#
+# REST's counterpart is `test_a_keyed_capture_stamps_its_key_on_the_journal`
+# (tests/test_api_keys.py): a keyed door that still journals `api_key_id=None`
+# passes every other test in this file, because nothing else asserts what doc
+# 18 §5 convention 8 is actually about. These drive an in-process tool call
+# rather than the mounted `door` above, so the write lands in this test's own
+# `session` and can be read straight back.
+
+import contextlib
+
+from mcp.server.auth.middleware.auth_context import auth_context_var
+from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
+from sqlalchemy import text as sql_text
+
+from app.api.mcp.server import memory_add
+import app.api.mcp.server as mcp_server_module
+
+
+@contextlib.asynccontextmanager
+async def authenticated_as(credential: str):
+    """Run a tool call as the holder of `credential`.
+
+    In-process calls bypass the transport, so without this the auth context is
+    empty and `require_scope_for_tool`/`current_api_key_id` see no token —
+    which is correct behaviour for an unauthenticated call, not a reason to
+    weaken it here.
+
+    `auth_context_var` holds an `AuthenticatedUser` (`get_access_token` reads
+    `.access_token` off it), not the bare `AccessToken` the verifier returns —
+    the SDK's real transport wraps it the same way in
+    `AuthContextMiddleware.__call__`; skipping that wrapping here would make
+    `get_access_token()` raise `AttributeError` instead of returning the token.
+    """
+    token = await ApiKeyTokenVerifier().verify_token(credential)
+    assert token is not None, "the fixture minted a credential the verifier rejects"
+    reset = auth_context_var.set(AuthenticatedUser(token))
+    try:
+        yield token
+    finally:
+        auth_context_var.reset(reset)
+
+
+@pytest_asyncio.fixture
+async def keyed_capture(session, monkeypatch):
+    """Both the verifier (auth.py) and the tool body (server.py) open their own
+    session through a module-level `async_session_factory`; each is a separate
+    import binding, so both must be patched to this test's `session` for the
+    key to authenticate and the write to land somewhere this test can read
+    back — the same pattern the `verifier` fixture above uses for auth.py
+    alone.
+
+    `_pipeline` is process-global state (`app.api.mcp.server.set_pipeline`),
+    set by whichever test ran last; pinning it to None here (restored after)
+    is what `tests/test_mcp_batch.py` does for the same reason — an in-process
+    tool call must not depend on, or make, a real embedder/LLM call.
+    """
+
+    @asynccontextmanager
+    async def _fake_ctx():
+        yield session
+
+    monkeypatch.setattr(mcp_auth_module, "async_session_factory", lambda: _fake_ctx())
+    monkeypatch.setattr(mcp_server_module, "async_session_factory", lambda: _fake_ctx())
+
+    previous_pipeline = mcp_server_module._pipeline
+    mcp_server_module.set_pipeline(None)
+    try:
+        yield session
+    finally:
+        mcp_server_module.set_pipeline(previous_pipeline)
+
+
+async def test_a_keyed_capture_stamps_its_key_and_actor(keyed_capture):
+    """`api_key_id` must be the row id, never `client_id` (the public
+    `key_id`) — the two are not interchangeable, and writing the wrong one
+    produces a value that joins to nothing (doc 18 §5). `actor` is the key's
+    name, matching what `events.actor` already means on REST's keyed capture
+    door: the credential's identity, not the client tool — `resolved_source`
+    still rides `data.source`, on the memory row and in this event's own
+    payload, so nothing about which tool called is lost.
+    """
+    session = keyed_capture
+    row, credential = await issue_key(session, name="writer-bot", scopes=["capture"])
+    await session.commit()
+
+    async with authenticated_as(credential):
+        await memory_add(content="a keyed capture", project="default")
+
+    stamped = (await session.execute(
+        sql_text(
+            "SELECT actor, api_key_id FROM events "
+            "WHERE api_key_id = CAST(:kid AS uuid) ORDER BY created_at DESC"
+        ),
+        {"kid": str(row.id)},
+    )).mappings().all()
+
+    assert stamped, "the keyed capture journalled no row naming its key"
+    assert all(r["actor"] == "writer-bot" for r in stamped)
+    assert all(r["api_key_id"] == row.id for r in stamped)
+
+    # api_key_id must be the row UUID, not the public key_id — the two are
+    # different strings and a mismatch here would mean the wrong one was
+    # written even though the assertions above happen to pass.
+    assert str(row.id) != row.key_id
+
+
+async def test_a_keyed_capture_never_stamps_a_different_keys_id(keyed_capture):
+    """The negative case doc 18 §5 needs proven, not just the positive one:
+    authenticating as key A must not attribute the write to key B, even when
+    both are live and both are capture-scoped."""
+    session = keyed_capture
+    row_a, credential_a = await issue_key(session, name="key-a", scopes=["capture"])
+    row_b, _credential_b = await issue_key(session, name="key-b", scopes=["capture"])
+    await session.commit()
+
+    async with authenticated_as(credential_a):
+        await memory_add(content="attributed to key a", project="default")
+
+    on_b = (await session.execute(
+        sql_text("SELECT count(*) FROM events WHERE api_key_id = CAST(:kid AS uuid)"),
+        {"kid": str(row_b.id)},
+    )).scalar_one()
+    assert on_b == 0, "a call authenticated as key A must not stamp key B's id"
+
+    on_a = (await session.execute(
+        sql_text("SELECT count(*) FROM events WHERE api_key_id = CAST(:kid AS uuid)"),
+        {"kid": str(row_a.id)},
+    )).scalar_one()
+    assert on_a > 0
+
+
+async def test_the_stamped_id_is_joinable_back_to_the_keys_name(keyed_capture):
+    """`api_key_id` exists so a key's activity is traceable months later. Prove
+    the row is actually joinable, not merely non-null: a stray UUID (e.g.
+    `client_id`, the public `key_id`, parsed as if it were a UUID and coerced)
+    would still satisfy `IS NOT NULL` while joining to nothing.
+    """
+    session = keyed_capture
+    row, credential = await issue_key(session, name="joinable-key", scopes=["capture"])
+    await session.commit()
+
+    async with authenticated_as(credential):
+        await memory_add(content="joinable capture", project="default")
+
+    names = (await session.execute(
+        sql_text(
+            "SELECT ak.name FROM events e "
+            "JOIN api_keys ak ON e.api_key_id = ak.id "
+            "WHERE e.api_key_id = CAST(:kid AS uuid)"
+        ),
+        {"kid": str(row.id)},
+    )).scalars().all()
+
+    assert names, "the stamped api_key_id does not join to any api_keys row"
+    assert all(name == "joinable-key" for name in names)
+
+
+async def test_a_keyed_update_and_delete_also_stamp_the_key(keyed_capture):
+    """The brief names four call sites, not one; memory_update and
+    memory_delete must stamp the same way memory_add does.
+
+    The target memory is inserted directly (the shape
+    `tests/test_empty_content_update.py` uses) rather than produced through
+    `memory_add`, which only buffers by default and needs a real pipeline run
+    to materialize a row `memory_update`/`memory_delete` can find.
+    """
+    import uuid as _uuid
+
+    from app.api.mcp.server import memory_delete, memory_update
+    from app.models.memory import Memory
+
+    session = keyed_capture
+    row, credential = await issue_key(session, name="writer-bot-2", scopes=["capture"])
+    await session.commit()
+
+    memory_id = _uuid.uuid4()
+    session.add(Memory(
+        id=memory_id, content="will be updated then deleted", source="mcp",
+        importance=0.5, metadata_={},
+    ))
+    await session.flush()
+    await session.commit()
+
+    async with authenticated_as(credential):
+        await memory_update(memory_id=str(memory_id), content="updated content")
+        await memory_delete(memory_id=str(memory_id))
+
+    rows = (await session.execute(
+        sql_text(
+            "SELECT event_type, actor, api_key_id FROM events "
+            "WHERE api_key_id = CAST(:kid AS uuid) ORDER BY created_at"
+        ),
+        {"kid": str(row.id)},
+    )).mappings().all()
+
+    event_types = [r["event_type"] for r in rows]
+    assert "update" in event_types, event_types
+    assert "delete" in event_types, event_types
+    assert all(r["actor"] == "writer-bot-2" for r in rows)
+    assert all(r["api_key_id"] == row.id for r in rows)
