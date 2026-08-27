@@ -46,10 +46,18 @@ from app.services.extraction import (  # noqa: E402
 # not comparable to the recorded floors and must not be used for one.
 PINNED_MODEL = "deepseek-v4-flash"
 
-# Measured stable across lane D's 159 live calls on 2026-07-28. A change is
-# positive proof of a serving-stack swap, which would fold fresh vendor drift
-# into whatever delta this bench is being used to measure.
-EXPECTED_SYSTEM_FINGERPRINT = "fp_8b330d02d0_prod0820_fp8_kvcache_20260402"
+# A change is positive proof of a serving-stack swap, which would fold fresh
+# vendor drift into whatever delta this bench is being used to measure.
+#
+# Rotated 2026-08-27. The prior value
+# (``fp_8b330d02d0_prod0820_fp8_kvcache_20260402``, measured stable across
+# lane D's 159 live calls on 2026-07-28) stopped being served; the value
+# below was measured stable across five consecutive probes on 2026-08-27.
+# The rotation is why the same-stack re-baseline exists: a prompt delta
+# measured against the 2026-07-27 numbers would carry the vendor's drift
+# inside it, so the floors were re-recorded on this stack with the prompt
+# unchanged before any prompt edit was measured.
+EXPECTED_SYSTEM_FINGERPRINT = "a26a7955944dc5c60445bff77fac9c8e"
 
 GATES = {"merged": True, "extract-only": False}
 

@@ -1,0 +1,1 @@
+"{\n  \"entities\": [\n    {\"name\": \"iot-gw-1\", \"type\": \"service\"},\n    {\"name\": \"firmware check\", \"type\": \"concept\"}\n  ],\n  \"relationships\": [],\n  \"memory_type\": \"fact\",\n  \"importance\": 0.5,\n  \"summary\": \"iot-gw-1 has a nightly firmware check that reboots the device even when no update is applied.\",\n  \"emotions\": [],\n  \"flags\": []\n}"

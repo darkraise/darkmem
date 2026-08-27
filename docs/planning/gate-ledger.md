@@ -4292,3 +4292,112 @@ Carried forward as G-C's inheritance: the four standing obligations above, the
 18-of-31 F1-blindness census (behavioural suites are the guard where F1 cannot see),
 and the full-context-beats-retrieval headroom (+0.0487 MRR pooled) that E2's graph
 arms exist to close.
+
+---
+
+## 2026-08-27 — serving-stack rotation, and the Phase 1/2 prompt work
+
+### The vendor rotated, and the guard caught it
+
+`run_bench.py`'s `EXPECTED_SYSTEM_FINGERPRINT` refused a live run:
+DeepSeek stopped serving `fp_8b330d02d0_prod0820_fp8_kvcache_20260402` and
+now serves `a26a7955944dc5c60445bff77fac9c8e`, stable across five
+consecutive probes on 2026-08-27. The guard is the reason this entry can
+attribute anything at all.
+
+**The floors were re-recorded live on the new stack with the prompt
+unchanged**, before any prompt edit was measured. That run is the only
+honest comparison point, because the vendor's drift is positive and larger
+than the prompt effect:
+
+| dimension | old stack 2026-07-27 | new stack, same prompt | vendor drift |
+|---|---|---|---|
+| Entity (name+type)  | 0.912 | 0.933 | +0.021 |
+| Entity (name only)  | 0.971 | 0.978 | +0.007 |
+| Relation (s,TYPE,t) | 0.883 | 0.921 | +0.038 |
+
+Measuring a prompt change against the 2026-07-27 numbers would have
+credited the vendor's improvement to the prompt. Both prompt fingerprints
+below were measured on `a26a7955944dc5c60445bff77fac9c8e`.
+
+### The prompt change, measured same-stack
+
+`f59a62d1be7273a8` → `606a42eef2e5d30a`; 35,188 → 32,265 characters
+(-2,923, ~-730 tokens on every ingest).
+
+| dimension | A: old prompt | B: new prompt | delta |
+|---|---|---|---|
+| Entity (name+type)  | 0.933 | 0.956 | +0.023 |
+| Entity (name only)  | 0.978 | 0.985 | +0.007 |
+| Relation (s,TYPE,t) | 0.921 | 0.935 | +0.014 |
+
+**Read these deltas as "no harm", not as a demonstrated gain.** The gold
+carries 69 entities and 39 relations, so every delta above is one or two
+items: entity true positives moved 63 → 65, relation true positives 35 → 36.
+That is inside the noise a 39-relation bench can resolve. What the run
+supports is that the diet and the two rule corrections did not cost
+accuracy while removing ~730 tokens from every ingest; it does not support
+a claim that they improved it.
+
+### What changed in the prompt
+
+Two corrections and a diet:
+
+- **Rule 10's worked example ordered `OpenAI REPLACES Anthropic`** for
+  "considered Anthropic but went with OpenAI" — the exact phrasing rule 3a
+  lists as `IMPROVES_ON`. `REPLACES` is a supersession trigger, and
+  `_gate_replaces_selection`'s `_SELECTION_RE` does not match that wording,
+  so the wrong edge landed unrepaired and could retire a live memory.
+- **`service` exemplified `'PostgreSQL'` while `database` exemplified
+  `'Postgres'`** on adjacent lines under a "pick the FIRST type that fits"
+  rule. Phase-4 dedup is type-constrained, so unknown hosted datastores
+  split into permanent duplicate nodes. The tiebreak is now stated.
+- **Diet: -2,923 chars.** Example 4's notes, Example 5's prose notes,
+  rule 2a's worked failure-mode narrative, a duplicated placeholder
+  warning, and rule 10's restatement of 9c-soft.
+
+**Example 5's demonstration was deliberately kept.** The review recommended
+deleting it outright, which was the single largest item on its list. It is
+the only place the star-shape relation failure is *shown* rather than
+described, and at 39 relations this bench cannot reliably detect that
+regression — so the saving was not worth a defect the instrument cannot
+see. Only its prose notes were compressed. The bound in
+`test_prompt_consistency.py` is 33,000 rather than the 27,000 originally
+planned, for the same reason: the backstopped targets total ~6,600 chars,
+and the rest would have had to come from rules `extraction_clean` does not
+backstop.
+
+### Artefacts
+
+- `docs/planning/analyses/2026-08-27-prompt-review-central.md` — the seven
+  prompts in `app/services/prompt.py`.
+- `docs/planning/analyses/2026-08-27-prompt-review-scattered.md` — the
+  eleven inline prompts held by individual services.
+- `docs/superpowers/plans/2026-08-27-prompt-optimization.md` — the plan,
+  including the two errors it contained.
+
+### The two invalidated caches, both repaid
+
+A prompt change invalidates more than the F1 bench cache, exactly as the
+T1.17 entry above records. Both were re-recorded live before this work
+merged:
+
+- **The harvest fixture** (`scripts/benchlib/tests/harvest_l2_cache_fixture`)
+  went red at `live_calls=190` against an expected 0. Regenerated: 213 new
+  entries, 231 facts, capacity 924. The 595 pre-existing entries are kept,
+  not pruned — a fixture holding only the 213 fresh ones still makes 22 live
+  calls, so the older set is not all dead, and pruning by mtime would have
+  left a fixture that looked warm while quietly failing 22 calls.
+- **The retrieval eval's ingest cache**: re-ingested live at 188 calls. The
+  retrieval arm is **unchanged** — MRR 0.8368, hit@10 0.8235, identical to
+  the three prior runs — so the graph the new prompt builds retrieves the
+  same. Recorded in `docs/eval/2026-08-27-retrieval-eval.md`.
+
+  One caveat on that report: the full-context arm made **zero** live calls
+  and its numbers are replayed from an older generation, because its calls
+  carry no extraction prompt and its cache stayed valid. Its 0.9052 is not
+  a measurement of this prompt and must not be read as a recovery from the
+  0.8905 measured live earlier the same day.
+
+`./scripts/gate.sh --full` is green on this branch: floor + retrieval eval
++ API e2e + Playwright + port hygiene.

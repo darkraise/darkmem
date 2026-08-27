@@ -1,0 +1,1 @@
+"{\n  \"entities\": [\n    {\"name\": \"Alice\", \"type\": \"person\", \"properties\": {}}\n  ],\n  \"relationships\": [],\n  \"memory_type\": \"fact\",\n  \"importance\": 0.3,\n  \"summary\": \"Alice is the on-call engineer this month, receiving escalations first.\",\n  \"emotions\": [],\n  \"flags\": []\n}"

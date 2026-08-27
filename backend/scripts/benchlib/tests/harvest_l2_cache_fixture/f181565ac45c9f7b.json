@@ -1,0 +1,1 @@
+"{\n  \"entities\": [\n    {\"name\": \"hook-runner\", \"type\": \"service\"}\n  ],\n  \"relationships\": [],\n  \"memory_type\": \"fact\",\n  \"importance\": 0.5,\n  \"summary\": \"Timesheet reminders are sent out by the hook-runner service.\",\n  \"emotions\": [],\n  \"flags\": []\n}"

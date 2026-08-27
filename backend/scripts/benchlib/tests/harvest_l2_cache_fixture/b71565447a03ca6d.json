@@ -1,0 +1,1 @@
+"{\n  \"entities\": [\n    {\"name\": \"storage pool\", \"type\": \"concept\", \"properties\": {}}\n  ],\n  \"relationships\": [],\n  \"memory_type\": \"fact\",\n  \"importance\": 0.5,\n  \"summary\": \"Storage pool is at 83% capacity after video imports.\",\n  \"emotions\": [],\n  \"flags\": []\n}"

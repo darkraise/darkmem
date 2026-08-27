@@ -1,0 +1,1 @@
+"{\n  \"entities\": [\n    {\"name\": \"arc-store bucket\", \"type\": \"artifact\", \"properties\": {}}\n  ],\n  \"relationships\": [],\n  \"memory_type\": \"fact\",\n  \"importance\": 0.4,\n  \"summary\": \"A lifecycle rule on the arc-store bucket strips public-read access after a short grace period.\",\n  \"emotions\": [],\n  \"flags\": []\n}"

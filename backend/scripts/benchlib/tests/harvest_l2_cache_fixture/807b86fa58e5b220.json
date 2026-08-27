@@ -1,0 +1,1 @@
+"{\n  \"entities\": [\n    {\"name\": \"blue-green switcher\", \"type\": \"artifact\"},\n    {\"name\": \"websocket\", \"type\": \"protocol\"}\n  ],\n  \"relationships\": [],\n  \"memory_type\": \"problem\",\n  \"importance\": 0.7,\n  \"summary\": \"The blue-green switcher drops open WebSocket sessions whenever it flips.\",\n  \"emotions\": [],\n  \"flags\": []\n}"

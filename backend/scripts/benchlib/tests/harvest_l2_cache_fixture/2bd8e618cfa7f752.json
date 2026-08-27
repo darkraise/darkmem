@@ -1,0 +1,1 @@
+"{\n  \"entities\": [\n    {\"name\": \"hook-runner\", \"type\": \"service\"}\n  ],\n  \"relationships\": [],\n  \"memory_type\": \"fact\",\n  \"importance\": 0.5,\n  \"summary\": \"The hook-runner service stores its outbound spool on a volume that is remounted read-only during backups.\",\n  \"emotions\": [],\n  \"flags\": []\n}"

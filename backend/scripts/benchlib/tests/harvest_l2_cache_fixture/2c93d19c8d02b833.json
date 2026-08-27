@@ -1,0 +1,1 @@
+"{\n  \"entities\": [\n    {\n      \"name\": \"Kibana\",\n      \"type\": \"service\",\n      \"properties\": {}\n    }\n  ],\n  \"relationships\": [],\n  \"memory_type\": \"fact\",\n  \"importance\": 0.3,\n  \"summary\": \"Kibana was previously deployable on port 5601 before the ELK stack was retired.\",\n  \"emotions\": [],\n  \"flags\": []\n}"

@@ -1,0 +1,1 @@
+"{\n  \"entities\": [\n    {\"name\": \"internal package mirror\", \"type\": \"service\", \"properties\": {}}\n  ],\n  \"relationships\": [],\n  \"memory_type\": \"fact\",\n  \"importance\": 0.4,\n  \"summary\": \"The internal package mirror throttles clients exceeding 100 requests per minute.\",\n  \"emotions\": [],\n  \"flags\": []\n}"

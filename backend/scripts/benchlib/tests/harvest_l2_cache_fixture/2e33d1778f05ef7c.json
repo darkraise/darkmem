@@ -1,0 +1,1 @@
+"{\n  \"entities\": [\n    {\"name\": \"Gitea\", \"type\": \"service\"}\n  ],\n  \"relationships\": [],\n  \"memory_type\": \"fact\",\n  \"importance\": 0.3,\n  \"summary\": \"The issue tracker is a self-hosted Gitea instance.\",\n  \"emotions\": [],\n  \"flags\": []\n}"

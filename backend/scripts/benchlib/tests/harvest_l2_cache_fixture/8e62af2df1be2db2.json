@@ -1,0 +1,1 @@
+"{\n  \"entities\": [{\"name\": \"zephyr-03\", \"type\": \"service\"}],\n  \"relationships\": [],\n  \"memory_type\": \"fact\",\n  \"importance\": 0.5,\n  \"summary\": \"zephyr-03 is a dedicated scratch-storage host with no user-facing services.\",\n  \"emotions\": [],\n  \"flags\": []\n}"

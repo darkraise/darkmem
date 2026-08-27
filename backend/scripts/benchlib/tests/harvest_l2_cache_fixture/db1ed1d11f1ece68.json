@@ -1,0 +1,1 @@
+"{\n  \"entities\": [\n    {\"name\": \"gpu-01\", \"type\": \"service\"}\n  ],\n  \"relationships\": [],\n  \"memory_type\": \"fact\",\n  \"importance\": 0.5,\n  \"summary\": \"gpu-01 falls back to software-only processing when its accelerator driver loses the device.\",\n  \"emotions\": [],\n  \"flags\": []\n}"
