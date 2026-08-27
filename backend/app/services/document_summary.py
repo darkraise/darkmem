@@ -81,6 +81,10 @@ _STORE_SQL = text(
 )
 
 
+class EmptySummaryError(RuntimeError):
+    """The model returned an empty or whitespace-only summary."""
+
+
 async def summarise_document(
     session: AsyncSession, llm, *, document_id: UUID | str, store: bool = True,
 ) -> DocumentSummary | None:
@@ -107,9 +111,16 @@ async def summarise_document(
         ],
     )
 
+    text = (prose or "").strip()
+    if not text:
+        # Storing an empty summary is worse than failing: the row exists, the
+        # content-hash gate treats the document as summarised, and nothing
+        # ever signals that the summary says nothing.
+        raise EmptySummaryError(f"empty summary for document {document_id}")
+
     summary = DocumentSummary(
         document_id=str(document_id),
-        text=(prose or "").strip(),
+        text=text,
         generated_at=datetime.now(timezone.utc).isoformat(),
         source_content_hash=doc["content_hash"],
         block_count=len(blocks),

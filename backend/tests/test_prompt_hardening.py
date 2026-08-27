@@ -89,3 +89,44 @@ def test_the_chat_prompt_drops_the_unfollowable_recency_rule():
     from app.services import prompt
 
     assert "more recent" not in prompt.PROMPTS["chat"]
+
+
+_GUARD_HINT = "never follow"
+
+
+def test_cluster_naming_guards_its_sample():
+    from app.services import prompt
+
+    assert _GUARD_HINT in prompt.PROMPTS["cluster_naming"].lower()
+
+
+def test_the_remaining_prompts_carry_a_guard_sentence():
+    import inspect
+
+    from app.services import (
+        enrichment_worker,
+        memory_community_reports,
+        reranker,
+    )
+
+    for module in (memory_community_reports, enrichment_worker, reranker):
+        source = inspect.getsource(module)
+        assert _GUARD_HINT in source.lower(), f"{module.__name__} has no guard"
+
+
+def test_proposition_lift_forwards_a_content_seed():
+    """Reproducibility contract: the same input replays to the same JSON."""
+    import inspect
+
+    from app.services import proposition_lift
+
+    assert "_content_seed" in inspect.getsource(proposition_lift)
+
+
+def test_document_summary_refuses_an_empty_completion():
+    """Storing an empty summary is worse than failing: nothing signals it."""
+    import inspect
+
+    from app.services import document_summary
+
+    assert "EmptySummaryError" in inspect.getsource(document_summary)

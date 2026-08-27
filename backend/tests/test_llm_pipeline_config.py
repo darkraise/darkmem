@@ -196,10 +196,12 @@ async def test_put_system_prompts_rejects_unknown_purpose(client, auth_headers):
 
 @pytest.mark.asyncio
 async def test_put_system_prompts_rejects_oversized_prompt(client, auth_headers):
+    from app.api.routes.config import PROMPT_OVERRIDE_MAX_CHARS
+
     resp = await client.put(
         "/api/v1/config/system-prompts",
         headers=auth_headers,
-        json={"overrides": {"extraction": "x" * 25_000}},
+        json={"overrides": {"extraction": "x" * (PROMPT_OVERRIDE_MAX_CHARS + 1)}},
     )
     assert resp.status_code == 422
 
