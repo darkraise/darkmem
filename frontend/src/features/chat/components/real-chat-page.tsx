@@ -113,7 +113,7 @@ export function RealChatPage({ initialId }: { initialId?: string }) {
           /* `min-h-0` is what lets ChatMessages' own `overflow-auto` engage: a
              flex child defaults to `min-height: auto`, which would grow this
              card to its content and push the input off the bottom. */
-          <div className="border-border bg-card flex min-h-[24rem] flex-col overflow-hidden rounded-md border lg:min-h-0">
+          <div className="border-border bg-card flex min-h-[24rem] flex-col overflow-hidden rounded-md border lg:min-h-0 lg:rounded-none lg:border-0 lg:bg-transparent">
             <ChatMessages
               messages={messages}
               streamingContent={stream.streamingContent}

@@ -87,8 +87,16 @@ export function ChatPanels({
     // `overflow-hidden`: the panels total 100% and the two handles add their
     // own pixels on top, which would otherwise show as a stray horizontal
     // scrollbar.
+    //
+    // The border lives HERE, on the group, not on the three panes. Each pane
+    // used to carry its own card edge, so every seam rendered three lines —
+    // the left pane's edge, the handle, the right pane's edge — with the drag
+    // target floating between two borders that were not it. One outer border
+    // plus the handle means the seam is a single line and that line is the
+    // thing you grab. The panes keep their own edges below `lg`, where they
+    // stack as separate cards and each one does need bounding.
     <ResizablePanelGroup
-      className="min-h-0 flex-1 overflow-hidden"
+      className="border-border bg-card min-h-0 flex-1 overflow-hidden rounded-md border"
       onLayoutChange={persist}
     >
       <ResizablePanel
@@ -100,7 +108,14 @@ export function ChatPanels({
       >
         {threads}
       </ResizablePanel>
-      <ResizableHandle withHandle aria-label="Resize the thread list" />
+      <ResizableHandle
+        withHandle
+        aria-label="Resize the thread list"
+        // The line stays 1px; only the pointer target grows. The
+        // library's own `after:w-1` is a 4px grab zone, which is a
+        // hard aim for a full-height divider.
+        className="after:w-3"
+      />
       <ResizablePanel
         id="chat-conversation"
         defaultSize={initial[1]}
@@ -109,7 +124,14 @@ export function ChatPanels({
       >
         {conversation}
       </ResizablePanel>
-      <ResizableHandle withHandle aria-label="Resize the context panel" />
+      <ResizableHandle
+        withHandle
+        aria-label="Resize the context panel"
+        // The line stays 1px; only the pointer target grows. The
+        // library's own `after:w-1` is a 4px grab zone, which is a
+        // hard aim for a full-height divider.
+        className="after:w-3"
+      />
       <ResizablePanel
         id="chat-context"
         defaultSize={initial[2]}

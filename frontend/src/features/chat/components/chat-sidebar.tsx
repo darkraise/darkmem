@@ -49,7 +49,7 @@ export function ChatSidebar({
        The breakpoint is `lg`, matching where the page grid actually goes
        three-column. It read `md`, so between 768px and 1023px this behaved
        like a desktop rail inside a single-column stack. */
-    <div className="border-border bg-card flex max-h-56 w-full flex-col overflow-hidden rounded-md border lg:max-h-none">
+    <div className="border-border bg-card flex max-h-56 w-full flex-col overflow-hidden rounded-md border lg:max-h-none lg:rounded-none lg:border-0 lg:bg-transparent">
       <div className="border-border space-y-2 border-b p-3">
         <div className="flex items-center justify-between">
           <span className="text-sm font-semibold">Conversations</span>

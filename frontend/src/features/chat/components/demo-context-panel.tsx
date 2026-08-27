@@ -16,7 +16,7 @@ export function DemoContextPanel({
   context: DemoTurnContext | undefined
 }) {
   return (
-    <div className="border-border bg-card min-h-0 space-y-2.5 overflow-y-auto rounded-md border p-3">
+    <div className="border-border bg-card min-h-0 space-y-2.5 overflow-y-auto rounded-md border p-3 lg:rounded-none lg:border-0 lg:bg-transparent">
       <div className="flex items-center gap-2">
         <span className="text-sm font-semibold">
           Context used for this turn
