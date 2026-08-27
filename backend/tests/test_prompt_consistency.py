@@ -21,3 +21,24 @@ def test_no_rule_orders_replaces_for_a_selection():
     text = prompt.PROMPTS["extraction"]
     assert "REPLACES Anthropic" not in text
     assert "IMPROVES_ON Anthropic" in text
+
+
+def test_no_system_is_exemplified_under_two_entity_types():
+    """Type-constrained dedup never merges across types.
+
+    `service` exemplified 'PostgreSQL' while `database` exemplified
+    'Postgres' on adjacent lines, under a "pick the FIRST type that fits"
+    rule where service comes first. One system, two permanent nodes.
+    """
+    text = prompt.PROMPTS["extraction"]
+    assert not ("'PostgreSQL'" in text and "'Postgres'" in text)
+    assert "storing data is `database`" in text
+
+
+def test_the_prompt_still_names_every_closed_type():
+    """Editing examples must not drop a type out of the prompt."""
+    text = prompt.PROMPTS["extraction"]
+    for name in taxonomy.ENTITY_TYPES:
+        assert name in text, f"entity type dropped from the prompt: {name}"
+    for name in taxonomy.RELATIONSHIP_TYPES:
+        assert name in text, f"relation type dropped from the prompt: {name}"
