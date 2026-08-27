@@ -23,8 +23,8 @@ Wave-1 engine mechanics (with docs 06, 10, 11). Part of the unified target desig
 |---|---|---|---|
 | `POST /memories` | REST single capture | `202` accept (was `201`+inline pipeline) | exists today; ack becomes `202` (target-new) |
 | `POST /memories/batch` | REST bulk, 1–100 | `202` accept, per-entry buffered | exists today; `202` (target-new) |
-| MCP `memory_add` | FastMCP tool | JSON ack (buffered handle) | exists today |
-| MCP `memory_batch_add` | FastMCP tool, 1–100 | JSON ack; cap mirrors HTTP | exists today |
+| MCP `memory_add` | MCP tool | JSON ack (buffered handle) | exists today |
+| MCP `memory_batch_add` | MCP tool, 1–100 | JSON ack; cap mirrors HTTP | exists today |
 | Browser capture | new ingestion source → buffer | `202` accept | target-new (doc 15) |
 | Filed document | parse → blocks → propositions | deferred | horizon (doc 16) |
 

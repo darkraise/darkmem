@@ -5,9 +5,17 @@
  * The two vocabularies overlap without being the same: `PROMPTS` also holds
  * keys that are not LLM purposes at all (`chat`, `cluster_naming`,
  * `agent_instructions`), and four purposes — `embedding`, `reranker`,
- * `verification`, `synthesis` — have no prompt for the same reason each is
- * unusual: embedding takes no instructions, and the other three have no
- * dispatching consumer that sends one. A purpose absent from this map gets no
+ * `verification`, `synthesis` — have no *editable* prompt here.
+ *
+ * The reason differs per purpose, and the earlier wording ("no dispatching
+ * consumer that sends one") was false for three of the four by 2026-08-27:
+ * embedding genuinely takes no instructions, but `reranker`,
+ * `verification` and `synthesis` all send a prompt today — they are absent
+ * because their prompts are deliberately NOT editable. Each is held inline
+ * beside the parser that enforces its output shape (`reranker.py`,
+ * `article_synthesis.py`), and `verification_judge.py`'s folds into the
+ * judge identity hash, so a UI edit there would silently invalidate a
+ * minted qualification record. A purpose absent from this map gets no
  * prompt affordance rather than a button that opens an empty editor.
  *
  * The names happen to match today, so this reads as an identity map. It is

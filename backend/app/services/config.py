@@ -24,7 +24,8 @@ from app.schemas.config import LLMPurposeConfigSchema
 # of truth.
 LLM_CONFIG_KEY = "llm_config"
 
-# The six live purposes plus the two Tier-C purposes seeded by T1.05.
+# The six original purposes plus the two Tier-C purposes seeded by T1.05.
+# All eight dispatch today: verification since T2.26, synthesis since T3.02.
 # `verification`'s first writer landed in T2.26: the qualification-gated
 # judge service is the only lawful dispatcher, scan-pinned by the judge's
 # own test suite; `synthesis` stays inert until T3.02. Doc 11 §6 requires

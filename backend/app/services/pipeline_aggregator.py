@@ -19,8 +19,11 @@ _STAGE_PROMPT_KEYS = [
     "summarization",
 ]
 
-# Must stay in sync with ORPHAN_PROMPTS in frontend prompt-map.ts; the
-# pin test in test_pipeline_aggregator.py guards the invariant.
+# Prompt keys that are NOT LLM purposes, so no purpose card owns them. The
+# frontend counterpart is the map in
+# frontend/src/features/settings/llm-purpose-prompts.ts (this comment named a
+# `prompt-map.ts` and an `ORPHAN_PROMPTS` symbol, neither of which exists);
+# the pin test in test_pipeline_aggregator.py guards the invariant.
 ORPHAN_PROMPT_KEYS = frozenset({"chat", "cluster_naming", "agent_instructions"})
 
 

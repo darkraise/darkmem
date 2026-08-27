@@ -584,14 +584,18 @@ arm activation log — never by intuition.
 
 ## LLM configuration
 
-Eight purposes. **Seven are live**: `embedding`, `extraction`,
-`classification`, `reasoning`, `summarization`, `reranker`, and —
-since T2.26 landed — `verification`, which `app/services/verification_judge.py`
-resolves and dispatches on. Only **`synthesis`** is still seeded inert
-(first consumer T3.02): resolvable from day one per doc 11 §6, but nothing
-dispatches on it yet. This paragraph described both Tier-C rows as inert
-until 2026-08-02; the `verification` half was stale, and a task reading it
-would wrongly believe activating that purpose was still an unmade decision.
+Eight purposes, and **all eight are live** (corrected 2026-08-27): `embedding`,
+`extraction`, `classification`, `reasoning`, `summarization`, `reranker`,
+`verification` — which `app/services/verification_judge.py` resolves and
+dispatches on since T2.26 — and `synthesis`, which
+`app/services/article_synthesis.py` dispatches on through its
+`SYNTHESIS_PURPOSE` constant since T3.02 shipped. This paragraph read "Seven
+are live … only `synthesis` is still seeded inert (first consumer T3.02)"
+after T3.02 had already landed, which is the same stale-count shape as the
+job roster and the dream-job family above: a reader planning work would have
+believed activating that purpose was still an unmade decision, and gone
+looking for code that already exists. It described *both* Tier-C rows as
+inert until 2026-08-02, when the `verification` half was corrected.
 Note `verification` being dispatched is not the same as it being *usable*:
 `VerificationJudge.judge()` refuses unconditionally without a qualification
 record, which only a cleared gate run mints and which is behind T2.54's gold.

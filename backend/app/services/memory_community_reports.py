@@ -16,9 +16,10 @@ community, off the hot path.
 **Which purpose, and on whose authority.** Doc 11 §6's purpose→consumer
 matrix and §9's open-question ruling are explicit: community/topic reports
 "reuse `summarization`" because the task shape and token budget match a
-short code summary, not a long Layer-3 article (`synthesis`, still inert
-behind T3.02) or an NLI verdict (`verification`). `summarization` is one of
-the six *live* purposes (`app/services/config.py`'s `PURPOSES`,
+short code summary, not a long Layer-3 article (`synthesis`, which
+`article_synthesis.py` has dispatched on since T3.02 shipped) or an NLI
+verdict (`verification`). `summarization` is one of the *live* purposes —
+all eight are live as of 2026-08-27 (`app/services/config.py`'s `PURPOSES`,
 `llm_seed.py`'s `DEFAULT_PURPOSE_CONFIGS`), already dispatched by
 `wiki_generator.py` and `enrichment_worker.py` — this is reusing a live
 purpose, not activating an inert one.

@@ -134,7 +134,7 @@ flowchart TD
     subgraph image["One uv-locked Docker image — one FastAPI process, one uvicorn worker (app-as-edge)"]
         subgraph doors["Two front doors"]
             REST["REST — FastAPI / Starlette / uvicorn"]
-            MCP["MCP — mcp / FastMCP at /mcp"]
+            MCP["MCP — mcp / MCPServer at /mcp"]
         end
         subgraph service["One service layer — Python core"]
             VAL["Validation — pydantic v2"]
@@ -229,9 +229,9 @@ flowchart TD
 
 ### 5.7 MCP surface
 
-**Decision.** **`mcp` / FastMCP** (floor `>=1.9.0`, locked `1.27.2`) mounted at `/mcp` via `mcp_server.streamable_http_app()` (`main.py`), speaking streamable-HTTP JSON-RPC 2.0 in stateless mode. It calls the same `MemoryService`, pipeline, and code services as REST — two front doors, one service layer.
+**Decision.** **`mcp` / `MCPServer`** (floor `>=2.1.1,<3`, locked `2.1.1`; the v1 name was `FastMCP`) mounted at `/mcp` (`main.py`), speaking streamable-HTTP JSON-RPC 2.0 in stateless mode at protocol revision `2026-07-28`. *(Amended 2026-08-26: was `>=1.9.0`, locked `1.27.2`, via `streamable_http_app()`.)* It calls the same `MemoryService`, pipeline, and code services as REST — two front doors, one service layer.
 
-**Context / forces.** A first-class MCP interface that any AI tool speaks is a stated goal (doc 00 §1). On a trusted LAN the endpoint is unauthenticated, and its only network defence is DNS-rebinding protection via a **Host allowlist**: `MCP_ALLOWED_HOSTS` adds LAN hosts, localhost is always allowed, `*` disables the check, and a foreign Host gets `421` (doc 02 §6.1, §8). Browser Origins are allowlisted to the same hosts.
+**Context / forces.** A first-class MCP interface that any AI tool speaks is a stated goal (doc 00 §1). Since 2026-08-26 every call carries a bearer API key scoped per tool; beside it, the network defence is DNS-rebinding protection via a **Host allowlist**: `MCP_ALLOWED_HOSTS` adds LAN hosts, localhost is always allowed, `*` disables the check, and a foreign Host gets `421` (doc 02 §6.1, §8). Browser Origins are allowlisted to the same hosts.
 
 **Alternatives rejected.** The dependency inventory once rated a .NET MCP surface "HIGH friction — no first-party equivalent"; annex 03a *corrected* this. The official Microsoft-collaborated **`ModelContextProtocol` C# SDK reached stable v1.4.1 (2026-07-09)** and is spike-verified green — covering streamable-HTTP JSON-RPC, stateless mode, a subpath mount, and attribute-based tools — with the guidance to pin the v1.4.x line, not the v2.0.0 preview (which removes the `initialize` handshake). The Host allowlist has no .NET-transport equivalent, so the annex hand-wrote a ~50–100-line middleware, spike-verified to return `421` for a foreign Host (matrix rows 10–12). All deferred-port detail.
 
@@ -342,7 +342,7 @@ flowchart TD
 | Migrations | Alembic (linear SQL) | DbUp; FluentMigrator; EF Migrations | EF can't express runtime fingerprint DDL; DbUp is the deferred-port analogue, FluentMigrator/EF rejected there (§5.4) |
 | Validation | pydantic v2 + pydantic-settings | FluentValidation + `IOptions` | Deferred-port equivalent; coercion + env layering don't map cleanly, so a port re-implements validators by hand (§5.5) |
 | LLM orchestration | Hand-rolled over raw `httpx` | OpenAI SDK; Semantic Kernel / Agent Framework | SDK rejected to keep one uniform vendor code path; SK/Agent Framework "do not adopt" even in the deferred port (§5.6) |
-| MCP surface | `mcp` / FastMCP at `/mcp` | `ModelContextProtocol` C# SDK v1.4.1 | Deferred-port equivalent (inventory's "HIGH friction" corrected to green); pin v1.4.x not the v2.0.0 preview (§5.7) |
+| MCP surface | `mcp` / `MCPServer` at `/mcp` | `ModelContextProtocol` C# SDK v1.4.1 | Deferred-port equivalent (inventory's "HIGH friction" corrected to green); pin v1.4.x not the v2.0.0 preview (§5.7) |
 | Background jobs | Custom `JobRegistry` over croniter | Quartz.NET; Cronos / NCrontab | Quartz's model fights the floor + shared-lock + 409-on-busy semantics; registry is app code, not a library swap (§5.8) |
 | Graph / communities | python-igraph + leidenalg | Native igraph P/Invoke; MNCD | Native interop rejected — pure-managed full Leiden proven at measured quality parity; hand-rolled path shares one code base (§5.12) |
 | Numeric core | scikit-learn + numpy | MathNet.Numerics + ported DBSCAN | Deferred-port equivalent; losing numpy speed matters only if ML returns, a future the design stepped away from (§5.13) |

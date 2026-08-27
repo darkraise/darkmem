@@ -97,7 +97,7 @@ that matter in production:
 | `DARKMEM_VERSION` | recommended | Image tag compose deploys. Pin it to a release. |
 | `COOKIE_SECURE` | no (`true`) | `false` allows login over plain HTTP on a trusted LAN; the cookie then travels in cleartext. |
 | `TRUST_PROXY_HEADERS` | no (`false`) | Turn on only when a trusted TLS proxy really is in front. |
-| `MCP_ALLOWED_HOSTS` | no (empty) | Host allowlist for `/mcp`. Empty means localhost only. |
+| `MCP_ALLOWED_HOSTS` | no (empty) | Host allowlist for `/mcp`, applied *beside* the bearer-key requirement. Empty means localhost only. |
 | `LOG_LEVEL` | no (`INFO`) | `DEBUG`/`INFO`/`WARNING`/`ERROR`. |
 
 `ENVIRONMENT=production` is set by the compose file, not by you; it arms the
@@ -153,8 +153,10 @@ and scrubbed git URLs only.
       `/setup` immediately — it is open until the admin password is set.
 - [ ] UI reached only through your TLS reverse proxy; do not publish `:8000`
       publicly. Set `TRUST_PROXY_HEADERS=true` when you add that proxy.
-- [ ] **`/mcp` is unauthenticated** — a Host allowlist is its only defence.
-      Keep it off the public side entirely.
+- [ ] **`/mcp` requires a bearer API key** on every call, scoped per tool, and
+      the Host allowlist still applies beside it. Mint keys in Settings → API
+      keys. Keep `/mcp` off the public side regardless: a key authenticates a
+      caller, it does not make the surface safe to expose.
 - [ ] `/docs`, `/redoc` and `/openapi.json` are served unauthenticated — keep
       them behind your proxy's auth.
 - [ ] Provider keys and git tokens are stored in the database in plaintext

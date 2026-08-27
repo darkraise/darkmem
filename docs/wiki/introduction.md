@@ -60,9 +60,10 @@ the same corpus differently.
 
 ## Ways in
 
-- **MCP** (`/mcp`) — the agent-facing surface, ~28 tools covering memory, code,
-  facts and checkpoints. This is how Claude Code, Codex and similar clients
-  talk to it.
+- **MCP** (`/mcp`) — the agent-facing surface, 33 tools covering memory,
+  documents, code, facts, checkpoints and research. This is how Claude Code,
+  Codex and similar clients talk to it. Every call needs a bearer API key,
+  scoped per tool.
 - **REST** (`/api/v1/...`) — 130-odd endpoints. The web UI is built on it, and
   a small generated SDK (Python and TypeScript) wraps the three verbs an
   application usually needs.

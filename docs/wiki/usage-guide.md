@@ -186,11 +186,18 @@ symptom.
 
 ## Wiring up an agent
 
-`/mcp` is the agent surface. Add it once:
+`/mcp` is the agent surface. Mint a key first in Settings → API keys (both
+`capture` and `read` for a normal agent; the secret is shown once), then add
+the server with that key on the `Authorization` header:
 
 ```bash
-claude mcp add --transport http darkmem http://localhost:8000/mcp
+claude mcp add --transport http darkmem http://localhost:8000/mcp \
+  --header "Authorization: Bearer dmk_<key_id>_<secret>"
 ```
+
+Without the header every call is refused with `401`. A key that authenticates
+but lacks a tool's scope is refused with JSON-RPC error `-32003` — that is a
+scope problem, not a retry.
 
 ### The tools
 
