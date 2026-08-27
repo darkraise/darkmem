@@ -60,3 +60,32 @@ def test_the_module_summary_does_not_borrow_the_function_contract_prompt():
     assert 'prompt_mod.get("summarization")' not in source
     assert 'prompt.get("summarization")' not in source
     assert "_MODULE_SUMMARY_PROMPT" in source
+
+
+def test_the_injection_rider_survives_truncation():
+    """The rider must precede the cut, not trail it.
+
+    Appending it last and then slicing from the end deletes the defence in
+    exactly the case it exists for: an oversized untrusted context.
+    """
+    from app.services.chat import INJECTION_RIDER, _assemble_system_content
+
+    huge = ["x" * 4000 for _ in range(20)]
+    content = _assemble_system_content("SYSTEM", huge)
+    assert INJECTION_RIDER in content
+    assert content.startswith("SYSTEM")
+
+
+def test_the_chat_prompt_documents_fact_citations():
+    from app.services import prompt
+
+    text = prompt.PROMPTS["chat"]
+    assert "[F1]" in text or "[F" in text
+
+
+def test_the_chat_prompt_drops_the_unfollowable_recency_rule():
+    """Rendered rows carry no timestamp, so 'prefer the more recent' is
+    an instruction the model can only satisfy by inventing a justification."""
+    from app.services import prompt
+
+    assert "more recent" not in prompt.PROMPTS["chat"]
