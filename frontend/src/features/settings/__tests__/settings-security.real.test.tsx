@@ -296,19 +296,27 @@ describe("SecurityTab (real) — the three defects found in review", () => {
     render(<SecurityTab />, { wrapper })
     await screen.findByText(/signed in as admin/)
 
-    fireEvent.change(screen.getByLabelText("Key label"), {
+    fireEvent.click(screen.getByRole("button", { name: /New key/ }))
+    fireEvent.change(await screen.findByLabelText(/What is this key for/), {
       target: { value: "review-probe" },
     })
     fireEvent.click(screen.getByRole("button", { name: /Create key/ }))
     expect(await screen.findByText("dmk_zzz999_plaintext")).toBeInTheDocument()
 
-    // "Copy this now — it is never shown again" is the wrong thing to keep
-    // saying about a credential that has just been revoked.
-    const revokes = await screen.findAllByRole("button", { name: "Revoke" })
-    fireEvent.click(revokes[revokes.length - 1]!)
+    // The plaintext exists for exactly as long as the dialog that issued it.
+    // This used to be enforced by clearing the inline panel when its own key
+    // was revoked; now the secret cannot outlive its dialog at all, which is
+    // the stronger property and covers revocation as a special case. What the
+    // test protects is unchanged: a one-time credential must not linger on a
+    // screen after the moment it belongs to.
+    fireEvent.click(screen.getByRole("button", { name: /I have copied it/ }))
     await waitFor(() =>
       expect(screen.queryByText("dmk_zzz999_plaintext")).not.toBeInTheDocument(),
     )
+
+    // And reopening does not hand it back.
+    fireEvent.click(screen.getByRole("button", { name: /New key/ }))
+    expect(screen.queryByText("dmk_zzz999_plaintext")).not.toBeInTheDocument()
   })
 
   it("renders each subject as its own card", async () => {

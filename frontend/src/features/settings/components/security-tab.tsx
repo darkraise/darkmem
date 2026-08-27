@@ -12,19 +12,13 @@ import {
   CardContent,
   CardHeader,
 } from "darkraise-ui/components/card"
-import { Input } from "darkraise-ui/components/input"
-import { Label } from "darkraise-ui/components/label"
 import { cn } from "darkraise-ui/lib"
-import { HelpTip } from "@/components/darkmem"
+import { ApiKeyDialog } from "./api-key-dialog"
+import { EmptyState, HelpTip } from "@/components/darkmem"
 import {
   SurfaceStateChip,
 } from "@/features/activity/components/module-surface"
-import {
-  useApiKeys,
-  useCreateApiKey,
-  useRevokeApiKey,
-  type ApiKeyCreated,
-} from "@/hooks/api"
+import { useApiKeys, useRevokeApiKey } from "@/hooks/api"
 import {
   useSecurityTabBinding,
   type SecurityTabBinding,
@@ -37,12 +31,24 @@ const API_KEY_SCOPES: { label: string; inert?: boolean; never?: boolean }[] = [
   // Each scope names the surface it actually reaches (T4.21). The boundary is
   // the surface the minimal client speaks; widening `read` to the vault or the
   // code graph is a decision about what a leaked key can exfiltrate, and it is
-  // demand-gated rather than taken because the word fits.
-  { label: "capture — write memories (POST /memories, /memories/batch)" },
-  { label: "read — search memories (POST /memories/search/paginated)" },
-  { label: "admin — the push webhook" },
-  { label: "ratify — never a scope, human cookie session only", never: true },
+  // demand-gated rather than taken because the word fits. The routes each one
+  // covers: capture -> POST /memories and /memories/batch; read -> POST
+  // /memories/search/paginated; admin -> the push webhook.
+  { label: "Save new memories" },
+  { label: "Search and read memories" },
+  { label: "Receive push updates" },
+  { label: "Confirming a fact is never allowed — only you can do that", never: true },
 ]
+
+/** The scope literals as a reader should see them in a key's row. Keys are
+ *  stored and sent with the literals; only the display changes. An unknown
+ *  literal falls back to itself rather than vanishing — a scope this build
+ *  does not recognise is exactly the thing an operator must still see. */
+const SCOPE_WORDS: Record<string, string> = {
+  capture: "Save new memories",
+  read: "Search and read memories",
+  admin: "Receive push updates",
+}
 
 function Row({ k, children }: { k: string; children: React.ReactNode }) {
   return (
@@ -408,98 +414,56 @@ function LanTrustCard({ binding }: { binding: SecurityTabBinding }) {
 // credential path does not exist.
 function ApiKeyCard() {
   const { data: keys, isLoading, isError } = useApiKeys()
-  const createKey = useCreateApiKey()
   const revokeKey = useRevokeApiKey()
-  const [label, setLabel] = useState("")
-  const [scopes, setScopes] = useState("read")
-  // The plaintext exists exactly once, on the create response. Holding it in
-  // component state is what "shown once" means here: a reload loses it, and
-  // there is no read surface that could hand it back.
-  const [issued, setIssued] = useState<ApiKeyCreated | null>(null)
+  const [creating, setCreating] = useState(false)
 
-  const parsedScopes = scopes
-    .split(/[,\s]+/)
-    .map((scope) => scope.trim())
-    .filter(Boolean)
+  const rows = keys ?? []
 
   return (
     <CardShell
       icon={KeyRound}
-      title="Programmatic ApiKey bearer"
+      title="Keys for apps and agents"
       tag="live"
-      help="A key is `dmk_<key_id>_<secret>` presented as `Authorization: Bearer`. Scopes are a closed set — capture, read, admin — and `ratify` is deliberately not among them: confirming a fact stays a human cookie session. Minting and revoking are behind the human door, so a key can never mint, list or revoke a key, including one holding admin. The MCP Host allowlist stays on regardless; a bearer is defence in addition to it, never instead of it."
+      // Plain language on purpose: whoever runs this box is not necessarily
+      // the person who wrote it. The precise contract - the `dmk_<id>_<secret>`
+      // shape, the closed scope set, minting being behind the human door, the
+      // Host allowlist standing regardless - lives in doc 18 §5 and in
+      // `api_key_scopes.py`, where the next developer needs it. A settings
+      // card is not the place to teach it.
+      help="A key lets an app or an AI agent use darkmem without logging in. You choose what each key may do, and you can revoke it whenever you like. The key itself is shown only once, when you create it."
       className="sm:col-span-2"
     >
-      <div className="flex flex-wrap gap-2.5">
-        <div className="flex min-w-40 flex-1 flex-col gap-1">
-          <Label htmlFor="apikey-label" className="text-muted-foreground text-sm">
-            Key label
-          </Label>
-          <Input
-            id="apikey-label"
-            placeholder="e.g. push-webhook"
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-          />
-        </div>
-        <div className="flex min-w-40 flex-1 flex-col gap-1">
-          <Label htmlFor="apikey-scope" className="text-muted-foreground text-sm">
-            Scope
-          </Label>
-          <Input
-            id="apikey-scope"
-            placeholder="capture / read / admin"
-            value={scopes}
-            onChange={(e) => setScopes(e.target.value)}
-          />
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-muted-foreground text-sm">
+          {rows.length === 0
+            ? "No keys yet"
+            : `${rows.length} ${rows.length === 1 ? "key" : "keys"}`}
+        </span>
+        <Button variant="outline" onClick={() => setCreating(true)}>
+          <KeyRound className="mr-1.5 size-3.5" />
+          New key
+        </Button>
       </div>
-      <Button
-        variant="outline"
-        className="w-fit"
-        disabled={!label.trim() || parsedScopes.length === 0 || createKey.isPending}
-        onClick={() =>
-          createKey.mutate(
-            { name: label.trim(), scopes: parsedScopes },
-            {
-              onSuccess: (created) => {
-                setIssued(created)
-                setLabel("")
-              },
-            },
-          )
-        }
-      >
-        <KeyRound className="mr-1.5 size-3.5" />
-        {createKey.isPending ? "Creating key…" : "Create key"}
-      </Button>
-      {createKey.isError && (
-        <p className="text-destructive text-sm">
-          key not created — {createKey.error.message}
-        </p>
-      )}
-      {issued && (
-        <div className="border-inset bg-muted/20 flex flex-col gap-1 rounded-md border border-dashed p-2.5">
-          <span className="text-sm font-semibold">
-            Copy this now — it is never shown again
-          </span>
-          <code className="font-mono text-sm break-all">{issued.token}</code>
-        </div>
-      )}
+
+      <ApiKeyDialog open={creating} onOpenChange={setCreating} />
 
       <div className="flex flex-col gap-1.5">
         {isLoading ? (
           <span className="text-muted-foreground text-sm">loading keys…</span>
         ) : isError ? (
           <span className="text-muted-foreground text-sm">
-            the key list could not be read — a failed read, not an empty list
+            The list of keys could not be loaded. This is a failed read, not an
+            empty list — your keys are still there.
           </span>
-        ) : (keys ?? []).length === 0 ? (
-          <span className="text-muted-foreground text-sm italic">
-            no keys issued
-          </span>
+        ) : rows.length === 0 ? (
+          <EmptyState
+            kind="empty"
+            icon={KeyRound}
+            title="No keys yet"
+            description="Create one to let an app or an AI agent reach darkmem."
+          />
         ) : (
-          (keys ?? []).map((key) => (
+          rows.map((key) => (
             <div
               key={key.id}
               className="border-border flex flex-wrap items-center gap-2 border-t border-dashed pt-1.5 text-sm first:border-t-0 first:pt-0"
@@ -508,8 +472,8 @@ function ApiKeyCard() {
               <span className="text-muted-foreground font-mono text-sm">
                 {key.key_id}
               </span>
-              <span className="text-muted-foreground font-mono text-sm">
-                {key.scopes.join(" · ")}
+              <span className="text-muted-foreground text-sm">
+                {key.scopes.map((s) => SCOPE_WORDS[s] ?? s).join(" · ")}
               </span>
               <span className="text-muted-foreground text-sm">
                 {key.last_used_at
@@ -529,18 +493,7 @@ function ApiKeyCard() {
                   variant="outline"
                   className="ml-auto"
                   disabled={revokeKey.isPending}
-                  onClick={() =>
-                    revokeKey.mutate(key.id, {
-                      // "Copy this now — it is never shown again" is the wrong
-                      // thing to keep saying about a credential that has just
-                      // been revoked. Drop the panel when its own key dies;
-                      // another key's revocation leaves it alone.
-                      onSuccess: () =>
-                        setIssued((shown) =>
-                          shown?.id === key.id ? null : shown,
-                        ),
-                    })
-                  }
+                  onClick={() => revokeKey.mutate(key.id)}
                 >
                   Revoke
                 </Button>
@@ -555,7 +508,7 @@ function ApiKeyCard() {
           <span
             key={scope.label}
             className={cn(
-              "text-muted-foreground border-muted-foreground/50 rounded-full border border-dashed px-2 py-0.5 font-mono text-sm",
+              "text-muted-foreground border-muted-foreground/50 rounded-full border border-dashed px-2 py-0.5 text-sm",
               scope.inert && "opacity-60",
               scope.never && "border-destructive/50 text-destructive",
             )}

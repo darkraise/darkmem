@@ -41,15 +41,26 @@ describe("SecurityTab — ApiKey honesty", () => {
     render(<SecurityTab />, { wrapper })
     expect(screen.queryByText(/designed, not wired/)).not.toBeInTheDocument()
     expect(screen.queryByText(/not available in this deployment/)).not.toBeInTheDocument()
-    expect(screen.getByLabelText("Key label")).not.toBeDisabled()
+    // Creation moved into a dialog; the card's live control is its trigger.
+    expect(screen.getByRole("button", { name: /New key/ })).not.toBeDisabled()
+    // The point of this row is that `ratify` is NOT a scope, and that the
+    // omission is visible rather than inferred. The wording is now plain, the
+    // claim is the same.
     expect(
-      screen.getByText(/ratify — never a scope, human cookie session only/),
+      screen.getByText(/Confirming a fact is never allowed/),
     ).toBeInTheDocument()
   })
 
-  it("cannot create a key without a label — the mint is never a bare click", () => {
+  it("cannot create a key without a label — the mint is never a bare click", async () => {
     render(<SecurityTab />, { wrapper })
-    expect(screen.getByRole("button", { name: /Create key/ })).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: /New key/ }))
+    const create = await screen.findByRole("button", { name: /Create key/ })
+    expect(create).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText(/What is this key for/), {
+      target: { value: "a name" },
+    })
+    expect(screen.getByRole("button", { name: /Create key/ })).not.toBeDisabled()
   })
 
   it("renders the three LAN doors and the TOFU claim", () => {
