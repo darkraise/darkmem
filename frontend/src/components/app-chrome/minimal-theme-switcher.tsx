@@ -24,6 +24,44 @@ import { SWITCHER_AXES } from "@/theme.config"
 
 const MODE_ICONS = { light: Sun, dark: Moon, system: Monitor } as const
 
+/**
+ * The 500 stop of every surface that has no accent scale behind it.
+ *
+ * LIBRARY GAP (darkraise-ui 6.6.0): the library holds these scales in its own
+ * `surfaceColors` map but exports only `accentColors`, so a swatch preview for
+ * the neutral surfaces has no supported source. 6.4.0 shipped `slate` as the
+ * only such surface and this was a single inline constant; 6.6.0 added eleven
+ * more, which is what turned the missing export into a crash rather than a
+ * one-line special case.
+ *
+ * Retire this the moment `surfaceColors` is exported from `darkraise-ui/theme`.
+ * These values are previews only — nothing renders from them but the swatch —
+ * so a library retune drifts the dot, never the theme.
+ */
+const NEUTRAL_SURFACE_PREVIEW: Record<string, string> = {
+  slate: "215 16% 47%",
+  gray: "220 9% 46%",
+  cool: "210 9% 47%",
+  zinc: "240 4% 46%",
+  neutral: "0 0% 45%",
+  iron: "22 4% 46%",
+  mauve: "284 3% 46%",
+  graphite: "210 3% 40%",
+  stone: "25 5% 45%",
+  sand: "36 8% 44%",
+  olive: "70 5% 44%",
+  sepia: "26 12% 42%",
+}
+
+/** Total over `SURFACE_COLORS`: accent-backed surfaces read their own scale,
+ *  neutrals read the table above, and anything the library adds later falls
+ *  back to a visible grey instead of throwing on an undefined scale. */
+function surfacePreviewHsl(color: SurfaceColor): string {
+  const accent = accentColors[color as AccentColor & SurfaceColor]
+  if (accent) return accent[500]
+  return NEUTRAL_SURFACE_PREVIEW[color] ?? "0 0% 50%"
+}
+
 /** The library's own section shell, so this reads as the built-in popover. */
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -139,13 +177,7 @@ export function MinimalThemeSwitcher() {
           values={SURFACE_COLORS}
           active={surfaceColor}
           onPick={setSurfaceColor}
-          // `slate` is the one surface with no accent scale behind it; the
-          // library hardcodes this preview grey for it.
-          previewHsl={(color) =>
-            color === "slate"
-              ? "215 16% 47%"
-              : accentColors[color as AccentColor & SurfaceColor][500]
-          }
+          previewHsl={surfacePreviewHsl}
         />
       </Row>
     ),
