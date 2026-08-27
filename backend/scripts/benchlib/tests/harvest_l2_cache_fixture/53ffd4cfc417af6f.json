@@ -1,0 +1,1 @@
+"{\n  \"entities\": [\n    {\n      \"name\": \"Sentry\",\n      \"type\": \"service\",\n      \"properties\": {}\n    }\n  ],\n  \"relationships\": [],\n  \"memory_type\": \"fact\",\n  \"importance\": 0.5,\n  \"summary\": \"Application errors are tracked using a self-hosted Sentry instance.\",\n  \"emotions\": [],\n  \"flags\": []\n}"

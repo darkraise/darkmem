@@ -1,0 +1,1 @@
+"{\n  \"entities\": [\n    {\"name\": \"photo library\", \"type\": \"artifact\"},\n    {\"name\": \"offsite box\", \"type\": \"artifact\"}\n  ],\n  \"relationships\": [],\n  \"memory_type\": \"fact\",\n  \"importance\": 0.4,\n  \"summary\": \"Weekly full backups of the photo library run Sunday mornings to an offsite box.\",\n  \"emotions\": [],\n  \"flags\": []\n}"

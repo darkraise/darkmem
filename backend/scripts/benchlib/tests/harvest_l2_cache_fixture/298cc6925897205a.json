@@ -1,0 +1,1 @@
+"{\n  \"entities\": [\n    {\"name\": \"nginx\", \"type\": \"service\"}\n  ],\n  \"relationships\": [],\n  \"memory_type\": \"fact\",\n  \"importance\": 0.5,\n  \"summary\": \"Internal-only tools are accessed through an nginx proxy that requires client certificates.\",\n  \"emotions\": [],\n  \"flags\": []\n}"

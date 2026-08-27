@@ -1,0 +1,1 @@
+"{\n  \"entities\": [\n    {\"name\": \"sftp-02\", \"type\": \"service\", \"properties\": {}}\n  ],\n  \"relationships\": [],\n  \"memory_type\": \"fact\",\n  \"importance\": 0.5,\n  \"summary\": \"Monthly payroll export is delivered via the transfer host sftp-02.\",\n  \"emotions\": [],\n  \"flags\": []\n}"

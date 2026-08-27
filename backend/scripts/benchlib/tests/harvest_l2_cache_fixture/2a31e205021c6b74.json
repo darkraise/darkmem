@@ -1,0 +1,1 @@
+"{\n  \"entities\": [\n    {\"name\": \"search-01\", \"type\": \"service\"}\n  ],\n  \"relationships\": [],\n  \"memory_type\": \"problem\",\n  \"importance\": 0.6,\n  \"summary\": \"search-01 has no swap and OOM-kills its largest process under memory pressure.\",\n  \"emotions\": [],\n  \"flags\": []\n}"
