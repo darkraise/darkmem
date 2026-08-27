@@ -42,3 +42,18 @@ def test_the_prompt_still_names_every_closed_type():
         assert name in text, f"entity type dropped from the prompt: {name}"
     for name in taxonomy.RELATIONSHIP_TYPES:
         assert name in text, f"relation type dropped from the prompt: {name}"
+
+
+def test_the_extraction_prompt_stays_within_its_budget():
+    """It runs on every ingest; its size is a recurring cost, not a constant.
+
+    The bound is 33,000 rather than the 27,000 the plan proposed. Reaching
+    27,000 needed an 8,200-char cut, and the four backstopped targets only
+    total ~6,600 - the rest would have had to come from rules the
+    extraction_clean pass chain does not backstop. The largest single item
+    on the review's list was deleting Example 5 outright; its demonstration
+    is kept because it is the only place the star-shape relation failure is
+    shown rather than described, and the 39-relation bench is too small to
+    detect that regression reliably. Its prose notes were compressed instead.
+    """
+    assert len(prompt.PROMPTS["extraction"]) < 33_000
