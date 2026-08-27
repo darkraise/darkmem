@@ -456,7 +456,7 @@ def test_extraction_prompt_fingerprint_is_pinned():
     from app.services import prompt
 
     fingerprint = hashlib.sha256(prompt.get("extraction").encode("utf-8")).hexdigest()[:16]
-    assert fingerprint == "f59a62d1be7273a8"
+    assert fingerprint == "606a42eef2e5d30a"
 
 
 # ── The update path normalises too (invariant 5) ────────────────────
