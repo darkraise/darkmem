@@ -238,3 +238,37 @@ async def test_a_total_outage_still_reports_all_zero_for_the_all_zero_guard():
 
     assert all(d["rerank_score"] == 0.0 for d in reranked)
     assert all(d["rerank_failed"] is True for d in reranked)
+
+
+async def test_a_response_missing_the_score_key_counts_as_a_failure():
+    """A JSON-valid response with the wrong key is a failure, not a zero.
+
+    ``parsed.get("score", 0)`` turns a well-formed body that happens to name
+    its field ``rating`` into a real 0.0 — indistinguishable from a genuine
+    worst rating, and carrying ``rerank_failed=False``, so none of the
+    failure machinery above ever sees it.
+    """
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        document = body["messages"][-1]["content"]
+        if "WRONG-KEY" in document:
+            return httpx.Response(
+                200,
+                json={"choices": [{"message": {"content": json.dumps({"rating": 7})}}]},
+            )
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": json.dumps({"score": 7})}}]},
+        )
+
+    svc = _make_reranker_with_handler(handler)
+    docs = [
+        {"memory_id": "ok", "payload": {"content": "normal text"}},
+        {"memory_id": "wrong", "payload": {"content": "WRONG-KEY text"}},
+    ]
+
+    reranked = await svc.rerank("q", docs, top_k=2)
+    by_id = {d["memory_id"]: d for d in reranked}
+
+    assert by_id["wrong"]["rerank_failed"] is True
+    assert by_id["wrong"]["rerank_score"] == RERANK_FAILURE_SENTINEL
+    assert by_id["ok"]["rerank_failed"] is False

@@ -124,7 +124,10 @@ class RerankerService:
                         response_format={"type": "json_object"},
                     )
                     parsed = json.loads(response)
-                    return float(parsed.get("score", 0))
+                    # A wrong-key response is a failed ask, not a zero score:
+                    # 0.0 is a real verdict that ranks the row last, and the
+                    # failure machinery below would never see it.
+                    return float(parsed["score"])
                 except Exception:
                     return _ASK_FAILED
 
