@@ -1039,6 +1039,55 @@ State which of Tasks 1-11 landed, the gate result, and hand back before starting
 
 ---
 
+## Phase 2 — BLOCKED as of 2026-08-27
+
+Phase 2 was implemented and then reverted on `feat/prompt-optimization`. The
+work is preserved on **`feat/prompt-extraction-diet`** (head `3d629ee9`) and
+can be replayed once the blocker below clears.
+
+**The blocker.** Task 16's live re-record cannot run. `run_bench.py` refuses:
+
+```
+system_fingerprint changed mid-measurement:
+  expected 'fp_8b330d02d0_prod0820_fp8_kvcache_20260402'
+  served   'a26a7955944dc5c60445bff77fac9c8e'
+```
+
+DeepSeek rotated its serving stack since the baseline was recorded on
+2026-07-27, so any F1 delta measured now confounds the prompt change with
+vendor drift. `--expect-fingerprint ""` disables the guard and must not be
+used for this: the number it produces cannot support the gate ledger's parity
+claim.
+
+**Two errors in this plan, found during execution:**
+
+1. **Task 15 had no step for the prompt fingerprint pin.**
+   `tests/test_taxonomy.py::test_extraction_prompt_fingerprint_is_pinned`
+   asserts `sha256(extraction)[:16] == "f59a62d1be7273a8"`. Any Phase 2 edit
+   fails it, and its own docstring states the remedy: re-record live and
+   archive the new generation, or revert. Re-recording is the blocked half.
+2. **Task 16 understated the cost.** The gate ledger's precedent entry for the
+   last prompt re-record notes that a prompt change also invalidates the
+   benchlib retrieval cache — ~94 cached extraction calls *and the ingested
+   graph the accuracy numbers were computed over*. It is two re-measurements,
+   not one.
+
+**One deliberate deviation, carried on the preserved branch.** Task 15 cut
+2,923 chars (~730 tokens) against a bound of 33,000, not the planned
+2,000-2,500 tokens against 27,000. The four backstopped targets total only
+~6,600 chars, so 27,000 would have required cutting rules `extraction_clean`
+does not backstop. Example 5's demonstration was kept — it is the only place
+the star-shape relation failure is shown rather than described, and the
+39-relation bench cannot reliably detect that regression — and only its prose
+notes were compressed. The reasoning rides in the budget test's docstring.
+
+**To resume:** confirm the vendor stack is stable, then cherry-pick
+`5cbc263d`, `63e29dd6`, `3d629ee9` onto a fresh branch, re-record both caches
+live, update the pin in `test_taxonomy.py` to the new fingerprint
+(`606a42eef2e5d30a` for the diet as preserved), and write the ledger entry.
+
+---
+
 ## Phase 2 — the extraction prompt (moves the F1 baseline)
 
 **Do not start Phase 2 without an explicit instruction to do so.** Every task below changes `prompt_sha16`, invalidating the extraction bench cache. Task 16 spends real money against DeepSeek and writes a gate-ledger entry.

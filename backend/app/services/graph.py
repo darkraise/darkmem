@@ -209,9 +209,10 @@ class GraphService:
         async def _name_one(cid: int, contents: list[str]) -> tuple[int, str]:
             async with sem:
                 try:
-                    sample = "\n".join(contents[:8])
+                    joined = "\n".join(contents[:8]).replace("</memories>", "")
+                    sample = f"<memories>\n{joined}\n</memories>"
                     name = await self.llm.chat_completion(
-                        "extraction",
+                        "summarization",
                         messages=[
                             {"role": "system", "content": cluster_system_prompt},
                             {"role": "user", "content": sample},

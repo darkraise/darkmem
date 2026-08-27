@@ -66,6 +66,14 @@ JUDGE_PROMPT_VERSION = 1
 
 JUDGE_VERDICTS = frozenset({"entailed", "contradicted", "unsupported"})
 
+# DELIBERATELY NOT IN prompt.py, AND NEVER UI-EDITABLE. This string and
+# USER_TEMPLATE below both fold into prompt_sha (see judge_identity), so an
+# edit changes the recorded judge identity and mechanically invalidates the
+# minted qualification record - the entailment record of 2026-08-17 among
+# them. Routing the served prompt through prompt.get() while judge_identity()
+# keeps hashing this constant is worse than either alternative: the model
+# would receive an overridden prompt while the record still read valid.
+# Comments are safe; only the string values are hashed.
 SYSTEM_PROMPT = """\
 You are a strict natural-language-inference judge. Given a PREMISE (a stored
 fact) and a HYPOTHESIS (a claim), return exactly one verdict:

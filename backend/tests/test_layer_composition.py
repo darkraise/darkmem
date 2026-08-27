@@ -895,12 +895,17 @@ class _PromptSpy:
         self.prompts: list[str] = []
 
     async def chat_completion(self, purpose, messages, **kwargs):
-        self.prompts.append(messages[0]["content"])
+        # The user message, not messages[0]: the reranker sends a system
+        # message carrying its anti-injection guard ahead of the ask.
+        self.prompts.append(messages[-1]["content"])
         return json.dumps({"score": 5})
 
     @property
     def documents(self) -> list[str]:
-        return [p.split("Document: ", 1)[1] for p in self.prompts]
+        return [
+            p.split("<document>\n", 1)[1].split("\n</document>", 1)[0]
+            for p in self.prompts
+        ]
 
 
 @pytest.mark.asyncio

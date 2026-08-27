@@ -50,6 +50,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.memory import MemoryCreate
+from app.services.extraction_clean import _content_seed
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +195,7 @@ async def _propositions(llm, body: str) -> list[dict]:
             {"role": "user", "content": _user_prompt(body)},
         ],
         response_format={"type": "json_object"},
+        seed=_content_seed(body),
     )
     try:
         payload = json.loads(_strip_fences(raw))
