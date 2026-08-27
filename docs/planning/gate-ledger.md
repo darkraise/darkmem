@@ -4376,9 +4376,28 @@ backstop.
 - `docs/superpowers/plans/2026-08-27-prompt-optimization.md` — the plan,
   including the two errors it contained.
 
-### Caveat carried forward
+### The two invalidated caches, both repaid
 
-The benchlib retrieval cache is invalidated by this prompt change, exactly
-as the T1.17 entry above records for the last one — roughly 94 cached
-extraction calls and the ingested graph its accuracy numbers were computed
-over. The retrieval eval has **not** been re-run against the new prompt.
+A prompt change invalidates more than the F1 bench cache, exactly as the
+T1.17 entry above records. Both were re-recorded live before this work
+merged:
+
+- **The harvest fixture** (`scripts/benchlib/tests/harvest_l2_cache_fixture`)
+  went red at `live_calls=190` against an expected 0. Regenerated: 213 new
+  entries, 231 facts, capacity 924. The 595 pre-existing entries are kept,
+  not pruned — a fixture holding only the 213 fresh ones still makes 22 live
+  calls, so the older set is not all dead, and pruning by mtime would have
+  left a fixture that looked warm while quietly failing 22 calls.
+- **The retrieval eval's ingest cache**: re-ingested live at 188 calls. The
+  retrieval arm is **unchanged** — MRR 0.8368, hit@10 0.8235, identical to
+  the three prior runs — so the graph the new prompt builds retrieves the
+  same. Recorded in `docs/eval/2026-08-27-retrieval-eval.md`.
+
+  One caveat on that report: the full-context arm made **zero** live calls
+  and its numbers are replayed from an older generation, because its calls
+  carry no extraction prompt and its cache stayed valid. Its 0.9052 is not
+  a measurement of this prompt and must not be read as a recovery from the
+  0.8905 measured live earlier the same day.
+
+`./scripts/gate.sh --full` is green on this branch: floor + retrieval eval
++ API e2e + Playwright + port hygiene.
