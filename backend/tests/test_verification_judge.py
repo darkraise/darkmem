@@ -1719,3 +1719,33 @@ def test_the_consumer_scan_flags_a_string_literal_role(tmp_path):
     tree = _ast.parse(offending.read_text(encoding="utf-8"))
     calls = _judge_calls(tree)
     assert calls and _role_keyword(calls[0]) is None
+
+
+def test_the_judge_prompt_is_not_reachable_through_the_editable_module():
+    """The served prompt and the hashed prompt must be the same object.
+
+    The dangerous refactor is the half-done one: routing the served prompt
+    through prompt.get() while judge_identity() keeps hashing the module
+    constant. A UI override would then change what the model receives while
+    the minted qualification record still reads valid.
+    """
+    import ast
+    from pathlib import Path
+
+    from app.services import prompt as prompt_mod
+    from app.services import verification_judge
+
+    # An AST scan, not a substring scan: the constant carries a comment that
+    # names the forbidden pattern in prose, and prose must not fail the build.
+    tree = ast.parse(Path(verification_judge.__file__).read_text())
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "get"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "prompt"
+    ]
+    assert calls == [], "the judge prompt must not be resolved through prompt.get()"
+    assert "verification" not in prompt_mod.list_purposes()
