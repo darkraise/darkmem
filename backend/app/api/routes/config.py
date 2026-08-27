@@ -61,6 +61,14 @@ from app.services.repo_allowlist import (
     validate_pattern,
 )
 
+# Above every shipped default with headroom, so an operator can copy a
+# default, edit it and save it - the extraction prompt alone is ~35k, and
+# a cap below it made the editing feature unusable for the one prompt most
+# worth tuning. Still bounded: the guard is against storing blobs that
+# would blow the system-prompt budget on a small-context model.
+PROMPT_OVERRIDE_MAX_CHARS = 60_000
+
+
 router = APIRouter(prefix="/api/v1/config", tags=["config"])
 
 logger = logging.getLogger(__name__)
@@ -1045,12 +1053,13 @@ async def update_system_prompts(
         if value == "":
             stored.pop(key, None)
         else:
-            # Guard against silently storing 500KB blobs that would blow up
-            # the system prompt budget on small-context models.
-            if len(value) > 20_000:
+            if len(value) > PROMPT_OVERRIDE_MAX_CHARS:
                 raise HTTPException(
                     status_code=422,
-                    detail=f"Prompt for {key!r} exceeds 20,000 characters",
+                    detail=(
+                        f"Prompt for {key!r} exceeds "
+                        f"{PROMPT_OVERRIDE_MAX_CHARS:,} characters"
+                    ),
                 )
             stored[key] = value
 
