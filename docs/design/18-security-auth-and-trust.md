@@ -20,9 +20,9 @@ Every mechanism below is tagged **(exists today)**, **(target-new)**, **(activat
 
 ## 2. The layered trust model — three postures inside one boundary
 
-**Decision. darkmem's trust model is layered by transport surface, not by caller identity: an authenticated human door (REST/UI and `/ws`, cookie JWT), an unauthenticated machine door (`/mcp`, defended only by the Host allowlist), and a trust-on-first-use bootstrap (`/setup`) — all inside a trusted-LAN boundary on one self-hosted box (exists today).** This is a foundation decision (doc 00 §7 principle 8, doc 02 §8) this doc mechanises, not re-opens. The rationale is the product's shape: darkmem is a single-human, many-agent system on a home network. The human owns state-changing curation power and authenticates once with a cookie; the agents need zero-friction tool access dozens of times per session, and forcing a credential onto every LAN agent would break one-command onboarding (doc 15 §5) and buy nothing an attacker on the same LAN could not already take by other means. **Rejected:** uniform auth on every surface — it hardens nothing on a trusted LAN (the threat there is the browser, not the peer, and the browser is handled by the allowlist below) while taxing every agent interaction; per-agent identities for v1 — `source` / `X-Darkmem-Client` resolution (doc 12 §5) is **attribution, never authentication**, and pretending otherwise would be a false security claim.
+**Decision. darkmem's trust model is layered by transport surface, not by caller identity: an authenticated human door (REST/UI and `/ws`, cookie JWT), a bearer-keyed machine door (`/mcp`, a per-call API key checked ahead of the Host allowlist, which stays live as a second, independent guard beside it), and a trust-on-first-use bootstrap (`/setup`) — all inside a trusted-LAN boundary on one self-hosted box.** This is a foundation decision (doc 00 §7 principle 8, doc 02 §8) this doc mechanises. The rationale is the product's shape: darkmem is a single-human, many-agent system on a home network. The human owns state-changing curation power and authenticates once with a cookie; the agents need low-friction tool access dozens of times per session, which a per-call bearer key gives without the human door's login flow. **Corrected 2026-08-26 — this paragraph called uniform auth on every surface "Rejected" until doc 18 §5's second activation shipped exactly that for `/mcp`:** the original text read "uniform auth on every surface — it hardens nothing on a trusted LAN (the threat there is the browser, not the peer, and the browser is handled by the allowlist below) while taxing every agent interaction," as a rejected alternative. That stopped being an accurate description of the shipped system on 2026-08-26: every `/mcp` call now requires a bearer key, LAN or not. The distinction the original rejection was reaching for still holds, just not as "no auth at all" — a stateless per-call key check does not carry the onboarding cost a *session* would, which is why the reversal was affordable where the original framing assumed uniform auth could only mean forcing a login onto every agent. **Still rejected, unchanged by this correction:** per-agent identities for v1 — `source` / `X-Darkmem-Client` resolution (doc 12 §5) is **attribution, never authentication**, and pretending otherwise would be a false security claim; a bearer key identifies which *credential* called, never which agent behind a shared key did.
 
-**Decision. The `/mcp` door's only network defence is DNS-rebinding protection via the Host allowlist, and a LAN `421` is fixed by extending the allowlist, never by disabling the protection (invariant 20, exists today).** Localhost is always allowed; `MCP_ALLOWED_HOSTS` (comma-separated, `host:port` or `host:*`) adds LAN hosts; a foreign `Host` header gets `421`; browser `Origin`s are allowlisted to the same hosts (agents send none, browsers cannot forge theirs — which is exactly why Host/Origin checking defeats the rebinding attack an unauthenticated LAN endpoint is otherwise open to). `*` disables the check entirely and is recorded as an explicit operator decision for a fully isolated network, never a troubleshooting step. The anti-pattern this invariant exists to forbid: an agent on a LAN host gets `421`, and someone "fixes" it by setting `*` instead of adding the host. Every consumer restates this rule (docs 12 §6, 15 §5); this doc owns it.
+**Decision. The `/mcp` door requires a bearer API key on every call (doc 18 §5's second activation, 2026-08-26), and DNS-rebinding protection via the Host allowlist runs as a second, independent guard beside it, not instead of it — a LAN `421` is still fixed by extending the allowlist, never by disabling the protection (invariant 20).** Auth evaluates first: an unkeyed request gets `401` regardless of `Host`, and only a keyed request that then fails the Host check gets `421`. Localhost is always allowed; `MCP_ALLOWED_HOSTS` (comma-separated, `host:port` or `host:*`) adds LAN hosts; a foreign `Host` header gets `421`; browser `Origin`s are allowlisted to the same hosts (agents send none, browsers cannot forge theirs — which is exactly why Host/Origin checking still defeats the rebinding attack a LAN endpoint would otherwise be open to, independent of whether the caller also holds a bearer key). `*` disables the check entirely and is recorded as an explicit operator decision for a fully isolated network, never a troubleshooting step. The anti-pattern this invariant exists to forbid: an agent on a LAN host gets `421`, and someone "fixes" it by setting `*` instead of adding the host. Every consumer restates this rule (docs 12 §6, 15 §5); this doc owns it.
 
 The trust zones and the three postures, at a glance:
 
@@ -34,13 +34,13 @@ flowchart LR
         CLI["SDKs / onboarding CLI (doc 15)"]
     end
     subgraph BOX["The one box — app-as-edge (docs 03, 19)"]
-        MCPD["/mcp — unauthenticated, Host allowlist only"]
+        MCPD["/mcp — bearer key + Host allowlist"]
         REST["/api/v1 + /ws — cookie JWT"]
         SETUP["/setup — TOFU, open only until admin_password_hash exists"]
         SVC["one service layer (inv 17)"]
     end
-    WORLD["off-LAN / rebinding browser script"] -.->|"foreign Host or Origin → 421"| MCPD
-    AGENT -->|"allowlisted Host, no credential"| MCPD
+    WORLD["off-LAN / rebinding browser script / unkeyed caller"] -.->|"no key → 401; keyed + foreign Host/Origin → 421"| MCPD
+    AGENT -->|"bearer key, scoped per tool + allowlisted Host"| MCPD
     HUMAN -->|"login → HttpOnly cookie"| REST
     HUMAN -->|"first boot only"| SETUP
     CLI -->|"MCP or REST"| MCPD
@@ -48,7 +48,7 @@ flowchart LR
     REST --> SVC
     SETUP --> SVC
 ```
-*Caption: three postures, one service layer — the human authenticates, the agents are attributed, the bootstrap is TOFU, and the only thing that reaches `/mcp` from outside the trust story is a `421`.*
+*Caption: three postures, one service layer — the human authenticates with a session, the machine door authenticates with a per-call key while still attributing which agent is calling, the bootstrap is TOFU, and the only things that reach `/mcp` from outside the trust story are a `401` (no key) or a `421` (keyed, foreign Host).*
 
 **The threat map this doc answers, each vector paired with its control and its honesty tag.** This table is the index into the rest of the doc:
 
@@ -63,7 +63,7 @@ flowchart LR
 | Local filesystem abuse | registering an arbitrary path as a repo | local-path sandbox + `safe.directory` (§7) | exists today |
 | Forged ratification | a machine reaching `confirmed` | ratify/review are authenticated REST/UI single-door, never MCP (doc 12 §3) | target-new with the vault |
 | Cross-project leakage | rows silently crossing project scope | SQL pushdown + the scope-or-label rule (§8) | target-new, closes a live gap |
-| Exposed-endpoint abuse | darkmem reachable off-LAN | `ApiKey` activation (§5) + operator TLS proxy (§9) | activation / horizon |
+| Exposed-endpoint abuse | darkmem reachable off-LAN | `ApiKey` activation (§5) + operator TLS proxy (§9) | exists today (both doors keyed) / horizon (TLS proxy) |
 
 ---
 
@@ -123,39 +123,39 @@ stateDiagram-v2
 
 ---
 
-## 5. Programmatic auth — the `ApiKey` activation (a named gap, not a shipped feature)
+## 5. Programmatic auth — the `ApiKey` activation, in two steps
 
-**Decision. Programmatic bearer auth is designed here and was gated to an activation; the activation fired on 2026-08-16. The `api_keys` table is wired — the push-webhook receiver (doc 10 §5) and the three memory doors the minimal client speaks are scope-gated, and every keyed call stamps `events.api_key_id` and `events.actor` (activation; invariant 23; doc 02 §11, doc 04 §9, doc 12 §9).** The design was fixed before the wiring so the activation was a wiring task, not a design task, and so no interim feature invented a second credential shape — which is what happened. **The scope set is not fully spent**: `capture` and `read` reach the minimal client's three verbs and nothing else, and widening either is a decision about what a leaked key can exfiltrate rather than a gap to close by default (T4.21). The design is fixed now so the activation is a wiring task, not a design task, and so no interim feature invents a second credential shape.
+**Decision. Programmatic bearer auth is designed here and shipped in two activations, not one. The first fired on 2026-08-16: the `api_keys` table came up wired, gating the push-webhook receiver (doc 10 §5) and REST's three memory doors, with every keyed call stamping `events.api_key_id` and `events.actor` (invariant 23; doc 02 §11, doc 04 §9, doc 12 §9). The second fired on 2026-08-26 (this epic): every `/mcp` tool call now requires the same bearer credential, scoped per tool rather than per door — `capture` on the 8 writer tools, `read` on the other 25 (doc 12 §6).** Both were wiring tasks against a design fixed before either landed, which is why neither invented a second credential shape. **`ratify` is untouched by both activations and stays outside the scope vocabulary** — a key is a machine credential on either door, and the machine never ratifies, keyed or not.
 
-The hardening path, as designed:
+The hardening path, as designed and now shipped on both doors:
 
 - **Credential shape.** A key is `dmk_<key_id>_<secret>`; the server stores the `key_id`, a hash of the secret (bcrypt, same primitive as the password path), a **scope set**, an optional expiry, and `last_used_at`. The raw secret is shown once at creation and never stored. The schema change at activation is at most adding columns to the existing `api_keys` table, never a new table (doc 04 §9).
-- **Wire form.** `Authorization: Bearer dmk_…` on REST, and — as a second, separately-flipped option — on `/mcp` (the streamable-HTTP transport carries headers per call, so a bearer requirement composes with the stateless server exactly as `X-Darkmem-Client` does). **The Host allowlist stays on even with bearer required** — defence in depth, and the `421` rule of §2 is unchanged.
-- **Scopes are a closed vocabulary, taxonomy-first (invariant 5's discipline applied to auth):** `capture` (write memories), `read` (search/vault/code reads), `admin` (config, jobs, repos). **`ratify` is deliberately not a scope and never becomes one:** `confirmed` power remains a human cookie session on the REST/UI door only (doc 12 §3, doc 13 §5) — a key is a machine credential, and the machine never ratifies, keyed or not.
-- **Journaling (convention 8).** Every keyed call stamps `events.api_key_id` and `events.actor` — the moment the activation lands is the moment those two dormant columns (doc 04 §8.1) finally carry a value. Key creation, revocation, and expiry journal as their own `events` rows; doc 13's settings surface lists keys with `last_used_at` so a stale key is visible before it is a liability.
+- **Wire form.** `Authorization: Bearer dmk_…` on REST, and — since the second activation, unconditionally — on `/mcp` (the streamable-HTTP transport carries headers per call, so the bearer requirement composes with the stateless server exactly as `X-Darkmem-Client` does). There is no flag that turns the `/mcp` requirement back off. **The Host allowlist stays on beside bearer auth, not instead of it** — defence in depth, and the `421` rule of §2 is unchanged, except that auth now evaluates first: an unkeyed request gets `401` regardless of `Host`, and only a keyed request that also fails the Host check gets `421`.
+- **Scopes are a closed vocabulary, taxonomy-first (invariant 5's discipline applied to auth):** `capture` (write memories), `read` (search/vault/code reads), `admin` (config, jobs, repos). **`ratify` is deliberately not a scope and never becomes one:** `confirmed` power remains a human cookie session on the REST/UI door only (doc 12 §3, doc 13 §5). On `/mcp`, scopes do not imply one another — a key holding only `admin` reaches no MCP tool at all, since every one of the 33 tools requires `capture` or `read` and none accepts `admin`. `tools/list` is deliberately **not** scope-filtered: any authenticated key sees the full tool catalogue, including writers it cannot invoke.
+- **Journaling (convention 8).** Every keyed call stamps `events.api_key_id` and `events.actor` on both doors — the moment each activation landed is the moment those two dormant columns (doc 04 §8.1) started carrying a value for that door. Key creation, revocation, and expiry journal as their own `events` rows; doc 13's settings surface lists keys with `last_used_at` so a stale key is visible before it is a liability.
 - **Management surface.** Key CRUD is an authenticated REST/UI surface (single-door, same reasoning as ratification: a credential mint is confirmed-grade power).
 
-**What triggers the activation (the gate doc 20 schedules):** the first exposed deployment (§9), or the repo push-webhook receiver docs 10/15 defer behind exactly this auth ("gated on doc 18's exposed-endpoint auth"), or any remote client that must reach darkmem across an untrusted network. None of these is v1. **Rejected:** OAuth/OIDC — a single-human self-hosted box has no delegation problem and no identity provider, and the machinery would dwarf the asset; mTLS — real security, unreasonable operational burden for the audience; wiring the key path now "since the table exists" — that is precisely the scaffolding-as-substrate move invariant 23 forbids, and an unused auth path is untested attack surface, not readiness.
+**What triggered the first activation:** the repo push-webhook receiver (docs 10/15) needed exactly this auth to land, and the three memory doors rode the same wiring pass. **Rejected then and still rejected:** OAuth/OIDC — a single-human self-hosted box has no delegation problem and no identity provider, and the machinery would dwarf the asset; mTLS — real security, unreasonable operational burden for the audience.
 
-Auth resolution across the two doors once the activation is live — the ladder each request walks:
+Auth resolution across the two doors, both activations live:
 
 ```mermaid
 flowchart TD
     REQ["incoming request"] --> D1{"which surface?"}
     D1 -->|"/api/v1 or /ws"| C1{"cookie JWT valid, jti not revoked?"}
     C1 -->|yes| OK1["human session — full power incl. ratify"]
-    C1 -->|no| B1{"Bearer dmk_ key? (activation only)"}
+    C1 -->|no| B1{"Bearer dmk_ key?"}
     B1 -->|"valid + scope covers route"| OK2["programmatic actor — events.api_key_id stamped, never ratify"]
     B1 -->|"absent / invalid"| D401["401"]
-    D1 -->|"/mcp"| H1{"Host allowlisted?"}
+    D1 -->|"/mcp"| M1{"Bearer dmk_ key?"}
+    M1 -->|"absent / invalid"| M401["401 — evaluated before the Host check"]
+    M1 -->|valid| H1{"Host allowlisted?"}
     H1 -->|no| R421["421 — extend the allowlist, never disable (inv 20)"]
-    H1 -->|yes| M1{"MCP bearer required? (exposed activation)"}
-    M1 -->|"no — LAN default"| OKM["unauthenticated tool call, attributed via headers"]
-    M1 -->|yes| M2{"valid key?"}
-    M2 -->|yes| OKM2["keyed tool call — journaled"]
-    M2 -->|no| M401["401"]
+    H1 -->|yes| S1{"scope covers the tool called?"}
+    S1 -->|yes| OKM2["keyed tool call — events.api_key_id/actor stamped, never ratify"]
+    S1 -->|no| SDENY["scope denied — JSON-RPC -32003"]
 ```
-*Caption: the LAN default is the left spine unchanged; the bearer rungs exist only after activation, and no rung anywhere reaches ratification except the human cookie session.*
+*Caption: no rung on either door reaches ratification except the human cookie session; `/mcp`'s bearer check now runs ahead of its Host check, so an unkeyed foreign-Host caller sees `401`, not `421`.*
 
 ---
 
@@ -242,7 +242,7 @@ flowchart TD
 
 The catalogue invariants (`gt-invariants.md`, doc 04 §11) that bind this layer, in this doc's own terms:
 
-- **MCP Host-allowlist trust model (inv. 20).** `/mcp` is unauthenticated on the LAN; the Host allowlist (plus mirrored browser-Origin allowlisting) is its sole network defence; a foreign Host is `421`, fixed by extending the allowlist, never by disabling protection; `*` is an explicit operator decision, not a fix (§2). At `ApiKey` activation the allowlist *stays on* under the bearer (§5).
+- **MCP Host-allowlist trust model (inv. 20).** `/mcp` requires a bearer API key on every call (§5's second activation, 2026-08-26); the Host allowlist (plus mirrored browser-Origin allowlisting) runs beside it as a second, independent network defence, not the sole one — a foreign Host is `421`, fixed by extending the allowlist, never by disabling protection; `*` is an explicit operator decision, not a fix (§2). The allowlist was designed from the start to *stay on* under the bearer (§5), and now does.
 - **Trust-on-first-use, no pre-shared secret (inv. 21).** Setup is gated only by `require_uninitialized`; `SETUP_SECRET` is gone and must not return; the first owner claims the box, everyone later gets `403` (§3).
 - **Honest partial results / no silent degradation (inv. 14).** A rejected repo hint journals and surfaces, never silently vanishes (§6); no channel crosses a project boundary silently — scope, or label with a surfaced count (§8); the rate-limiter's lockouts journal to `events` (§3).
 - **Scaffolding-not-substrate (inv. 23).** `api_keys` was a named gap with a fixed design and an activation gate, and is now wired (§5) — the invariant's discipline held in **both** directions here, which is the part worth recording: when the activation landed, the settings card went on claiming the path was dormant for three landings, and an honesty surface that has gone stale under-claims a shipped capability exactly as a premature one over-claims an unshipped one (T4.04); the SSRF gate and the trust flip are target-new and labelled; E2EE and remote-client auth are horizon recordings (§9).

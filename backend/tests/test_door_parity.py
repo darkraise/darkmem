@@ -435,9 +435,11 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "both doors call memory_overview.get_overview -- the map "
             "selection, the single summarization reduce, the community-set "
             "cache and the declared drops are the service's, so neither door "
-            "can answer a partial overview the other reports as complete. The "
-            "REST door is auth-gated and the tool is not, the same posture "
-            "every two-door read on this table carries."
+            "can answer a partial overview the other reports as complete. Both "
+            "doors now authenticate the caller -- REST by session, the tool "
+            "by a per-tool-scoped bearer key -- the same posture every "
+            "two-door read on this table carries: a key is a credential, "
+            "not a session, not an absence of gating."
         ),
     ),
     Surface(
@@ -454,9 +456,11 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "FactDetailResponse -- the tool does not reshape the dict, so a "
             "field the model does not declare is dropped on both doors and "
             "the badge's claim sentence crosses byte for byte "
-            "(test_fact_detail_doors_serve_the_same_row). The REST door is "
-            "auth-gated and the tool is not, the same posture every two-door "
-            "read on this table carries."
+            "(test_fact_detail_doors_serve_the_same_row). Both doors now "
+            "authenticate the caller -- REST by session, the tool by a "
+            "per-tool-scoped bearer key -- the same posture every two-door "
+            "read on this table carries: a key is a credential, not a "
+            "session, not an absence of gating."
         ),
     ),
     Surface(
@@ -470,9 +474,11 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "reads on tools. Built as its sibling was rather than filed "
             "single-door: both doors call articles_read.get_article and both "
             "serialise through ArticleDetailResponse, so the coverage number, "
-            "the citations and the stale label cross byte for byte. The REST "
-            "door is auth-gated and the tool is not, the same posture every "
-            "two-door read here carries."
+            "the citations and the stale label cross byte for byte. Both doors "
+            "now authenticate the caller -- REST by session, the tool by a "
+            "per-tool-scoped bearer key -- the same posture every two-door "
+            "read here carries: a key is a credential, not a session, not "
+            "an absence of gating."
         ),
     ),
     Surface(
@@ -519,8 +525,10 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "an out-of-range limit to the shared cap while the route 422s on "
             "it, and unavailability is a 503 whose body is the shared model "
             "against a tool payload that adds the MCP envelope's "
-            "schema_version. The route is auth-gated and the tool is not, the "
-            "same posture every two-door read on this table carries."
+            "schema_version. Both doors now authenticate the caller -- REST "
+            "by session, the tool by a per-tool-scoped bearer key -- the "
+            "same posture every two-door read on this table carries: a key "
+            "is a credential, not a session, not an absence of gating."
         ),
     ),
     Surface(
@@ -548,10 +556,12 @@ PARITY_TABLE: tuple[Surface, ...] = (
             ("GET", f"{V1}/auth/me"),
         ),
         reason=(
-            "The MCP door is unauthenticated by design (invariant 20, doc 12 "
-            "section 6), so a session surface on it is a contradiction in "
-            "terms: there is no session to establish, and a change-password "
-            "twin would let any LAN peer seize the admin account."
+            "The MCP door authenticates callers with a per-tool-scoped bearer "
+            "key, never a session (doc 18 section 5), so a session surface on "
+            "it is still a contradiction in terms: there is no session to "
+            "establish, no MCP scope reaches the admin account, and a "
+            "change-password twin would hand session-equivalent control to a "
+            "credential that was never designed to carry it."
         ),
     ),
     Surface(
@@ -561,8 +571,8 @@ PARITY_TABLE: tuple[Surface, ...] = (
         reason=(
             "A human security-review read of the doc 12 section 7 "
             "observability class: it enumerates login attempts and token "
-            "events, which is precisely the material an unauthenticated "
-            "caller must not be able to page through."
+            "events, human-review material no MCP scope grants a keyed "
+            "caller a reason to page through."
         ),
     ),
     Surface(
@@ -575,9 +585,9 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "auth.audit above: an operator's read of which IP-trust and "
             "cookie strategy is live, not a capability an agent retrieves. "
             "The response enumerates named fields rather than serialising "
-            "settings, so it can never leak a credential, but it stays an "
-            "authenticated door read: an unauthenticated caller has nothing "
-            "to gain from seeing another human's transport-trust posture."
+            "settings, so it can never leak a credential, but it stays a "
+            "human-session read: a keyed agent has nothing to gain from "
+            "seeing another human's transport-trust posture."
         ),
     ),
     Surface(
@@ -606,10 +616,10 @@ PARITY_TABLE: tuple[Surface, ...] = (
             ("GET", f"{V1}/system/fs/roots"),
         ),
         reason=(
-            "Authenticated host-filesystem browse behind the repo-path "
-            "picker. Directory listing over an unauthenticated door is a "
-            "disclosure primitive with no offsetting agent benefit "
-            "(invariant 20)."
+            "Human-session host-filesystem browse behind the repo-path "
+            "picker. Directory listing is a disclosure primitive with no "
+            "offsetting agent benefit, and no MCP scope grants a tool "
+            "reason to walk the host filesystem (invariant 20)."
         ),
     ),
     Surface(
@@ -638,10 +648,10 @@ PARITY_TABLE: tuple[Surface, ...] = (
         reason=(
             "Operator configuration -- provider credentials, feature flags, "
             "the repo allowlist, the repos path, the system prompts. Doc 12 "
-            "section 3's confirmed-power rule generalises: the unauthenticated "
-            "LAN door must never carry a power the REST door reserves for an "
-            "authenticated human, and the read half alone would hand out the "
-            "provider API key."
+            "section 3's confirmed-power rule generalises: a bearer key is a "
+            "credential, not the human session the REST door reserves this "
+            "power for, and the read half alone would hand out the provider "
+            "API key to any capture/read-scoped caller."
         ),
     ),
     Surface(
@@ -656,9 +666,10 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
         reason=(
             "The same posture as config.llm_providers, for the same reason: a "
-            "git account is the operator's forge credential, and /mcp is "
-            "unauthenticated on a local-network trust model. The read half "
-            "alone would hand an agent the roster of an operator's accounts, "
+            "git account is the operator's forge credential, and an MCP "
+            "bearer key is a credential too, not the human session this "
+            "power is reserved for. The read half alone would hand an agent "
+            "the roster of an operator's accounts, "
             "and the write half would let it file a token or delete one. "
             "Cloning a repo is already reachable from an agent through the "
             "repos surface without any of that."
@@ -679,9 +690,10 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "Provider management is operator configuration, not an agent "
             "capability -- the same posture as config.runtime, split into its "
             "own surface because it is a distinct resource. An agent has no "
-            "business rotating the operator's vendor credentials, and /mcp is "
-            "unauthenticated on a local-network trust model, so putting "
-            "credential writes there would be a genuine security regression."
+            "business rotating the operator's vendor credentials, and an MCP "
+            "bearer key is a credential rather than the human session this "
+            "power is reserved for, so putting credential writes there would "
+            "be a genuine security regression."
         ),
     ),
     Surface(
@@ -709,9 +721,10 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "A whole-corpus reprocess is unbounded operator maintenance that "
             "spends the configured provider budget and rewrites every "
             "memory's graph. The reasoning that keeps ratification off the "
-            "MCP door (doc 12 section 3) keeps this off it: an "
-            "unauthenticated caller must not be able to spend the operator's "
-            "money or churn the whole corpus."
+            "MCP door (doc 12 section 3) keeps this off it: no MCP scope "
+            "must be able to spend the operator's money or churn the whole "
+            "corpus -- a capture/read-scoped key is not the confirmed-power "
+            "grant this would require."
         ),
     ),
     Surface(
@@ -870,7 +883,7 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "the corpus rather than retrieving from it. T2.72 replaced the "
             "trust-posture argument this row used to carry, which was weak "
             "for the reason its reviewer gave: every two-door read on this "
-            "table already pairs an unauthenticated tool with an "
+            "table already pairs a bearer-keyed tool with a session-"
             "authenticated route, so posture does not decide door count. The "
             "detail half of this surface is no longer here -- it is "
             "knowledge.fact_detail, two-door with fact_get."
@@ -884,15 +897,20 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "The confirmed-power write, and doc 12 section 3 names it as the "
             "first of the reshape's two sanctioned single-door kinds in so "
             "many words: 'the unauthenticated LAN MCP surface must never carry "
-            "confirmed power'. Unlike knowledge.facts_list, this row's reason "
-            "IS the trust posture and the posture argument holds here where it "
-            "did not there -- the two-door reads pair an unauthenticated tool "
-            "with an authenticated route because reading the vault is a "
-            "capability an agent should have, whereas confirmed is by "
-            "construction the one rung the machine cannot reach on its own "
-            "(doc 08 section 4.4). A twin would let any LAN peer forge the "
-            "human's imprimatur, which is the forged-ratification threat doc "
-            "18 section 2 tables. Recorded here so nobody completes the "
+            "confirmed power' -- doc 18 section 5's bearer requirement changed "
+            "what makes that hold: the door is no longer unauthenticated, but "
+            "no MCP scope reaches confirmed power, so the rung stays "
+            "unreachable from it on different grounds. Unlike "
+            "knowledge.facts_list, this row's reason IS the trust posture and "
+            "the posture argument holds here where it did not there -- the "
+            "two-door reads pair a bearer-keyed tool with a session-"
+            "authenticated route because reading the vault is a capability an "
+            "agent should have, whereas confirmed is by construction the one "
+            "rung the machine cannot reach on its own (doc 08 section 4.4). A "
+            "twin would let any capture/read-scoped key forge the human's "
+            "imprimatur -- a credential is not the session this power is "
+            "reserved for -- which is the forged-ratification threat doc 18 "
+            "section 2 tables. Recorded here so nobody completes the "
             "symmetry later."
         ),
     ),
@@ -909,13 +927,14 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "and doc 18 section 5 fixes it in the same words it uses for "
             "ratification: 'a credential mint is confirmed-grade power'. The "
             "posture argument is the one that holds for knowledge.ratify and "
-            "not for the vault reads -- a twin on the unauthenticated LAN MCP "
-            "door would let any peer on the network mint itself a credential, "
-            "which is strictly worse than the surface it would be minting "
-            "access to. It is also why 'admin' is not the scope of this "
-            "surface: a key holding admin still cannot reach it, so a stolen "
-            "key cannot mint its own successor and outlive its revocation "
-            "(T4.01). Recorded here so nobody completes the symmetry later."
+            "not for the vault reads -- a twin on the MCP door would let any "
+            "already-keyed caller mint itself a stronger or longer-lived "
+            "credential than the one it holds, which is strictly worse than "
+            "the surface it would be minting access to. It is also why "
+            "'admin' is not a scope any MCP tool accepts: a key holding admin "
+            "still reaches nothing over /mcp, so a stolen key cannot mint its "
+            "own successor and outlive its revocation (T4.01). Recorded here "
+            "so nobody completes the symmetry later."
         ),
     ),
     Surface(
@@ -938,9 +957,11 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "dismiss flow doc 09 section 3.4 describes. Accept/dismiss are "
             "also a human curation decision about what feeds article "
             "synthesis, the same review-a-suggestion shape "
-            "hygiene_queue.triage and review_queue.reject keep off the "
-            "unauthenticated MCP surface rather than a query an agent has a "
-            "reason to aim at. If a later doc revision names an agent-facing "
+            "hygiene_queue.triage and review_queue.reject keep off the MCP "
+            "surface -- a bearer scope is a credential, not the human "
+            "curation session this decision requires -- rather than a query "
+            "an agent has a reason to aim at. If a later doc revision names "
+            "an agent-facing "
             "tool here the way T2.72 added fact_get for knowledge.facts_list, "
             "this row moves to two-door then, not before."
         ),
@@ -1031,9 +1052,10 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
         reason=(
             "The UI's chat console runs on the box's own configured LLM. An "
-            "MCP client brings its own model, and a twin would turn the "
-            "unauthenticated door into an open proxy spending the operator's "
-            "provider credit."
+            "MCP client brings its own model, and a twin would turn a "
+            "capture/read-scoped key into an open proxy spending the "
+            "operator's provider credit -- no MCP scope is meant to carry "
+            "that kind of spend."
         ),
     ),
     Surface(
@@ -1042,9 +1064,10 @@ PARITY_TABLE: tuple[Surface, ...] = (
         rest=(("POST", f"{V1}/memories/delete"),),
         reason=(
             "The UI's multi-select delete. An agent removes the rows it knows "
-            "by id through memory_delete; a mass-erasure primitive on an "
-            "unauthenticated door is exactly the power doc 12 section 3 keeps "
-            "behind authentication."
+            "by id through memory_delete; a mass-erasure primitive is a "
+            "bigger blast radius than the capture scope that write sits "
+            "behind, and is exactly the power doc 12 section 3 keeps to the "
+            "human session rather than any credential."
         ),
     ),
     Surface(

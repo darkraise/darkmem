@@ -316,18 +316,21 @@ function LanTrustCard({ binding }: { binding: SecurityTabBinding }) {
       icon={Globe}
       title="LAN trust model"
       tag="v1 committed posture"
-      help="darkmem trusts its LAN, authenticates its human, and attributes — but does not authenticate — its agents. Three postures, one service layer underneath all of them."
+      help="darkmem trusts its LAN, authenticates its human by session, and authenticates its agents by a per-tool-scoped bearer key — a credential, not a session. Three postures, one service layer underneath all of them."
       className="sm:col-span-2"
     >
       <div className="border-inset bg-muted/12 flex flex-col gap-1.5 rounded-md border px-3 py-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-sm font-semibold">/mcp</span>
           <HelpTip label="About the /mcp door">
-            Unauthenticated by design. A foreign Host header gets 421, fixed
-            by extending the allowlist — never by disabling the check.
+            Every call requires Authorization: Bearer dmk_…, with scopes
+            enforced per tool. The Host allowlist is a second, independent
+            guard: an unkeyed request gets 401 regardless of Host, and only a
+            keyed request that also fails the Host check gets 421, fixed by
+            extending the allowlist — never by disabling either guard.
           </HelpTip>
           <span className="text-muted-foreground ml-auto font-mono text-[10px]">
-            Host allowlist only, no credential
+            Bearer key required — scoped per tool
           </span>
         </div>
         {binding.mcpHosts !== null ? (

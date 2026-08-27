@@ -58,16 +58,27 @@ still read. Check the container log for `COOKIE_SECURE=false is clamped`.
   delivery cannot set an `Authorization` header**, so it cannot reach this
   receiver. Self-hosted senders that can — Gitea, a `post-receive` script,
   a small relay — can.
-- **Do not route `/mcp` from the public side** — and the app now refuses it
-  rather than trusting you not to. `/mcp` is unauthenticated by design
-  (local-network trust model); its only network defence is the DNS-rebinding
-  Host allowlist, and the bearer-required option for that door is designed but
-  **not shipped** (doc 18 §5). Publishing `/mcp` would publish every MCP tool
-  to anyone who can reach it. So with `TRUST_PROXY_HEADERS=true`, a `/mcp`
-  request carrying proxy headers is answered `403 mcp_not_exposed` and
-  journalled as `mcp_proxied_refused` (throttled to one row a minute, so a
-  scanner cannot grow the journal). Restrict it at the proxy as well; this
-  guard is the backstop, not the plan.
+- **Do not route `/mcp` from the public side** — and the app refuses it rather
+  than trusting you not to. **Every `/mcp` call requires
+  `Authorization: Bearer dmk_<key_id>_<secret>`, scoped per tool (doc 18 §5,
+  shipped 2026-08-26)** — that closes the old "any LAN peer can call any tool"
+  gap, but it does not make public exposure safe, and this runbook still
+  enforces the same "do not route it" rule rather than relaxing it now that a
+  key is required. Three reasons. First, the guard below does not consult the
+  bearer at all — a proxied `/mcp` request is refused whether or not it
+  carries a valid key, because the guard answers "did this arrive from
+  outside", not "is this caller allowed in". Second, MCP auth has no
+  login-style lockout: nothing slows or blocks repeated bad credentials.
+  Third, every attempt — including an invented key — costs one fixed-cost
+  `bcrypt` verification (`app/services/api_keys.py`'s constant-time-miss
+  design) run off the same shared thread executor that also serves git
+  subprocesses, code parsing and local classification; roughly 20 concurrent
+  junk credentials is enough to saturate it, so a public `/mcp` is a cheap way
+  to degrade unrelated work well before an attacker needs a real key. So with
+  `TRUST_PROXY_HEADERS=true`, a `/mcp` request carrying proxy headers is
+  answered `403 mcp_not_exposed` and journalled as `mcp_proxied_refused`
+  (throttled to one row a minute, so a scanner cannot grow the journal).
+  Restrict it at the proxy as well; this guard is the backstop, not the plan.
 
   **Extending `MCP_ALLOWED_HOSTS` does not lift it.** That is deliberate. The
   standing advice for a LAN `421` is to extend the allowlist, and without this
@@ -83,7 +94,7 @@ Non-human callers use an API key — `Authorization: Bearer dmk_<key_id>_<secret
 never becomes one: confirming a fact stays a human cookie session on the REST
 door.
 
-**What each scope reaches, exactly.** The scope-gated surface is small on
+**What each scope reaches, exactly.** REST's scope-gated surface is small on
 purpose, and it is the surface the minimal client speaks:
 
 | Scope | Routes |
@@ -91,6 +102,15 @@ purpose, and it is the surface the minimal client speaks:
 | `capture` | `POST /memories`, `POST /memories/batch` |
 | `read` | `POST /memories/search/paginated` |
 | `admin` | `POST /repos/{id}/webhook` |
+
+**`/mcp` is scoped far more widely, and separately** (doc 18 §5's second
+activation, 2026-08-26): every one of its 33 tools requires `capture` or
+`read`, so a `capture`-scoped key reaches all 8 MCP writer tools —
+`memory_add`, `memory_batch_add`, `memory_update`, `memory_delete`,
+`document_put`, `document_delete`, `checkpoint_save`, `research_run` — not
+only the two REST routes above, and a `read`-scoped key reaches the other 25.
+The table above is REST's reach only; do not read it as the whole reach of a
+`capture` or `read` key.
 
 Everything else stays human-session-only. That is a deliberate boundary rather
 than an oversight: widening `read` to the fact vault or the code graph decides
@@ -110,9 +130,10 @@ settings card's last-used column is the quick signal; the events journal is the
 record. A key whose last-used time moves when you are not deploying is the
 signal to revoke.
 
-Note the scope of that: the webhook is currently the **only** route a key
-reaches, so key activity appears in the events journal and not on a memory's
-own timeline — no keyed call can write a memory today.
+A `capture`-scoped key can write memories today, on REST and on MCP, and every
+such call — either door — stamps `events.api_key_id`/`actor` on the journal
+row, so a memory captured by a key you did not expect to be active is visible
+there too, not only in webhook activity.
 
 ## 4. Verify the posture you think you have
 

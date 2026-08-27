@@ -37,7 +37,7 @@ async def test_put_system_prompts_refreshes_mcp_instructions(client, auth_header
             json={"overrides": {"agent_instructions": custom}},
         )
         assert resp.status_code == 200, resp.text
-        assert mcp._mcp_server.instructions == custom
+        assert mcp._lowlevel_server.instructions == custom
 
         # Clearing the override restores the in-code default on the live server.
         resp = await client.put(
@@ -46,6 +46,31 @@ async def test_put_system_prompts_refreshes_mcp_instructions(client, auth_header
             json={"overrides": {"agent_instructions": ""}},
         )
         assert resp.status_code == 200
-        assert mcp._mcp_server.instructions == prompt_mod.PROMPTS["agent_instructions"]
+        assert mcp._lowlevel_server.instructions == prompt_mod.PROMPTS["agent_instructions"]
     finally:
         prompt_mod.set_overrides({})
+
+
+async def test_refresh_mcp_instructions_reaches_the_live_server(monkeypatch):
+    """Prompt edits must take effect without a restart.
+
+    The write goes through a private SDK attribute, so an SDK upgrade can break
+    it silently: nothing raises, and the only symptom is that an edited prompt
+    never reaches a client.
+    """
+    from app.api.mcp import server as mcp_module
+    import app.services.prompt as prompt_module
+
+    # Registered with its CURRENT value so monkeypatch's teardown restores it.
+    # `mcp` is a process-lifetime singleton, so a leaked sentinel would surface
+    # in an unrelated test far from this one.
+    monkeypatch.setattr(
+        mcp_module.mcp._lowlevel_server,
+        "instructions",
+        mcp_module.mcp._lowlevel_server.instructions,
+    )
+    monkeypatch.setattr(prompt_module, "get", lambda key: "SENTINEL INSTRUCTIONS")
+
+    mcp_module.refresh_mcp_instructions()
+
+    assert "SENTINEL INSTRUCTIONS" in (mcp_module.mcp._lowlevel_server.instructions or "")

@@ -179,9 +179,12 @@ public internet is a different posture with real obligations:
 3. **Expect `COOKIE_SECURE` to be forced on.** With proxy headers trusted, an
    explicit `false` is clamped to `true` and the clamp is reported — in a boot
    warning, in the audit journal, and on `GET /auth/security-posture`.
-4. **Do not route `/mcp` from the public side.** It is unauthenticated by
-   design; a Host allowlist is its only defence. Bearer auth for it is designed
-   and *not shipped*.
+4. **Do not route `/mcp` from the public side.** Every call now requires a
+   bearer API key, scoped per tool, on top of the Host allowlist — but the app
+   itself still refuses a proxied `/mcp` request regardless of whether it
+   carries a valid key, and MCP auth has no lockout on repeated bad
+   credentials, so exposure is still not something the bearer requirement
+   alone makes safe. See `docs/runbook-exposed-deployment.md`.
 5. **Keep `/docs`, `/redoc` and `/openapi.json` behind your proxy's auth.**
    They are served unauthenticated.
 

@@ -4,11 +4,13 @@ from contextlib import asynccontextmanager
 from typing import Annotated
 from uuid import UUID
 
-from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.auth.settings import AuthSettings
+from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import Field
 from sqlalchemy import select, text
 
+from app.api.mcp.auth import ApiKeyTokenVerifier, current_api_key_id, current_key_name
 from app.api.mcp.client_identity import (
     FALLBACK_SOURCE,
     declared_origin,
@@ -17,6 +19,7 @@ from app.api.mcp.client_identity import (
     resolve_origin_key,
     resolve_source_agent,
 )
+from app.api.mcp.scopes import ToolScopeMiddleware
 from app.config import settings
 from app.database import async_session_factory
 from app.schemas.envelope import ENVELOPE_SCHEMA_VERSION
@@ -51,14 +54,41 @@ def build_transport_security(allowed_hosts_csv: str) -> TransportSecuritySetting
     )
 
 
-mcp = FastMCP(
-    "darkmem",
-    json_response=True,
-    stateless_http=True,
-    streamable_http_path="/",
-    instructions="",
-    transport_security=build_transport_security(settings.mcp_allowed_hosts),
+# `issuer_url` is a required field on `AuthSettings` and darkmem issues no
+# OAuth tokens: the credential is a static API key the operator mints. Nothing
+# serves this URL - `create_auth_routes` needs an `auth_server_provider` and
+# `create_protected_resource_routes` needs a `resource_server_url`, and this
+# door has neither - but the SDK refuses a `token_verifier` with no
+# `AuthSettings` at all, so the block exists to turn bearer verification on.
+# `required_scopes` stays empty on purpose: the transport requires a *verified*
+# key for every request, and which scope that key must hold is per tool, which
+# a route-wide list cannot express. `ToolScopeMiddleware` decides that.
+_MCP_AUTH = AuthSettings(
+    issuer_url="http://localhost",
+    resource_server_url=None,
+    required_scopes=[],
 )
+
+mcp = MCPServer(
+    "darkmem",
+    instructions="",
+    auth=_MCP_AUTH,
+    token_verifier=ApiKeyTokenVerifier(),
+    middleware=[ToolScopeMiddleware()],
+)
+
+# v2 moved json_response/stateless_http/streamable_http_path/transport_security
+# off the MCPServer constructor and onto streamable_http_app()'s own kwargs
+# (https://py.sdk.modelcontextprotocol.io/v2/migration/). Centralised here so
+# every streamable_http_app() call site (app boot, test fixtures) serves the
+# same transport posture instead of re-declaring the literals.
+def mcp_streamable_http_kwargs() -> dict:
+    return {
+        "streamable_http_path": "/",
+        "json_response": True,
+        "stateless_http": True,
+        "transport_security": build_transport_security(settings.mcp_allowed_hosts),
+    }
 
 _pipeline = None
 
@@ -71,16 +101,17 @@ def set_pipeline(pipeline):
 def refresh_mcp_instructions() -> None:
     """Push the current ``agent_instructions`` prompt onto the live MCP server.
 
-    FastMCP exposes ``instructions`` only as a read-only property, so the
-    low-level server attribute is the single writable path. The SDK reads it
-    per request when building the initialize response, so calling this after a
-    prompt edit makes the new text take effect without a restart.
+    ``MCPServer.instructions`` is a read-only property backed by the v2
+    lowlevel ``Server``, so ``_lowlevel_server.instructions`` is the single
+    writable path. The SDK reads it per request when building the initialize
+    response, so calling this after a prompt edit makes the new text take
+    effect without a restart.
     """
     from app.services import prompt as _prompt
 
     instructions = _prompt.get("agent_instructions")
     if instructions:
-        mcp._mcp_server.instructions = instructions
+        mcp._lowlevel_server.instructions = instructions
 
 
 @asynccontextmanager
@@ -182,7 +213,14 @@ async def memory_add(
             memory_type=memory_type, project=resolved_project,
         )
         result = await service.create_memory(
-            data, api_key_id=None, wait_process=wait_process, actor=resolved_source,
+            data, api_key_id=current_api_key_id(), wait_process=wait_process,
+            # The authenticated key's name, not the client tool: `resolved_source`
+            # (the tool that made the call) still rides `data.source`, stored on
+            # the memory row and echoed in this event's own payload, so nothing
+            # is lost by preferring the credential's identity here — it just
+            # matches what `events.actor` already means on REST's keyed capture
+            # door (`app/api/routes/memories.py`'s `user.actor`).
+            actor=current_key_name() or resolved_source,
         )
         if result.memory is not None:
             return json.dumps(_memory_to_dict(result.memory))
@@ -280,8 +318,14 @@ async def memory_update(
         fields["memory_type"] = memory_type
     async with _memory_service_context() as service:
         data = MemoryUpdate(**fields)
-        actor = resolve_client_source(None, ctx)
-        memory = await service.update_memory(mid, data, api_key_id=None, actor=actor)
+        # Prefer the authenticated key's name (parity with `events.actor` on
+        # REST's keyed doors); fall back to the client-tool guess only when
+        # the call carries no token, which cannot happen once every tool
+        # requires a bearer key but keeps this honest if that ever changes.
+        actor = current_key_name() or resolve_client_source(None, ctx)
+        memory = await service.update_memory(
+            mid, data, api_key_id=current_api_key_id(), actor=actor,
+        )
         if not memory:
             raise ValueError(f"Memory not found: {memory_id}")
         return json.dumps(_memory_to_dict(memory))
@@ -297,8 +341,8 @@ async def memory_delete(memory_id: str, ctx: Context | None = None) -> str:
     """
     mid = _validate_uuid(memory_id)
     async with _memory_service_context() as service:
-        actor = resolve_client_source(None, ctx)
-        result = await service.delete_memory(mid, api_key_id=None, actor=actor)
+        actor = current_key_name() or resolve_client_source(None, ctx)
+        result = await service.delete_memory(mid, api_key_id=current_api_key_id(), actor=actor)
         if not result:
             raise ValueError(f"Memory not found: {memory_id}")
         return json.dumps({"deleted": True, "memory_id": memory_id})
@@ -332,8 +376,11 @@ async def memory_batch_add(
     # landing every batch-added memory in 'default'.
     async with _memory_service_context() as service:
         results = await service.batch_create_memories(
-            validated.entries, api_key_id=None, wait_process=wait_process,
-            actor=resolve_client_source(None, ctx, fallback=FALLBACK_SOURCE),
+            validated.entries, api_key_id=current_api_key_id(), wait_process=wait_process,
+            # Per-entry `source` (client tool) still rides each entry's own
+            # `data.source` and this event's own payload; see memory_add.
+            actor=current_key_name()
+            or resolve_client_source(None, ctx, fallback=FALLBACK_SOURCE),
         )
         return json.dumps([
             _memory_to_dict(r.memory) if r.memory is not None

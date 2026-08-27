@@ -1,24 +1,96 @@
+import ast
+import pathlib
 from contextlib import asynccontextmanager
 
 import app.api.mcp.server as mcp_module
 from app.api.mcp.server import code_search, mcp
 
+SERVER_PATH = pathlib.Path(__file__).resolve().parents[1] / "app" / "api" / "mcp" / "server.py"
+
+# The roster this server is expected to serve, pinned by name.
+#
+# Not a count, and not a source-vs-runtime comparison. The decorator is both
+# what an AST scan reads and what registers the tool, so removing one drops
+# both sides together and an equality check between them stays true — it
+# cannot see a loss at all. A count cannot tell a rename from a replacement.
+# Only a pinned roster catches every case, and it makes adding or removing a
+# tool a deliberate one-line diff here rather than a silent drift.
+EXPECTED_TOOLS: frozenset[str] = frozenset({
+    "article_get",
+    "checkpoint_latest",
+    "checkpoint_save",
+    "code_blast_radius",
+    "code_changes",
+    "code_communities",
+    "code_context",
+    "code_dependencies",
+    "code_file_symbols",
+    "code_processes",
+    "code_rename",
+    "code_search",
+    "code_symbol",
+    "document_delete",
+    "document_get",
+    "document_outline",
+    "document_put",
+    "document_search",
+    "fact_get",
+    "knowledge_search",
+    "list_repos",
+    "memory_add",
+    "memory_batch_add",
+    "memory_delete",
+    "memory_find_duplicates",
+    "memory_get",
+    "memory_overview",
+    "memory_reason",
+    "memory_search",
+    "memory_stats",
+    "memory_tags",
+    "memory_update",
+    "research_run",
+})
+
+
+def _declared_tool_names() -> set[str]:
+    """Every tool name server.py declares, as the SDK will register it.
+
+    Honours an explicit ``@mcp.tool(name="...")`` override: the AST sees the
+    Python function name while the registry reports the resolved tool name,
+    and the two diverge exactly when that keyword is used.
+    """
+    tree = ast.parse(SERVER_PATH.read_text(encoding="utf-8"))
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef)):
+            continue
+        for dec in node.decorator_list:
+            target = dec.func if isinstance(dec, ast.Call) else dec
+            if not (isinstance(target, ast.Attribute) and target.attr == "tool"):
+                continue
+            override = None
+            if isinstance(dec, ast.Call):
+                for kw in dec.keywords:
+                    if kw.arg == "name" and isinstance(kw.value, ast.Constant):
+                        override = kw.value.value
+            names.add(override or node.name)
+    return names
+
 
 async def test_mcp_tools_registered():
-    tools = await mcp.list_tools()
-    tool_names = [t.name for t in tools]
-    assert "memory_add" in tool_names
-    assert "memory_search" in tool_names
-    assert "memory_get" in tool_names
-    assert "memory_update" in tool_names
-    assert "memory_delete" in tool_names
-    assert "memory_batch_add" in tool_names
-    assert "memory_reason" in tool_names
-    assert "memory_find_duplicates" in tool_names
-    assert "memory_stats" in tool_names
-    assert "memory_tags" in tool_names
-    assert len(tool_names) >= 10
-    assert len(tool_names) == len(set(tool_names))
+    declared = _declared_tool_names()
+    registered = {t.name for t in await mcp.list_tools()}
+
+    assert declared == EXPECTED_TOOLS, (
+        "the declared roster moved; if that is intended, update EXPECTED_TOOLS "
+        f"deliberately. missing={sorted(EXPECTED_TOOLS - declared)} "
+        f"unexpected={sorted(declared - EXPECTED_TOOLS)}"
+    )
+    assert registered == EXPECTED_TOOLS, (
+        "the live registry does not match the pinned roster. "
+        f"missing={sorted(EXPECTED_TOOLS - registered)} "
+        f"unexpected={sorted(registered - EXPECTED_TOOLS)}"
+    )
 
 
 async def test_code_search_clamps_limit(session, monkeypatch):

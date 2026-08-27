@@ -35,9 +35,10 @@ _SLUG_RE = re.compile(r"[^a-z0-9._-]+")
 # Runtime/library User-Agent product tokens that say nothing about which
 # tool is calling.
 GENERIC_UA_TOKENS = frozenset({
-    "node", "bun", "deno", "mozilla", "python-httpx", "python-requests",
-    "python-urllib", "python-aiohttp", "aiohttp", "curl", "undici", "axios",
-    "go-http-client", "okhttp", "java", "libwww-perl", "wget",
+    "node", "bun", "deno", "mozilla", "python-httpx", "python-httpx2",
+    "python-requests", "python-urllib", "python-aiohttp", "aiohttp", "curl",
+    "undici", "axios", "go-http-client", "okhttp", "java", "libwww-perl",
+    "wget",
 })
 
 # Distinctive User-Agent product tokens -> canonical source names.

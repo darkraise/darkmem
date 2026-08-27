@@ -1,12 +1,18 @@
 """`/mcp` must not be reachable through the proxy (T4.17).
 
-The E4 epic review's I3. `/mcp` is unauthenticated by design — the
-local-network trust model — and its bearer-required option is designed and
-unshipped (doc 18 §5), so the runbook tells the operator not to route it
-publicly. The objection to leaving it there: the gap was **one allowlist entry
-from armed**, and the standing advice for a LAN `421` is "extend the
-allowlist", which points at exactly that entry. An operator following correct
-advice about a different guard could open this one.
+The E4 epic review's I3. At the time this guard was built, `/mcp` was
+unauthenticated by design — the local-network trust model — and the runbook
+told the operator not to route it publicly on that basis. **Every `/mcp` call
+has required a bearer key since doc 18 §5's second activation (2026-08-26)**,
+which closes the "any LAN peer reaches any tool" gap this guard's original
+premise rested on — but the guard is not thereby redundant: it answers "did
+this arrive from outside the trusted network", which a valid key does not
+answer, and MCP auth carries no rate limiting, so a leaked or guessed
+credential arriving from outside is still not something the runbook should
+treat as safe. The objection to leaving the guard unenforced: the gap was
+**one allowlist entry from armed**, and the standing advice for a LAN `421` is
+"extend the allowlist", which points at exactly that entry. An operator
+following correct advice about a different guard could open this one.
 
 The guard closes it in the only direction that cannot cost anything: it is
 inert unless the exposed switch is on, and even then it refuses only requests

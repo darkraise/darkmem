@@ -30,16 +30,27 @@ def test_wildcard_disables_protection():
 
 
 @pytest.mark.asyncio
-async def test_default_mcp_rejects_foreign_host_allows_localhost(mcp_streamable_app):
+async def test_default_mcp_rejects_foreign_host_allows_localhost(
+    mcp_streamable_app, mcp_credential
+):
     """With the default (empty) allowlist, localhost is accepted and a LAN host
-    is rejected with 421 — proving rebinding protection is on by default."""
+    is rejected with 421 — proving rebinding protection is on by default.
+
+    Both probes carry a valid key. The door refuses an unauthenticated call
+    before the Host check runs, so without one the accepted case would 401 and
+    the rejected case would 401 too — the pair would agree and prove nothing
+    about the allowlist."""
     payload = {
         "jsonrpc": "2.0", "id": 0, "method": "initialize",
         "params": {"protocolVersion": "2025-03-26", "capabilities": {},
                    "clientInfo": {"name": "t", "version": "1"}},
     }
     transport = httpx.ASGITransport(app=mcp_streamable_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as c:
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+        headers={"Authorization": f"Bearer {mcp_credential}"},
+    ) as c:
         ok = await c.post("/", json=payload, headers={
             "Accept": "application/json, text/event-stream", "Host": "localhost:8000"})
         foreign = await c.post("/", json=payload, headers={
@@ -81,13 +92,16 @@ def test_an_unconfigured_host_is_not_reachable_by_accident():
 
 
 @pytest.mark.asyncio
-async def test_browser_origins_are_allowlisted_to_the_same_hosts(mcp_streamable_app):
+async def test_browser_origins_are_allowlisted_to_the_same_hosts(
+    mcp_streamable_app, mcp_credential
+):
     """A browser Origin is checked against the same host set (403 when foreign).
 
     Agents send no Origin at all, so this gate exists purely for the browser
-    case: without it a page on any origin could drive the unauthenticated tool
-    surface from a victim's machine, which is the attack the Host check alone
-    does not cover.
+    case: without it a page on any origin could drive the tool surface from a
+    victim's machine, which is the attack the Host check alone does not cover.
+    The door now also requires a bearer, so the page would need a stolen key
+    as well — this gate is the second of the two, not the only one.
     """
     payload = {
         "jsonrpc": "2.0", "id": 0, "method": "initialize",
@@ -96,7 +110,11 @@ async def test_browser_origins_are_allowlisted_to_the_same_hosts(mcp_streamable_
     }
     headers = {"Accept": "application/json, text/event-stream", "Host": "localhost:8000"}
     transport = httpx.ASGITransport(app=mcp_streamable_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as c:
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+        headers={"Authorization": f"Bearer {mcp_credential}"},
+    ) as c:
         none_sent = await c.post("/", json=payload, headers=headers)
         allowed = await c.post("/", json=payload, headers={
             **headers, "Origin": "http://localhost:3636"})
