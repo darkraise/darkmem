@@ -211,7 +211,7 @@ class GraphService:
                 try:
                     sample = "\n".join(contents[:8])
                     name = await self.llm.chat_completion(
-                        "extraction",
+                        "summarization",
                         messages=[
                             {"role": "system", "content": cluster_system_prompt},
                             {"role": "user", "content": sample},
