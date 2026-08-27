@@ -66,6 +66,28 @@ class MemoryTraceRow:
     rank_fusion_breakdown: dict[str, float]
 
 
+def _fit_context(
+    context_parts: list[str], sources: list[dict], budget: int
+) -> tuple[list[str], list[dict]]:
+    """Drop whole memories past the budget, and their citations with them.
+
+    Slicing the joined context while returning the full sources list lets the
+    answer cite a memory the model never saw - the prompt's "answer ONLY
+    based on the content within <memories>" contract silently false. The two
+    lists are truncated at the same index so a cited row is always a sent row.
+    """
+    kept: list[str] = []
+    used = 0
+    for part in context_parts:
+        # +2 for the "\n\n" join separator between entries.
+        cost = len(part) + (2 if kept else 0)
+        if used + cost > budget:
+            break
+        kept.append(part)
+        used += cost
+    return kept, sources[: len(kept)]
+
+
 class MemoryService:
     def __init__(self, session: AsyncSession, pipeline: ProcessingPipeline | None = None):
         self.memory_repo = PostgresMemoryRepository(session)
@@ -848,7 +870,10 @@ limit=params.limit, offset=params.offset,
             return {"answer": "No relevant memories found.", "sources": []}
 
         # Step 3: Ask LLM with context
-        context = "\n\n".join(context_parts)[:_MAX_CONTENT_CHARS]
+        context_parts, sources = _fit_context(
+            context_parts, sources, _MAX_CONTENT_CHARS
+        )
+        context = "\n\n".join(context_parts)
         user_prompt = (
             "Based on the following stored memories, answer the question.\n"
             "If the memories don't contain enough information, say so.\n"

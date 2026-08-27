@@ -86,3 +86,31 @@ async def test_reason_finds_decision_memories_for_decisions_query(session):
     contents = " ".join(s["content"] for s in result["sources"]).lower()
     assert "pgvector" in contents
     assert "docker compose" in contents
+
+
+def test_sources_never_name_a_memory_that_was_truncated_away():
+    """Every cited source must have actually reached the model.
+
+    Truncating the joined context while returning the full sources list
+    invites a citation to a memory the model never saw.
+    """
+    from app.services.memory import _fit_context
+
+    parts = [f"[{i+1}] " + "x" * 500 for i in range(10)]
+    sources = [{"memory_id": f"m{i}"} for i in range(10)]
+
+    kept_parts, kept_sources = _fit_context(parts, sources, budget=1200)
+
+    assert len(kept_parts) == len(kept_sources)
+    assert len("\n\n".join(kept_parts)) <= 1200
+    assert len(kept_parts) < len(parts), "the budget must actually bite here"
+
+
+def test_fit_context_keeps_everything_when_it_fits():
+    from app.services.memory import _fit_context
+
+    parts = ["[1] short", "[2] also short"]
+    sources = [{"memory_id": "a"}, {"memory_id": "b"}]
+    kept_parts, kept_sources = _fit_context(parts, sources, budget=10_000)
+    assert kept_parts == parts
+    assert kept_sources == sources
