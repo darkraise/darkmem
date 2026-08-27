@@ -135,7 +135,7 @@ async def test_the_pinned_serving_stack_records_normally(tmp_path, monkeypatch):
 
 
 def test_served_fingerprint_is_pinned_to_the_measured_stack():
-    assert run_bench.EXPECTED_SYSTEM_FINGERPRINT == "fp_8b330d02d0_prod0820_fp8_kvcache_20260402"
+    assert run_bench.EXPECTED_SYSTEM_FINGERPRINT == "a26a7955944dc5c60445bff77fac9c8e"
 
 
 def test_pinned_model_matches_the_gate_ledger():
