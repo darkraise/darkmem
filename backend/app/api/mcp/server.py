@@ -271,7 +271,11 @@ async def memory_search(
 
 
 @mcp.tool(
-    description="Retrieve a specific memory by its UUID."
+    description=(
+        "Retrieve one memory by its UUID, with its content, tags, type, "
+        "project and enrichment fields. Use it when a search result or an "
+        "earlier call gave you an id and you need the full row."
+    )
 )
 async def memory_get(memory_id: str) -> str:
     """
@@ -287,7 +291,12 @@ async def memory_get(memory_id: str) -> str:
 
 
 @mcp.tool(
-    description="Update an existing memory's content, tags, or type."
+    description=(
+        "Revise a stored memory in place: its content, tags, or memory type. "
+        "Editing content re-runs extraction, so the entity and relationship "
+        "graph for that memory is rebuilt. Use it to correct a memory rather "
+        "than adding a second one that contradicts the first."
+    )
 )
 async def memory_update(
     memory_id: str,
@@ -332,7 +341,12 @@ async def memory_update(
 
 
 @mcp.tool(
-    description="Permanently delete a memory and its associated vectors and graph entities."
+    description=(
+        "Permanently delete a memory, its vectors, and the graph contributions "
+        "it alone asserts; entities other memories still assert survive. This "
+        "is not a content purge - the append-only events journal keeps its "
+        "own record by design."
+    )
 )
 async def memory_delete(memory_id: str, ctx: Context | None = None) -> str:
     """
@@ -924,7 +938,12 @@ async def code_symbol(
 
 
 @mcp.tool(
-    description="List all code symbols defined in a specific file, ordered by line number."
+    description=(
+        "List every code symbol defined in one file - functions, classes, "
+        "methods - in line order, with signatures. Use it to understand a "
+        "file's structure before reading it, or to find the exact symbol name "
+        "to pass to code_symbol or code_context."
+    )
 )
 async def code_file_symbols(
     repo_name: str,
@@ -1248,7 +1267,14 @@ async def code_changes(
         })
 
 
-@mcp.tool(description="List code communities detected via Leiden clustering for a repository.")
+@mcp.tool(
+    description=(
+        "List the code communities Leiden clustering found in a repository - "
+        "groups of symbols that call each other more than they call outward. "
+        "Use it to learn a codebase's natural subsystem boundaries when you "
+        "do not yet know what to search for."
+    )
+)
 async def code_communities(repo_name: str) -> str:
     from app.models.code import Repository
 
@@ -1278,7 +1304,14 @@ async def code_communities(repo_name: str) -> str:
     return json.dumps(communities)
 
 
-@mcp.tool(description="List execution flow processes traced from route and tool entry points.")
+@mcp.tool(
+    description=(
+        "List the execution flows traced from a repository's entry points - "
+        "each route or tool followed through the calls it makes. Use it to "
+        "see how a request actually travels through the system rather than "
+        "reconstructing the path one caller at a time."
+    )
+)
 async def code_processes(repo_name: str) -> str:
     from app.models.code import Repository
 

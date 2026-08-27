@@ -42,3 +42,24 @@ def test_the_instructions_fit_the_override_cap():
 
 def test_scopes_and_instructions_agree_on_the_roster():
     assert _registered_tools() == set(TOOL_SCOPES)
+
+
+def test_every_tool_carries_a_usable_description():
+    """Assert on what the SDK actually serves, not on the docstring.
+
+    A ``description=`` on the decorator OVERRIDES the docstring entirely
+    (verified against mcp 2.1.1), so a tool can carry a rich docstring and
+    still reach the agent as one terse line. The effective text is what an
+    agent gets, so it is what this measures.
+    """
+    import asyncio
+
+    from app.api.mcp.server import mcp
+
+    tools = asyncio.run(mcp.list_tools())
+    thin = sorted(
+        (t.name, len(t.description or ""))
+        for t in tools
+        if len(t.description or "") < 80
+    )
+    assert thin == [], f"tools whose served description is too thin: {thin}"
