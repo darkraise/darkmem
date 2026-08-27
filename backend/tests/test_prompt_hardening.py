@@ -42,3 +42,21 @@ def test_a_memory_cannot_close_the_delimiter_early():
     messages = memory_dream.build_pair_messages(_Row("older"), _Row(hostile))
     user = messages[-1]["content"]
     assert user.count("</newer>") == 1
+
+
+def test_the_module_summary_does_not_borrow_the_function_contract_prompt():
+    """A module summary and a function contract are different asks.
+
+    The central summarization prompt demands a function contract in exactly
+    1-2 sentences, naming inputs and return value; this call site wants a
+    module summary in 2-3 sentences. Pairing them contradicts on both counts
+    and couples wiki output to UI edits aimed at code symbols.
+    """
+    import inspect
+
+    from app.services import wiki_generator
+
+    source = inspect.getsource(wiki_generator)
+    assert 'prompt_mod.get("summarization")' not in source
+    assert 'prompt.get("summarization")' not in source
+    assert "_MODULE_SUMMARY_PROMPT" in source
