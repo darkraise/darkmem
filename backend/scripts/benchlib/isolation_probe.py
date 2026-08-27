@@ -833,11 +833,12 @@ async def _call_mcp(name: str, arguments: dict) -> str:
     from app.api.mcp.server import mcp
 
     result = await mcp.call_tool(name, arguments)
-    if isinstance(result, dict):
-        return json.dumps(result)
-    if isinstance(result, tuple):
-        result = result[0]
-    for block in result:
+    blocks = getattr(result, "content", result)
+    if isinstance(blocks, dict):
+        return json.dumps(blocks)
+    if isinstance(blocks, tuple):
+        blocks = blocks[0]
+    for block in blocks:
         text_value = getattr(block, "text", None)
         if text_value is not None:
             return text_value
