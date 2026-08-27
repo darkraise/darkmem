@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import random
 import time
 from contextlib import asynccontextmanager
 
@@ -18,6 +19,68 @@ from app.services.llm_quirks import (
 )
 
 logger = logging.getLogger(__name__)
+
+#: Indirection so tests can observe the backoff without serving it.
+_sleep = asyncio.sleep
+
+# Request-level retry. This sits above the transport `retries=` setting, which
+# httpx applies to connection establishment only and therefore cannot see a
+# response status or anything raised after the connection is up.
+_RETRY_MAX_ATTEMPTS = 3
+_RETRY_BASE_DELAY_SECONDS = 1.0
+#: Also the ceiling applied to a vendor's own `Retry-After`, so a hostile or
+#: mistaken header cannot park a flush worker past its claim visibility window.
+_RETRY_MAX_DELAY_SECONDS = 20.0
+
+#: Statuses where the same request may succeed later. 4xx is otherwise
+#: permanent: retrying a malformed body or a bad key only triples the latency
+#: before the identical failure.
+_RETRYABLE_STATUS: frozenset[int] = frozenset({408, 429, 500, 502, 503, 504})
+
+#: `ReadTimeout` is deliberately absent. The read budget is 300s and
+#: `BUFFER_FLUSH_MAX_RUN_SECONDS` is also 300, so three attempts would outlive
+#: the flush run holding the row and let the stale sweep reclaim it mid-flight.
+#: Listing the sibling timeouts explicitly rather than catching
+#: `httpx.TimeoutException` is what keeps that exclusion true.
+_RETRYABLE_EXCEPTIONS: tuple[type[Exception], ...] = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.WriteTimeout,
+    httpx.PoolTimeout,
+    httpx.WriteError,
+    httpx.RemoteProtocolError,
+)
+
+
+def _parse_retry_after(value: str | None) -> float | None:
+    """Seconds from a `Retry-After` header, or None if it carries no number.
+
+    Only the delta-seconds form is read. The HTTP-date form is legal but no
+    vendor on the supported list emits it, and mis-parsing a date into a
+    multi-hour sleep is a worse failure than ignoring the header.
+    """
+    if not value:
+        return None
+    try:
+        seconds = float(value.strip())
+    except (TypeError, ValueError):
+        return None
+    if seconds < 0:
+        return None
+    return min(seconds, _RETRY_MAX_DELAY_SECONDS)
+
+
+def _backoff_delay(attempt: int) -> float:
+    """Equal-jitter exponential backoff for `attempt` (1-based).
+
+    Half the window is fixed and half is random: the fixed half guarantees the
+    delay actually grows, and the random half stops `pipeline_concurrency`
+    workers that hit one rate limit together from retrying in lockstep and
+    reproducing it.
+    """
+    window = _RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
+    window = min(window, _RETRY_MAX_DELAY_SECONDS)
+    return window / 2 + random.uniform(0, window / 2)
 
 
 def _output_cap(params: dict, api_kind: str | None = None) -> int | None:
@@ -151,6 +214,51 @@ class LLMOrchestrator:
         )
 
 
+    async def _post_with_retry(
+        self, url: str, *, headers: dict, body: dict, purpose: str,
+    ) -> httpx.Response:
+        """POST to a vendor, retrying the failures that can succeed later.
+
+        Every vendor call in this class goes through here, so the retriable set
+        is defined once rather than per protocol path. Replay is safe because
+        callers forward a content-derived ``seed`` at temperature 0: a retried
+        extraction returns the same JSON the first attempt would have.
+
+        The final attempt's response is returned even when it is retriable, so
+        the caller's own ``raise_for_status`` still produces the error message
+        it always did. This never swallows a failure; it only re-sends.
+        """
+        for attempt in range(1, _RETRY_MAX_ATTEMPTS + 1):
+            last = attempt == _RETRY_MAX_ATTEMPTS
+            try:
+                response = await self._client.post(url, headers=headers, json=body)
+            except _RETRYABLE_EXCEPTIONS as e:
+                if last:
+                    raise
+                delay = _backoff_delay(attempt)
+                logger.warning(
+                    "LLM %s call failed (%s: %s); retrying in %.1fs "
+                    "(attempt %d/%d)",
+                    purpose, type(e).__name__, e, delay, attempt,
+                    _RETRY_MAX_ATTEMPTS,
+                )
+                await _sleep(delay)
+                continue
+            if response.status_code in _RETRYABLE_STATUS and not last:
+                delay = _parse_retry_after(response.headers.get("retry-after"))
+                if delay is None:
+                    delay = _backoff_delay(attempt)
+                logger.warning(
+                    "LLM %s call returned %d; retrying in %.1fs (attempt %d/%d)",
+                    purpose, response.status_code, delay, attempt,
+                    _RETRY_MAX_ATTEMPTS,
+                )
+                await _sleep(delay)
+                continue
+            return response
+        # Unreachable: the final iteration always returns or raises.
+        raise AssertionError("retry loop exited without a response")
+
     @asynccontextmanager
     async def _meter(self, purpose: str, cfg, subject=None):
         """Time one vendor call and record what it cost, success or failure.
@@ -283,8 +391,10 @@ class LLMOrchestrator:
         async with self._meter("embedding", cfg) as meter:
             if quirks_for(cfg.api_kind).native_protocol:
                 url = embeddings_url(cfg.api_kind, cfg.base_url)
-                response = await self._client.post(
-                    url, headers=headers, json={"model": cfg.model, "input": text},
+                response = await self._post_with_retry(
+                    url, headers=headers,
+                    body={"model": cfg.model, "input": text},
+                    purpose="embedding",
                 )
                 try:
                     response.raise_for_status()
@@ -296,10 +406,11 @@ class LLMOrchestrator:
                 vec = body["embeddings"][0]
             else:
                 self._assert_can_embed(cfg)
-                response = await self._client.post(
+                response = await self._post_with_retry(
                     embeddings_url(cfg.api_kind, cfg.base_url),
                     headers=headers,
-                    json={"input": text, "model": cfg.model},
+                    body={"input": text, "model": cfg.model},
+                    purpose="embedding",
                 )
                 try:
                     response.raise_for_status()
@@ -325,8 +436,10 @@ class LLMOrchestrator:
         async with self._meter("embedding", cfg) as meter:
             if quirks_for(cfg.api_kind).native_protocol:
                 url = embeddings_url(cfg.api_kind, cfg.base_url)
-                response = await self._client.post(
-                    url, headers=headers, json={"model": cfg.model, "input": texts},
+                response = await self._post_with_retry(
+                    url, headers=headers,
+                    body={"model": cfg.model, "input": texts},
+                    purpose="embedding",
                 )
                 try:
                     response.raise_for_status()
@@ -338,10 +451,11 @@ class LLMOrchestrator:
                 vectors = body["embeddings"]
             else:
                 self._assert_can_embed(cfg)
-                response = await self._client.post(
+                response = await self._post_with_retry(
                     embeddings_url(cfg.api_kind, cfg.base_url),
                     headers=headers,
-                    json={"input": texts, "model": cfg.model},
+                    body={"input": texts, "model": cfg.model},
+                    purpose="embedding",
                 )
                 try:
                     response.raise_for_status()
@@ -483,10 +597,11 @@ class LLMOrchestrator:
         )
 
         try:
-            response = await self._client.post(
+            response = await self._post_with_retry(
                 chat_url(cfg.api_kind, cfg.base_url),
                 headers=headers,
-                json=body,
+                body=body,
+                purpose=purpose,
             )
         except httpx.ReadTimeout as e:
             # Most common cause on z.ai / DeepSeek: the model is in
@@ -577,7 +692,9 @@ class LLMOrchestrator:
         if response_format and response_format.get("type") == "json_object":
             body["format"] = "json"
 
-        response = await self._client.post(url, headers=headers, json=body)
+        response = await self._post_with_retry(
+            url, headers=headers, body=body, purpose=purpose,
+        )
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:

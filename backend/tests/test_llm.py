@@ -4,6 +4,7 @@ import httpx
 import pytest
 
 from app.config import LLMPurposeConfig
+from app.services import llm as llm_module
 from app.services.llm import LLMOrchestrator, LLMTruncationError
 
 
@@ -309,3 +310,222 @@ async def test_zai_timeout_surfaces_actionable_error():
         await llm.chat_completion("extraction", messages=[{"role": "user", "content": "hi"}])
 
     await llm.close()
+
+
+# ── retry on retriable vendor failures ────────────────────────────────────
+# Three attempts per request. The transport-level `retries=` setting handles
+# connection flakiness only, so these cover what it cannot see: response
+# status, and the exceptions httpx raises after a connection is established.
+
+
+@pytest.fixture
+def no_sleep(monkeypatch):
+    """Record backoff delays instead of serving them."""
+    slept: list[float] = []
+
+    async def fake_sleep(seconds):
+        slept.append(seconds)
+
+    monkeypatch.setattr("app.services.llm._sleep", fake_sleep)
+    return slept
+
+
+async def test_chat_completion_retries_then_succeeds(no_sleep):
+    calls = []
+
+    def handler(request: httpx.Request):
+        calls.append(request)
+        if len(calls) < 3:
+            return httpx.Response(429, json={"error": "rate limited"})
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": '{"entities": []}'}}]
+        })
+
+    llm = _make_orchestrator(handler)
+    result = await llm.chat_completion(
+        "extraction", messages=[{"role": "user", "content": "test"}],
+    )
+    assert "entities" in result
+    assert len(calls) == 3
+    assert len(no_sleep) == 2
+    await llm.close()
+
+
+async def test_chat_completion_gives_up_after_three_attempts(no_sleep):
+    calls = []
+
+    def handler(request: httpx.Request):
+        calls.append(request)
+        return httpx.Response(503, text="upstream unavailable")
+
+    llm = _make_orchestrator(handler)
+    with pytest.raises(RuntimeError, match="503"):
+        await llm.chat_completion(
+            "extraction", messages=[{"role": "user", "content": "test"}],
+        )
+    assert len(calls) == 3
+    await llm.close()
+
+
+async def test_chat_completion_does_not_retry_client_error(no_sleep):
+    """A 400 is the same on every attempt; retrying only triples the latency."""
+    calls = []
+
+    def handler(request: httpx.Request):
+        calls.append(request)
+        return httpx.Response(400, text="bad request")
+
+    llm = _make_orchestrator(handler)
+    with pytest.raises(RuntimeError, match="400"):
+        await llm.chat_completion(
+            "extraction", messages=[{"role": "user", "content": "test"}],
+        )
+    assert len(calls) == 1
+    assert no_sleep == []
+    await llm.close()
+
+
+async def test_chat_completion_retries_transient_transport_error(no_sleep):
+    calls = []
+
+    def handler(request: httpx.Request):
+        calls.append(request)
+        if len(calls) == 1:
+            raise httpx.ConnectError("connection reset", request=request)
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": "ok"}}]
+        })
+
+    llm = _make_orchestrator(handler)
+    assert await llm.chat_completion(
+        "extraction", messages=[{"role": "user", "content": "test"}],
+    ) == "ok"
+    assert len(calls) == 2
+    await llm.close()
+
+
+async def test_read_timeout_is_not_retried(no_sleep):
+    """The read budget is 300s and the flush ceiling is 300s: three attempts
+    would outlive the run that owns the row. Kept single-shot deliberately."""
+    calls = []
+
+    def handler(request: httpx.Request):
+        calls.append(request)
+        raise httpx.ReadTimeout("timed out", request=request)
+
+    llm = _make_orchestrator(handler)
+    with pytest.raises(RuntimeError, match="timed out against"):
+        await llm.chat_completion(
+            "extraction", messages=[{"role": "user", "content": "test"}],
+        )
+    assert len(calls) == 1
+    assert no_sleep == []
+    await llm.close()
+
+
+async def test_retry_after_header_is_honoured(no_sleep):
+    calls = []
+
+    def handler(request: httpx.Request):
+        calls.append(request)
+        if len(calls) == 1:
+            return httpx.Response(429, headers={"Retry-After": "7"}, text="slow down")
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": "ok"}}]
+        })
+
+    llm = _make_orchestrator(handler)
+    await llm.chat_completion("extraction", messages=[{"role": "user", "content": "t"}])
+    assert no_sleep == [7.0]
+    await llm.close()
+
+
+async def test_retry_after_is_capped(no_sleep):
+    """A vendor must not be able to park a flush worker indefinitely."""
+    calls = []
+
+    def handler(request: httpx.Request):
+        calls.append(request)
+        if len(calls) == 1:
+            return httpx.Response(429, headers={"Retry-After": "9000"}, text="slow down")
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+    llm = _make_orchestrator(handler)
+    await llm.chat_completion("extraction", messages=[{"role": "user", "content": "t"}])
+    assert no_sleep == [llm_module._RETRY_MAX_DELAY_SECONDS]
+    await llm.close()
+
+
+async def test_embed_retries_on_retriable_status(no_sleep):
+    calls = []
+
+    def handler(request: httpx.Request):
+        calls.append(request)
+        if len(calls) == 1:
+            return httpx.Response(502, text="bad gateway")
+        return httpx.Response(200, json={"data": [{"embedding": [0.1, 0.2, 0.3]}]})
+
+    llm = _make_orchestrator(handler)
+    vector, _ = await llm.embed("hello world")
+    assert vector == [0.1, 0.2, 0.3]
+    assert len(calls) == 2
+    await llm.close()
+
+
+async def test_embed_batch_retries_on_retriable_status(no_sleep):
+    calls = []
+
+    def handler(request: httpx.Request):
+        calls.append(request)
+        if len(calls) == 1:
+            return httpx.Response(500, text="boom")
+        return httpx.Response(200, json={"data": [
+            {"embedding": [0.1, 0.2, 0.3], "index": 0},
+        ]})
+
+    llm = _make_orchestrator(handler)
+    vectors, _ = await llm.embed_batch(["hello"])
+    assert vectors == [[0.1, 0.2, 0.3]]
+    assert len(calls) == 2
+    await llm.close()
+
+
+async def test_ollama_native_chat_retries(no_sleep):
+    calls = []
+
+    def handler(request: httpx.Request):
+        calls.append(request)
+        if len(calls) == 1:
+            return httpx.Response(503, text="model loading")
+        return httpx.Response(200, json={"message": {"content": "ok"}})
+
+    config = {
+        "extraction": LLMPurposeConfig(
+            base_url="http://mock", model="test-extract", api_kind="ollama",
+        ),
+    }
+    llm = LLMOrchestrator(config)
+    llm._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    assert await llm.chat_completion(
+        "extraction", messages=[{"role": "user", "content": "t"}],
+    ) == "ok"
+    assert len(calls) == 2
+    await llm.close()
+
+
+async def test_backoff_grows_and_stays_within_bounds(no_sleep):
+    calls = []
+
+    def handler(request: httpx.Request):
+        calls.append(request)
+        return httpx.Response(503, text="down")
+
+    llm = _make_orchestrator(handler)
+    with pytest.raises(RuntimeError):
+        await llm.chat_completion("extraction", messages=[{"role": "user", "content": "t"}])
+    assert len(no_sleep) == 2
+    base = llm_module._RETRY_BASE_DELAY_SECONDS
+    # Equal jitter: attempt N waits between half and all of base * 2**(N-1).
+    assert base / 2 <= no_sleep[0] <= base
+    assert base <= no_sleep[1] <= base * 2
+    assert no_sleep[1] > no_sleep[0]
