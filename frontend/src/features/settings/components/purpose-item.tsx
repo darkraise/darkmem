@@ -125,7 +125,12 @@ export function PurposeItem({
     <div className="border-inset bg-card flex flex-col gap-2.5 rounded-lg border p-4">
       {identity}
       {summary}
-      <div className="flex items-center pt-1">{action}</div>
+      {/* Right-aligned to match the list layout, which anchors the same
+          action group with `ml-auto`. `justify-end` rather than
+          `justify-between`: a purpose with no system prompt renders only the
+          edit button, and `justify-between` would strand that lone child on
+          the left — the opposite of the intent. */}
+      <div className="flex items-center justify-end pt-1">{action}</div>
     </div>
   )
 }
