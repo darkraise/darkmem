@@ -246,3 +246,148 @@ async def test_a_variant_spelling_makes_no_second_code_file_row(
         {"r": str(repo.id)},
     )).scalar_one()
     assert count == 1
+
+
+async def _call_edges(session, repo_id) -> set[tuple[str, str]]:
+    rows = (await session.execute(
+        text("""
+            SELECT source_key, target_key FROM code_edges
+            WHERE repo_id = CAST(:r AS uuid) AND edge_type = 'calls'
+        """),
+        {"r": str(repo_id)},
+    )).all()
+    return {(r[0], r[1]) for r in rows}
+
+
+async def _caller_callee_repo(session, tmp_path) -> Repository:
+    """A repo where app.py calls lib.py's helper, indexed once."""
+    import subprocess
+
+    (tmp_path / "lib.py").write_text("def helper():\n    return 1\n")
+    (tmp_path / "app.py").write_text(
+        "from lib import helper\n\n\ndef run():\n    return helper()\n"
+    )
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t",
+         "commit", "-qm", "init"],
+        cwd=tmp_path, check=True,
+    )
+
+    repo = Repository(
+        name=f"union-dep-{uuid.uuid4().hex[:8]}",
+        local_path=str(tmp_path),
+        provider="local",
+        status="ready",
+    )
+    session.add(repo)
+    await session.commit()
+
+    pipeline = CodePipeline(
+        session=session, llm=None, vector_repo=None,
+        repo_manager=RepoManager(session),
+    )
+    await pipeline.run(repo.id)
+    await session.refresh(repo)
+    return repo
+
+
+async def test_union_file_is_unioned_before_the_dependent_retrace(
+    session, tmp_path,
+):
+    """Spec §9. Re-indexing a file deletes every call edge pointing into it,
+    so a named file that genuinely changed has to reach `_changed_files`
+    before `_find_dependent_caller_files` reads it -- otherwise its callers
+    are never re-traced and their edges stay missing with no error, no debt
+    row and no symptom. Moving `_apply_union_files()` below the `targets`
+    line leaves every other union test green and fails only this one."""
+    repo = await _caller_callee_repo(session, tmp_path)
+    before = await _call_edges(session, repo.id)
+    assert any(t.startswith("helper::") for _, t in before), (
+        "fixture did not produce the caller edge this test is about"
+    )
+
+    # Uncommitted, so HEAD has not moved and the git diff is empty: the union
+    # is the only thing that puts lib.py into the changed set.
+    (tmp_path / "lib.py").write_text("def helper():\n    return 2\n")
+
+    pipeline = CodePipeline(
+        session=session, llm=None, vector_repo=None,
+        repo_manager=RepoManager(session),
+    )
+    await pipeline.run(repo.id, union_files=["lib.py"])
+
+    assert before <= await _call_edges(session, repo.id), (
+        "the caller's edge into the named file was not re-resolved"
+    )
+
+
+async def test_completion_broadcast_carries_the_union_buckets(
+    session, tmp_path, monkeypatch,
+):
+    """Spec §6. The door answers 202 before the hash filter has run, so this
+    broadcast is the only place a caller learns which named files entered the
+    run. Asserting on `run()`'s return value instead would pass while
+    production discards it -- `_run_index` drops it."""
+    from app.api.websocket import event_manager
+
+    repo = await _make_indexed_repo(session, tmp_path)
+    (tmp_path / "src" / "a.py").write_text("def zeta():\n    return 9\n")
+
+    sent: list[tuple[str, dict]] = []
+
+    async def spy(event_type, data):
+        sent.append((event_type, data))
+
+    monkeypatch.setattr(event_manager, "broadcast", spy)
+
+    pipeline = CodePipeline(
+        session=session, llm=None, vector_repo=None,
+        repo_manager=RepoManager(session),
+    )
+    await pipeline.run(repo.id, union_files=["src/a.py", "src/gone.py"])
+
+    completed = [d for e, d in sent if e == "repo.indexing_completed"]
+    assert len(completed) == 1
+    assert completed[0]["union_accepted"] == 1
+    assert completed[0]["union_skipped_missing"] == 1
+    assert completed[0]["union_skipped_unchanged"] == 0
+    assert completed[0]["union_skipped_unindexable"] == 0
+
+
+async def test_an_ordinary_run_broadcasts_no_union_keys(
+    session, tmp_path, monkeypatch,
+):
+    """A run that named no files has no buckets to report, and a consumer
+    must be able to tell "no union was requested" from "the union was
+    empty"."""
+    import subprocess
+
+    from app.api.websocket import event_manager
+
+    repo = await _make_indexed_repo(session, tmp_path)
+    (tmp_path / "src" / "a.py").write_text("def eta():\n    return 7\n")
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t",
+         "commit", "-qm", "ordinary"],
+        cwd=tmp_path, check=True,
+    )
+
+    sent: list[tuple[str, dict]] = []
+
+    async def spy(event_type, data):
+        sent.append((event_type, data))
+
+    monkeypatch.setattr(event_manager, "broadcast", spy)
+
+    pipeline = CodePipeline(
+        session=session, llm=None, vector_repo=None,
+        repo_manager=RepoManager(session),
+    )
+    await pipeline.run(repo.id)
+
+    completed = [d for e, d in sent if e == "repo.indexing_completed"]
+    assert len(completed) == 1
+    assert not [k for k in completed[0] if k.startswith("union_")]

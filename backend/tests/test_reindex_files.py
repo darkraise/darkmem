@@ -99,3 +99,57 @@ def test_oversized_file_is_unindexable_not_missing(tmp_path):
     assert buckets.skipped_unindexable == ["src/big.py"]
     assert buckets.skipped_missing == []
     assert buckets.accepted == []
+
+
+def test_canonicalise_refuses_an_in_tree_symlink_pointing_outside(tmp_path):
+    """Spec §6.2's deliberate asymmetry. `_list_all_files` follows symlinks,
+    so the pipeline indexes this file; the door resolves the link and refuses
+    it. Refusing something the pipeline would index is the safe direction --
+    the door is the surface a caller names paths on."""
+    outside = tmp_path.parent / f"outside-{tmp_path.name}.py"
+    outside.write_text("secret = 1\n", encoding="utf-8")
+    _write(tmp_path, "src/a.py", "x = 1\n")
+    (tmp_path / "src" / "link.py").symlink_to(outside)
+
+    canonical, invalid = canonicalise_paths(tmp_path, ["src/a.py", "src/link.py"])
+
+    assert canonical == ["src/a.py"]
+    assert invalid == ["src/link.py"]
+
+
+def test_a_path_discovery_never_surfaces_is_unindexable(tmp_path):
+    """Naming an ignored path genuinely indexed it, and `code_reconcile`'s
+    next tick classified the resulting row as deleted (its own walk never
+    surfaces the file) and stripped it -- so a repeated request paid for rows,
+    symbols and embeddings every cycle. It is also what `skipped_unindexable`
+    means: a file the system can never index."""
+    _write(tmp_path, "node_modules/pkg/index.js", "module.exports = 1\n")
+    _write(tmp_path, "src/build.lock", "locked\n")
+
+    buckets = classify_union_files(
+        tmp_path, ["node_modules/pkg/index.js", "src/build.lock"], {},
+    )
+
+    assert buckets.skipped_unindexable == [
+        "node_modules/pkg/index.js", "src/build.lock",
+    ]
+    assert buckets.accepted == []
+    assert buckets.skipped_missing == []
+
+
+def test_the_ignored_rule_is_discovery_s_own(tmp_path):
+    """Pinned against `_list_all_files` rather than against a copy of its
+    constants: a rule restated here would drift the moment either list moves,
+    and the oscillation above is exactly what a drift reopens."""
+    from app.services.code_pipeline import _list_all_files
+
+    _write(tmp_path, "node_modules/pkg/index.js", "module.exports = 1\n")
+    _write(tmp_path, "src/build.lock", "locked\n")
+    _write(tmp_path, "src/a.py", "x = 1\n")
+
+    surfaced = set(_list_all_files(tmp_path))
+    named = ["node_modules/pkg/index.js", "src/build.lock", "src/a.py"]
+    buckets = classify_union_files(tmp_path, named, {})
+
+    assert surfaced == {"src/a.py"}
+    assert set(buckets.skipped_unindexable) == set(named) - surfaced

@@ -189,6 +189,58 @@ async def test_unknown_commit_is_409(client, session, auth_headers, tmp_path):
     assert detail["actual"] == head
 
 
+async def test_an_abbreviated_sha_naming_head_is_accepted(
+    client, session, auth_headers, tmp_path, monkeypatch,
+):
+    """The sha regex admits 7-40 hex characters, so a correct short sha is a
+    spelling of HEAD the caller is entitled to use. Comparing the raw strings
+    refuses it -- and refuses it as `head_mismatch`, whose client guidance
+    ("darkmem is at a different commit it does hold") is then wrong about a
+    repository that is at exactly the named commit."""
+    head = _git_repo(tmp_path)
+    repo = await _repo(session, tmp_path)
+    _mock_run(monkeypatch)
+    tasks = _capture_background_tasks(monkeypatch)
+
+    resp = await client.post(
+        f"/api/v1/repos/{repo.id}/reindex-files",
+        json={"files": ["src/a.py"], "commit": head[:7]},
+        headers=auth_headers,
+    )
+
+    assert resp.status_code == 202, resp.json()
+    assert resp.json()["commit"] == head
+    for task in tasks:
+        await task
+
+
+async def test_head_unreadable_is_409_not_500(
+    client, session, auth_headers, tmp_path, monkeypatch,
+):
+    """A concurrent run re-cloning the tree can make `rev-parse HEAD` fail.
+    That is a live path with its own documented reason, so it must not reach
+    the caller as an unhandled exception."""
+    _git_repo(tmp_path)
+    repo = await _repo(session, tmp_path)
+
+    async def boom(cwd, cmd, env=None):
+        raise RuntimeError("git exploded")
+
+    monkeypatch.setattr(RepoManager, "_run_git", boom)
+
+    resp = await client.post(
+        f"/api/v1/repos/{repo.id}/reindex-files",
+        json={"files": ["src/a.py"]},
+        headers=auth_headers,
+    )
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["reason"] == "head_unreadable"
+    assert [p["outcome"] for p in await _events(session, repo.id)] == [
+        "head_unreadable"
+    ]
+
+
 async def test_escaping_path_is_400(client, session, auth_headers, tmp_path):
     _git_repo(tmp_path)
     repo = await _repo(session, tmp_path)

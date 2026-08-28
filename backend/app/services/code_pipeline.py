@@ -6,7 +6,7 @@ import json
 import logging
 import time
 from collections import deque, namedtuple
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
@@ -352,13 +352,25 @@ class CodePipeline:
                 logger.warning("Failed to settle index debt for repo %s: %s", repo.id, exc)
                 await self.session.rollback()
 
-            await event_manager.broadcast("repo.indexing_completed", {
+            completed = {
                 "repo_id": self._repo_id_str,
                 "files_changed": self._stats["files_changed"],
                 "symbols_indexed": self._stats["symbols_indexed"],
                 "index_debt_drained": self._stats["index_debt_drained"],
                 "index_debt_queued": self._stats["index_debt_queued"],
-            })
+            }
+            if self._union_buckets is not None:
+                # The door answers 202 before the hash filter has run, so this
+                # broadcast is where a caller learns which of its named files
+                # actually entered the run. Added only on a union run: an
+                # ordinary reindex names no files and its payload is unchanged.
+                completed.update({
+                    "union_accepted": len(self._union_buckets.accepted),
+                    "union_skipped_unchanged": len(self._union_buckets.skipped_unchanged),
+                    "union_skipped_missing": len(self._union_buckets.skipped_missing),
+                    "union_skipped_unindexable": len(self._union_buckets.skipped_unindexable),
+                })
+            await event_manager.broadcast("repo.indexing_completed", completed)
 
             logger.info(
                 "Pipeline complete for %s: %d changed, %d skipped, %d deleted, %d symbols, %d errors",
@@ -1769,17 +1781,30 @@ def _safe_file_size(path: Path) -> int:
         return 0
 
 
+def is_discoverable_path(rel_path: str) -> bool:
+    """Whether ``_list_all_files`` would surface this repository-relative path.
+
+    Extracted so a caller that names paths directly decides membership by the
+    same rule discovery uses. A path this rejects is one nothing else ever
+    lists, so indexing it on request only sets up an oscillation:
+    ``code_reconcile``'s next tick sees a ``CodeFile`` row with no live file
+    behind it, classifies it deleted and strips it.
+    """
+    rel = PurePosixPath(rel_path)
+    if any(part in IGNORED_DIRS for part in rel.parts):
+        return False
+    return rel.suffix.lower() not in IGNORED_EXTENSIONS
+
+
 def _list_all_files(work_dir: Path) -> list[str]:
     files: list[str] = []
     for path in work_dir.rglob("*"):
         if not path.is_file():
             continue
-        parts = path.relative_to(work_dir).parts
-        if any(part in IGNORED_DIRS for part in parts):
+        rel = path.relative_to(work_dir).as_posix()
+        if not is_discoverable_path(rel):
             continue
-        if path.suffix.lower() in IGNORED_EXTENSIONS:
-            continue
-        files.append(str(path.relative_to(work_dir).as_posix()))
+        files.append(rel)
     return files
 
 

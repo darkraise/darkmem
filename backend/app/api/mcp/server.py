@@ -891,6 +891,12 @@ async def code_reindex(
                 journal_session, repo_id, outcome=outcome, file_count=file_count,
                 commit=commit, actor=actor, api_key_id=api_key_id,
                 source="reindex_mcp",
+                # A resolution failure has no UUID to stamp, so without the
+                # caller's own reference the row would name no repository at
+                # all and record nothing an operator could act on. Carried on
+                # every row, not only the id-less ones, so one door's audit
+                # reads the same however the reference resolved.
+                repo_path=repo_path, repo_name=repo_name,
             )
 
     async with _code_service_context() as session:

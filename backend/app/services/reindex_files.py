@@ -13,8 +13,8 @@ and neither touches the database or git:
   answered with.
 
 Import ``classify_union_files`` lazily from ``code_pipeline``: this module
-imports ``code_reconcile``, which imports ``code_pipeline``, so a module-level
-import there would close the cycle.
+imports ``code_pipeline`` -- directly, and again through ``code_reconcile`` --
+so a module-level import back would close the cycle.
 """
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from app.services.code_pipeline import is_discoverable_path
 from app.services.code_reconcile import _file_hash
 
 # Bounds the caller's list, not the repository walk canonicalisation performs.
@@ -92,11 +93,18 @@ def classify_union_files(
     thing it tests -- so the presence test must come first or every absent file
     is swallowed by the unindexable branch and the never-delete reporting never
     fires.
+
+    Discoverability is tested ahead of both, because it is a property of the
+    path rather than of the disk: a path ``_list_all_files`` never surfaces is
+    one the system can never index, present or not.
     """
     buckets = UnionBuckets()
 
     for name in names:
         path = work_dir / name
+        if not is_discoverable_path(name):
+            buckets.skipped_unindexable.append(name)
+            continue
         if not path.is_file():
             buckets.skipped_missing.append(name)
             continue

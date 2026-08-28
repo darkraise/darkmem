@@ -58,8 +58,15 @@ async def journal_reindex_outcome(
     actor: str | None,
     api_key_id: UUID | None,
     source: str,
+    **extra,
 ) -> None:
     """Journal one ``repo_reindex_requested`` row carrying the caller's outcome.
+
+    ``extra`` is folded into the payload so a door whose repository reference
+    never resolved can still say what the caller named. ``record_event``'s
+    ``object_id`` is nullable, and an id-less row that also names no repository
+    records nothing an operator could act on -- which is the probe-recording
+    purpose this journalling borrowed from the webhook.
 
     ``prepare_reindex`` calls this for every refusal it computes, before it
     raises -- the outcome exists the moment a refusal is decided. It does NOT
@@ -78,7 +85,10 @@ async def journal_reindex_outcome(
         actor=actor,
         api_key_id=api_key_id,
         source=source,
-        payload={"outcome": outcome, "file_count": file_count, "commit": commit},
+        payload={
+            **extra,
+            "outcome": outcome, "file_count": file_count, "commit": commit,
+        },
     )
 
 
@@ -140,12 +150,21 @@ async def prepare_reindex(
         await refuse(409, "head_unreadable", error=str(exc)[:200])
 
     if commit is not None and head != commit:
+        # The regex admits 7-40 hex characters, so a correct abbreviated sha
+        # reaches here despite naming HEAD itself. Comparing the git-resolved
+        # value is what tells "you named HEAD in short form" apart from the
+        # head_mismatch this would otherwise report, whose client guidance
+        # ("darkmem is at a different commit it does hold") would then be wrong.
         try:
             await RepoManager._run_git(
                 work_dir, ["git", "cat-file", "-e", f"{commit}^{{commit}}"],
             )
+            resolved = (await RepoManager._run_git(
+                work_dir, ["git", "rev-parse", f"{commit}^{{commit}}"],
+            )).strip()
         except Exception:
             await refuse(409, "unknown_commit", expected=commit, actual=head)
-        await refuse(409, "head_mismatch", expected=commit, actual=head)
+        if resolved != head:
+            await refuse(409, "head_mismatch", expected=commit, actual=head)
 
     return ReindexAccepted(union_files=canonical, commit=commit, head=head)

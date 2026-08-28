@@ -164,8 +164,25 @@ async def mint_key():
 
 
 @pytest_asyncio.fixture
-async def door(mcp_streamable_app):
-    """A client on the mounted door with no credential of its own."""
+async def door(mcp_streamable_app, session, monkeypatch):
+    """A client on the mounted door with no credential of its own.
+
+    The session factory is patched exactly as ``mcp_http_client`` patches it:
+    MCP tools open their own sessions through the module-level factory rather
+    than through the FastAPI dependency, so a tool whose body actually runs
+    here would commit rows outside the test transaction. Most tests in this
+    module are refused before any body executes, but the admin-scope test
+    reaches ``code_reindex``'s body and journals from it.
+    """
+    from contextlib import asynccontextmanager
+
+    import app.api.mcp.server as mcp_module
+
+    @asynccontextmanager
+    async def _fake_ctx():
+        yield session
+
+    monkeypatch.setattr(mcp_module, "async_session_factory", lambda: _fake_ctx())
     async with AsyncClient(
         transport=ASGITransport(app=mcp_streamable_app),
         base_url="http://localhost:8000",

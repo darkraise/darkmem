@@ -160,6 +160,22 @@ async def test_ambiguous_repo_journals_and_raises(session, tmp_path):
     assert row["file_count"] == 1
 
 
+async def test_an_id_less_row_names_the_caller_s_reference(session, tmp_path):
+    """Spec §7. A resolution failure has no UUID to stamp, so without the
+    caller's own reference the row names no repository at all and loses the
+    probe-recording purpose this journalling borrowed from the webhook -- a
+    leaked credential probing for repositories would leave rows that say only
+    "not_found"."""
+    with pytest.raises(ValueError, match="not found"):
+        await code_reindex(repo_path=str(tmp_path / "nowhere"))
+
+    row = await _last_outcome(session, "not_found")
+    assert row is not None
+    assert row["object_id"] is None
+    assert row["repo_path"] == str(tmp_path / "nowhere")
+    assert row["repo_name"] is None
+
+
 async def test_no_embedder_configured_is_a_typed_refusal_not_a_crash(
     session, tmp_path, monkeypatch,
 ):
