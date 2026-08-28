@@ -130,7 +130,9 @@ The `accepted` set is unioned into `self._changed_files` **before**
 re-traced and unchanged files never enter the run at all.
 
 **Every named file lands in exactly one of the four buckets**, and all four are
-reported (§6). `skipped_unindexable` exists so a caller that names a file the
+reported (§6) — except on the all-filtered early exit, which returns before the
+completion broadcast and reports nothing; §6 records that gap and why it is left
+open. `skipped_unindexable` exists so a caller that names a file the
 system can never index hears about it: silence is the one outcome this
 reporting is for. It inherits a pre-existing wart — a previously-indexed file
 that later grew past `MAX_FILE_SIZE` keeps serving its stale graph — which this
