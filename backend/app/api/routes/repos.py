@@ -3,6 +3,7 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request as FastAPIRequest, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -12,11 +13,13 @@ from app.api.deps import get_code_pipeline, get_repo_manager, get_session_factor
 from app.database import get_session
 from app.models.code import CodeFile, CodeSymbol, Repository
 from app.schemas.code import (
-    IndexDebtStatus, ReindexRequest, RepoCreate, RepoResponse, RepoUpdate,
+    IndexDebtStatus, ReindexFilesRequest, ReindexFilesResponse, ReindexRequest,
+    RepoCreate, RepoResponse, RepoUpdate,
 )
 from app.services import index_debt
 from app.services.code_pipeline import CodePipeline
 from app.services.events import record_event
+from app.services.reindex_request import ReindexRefused, journal_reindex_outcome, prepare_reindex
 from app.services.repo_manager import RepoManager
 from app.services.usage_recorder import UsageSubject, subject_scope
 from app.services.task_registry import TaskRegistry
@@ -175,6 +178,7 @@ def _spawn_repo_index(
     full: bool = False,
     enrich_symbols: bool = False,
     generate_wiki: bool = False,
+    union_files: list[str] | None = None,
 ) -> asyncio.Task:
     """Spawn the one background indexing path both ``reindex_repo`` and
     ``repo_push_webhook`` dispatch through -- a tracked task on a fresh
@@ -223,6 +227,8 @@ def _spawn_repo_index(
                         run_kwargs["enrich_symbols"] = enrich_symbols
                     if generate_wiki:
                         run_kwargs["generate_wiki"] = generate_wiki
+                    if union_files:
+                        run_kwargs["union_files"] = union_files
                     await idx.run(repo_id, **run_kwargs)
             except Exception as e:
                 logger.error(f"Background {kind} failed for {repo_id}: {e}")
@@ -287,6 +293,104 @@ async def reindex_repo(
         await manager.session.commit()
         raise HTTPException(status_code=500, detail="Failed to start indexing")
     return {"status": "indexing", "repo_id": str(repo_id)}
+
+
+@router.post("/{repo_id}/reindex-files", status_code=status.HTTP_202_ACCEPTED)
+async def reindex_repo_files(
+    repo_id: UUID,
+    body: ReindexFilesRequest,
+    principal=Depends(_require_repo_admin),
+    pipeline: CodePipeline = Depends(get_code_pipeline),
+    manager: RepoManager = Depends(get_repo_manager),
+    session_factory: async_sessionmaker[AsyncSession] = Depends(get_session_factory),
+):
+    """File-scoped, commit-verified reindex (doc: 2026-08-28 design).
+
+    ``reindex_repo``'s shape with two additions: the caller's file list is
+    unioned into the diff rather than replacing it, and an optional sha is
+    verified against HEAD before anything is claimed. The verification is
+    read-only -- see ``reindex_request`` for why it must not pull here.
+
+    ``prepare_reindex`` journals only its own refusals; every path here that
+    it does not already cover -- claim lost, spawn failure, or the not-found
+    case it never reaches -- journals its own outcome exactly once, so one
+    request produces exactly one audit row no matter which branch it takes.
+    """
+    repo = await manager.get(repo_id)
+    if not repo:
+        await journal_reindex_outcome(
+            manager.session, repo_id, outcome="not_found",
+            file_count=len(body.files), commit=body.commit,
+            actor=principal.actor, api_key_id=principal.api_key_id,
+            source="reindex_api",
+        )
+        await manager.session.commit()
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    try:
+        accepted = await prepare_reindex(
+            manager.session, repo,
+            files=body.files, commit=body.commit,
+            actor=principal.actor, api_key_id=principal.api_key_id,
+            source="reindex_api",
+        )
+    except ReindexRefused as refused:
+        # Returned directly, not raised as an HTTPException: main.py's
+        # generic StarletteHTTPException handler keeps `details` only for a
+        # list and `message` only for a string, so a dict `detail` is
+        # flattened to "Request failed" (see knowledge_search.py's own note
+        # on the same constraint). A caller needs `reason` and the sha pair,
+        # so this bypasses that handler by never raising through it.
+        return JSONResponse(
+            status_code=refused.status_code,
+            content={"detail": {"reason": refused.reason, **refused.detail}},
+        )
+
+    if not await manager.claim_for_indexing(repo_id, message="Queued for indexing..."):
+        await journal_reindex_outcome(
+            manager.session, repo_id, outcome="repo_busy",
+            file_count=len(accepted.union_files), commit=accepted.commit,
+            actor=principal.actor, api_key_id=principal.api_key_id,
+            source="reindex_api",
+        )
+        await manager.session.commit()
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={"detail": {"reason": "repo_busy"}},
+        )
+
+    try:
+        _spawn_repo_index(
+            repo_id, pipeline, session_factory,
+            kind="reindex-files",
+            enrich_symbols=body.enrich_symbols,
+            union_files=accepted.union_files,
+        )
+    except Exception as e:
+        logger.error("Failed to schedule file reindex for %s: %s", repo_id, e)
+        repo.status = "error"
+        repo.status_message = "Failed to start indexing"
+        await journal_reindex_outcome(
+            manager.session, repo_id, outcome="spawn_failed",
+            file_count=len(accepted.union_files), commit=accepted.commit,
+            actor=principal.actor, api_key_id=principal.api_key_id,
+            source="reindex_api",
+        )
+        await manager.session.commit()
+        raise HTTPException(status_code=500, detail="Failed to start indexing")
+
+    await journal_reindex_outcome(
+        manager.session, repo_id, outcome="indexing",
+        file_count=len(accepted.union_files), commit=accepted.commit,
+        actor=principal.actor, api_key_id=principal.api_key_id,
+        source="reindex_api",
+    )
+    await manager.session.commit()
+
+    return ReindexFilesResponse(
+        status="indexing", repo_id=str(repo_id),
+        commit=accepted.head, accepted=len(accepted.union_files),
+    )
 
 
 @router.post("/{repo_id}/webhook", status_code=status.HTTP_202_ACCEPTED)
