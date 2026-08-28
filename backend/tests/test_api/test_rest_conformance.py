@@ -208,6 +208,7 @@ EXPECTED_STATUS = {
     ("PUT", "/api/v1/repos/{repo_id}"): 200,
     ("DELETE", "/api/v1/repos/{repo_id}"): 204,
     ("POST", "/api/v1/repos/{repo_id}/reindex"): 202,
+    ("POST", "/api/v1/repos/{repo_id}/reindex-files"): 202,
     ("POST", "/api/v1/repos/{repo_id}/webhook"): 202,
     ("GET", "/api/v1/repos/{repo_id}/tasks"): 200,
     # Documented deviation: a cancel, not a true delete — 200 with a body is

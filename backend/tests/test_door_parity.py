@@ -1091,6 +1091,7 @@ PARITY_TABLE: tuple[Surface, ...] = (
             ("PUT", f"{V1}/repos/{{repo_id}}"),
             ("DELETE", f"{V1}/repos/{{repo_id}}"),
             ("POST", f"{V1}/repos/{{repo_id}}/reindex"),
+            ("POST", f"{V1}/repos/{{repo_id}}/reindex-files"),
             ("POST", f"{V1}/repos/{{repo_id}}/webhook"),
             ("GET", f"{V1}/repos/{{repo_id}}/tasks"),
             ("DELETE", f"{V1}/repos/{{repo_id}}/tasks/{{task_id}}"),

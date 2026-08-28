@@ -798,6 +798,7 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "GET /api/v1/repos/{repo_id}/tasks",
     "POST /api/v1/repos",
     "POST /api/v1/repos/{repo_id}/reindex",
+    "POST /api/v1/repos/{repo_id}/reindex-files",
     "POST /api/v1/repos/{repo_id}/webhook",
     "PUT /api/v1/repos/{repo_id}",
     "GET /api/v1/review-queue/counts",

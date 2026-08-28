@@ -57,6 +57,7 @@ const EVENT_TYPE_CATEGORY: Record<string, FeedCategory> = {
   repo_synced: "code",
   repo_indexed: "code",
   repo_webhook_received: "code",
+  repo_reindex_requested: "code",
   mcp_proxied_refused: "code",
   repo_hint_rejected: "code",
 }

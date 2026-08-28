@@ -1110,6 +1110,7 @@ class TestRuntimeScopeGatedRoutes:
 
         assert _routes_gated_by_require_scope(app) == {
             ("POST", "/api/v1/repos/{repo_id}/webhook"),
+            ("POST", "/api/v1/repos/{repo_id}/reindex-files"),
             ("POST", "/api/v1/memories"),
             ("POST", "/api/v1/memories/batch"),
             ("POST", "/api/v1/memories/search/paginated"),
@@ -1164,6 +1165,7 @@ class TestRuntimeScopeGatedRoutes:
         )
         expected = {
             ("POST", "/api/v1/repos/{repo_id}/webhook"),
+            ("POST", "/api/v1/repos/{repo_id}/reindex-files"),
             ("POST", "/api/v1/memories"),
             ("POST", "/api/v1/memories/batch"),
             ("POST", "/api/v1/memories/search/paginated"),
