@@ -1,10 +1,11 @@
 """The one entry point both file-scoped reindex doors call (spec §1).
 
 Order is the design: precheck, then canonicalise, then verify HEAD, then claim.
-Canonicalisation walks the working tree, which for a repository still cloning
-may not exist and which a concurrent claimed run may be mid-rmtree on -- so the
-status and existence checks come first, or the door fails inside an ``rglob``
-instead of returning the honest ``repo_busy``.
+The precheck runs before canonicalisation because ``repo_working_dir``
+re-validates the path on every access and raises for one that no longer
+exists or sits inside a blocked tree, and a busy repository (``indexing`` or
+``cloning``) deserves the honest ``repo_busy`` rather than whatever exception
+that re-validation would otherwise raise first.
 
 The HEAD check is read-only on purpose. ``pull_repo`` runs ``reset --hard`` on a
 clone and can re-clone the directory outright; firing it from this unclaimed
@@ -15,9 +16,9 @@ accepted", and nothing stronger.
 """
 from __future__ import annotations
 
-import logging
 import re
 from dataclasses import dataclass
+from typing import NoReturn
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,11 +28,7 @@ from app.services.events import record_event
 from app.services.reindex_files import MAX_UNION_FILES, canonicalise_paths
 from app.services.repo_manager import RepoManager
 
-logger = logging.getLogger(__name__)
-
 _SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
-
-BUSY_STATUSES = ("indexing", "cloning")
 
 
 class ReindexRefused(Exception):
@@ -51,7 +48,7 @@ class ReindexAccepted:
     head: str
 
 
-async def _journal(
+async def journal_reindex_outcome(
     session: AsyncSession,
     repo_id: UUID | None,
     *,
@@ -62,12 +59,16 @@ async def _journal(
     api_key_id: UUID | None,
     source: str,
 ) -> None:
-    """One row per request, written last because it carries the outcome.
+    """Journal one ``repo_reindex_requested`` row carrying the caller's outcome.
 
-    The webhook journals before its lookup and can, because its payload is only
-    ``{"keyed": ...}``. An outcome does not exist until the door has decided, so
-    a pre-lookup row here could not carry one. Writing last records every
-    computed refusal and loses only the unhandled-exception path.
+    ``prepare_reindex`` calls this for every refusal it computes, before it
+    raises -- the outcome exists the moment a refusal is decided. It does NOT
+    call this on success: the claim that actually starts indexing happens
+    downstream, in the door, after ``prepare_reindex`` returns, and that claim
+    can still lose (``409 repo_busy``) to a concurrent run. Journalling
+    ``"indexing"`` from here would leave a lying row on the losing path. The
+    door calls this helper itself, once, with whichever outcome the claim
+    produced.
     """
     await record_event(
         session,
@@ -91,12 +92,16 @@ async def prepare_reindex(
     api_key_id: UUID | None,
     source: str,
 ) -> ReindexAccepted:
-    """Validate and verify, or raise ``ReindexRefused``. Journals either way."""
+    """Validate and verify, or raise ``ReindexRefused``, journalling every
+    refusal. Acceptance is not journalled here -- the caller journals its own
+    outcome via ``journal_reindex_outcome`` once the downstream claim settles
+    whether indexing actually starts.
+    """
     files = files or []
     count = len(files)
 
-    async def refuse(status_code: int, reason: str, **detail):
-        await _journal(
+    async def refuse(status_code: int, reason: str, **detail) -> NoReturn:
+        await journal_reindex_outcome(
             session, repo.id, outcome=reason, file_count=count,
             commit=commit, actor=actor, api_key_id=api_key_id, source=source,
         )
@@ -109,7 +114,7 @@ async def prepare_reindex(
     if commit is not None and not _SHA_RE.match(commit):
         await refuse(400, "malformed_commit")
 
-    if repo.status in BUSY_STATUSES:
+    if repo.status in RepoManager.BUSY_STATUSES:
         await refuse(409, "repo_busy", status=repo.status)
 
     manager = RepoManager(session)
@@ -143,9 +148,4 @@ async def prepare_reindex(
             await refuse(409, "unknown_commit", expected=commit, actual=head)
         await refuse(409, "head_mismatch", expected=commit, actual=head)
 
-    await _journal(
-        session, repo.id, outcome="indexing", file_count=count,
-        commit=commit, actor=actor, api_key_id=api_key_id, source=source,
-    )
-    await session.commit()
     return ReindexAccepted(union_files=canonical, commit=commit, head=head)
