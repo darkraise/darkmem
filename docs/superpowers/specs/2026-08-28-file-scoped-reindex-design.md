@@ -224,6 +224,13 @@ whose working directory does not exist or whose status is busy is
 `409 repo_unavailable` / `409 repo_busy` at the precheck, and a working-tree
 walk that fails mid-`rglob` (a directory vanishing under a concurrent re-clone)
 is `409 tree_unreadable` — the canonicalisation analogue of `head_unreadable`.
+Note `tree_unreadable` is **near-unreachable as implemented** and is kept as a
+guard rather than a live path: `canonicalise_paths` walks no tree and catches
+its own per-entry errors, so the only disk touch that could raise is
+`work_dir.resolve()`, which does not in non-strict mode. The precheck's real
+justification is the line above it — `repo_working_dir` re-validates and raises
+for a missing or blocked path, and a busy repository is owed the honest
+`repo_busy`.
 
 `commit` is optional; omitting it skips the check.
 
@@ -251,11 +258,17 @@ this door and is not claimed to be.
 ### 4.3 Clone repositories verify against the last-fetched HEAD
 
 Because the door does not fetch, a clone's HEAD is whatever the last sync left.
-An agent that pushed to a remote darkmem has not fetched yet will get a 409
-`head_mismatch`. That is correct behaviour — darkmem genuinely is not at that
-commit — but it means `commit` is most useful in the shared-working-tree
-deployment this design targets, where HEAD is already the agent's commit.
-Clone-repo callers should omit `commit` or treat the 409 as "retry after sync".
+An agent that pushed to a remote darkmem has not fetched yet gets a 409 — and
+the reason is **`unknown_commit`, not `head_mismatch`**, because darkmem's clone
+does not hold that object at all yet. This was stated as `head_mismatch` until
+2026-08-28, when Task 4's review found the prose and the table disagreeing:
+§4's table is right, and this paragraph was wrong about the commonest case.
+It matters because the two reasons carry different client guidance —
+`unknown_commit` on a clone is the one that means *retry after a sync*, while
+`head_mismatch` means darkmem is at a different commit it does hold.
+`commit` is therefore most useful in the shared-working-tree deployment this
+design targets, where HEAD is already the agent's commit. Clone-repo callers
+should omit `commit`, or treat `unknown_commit` as "retry after sync".
 
 The same staleness applies to `files`, which is why non-member paths are
 soft-skipped rather than refused (§6.2).
@@ -391,10 +404,18 @@ outside the repository; the door's escape check resolves the link and refuses
 it. Refusing something the pipeline would index is the safe direction, and is
 intentional rather than an oversight.
 
-**Cost.** Membership requires a full `rglob("*")` plus a `stat` per entry over
-the whole working tree, in the request path. The 1000-entry cap bounds the
-caller's list, not the repository walk. Acceptable at homelab monorepo scale;
-stated so the cap is not misread as the cost bound.
+**Cost.** As implemented, canonicalisation is per-entry `resolve()` and
+`relative_to()` with no directory walk, so it is bounded by the caller's list
+rather than by repository size. An earlier draft of this section specified a
+membership test against `_list_all_files(work_dir)`, which would have cost a
+full `rglob("*")` plus a `stat` per entry on every request; that test was not
+implemented, and the spelling is pinned by re-deriving
+`relative_to(work_dir).as_posix()` instead — which is what actually guarantees
+the phase-03 lookup matches. One consequence rides with the change: a path that
+is inside the tree but that `_list_all_files` would never surface (an
+`IGNORED_DIRS` or `IGNORED_EXTENSIONS` match) is accepted rather than skipped.
+`_diff_files` does not filter either, so this is consistent with an ordinary
+incremental run rather than a new hazard.
 
 ### 6.3 Other input validation
 
@@ -435,7 +456,14 @@ every terminal state of §4 and §6 — not only the happy path:
 
 `indexing` · `head_mismatch` · `unknown_commit` · `head_unreadable` ·
 `repo_busy` · `repo_unavailable` · `tree_unreadable` · `invalid_files` ·
-`not_found` · `ambiguous_repo` (MCP only).
+`too_many_files` · `malformed_commit` · `not_found` ·
+`ambiguous_repo` (MCP only).
+
+**One row per request, and it carries the terminal outcome** — which means the
+row cannot be written before the claim is attempted. `prepare_reindex` journals
+refusals; the door journals `indexing` or `repo_busy` after the claim, through
+the same writer. A row written at acceptance and never amended would say
+`indexing` for a request that ended 409.
 
 For the MCP door a request that fails repository resolution has no UUID to
 stamp; `record_event`'s `object_id` is nullable, so the row is written id-less
