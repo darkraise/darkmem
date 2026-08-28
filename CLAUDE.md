@@ -1258,8 +1258,9 @@ Authorization is per tool, not per door: `capture` covers the 8 writers
 (`memory_add`, `memory_batch_add`, `memory_update`, `memory_delete`,
 `document_put`, `document_delete`, `checkpoint_save`, `research_run`);
 `read` covers 25; `admin` covers the 1 repository-control tool
-(`code_reindex`, doc 12 §6.1's first MCP write door into the code
-subsystem). Scopes do not imply one another. `admin` reaches exactly one
+(`code_reindex`, the first MCP write door into the code subsystem —
+`docs/superpowers/specs/2026-08-28-file-scoped-reindex-design.md` §6.1).
+Scopes do not imply one another. `admin` reaches exactly one
 tool, `code_reindex` — repository control, not memory writing — so a key
 holding only `admin` reaches nothing else, and a `capture` key cannot
 trigger an index. `ratify` stays outside the scope vocabulary, unchanged by

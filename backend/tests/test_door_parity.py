@@ -930,11 +930,14 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "not for the vault reads -- a twin on the MCP door would let any "
             "already-keyed caller mint itself a stronger or longer-lived "
             "credential than the one it holds, which is strictly worse than "
-            "the surface it would be minting access to. It is also why "
-            "'admin' is not a scope any MCP tool accepts: a key holding admin "
-            "still reaches nothing over /mcp, so a stolen key cannot mint its "
-            "own successor and outlive its revocation (T4.01). Recorded here "
-            "so nobody completes the symmetry later."
+            "the surface it would be minting access to. The revocation "
+            "half of that argument survives code_reindex admitting "
+            "'admin' over /mcp, because it never rested on the scope "
+            "reaching nothing: no MCP tool mints a credential, so a "
+            "stolen key of any scope cannot mint its own successor and "
+            "outlive its revocation (T4.01). It was stated the other way "
+            "until 2026-08-28, on a premise that door then falsified. "
+            "Recorded here so nobody completes the symmetry later."
         ),
     ),
     Surface(

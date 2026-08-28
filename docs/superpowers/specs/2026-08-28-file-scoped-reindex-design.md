@@ -211,7 +211,17 @@ row, no symptom — and the short-circuit would report `up_to_date` forever afte
 ## 4. Commit verification
 
 The caller may pass the sha it expects darkmem to be at. Verification is
-**strict equality** against `HEAD`; a mismatch is **409** naming both shas.
+**equality of git-resolved values**: `commit` is accepted in the 7-40 hex
+characters `^[0-9a-f]{7,40}$` admits, so the door resolves it
+(`git rev-parse <commit>^{commit}`, after `git cat-file -e` establishes the
+object exists) and compares that to `HEAD`. A mismatch is **409** naming both
+shas — the caller's spelling as `expected`, the full HEAD as `actual`.
+
+Comparing the raw strings was specified until 2026-08-28 and is wrong in one
+direction that matters: a *correct* abbreviated sha never equals a 40-character
+HEAD, so it refused every time, and refused as `head_mismatch`, whose client
+guidance ("darkmem is at a different commit it does hold") is then false about
+a repository sitting on exactly the named commit.
 
 | Case | `reason` |
 |---|---|
@@ -302,11 +312,25 @@ it does not widen it. Filed as an adjacent finding, not fixed here.
 Response: `{"status": "indexing", "repo_id": "...", "commit": "...",
 "accepted": 2}` — `accepted` counts paths that passed canonicalisation, which
 is all the door can know. Whether a path survived the hash filter is decided
-inside the run (§3.1), so the per-file outcome is carried by the run's own
-`repo_indexed` event payload and the `repo.indexing_completed` websocket
-broadcast as `union_accepted` / `union_skipped_unchanged` /
-`union_skipped_missing` / `union_skipped_unindexable` — the four buckets of
-§3.1, every named file in exactly one — alongside the existing counters.
+inside the run (§3.1), so the per-file outcome is carried by the
+`repo.indexing_completed` websocket broadcast, as `union_accepted` /
+`union_skipped_unchanged` / `union_skipped_missing` /
+`union_skipped_unindexable` — the four buckets of §3.1, every named file in
+exactly one — alongside the existing counters, and by the same four keys on
+`run()`'s own return value. The keys are present only when a union was
+requested, so an ordinary run's payload is unchanged and a consumer can tell
+"no union" from "an empty union".
+
+This said until 2026-08-28 that the buckets also rode the run's `repo_indexed`
+event payload. That was an error in this design, not an unimplemented part of
+it: `repo_indexed` is `index_debt`'s row and its payload is debt bookkeeping,
+owned by a module this door does not write through.
+
+**Known gap, deliberate.** An all-filtered request takes §3.1's early exit,
+which returns before the completion broadcast, so its buckets reach the caller
+only through `run()`'s return value — which the REST spawn path discards. A
+caller that names nothing but unchanged or unindexable files therefore still
+hears nothing over the wire.
 
 Path-addressed by id, matching `docs/api-rest-conventions.md` (202
 async-accepted) and the SPA, which always holds the id.
@@ -383,8 +407,9 @@ motivating caller:
   with `400 invalid_files`, naming the offending entries.
 - **Valid but not a member of `_list_all_files`** — the path is inside the
   repository but is not on disk, or is filtered by `IGNORED_DIRS` /
-  `IGNORED_EXTENSIONS`. This is **soft-skipped**, reported as
-  `skipped_missing` (§3.3), and the rest of the request proceeds.
+  `IGNORED_EXTENSIONS`. This is **soft-skipped** and the rest of the request
+  proceeds: absent is `skipped_missing` (§3.3), filtered is
+  `skipped_unindexable` (§3.1).
 
 The soft-skip is what keeps the door usable on a clone repository. Membership
 is evaluated against the **stale, last-fetched tree** (§4.3's admission applies
@@ -411,11 +436,21 @@ membership test against `_list_all_files(work_dir)`, which would have cost a
 full `rglob("*")` plus a `stat` per entry on every request; that test was not
 implemented, and the spelling is pinned by re-deriving
 `relative_to(work_dir).as_posix()` instead — which is what actually guarantees
-the phase-03 lookup matches. One consequence rides with the change: a path that
-is inside the tree but that `_list_all_files` would never surface (an
-`IGNORED_DIRS` or `IGNORED_EXTENSIONS` match) is accepted rather than skipped.
-`_diff_files` does not filter either, so this is consistent with an ordinary
-incremental run rather than a new hazard.
+the phase-03 lookup matches. One consequence rides with the change: the door itself
+cannot tell a filtered path from an ordinary one, because it performs no walk.
+Membership is decided at classify time instead, by discovery's own predicate
+(`is_discoverable_path`, which `_list_all_files` calls), and a path that
+predicate rejects is `skipped_unindexable`.
+
+This was specified as *accepted* until 2026-08-28, on the ground that
+`_diff_files` does not filter either. That ground is wrong, because the two
+cases do not end the same way. A named `node_modules/foo.js` genuinely indexed
+— rows, symbols, embeddings — and then `code_reconcile`'s next tick classified
+that row as deleted, since its own walk goes through `_list_all_files` and
+never surfaces the file, and stripped it. The next request re-indexed it. So
+the bypass was not a one-off inconsistency but a per-cycle embedder spend, and
+it contradicted `skipped_unindexable`'s own charter: a file the system can
+never index.
 
 ### 6.3 Other input validation
 
@@ -457,7 +492,9 @@ every terminal state of §4 and §6 — not only the happy path:
 `indexing` · `head_mismatch` · `unknown_commit` · `head_unreadable` ·
 `repo_busy` · `repo_unavailable` · `tree_unreadable` · `invalid_files` ·
 `too_many_files` · `malformed_commit` · `not_found` · `spawn_failed` ·
-`ambiguous_repo` (MCP only).
+`ambiguous_repo` (MCP only) · `embedder_not_configured` (MCP only — the REST
+door reaches its pipeline through a dependency that cannot be absent, so this
+state has no REST spelling).
 
 **One row per request, and it carries the terminal outcome** — which means the
 row cannot be written before the claim is attempted. `prepare_reindex` journals
