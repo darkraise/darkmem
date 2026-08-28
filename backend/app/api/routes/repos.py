@@ -349,7 +349,7 @@ async def reindex_repo_files(
     if not await manager.claim_for_indexing(repo_id, message="Queued for indexing..."):
         await journal_reindex_outcome(
             manager.session, repo_id, outcome="repo_busy",
-            file_count=len(accepted.union_files), commit=accepted.commit,
+            file_count=len(body.files), commit=accepted.commit,
             actor=principal.actor, api_key_id=principal.api_key_id,
             source="reindex_api",
         )
@@ -372,7 +372,7 @@ async def reindex_repo_files(
         repo.status_message = "Failed to start indexing"
         await journal_reindex_outcome(
             manager.session, repo_id, outcome="spawn_failed",
-            file_count=len(accepted.union_files), commit=accepted.commit,
+            file_count=len(body.files), commit=accepted.commit,
             actor=principal.actor, api_key_id=principal.api_key_id,
             source="reindex_api",
         )
@@ -381,7 +381,7 @@ async def reindex_repo_files(
 
     await journal_reindex_outcome(
         manager.session, repo_id, outcome="indexing",
-        file_count=len(accepted.union_files), commit=accepted.commit,
+        file_count=len(body.files), commit=accepted.commit,
         actor=principal.actor, api_key_id=principal.api_key_id,
         source="reindex_api",
     )

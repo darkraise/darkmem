@@ -1108,8 +1108,12 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "system rather than the UI's Reindex button -- an externally "
             "reachable receiver, gated on the same `admin` scope, calling "
             "the identical `CodePipeline.run` polling and the Reindex "
-            "button both call; it earns no MCP twin for the same reason "
-            "reindex doesn't."
+            "button both call; `reindex` and `webhook` earn no MCP twin for "
+            "that budget reason. `reindex-files` (spec §6) is REST_ONLY "
+            "only as of this commit, not for the same reason: spec §6.1 "
+            "specifies its MCP twin, `code_reindex(repo_path, repo_name, "
+            "files, commit)`, as the very next task in this epic -- this "
+            "row will move to TWO_DOOR once that lands."
         ),
     ),
     Surface(
