@@ -456,7 +456,7 @@ every terminal state of §4 and §6 — not only the happy path:
 
 `indexing` · `head_mismatch` · `unknown_commit` · `head_unreadable` ·
 `repo_busy` · `repo_unavailable` · `tree_unreadable` · `invalid_files` ·
-`too_many_files` · `malformed_commit` · `not_found` ·
+`too_many_files` · `malformed_commit` · `not_found` · `spawn_failed` ·
 `ambiguous_repo` (MCP only).
 
 **One row per request, and it carries the terminal outcome** — which means the
