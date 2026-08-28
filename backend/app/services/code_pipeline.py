@@ -140,6 +140,9 @@ class CodePipeline:
         self._debt_batch: list[str] = []
         self._debt_vanished: list[str] = []
 
+        self._union_files: list[str] = []
+        self._union_buckets = None
+
     async def run(
         self,
         repo_id: UUID,
@@ -147,6 +150,7 @@ class CodePipeline:
         enrich_symbols: bool = False,
         generate_wiki: bool = False,
         forced_files: tuple[list[str], list[str]] | None = None,
+        union_files: list[str] | None = None,
     ) -> dict:
         from app.api.websocket import event_manager
 
@@ -162,6 +166,13 @@ class CodePipeline:
         if forced_files is not None and not any(forced_files):
             forced_files = None
 
+        # An empty list is "nothing named", not "a union was requested"; the
+        # short-circuit clause below reads this as a falsy value.
+        if union_files is not None and not union_files:
+            union_files = None
+        self._union_files = list(union_files) if union_files else []
+        self._union_buckets = None
+
         repo = self._repo
         new_sha = await self.repo_manager.pull_repo(repo)
         if new_sha is None:
@@ -173,7 +184,7 @@ class CodePipeline:
 
         old_sha = repo.last_indexed_commit
 
-        if old_sha == new_sha and not full and forced_files is None:
+        if old_sha == new_sha and not full and forced_files is None and not union_files:
             # Outstanding debt is work this repo owes at the *current* sha, so an
             # unchanged HEAD must not short-circuit it: without this the queue
             # only ever drains when someone happens to push, which is the same
@@ -218,6 +229,24 @@ class CodePipeline:
 
         try:
             await self.phase_01_file_discovery(old_sha, new_sha, full, forced_files)
+
+            if self._union_buckets is not None:
+                self._stats.update({
+                    "union_accepted": len(self._union_buckets.accepted),
+                    "union_skipped_unchanged": len(self._union_buckets.skipped_unchanged),
+                    "union_skipped_missing": len(self._union_buckets.skipped_missing),
+                    "union_skipped_unindexable": len(self._union_buckets.skipped_unindexable),
+                })
+                if not self._changed_files and not self._deleted_files:
+                    # Every named file was filtered out and the diff was empty.
+                    # Phases 09-11 are repo-global with no empty-set exit, so
+                    # continuing would buy a Leiden pass for no content.
+                    repo.status = "ready"
+                    repo.status_message = None
+                    await self.session.commit()
+                    self._stats["status"] = "up_to_date"
+                    return self._stats
+
             total = len(self._changed_files)
 
             await event_manager.broadcast("repo.indexing_started", {
@@ -498,6 +527,7 @@ class CodePipeline:
                 all_files = _list_all_files(work_dir)
                 self._changed_files = all_files
                 self._deleted_files = await self._find_removed_files(all_files)
+                await self._apply_union_files()
             else:
                 # Re-trace callers of changed/deleted files so a renamed or
                 # removed target doesn't leave an unchanged caller's edge
@@ -506,6 +536,7 @@ class CodePipeline:
                 # Added dependents hit phase_03's content-hash skip — no
                 # structure rewrite, only their calls are re-resolved in
                 # phase_06.
+                await self._apply_union_files()
                 targets = self._changed_files + self._deleted_files
                 if targets:
                     deps, overflow = await _find_dependent_caller_files(
@@ -534,6 +565,38 @@ class CodePipeline:
         await self._fold_index_debt(new_sha)
 
         self._phase_done("01_file_discovery", t0)
+
+    async def _apply_union_files(self) -> None:
+        """Add the caller's changed files to this run's changed set.
+
+        Only files whose content actually differs are added. An unchanged one
+        would take phase 03's skip path yet still consume the re-trace cap and
+        be re-embedded by phase 12, so filtering is what keeps a repeated list
+        from manufacturing phantom index debt.
+        """
+        if not self._union_files:
+            return
+
+        from sqlalchemy import select
+
+        from app.models.code import CodeFile
+        from app.services.reindex_files import classify_union_files
+
+        rows = (await self.session.execute(
+            select(CodeFile.file_path, CodeFile.content_hash)
+            .where(
+                CodeFile.repo_id == self._repo.id,
+                CodeFile.file_path.in_(self._union_files),
+            )
+        )).all()
+
+        self._union_buckets = classify_union_files(
+            self._work_dir, self._union_files, dict(rows),
+        )
+        already = set(self._changed_files) | set(self._deleted_files)
+        self._changed_files.extend(
+            f for f in self._union_buckets.accepted if f not in already
+        )
 
     async def _fold_index_debt(self, new_sha: str) -> None:
         """Persist this run's re-trace overflow and claim a batch to drain.
