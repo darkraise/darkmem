@@ -176,10 +176,12 @@ def _clamp_limit(limit: int, default: int, maximum: int = _MAX_LIMIT) -> int:
 
 
 @mcp.tool(
-    description="Store a new memory in the knowledge system. Use this to save facts, decisions, preferences, debugging insights, infrastructure details, or any information worth remembering across sessions. The origin tool is auto-detected and recorded in 'source'. Buffered by default (Tier-A accept, doc 05 §2): returns immediately with the memory's final id while extraction/classification runs asynchronously. Pass wait_process=true to drive that processing inline instead, bounded by buffer_wait_timeout_seconds — the fully processed memory is returned when it settles in time, otherwise the same buffered ack."
+    description="Store a new memory in the knowledge system. Use this to save facts, decisions, preferences, debugging insights, infrastructure details, or any information worth remembering across sessions. One memory holds ONE fact, in 1-3 sentences: several facts belong in several entries via memory_batch_add, and a long write-up belongs in document_put. The origin tool is auto-detected and recorded in 'source'. Buffered by default (Tier-A accept, doc 05 §2): returns immediately with the memory's final id while extraction/classification runs asynchronously. Pass wait_process=true to drive that processing inline instead, bounded by buffer_wait_timeout_seconds — the fully processed memory is returned when it settles in time, otherwise the same buffered ack."
 )
 async def memory_add(
-    content: str,
+    content: Annotated[str, Field(
+        description="The one fact to store, in 1-3 sentences (aim under ~500 characters). State the fact and why it holds; omit how you found it and any session narrative. Several facts means several entries via memory_batch_add, never one long memory - a memory is one embedding and supersession retires it whole, so a multi-topic row retrieves poorly and can never be superseded."
+    )],
     tags: list[str] | None = None,
     source: Annotated[str | None, Field(
         description="Origin tool. Auto-detected for known clients; pass a value only to override."
@@ -192,7 +194,7 @@ async def memory_add(
 ) -> str:
     """
     Args:
-        content: The memory content to store. Be specific and include context.
+        content: The one fact to store, in 1-3 sentences. State the fact and why it holds; omit session narrative. Several facts means several entries (memory_batch_add), not one long memory.
         tags: Categorization tags using slash notation (e.g., "project/darkmem", "debug/root-cause", "infra/services").
         source: Origin tool. Auto-detected per request (X-Darkmem-Client header, then User-Agent); pass a value only to override. Falls back to "mcp".
         source_agent: Optional agent/session identifier; defaults to the caller's raw User-Agent.
@@ -295,7 +297,9 @@ async def memory_get(memory_id: str) -> str:
         "Revise a stored memory in place: its content, tags, or memory type. "
         "Editing content re-runs extraction, so the entity and relationship "
         "graph for that memory is rebuilt. Use it to correct a memory rather "
-        "than adding a second one that contradicts the first."
+        "than adding a second one that contradicts the first. Replace the "
+        "fact; never append to it — a new fact is a new memory, not a "
+        "section bolted onto this one."
     )
 )
 async def memory_update(
@@ -363,7 +367,7 @@ async def memory_delete(memory_id: str, ctx: Context | None = None) -> str:
 
 
 @mcp.tool(
-    description="Create multiple memories in a single operation. Each entry follows the same format as memory_add; entries without 'source' get the auto-detected origin tool. Buffered by default (one 202-style accept per entry, doc 05 §2); pass wait_process=true to drive the whole batch's flush inline as a single pipeline pass, bounded by buffer_wait_timeout_seconds."
+    description="Create multiple memories in a single operation - the right shape whenever a session produced several facts, which are several entries rather than one long memory. Each entry follows the same format as memory_add, one fact each; entries without 'source' get the auto-detected origin tool. Buffered by default (one 202-style accept per entry, doc 05 §2); pass wait_process=true to drive the whole batch's flush inline as a single pipeline pass, bounded by buffer_wait_timeout_seconds."
 )
 async def memory_batch_add(
     entries: list[dict], wait_process: bool = False, ctx: Context | None = None,
