@@ -135,6 +135,12 @@ async def prepare_reindex(
         await refuse(409, "head_unreadable", error=str(exc)[:200])
 
     if commit is not None and head != commit:
+        try:
+            await RepoManager._run_git(
+                work_dir, ["git", "cat-file", "-e", f"{commit}^{{commit}}"],
+            )
+        except Exception:
+            await refuse(409, "unknown_commit", expected=commit, actual=head)
         await refuse(409, "head_mismatch", expected=commit, actual=head)
 
     await _journal(

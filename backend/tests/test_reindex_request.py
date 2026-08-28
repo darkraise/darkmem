@@ -28,6 +28,21 @@ def _git_repo(tmp_path: Path) -> str:
     ).stdout.strip()
 
 
+def _second_commit(tmp_path: Path) -> str:
+    """Add a second commit and return its sha -- a real object that is not HEAD."""
+    (tmp_path / "src" / "b.py").write_text("y = 2\n")
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t",
+         "commit", "-qm", "second"],
+        cwd=tmp_path, check=True,
+    )
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=tmp_path,
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+
+
 async def _repo_row(session, tmp_path, status="ready") -> Repository:
     repo = Repository(
         name=f"rr-{uuid.uuid4().hex[:8]}",
@@ -66,6 +81,26 @@ async def test_matching_commit_is_accepted(session, tmp_path):
 
 
 async def test_head_mismatch_refuses_with_both_shas(session, tmp_path):
+    first = _git_repo(tmp_path)
+    second = _second_commit(tmp_path)
+    repo = await _repo_row(session, tmp_path)
+
+    with pytest.raises(ReindexRefused) as exc:
+        await prepare_reindex(
+            session, repo, files=["src/a.py"], commit=first,
+            actor="t", api_key_id=None, source="reindex_api",
+        )
+
+    assert exc.value.status_code == 409
+    assert exc.value.reason == "head_mismatch"
+    assert exc.value.detail["actual"] == second
+    assert exc.value.detail["expected"] == first
+
+
+async def test_a_sha_not_in_this_repository_is_unknown_commit(session, tmp_path):
+    """A sha that is syntactically valid but not an object here is a different
+    operator situation than a stale HEAD: the wrong repo, or a sha that never
+    landed, not a sync you can just retry."""
     head = _git_repo(tmp_path)
     repo = await _repo_row(session, tmp_path)
     wrong = "0" * 40
@@ -77,7 +112,7 @@ async def test_head_mismatch_refuses_with_both_shas(session, tmp_path):
         )
 
     assert exc.value.status_code == 409
-    assert exc.value.reason == "head_mismatch"
+    assert exc.value.reason == "unknown_commit"
     assert exc.value.detail["actual"] == head
     assert exc.value.detail["expected"] == wrong
 
@@ -164,7 +199,7 @@ async def test_a_refusal_is_journalled(session, tmp_path):
 
     payloads = await _events(session, repo.id)
     assert len(payloads) == 1
-    assert payloads[0]["outcome"] == "head_mismatch"
+    assert payloads[0]["outcome"] == "unknown_commit"
 
 
 async def test_the_door_makes_no_mutating_git_call(session, tmp_path):
