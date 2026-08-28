@@ -73,7 +73,56 @@ async def test_union_file_is_indexed_when_head_has_not_moved(session, tmp_path):
     assert "beta" in await _indexed_symbols(session, repo.id)
 
 
-async def test_unchanged_union_file_takes_the_early_exit(session, tmp_path):
+async def test_first_index_reports_union_stats(session, tmp_path):
+    """Interfaces: the four union_* keys appear \"whenever union_files was
+    passed\" -- including a repository that has never been indexed
+    (last_indexed_commit is NULL), which takes phase_01's `if not old_sha:`
+    branch rather than the incremental one. That branch already indexes
+    every file regardless of the union (it lists the whole tree), so this
+    guards the *stats shape*, not the indexing outcome: a consumer reading
+    result["union_accepted"] on a freshly added, never-indexed repository
+    must not KeyError."""
+    import subprocess
+
+    (tmp_path / "src").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "src" / "a.py").write_text("def alpha():\n    return 1\n")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t",
+         "commit", "-qm", "init"],
+        cwd=tmp_path, check=True,
+    )
+
+    repo = Repository(
+        name=f"union-first-{uuid.uuid4().hex[:8]}",
+        local_path=str(tmp_path),
+        provider="local",
+        status="ready",
+    )
+    session.add(repo)
+    await session.commit()
+    assert repo.last_indexed_commit is None
+
+    pipeline = CodePipeline(
+        session=session, llm=None, vector_repo=None,
+        repo_manager=RepoManager(session),
+    )
+    result = await pipeline.run(repo.id, union_files=["src/a.py"])
+
+    assert result["status"] == "indexed"
+    for key in (
+        "union_accepted", "union_skipped_unchanged",
+        "union_skipped_missing", "union_skipped_unindexable",
+    ):
+        assert key in result, f"missing {key} on a first-index union run"
+    assert result["union_accepted"] == 1
+    assert "alpha" in await _indexed_symbols(session, repo.id)
+
+
+async def test_unchanged_union_file_takes_the_early_exit(
+    session, session_factory, tmp_path,
+):
     """Nothing changed, so the run must not buy a repo-global pass."""
     repo = await _make_indexed_repo(session, tmp_path)
 
@@ -85,8 +134,16 @@ async def test_unchanged_union_file_takes_the_early_exit(session, tmp_path):
 
     assert result["status"] == "up_to_date"
     assert result["union_skipped_unchanged"] == 1
-    await session.refresh(repo)
-    assert repo.status == "ready"
+
+    # A refresh through the SAME session that made the change would pass
+    # whether the code commits or merely mutates the ORM object and lets that
+    # session's own autoflush carry it along on the next query -- it shares
+    # the writer's identity map. A second session on its own connection has
+    # no visibility into the first session's unflushed state, so this only
+    # sees "ready" if the pipeline actually persisted it.
+    async with session_factory() as verify:
+        refreshed = await verify.get(Repository, repo.id)
+        assert refreshed.status == "ready"
 
 
 async def test_missing_union_file_deletes_nothing(session, tmp_path):
@@ -161,9 +218,14 @@ async def test_last_indexed_commit_advances_on_a_union_run(session, tmp_path):
 async def test_a_variant_spelling_makes_no_second_code_file_row(
     session, tmp_path,
 ):
-    """Spec §6.2. `code_files` has no uniqueness on (repo_id, file_path) and
-    phase 03 looks its row up by exact string match, so an uncanonicalised
-    spelling inserts a duplicate row and duplicate symbols for one file."""
+    """Spec §6.2. `_apply_union_files` performs no canonicalisation itself --
+    it trusts the door to have already resolved every name to the one
+    spelling `_list_all_files` produces. `code_files` has no uniqueness on
+    (repo_id, file_path) and phase 03 looks its row up by exact string match,
+    so feeding a raw, uncanonicalised spelling straight to `run()` would
+    genuinely insert a duplicate row and duplicate symbols for one file. This
+    pairs the two halves: canonicalise here exactly as the door would, then
+    confirm the pipeline trusts that output."""
     from app.services.reindex_files import canonicalise_paths
 
     repo = await _make_indexed_repo(session, tmp_path)

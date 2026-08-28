@@ -7,6 +7,7 @@ import logging
 import time
 from collections import deque, namedtuple
 from pathlib import Path
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from sqlalchemy import delete, select, text
@@ -27,6 +28,9 @@ from app.services.repo_manager import RepoManager
 from app.services.symbol_table import SymbolEntry, SymbolTable
 from app.services.type_env import TypeEnvironment, build_type_env, propagate_types
 from app.utils.graph_keys import compose_key, split_symbol_key
+
+if TYPE_CHECKING:
+    from app.services.reindex_files import UnionBuckets
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +145,7 @@ class CodePipeline:
         self._debt_vanished: list[str] = []
 
         self._union_files: list[str] = []
-        self._union_buckets = None
+        self._union_buckets: UnionBuckets | None = None
 
     async def run(
         self,
@@ -241,6 +245,16 @@ class CodePipeline:
                     # Every named file was filtered out and the diff was empty.
                     # Phases 09-11 are repo-global with no empty-set exit, so
                     # continuing would buy a Leiden pass for no content.
+                    #
+                    # Any debt batch _fold_index_debt claimed during phase 01
+                    # must be empty here: a "present" debt file would already
+                    # sit in _changed_files, which this branch requires to be
+                    # empty. So a claimed batch, if any, is entirely vanished
+                    # entries -- settling it is a genuine resolution (doc'd on
+                    # _fold_index_debt), not a dropped re-trace, and this also
+                    # replaces the initialised index_debt_queued=0 with the
+                    # real queue depth instead of leaving it wrong.
+                    await self._settle_index_debt(new_sha)
                     repo.status = "ready"
                     repo.status_message = None
                     await self.session.commit()
@@ -492,6 +506,14 @@ class CodePipeline:
             self._changed_files = _list_all_files(work_dir)
             self._deleted_files = []
             await self._delete_all_repo_data(self._repo.id)
+            # Called after the wipe so a leftover CodeFile row from a prior,
+            # never-completed attempt can't mark a named file "unchanged" --
+            # nothing is already indexed on this branch, so every existing
+            # named file is genuinely accepted. This also populates
+            # _union_buckets so run()'s stats carry the union_* keys even
+            # though every named file was already in _changed_files via the
+            # full listing above.
+            await self._apply_union_files()
         else:
             used_full = full
             if not full:
@@ -577,9 +599,8 @@ class CodePipeline:
         if not self._union_files:
             return
 
-        from sqlalchemy import select
-
-        from app.models.code import CodeFile
+        # Lazy: reindex_files imports code_reconcile, which imports this
+        # module, so a top-level import here would close that cycle.
         from app.services.reindex_files import classify_union_files
 
         rows = (await self.session.execute(
