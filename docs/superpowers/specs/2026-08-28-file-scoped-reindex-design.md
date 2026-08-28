@@ -48,9 +48,18 @@ One new service module, `app/services/reindex_request.py`, holding the entry
 point both doors call:
 
 ```
-resolve_repo → canonicalise files → verify HEAD (read-only) → claim ─┬─ ok    → spawn run  (202)
-                                                                     └─ held  → 409 repo_busy
+resolve_repo → precheck (status, work_dir exists) → canonicalise files
+             → verify HEAD (read-only) → claim ─┬─ ok   → spawn run  (202)
+                                                └─ held → 409 repo_busy
 ```
+
+**The precheck comes before canonicalisation, not after.** Canonicalisation
+walks the working tree (§6.2), which for a repository in status `cloning` may
+not exist yet, and which a concurrent claimed run may be mid-`rmtree` on. Without
+the precheck the door would fail inside an `rglob` — before reaching the claim
+whose loss is what produces §6.3's honest `409 repo_busy`. The precheck is
+advisory only; `claim_for_indexing` remains the authoritative gate, and losing
+the claim after a passed precheck is still a `409 repo_busy`.
 
 Both doors are thin: they resolve their caller's way of naming a repository
 (§6), then call this one function. Neither door contains indexing logic, a
@@ -88,26 +97,52 @@ also stay in `self._parsed`, and `phase_12` iterates that dict
 request.
 
 Both problems have one cause: files that did not actually change. So filter
-them out before the union:
+them out before the union.
+
+**Branch order is load-bearing.** `_file_hash` returns `None` for a file that
+is missing *and* for one that is merely unindexable — `not path.is_file()` is
+the first thing it tests (`code_reconcile.py:61`). So a presence test must come
+first, or every absent file is swallowed by the unindexable branch and §3.3's
+`skipped_missing` never fires at all:
 
 ```
 for each named path p:
-    live = _file_hash(work_dir / p)          # code_reconcile's own function
-    if live is None:            -> drop      (pipeline would skip it anyway)
-    if p not on disk:           -> report skipped_missing, never delete (§3.3)
-    if live == CodeFile.content_hash(p): -> drop, nothing to do
-    else:                       -> keep
+    if not (work_dir / p).is_file():     -> skipped_missing   (§3.3, never delete)
+    live = _file_hash(work_dir / p)      # code_reconcile's own function
+    if live is None:                     -> skipped_unindexable
+                                         #  oversized or unreadable; the pipeline
+                                         #  would skip it too (`_parse_one`,
+                                         #  code_pipeline.py:918-940)
+    if live == CodeFile.content_hash(p): -> skipped_unchanged
+    else:                                -> accepted
 ```
+
+A named file with no `CodeFile` row has `content_hash` NULL, so it never
+compares equal and is **accepted** — content the graph has never seen.
 
 The hash function is `code_reconcile._file_hash`, which is documented to
 produce exactly what `phase_03`'s own comparison uses
 (`code_reconcile.py:16-23`) — so there is one definition of "changed" across
 all three call sites, not a second one invented here.
 
-The surviving set is unioned into `self._changed_files` **before**
+The `accepted` set is unioned into `self._changed_files` **before**
 `_find_dependent_caller_files` runs, so genuine changes get their callers
-re-traced and unchanged files never enter the run at all. A named file with no
-`CodeFile` row survives the filter (content the graph has never seen).
+re-traced and unchanged files never enter the run at all.
+
+**Every named file lands in exactly one of the four buckets**, and all four are
+reported (§6). `skipped_unindexable` exists so a caller that names a file the
+system can never index hears about it: silence is the one outcome this
+reporting is for. It inherits a pre-existing wart — a previously-indexed file
+that later grew past `MAX_FILE_SIZE` keeps serving its stale graph — which this
+design does not fix and does not worsen.
+
+**What the filter deliberately forecloses.** A named file that is unchanged on
+disk but whose call edges are already missing — a stale caller, which is
+exactly what `index_debt` holds — is dropped rather than re-traced. That is
+correct: a caller of a *changed* named file is re-traced automatically by
+`_find_dependent_caller_files`, so only pre-existing staleness is out of reach,
+and repairing that is `index_debt`'s and `code_reconcile`'s job. Do not "fix"
+the filter to serve it; it would reintroduce the phantom-debt failure of §3.1.
 
 **Where it runs.** Inside `phase_01_file_discovery`, not at the door — it has
 to read the working tree *after* the run's own `pull_repo`, and it needs the
@@ -118,6 +153,18 @@ that outcome is reported by the run, not by the 202 (§6).
 **What this costs:** one `sha256` per named file, inside a run that is already
 reading those files. Bounded by the file cap in §6.3.
 
+**The all-filtered run needs an early exit.** When every named file is
+filtered out, the amended short-circuit (§3.4) has already been bypassed — it
+runs before `phase_01`, where the filter lives — so the run proceeds with an
+empty changed set. Phases 02-08 are near-free on an empty set, but `phase_09`
+(Leiden community detection), `phase_10` (process tracing) and `phase_11`'s
+repo-wide edge validation are repo-global and have no empty-set early exit, so
+an admin key re-sending the same unchanged list would pay a full Leiden pass
+per request. So: **after `phase_01`, if `union_files` was given and the changed,
+deleted and debt-batch sets are all empty, commit `ready` and return
+`up_to_date`.** Scoped to the union path deliberately — no existing caller's
+behaviour changes.
+
 ### 3.2 What the union buys
 
 On the committed path `union_files ⊆ diff`, so the parameter changes nothing.
@@ -127,7 +174,10 @@ It earns its place where the diff cannot see:
   yet committed — today only the 15-minute `code_reconcile` sweep finds this;
 - a force-push that orphaned `last_indexed_commit`, where the diff falls back
   to a full pass or fails outright;
-- rename detection collapsing a pair the caller knows it touched.
+- rename detection collapsing a pair the caller knows it touched — but only
+  the *new* name is indexed immediately. Removing the old name stays with the
+  git diff and `code_reconcile` (§3.3), so both spellings can appear in search
+  for up to one reconcile tick.
 
 ### 3.3 A named file that is not on disk is skipped, never deleted
 
@@ -137,8 +187,7 @@ same working tree, so a request landing mid-`checkout` or mid-rebase sees a
 file momentarily absent and `_delete_file_data` (`code_pipeline.py:1556`) drops
 its rows, edges and chunks.
 
-Instead the file is reported to the caller as `skipped_missing` and nothing is
-deleted. Real deletions are already handled correctly by the git diff, which is
+Instead the file is reported as `skipped_missing` and nothing is deleted. Real deletions are already handled correctly by the git diff, which is
 authoritative for committed removals, and by `code_reconcile` for uncommitted
 ones. This door never removes graph rows.
 
@@ -169,6 +218,12 @@ The caller may pass the sha it expects darkmem to be at. Verification is
 | HEAD ≠ requested sha (behind, ahead, or divergent) | `head_mismatch` |
 | Requested sha is not an object in this repository | `unknown_commit` |
 | HEAD unreadable (tree being re-cloned by a concurrent run) | `head_unreadable` |
+
+Two refusals sit earlier in the flow and are not commit checks: a repository
+whose working directory does not exist or whose status is busy is
+`409 repo_unavailable` / `409 repo_busy` at the precheck, and a working-tree
+walk that fails mid-`rglob` (a directory vanishing under a concurrent re-clone)
+is `409 tree_unreadable` — the canonicalisation analogue of `head_unreadable`.
 
 `commit` is optional; omitting it skips the check.
 
@@ -202,6 +257,9 @@ commit — but it means `commit` is most useful in the shared-working-tree
 deployment this design targets, where HEAD is already the agent's commit.
 Clone-repo callers should omit `commit` or treat the 409 as "retry after sync".
 
+The same staleness applies to `files`, which is why non-member paths are
+soft-skipped rather than refused (§6.2).
+
 ## 5. Busy repositories: 409, no queue
 
 `claim_for_indexing` returns `False` when a run is in flight
@@ -234,7 +292,8 @@ is all the door can know. Whether a path survived the hash filter is decided
 inside the run (§3.1), so the per-file outcome is carried by the run's own
 `repo_indexed` event payload and the `repo.indexing_completed` websocket
 broadcast as `union_accepted` / `union_skipped_unchanged` /
-`union_skipped_missing`, alongside the existing counters.
+`union_skipped_missing` / `union_skipped_unindexable` — the four buckets of
+§3.1, every named file in exactly one — alongside the existing counters.
 
 Path-addressed by id, matching `docs/api-rest-conventions.md` (202
 async-accepted) and the SPA, which always holds the id.
@@ -277,9 +336,16 @@ Consequences to land with it:
   updated in the same change. Tool roster 33 → 34.
 - `TOOL_SCOPES` stops being a two-set partition. The overlap guard at
   `scopes.py:85-90` must extend to all three sets pairwise.
-- `tests/test_mcp_auth.py:361-390` derives the roster from source, so the new
-  tool is caught automatically; only the set membership and the "33" prose in
-  the module docstring need edits.
+- `tests/test_mcp_auth.py` needs more than the roster pick-up. Line 389 asserts
+  `len(CAPTURE_TOOLS) + len(READ_TOOLS) == len(declared)`, which fails the
+  moment a tool is classified in a third set; the `unknown` / `stale` checks at
+  `:377-380` cover only the two existing sets and need a symmetric
+  `ADMIN_TOOLS` clause; and
+  `test_an_admin_only_key_reaches_neither_partition` (`:299-305`) stays green
+  by accident — it probes only `memory_stats` and `memory_add` — while its name
+  and premise become false. It should be reworked into the positive
+  admin-reaches-`code_reindex` test §9 lists.
+- The "33" prose in the `scopes.py` module docstring.
 
 ### 6.2 Path canonicalisation (fixes review finding 6)
 
@@ -292,20 +358,55 @@ lookup, is treated as a new file, and **inserts a duplicate `CodeFile` row and
 duplicate symbols for one on-disk file**, with search returning both forever.
 
 So path handling is a correctness requirement, not only a traversal defence.
-Each entry is: resolved against the working directory, rejected if it escapes
-it or contains `..`, then **re-derived in the discovery spelling** —
-`Path.relative_to(work_dir).as_posix()`, exactly what `_list_all_files`
-produces (`code_pipeline.py:1688-1701`) — and required to be a member of that
-set. A path that canonicalises to something `_list_all_files` would not emit is
-refused rather than guessed at.
+Each entry is resolved against the working directory, then **re-derived in the
+discovery spelling** — `Path.relative_to(work_dir).as_posix()`, exactly what
+`_list_all_files` produces (`code_pipeline.py:1688-1701`).
+
+**Two failure modes, two different answers.** Conflating them breaks the
+motivating caller:
+
+- **Invalid** — escapes the working directory, contains `..`, or is absolute
+  and outside. This is caller error and **hard-refuses the whole request**
+  with `400 invalid_files`, naming the offending entries.
+- **Valid but not a member of `_list_all_files`** — the path is inside the
+  repository but is not on disk, or is filtered by `IGNORED_DIRS` /
+  `IGNORED_EXTENSIONS`. This is **soft-skipped**, reported as
+  `skipped_missing` (§3.3), and the rest of the request proceeds.
+
+The soft-skip is what keeps the door usable on a clone repository. Membership
+is evaluated against the **stale, last-fetched tree** (§4.3's admission applies
+to `files`, not only to `commit`), so a git hook naming a newly *added* file —
+the most ordinary push there is — names a path the stale clone does not have.
+Hard-refusing there would reject exactly the push the door exists to announce.
+The file is skipped, the run's own diff picks it up after the pull, and the
+caller is told which entries were skipped.
+
+Case and unicode variants that differ from the discovery spelling fail
+membership and are soft-skipped rather than corrected — safe direction: a
+guessed spelling is what inserts the duplicate row.
+
+**Symlinks are deliberately asymmetric.** `_list_all_files` follows them
+(`rglob` + `is_file()`), so the pipeline indexes an in-tree symlink pointing
+outside the repository; the door's escape check resolves the link and refuses
+it. Refusing something the pipeline would index is the safe direction, and is
+intentional rather than an oversight.
+
+**Cost.** Membership requires a full `rglob("*")` plus a `stat` per entry over
+the whole working tree, in the request path. The 1000-entry cap bounds the
+caller's list, not the repository walk. Acceptable at homelab monorepo scale;
+stated so the cap is not misread as the cost bound.
 
 ### 6.3 Other input validation
 
 - `files` capped at 1000 entries. An unbounded list is a cheap way to force a
   near-full index on a large repository.
 - `commit` must match `^[0-9a-f]{7,40}$` before reaching any git call.
-- Repository status `cloning` loses the claim and returns 409 `repo_busy`;
-  status `error` is claimable and proceeds, matching the existing routes.
+- Repository status `cloning` or `indexing` returns 409 `repo_busy` at the
+  precheck (§1); status `error` is claimable and proceeds, matching the
+  existing routes. The precheck is advisory — a repo that becomes busy between
+  it and `claim_for_indexing` returns the same 409 from the claim.
+- A repository whose working directory does not exist returns 409
+  `repo_unavailable` at the precheck, before any tree walk.
 
 ## 7. Events journalling (fixes review finding 9)
 
@@ -319,20 +420,39 @@ value before its emitter ships, as `block_embeddings_refreshed` was
 (`events.py:141-143`). Add **`repo_reindex_requested`**. `repo_webhook_received`
 names the wrong door and `repo_indexed` belongs to the run itself.
 
-Journalled before the repository lookup, `object_type="repository"`,
-`source="reindex_api"` / `"reindex_mcp"`, with `actor` and `api_key_id` stamped
-from the principal on both doors, and a payload carrying the file count, the
-requested commit and the outcome (`indexing` / `head_mismatch` / `repo_busy` /
-`not_found`).
+**Timing: journalled at the end of the door, not before the lookup.** The
+webhook writes its row first and can, because it carries only `{"keyed": …}`;
+this door's row carries an *outcome*, which does not exist until the door has
+finished deciding. One row written last, in its own committed session, records
+every computed refusal — 400, 404 and every 409 — and loses only the
+unhandled-exception path. That is a smaller gap than the two-row alternative
+costs in complexity.
+
+`object_type="repository"`, `source="reindex_api"` / `"reindex_mcp"`, `actor`
+and `api_key_id` stamped from the principal on both doors. The payload carries
+the file count, the requested commit, and the outcome, whose vocabulary is
+every terminal state of §4 and §6 — not only the happy path:
+
+`indexing` · `head_mismatch` · `unknown_commit` · `head_unreadable` ·
+`repo_busy` · `repo_unavailable` · `tree_unreadable` · `invalid_files` ·
+`not_found` · `ambiguous_repo` (MCP only).
+
+For the MCP door a request that fails repository resolution has no UUID to
+stamp; `record_event`'s `object_id` is nullable, so the row is written id-less
+with the caller's `repo_path` / `repo_name` in the payload.
 
 ## 8. Cost model
 
-The hash filter (§3.1) is what keeps this bounded: unchanged named files never
-enter the run, so `phase_12` does not re-embed them and the re-trace cap is not
-consumed by them. What a request still costs when files genuinely changed is
-one ordinary incremental run — including the repo-global `phase_09` Leiden pass
-and `phase_10` process detection, which are per-run regardless of changed-set
-size.
+The hash filter (§3.1) bounds the cost of the *files*: unchanged named files
+never enter the run, so `phase_12` does not re-embed them and the re-trace cap
+is not consumed by them. It does **not** by itself bound the cost of the *run* —
+`phase_09`'s Leiden pass, `phase_10`'s process tracing and `phase_11`'s
+repo-wide validation are repo-global and run regardless of changed-set size.
+That is what §3.1's all-filtered early exit is for: without it, an admin key
+re-sending one unchanged file would buy a full Leiden pass per request.
+
+What a request costs when files genuinely changed is one ordinary incremental
+run — the same cost the webhook already carries.
 
 Neither door is rate-limited. The `admin` scope in §6.1 is the mitigation: the
 population that can spend this is the one that can already trigger the webhook.
@@ -370,12 +490,31 @@ Against the invariants, not the happy path:
   with `api_key_id` set for keyed calls.
 - A `capture`-only key is refused by the MCP tool; an `admin`-only key is
   accepted. The three-set `TOOL_SCOPES` overlap guard fails the build on a tool
-  declared in two sets.
+  declared in two sets, and `test_mcp_auth.py:389`'s two-set arithmetic is
+  rewritten rather than left to fail.
+- **Branch order (§3.1):** a named file that is absent from disk lands in
+  `skipped_missing` specifically — not merely "is skipped". Asserting only that
+  it does not crash would pass against the defect this test exists for.
+- A present-but-oversized named file lands in `skipped_unindexable`, and the
+  caller is told.
+- An all-filtered request takes the early exit: no Leiden pass runs, the claim
+  is released, and the repository ends `ready`.
+- `head_unreadable` and `tree_unreadable` are each produced rather than
+  surfacing as a 500.
+- A repository in status `cloning` returns `409 repo_busy` from the precheck,
+  not an `rglob` failure.
+- On a clone whose tree is stale, a named file absent from that tree is
+  soft-skipped and the request still proceeds; an escaping or `..` path
+  hard-refuses the whole request with `400 invalid_files`.
 
-## 10. What the review changed
+## 10. What the reviews changed
 
-The first draft was reviewed against the code (2026-08-28). Seven must-fixes;
-all citations in the draft verified, but two mechanisms failed:
+Two adversarial review rounds against the code, both 2026-08-28.
+
+### Round 1 — the first draft
+
+Seven must-fixes; all citations in the draft verified, but two mechanisms
+failed:
 
 | # | Finding | Resolution |
 |---|---|---|
@@ -388,7 +527,29 @@ all citations in the draft verified, but two mechanisms failed:
 | 7 | `require_auth` unreachable by the motivating git hook; scope bar inconsistent | §6.1 `admin` on both doors |
 | 8 | `phase_12` re-embedded every unchanged named file | Solved by §3.1 |
 | 9 | No events journalling | §7, `repo_reindex_requested` taxonomy-first |
+| 10 | Queued path invisible on every surface | Mostly moot with the queue cut; the surviving half is the four run-reported buckets (§6) and `cloning` → 409 (§6.3) |
 | 11 | Draft said "eleven `code_*` tools" | Ten; corrected |
+| 12 | Invariant 13/15 exposure | §11 |
+
+### Round 2 — this revision
+
+Round 1's twelve findings all verified addressed, and the coalescing cut
+verified clean (no orphaned reference to the pending row, the cycles cap, the
+drain loop or a "queued" 202 anywhere in the document). Three new must-fixes,
+all in mechanisms the first review had never seen, all paragraph-level:
+
+| # | Finding | Resolution |
+|---|---|---|
+| N1 | §3.1's branch order made §3.3's `skipped_missing` unreachable — `_file_hash` returns `None` for a missing file first (`code_reconcile.py:61`), so the unindexable branch swallowed every absent file | Presence test moved ahead of the hash; four explicit buckets (§3.1) |
+| N2 | §1's flow canonicalised before the precheck, so a `cloning` repo failed inside an `rglob` instead of returning §6.3's `409 repo_busy` | Precheck moved first; `repo_unavailable` and `tree_unreadable` added (§1, §4) |
+| N3 | Refuse-versus-skip was asserted both ways, and hard-refusing broke clone-repo hooks on file-adding pushes | Invalid → `400`, valid-but-absent → soft-skip (§6.2); §4.3's stale-tree admission extended to `files` |
+| N4 | §7 required journalling before the lookup *and* an outcome in the payload | One row at the end of the door; full outcome vocabulary (§7) |
+| N5 | A present-but-unindexable file had no reporting bucket | `skipped_unindexable` (§3.1) |
+| N6 | An all-filtered request still bought a repo-global Leiden pass | Early exit after `phase_01`, scoped to the union path (§3.1, §8) |
+| N7 | The filter forecloses stale-caller repair; §3.2's rename bullet overclaimed | Both stated explicitly (§3.1, §3.2) |
+| N8 | §6.1 understated the `test_mcp_auth.py` changes | Enumerated (§6.1) |
+| N9, N10 | Symlink asymmetry and the `rglob` cost were unstated | Both stated (§6.2) |
+| N13 | Test list did not cover the new mechanisms' edges | Eight bullets added (§9) |
 
 **Why coalescing was cut rather than repaired.** A `config` row has no locking
 (`JobRegistry` protects its `job:*` rows with a per-job asyncio lock; nothing
