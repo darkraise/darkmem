@@ -1091,7 +1091,6 @@ PARITY_TABLE: tuple[Surface, ...] = (
             ("PUT", f"{V1}/repos/{{repo_id}}"),
             ("DELETE", f"{V1}/repos/{{repo_id}}"),
             ("POST", f"{V1}/repos/{{repo_id}}/reindex"),
-            ("POST", f"{V1}/repos/{{repo_id}}/reindex-files"),
             ("POST", f"{V1}/repos/{{repo_id}}/webhook"),
             ("GET", f"{V1}/repos/{{repo_id}}/tasks"),
             ("DELETE", f"{V1}/repos/{{repo_id}}/tasks/{{task_id}}"),
@@ -1109,11 +1108,28 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "reachable receiver, gated on the same `admin` scope, calling "
             "the identical `CodePipeline.run` polling and the Reindex "
             "button both call; `reindex` and `webhook` earn no MCP twin for "
-            "that budget reason. `reindex-files` (spec §6) is REST_ONLY "
-            "only as of this commit, not for the same reason: spec §6.1 "
-            "specifies its MCP twin, `code_reindex(repo_path, repo_name, "
-            "files, commit)`, as the very next task in this epic -- this "
-            "row will move to TWO_DOOR once that lands."
+            "that budget reason. `reindex-files` (spec §6) moved to its own "
+            "two-door row, `repo.reindex_files`, once its MCP twin landed."
+        ),
+    ),
+    Surface(
+        name="repo.reindex_files",
+        status=TWO_DOOR,
+        rest=(("POST", f"{V1}/repos/{{repo_id}}/reindex-files"),),
+        mcp=("code_reindex",),
+        note=(
+            "spec §6.1's twin. Both doors call the one shared entry point, "
+            "`reindex_request.prepare_reindex`, so the file-set canonicalisation, "
+            "the optional commit verification against HEAD, and every refusal "
+            "reason are one implementation. The wire shapes differ in how the "
+            "repository is addressed -- the route takes `repo_id` from the URL, "
+            "the tool takes `repo_path` or `repo_name` and resolves it itself, "
+            "refusing `not_found` or `ambiguous_repo` (with its own journal row) "
+            "before ever reaching `prepare_reindex` -- neither of which the "
+            "route can hit, since a path parameter is never ambiguous. Split "
+            "out of `repo.manage` rather than left inside it once `code_reindex` "
+            "landed: leaving the whole surface REST_ONLY would have hidden that "
+            "one of its ten routes had gained a twin."
         ),
     ),
     Surface(

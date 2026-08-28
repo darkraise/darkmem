@@ -7,7 +7,7 @@ would be exploitable by a non-conforming client.
 
 **The gate is one dispatch-level middleware, not a call in each tool body.**
 The alternative the plan described - one such call as the first
-statement of all 33 tools - is 33 chances to omit one, and an omission is
+statement of all 34 tools - is 34 chances to omit one, and an omission is
 silent: the tool ships reachable by any valid key. Nothing in the type system,
 the decorator or the test suite can see a missing first statement, so the only
 guard available would be a test that re-derives the roster and hopes. Here the
@@ -18,7 +18,7 @@ and that direction is closed the other way round: an unlisted name is
 **refused**, not defaulted. A tool nobody classified is unreachable rather than
 readable, and ``tests/test_mcp_auth.py`` fails the build on the drift.
 
-That is also why ``TOOL_SCOPES`` names all 33 rather than deriving "everything
+That is also why ``TOOL_SCOPES`` names all 34 rather than deriving "everything
 not in ``CAPTURE_TOOLS`` is a reader". A derived partition is total by
 construction, which sounds like the stronger property and is the weaker one: it
 makes a new *writer* that nobody remembered to list resolve to ``read`` and
@@ -82,16 +82,27 @@ READ_TOOLS: frozenset[str] = frozenset({
     "memory_tags",
 })
 
-_overlap = CAPTURE_TOOLS & READ_TOOLS
-if _overlap:
-    raise RuntimeError(
-        f"{sorted(_overlap)} is declared both a writer and a reader; a tool has "
-        "exactly one scope"
-    )
+ADMIN_TOOLS: frozenset[str] = frozenset({
+    "code_reindex",
+})
+
+_pairs = (
+    ("capture", CAPTURE_TOOLS, "read", READ_TOOLS),
+    ("capture", CAPTURE_TOOLS, "admin", ADMIN_TOOLS),
+    ("read", READ_TOOLS, "admin", ADMIN_TOOLS),
+)
+for _a_name, _a, _b_name, _b in _pairs:
+    _overlap = _a & _b
+    if _overlap:
+        raise RuntimeError(
+            f"{sorted(_overlap)} is declared both {_a_name} and {_b_name}; "
+            "a tool has exactly one scope"
+        )
 
 TOOL_SCOPES: dict[str, str] = {
     **{name: "capture" for name in CAPTURE_TOOLS},
     **{name: "read" for name in READ_TOOLS},
+    **{name: "admin" for name in ADMIN_TOOLS},
 }
 
 # The JSON-RPC code a scope refusal carries. Distinct from every code the SDK

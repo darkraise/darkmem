@@ -840,6 +840,149 @@ async def list_repos() -> str:
 
 
 @mcp.tool(
+    description=(
+        "Request an immediate reindex of named files in a repository, "
+        "optionally verifying an expected commit sha first. Address the "
+        "repository by its working-directory path or its name."
+    )
+)
+async def code_reindex(
+    repo_path: str | None = None,
+    repo_name: str | None = None,
+    files: list[str] | None = None,
+    commit: str | None = None,
+) -> str:
+    """The first MCP write door into the code subsystem (spec §6.1).
+
+    Args:
+        repo_path: Working directory of the repository (matched against local_path).
+        repo_name: Repository name, if the path is not known.
+        files: Repository-relative paths the caller changed.
+        commit: Expected HEAD sha; the call is refused if darkmem is elsewhere.
+
+    ``prepare_reindex`` journals only its own refusals (spec §1's shared entry
+    point); every path here that it does not already cover -- an unresolved or
+    ambiguous repository reference, no embedder configured, claim loss, or a
+    scheduling failure -- journals its own outcome exactly once, mirroring
+    ``reindex_repo_files``'s REST shape so one request always produces one
+    audit row no matter which branch it takes.
+    """
+    from pathlib import Path
+
+    from app.models.code import Repository
+    from app.services.reindex_request import (
+        ReindexRefused, journal_reindex_outcome, prepare_reindex,
+    )
+    from app.services.repo_manager import RepoManager
+
+    if not repo_path and not repo_name:
+        raise ValueError("one of repo_path or repo_name is required")
+
+    # The raw caller-supplied count, not `accepted.union_files` -- the same
+    # choice `reindex_repo_files` makes, so a caller comparing audit rows
+    # across doors sees one counting convention.
+    file_count = len(files or [])
+    actor = current_key_name()
+    api_key_id = current_api_key_id()
+
+    async def _journal(repo_id: UUID | None, outcome: str) -> None:
+        async with _code_service_context() as journal_session:
+            await journal_reindex_outcome(
+                journal_session, repo_id, outcome=outcome, file_count=file_count,
+                commit=commit, actor=actor, api_key_id=api_key_id,
+                source="reindex_mcp",
+            )
+
+    async with _code_service_context() as session:
+        if repo_path:
+            resolved = str(Path(repo_path).expanduser().resolve())
+            rows = (await session.execute(
+                select(Repository).where(Repository.local_path == resolved)
+            )).scalars().all()
+        else:
+            rows = (await session.execute(
+                select(Repository).where(Repository.name == repo_name)
+            )).scalars().all()
+
+    if not rows:
+        await _journal(None, "not_found")
+        raise ValueError(f"Repository not found: {repo_path or repo_name}")
+    if len(rows) > 1:
+        # `name` and `local_path` carry no uniqueness, so this is reachable;
+        # a scalar_one_or_none here would raise MultipleResultsFound at the
+        # caller instead of naming the candidates.
+        await _journal(None, "ambiguous_repo")
+        raise ValueError(
+            "Repository reference is ambiguous; pass one of these ids: "
+            + ", ".join(str(r.id) for r in rows)
+        )
+    repo = rows[0]
+
+    if _pipeline is None:
+        # Guarded here, before any claim is taken: `_spawn_repo_index`
+        # immediately dereferences `pipeline.vector_repo`, and `code_search`
+        # in this same file returns a typed result rather than letting that
+        # become an unhandled AttributeError on an instance with no embedder
+        # configured.
+        await _journal(repo.id, "embedder_not_configured")
+        return json.dumps({"status": "refused", "reason": "embedder_not_configured"})
+
+    async with _code_service_context() as session:
+        try:
+            accepted = await prepare_reindex(
+                session, repo, files=files, commit=commit,
+                actor=actor, api_key_id=api_key_id, source="reindex_mcp",
+            )
+        except ReindexRefused as refused:
+            # `refused.detail` can itself carry a `status` key (the busy
+            # precheck's `status=repo.status`) -- spread it first so this
+            # tool's own "refused" marker always wins the collision rather
+            # than being silently overwritten by the repo's git-side status.
+            return json.dumps({
+                **refused.detail,
+                "status": "refused",
+                "reason": refused.reason,
+            })
+
+    async with async_session_factory() as claim_session:
+        claimed = await RepoManager(claim_session).claim_for_indexing(
+            repo.id, message="Queued for indexing...",
+        )
+    if not claimed:
+        await _journal(repo.id, "repo_busy")
+        return json.dumps({"status": "refused", "reason": "repo_busy"})
+
+    from app.api.routes.repos import _spawn_repo_index
+
+    try:
+        _spawn_repo_index(
+            repo.id, _pipeline, async_session_factory,
+            kind="reindex-files",
+            union_files=accepted.union_files,
+        )
+    except Exception as exc:
+        # The claim above already committed "indexing"; leaving the repo
+        # wedged there with no task is worse than the REST door's own
+        # recovery, which this mirrors.
+        logger.error("Failed to schedule MCP reindex for %s: %s", repo.id, exc)
+        async with _code_service_context() as error_session:
+            error_repo = await error_session.get(Repository, repo.id)
+            if error_repo is not None:
+                error_repo.status = "error"
+                error_repo.status_message = "Failed to start indexing"
+        await _journal(repo.id, "spawn_failed")
+        return json.dumps({"status": "refused", "reason": "spawn_failed"})
+
+    await _journal(repo.id, "indexing")
+    return json.dumps({
+        "status": "indexing",
+        "repo_id": str(repo.id),
+        "commit": accepted.head,
+        "accepted": len(accepted.union_files),
+    })
+
+
+@mcp.tool(
     description="Semantic search over indexed code chunks. Returns matching file paths, symbol names, content snippets, and relevance scores."
 )
 async def code_search(

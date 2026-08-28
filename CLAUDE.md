@@ -1257,15 +1257,18 @@ hosts. `memory_batch_add` mirrors the HTTP 1–100 batch cap.
 Authorization is per tool, not per door: `capture` covers the 8 writers
 (`memory_add`, `memory_batch_add`, `memory_update`, `memory_delete`,
 `document_put`, `document_delete`, `checkpoint_save`, `research_run`);
-`read` covers the other 25. Scopes do not imply one another — a key holding
-only `admin` reaches no MCP tool at all, since no tool accepts that scope.
-`ratify` stays outside the scope vocabulary, unchanged by this activation:
-no MCP tool can reach `confirmed` power no matter what a key holds.
-`tools/list` is deliberately **not** scope-filtered — any authenticated key
-sees the full 33-tool catalogue, including writers it cannot invoke; that
-is intended, not an oversight. A keyed capture call stamps
-`events.api_key_id` (the key's row UUID) and `events.actor` (the key's
-name) on the journaled row.
+`read` covers 25; `admin` covers the 1 repository-control tool
+(`code_reindex`, doc 12 §6.1's first MCP write door into the code
+subsystem). Scopes do not imply one another. `admin` reaches exactly one
+tool, `code_reindex` — repository control, not memory writing — so a key
+holding only `admin` reaches nothing else, and a `capture` key cannot
+trigger an index. `ratify` stays outside the scope vocabulary, unchanged by
+this activation: no MCP tool can reach `confirmed` power no matter what a
+key holds. `tools/list` is deliberately **not** scope-filtered — any
+authenticated key sees the full 34-tool catalogue, including writers it
+cannot invoke; that is intended, not an oversight. A keyed capture call
+stamps `events.api_key_id` (the key's row UUID) and `events.actor` (the
+key's name) on the journaled row.
 
 Memory writes resolve `source` per call: explicit arg (the literal `mcp`
 counts as unspecified) > `X-Darkmem-Client` header > User-Agent product
