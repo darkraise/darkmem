@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 
 vi.mock("darkraise-ui/components/sonner", () => ({
-  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }))
 
 import { useWebSocket } from "../websocket"
@@ -85,6 +85,7 @@ describe("useWebSocket", () => {
   afterEach(() => {
     window.WebSocket = originalWebSocket
     vi.useRealTimers()
+    vi.clearAllMocks()
   })
 
   function renderWithSpy() {
@@ -190,5 +191,93 @@ describe("useWebSocket", () => {
     // Only the original socket exists — the unmount-triggered close is
     // recognised as caller-initiated and must not schedule a reconnect.
     expect(MockWebSocket.instances.length).toBe(1)
+  })
+  // --- file-scoped reindex completion (spec 3.1 / 6) ------------------------
+
+  async function emitCompleted(data: Record<string, unknown>) {
+    const { toast } = await import("darkraise-ui/components/sonner")
+    const { unmount } = renderWithSpy()
+    const socket = MockWebSocket.latest()
+    socket.emitOpen()
+    socket.emitMessage({
+      event: "repo.indexing_completed",
+      data: {
+        repo_id: "r1",
+        files_changed: 0,
+        symbols_indexed: 0,
+        index_debt_drained: 0,
+        index_debt_queued: 0,
+        ...data,
+      },
+    })
+    return { toast, unmount }
+  }
+
+  it("reports an all-unchanged file-scoped run as informational, not a zero-count success", async () => {
+    const { toast } = await emitCompleted({
+      union_accepted: 0,
+      union_skipped_unchanged: 3,
+      union_skipped_missing: 0,
+      union_skipped_unindexable: 0,
+    })
+
+    expect(toast.success).not.toHaveBeenCalled()
+    expect(toast.warning).not.toHaveBeenCalled()
+    expect(toast.info).toHaveBeenCalledWith("Nothing to index", {
+      description: "3 already up to date",
+    })
+  })
+
+  it("warns, rather than informs, when a named file was missing or unindexable", async () => {
+    const { toast } = await emitCompleted({
+      union_accepted: 0,
+      union_skipped_unchanged: 1,
+      union_skipped_missing: 2,
+      union_skipped_unindexable: 1,
+    })
+
+    expect(toast.info).not.toHaveBeenCalled()
+    expect(toast.warning).toHaveBeenCalledWith("Nothing to index", {
+      description: "1 already up to date · 2 not found · 1 not indexable",
+    })
+  })
+
+  it("keeps the success toast when a file-scoped run indexed something, and appends what it skipped", async () => {
+    const { toast } = await emitCompleted({
+      files_changed: 2,
+      symbols_indexed: 9,
+      union_accepted: 2,
+      union_skipped_unchanged: 1,
+      union_skipped_missing: 0,
+      union_skipped_unindexable: 0,
+    })
+
+    expect(toast.info).not.toHaveBeenCalled()
+    expect(toast.success).toHaveBeenCalledWith("Indexed 2 files, 9 symbols", {
+      description: "1 already up to date",
+    })
+  })
+
+  it("leaves an ordinary reindex's toast exactly as it was", async () => {
+    // No union keys at all: the run named no files, so there is nothing to
+    // describe and the payload must render the way it always has.
+    const { toast } = await emitCompleted({ files_changed: 4, symbols_indexed: 12 })
+
+    expect(toast.info).not.toHaveBeenCalled()
+    expect(toast.warning).not.toHaveBeenCalled()
+    expect(toast.success).toHaveBeenCalledWith(
+      "Indexed 4 files, 12 symbols",
+      undefined,
+    )
+  })
+
+  it("does not mistake an ordinary run that changed nothing for a file-scoped one", async () => {
+    const { toast } = await emitCompleted({ files_changed: 0, symbols_indexed: 0 })
+
+    expect(toast.info).not.toHaveBeenCalled()
+    expect(toast.success).toHaveBeenCalledWith(
+      "Indexed 0 files, 0 symbols",
+      undefined,
+    )
   })
 })

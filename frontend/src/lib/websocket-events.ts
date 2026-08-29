@@ -48,6 +48,15 @@ export interface RepoIndexingCompleted {
   repo_id: string
   files_changed: number
   symbols_indexed: number
+  index_debt_drained: number
+  index_debt_queued: number
+  // Present only on a file-scoped run: an ordinary reindex names no files and
+  // so has no buckets to report. `union_accepted === undefined` is therefore
+  // how a consumer tells "no union was requested" from "the union was empty".
+  union_accepted?: number
+  union_skipped_unchanged?: number
+  union_skipped_missing?: number
+  union_skipped_unindexable?: number
 }
 
 export interface RepoIndexingFailed {
@@ -110,4 +119,22 @@ export type WebSocketEventMap = {
   "repo.indexing_completed": RepoIndexingCompleted
   "repo.indexing_failed": RepoIndexingFailed
   "enrichment.batch_completed": EnrichmentBatchCompleted
+}
+
+/** Plain-language account of the named files a file-scoped run did not index.
+ *
+ * Returns undefined when there is nothing to report, so a caller can omit the
+ * line entirely rather than render an empty one.
+ */
+export function describeSkippedFiles(
+  d: RepoIndexingCompleted,
+): string | undefined {
+  const parts: string[] = []
+  if (d.union_skipped_unchanged)
+    parts.push(`${d.union_skipped_unchanged} already up to date`)
+  if (d.union_skipped_missing)
+    parts.push(`${d.union_skipped_missing} not found`)
+  if (d.union_skipped_unindexable)
+    parts.push(`${d.union_skipped_unindexable} not indexable`)
+  return parts.length > 0 ? parts.join(" · ") : undefined
 }

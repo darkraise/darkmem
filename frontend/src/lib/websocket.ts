@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "darkraise-ui/components/sonner"
 import type { WebSocketEventMap, PipelineStatus } from "./websocket-events"
+import { describeSkippedFiles } from "./websocket-events"
 
 /**
  * Every query key any pipeline/memory/repo WebSocket event keeps fresh while
@@ -174,9 +175,25 @@ export function useWebSocket() {
           toast.error(`Clone failed: ${d.error}`)
         } else if (msg.event === "repo.indexing_completed") {
           const d = msg.data as WebSocketEventMap["repo.indexing_completed"]
-          toast.success(
-            `Indexed ${d.files_changed} files, ${d.symbols_indexed} symbols`,
-          )
+          const skipped = describeSkippedFiles(d)
+          if (d.union_accepted !== undefined && d.files_changed === 0) {
+            // A file-scoped run that indexed nothing is the outcome the bucket
+            // reporting exists for, and "Indexed 0 files, 0 symbols" answers
+            // the wrong question -- it reads as a failed run rather than as
+            // "your files were already current". Lead with the disposition and
+            // let the buckets say why. Missing or unindexable files are the
+            // caller's problem to act on, so those warn; everything already up
+            // to date is merely informational.
+            const unresolved =
+              (d.union_skipped_missing ?? 0) + (d.union_skipped_unindexable ?? 0)
+            const notify = unresolved > 0 ? toast.warning : toast.info
+            notify("Nothing to index", { description: skipped })
+          } else {
+            toast.success(
+              `Indexed ${d.files_changed} files, ${d.symbols_indexed} symbols`,
+              skipped ? { description: skipped } : undefined,
+            )
+          }
         } else if (msg.event === "repo.indexing_failed") {
           const d = msg.data as WebSocketEventMap["repo.indexing_failed"]
           toast.error(`Indexing failed: ${d.error}`)
