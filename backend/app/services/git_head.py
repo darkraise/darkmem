@@ -30,7 +30,7 @@ async def resolve_head_sha(work_dir: Path) -> str | None:
     # containing `gitdir: /path/to/main/.git/worktrees/<name>`, not a directory.
     # Skip the file-reading fast path and go straight to the subprocess, which
     # git resolves natively without requiring us to parse the pointer.
-    if not git_dir.is_dir():
+    if git_dir.is_file():
         from app.services.repo_manager import RepoManager
 
         try:

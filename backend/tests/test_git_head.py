@@ -95,3 +95,14 @@ async def test_resolves_a_linked_worktree(tmp_path):
     assert (linked / ".git").is_file()
 
     assert await resolve_head_sha(linked) == _rev_parse(linked)
+
+
+async def test_a_non_repository_nested_inside_a_repository_is_none(tmp_path):
+    """`git rev-parse` searches upward, so routing a missing `.git` to the
+    subprocess would answer with an ancestor repo's sha -- and the caller
+    would index a plain directory at a foreign repository's commit."""
+    outer = _repo(tmp_path)
+    plain = outer / "not-a-repo"
+    plain.mkdir()
+
+    assert await resolve_head_sha(plain) is None
