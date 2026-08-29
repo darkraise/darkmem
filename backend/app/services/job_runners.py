@@ -81,8 +81,25 @@ def make_repo_sync_runner(
                     if repo is None:
                         continue
 
-                    if repo.fetch_enabled and _claim_due(
-                        repo_id, "fetch", repo.fetch_interval_seconds, now,
+                    # The index lane below takes claim_for_indexing; this lane
+                    # takes nothing, so it has to refuse on the same statuses
+                    # that claim refuses on -- otherwise a tick landing inside
+                    # an in-flight clone, webhook or manual reindex fetches and
+                    # `reset --hard`s the working tree that run owns, and a
+                    # fetch failing against a half-written clone rmtree's the
+                    # directory the clone is still writing into. The status is
+                    # read BEFORE _claim_due so a refused tick does not burn the
+                    # interval: the interval bounds how often a fetch happens,
+                    # not how often one is skipped, and a repo that goes idle
+                    # mid-window would otherwise wait out a whole interval it
+                    # never used. The residual window between this read and
+                    # pull_repo is accepted at homelab scale.
+                    if (
+                        repo.fetch_enabled
+                        and repo.status not in RepoManager.BUSY_STATUSES
+                        and _claim_due(
+                            repo_id, "fetch", repo.fetch_interval_seconds, now,
+                        )
                     ):
                         # Own try/except: a transient network fault fetching
                         # must not fall into the shared handler below, which

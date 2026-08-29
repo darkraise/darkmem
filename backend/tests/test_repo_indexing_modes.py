@@ -773,3 +773,42 @@ async def test_url_repo_route_claims_and_spawns_initial_after_clone(
             async with database_module.async_session_factory() as cleanup:
                 await cleanup.execute(delete(Repository).where(Repository.id == repo_id))
                 await cleanup.commit()
+
+
+async def test_the_fetch_lane_skips_a_repo_a_run_already_owns(
+    session, session_factory, indexed_repo, spy,
+):
+    """A clone, a webhook run or a manual reindex owns the working tree
+    `pull_repo` would `reset --hard`. The index lane takes
+    `claim_for_indexing`; the fetch lane takes nothing, so it has to read the
+    same statuses that claim refuses on -- and on a failing fetch `pull_repo`
+    rmtree's the very directory an in-flight clone is writing into."""
+    indexed_repo.fetch_enabled = True
+    indexed_repo.status = "cloning"
+    await session.commit()
+
+    await job_runners.make_repo_sync_runner(None, session_factory)()
+
+    assert spy.fetched == []
+
+
+async def test_a_busy_tick_does_not_burn_the_fetch_interval(
+    session, session_factory, indexed_repo, spy,
+):
+    """The interval bounds how often a fetch happens, not how often one is
+    refused: a repo skipped while busy must fetch on the first tick after it
+    goes idle, not one whole interval later."""
+    indexed_repo.fetch_enabled = True
+    indexed_repo.fetch_interval_seconds = 3600
+    indexed_repo.status = "indexing"
+    await session.commit()
+    runner = job_runners.make_repo_sync_runner(None, session_factory)
+
+    await runner()
+    assert spy.fetched == []
+
+    indexed_repo.status = "ready"
+    await session.commit()
+    await runner()
+
+    assert spy.fetched == [indexed_repo.id]
