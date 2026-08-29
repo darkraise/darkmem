@@ -75,6 +75,8 @@ async def create_repo(
     body: RepoCreate,
     _user=Depends(require_auth),
     manager: RepoManager = Depends(get_repo_manager),
+    pipeline: CodePipeline = Depends(get_code_pipeline),
+    session_factory: async_sessionmaker[AsyncSession] = Depends(get_session_factory),
 ):
     try:
         repo = await manager.create(body)
@@ -82,6 +84,19 @@ async def create_repo(
         raise HTTPException(status_code=409, detail=f"Repository '{body.name}' already exists")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    # A URL repo is still cloning; `_clone_in_background` indexes it when the
+    # clone lands. Only a local_path repo has a tree to read right now.
+    if not body.url:
+        try:
+            _spawn_repo_index(
+                repo.id, pipeline, session_factory, kind="initial",
+            )
+        except Exception as e:
+            # The row exists and the Reindex button is one click away; failing
+            # the create over a scheduling error would be the worse outcome.
+            logger.error("Failed to schedule initial index for %s: %s", repo.id, e)
+
     return _to_response(repo, account_labels=await manager.account_labels())
 
 

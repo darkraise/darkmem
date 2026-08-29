@@ -393,3 +393,31 @@ async def test_update_round_trips_the_switches(client, auth_headers):
     assert r.status_code == 200
     assert r.json()["index_on_commit_enabled"] is True
     assert r.json()["commit_poll_seconds"] == 30
+
+async def test_adding_a_repository_indexes_it_once(client, monkeypatch, auth_headers):
+    """With every recurring switch off, nothing else would ever index a new
+    repo -- adding one would do nothing at all. Opt-in governs recurring work;
+    asking darkmem to track a repo is the opt-in for indexing it once."""
+    spawned: list = []
+
+    from app.api.routes import repos as repos_route
+
+    def fake_spawn(repo_id, pipeline, session_factory, **kwargs):
+        spawned.append((repo_id, kwargs.get("kind")))
+
+        class _T:
+            pass
+
+        return _T()
+
+    monkeypatch.setattr(repos_route, "_spawn_repo_index", fake_spawn)
+
+    r = await client.post(
+        "/api/v1/repos",
+        json={"name": "index-once", "local_path": None},
+        headers=auth_headers,
+    )
+
+    assert r.status_code == 201
+    assert len(spawned) == 1
+    assert spawned[0][1] == "initial"
