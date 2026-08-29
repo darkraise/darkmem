@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# Cut a release: assert, sync, build, deploy, tag. Five steps that repeat every
-# version, which is why this is a script and not a checklist.
+# Prepare a release locally: assert, sync, build, deploy, prove it serves.
+# Four steps that repeat every version, which is why this is a script and not a
+# checklist.
 #
 #   ./scripts/release.sh v1.0.0
 #
@@ -10,16 +11,17 @@
 # and a partial version matches none of those patterns -- it would publish
 # under its literal name alone while the job still went green.
 #
-# The tag is written LAST, after the deployment answers on /health. Spec §9 says
-# a version is cut by demonstration rather than by assertion, so a tag that
-# exists is a tag whose stack came up — a failed deploy leaves nothing to
-# explain away.
+# THIS SCRIPT NO LONGER TAGS. Since master pushes cut versions in CI
+# (.github/workflows/release.yml), the tag is written by the `tag` job, after
+# the image is in both registries -- so a tag that exists is a tag whose
+# artifact was published. Writing one here would put it BEFORE any publish,
+# which is the exact ordering spec §9's "cut by demonstration, not by
+# assertion" rule exists to prevent.
 #
-# This script never pushes: it builds locally (`DARKMEM_PUSH=0`) and writes the
-# tag in your repository. Publishing is the tag's own consequence -- pushing it
-# runs .github/workflows/release.yml, which re-runs CI and only then pushes the
-# image to Docker Hub and GHCR. So the irreversible step is `git push origin
-# <tag>`, deliberately separate from cutting the release.
+# What this script is still for: proving the version you are about to cut
+# actually builds, boots and serves on this host before you push it. CI sees
+# the synced version fields, skips its own bump, and publishes under the same
+# number. Pushing master is what releases.
 set -euo pipefail
 
 VERSION="${1:?usage: release.sh vN.N.N}"
@@ -110,7 +112,14 @@ done
   exit 1
 }
 
-echo "── tag ──"
-git tag -a "$VERSION" -m "$VERSION"
+cat <<SUMMARY
 
-echo "$VERSION tagged and deployed; /health returned 200."
+$VERSION is synced, built and serving on :8000.
+
+Nothing is tagged and nothing is published yet. Push master to release:
+
+    git push origin master
+
+CI verifies, publishes the image to Docker Hub and GHCR, and only then writes
+the $VERSION tag and the GitHub release.
+SUMMARY
