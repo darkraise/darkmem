@@ -4,6 +4,27 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
+## v1.3.1 — 2026-08-29
+
+**The first release cut by CI named the wrong commit on one image tag.** A
+one-line fix to the publish job. No behaviour changed and no gate moved; the
+v1.3.0 image itself was correct, only its `sha-` tag misidentified what it
+contained.
+
+### Fixed
+
+- **The short-sha image tag names the commit that was built.** The publish job
+  derived it with `docker/metadata-action`'s `type=sha`, which reads
+  `github.sha` — the commit that *triggered* the run. Since the pipeline builds
+  the version-sync commit that `prepare` creates one step earlier, v1.3.0
+  published `sha-544d349` for an image built from `a0c79463`.
+
+  Every version tag was correct and the digest was right, so nothing shipped
+  broken; what was wrong is the one tag whose entire purpose is to answer
+  *which commit is running*. `prepare` now emits the short sha alongside the
+  full one and the tag is spelled out from it, because GitHub expressions have
+  no substring function to slice it at the point of use.
+
 ## v1.3.0 — 2026-08-29
 
 **The MCP door grew a lock, and agents can now ask for a reindex of the files

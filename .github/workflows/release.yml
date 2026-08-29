@@ -152,6 +152,7 @@ jobs:
       contents: write
     outputs:
       sha: ${{ steps.sync.outputs.sha }}
+      short_sha: ${{ steps.sync.outputs.short_sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -166,7 +167,10 @@ jobs:
           set -euo pipefail
           if [ "$NEEDS_BUMP" != "true" ]; then
             echo "version fields already at $VERSION"
-            echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+            {
+              echo "sha=$(git rev-parse HEAD)"
+              echo "short_sha=$(git rev-parse --short=7 HEAD)"
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -198,7 +202,10 @@ jobs:
           # Nothing has been pushed to a registry at this point, so a failure
           # here costs a re-run and nothing else.
           git push origin "HEAD:${GITHUB_REF_NAME}"
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          {
+            echo "sha=$(git rev-parse HEAD)"
+            echo "short_sha=$(git rev-parse --short=7 HEAD)"
+          } >> "$GITHUB_OUTPUT"
 
   publish:
     name: Publish image
@@ -242,6 +249,13 @@ jobs:
       # `type=semver`, because a master-push run has no tag ref for semver to
       # parse -- the version comes from the plan job, and the tag does not
       # exist yet at this point in the pipeline.
+      # The short-sha tag is spelled out rather than derived with `type=sha`,
+      # which reads github.sha -- the commit that TRIGGERED the run, not the
+      # version-sync commit prepare made and this job actually builds. v1.3.0
+      # published `sha-544d349` for an image built from a0c79463, which is the
+      # one question that tag exists to answer. It is a YAML comment here and
+      # not a line inside `tags:` below, because that value is a block scalar:
+      # a `#` line there is tag input, not a comment.
       - name: Derive image tags
         id: meta
         uses: docker/metadata-action@v5
@@ -254,7 +268,7 @@ jobs:
             type=raw,value=${{ needs.plan.outputs.majorminor }}
             type=raw,value=${{ needs.plan.outputs.major }}
             type=raw,value=latest,enable=${{ needs.plan.outputs.prerelease == 'false' }}
-            type=sha,format=short
+            type=raw,value=sha-${{ needs.prepare.outputs.short_sha }}
           labels: |
             org.opencontainers.image.title=darkmem
             org.opencontainers.image.description=Centralized memory system for AI agents
