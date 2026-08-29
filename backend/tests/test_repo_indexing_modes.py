@@ -663,3 +663,113 @@ async def test_url_repo_is_indexed_once_when_its_clone_completes(monkeypatch):
             async with database_module.async_session_factory() as cleanup:
                 await cleanup.execute(delete(Repository).where(Repository.id == repo_id))
                 await cleanup.commit()
+
+
+async def test_url_repo_route_claims_and_spawns_initial_after_clone(
+    client, auth_headers, monkeypatch,
+):
+    """Fix round 2, Item 1: round 1's two Finding-2 tests each pin one side
+    of the wiring and neither pins the wiring itself.
+    `test_url_repo_is_indexed_once_when_its_clone_completes` drives
+    `RepoManager.create`/`_clone_in_background` directly with a stub
+    `on_ready` of the test's own, so it never touches `create_repo`'s real
+    `_index_after_clone` closure at all --
+    `test_create_repo_does_not_spawn_index_for_a_url_repo_at_create_time`
+    only asserts the *absence* of an early spawn. Neither would notice
+    `on_ready=_index_after_clone` being deleted from `create_repo`, which
+    silently reintroduces Finding 2 verbatim (a URL repo cloned, marked
+    ready, never indexed) -- confirmed by a re-review that deleted exactly
+    that line and watched every test in this module and
+    `test_push_webhook.py` stay green.
+
+    This drives the real route end to end: a real clone (mocked
+    instantaneous), the route's own `on_ready` callback claiming and
+    spawning through `_spawn_repo_index`, and `CodePipeline.run` actually
+    receiving `pull=False` -- so it also covers the post-clone arm of
+    Finding 3, which the round-1 mutation drill only exercised on the
+    local-repo arm.
+
+    Uses the app's real `get_session` for the duration, the same pattern
+    `test_unchanged_head_short_circuits_exactly_as_polling_does` uses:
+    `_clone_in_background` and the claim-and-spawn child task both open
+    their own sessions on the real `async_session_factory`, so the created
+    row must be genuinely committed for either to see it.
+    """
+    import asyncio
+    import uuid
+    from unittest.mock import AsyncMock
+
+    import app.database as database_module
+    from app.database import get_session
+    from app.main import app
+    from app.services.code_pipeline import CodePipeline
+    from app.services.repo_manager import RepoManager
+    from app.services.task_registry import TaskRegistry
+    from sqlalchemy import delete, select
+
+    run_mock = AsyncMock(return_value={"status": "indexed", "commit": "cafe"})
+    monkeypatch.setattr(CodePipeline, "run", run_mock)
+
+    async def instant_clone(self, repo):
+        return None
+
+    monkeypatch.setattr(RepoManager, "_clone_repo", instant_clone)
+
+    captured: list = []
+    real_register = TaskRegistry.register
+
+    def capturing_register(repo_id, kind, task, message=""):
+        captured.append((kind, task))
+        return real_register(repo_id, kind, task, message)
+
+    monkeypatch.setattr(TaskRegistry, "register", capturing_register)
+
+    original_session_override = app.dependency_overrides.get(get_session)
+    del app.dependency_overrides[get_session]
+    repo_id = None
+    try:
+        r = await client.post(
+            "/api/v1/repos",
+            json={"name": "e2e-url-initial", "url": "https://github.com/example/e2e.git"},
+            headers=auth_headers,
+        )
+        assert r.status_code == 201, r.text
+        repo_id = uuid.UUID(r.json()["id"])
+
+        clone_tasks = [t for k, t in captured if k == "clone"]
+        assert len(clone_tasks) == 1
+        await asyncio.gather(*clone_tasks)
+
+        # The claim-and-spawn child task is registered (Item 2) but still
+        # fire-and-forget from this test's perspective -- give the loop a
+        # bounded window to run it and the index task it spawns.
+        for _ in range(300):
+            index_tasks = [t for k, t in captured if k == "initial"]
+            if index_tasks and all(t.done() for t in index_tasks):
+                break
+            await asyncio.sleep(0.01)
+        index_tasks = [t for k, t in captured if k == "initial"]
+        assert len(index_tasks) == 1, (
+            f"route's post-clone closure never spawned an initial index; "
+            f"captured={[(k, t.done()) for k, t in captured]}"
+        )
+        await asyncio.gather(*index_tasks)
+
+        run_mock.assert_awaited_once()
+        assert run_mock.await_args.kwargs == {"pull": False}
+
+        async with database_module.async_session_factory() as check:
+            status = (await check.execute(
+                select(Repository.status).where(Repository.id == repo_id)
+            )).scalar_one()
+        # The claim wrote "indexing" before the spawn; the mocked run never
+        # releases it, which is fine -- the claim having been taken first is
+        # exactly what is asserted here.
+        assert status == "indexing"
+    finally:
+        if original_session_override is not None:
+            app.dependency_overrides[get_session] = original_session_override
+        if repo_id is not None:
+            async with database_module.async_session_factory() as cleanup:
+                await cleanup.execute(delete(Repository).where(Repository.id == repo_id))
+                await cleanup.commit()

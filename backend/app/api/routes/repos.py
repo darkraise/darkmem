@@ -105,7 +105,16 @@ async def create_repo(
                     "Failed to schedule initial index for %s after clone: %s", repo_id, e,
                 )
 
-        asyncio.create_task(_claim_and_spawn())
+        # A bare `asyncio.create_task` here keeps no strong reference of its
+        # own; CPython is free to garbage-collect it before it runs, which
+        # would silently reproduce Finding 2 (a "ready" URL repo that is
+        # never indexed) as an intermittent bug instead of the deterministic
+        # one it used to be. `TaskRegistry` is what the clone task and every
+        # `_spawn_repo_index` task on either side of this one already lean
+        # on for exactly that -- register here too rather than inventing a
+        # second convention.
+        task = asyncio.create_task(_claim_and_spawn())
+        TaskRegistry.register(repo_id, "initial-claim", task, "Queued for indexing...")
 
     try:
         repo = await manager.create(body, on_ready=_index_after_clone)
