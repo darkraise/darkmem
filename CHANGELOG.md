@@ -4,6 +4,59 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
+## v1.4.0 — 2026-08-29
+
+**A repository's recurring upkeep stopped being one flag nobody chose.**
+`auto_sync` — a single boolean that fetched *and* re-indexed on one schedule,
+on by default — is gone. In its place, five per-repo switches, all off by
+default until an operator turns them on, and a standalone drift-scan job
+that used to sweep every tracked repo unconditionally was retired into the
+one loop those switches govern. The gate table is **unchanged from
+v1.3.2** — nothing here touches a surface a gate governs.
+
+### Added
+
+- **Five per-repo indexing switches, both dialogs, all off by default.**
+  `fetch_enabled` (interval `fetch_interval_seconds`, default 300s, floor
+  30s) only moves the repo's `HEAD` — it never indexes. `index_on_commit_enabled`
+  (interval `commit_poll_seconds`, default 60s, floor 15s) is the one thing
+  that triggers a re-index, and only when `HEAD` has actually moved.
+  `index_uncommitted` covers the one case `HEAD` can't see at all — a working
+  tree edited without a commit — by hashing the tree against what was last
+  indexed. Adding a repository still indexes it once regardless of any
+  switch: a local-path repo at create time, a URL repo the moment its clone
+  lands. Nothing recurs afterward unless the operator asks for it.
+
+### Changed
+
+- **`code_reconcile`'s always-on drift scan is retired; the same scan now
+  runs inside the one recurring loop, per repo, only when that repo's
+  `index_uncommitted` switch is on.** The standalone Tier-C job used to hash
+  every tracked repo's working tree on its own cron regardless of what any
+  operator wanted, and it ran with no LLM to bound that unconditional cost.
+  Because the scan now only ever fires for a repo whose operator explicitly
+  opted in, a drift-caught change is indexed with the same LLM any other
+  index tick would use — which means it is now **embedded**, not only
+  structurally indexed. Under the retired job's `llm=None`, drift-caught
+  content reached the symbol/edge graph but never `code_chunk_embeddings`,
+  so it was present yet invisible to semantic code search; that gap is
+  closed for every repo that turns the switch on.
+- **The index lane never fetches.** Fetching and indexing are now two
+  independent lanes on two independent schedules: the fetch lane only moves
+  `HEAD`, and the index lane only observes it (`CodePipeline.run(...,
+  pull=False)` on this path). Previously an unconditional pull ran ahead of
+  every index tick, which meant it could fast-forward or reset an operator's
+  own working-tree edits out from under them — exactly the drift
+  `index_uncommitted` exists to catch. A fetch fault now logs and moves on
+  without touching any switch; an index fault disables `index_on_commit_enabled`
+  only, leaving `fetch_enabled` alone, because a transient network failure
+  must not silently turn off a setting the operator chose.
+- **`auto_sync` is gone from the API.** Every repo response, create and
+  update payload now carries the five switches above instead. Manual
+  reindex, the push webhook, and MCP `code_reindex` are unaffected — they
+  bypass all five switches and keep fetching before they index, exactly as
+  before.
+
 ## v1.3.2 — 2026-08-29
 
 **Master pushes that cut no version were running no tests.** A gating mistake

@@ -1,7 +1,7 @@
 # Per-repo indexing modes: fetch and index as separate, opt-in switches
 
 Date: 2026-08-29
-Status: design approved in brainstorming; not yet planned
+Status: implemented 2026-08-29
 
 ## Problem
 

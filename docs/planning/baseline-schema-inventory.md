@@ -289,7 +289,7 @@ column.
 | `ux_git_accounts_label` | `git_accounts` | `CREATE UNIQUE INDEX ux_git_accounts_label ON public.git_accounts USING btree (provider, host, label)` | `target-new` | 04 §6 | — |
 | `ux_git_accounts_default` | `git_accounts` | `CREATE UNIQUE INDEX ux_git_accounts_default ON public.git_accounts USING btree (provider, host) WHERE is_default` | `target-new` | 04 §6 | — |
 | `git_accounts_pkey` | `git_accounts` | `CREATE UNIQUE INDEX git_accounts_pkey ON public.git_accounts USING btree (id)` | `target-new` | 04 §6 | — |
-| `ix_repositories_auto_sync` | `repositories` | `CREATE INDEX ix_repositories_auto_sync ON public.repositories USING btree (id) WHERE (auto_sync = true)` | `carries-over` | 04 §6 | T0.12b |
+| `ix_repositories_auto_sync` | `repositories` | `CREATE INDEX ix_repositories_auto_sync ON public.repositories USING btree (id) WHERE (auto_sync = true)` | `dropped` — **the per-repo indexing modes epic split `auto_sync` into five columns (2026-08-29); no replacement index, see below** | 04 §6 | T0.12b |
 | `repositories_pkey` | `repositories` | `CREATE UNIQUE INDEX repositories_pkey ON public.repositories USING btree (id)` | `carries-over` | 04 §6 | T0.12b |
 | `tags_name_key` | `tags` | `CREATE UNIQUE INDEX tags_name_key ON public.tags USING btree (name)` | `carries-over` | 04 §3.2 | T0.12a |
 | `tags_pkey` | `tags` | `CREATE UNIQUE INDEX tags_pkey ON public.tags USING btree (id)` | `carries-over` | 04 §3.2 | T0.12a |
@@ -305,12 +305,21 @@ rebuilt table's `id uuid` PK is a **new object on a new shape** (UUIDv7, §4.3),
 survival of this one; labelling it `carries-over` inside a `target-new` table would be the
 exact "activation" reading doc 04 §8.3 forbids. Forty-nine carry over.
 
-Two rows deserve a reader's attention. `ix_repositories_auto_sync` is a **partial** index
-on `(id) WHERE auto_sync = true`, which is what makes the `repo_sync` filter cheap; the
-partiality, not the column, is the load-bearing part. And `token_blocklist` carries
-**both** `token_blocklist_jti_key` (UNIQUE) and `ix_token_blocklist_jti` (a plain btree)
-on the same column — the plain btree is redundant under the unique, and doc 04 §7
-specifies only `jti UNIQUE` (F-12).
+Two rows deserve a reader's attention, and one of them has since been superseded.
+`ix_repositories_auto_sync` **was** a partial index on `(id) WHERE auto_sync = true`,
+which is what made the `repo_sync` filter cheap — the partiality, not the column, was
+the load-bearing part. The per-repo indexing modes epic (2026-08-29) split `auto_sync`
+into five columns (`fetch_enabled`, `fetch_interval_seconds`, `index_on_commit_enabled`,
+`commit_poll_seconds`, `index_uncommitted`) and the loop's filter with it — the
+recurring-loop predicate is now `WHERE fetch_enabled OR index_on_commit_enabled`, which
+no partial index covers the way a single-boolean predicate could. **This has no
+replacement index, by decision rather than oversight**: `repositories` holds tens of
+rows at homelab scale, so a sequential scan on every 30s tick costs nothing measurable,
+and a two-column partial index would buy nothing worth the write-side upkeep on a table
+this small. Revisit only if repository count ever grows enough for a scan to show up in
+a profile. And `token_blocklist` carries **both** `token_blocklist_jti_key` (UNIQUE) and
+`ix_token_blocklist_jti` (a plain btree) on the same column — the plain btree is
+redundant under the unique, and doc 04 §7 specifies only `jti UNIQUE` (F-12).
 
 ### 3.2 Target-new indexes
 
