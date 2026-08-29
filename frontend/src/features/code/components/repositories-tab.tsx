@@ -182,9 +182,9 @@ function RepoRow({
           If a periodic run caused this, it has also disabled indexing on
           commit, so nothing retries automatically — reindex now, or
           re-enable indexing from the Edit Repo dialog once the underlying
-          issue is fixed. If a manual reindex caused it instead, the next
-          scheduled run retries on its own as long as indexing on commit is
-          still armed. The stale label clears the moment a run succeeds.
+          issue is fixed. If a manual reindex caused it instead, don't count
+          on an automatic retry — reindex now rather than waiting on one. The
+          stale label clears the moment a run succeeds.
         </p>
       )}
     </div>

@@ -835,24 +835,52 @@ The rows themselves are in §4.3.
 
 **Scope first, because the plan for this task under-counted it.** That plan named "five NOT
 NULL columns on `memories`". Cross-referencing every client-side `default=` in
-`app/models/*.py` against A.2's nullability and server default gives **eleven non-key
-columns across five surviving tables**, plus seven uuid primary keys — **corrected
-2026-08-30, was twelve**: the per-repo indexing modes epic (2026-08-29) dropped
-`repositories.auto_sync` from this table's `repositories` row, and none of the five
-columns that replaced it join this class — `fetch_enabled`, `fetch_interval_seconds`,
-`index_on_commit_enabled`, `commit_poll_seconds` and `index_uncommitted` all carry a real
-`server_default`, so a plain-SQL `INSERT` omitting them does not fail today the way an
-ORM-only default's omission does.
+`app/models/*.py` against A.2's nullability and server default gives **twelve non-key
+columns across five surviving tables**, plus seven uuid primary keys, **as measured at
+A.2 time**:
 
-| Table | NOT NULL columns whose only default is in the ORM | ORM default |
+| Table | NOT NULL columns whose only default is in the ORM (A.2-era) | ORM default |
 |---|---|---|
 | `memories` | `source`, `importance`, `metadata`, `is_archived` | `'api'`, `0.5`, `dict`, `False` |
-| `repositories` | `provider`, `default_branch`, `status` | `'local'`, `'main'`, `'pending'` |
+| `repositories` | `provider`, `default_branch`, `status`, `auto_sync` | `'local'`, `'main'`, `'pending'`, `True` |
 | `code_symbols` | `enrichment_status`, `enrichment_priority` | `'pending'`, `0` |
 | `api_keys` | `scopes` | `lambda: ["read", "write"]` |
 | `config` | `value` | `dict` |
 
-A plain-SQL `INSERT` omitting any of them fails today. **The uuid primary keys are
+**This table is a dated historical record, not a live claim, and its own footer sentence
+below used to read in the present tense — corrected 2026-08-30.** Three things have moved
+since A.2 was captured, none of them re-derived here (a full live re-derivation of this
+table is a different task's work and outside this epic's scope — recorded as a scoping
+decision, not an oversight):
+
+(a) **`0001_baseline.py` has since authored real DDL defaults for eight of these twelve
+columns**, per this section's own action block below: `memories.importance` / `metadata` /
+`is_archived`, `repositories.provider` / `default_branch`, `code_symbols.enrichment_status`
+/ `enrichment_priority`, and `config.value` all carry a `DEFAULT` clause in the baseline
+today (verified against `migrations/versions/0001_baseline.py`'s `CREATE TABLE` statements
+for `memories`, `repositories`, `code_symbols` and `config`). A plain-SQL `INSERT` omitting
+any of those eight succeeds today; it does not fail the way this section's action block
+originally found.
+
+(b) **`api_keys.scopes` lost its ORM-side default entirely in the 2026-08-26 bearer epic**
+(commit `d993e3f2`) — `backend/app/models/api_key.py` now declares it
+`mapped_column(JSONB, nullable=False)` with no `default=` at all, because a default of
+`["read", "write"]` silently granted a scope (`write`) nobody asked for. It is therefore no
+longer in the *ORM-only-default* class this table names; it is in a different, narrower
+class (NOT NULL, no default anywhere), which every write path now satisfies explicitly via
+`parse_scopes` rather than falling back to one.
+
+(c) **The per-repo indexing modes epic (2026-08-29) replaced `repositories.auto_sync`**
+with five columns — `fetch_enabled`, `fetch_interval_seconds`, `index_on_commit_enabled`,
+`commit_poll_seconds`, `index_uncommitted` — none of which join this class: all five carry
+a real `server_default` in both the ORM and `0001_baseline.py`.
+
+**Net effect, verified against the ORM and the baseline rather than carried forward on
+trust: the live ORM-only class today is exactly two columns, `memories.source` and
+`repositories.status`** — both remain `NOT NULL` in `0001_baseline.py` with no `DEFAULT`
+clause, and both still carry only a client-side `default=` in their models. Every other
+column this table names has either gained a DDL default, lost its ORM default outright, or
+(for `auto_sync`) been removed. **The uuid primary keys are
 deliberately not in this class**: doc 04 §2 fixes application generation as the design
 ("every application-generated uuid PK is **UUIDv7**"), with server-side
 `gen_random_uuid()` only for `entities`/`entity_relations`. `code_graph_nodes`/`code_edges`
@@ -1545,9 +1573,10 @@ which is itself a compliance result.
 The one bulk kind is dispatched mechanically: cross-referencing every `server_default=`
 declaration against A.2's `column_default` shows **21 of 21 mirrored by a real server
 default, zero ORM-only**. The same cross-reference run against client-side `default=`
-declarations is what produced §9.3's table (originally twelve columns, now eleven since
-`repositories.auto_sync` left the class — see §9.3's 2026-08-30 correction), and it is why
-the plan's "five NOT NULL columns on `memories`" undercounted.
+declarations is what produced §9.3's twelve-column table — a dated A.2-era snapshot, not a
+live count (see §9.3's 2026-08-30 note: the live ORM-only class today is two columns,
+`memories.source` and `repositories.status`) — and it is why the plan's "five NOT NULL
+columns on `memories`" undercounted.
 
 ### Group 5 — the work stayed in bounds
 
