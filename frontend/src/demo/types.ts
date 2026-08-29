@@ -325,7 +325,7 @@ export interface DemoRepo {
   head: string | null
   status: DemoRepoStatus
   last_indexed_at: string | null
-  auto_sync: boolean
+  fetch_enabled: boolean
   /** T2 index-debt: dependent-file re-trace overflow queued past the cap,
    *  persisted and drained via continuation batches — never dropped. */
   debt: { queued_files: number; note: string } | null

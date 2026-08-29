@@ -26,7 +26,11 @@ const REPO = {
   last_indexed_at: "2026-07-27T00:00:00Z",
   status: "ready",
   status_message: null,
-  auto_sync: true,
+  fetch_enabled: false,
+  fetch_interval_seconds: 300,
+  index_on_commit_enabled: false,
+  commit_poll_seconds: 60,
+  index_uncommitted: false,
   file_count: 1,
   symbol_count: 2,
   index_debt: {

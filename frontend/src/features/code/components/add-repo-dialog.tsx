@@ -18,7 +18,6 @@ import {
   SelectContent,
   SelectItem,
 } from "darkraise-ui/components/select"
-import { Switch } from "darkraise-ui/components/switch"
 import { toast } from "darkraise-ui/components/sonner"
 import { Plus } from "lucide-react"
 import { useCreateRepo } from "@/hooks/api"
@@ -29,6 +28,15 @@ import {
   GitAccountSelect,
   NO_ACCOUNT,
 } from "./git-account-select"
+import { IndexingModesFields, type IndexingModes } from "./indexing-modes-fields"
+
+const INDEXING_MODES_DEFAULTS: IndexingModes = {
+  fetch_enabled: false,
+  fetch_interval_seconds: 300,
+  index_on_commit_enabled: false,
+  commit_poll_seconds: 60,
+  index_uncommitted: false,
+}
 
 // Providers that carry no credential: a local checkout has nothing to
 // authenticate against, so the picker is hidden rather than shown empty.
@@ -46,7 +54,7 @@ export function AddRepoDialog() {
     provider: "github",
     default_branch: "main",
     auth_token: "",
-    auto_sync: true,
+    ...INDEXING_MODES_DEFAULTS,
   })
   const [accountChoice, setAccountChoice] = useState<string>(NO_ACCOUNT)
 
@@ -84,7 +92,7 @@ export function AddRepoDialog() {
       provider: "github",
       default_branch: "main",
       auth_token: "",
-      auto_sync: true,
+      ...INDEXING_MODES_DEFAULTS,
     })
     setAccountChoice(NO_ACCOUNT)
     // The next open is a fresh form, so it gets the preselect again.
@@ -99,7 +107,11 @@ export function AddRepoDialog() {
     if (form.url) params.url = form.url
     if (form.provider) params.provider = form.provider
     if (form.default_branch) params.default_branch = form.default_branch
-    if (form.auto_sync != null) params.auto_sync = form.auto_sync
+    params.fetch_enabled = form.fetch_enabled
+    params.fetch_interval_seconds = form.fetch_interval_seconds
+    params.index_on_commit_enabled = form.index_on_commit_enabled
+    params.commit_poll_seconds = form.commit_poll_seconds
+    params.index_uncommitted = form.index_uncommitted
 
     if (credentialFree) {
       // Send the field explicitly so the server does not stamp a default.
@@ -191,21 +203,16 @@ export function AddRepoDialog() {
               />
             </div>
           )}
-          <div className="flex items-start gap-2 rounded-md border px-3 py-2">
-            <Switch
-              className="mt-0.5"
-              checked={form.auto_sync ?? true}
-              onCheckedChange={(v) => set("auto_sync", v)}
-            />
-            <div className="text-sm">
-              <div>Auto-sync</div>
-              <div className="text-muted-foreground text-sm">
-                When on, the repo_sync background job fetches and re-indexes
-                this repo on every tick. Manual reindex always works
-                regardless of this toggle.
-              </div>
-            </div>
-          </div>
+          <IndexingModesFields
+            value={{
+              fetch_enabled: form.fetch_enabled ?? false,
+              fetch_interval_seconds: form.fetch_interval_seconds ?? 300,
+              index_on_commit_enabled: form.index_on_commit_enabled ?? false,
+              commit_poll_seconds: form.commit_poll_seconds ?? 60,
+              index_uncommitted: form.index_uncommitted ?? false,
+            }}
+            onChange={(next) => setForm((prev) => ({ ...prev, ...next }))}
+          />
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="ghost">

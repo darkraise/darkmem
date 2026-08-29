@@ -39,7 +39,11 @@ export interface Repo {
   last_indexed_at: string | null
   status: string
   status_message: string | null
-  auto_sync: boolean
+  fetch_enabled: boolean
+  fetch_interval_seconds: number
+  index_on_commit_enabled: boolean
+  commit_poll_seconds: number
+  index_uncommitted: boolean
   git_account_id: string | null
   // Denormalised by the server so a row renders its account without a
   // second lookup per repo.
@@ -63,7 +67,11 @@ export interface RepoCreateParams {
   // Omitted, the server stamps the provider's default account. Sent
   // explicitly — null included — the caller's choice wins.
   git_account_id?: string | null
-  auto_sync?: boolean
+  fetch_enabled?: boolean
+  fetch_interval_seconds?: number
+  index_on_commit_enabled?: boolean
+  commit_poll_seconds?: number
+  index_uncommitted?: boolean
 }
 
 export interface RepoUpdateParams {
@@ -71,7 +79,11 @@ export interface RepoUpdateParams {
   default_branch?: string
   auth_token?: string
   git_account_id?: string | null
-  auto_sync?: boolean
+  fetch_enabled?: boolean
+  fetch_interval_seconds?: number
+  index_on_commit_enabled?: boolean
+  commit_poll_seconds?: number
+  index_uncommitted?: boolean
 }
 
 export interface CodeGraphNode {

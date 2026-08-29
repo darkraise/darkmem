@@ -4,7 +4,7 @@ import { Clock, FolderGit2, Layers, RefreshCw, X } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
 import { EmptyState, listItemClass } from "@/components/darkmem"
 import { Button } from "darkraise-ui/components/button"
-import { TextField, SwitchField } from "darkraise-ui/forms"
+import { TextField } from "darkraise-ui/forms"
 import {
   Dialog,
   DialogContent,
@@ -48,6 +48,7 @@ import {
   NO_ACCOUNT,
 } from "./git-account-select"
 import { RealReindexDialog } from "./real-reindex-dialog"
+import { IndexingModesFields } from "./indexing-modes-fields"
 
 const STALE_CAUSE_MARKER = "Cause: "
 
@@ -214,7 +215,11 @@ function EditRepoDialog({
       name: repo?.name ?? "",
       path: repo?.local_path ?? "",
       branch: repo?.default_branch ?? "main",
-      auto_sync: repo?.auto_sync ?? true,
+      fetch_enabled: repo?.fetch_enabled ?? false,
+      fetch_interval_seconds: repo?.fetch_interval_seconds ?? 300,
+      index_on_commit_enabled: repo?.index_on_commit_enabled ?? false,
+      commit_poll_seconds: repo?.commit_poll_seconds ?? 60,
+      index_uncommitted: repo?.index_uncommitted ?? false,
       account: repo?.git_account_id
         ? repo.git_account_id
         : repo?.has_custom_token
@@ -230,7 +235,16 @@ function EditRepoDialog({
       const data: RepoUpdateParams = {}
       if (v.name !== repo.name) data.name = v.name
       if (v.branch !== repo.default_branch) data.default_branch = v.branch
-      if (v.auto_sync !== repo.auto_sync) data.auto_sync = v.auto_sync
+      if (v.fetch_enabled !== repo.fetch_enabled)
+        data.fetch_enabled = v.fetch_enabled
+      if (v.fetch_interval_seconds !== repo.fetch_interval_seconds)
+        data.fetch_interval_seconds = v.fetch_interval_seconds
+      if (v.index_on_commit_enabled !== repo.index_on_commit_enabled)
+        data.index_on_commit_enabled = v.index_on_commit_enabled
+      if (v.commit_poll_seconds !== repo.commit_poll_seconds)
+        data.commit_poll_seconds = v.commit_poll_seconds
+      if (v.index_uncommitted !== repo.index_uncommitted)
+        data.index_uncommitted = v.index_uncommitted
 
       const wasCustom = repo.has_custom_token && !repo.git_account_id
       const currentChoice = repo.git_account_id ?? (wasCustom ? CUSTOM_TOKEN : NO_ACCOUNT)
@@ -338,17 +352,40 @@ function EditRepoDialog({
               ) : null
             }
           </form.Subscribe>
-          <form.Field name="auto_sync">
-            {(field) => (
-              <SwitchField
-                name={field.name}
-                label="Auto-sync"
-                value={field.state.value}
-                onChange={(v) => field.handleChange(v)}
-                onBlur={field.handleBlur}
+          <form.Subscribe
+            selector={(state) => ({
+              fetch_enabled: state.values.fetch_enabled,
+              fetch_interval_seconds: state.values.fetch_interval_seconds,
+              index_on_commit_enabled: state.values.index_on_commit_enabled,
+              commit_poll_seconds: state.values.commit_poll_seconds,
+              index_uncommitted: state.values.index_uncommitted,
+            })}
+          >
+            {(value) => (
+              <IndexingModesFields
+                value={value}
+                onChange={(next) => {
+                  form.setFieldValue("fetch_enabled", next.fetch_enabled)
+                  form.setFieldValue(
+                    "fetch_interval_seconds",
+                    next.fetch_interval_seconds,
+                  )
+                  form.setFieldValue(
+                    "index_on_commit_enabled",
+                    next.index_on_commit_enabled,
+                  )
+                  form.setFieldValue(
+                    "commit_poll_seconds",
+                    next.commit_poll_seconds,
+                  )
+                  form.setFieldValue(
+                    "index_uncommitted",
+                    next.index_uncommitted,
+                  )
+                }}
               />
             )}
-          </form.Field>
+          </form.Subscribe>
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="ghost">

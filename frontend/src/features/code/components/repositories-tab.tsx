@@ -88,7 +88,7 @@ function RepoRow({
           {repo.status === "stale" && repo.stale
             ? `last-good HEAD ${repo.stale.last_good_head}`
             : repo.status === "error"
-              ? "auto_sync disabled"
+              ? "fetch disabled"
               : repo.head
                 ? `HEAD ${repo.head}`
                 : "no HEAD yet"}
@@ -101,7 +101,7 @@ function RepoRow({
           {repo.last_indexed_at && (
             <> · last indexed {repo.last_indexed_at}</>
           )}
-          {repo.auto_sync && <> · auto_sync on</>}
+          {repo.fetch_enabled && <> · fetch on</>}
         </p>
       )}
 
@@ -176,8 +176,8 @@ function RepoRow({
 
       {repo.stale && (
         <p className="text-muted-foreground text-sm">
-          auto_sync will also retry on the next scheduled sync — the stale
-          label clears automatically the moment a run succeeds.
+          The next scheduled fetch or commit poll will also retry — the
+          stale label clears automatically the moment a run succeeds.
         </p>
       )}
     </div>

@@ -6,7 +6,11 @@ export const editRepoSchema = z.object({
   name: z.string().min(1, "Name required"),
   path: z.string().min(1, "Path required"),
   branch: z.string().default("main"),
-  auto_sync: z.boolean().default(true),
+  fetch_enabled: z.boolean().default(false),
+  fetch_interval_seconds: z.number().int().min(30).default(300),
+  index_on_commit_enabled: z.boolean().default(false),
+  commit_poll_seconds: z.number().int().min(15).default(60),
+  index_uncommitted: z.boolean().default(false),
   // An account id, or the NO_ACCOUNT / CUSTOM_TOKEN sentinels the picker uses.
   account: z.string().default("__none__"),
   // Only read when `account` is the custom-token sentinel.
