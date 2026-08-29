@@ -88,7 +88,10 @@ function RepoRow({
           {repo.status === "stale" && repo.stale
             ? `last-good HEAD ${repo.stale.last_good_head}`
             : repo.status === "error"
-              ? "fetch disabled"
+              ? // A periodic-sync failure disables the indexing lane only —
+                // fetch_enabled is left alone on purpose, so this chip must
+                // never claim fetching was turned off.
+                "indexing disabled"
               : repo.head
                 ? `HEAD ${repo.head}`
                 : "no HEAD yet"}
@@ -101,7 +104,7 @@ function RepoRow({
           {repo.last_indexed_at && (
             <> · last indexed {repo.last_indexed_at}</>
           )}
-          {repo.fetch_enabled && <> · fetch on</>}
+          {repo.index_on_commit_enabled && <> · indexing on</>}
         </p>
       )}
 

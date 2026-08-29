@@ -547,7 +547,12 @@ export function RealRepositoriesView() {
         }}
       />
 
+      {/* Keyed by repo id: EditRepoDialog's form only re-defaults while
+          untouched (TanStack FormApi.update), so switching repos after a
+          touched-but-cancelled edit would otherwise serve the previous
+          repo's stale values into the next repo's form. */}
       <EditRepoDialog
+        key={editingRepo?.id}
         repo={editingRepo}
         open={!!editingRepo}
         onOpenChange={(o) => !o && setEditingRepo(null)}

@@ -104,7 +104,7 @@ export const CURATED_CODE_REPOS: DemoRepo[] = [
     head: "e91a3f2",
     status: "ready",
     last_indexed_at: "2026-07-24 09:12 UTC",
-    fetch_enabled: true,
+    index_on_commit_enabled: true,
     debt: null,
     auto_provisioned: null,
     stale: null,
@@ -145,7 +145,7 @@ export const CURATED_CODE_REPOS: DemoRepo[] = [
     head: "7c410ab",
     status: "ready",
     last_indexed_at: "2026-07-24 06:40 UTC",
-    fetch_enabled: true,
+    index_on_commit_enabled: true,
     debt: {
       queued_files: 168,
       note: "dependent files queued · draining via next sync",
@@ -188,7 +188,7 @@ export const CURATED_CODE_REPOS: DemoRepo[] = [
     head: null,
     status: "registered",
     last_indexed_at: null,
-    fetch_enabled: true,
+    index_on_commit_enabled: true,
     debt: null,
     auto_provisioned: {
       on: "2026-07-22",
@@ -210,7 +210,7 @@ export const CURATED_CODE_REPOS: DemoRepo[] = [
     head: "a12c9de",
     status: "indexing",
     last_indexed_at: "2026-07-17 22:30 UTC",
-    fetch_enabled: true,
+    index_on_commit_enabled: true,
     debt: null,
     auto_provisioned: null,
     stale: null,
@@ -227,7 +227,7 @@ export const CURATED_CODE_REPOS: DemoRepo[] = [
     head: "4b7e120",
     status: "stale",
     last_indexed_at: "2026-07-19 14:02 UTC",
-    fetch_enabled: true,
+    index_on_commit_enabled: true,
     debt: null,
     auto_provisioned: null,
     stale: {
@@ -258,14 +258,14 @@ export const CURATED_CODE_REPOS: DemoRepo[] = [
     head: null,
     status: "error",
     last_indexed_at: null,
-    fetch_enabled: false,
+    index_on_commit_enabled: false,
     debt: null,
     auto_provisioned: null,
     stale: null,
     error: {
       headline: "Clone failed — 3 consecutive attempts",
       detail:
-        "fetching disabled after the third failure to protect the fetch loop from spinning on a broken remote.",
+        "indexing disabled after the third failure to protect the indexing loop from spinning on a broken remote.",
       message:
         "git@github.com:acme/internal-tools-cli.git — Permission denied (publickey). Could not read from remote repository.",
     },
