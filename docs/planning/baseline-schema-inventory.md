@@ -835,13 +835,19 @@ The rows themselves are in §4.3.
 
 **Scope first, because the plan for this task under-counted it.** That plan named "five NOT
 NULL columns on `memories`". Cross-referencing every client-side `default=` in
-`app/models/*.py` against A.2's nullability and server default gives **twelve non-key
-columns across five surviving tables**, plus seven uuid primary keys:
+`app/models/*.py` against A.2's nullability and server default gives **eleven non-key
+columns across five surviving tables**, plus seven uuid primary keys — **corrected
+2026-08-30, was twelve**: the per-repo indexing modes epic (2026-08-29) dropped
+`repositories.auto_sync` from this table's `repositories` row, and none of the five
+columns that replaced it join this class — `fetch_enabled`, `fetch_interval_seconds`,
+`index_on_commit_enabled`, `commit_poll_seconds` and `index_uncommitted` all carry a real
+`server_default`, so a plain-SQL `INSERT` omitting them does not fail today the way an
+ORM-only default's omission does.
 
 | Table | NOT NULL columns whose only default is in the ORM | ORM default |
 |---|---|---|
 | `memories` | `source`, `importance`, `metadata`, `is_archived` | `'api'`, `0.5`, `dict`, `False` |
-| `repositories` | `provider`, `default_branch`, `status`, `auto_sync` | `'local'`, `'main'`, `'pending'`, `True` |
+| `repositories` | `provider`, `default_branch`, `status` | `'local'`, `'main'`, `'pending'` |
 | `code_symbols` | `enrichment_status`, `enrichment_priority` | `'pending'`, `0` |
 | `api_keys` | `scopes` | `lambda: ["read", "write"]` |
 | `config` | `value` | `dict` |
@@ -1539,8 +1545,9 @@ which is itself a compliance result.
 The one bulk kind is dispatched mechanically: cross-referencing every `server_default=`
 declaration against A.2's `column_default` shows **21 of 21 mirrored by a real server
 default, zero ORM-only**. The same cross-reference run against client-side `default=`
-declarations is what produced §9.3's twelve-column table, and it is why the plan's "five
-NOT NULL columns on `memories`" undercounted.
+declarations is what produced §9.3's table (originally twelve columns, now eleven since
+`repositories.auto_sync` left the class — see §9.3's 2026-08-30 correction), and it is why
+the plan's "five NOT NULL columns on `memories`" undercounted.
 
 ### Group 5 — the work stayed in bounds
 

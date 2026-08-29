@@ -23,7 +23,9 @@ v1.3.2** — nothing here touches a surface a gate governs.
   that triggers a re-index, and only when `HEAD` has actually moved.
   `index_uncommitted` covers the one case `HEAD` can't see at all — a working
   tree edited without a commit — by hashing the tree against what was last
-  indexed. Adding a repository still indexes it once regardless of any
+  indexed, but only while `index_on_commit_enabled` is also on: it widens
+  that switch's own poll rather than running on a schedule of its own.
+  Adding a repository still indexes it once regardless of any
   switch: a local-path repo at create time, a URL repo the moment its clone
   lands. Nothing recurs afterward unless the operator asks for it.
 
@@ -31,7 +33,8 @@ v1.3.2** — nothing here touches a surface a gate governs.
 
 - **`code_reconcile`'s always-on drift scan is retired; the same scan now
   runs inside the one recurring loop, per repo, only when that repo's
-  `index_uncommitted` switch is on.** The standalone Tier-C job used to hash
+  `index_on_commit_enabled` switch is on and its `index_uncommitted` switch
+  is also on.** The standalone Tier-C job used to hash
   every tracked repo's working tree on its own cron regardless of what any
   operator wanted, and it ran with no LLM to bound that unconditional cost.
   Because the scan now only ever fires for a repo whose operator explicitly
@@ -45,12 +48,17 @@ v1.3.2** — nothing here touches a surface a gate governs.
   independent lanes on two independent schedules: the fetch lane only moves
   `HEAD`, and the index lane only observes it (`CodePipeline.run(...,
   pull=False)` on this path). Previously an unconditional pull ran ahead of
-  every index tick, which meant it could fast-forward or reset an operator's
-  own working-tree edits out from under them — exactly the drift
-  `index_uncommitted` exists to catch. A fetch fault now logs and moves on
-  without touching any switch; an index fault disables `index_on_commit_enabled`
-  only, leaving `fetch_enabled` alone, because a transient network failure
-  must not silently turn off a setting the operator chose.
+  every index tick, coupling a fetch to every index regardless of whether
+  fetching was wanted on its own — for a darkmem-managed clone that meant
+  `reset --hard`-ing away the very uncommitted content `index_uncommitted`
+  exists to catch, before an index run ever saw it; for the operator's own
+  local checkout it meant a fast-forward attempt on every tick rather than
+  only when fetching was actually asked for (a conflicting local edit was
+  never at risk there — that pull already refused instead of resetting). A
+  fetch fault now logs and moves on without touching any switch; an index
+  fault disables `index_on_commit_enabled` only, leaving `fetch_enabled`
+  alone, because a transient network failure must not silently turn off a
+  setting the operator chose.
 - **`auto_sync` is gone from the API.** Every repo response, create and
   update payload now carries the five switches above instead. Manual
   reindex, the push webhook, and MCP `code_reindex` are unaffected — they

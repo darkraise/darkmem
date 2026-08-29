@@ -1461,11 +1461,15 @@ has moved. Fetching is a separate lane whose only job is to move `HEAD`; the
 recurring index lane never fetches (`CodePipeline.run(..., pull=False)`), so
 it can never fast-forward the operator's branch or reset over working-tree
 drift the run was meant to index. `index_uncommitted` covers the case `HEAD`
-can't see at all: a working tree edited without a commit. **Manual reindex,
-the push webhook and MCP `code_reindex` bypass every one of these switches
-entirely** and keep the old fetch-then-index behaviour — the switches govern
-only the unattended, recurring loop, never an explicit operator-triggered
-run.
+can't see at all: a working tree edited without a commit — but it has no lane
+of its own. It only widens the check `index_on_commit_enabled`'s commit-poll
+tick already runs (`job_runners.make_repo_sync_runner` checks
+`index_on_commit_enabled` before it ever looks at `index_uncommitted`), so it
+does nothing while that switch is off, no matter what the API accepted or the
+row says. **Manual reindex, the push webhook and MCP `code_reindex` bypass
+every one of these switches entirely** and keep the old fetch-then-index
+behaviour — the switches govern only the unattended, recurring loop, never an
+explicit operator-triggered run.
 
 ## Documents (`app/services/document_door.py`, block channel)
 
@@ -1622,7 +1626,7 @@ produce.
   in-process assumptions; 17 BREAKS at N = 2), not the inert PPR
   snapshot the design docs lead with: the WebSocket fan-out, the job
   scheduler (no lease — every registered job fires N times per tick; 21
-  when T4.09 counted, 24 today, and the number is not what the finding
+  when T4.09 counted, 23 today, and the number is not what the finding
   rests on), the per-IP
   login limiter, the live orchestrator swap and seven unlocked job
   cursors all break first, and `backend/app` holds no cross-process
