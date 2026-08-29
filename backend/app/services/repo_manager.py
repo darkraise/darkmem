@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 from uuid import UUID
@@ -149,7 +150,12 @@ class RepoManager:
         )
         return account.id if account else None
 
-    async def create(self, data: RepoCreate) -> Repository:
+    async def create(
+        self,
+        data: RepoCreate,
+        *,
+        on_ready: Callable[[UUID], None] | None = None,
+    ) -> Repository:
         # Validate local_path early so a typo can't end up writing a row
         # whose indexer will walk into /etc or ~/.ssh on the next sync.
         validated_local_path: str | None = None
@@ -190,12 +196,18 @@ class RepoManager:
 
         if data.url:
             from app.services.task_registry import TaskRegistry
-            task = asyncio.create_task(self._clone_in_background(repo.id, data))
+            task = asyncio.create_task(self._clone_in_background(repo.id, data, on_ready=on_ready))
             TaskRegistry.register(repo.id, "clone", task, "Cloning repository...")
 
         return repo
 
-    async def _clone_in_background(self, repo_id: UUID, data: RepoCreate) -> None:
+    async def _clone_in_background(
+        self,
+        repo_id: UUID,
+        data: RepoCreate,
+        *,
+        on_ready: Callable[[UUID], None] | None = None,
+    ) -> None:
         from app.api.websocket import event_manager
         from app.database import async_session_factory
         try:
@@ -228,6 +240,16 @@ class RepoManager:
                         await session.commit()
             except Exception as inner_e:
                 logger.error("Failed to set error status for repo %s: %s", repo_id, inner_e)
+            return
+
+        # Fires only after the clone is committed and broadcast as ready; a
+        # raising callback must not retroactively read as a failed clone, so
+        # it gets its own guard rather than sharing the try/except above.
+        if on_ready is not None:
+            try:
+                on_ready(repo_id)
+            except Exception as e:
+                logger.error("on_ready callback failed for repo %s: %s", repo_id, e)
 
     async def get(self, repo_id: UUID) -> Repository | None:
         return await self.session.get(Repository, repo_id)

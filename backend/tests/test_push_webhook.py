@@ -81,15 +81,56 @@ from app.services.repo_manager import RepoManager
 # would also mark TestSharedEntryPoint's synchronous AST tests, which warns.
 
 
-async def _make_local_repo(client, headers, tmp_path, name: str = "webhook-repo") -> str:
+async def _make_local_repo(
+    client, headers, tmp_path, name: str = "webhook-repo",
+    *, suppress_initial_index: bool = True,
+) -> str:
+    """Create a local-path repo through the real route.
+
+    Fix round 1 (Task 5, per-repo indexing modes): ``create_repo`` now
+    claims and spawns an "initial" background index for every non-URL repo.
+    Every test in this module except
+    ``test_unchanged_head_short_circuits_exactly_as_polling_does`` wants the
+    plain pre-existing behaviour -- a freshly created, idle (``status ==
+    "ready"``) repo it can drive its own webhook calls against -- and does
+    not care about that initial index at all. ``suppress_initial_index``
+    (the default) makes ``claim_for_indexing`` refuse just for this one
+    call, via a scoped ``pytest.MonkeyPatch.context()`` rather than the
+    caller's own ``monkeypatch`` fixture, so the patch cannot leak past this
+    function or collide with a mock the caller sets up before or after it.
+    With no claim taken, ``create_repo`` never spawns, so nothing is left
+    running against a background session that -- for every test using the
+    ordinary ``client`` fixture -- cannot even see the just-created row (its
+    creating transaction is never truly committed), which is exactly what
+    produced the "Repository ... not found" / "relation ... does not
+    exist" noise this default closes.
+
+    Pass ``suppress_initial_index=False`` for a test that means to exercise
+    the real initial index end to end; the caller is then responsible for
+    draining the background task itself before relying on the repo's
+    status.
+    """
     repo_dir = tmp_path / name
     repo_dir.mkdir()
     (repo_dir / "svc.py").write_text("def hello():\n    return 1\n", encoding="utf-8")
-    resp = await client.post(
-        "/api/v1/repos",
-        json={"name": name, "local_path": str(repo_dir), "provider": "local"},
-        headers=headers,
-    )
+
+    async def _refuse_claim(self, repo_id, *, message):
+        return False
+
+    if suppress_initial_index:
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(RepoManager, "claim_for_indexing", _refuse_claim)
+            resp = await client.post(
+                "/api/v1/repos",
+                json={"name": name, "local_path": str(repo_dir), "provider": "local"},
+                headers=headers,
+            )
+    else:
+        resp = await client.post(
+            "/api/v1/repos",
+            json={"name": name, "local_path": str(repo_dir), "provider": "local"},
+            headers=headers,
+        )
     assert resp.status_code == 201, resp.text
     return resp.json()["id"]
 
@@ -772,6 +813,22 @@ class TestNeverDoubleIndex:
         route introduces; overriding the dependency the same way sibling
         pipeline tests already do sidesteps it rather than papering over
         it.
+
+        ``_make_local_repo`` is called here with
+        ``suppress_initial_index=False``: this test is the one place in the
+        module that wants ``create_repo``'s own claim-and-spawn (fix round
+        1, Finding 1) to run for real, so its background task is drained
+        and left to settle *before* the first webhook post -- otherwise
+        that post would race a repo still claimed "indexing" by its own
+        creation and correctly get refused with 409, which is a true
+        positive for the claim guard, not a defect in this test's subject.
+        The repo directory this helper writes has no ``.git`` at all, so
+        that initial run fails fast (`git rev-parse HEAD` outside a
+        repository) and leaves the repo `status="error"` -- settled, not
+        "indexing", which is all the first webhook post needs from it. Its
+        `CodePipeline.run` raises before returning, so `_spy_run` never
+        appends it to `results`; the two `results` entries asserted below
+        are only the two webhook-driven runs.
         """
         results: list[dict] = []
         original_run = CodePipeline.run
@@ -795,7 +852,15 @@ class TestNeverDoubleIndex:
         tasks = _capture_background_tasks(monkeypatch)
         repo_id: str | None = None
         try:
-            repo_id = await _make_local_repo(client, auth_headers, tmp_path)
+            repo_id = await _make_local_repo(
+                client, auth_headers, tmp_path, suppress_initial_index=False,
+            )
+            # Drain the initial index `create_repo` itself spawned and let
+            # it settle before anything else touches this repo's status.
+            assert len(tasks) == 1
+            await asyncio.gather(*tasks)
+            tasks.clear()
+
             _patch_pull(monkeypatch, sha="fixed-sha-1")
 
             first = await client.post(f"/api/v1/repos/{repo_id}/webhook", headers=auth_headers)

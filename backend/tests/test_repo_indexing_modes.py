@@ -403,7 +403,7 @@ async def test_adding_a_repository_indexes_it_once(client, monkeypatch, auth_hea
     from app.api.routes import repos as repos_route
 
     def fake_spawn(repo_id, pipeline, session_factory, **kwargs):
-        spawned.append((repo_id, kwargs.get("kind")))
+        spawned.append((repo_id, kwargs))
 
         class _T:
             pass
@@ -420,4 +420,246 @@ async def test_adding_a_repository_indexes_it_once(client, monkeypatch, auth_hea
 
     assert r.status_code == 201
     assert len(spawned) == 1
-    assert spawned[0][1] == "initial"
+    assert spawned[0][1]["kind"] == "initial"
+
+
+async def test_create_repo_passes_pull_false_to_spawn(client, monkeypatch, auth_headers):
+    """Fix round 1, Finding 3, half one: `create_repo`'s own call into
+    `_spawn_repo_index` must carry `pull=False` for the initial index --
+    checked against a fake `_spawn_repo_index` so this half is independent
+    of whatever `_spawn_repo_index` itself does with the flag (that half is
+    `test_initial_index_never_pulls` below, against the real function)."""
+    spawned: list = []
+
+    from app.api.routes import repos as repos_route
+
+    def fake_spawn(repo_id, pipeline, session_factory, **kwargs):
+        spawned.append(kwargs)
+
+        class _T:
+            pass
+
+        return _T()
+
+    monkeypatch.setattr(repos_route, "_spawn_repo_index", fake_spawn)
+
+    r = await client.post(
+        "/api/v1/repos",
+        json={"name": "index-once-no-pull", "local_path": None},
+        headers=auth_headers,
+    )
+
+    assert r.status_code == 201
+    assert len(spawned) == 1
+    assert spawned[0]["kind"] == "initial"
+    assert spawned[0]["pull"] is False
+
+
+async def test_initial_index_never_pulls(client, monkeypatch, auth_headers, tmp_path):
+    """Fix round 1, Finding 3, half two: the real, unmocked
+    `_spawn_repo_index` must actually thread `pull=False` down into
+    `CodePipeline.run` -- not just receive it as a kwarg (`fake_spawn` in
+    the sibling test above would pass even if `_spawn_repo_index` silently
+    dropped the flag on the floor). `CodePipeline.run` itself is mocked so
+    this proves the call shape reaching it, not a real pipeline execution;
+    `_make_local_repo`-style local_path avoids the URL clone path
+    entirely, keeping this test to the local-repo initial-index arm."""
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    from app.api.routes import repos as repos_route
+    from app.services.code_pipeline import CodePipeline
+    from app.services.task_registry import TaskRegistry
+
+    run_mock = AsyncMock(return_value={"status": "indexed", "commit": "deadbeef"})
+    monkeypatch.setattr(CodePipeline, "run", run_mock)
+
+    captured_tasks: list = []
+    real_register = TaskRegistry.register
+
+    def capturing_register(repo_id, kind, task, message=""):
+        captured_tasks.append(task)
+        return real_register(repo_id, kind, task, message)
+
+    monkeypatch.setattr(TaskRegistry, "register", capturing_register)
+
+    repo_dir = tmp_path / "initial-index-no-pull"
+    repo_dir.mkdir()
+
+    r = await client.post(
+        "/api/v1/repos",
+        json={"name": "initial-index-no-pull", "local_path": str(repo_dir), "provider": "local"},
+        headers=auth_headers,
+    )
+
+    assert r.status_code == 201
+    assert len(captured_tasks) == 1
+    await asyncio.gather(*captured_tasks)
+
+    run_mock.assert_awaited_once()
+    assert run_mock.await_args.kwargs == {"pull": False}
+
+
+async def test_create_repo_never_spawns_without_a_successful_claim(
+    client, monkeypatch, auth_headers,
+):
+    """Fix round 1, Finding 1a: `create_repo` is the only one of six
+    `_spawn_repo_index` call sites that used to spawn with no claim taken
+    first -- a real race window against the pipeline's own `status =
+    "indexing"` write. Simulating a refused claim (as if another caller had
+    already claimed the repo between its creation and this point) and
+    asserting nothing is spawned pins the ordering: claim, then spawn, never
+    the reverse."""
+    from app.api.routes import repos as repos_route
+    from app.services.repo_manager import RepoManager
+
+    spawned: list = []
+
+    def fake_spawn(repo_id, pipeline, session_factory, **kwargs):
+        spawned.append(kwargs)
+
+        class _T:
+            pass
+
+        return _T()
+
+    monkeypatch.setattr(repos_route, "_spawn_repo_index", fake_spawn)
+
+    async def refuse_claim(self, repo_id, *, message):
+        return False
+
+    monkeypatch.setattr(RepoManager, "claim_for_indexing", refuse_claim)
+
+    r = await client.post(
+        "/api/v1/repos",
+        json={"name": "claim-gates-spawn", "local_path": None},
+        headers=auth_headers,
+    )
+
+    assert r.status_code == 201
+    assert spawned == []
+
+
+async def test_create_repo_does_not_spawn_index_for_a_url_repo_at_create_time(
+    client, monkeypatch, auth_headers,
+):
+    """Fix round 1, Finding 2 (the un-covered half): a URL repo is still
+    cloning and has no tree to read yet. `create_repo` must not claim or
+    spawn an index before the clone lands -- only `on_ready`, invoked from
+    `_clone_in_background` after a successful clone, may do that. The clone
+    is gated on an event this test controls, so "no spawn yet" is a real
+    assertion rather than a race against a background task that just
+    hasn't run."""
+    import asyncio
+
+    from app.api.routes import repos as repos_route
+    from app.services.repo_manager import RepoManager
+    from app.services.task_registry import TaskRegistry
+
+    spawned: list = []
+
+    def fake_spawn(repo_id, pipeline, session_factory, **kwargs):
+        spawned.append(kwargs)
+
+        class _T:
+            pass
+
+        return _T()
+
+    monkeypatch.setattr(repos_route, "_spawn_repo_index", fake_spawn)
+
+    gate = asyncio.Event()
+
+    async def blocked_clone(self, repo):
+        await gate.wait()
+
+    monkeypatch.setattr(RepoManager, "_clone_repo", blocked_clone)
+
+    captured_tasks: list = []
+    real_register = TaskRegistry.register
+
+    def capturing_register(repo_id, kind, task, message=""):
+        captured_tasks.append(task)
+        return real_register(repo_id, kind, task, message)
+
+    monkeypatch.setattr(TaskRegistry, "register", capturing_register)
+
+    r = await client.post(
+        "/api/v1/repos",
+        json={"name": "url-repo-no-immediate-spawn", "url": "https://github.com/example/example.git"},
+        headers=auth_headers,
+    )
+
+    assert r.status_code == 201
+    assert spawned == []
+
+    # Let the still-blocked clone task settle rather than leaving it
+    # pending past this test.
+    gate.set()
+    await asyncio.gather(*captured_tasks)
+
+
+async def test_url_repo_is_indexed_once_when_its_clone_completes(monkeypatch):
+    """Fix round 1, Finding 2: before this fix, `_clone_in_background` set
+    the repo `status="ready"` and stopped -- with every recurring switch
+    defaulting off, a URL repo was never indexed at all. `on_ready` closes
+    that: `RepoManager.create`'s only caller, `create_repo`, passes a
+    callback that claims and spawns the initial index once the clone
+    actually lands.
+
+    Uses the real `async_session_factory` throughout, not the per-test
+    `session` fixture: `_clone_in_background` always opens its own session
+    on that factory, so a row only visible on the isolated per-test
+    connection would be invisible to it, exactly as it would be in
+    production if the two used different engines."""
+    import asyncio
+
+    from sqlalchemy import delete
+
+    import app.database as database_module
+    from app.schemas.code import RepoCreate
+    from app.services.repo_manager import RepoManager
+    from app.services.task_registry import TaskRegistry
+
+    async def instant_clone(self, repo):
+        return None
+
+    monkeypatch.setattr(RepoManager, "_clone_repo", instant_clone)
+
+    on_ready_calls: list = []
+
+    def on_ready(repo_id):
+        on_ready_calls.append(repo_id)
+
+    captured_tasks: list = []
+    real_register = TaskRegistry.register
+
+    def capturing_register(repo_id, kind, task, message=""):
+        captured_tasks.append((kind, task))
+        return real_register(repo_id, kind, task, message)
+
+    monkeypatch.setattr(TaskRegistry, "register", capturing_register)
+
+    repo_id = None
+    try:
+        async with database_module.async_session_factory() as session:
+            manager = RepoManager(session)
+            repo = await manager.create(
+                RepoCreate(
+                    name="clone-index-once",
+                    url="https://github.com/example/example.git",
+                ),
+                on_ready=on_ready,
+            )
+            repo_id = repo.id
+
+        clone_tasks = [t for kind, t in captured_tasks if kind == "clone"]
+        assert len(clone_tasks) == 1
+        await asyncio.gather(*clone_tasks)
+
+        assert on_ready_calls == [repo_id]
+    finally:
+        if repo_id is not None:
+            async with database_module.async_session_factory() as cleanup:
+                await cleanup.execute(delete(Repository).where(Repository.id == repo_id))
+                await cleanup.commit()
