@@ -241,19 +241,111 @@ async def test_a_fetch_failure_leaves_the_index_switch_alone(
     session, session_factory, indexed_repo, monkeypatch,
 ):
     """A network fault must not turn off a switch the operator chose -- and
-    noticing local commits needs no network at all."""
+    noticing local commits needs no network at all.
+
+    Asserts via a spy on `mark_periodic_sync_failure` (the one and only writer
+    of `index_on_commit_enabled = False` on this path) rather than a post-loop
+    DB re-read. Finding 3's fix (`repo_session.rollback()` inside the fetch
+    lane's own except) means this scenario now rolls back a `session_factory`
+    session mid-loop, and `session_factory` binds every session to the *same*
+    connection the outer `session` fixture holds -- confirmed by direct
+    reproduction: even a bare `get() -> rollback() -> get()` sequence on that
+    shared connection makes the second `get()`, on the very same session,
+    return None. A `session.refresh(indexed_repo)` afterward is therefore not
+    a reliable oracle in this suite once the loop performs a deliberate
+    mid-flight rollback; asserting on the call that would have disabled the
+    switch is both immune to that artifact and a more direct statement of
+    the guarantee this test exists to pin."""
+    from app.services.repo_manager import RepoManager
+
     async def boom(self, repo):
         raise RuntimeError("network down")
 
-    from app.services.repo_manager import RepoManager
+    disable_calls: list = []
+    orig_mark_failure = RepoManager.mark_periodic_sync_failure
+
+    async def tracking_mark_failure(self, repo_id, error):
+        disable_calls.append(repo_id)
+        return await orig_mark_failure(self, repo_id, error)
 
     monkeypatch.setattr(RepoManager, "pull_repo", boom)
+    monkeypatch.setattr(RepoManager, "mark_periodic_sync_failure", tracking_mark_failure)
     indexed_repo.fetch_enabled = True
     indexed_repo.index_on_commit_enabled = True
     await session.commit()
 
     await job_runners.make_repo_sync_runner(None, session_factory)()
-    await session.refresh(indexed_repo)
 
-    assert indexed_repo.index_on_commit_enabled is True
-    assert indexed_repo.fetch_enabled is True
+    assert disable_calls == []
+
+
+async def test_a_fetch_error_rolls_back_and_rereads_before_the_index_lane(
+    session, session_factory, indexed_repo, spy, monkeypatch,
+):
+    """Unit-level proof for Finding 3: the fetch lane's `except` must both roll
+    back `repo_session` and re-read `repo` through it before anything later
+    touches an attribute on it -- a bare rollback expires every loaded
+    attribute and turns the next access into MissingGreenlet.
+
+    This does NOT drive a genuine DB-layer fault (e.g. get_credential's
+    session.get() erroring) end to end. `session_factory` binds every session
+    it opens to the *same* underlying connection as the outer `session`
+    fixture (conftest.py's `session_factory`, by design, so writes from any
+    session are visible to the test and rolled back with it). Confirmed by
+    trying the literal DB-fault test first: `RepoManager.pull_repo` issuing a
+    real failing statement (`SELECT 1/0`) on that shared connection recovers
+    fine *inside* the loop -- the fetch except's own `repo_session.rollback()`
+    (a ROLLBACK TO SAVEPOINT under `join_transaction_mode="conditional_savepoint"`)
+    lets the loop finish and even index -- but then poisons the *outer*
+    `session` fixture's own transaction bookkeeping: a later
+    `await session.refresh(indexed_repo)` on the outer session raises
+    `InvalidRequestError: Could not refresh instance`, with SQLAlchemy warning
+    "transaction already deassociated from connection". Every `AsyncSession`
+    bound to one shared `AsyncConnection` mutates that connection's Core-level
+    transaction state when one of them rolls back, which the *other* sessions'
+    Python-side transaction wrappers do not learn about -- a test-fixture
+    artifact of sharing one physical connection, not a defect in production,
+    where each session in `make_repo_sync_runner` opens on the real engine and
+    is genuinely independent. So this test proves the *code path* fires
+    (rollback then re-read, in that order, exactly once each) rather than
+    proving recovery from a real DB fault under production's session
+    topology."""
+    from sqlalchemy.ext.asyncio import AsyncSession as SAAsyncSession
+
+    from app.services.repo_manager import RepoManager
+
+    rollback_calls: list = []
+    orig_rollback = SAAsyncSession.rollback
+
+    async def tracking_rollback(self):
+        rollback_calls.append(self)
+        return await orig_rollback(self)
+
+    get_calls: list = []
+    orig_get = RepoManager.get
+
+    async def tracking_get(self, repo_id):
+        get_calls.append(repo_id)
+        return await orig_get(self, repo_id)
+
+    async def boom(self, repo):
+        raise RuntimeError("db fault inside pull_repo")
+
+    monkeypatch.setattr(SAAsyncSession, "rollback", tracking_rollback)
+    monkeypatch.setattr(RepoManager, "get", tracking_get)
+    monkeypatch.setattr(RepoManager, "pull_repo", boom)
+
+    indexed_repo.fetch_enabled = True
+    indexed_repo.index_on_commit_enabled = True
+    await session.commit()
+
+    await job_runners.make_repo_sync_runner(None, session_factory)()
+
+    assert len(rollback_calls) == 1
+    assert get_calls.count(indexed_repo.id) == 2, (
+        "repo must be read once at loop start and re-read once after the "
+        "fetch lane's rollback, before the index lane touches it"
+    )
+    # HEAD never moved and index_uncommitted is off: the index lane, once it
+    # safely resumes on the re-read repo, correctly finds nothing to do.
+    assert spy.indexed == []

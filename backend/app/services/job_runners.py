@@ -96,6 +96,20 @@ def make_repo_sync_runner(
                             logger.warning(
                                 "Fetch failed for %s: %s", repo_name, fetch_exc,
                             )
+                            # pull_repo reaches the DB through get_credential,
+                            # whose session.get() calls sit outside the
+                            # RuntimeError guard pull_repo puts around its git
+                            # subprocess calls. A DB-layer fault there leaves
+                            # the session in a failed transaction, which the
+                            # index lane below would inherit. Rolling back
+                            # expires every loaded attribute, so `repo` has to
+                            # be re-read before anything touches it -- a bare
+                            # rollback turns this into MissingGreenlet at the
+                            # next attribute access.
+                            await repo_session.rollback()
+                            repo = await manager.get(repo_id)
+                            if repo is None:
+                                continue
 
                     if not repo.index_on_commit_enabled:
                         continue
