@@ -4,6 +4,27 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
+## v1.3.2 — 2026-08-29
+
+**Master pushes that cut no version were running no tests.** A gating mistake
+in the release pipeline, fixed here. Nothing about the published artifact
+changes.
+
+### Fixed
+
+- **Master is verified on every push, not only on releases.** When release.yml
+  took over master pushes in v1.3.0, ci.yml lost its own push trigger and the
+  `verify` job was gated on the release decision. A push carrying only `docs`,
+  `chore` or `refactor` commits therefore derived no version, skipped
+  verification, and ran nothing — so a refactor could break the suite and stay
+  hidden until the next `feat` or `fix` push happened to run it.
+
+  `verify` now depends on nothing and runs on every push; the release decision
+  gates `prepare` instead, which is where the irreversible half begins. This
+  also fixes the narrower case where a `fix` push with no changelog section
+  failed at `plan` and took the whole test suite down with it — code that ships
+  is now always tested, whether or not it releases.
+
 ## v1.3.1 — 2026-08-29
 
 **The first release cut by CI named the wrong commit on one image tag.** A

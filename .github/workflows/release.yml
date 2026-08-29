@@ -134,9 +134,14 @@ jobs:
 
   # The same pipeline every pull request runs, not a copy of it. A release
   # whose tests fail publishes nothing.
+  #
+  # Deliberately depends on NOTHING. This workflow owns master pushes, so if
+  # verification were gated on `plan` saying "this is a release", a push of only
+  # docs/chore/refactor commits would run no tests at all -- and a `plan` that
+  # failed on a missing changelog section would skip the suite for a push that
+  # does ship code. Master is verified on every push; `prepare` below is where
+  # the release decision gates the irreversible half.
   verify:
-    needs: plan
-    if: needs.plan.outputs.release == 'true'
     uses: ./.github/workflows/ci.yml
     secrets: inherit
 
@@ -147,6 +152,7 @@ jobs:
   prepare:
     name: Sync version fields
     needs: [plan, verify]
+    if: needs.plan.outputs.release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
