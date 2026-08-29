@@ -1,15 +1,30 @@
 name: Release
 
-# Tags only. A push to master publishes nothing, because a local tag can be
-# deleted and a pushed image cannot -- so the registry only ever receives an
-# artifact someone deliberately tagged (docs/runbook-deployment.md).
+# Master pushes cut the version. The order is: verify, sync the version fields,
+# publish the image, and only THEN write the tag -- a tag that exists is a tag
+# whose image is already in both registries, so a failed publish leaves nothing
+# to explain away. That is the same "cut by demonstration, not by assertion"
+# rule scripts/release.sh follows locally, moved into CI.
+#
+# This reverses the earlier posture, where only a hand-pushed tag published and
+# a master push published nothing. The argument for that order -- a local tag
+# can be deleted and a pushed image cannot -- is answered here by never
+# reaching the publish step unless the full CI pipeline passed AND CHANGELOG.md
+# already names the version being cut. An accidental release now takes a
+# conventional-commit type plus a hand-written changelog section, not a stray
+# push.
+#
+# The tag trigger is kept so a hand-cut tag (scripts/release.sh) still
+# publishes; on that path the version comes from the tag and no commit is made.
 on:
   push:
+    branches: [master]
     tags: ["v*"]
   workflow_dispatch:
 
 # Never cancel a publish midway: a half-pushed multi-registry release is worse
-# than a slow one.
+# than a slow one. Serialising on the branch also keeps two master pushes from
+# racing for the same version number.
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
@@ -18,21 +33,186 @@ permissions:
   contents: read
 
 jobs:
-  # The same pipeline every branch push runs, not a copy of it. A tag whose
-  # tests fail publishes nothing.
+  # Decides whether this push is a release at all, and as what version. Runs
+  # before the test suite so a missing changelog section costs seconds rather
+  # than a full pipeline.
+  plan:
+    name: Plan the release
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.decide.outputs.release }}
+      version: ${{ steps.decide.outputs.version }}
+      tag: ${{ steps.decide.outputs.tag }}
+      major: ${{ steps.decide.outputs.major }}
+      majorminor: ${{ steps.decide.outputs.majorminor }}
+      prerelease: ${{ steps.decide.outputs.prerelease }}
+      previous_tag: ${{ steps.decide.outputs.previous_tag }}
+      needs_bump: ${{ steps.decide.outputs.needs_bump }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The planner reads the tag history to find the release range; a
+          # shallow clone has neither the tags nor the commits.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Decide
+        id: decide
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ "$REF_TYPE" = "tag" ]; then
+            # A hand-cut tag names its own version and needs no commit: the
+            # version fields were synced by scripts/release.sh before tagging.
+            version="${REF_NAME#v}"
+            release=true
+            needs_bump=false
+            previous_tag=$(git describe --tags --abbrev=0 --match 'v[0-9]*' \
+              "${REF_NAME}^" 2>/dev/null || echo "")
+          else
+            plan=$(python3 scripts/next_version.py plan)
+            echo "$plan"
+            release=$(printf '%s' "$plan" | python3 -c 'import json,sys; print(str(json.load(sys.stdin)["release"]).lower())')
+            version=$(printf '%s' "$plan" | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')
+            previous_tag=$(printf '%s' "$plan" | python3 -c 'import json,sys; print(json.load(sys.stdin)["previous_tag"])')
+            reason=$(printf '%s' "$plan" | python3 -c 'import json,sys; print(json.load(sys.stdin)["reason"])')
+            needs_bump=true
+            if [ "$release" = "false" ]; then
+              printf '### No release\n\n%s\n' "$reason" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+
+          {
+            echo "release=$release"
+            echo "version=$version"
+            echo "previous_tag=$previous_tag"
+          } >> "$GITHUB_OUTPUT"
+
+          if [ "$release" != "true" ]; then
+            echo "needs_bump=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # CHANGELOG.md is the hand-written account of a release and this
+          # pipeline deliberately does not write it. Refusing here -- before
+          # the suite, the build and any push -- is what keeps a version from
+          # shipping with no explanation of what changed.
+          if ! grep -qE "^## v${version//./\\.}\b" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## v$version' section." \
+                 "This push derives version v$version; write that section and push again," \
+                 "or land only docs/chore/refactor commits to skip the release."
+            exit 1
+          fi
+
+          # The three product version fields must already agree (a test asserts
+          # it), so reading one is enough to know whether a sync is needed.
+          current=$(sed -n 's/^version = "\([0-9][0-9.]*\)"/\1/p' backend/pyproject.toml | head -1)
+          if [ "$current" = "$version" ]; then
+            needs_bump=false
+          fi
+
+          case "$version" in
+            *-*) prerelease=true ;;
+            *)   prerelease=false ;;
+          esac
+
+          {
+            echo "tag=v$version"
+            echo "major=${version%%.*}"
+            echo "majorminor=$(printf '%s' "$version" | cut -d. -f1,2)"
+            echo "prerelease=$prerelease"
+            echo "needs_bump=$needs_bump"
+          } >> "$GITHUB_OUTPUT"
+
+          printf '### Releasing `v%s`\n\nPrevious tag: `%s`\n' \
+            "$version" "${previous_tag:-none}" >> "$GITHUB_STEP_SUMMARY"
+
+  # The same pipeline every pull request runs, not a copy of it. A release
+  # whose tests fail publishes nothing.
   verify:
+    needs: plan
+    if: needs.plan.outputs.release == 'true'
     uses: ./.github/workflows/ci.yml
     secrets: inherit
 
+  # Syncs the product version fields and commits them, so the image's own
+  # OpenAPI document reports the version it was published under. Runs after
+  # verify and before publish: the artifact must carry the right number, and
+  # the tag written later must point at the commit that produced it.
+  prepare:
+    name: Sync version fields
+    needs: [plan, verify]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      sha: ${{ steps.sync.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sync and commit
+        id: sync
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          NEEDS_BUMP: ${{ needs.plan.outputs.needs_bump }}
+        run: |
+          set -euo pipefail
+          if [ "$NEEDS_BUMP" != "true" ]; then
+            echo "version fields already at $VERSION"
+            echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          sed -i -E "s/^version = \"[0-9]+\.[0-9]+\.[0-9]+\"/version = \"$VERSION\"/" backend/pyproject.toml
+          sed -i -E "s/version=\"[0-9]+\.[0-9]+\.[0-9]+\"/version=\"$VERSION\"/" backend/app/main.py
+          sed -i -E "s/\"version\": \"[0-9]+\.[0-9]+\.[0-9]+\"/\"version\": \"$VERSION\"/" frontend/package.json
+
+          # `sed -i` with no match is a silent no-op exiting 0, so a reformatted
+          # FastAPI(...) call would leave one field behind and publish an image
+          # whose OpenAPI reports the previous version. Assert each landed.
+          for field in backend/pyproject.toml backend/app/main.py frontend/package.json; do
+            grep -q "$VERSION" "$field" || {
+              echo "::error::version sync did not take in $field — its pattern no longer matches"
+              exit 1
+            }
+          done
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/pyproject.toml backend/app/main.py frontend/package.json
+          git commit -qm "chore(release): v$VERSION"
+          # Pushed with the job's GITHUB_TOKEN, which by GitHub's own loop
+          # prevention does NOT trigger another workflow run. Swapping in a PAT
+          # here would make this workflow re-enter itself on every release.
+          #
+          # No rebase or force: if master moved while this run was queued the
+          # push fails non-fast-forward, which is the right outcome. Rebasing
+          # would fold in commits this run's CI never saw, and publish them.
+          # Nothing has been pushed to a registry at this point, so a failure
+          # here costs a re-run and nothing else.
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   publish:
     name: Publish image
-    needs: verify
+    needs: [plan, prepare]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write        # GHCR push uses the job's own GITHUB_TOKEN
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The commit the version fields were synced on, not the one that
+          # triggered the run -- otherwise the image reports the old version.
+          ref: ${{ needs.prepare.outputs.sha }}
 
       - uses: docker/setup-buildx-action@v3
 
@@ -58,11 +238,10 @@ jobs:
       # so the digest published to Docker Hub and to GHCR is the same image
       # rather than two builds that merely share a version number.
       #
-      # `type=ref,event=tag` is the safety net, not decoration: this repo has
-      # historically tagged `v0.5` rather than `v0.5.0`, and a partial version
-      # matches no `type=semver` pattern -- without it such a tag would publish
-      # nothing while the job still went green. Prefer full semver (`v1.0.0`)
-      # so the rolling `1.0` and `1` tags exist too.
+      # The rolling tags are spelled out as `type=raw` rather than derived by
+      # `type=semver`, because a master-push run has no tag ref for semver to
+      # parse -- the version comes from the plan job, and the tag does not
+      # exist yet at this point in the pipeline.
       - name: Derive image tags
         id: meta
         uses: docker/metadata-action@v5
@@ -71,18 +250,16 @@ jobs:
             darkraise/darkmem
             ghcr.io/${{ github.repository_owner }}/darkmem
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=ref,event=tag
+            type=raw,value=${{ needs.plan.outputs.version }}
+            type=raw,value=${{ needs.plan.outputs.majorminor }}
+            type=raw,value=${{ needs.plan.outputs.major }}
+            type=raw,value=latest,enable=${{ needs.plan.outputs.prerelease == 'false' }}
             type=sha,format=short
-          # latest=auto keeps a prerelease tag (v1.0.0-rc1) from claiming
-          # `latest`, which compose resolves by default.
-          flavor: latest=auto
           labels: |
             org.opencontainers.image.title=darkmem
             org.opencontainers.image.description=Centralized memory system for AI agents
             org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.version=${{ needs.plan.outputs.version }}
 
       - name: Build and push
         id: build
@@ -104,7 +281,7 @@ jobs:
       # script body is the standard workflow-injection hole.
       - name: Summarise what was published
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
           IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
           IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
         run: |
@@ -118,41 +295,88 @@ jobs:
       digest: ${{ steps.build.outputs.digest }}
       tags: ${{ steps.meta.outputs.tags }}
 
+  # The tag is written HERE, after the image is in both registries -- the whole
+  # point of the ordering. Skipped on a tag-triggered run, where the tag is
+  # what started the pipeline and already exists.
+  tag:
+    name: Tag the release
+    needs: [plan, prepare, publish]
+    if: github.ref_type != 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+
+      - name: Write and push the tag
+        env:
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+          IMAGE_DIGEST: ${{ needs.publish.outputs.digest }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # The digest rides in the tag message so the tag object itself records
+          # which artifact it certifies, not merely which commit it names.
+          # scripts/release.sh no longer tags, but an operator may still have
+          # pushed one by hand. Re-tagging the same commit is a no-op worth
+          # tolerating; a tag pointing somewhere else is a real conflict and
+          # must fail rather than be moved.
+          if existing=$(git rev-parse -q --verify "refs/tags/$RELEASE_TAG^{commit}"); then
+            if [ "$existing" = "$(git rev-parse HEAD)" ]; then
+              echo "$RELEASE_TAG already tags this commit; nothing to do"
+              exit 0
+            fi
+            echo "::error::$RELEASE_TAG already exists and points at $existing, not $(git rev-parse HEAD)"
+            exit 1
+          fi
+          git tag -a "$RELEASE_TAG" -m "$RELEASE_TAG" -m "image digest: $IMAGE_DIGEST"
+          # Same GITHUB_TOKEN loop prevention as the version-sync push: this
+          # tag does not re-enter the workflow through its own `tags: [v*]`
+          # trigger. A PAT here would cause a publish loop.
+          git push origin "refs/tags/$RELEASE_TAG"
+
   # Last, and deliberately so: the GitHub release is the human-facing
   # announcement that the artifact exists, so it must not appear while the
   # image it points at is still building -- or, worse, after a build that
-  # failed. `needs: publish` is what orders that; a release job running in
-  # parallel would announce a pull that 404s.
-  #
-  # Skipped on workflow_dispatch, which has no tag to release: `ref_name` would
-  # be a branch, and a release named after a branch is not a release.
+  # failed.
   github-release:
     name: Create GitHub release
-    needs: publish
-    if: startsWith(github.ref, 'refs/tags/')
+    needs: [plan, prepare, publish, tag]
+    # `always()` so a tag-triggered run, where the `tag` job is skipped, still
+    # reaches this; the explicit result checks are what keep a failed publish
+    # from announcing itself.
+    if: always() && needs.publish.result == 'success' && needs.tag.result != 'failure'
     runs-on: ubuntu-latest
     permissions:
       contents: write        # creating a release writes to the repository
     steps:
       - uses: actions/checkout@v4
         with:
-          # Release notes are generated by diffing against the previous tag,
-          # which a shallow clone does not have.
+          ref: ${{ needs.prepare.outputs.sha }}
+          # The notes are generated by walking the commits back to the previous
+          # tag, which a shallow clone does not have.
           fetch-depth: 0
 
-      # Caller-controlled text (the tag name) reaches the shell through env,
-      # never through ${{ }} inside `run` -- the same rule the publish job's
-      # summary step follows.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Caller-controlled text reaches the shell through env, never through
+      # ${{ }} inside `run` -- the same rule the publish job's summary follows.
       - name: Compose the release body
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          PREVIOUS_TAG: ${{ needs.plan.outputs.previous_tag }}
+          REPOSITORY: ${{ github.repository }}
           IMAGE_DIGEST: ${{ needs.publish.outputs.digest }}
           IMAGE_TAGS: ${{ needs.publish.outputs.tags }}
         run: |
-          # Taken from what was actually published rather than rebuilt from
-          # the tag name: this repo has historically tagged `v0.5`, which
-          # matches no `type=semver` pattern, so a guessed `:0.5` would be a
-          # pull command for an image that does not exist.
+          set -euo pipefail
+          # Taken from what was actually published rather than rebuilt from the
+          # version, so the pull command names an image that exists.
           pull_ref=$(printf '%s\n' "$IMAGE_TAGS" \
             | grep '^darkraise/darkmem:' | head -n 1)
           {
@@ -160,27 +384,34 @@ jobs:
             printf 'Published to Docker Hub and GHCR from one build, so both registries carry the same digest.\n\n'
             printf '```\ndocker pull %s\n```\n\n' "$pull_ref"
             printf 'Digest: `%s`\n\n' "$IMAGE_DIGEST"
-            printf '<details><summary>All tags published</summary>\n\n```\n%s\n```\n\n</details>\n' "$IMAGE_TAGS"
+            printf '<details><summary>All tags published</summary>\n\n```\n%s\n```\n\n</details>\n\n' "$IMAGE_TAGS"
+            printf '## What changed\n\n'
           } > release-body.md
+          python3 scripts/next_version.py notes \
+            --version "$VERSION" \
+            --previous-tag "$PREVIOUS_TAG" \
+            --repository "$REPOSITORY" >> release-body.md
 
-      # A prerelease tag (v1.0.0-rc1) must not become the repository's
-      # "Latest release", the same way `flavor: latest=auto` above keeps it
-      # from claiming the `latest` image tag. The two rules are separate
-      # mechanisms and have to agree, so both are keyed off the same hyphen.
+      # A prerelease tag (v1.0.0-rc1) must not become the repository's "Latest
+      # release", the same way `latest=auto` above keeps it from claiming the
+      # `latest` image tag. The two rules are separate mechanisms and have to
+      # agree, so both are keyed off the same hyphen.
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+          PRERELEASE: ${{ needs.plan.outputs.prerelease }}
         run: |
-          prerelease=""
-          case "$RELEASE_TAG" in
-            *-*) prerelease="--prerelease" ;;
-            *)   prerelease="--latest" ;;
-          esac
-          # --notes-file carries the image block; --generate-notes appends
-          # GitHub's own commit and contributor summary beneath it.
+          set -euo pipefail
+          if [ "$PRERELEASE" = "true" ]; then
+            flag="--prerelease"
+          else
+            flag="--latest"
+          fi
+          # No --generate-notes: the body already carries a commit-derived
+          # changelog from next_version.py, and GitHub's own summary would
+          # duplicate it under a second heading.
           gh release create "$RELEASE_TAG" \
             --title "$RELEASE_TAG" \
             --notes-file release-body.md \
-            --generate-notes \
-            $prerelease
+            $flag
