@@ -10,10 +10,13 @@ only compares `last_indexed_commit` to `HEAD`, so a change that never moves
 
 This module hashes the tree independently of `HEAD` and reports the files
 whose content disagrees with what `CodeFile.content_hash` says was indexed.
-The caller (`job_runners.make_code_reconcile_runner`) feeds the result into
-`CodePipeline.run(..., forced_files=...)`, which runs it through the exact
-same incremental path (dependent-caller retrace, index-debt folding) a real
-git diff would.
+The caller (`job_runners.make_repo_sync_runner`, since the per-repo indexing
+modes epic folded this scan into the one recurring loop rather than a
+standalone job) feeds the result into `CodePipeline.run(..., forced_files=...)`,
+which runs it through the exact same incremental path (dependent-caller
+retrace, index-debt folding) a real git diff would. It only runs for a repo
+whose operator opted into `index_uncommitted`, not unconditionally for every
+indexed repo the way the retired standalone job did.
 
 Hashing walks the same file set `CodePipeline` would (`_list_all_files`) and
 reuses its per-file hash (sha256 of the UTF-8-decoded content, replacing
@@ -33,18 +36,6 @@ from app.models.code import CodeFile, Repository
 from app.services.code_pipeline import MAX_FILE_SIZE, _list_all_files
 
 logger = logging.getLogger(__name__)
-
-CODE_RECONCILE_JOB_KEY = "code_reconcile"
-# Minute-precision, five-field: every 15 minutes. Hashing a whole working tree
-# is cheap but not free, so this doesn't need repo_sync's 5-minute cadence.
-CODE_RECONCILE_CRON = "*/15 * * * *"
-# Floor beneath the cron: protects against an operator-set runaway expression
-# the same way every other job's floor does.
-CODE_RECONCILE_MIN_INTERVAL_SECONDS = 300
-# A large monorepo's hash pass plus one incremental CodePipeline run per
-# drifted repo should never take this long; the ceiling exists so a stuck
-# filesystem (a hung network mount) can't wedge the job lock forever.
-CODE_RECONCILE_MAX_RUN_SECONDS = 1800
 
 
 def _file_hash(path: Path) -> str | None:

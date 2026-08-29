@@ -133,6 +133,14 @@ def make_repo_sync_runner(
                         if not drift[0] and not drift[1]:
                             continue
                         forced = drift
+                        # The retired standalone code_reconcile job ran every
+                        # drift-forced pipeline with llm=None, because it swept
+                        # every indexed repo unconditionally and extraction
+                        # cost on every repo's every drift tick was too broad
+                        # a default. This loop only reaches here for a repo
+                        # whose operator opted into index_uncommitted, so the
+                        # cost is scoped to what was asked for and carrying
+                        # active_llm (the same as any other index tick) is fine.
 
                     # Losing the claim is the ordinary case, not an error: the
                     # run that holds it is doing this tick's work.
@@ -180,7 +188,7 @@ def make_code_deriver_runner(session_factory: async_sessionmaker[AsyncSession]):
     `code_deriver_job.py` for why this is a Tier-C job rather than a reindex
     hook. Each repo runs in its own session/transaction so one repo's
     failure can't roll back another's write, mirroring
-    `make_code_reconcile_runner` above.
+    `make_repo_sync_runner` above.
 
     A failure never raises out of the sweep: it is recorded in
     `pipeline_failures` under `pipeline_name=CODE_DERIVER_PIPELINE_NAME`,

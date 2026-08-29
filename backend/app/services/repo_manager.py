@@ -391,10 +391,11 @@ class RepoManager:
         indexing lane.
 
         The indexing loop in ``app.services.job_runners.make_repo_sync_runner``
-        calls this when a repo's ``CodePipeline.run`` raises (typically a git
-        fetch / pull error). Without this, the loop would re-attempt the same
-        repo every tick — flooding logs and the upstream git server with
-        the same failing request.
+        calls this when a repo's ``CodePipeline.run`` raises for its index
+        lane — the fetch lane never reaches this handler; it logs and
+        continues on its own (see the loop's own try/except). Without this,
+        the loop would re-attempt the same repo's index every tick — flooding
+        logs and `pipeline_failures` with the same failing run.
 
         The row is updated to ``status='error'`` with the sanitized error
         in ``status_message`` (truncated to 500 chars) and
