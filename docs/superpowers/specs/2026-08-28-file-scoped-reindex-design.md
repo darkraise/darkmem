@@ -130,9 +130,7 @@ The `accepted` set is unioned into `self._changed_files` **before**
 re-traced and unchanged files never enter the run at all.
 
 **Every named file lands in exactly one of the four buckets**, and all four are
-reported (§6) — except on the all-filtered early exit, which returns before the
-completion broadcast and reports nothing; §6 records that gap and why it is left
-open. `skipped_unindexable` exists so a caller that names a file the
+reported (§6) on every exit the run can take, the all-filtered one included. `skipped_unindexable` exists so a caller that names a file the
 system can never index hears about it: silence is the one outcome this
 reporting is for. It inherits a pre-existing wart — a previously-indexed file
 that later grew past `MAX_FILE_SIZE` keeps serving its stale graph — which this
@@ -163,9 +161,11 @@ empty changed set. Phases 02-08 are near-free on an empty set, but `phase_09`
 repo-wide edge validation are repo-global and have no empty-set early exit, so
 an admin key re-sending the same unchanged list would pay a full Leiden pass
 per request. So: **after `phase_01`, if `union_files` was given and the changed,
-deleted and debt-batch sets are all empty, commit `ready` and return
-`up_to_date`.** Scoped to the union path deliberately — no existing caller's
-behaviour changes.
+deleted and debt-batch sets are all empty, commit `ready`, broadcast the
+completion and return `up_to_date`.** Scoped to the union path deliberately — no
+existing caller's behaviour changes. The broadcast is not optional decoration:
+this exit is the one outcome the bucket reporting exists for, so skipping it
+would make the reporting silent exactly where it is needed.
 
 ### 3.2 What the union buys
 
@@ -328,11 +328,14 @@ event payload. That was an error in this design, not an unimplemented part of
 it: `repo_indexed` is `index_debt`'s row and its payload is debt bookkeeping,
 owned by a module this door does not write through.
 
-**Known gap, deliberate.** An all-filtered request takes §3.1's early exit,
-which returns before the completion broadcast, so its buckets reach the caller
-only through `run()`'s return value — which the REST spawn path discards. A
-caller that names nothing but unchanged or unindexable files therefore still
-hears nothing over the wire.
+**Both exits report through one payload builder** (`_completion_payload`), so a
+consumer never branches on which exit produced the row and the all-filtered
+request is not the silent case it would otherwise be. The SPA renders the
+buckets rather than a zero count: a run that indexed nothing reads
+`Nothing to index` over a plain-language account of the named files
+(`3 already up to date · 2 not found`), informational when everything named was
+merely current and a warning when a named file was missing or unindexable,
+since only that second kind is the caller's to act on.
 
 Path-addressed by id, matching `docs/api-rest-conventions.md` (202
 async-accepted) and the SPA, which always holds the id.

@@ -391,3 +391,71 @@ async def test_an_ordinary_run_broadcasts_no_union_keys(
     completed = [d for e, d in sent if e == "repo.indexing_completed"]
     assert len(completed) == 1
     assert not [k for k in completed[0] if k.startswith("union_")]
+
+
+async def test_the_all_filtered_early_exit_still_broadcasts_its_buckets(
+    session, tmp_path, monkeypatch,
+):
+    """Spec 3.1's known gap, closed. Every named file was filtered out, so the
+    run takes the early exit -- and that is precisely the outcome the bucket
+    reporting exists for. Asserting on `run()`'s return value would pass while
+    the caller heard nothing: `_run_index` discards it."""
+    from app.api.websocket import event_manager
+
+    repo = await _make_indexed_repo(session, tmp_path)
+
+    sent: list[tuple[str, dict]] = []
+
+    async def spy(event_type, data):
+        sent.append((event_type, data))
+
+    monkeypatch.setattr(event_manager, "broadcast", spy)
+
+    pipeline = CodePipeline(
+        session=session, llm=None, vector_repo=None,
+        repo_manager=RepoManager(session),
+    )
+    result = await pipeline.run(repo.id, union_files=["src/a.py", "src/gone.py"])
+
+    assert result["status"] == "up_to_date"
+
+    completed = [d for e, d in sent if e == "repo.indexing_completed"]
+    assert len(completed) == 1, "the early exit must report exactly once"
+    assert completed[0]["union_skipped_unchanged"] == 1
+    assert completed[0]["union_skipped_missing"] == 1
+    assert completed[0]["union_accepted"] == 0
+    assert completed[0]["files_changed"] == 0
+
+
+async def test_the_early_exit_and_the_full_run_report_the_same_keys(
+    session, tmp_path, monkeypatch,
+):
+    """One payload builder serves both exits, so a consumer never has to branch
+    on which one it received."""
+    from app.api.websocket import event_manager
+
+    # Both repos are seeded before the spy goes in: `_make_indexed_repo` runs a
+    # pipeline of its own, and its completion rows would otherwise be counted.
+    filtered_repo = await _make_indexed_repo(session, tmp_path)
+    indexed_dir = tmp_path.parent / "indexed"
+    indexed_repo = await _make_indexed_repo(session, indexed_dir)
+    (indexed_dir / "src" / "a.py").write_text("def theta():\n    return 4\n")
+
+    sent: list[tuple[str, dict]] = []
+
+    async def spy(event_type, data):
+        sent.append((event_type, data))
+
+    monkeypatch.setattr(event_manager, "broadcast", spy)
+
+    for repo_id in (filtered_repo.id, indexed_repo.id):
+        pipeline = CodePipeline(
+            session=session, llm=None, vector_repo=None,
+            repo_manager=RepoManager(session),
+        )
+        await pipeline.run(repo_id, union_files=["src/a.py"])
+
+    completed = [d for e, d in sent if e == "repo.indexing_completed"]
+    assert len(completed) == 2
+    assert set(completed[0]) == set(completed[1])
+

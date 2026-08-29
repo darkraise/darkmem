@@ -259,6 +259,14 @@ class CodePipeline:
                     repo.status_message = None
                     await self.session.commit()
                     self._stats["status"] = "up_to_date"
+                    # Broadcast before returning. The buckets are the caller's
+                    # only account of the files it named, and `run()`'s return
+                    # value does not reach it -- `_run_index` discards it -- so
+                    # without this the one outcome the reporting exists for
+                    # (every named file filtered out) is the one that is silent.
+                    await event_manager.broadcast(
+                        "repo.indexing_completed", self._completion_payload(),
+                    )
                     return self._stats
 
             total = len(self._changed_files)
@@ -352,25 +360,9 @@ class CodePipeline:
                 logger.warning("Failed to settle index debt for repo %s: %s", repo.id, exc)
                 await self.session.rollback()
 
-            completed = {
-                "repo_id": self._repo_id_str,
-                "files_changed": self._stats["files_changed"],
-                "symbols_indexed": self._stats["symbols_indexed"],
-                "index_debt_drained": self._stats["index_debt_drained"],
-                "index_debt_queued": self._stats["index_debt_queued"],
-            }
-            if self._union_buckets is not None:
-                # The door answers 202 before the hash filter has run, so this
-                # broadcast is where a caller learns which of its named files
-                # actually entered the run. Added only on a union run: an
-                # ordinary reindex names no files and its payload is unchanged.
-                completed.update({
-                    "union_accepted": len(self._union_buckets.accepted),
-                    "union_skipped_unchanged": len(self._union_buckets.skipped_unchanged),
-                    "union_skipped_missing": len(self._union_buckets.skipped_missing),
-                    "union_skipped_unindexable": len(self._union_buckets.skipped_unindexable),
-                })
-            await event_manager.broadcast("repo.indexing_completed", completed)
+            await event_manager.broadcast(
+                "repo.indexing_completed", self._completion_payload(),
+            )
 
             logger.info(
                 "Pipeline complete for %s: %d changed, %d skipped, %d deleted, %d symbols, %d errors",
@@ -600,6 +592,32 @@ class CodePipeline:
 
         self._phase_done("01_file_discovery", t0)
 
+    def _completion_payload(self) -> dict:
+        """The ``repo.indexing_completed`` payload, shared by both exits.
+
+        The all-filtered early exit reports through this too, so a caller sees
+        the same keys whether or not its named files reached a phase.
+        """
+        payload = {
+            "repo_id": self._repo_id_str,
+            "files_changed": self._stats["files_changed"],
+            "symbols_indexed": self._stats["symbols_indexed"],
+            "index_debt_drained": self._stats["index_debt_drained"],
+            "index_debt_queued": self._stats["index_debt_queued"],
+        }
+        if self._union_buckets is not None:
+            # The door answers 202 before the hash filter has run, so this
+            # broadcast is where a caller learns which of its named files
+            # actually entered the run. Added only on a union run: an ordinary
+            # reindex names no files and its payload is unchanged.
+            payload.update({
+                "union_accepted": len(self._union_buckets.accepted),
+                "union_skipped_unchanged": len(self._union_buckets.skipped_unchanged),
+                "union_skipped_missing": len(self._union_buckets.skipped_missing),
+                "union_skipped_unindexable": len(self._union_buckets.skipped_unindexable),
+            })
+        return payload
+
     async def _apply_union_files(self) -> None:
         """Add the caller's changed files to this run's changed set.
 
@@ -611,8 +629,8 @@ class CodePipeline:
         if not self._union_files:
             return
 
-        # Lazy: reindex_files imports code_reconcile, which imports this
-        # module, so a top-level import here would close that cycle.
+        # Lazy: reindex_files imports this module directly, and again through
+        # code_reconcile, so a top-level import here would close that cycle.
         from app.services.reindex_files import classify_union_files
 
         rows = (await self.session.execute(
