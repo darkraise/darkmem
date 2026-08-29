@@ -1041,6 +1041,8 @@ In `real-repositories-view.tsx`, replace the `auto_sync` `form.Field` (lines ~34
 
 Remove every remaining reference: `grep -rn "auto_sync" frontend/src` must come back empty except the `repo.auto_sync_disabled` websocket event name, which is a separate string and stays.
 
+**Correction (2026-08-30, final fix wave):** that event name did not stay. `repo.auto_sync_disabled` — a retired flag's name for what is now "`index_on_commit_enabled` was disabled" — was renamed to `repo.index_on_commit_disabled` and declared in `EVENT_SCHEMAS`, while no frontend listener existed to break. The Step-4 code excerpt above still shows the old string.
+
 - [ ] **Step 6: Typecheck, test, build**
 
 ```bash
