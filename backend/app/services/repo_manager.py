@@ -361,18 +361,20 @@ class RepoManager:
     async def mark_periodic_sync_failure(
         self, repo_id: UUID, error: str | Exception,
     ) -> Repository | None:
-        """Record a periodic-sync failure on the repo row and disable
-        auto-sync.
+        """Record a periodic-sync failure on the repo row and disable the
+        indexing lane.
 
-        The periodic loop in ``app.main.periodic_repo_sync`` calls this
-        when a repo's ``CodePipeline.run`` raises (typically a git fetch
-        / pull error). Without this, the loop would re-attempt the same
+        The indexing loop in ``app.services.job_runners.make_repo_sync_runner``
+        calls this when a repo's ``CodePipeline.run`` raises (typically a git
+        fetch / pull error). Without this, the loop would re-attempt the same
         repo every tick — flooding logs and the upstream git server with
         the same failing request.
 
         The row is updated to ``status='error'`` with the sanitized error
         in ``status_message`` (truncated to 500 chars) and
-        ``auto_sync=False`` so subsequent ticks skip it. The user can
+        ``index_on_commit_enabled=False`` so subsequent ticks skip indexing
+        it. ``fetch_enabled`` is left alone: a transient network failure must
+        not silently turn off a setting the operator chose. The user can
         re-enable from the Edit Repo dialog after fixing the underlying
         issue (auth, network, branch rename, etc.).
         """
@@ -386,11 +388,11 @@ class RepoManager:
         if repo.status != "stale":
             repo.status = "error"
             repo.status_message = message
-        repo.auto_sync = False
+        repo.index_on_commit_enabled = False
         await self.session.commit()
         await self.session.refresh(repo)
         logger.warning(
-            "Disabled auto-sync for repo %s (%s) after periodic-sync failure: %s",
+            "Disabled index-on-commit for repo %s (%s) after periodic-sync failure: %s",
             repo.name, repo_id, message[:200],
         )
         return repo
