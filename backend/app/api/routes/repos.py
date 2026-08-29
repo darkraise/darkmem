@@ -19,6 +19,7 @@ from app.schemas.code import (
 from app.services import index_debt
 from app.services.code_pipeline import CodePipeline
 from app.services.events import record_event
+from app.services.job_runners import forget_repo_due
 from app.services.reindex_request import ReindexRefused, journal_reindex_outcome, prepare_reindex
 from app.services.repo_manager import RepoManager
 from app.services.usage_recorder import UsageSubject, subject_scope
@@ -34,6 +35,18 @@ router = APIRouter(prefix="/api/v1/repos", tags=["repos"])
 # call builds a fresh closure each time, so overriding one built inline in
 # the decorator would silently miss the one actually wired to the route).
 _require_repo_admin = require_scope("admin")
+
+
+def _sync_loop_fields(repo: Repository) -> tuple:
+    """The fields `make_repo_sync_runner` schedules and gates a repo on."""
+    return (
+        repo.fetch_enabled,
+        repo.fetch_interval_seconds,
+        repo.index_on_commit_enabled,
+        repo.commit_poll_seconds,
+        repo.index_uncommitted,
+    )
+
 
 def _to_response(
     repo: Repository,
@@ -220,6 +233,10 @@ async def update_repo(
     if not existing:
         raise HTTPException(status_code=404, detail="Repository not found")
     prev_armed = existing.fetch_enabled or existing.index_on_commit_enabled
+    # Read as scalars, not as a reference to the row: `manager.update` mutates
+    # this very instance, so comparing against `existing` afterwards compares
+    # the new values with themselves.
+    prev_schedule = _sync_loop_fields(existing)
 
     repo = await manager.update(repo_id, body)
     if not repo:
@@ -229,6 +246,12 @@ async def update_repo(
         wakeup = getattr(request.app.state, "repo_sync_wakeup", None)
         if wakeup is not None:
             wakeup.set()
+
+    # Waking the loop accomplishes nothing on its own: the loop's per-repo
+    # due-times are derived from exactly these fields, so a tick that arrives
+    # before the previous interval lapses refuses the repo it was woken for.
+    if _sync_loop_fields(repo) != prev_schedule:
+        forget_repo_due(repo_id)
 
     return _to_response(repo, account_labels=await manager.account_labels())
 
@@ -241,6 +264,9 @@ async def delete_repo(
 ):
     if not await manager.delete(repo_id):
         raise HTTPException(status_code=404, detail="Repository not found")
+    # Nothing else ever removes a repo's due-times, so without this they
+    # outlive the row until the process restarts.
+    forget_repo_due(repo_id)
 
 
 def _spawn_repo_index(

@@ -32,6 +32,23 @@ def _due_reset() -> None:
     _DUE.clear()
 
 
+def forget_repo_due(repo_id: UUID) -> None:
+    """Drop a repo's due-times so the next tick examines it immediately.
+
+    The due-times are derived from the repo's own switches and intervals, so a
+    write that changes one of those leaves them stale -- and a stale entry
+    refuses every tick until the *old* interval lapses, which is unbounded
+    above (neither interval has a ceiling). Callers: the repo write door, on a
+    change to any field this loop schedules on, and on delete, which otherwise
+    leaks an entry for a row that no longer exists.
+
+    The map stays private to this module and this is its one public writer:
+    a caller reaching into ``_DUE`` directly would be a second owner of the
+    loop's scheduling state.
+    """
+    _DUE.pop(repo_id, None)
+
+
 def _claim_due(repo_id: UUID, lane: str, interval: int, now: float) -> bool:
     lanes = _DUE.setdefault(repo_id, {})
     if now < lanes.get(lane, 0.0):

@@ -812,3 +812,78 @@ async def test_a_busy_tick_does_not_burn_the_fetch_interval(
     await runner()
 
     assert spy.fetched == [indexed_repo.id]
+
+
+async def test_re_arming_a_lane_makes_the_next_tick_act(
+    session, session_factory, indexed_repo, spy, client, auth_headers,
+):
+    """Spec section 6: switching a repository on acts immediately. The loop's
+    per-repo due-times are derived from the switches, so a PUT that changes one
+    leaves them stale -- and a stale due-time refuses every tick until the OLD
+    interval lapses, including the wakeup-triggered tick the arming PUT fires."""
+    indexed_repo.index_on_commit_enabled = True
+    indexed_repo.commit_poll_seconds = 3600
+    await session.commit()
+    runner = job_runners.make_repo_sync_runner(None, session_factory)
+
+    await runner()
+    assert spy.indexed == []
+
+    off = await client.put(
+        f"/api/v1/repos/{indexed_repo.id}",
+        json={"index_on_commit_enabled": False}, headers=auth_headers,
+    )
+    assert off.status_code == 200
+    on = await client.put(
+        f"/api/v1/repos/{indexed_repo.id}",
+        json={"index_on_commit_enabled": True}, headers=auth_headers,
+    )
+    assert on.status_code == 200
+
+    _commit(Path(indexed_repo.local_path), "def beta():\n    return 2\n", "two")
+    await runner()
+
+    assert [r[0] for r in spy.indexed] == [indexed_repo.id]
+
+
+async def test_shortening_an_interval_takes_effect_at_once(
+    session, session_factory, indexed_repo, spy, client, auth_headers,
+):
+    """Same root cause as re-arming: the old interval must not outlive the PUT
+    that replaced it."""
+    indexed_repo.index_on_commit_enabled = True
+    indexed_repo.commit_poll_seconds = 3600
+    await session.commit()
+    runner = job_runners.make_repo_sync_runner(None, session_factory)
+
+    await runner()
+    assert spy.indexed == []
+
+    r = await client.put(
+        f"/api/v1/repos/{indexed_repo.id}",
+        json={"commit_poll_seconds": 15}, headers=auth_headers,
+    )
+    assert r.status_code == 200
+
+    _commit(Path(indexed_repo.local_path), "def beta():\n    return 2\n", "two")
+    await runner()
+
+    assert [r[0] for r in spy.indexed] == [indexed_repo.id]
+
+
+async def test_deleting_a_repo_evicts_its_due_times(
+    session, session_factory, indexed_repo, spy, client, auth_headers,
+):
+    """`_DUE` is keyed by repo id and nothing else ever removes an entry, so a
+    deleted repo's due-times survive until the process restarts."""
+    indexed_repo.index_on_commit_enabled = True
+    await session.commit()
+    await job_runners.make_repo_sync_runner(None, session_factory)()
+    assert indexed_repo.id in job_runners._DUE
+
+    r = await client.delete(
+        f"/api/v1/repos/{indexed_repo.id}", headers=auth_headers,
+    )
+    assert r.status_code == 204
+
+    assert indexed_repo.id not in job_runners._DUE
