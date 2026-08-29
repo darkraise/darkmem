@@ -1793,7 +1793,12 @@ def is_discoverable_path(rel_path: str) -> bool:
     rel = PurePosixPath(rel_path)
     if any(part in IGNORED_DIRS for part in rel.parts):
         return False
-    return rel.suffix.lower() not in IGNORED_EXTENSIONS
+    # Matched against the filename's tail rather than `PurePosixPath.suffix`,
+    # which returns only the final extension: the two multi-part entries in the
+    # set could never match it, so minified bundles were indexed despite being
+    # listed. No single-part entry changes meaning under this test.
+    name = rel.name.lower()
+    return not any(name.endswith(ext) for ext in IGNORED_EXTENSIONS)
 
 
 def _list_all_files(work_dir: Path) -> list[str]:

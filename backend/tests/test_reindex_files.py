@@ -153,3 +153,39 @@ def test_the_ignored_rule_is_discovery_s_own(tmp_path):
 
     assert surfaced == {"src/a.py"}
     assert set(buckets.skipped_unindexable) == set(named) - surfaced
+
+
+def test_multi_part_ignored_extensions_actually_match(tmp_path):
+    """`IGNORED_EXTENSIONS` has listed `.min.js` and `.min.css` since the set was
+    written, but the filter tested `PurePosixPath.suffix`, which returns only the
+    final extension -- so neither entry could ever match and minified bundles
+    were indexed regardless. The set is the statement of intent; this pins that
+    the filter honours all of it."""
+    from app.services.code_pipeline import is_discoverable_path
+
+    assert not is_discoverable_path("vendor/jquery.min.js")
+    assert not is_discoverable_path("static/site.min.css")
+    assert not is_discoverable_path("bundle.map")
+
+    # A single-part entry keeps its old meaning, and an ordinary source file
+    # whose name merely contains a listed string is untouched.
+    assert not is_discoverable_path("poetry.lock")
+    assert is_discoverable_path("src/app.js")
+    assert is_discoverable_path("src/minify.py")
+    assert is_discoverable_path("src/lock.ts")
+
+
+def test_a_named_minified_file_lands_in_unindexable(tmp_path):
+    """The union classifier reads the same predicate, so a caller that names a
+    minified bundle is told it can never be indexed rather than silently
+    dropped."""
+    from app.services.reindex_files import classify_union_files
+
+    (tmp_path / "vendor").mkdir()
+    (tmp_path / "vendor" / "jquery.min.js").write_text("var a=1;")
+
+    buckets = classify_union_files(tmp_path, ["vendor/jquery.min.js"], {})
+
+    assert buckets.skipped_unindexable == ["vendor/jquery.min.js"]
+    assert buckets.accepted == []
+
