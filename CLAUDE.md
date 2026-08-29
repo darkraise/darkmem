@@ -118,12 +118,21 @@ behavior change, not a cleanup.
   move, so a skipped or failed build redeploys the old bits and still reports
   `Started`.
   **This is a deploy, not a release.** No tag is written and nothing reaches a
-  registry; the running image is an untagged local `:latest`. Cutting a version
-  stays `./scripts/release.sh vN.N.N`, which writes its tag last, and pushing
-  that tag is the separate, deliberate act that publishes. Never publish an
-  image from this machine: `.github/workflows/release.yml` is the only path to
-  a registry, and it is the authority here — a tag can be deleted and a pushed
-  image cannot. Prefer the script over a bare `docker build` for one concrete
+  registry; the running image is an untagged local `:latest`. **Since 2026-08-29
+  a push to master is what releases** (owner ruling): `release.yml` derives the
+  next version from the conventional-commit types since the last tag, runs CI,
+  publishes to Docker Hub and GHCR, and **only then** writes the tag and the
+  GitHub release — so a tag that exists is a tag whose image was published, and
+  a failed publish leaves nothing to explain away. Two guards replace the old
+  hand-pushed tag: a push carrying no `feat`, `fix`, `perf` or breaking commit
+  cuts nothing, and a push whose derived version has no `## vN.N.N` section in
+  `CHANGELOG.md` fails before the suite runs. The changelog stays hand-written;
+  only the GitHub release body is generated (`scripts/next_version.py`).
+  `./scripts/release.sh vN.N.N` **no longer tags** — it is the local pre-flight
+  (sync the version fields, build, deploy, probe `/openapi.json`), and CI then
+  skips its own bump because the fields already name the version. Never publish
+  an image from this machine: `.github/workflows/release.yml` is still the only
+  path to a registry. Prefer the script over a bare `docker build` for one concrete
   reason: it also tags the image with the short git sha, so `docker inspect`
   answers *which commit is running* rather than only `:latest`.
 - **Prod networking is bridge, not host** — re-decided 2026-08-18 (owner

@@ -25,19 +25,35 @@ DARKMEM_VERSION=<version> docker compose up -d
 `.env` must carry `DB_PASSWORD` and a `JWT_SECRET` of 32+ characters, plus
 `COOKIE_SECURE=false` for a plain-HTTP LAN.
 
-**Publishing is a tag's consequence, and nothing else's** (changed 2026-08-20;
-this said "nothing is ever pushed to a registry", which stopped being true when
-CI gained a publish job). Nothing local pushes: `build-push.sh` honours
-`DARKMEM_PUSH=0` and `release.sh` sets it, so cutting a release still only
-builds and tags on this machine. What publishes is
-`git push origin <tag>` — that runs `.github/workflows/release.yml`, which
-re-runs the whole CI pipeline and only then pushes the image to Docker Hub
-(`darkraise/darkmem`) and GHCR (`ghcr.io/darkraise/darkmem`).
+**Publishing is a master push's consequence** (changed 2026-08-29; this said
+"a tag's consequence, and nothing else's", which described the flow before CI
+took over versioning). Nothing local pushes: `build-push.sh` honours
+`DARKMEM_PUSH=0` and `release.sh` sets it, so a local cut only builds and
+deploys on this machine. What publishes is `git push origin master` — that runs
+`.github/workflows/release.yml`, which derives the next version from the
+conventional-commit types since the last tag, re-runs the whole CI pipeline,
+pushes the image to Docker Hub (`darkraise/darkmem`) and GHCR
+(`ghcr.io/darkraise/darkmem`), and **only then** writes the tag and the GitHub
+release.
 
-The reasoning that produced the old rule is unchanged and is why the push is a
-separate step: a local tag can be deleted and a pushed image cannot. A branch
-push publishes nothing. Deploying this host still uses the locally built image
-and never needs the registry.
+Two guards stand where the hand-pushed tag used to. A push releases only if it
+carries a `feat`, `fix`, `perf` or breaking commit — a docs-only or chore-only
+push cuts nothing — and only if `CHANGELOG.md` already has a `## vN.N.N`
+section for the version the commits derive. That second check runs before the
+suite and before any push, so a version can never ship with no account of what
+changed. The changelog stays hand-written; the GitHub release body is generated
+from the commits alongside it.
+
+The reasoning behind the old rule still holds and is why the tag is written
+last rather than first: a tag that exists is a tag whose image is already in
+both registries, so a failed publish leaves nothing to explain away. A branch
+push and a pull request publish nothing. Deploying this host still uses the
+locally built image and never needs the registry.
+
+`scripts/release.sh` no longer tags. It syncs the version fields, builds,
+deploys and probes `/openapi.json` — the local proof that the version you are
+about to cut actually serves. CI sees the synced fields, skips its own bump and
+publishes under the same number.
 
 ## The silent failure this runbook exists for
 

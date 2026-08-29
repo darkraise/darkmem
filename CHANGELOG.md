@@ -4,6 +4,76 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
+## v1.3.0 — 2026-08-29
+
+**The MCP door grew a lock, and agents can now ask for a reindex of the files
+they just wrote.** Three blocks: the MCP endpoint migrated to SDK v2 and now
+requires a bearer key with per-tool scopes; a file-scoped reindex door landed on
+both REST and MCP; and releases stopped being hand-cut. The gate table is
+**unchanged from v1.2.0** — nothing here touches a surface a gate governs.
+
+### Added
+
+- **`/mcp` requires `Authorization: Bearer dmk_<key_id>_<secret>`.** There is no
+  flag that disables it. Authorization is per tool, not per door: `capture`
+  covers the 8 writers, `read` covers 25, `admin` covers the 1 repository-control
+  tool. Scopes do not imply one another, and `tools/list` is deliberately not
+  scope-filtered — an authenticated key sees the full catalogue including
+  writers it cannot invoke. A keyed capture stamps `events.api_key_id` and
+  `events.actor` on the journalled row.
+
+- **The MCP server speaks protocol revision `2026-07-28` on `mcp==2.1.1`.** The
+  v2 SDK renamed the server object to `MCPServer`; `FastMCP` is gone.
+
+- **File-scoped reindex, on both doors.** `POST /api/v1/repos/{id}/reindex-files`
+  and the `code_reindex` MCP tool take the paths an agent just committed, with
+  an optional commit sha darkmem verifies read-only before claiming. Named files
+  are **unioned into** the git diff rather than replacing it, and are
+  content-hash filtered first so a repeated list cannot manufacture phantom
+  index debt. One `repo_reindex_requested` event records the outcome per
+  request, whichever branch it took.
+
+- **An API keys card in Settings**, rebuilt around the key list.
+
+### Changed
+
+- **Releases are cut by CI, from a push to master.** `release.yml` derives the
+  next version from the conventional-commit types since the last tag, runs the
+  full pipeline, publishes to Docker Hub and GHCR, and **only then** writes the
+  tag and the GitHub release — a tag that exists is now a tag whose image was
+  published. A push carrying no `feat`, `fix`, `perf` or breaking commit cuts
+  nothing, and a push whose derived version has no section in this file fails
+  before the suite runs. `scripts/release.sh` no longer tags; it is the local
+  pre-flight that proves the version serves before you push.
+
+- **Extraction spends roughly 730 fewer tokens per ingest**, and the last four
+  prompts are guarded, delimited and seeded like the rest.
+
+### Fixed
+
+- **Minified bundles are no longer indexed.** `IGNORED_EXTENSIONS` had listed
+  `.min.js` and `.min.css` since it was written, but the filter tested
+  `PurePosixPath.suffix`, which returns only the final extension — so neither
+  entry could ever match. Files already indexed become undiscoverable and
+  `code_reconcile` strips them on its next tick.
+
+- **A file-scoped run that indexes nothing now says so.** The all-filtered early
+  exit returned before the completion broadcast, so a caller naming only
+  unchanged files heard nothing — the one outcome the bucket reporting exists
+  for. Both exits now report through one payload builder, and the SPA renders
+  "Nothing to index" over an account of what was skipped rather than
+  "Indexed 0 files".
+
+- **Retriable LLM vendor failures are retried three times.**
+
+- **Extraction stops splitting datastores across types**, and no longer reads a
+  selection as a replacement.
+
+- **`reason` cites only memories that fit the context**, and chat citations keep
+  the rider unsliced.
+
+- **Bcrypt verification for API keys runs off the event loop.**
+
 ## v1.2.1 — 2026-08-26
 
 **The published image could not index a repository, and nothing said so.**
