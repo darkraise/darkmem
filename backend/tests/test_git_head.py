@@ -75,3 +75,23 @@ async def test_resolves_a_detached_head(tmp_path):
 
 async def test_a_directory_that_is_not_a_repository_is_none(tmp_path):
     assert await resolve_head_sha(tmp_path) is None
+
+
+async def test_resolves_a_linked_worktree(tmp_path):
+    """`git worktree add` makes `.git` a pointer FILE, not a directory. Reading
+    it as one returns None, which the caller reads as "skip this repo" -- so a
+    worktree-backed repo would never be indexed, silently and forever."""
+    main = tmp_path / "main"
+    main.mkdir()
+    _git(main, "init", "-q", "-b", "main")
+    _git(main, "config", "user.email", "t@t")
+    _git(main, "config", "user.name", "t")
+    (main / "f.txt").write_text("one")
+    _git(main, "add", "-A")
+    _git(main, "commit", "-q", "-m", "one")
+
+    linked = tmp_path / "linked"
+    _git(main, "worktree", "add", "-q", str(linked), "-b", "side")
+    assert (linked / ".git").is_file()
+
+    assert await resolve_head_sha(linked) == _rev_parse(linked)

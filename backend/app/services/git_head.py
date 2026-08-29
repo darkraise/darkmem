@@ -25,6 +25,21 @@ def _read(path: Path) -> str | None:
 
 async def resolve_head_sha(work_dir: Path) -> str | None:
     git_dir = work_dir / ".git"
+
+    # Linked worktrees created by `git worktree add` have `.git` as a FILE
+    # containing `gitdir: /path/to/main/.git/worktrees/<name>`, not a directory.
+    # Skip the file-reading fast path and go straight to the subprocess, which
+    # git resolves natively without requiring us to parse the pointer.
+    if not git_dir.is_dir():
+        from app.services.repo_manager import RepoManager
+
+        try:
+            out = await RepoManager._run_git(work_dir, ["git", "rev-parse", "HEAD"])
+        except Exception:
+            return None
+        out = out.strip()
+        return out if _SHA.match(out) else None
+
     head = _read(git_dir / "HEAD")
     if head is None:
         return None
