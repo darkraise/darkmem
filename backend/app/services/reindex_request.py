@@ -155,10 +155,12 @@ async def prepare_reindex(
         # value is what tells "you named HEAD in short form" apart from the
         # head_mismatch this would otherwise report, whose client guidance
         # ("darkmem is at a different commit it does hold") would then be wrong.
+        # One call, so one failure meaning. `rev-parse <sha>^{commit}` both
+        # proves the object is here and resolves it, and it raises only for a
+        # sha this repository does not hold; the `cat-file -e` that used to
+        # precede it made a second, redundant call whose own failure would have
+        # been reported as `unknown_commit` for a commit just shown to exist.
         try:
-            await RepoManager._run_git(
-                work_dir, ["git", "cat-file", "-e", f"{commit}^{{commit}}"],
-            )
             resolved = (await RepoManager._run_git(
                 work_dir, ["git", "rev-parse", f"{commit}^{{commit}}"],
             )).strip()
