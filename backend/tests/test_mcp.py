@@ -26,6 +26,7 @@ EXPECTED_TOOLS: frozenset[str] = frozenset({
     "code_dependencies",
     "code_file_symbols",
     "code_processes",
+    "code_reindex",
     "code_rename",
     "code_search",
     "code_symbol",

@@ -102,6 +102,7 @@ from sqlalchemy import delete as sa_delete
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.api.mcp.scopes import (
+    ADMIN_TOOLS,
     CAPTURE_TOOLS,
     READ_TOOLS,
     SCOPE_DENIED,
@@ -163,8 +164,25 @@ async def mint_key():
 
 
 @pytest_asyncio.fixture
-async def door(mcp_streamable_app):
-    """A client on the mounted door with no credential of its own."""
+async def door(mcp_streamable_app, session, monkeypatch):
+    """A client on the mounted door with no credential of its own.
+
+    The session factory is patched exactly as ``mcp_http_client`` patches it:
+    MCP tools open their own sessions through the module-level factory rather
+    than through the FastAPI dependency, so a tool whose body actually runs
+    here would commit rows outside the test transaction. Most tests in this
+    module are refused before any body executes, but the admin-scope test
+    reaches ``code_reindex``'s body and journals from it.
+    """
+    from contextlib import asynccontextmanager
+
+    import app.api.mcp.server as mcp_module
+
+    @asynccontextmanager
+    async def _fake_ctx():
+        yield session
+
+    monkeypatch.setattr(mcp_module, "async_session_factory", lambda: _fake_ctx())
     async with AsyncClient(
         transport=ASGITransport(app=mcp_streamable_app),
         base_url="http://localhost:8000",
@@ -296,13 +314,23 @@ async def test_a_key_holding_the_scope_succeeds(door, mint_key):
     assert body["result"]["isError"] is False
 
 
-async def test_an_admin_only_key_reaches_neither_partition(door, mint_key):
-    """``admin`` is a real scope and deliberately implies nothing."""
+async def test_an_admin_only_key_reaches_only_admin_tools(door, mint_key):
+    """``admin`` is a real scope and deliberately implies nothing: it reaches
+    ``code_reindex`` and nothing in ``CAPTURE_TOOLS`` or ``READ_TOOLS``."""
     _row_id, credential = await mint_key(scopes=["admin"])
 
     for tool in ("memory_stats", "memory_add"):
         response = await _post(door, tool, credential=credential)
         assert _rpc_error(response)["code"] == SCOPE_DENIED, tool
+
+    # `code_reindex` takes arguments `_post` has no way to carry; post the
+    # call directly, the same shape `_post` builds internally.
+    response = await door.post(
+        "/",
+        json=_call("code_reindex", repo_name="no-such-repo"),
+        headers={"Authorization": f"Bearer {credential}"},
+    )
+    assert "error" not in response.json(), response.json()
 
 
 async def test_a_passing_scope_check_marks_the_key_used(door, mint_key, monkeypatch):
@@ -364,10 +392,10 @@ def test_every_tool_declares_a_scope():
     The roster is derived from source (see tests/test_mcp.py), so this cannot
     go stale the way a hand-listed set would.
 
-    ``TOOL_SCOPES`` names all 33 rather than deriving "not a writer means a
+    ``TOOL_SCOPES`` names all 34 rather than deriving "not a writer means a
     reader". A derived partition is total by construction and therefore blind:
     it would resolve a new *capture* tool nobody classified to ``read`` and
-    ship it, with this test still green. Naming both halves makes an
+    ship it, with this test still green. Naming all three sets makes an
     unclassified tool visible here, and — because ``require_scope_for_tool`` refuses an
     unlisted name — unreachable rather than readable in the meantime.
     """
@@ -378,6 +406,8 @@ def test_every_tool_declares_a_scope():
     assert not unknown, f"CAPTURE_TOOLS names tools that do not exist: {sorted(unknown)}"
     stale = READ_TOOLS - declared
     assert not stale, f"READ_TOOLS names tools that do not exist: {sorted(stale)}"
+    orphaned = ADMIN_TOOLS - declared
+    assert not orphaned, f"ADMIN_TOOLS names tools that do not exist: {sorted(orphaned)}"
 
     unclassified = declared - set(TOOL_SCOPES)
     assert not unclassified, (
@@ -386,7 +416,9 @@ def test_every_tool_declares_a_scope():
     )
     assert set(TOOL_SCOPES) == declared
     assert not (CAPTURE_TOOLS & READ_TOOLS)
-    assert len(CAPTURE_TOOLS) + len(READ_TOOLS) == len(declared)
+    assert not (CAPTURE_TOOLS & ADMIN_TOOLS)
+    assert not (READ_TOOLS & ADMIN_TOOLS)
+    assert len(CAPTURE_TOOLS) + len(READ_TOOLS) + len(ADMIN_TOOLS) == len(declared)
     assert READ_TOOLS, "no read tools found; the partition is broken"
 
 

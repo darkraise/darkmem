@@ -930,11 +930,14 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "not for the vault reads -- a twin on the MCP door would let any "
             "already-keyed caller mint itself a stronger or longer-lived "
             "credential than the one it holds, which is strictly worse than "
-            "the surface it would be minting access to. It is also why "
-            "'admin' is not a scope any MCP tool accepts: a key holding admin "
-            "still reaches nothing over /mcp, so a stolen key cannot mint its "
-            "own successor and outlive its revocation (T4.01). Recorded here "
-            "so nobody completes the symmetry later."
+            "the surface it would be minting access to. The revocation "
+            "half of that argument survives code_reindex admitting "
+            "'admin' over /mcp, because it never rested on the scope "
+            "reaching nothing: no MCP tool mints a credential, so a "
+            "stolen key of any scope cannot mint its own successor and "
+            "outlive its revocation (T4.01). It was stated the other way "
+            "until 2026-08-28, on a premise that door then falsified. "
+            "Recorded here so nobody completes the symmetry later."
         ),
     ),
     Surface(
@@ -1107,8 +1110,29 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "system rather than the UI's Reindex button -- an externally "
             "reachable receiver, gated on the same `admin` scope, calling "
             "the identical `CodePipeline.run` polling and the Reindex "
-            "button both call; it earns no MCP twin for the same reason "
-            "reindex doesn't."
+            "button both call; `reindex` and `webhook` earn no MCP twin for "
+            "that budget reason. `reindex-files` (spec §6) moved to its own "
+            "two-door row, `repo.reindex_files`, once its MCP twin landed."
+        ),
+    ),
+    Surface(
+        name="repo.reindex_files",
+        status=TWO_DOOR,
+        rest=(("POST", f"{V1}/repos/{{repo_id}}/reindex-files"),),
+        mcp=("code_reindex",),
+        note=(
+            "spec §6.1's twin. Both doors call the one shared entry point, "
+            "`reindex_request.prepare_reindex`, so the file-set canonicalisation, "
+            "the optional commit verification against HEAD, and every refusal "
+            "reason are one implementation. The wire shapes differ in how the "
+            "repository is addressed -- the route takes `repo_id` from the URL, "
+            "the tool takes `repo_path` or `repo_name` and resolves it itself, "
+            "refusing `not_found` or `ambiguous_repo` (with its own journal row) "
+            "before ever reaching `prepare_reindex` -- neither of which the "
+            "route can hit, since a path parameter is never ambiguous. Split "
+            "out of `repo.manage` rather than left inside it once `code_reindex` "
+            "landed: leaving the whole surface REST_ONLY would have hidden that "
+            "one of its ten routes had gained a twin."
         ),
     ),
     Surface(

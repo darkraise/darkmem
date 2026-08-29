@@ -798,6 +798,7 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "GET /api/v1/repos/{repo_id}/tasks",
     "POST /api/v1/repos",
     "POST /api/v1/repos/{repo_id}/reindex",
+    "POST /api/v1/repos/{repo_id}/reindex-files",
     "POST /api/v1/repos/{repo_id}/webhook",
     "PUT /api/v1/repos/{repo_id}",
     "GET /api/v1/review-queue/counts",
@@ -830,6 +831,10 @@ MCP_TOOLS_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "mcp:code_dependencies",
     "mcp:code_file_symbols",
     "mcp:code_processes",
+    # spec section 6.1. Its REST twin, POST .../reindex-files, is already
+    # above for the same reason: the response is a repo id, a commit sha and
+    # a file count, none of it a `memories` row.
+    "mcp:code_reindex",
     "mcp:code_rename",
     "mcp:code_symbol",
     "mcp:list_repos",

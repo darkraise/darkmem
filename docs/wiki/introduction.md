@@ -60,7 +60,7 @@ the same corpus differently.
 
 ## Ways in
 
-- **MCP** (`/mcp`) — the agent-facing surface, 33 tools covering memory,
+- **MCP** (`/mcp`) — the agent-facing surface, 34 tools covering memory,
   documents, code, facts, checkpoints and research. This is how Claude Code,
   Codex and similar clients talk to it. Every call needs a bearer API key,
   scoped per tool.

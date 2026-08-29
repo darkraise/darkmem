@@ -101,16 +101,26 @@ purpose, and it is the surface the minimal client speaks:
 |---|---|
 | `capture` | `POST /memories`, `POST /memories/batch` |
 | `read` | `POST /memories/search/paginated` |
-| `admin` | `POST /repos/{id}/webhook` |
+| `admin` | `POST /repos/{id}/webhook`, `POST /repos/{id}/reindex-files` |
 
 **`/mcp` is scoped far more widely, and separately** (doc 18 §5's second
-activation, 2026-08-26): every one of its 33 tools requires `capture` or
-`read`, so a `capture`-scoped key reaches all 8 MCP writer tools —
-`memory_add`, `memory_batch_add`, `memory_update`, `memory_delete`,
-`document_put`, `document_delete`, `checkpoint_save`, `research_run` — not
-only the two REST routes above, and a `read`-scoped key reaches the other 25.
-The table above is REST's reach only; do not read it as the whole reach of a
-`capture` or `read` key.
+activation, 2026-08-26): of its 34 tools, 8 require `capture`, 25 require
+`read` and one requires `admin`, so a `capture`-scoped key reaches all 8 MCP
+writer tools — `memory_add`, `memory_batch_add`, `memory_update`,
+`memory_delete`, `document_put`, `document_delete`, `checkpoint_save`,
+`research_run` — not only the two REST routes above, and a `read`-scoped key
+reaches the 25 readers. The table above is REST's reach only; do not read it
+as the whole reach of a key of any scope.
+
+**A leaked `admin` key now reaches `/mcp` too, which it did not before
+2026-08-28.** `code_reindex` is the one `admin`-scoped tool, and its blast
+radius is the same as the webhook's rather than a read of your data: it can
+trigger a repository index at will, which spends embedder budget per run, and
+on a *clone* repository the run's own `pull_repo` executes `git reset --hard`
+against the fetched head — uncommitted work in darkmem's clone directory does
+not survive it. It cannot mint a credential (no MCP tool can) and it asserts
+nothing into the graph. Rotate an exposed `admin` key on that basis, not on
+the old "admin reaches no MCP tool" one.
 
 Everything else stays human-session-only. That is a deliberate boundary rather
 than an oversight: widening `read` to the fact vault or the code graph decides

@@ -298,7 +298,7 @@ stateDiagram-v2
 
 ## 7. The code MCP tool family
 
-**Decision. The code graph surfaces over MCP as a read-only tool family of eleven tools, each with a REST twin, whose contracts and payloads are doc 12's (exists today; invariant 17).** These are the moat made reachable — blast-radius, communities, processes, and cross-file rename that no memory competitor exposes (doc 00 §6). The family:
+**Decision. The code graph surfaces over MCP as a tool family of eleven readers, each with a REST twin, whose contracts and payloads are doc 12's (exists today; invariant 17).** The family was read-only until 2026-08-28, when `code_reindex` gave it its first writer — the `admin`-scoped file-scoped reindex door, twinned with `POST /api/v1/repos/{id}/reindex-files`; it triggers indexing and asserts nothing into the graph itself. These are the moat made reachable — blast-radius, communities, processes, and cross-file rename that no memory competitor exposes (doc 00 §6). The family:
 
 | Tool | Purpose |
 |---|---|

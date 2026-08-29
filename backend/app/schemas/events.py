@@ -55,6 +55,12 @@ class RepoIndexingCompleted(BaseModel):
     symbols_indexed: int
     index_debt_drained: int = 0
     index_debt_queued: int = 0
+    # Present only on a file-scoped reindex: an ordinary run names no files and
+    # has no buckets to report.
+    union_accepted: int | None = None
+    union_skipped_unchanged: int | None = None
+    union_skipped_missing: int | None = None
+    union_skipped_unindexable: int | None = None
 
 
 class RepoIndexingFailed(BaseModel):

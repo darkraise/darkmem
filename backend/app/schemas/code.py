@@ -73,6 +73,19 @@ class ReindexRequest(BaseModel):
     generate_wiki: bool = False
 
 
+class ReindexFilesRequest(BaseModel):
+    files: list[str] = []
+    commit: str | None = None
+    enrich_symbols: bool = False
+
+
+class ReindexFilesResponse(BaseModel):
+    status: str
+    repo_id: str
+    commit: str | None = None
+    accepted: int
+
+
 class IndexDebtDrain(BaseModel):
     at: str = ""
     count: int = 0
