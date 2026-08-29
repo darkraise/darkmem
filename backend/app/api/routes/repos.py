@@ -52,7 +52,11 @@ def _to_response(
         last_indexed_at=repo.last_indexed_at,
         status=repo.status,
         status_message=repo.status_message,
-        auto_sync=repo.auto_sync,
+        fetch_enabled=repo.fetch_enabled,
+        fetch_interval_seconds=repo.fetch_interval_seconds,
+        index_on_commit_enabled=repo.index_on_commit_enabled,
+        commit_poll_seconds=repo.commit_poll_seconds,
+        index_uncommitted=repo.index_uncommitted,
         git_account_id=repo.git_account_id,
         git_account_label=(account_labels or {}).get(repo.git_account_id)
         if repo.git_account_id
@@ -137,21 +141,22 @@ async def update_repo(
     _user=Depends(require_auth),
     manager: RepoManager = Depends(get_repo_manager),
 ):
-    # Snapshot ``auto_sync`` BEFORE the update so we can detect whether
-    # this PUT flipped the polling gate. The repo_sync background job
-    # filters by ``auto_sync=true``; a flip from off→on should wake the
-    # job immediately so the new repo joins the next iteration without
-    # waiting for the global tick.
+    # Snapshot whether either recurring lane was armed BEFORE the update so
+    # we can detect whether this PUT flipped the polling gate. The repo_sync
+    # background job filters by ``fetch_enabled`` / ``index_on_commit_enabled``;
+    # a flip from neither armed to either armed should wake the job
+    # immediately so the new repo joins the next iteration without waiting
+    # for the global tick.
     existing = await manager.get(repo_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Repository not found")
-    prev_auto_sync = existing.auto_sync
+    prev_armed = existing.fetch_enabled or existing.index_on_commit_enabled
 
     repo = await manager.update(repo_id, body)
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
 
-    if repo.auto_sync != prev_auto_sync:
+    if (repo.fetch_enabled or repo.index_on_commit_enabled) and not prev_armed:
         wakeup = getattr(request.app.state, "repo_sync_wakeup", None)
         if wakeup is not None:
             wakeup.set()

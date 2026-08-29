@@ -554,8 +554,9 @@ async def lifespan(app: FastAPI):
     register_dream_jobs(job_registry, lambda: getattr(app.state, "llm", None))
 
     # Expose the repo_sync wakeup so PUT /repos/{id} can nudge the loop
-    # immediately when a repo's auto_sync flips. The registry owns the
-    # event; route handlers just call .set() on it.
+    # immediately when a repo's fetch_enabled or index_on_commit_enabled
+    # flips on. The registry owns the event; route handlers just call
+    # .set() on it.
     repo_sync_job = job_registry.get("repo_sync")
     if repo_sync_job is not None:
         app.state.repo_sync_wakeup = repo_sync_job.wakeup

@@ -21,8 +21,13 @@ rather than by reading the route body:
   calls; ``TestMutationDrillCatchesBareNameCalls`` proves by construction
   that an attribute-only scan is blind to a smuggled bare-name call.
 * ``TestPollingCallShapeStaysAsserted`` pins polling's own call shape
-  (``app/services/job_runners.py``: ``await pipeline.run(repo.id)``, no
-  kwargs) directly against that source, rather than only in a comment here.
+  (``app/services/job_runners.py``: ``await pipeline.run(repo_id,
+  forced_files=forced, pull=False)`` since T3 split polling into a fetch
+  lane and an index lane) directly against that source, rather than only in
+  a comment here. The webhook's own call site is still the bare
+  ``pipeline.run(repo_id)`` shape below -- the two are no longer identical,
+  and that divergence is deliberate: the webhook has no fetch lane of its
+  own to hand `pull` off to.
 * ``TestSignatureVerification`` patches ``CodePipeline.run`` with a
   call-counting mock, captures the background task ``_spawn_repo_index``
   schedules, awaits it, and asserts a bad credential never reaches
@@ -49,6 +54,7 @@ from __future__ import annotations
 import asyncio
 import ast
 import inspect
+import subprocess
 import textwrap
 import uuid
 from unittest.mock import AsyncMock
@@ -327,10 +333,15 @@ class TestMutationDrillCatchesBareNameCalls:
 
 
 class TestPollingCallShapeStaysAsserted:
-    def test_job_runners_calls_pipeline_run_with_a_bare_repo_id(self):
-        """If this call site ever grows a kwarg, the "same shape as
-        polling" claim elsewhere in this file drifts silently unless this
-        test goes red with it."""
+    def test_job_runners_calls_pipeline_run_with_the_index_lane_shape(self):
+        """Per-repo indexing modes (T3) split polling into a fetch lane and an
+        index lane, so polling's call site is no longer the bare
+        `pipeline.run(repo.id)` the webhook still uses -- it now passes
+        `forced_files` (uncommitted-drift support) and `pull=False`.
+        `pull=False` is load-bearing: the fetch lane above already owns
+        fetching this tick, so an unconditional pull inside the pipeline
+        would `reset --hard` away the very drift `forced_files` names. If
+        this call site drifts, this test must go red with it."""
         source = textwrap.dedent(inspect.getsource(job_runners_module.make_repo_sync_runner))
         tree = ast.parse(source)
 
@@ -345,12 +356,32 @@ class TestPollingCallShapeStaysAsserted:
         assert len(run_calls) == 1
         (call,) = run_calls
         assert len(call.args) == 1
-        assert isinstance(call.args[0], ast.Attribute) and call.args[0].attr == "id"
-        assert call.keywords == []
+        assert isinstance(call.args[0], ast.Name) and call.args[0].id == "repo_id"
+        keyword_names = {kw.arg for kw in call.keywords}
+        assert keyword_names == {"forced_files", "pull"}
+        pull_kw = next(kw for kw in call.keywords if kw.arg == "pull")
+        assert isinstance(pull_kw.value, ast.Constant) and pull_kw.value.value is False
+
+
+def _init_committed_repo_dir(path) -> None:
+    """A real, minimal git repo with one commit -- the polling loop's index
+    lane resolves HEAD off the working tree's own `.git` files
+    (`app/services/git_head.py`) before it will ever call `pipeline.run`, so
+    a fixture standing in for a real repository needs a real one, not a bare
+    path string."""
+    run = lambda *args: subprocess.run(  # noqa: E731
+        ["git", *args], cwd=path, check=True, capture_output=True, timeout=30,
+    )
+    run("init", "-q", "-b", "main")
+    run("config", "user.email", "t@t")
+    run("config", "user.name", "t")
+    (path / "f.py").write_text("def a():\n    return 1\n")
+    run("add", "-A")
+    run("commit", "-q", "-m", "one")
 
 
 @pytest.fixture
-async def committed_repo():
+async def committed_repo(tmp_path):
     """A repository row visible to sessions other than the fixture's.
 
     The claim is a cross-caller guard, so testing it needs callers that can
@@ -364,18 +395,25 @@ async def committed_repo():
 
     created: list[str] = []
 
-    async def _make(name: str, *, auto_sync: bool = False, status: str = "ready") -> str:
+    async def _make(
+        name: str, *, index_on_commit_enabled: bool = False, status: str = "ready",
+    ) -> str:
         repo_id = str(uuid.uuid4())
+        repo_dir = tmp_path / name
+        repo_dir.mkdir()
+        _init_committed_repo_dir(repo_dir)
         async with AsyncSession(test_engine) as own:
             await own.execute(
                 sql_text(
                     "INSERT INTO repositories (id, name, provider, default_branch, "
-                    "status, auto_sync, local_path) VALUES (CAST(:id AS uuid), :name, "
-                    "'local', 'main', :status, :auto_sync, :path)"
+                    "status, index_on_commit_enabled, local_path) VALUES "
+                    "(CAST(:id AS uuid), :name, 'local', 'main', :status, "
+                    ":index_on_commit_enabled, :path)"
                 ),
                 {
                     "id": repo_id, "name": name, "status": status,
-                    "auto_sync": auto_sync, "path": f"/tmp/{name}",
+                    "index_on_commit_enabled": index_on_commit_enabled,
+                    "path": str(repo_dir),
                 },
             )
             await own.commit()
@@ -432,7 +470,7 @@ class TestTheIndexClaimIsAtomic:
         from app.services.code_pipeline import CodePipeline
         from tests.conftest import test_engine
 
-        await committed_repo("polled-repo", auto_sync=True, status="indexing")
+        await committed_repo("polled-repo", index_on_commit_enabled=True, status="indexing")
 
         polled: list = []
 
@@ -463,7 +501,7 @@ class TestTheIndexClaimIsAtomic:
         from app.services.code_pipeline import CodePipeline
         from tests.conftest import test_engine
 
-        await committed_repo("free-polled-repo", auto_sync=True, status="ready")
+        await committed_repo("free-polled-repo", index_on_commit_enabled=True, status="ready")
 
         polled: list = []
 
@@ -646,11 +684,13 @@ class TestSignatureVerification:
         assert len(tasks) == 1
         await asyncio.gather(*tasks)
 
-        # Exactly the shape polling's own call site uses
-        # (`app/services/job_runners.py`: `await pipeline.run(repo.id)`,
-        # pinned directly in `TestPollingCallShapeStaysAsserted` above) --
-        # one positional arg, no `full`, no `forced_files`, nothing that
-        # would make the change gate treat this run differently.
+        # The webhook's own call shape -- one positional arg, no `full`,
+        # no `forced_files`, nothing that would make the change gate treat
+        # this run differently. Polling's own call site has since grown
+        # `forced_files`/`pull=False` (pinned in
+        # `TestPollingCallShapeStaysAsserted` above); the two call shapes
+        # are no longer identical, only both dispatching into the same
+        # change-gated `CodePipeline.run`.
         run_mock.assert_awaited_once()
         assert run_mock.await_args.args == (uuid.UUID(repo_id),)
         assert run_mock.await_args.kwargs == {}

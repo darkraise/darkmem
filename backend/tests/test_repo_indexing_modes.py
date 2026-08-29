@@ -349,3 +349,47 @@ async def test_a_fetch_error_rolls_back_and_rereads_before_the_index_lane(
     # HEAD never moved and index_uncommitted is off: the index lane, once it
     # safely resumes on the re-read repo, correctly finds nothing to do.
     assert spy.indexed == []
+
+
+async def test_create_defaults_every_switch_off(client, auth_headers):
+    r = await client.post(
+        "/api/v1/repos",
+        json={"name": "api-default", "local_path": None},
+        headers=auth_headers,
+    )
+
+    assert r.status_code == 201
+    body = r.json()
+    assert body["fetch_enabled"] is False
+    assert body["index_on_commit_enabled"] is False
+    assert body["index_uncommitted"] is False
+    assert body["fetch_interval_seconds"] == 300
+    assert body["commit_poll_seconds"] == 60
+
+
+async def test_a_below_floor_interval_is_refused_at_the_door(client, auth_headers):
+    """A two-second interval would spin the loop, so it is a 422 rather than a
+    value the scheduler has to defend against."""
+    r = await client.post(
+        "/api/v1/repos",
+        json={"name": "too-fast", "index_on_commit_enabled": True, "commit_poll_seconds": 2},
+        headers=auth_headers,
+    )
+
+    assert r.status_code == 422
+
+
+async def test_update_round_trips_the_switches(client, auth_headers):
+    created = (await client.post(
+        "/api/v1/repos", json={"name": "api-update"}, headers=auth_headers,
+    )).json()
+
+    r = await client.put(
+        f"/api/v1/repos/{created['id']}",
+        json={"index_on_commit_enabled": True, "commit_poll_seconds": 30},
+        headers=auth_headers,
+    )
+
+    assert r.status_code == 200
+    assert r.json()["index_on_commit_enabled"] is True
+    assert r.json()["commit_poll_seconds"] == 30

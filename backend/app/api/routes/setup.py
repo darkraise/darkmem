@@ -552,21 +552,21 @@ async def setup_finalize(
                         # uid than the backend process trip git's
                         # "dubious ownership" guard on every sync.
                         await add_git_safe_directory(full_path)
-                        # Wizard-imported repos default to auto_sync=False so
-                        # the first periodic tick doesn't immediately try to
-                        # fetch every detected folder. The user reviews them
-                        # on the Repositories page and flips Auto-sync on per
-                        # repo from the Edit dialog once they're sure each
-                        # one should be auto-pulled. Manual reindex still
-                        # works regardless of auto_sync, so any repo can be
-                        # walked into the index without enabling auto-sync.
+                        # Wizard-imported repos default to every indexing
+                        # mode off (the Repository column defaults) so the
+                        # first periodic tick doesn't immediately try to
+                        # fetch or index every detected folder. The user
+                        # reviews them on the Repositories page and arms the
+                        # modes they want per repo from the Edit dialog once
+                        # they're sure each one should be watched. Manual
+                        # reindex still works regardless, so any repo can be
+                        # walked into the index without arming anything.
                         session.add(Repository(
                             name=entry.name,
                             provider="local",
                             local_path=str(full_path),
                             default_branch="main",
                             status="ready",
-                            auto_sync=False,
                         ))
                         await session.commit()
                         repos_added.append(entry.name)
