@@ -203,7 +203,7 @@ def make_repo_sync_runner(
                             ).mark_periodic_sync_failure(repo_id, e)
                         if updated is not None:
                             await event_manager.broadcast(
-                                "repo.auto_sync_disabled",
+                                "repo.index_on_commit_disabled",
                                 {
                                     "repo_id": str(repo_id),
                                     "name": updated.name,
