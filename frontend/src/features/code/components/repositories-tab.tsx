@@ -179,8 +179,10 @@ function RepoRow({
 
       {repo.stale && (
         <p className="text-muted-foreground text-sm">
-          The next scheduled fetch or commit poll will also retry — the
-          stale label clears automatically the moment a run succeeds.
+          A periodic-loop failure also disables indexing on commit, so
+          nothing retries this automatically — reindex now, or re-enable
+          indexing from the Edit Repo dialog once the underlying issue is
+          fixed. The stale label clears the moment a run succeeds.
         </p>
       )}
     </div>
