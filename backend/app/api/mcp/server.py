@@ -864,8 +864,10 @@ async def code_reindex(
     point); every path here that it does not already cover -- an unresolved or
     ambiguous repository reference, no embedder configured, claim loss, or a
     scheduling failure -- journals its own outcome exactly once, mirroring
-    ``reindex_repo_files``'s REST shape so one request always produces one
-    audit row no matter which branch it takes.
+    ``reindex_repo_files``'s REST shape. The argument check below is the one
+    branch that journals nothing, deliberately: it names no repository, so the
+    row would carry neither an id nor a caller reference and would record
+    nothing an operator could act on.
     """
     from pathlib import Path
 
