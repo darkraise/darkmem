@@ -810,7 +810,10 @@ The seventeen live ones: `repo_sync`,
 `block_embedding_refresh`, `llm_usage_cleanup`. **`code_reconcile`'s
 standalone working-tree drift scan is retired; the same scan now runs
 inside `repo_sync`, per repo, gated on that repo's own
-`index_uncommitted` switch** — see Code indexing below. Note
+`index_on_commit_enabled` switch and its `index_uncommitted` switch
+both: the scan only widens the check the commit-poll tick already runs,
+so it does nothing while `index_on_commit_enabled` is off** — see Code
+indexing below. Note
 `buffer_flush`, `code_deriver`, `ppr_snapshot`,
 `relation_embedding_refresh`, `repo_entity_anchoring`,
 `repo_entity_merge`, `citation_reverify`, `job_run_cleanup`,
