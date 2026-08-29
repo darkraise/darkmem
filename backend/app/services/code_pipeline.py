@@ -155,6 +155,7 @@ class CodePipeline:
         generate_wiki: bool = False,
         forced_files: tuple[list[str], list[str]] | None = None,
         union_files: list[str] | None = None,
+        pull: bool = True,
     ) -> dict:
         from app.api.websocket import event_manager
 
@@ -178,7 +179,15 @@ class CodePipeline:
         self._union_buckets = None
 
         repo = self._repo
-        new_sha = await self.repo_manager.pull_repo(repo)
+        # `pull=False` is the per-repo indexing loop's index lane: fetching is
+        # the fetch lane's job alone, on its own switch and interval. Calling
+        # pull_repo here unconditionally would make every index tick a write
+        # to the operator's working tree -- ff-advancing a local checkout or
+        # `reset --hard`-ing a managed clone, which would destroy the very
+        # working-tree drift `forced_files` names before phase 01 reads it.
+        # Every other caller (the reindex route, the webhook, code_reindex)
+        # keeps the default and pulls as before.
+        new_sha = await self.repo_manager.pull_repo(repo) if pull else None
         if new_sha is None:
             work_dir = self.repo_manager.repo_working_dir(repo)
             if not work_dir.exists():

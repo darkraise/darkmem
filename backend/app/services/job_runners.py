@@ -84,7 +84,18 @@ def make_repo_sync_runner(
                     if repo.fetch_enabled and _claim_due(
                         repo_id, "fetch", repo.fetch_interval_seconds, now,
                     ):
-                        await manager.pull_repo(repo)
+                        # Own try/except: a transient network fault fetching
+                        # must not fall into the shared handler below, which
+                        # would call mark_periodic_sync_failure and silently
+                        # disable index_on_commit_enabled -- a switch the
+                        # operator chose, for a fault that has nothing to do
+                        # with it. Noticing a local commit needs no network.
+                        try:
+                            await manager.pull_repo(repo)
+                        except Exception as fetch_exc:
+                            logger.warning(
+                                "Fetch failed for %s: %s", repo_name, fetch_exc,
+                            )
 
                     if not repo.index_on_commit_enabled:
                         continue
@@ -121,7 +132,10 @@ def make_repo_sync_runner(
                         vector_repo=PostgresVectorRepository(repo_session, "code_chunks"),
                         repo_manager=manager,
                     )
-                    await pipeline.run(repo_id, forced_files=forced)
+                    # pull=False: the fetch lane above already owns fetching
+                    # this tick (or an earlier one); the index lane only ever
+                    # observes HEAD, never moves it.
+                    await pipeline.run(repo_id, forced_files=forced, pull=False)
                     await repo_session.commit()
                 except Exception as e:
                     await repo_session.rollback()

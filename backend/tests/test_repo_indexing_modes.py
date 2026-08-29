@@ -213,3 +213,47 @@ async def test_an_interval_is_honoured(session, session_factory, indexed_repo, s
     await runner()
 
     assert spy.indexed == []
+
+
+async def test_the_index_lane_never_fetches(session, session_factory, indexed_repo, monkeypatch):
+    """`CodePipeline.run` pulls unconditionally, so an index tick used to fetch
+    even with fetch_enabled off -- ff-advancing the operator's branch, and on a
+    managed clone `reset --hard`-ing away the drift forced_files names."""
+    pulls: list = []
+
+    async def fake_pull(self, repo):
+        pulls.append(repo.id)
+        return None
+
+    from app.services.repo_manager import RepoManager
+
+    monkeypatch.setattr(RepoManager, "pull_repo", fake_pull)
+    indexed_repo.index_on_commit_enabled = True
+    await session.commit()
+    _commit(Path(indexed_repo.local_path), "def beta():\n    return 2\n", "two")
+
+    await job_runners.make_repo_sync_runner(None, session_factory)()
+
+    assert pulls == []
+
+
+async def test_a_fetch_failure_leaves_the_index_switch_alone(
+    session, session_factory, indexed_repo, monkeypatch,
+):
+    """A network fault must not turn off a switch the operator chose -- and
+    noticing local commits needs no network at all."""
+    async def boom(self, repo):
+        raise RuntimeError("network down")
+
+    from app.services.repo_manager import RepoManager
+
+    monkeypatch.setattr(RepoManager, "pull_repo", boom)
+    indexed_repo.fetch_enabled = True
+    indexed_repo.index_on_commit_enabled = True
+    await session.commit()
+
+    await job_runners.make_repo_sync_runner(None, session_factory)()
+    await session.refresh(indexed_repo)
+
+    assert indexed_repo.index_on_commit_enabled is True
+    assert indexed_repo.fetch_enabled is True
