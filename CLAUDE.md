@@ -790,26 +790,35 @@ flaky.
 ## Jobs (`JobRegistry`)
 
 Periodic work is unified under `JobRegistry` and dispatched by cron
-expressions. **Twenty-four** registered jobs (`app/main.py`) in two groups
-(count corrected 2026-08-07: it had read "Sixteen" / "ten live ones" since
-T2.49 landed `relation_embedding_refresh` without updating it, and four
-concurrent lanes each found it stale independently — a stale count on a
-"here is the full list" sentence is exactly invariant 23's concern.
-`tests/test_code_deriver.py` now derives the roster from `app/main.py`'s
-AST, so the next job added cannot silently desynchronise this list).
-The eighteen live ones: `repo_sync`,
-`buffer_flush`, `code_enrichment`, `code_reconcile`, `code_deriver`,
+expressions. **Twenty-three** registered jobs (`app/main.py`) in two groups
+(count corrected 2026-08-29: the per-repo indexing modes epic retired the
+standalone `code_reconcile` job, dropping the prior **Twenty-four** by one.
+That prior count had itself been corrected 2026-08-07, when it read
+"Sixteen" / "ten live ones" since T2.49 landed `relation_embedding_refresh`
+without updating it, and four concurrent lanes each found it stale
+independently — a stale count on a "here is the full list" sentence is
+exactly invariant 23's concern. `tests/test_code_deriver.py` now derives the
+roster from `app/main.py`'s AST, so the next job added cannot silently
+desynchronise this list).
+The seventeen live ones: `repo_sync`,
+`buffer_flush`, `code_enrichment`, `code_deriver`,
 `token_blocklist_cleanup`, `pipeline_failure_cleanup`,
 `graph_orphan_cleanup`, `tag_orphan_cleanup`,
 `expired_memory_cleanup`, `ppr_snapshot`,
 `relation_embedding_refresh`, `repo_entity_anchoring`,
 `repo_entity_merge`, `citation_reverify`, `job_run_cleanup`,
-`block_embedding_refresh`, `llm_usage_cleanup`. Note
-`buffer_flush`, `code_reconcile`, `code_deriver`, `ppr_snapshot`,
+`block_embedding_refresh`, `llm_usage_cleanup`. **`code_reconcile`'s
+standalone working-tree drift scan is retired; the same scan now runs
+inside `repo_sync`, per repo, gated on that repo's own
+`index_on_commit_enabled` switch and its `index_uncommitted` switch
+both: the scan only widens the check the commit-poll tick already runs,
+so it does nothing while `index_on_commit_enabled` is off** — see Code
+indexing below. Note
+`buffer_flush`, `code_deriver`, `ppr_snapshot`,
 `relation_embedding_refresh`, `repo_entity_anchoring`,
 `repo_entity_merge`, `citation_reverify`, `job_run_cleanup`,
 `block_embedding_refresh` and `llm_usage_cleanup` register via
-the constants `BUFFER_FLUSH_JOB_KEY`, `CODE_RECONCILE_JOB_KEY`,
+the constants `BUFFER_FLUSH_JOB_KEY`,
 `CODE_DERIVER_JOB_KEY`, `PPR_SNAPSHOT_JOB_KEY`,
 `RELATION_EMBEDDING_JOB_KEY`, `REPO_ENTITY_ANCHORING_JOB_KEY`,
 `REPO_ENTITY_MERGE_JOB_KEY`, `CITATION_REVERIFY_JOB_KEY`,
@@ -1444,6 +1453,27 @@ phase 03 skips them and the drain deletes nothing. Both the deferral
 and the drain journal a `repo_indexed` `events` row and surface on
 `RepoResponse.index_debt`.
 
+**Every recurring indexing behaviour is a per-repo switch, and every switch
+defaults off** (the per-repo indexing modes epic, 2026-08-29, replacing the
+single always-on `auto_sync` flag): `fetch_enabled` (interval
+`fetch_interval_seconds`, default 300s, floor 30s), `index_on_commit_enabled`
+(interval `commit_poll_seconds`, default 60s, floor 15s), and
+`index_uncommitted`. `HEAD` is the single indexing trigger — a pull, another
+agent's commit and the operator's own commit are the same event once `HEAD`
+has moved. Fetching is a separate lane whose only job is to move `HEAD`; the
+recurring index lane never fetches (`CodePipeline.run(..., pull=False)`), so
+it can never fast-forward the operator's branch or reset over working-tree
+drift the run was meant to index. `index_uncommitted` covers the case `HEAD`
+can't see at all: a working tree edited without a commit — but it has no lane
+of its own. It only widens the check `index_on_commit_enabled`'s commit-poll
+tick already runs (`job_runners.make_repo_sync_runner` checks
+`index_on_commit_enabled` before it ever looks at `index_uncommitted`), so it
+does nothing while that switch is off, no matter what the API accepted or the
+row says. **Manual reindex, the push webhook and MCP `code_reindex` bypass
+every one of these switches entirely** and keep the old fetch-then-index
+behaviour — the switches govern only the unattended, recurring loop, never an
+explicit operator-triggered run.
+
 ## Documents (`app/services/document_door.py`, block channel)
 
 A document is filed markdown or plain text, parsed into a `blocks`
@@ -1599,7 +1629,7 @@ produce.
   in-process assumptions; 17 BREAKS at N = 2), not the inert PPR
   snapshot the design docs lead with: the WebSocket fan-out, the job
   scheduler (no lease — every registered job fires N times per tick; 21
-  when T4.09 counted, 24 today, and the number is not what the finding
+  when T4.09 counted, 23 today, and the number is not what the finding
   rests on), the per-IP
   login limiter, the live orchestrator swap and seven unlocked job
   cursors all break first, and `backend/app` holds no cross-process

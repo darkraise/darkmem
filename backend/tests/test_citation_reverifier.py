@@ -120,8 +120,8 @@ async def _seed_repo(
     repo_id = str(uuid4())
     await session.execute(
         text(
-            "INSERT INTO repositories (id, name, auto_sync, status, "
-            "last_indexed_commit) VALUES (CAST(:id AS uuid), :name, false, "
+            "INSERT INTO repositories (id, name, status, "
+            "last_indexed_commit) VALUES (CAST(:id AS uuid), :name, "
             "'ready', :sha)"
         ),
         {"id": repo_id, "name": name, "sha": commit},

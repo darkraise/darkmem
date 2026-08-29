@@ -88,7 +88,10 @@ function RepoRow({
           {repo.status === "stale" && repo.stale
             ? `last-good HEAD ${repo.stale.last_good_head}`
             : repo.status === "error"
-              ? "auto_sync disabled"
+              ? // A periodic-sync failure disables the indexing lane only —
+                // fetch_enabled is left alone on purpose, so this chip must
+                // never claim fetching was turned off.
+                "indexing disabled"
               : repo.head
                 ? `HEAD ${repo.head}`
                 : "no HEAD yet"}
@@ -101,7 +104,7 @@ function RepoRow({
           {repo.last_indexed_at && (
             <> · last indexed {repo.last_indexed_at}</>
           )}
-          {repo.auto_sync && <> · auto_sync on</>}
+          {repo.index_on_commit_enabled && <> · indexing on</>}
         </p>
       )}
 
@@ -176,8 +179,12 @@ function RepoRow({
 
       {repo.stale && (
         <p className="text-muted-foreground text-sm">
-          auto_sync will also retry on the next scheduled sync — the stale
-          label clears automatically the moment a run succeeds.
+          If a periodic run caused this, it has also disabled indexing on
+          commit, so nothing retries automatically — reindex now, or
+          re-enable indexing from the Edit Repo dialog once the underlying
+          issue is fixed. If a manual reindex caused it instead, don't count
+          on an automatic retry — reindex now rather than waiting on one. The
+          stale label clears the moment a run succeeds.
         </p>
       )}
     </div>

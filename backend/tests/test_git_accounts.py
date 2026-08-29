@@ -257,7 +257,7 @@ async def test_delete_refuses_while_a_repo_still_uses_the_account(session):
     account = await _make_account(session, label="in-use")
     session.add(Repository(
         name="repo-a", url="https://github.com/o/a", provider="github",
-        default_branch="main", auto_sync=True, status="ready",
+        default_branch="main", status="ready",
         git_account_id=account.id,
     ))
     await session.flush()
@@ -273,7 +273,7 @@ async def test_delete_with_reassign_moves_the_repos(session):
     keeper = await _make_account(session, label="keeper", token="ghp_keeper")
     repo = Repository(
         name="repo-a", url="https://github.com/o/a", provider="github",
-        default_branch="main", auto_sync=True, status="ready",
+        default_branch="main", status="ready",
         git_account_id=doomed.id,
     )
     session.add(repo)
@@ -369,7 +369,7 @@ async def test_resolution_prefers_the_account_over_a_stale_config_row(session):
     account = await _make_account(session, label="acct", token="ghp_from_account")
     repo = Repository(
         name="r6", url="https://github.com/o/r6", provider="github",
-        default_branch="main", auto_sync=True, status="ready",
+        default_branch="main", status="ready",
         git_account_id=account.id, auth_token_ref="git_token_stale",
     )
     session.add(repo)
@@ -404,7 +404,7 @@ async def test_get_credential_reports_the_accounts_provider(session):
     )
     repo = Repository(
         name="r8", url="https://gitlab.com/o/r8", provider="gitlab",
-        default_branch="main", auto_sync=True, status="ready",
+        default_branch="main", status="ready",
         git_account_id=account.id,
     )
     session.add(repo)
@@ -473,7 +473,7 @@ async def test_route_delete_in_use_returns_409_naming_the_repos(
     account = await _make_account(session, label="in-use")
     session.add(Repository(
         name="repo-a", url="https://github.com/o/a", provider="github",
-        default_branch="main", auto_sync=True, status="ready",
+        default_branch="main", status="ready",
         git_account_id=account.id,
     ))
     await session.flush()

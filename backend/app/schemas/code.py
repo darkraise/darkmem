@@ -41,7 +41,11 @@ class RepoCreate(BaseModel):
     # Omitted entirely, the forge's default account is stamped at create time.
     # Sent explicitly — including as null — the caller's choice wins.
     git_account_id: uuid.UUID | None = None
-    auto_sync: bool = True
+    fetch_enabled: bool = False
+    fetch_interval_seconds: int = Field(default=300, ge=30)
+    index_on_commit_enabled: bool = False
+    commit_poll_seconds: int = Field(default=60, ge=15)
+    index_uncommitted: bool = False
 
     @field_validator("url")
     @classmethod
@@ -56,7 +60,11 @@ class RepoCreate(BaseModel):
 
 class RepoUpdate(BaseModel):
     name: str | None = None
-    auto_sync: bool | None = None
+    fetch_enabled: bool | None = None
+    fetch_interval_seconds: int | None = Field(default=None, ge=30)
+    index_on_commit_enabled: bool | None = None
+    commit_poll_seconds: int | None = Field(default=None, ge=15)
+    index_uncommitted: bool | None = None
     auth_token: str | None = None
     git_account_id: uuid.UUID | None = None
     default_branch: str | None = None
@@ -120,7 +128,11 @@ class RepoResponse(BaseModel):
     last_indexed_at: datetime | None
     status: str = "pending"
     status_message: str | None = None
-    auto_sync: bool
+    fetch_enabled: bool
+    fetch_interval_seconds: int
+    index_on_commit_enabled: bool
+    commit_poll_seconds: int
+    index_uncommitted: bool
     git_account_id: uuid.UUID | None = None
     # Denormalised for display: the picker has to render a repo's current
     # account without a second round-trip per row.

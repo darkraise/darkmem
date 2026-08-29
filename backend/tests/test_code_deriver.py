@@ -82,8 +82,8 @@ async def _seed_repo(
 ) -> UUID:
     repo_id = uuid4()
     await session.execute(
-        text("INSERT INTO repositories (id, name, auto_sync, status) "
-             "VALUES (CAST(:id AS uuid), :name, false, 'ready')"),
+        text("INSERT INTO repositories (id, name, status) "
+             "VALUES (CAST(:id AS uuid), :name, 'ready')"),
         {"id": str(repo_id), "name": name},
     )
     for file_path, language in (files if files is not None else REPO_FILES):
@@ -1516,7 +1516,7 @@ def test_main_registers_the_full_direct_job_roster():
 
     expected = {
         "repo_sync", "BUFFER_FLUSH_JOB_KEY", "code_enrichment",
-        "CODE_RECONCILE_JOB_KEY", "CODE_DERIVER_JOB_KEY",
+        "CODE_DERIVER_JOB_KEY",
         "token_blocklist_cleanup", "pipeline_failure_cleanup",
         "graph_orphan_cleanup", "tag_orphan_cleanup",
         "expired_memory_cleanup", "PPR_SNAPSHOT_JOB_KEY",

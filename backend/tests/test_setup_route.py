@@ -492,10 +492,11 @@ async def test_setup_finalize_with_repos(client, session, tmp_path):
     repos = (await session.execute(select(Repository))).scalars().all()
     assert len(repos) == 2
     assert all(r.provider == "local" for r in repos)
-    # Wizard-imported repos must default to auto_sync=False so the
-    # periodic loop doesn't immediately try to fetch every folder.
-    # The user reviews and enables them per-repo from the Edit dialog.
-    assert all(r.auto_sync is False for r in repos)
+    # Wizard-imported repos must default to every indexing mode off so the
+    # periodic loop doesn't immediately try to fetch or index every folder.
+    # The user reviews and arms them per-repo from the Edit dialog.
+    assert all(r.fetch_enabled is False for r in repos)
+    assert all(r.index_on_commit_enabled is False for r in repos)
 
 
 @pytest.mark.asyncio

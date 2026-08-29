@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
@@ -18,138 +19,199 @@ from app.services.job_registry import FieldDescriptor
 
 logger = logging.getLogger(__name__)
 
+# Per-repo due-times, keyed by repo id then by lane. Invariant 13 fixes the
+# worker count at one, so an in-process map needs no cross-process
+# serialisation. The accepted cost is that a restart makes every repo
+# immediately due: one burst of fetches at boot, which at homelab repo counts
+# is not worth a column to avoid.
+_DUE: dict[UUID, dict[str, float]] = {}
+
+
+def _due_reset() -> None:
+    """Test hook only."""
+    _DUE.clear()
+
+
+def forget_repo_due(repo_id: UUID) -> None:
+    """Drop a repo's due-times so the next tick examines it immediately.
+
+    The due-times are derived from the repo's own switches and intervals, so a
+    write that changes one of those leaves them stale -- and a stale entry
+    refuses every tick until the *old* interval lapses, which is unbounded
+    above (neither interval has a ceiling). Callers: the repo write door, on a
+    change to any field this loop schedules on, and on delete, which otherwise
+    leaks an entry for a row that no longer exists.
+
+    The map stays private to this module and this is its one public writer:
+    a caller reaching into ``_DUE`` directly would be a second owner of the
+    loop's scheduling state.
+    """
+    _DUE.pop(repo_id, None)
+
+
+def _claim_due(repo_id: UUID, lane: str, interval: int, now: float) -> bool:
+    lanes = _DUE.setdefault(repo_id, {})
+    if now < lanes.get(lane, 0.0):
+        return False
+    lanes[lane] = now + interval
+    return True
+
 
 def make_repo_sync_runner(
     app,
     session_factory: async_sessionmaker[AsyncSession],
 ):
-    """Periodic loop that fetches every ``auto_sync=true`` repo and runs
-    the code pipeline. The per-repo interval was removed in 0002; the
-    job's interval is the only knob.
+    """The one recurring indexing loop.
+
+    HEAD is the single trigger: a pull, another agent's commit and the
+    operator's own commit are the same event by the time this sees them.
+    Fetching is a separate lane whose only job is to move HEAD.
     """
     async def run() -> None:
+        import time
+
         from app.models.code import Repository
         from app.services.code_pipeline import CodePipeline
+        from app.services.code_reconcile import compute_working_tree_drift
+        from app.services.git_head import resolve_head_sha
         from app.services.repo_manager import RepoManager
         from app.repositories.vector import PostgresVectorRepository
         from app.api.websocket import event_manager
 
-        active_llm = getattr(app.state, "llm", None)
+        active_llm = getattr(app, "state", None) and getattr(app.state, "llm", None)
+        now = time.monotonic()
 
         async with session_factory() as list_session:
             repos = (await list_session.execute(
-                select(Repository).where(Repository.auto_sync == True)  # noqa: E712
+                select(Repository).where(
+                    (Repository.fetch_enabled == True)  # noqa: E712
+                    | (Repository.index_on_commit_enabled == True)  # noqa: E712
+                )
             )).scalars().all()
-            repos_to_sync = list(repos)
+            candidates = [(r.id, r.name) for r in repos]
 
-        for repo in repos_to_sync:
+        for repo_id, repo_name in candidates:
             async with session_factory() as repo_session:
                 try:
                     manager = RepoManager(repo_session)
-                    # T4.16: this loop used to read no status at all, so a tick
-                    # landing inside a webhook or reindex run indexed the same
-                    # repository a second time, concurrently. Losing the claim
-                    # is the ordinary case, not an error — the run that holds
-                    # it is doing this tick's work.
-                    if not await manager.claim_for_indexing(
-                        repo.id, message="Periodic sync..."
-                    ):
-                        logger.info(
-                            "Periodic sync skipped for %s: already indexing", repo.name
-                        )
+                    repo = await manager.get(repo_id)
+                    if repo is None:
                         continue
-                    code_vector_repo = PostgresVectorRepository(repo_session, "code_chunks")
+
+                    # The index lane below takes claim_for_indexing; this lane
+                    # takes nothing, so it has to refuse on the same statuses
+                    # that claim refuses on -- otherwise a tick landing inside
+                    # an in-flight clone, webhook or manual reindex fetches and
+                    # `reset --hard`s the working tree that run owns, and a
+                    # fetch failing against a half-written clone rmtree's the
+                    # directory the clone is still writing into. The status is
+                    # read BEFORE _claim_due so a refused tick does not burn the
+                    # interval: the interval bounds how often a fetch happens,
+                    # not how often one is skipped, and a repo that goes idle
+                    # mid-window would otherwise wait out a whole interval it
+                    # never used. The residual window between this read and
+                    # pull_repo is accepted at homelab scale.
+                    if (
+                        repo.fetch_enabled
+                        and repo.status not in RepoManager.BUSY_STATUSES
+                        and _claim_due(
+                            repo_id, "fetch", repo.fetch_interval_seconds, now,
+                        )
+                    ):
+                        # Own try/except: a transient network fault fetching
+                        # must not fall into the shared handler below, which
+                        # would call mark_periodic_sync_failure and silently
+                        # disable index_on_commit_enabled -- a switch the
+                        # operator chose, for a fault that has nothing to do
+                        # with it. Noticing a local commit needs no network.
+                        try:
+                            await manager.pull_repo(repo)
+                        except Exception as fetch_exc:
+                            logger.warning(
+                                "Fetch failed for %s: %s", repo_name, fetch_exc,
+                            )
+                            # pull_repo reaches the DB through get_credential,
+                            # whose session.get() calls sit outside the
+                            # RuntimeError guard pull_repo puts around its git
+                            # subprocess calls. A DB-layer fault there leaves
+                            # the session in a failed transaction, which the
+                            # index lane below would inherit. Rolling back
+                            # expires every loaded attribute, so `repo` has to
+                            # be re-read before anything touches it -- a bare
+                            # rollback turns this into MissingGreenlet at the
+                            # next attribute access.
+                            await repo_session.rollback()
+                            repo = await manager.get(repo_id)
+                            if repo is None:
+                                continue
+
+                    if not repo.index_on_commit_enabled:
+                        continue
+                    if not _claim_due(
+                        repo_id, "index", repo.commit_poll_seconds, now,
+                    ):
+                        continue
+
+                    work_dir = manager.repo_working_dir(repo)
+                    if not work_dir.exists():
+                        continue
+
+                    head = await resolve_head_sha(work_dir)
+                    forced: tuple[list[str], list[str]] | None = None
+                    if head is None or head == repo.last_indexed_commit:
+                        if not repo.index_uncommitted:
+                            continue
+                        drift = await compute_working_tree_drift(
+                            repo_session, repo, work_dir,
+                        )
+                        if not drift[0] and not drift[1]:
+                            continue
+                        forced = drift
+                        # The retired standalone code_reconcile job ran every
+                        # drift-forced pipeline with llm=None, because it swept
+                        # every indexed repo unconditionally and extraction
+                        # cost on every repo's every drift tick was too broad
+                        # a default. This loop only reaches here for a repo
+                        # whose operator opted into index_uncommitted, so the
+                        # cost is scoped to what was asked for and carrying
+                        # active_llm (the same as any other index tick) is fine.
+
+                    # Losing the claim is the ordinary case, not an error: the
+                    # run that holds it is doing this tick's work.
+                    if not await manager.claim_for_indexing(
+                        repo_id, message="Indexing new commit...",
+                    ):
+                        continue
+
                     pipeline = CodePipeline(
                         session=repo_session, llm=active_llm,
-                        vector_repo=code_vector_repo,
+                        vector_repo=PostgresVectorRepository(repo_session, "code_chunks"),
                         repo_manager=manager,
                     )
-                    await pipeline.run(repo.id)
+                    # pull=False: the fetch lane above already owns fetching
+                    # this tick (or an earlier one); the index lane only ever
+                    # observes HEAD, never moves it.
+                    await pipeline.run(repo_id, forced_files=forced, pull=False)
                     await repo_session.commit()
                 except Exception as e:
                     await repo_session.rollback()
-                    logger.error("Periodic sync failed for %s: %s", repo.name, e)
+                    logger.error("Indexing loop failed for %s: %s", repo_name, e)
                     try:
                         async with session_factory() as fail_session:
-                            fail_manager = RepoManager(fail_session)
-                            updated = await fail_manager.mark_periodic_sync_failure(repo.id, e)
+                            updated = await RepoManager(
+                                fail_session
+                            ).mark_periodic_sync_failure(repo_id, e)
                         if updated is not None:
                             await event_manager.broadcast(
-                                "repo.auto_sync_disabled",
+                                "repo.index_on_commit_disabled",
                                 {
-                                    "repo_id": str(repo.id),
+                                    "repo_id": str(repo_id),
                                     "name": updated.name,
                                     "status_message": updated.status_message or "",
                                 },
                             )
                     except Exception as inner_e:
-                        logger.error("Failed to mark repo %s errored: %s", repo.id, inner_e)
-    return run
-
-
-def make_code_reconcile_runner(app, session_factory: async_sessionmaker[AsyncSession]):
-    """Hash every previously-indexed repo's working tree and reconcile drift.
-
-    Catches what `repo_sync`'s HEAD-sha comparison cannot see at all: a working
-    tree edited directly (a `local_path` repo with no fetchable remote, or a
-    write straight into a clone directory) never moves HEAD, so
-    `CodePipeline.run`'s own short-circuit treats it as up to date forever.
-    This job hashes the tree independently of HEAD (`compute_working_tree_drift`)
-    and, only when that finds a mismatch, feeds it through the same incremental
-    path via `CodePipeline.run(..., forced_files=...)`.
-
-    Deliberately runs with `llm=None`: reconcile rebuilds the code graph
-    (files, symbols, calls) from a hash mismatch, never the LLM-backed
-    embedding or enrichment phases, so it stays deterministic and free even
-    though live model credentials exist. A real commit still gets its
-    embeddings refreshed via `repo_sync`, which does carry the LLM.
-    """
-    async def run() -> None:
-        from app.models.code import Repository
-        from app.services.code_pipeline import CodePipeline
-        from app.services.code_reconcile import compute_working_tree_drift
-        from app.services.repo_manager import RepoManager
-
-        async with session_factory() as list_session:
-            repos = (await list_session.execute(
-                select(Repository).where(Repository.last_indexed_commit.isnot(None))
-            )).scalars().all()
-            repos_to_check = list(repos)
-
-        for repo in repos_to_check:
-            async with session_factory() as repo_session:
-                try:
-                    manager = RepoManager(repo_session)
-                    repo_row = await manager.get(repo.id)
-                    if repo_row is None:
-                        continue
-                    work_dir = manager.repo_working_dir(repo_row)
-                    if not work_dir.exists():
-                        continue
-
-                    changed, deleted = await compute_working_tree_drift(
-                        repo_session, repo_row, work_dir,
-                    )
-                    if not changed and not deleted:
-                        continue
-
-                    pipeline = CodePipeline(
-                        session=repo_session, llm=None, vector_repo=None,
-                        repo_manager=manager,
-                    )
-                    await pipeline.run(repo_row.id, forced_files=(changed, deleted))
-                    await repo_session.commit()
-                    logger.info(
-                        "Code reconcile: repo=%s changed=%d deleted=%d",
-                        repo_row.name, len(changed), len(deleted),
-                    )
-                except ValueError as e:
-                    # repo_working_dir's local_path revalidation rejects a row
-                    # whose path moved into a blocked tree since it was created.
-                    logger.warning("Code reconcile skipped repo %s: %s", repo.name, e)
-                except Exception as e:
-                    await repo_session.rollback()
-                    logger.error("Code reconcile failed for %s: %s", repo.name, e)
+                        logger.error("Failed to mark repo %s errored: %s", repo_id, inner_e)
     return run
 
 
@@ -160,7 +222,7 @@ def make_code_deriver_runner(session_factory: async_sessionmaker[AsyncSession]):
     `code_deriver_job.py` for why this is a Tier-C job rather than a reindex
     hook. Each repo runs in its own session/transaction so one repo's
     failure can't roll back another's write, mirroring
-    `make_code_reconcile_runner` above.
+    `make_repo_sync_runner` above.
 
     A failure never raises out of the sweep: it is recorded in
     `pipeline_failures` under `pipeline_name=CODE_DERIVER_PIPELINE_NAME`,

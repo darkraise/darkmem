@@ -615,8 +615,8 @@ async def _seed(session_factory, stub: StubOrchestrator, old: StubOrchestrator) 
             await session.execute(
                 text(
                     "INSERT INTO repositories "
-                    "(id, name, provider, default_branch, status, auto_sync) "
-                    "VALUES (CAST(:id AS uuid), :name, 'local', 'main', 'ready', FALSE)"
+                    "(id, name, provider, default_branch, status) "
+                    "VALUES (CAST(:id AS uuid), :name, 'local', 'main', 'ready')"
                 ),
                 {"id": str(rid), "name": repo_name},
             )

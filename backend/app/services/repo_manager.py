@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 from uuid import UUID
@@ -149,7 +150,12 @@ class RepoManager:
         )
         return account.id if account else None
 
-    async def create(self, data: RepoCreate) -> Repository:
+    async def create(
+        self,
+        data: RepoCreate,
+        *,
+        on_ready: Callable[[UUID], None] | None = None,
+    ) -> Repository:
         # Validate local_path early so a typo can't end up writing a row
         # whose indexer will walk into /etc or ~/.ssh on the next sync.
         validated_local_path: str | None = None
@@ -168,7 +174,11 @@ class RepoManager:
             local_path=validated_local_path,
             provider=data.provider,
             default_branch=data.default_branch,
-            auto_sync=data.auto_sync,
+            fetch_enabled=data.fetch_enabled,
+            fetch_interval_seconds=data.fetch_interval_seconds,
+            index_on_commit_enabled=data.index_on_commit_enabled,
+            commit_poll_seconds=data.commit_poll_seconds,
+            index_uncommitted=data.index_uncommitted,
             status="cloning" if data.url else "ready",
             status_message="Cloning repository..." if data.url else None,
             git_account_id=await self._resolve_create_account(data),
@@ -186,12 +196,18 @@ class RepoManager:
 
         if data.url:
             from app.services.task_registry import TaskRegistry
-            task = asyncio.create_task(self._clone_in_background(repo.id, data))
+            task = asyncio.create_task(self._clone_in_background(repo.id, data, on_ready=on_ready))
             TaskRegistry.register(repo.id, "clone", task, "Cloning repository...")
 
         return repo
 
-    async def _clone_in_background(self, repo_id: UUID, data: RepoCreate) -> None:
+    async def _clone_in_background(
+        self,
+        repo_id: UUID,
+        data: RepoCreate,
+        *,
+        on_ready: Callable[[UUID], None] | None = None,
+    ) -> None:
         from app.api.websocket import event_manager
         from app.database import async_session_factory
         try:
@@ -224,6 +240,16 @@ class RepoManager:
                         await session.commit()
             except Exception as inner_e:
                 logger.error("Failed to set error status for repo %s: %s", repo_id, inner_e)
+            return
+
+        # Fires only after the clone is committed and broadcast as ready; a
+        # raising callback must not retroactively read as a failed clone, so
+        # it gets its own guard rather than sharing the try/except above.
+        if on_ready is not None:
+            try:
+                on_ready(repo_id)
+            except Exception as e:
+                logger.error("on_ready callback failed for repo %s: %s", repo_id, e)
 
     async def get(self, repo_id: UUID) -> Repository | None:
         return await self.session.get(Repository, repo_id)
@@ -361,18 +387,21 @@ class RepoManager:
     async def mark_periodic_sync_failure(
         self, repo_id: UUID, error: str | Exception,
     ) -> Repository | None:
-        """Record a periodic-sync failure on the repo row and disable
-        auto-sync.
+        """Record a periodic-sync failure on the repo row and disable the
+        indexing lane.
 
-        The periodic loop in ``app.main.periodic_repo_sync`` calls this
-        when a repo's ``CodePipeline.run`` raises (typically a git fetch
-        / pull error). Without this, the loop would re-attempt the same
-        repo every tick — flooding logs and the upstream git server with
-        the same failing request.
+        The indexing loop in ``app.services.job_runners.make_repo_sync_runner``
+        calls this when a repo's ``CodePipeline.run`` raises for its index
+        lane — the fetch lane never reaches this handler; it logs and
+        continues on its own (see the loop's own try/except). Without this,
+        the loop would re-attempt the same repo's index every tick — flooding
+        logs and `pipeline_failures` with the same failing run.
 
         The row is updated to ``status='error'`` with the sanitized error
         in ``status_message`` (truncated to 500 chars) and
-        ``auto_sync=False`` so subsequent ticks skip it. The user can
+        ``index_on_commit_enabled=False`` so subsequent ticks skip indexing
+        it. ``fetch_enabled`` is left alone: a transient network failure must
+        not silently turn off a setting the operator chose. The user can
         re-enable from the Edit Repo dialog after fixing the underlying
         issue (auth, network, branch rename, etc.).
         """
@@ -386,11 +415,11 @@ class RepoManager:
         if repo.status != "stale":
             repo.status = "error"
             repo.status_message = message
-        repo.auto_sync = False
+        repo.index_on_commit_enabled = False
         await self.session.commit()
         await self.session.refresh(repo)
         logger.warning(
-            "Disabled auto-sync for repo %s (%s) after periodic-sync failure: %s",
+            "Disabled index-on-commit for repo %s (%s) after periodic-sync failure: %s",
             repo.name, repo_id, message[:200],
         )
         return repo

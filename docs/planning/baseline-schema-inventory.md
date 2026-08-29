@@ -289,7 +289,7 @@ column.
 | `ux_git_accounts_label` | `git_accounts` | `CREATE UNIQUE INDEX ux_git_accounts_label ON public.git_accounts USING btree (provider, host, label)` | `target-new` | 04 §6 | — |
 | `ux_git_accounts_default` | `git_accounts` | `CREATE UNIQUE INDEX ux_git_accounts_default ON public.git_accounts USING btree (provider, host) WHERE is_default` | `target-new` | 04 §6 | — |
 | `git_accounts_pkey` | `git_accounts` | `CREATE UNIQUE INDEX git_accounts_pkey ON public.git_accounts USING btree (id)` | `target-new` | 04 §6 | — |
-| `ix_repositories_auto_sync` | `repositories` | `CREATE INDEX ix_repositories_auto_sync ON public.repositories USING btree (id) WHERE (auto_sync = true)` | `carries-over` | 04 §6 | T0.12b |
+| `ix_repositories_auto_sync` | `repositories` | `CREATE INDEX ix_repositories_auto_sync ON public.repositories USING btree (id) WHERE (auto_sync = true)` | `dropped` — **the per-repo indexing modes epic split `auto_sync` into five columns (2026-08-29); no replacement index, see below** | 04 §6 | T0.12b |
 | `repositories_pkey` | `repositories` | `CREATE UNIQUE INDEX repositories_pkey ON public.repositories USING btree (id)` | `carries-over` | 04 §6 | T0.12b |
 | `tags_name_key` | `tags` | `CREATE UNIQUE INDEX tags_name_key ON public.tags USING btree (name)` | `carries-over` | 04 §3.2 | T0.12a |
 | `tags_pkey` | `tags` | `CREATE UNIQUE INDEX tags_pkey ON public.tags USING btree (id)` | `carries-over` | 04 §3.2 | T0.12a |
@@ -305,12 +305,21 @@ rebuilt table's `id uuid` PK is a **new object on a new shape** (UUIDv7, §4.3),
 survival of this one; labelling it `carries-over` inside a `target-new` table would be the
 exact "activation" reading doc 04 §8.3 forbids. Forty-nine carry over.
 
-Two rows deserve a reader's attention. `ix_repositories_auto_sync` is a **partial** index
-on `(id) WHERE auto_sync = true`, which is what makes the `repo_sync` filter cheap; the
-partiality, not the column, is the load-bearing part. And `token_blocklist` carries
-**both** `token_blocklist_jti_key` (UNIQUE) and `ix_token_blocklist_jti` (a plain btree)
-on the same column — the plain btree is redundant under the unique, and doc 04 §7
-specifies only `jti UNIQUE` (F-12).
+Two rows deserve a reader's attention, and one of them has since been superseded.
+`ix_repositories_auto_sync` **was** a partial index on `(id) WHERE auto_sync = true`,
+which is what made the `repo_sync` filter cheap — the partiality, not the column, was
+the load-bearing part. The per-repo indexing modes epic (2026-08-29) split `auto_sync`
+into five columns (`fetch_enabled`, `fetch_interval_seconds`, `index_on_commit_enabled`,
+`commit_poll_seconds`, `index_uncommitted`) and the loop's filter with it — the
+recurring-loop predicate is now `WHERE fetch_enabled OR index_on_commit_enabled`, which
+no partial index covers the way a single-boolean predicate could. **This has no
+replacement index, by decision rather than oversight**: `repositories` holds tens of
+rows at homelab scale, so a sequential scan on every 30s tick costs nothing measurable,
+and a two-column partial index would buy nothing worth the write-side upkeep on a table
+this small. Revisit only if repository count ever grows enough for a scan to show up in
+a profile. And `token_blocklist` carries **both** `token_blocklist_jti_key` (UNIQUE) and
+`ix_token_blocklist_jti` (a plain btree) on the same column — the plain btree is
+redundant under the unique, and doc 04 §7 specifies only `jti UNIQUE` (F-12).
 
 ### 3.2 Target-new indexes
 
@@ -827,9 +836,10 @@ The rows themselves are in §4.3.
 **Scope first, because the plan for this task under-counted it.** That plan named "five NOT
 NULL columns on `memories`". Cross-referencing every client-side `default=` in
 `app/models/*.py` against A.2's nullability and server default gives **twelve non-key
-columns across five surviving tables**, plus seven uuid primary keys:
+columns across five surviving tables**, plus seven uuid primary keys, **as measured at
+A.2 time**:
 
-| Table | NOT NULL columns whose only default is in the ORM | ORM default |
+| Table | NOT NULL columns whose only default is in the ORM (A.2-era) | ORM default |
 |---|---|---|
 | `memories` | `source`, `importance`, `metadata`, `is_archived` | `'api'`, `0.5`, `dict`, `False` |
 | `repositories` | `provider`, `default_branch`, `status`, `auto_sync` | `'local'`, `'main'`, `'pending'`, `True` |
@@ -837,7 +847,40 @@ columns across five surviving tables**, plus seven uuid primary keys:
 | `api_keys` | `scopes` | `lambda: ["read", "write"]` |
 | `config` | `value` | `dict` |
 
-A plain-SQL `INSERT` omitting any of them fails today. **The uuid primary keys are
+**This table is a dated historical record, not a live claim, and its own footer sentence
+below used to read in the present tense — corrected 2026-08-30.** Three things have moved
+since A.2 was captured, none of them re-derived here (a full live re-derivation of this
+table is a different task's work and outside this epic's scope — recorded as a scoping
+decision, not an oversight):
+
+(a) **`0001_baseline.py` has since authored real DDL defaults for eight of these twelve
+columns**, per this section's own action block below: `memories.importance` / `metadata` /
+`is_archived`, `repositories.provider` / `default_branch`, `code_symbols.enrichment_status`
+/ `enrichment_priority`, and `config.value` all carry a `DEFAULT` clause in the baseline
+today (verified against `migrations/versions/0001_baseline.py`'s `CREATE TABLE` statements
+for `memories`, `repositories`, `code_symbols` and `config`). A plain-SQL `INSERT` omitting
+any of those eight succeeds today; it does not fail the way this section's action block
+originally found.
+
+(b) **`api_keys.scopes` lost its ORM-side default entirely in the 2026-08-26 bearer epic**
+(commit `d993e3f2`) — `backend/app/models/api_key.py` now declares it
+`mapped_column(JSONB, nullable=False)` with no `default=` at all, because a default of
+`["read", "write"]` silently granted a scope (`write`) nobody asked for. It is therefore no
+longer in the *ORM-only-default* class this table names; it is in a different, narrower
+class (NOT NULL, no default anywhere), which every write path now satisfies explicitly via
+`parse_scopes` rather than falling back to one.
+
+(c) **The per-repo indexing modes epic (2026-08-29) replaced `repositories.auto_sync`**
+with five columns — `fetch_enabled`, `fetch_interval_seconds`, `index_on_commit_enabled`,
+`commit_poll_seconds`, `index_uncommitted` — none of which join this class: all five carry
+a real `server_default` in both the ORM and `0001_baseline.py`.
+
+**Net effect, verified against the ORM and the baseline rather than carried forward on
+trust: the live ORM-only class today is exactly two columns, `memories.source` and
+`repositories.status`** — both remain `NOT NULL` in `0001_baseline.py` with no `DEFAULT`
+clause, and both still carry only a client-side `default=` in their models. Every other
+column this table names has either gained a DDL default, lost its ORM default outright, or
+(for `auto_sync`) been removed. **The uuid primary keys are
 deliberately not in this class**: doc 04 §2 fixes application generation as the design
 ("every application-generated uuid PK is **UUIDv7**"), with server-side
 `gen_random_uuid()` only for `entities`/`entity_relations`. `code_graph_nodes`/`code_edges`
@@ -1530,8 +1573,10 @@ which is itself a compliance result.
 The one bulk kind is dispatched mechanically: cross-referencing every `server_default=`
 declaration against A.2's `column_default` shows **21 of 21 mirrored by a real server
 default, zero ORM-only**. The same cross-reference run against client-side `default=`
-declarations is what produced §9.3's twelve-column table, and it is why the plan's "five
-NOT NULL columns on `memories`" undercounted.
+declarations is what produced §9.3's twelve-column table — a dated A.2-era snapshot, not a
+live count (see §9.3's 2026-08-30 note: the live ORM-only class today is two columns,
+`memories.source` and `repositories.status`) — and it is why the plan's "five NOT NULL
+columns on `memories`" undercounted.
 
 ### Group 5 — the work stayed in bounds
 

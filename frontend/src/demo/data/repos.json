@@ -1,4 +1,4 @@
 [
-  { "id": "r1", "name": "darkmem", "branch": "main", "path": "/repos/darkmem", "auto_sync": true, "sync_cron": "0 */6 * * *", "last_run_at": "2026-05-25T10:00:00Z", "status": "ok", "enrich_symbols": true, "generate_wiki": true },
-  { "id": "r2", "name": "darkraise-web-template", "branch": "main", "path": "/repos/template", "auto_sync": false, "sync_cron": "0 0 * * *", "last_run_at": null, "status": "idle", "enrich_symbols": false, "generate_wiki": false }
+  { "id": "r1", "name": "darkmem", "branch": "main", "path": "/repos/darkmem", "fetch_enabled": true, "sync_cron": "0 */6 * * *", "last_run_at": "2026-05-25T10:00:00Z", "status": "ok", "enrich_symbols": true, "generate_wiki": true },
+  { "id": "r2", "name": "darkraise-web-template", "branch": "main", "path": "/repos/template", "fetch_enabled": false, "sync_cron": "0 0 * * *", "last_run_at": null, "status": "idle", "enrich_symbols": false, "generate_wiki": false }
 ]

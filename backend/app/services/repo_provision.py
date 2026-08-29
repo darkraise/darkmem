@@ -5,9 +5,10 @@ memory carries a repository hint the project does not yet track, Tier A
 checks the hint against doc 18 §6's allowlist gate, upserts the shared
 `repositories` row plus its `project_repositories` association, and stops.
 The clone, the pull and the first index all run in Tier C — the
-`repo_sync` job drains `auto_sync` repositories at the standard cadence
-(doc 10 §5), which is what makes the auto-provisioned row a queue entry
-rather than work. **Capture never clones**: nothing in this module issues a
+`repo_sync` job drains repositories with `fetch_enabled` or
+`index_on_commit_enabled` armed at the standard cadence (doc 10 §5), which
+is what makes the auto-provisioned row a queue entry rather than work.
+**Capture never clones**: nothing in this module issues a
 network request, resolves a name, or invokes git.
 
 A rejected hint is refused visibly and never fatally (doc 18 §6 rule 4).
@@ -43,8 +44,9 @@ REPO_HINT_KEY = "repo_hint"
 
 ADDED_FROM_MEMORY_HINT = "memory_hint"
 
-# Tier C has not picked the row up yet. `repo_sync` filters on `auto_sync`,
-# not on status, so this is a label for the operator rather than a predicate.
+# Tier C has not picked the row up yet. `repo_sync` filters on
+# `fetch_enabled` / `index_on_commit_enabled`, not on status, so this is a
+# label for the operator rather than a predicate.
 PROVISION_QUEUED_STATUS = "queued"
 
 _UPSERT_ASSOCIATION = text(
@@ -90,7 +92,11 @@ async def _resolve_repository(session: AsyncSession, verdict: HintVerdict) -> Re
         url=verdict.remote,
         provider="git",
         default_branch="main",
-        auto_sync=True,
+        # Auto-provisioned from a capture hint with no operator review, so
+        # both lanes are armed: the repo is fetched and indexed at the
+        # standard cadence with no further action needed.
+        fetch_enabled=True,
+        index_on_commit_enabled=True,
         status=PROVISION_QUEUED_STATUS,
         status_message="Queued for auto-provision indexing",
     )

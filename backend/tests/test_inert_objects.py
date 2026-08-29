@@ -224,8 +224,8 @@ async def test_live_repo_predicate_spares_a_repo_asserted_row(session):
 
     repo_id = uuid4()
     await session.execute(
-        text("INSERT INTO repositories (id, name, auto_sync, status) "
-             "VALUES (CAST(:id AS uuid), 'probe', false, 'ready')"),
+        text("INSERT INTO repositories (id, name, status) "
+             "VALUES (CAST(:id AS uuid), 'probe', 'ready')"),
         {"id": str(repo_id)},
     )
     # An entity no memory asserts, but a live repo does.

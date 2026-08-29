@@ -222,8 +222,10 @@ async def test_allowlisted_hint_registers_the_repo_and_the_association(
     repo = repos[0]
     assert repo.url == "https://github.com/darkraise/darkmem.git"
     assert repo.name == "darkmem"
-    # Tier C's queue: `repo_sync` drains auto_sync repos at its own cadence.
-    assert repo.auto_sync is True
+    # Tier C's queue: `repo_sync` drains fetch/index-armed repos at its own
+    # cadence.
+    assert repo.fetch_enabled is True
+    assert repo.index_on_commit_enabled is True
     assert repo.status == "queued"
     assert repo.last_indexed_commit is None
 
@@ -330,7 +332,7 @@ async def test_project_opt_out_blocks_the_association(client, auth_headers, sess
     await _set_allowlist(session, OPERATOR_ALLOWLIST)
     repo = Repository(
         id=uuid4(), name="darkmem", url="https://github.com/darkraise/darkmem.git",
-        provider="git", default_branch="main", auto_sync=True, status="ready",
+        provider="git", default_branch="main", status="ready",
     )
     session.add(repo)
     await session.flush()

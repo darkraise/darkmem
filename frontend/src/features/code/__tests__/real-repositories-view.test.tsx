@@ -22,7 +22,11 @@ const BASE_REPO = {
   local_path: null,
   provider: "github",
   default_branch: "main",
-  auto_sync: true,
+  fetch_enabled: false,
+  fetch_interval_seconds: 300,
+  index_on_commit_enabled: false,
+  commit_poll_seconds: 60,
+  index_uncommitted: false,
   file_count: 400,
   symbol_count: 5000,
   created_at: "2026-01-01T00:00:00Z",
@@ -262,5 +266,66 @@ describe("RealRepositoriesView", () => {
     expect(JSON.parse(String(postCall?.body))).toMatchObject({
       name: "new-service",
     })
+  })
+  it("does not leak a touched-and-cancelled edit into the next repo's form", async () => {
+    const REPO_A = {
+      ...BASE_REPO,
+      id: "r1",
+      name: "repo-a",
+      status: "ready",
+      status_message: null,
+      last_indexed_commit: "aaa1111",
+      last_indexed_at: "2026-07-27T09:00:00Z",
+      fetch_enabled: false,
+      index_debt: {
+        queued: 0,
+        deferred_total: 0,
+        drained_total: 0,
+        last_defer: null,
+        last_drain: null,
+      },
+    }
+    const REPO_B = {
+      ...BASE_REPO,
+      id: "r2",
+      name: "repo-b",
+      status: "ready",
+      status_message: null,
+      last_indexed_commit: "bbb2222",
+      last_indexed_at: "2026-07-27T09:00:00Z",
+      fetch_enabled: false,
+      index_debt: {
+        queued: 0,
+        deferred_total: 0,
+        drained_total: 0,
+        last_defer: null,
+        last_drain: null,
+      },
+    }
+
+    vi.mocked(apiFetch).mockResolvedValue([REPO_A, REPO_B])
+
+    const user = userEvent.setup()
+    render(<RealRepositoriesView />, { wrapper })
+
+    const editButtons = await screen.findAllByRole("button", { name: "Edit" })
+    expect(editButtons).toHaveLength(2)
+    const [editRepoA, editRepoB] = editButtons as [HTMLElement, HTMLElement]
+
+    // Open repo A, touch its fetch switch, then cancel without saving.
+    await user.click(editRepoA)
+    expect(await screen.findByDisplayValue("repo-a")).toBeInTheDocument()
+    await user.click(screen.getByRole("switch", { name: /fetch from remote/i }))
+    expect(
+      screen.getByRole("switch", { name: /fetch from remote/i }),
+    ).toBeChecked()
+    await user.click(screen.getByRole("button", { name: "Cancel" }))
+
+    // Repo B's own dialog must not inherit A's touched-but-abandoned state.
+    await user.click(editRepoB)
+    expect(await screen.findByDisplayValue("repo-b")).toBeInTheDocument()
+    expect(
+      screen.getByRole("switch", { name: /fetch from remote/i }),
+    ).not.toBeChecked()
   })
 })

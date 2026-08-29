@@ -68,6 +68,12 @@ class RepoIndexingFailed(BaseModel):
     error: str
 
 
+class RepoIndexOnCommitDisabled(BaseModel):
+    repo_id: str
+    name: str
+    status_message: str
+
+
 class EnrichmentBatchCompleted(BaseModel):
     processed: int
     pending_remaining: int
@@ -122,5 +128,6 @@ EVENT_SCHEMAS: dict[str, type[BaseModel]] = {
     "repo.indexing_progress": RepoIndexingProgress,
     "repo.indexing_completed": RepoIndexingCompleted,
     "repo.indexing_failed": RepoIndexingFailed,
+    "repo.index_on_commit_disabled": RepoIndexOnCommitDisabled,
     "enrichment.batch_completed": EnrichmentBatchCompleted,
 }

@@ -889,7 +889,11 @@ def _pass_two() -> None:
             last_indexed_commit VARCHAR(64),
             last_indexed_at     TIMESTAMPTZ,
             index_debt          JSONB,
-            auto_sync           BOOLEAN NOT NULL,
+            fetch_enabled            BOOLEAN NOT NULL DEFAULT false,
+            fetch_interval_seconds   INTEGER NOT NULL DEFAULT 300,
+            index_on_commit_enabled  BOOLEAN NOT NULL DEFAULT false,
+            commit_poll_seconds      INTEGER NOT NULL DEFAULT 60,
+            index_uncommitted        BOOLEAN NOT NULL DEFAULT false,
             status              VARCHAR(20) NOT NULL,
             status_message      VARCHAR(500),
             created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -897,10 +901,6 @@ def _pass_two() -> None:
             CONSTRAINT repositories_pkey PRIMARY KEY (id)
         )
         """
-    )
-    # Partial: the repo_sync filter only ever wants auto-sync repos.
-    op.execute(
-        "CREATE INDEX ix_repositories_auto_sync ON repositories (id) WHERE auto_sync = true"
     )
     op.execute(
         "CREATE TRIGGER repositories_touch_updated_at BEFORE UPDATE "

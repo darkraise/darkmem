@@ -1677,8 +1677,8 @@ def test_the_detector_scan_does_not_fail_on_the_sibling_repository(tmp_path):
 async def _seed_code_graph(session, repo_id, clusters):
     await session.execute(
         text(
-            "INSERT INTO repositories (id, name, auto_sync, status) "
-            "VALUES (CAST(:id AS uuid), 't218-repo', false, 'ready')"
+            "INSERT INTO repositories (id, name, status) "
+            "VALUES (CAST(:id AS uuid), 't218-repo', 'ready')"
         ),
         {"id": str(repo_id)},
     )

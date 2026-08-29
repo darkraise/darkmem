@@ -1128,11 +1128,11 @@ async def seed_memory_rows(session_factory, entries: list[dict]) -> list[dict]:
 _INSERT_REPO = text("""
     INSERT INTO repositories (
         id, name, url, local_path, provider, default_branch,
-        last_indexed_commit, last_indexed_at, auto_sync, status
+        last_indexed_commit, last_indexed_at, status
     ) VALUES (
         CAST(:id AS uuid), CAST(:name AS varchar), CAST(:url AS varchar),
         CAST(:local_path AS varchar), 'local', CAST(:branch AS varchar),
-        CAST(:commit AS varchar), now(), false, 'ready'
+        CAST(:commit AS varchar), now(), 'ready'
     )
 """)
 

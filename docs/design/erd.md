@@ -237,7 +237,7 @@ erDiagram
     repositories ||--o{ project_repositories : "M2M project link"
 ```
 
-**Notes.** `repositories`/`code_*` **(today, hardened)** — the parsed graph **is** the code KB; no mirror table. Truth fixes T1–T4 (fail-stale, index-debt drain, `code_reconcile` job, summary carry-over). **The code→vault bridge is not a table FK** — a deriver mints `entities`/`entity_relations` tagged with `repo_ids[]` (§1) from imports; the never-join invariant holds (no query joins the two graphs; only app-level one-direction deriver + citation re-verifier cross). `code_graph_nodes`/`code_edges` stay bigint-keyed and repo-scoped. `project_repositories` **(new)** is the only registry bridge, M2M over one shared repo.
+**Notes.** `repositories`/`code_*` **(today, hardened)** — the parsed graph **is** the code KB; no mirror table. Truth fixes T1–T4 (fail-stale, index-debt drain, `code_reconcile` job, summary carry-over) — **corrected 2026-08-30: no standalone `code_reconcile` job shipped; the drift scan it names is folded into `repo_sync`, per repo, see doc 10 §3.** **The code→vault bridge is not a table FK** — a deriver mints `entities`/`entity_relations` tagged with `repo_ids[]` (§1) from imports; the never-join invariant holds (no query joins the two graphs; only app-level one-direction deriver + citation re-verifier cross). `code_graph_nodes`/`code_edges` stay bigint-keyed and repo-scoped. `project_repositories` **(new)** is the only registry bridge, M2M over one shared repo.
 
 ## 4. Per-fingerprint embedding partitions + registry
 

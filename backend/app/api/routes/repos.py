@@ -19,6 +19,7 @@ from app.schemas.code import (
 from app.services import index_debt
 from app.services.code_pipeline import CodePipeline
 from app.services.events import record_event
+from app.services.job_runners import forget_repo_due
 from app.services.reindex_request import ReindexRefused, journal_reindex_outcome, prepare_reindex
 from app.services.repo_manager import RepoManager
 from app.services.usage_recorder import UsageSubject, subject_scope
@@ -34,6 +35,18 @@ router = APIRouter(prefix="/api/v1/repos", tags=["repos"])
 # call builds a fresh closure each time, so overriding one built inline in
 # the decorator would silently miss the one actually wired to the route).
 _require_repo_admin = require_scope("admin")
+
+
+def _sync_loop_fields(repo: Repository) -> tuple:
+    """The fields `make_repo_sync_runner` schedules and gates a repo on."""
+    return (
+        repo.fetch_enabled,
+        repo.fetch_interval_seconds,
+        repo.index_on_commit_enabled,
+        repo.commit_poll_seconds,
+        repo.index_uncommitted,
+    )
+
 
 def _to_response(
     repo: Repository,
@@ -52,7 +65,11 @@ def _to_response(
         last_indexed_at=repo.last_indexed_at,
         status=repo.status,
         status_message=repo.status_message,
-        auto_sync=repo.auto_sync,
+        fetch_enabled=repo.fetch_enabled,
+        fetch_interval_seconds=repo.fetch_interval_seconds,
+        index_on_commit_enabled=repo.index_on_commit_enabled,
+        commit_poll_seconds=repo.commit_poll_seconds,
+        index_uncommitted=repo.index_uncommitted,
         git_account_id=repo.git_account_id,
         git_account_label=(account_labels or {}).get(repo.git_account_id)
         if repo.git_account_id
@@ -71,13 +88,82 @@ async def create_repo(
     body: RepoCreate,
     _user=Depends(require_auth),
     manager: RepoManager = Depends(get_repo_manager),
+    pipeline: CodePipeline = Depends(get_code_pipeline),
+    session_factory: async_sessionmaker[AsyncSession] = Depends(get_session_factory),
 ):
+    def _index_after_clone(repo_id: UUID) -> None:
+        # `on_ready` runs synchronously from inside `_clone_in_background`'s
+        # task, but claiming is async -- schedule a child task rather than
+        # awaiting here, and never mock this closure's shape without also
+        # mocking the claim.
+        async def _claim_and_spawn() -> None:
+            async with session_factory() as claim_session:
+                claimed = await RepoManager(claim_session).claim_for_indexing(
+                    repo_id, message="Queued for indexing...",
+                )
+            if not claimed:
+                logger.error(
+                    "Repository %s already indexing after clone; skipping initial index",
+                    repo_id,
+                )
+                return
+            try:
+                _spawn_repo_index(
+                    repo_id, pipeline, session_factory, kind="initial", pull=False,
+                )
+            except Exception as e:
+                # The row exists and the Reindex button is one click away;
+                # failing the create over a scheduling error would be worse.
+                logger.error(
+                    "Failed to schedule initial index for %s after clone: %s", repo_id, e,
+                )
+
+        # A bare `asyncio.create_task` here keeps no strong reference of its
+        # own; CPython is free to garbage-collect it before it runs, which
+        # would silently reproduce Finding 2 (a "ready" URL repo that is
+        # never indexed) as an intermittent bug instead of the deterministic
+        # one it used to be. `TaskRegistry` is what the clone task and every
+        # `_spawn_repo_index` task on either side of this one already lean
+        # on for exactly that -- register here too rather than inventing a
+        # second convention.
+        task = asyncio.create_task(_claim_and_spawn())
+        TaskRegistry.register(repo_id, "initial-claim", task, "Queued for indexing...")
+
     try:
-        repo = await manager.create(body)
+        repo = await manager.create(body, on_ready=_index_after_clone)
     except IntegrityError:
         raise HTTPException(status_code=409, detail=f"Repository '{body.name}' already exists")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    # A URL repo is still cloning; `on_ready` (above) indexes it once the
+    # clone lands. Only a local_path repo has a tree to read right now, so
+    # only that branch claims and spawns immediately.
+    if not body.url:
+        claimed = await manager.claim_for_indexing(repo.id, message="Queued for indexing...")
+        # claim_for_indexing's UPDATE has a `.notin_()` predicate, which
+        # synchronize_session cannot "evaluate" in Python and falls back to
+        # "fetch" for -- that path expires the matched ORM object outright
+        # rather than patching its attributes in place. Every other caller
+        # of this method returns a plain dict, so this route is the first
+        # to serialize the same `repo` object afterward; without this
+        # refresh, `_to_response` below hits an implicit lazy-load with no
+        # greenlet to run it in and crashes.
+        await manager.session.refresh(repo)
+        if claimed:
+            try:
+                _spawn_repo_index(
+                    repo.id, pipeline, session_factory, kind="initial", pull=False,
+                )
+            except Exception as e:
+                logger.error("Failed to schedule initial index for %s: %s", repo.id, e)
+        else:
+            # Not reachable in practice -- nothing else has this id yet -- but
+            # a lost claim must never spawn an unclaimed index.
+            logger.error(
+                "Repository %s already indexing at creation; skipping initial index", repo.id,
+            )
+
     return _to_response(repo, account_labels=await manager.account_labels())
 
 
@@ -137,24 +223,35 @@ async def update_repo(
     _user=Depends(require_auth),
     manager: RepoManager = Depends(get_repo_manager),
 ):
-    # Snapshot ``auto_sync`` BEFORE the update so we can detect whether
-    # this PUT flipped the polling gate. The repo_sync background job
-    # filters by ``auto_sync=true``; a flip from off→on should wake the
-    # job immediately so the new repo joins the next iteration without
-    # waiting for the global tick.
+    # Snapshot whether either recurring lane was armed BEFORE the update so
+    # we can detect whether this PUT flipped the polling gate. The repo_sync
+    # background job filters by ``fetch_enabled`` / ``index_on_commit_enabled``;
+    # a flip from neither armed to either armed should wake the job
+    # immediately so the new repo joins the next iteration without waiting
+    # for the global tick.
     existing = await manager.get(repo_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Repository not found")
-    prev_auto_sync = existing.auto_sync
+    prev_armed = existing.fetch_enabled or existing.index_on_commit_enabled
+    # Read as scalars, not as a reference to the row: `manager.update` mutates
+    # this very instance, so comparing against `existing` afterwards compares
+    # the new values with themselves.
+    prev_schedule = _sync_loop_fields(existing)
 
     repo = await manager.update(repo_id, body)
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
 
-    if repo.auto_sync != prev_auto_sync:
+    if (repo.fetch_enabled or repo.index_on_commit_enabled) and not prev_armed:
         wakeup = getattr(request.app.state, "repo_sync_wakeup", None)
         if wakeup is not None:
             wakeup.set()
+
+    # Waking the loop accomplishes nothing on its own: the loop's per-repo
+    # due-times are derived from exactly these fields, so a tick that arrives
+    # before the previous interval lapses refuses the repo it was woken for.
+    if _sync_loop_fields(repo) != prev_schedule:
+        forget_repo_due(repo_id)
 
     return _to_response(repo, account_labels=await manager.account_labels())
 
@@ -167,6 +264,9 @@ async def delete_repo(
 ):
     if not await manager.delete(repo_id):
         raise HTTPException(status_code=404, detail="Repository not found")
+    # Nothing else ever removes a repo's due-times, so without this they
+    # outlive the row until the process restarts.
+    forget_repo_due(repo_id)
 
 
 def _spawn_repo_index(
@@ -179,15 +279,22 @@ def _spawn_repo_index(
     enrich_symbols: bool = False,
     generate_wiki: bool = False,
     union_files: list[str] | None = None,
+    pull: bool = True,
 ) -> asyncio.Task:
     """Spawn the one background indexing path both ``reindex_repo`` and
     ``repo_push_webhook`` dispatch through -- a tracked task on a fresh
     session, never a synchronous ``pipeline.run`` inline in either route.
 
-    ``run_kwargs`` carries a flag only when it is true, so a caller that
-    passes nothing but ``repo_id`` (the webhook) reaches ``CodePipeline.run``
-    with the identical bare ``(repo_id)`` shape polling's own call site uses
-    (``job_runners.py``), not a look-alike call with explicit ``False``s.
+    ``run_kwargs`` carries a flag only when it is not the default, so a
+    caller that passes nothing but ``repo_id`` (the webhook) reaches
+    ``CodePipeline.run`` with the identical bare ``(repo_id)`` shape
+    polling's own call site uses (``job_runners.py``), not a look-alike call
+    with explicit values. ``pull`` defaults True to match every existing
+    caller (reindex, reindex-files, webhook, MCP ``code_reindex``); only the
+    two initial-index arms (fresh local repo, post-clone) pass ``pull=False``
+    -- an initial index has nothing of its own to fetch yet, and calling
+    ``pull_repo`` here would ff-advance or reset the operator's own checkout
+    on the very first index.
 
     The background pipeline mirrors whether the *injected* ``pipeline`` was
     given a vector repo at all: production's DI-provided pipeline always
@@ -229,6 +336,8 @@ def _spawn_repo_index(
                         run_kwargs["generate_wiki"] = generate_wiki
                     if union_files:
                         run_kwargs["union_files"] = union_files
+                    if not pull:
+                        run_kwargs["pull"] = pull
                     await idx.run(repo_id, **run_kwargs)
             except Exception as e:
                 logger.error(f"Background {kind} failed for {repo_id}: {e}")

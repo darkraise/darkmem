@@ -226,7 +226,6 @@ async def lifespan(app: FastAPI):
         make_repo_sync_runner,
         make_buffer_flush_runner,
         make_code_enrichment_runner,
-        make_code_reconcile_runner,
         make_token_blocklist_cleanup_runner,
         make_pipeline_failure_cleanup_runner,
         make_graph_orphan_cleanup_runner,
@@ -270,12 +269,6 @@ async def lifespan(app: FastAPI):
         BLOCK_EMBEDDING_MAX_RUN_SECONDS,
         BLOCK_EMBEDDING_MIN_INTERVAL_SECONDS,
     )
-    from app.services.code_reconcile import (
-        CODE_RECONCILE_CRON,
-        CODE_RECONCILE_JOB_KEY,
-        CODE_RECONCILE_MAX_RUN_SECONDS,
-        CODE_RECONCILE_MIN_INTERVAL_SECONDS,
-    )
     from app.services.code_deriver_job import (
         CODE_DERIVER_CRON,
         CODE_DERIVER_JOB_KEY,
@@ -289,12 +282,13 @@ async def lifespan(app: FastAPI):
         key="repo_sync",
         display_name="Repository Sync",
         description=(
-            "Fetches every repo with auto-sync enabled and runs the code "
-            "indexing pipeline. The per-repo Reindex button bypasses this "
-            "loop and runs immediately."
+            "Per repo, on that repo's own intervals: fetches when Fetch from "
+            "remote is on, and indexes when Index on new commit is on and HEAD "
+            "has moved. Every switch is off by default. Manual reindex, the "
+            "webhook and the code_reindex MCP tool bypass this loop entirely."
         ),
-        default_cron="*/5 * * * *",
-        min_interval_seconds=30,
+        default_cron="*/30 * * * * *",
+        min_interval_seconds=15,
         runner=make_repo_sync_runner(app, async_session_factory),
         max_run_seconds=1800,
     ))
@@ -365,20 +359,6 @@ async def lifespan(app: FastAPI):
             min=1, max=100,
             help="Code symbols summarised per scheduled run.",
         )],
-    ))
-    job_registry.register(Job(
-        key=CODE_RECONCILE_JOB_KEY,
-        display_name="Code Reconcile",
-        description=(
-            "Hashes every already-indexed repo's working tree and feeds any "
-            "drift through the incremental path, even when HEAD never moved "
-            "(a local repo edited directly, with no commit to diff against). "
-            "An unchanged tree does no work."
-        ),
-        default_cron=CODE_RECONCILE_CRON,
-        min_interval_seconds=CODE_RECONCILE_MIN_INTERVAL_SECONDS,
-        runner=make_code_reconcile_runner(app, async_session_factory),
-        max_run_seconds=CODE_RECONCILE_MAX_RUN_SECONDS,
     ))
     job_registry.register(Job(
         key=CODE_DERIVER_JOB_KEY,
@@ -574,8 +554,9 @@ async def lifespan(app: FastAPI):
     register_dream_jobs(job_registry, lambda: getattr(app.state, "llm", None))
 
     # Expose the repo_sync wakeup so PUT /repos/{id} can nudge the loop
-    # immediately when a repo's auto_sync flips. The registry owns the
-    # event; route handlers just call .set() on it.
+    # immediately when a repo's fetch_enabled or index_on_commit_enabled
+    # flips on. The registry owns the event; route handlers just call
+    # .set() on it.
     repo_sync_job = job_registry.get("repo_sync")
     if repo_sync_job is not None:
         app.state.repo_sync_wakeup = repo_sync_job.wakeup
