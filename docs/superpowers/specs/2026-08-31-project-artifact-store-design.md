@@ -3,9 +3,9 @@
 Date: 2026-08-31
 Status: design, revised 2026-08-31 after an adversarial review (2 blockers, 6
 majors). §5 and §8 are rewritten, §9's worker is redesigned, §2 and §9.7 are
-amended. Increments 0, 1, 2 and 5 are planned
-(`docs/superpowers/plans/2026-08-31-*.md`); 3, 4 and 6 are plannable against this
-revision; §8 is gated on two owner decisions and is not plannable.
+amended. §8's two gating decisions were taken the same day (§8.3), so every
+increment is now plannable. Increments 0, 1, 2 and 5 are planned
+(`docs/superpowers/plans/2026-08-31-*.md`); 3, 4, 6, 7 and 8 are not yet.
 
 No code is written by this document. Every claim in §§1-7 is grounded in files
 opened during the design pass; the measured facts it was briefed with are taken
@@ -28,7 +28,7 @@ every deployed database — but it removes migration design from every item.
 | 5 | Round-trip | **Revised**: the properties bridge is cut. `documents.content TEXT` is taken **now**, before any corpus exists; `expected_hash` is a SQL compare-and-set, not a check; versions still deferred | **baseline regen, taken now** |
 | 6 | Sequencing | Nine increments below; increment 0 (reachability) + 1 (watchable progress) is the smallest visible win | — |
 | 7 | Not build | Task model, revisions table now, agent-path block diffing, CRDT/multiplayer, block↔memory fusion, git sync-back, events task vocabulary, second table, bespoke backup UI, in-app restore button | — |
-| 8 | Personal workspace | **Redesigned**: granular block verbs need **no** schema change (the client holds block ids); content-first vs block-first ingest resolves the §5 collision; nested pages and the editor ADR are undecided and gate it | none for the verbs; nested pages TBD |
+| 8 | Personal workspace | **Redesigned, then unblocked**: block verbs need no schema change; nesting is derived from the `uri` path; the editor is markdown-source blocks with no framework, which also keeps `char_span` exact. Plannable | **none** |
 | 9 | Backup | **Revised**: the job runs `pg_dump` over the stack network, never the host script; the worker's read-only guarantee moves from the door layer to a **Postgres role**, with the receiver and restore loop as separate processes | no schema change |
 
 ---
@@ -401,7 +401,7 @@ and cheapest taken alongside any other schema change.
 | 5 | **Corpus import + conventions doc**: one-shot script filing `docs/` into project `darkmem` (uri = repo path), spot-checking block counts and oversized warnings; the agent-facing convention doc (project naming, uri scheme, checkpoint discipline, ledger shape: headings-and-prose, never mega-tables) | no schema change | 1-2 days | low — import is re-runnable via the `(project, uri)` upsert |
 | 6 | **Backup off-host**: `backup_ship` job running `pg_dump` over the stack network (+ `postgresql-client` in the image, a dump volume, distinct prefixes/retention from the systemd path); destination config row + settings panel; encryption; post-upload verification | no schema change | 5-7 days | low-medium — the process boundary (M4) is designed out, not worked around |
 | 7 | **Backup worker**: read-only enforced by a `SELECT`-only **Postgres role**; separate receiver process; restore loop outside the app swapping databases; `DARKMEM_READ_ONLY` demoted to job-disarm + write-on-read skip | no schema change | 5-8 days | medium — enforcement layer moved after B1; plannable against §9.5 |
-| 8 | **Personal workspace**: block verbs + block-first ingest. **Gated on two owner decisions** (nested-pages shape, editor ADR) and not plannable until both land | none for the verbs | **no estimate** — withdrawn as unfounded over an unmade technology decision | highest — inverts doc 16's span-anchor doctrine, so doc 16 §5 is affected as well as §7 |
+| 8 | **Personal workspace**: four block verbs on both doors, block-first serialiser recomputing `content` + `char_span`, per-block editing surface. Depends on increments 3 and 4 | **none** | largest item in the spec | high — but doc 16 §5 is no longer affected; §7 is the only amendment |
 | ~~D1~~ | **Resolved into increment 3** — the column is taken now (§5). `document_revisions` stays deferred and would ride any later regeneration | — | — | — |
 | D2 | *Deferred*: embed-time chunking via payload spans (doc 16 §3) | no baseline regen, but a live-partition reconciliation (PK change on runtime-created `block_embeddings__*` tables) + `search_blocks` dedup | 3-5 days | medium — touches invariant-2 territory; wait for measured need after Inc 2 |
 | D3 | *Deferred, owner decision*: MCP `document_list`. The 2026-08-23 ruling keeps `documents.reads` REST-only on the reasoning that "the agent's list-shaped read of this corpus is the ranked `document_search`" (`docs/two-door-parity.md:55`). That reasoning predates the artifact-store requirement, where deterministic enumeration ("what task files exist?") is load-bearing and semantic search is the wrong verb. Interim: the convention doc has agents maintain an index document per project. If that chafes, revisit the ruling — a ruling amendment, not a quiet tool addition | no schema change | small | ruling change requires the owner |
@@ -493,45 +493,92 @@ callers:
   `content` and is exact.
 - **Block-first (the editor, new).** The block verbs are authoritative. `content` is
   **regenerated from the block tree** after each mutation and `content_hash`
-  recomputed from it; `char_span` is **dropped to NULL** on any block the editor
-  touches, because a span into a regenerated serialisation is a coordinate into a
-  document that no longer exists.
+  recomputed from it. **`char_span` is recomputed, not dropped** — see below.
 
 Which direction a document uses is recorded on the row and is **not** a per-call
 choice: a `document_put` against a block-first document is a refusal, not a silent
 overwrite of someone's editing session. This is the reconciliation §5 was missing.
 
-**Consequence for doc 16, stated because the first draft missed it.** Doc 16's
-provenance doctrine treats block ids as churning and the span as the durable anchor.
-Block-first documents invert exactly that — the id is durable and the span is gone —
-so doc 16 §5's lift must either refuse block-first documents as citation sources or
-carry a second anchor kind. **§7 is not the only amendment; §5 of that doc is
-affected too.** Left open deliberately: it is a doc-16 owner decision, and pretending
-otherwise is what produced this section's first draft.
+**Spans survive, because serialisation knows where each block lands (resolved
+2026-08-31).** An earlier draft of this section conceded `char_span` to NULL on any
+edited block, and concluded doc 16 §5's span-anchor doctrine was inverted. The editor
+decision below makes that concession unnecessary: blocks store **markdown source**,
+so regenerating `content` is a serialisation of the tree in `order_index` order — and
+a serialiser necessarily knows the offset at which it wrote each block. Recording
+those offsets back onto `char_span` is the same pass, not a second one.
 
-### 8.3 What is genuinely undesigned, and stays that way until decided
+So block-first documents keep exact spans, and **doc 16 §5 is not affected after
+all**; §7 remains the only amendment this section makes. The span is still the
+durable anchor — it is merely derived in the other direction, from the tree rather
+than from a parsed source.
 
-- **Nested pages.** A page inside a page is either a `documents.parent_id`
-  (a regeneration, and a second tree beside `blocks.parent_id`) or a block of a new
-  `page_ref` type pointing at a document (no regeneration, taxonomy-first). **Not
-  decided here.** It is the only part of §8 that might need schema, and it needs its
-  own ADR.
-- **The editor technology.** M5 is upheld: `darkraise-ui` ships no block editor, so
-  this is a build-or-adopt decision (TipTap/ProseMirror, Lexical, or hand-rolled
-  contenteditable) with a real bundle-size and control trade-off. **No estimate is
-  given in this spec, and the previous "weeks" is withdrawn as unfounded** — an
-  estimate over an unmade technology decision is a guess wearing a number.
+One requirement this places on the block model: a faithful serialiser needs the
+markers the parser currently discards — a `list` block does not record whether it was
+`-` or `1.`, and a heading's level lives in `properties` but its marker style does
+not. Block-first documents therefore carry their marker in `properties` (JSONB, no
+schema change), written by the editor that owns the block. Content-first documents
+need none of it: their `content` is stored as filed and never regenerated.
+
+### 8.3 The two gating decisions — TAKEN 2026-08-31 (owner)
+
+**Nested pages: derived from the `uri` path. No schema change, no taxonomy change.**
+`notes/projects/darkmem.md` nests under `notes/projects/`. The forcing fact, checked
+rather than assumed: **`uri` is required on both doors** — `uri: str` with
+`min_length=1` on `DocumentPutRequest` (`backend/app/api/routes/documents.py:176`)
+and a required positional on `document_put` (`backend/app/api/mcp/server.py:616`).
+The column is nullable and its unique index partial, but no shipped door can create a
+uri-less document, so **every document already carries a path** and the hierarchy
+exists on every row today. Creating a subpage is assigning a uri under the parent's
+prefix; the tree is the same uri-segment grouping §2 already designs for the Artifacts
+tab, so one implementation serves both surfaces.
+
+Both alternatives are rejected, and the reasoning matters more than the verdict:
+- `documents.parent_id` is **dominated** — it costs a baseline regeneration to
+  duplicate what the uri already encodes, and creates a second tree beside
+  `blocks.parent_id` that can contradict the path. Two sources of truth for one
+  hierarchy is the shape §1 spends its argument avoiding.
+- A `page_ref` block type is not wrong, but answers a different question: *inline*
+  subpage embedding mid-body, which is presentation, not hierarchy. It stays
+  available later (taxonomy-first, no schema) if that is wanted; it is not how
+  nesting is modelled.
+
+**Editor: markdown-source blocks, no framework.** One small editable per block holding
+that block's markdown source, rendered through `react-markdown` (already a dependency)
+when unfocused, on darkraise-ui's `textarea`. The forcing fact: **blocks already store
+markdown source** — the parser keeps `inline.content`, so a paragraph's text is
+literally ``Some prose with `inline code` and **bold**.`` A WYSIWYG framework
+(TipTap/ProseMirror, Lexical) models the document as its own JSON tree and converts
+markdown in and out **on every edit**, and that conversion is exactly where round-trip
+fidelity is lost — on a corpus whose entire purpose is faithful round-trip. Storage
+format and edit format being identical means there is no conversion step to get wrong.
+
+Also weighed: the frontend carries 61 dependencies and no editor of any kind
+(darkraise-ui ships `textarea` and `image-editor`, no block editor), so a framework is
+a real new surface on a lean tree.
+
+**The accepted ceiling, stated so it is not discovered later:** no drag handles, no
+table editing and no slash menu come for free — each is hand-built or foregone. If a
+measurement later shows that ceiling binding, adopting a framework is a decision to
+retake with evidence, not a default to drift into.
 
 ### 8.4 Scope boundary, unchanged
 
 Single-user. Last-write-wins per block under §5.3's compare-and-set. No CRDT, no
 multiplayer, no canvas.
 
-### 8.5 Status
+### 8.5 Status — PLANNABLE as of 2026-08-31
 
-**Not plannable.** Two decisions gate it: the nested-pages shape and the editor ADR.
-Neither is a research task; both are owner calls. §8.1's verbs and §8.2's two
-directions *are* plannable once those land, and neither needs a regeneration.
+Both gating decisions are taken (§8.3), so this section is plannable in full. **No
+baseline regeneration is required by any part of it**: block identity needs none
+(§8.1), nesting needs none (§8.3), marker preservation rides `properties`, and the
+`content` column it builds on is already taken by §5 as part of increment 3.
+
+Dependencies: increment 3 (the `content` column, since block-first ingest regenerates
+it) and increment 4 (the workspace UI it extends). The estimate the previous revision
+withdrew can now be given, because what made it a guess — an unmade technology
+decision — is decided. The work is the four block verbs on both doors, a serialiser
+that recomputes `content` and `char_span`, and a per-block editing surface with
+keyboard navigation. It remains the largest item in the spec.
 
 ## 9. Backup, off-host and restorable
 
@@ -695,8 +742,8 @@ lose**, rather than after a corpus exists.
   retrieval route, no vault writer and no composition edge, so
   `tests/test_block_retrieval.py`'s three structural scans are untouched; a
   `block_delete` still cascades `block_embeddings__<slug>` per invariant 2, and
-  block-first documents must not reach doc 16 §5's lift until that doc decides
-  its anchor question (§8.2). §9's job runs under the existing per-job lock, but
+  block-first documents keep exact `char_span` values because the serialiser
+  records them (§8.2), so doc 16 §5's lift is unaffected and needs no decision. §9's job runs under the existing per-job lock, but
   **that lock does not reach the systemd producer** — they are separate processes,
   so the two are separated by filename prefix and retention set, not by mutual
   exclusion (m4). Invariant 13 is unaffected: still one worker. The worker's
