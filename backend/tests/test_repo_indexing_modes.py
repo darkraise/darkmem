@@ -173,11 +173,13 @@ async def test_index_uncommitted_on_indexes_a_dirty_tree(
     assert spy.indexed[0][1] is not None
 
 
-async def test_a_fetch_never_rewinds_a_local_checkout(session, session_factory, tmp_path):
-    """Spec 3.2. `pull_repo` advances a local_path repo with `merge --ff-only`
-    and never `reset --hard`, so darkmem cannot discard a commit another agent
-    has not pushed. Unchanged behaviour, pinned here because this loop is now
-    what calls it on a schedule."""
+async def test_a_failed_fetch_never_rewinds_a_local_checkout(session, session_factory, tmp_path):
+    """Spec 3.2, the half this loop reaches. The repo has no remote, so the
+    fetch fails and `merge --ff-only` is never reached: what is pinned here is
+    that a fetch which cannot run leaves the operator's tree alone rather than
+    falling through to the re-clone. The merge itself is pinned in
+    `test_repos.py` (`test_pull_repo_never_rewinds_a_local_checkout` and its
+    fast-forward sibling), which build a real upstream to reach it."""
     work = _make_repo_dir(tmp_path)
     _commit(work, "def unpushed():\n    return 9\n", "local only")
     before = subprocess.run(

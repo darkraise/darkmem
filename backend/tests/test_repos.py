@@ -112,6 +112,40 @@ async def test_update_repo_arming_wakes_sync_loop(client, auth_headers, tmp_path
     assert app.state.repo_sync_wakeup.is_set() is True
 
 
+async def test_update_repo_rejects_an_explicit_null_on_a_not_null_field(
+    client, auth_headers, tmp_path,
+):
+    """`RepoManager.update` dumps with `exclude_unset=True`, which counts an
+    explicit null as set. Every field below is backed by a NOT NULL column, so
+    without the schema guard the null reaches the database and the caller's bad
+    request comes back as a 500."""
+    repo_dir = tmp_path / "null-test-repo"
+    repo_dir.mkdir()
+    create = await client.post(
+        "/api/v1/repos",
+        json={"name": "null-test-repo", "local_path": str(repo_dir), "provider": "local"},
+        headers=auth_headers,
+    )
+    assert create.status_code == 201
+    repo_id = create.json()["id"]
+
+    for field in (
+        "name", "default_branch", "fetch_enabled", "fetch_interval_seconds",
+        "index_on_commit_enabled", "commit_poll_seconds", "index_uncommitted",
+    ):
+        resp = await client.put(
+            f"/api/v1/repos/{repo_id}", json={field: None}, headers=auth_headers,
+        )
+        assert resp.status_code == 422, f"{field} -> {resp.status_code}"
+
+    # git_account_id is the nullable one: an explicit null clears the account
+    # and must stay a legal request.
+    resp = await client.put(
+        f"/api/v1/repos/{repo_id}", json={"git_account_id": None}, headers=auth_headers,
+    )
+    assert resp.status_code == 200
+
+
 async def test_mark_periodic_sync_failure_disables_index_on_commit(session, tmp_path):
     """A failed periodic sync must record the error AND set
     index_on_commit_enabled=False so the polling worker stops retrying every
