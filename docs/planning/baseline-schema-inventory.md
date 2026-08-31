@@ -880,12 +880,35 @@ trust: the live ORM-only class today is exactly two columns, `memories.source` a
 `repositories.status`** — both remain `NOT NULL` in `0001_baseline.py` with no `DEFAULT`
 clause, and both still carry only a client-side `default=` in their models. Every other
 column this table names has either gained a DDL default, lost its ORM default outright, or
-(for `auto_sync`) been removed. **The uuid primary keys are
-deliberately not in this class**: doc 04 §2 fixes application generation as the design
-("every application-generated uuid PK is **UUIDv7**"), with server-side
-`gen_random_uuid()` only for `entities`/`entity_relations`. `code_graph_nodes`/`code_edges`
-carry `bigserial` sequences in the DDL and their models' `default=uuid.uuid4` is dead
-metadata the database overrides — cosmetic, not load-bearing.
+(for `auto_sync`) been removed. **The uuid primary keys sit outside this table's count, but the
+sentence that used to say why was false in both halves and is corrected here
+(2026-08-31).** It read that they are "deliberately not in this class" because doc 04 §2
+fixes application generation as the design — quoting "every application-generated uuid PK
+is **UUIDv7**" as though it described the tree — and that `code_graph_nodes`/`code_edges`
+carry a `default=uuid.uuid4` the database overrides. Measured against `app/models/*.py`,
+the raw-SQL minting sites and `0001_baseline.py`:
+
+- **UUIDv7 today** (`app.utils.ids.new_id`, which is `uuid6.uuid7`): `memories`,
+  `memory_buffer`, `memory_relations`, `memory_communities`, `knowledge_triples`,
+  `fact_sources`, `documents`, `blocks`.
+- **v4 by design, as doc 04 §2's stated exception**: `entities`, `entity_relations`
+  (server-side `gen_random_uuid()`).
+- **v4 against the design**: `repositories` — named in doc 04 §2's own UUIDv7 list and
+  minting `uuid.uuid4` — plus `article_citations` (`gen_random_uuid()` in the INSERT) and
+  the tables that list omits: `code_files`, `code_symbols`, `api_keys`, `git_accounts`,
+  `conversations`, `messages`, `session_checkpoints`, `pipeline_failures`,
+  `token_blocklist`.
+- **Not uuid at all**: `code_graph_nodes` and `code_edges` are `BigInteger` +
+  `autoincrement=True` and carry no uuid default in the ORM, so the "dead metadata"
+  clause described an object that does not exist.
+
+So the generation rule is **partially applied**, not applied. That is a real gap against
+doc 04 §2 rather than a defect of this section — recorded, not repaired here, because
+moving a table's generator is a schema-behaviour decision for the baseline's owner and
+`repositories` is the only named-and-diverging one. What this section is entitled to say
+is only that these keys are application-generated with no DDL default, which is the same
+mechanical shape as the twelve columns above; they are excluded from the count because
+supplying them is the design either way, not because a UUIDv7 rule is in force.
 
 **Verdict: this is Tier 2, not Tier 3 — the corpus does answer it.** Applying the stated
 test (*does doc 19 §2's "no ORM-only construct is load-bearing in the schema" cover column
