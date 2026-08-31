@@ -5,6 +5,23 @@ everything from "Domain model" down is contract, not implementation
 detail. A refactor that breaks one of the listed invariants is a
 behavior change, not a cleanup.
 
+## Greenfield until the freeze (owner ruling 2026-08-31)
+
+**Darkmem is in development and is treated as a greenfield project. No
+backward compatibility is owed and no data migration is ever required.** No
+deployed database, no earlier release and no previously captured corpus is a
+constraint on a change: if a new shape is better, take it and recreate the
+data. Do not design a compatibility shim, a dual-write, a version negotiation
+or an import path for existing rows, and do not weigh "what about the data
+already in there" when choosing between designs — the answer is always that it
+is disposable.
+
+This is what the baseline's drop-and-recreate rule below already assumes, and
+it is now stated once here rather than inferred per task. It holds **until the
+schema freeze** — the first deploy whose data must survive, defined under
+Migrations below. At that event this section is retired and ordinary additive
+migration discipline begins; nothing before it is grandfathered.
+
 ## Commands
 
 - **Merge gate (from the repo root): `./scripts/gate.sh`** — one command for
