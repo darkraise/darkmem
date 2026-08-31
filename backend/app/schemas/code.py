@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # git accepts transport helpers (`ext::sh -c ...` = arbitrary command execution)
 # and `file://` / bare local paths (local-file read / SSRF). Only allow real
@@ -58,6 +58,21 @@ class RepoCreate(BaseModel):
         return validate_git_ref(v)
 
 
+# Each is backed by a NOT NULL column, so an explicit JSON `null` is a bad
+# request rather than a clear. `RepoManager.update` dumps with
+# `exclude_unset=True`, which counts an explicit null as set, so without this
+# the null reaches the column and surfaces as a 500.
+REPO_UPDATE_NON_NULLABLE = (
+    "name",
+    "default_branch",
+    "fetch_enabled",
+    "fetch_interval_seconds",
+    "index_on_commit_enabled",
+    "commit_poll_seconds",
+    "index_uncommitted",
+)
+
+
 class RepoUpdate(BaseModel):
     name: str | None = None
     fetch_enabled: bool | None = None
@@ -68,6 +83,19 @@ class RepoUpdate(BaseModel):
     auth_token: str | None = None
     git_account_id: uuid.UUID | None = None
     default_branch: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_explicit_nulls(cls, data):
+        if isinstance(data, dict):
+            nulled = sorted(
+                f for f in REPO_UPDATE_NON_NULLABLE if f in data and data[f] is None
+            )
+            if nulled:
+                raise ValueError(
+                    f"{', '.join(nulled)} cannot be null; omit the field to leave it unchanged"
+                )
+        return data
 
     @field_validator("default_branch")
     @classmethod
