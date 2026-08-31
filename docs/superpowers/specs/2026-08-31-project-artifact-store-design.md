@@ -359,24 +359,38 @@ deferring it again.
   into a source the schema did not keep.
 - `documents.content_hash` keeps its change-gate role, unchanged.
 
-### 5.3 `expected_hash` is a compare-and-set, not a check
+### 5.3 `expected_hash` is a compare-and-set, not a check — CORRECTED 2026-09-01
 
 **M1, confirmed.** Reading `content_hash` and then writing if it matches is
-check-then-act: two lanes both read the same hash, both proceed, and the second
-still clobbers the first — which is the exact race the precondition exists to close.
-The predicate must ride the write:
+check-then-act: two lanes both read the same hash, both proceed, and the second still
+clobbers the first — the exact race the precondition exists to close. The predicate
+must ride the write.
+
+**Correction (found while planning increment 3).** An earlier draft of this section
+sketched the predicate as a `WHERE` on an upsert's `DO UPDATE` arm. That is wrong in a
+way that matters: when the named document does **not** exist, the `INSERT` arm fires
+and the statement silently *creates* it. A precondition naming a vanished document
+would then succeed as a creation instead of failing as a conflict — the opposite of
+what a precondition is for. **The predicate ships on an `UPDATE`, not an upsert**:
 
 ```sql
-INSERT INTO documents (...) VALUES (...)
-ON CONFLICT (project, uri) WHERE uri IS NOT NULL DO UPDATE SET ...
-  WHERE documents.content_hash = CAST(:expected_hash AS text)
-RETURNING id
+UPDATE documents
+   SET title = :title, source_type = :source_type,
+       content = :content, content_hash = :content_hash, properties = :properties
+ WHERE project = :project AND uri = :uri
+   AND content_hash = CAST(:expected_hash AS text)
 ```
 
-A zero-row result is the conflict: 409 on REST (the conventions doc's conflict
-shape), a structured refusal on MCP. `expected_hash` stays optional — omitting it
-is the current last-writer-wins behaviour, which is correct for a first filing and
-for a caller that genuinely owns the document.
+Zero rows affected is the conflict — and it is correctly ambiguous between "someone
+else wrote first" and "the document is gone", because both mean *your* write must not
+land. 409 on REST (the conventions doc's conflict shape), a structured refusal on MCP.
+A call with no `expected_hash` keeps today's upsert path unchanged, which is correct
+for a first filing and for a caller that genuinely owns the document.
+
+**A second gap, also found in planning: nothing on the wire serves `content_hash`.**
+A caller cannot supply a precondition it has no way to read — as specced,
+`expected_hash` was unusable. Both put doors must **echo `content_hash` in their
+response**, so the get-then-put cycle a precondition assumes is actually expressible.
 
 ### 5.4 Version history — still deferred, loss restated
 
@@ -393,7 +407,7 @@ and cheapest taken alongside any other schema change.
 
 | # | Increment | Schema | Effort | Risk |
 |---|---|---|---|---|
-| 0 | **Reachability**: repoint `/root/.claude.json` mcpServers.darkmem from the v0.2.0 box (`192.168.0.195`) to local v1.4.0, mint an API key, add the bearer header | none (config only) | hours | none — but *everything below is moot without it*; the measured config reaches a server with zero document routes |
+| 0 | **Reachability**: point `/root/.claude.json` mcpServers.darkmem at the current instance, mint an API key, add the bearer header | none (config only) | hours | none — but *everything below is moot without it*; the config does not currently reach a server serving document routes |
 | 1 | **Watchable progress**: Checkpoints tab project filter + poll interval; agent convention "checkpoint per step" (doc, not code) | no schema change | 1-2 days | low — UI + a query param on an existing read |
 | 2 | **Parser fixes**: `table`/`table_row` block types (taxonomy edit), table parsing with row children, frontmatter capture, oversized-block warning in `PutResult`/responses/event payload; regenerate SDKs | no schema change | 2-4 days | medium — parser changes re-shape trees for *re-filed* docs only (existing rows untouched until re-put); the additive response field walks through the SDK generator |
 | 3 | **Round-trip**: `documents.content` column (baseline regen) + `include_content` + `expected_hash` compare-and-set 409 | **baseline regen** | 2-3 days | low while prod holds 0 documents; **must land before increment 5** |
@@ -478,9 +492,15 @@ ids and mutate the addressed row:
 | `block_move` | `(block_id, new_parent_id?, after_block_id?)` |
 | `block_delete` | `(block_id)` — subtree cascades via `parent_id` |
 
-No diffing, no matching heuristic, no schema change. `order_index` is `INTEGER`, so
-a move renumbers its sibling run — O(siblings), not O(document), and a fractional
-index is an optimisation to reach for only if a measurement demands it.
+No diffing, no matching heuristic, no schema change.
+
+**Corrected 2026-09-01 (found while planning).** An earlier draft said a move
+renumbers "its sibling run — O(siblings), not O(document)". That misreads the shipped
+semantics: `order_index` is a **global reading order** for the document, which the
+readers sort flat (`_BLOCKS` orders by `order_index` alone), not a per-parent
+sequence. A move therefore renumbers the document, and the span-recomputation pass of
+§8.2 is O(document) regardless — so the cost is the serialiser's, and a fractional
+index would not avoid it. It stays an optimisation to reach for only on measurement.
 
 ### 8.2 Two ingest directions, which is what §5 collides with
 
@@ -629,9 +649,13 @@ path — two independent producers, which is the point of §9.3's floor argument
 
 Two riders this creates and the first draft did not see:
 - **m4 — the per-job lock does not serialize against the systemd timer.** They are
-  different processes; the `asyncio.Lock` binds only in-process. Give the two
-  producers **distinct filename prefixes and distinct retention sets** so neither
-  prunes the other's artefacts, rather than pretending they coordinate.
+  different processes; the `asyncio.Lock` binds only in-process. **Corrected
+  2026-09-01, found while planning:** an earlier draft said distinct *filename
+  prefixes* were enough. They are not — `backup.sh`'s prune globs
+  `darkmem-*.sql.gz` (`scripts/backup.sh:51`), which matches any
+  `darkmem-`-prefixed name the job might write, so the host timer would prune the
+  job's artefacts. **The guard is distinct directories**, with each producer's prune
+  additionally pinned to its own prefix inside its own directory.
 - The image grows by the client package. Stated, not hidden.
 
 **Destination config cannot live in the job's `config_schema`.** `FieldDescriptor`
