@@ -1,8 +1,11 @@
 # Darkmem as the project-artifact store and progress surface
 
 Date: 2026-08-31
-Status: design; not yet planned. Owner reviewed the first seven decisions and
-added two feature areas (§8 personal workspace, §9 backup) on the same day.
+Status: design, revised 2026-08-31 after an adversarial review (2 blockers, 6
+majors). §5 and §8 are rewritten, §9's worker is redesigned, §2 and §9.7 are
+amended. Increments 0, 1, 2 and 5 are planned
+(`docs/superpowers/plans/2026-08-31-*.md`); 3, 4 and 6 are plannable against this
+revision; §8 is gated on two owner decisions and is not plannable.
 
 No code is written by this document. Every claim in §§1-7 is grounded in files
 opened during the design pass; the measured facts it was briefed with are taken
@@ -19,14 +22,14 @@ every deployed database — but it removes migration design from every item.
 | # | Question | Decision | Schema cost |
 |---|---|---|---|
 | 1 | Channel | Share `documents`/`blocks`, separated by `project` (the existing identity half) + a reserved `properties.kind` label; no new table | no schema change |
-| 2 | UI | New `projects` route family (workspace: Artifacts + Progress tabs); `/documents` stays the personal surface and gains a project pin; Activity route unchanged | no schema change |
+| 2 | UI | New `projects` route family (workspace: Artifacts + Progress tabs); `/documents` stays the personal surface and gains a project pin; Activity route unchanged. **Amended**: increment 4 carries a backend change — the projects endpoint is memories-only | no schema change |
 | 3 | Progress | Live progress = `session_checkpoints` + its existing `events` trail, rendered by the already-half-built Checkpoints UI; durable ledger = a document under a shape convention. Prior events-task proposal rejected as a write surface, accepted as a render path. Owner's single-file position accepted for the durable record, rejected as the live surface | no schema change |
 | 4 | Oversized blocks | (a) enable table parsing with new `table`/`table_row` block types (taxonomy-first, code-only), (b) oversized-block warning in `PutResult` + journal, (c) defer doc 16 §3's embed-time chunking | no schema change |
-| 5 | Round-trip | Raw content stored now under a reserved `documents.properties` key (bridge); `expected_hash` optimistic-concurrency precondition now; version history deferred; real `content` column folded into the *next already-scheduled* baseline regen, never triggered by this work | no schema change now; one deferred regen rider |
+| 5 | Round-trip | **Revised**: the properties bridge is cut. `documents.content TEXT` is taken **now**, before any corpus exists; `expected_hash` is a SQL compare-and-set, not a check; versions still deferred | **baseline regen, taken now** |
 | 6 | Sequencing | Nine increments below; increment 0 (reachability) + 1 (watchable progress) is the smallest visible win | — |
 | 7 | Not build | Task model, revisions table now, agent-path block diffing, CRDT/multiplayer, block↔memory fusion, git sync-back, events task vocabulary, second table, bespoke backup UI, in-app restore button | — |
-| 8 | Personal workspace | Notion-style block editing for personal notes; forces stable block identity, granular block verbs and per-block re-embed — which also repays the door's whole-document cost model | **baseline regen** |
-| 9 | Backup | Pluggable off-host destinations, encrypted and verified; `backup_ship` JobRegistry job over the existing dump/restore scripts; a read-only backup worker running the same image | no schema change |
+| 8 | Personal workspace | **Redesigned**: granular block verbs need **no** schema change (the client holds block ids); content-first vs block-first ingest resolves the §5 collision; nested pages and the editor ADR are undecided and gate it | none for the verbs; nested pages TBD |
+| 9 | Backup | **Revised**: the job runs `pg_dump` over the stack network, never the host script; the worker's read-only guarantee moves from the door layer to a **Postgres role**, with the receiver and restore loop as separate processes | no schema change |
 
 ---
 
@@ -141,6 +144,30 @@ proposed that the library covers; the local work is composition and restyle.
   (`frontend/src/features/activity/components/checkpoints-tab.tsx`) remains
   the cross-project view of the same data the workspace's Progress tab scopes
   to one project. No route is removed.
+
+### 2.1 Amendment 2026-08-31 — increment 4 is not backend-free
+
+Two review findings re-rate this section. It was written as composition over shipped
+routes; it is not.
+
+- **M2 — `GET /api/v1/projects` is memories-only.** Confirmed: it groups
+  `Memory.project` and returns `{name, memory_count}`
+  (`backend/app/api/routes/projects.py:38-49`). It has nothing to do with the
+  `projects` registry table, and the first draft's pairing of the two citations was
+  substantively wrong. **A project holding only documents is invisible to it**, which
+  is precisely what increment 5 creates. The project index and the switcher both need
+  a scope source that unions the corpora — documents and checkpoints as well as
+  memories — so increment 4 carries a **backend change**, and its "low risk /
+  composition only" rating is withdrawn.
+  Note the same trap one surface earlier: feeding the *checkpoint* tab's project
+  filter from this endpoint would hide a checkpoint-only project in its own filter.
+  Increment 1's plan derives its options from the loaded runs instead.
+- **m1 — the tree truncates.** The list route clamps `limit` to 200
+  (`backend/app/api/routes/documents.py:279`) against a corpus of ~465 parseable
+  files. "Client-side grouping over the ≤200-row page, which is fine at this corpus
+  size" was self-refuting: one page holds under half the corpus and the tree silently
+  drops the rest — the invariant-14 shape this spec polices elsewhere. Either
+  paginate-and-stitch in the hook or raise the clamp; do not ship the silent version.
 
 ## 3. Progress tracking: checkpoints for live, a document for durable
 
@@ -290,57 +317,77 @@ cannot yet hold.**
    them, and the only consumers are regeneration scripts that operate on the
    raw text anyway.
 
-## 5. Round-trip fidelity
+## 5. Round-trip fidelity — AMENDED 2026-08-31
 
-**Decision: raw-content storage and an optimistic-concurrency precondition
-are required *now*; version history is deferred. Neither required item needs
-a schema change; the clean `content` column rides the next baseline regen
-that happens for other reasons.**
+**Amendment: the `properties["$content"]` bridge is CUT. `documents.content TEXT`
+is taken now, before increment 5 imports any corpus. `expected_hash` becomes a SQL
+compare-and-set.** The original decision deferred the column to avoid a baseline
+regeneration; the review (M3, M6, m3) showed the bridge pays more than it saves,
+and the greenfield ruling of the same day removed the cost it was avoiding.
 
-Why round-trip is required rather than nice-to-have: with git out of the loop,
-`document_get` → edit → `document_put` becomes the agents' *only* edit cycle,
-and today that cycle launders parse loss into the artifact. `document_get`
-serves block text with markdown syntax already stripped (a heading's `#`
-markers are gone by design — `document_parsers.py` module docstring: "the
-inline content with the `#` marker already stripped"), tables flattened,
-`hr`/`html_block` dropped, and heading levels unreachable (`BlockRow` at
-`document_door.py:601` carries no `properties`). The first round trip degrades
-the document; every subsequent one compounds it. `blocks.char_span` indexes
-into a source that is never stored (`documents` has `content_hash` only,
-`0001_baseline.py:1282`), so even citation anchors point into text nobody can
-fetch. A store that cannot hand back what was put in is a read-index, not a
-filesystem replacement — and the filesystem replacement is the assignment.
+### 5.1 Why the bridge was wrong
 
-- **Raw content now, without a regen**: `put_document` writes the source under
-  a reserved key in `documents.properties` (e.g. `properties["$content"]`),
-  merged server-side with whatever `properties` the caller passed (the upsert
-  already overwrites properties wholesale — `repositories/documents.py:81-88`
-  — so the merge lives in the door, one place). A new `include_content` flag
-  on `GET /documents/{id}` / `document_get` returns it verbatim. Size is safe:
-  `MAX_CONTENT_CHARS` is 1,000,000 (`document_door.py:60`) and a 1 MB text
-  value TOASTs fine in jsonb. This is explicitly a **bridge**, labelled as
-  such in the door's docstring: the clean shape is a `documents.content TEXT`
-  column, which is a baseline-regen item and therefore rides the *next regen
-  another epic already pays for* (schema changes serialise through one owner
-  per epic; triggering a drop/recreate + three-pass restore of production for
-  one column is the cost axis this proposal exists to avoid).
-- **Optimistic concurrency now**: an optional `expected_hash` on
-  `put_document` (both doors): if supplied and the stored `content_hash`
-  differs, refuse — 409 on REST (the conventions doc's conflict shape), a
-  structured error on MCP. No schema change; `content_hash` exists. Forced by
-  the same concurrency fact as §3: parallel lanes over a LWW upsert
-  (`repositories/documents.py:81`) silently drop writes today. Get-then-put
-  with `expected_hash` turns the silent loss into a retryable conflict.
-- **Version history deferred, and what the owner loses by deferring**: no
-  rollback after a bad agent overwrite, and no content diff between filings —
-  `document_filed` events record *that* and *when* a document changed, never
-  what it said before. The bound on the loss: the nightly `darkmem-backup`
-  dump caps worst-case content loss at one day, and `expected_hash` removes
-  the concurrent-clobber route, leaving only "an agent deliberately put the
-  wrong content" — which versioning would mitigate but agents' own session
-  context usually recovers. If demand materialises, a `document_revisions`
-  table is a baseline-regen item and should be decided together with the
-  `content` column so the two ride one regen.
+The bridge existed for exactly one reason: a `content` column meant a baseline
+regeneration. Four findings, all confirmed, retire it:
+
+- **M3 — it dodges a regen the spec itself schedules.** Deferring to "the next regen
+  another epic pays for" is not deferral if this spec's own later increments need one.
+  Building a bridge and then unbuilding it is two pieces of work to avoid one.
+- **M6 — the reserved key is forgeable.** `properties` is caller-supplied, so a
+  caller can write `$content` itself. Server-side merge in the door is a rule about
+  a namespace the wire format does not own.
+- **m3 — old rows never acquire it.** The `UNCHANGED` gate writes no properties, so
+  a byte-identical re-push never backfills.
+- **Unstated in the review, and decisive on its own:** a 1 MB TOASTed jsonb value
+  sits on `documents`, which `_LIST_SQL` and every `documents.*` read touch. A
+  dedicated column is the same storage with none of the read amplification.
+
+**The greenfield ruling is what makes this cheap.** `CLAUDE.md`'s "Greenfield until
+the freeze" says data is disposable and no migration is owed. Prod holds **0
+documents**. Regenerating the baseline now costs a drop, a recreate, a re-seed of
+`admin_password_hash` and the eight `llm_purpose_configs` rows, and a schema-guard
+re-hash — with nothing to preserve. **It will never be cheaper than it is before
+increment 5 imports the corpus**, which is the argument for doing it now rather than
+deferring it again.
+
+### 5.2 The shape
+
+- `documents.content TEXT NULL` — the source of record, written by `put_document`,
+  returned by `GET /documents/{id}` and `document_get` behind an `include_content`
+  flag (default off, so no existing reader pays for it).
+- `blocks.char_span` becomes meaningful for the first time: it has always indexed
+  into a source the schema did not keep.
+- `documents.content_hash` keeps its change-gate role, unchanged.
+
+### 5.3 `expected_hash` is a compare-and-set, not a check
+
+**M1, confirmed.** Reading `content_hash` and then writing if it matches is
+check-then-act: two lanes both read the same hash, both proceed, and the second
+still clobbers the first — which is the exact race the precondition exists to close.
+The predicate must ride the write:
+
+```sql
+INSERT INTO documents (...) VALUES (...)
+ON CONFLICT (project, uri) WHERE uri IS NOT NULL DO UPDATE SET ...
+  WHERE documents.content_hash = CAST(:expected_hash AS text)
+RETURNING id
+```
+
+A zero-row result is the conflict: 409 on REST (the conventions doc's conflict
+shape), a structured refusal on MCP. `expected_hash` stays optional — omitting it
+is the current last-writer-wins behaviour, which is correct for a first filing and
+for a caller that genuinely owns the document.
+
+### 5.4 Version history — still deferred, loss restated
+
+Deferred, and now decided *with* the column rather than after it, so the two do not
+each demand a regeneration. What is lost: no rollback after a bad overwrite, and no
+content diff between filings — `document_filed` records that and when a document
+changed, never what it said before. The bound: the nightly dump caps worst-case loss
+at one day, and §5.3 removes the concurrent-clobber route, leaving only a deliberate
+bad write, which an agent's own session context usually recovers. If demand
+materialises, `document_revisions` is a further regeneration — cheap while greenfield,
+and cheapest taken alongside any other schema change.
 
 ## 6. Sequencing
 
@@ -349,13 +396,13 @@ filesystem replacement — and the filesystem replacement is the assignment.
 | 0 | **Reachability**: repoint `/root/.claude.json` mcpServers.darkmem from the v0.2.0 box (`192.168.0.195`) to local v1.4.0, mint an API key, add the bearer header | none (config only) | hours | none — but *everything below is moot without it*; the measured config reaches a server with zero document routes |
 | 1 | **Watchable progress**: Checkpoints tab project filter + poll interval; agent convention "checkpoint per step" (doc, not code) | no schema change | 1-2 days | low — UI + a query param on an existing read |
 | 2 | **Parser fixes**: `table`/`table_row` block types (taxonomy edit), table parsing with row children, frontmatter capture, oversized-block warning in `PutResult`/responses/event payload; regenerate SDKs | no schema change | 2-4 days | medium — parser changes re-shape trees for *re-filed* docs only (existing rows untouched until re-put); the additive response field walks through the SDK generator |
-| 3 | **Round-trip**: `$content` bridge + `include_content` + `expected_hash` 409 | no schema change | 2-3 days | low-medium — door-level; upsert semantics gain a refusal path that needs both-door tests |
+| 3 | **Round-trip**: `documents.content` column (baseline regen) + `include_content` + `expected_hash` compare-and-set 409 | **baseline regen** | 2-3 days | low while prod holds 0 documents; **must land before increment 5** |
 | 4 | **Workspace UI**: `projects` route family, Artifacts + Progress tabs, shared document components, `/documents` project pin | no schema change | 4-6 days | low — composition over shipped routes and darkraise-ui primitives |
 | 5 | **Corpus import + conventions doc**: one-shot script filing `docs/` into project `darkmem` (uri = repo path), spot-checking block counts and oversized warnings; the agent-facing convention doc (project naming, uri scheme, checkpoint discipline, ledger shape: headings-and-prose, never mega-tables) | no schema change | 1-2 days | low — import is re-runnable via the `(project, uri)` upsert |
-| 6 | **Backup off-host**: `backup_ship` JobRegistry job; destination config row + settings panel; encryption before egress; post-upload read-back verification; per-destination retention | no schema change | 4-6 days | low — `scripts/backup.sh` and `scripts/restore.sh` already carry the hard parts |
-| 7 | **Backup worker**: `READ_ONLY` posture enforced at the door layer + reported on `/auth/security-posture`; scheduled restore-from-latest; snapshot inventory UI | no schema change | 3-5 days | low-medium — the posture must hold at the API, not in the UI |
-| 8 | **Personal workspace**: stable block identity (diff-and-update), granular block verbs, per-block re-embed, the editing UI | **baseline regen** | weeks | highest — inverts doc 16 §7 and rewrites the ingest path |
-| D1 | *Deferred*: `documents.content` column (+ optional `document_revisions`) | **baseline regen** — rides the next regen another epic pays for | small once riding | regen cost is the risk; never trigger it for this alone |
+| 6 | **Backup off-host**: `backup_ship` job running `pg_dump` over the stack network (+ `postgresql-client` in the image, a dump volume, distinct prefixes/retention from the systemd path); destination config row + settings panel; encryption; post-upload verification | no schema change | 5-7 days | low-medium — the process boundary (M4) is designed out, not worked around |
+| 7 | **Backup worker**: read-only enforced by a `SELECT`-only **Postgres role**; separate receiver process; restore loop outside the app swapping databases; `DARKMEM_READ_ONLY` demoted to job-disarm + write-on-read skip | no schema change | 5-8 days | medium — enforcement layer moved after B1; plannable against §9.5 |
+| 8 | **Personal workspace**: block verbs + block-first ingest. **Gated on two owner decisions** (nested-pages shape, editor ADR) and not plannable until both land | none for the verbs | **no estimate** — withdrawn as unfounded over an unmade technology decision | highest — inverts doc 16's span-anchor doctrine, so doc 16 §5 is affected as well as §7 |
+| ~~D1~~ | **Resolved into increment 3** — the column is taken now (§5). `document_revisions` stays deferred and would ride any later regeneration | — | — | — |
 | D2 | *Deferred*: embed-time chunking via payload spans (doc 16 §3) | no baseline regen, but a live-partition reconciliation (PK change on runtime-created `block_embeddings__*` tables) + `search_blocks` dedup | 3-5 days | medium — touches invariant-2 territory; wait for measured need after Inc 2 |
 | D3 | *Deferred, owner decision*: MCP `document_list`. The 2026-08-23 ruling keeps `documents.reads` REST-only on the reasoning that "the agent's list-shaped read of this corpus is the ranked `document_search`" (`docs/two-door-parity.md:55`). That reasoning predates the artifact-store requirement, where deterministic enumeration ("what task files exist?") is load-bearing and semantic search is the wrong verb. Interim: the convention doc has agents maintain an index document per project. If that chafes, revisit the ruling — a ruling amendment, not a quiet tool addition | no schema change | small | ruling change requires the owner |
 
@@ -405,68 +452,86 @@ requirement — using only shipped storage and doors.
   document-answer purpose applies a fortiori here), and invariant 15 keeps
   new Tier-C jobs out of this lane's hot path anyway.
 
-## 8. Personal notes as a Notion-style workspace
+## 8. Personal notes as a Notion-style workspace — REDESIGNED 2026-08-31
 
-**Decision: the personal surface becomes a block editor — in-browser editing,
-nested pages, drag-to-reorder, slash commands, save-as-you-type. This is the
-largest item in the plan and the only one that reverses an existing design
-decision. Owner ruling, 2026-08-31.**
+**The first draft claimed a baseline regeneration while naming no schema change,
+left "nested pages" undesigned, and did not reconcile its block verbs with §5.
+Review finding B2, upheld. This section replaces it.** The feature is not cut; its
+design is.
 
-**It amends doc 16 §7**, which deliberately declines to commit an editor, canvas
-or CRDT. Recording that as a ruling rather than letting it arrive as a quiet
-feature is the point of this section.
+### 8.1 Block identity needs no schema change
 
-### 8.1 The blocker is block identity, not the editor
+B2's sharpest point is that the regen claim had no referent, and it is right —
+because the identity problem was misdiagnosed. `blocks.id` is already a stable uuid
+primary key. Nothing about the *schema* prevents a durable block; what re-mints ids
+is `put_document`'s strip-and-rewrite, which is a **code** path
+(`document_ingest.py:246` then a plain INSERT).
 
-Filing a document strips every block row and inserts a fresh set, minting a new
-`id` for each (`strip_blocks` then a plain INSERT —
-`backend/app/services/document_ingest.py:246`,
-`backend/app/repositories/documents.py`). Block N in the new tree is not the same
-object as block N in the old one even when its text never changed; the door's own
-contract states this as the cost model ("the cost of editing one paragraph in a
-large document is the same as filing it from scratch").
+An editor does not need the server to infer identity, because **the client already
+holds it**: it fetched the blocks, so it knows their ids. Granular verbs take real
+ids and mutate the addressed row:
 
-Notion-style editing needs the exact inverse: a block is a durable object that is
-mutated, reordered, linked to and cited. So this feature **forces** three changes
-the rest of this spec is built to avoid:
+| Verb | Shape |
+|---|---|
+| `block_update` | `(block_id, text, properties?)` — text and properties only |
+| `block_insert` | `(document_id, parent_id?, after_block_id?, type, text)` |
+| `block_move` | `(block_id, new_parent_id?, after_block_id?)` |
+| `block_delete` | `(block_id)` — subtree cascades via `parent_id` |
 
-1. **Stable block identity** — match incoming blocks against existing rows and
-   update in place, instead of dropping and re-minting the tree.
-2. **Granular block verbs** — create / update / move / delete *a block*. The door
-   today is whole-document `put` only.
-3. **Per-block re-embed** — embed what changed, not all N rows.
+No diffing, no matching heuristic, no schema change. `order_index` is `INTEGER`, so
+a move renumbers its sibling run — O(siblings), not O(document), and a fractional
+index is an optimisation to reach for only if a measurement demands it.
 
-### 8.2 What it repays
+### 8.2 Two ingest directions, which is what §5 collides with
 
-Those same three changes remove the cost model every other section works around.
-Editing one paragraph stops costing a full re-file, which is the measured reason
-§3 rules a ledger out as the live progress surface. This is not purely new cost:
-it repairs the door's sharpest limitation and every surface benefits, including
-the agent path, which keeps its simpler whole-document `put` on top of the new
-diffing ingest.
+B2 is right that block verbs leave `content_hash`, `content` and `char_span`
+undefined, and the resolution is to stop pretending one direction serves both
+callers:
 
-Ordering note: §8 supersedes part of §3's reasoning once it lands. §3's split
-(checkpoints live, ledger durable) is still right — concurrency and the audit
-argument stand on their own — but its *cost* argument weakens, and that should
-be re-read rather than carried forward on trust.
+- **Content-first (agents, unchanged).** `document_put` takes text, parses it to
+  blocks, stores `content` (§5) and `content_hash`. `char_span` indexes into
+  `content` and is exact.
+- **Block-first (the editor, new).** The block verbs are authoritative. `content` is
+  **regenerated from the block tree** after each mutation and `content_hash`
+  recomputed from it; `char_span` is **dropped to NULL** on any block the editor
+  touches, because a span into a regenerated serialisation is a coordinate into a
+  document that no longer exists.
 
-### 8.3 Scope boundary
+Which direction a document uses is recorded on the row and is **not** a per-call
+choice: a `document_put` against a block-first document is a refusal, not a silent
+overwrite of someone's editing session. This is the reconciliation §5 was missing.
 
-Single-user. Last-write-wins per block under §5's `expected_hash` precondition is
-sufficient; **no CRDT, no multiplayer, no canvas**. Staying off CRDT is what keeps
-this weeks rather than months, and nothing in the requirement asks for concurrent
-human editors.
+**Consequence for doc 16, stated because the first draft missed it.** Doc 16's
+provenance doctrine treats block ids as churning and the span as the durable anchor.
+Block-first documents invert exactly that — the id is durable and the span is gone —
+so doc 16 §5's lift must either refuse block-first documents as citation sources or
+carry a second anchor kind. **§7 is not the only amendment; §5 of that doc is
+affected too.** Left open deliberately: it is a doc-16 owner decision, and pretending
+otherwise is what produced this section's first draft.
 
-### 8.4 Cost
+### 8.3 What is genuinely undesigned, and stays that way until decided
 
-**Baseline regeneration.** Under the greenfield ruling that is now an acceptable
-price rather than a blocking one, but it still means dropping and recreating every
-deployed database, re-seeding `admin_password_hash` and the eight
-`llm_purpose_configs` rows, and re-hashing the schema guard. It should ride one
-regen together with D1's `documents.content` column — deciding them separately
-would pay the same cost twice.
+- **Nested pages.** A page inside a page is either a `documents.parent_id`
+  (a regeneration, and a second tree beside `blocks.parent_id`) or a block of a new
+  `page_ref` type pointing at a document (no regeneration, taxonomy-first). **Not
+  decided here.** It is the only part of §8 that might need schema, and it needs its
+  own ADR.
+- **The editor technology.** M5 is upheld: `darkraise-ui` ships no block editor, so
+  this is a build-or-adopt decision (TipTap/ProseMirror, Lexical, or hand-rolled
+  contenteditable) with a real bundle-size and control trade-off. **No estimate is
+  given in this spec, and the previous "weeks" is withdrawn as unfounded** — an
+  estimate over an unmade technology decision is a guess wearing a number.
 
----
+### 8.4 Scope boundary, unchanged
+
+Single-user. Last-write-wins per block under §5.3's compare-and-set. No CRDT, no
+multiplayer, no canvas.
+
+### 8.5 Status
+
+**Not plannable.** Two decisions gate it: the nested-pages shape and the editor ADR.
+Neither is a research task; both are owner calls. §8.1's verbs and §8.2's two
+directions *are* plannable once those land, and neither needs a regeneration.
 
 ## 9. Backup, off-host and restorable
 
@@ -498,49 +563,89 @@ restorable, one global retention for all destinations, and no UI visibility.
 | S3-compatible | S3 API | One client covers AWS, R2, B2, MinIO — bucket and endpoint are config, not code |
 | Backup worker | https | A second darkmem that receives snapshots and serves them read-only (§9.4) |
 
-### 9.3 Where the config lives, and why not in the job schema
+### 9.3 Where the config lives, and how the job reaches pg_dump — AMENDED
 
 Scheduling moves into `JobRegistry` as a `backup_ship` job, which buys the cron
-expression, the per-job `asyncio.Lock`, run history and the Jobs-page surface at
-no cost. **The systemd timer stays as the floor**: if the app is down it is the
-only thing still taking backups, and a backup system that depends on the service
-it protects is not one.
+expression, the per-job `asyncio.Lock`, run history and the Jobs-page surface.
+
+**The job does NOT invoke `scripts/backup.sh`.** Review finding M4, confirmed: the
+app container has no `pg_dump`, no compose binary, and no mount reaching either the
+host's docker socket or a dump directory — its only mounts are the repo-data volume
+and `/host-repos`. A job shelling out to the host script crosses a process boundary
+that does not exist.
+
+The fix is to stop crossing it. Prod networking is bridge, so the API already reaches
+Postgres across the stack network: **add `postgresql-client` to the image and have
+the job run `pg_dump -h postgres` over that connection**, writing to a
+dump volume. `scripts/backup.sh` stays exactly as it is for the host-side systemd
+path — two independent producers, which is the point of §9.3's floor argument.
+
+Two riders this creates and the first draft did not see:
+- **m4 — the per-job lock does not serialize against the systemd timer.** They are
+  different processes; the `asyncio.Lock` binds only in-process. Give the two
+  producers **distinct filename prefixes and distinct retention sets** so neither
+  prunes the other's artefacts, rather than pretending they coordinate.
+- The image grows by the client package. Stated, not hidden.
 
 **Destination config cannot live in the job's `config_schema`.** `FieldDescriptor`
-types `default` as `int` (`backend/app/services/job_registry.py:89-98`), so a job's
-generic config surface carries a retention count or an interval but not a bucket
-name, an endpoint or a credential. Destinations therefore live in a dedicated
-`config` row with their own settings panel — the same shape the LLM providers use,
-and the same place per-repo git tokens already live
-(`git_token_<repo_id>`, `backend/app/services/repo_manager.py:330`). Neither path
-needs a schema change.
+types `default` as `int` (`backend/app/services/job_registry.py:89-98`), so the
+generic job-config surface carries a retention count or an interval but not a bucket
+name, an endpoint or a credential. Destinations live in a dedicated `config` row with
+their own settings panel — the shape the LLM providers use, and where per-repo git
+tokens already live (`repo_manager.py:330`). No schema change either way.
 
 ### 9.4 Three rules the design turns on
 
-1. **Encrypt before egress.** A snapshot on someone else's disk is a credential
-   dump, an append-only events journal and every personal note in the system.
-   Encryption is not optional for anything but the local path.
-2. **Uploaded is not restorable.** Every shipped snapshot is read back and
-   checksummed against what was sent, and the outcome is journalled. An unverified
-   backup is a belief, not a backup — the same reasoning that put the completion
-   marker in `backup.sh`, applied one hop further out.
-3. **Retention is per destination.** Fourteen nightlies locally and a longer
-   weekly chain off-host are different policies; one global `BACKUP_KEEP` cannot
-   express that.
+1. **Encrypt before egress.** A snapshot on someone else's disk is a credential dump,
+   an append-only events journal and every personal note in the system. Not optional
+   for anything but the local path.
+2. **Uploaded is not restorable.** Every shipped snapshot is read back and checksummed
+   against what was sent, and the outcome journalled — the completion-marker
+   reasoning in `backup.sh`, applied one hop further out.
+3. **Retention is per destination.** Fourteen nightlies locally and a longer weekly
+   chain off-host are different policies; one global `BACKUP_KEEP` cannot express it.
 
-### 9.5 The worker needs no new UI
+### 9.5 The backup worker — REDESIGNED 2026-08-31
 
-The worker runs **the same darkmem image** in a read-only posture against a
-restored snapshot. darkmem already serves its own SPA from `:8000`, so the viewer
-is a flag and a restore loop rather than a second frontend to build and keep in
-step.
+**The first draft put a `READ_ONLY` posture at the door layer. It cannot hold, and
+the finding (B1) is upheld in full.** Confirmed against the code: `entrypoint.sh`
+writes at every boot (alembic, then the schema-guard stamp); `main.py` calls
+`job_registry.start_all()` unconditionally, arming all 23 jobs — `buffer_flush`
+would make live LLM calls against credentials restored from the snapshot, and
+`backup_ship` would ship snapshots of snapshots; and reads write, including
+`fact_access_stats`' UPSERT on every fact read. A door-layer guard sits above all
+three. **A posture that silently fails to hold is worse than none**, so the
+enforcement moves to a layer that cannot be bypassed.
 
-It needs one new thing: a `READ_ONLY` posture that **refuses writes at the door
-layer**, not in the UI, so the guarantee holds for anything reaching the API, and
-that reports itself on `GET /auth/security-posture` the way `cookie_secure_clamped`
-already does. The worker restores the newest verified snapshot on its own
-schedule, which makes opening it answer both questions at once: what did the data
-look like, and does the restore actually work.
+**Enforcement is the Postgres role, not the application.**
+
+- The worker's app connects as a role holding `SELECT` and nothing else. A write
+  that escapes any application guard fails at the database, which is the only
+  enforcement point below every code path.
+- Boot writes are separated from serving: the restore loop (below) migrates and
+  stamps the snapshot **as a privileged role while the app is stopped**, so
+  `entrypoint.sh`'s writes happen outside the serving window. The app then starts
+  with migrations skipped.
+- `DARKMEM_READ_ONLY` survives, demoted to what it can honestly do: **do not arm the
+  job registry**, and **skip the known write-on-read paths** (`fact_access_stats`,
+  access bumps) so they degrade to a no-op instead of erroring under the read-only
+  role. It is ergonomics over an enforced floor, not the guarantee itself. It still
+  reports on `GET /auth/security-posture`, the way `cookie_secure_clamped` does.
+
+**The receiver is a separate process, not the darkmem app.** B1 is right that an
+https endpoint receiving snapshots is itself a write door; putting it inside a
+read-only instance is a contradiction. It is a small independent service writing to
+the dump directory, sharing nothing with the app but the filesystem.
+
+**The restore loop runs outside the app, and swaps databases rather than mutating
+one.** `restore.sh` replays into a side database and RENAMEs, which terminates
+connections — doing that under a live app is the collision B1 names. The worker
+instead restores into a new database, stops the app, points it at the restored one,
+and starts it. The schema guard is satisfied because the privileged migrate-and-stamp
+step ran first.
+
+**What the worker still delivers:** the same image, the same SPA, no second frontend
+— which was the good part of the original idea and survives the redesign intact.
 
 ### 9.6 Restore stays break-glass
 
@@ -555,10 +660,22 @@ remote snapshot is not a manual download first.
 
 Data stays disposable across *schema* changes; that ruling is unchanged. But once
 personal notes (§8) live only in darkmem, the **content** is not disposable even
-though the schema is. Backup and restore are what keep the greenfield ruling
-survivable: drop and recreate the database freely, then restore the content — which
-is only safe if the restore is known to work, which is exactly what the worker
-proves continuously rather than at the moment you need it.
+though the schema is.
+
+**Amendment 2026-08-31 (M3).** The first draft said backup makes the greenfield rule
+survivable by letting you "drop and recreate the database freely, then restore the
+content". That is unsupported as written: `restore.sh` replays a **full** dump, which
+carries the old schema wholesale, so it restores a database *as it was* — it cannot
+move content across a baseline regeneration. The two operations are unrelated:
+
+- **Backup/restore** answers disaster recovery — same schema, earlier point in time.
+- **Crossing a regeneration** would need a content-level transform-restore that does
+  not exist and is **not scoped by this spec**.
+
+So the honest statement is narrower: backup bounds *loss*, not *schema change*. Under
+the greenfield ruling a regeneration still discards the data, and that is accepted —
+which is exactly why §5 takes the `content` column **now, while there is nothing to
+lose**, rather than after a corpus exists.
 
 ---
 
@@ -574,15 +691,18 @@ proves continuously rather than at the moment you need it.
   their referents (Inc 2, D3).
 - **Taxonomy-first**: `table`/`table_row` land in `BLOCK_TYPES` before the
   parser emits them; no event vocabulary widens.
-- **§8/§9 against the invariants**: §8 changes the ingest path's write shape but
-  adds no retrieval route, no vault writer and no composition edge, so
-  `tests/test_block_retrieval.py`'s three structural scans are untouched; its
-  block-identity change must keep `block_embeddings__<slug>`'s
-  `ON DELETE CASCADE` and the per-fingerprint discipline (invariant 2) intact.
-  §9 adds one `JobRegistry` job under the existing per-job lock (invariant 13
-  unaffected: still one worker), and its `READ_ONLY` posture is a door-layer
-  refusal, which keeps it on the one-service-layer rule (invariant 17) rather
-  than a per-door guard.
+- **§8/§9 against the invariants (revised 2026-08-31)**: §8's block verbs add no
+  retrieval route, no vault writer and no composition edge, so
+  `tests/test_block_retrieval.py`'s three structural scans are untouched; a
+  `block_delete` still cascades `block_embeddings__<slug>` per invariant 2, and
+  block-first documents must not reach doc 16 §5's lift until that doc decides
+  its anchor question (§8.2). §9's job runs under the existing per-job lock, but
+  **that lock does not reach the systemd producer** — they are separate processes,
+  so the two are separated by filename prefix and retention set, not by mutual
+  exclusion (m4). Invariant 13 is unaffected: still one worker. The worker's
+  read-only guarantee is **no longer a door-layer refusal** — B1 showed that cannot
+  hold — so invariant 17 is not the relevant frame; enforcement is a Postgres role
+  beneath every code path, with the app flag demoted to ergonomics.
 - **Doc 16 §7 is amended by §8**, deliberately and on an owner ruling. Doc 16 §3's
   embed-time-chunking prescription remains unimplementable until D2 moves the
   partition PK; §8's per-block re-embed does not change that, because it reduces

@@ -23,6 +23,14 @@
    ```
 2. **Increment 0 is not required for the import itself** (the script is REST + admin login), but the conventions doc's MCP guidance assumes it is done — see `2026-08-31-watchable-progress.md`, "Prerequisite — Increment 0".
 
+
+**Added 2026-08-31 after the spec revision.** Increment 3 (the `documents.content`
+column, spec §5 as revised) must ALSO land before this import runs. The spec cut the
+`properties["$content"]` bridge and took the column instead, explicitly on the
+argument that a baseline regeneration is cheapest while nothing is stored. Importing
+~465 documents first would spend that argument and force a re-import to populate
+`content`. Order is: increment 2 deployed → increment 3 deployed → this plan.
+
 ## Review findings this plan carries
 
 - **M2 — the imported project is invisible to the project index.** `GET /api/v1/projects` derives from `memories` only (`backend/app/api/routes/projects.py:28-49`; docstring: "derived, never a registry"); document filing never registers a project. Unless memory rows already exist under project `darkmem` on the instance, the imported corpus produces a project the workspace's entry-point cards will not show. That is increment 4's backend fix (spec amendment required per the review); this plan **verifies and records** the behaviour rather than working around it.
