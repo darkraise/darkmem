@@ -200,6 +200,16 @@ EVENT_TYPES: list[str] = [
     "research_run",
     API_KEY_CREATED,
     API_KEY_REVOKED,
+    # Increment 6's off-host ship (spec section 9.3-9.4). `object_type='system'`:
+    # a snapshot is the whole box, not one of the ten domain objects. Landed
+    # ahead of their emitter in backup_ship.py, taxonomy-first.
+    #
+    # A snapshot landed on a destination and its read-back checksum matched.
+    "backup_shipped",
+    # Uploaded is not restorable: the read-back disagreed or could not be
+    # taken at all. Its own value rather than a flag on the row above, so the
+    # failure is countable without parsing a payload.
+    "backup_verify_failed",
 ]
 
 OBJECT_TYPES: list[str] = [

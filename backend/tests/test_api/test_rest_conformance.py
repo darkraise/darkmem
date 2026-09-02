@@ -125,6 +125,10 @@ EXPECTED_STATUS = {
     ("GET", "/api/v1/config/repo-allowlist"): 200,
     # T3.28: the auto_research operator surface. A PUT that updates a
     # config row in place, so 200 rather than 201 — nothing is created.
+    ("GET", "/api/v1/config/backup-destinations"): 200,
+    # The PUT echoes the masked destination list rather than creating a
+    # resource, so 200 is right and 201 would be wrong.
+    ("PUT", "/api/v1/config/backup-destinations"): 200,
     ("GET", "/api/v1/config/auto-research"): 200,
     ("PUT", "/api/v1/config/auto-research"): 200,
     ("GET", "/api/v1/config/auto-research/runs"): 200,

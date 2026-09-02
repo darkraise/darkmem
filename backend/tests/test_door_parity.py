@@ -160,6 +160,25 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="config.backup_destinations",
+        status=REST_ONLY,
+        rest=(
+            ("GET", f"{V1}/config/backup-destinations"),
+            ("PUT", f"{V1}/config/backup-destinations"),
+        ),
+        mcp=(),
+        reason=(
+            "Operator configuration of where this instance ships its own "
+            "encrypted snapshots, including ssh and S3 credentials. An agent "
+            "that could read or rewrite the destination list could redirect "
+            "every subsequent backup to a destination it chose, which is "
+            "exfiltration wearing the backup system's own clothes; the secrets "
+            "are masked on read for the same reason. Backups are an operator "
+            "concern with a human at the console, so this is deliberately "
+            "single-door."
+        ),
+    ),
+    Surface(
         name="usage.read",
         status=REST_ONLY,
         rest=(

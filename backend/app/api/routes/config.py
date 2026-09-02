@@ -27,6 +27,14 @@ from app.services.config import (
     cfg_to_schema,
 )
 from app.services import research_rerun
+from app.services.backup_config import (
+    BACKUP_DESTINATIONS_KEY,
+    DestinationConfig,
+    DestinationInvalid,
+    load_destinations as load_backup_destinations,
+    mask_destination as _mask_destination,
+    save_destinations as save_backup_destinations,
+)
 from app.services.analytics import AnalyticsService
 from app.services.research_config import (
     load_budget as load_research_budget,
@@ -765,6 +773,49 @@ async def update_auto_research(
         max_findings_per_run=budget.max_findings_per_run,
         max_content_chars=budget.max_content_chars,
     )
+
+
+class BackupDestinationsResponse(BaseModel):
+    """The destination list as stored, with every secret replaced by the mask.
+
+    The response is built from what `save_destinations` actually persisted
+    rather than from the request body, so a mask the writer resolved against
+    the stored row reads back as a mask instead of echoing the secret it
+    resolved to.
+    """
+
+    destinations: list[DestinationConfig]
+
+
+class BackupDestinationsUpdate(BaseModel):
+    destinations: list[DestinationConfig] = Field(default_factory=list)
+
+
+@router.get("/backup-destinations", response_model=BackupDestinationsResponse)
+async def get_backup_destinations(
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    """Where this instance ships its own encrypted snapshots. A never-configured
+    install reads empty, which is honest rather than an error -- the job simply
+    has nowhere to ship and says so in its run summary."""
+    return BackupDestinationsResponse(
+        destinations=await load_backup_destinations(session, masked=True)
+    )
+
+
+@router.put("/backup-destinations", response_model=BackupDestinationsResponse)
+async def update_backup_destinations(
+    body: BackupDestinationsUpdate,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    await _lock_config_row(session, BACKUP_DESTINATIONS_KEY)
+    try:
+        saved = await save_backup_destinations(session, body.model_dump())
+    except DestinationInvalid as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return BackupDestinationsResponse(destinations=[_mask_destination(d) for d in saved])
 
 
 class ResearchRunSummaryResponse(BaseModel):
