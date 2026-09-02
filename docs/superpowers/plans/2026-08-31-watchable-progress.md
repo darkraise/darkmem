@@ -28,9 +28,21 @@ Task 1 states this limit in the tab's own descriptive copy, so the surface says 
 
 ## Prerequisite — Increment 0: reachability (owner procedure, not a code task)
 
-Everything below is moot while the agent-side MCP config points anywhere other than the current instance. This is configuration on the owner's machine plus one credential mint; it edits nothing in this repository, so it is a procedure, not a task with an implementer.
+> **Owner ruling, 2026-09-02: the agent-side client config is NOT repointed, and step 2 below is withdrawn.** The Claude Code MCP configuration is not to be pointed at this development instance. Where a task needs to exercise an MCP verb, it calls the endpoint **directly with a script** against `http://127.0.0.1:8000/mcp/` — no client-config edit, and nothing about any other instance's configuration is touched. The rest of this section stands: a key still has to exist for a scripted call to authenticate, because the bearer requirement has no bypass.
+>
+> This changes what "reachability" means for the increments below. Nothing in increments 1-8 is blocked by the client config; what they need is that the endpoint answers an authenticated call, which a script establishes just as well.
 
-Current state (verified 2026-08-31): `/root/.claude.json` → `mcpServers.darkmem` does not point at the current instance, so no document tool is reachable from an agent session. The current instance requires `Authorization: Bearer dmk_<key_id>_<secret>` on **every** MCP call (doc 18 §5, activated 2026-08-26; no flag disables it), and the config entry carries no headers.
+**Endpoint shape, measured on the running instance 2026-09-02 — the trailing slash is load-bearing:**
+
+| Request | Answer |
+|---|---|
+| `POST /mcp` (no trailing slash) | `405` |
+| `POST /mcp/` unkeyed | `401` |
+| `POST /mcp/` with an invalid key | `401` |
+
+A caller that drops the slash gets `405 Method Not Allowed` and will read it as a broken endpoint rather than a missing character. Write `/mcp/` in every script. (CLAUDE.md's "mounted at `/mcp`" describes the mount point, not the path a client posts to.)
+
+Current state (verified 2026-09-02): the auth guard is live and behaves as doc 18 §5 describes — unkeyed and mis-keyed calls both answer `401`, so no MCP verb is exercisable until a key exists.
 
 1. **Mint an API key** on the local instance (SPA: Settings → API keys; or REST):
    ```bash
@@ -41,16 +53,16 @@ Current state (verified 2026-08-31): `/root/.claude.json` → `mcpServers.darkme
      -d '{"name": "agent-mcp", "scopes": ["capture", "read"]}'
    ```
    The `token` field of the response (`ApiKeyCreated`, `backend/app/schemas/api_keys.py:38-41`) is the only copy that will ever exist — record it in `.claude/local-credentials.md` (gitignored), never in a tracked file. Do not grant `admin` unless the agent should be able to trigger reindexes (`admin` reaches exactly one tool, `code_reindex`).
-2. **Repoint the client config** — edit `/root/.claude.json` `mcpServers.darkmem` to:
-   ```json
-   {
-     "type": "http",
-     "url": "http://127.0.0.1:8000/mcp",
-     "headers": { "Authorization": "Bearer dmk_<key_id>_<secret>" }
-   }
+2. ~~**Repoint the client config**~~ — **withdrawn by the owner's 2026-09-02 ruling above.** Do not edit `/root/.claude.json`, and do not add, remove or repoint an `mcpServers` entry for this or any other instance. If a future task needs an agent session to reach these tools, that is a decision for the owner to take at that time, not a step an implementer performs.
+3. **Verify with a direct scripted call**, not from an agent session:
+   ```bash
+   KEY=$(sed -n 's/^darkmem_api_key: *//p' .claude/local-credentials.md)
+   curl -s -X POST http://127.0.0.1:8000/mcp/ \
+     -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+     -H 'Accept: application/json, text/event-stream' \
+     -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
    ```
-   For a client on another LAN machine, use this host's address and extend `MCP_ALLOWED_HOSTS` to include it — an unkeyed request gets 401 regardless of Host; a *keyed* request from a non-allowlisted Host gets 421, and the fix is extending the allowlist, never disabling either guard (CLAUDE.md, MCP endpoint).
-3. **Verify** from a fresh agent session: `tools/list` returns the 34-tool catalogue; `memory_stats` answers.
+   Expect the tool catalogue. `401` means the key is wrong or absent; `405` means the trailing slash was dropped. `MCP_ALLOWED_HOSTS` is empty on this instance, which is localhost-only and therefore correct for a `127.0.0.1` caller — a scripted local call never meets the Host guard, so no allowlist change is needed or wanted.
 4. **No migration, by ruling.** Repointing carries nothing across from wherever the config pointed before. Per `CLAUDE.md`'s "Greenfield until the freeze", no data migration is owed and none is in scope here — this procedure moves a client config and mints a credential, nothing else.
 
 ## Global Constraints

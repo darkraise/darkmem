@@ -765,10 +765,10 @@ docker exec darkmem-prod-postgres-1 pg_dump -U darkmem -d darkmem \
 **The runbook's three rows are NOT the full list for this deploy** (cross-plan review M-1, 2026-09-02). `docs/runbook-deployment.md:210-253` predates every row below, and this procedure drops the whole database, not just the schema. Capture these too, in the same step:
 
 ```bash
-# The agent's MCP credential. api_keys is a table (0001_baseline.py:1166),
-# so the drop destroys the row while /root/.claude.json keeps presenting the
-# token -- every MCP call then answers 401 with nothing wrong on the client
-# side. Increment 0 minted this key and no later task re-mints it.
+# The MCP credential. api_keys is a table (0001_baseline.py:1166), so the
+# drop destroys the row while every holder of the token keeps presenting it
+# -- calls then answer 401 with nothing wrong on the caller's side.
+# Increment 0 minted this key and no later task re-mints it.
 docker exec darkmem-prod-postgres-1 pg_dump -U darkmem -d darkmem \
   --data-only --table=api_keys --column-inserts > /tmp/api_keys.sql
 # Operator-set config rows a re-seed does not reproduce: the armed research
@@ -853,10 +853,13 @@ docker exec darkmem-prod-postgres-1 psql -U darkmem -d darkmem -tAc \
 # Reachability, not just liveness (review M-1): the key the agent presents
 # must still resolve. Anything other than 200 means the api_keys restore did
 # not happen and every agent MCP call is answering 401.
-curl -s -o /dev/null -w '%{http_code}\n' -X POST localhost:8000/mcp \
-  -H "Authorization: Bearer $(grep -o 'dmk_[A-Za-z0-9_]*' /root/.claude.json | head -1)" \
+curl -s -o /dev/null -w '%{http_code}\n' -X POST localhost:8000/mcp/ \
+  -H "Authorization: Bearer $(sed -n 's/^darkmem_api_key: *//p' .claude/local-credentials.md)" \
   -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+# Note the trailing slash on /mcp/ -- without it the answer is 405, which
+# reads like a broken endpoint rather than a dropped character.
 docker exec darkmem-prod-postgres-1 psql -U darkmem -d darkmem -tAc \
   "select key from config where key in
      ('auto_research','feature_flags','verification_ladder');"
