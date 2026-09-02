@@ -8,6 +8,22 @@
 > dcc-superpower-companions:dispatching-tiered-implementers. Under
 > superpowers:executing-plans these lines are inert; ignore them.
 
+> **Status: LANDED 2026-09-02.** All six tasks executed and deployed on this
+> host (`a9718089` taxonomy, `ac1f7a46` parsers, `79549b77` warning,
+> `c8fedc02` changelog). Gate green: 6,484 backend (up 16), 1,324 frontend,
+> both SDK suites, 1,055 benchlib, F1 bench; `make generate` zero-diff.
+> Three notes for anyone reading this plan as a record rather than a script:
+> **(1)** Task 3's frontmatter split is wider than its sketch — `parse_markdown`
+> tokenises the body, so *every* `_span` call inside it takes `body`, not just
+> the ones shown, and `_emit_table`'s parameter was renamed to match. Miss one
+> and spans are silently offset by the frontmatter length with no test
+> failing. **(2)** Review finding m-3 confirmed on contact and fixed:
+> `normalize_block_type`'s docstring said "one of the five". **(3)** Review
+> finding m-8 confirmed: `PARSERS` is at `block_pipeline.py:86-90`, not
+> `:93-97`. One test was added beyond the plan — the batch path builds its own
+> jobs, so a frontmatter merge on the single-source path alone would be a
+> silent asymmetry between two paths that must agree.
+
 **Goal:** Close the oversized-block silent degradation the spec measured: mega-tables parse to single 200-300 KB paragraph blocks that the embedder truncates while the filing reports success. Structurally fix the dominant cause (enable table parsing, splitting rows into blocks of ordinary size), capture YAML frontmatter instead of misparsing it into a heading, and make the residual loud (an oversized-block warning on every put surface). No schema change: `blocks.type` is plain `TEXT` with no CHECK (`backend/migrations/versions/0001_baseline.py:1313`); the closure lives in `normalize_block_type`.
 
 **Architecture:** Taxonomy-first — `table`/`table_row` land in `BLOCK_TYPES` before the parser emits them (Task 1 before Task 2, and the gate between them is the ordering, not a comment). The parser emits one `table` block (header + alignments in `properties`) whose data rows are child `table_row` blocks; frontmatter is split off before tokenising and filed into `documents.properties.frontmatter` by the pipeline (the parser contract returns only `Sequence[BlockDraft]` and cannot write document properties); the oversized count is measured in the one writer (`document_ingest`), ridden by the `document_filed` event, and surfaced through `PutResult` → both doors.
@@ -65,7 +81,7 @@ CHANGELOG.md                                  # Task 6
 **Evaluation:** files 1 - spec 0 - coupling 2 - risk 0 = 3
 **Approach:** inline - skip 3: the spec (§4.1) chose the two names and the taxonomy-first landing order.
 
-- [ ] **Step 1: Update the count pin so it fails**
+- [x] **Step 1: Update the count pin so it fails**
 
 In `backend/tests/test_taxonomy.py:62-64`, the comment currently reads "Widening it is TH1.03's to justify from a parser that genuinely emits a sixth shape, not a convenience." That justification has now been made — the mega-table measurement (spec §4.1: the three failing files are all mega-tables; largest single blocks 235,716 / 298,677 / 182,746 chars). Replace with:
 
@@ -80,7 +96,7 @@ In `backend/tests/test_taxonomy.py:62-64`, the comment currently reads "Widening
 
 Run `cd backend && .venv/bin/python -m pytest tests/test_taxonomy.py -q` — expected: FAIL (`5 == 7`).
 
-- [ ] **Step 2: Widen the vocabulary**
+- [x] **Step 2: Widen the vocabulary**
 
 In `backend/app/taxonomy.py:383-389`, append the two members:
 
@@ -98,11 +114,11 @@ BLOCK_TYPES: list[str] = [
 
 Amend the block-comment above it (the one calling the set "doc 16 §9's minimal five") to say the set was widened by the 2026-08-31 spec §4.1 for table parsing. **No `LEGACY_BLOCK_TYPE_MAP` additions**: the map rewrites raw token names a parser might leak (`h1`, `fence`), and no parser ever emits `table_open`/`tr` as a block type — the parser emits the literal members, per the module contract.
 
-- [ ] **Step 3: Amend doc 16 §9's stance line**
+- [x] **Step 3: Amend doc 16 §9's stance line**
 
 `docs/design/16-documents-and-pkm.md:254` states the minimal closed set as "(paragraph / heading / list / code / quote)". Append to that parenthetical: `/ table / table_row — widened 2026-08-31, spec §4.1, when the markdown parser began emitting tables structurally`. One line; the doc stays the authority a reader consults, and a stale "here is the full list" sentence is exactly invariant 23's concern.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 ```bash
 cd backend && .venv/bin/python -m pytest tests/test_taxonomy.py tests/test_document_parsers.py -q
@@ -126,7 +142,7 @@ Both green (the parsers' closed-vocabulary tests assert `<= set(BLOCK_TYPES)` �
 **Evaluation:** files 1 - spec 1 - coupling 1 - risk 1 = 4
 **Approach:** inline - skip 3: the spec (§4.1) chose the shape — one `table` block carrying header cells + alignment in `properties`, data rows as child `table_row` blocks.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `backend/tests/test_document_parsers.py` (alongside the markdown group at :126-227):
 
@@ -190,7 +206,7 @@ def test_markdown_a_mega_table_dissolves_into_ordinary_blocks():
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_document_parsers.py -q` — expected: FAIL (tables currently parse as paragraphs: the whole pipe-table is one blank-line-delimited paragraph, which is precisely the measured 235 KB-block defect).
 
-- [ ] **Step 2: Enable the rule and emit the blocks**
+- [x] **Step 2: Enable the rule and emit the blocks**
 
 In `parse_markdown` (`document_parsers.py:104`), change the parse to:
 
@@ -267,7 +283,7 @@ def _emit_table(tokens, i, drafts, parent_index, offsets, text) -> int:
 
 Update the fall-through comment at `document_parsers.py:211-213` — it currently names tables among the skipped shapes ("hr, html_block, and anything the commonmark preset does not enable (tables)"); tables are no longer skipped, `hr`/`html_block` still are.
 
-- [ ] **Step 3: Run the new tests, then the whole parser file**
+- [x] **Step 3: Run the new tests, then the whole parser file**
 
 ```bash
 cd backend && .venv/bin/python -m pytest tests/test_document_parsers.py -q
@@ -275,7 +291,7 @@ cd backend && .venv/bin/python -m pytest tests/test_document_parsers.py -q
 
 All green, existing tests included — in particular `test_markdown_char_spans_index_into_the_source` (:164) and the closed-vocabulary asserts must still pass.
 
-- [ ] **Step 4: One end-to-end assert through the writer**
+- [x] **Step 4: One end-to-end assert through the writer**
 
 Extend `test_each_parser_files_end_to_end_through_file_document` (`test_document_parsers.py:537`) or add a sibling: file `TABLE_MD` through `file_document` and assert the stored rows carry `type='table_row'` with `parent_id` pointing at the `table` row's id — proving `_resolve_tree`'s backward-index rule holds for the new shape with no writer change.
 
@@ -297,7 +313,7 @@ Extend `test_each_parser_files_end_to_end_through_file_document` (`test_document
 **Evaluation:** files 2 - spec 1 - coupling 0 - risk 1 = 4
 **Approach:** inline - skip 2: the repository answers the placement — parsers return `Sequence[BlockDraft]` and cannot write document properties (`PARSERS` shape, `block_pipeline.py:93-97`), so the properties merge lives in the pipeline that already routes `source_type`, exactly where `resolve_source_type` already sits.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `test_document_parsers.py`:
 
@@ -352,7 +368,7 @@ async def test_markdown_frontmatter_lands_in_document_properties(session):
 
 Run both files — expected: FAIL.
 
-- [ ] **Step 2: `split_frontmatter` in `document_parsers.py`**
+- [x] **Step 2: `split_frontmatter` in `document_parsers.py`**
 
 ```python
 _FRONTMATTER_RE = re.compile(r"\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*\r?(?:\n|\Z)", re.DOTALL)
@@ -375,7 +391,7 @@ def split_frontmatter(text: str) -> tuple[str | None, int]:
 
 Export it in `__all__`.
 
-- [ ] **Step 3: `parse_markdown` skips the region without shifting spans**
+- [x] **Step 3: `parse_markdown` skips the region without shifting spans**
 
 At the top of `parse_markdown` (after the type/empty guards, `document_parsers.py:100-102`):
 
@@ -402,7 +418,7 @@ Parse `body` instead of `text` (tokens, `_line_offsets(body)`, `_span(..., body)
 
 The shift is what keeps the module contract ("char spans point at the source") true with the fence still counted in the source.
 
-- [ ] **Step 4: The pipeline merge in `block_pipeline.py`**
+- [x] **Step 4: The pipeline merge in `block_pipeline.py`**
 
 ```python
 from app.services.document_parsers import (
@@ -432,7 +448,7 @@ def _with_frontmatter(
 
 Call it in `ingest_document` (before the `file_document` call: `properties = _with_frontmatter(resolved_type, content, properties)`) **and** in `ingest_documents`' job-construction loop (`properties=_with_frontmatter(resolved_type, source.content, source.properties)`), so the single-source and batch paths cannot drift.
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 ```bash
 cd backend && .venv/bin/python -m pytest tests/test_document_parsers.py tests/test_block_pipeline.py -q
@@ -456,7 +472,7 @@ All green — including `test_block_pipeline.py`'s structural import-closure sca
 **Evaluation:** files 1 - spec 0 - coupling 2 - risk 0 = 3
 **Approach:** inline - skip 2: `title_applied` already established the pattern — a per-filing honesty signal computed once in the shared layer so every transport serves it identically (`document_door.py:137-149`).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `backend/tests/test_documents.py` (beside the existing `file_document` tests):
 
@@ -495,7 +511,7 @@ async def test_unchanged_reports_none_not_zero(session):
 
 Run — expected: FAIL (`DocumentIngest` has no such fields).
 
-- [ ] **Step 2: The constant and the fields**
+- [x] **Step 2: The constant and the fields**
 
 In `document_ingest.py`, beside the outcome constants:
 
@@ -528,7 +544,7 @@ class DocumentIngest:
 
 Export `OVERSIZED_BLOCK_CHARS` in `__all__`.
 
-- [ ] **Step 3: Measure after `_resolve_tree`, journal, return**
+- [x] **Step 3: Measure after `_resolve_tree`, journal, return**
 
 In `_file_document_without_savepoint`, after `rows = _resolve_tree(parse())` (`document_ingest.py:246`):
 
@@ -539,7 +555,7 @@ In `_file_document_without_savepoint`, after `rows = _resolve_tree(parse())` (`d
 
 Add both to the `document_filed` payload (`document_ingest.py:262-268`) as `"oversized_blocks": oversized, "largest_block_chars": largest` — counts and sizes only, no block text, honouring write-time minimization — and to the returned `DocumentIngest`.
 
-- [ ] **Step 4: Run**
+- [x] **Step 4: Run**
 
 ```bash
 cd backend && .venv/bin/python -m pytest tests/test_documents.py tests/test_block_pipeline.py -q
@@ -561,7 +577,7 @@ cd backend && .venv/bin/python -m pytest tests/test_documents.py tests/test_bloc
 **Implementer:** dcc-superpower-companions:impl-sonnet-medium
 **Evaluation:** files 1 - spec 0 - coupling 1 - risk 0 = 2
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `backend/tests/test_document_routes.py` (beside `test_put_creates_and_reports_both_counts:36`):
 
@@ -588,7 +604,7 @@ async def test_put_reports_oversized_blocks_on_both_doors(client, auth_headers, 
 
 Run — expected: FAIL.
 
-- [ ] **Step 2: `PutResult` and the forward**
+- [x] **Step 2: `PutResult` and the forward**
 
 Extend `PutResult` (`document_door.py:137-149`):
 
@@ -603,11 +619,11 @@ Extend `PutResult` (`document_door.py:137-149`):
 
 In `put_document`'s return, forward `oversized_blocks=filed.oversized_blocks, largest_block_chars=filed.largest_block_chars`.
 
-- [ ] **Step 3: The REST model**
+- [x] **Step 3: The REST model**
 
 Extend `DocumentPutResponse` (`routes/documents.py:182-196`) with the same two `int | None` fields (comment: None when `outcome == "unchanged"` — not measured, never "fine"), and pass them through in `put_document_route`'s constructor.
 
-- [ ] **Step 4: Run, then the door suite**
+- [x] **Step 4: Run, then the door suite**
 
 ```bash
 cd backend && .venv/bin/python -m pytest tests/test_document_routes.py tests/test_document_door.py -q
@@ -627,7 +643,7 @@ cd backend && .venv/bin/python -m pytest tests/test_document_routes.py tests/tes
 **Implementer:** dcc-superpower-companions:impl-sonnet-medium
 **Evaluation:** files 0 - spec 0 - coupling 0 - risk 2 = 2
 
-- [ ] **Step 1: SDK regeneration is a verification, not a diff**
+- [x] **Step 1: SDK regeneration is a verification, not a diff**
 
 ```bash
 cd sdks && make generate && git diff --exit-code sdks/
@@ -635,15 +651,15 @@ cd sdks && make generate && git diff --exit-code sdks/
 
 Expected: **zero diff**. The generator binds three verbs — `capture`, `search`, `declareContext` — none of which touches a documents route (`sdks/generate.py`, "Contract bindings"). The spec's §4.2 note that "the SDK generator regenerates it (invariant 17)" is inert for this field: nothing regenerates because nothing binds. Running it anyway proves the contract change broke no bound verb — that is what the step is for. If it produces a diff, stop and read it; that means a bound surface moved, which this plan does not intend.
 
-- [ ] **Step 2: Merge gate**
+- [x] **Step 2: Merge gate**
 
 `./scripts/gate.sh` — green. (This catches the alembic single-revision assert too: this plan makes **no** schema change; if anything here seems to need one, the plan is wrong — stop.)
 
-- [ ] **Step 3: Changelog + commits**
+- [x] **Step 3: Changelog + commits**
 
 Section for the next derived version (coordinate with `2026-08-31-watchable-progress.md` — one push, one section). Commits, atomic: `feat(taxonomy): add table and table_row block types`, `feat(documents): parse tables into row blocks`, `feat(documents): capture yaml frontmatter`, `feat(documents): oversized-block warning on put`.
 
-- [ ] **Step 4: Redeploy this machine** (owner ruling 2026-08-21)
+- [x] **Step 4: Redeploy this machine** (owner ruling 2026-08-21)
 
 ```bash
 DARKMEM_PUSH=0 ./scripts/build-push.sh
