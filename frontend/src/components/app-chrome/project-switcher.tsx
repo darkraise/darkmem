@@ -7,7 +7,7 @@ import {
   PopoverContent,
 } from "darkraise-ui/components/popover"
 import { cn } from "darkraise-ui/lib"
-import { useProjects } from "@/hooks/api"
+import { useProjects, type ProjectSummary } from "@/hooks/api"
 import {
   ALL_PROJECTS,
   projectLabel,
@@ -26,11 +26,19 @@ import {
  * one (Ruling 3): this control sets *scope*, never a session context hint.
  *
  * The list is exactly the corpus's own (`GET /api/v1/projects`) — a scope is
- * offered only once a memory carries it. There is no free-text field: a
+ * offered once a memory, document or checkpoint carries it. There is no free-text field: a
  * project comes into existence by being captured into, so a name typed here
  * would switch every project-scoped view to a scope guaranteed to be empty,
  * which reads as a broken filter rather than as a new project.
  */
+/** Items across all three corpora. A document-only project -- which the
+ *  corpus import creates -- would read as broken under a memories-only
+ *  count, showing "0 memories" for a scope that holds a hundred files. */
+function itemHint(row: ProjectSummary): string {
+  const total = row.memory_count + row.document_count + row.checkpoint_count
+  return `${total} ${total === 1 ? "item" : "items"}`
+}
+
 export function ProjectSwitcher() {
   const activeProject = useProjectStore((s) => s.activeProject)
   const setProject = useProjectStore((s) => s.setProject)
@@ -93,7 +101,7 @@ export function ProjectSwitcher() {
               <ScopeRow
                 key={row.name}
                 label={row.name}
-                hint={`${row.memory_count} ${row.memory_count === 1 ? "memory" : "memories"}`}
+                hint={itemHint(row)}
                 active={activeProject === row.name}
                 onSelect={() => switchTo(row.name)}
               />
@@ -101,7 +109,7 @@ export function ProjectSwitcher() {
 
           {!isLoading && rows.length === 0 && (
             <p className="text-muted-foreground px-2 py-3 text-center text-xs">
-              No project holds a memory yet.
+              No project holds anything yet.
             </p>
           )}
         </div>

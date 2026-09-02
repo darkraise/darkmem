@@ -1,6 +1,21 @@
+from uuid import uuid4
+
 import pytest
 
+from app.models.checkpoint import SessionCheckpoint
 from app.models.memory import Memory
+from app.repositories.documents import upsert_by_uri
+
+
+async def _seed_document(session, project: str, uri: str) -> None:
+    await upsert_by_uri(
+        session, document_id=uuid4(), project=project, uri=uri,
+        title=None, source_type="md", content_hash="x" * 64, properties=None,
+        # Passed explicitly rather than omitted: the project index counts
+        # documents and never reads their source, so a seeded row with no
+        # content is the honest fixture.
+        content=None,
+    )
 
 
 async def _seed(session, *rows: tuple[str, str]) -> None:
@@ -68,4 +83,56 @@ async def test_counts_every_status_not_only_active(
     await session.flush()
 
     resp = await client.get("/api/v1/projects", headers=auth_headers)
-    assert resp.json() == [{"name": "mixed", "memory_count": 2}]
+    # Exact equality on purpose: it is what catches an accidental extra field.
+    # Widened with the response rather than weakened to a subset match.
+    assert resp.json() == [
+        {
+            "name": "mixed",
+            "memory_count": 2,
+            "document_count": 0,
+            "checkpoint_count": 0,
+            "last_checkpoint_at": None,
+            "last_event_day": None,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_document_only_project_is_visible(client, auth_headers, session):
+    """Review M2: the corpus import creates exactly this shape -- documents,
+    zero memories -- and the index must show it."""
+    await _seed_document(session, "docs-only", "docs/readme.md")
+    await session.flush()
+
+    resp = await client.get("/api/v1/projects", headers=auth_headers)
+    body = {p["name"]: p for p in resp.json()}
+    assert "docs-only" in body
+    assert body["docs-only"]["memory_count"] == 0
+    assert body["docs-only"]["document_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_a_checkpoint_only_project_is_visible(client, auth_headers, session):
+    session.add(SessionCheckpoint(
+        origin_key="cc-run-1", project="ckpt-only", summary="s", next_steps=[],
+    ))
+    await session.flush()
+
+    resp = await client.get("/api/v1/projects", headers=auth_headers)
+    body = {p["name"]: p for p in resp.json()}
+    assert "ckpt-only" in body
+    assert body["ckpt-only"]["checkpoint_count"] == 1
+    assert body["ckpt-only"]["last_checkpoint_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_one_project_in_two_corpora_is_one_row(client, auth_headers, session):
+    await _seed(session, ("m", "both"))
+    await _seed_document(session, "both", "docs/a.md")
+    await session.flush()
+
+    resp = await client.get("/api/v1/projects", headers=auth_headers)
+    rows = [p for p in resp.json() if p["name"] == "both"]
+    assert len(rows) == 1
+    assert rows[0]["memory_count"] == 1
+    assert rows[0]["document_count"] == 1

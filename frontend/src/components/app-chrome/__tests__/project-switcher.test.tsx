@@ -99,8 +99,41 @@ describe("ProjectSwitcher", () => {
   it("offers every project the corpus holds, with its size", async () => {
     mockUseProjects.mockReturnValue({
       data: [
-        { name: "darkmem", memory_count: 20 },
-        { name: "acme", memory_count: 1 },
+        {
+          name: "darkmem", memory_count: 18, document_count: 2,
+          checkpoint_count: 0, last_checkpoint_at: null, last_event_day: null,
+        },
+        {
+          name: "acme", memory_count: 1, document_count: 0,
+          checkpoint_count: 0, last_checkpoint_at: null, last_event_day: null,
+        },
+      ],
+      isLoading: false,
+    })
+    const user = userEvent.setup()
+    renderSwitcher()
+
+    await user.click(screen.getByRole("button", { name: /project scope/i }))
+
+    // Items across all three corpora, not memories: 18 + 2 + 0.
+    expect(
+      await screen.findByRole("button", { name: /darkmem.*20 items/ }),
+    ).toBeInTheDocument()
+    // Singular, so a one-item project does not read as "1 items".
+    expect(
+      screen.getByRole("button", { name: /acme.*1 item$/ }),
+    ).toBeInTheDocument()
+  })
+
+  it("counts a document-only project rather than showing it as empty", async () => {
+    // The corpus import creates exactly this shape. Under a memories-only
+    // hint it read "0 memories" for a scope holding a hundred files.
+    mockUseProjects.mockReturnValue({
+      data: [
+        {
+          name: "docs-only", memory_count: 0, document_count: 42,
+          checkpoint_count: 0, last_checkpoint_at: null, last_event_day: null,
+        },
       ],
       isLoading: false,
     })
@@ -110,11 +143,7 @@ describe("ProjectSwitcher", () => {
     await user.click(screen.getByRole("button", { name: /project scope/i }))
 
     expect(
-      await screen.findByRole("button", { name: /darkmem.*20 memories/ }),
-    ).toBeInTheDocument()
-    // Singular, so a one-memory project does not read as "1 memories".
-    expect(
-      screen.getByRole("button", { name: /acme.*1 memory$/ }),
+      await screen.findByRole("button", { name: /docs-only.*42 items/ }),
     ).toBeInTheDocument()
   })
 

@@ -5,6 +5,11 @@ import { DEMO } from "@/lib/demo-flag"
 export interface ProjectSummary {
   name: string
   memory_count: number
+  document_count: number
+  checkpoint_count: number
+  last_checkpoint_at: string | null
+  /** UTC day (YYYY-MM-DD), not a timestamp -- see the backend's own comment. */
+  last_event_day: string | null
 }
 
 /**
