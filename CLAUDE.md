@@ -33,7 +33,19 @@ migration discipline begins; nothing before it is grandfathered.
   suite (`backend/scripts/e2e/`, boots its own disposable stack), the
   Playwright e2e run, and a port-hygiene diff.
   Exits non-zero naming the failing gate; `GATE BLOCKED` (exit 2) means a
-  missing toolchain, not a red gate. **`pyproject.toml` sets
+  missing toolchain, not a red gate.
+  **`--full` needs `DEEPSEEK_API_KEY` exported** (the retrieval eval refuses to
+  start without it) — though on a warm cache that eval is a replay at **0 live
+  calls**, so the key is a precondition rather than a spend.
+  **A red Playwright leg on this host is a kill before it is a regression.**
+  An `earlyoom` daemon runs here and the suite is already at `workers: 1`, so
+  there is no tuning headroom: measured 2026-09-02, one unchanged commit gave
+  47 passed → 13 failed → 47 passed, the failures being `Target crashed` and
+  `ERR_CONNECTION_REFUSED` after the vite server died. Re-run it standalone
+  through `backend/scripts/e2e/run_playwright_e2e.py` before believing a red,
+  and never invoke Playwright bare. This was recorded in five 2026-08-31 plans
+  and nowhere a later session would look, which is why it kept being
+  rediscovered. **`pyproject.toml` sets
   `testpaths = ["tests"]`, so plain `pytest -q` does NOT collect
   `scripts/benchlib/tests`** — run the gate, or the harness can break while the
   floor stays green.
