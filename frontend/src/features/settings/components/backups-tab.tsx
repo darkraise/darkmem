@@ -14,7 +14,11 @@ import {
 
 import { EmptyState, HelpTip } from "@/components/darkmem"
 import { ModuleSurface } from "@/features/activity/components/module-surface"
-import { MASKED, type BackupDestination } from "@/hooks/api/use-backups-api"
+import {
+  MASKED,
+  type BackupDestination,
+  type DestinationInventory,
+} from "@/hooks/api/use-backups-api"
 import {
   useBackupsTabBinding,
   type BackupOutcome,
@@ -42,6 +46,7 @@ import {
 export function BackupsTab() {
   const {
     destinations,
+    inventory,
     recentOutcomes,
     save,
     runNow,
@@ -148,6 +153,7 @@ export function BackupsTab() {
             ))}
           </ul>
         )}
+        <InventorySection inventory={inventory} />
       </div>
 
       <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
@@ -169,6 +175,97 @@ export function BackupsTab() {
         </DialogContent>
       </Dialog>
     </ModuleSurface>
+  )
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  const units = ["KB", "MB", "GB", "TB"]
+  let value = bytes / 1024
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit += 1
+  }
+  return `${value.toFixed(1)} ${units[unit]}`
+}
+
+/** What each destination is actually holding, and the command to restore it.
+ *
+ *  There is deliberately no restore button. Restoring replaces the live
+ *  database, and section 9.6 makes it a shell command so the act stays with a
+ *  human at a console who has read what is here first. This section's job is
+ *  to make that decision informed, not to make it one click away. */
+function InventorySection({ inventory }: { inventory: DestinationInventory[] }) {
+  if (inventory.length === 0) return null
+  return (
+    <div className="border-border flex flex-col gap-2.5 border-t border-dashed pt-3">
+      <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+        what each destination holds
+      </span>
+      {inventory.map((row) => (
+        <div key={row.name} className="flex flex-col gap-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium">{row.name}</span>
+            <Badge variant="outline" size="sm" className="font-mono">
+              {row.kind}
+            </Badge>
+            {row.last_outcome ? (
+              <Badge
+                variant="outline"
+                size="sm"
+                className={
+                  row.last_outcome.event_type === "backup_shipped"
+                    ? ""
+                    : "border-dashed"
+                }
+              >
+                {row.last_outcome.event_type === "backup_shipped"
+                  ? "verified"
+                  : "not restorable"}
+              </Badge>
+            ) : null}
+          </div>
+          {row.error ? (
+            <p className="text-destructive text-sm">{row.error}</p>
+          ) : row.snapshots.length === 0 ? (
+            <p className="text-muted-foreground text-sm">no snapshots yet</p>
+          ) : (
+            <ul className="text-muted-foreground space-y-0.5 text-sm">
+              {[...row.snapshots]
+                .sort((a, b) => b.name.localeCompare(a.name))
+                .map((snapshot) => (
+                  <li key={snapshot.name} className="flex flex-wrap gap-2">
+                    <span className="font-mono">{snapshot.name}</span>
+                    <span>{formatBytes(snapshot.size)}</span>
+                    <span>{new Date(snapshot.modified_at).toLocaleString()}</span>
+                  </li>
+                ))}
+            </ul>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <code className="bg-muted rounded px-1.5 py-0.5 font-mono text-xs">
+              {`./scripts/restore.sh --from ${row.name} --latest`}
+            </code>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                navigator.clipboard?.writeText(
+                  `./scripts/restore.sh --from ${row.name} --latest`,
+                )
+              }
+            >
+              Copy
+            </Button>
+          </div>
+        </div>
+      ))}
+      <p className="text-muted-foreground text-sm">
+        Restoring replaces the live database; it is deliberately a shell
+        command, not a button.
+      </p>
+    </div>
   )
 }
 
@@ -310,6 +407,50 @@ function DestinationForm({
             </p>
           ) : null}
         </div>
+      ) : null}
+
+      {draft.worker ? (
+        <>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="backup-worker-url" className="text-muted-foreground text-sm">
+              Receiver URL
+            </Label>
+            <Input
+              id="backup-worker-url"
+              value={draft.worker.url}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  worker: { ...draft.worker!, url: e.target.value },
+                })
+              }
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="backup-worker-token" className="text-muted-foreground text-sm">
+              Receiver token
+            </Label>
+            <Input
+              id="backup-worker-token"
+              value={draft.worker.token}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  worker: { ...draft.worker!, token: e.target.value },
+                })
+              }
+            />
+            {draft.worker.token === MASKED ? (
+              <p className="text-muted-foreground text-xs">
+                Stored. Saving without editing this field keeps it.
+              </p>
+            ) : null}
+            <p className="text-muted-foreground text-xs">
+              Authorisation, not confidentiality: the receiver stores
+              ciphertext, so the age recipient above is what protects the bytes.
+            </p>
+          </div>
+        </>
       ) : null}
 
       {draft.s3 ? (

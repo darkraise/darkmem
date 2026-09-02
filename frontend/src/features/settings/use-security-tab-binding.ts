@@ -32,6 +32,11 @@ export interface SecurityTabBinding {
   tofuJournaled: string | null
   trustProxyHeaders: boolean | null
   mcpHosts: { host: string; wild?: boolean }[] | null
+  /** The backup worker's posture. Rendered because Task 1's whole rationale
+   *  was that an operator must be able to tell it from the page — a field
+   *  that reaches the JSON and no surface is "never silent" only in theory. */
+  readOnly: boolean | null
+  readOnlyTokenRotationDisabled: boolean | null
 }
 
 interface SetupStatusResponse {
@@ -53,6 +58,8 @@ interface SecurityPostureResponse {
   rate_limit_max_failures: number
   rate_limit_window_seconds: number
   rate_limit_lockout_seconds: number
+  read_only: boolean
+  read_only_token_rotation_disabled: boolean
 }
 
 function formatSeconds(seconds: number): string {
@@ -98,6 +105,9 @@ export function useSecurityTabBinding(): SecurityTabBinding {
       tofuJournaled: demoSec.tofu.journaled,
       trustProxyHeaders: true,
       mcpHosts: demoSec.mcp_hosts,
+      // The demo is a production-shaped instance, not a worker.
+      readOnly: false,
+      readOnlyTokenRotationDisabled: false,
     }
   }
 
@@ -143,5 +153,8 @@ export function useSecurityTabBinding(): SecurityTabBinding {
         ? posture.mcp_allowed_hosts.map((host) => ({ host, wild: host === "*" }))
         : [{ host: "localhost only (mcp_allowed_hosts is empty — the default)" }]
       : null,
+    readOnly: posture?.read_only ?? null,
+    readOnlyTokenRotationDisabled:
+      posture?.read_only_token_rotation_disabled ?? null,
   }
 }

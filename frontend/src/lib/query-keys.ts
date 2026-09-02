@@ -117,6 +117,17 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
       "Addressed by document id, and the connections query scopes itself to that document's project in SQL — deliberately, since a cross-project suggestion surface is the worst place to leak an isolation boundary",
   },
 
+  backupDestinations: {
+    kind: "global",
+    reason:
+      "Where this whole instance ships its own encrypted snapshots. A snapshot is the entire database, so there is no per-project destination to express and never will be -- scoping this would imply backups a project could own, which the artefact cannot represent (increment 6, spec §9.3)",
+  },
+  backupInventory: {
+    kind: "global",
+    reason:
+      "The same instance-wide artefacts read back: filenames, sizes and a per-destination verification badge. It enumerates what each destination holds, which is a property of the box rather than of any project in it (increment 7, spec §9.6)",
+  },
+
   autoResearch: {
     kind: "global",
     reason:

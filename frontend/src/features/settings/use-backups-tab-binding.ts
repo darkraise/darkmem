@@ -2,8 +2,10 @@ import { useCallback, useMemo } from "react"
 
 import {
   useBackupDestinations,
+  useBackupInventory,
   useSaveBackupDestinations,
   type BackupDestination,
+  type DestinationInventory,
 } from "@/hooks/api/use-backups-api"
 import { useEvents } from "@/hooks/api/use-events-api"
 import { useTriggerJob } from "@/hooks/api/use-jobs-api"
@@ -39,6 +41,7 @@ export interface RunNowResult {
  */
 export function useBackupsTabBinding() {
   const destinationsQuery = useBackupDestinations()
+  const inventoryQuery = useBackupInventory()
   const saveMutation = useSaveBackupDestinations()
   const triggerJob = useTriggerJob()
 
@@ -108,6 +111,8 @@ export function useBackupsTabBinding() {
 
   return {
     destinations,
+    inventory: (inventoryQuery.data?.destinations ?? []) as DestinationInventory[],
+    inventoryLoading: DEMO ? false : inventoryQuery.isLoading,
     recentOutcomes,
     save,
     runNow,

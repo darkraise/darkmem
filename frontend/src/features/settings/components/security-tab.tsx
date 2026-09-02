@@ -274,6 +274,42 @@ function TokensCard({ binding }: { binding: SecurityTabBinding }) {
           />
         )}
       </div>
+      <div className="border-border flex flex-col gap-1.5 border-t border-dashed pt-2">
+        <div className="flex items-center gap-1.5">
+          <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+            read_only — backup worker posture
+          </span>
+          <HelpTip label="About read_only">
+            This flag is not the enforcement. On a backup worker the app
+            connects as the SELECT-only darkmem_viewer role, and that is what
+            refuses every write. The flag only stops spend — the job scheduler
+            is never armed, chat and the reranker are refused — and quiets
+            known write-on-read paths. While it is on, token rotation is
+            disabled: a refresh reissues without blocklisting the token it
+            replaces, so a captured pre-refresh token stays valid until its own
+            exp.
+          </HelpTip>
+        </div>
+        {binding.readOnly !== null ? (
+          <>
+            <Row k="value">
+              {binding.readOnly
+                ? "true — this instance is a read-only backup worker"
+                : "false — ordinary read-write instance"}
+            </Row>
+            <Row k="token rotation">
+              {binding.readOnlyTokenRotationDisabled
+                ? "DISABLED — refresh and logout reissue without blocklisting"
+                : "active — refresh and logout blocklist the presented token"}
+            </Row>
+          </>
+        ) : (
+          <UnavailableRow
+            k="value"
+            note="the security-posture read has not returned yet"
+          />
+        )}
+      </div>
     </CardShell>
   )
 }

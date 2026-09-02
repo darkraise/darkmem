@@ -11,7 +11,7 @@ import { DEMO } from "@/lib/demo-flag"
  *  either direction. */
 export const MASKED = "***"
 
-export type DestinationKind = "local" | "ssh" | "s3"
+export type DestinationKind = "local" | "ssh" | "s3" | "worker"
 
 export interface SshSettings {
   host: string
@@ -32,6 +32,13 @@ export interface S3Settings {
   secret_access_key: string
 }
 
+export interface WorkerSettings {
+  url: string
+  /** The receiver's bearer. Authorisation, not confidentiality: content
+   *  arrives age-encrypted, so `age_recipient` is what protects the bytes. */
+  token: string
+}
+
 export interface BackupDestination {
   name: string
   kind: DestinationKind
@@ -43,17 +50,21 @@ export interface BackupDestination {
   age_recipient: string | null
   ssh: SshSettings | null
   s3: S3Settings | null
+  worker: WorkerSettings | null
 }
 
 export interface BackupDestinationsResponse {
   destinations: BackupDestination[]
 }
 
-export const BACKUP_DESTINATIONS_KEY = ["backupDestinations"] as const
-
+// Spelled as a literal at every `queryKey:` site rather than hoisted into a
+// const: `src/lib/__tests__/query-keys.test.ts` discovers domains by matching
+// `queryKey: ["<literal>"`, so a hoisted key is invisible to the guard that
+// exists to stop a key escaping classification. Every other hook in this
+// directory does the same.
 export function useBackupDestinations() {
   return useQuery<BackupDestinationsResponse>({
-    queryKey: BACKUP_DESTINATIONS_KEY,
+    queryKey: ["backupDestinations"],
     queryFn: () => apiFetch<BackupDestinationsResponse>("/config/backup-destinations"),
     // Demo mode runs with no backend; without this gate the query 401s and
     // the auth interceptor redirects the whole demo to /login.
@@ -69,6 +80,45 @@ export function useSaveBackupDestinations() {
         method: "PUT",
         body: JSON.stringify({ destinations }),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: BACKUP_DESTINATIONS_KEY }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["backupDestinations"] }),
+  })
+}
+
+// ── The snapshot inventory (increment 7, spec §9.6) ──────────────────
+
+export interface InventorySnapshot {
+  name: string
+  size: number
+  modified_at: string
+}
+
+export interface InventoryOutcome {
+  event_type: "backup_shipped" | "backup_verify_failed"
+  at: string
+  sha256: string | null
+  error: string | null
+}
+
+export interface DestinationInventory {
+  name: string
+  kind: DestinationKind
+  enabled: boolean
+  retention_keep: number
+  snapshots: InventorySnapshot[]
+  last_outcome: InventoryOutcome | null
+  /** Why this destination could not be listed. A field rather than a failed
+   *  page: one unreachable NAS must not blank what the others hold. */
+  error: string | null
+}
+
+export interface InventoryResponse {
+  destinations: DestinationInventory[]
+}
+
+export function useBackupInventory() {
+  return useQuery<InventoryResponse>({
+    queryKey: ["backupInventory"],
+    queryFn: () => apiFetch<InventoryResponse>("/backups/inventory"),
+    enabled: !DEMO,
   })
 }

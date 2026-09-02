@@ -59,6 +59,7 @@ function routes(overrides: Record<string, unknown> = {}) {
     "/config/backup-destinations": { destinations: [LOCAL, NAS] },
     "/events?event_type=backup_shipped&limit=50": { items: [], total: 0 },
     "/events?event_type=backup_verify_failed&limit=50": { items: [], total: 0 },
+    "/backups/inventory": { destinations: [] },
     ...overrides,
   }
   return vi.mocked(apiFetch).mockImplementation(async (path: string) => {
@@ -197,6 +198,122 @@ describe("BackupsTab", () => {
         expect.objectContaining({ method: "POST" }),
       ),
     )
+  })
+
+  it("renders one row per snapshot with the exact restore command", async () => {
+    routes({
+      "/backups/inventory": {
+        destinations: [
+          {
+            name: "disk",
+            kind: "local",
+            enabled: true,
+            retention_keep: 14,
+            snapshots: [
+              {
+                name: "darkmem-app-20260101-000000.sql.gz",
+                size: 252130697,
+                modified_at: "2026-01-01T00:00:00Z",
+              },
+            ],
+            last_outcome: {
+              event_type: "backup_shipped",
+              at: "2026-01-01T00:00:00Z",
+              sha256: "a".repeat(64),
+              error: null,
+            },
+            error: null,
+          },
+        ],
+      },
+    })
+    render(<BackupsTab />, { wrapper })
+
+    expect(
+      await screen.findByText("darkmem-app-20260101-000000.sql.gz"),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText("./scripts/restore.sh --from disk --latest"),
+    ).toBeInTheDocument()
+  })
+
+  it("renders an unreachable destination inline without blanking the rest", async () => {
+    routes({
+      "/backups/inventory": {
+        destinations: [
+          {
+            name: "disk",
+            kind: "local",
+            enabled: true,
+            retention_keep: 14,
+            snapshots: [
+              {
+                name: "darkmem-app-20260101-000000.sql.gz",
+                size: 10,
+                modified_at: "2026-01-01T00:00:00Z",
+              },
+            ],
+            last_outcome: null,
+            error: null,
+          },
+          {
+            name: "nas",
+            kind: "ssh",
+            enabled: true,
+            retention_keep: 30,
+            snapshots: [],
+            last_outcome: null,
+            error: "the NAS is unplugged",
+          },
+        ],
+      },
+    })
+    render(<BackupsTab />, { wrapper })
+
+    expect(await screen.findByText(/the NAS is unplugged/)).toBeInTheDocument()
+    expect(
+      screen.getByText("darkmem-app-20260101-000000.sql.gz"),
+    ).toBeInTheDocument()
+  })
+
+  it("offers no way to restore from the page", async () => {
+    // Section 9.6: restoring replaces the live database and is deliberately a
+    // shell command, never a button. A test that only checked the copy would
+    // pass while a POST sat beside it.
+    const fetchMock = routes({
+      "/backups/inventory": {
+        destinations: [
+          {
+            name: "disk",
+            kind: "local",
+            enabled: true,
+            retention_keep: 14,
+            snapshots: [
+              {
+                name: "darkmem-app-20260101-000000.sql.gz",
+                size: 10,
+                modified_at: "2026-01-01T00:00:00Z",
+              },
+            ],
+            last_outcome: null,
+            error: null,
+          },
+        ],
+      },
+    })
+    render(<BackupsTab />, { wrapper })
+    await screen.findByText("darkmem-app-20260101-000000.sql.gz")
+
+    for (const button of screen.getAllByRole("button")) {
+      if (/run now/i.test(button.textContent ?? "")) continue
+      if (/edit /i.test(button.textContent ?? "")) continue
+      fireEvent.click(button)
+    }
+
+    const mutations = fetchMock.mock.calls.filter(
+      ([, init]) => (init as RequestInit | undefined)?.method === "POST",
+    )
+    expect(mutations).toEqual([])
   })
 
   it("renders the empty state rather than an empty list", async () => {
