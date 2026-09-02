@@ -109,6 +109,22 @@ and 2 of the project artifact store (spec §3, §4, §6).
   have deleted every one. Measured on the imported corpus: this took the
   editor's refusal rate from **203 of 475 documents to 3**.
 
+- **Nightly snapshots can now leave the host that runs the database.** A
+  `backup_ship` job (04:30) dumps with the image's own `pg_dump` over the
+  stack network, encrypts with each destination's `age` recipient, ships to
+  every enabled destination, **reads each upload back and hashes it**, and
+  prunes per destination. Three kinds ship: `local`, `ssh` (pinned host key,
+  never trust-on-first-use) and `s3` (one client covers AWS, R2, B2 and
+  MinIO). Uploaded is not restorable, so verification is a full byte
+  read-back, never a checksum the remote computes for itself.
+- **A Backups settings tab.** Destinations, retention, an enable switch, the
+  last outcome per destination, and Run now. Secrets render as `***` and go
+  back as `***`, which the server reads as "unchanged" — a private key never
+  crosses the wire in either direction.
+- **The `age` identity is never stored.** Only the public recipient is
+  configurable; a snapshot carrying the key that opens it is not encrypted at
+  rest, so decryption happens only where the operator's identity file lives.
+
 ### Changed
 
 - **Conversion refuses rather than converting lossily.** A document whose
@@ -134,7 +150,25 @@ and 2 of the project artifact store (spec §3, §4, §6).
   recreated: it is already stamped `0001`, so `alembic upgrade head` finds
   current == head and migrates nothing, and `schema_guard` then refuses to
   boot. That is deliberate and has no override.
-- **No schema change** in increments 1 and 2. `blocks.type` is plain `TEXT` with no CHECK, so the
+- **The two producers are separate by construction, not by a lock.** The
+  host's `darkmem-backup.timer` is untouched and stays the floor that survives
+  the app being down. Nothing serialises it against the job — different
+  processes, and the per-job lock binds in-process only — so the separation is
+  a directory (`/srv/darkmem-dumps` versus `/root/darkmem-backups`), a
+  filename prefix (`darkmem-app-` versus `darkmem-`) and an hour of cron.
+  Note `backup.sh`'s retention glob **would** match the job's files, so the
+  two must never share a directory; the job's own prune is prefix-scoped and
+  never touches a `.part`, so it cannot delete a systemd dump even where an
+  operator has pointed both at one place.
+- **The dump mount must be writable by the image's unprivileged user.** A host
+  bind mount is not chowned by Docker, so `/srv/darkmem-dumps` is created and
+  chowned to the image's uid at deploy time. The job refuses up front and
+  names the directory and the uid, rather than surfacing as a truncated
+  `.part` at 04:30.
+- **The image grew** by `postgresql-client`, `age`, `openssh-client`, `rsync`
+  and `boto3`. Stated, not hidden: the job cannot call `scripts/backup.sh`
+  from inside the container, so it needs its own toolchain.
+- **No schema change** in increment 6, or in increments 1 and 2. `blocks.type` is plain `TEXT` with no CHECK, so the
   vocabulary widening is a code-side edit; existing rows are untouched, and a
   document re-shapes only when it is re-filed.
 - The gate table is unchanged from v1.4.0 — nothing here touches a surface a
