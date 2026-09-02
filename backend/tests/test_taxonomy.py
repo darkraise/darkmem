@@ -59,9 +59,12 @@ def test_vocabularies_have_their_documented_sizes():
     assert len(TECH_TYPES) == 5
     assert len(MEMORY_TYPES) == 9
     assert len(MEMORY_RELATION_TYPES) == 5
-    # Doc 16 §9's minimal block set. Widening it is TH1.03's to justify from a
-    # parser that genuinely emits a sixth shape, not a convenience.
-    assert len(BLOCK_TYPES) == 5
+    # Doc 16 §9's minimal set, widened by the 2026-08-31 spec §4.1: the parser
+    # genuinely emits table/table_row now, because a GFM table parsed as one
+    # paragraph produced the measured 235KB single blocks the embedder
+    # silently truncates. A count that moves without this table moving is the
+    # taxonomy-first rule being skipped.
+    assert len(BLOCK_TYPES) == 7
 
 
 def test_memory_types_carry_the_two_layer_zero_recall_kinds():

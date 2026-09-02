@@ -372,9 +372,16 @@ def is_projected_memory_relation_type(raw_type: str | None) -> bool:
 # ── Block types (doc 16 §2, §9; the sixth vocabulary) ────────────────
 # `blocks.type` is closed for the same reason the entity types are: retrieval
 # and rendering reason about block kind, and a free-form column drifts one
-# parser at a time. The set is doc 16 §9's minimal five, and it is the *writer*
+# parser at a time. The set was doc 16 §9's minimal five, and it is the *writer*
 # that normalises — TH1.02 is the first writer, so the vocabulary lands with it
 # rather than with the parsers that will emit into it (taxonomy-first).
+#
+# Widened to seven on 2026-08-31 (spec §4.1) for structural table parsing. The
+# justification doc 16 §9 asked for is measured, not aesthetic: a GFM table
+# parsed as one paragraph produced single blocks of 235,716 / 298,677 /
+# 182,746 characters, which the embedder truncates while the filing reports
+# success. `table` carries the header cells and column alignments in its
+# properties; each data row is a `table_row` child of it.
 #
 # Unlike the four above, no LLM emits these: a parser does. That changes who
 # gets it wrong, not whether the fallback is needed — a markdown token stream
@@ -386,6 +393,8 @@ BLOCK_TYPES: list[str] = [
     "list",
     "code",
     "quote",
+    "table",
+    "table_row",
 ]
 
 _BLOCK_TYPE_SET: frozenset[str] = frozenset(BLOCK_TYPES)
@@ -414,7 +423,7 @@ LEGACY_BLOCK_TYPE_MAP: dict[str, str] = {
 
 
 def normalize_block_type(raw_type: str | None) -> str:
-    """Return one of the five stored ``BLOCK_TYPES``.
+    """Return one of the seven stored ``BLOCK_TYPES``.
 
     Unknown values fall back to ``paragraph``: a block whose kind is unrecognised
     is still retrievable prose, and dropping it would lose the text along with
