@@ -74,27 +74,40 @@ _RESOLVE_BY_ID = text(
 
 _UPSERT_BY_URI = text(
     """
-    INSERT INTO documents (id, project, uri, title, source_type, content_hash, properties)
+    INSERT INTO documents (id, project, uri, title, source_type, content_hash,
+                           content, properties)
     VALUES (CAST(:id AS uuid), CAST(:project AS text), CAST(:uri AS text),
             CAST(:title AS text), CAST(:source_type AS text),
-            CAST(:content_hash AS text), CAST(:properties AS jsonb))
+            CAST(:content_hash AS text), CAST(:content AS text),
+            CAST(:properties AS jsonb))
     ON CONFLICT (project, uri) WHERE uri IS NOT NULL DO UPDATE SET
         title = EXCLUDED.title,
         source_type = EXCLUDED.source_type,
         content_hash = EXCLUDED.content_hash,
+        content = EXCLUDED.content,
         properties = EXCLUDED.properties
     RETURNING id
     """
 )
 
+# The `expected_hash` arm is review finding M1's whole point and must stay IN
+# this statement: a read-then-compare in Python passes for both of two racing
+# lanes and the second still clobbers the first. Inside the UPDATE, the loser
+# blocks on the winner's row lock, re-evaluates the predicate against the
+# committed row, and matches zero rows -- which the caller must treat as the
+# conflict. A NULL expected_hash disables the arm, which is last-writer-wins,
+# the pre-CAS behaviour every existing caller relies on.
 _UPDATE_DOCUMENT = text(
     """
     UPDATE documents SET
         title = CAST(:title AS text),
         source_type = CAST(:source_type AS text),
         content_hash = CAST(:content_hash AS text),
+        content = CAST(:content AS text),
         properties = CAST(:properties AS jsonb)
     WHERE id = CAST(:id AS uuid)
+      AND (CAST(:expected_hash AS text) IS NULL
+           OR content_hash = CAST(:expected_hash AS text))
     """
 )
 
@@ -153,6 +166,10 @@ async def upsert_by_uri(
     source_type: str | None,
     content_hash: str,
     properties: dict | None,
+    # Defaulted so a caller that predates the round-trip column still
+    # compiles: the bytes-source path stores NULL for the same reason, and a
+    # required eighth keyword would break callers that have no text to give.
+    content: str | None = None,
 ) -> UUID:
     """Insert the row, or fold onto the one that already owns `(project, uri)`.
 
@@ -171,6 +188,7 @@ async def upsert_by_uri(
                 "title": title,
                 "source_type": source_type,
                 "content_hash": content_hash,
+                "content": content,
                 "properties": None if properties is None else json.dumps(properties),
             },
         )
@@ -185,17 +203,29 @@ async def update_document(
     source_type: str | None,
     content_hash: str,
     properties: dict | None,
-) -> None:
-    await session.execute(
+    content: str | None = None,
+    expected_hash: str | None = None,
+) -> int:
+    """Write the document row; return how many rows the write matched.
+
+    Zero with an ``expected_hash`` means the precondition failed -- the row's
+    ``content_hash`` is not what the caller asserted, or the row is gone. Zero
+    without one means the row is gone. This module only reports the count; what
+    either case means is the caller's decision.
+    """
+    result = await session.execute(
         _UPDATE_DOCUMENT,
         {
             "id": str(document_id),
             "title": title,
             "source_type": source_type,
             "content_hash": content_hash,
+            "content": content,
             "properties": None if properties is None else json.dumps(properties),
+            "expected_hash": expected_hash,
         },
     )
+    return result.rowcount
 
 
 async def strip_blocks(session: AsyncSession, document_id: UUID) -> int:

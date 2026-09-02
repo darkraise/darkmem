@@ -85,6 +85,7 @@ __all__ = [
     "DOCUMENT_FILED_EVENT",
     "DocumentFileFailure",
     "DocumentFileJob",
+    "DocumentHashConflict",
     "DocumentIngest",
     "OVERSIZED_BLOCK_CHARS",
     "UNCHANGED",
@@ -96,6 +97,26 @@ __all__ = [
 
 DOCUMENT_FILED_EVENT = "document_filed"
 OBJECT_TYPE = "document"
+
+class DocumentHashConflict(Exception):
+    """``expected_hash`` did not match the document's current ``content_hash``.
+
+    Raised after the SAVEPOINT has rolled the filing back, like every other
+    ``file_document`` failure: nothing was written. ``current_hash`` is the
+    hash that actually holds -- re-read after the compare-and-set matched zero
+    rows, so under a race it names the winner -- or None when the precondition
+    named a document that does not exist.
+    """
+
+    def __init__(self, *, document_id, expected_hash: str, current_hash: str | None):
+        self.document_id = document_id
+        self.expected_hash = expected_hash
+        self.current_hash = current_hash
+        super().__init__(
+            f"expected_hash {expected_hash} does not match the document's "
+            f"current content_hash {current_hash}"
+        )
+
 
 # A stated conservative floor in CHARACTERS, not tokens: the tighter live
 # embedder (nomic-embed-text) holds ~2048 tokens, and ~4 chars/token puts the
@@ -161,6 +182,7 @@ async def file_document(
     properties: dict | None = None,
     actor: str | None = None,
     source: str | None = None,
+    expected_hash: str | None = None,
 ) -> DocumentIngest:
     """File `content` as a document and replace its blocks, atomically.
     Does not commit.
@@ -183,6 +205,7 @@ async def file_document(
             properties=properties,
             actor=actor,
             source=source,
+            expected_hash=expected_hash,
         )
 
 
@@ -199,6 +222,7 @@ async def _file_document_without_savepoint(
     properties: dict | None = None,
     actor: str | None = None,
     source: str | None = None,
+    expected_hash: str | None = None,
 ) -> DocumentIngest:
     """`file_document`'s body with the atomic replace taken away.
 
@@ -217,6 +241,9 @@ async def _file_document_without_savepoint(
         )
 
     content_hash = compute_content_hash(content)
+    # Text sources round-trip verbatim; a bytes source has no text form, so it
+    # stores NULL rather than a lossy decode.
+    stored_content = content if isinstance(content, str) else None
 
     if uri is not None:
         existing = await documents_repo.resolve_by_uri(session, project=project, uri=uri)
@@ -225,6 +252,29 @@ async def _file_document_without_savepoint(
     else:
         existing = None
 
+    if expected_hash is not None:
+        if existing is None:
+            raise DocumentHashConflict(
+                document_id=None, expected_hash=expected_hash, current_hash=None,
+            )
+        if existing.content_hash != expected_hash:
+            # Fast-fail on the resolve's snapshot. This read-then-refuse only
+            # ever REFUSES -- the authority that closes the race is the SQL
+            # predicate below, which re-checks under the row lock. A spurious
+            # refusal here (the row moved to `expected` after this read) is a
+            # safe 409 the caller retries; the naive version of this feature
+            # was a read-then-WRITE, which is the bug (review M1).
+            raise DocumentHashConflict(
+                document_id=existing.id,
+                expected_hash=expected_hash,
+                current_hash=existing.content_hash,
+            )
+
+    # Note the ordering decision: a byte-identical re-push carrying a STALE
+    # expected_hash is a conflict, not UNCHANGED. The precondition "the
+    # document is as I last saw it" failed, and refusing is the consistent
+    # contract even where the write would have been a no-op. A matching
+    # expected_hash still short-circuits here exactly as before.
     if existing is not None and existing.content_hash == content_hash:
         return DocumentIngest(existing.id, UNCHANGED, content_hash)
 
@@ -238,6 +288,7 @@ async def _file_document_without_savepoint(
             title=title,
             source_type=source_type,
             content_hash=content_hash,
+            content=stored_content,
             properties=properties,
         )
         # A different id back means another filer won the uri between the
@@ -247,14 +298,26 @@ async def _file_document_without_savepoint(
     else:
         resolved_id = existing.id
         outcome = UPDATED
-        await documents_repo.update_document(
+        matched = await documents_repo.update_document(
             session,
             document_id=resolved_id,
             title=title,
             source_type=source_type,
             content_hash=content_hash,
+            content=stored_content,
             properties=properties,
+            expected_hash=expected_hash,
         )
+        if matched == 0 and expected_hash is not None:
+            # The predicate re-evaluated under the row lock and disagreed:
+            # another lane committed between our resolve and this write. Re-read
+            # so the refusal names the hash that actually won.
+            current = await documents_repo.resolve_by_id(session, resolved_id)
+            raise DocumentHashConflict(
+                document_id=resolved_id,
+                expected_hash=expected_hash,
+                current_hash=None if current is None else current.content_hash,
+            )
 
     stripped = await documents_repo.strip_blocks(session, resolved_id)
     rows = _resolve_tree(parse())

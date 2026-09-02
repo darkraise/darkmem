@@ -203,6 +203,7 @@ async def ingest_document(
     properties: dict | None = None,
     actor: str | None = None,
     source: str | None = None,
+    expected_hash: str | None = None,
 ) -> DocumentIngest:
     """File one source through the block pipeline. Does not commit.
 
@@ -226,6 +227,7 @@ async def ingest_document(
         properties=properties,
         actor=actor,
         source=source,
+        expected_hash=expected_hash,
     )
 
 

@@ -31,6 +31,7 @@ from app.repositories import documents as documents_repo
 from app.services import document_ingest as di
 from app.services.document_ingest import (
     CREATED,
+    DocumentHashConflict,
     OVERSIZED_BLOCK_CHARS,
     UNCHANGED,
     UPDATED,
@@ -549,3 +550,153 @@ async def test_unchanged_reports_none_not_zero(session):
     assert again.outcome == UNCHANGED
     assert again.oversized_blocks is None
     assert again.largest_block_chars is None
+
+
+@pytest.mark.asyncio
+async def test_a_filed_document_stores_its_source_verbatim(session):
+    """The round-trip column: what comes back is byte-for-byte what was filed,
+    frontmatter fence and code fences included."""
+    content = "---\ntitle: T\n---\n# H\n\nbody with `code` and a | pipe\n"
+    result = await file_document(
+        session, project="p", content=content,
+        parse=lambda: parse_markdown(content), uri="notes/rt.md",
+    )
+    await session.flush()
+    stored = (await session.execute(
+        text("SELECT content FROM documents WHERE id = CAST(:id AS uuid)"),
+        {"id": str(result.document_id)},
+    )).scalar_one()
+    assert stored == content
+
+
+@pytest.mark.asyncio
+async def test_re_filing_replaces_the_stored_source(session):
+    first = "# One\n"
+    second = "# Two\n\nmore\n"
+    result = await file_document(
+        session, project="p", content=first,
+        parse=lambda: parse_markdown(first), uri="notes/rt2.md",
+    )
+    await session.flush()
+    await file_document(
+        session, project="p", content=second,
+        parse=lambda: parse_markdown(second), uri="notes/rt2.md",
+    )
+    await session.flush()
+    stored = (await session.execute(
+        text("SELECT content FROM documents WHERE id = CAST(:id AS uuid)"),
+        {"id": str(result.document_id)},
+    )).scalar_one()
+    assert stored == second
+
+
+@pytest.mark.asyncio
+async def test_a_bytes_source_stores_null_not_a_lossy_decode(session):
+    """A bytes source has no text form. NULL is the honest shape; a decode
+    would store something that is not what was filed."""
+    payload = b"\x89PNG\r\n\x1a\n not text at all"
+    result = await file_document(
+        session, project="p", content=payload,
+        parse=lambda: [BlockDraft(text="stub", type="paragraph", parent=None,
+                                  properties=None, char_span=None)],
+        uri="notes/rt3.bin",
+    )
+    await session.flush()
+    stored = (await session.execute(
+        text("SELECT content FROM documents WHERE id = CAST(:id AS uuid)"),
+        {"id": str(result.document_id)},
+    )).scalar_one()
+    assert stored is None
+
+
+@pytest.mark.asyncio
+async def test_char_spans_index_into_the_stored_content(session):
+    """blocks.char_span has always pointed at a source the schema did not
+    keep. Now it indexes into the stored column, which is what makes the
+    spans checkable at all."""
+    content = "---\nk: v\n---\n# Heading\n\nParagraph text.\n"
+    result = await file_document(
+        session, project="p", content=content,
+        parse=lambda: parse_markdown(content), uri="notes/rt4.md",
+    )
+    await session.flush()
+    row = (await session.execute(
+        text(
+            "SELECT d.content, lower(b.char_span) AS lo, upper(b.char_span) AS hi "
+            "FROM documents d JOIN blocks b ON b.document_id = d.id "
+            "WHERE d.id = CAST(:id AS uuid) AND b.type = 'heading'"
+        ),
+        {"id": str(result.document_id)},
+    )).mappings().one()
+    assert row["content"][row["lo"]:row["hi"]] == "# Heading"
+
+
+@pytest.mark.asyncio
+async def test_a_matching_expected_hash_still_short_circuits_unchanged(session):
+    content = "# H\n\nsame\n"
+    first = await file_document(
+        session, project="p", content=content,
+        parse=lambda: parse_markdown(content), uri="notes/cas1.md",
+    )
+    await session.flush()
+    again = await file_document(
+        session, project="p", content=content,
+        parse=lambda: parse_markdown(content), uri="notes/cas1.md",
+        expected_hash=first.content_hash,
+    )
+    assert again.outcome == UNCHANGED
+
+
+@pytest.mark.asyncio
+async def test_a_stale_expected_hash_is_a_conflict_even_when_content_is_identical(session):
+    """The precondition is "the document is as I last saw it", not "the write
+    would change something". A no-op write on a document that moved is still a
+    failed assertion, and refusing is the consistent contract."""
+    content = "# H\n\nsame\n"
+    await file_document(
+        session, project="p", content=content,
+        parse=lambda: parse_markdown(content), uri="notes/cas2.md",
+    )
+    await session.flush()
+    with pytest.raises(DocumentHashConflict) as exc:
+        await file_document(
+            session, project="p", content=content,
+            parse=lambda: parse_markdown(content), uri="notes/cas2.md",
+            expected_hash="0" * 64,
+        )
+    assert exc.value.expected_hash == "0" * 64
+    assert exc.value.current_hash is not None
+
+
+@pytest.mark.asyncio
+async def test_expected_hash_naming_no_document_is_refused_not_created(session):
+    """The upsert shape the spec sketched would have INSERTED here, silently
+    ignoring the caller's assertion that a document already existed."""
+    content = "# H\n"
+    with pytest.raises(DocumentHashConflict) as exc:
+        await file_document(
+            session, project="p", content=content,
+            parse=lambda: parse_markdown(content), uri="notes/cas3.md",
+            expected_hash="0" * 64,
+        )
+    assert exc.value.current_hash is None
+    count = (await session.execute(
+        text("SELECT count(*) FROM documents WHERE uri = 'notes/cas3.md'")
+    )).scalar_one()
+    assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_no_expected_hash_keeps_last_writer_wins(session):
+    content = "# H\n"
+    await file_document(
+        session, project="p", content=content,
+        parse=lambda: parse_markdown(content), uri="notes/cas4.md",
+    )
+    await session.flush()
+    second = "# H2\n"
+    result = await file_document(
+        session, project="p", content=second,
+        parse=lambda: parse_markdown(second), uri="notes/cas4.md",
+    )
+    assert result.outcome == UPDATED
