@@ -125,6 +125,30 @@ and 2 of the project artifact store (spec §3, §4, §6).
   configurable; a snapshot carrying the key that opens it is not encrypted at
   rest, so decryption happens only where the operator's identity file lives.
 
+- **A backup worker: a second machine serving nightly-restored snapshots
+  read-only.** `docker-compose.worker.yml` runs the same image against a
+  restored database, and the enforcement is a `darkmem_viewer` Postgres role
+  holding `SELECT` and nothing else — not a flag. Every refused write arrives
+  as SQLSTATE `42501` and is mapped to one 403 `read_only` envelope, so no
+  per-route allowlist has to be maintained: routes rot, an error code cannot.
+  `docs/runbook-backup-worker.md` is the bring-up.
+- **A snapshot receiver, outside the app.** An https write door inside a
+  read-only instance is a contradiction, so the receiver is a separate process
+  sharing only a directory with the app — no database, no session, no import
+  from `app.main`. A closure walk fails the build the moment one of those
+  becomes reachable. It is the fourth destination kind, `worker`.
+- **`restore.sh --from <destination>`.** Pull the newest snapshot off a NAS, a
+  bucket or a worker, verify its checksum against what the destination reports,
+  decrypt it **on the host**, and fall through to the same replay the plain form
+  always did. The plain `restore.sh FILE.sql.gz` is pinned byte-compatible.
+- **A snapshot inventory on the Backups tab**, with the exact restore command
+  and a copy button — and deliberately no restore button. Restoring replaces the
+  live database; §9.6 keeps it a shell command so a human reads the inventory
+  first. A test clicks every button in the section and asserts none of them
+  POSTs.
+- **The read-only posture is on the Security tab**, including its cost: while
+  the flag is on, a refresh reissues without blocklisting the token it replaces.
+
 ### Changed
 
 - **Conversion refuses rather than converting lossily.** A document whose
@@ -168,7 +192,24 @@ and 2 of the project artifact store (spec §3, §4, §6).
 - **The image grew** by `postgresql-client`, `age`, `openssh-client`, `rsync`
   and `boto3`. Stated, not hidden: the job cannot call `scripts/backup.sh`
   from inside the container, so it needs its own toolchain.
-- **No schema change** in increment 6, or in increments 1 and 2. `blocks.type` is plain `TEXT` with no CHECK, so the
+- **What "read-only" honestly means, stated wherever the feature is described.**
+  Writes are prevented by the database role. The flag only prevents *spend* —
+  LLM calls from jobs, chat and the reranker — and *noise*, where a quiet no-op
+  or a clean 403 beats a 500. A reader who takes away "the flag makes it
+  read-only" has been misled, and the runbook, the posture endpoint, the compose
+  header and the code comments all carry the correction.
+- **The restore loop verifies before it swaps.** It replays into a side
+  database, migrates and stamps `schema_guard` there, and grants the viewer role
+  — all while the app still serves the previous snapshot. A snapshot from an
+  older baseline is *rejected*: the side database is dropped, the swap never
+  happens, and the viewer keeps serving what it had. A worker that went down for
+  exactly the snapshots one most wants to inspect would be worse than useless.
+- **The worker's own costs.** Semantic search needs one live embed per query
+  (there is no keyword-only fallback, by choice); repository *file* browsing
+  degrades because the worker holds no clones, while DB-backed code-graph reads
+  work; and journal and usage rows are silently lost, because both writers
+  already swallow their own failures by contract.
+- **No schema change** in increments 6 and 7, or in increments 1 and 2. `blocks.type` is plain `TEXT` with no CHECK, so the
   vocabulary widening is a code-side edit; existing rows are untouched, and a
   document re-shapes only when it is re-filed.
 - The gate table is unchanged from v1.4.0 — nothing here touches a surface a
