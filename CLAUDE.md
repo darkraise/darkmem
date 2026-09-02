@@ -1730,6 +1730,35 @@ produce.
   variadic ANY / unnest / jsonb_build_object — otherwise
   `IndeterminateDatatypeError`. And roll back the session before
   mutating ORM objects in an error handler.
+- **The backup worker is a third launch path** (increment 7, 2026-09-02):
+  `docker-compose.worker.yml`, on a **second machine**, running the same image
+  against nightly-restored snapshots. It is bound by every invariant this one
+  is — the worker-count guards are parametrised over all three compose files,
+  and the `--no-proxy-headers` scan covers it too.
+  **The enforcement of "read-only" is a Postgres role, never the flag.** The app
+  connects as `darkmem_viewer`, which holds `SELECT` and nothing else
+  (`scripts/worker/viewer-grants.sql`); every refused write arrives as SQLSTATE
+  `42501` and one global handler maps it to a 403 `read_only` envelope, so no
+  per-route allowlist is maintained. `DARKMEM_READ_ONLY` (default **off**;
+  reported on `GET /auth/security-posture` and rendered on the Security tab) is
+  ergonomics on top: it skips the boot writers, never arms `JobRegistry`,
+  refuses chat and job triggers, clamps `reranker_enabled`, and quiets the
+  write-on-read paths. A reader who takes away "the flag makes it read-only" has
+  been misled — with the flag off and the role in place the instance is still
+  read-only; with the owner role and the flag on it is **not**.
+  Two costs ride with it and are stated rather than discovered: token rotation
+  is disabled (refresh reissues without blocklisting, so a captured pre-refresh
+  token lives to its own `exp`), and **semantic search still makes one live
+  embed call per query** — a search surface that cannot embed cannot search, so
+  the embedding endpoint is an operating requirement with no keyword fallback.
+  The **receiver** (`app/worker_receiver.py`, its own uvicorn process) is the
+  worker's one write door and it writes files, not rows: a closure walk fails
+  the build if it can reach `app.main`, `app.database` or any service. The
+  restore loop is a host-side script (`scripts/worker/restore-cycle.sh`) that
+  **verifies before it swaps** — replay, migrate and `schema_guard` all run
+  against a *side* database while the app serves the previous one, and a
+  snapshot from an older baseline is rejected with the viewer left up. Procedure:
+  `docs/runbook-backup-worker.md`.
 - **Single worker (invariant 13), re-decided 2026-08-16.** Exactly one
   uvicorn worker, one replica, on every launch path. The knob has three
   silent spellings — `--workers`, the `WEB_CONCURRENCY` env var uvicorn
