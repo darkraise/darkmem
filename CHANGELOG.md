@@ -63,9 +63,31 @@ and 2 of the project artifact store (spec §3, §4, §6).
   run's past summaries. The surface says so where the reader is, instead of
   looking like a history that failed to load.
 
+- **Documents round-trip.** `documents.content` is now the stored source of
+  record: a filing keeps its source verbatim, so `blocks.char_span` finally
+  indexes into something the schema holds. Both keyed reads take
+  `include_content` (off by default — the source can be a megabyte): the REST
+  reads add `content` to their envelope, MCP `document_get` answers
+  `{content, blocks}` instead of its bare array. A bytes-filed source stores
+  NULL rather than a decode of bytes that are not text.
+- **`expected_hash` on put, as a compare-and-set.** File only if the document
+  still holds the hash you last saw; omit it for last-writer-wins, which is
+  what every existing caller gets. The predicate rides the writer's own UPDATE
+  rather than a read-then-compare in Python — that distinction is the whole
+  feature, since a Python comparison passes for both of two racing lanes and
+  the second still clobbers the first. A stale hash answers 409 on the route
+  and a `hash_conflict` envelope from the tool, both naming the hash that won,
+  and `put` now echoes `content_hash` so there is something to precondition
+  the next edit on.
+
 ### Notes
 
-- **No schema change.** `blocks.type` is plain `TEXT` with no CHECK, so the
+- **The baseline was regenerated** to add `documents.content` — the
+  programme's only schema change. A deployed database must be dropped and
+  recreated: it is already stamped `0001`, so `alembic upgrade head` finds
+  current == head and migrates nothing, and `schema_guard` then refuses to
+  boot. That is deliberate and has no override.
+- **No schema change** in increments 1 and 2. `blocks.type` is plain `TEXT` with no CHECK, so the
   vocabulary widening is a code-side edit; existing rows are untouched, and a
   document re-shapes only when it is re-filed.
 - The gate table is unchanged from v1.4.0 — nothing here touches a surface a
