@@ -982,3 +982,45 @@ def test_only_the_two_standing_drills_name_the_opt_out():
     ], "\n".join(offenders)
 
 
+
+
+FM_MD = """---
+title: The Plan
+status: draft
+---
+# Heading
+
+Body prose.
+"""
+
+
+@pytest.mark.asyncio
+async def test_markdown_frontmatter_lands_in_document_properties(session):
+    """The parser cannot write document properties -- it returns only block
+    drafts -- so the merge lives in this layer, and this is the assertion that
+    the single-source path performs it."""
+    result = await bp.ingest_document(
+        session, project="p", content=FM_MD, uri="notes/plan.md",
+    )
+    await session.flush()
+    row = (await session.execute(
+        text("SELECT properties FROM documents WHERE id = CAST(:id AS uuid)"),
+        {"id": str(result.document_id)},
+    )).scalar_one()
+    assert row["frontmatter"] == "title: The Plan\nstatus: draft"
+
+
+@pytest.mark.asyncio
+async def test_the_batch_path_captures_frontmatter_too(session):
+    """Single-source and batch must not drift: the batch builds its own jobs,
+    so a merge applied in only one place is a silent asymmetry."""
+    results = await bp.ingest_documents(
+        session,
+        [bp.DocumentSource(project="p", content=FM_MD, uri="notes/batch.md")],
+    )
+    await session.flush()
+    row = (await session.execute(
+        text("SELECT properties FROM documents WHERE id = CAST(:id AS uuid)"),
+        {"id": str(results[0].document_id)},
+    )).scalar_one()
+    assert row["frontmatter"] == "title: The Plan\nstatus: draft"

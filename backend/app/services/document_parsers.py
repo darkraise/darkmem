@@ -86,6 +86,29 @@ class DocumentParseError(Exception):
 # ── markdown ──────────────────────────────────────────────────────────
 
 
+_FRONTMATTER_RE = re.compile(
+    r"\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*\r?(?:\n|\Z)", re.DOTALL
+)
+
+
+def split_frontmatter(text: str) -> tuple[str | None, int]:
+    """The leading ``---`` frontmatter fence's inner text, and the offset where
+    the body begins.
+
+    ``(None, 0)`` when there is no leading fence, which includes the case that
+    matters most: a ``---`` thematic break part-way down a document is not
+    frontmatter, and treating it as one would swallow everything above it.
+
+    Only the *leading* fence counts, so the match is anchored. The returned
+    offset is what keeps char spans honest — the parser tokenises the body but
+    every span it emits must still index into the original source.
+    """
+    match = _FRONTMATTER_RE.match(text)
+    if match is None:
+        return None, 0
+    return match.group(1), match.end()
+
+
 def parse_markdown(text: str) -> list[BlockDraft]:
     """Parse markdown source into a block tree.
 
@@ -100,12 +123,22 @@ def parse_markdown(text: str) -> list[BlockDraft]:
     if not text.strip():
         return []
 
+    # Frontmatter is split off before tokenising: commonmark reads a closing
+    # `---` as a setext h2 and turns the whole block into a heading. The body
+    # offset is added back into every span below, so a span still indexes into
+    # the original source, fences included (this module's own contract).
+    _, body_start = split_frontmatter(text)
+    body = text[body_start:]
+
     try:
-        tokens = MarkdownIt("commonmark").parse(text)
+        # The `table` rule ships with markdown-it but is off under the
+        # commonmark preset. Enabling it is what stops a GFM table parsing as
+        # one giant paragraph the embedder then truncates (spec §4.1).
+        tokens = MarkdownIt("commonmark").enable("table").parse(body)
     except Exception as exc:  # markdown-it-py is tolerant; defensive only.
         raise DocumentParseError(f"markdown parse failed: {exc}") from exc
 
-    offsets = _line_offsets(text)
+    offsets = _line_offsets(body)
     drafts: list[dict] = []
     heading_stack: list[tuple[int, int]] = []  # (draft_index, level)
     container_stack: list[int] = []  # draft indexes of open list-items/blockquotes
@@ -130,7 +163,7 @@ def parse_markdown(text: str) -> list[BlockDraft]:
                 "type": "heading",
                 "parent": parent(),
                 "properties": {"level": level},
-                "char_span": _span(tok.map, offsets, text),
+                "char_span": _span(tok.map, offsets, body),
             })
             heading_stack.append((len(drafts) - 1, level))
             i += 3
@@ -142,14 +175,14 @@ def parse_markdown(text: str) -> list[BlockDraft]:
                 target = drafts[container_stack[-1]]
                 target["text"] = f"{target['text']}\n{inline.content}" if target["text"] else inline.content
                 if target["char_span"] is None:
-                    target["char_span"] = _span(tok.map, offsets, text)
+                    target["char_span"] = _span(tok.map, offsets, body)
             else:
                 drafts.append({
                     "text": inline.content,
                     "type": "paragraph",
                     "parent": parent(),
                     "properties": None,
-                    "char_span": _span(tok.map, offsets, text),
+                    "char_span": _span(tok.map, offsets, body),
                 })
             i += 3
             continue
@@ -160,7 +193,7 @@ def parse_markdown(text: str) -> list[BlockDraft]:
                 "type": "list",
                 "parent": parent(),
                 "properties": None,
-                "char_span": _span(tok.map, offsets, text),
+                "char_span": _span(tok.map, offsets, body),
             })
             container_stack.append(len(drafts) - 1)
             i += 1
@@ -177,7 +210,7 @@ def parse_markdown(text: str) -> list[BlockDraft]:
                 "type": "quote",
                 "parent": parent(),
                 "properties": None,
-                "char_span": _span(tok.map, offsets, text),
+                "char_span": _span(tok.map, offsets, body),
             })
             container_stack.append(len(drafts) - 1)
             i += 1
@@ -197,29 +230,103 @@ def parse_markdown(text: str) -> list[BlockDraft]:
             i += 1
             continue
 
+        if tok.type == "table_open":
+            i = _emit_table(tokens, i, drafts, parent(), offsets, body)
+            continue
+
         if tok.type in ("fence", "code_block"):
             drafts.append({
                 "text": tok.content.rstrip("\n"),
                 "type": "code",
                 "parent": parent(),
                 "properties": {"language": tok.info.strip()} if getattr(tok, "info", None) else None,
-                "char_span": _span(tok.map, offsets, text),
+                "char_span": _span(tok.map, offsets, body),
             })
             i += 1
             continue
 
-        # hr, html_block, and anything the commonmark preset does not enable
-        # (tables) — not in the committed block-type set (doc 16 §9); skipped
-        # rather than minting a meaningless block.
+        # hr and html_block — not in the committed block-type set (doc 16 §9);
+        # skipped rather than minting a meaningless block. Tables used to be
+        # named here too; they are parsed structurally since the 2026-08-31
+        # spec §4.1 change above.
         i += 1
 
     return [
         BlockDraft(
             text=d["text"], type=d["type"], parent=d["parent"],
-            properties=d["properties"], char_span=d["char_span"],
+            properties=d["properties"],
+            char_span=(
+                (d["char_span"][0] + body_start, d["char_span"][1] + body_start)
+                if d["char_span"] is not None
+                else None
+            ),
         )
         for d in drafts
     ]
+
+
+def _alignment(tok) -> str | None:
+    """GFM column alignment from a th/td `style` attr; None when unaligned."""
+    style = tok.attrs.get("style") if tok.attrs else None
+    return style.removeprefix("text-align:") if style else None
+
+
+def _emit_table(tokens, i, drafts, parent_index, offsets, body) -> int:
+    """Consume ``table_open``..``table_close``; emit one ``table`` draft plus
+    one ``table_row`` child per body row.
+
+    The header row folds into the table block itself (spec §4.1): its cells are
+    the table's own retrievable text and properties, not a child row. A data
+    row becomes an ordinary-sized block, which is the whole point — the
+    measured defect was a 235KB single block, not a missing shape.
+    """
+    table_index = len(drafts)
+    drafts.append({
+        "text": "",
+        "type": "table",
+        "parent": parent_index,
+        "properties": None,
+        "char_span": _span(tokens[i].map, offsets, body),
+    })
+    header: list[str] = []
+    alignments: list[str | None] = []
+    in_head = False
+    row_cells: list[str] | None = None
+    row_span: tuple[int, int] | None = None
+
+    i += 1
+    while i < len(tokens) and tokens[i].type != "table_close":
+        t = tokens[i]
+        if t.type == "thead_open":
+            in_head = True
+        elif t.type == "thead_close":
+            in_head = False
+        elif t.type in ("th_open", "td_open"):
+            if in_head:
+                alignments.append(_alignment(t))
+        elif t.type == "tr_open" and not in_head:
+            row_cells = []
+            row_span = _span(t.map, offsets, body)
+        elif t.type == "inline":
+            if in_head:
+                header.append(t.content)
+            elif row_cells is not None:
+                row_cells.append(t.content)
+        elif t.type == "tr_close" and row_cells is not None:
+            drafts.append({
+                "text": " | ".join(row_cells),
+                "type": "table_row",
+                "parent": table_index,
+                "properties": {"cells": row_cells},
+                "char_span": row_span,
+            })
+            row_cells = None
+        i += 1
+
+    table = drafts[table_index]
+    table["text"] = " | ".join(header)
+    table["properties"] = {"header": header, "alignments": alignments}
+    return i + 1
 
 
 def _line_offsets(text: str) -> list[int]:

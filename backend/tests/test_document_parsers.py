@@ -42,6 +42,7 @@ from app.services.document_ingest import (
     file_documents_isolated,
 )
 from app.services.document_parsers import (
+    split_frontmatter,
     SOURCE_TYPE_MARKDOWN,
     SOURCE_TYPE_NOTE,
     SOURCE_TYPE_PDF,
@@ -570,3 +571,137 @@ async def test_each_parser_files_end_to_end_through_file_document(session):
     assert by_id[str(result_md.document_id)] == "md"
     assert by_id[str(result_note.document_id)] == "note"
     assert by_id[str(result_pdf.document_id)] == "pdf"
+
+
+# ── Tables (2026-08-31 spec §4.1) ────────────────────────────────────
+
+TABLE_MD = """# Data
+
+| Name | Age |
+|:-----|----:|
+| Ann  | 3   |
+| Bob  | 44  |
+"""
+
+
+def test_markdown_table_emits_one_table_block_with_row_children():
+    drafts = parse_markdown(TABLE_MD)
+    tables = [d for d in drafts if d.type == "table"]
+    rows = [d for d in drafts if d.type == "table_row"]
+    assert len(tables) == 1
+    assert len(rows) == 2
+    table_index = drafts.index(tables[0])
+    # The heading owns the table; the table owns its rows.
+    assert tables[0].parent == 0
+    assert all(r.parent == table_index for r in rows)
+
+
+def test_markdown_table_header_and_alignment_ride_properties():
+    drafts = parse_markdown(TABLE_MD)
+    table = next(d for d in drafts if d.type == "table")
+    assert table.properties == {
+        "header": ["Name", "Age"],
+        "alignments": ["left", "right"],
+    }
+    # The header is the table block's own retrievable text.
+    assert table.text == "Name | Age"
+
+
+def test_markdown_table_row_text_is_the_joined_cells():
+    drafts = parse_markdown(TABLE_MD)
+    rows = [d for d in drafts if d.type == "table_row"]
+    assert rows[0].text == "Ann | 3"
+    assert rows[0].properties == {"cells": ["Ann", "3"]}
+
+
+def test_markdown_table_char_spans_index_into_the_source():
+    drafts = parse_markdown(TABLE_MD)
+    table = next(d for d in drafts if d.type == "table")
+    row = next(d for d in drafts if d.type == "table_row")
+    lo, hi = table.char_span
+    assert TABLE_MD[lo:hi].startswith("| Name | Age |")
+    lo, hi = row.char_span
+    assert TABLE_MD[lo:hi].startswith("| Ann")
+
+
+def test_markdown_a_mega_table_dissolves_into_ordinary_blocks():
+    """The measured defect: under commonmark a table is one giant paragraph.
+
+    After the table rule, no block of a row-shaped table exceeds a row.
+    """
+    source = "| k | v |\n|---|---|\n" + "\n".join(
+        f"| key{i} | {'x' * 200} |" for i in range(300)
+    )
+    drafts = parse_markdown(source)
+    assert sum(1 for d in drafts if d.type == "table_row") == 300
+    assert max(len(d.text) for d in drafts) < 8_000
+
+
+def test_markdown_table_types_stay_inside_the_closed_vocabulary():
+    from app.taxonomy import BLOCK_TYPES
+
+    drafts = parse_markdown(TABLE_MD)
+    assert {d.type for d in drafts} <= set(BLOCK_TYPES)
+
+
+@pytest.mark.asyncio
+async def test_a_filed_table_stores_rows_parented_on_the_table(session):
+    """`_resolve_tree`'s backward-index rule holds for the new shape with no
+    writer change: the row rows' `parent_id` is the table row's own id."""
+    result = await file_document(
+        session, project="default", uri=f"file:///{uuid4()}.md", content=TABLE_MD,
+        parse=lambda: parse_markdown(TABLE_MD), source_type=SOURCE_TYPE_MARKDOWN,
+    )
+    await session.flush()
+
+    rows = (await session.execute(
+        text(
+            "SELECT id, parent_id, type, text FROM blocks "
+            "WHERE document_id = CAST(:id AS uuid) ORDER BY order_index"
+        ),
+        {"id": str(result.document_id)},
+    )).mappings().all()
+
+    by_type = {r["type"] for r in rows}
+    assert {"heading", "table", "table_row"} <= by_type
+    table = next(r for r in rows if r["type"] == "table")
+    data_rows = [r for r in rows if r["type"] == "table_row"]
+    assert len(data_rows) == 2
+    assert all(r["parent_id"] == table["id"] for r in data_rows)
+    assert {r["text"] for r in data_rows} == {"Ann | 3", "Bob | 44"}
+
+
+# ── Frontmatter (2026-08-31 spec §4) ─────────────────────────────────
+
+FM_MD = """---
+title: The Plan
+status: draft
+---
+# Heading
+
+Body prose.
+"""
+
+
+def test_markdown_frontmatter_is_split_not_misparsed():
+    """Without the split, commonmark reads `status: draft` + `---` as a setext
+    h2 — the verified misparse the spec's brief measured."""
+    drafts = parse_markdown(FM_MD)
+    assert [d.type for d in drafts] == ["heading", "paragraph"]
+    assert drafts[0].text == "Heading"
+    assert drafts[0].properties == {"level": 1}
+
+
+def test_markdown_frontmatter_spans_still_index_the_original_source():
+    drafts = parse_markdown(FM_MD)
+    lo, hi = drafts[0].char_span
+    assert FM_MD[lo:hi] == "# Heading"
+
+
+def test_split_frontmatter_returns_inner_text_and_body_offset():
+    fm, start = split_frontmatter(FM_MD)
+    assert fm == "title: The Plan\nstatus: draft"
+    assert FM_MD[start:].startswith("# Heading")
+    assert split_frontmatter("# No fence\n") == (None, 0)
+    # A thematic break mid-document is not frontmatter.
+    assert split_frontmatter("intro\n---\nkey: value\n---\n") == (None, 0)

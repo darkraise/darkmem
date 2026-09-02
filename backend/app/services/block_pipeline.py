@@ -60,6 +60,7 @@ from app.services.document_parsers import (
     parse_markdown,
     parse_note,
     parse_pdf,
+    split_frontmatter,
 )
 
 __all__ = [
@@ -168,6 +169,28 @@ def bind_parser(
     return lambda: parser(content)
 
 
+def _with_frontmatter(
+    resolved_type: str, content: str | bytes, properties: dict | None
+) -> dict | None:
+    """Fold the source's own frontmatter into the document's properties.
+
+    Parser-derived, so it wins over a caller-passed ``frontmatter`` key: the
+    value restates the content, and the content is what was filed. Recomputed
+    on every filing -- the writer overwrites properties wholesale, which keeps
+    the stored value in step with the stored content by construction.
+
+    It lives here rather than in the parser because a parser returns only
+    ``Sequence[BlockDraft]`` and cannot write document properties; this is the
+    layer that already routes ``source_type``.
+    """
+    if resolved_type != SOURCE_TYPE_MARKDOWN or not isinstance(content, str):
+        return properties
+    frontmatter, _ = split_frontmatter(content)
+    if frontmatter is None:
+        return properties
+    return {**(properties or {}), "frontmatter": frontmatter}
+
+
 async def ingest_document(
     session: AsyncSession,
     *,
@@ -190,6 +213,7 @@ async def ingest_document(
     """
     resolved_type = resolve_source_type(source_type=source_type, uri=uri)
     parse = bind_parser(resolved_type, content)
+    properties = _with_frontmatter(resolved_type, content, properties)
     return await file_document(
         session,
         project=project,
@@ -236,7 +260,9 @@ async def ingest_documents(
                 document_id=source.document_id,
                 title=source.title,
                 source_type=resolved_type,
-                properties=source.properties,
+                properties=_with_frontmatter(
+                    resolved_type, source.content, source.properties
+                ),
                 actor=source.actor,
                 source=source.source,
                 label=source.label,
