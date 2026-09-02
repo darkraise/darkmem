@@ -25,10 +25,16 @@ import gzip
 import hashlib
 import logging
 import os
+import shutil
+import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Protocol
 
 from app.config import settings
+from app.services.backup_config import DestinationConfig, load_destinations
+from app.services.events import record_event
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +71,21 @@ class DumpDirectoryUnusable(RuntimeError):
 
 class EncryptFailed(RuntimeError):
     """`age` refused the recipient or failed to write the ciphertext."""
+
+
+class VerifyMismatch(RuntimeError):
+    """The bytes read back off a destination are not the bytes we sent.
+
+    Its own type rather than a boolean so the journal can distinguish "the
+    upload is not restorable" from "the upload never happened": both are
+    failures, but only the first means a destination is holding a corrupt
+    snapshot it will happily list as good.
+    """
+
+    def __init__(self, *, expected: str, got: str):
+        super().__init__(f"read-back mismatch: expected {expected}, got {got}")
+        self.expected = expected
+        self.got = got
 
 
 def _dump_argv() -> list[str]:
@@ -215,3 +236,274 @@ def _sha256_sync(path: Path) -> str:
 async def sha256_file(path: Path) -> str:
     """Hash off the event loop -- a multi-megabyte inline hash is a stall."""
     return await asyncio.to_thread(_sha256_sync, path)
+
+
+# ---------------------------------------------------------------------------
+# Destinations
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SnapshotInfo:
+    name: str
+    size: int
+    modified_at: datetime
+
+
+class Destination(Protocol):
+    """What every destination kind must serve.
+
+    ``read_back_sha256`` is a full byte read-back on purpose, never a remote
+    checksum the destination computes for us: section 9.4 rule 2 is about what
+    *we* can read back, not what the remote claims about bytes we cannot see.
+    """
+
+    name: str
+    retention_keep: int
+
+    async def ship(self, local_path: Path) -> None: ...
+
+    async def read_back_sha256(self, name: str) -> str: ...
+
+    async def list_snapshots(self) -> list[SnapshotInfo]: ...
+
+    async def prune(self, keep: int) -> list[str]: ...
+
+
+def _is_snapshot(name: str) -> bool:
+    """This producer's artefacts, and only them.
+
+    A `.part` is an in-flight write and never a snapshot; the systemd
+    producer's ``darkmem-<stamp>.sql.gz`` fails the prefix. Both exclusions
+    are the difference between a retention pass and data loss.
+    """
+    return name.startswith(JOB_PREFIX) and (
+        name.endswith(".sql.gz") or name.endswith(".sql.gz.age")
+    )
+
+
+def _survivors_and_deletions(
+    entries: list[tuple[str, float]], keep: int
+) -> list[str]:
+    """Newest `keep` survive; the rest are returned for deletion.
+
+    Ordered by ``(mtime, name)`` descending so two snapshots written inside one
+    second still have a total order -- the stamp in the name breaks the tie,
+    and it sorts lexically because it is zero-padded and big-endian.
+    """
+    ordered = sorted(entries, key=lambda e: (e[1], e[0]), reverse=True)
+    return [name for name, _ in ordered[keep:]]
+
+
+class LocalDestination:
+    """The ``/dumps`` directory itself.
+
+    ``ship`` is a copy rather than a no-op because an encrypted artefact is
+    produced in a scratch subdirectory: the plaintext dump already sits here,
+    but its ciphertext does not until this runs. A copy rather than a move
+    because two destinations may share one recipient and therefore one file.
+    """
+
+    def __init__(self, *, name: str, directory: Path, retention_keep: int = 14):
+        self.name = name
+        self.directory = Path(directory)
+        self.retention_keep = retention_keep
+
+    async def ship(self, local_path: Path) -> None:
+        target = self.directory / local_path.name
+        if local_path.resolve() == target.resolve():
+            return
+        await asyncio.to_thread(shutil.copyfile, local_path, target)
+
+    async def read_back_sha256(self, name: str) -> str:
+        return await sha256_file(self.directory / name)
+
+    async def list_snapshots(self) -> list[SnapshotInfo]:
+        out = []
+        for path in self.directory.iterdir():
+            if not path.is_file() or not _is_snapshot(path.name):
+                continue
+            stat = path.stat()
+            out.append(
+                SnapshotInfo(
+                    name=path.name,
+                    size=stat.st_size,
+                    modified_at=datetime.fromtimestamp(stat.st_mtime, timezone.utc),
+                )
+            )
+        return sorted(out, key=lambda s: s.name)
+
+    async def prune(self, keep: int) -> list[str]:
+        entries = [
+            (p.name, p.stat().st_mtime)
+            for p in self.directory.iterdir()
+            if p.is_file() and _is_snapshot(p.name)
+        ]
+        deleted = _survivors_and_deletions(entries, keep)
+        for name in deleted:
+            (self.directory / name).unlink(missing_ok=True)
+        return deleted
+
+
+def build_destination(cfg: DestinationConfig) -> Destination:
+    if cfg.kind == "local":
+        return LocalDestination(
+            name=cfg.name, directory=DUMP_DIR, retention_keep=cfg.retention_keep
+        )
+    raise ValueError(f"{cfg.name}: no client for kind {cfg.kind!r}")
+
+
+# ---------------------------------------------------------------------------
+# The run
+# ---------------------------------------------------------------------------
+
+#: Where per-recipient ciphertexts are staged. Inside the dump directory so
+#: the encrypt is a local write, and dotted so no snapshot glob can see it.
+_SCRATCH = ".enc"
+
+
+async def _artifacts_for(
+    dump: Path, recipients: list[str | None]
+) -> dict[str | None, Path]:
+    """One artefact per distinct recipient, plus the plaintext if anything wants it.
+
+    Encrypting once per recipient rather than once per destination matters when
+    several destinations share an operator's single age key, which is the
+    common case: the alternative re-encrypts the whole dump per NAS.
+    """
+    artifacts: dict[str | None, Path] = {}
+    scratch = dump.parent / _SCRATCH
+    for recipient in recipients:
+        if recipient is None:
+            artifacts[None] = dump
+            continue
+        if recipient in artifacts:
+            continue
+        staged = scratch / hashlib.sha256(recipient.encode()).hexdigest()[:16]
+        staged.mkdir(parents=True, exist_ok=True)
+        copy = staged / dump.name
+        await asyncio.to_thread(shutil.copyfile, dump, copy)
+        artifacts[recipient] = await encrypt(copy, recipient)
+    return artifacts
+
+
+async def _journal(
+    session_factory, *, event_type: str, payload: dict
+) -> None:
+    """One row per destination outcome.
+
+    The boolean `record_event` returns is deliberately ignored: a ship is not a
+    verification transition, and a snapshot that landed and verified must not
+    be reported as failed because a journal row did not.
+    """
+    async with session_factory() as session:
+        await record_event(
+            session,
+            event_type=event_type,
+            object_type="system",
+            source=BACKUP_SHIP_JOB_KEY,
+            payload=payload,
+        )
+        await session.commit()
+
+
+async def ship_all(session_factory) -> dict:
+    """Dump once, then ship to every enabled destination in sequence.
+
+    A destination's failure is caught, journalled and folded into the summary;
+    it never skips the destinations behind it. One unplugged NAS must not mean
+    a night with no off-host copy anywhere.
+    """
+    async with session_factory() as session:
+        configured = await load_destinations(session, masked=False)
+    enabled = [c for c in configured if c.enabled]
+
+    summary: dict = {
+        "dump": None,
+        "shipped": 0,
+        "verify_failed": [],
+        "pruned": {},
+    }
+    if not enabled:
+        # No dump at all: reading the whole database to produce a file nobody
+        # asked for is real I/O against the live server.
+        logger.info("backup_ship: no enabled destinations, nothing dumped")
+        return summary
+
+    dump = await run_dump()
+    artifacts = await _artifacts_for(dump, [c.age_recipient for c in enabled])
+    keep_plaintext = any(c.age_recipient is None for c in enabled)
+
+    summary["dump"] = dump.name
+    try:
+        for cfg in enabled:
+            artifact = artifacts[cfg.age_recipient]
+            started = time.monotonic()
+            destination = None
+            try:
+                destination = build_destination(cfg)
+                await destination.ship(artifact)
+                expected = await sha256_file(artifact)
+                got = await destination.read_back_sha256(artifact.name)
+                if got != expected:
+                    raise VerifyMismatch(expected=expected, got=got)
+            except VerifyMismatch as mismatch:
+                summary["verify_failed"].append(cfg.name)
+                await _journal(
+                    session_factory,
+                    event_type="backup_verify_failed",
+                    payload={
+                        "destination": cfg.name,
+                        "file": artifact.name,
+                        "expected": mismatch.expected,
+                        "got": mismatch.got,
+                    },
+                )
+            except Exception as exc:  # noqa: BLE001 - one destination, not the run
+                logger.warning("backup_ship: %s failed: %s", cfg.name, exc)
+                summary["verify_failed"].append(cfg.name)
+                await _journal(
+                    session_factory,
+                    event_type="backup_verify_failed",
+                    payload={
+                        "destination": cfg.name,
+                        "file": artifact.name,
+                        "error": str(exc),
+                    },
+                )
+            else:
+                summary["shipped"] += 1
+                await _journal(
+                    session_factory,
+                    event_type="backup_shipped",
+                    payload={
+                        "destination": cfg.name,
+                        "file": artifact.name,
+                        "bytes": artifact.stat().st_size,
+                        "sha256": expected,
+                        "elapsed_seconds": round(time.monotonic() - started, 3),
+                    },
+                )
+
+            # Retention runs whatever this snapshot did: the failure is about
+            # tonight's upload, not about the copies already on the destination.
+            # A destination that could not be built at all has nothing to prune.
+            if destination is None:
+                continue
+            try:
+                summary["pruned"][cfg.name] = await destination.prune(
+                    cfg.retention_keep
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("backup_ship: %s prune failed: %s", cfg.name, exc)
+                summary["pruned"][cfg.name] = {"error": str(exc)}
+    finally:
+        scratch = dump.parent / _SCRATCH
+        if scratch.exists():
+            await asyncio.to_thread(shutil.rmtree, scratch, True)
+        if not keep_plaintext:
+            # Every destination demanded encryption; an unencrypted twin must
+            # not outlive the run on local disk.
+            dump.unlink(missing_ok=True)
+
+    return summary
