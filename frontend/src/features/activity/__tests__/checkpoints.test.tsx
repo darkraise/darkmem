@@ -24,6 +24,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 import { apiFetch, ApiError } from "@/lib/api"
 import { useDetailLevel } from "@/components/darkmem"
 import { CheckpointsTab } from "../components/checkpoints-tab"
+import { LIVE_POLL_MS } from "../use-checkpoint-runs"
 
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -56,6 +57,7 @@ const JOURNAL = {
     journalEvent({ id: 2 }),
     journalEvent({
       id: 1,
+      project: "other-proj",
       payload: { origin_key: "cc-run-other", next_steps: 1 },
       created_at: "2026-08-10T22:00:00Z",
     }),
@@ -263,5 +265,105 @@ describe("CheckpointsTab — detail level (invariant 14)", () => {
     for (const rung of ["corroborated", "confirmed", "disputed", "candidate"]) {
       expect(simple.container.textContent).not.toContain(rung)
     }
+  })
+})
+
+describe("CheckpointsTab — the live watch surface (increment 1)", () => {
+  it("filters runs through the server-side project predicate, not client slicing", async () => {
+    // The distinction matters: a client-side filter would still show every
+    // run the unfiltered page happened to carry, and would silently disagree
+    // with `total`. The assertion is that the *request* narrowed.
+    vi.mocked(apiFetch).mockImplementation(async (path: string) => {
+      if (path.includes("/events")) {
+        return (
+          path.includes("project=other-proj")
+            ? { items: JOURNAL.items.filter((e) => e.project === "other-proj"), total: 1 }
+            : JOURNAL
+        ) as never
+      }
+      return CHECKPOINT as never
+    })
+    render(<CheckpointsTab />, { wrapper })
+
+    await screen.findByText("cc-run-8f3a2c")
+    expect(screen.getByText("cc-run-other")).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole("combobox", { name: /project/i }))
+    // Scoped to the option, not the text: RunCard also renders the project
+    // name, so a bare findByText matches two nodes.
+    await userEvent.click(await screen.findByRole("option", { name: "other-proj" }))
+
+    await waitFor(() =>
+      expect(
+        vi
+          .mocked(apiFetch)
+          .mock.calls.some(([path]) =>
+            (path as string).includes("project=other-proj"),
+          ),
+      ).toBe(true),
+    )
+    await waitFor(() =>
+      expect(screen.queryByText("cc-run-8f3a2c")).not.toBeInTheDocument(),
+    )
+  })
+
+  it("keeps every project ever seen as an option after filtering to one", async () => {
+    // The filtered page contains only the filtered project, so options
+    // derived from the current page alone would collapse to the selection
+    // and strand the viewer there with no way back.
+    vi.mocked(apiFetch).mockImplementation(async (path: string) => {
+      if (path.includes("/events")) {
+        return (
+          path.includes("project=other-proj")
+            ? { items: JOURNAL.items.filter((e) => e.project === "other-proj"), total: 1 }
+            : JOURNAL
+        ) as never
+      }
+      return CHECKPOINT as never
+    })
+    render(<CheckpointsTab />, { wrapper })
+    await screen.findByText("cc-run-8f3a2c")
+
+    await userEvent.click(screen.getByRole("combobox", { name: /project/i }))
+    await userEvent.click(await screen.findByRole("option", { name: "other-proj" }))
+    await waitFor(() =>
+      expect(screen.queryByText("cc-run-8f3a2c")).not.toBeInTheDocument(),
+    )
+
+    await userEvent.click(screen.getByRole("combobox", { name: /project/i }))
+    expect(
+      await screen.findByRole("option", { name: "darkmem" }),
+    ).toBeInTheDocument()
+  })
+
+  it("polls the journal on the live interval", async () => {
+    route({ "/events": JOURNAL, "/checkpoints/latest": CHECKPOINT })
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      render(<CheckpointsTab />, { wrapper })
+      await screen.findByText("cc-run-8f3a2c")
+
+      const eventsCalls = () =>
+        vi
+          .mocked(apiFetch)
+          .mock.calls.filter(([path]) => (path as string).includes("/events"))
+          .length
+      const before = eventsCalls()
+
+      await vi.advanceTimersByTimeAsync(LIVE_POLL_MS + 500)
+
+      expect(eventsCalls()).toBeGreaterThan(before)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("states that the history carries no step content (review m2)", async () => {
+    route({ "/events": JOURNAL, "/checkpoints/latest": CHECKPOINT })
+    render(<CheckpointsTab />, { wrapper })
+
+    expect(
+      await screen.findByText(/only the latest note's text is readable/i),
+    ).toBeInTheDocument()
   })
 })

@@ -30,12 +30,13 @@ export interface CheckpointResponse {
  */
 export function useLatestCheckpoint(
   params: { originKey: string | null; project: string },
-  options?: { enabled?: boolean },
+  options?: { enabled?: boolean; refetchInterval?: number },
 ) {
   const { originKey, project } = params
   return useQuery<CheckpointResponse | null>({
     queryKey: ["checkpoint-latest", originKey, project],
     enabled: (options?.enabled ?? true) && Boolean(originKey),
+    refetchInterval: options?.refetchInterval,
     queryFn: async () => {
       const qs = new URLSearchParams({
         origin_key: originKey as string,

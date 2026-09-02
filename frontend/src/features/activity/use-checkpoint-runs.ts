@@ -54,6 +54,11 @@ const CHECKPOINT_OBJECT_TYPE = "checkpoint"
 // truncated page never reads as the whole history.
 const EVENT_LIMIT = 200
 
+/** The tab is a live watch, so both of its queries refetch on this interval.
+ *  TanStack's `refetchIntervalInBackground` defaults to false, which is wanted
+ *  here: an unfocused tab stops polling instead of running forever. */
+export const LIVE_POLL_MS = 15_000
+
 function fromDemoRun(run: DemoSessionRun): CheckpointRunData {
   return {
     id: run.id,
@@ -140,15 +145,23 @@ function fromEventLog(entries: EventLogEntry[]): CheckpointRunData[] {
 }
 
 /** `DEMO ? demo : real`, following `use-feed.ts`. */
-export function useCheckpointRuns(): {
+export function useCheckpointRuns(project: string | null): {
   runs: CheckpointRunData[]
   isLoading: boolean
   isError: boolean
 } {
   const demoRuns = useDemoSessionRuns()
+  // The project predicate is pushed to the door, not applied to the page
+  // here: a client-side filter would narrow what is displayed while `total`
+  // still described the unfiltered set, and the page is capped at
+  // EVENT_LIMIT, so a busy project could push another off it entirely.
   const query = useEvents(
-    { object_type: CHECKPOINT_OBJECT_TYPE, limit: EVENT_LIMIT },
-    { enabled: !DEMO },
+    {
+      object_type: CHECKPOINT_OBJECT_TYPE,
+      limit: EVENT_LIMIT,
+      ...(project ? { project } : {}),
+    },
+    { enabled: !DEMO, refetchInterval: LIVE_POLL_MS },
   )
 
   if (DEMO) {
@@ -169,7 +182,7 @@ export function useCheckpointDigest(run: CheckpointRunData | null): {
   const demoRuns = useDemoSessionRuns()
   const query = useLatestCheckpoint(
     { originKey: run?.originKey ?? null, project: run?.project ?? "default" },
-    { enabled: !DEMO },
+    { enabled: !DEMO, refetchInterval: LIVE_POLL_MS },
   )
 
   if (DEMO) {

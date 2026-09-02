@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from "react"
 import { Bookmark, ChevronRight, Copy } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "darkraise-ui/components/select"
 import { EmptyState, listItemClass, useDetailLevel } from "@/components/darkmem"
 import { cn } from "darkraise-ui/lib"
 import {
@@ -17,6 +24,11 @@ import { ModuleSurface, SurfaceStateChip } from "./module-surface"
 // which is why it renders at BOTH detail levels: `simple` collapses
 // technical detail and never hides an honesty signal.
 const KIND_LABEL = "session digest · not verified knowledge"
+
+// Select carries string values, so the unfiltered state needs a sentinel that
+// cannot collide with a real project name. `project` is NOT NULL server-side
+// and empty names never reach the journal, so "" is unreachable as data.
+const ALL_PROJECTS = ""
 
 function KindPill() {
   return (
@@ -250,11 +262,22 @@ function RunDetail({
 }
 
 export function CheckpointsTab() {
-  const { runs, isLoading, isError } = useCheckpointRuns()
+  const [projectFilter, setProjectFilter] = useState<string | null>(null)
+  const { runs, isLoading, isError } = useCheckpointRuns(projectFilter)
   const advanced = useDetailLevel((s) => s.level) === "advanced"
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selected = runs.find((r) => r.id === selectedId) ?? runs[0] ?? null
   const { digest, isLoading: digestLoading } = useCheckpointDigest(selected)
+
+  // Options accumulate across the mount rather than deriving from the current
+  // page: the filtered page contains only the filtered project, so a derived
+  // list would collapse to the selection and strand the viewer with no way
+  // back to the others. Not `/api/v1/projects` -- that route derives from
+  // `memories` alone, so a checkpoint-only project would be missing from its
+  // own filter (review finding M2).
+  const seenProjects = useRef(new Set<string>())
+  for (const run of runs) seenProjects.current.add(run.project)
+  const projectOptions = [...seenProjects.current].sort()
 
   return (
     <div className="space-y-4">
@@ -265,8 +288,34 @@ export function CheckpointsTab() {
         token budget, so a fresh session loads a small digest instead of
         reloading a full context window. Checkpoints are operational digests,
         not vault knowledge — they carry no verification badge, and every
-        save/resume is journaled to events.
+        save/resume is journaled to events. The history below shows when each
+        save and resume happened; only the latest note's text is readable —
+        event payloads deliberately carry no step content, and no endpoint
+        serves a run's past summaries.
       </p>
+      <div className="flex items-center gap-2">
+        <Select
+          value={projectFilter ?? ALL_PROJECTS}
+          onValueChange={(value) =>
+            setProjectFilter(value === ALL_PROJECTS ? null : value)
+          }
+        >
+          <SelectTrigger
+            className="w-auto min-w-52 rounded-full"
+            aria-label="project"
+          >
+            <SelectValue>{projectFilter ?? "all projects"}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_PROJECTS}>all projects</SelectItem>
+            {projectOptions.map((name) => (
+              <SelectItem key={name} value={name}>
+                {name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
       <ModuleSurface
         title="Checkpointed runs"
         state={isLoading ? "empty" : runs.length > 0 ? "populated" : "empty"}
