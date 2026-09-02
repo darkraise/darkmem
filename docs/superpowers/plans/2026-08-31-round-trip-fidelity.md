@@ -8,24 +8,25 @@
 > dcc-superpower-companions:dispatching-tiered-implementers. Under
 > superpowers:executing-plans these lines are inert; ignore them.
 
-> **Status: TASKS 1-7 LANDED 2026-09-02; TASK 8 (the drop/recreate deploy) NOT
-> RUN.** Commits `c5f360ac` baseline, `b4242baa` writer + CAS, `a6f9e017`
-> doors, `baa9726d` CLAUDE.md. Gate green: 6,498 backend (up 14), 1,324
-> frontend, both SDK suites, 1,055 benchlib, F1 bench; `make generate`
-> zero-diff; parity doc regenerated and asserted.
+> **Status: LANDED AND DEPLOYED 2026-09-02, Task 8 included.** Commits
+> `c5f360ac` baseline, `b4242baa` writer + CAS, `a6f9e017` doors, `baa9726d`
+> CLAUDE.md, `0187e5b4` Task 8 defect fixes. Gate green: 6,498 backend (up
+> 14), 1,324 frontend, both SDK suites, 1,055 benchlib, F1 bench;
+> `make generate` zero-diff; parity doc regenerated and asserted.
 >
-> **master now carries a baseline the deployed database does not have**, so
-> the running instance stays on the previous image until Task 8 runs. An
-> independent review (2026-09-02) established that the G-C corpus is **not**
-> in this database — `promotion_metrics_record.json` names
-> `darkmem_bench_t2131`/`sim`/`verify` on the dev Postgres, `db_target.py:18`
-> forbids the harness from targeting `darkmem`, and the corpus itself is a
-> git-tracked file — so the drop costs the gate clear nothing. It found four
-> defects in Task 8 as written; see
-> `/tmp/.../scratchpad/task8-decision.md` and fix them before executing.
-> The blocking precondition is that no usable API key exists: increment 0's
-> mint step has not been run, so the post-deploy reachability probe cannot
-> pass until the owner mints one.
+> **The drop/recreate ran on this host and every count came back matching.**
+> Pre-flight stamp equalled the pre-epic baseline; the new image was verified
+> to carry baseline `2f85323058da9543` *before* the drop; the database was
+> recreated and stamped with it; the restore returned `jobs=24 flags=1 keys=1
+> repos=0 providers=3 purposes=8 admin_hash=1`, identical to the pre-drop
+> figures. The judge identity survived (`gpt-5.5`, `on_provider=1`) and no
+> purpose sits on vendor defaults. All four D-defects were confirmed real on
+> contact: D1's collision would have restored nothing, D4's dev database
+> had no stamp row and would have been silently adopted.
+>
+> The G-C corpus was never in this database — it lives in
+> `darkmem_bench_t2131`/`sim`/`verify` on the dev Postgres, all three still
+> present and untouched — so the clear lost nothing.
 
 **Goal:** Make the document store round-trip: `documents.content TEXT NULL` becomes the source of record (the ONLY baseline regeneration in the whole programme), `GET /documents/{id}` and MCP `document_get` return it behind an `include_content` flag defaulting to off, and `expected_hash` lands as a SQL compare-and-set (review finding M1) — the predicate rides the write, never a read-then-write, with 409 on REST and a structured refusal on MCP. The forgeable `properties["$content"]` bridge (M6) is cut, not implemented: nothing in this plan writes or reads a `$content` key.
 
@@ -761,7 +762,7 @@ Commit: `docs(changelog): round-trip fidelity section` (chore-typed docs commits
 
 **Do not deviate from this sequence.** The one silent failure this exists to prevent: `alembic upgrade head` on a database already stamped `0001` compares `0001` to `0001` and does nothing, so a deploy without the drop reports a clean migration against a schema missing the column — and `schema_guard` will then refuse every boot. There is no override flag, on purpose.
 
-- [ ] **Step 1: Pre-flight — what is prod actually running?**
+- [x] **Step 1: Pre-flight — what is prod actually running?**
 
 ```bash
 docker exec darkmem-prod-postgres-1 psql -U darkmem -d darkmem -tAc \
@@ -771,7 +772,7 @@ git show <pre-epic master ref>:backend/migrations/versions/0001_baseline.py | sh
 
 The two must match. A mismatch means prod is running a baseline that is not pre-epic master (this host has run unmerged branches before) — stop and reconcile what is deployed before dropping anything.
 
-- [ ] **Step 2: Backup, then capture what a re-seed does NOT reproduce**
+- [x] **Step 2: Backup, then capture what a re-seed does NOT reproduce**
 
 ```bash
 # BACKUP_KEEP is 14 and the prune glob is `darkmem-*.sql.gz`, which this dump
@@ -816,7 +817,7 @@ Restore these after the three LLM artifacts in Step 5. The greenfield ruling mak
 
 Six artifacts, and the order below restores providers **before** purposes (`llm_purpose_configs.provider_name` is a NOT NULL FK). **If the escape hatch is ever used, it needs one preparatory statement.** A data-only restore halts on `COPY public.events_202608`: `events` is RANGE-partitioned by month and boot creates only the current month and the next (`events.py:341`), so an older child table does not exist in the fresh database. Run `SELECT events_ensure_partition('2026-08-01');` (and one per month the dump covers) before restoring. The added nullable column is *not* a blocker — `pg_dump` emits explicit column lists. The full backup is the escape hatch: the drop discards every memory, event and research origin prod has accumulated (disposable by the greenfield ruling), and the runbook's "Restoring a data-only dump into a fresh database" section is the recorded route back if the owner ever wants that corpus — it is not part of this deploy.
 
-- [ ] **Step 3: Build the new image BEFORE the drop**
+- [x] **Step 3: Build the new image BEFORE the drop**
 
 ```bash
 ./scripts/gate.sh && DARKMEM_PUSH=0 ./scripts/build-push.sh
@@ -824,7 +825,7 @@ Six artifacts, and the order below restores providers **before** purposes (`llm_
 
 `DARKMEM_PUSH=0` is not optional — publishing is CI's alone. Building first matters: if the *old* image were the one to boot against the recreated database, it would migrate the old baseline and stamp the old hash, and the new image would then refuse to start.
 
-- [ ] **Step 4: Drop, recreate, boot the new image**
+- [x] **Step 4: Drop, recreate, boot the new image**
 
 ```bash
 docker compose stop darkmem
@@ -836,7 +837,7 @@ docker logs darkmem-prod-darkmem-1 2>&1 | grep -i 'schema baseline'   # expect "
 
 The entrypoint migrates the regenerated baseline and `schema_guard` stamps its hash into the fresh database — the hash "moves" by construction, no code change involved.
 
-- [ ] **Step 5: Restore the six artifacts, providers first, and verify both LLM invariants**
+- [x] **Step 5: Restore the six artifacts, providers first, and verify both LLM invariants**
 
 ```bash
 docker exec -i darkmem-prod-postgres-1 psql -U darkmem -d darkmem < /tmp/admin.sql
@@ -886,7 +887,7 @@ A zero anywhere means that restore did not happen.
 
 Restoring — never re-seeding — is what keeps the qualified judge identity (`gpt-5.5` at `fd39e7b2c47fa375`, spanning both tables) and every purpose's `params`; `llm_seed.py` would overwrite all of it with Ollama presets, silently. The same logic is why `api_keys` is restored rather than re-minted: a re-mint means editing `/root/.claude.json` and every other client that holds the old token, and nothing reports that you forgot.
 
-- [ ] **Step 6: Verify the deploy carried the change, not just started**
+- [x] **Step 6: Verify the deploy carried the change, not just started**
 
 ```bash
 curl -s localhost:8000/health
@@ -915,7 +916,7 @@ docker exec darkmem-prod-postgres-1 psql -U darkmem -d darkmem -tAc \
 
 Compose reuses an image whose tag did not move, so a skipped build redeploys the old bits while reporting `Started` — the OpenAPI probe for the new fields is what rules that out. The job-status query is the one that would have caught the 2026-08-17 drift; run it. The `api_keys` query is the one that would catch a lost credential, which no log or health check reports.
 
-- [ ] **Step 7: The dev database**
+- [x] **Step 7: The dev database**
 
 **Corrected 2026-09-02 (defect D4): the guard will NOT refuse here, so this must be done proactively rather than left to fail loudly.** The dev-compose Postgres (5433) `darkmem` database is at `0001` with **no `schema_baseline_sha` row at all** — it was never booted through `entrypoint.sh`, which is what stamps one. `schema_guard` treats an unstamped database as first contact and *adopts* the current baseline hash, so the next dev-server start silently accepts a schema that is missing `documents.content`, and the failure surfaces later as a column error rather than a refusal. Drop and recreate it in this step (`psql -h localhost -p 5433 -U darkmem -d postgres -c "DROP DATABASE darkmem;" -c "CREATE DATABASE darkmem OWNER darkmem;"`, then `./scripts/start_dev_server.sh` migrates and stamps). Test databases self-reset via conftest; nothing to do.
 
