@@ -376,7 +376,8 @@ def is_projected_memory_relation_type(raw_type: str | None) -> bool:
 # that normalises — TH1.02 is the first writer, so the vocabulary lands with it
 # rather than with the parsers that will emit into it (taxonomy-first).
 #
-# Widened to seven on 2026-08-31 (spec §4.1) for structural table parsing. The
+# Widened to eight across two changes, each from a measurement rather than a
+# preference. 2026-08-31 (spec §4.1) for structural table parsing. The
 # justification doc 16 §9 asked for is measured, not aesthetic: a GFM table
 # parsed as one paragraph produced single blocks of 235,716 / 298,677 /
 # 182,746 characters, which the embedder truncates while the filing reports
@@ -395,6 +396,7 @@ BLOCK_TYPES: list[str] = [
     "quote",
     "table",
     "table_row",
+    "divider",
 ]
 
 _BLOCK_TYPE_SET: frozenset[str] = frozenset(BLOCK_TYPES)
@@ -419,11 +421,18 @@ LEGACY_BLOCK_TYPE_MAP: dict[str, str] = {
     "fence": "code",
     "code_block": "code",
     "blockquote": "quote",
+    # A thematic break. Named `divider` rather than `hr` for the same reason
+    # `fence` maps to `code`: this vocabulary uses nouns for what a block IS,
+    # never the token name a parser happened to give it.
+    "hr": "divider",
+    "thematic_break": "divider",
+    "horizontal_rule": "divider",
+    "rule": "divider",
 }
 
 
 def normalize_block_type(raw_type: str | None) -> str:
-    """Return one of the seven stored ``BLOCK_TYPES``.
+    """Return one of the eight stored ``BLOCK_TYPES``.
 
     Unknown values fall back to ``paragraph``: a block whose kind is unrecognised
     is still retrievable prose, and dropping it would lose the text along with

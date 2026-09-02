@@ -59,12 +59,15 @@ def test_vocabularies_have_their_documented_sizes():
     assert len(TECH_TYPES) == 5
     assert len(MEMORY_TYPES) == 9
     assert len(MEMORY_RELATION_TYPES) == 5
-    # Doc 16 §9's minimal set, widened by the 2026-08-31 spec §4.1: the parser
-    # genuinely emits table/table_row now, because a GFM table parsed as one
-    # paragraph produced the measured 235KB single blocks the embedder
-    # silently truncates. A count that moves without this table moving is the
-    # taxonomy-first rule being skipped.
-    assert len(BLOCK_TYPES) == 7
+    # Doc 16 §9's minimal set, widened twice and both times from a
+    # measurement. 2026-08-31 (spec §4.1): table/table_row, because a GFM
+    # table parsed as one paragraph produced 235KB single blocks the embedder
+    # silently truncates. 2026-09-02: `divider`, because `hr` mints no block,
+    # so the block editor's conversion guard refused 201 of the 475 imported
+    # corpus documents rather than silently dropping their section rules.
+    # A count that moves without this table moving is the taxonomy-first rule
+    # being skipped.
+    assert len(BLOCK_TYPES) == 8
 
 
 def test_memory_types_carry_the_two_layer_zero_recall_kinds():
