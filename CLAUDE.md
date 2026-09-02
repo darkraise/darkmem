@@ -1530,6 +1530,32 @@ SAVEPOINT, rolling the document row, its blocks and the `document_filed`
 event back — never leaving a half-filed, oversized document staged for
 the caller's next commit.
 
+**`documents.content` is the stored source of record** (2026-08-31 spec §5,
+the round-trip increment). A text filing stores its source verbatim; a bytes
+source stores NULL rather than a lossy decode. `content_hash` remains the
+change gate, and `blocks.char_span` indexes into this column — spans have
+always pointed at the source, and now the source is kept. Both keyed reads
+take `include_content` (default off, so no existing reader pays for a
+potentially megabyte field): on, `GET /documents/{id}` and the `by-uri` twin
+add `content` to the envelope, and MCP `document_get` answers
+`{content, blocks}` in place of its bare array — the one flag under which that
+tool returns an object. One service read, `document_door.document_content`,
+serves both doors.
+
+**`put` takes an optional `expected_hash` compare-and-set.** The predicate
+rides the writer's own UPDATE with a rowcount check (`update_document` returns
+the matched count); a read-then-compare in Python passes for both of two
+racing lanes and the second still clobbers the first, which is what review
+finding M1 was about. A stale hash answers 409 on the route and a
+`hash_conflict` envelope from the tool — one `DocumentHashConflict` behind two
+wire shapes — and `PutResult` echoes `content_hash` so a caller can
+precondition its next edit. Omitting it keeps last-writer-wins. Note a
+byte-identical re-push carrying a *stale* `expected_hash` is a conflict rather
+than `unchanged`: the precondition is "the document is as I last saw it", not
+"this write would change something". The batch ingest path deliberately takes
+no `expected_hash` — the corpus import is last-writer-wins re-runnable by
+design.
+
 **An edit re-embeds the whole document.** Filing a `(project, uri)` that
 already exists strips every prior block row and writes a fresh set —
 `strip_blocks` then a plain `INSERT INTO blocks` that mints a new `id`
