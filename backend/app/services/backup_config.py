@@ -28,9 +28,10 @@ MASKED = "***"
 SECRET_FIELDS: dict[str, tuple[str, ...]] = {
     "ssh": ("private_key",),
     "s3": ("secret_access_key",),
+    "worker": ("token",),
 }
 
-KINDS = ("local", "ssh", "s3")
+KINDS = ("local", "ssh", "s3", "worker")
 
 
 class DestinationInvalid(ValueError):
@@ -57,6 +58,18 @@ class S3Settings(BaseModel):
     secret_access_key: str
 
 
+class WorkerSettings(BaseModel):
+    """A darkmem backup worker's snapshot receiver (increment 7).
+
+    The token is authorisation, not confidentiality: content arrives
+    age-encrypted, so `age_recipient` is what protects the bytes and rule 1
+    reaches this kind for that reason rather than by category.
+    """
+
+    url: str
+    token: str
+
+
 class DestinationConfig(BaseModel):
     name: str
     kind: str
@@ -65,6 +78,7 @@ class DestinationConfig(BaseModel):
     age_recipient: str | None = None
     ssh: SshSettings | None = None
     s3: S3Settings | None = None
+    worker: WorkerSettings | None = None
 
 
 def _validate(items: list[DestinationConfig]) -> None:
@@ -85,6 +99,8 @@ def _validate(items: list[DestinationConfig]) -> None:
             raise DestinationInvalid(f"{d.name}: ssh settings required")
         if d.kind == "s3" and d.s3 is None:
             raise DestinationInvalid(f"{d.name}: s3 settings required")
+        if d.kind == "worker" and d.worker is None:
+            raise DestinationInvalid(f"{d.name}: worker settings required")
         if d.retention_keep < 1 or d.retention_keep > 3650:
             raise DestinationInvalid(f"{d.name}: retention_keep out of range")
 

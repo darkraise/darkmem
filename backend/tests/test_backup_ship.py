@@ -825,3 +825,153 @@ def test_the_job_is_registered_an_hour_clear_of_the_systemd_timer():
         )
     ]
     assert crons == ["30 4 * * *"], crons
+
+
+# ---------------------------------------------------------------------------
+# Increment 7: the worker destination, tested against the real receiver
+#
+# Not a fake. The whole point of the `worker` kind is that it talks to
+# `app.worker_receiver`, so the tests below drive that module's own ASGI app
+# over httpx -- a hand-written stub would let the two drift and each keep
+# passing its own suite.
+# ---------------------------------------------------------------------------
+
+import httpx  # noqa: E402
+
+
+RECEIVER_TOKEN = "a-receiver-token-of-at-least-32-characters"
+
+WORKER_CFG = bc.DestinationConfig.model_validate(
+    {
+        "name": "attic",
+        "kind": "worker",
+        "retention_keep": 2,
+        "age_recipient": "age1qqqqexamplerecipient",
+        "worker": {"url": "http://receiver", "token": RECEIVER_TOKEN},
+    }
+)
+
+
+@pytest.fixture
+def receiver_dir(tmp_path, monkeypatch):
+    monkeypatch.setenv("RECEIVER_TOKEN", RECEIVER_TOKEN)
+    monkeypatch.setenv("RECEIVER_DIR", str(tmp_path))
+    return tmp_path
+
+
+def _worker_destination():
+    from app import worker_receiver
+
+    def _client_factory():
+        return httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=worker_receiver.app),
+            base_url=WORKER_CFG.worker.url,
+            timeout=30,
+        )
+
+    return backup_ship.WorkerDestination(WORKER_CFG, client_factory=_client_factory)
+
+
+async def test_worker_ship_and_read_back_agree_with_the_local_hash(
+    receiver_dir, tmp_path,
+):
+    blob = tmp_path / "darkmem-app-20260101-000000.sql.gz.age"
+    payload = b"ciphertext as the receiver will hold it" * 300
+    blob.write_bytes(payload)
+    dest = _worker_destination()
+
+    await dest.ship(blob)
+
+    assert (receiver_dir / blob.name).read_bytes() == payload
+    assert await dest.read_back_sha256(blob.name) == await backup_ship.sha256_file(blob)
+
+
+async def test_worker_ship_sends_the_bearer(receiver_dir, tmp_path):
+    """Without it every verb 401s, and a ship that silently could not
+    authenticate would look identical to one that had nowhere to go."""
+    blob = tmp_path / "darkmem-app-20260101-000000.sql.gz.age"
+    blob.write_bytes(b"x")
+    bad = WORKER_CFG.model_copy(deep=True)
+    bad.worker.token = "wrong-token-but-still-long-enough-here"
+
+    from app import worker_receiver
+
+    dest = backup_ship.WorkerDestination(
+        bad,
+        client_factory=lambda: httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=worker_receiver.app),
+            base_url=bad.worker.url,
+        ),
+    )
+    with pytest.raises(RuntimeError) as exc:
+        await dest.ship(blob)
+    assert "401" in str(exc.value)
+
+
+async def test_worker_list_and_prune_walk_the_receiver(receiver_dir, tmp_path):
+    for stamp in ("20260101", "20260102", "20260103"):
+        (receiver_dir / f"darkmem-app-{stamp}-000000.sql.gz.age").write_bytes(b"x")
+    # Neither of these is a snapshot: one is in flight, one is the systemd
+    # producer's. The receiver refuses to list either, and prune must not
+    # invent them.
+    (receiver_dir / "darkmem-app-20260104-000000.sql.gz.age.part").write_bytes(b"x")
+    (receiver_dir / "darkmem-20250101-000000.sql.gz").write_bytes(b"x")
+    dest = _worker_destination()
+
+    assert [s.name for s in await dest.list_snapshots()] == [
+        "darkmem-app-20260101-000000.sql.gz.age",
+        "darkmem-app-20260102-000000.sql.gz.age",
+        "darkmem-app-20260103-000000.sql.gz.age",
+    ]
+
+    deleted = await dest.prune(keep=2)
+
+    assert deleted == ["darkmem-app-20260101-000000.sql.gz.age"]
+    assert not (receiver_dir / "darkmem-app-20260101-000000.sql.gz.age").exists()
+    assert (receiver_dir / "darkmem-20250101-000000.sql.gz").exists()
+    assert (receiver_dir / "darkmem-app-20260104-000000.sql.gz.age.part").exists()
+
+
+async def test_a_worker_mismatch_journals_verify_failed_through_ship_all(
+    session, session_factory, receiver_dir, tmp_path, monkeypatch,
+):
+    """End to end through `ship_all`, because the read-back comparison is the
+    thing the whole destination exists for: a receiver holding different bytes
+    than we sent must produce a verify failure, not a successful ship."""
+    dumps = tmp_path / "dumps"
+    dumps.mkdir()
+    await _dump_into(dumps, monkeypatch)
+    await bc.save_destinations(
+        session,
+        {
+            "destinations": [
+                {
+                    "name": "attic",
+                    "kind": "local",  # local so no age binary is needed here
+                    "enabled": True,
+                    "retention_keep": 2,
+                }
+            ]
+        },
+    )
+    liar = _worker_destination()
+    monkeypatch.setattr(
+        liar, "read_back_sha256", lambda name: _resolved("f" * 64)
+    )
+    monkeypatch.setattr(backup_ship, "build_destination", lambda cfg: liar)
+
+    summary = await backup_ship.ship_all(session_factory)
+
+    assert summary["verify_failed"] == ["attic"]
+    rows = await _payloads(session, "backup_verify_failed")
+    assert rows[-1]["got"] == "f" * 64
+
+
+async def _resolved(value):
+    return value
+
+
+def test_build_destination_serves_the_worker_kind():
+    assert isinstance(
+        backup_ship.build_destination(WORKER_CFG), backup_ship.WorkerDestination
+    )

@@ -371,6 +371,8 @@ def build_destination(cfg: DestinationConfig) -> Destination:
         return SshDestination(cfg)
     if cfg.kind == "s3":
         return S3Destination(cfg)
+    if cfg.kind == "worker":
+        return WorkerDestination(cfg)
     raise ValueError(f"{cfg.name}: no client for kind {cfg.kind!r}")
 
 
@@ -835,4 +837,115 @@ class S3Destination:
             await asyncio.to_thread(
                 client.delete_object, Bucket=self.s3.bucket, Key=self._key(name)
             )
+        return doomed
+
+
+# ---------------------------------------------------------------------------
+# The worker destination
+# ---------------------------------------------------------------------------
+
+
+class WorkerDestination:
+    """A darkmem backup worker's snapshot receiver (increment 7, spec §9.5).
+
+    Speaks the receiver's four verbs over https. Both directions stream: a
+    snapshot is a database dump, and buffering one in memory to send or to
+    hash would be the largest allocation this process ever makes.
+
+    The bearer token is authorisation, not confidentiality -- the receiver
+    stores ciphertext because increment 6 encrypts before egress, which is why
+    a `worker` destination without an age recipient is refused at save.
+    """
+
+    def __init__(self, cfg: DestinationConfig, *, client_factory=None):
+        if cfg.worker is None:
+            raise ValueError(f"{cfg.name}: worker settings required")
+        self.name = cfg.name
+        self.retention_keep = cfg.retention_keep
+        self.worker = cfg.worker
+        self._factory = client_factory or self._client
+
+    def _client(self):
+        import httpx
+
+        return httpx.AsyncClient(
+            base_url=self.worker.url.rstrip("/"),
+            headers={"Authorization": f"Bearer {self.worker.token}"},
+            timeout=SHIP_TIMEOUT_SECONDS,
+        )
+
+    def _headers(self) -> dict:
+        return {"Authorization": f"Bearer {self.worker.token}"}
+
+    @staticmethod
+    def _raise_for(response, what: str) -> None:
+        if response.status_code >= 400:
+            raise RuntimeError(
+                f"receiver {what} returned {response.status_code}: "
+                f"{response.text[:300]}"
+            )
+
+    async def ship(self, local_path: Path) -> None:
+        async def _body():
+            # Async, and each read offloaded: httpx refuses a sync iterator on
+            # an AsyncClient, and a multi-hundred-megabyte file read in the
+            # loop would stall the single worker for the whole upload.
+            with open(local_path, "rb") as handle:
+                while True:
+                    chunk = await asyncio.to_thread(handle.read, _CHUNK)
+                    if not chunk:
+                        return
+                    yield chunk
+
+        async with self._factory() as client:
+            response = await client.put(
+                f"/snapshots/{local_path.name}",
+                content=_body(),
+                headers=self._headers(),
+            )
+        self._raise_for(response, "upload")
+
+    async def read_back_sha256(self, name: str) -> str:
+        digest = hashlib.sha256()
+        async with self._factory() as client:
+            async with client.stream(
+                "GET", f"/snapshots/{name}", headers=self._headers()
+            ) as response:
+                self._raise_for(response, "read-back")
+                async for chunk in response.aiter_bytes():
+                    digest.update(chunk)
+        return digest.hexdigest()
+
+    async def _listing(self) -> list[dict]:
+        async with self._factory() as client:
+            response = await client.get("/snapshots", headers=self._headers())
+        self._raise_for(response, "listing")
+        # The receiver already excludes `.part` files and foreign prefixes, so
+        # this filter is the belt: two independent refusals is what keeps an
+        # in-flight upload out of a prune's deletion set.
+        return [
+            item
+            for item in response.json().get("snapshots", [])
+            if _is_snapshot(item["name"])
+        ]
+
+    async def list_snapshots(self) -> list[SnapshotInfo]:
+        return [
+            SnapshotInfo(
+                name=item["name"],
+                size=item.get("size", 0),
+                modified_at=_stamp_of(item["name"]),
+            )
+            for item in sorted(await self._listing(), key=lambda i: i["name"])
+        ]
+
+    async def prune(self, keep: int) -> list[str]:
+        names = [item["name"] for item in await self._listing()]
+        doomed = sorted(names, reverse=True)[keep:]
+        async with self._factory() as client:
+            for name in doomed:
+                response = await client.delete(
+                    f"/snapshots/{name}", headers=self._headers()
+                )
+                self._raise_for(response, "delete")
         return doomed

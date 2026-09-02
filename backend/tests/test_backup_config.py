@@ -171,3 +171,59 @@ async def test_the_vocabulary_carries_the_ship_events():
 
     assert "backup_shipped" in EVENT_TYPES
     assert "backup_verify_failed" in EVENT_TYPES
+
+
+# ---------------------------------------------------------------------------
+# Increment 7: the `worker` kind
+# ---------------------------------------------------------------------------
+
+WORKER = {
+    "name": "attic",
+    "kind": "worker",
+    "enabled": True,
+    "retention_keep": 7,
+    "age_recipient": "age1qqqqexamplerecipient",
+    "worker": {"url": "http://192.0.2.20:8100", "token": "a-receiver-token-of-32-chars-plus"},
+}
+
+
+async def test_worker_token_is_masked_and_round_trips(session):
+    await bc.save_destinations(session, {"destinations": [WORKER]})
+    masked = await bc.load_destinations(session, masked=True)
+    assert masked[0].worker.token == bc.MASKED
+    assert masked[0].worker.url == "http://192.0.2.20:8100"
+
+    raw = await bc.load_destinations(session, masked=False)
+    assert raw[0].worker.token == WORKER["worker"]["token"]
+
+
+async def test_worker_mask_on_put_keeps_the_stored_token(session):
+    await bc.save_destinations(session, {"destinations": [WORKER]})
+    edited = {
+        **WORKER,
+        "retention_keep": 21,
+        "worker": {**WORKER["worker"], "token": bc.MASKED},
+    }
+    await bc.save_destinations(session, {"destinations": [edited]})
+    raw = await bc.load_destinations(session, masked=False)
+    assert raw[0].retention_keep == 21
+    assert raw[0].worker.token == WORKER["worker"]["token"]
+
+
+async def test_a_worker_destination_must_encrypt(session):
+    """The receiver stores ciphertext only. It is a non-local kind, so rule 1
+    reaches it for the same reason it reaches ssh and s3 -- but this one is
+    worth its own test, because the receiver's bearer token is authorisation
+    and not confidentiality, so the encryption is the only thing protecting
+    the bytes in flight and at rest on the worker."""
+    with pytest.raises(bc.DestinationInvalid):
+        await bc.save_destinations(
+            session, {"destinations": [{**WORKER, "age_recipient": None}]}
+        )
+
+
+async def test_worker_settings_are_required_for_the_worker_kind(session):
+    with pytest.raises(bc.DestinationInvalid):
+        await bc.save_destinations(
+            session, {"destinations": [{**WORKER, "worker": None}]}
+        )
