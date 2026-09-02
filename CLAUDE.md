@@ -1289,9 +1289,12 @@ or `host:*`) adds LAN hosts; `*` disables the check entirely. Default
 by disabling either guard. Browser Origins are allowlisted to the same
 hosts. `memory_batch_add` mirrors the HTTP 1–100 batch cap.
 
-Authorization is per tool, not per door: `capture` covers the 8 writers
+Authorization is per tool, not per door: `capture` covers the 12 writers
 (`memory_add`, `memory_batch_add`, `memory_update`, `memory_delete`,
-`document_put`, `document_delete`, `checkpoint_save`, `research_run`);
+`document_put`, `document_delete`, `checkpoint_save`, `research_run`, and
+increment 8's four block verbs `block_update`, `block_insert`, `block_move`,
+`block_delete` — a key that can edit a document's blocks can rewrite its
+content, which is `document_put`'s own power);
 `read` covers 25; `admin` covers the 1 repository-control tool
 (`code_reindex`, the first MCP write door into the code subsystem —
 `docs/superpowers/specs/2026-08-28-file-scoped-reindex-design.md` §6.1).
@@ -1301,7 +1304,7 @@ holding only `admin` reaches nothing else, and a `capture` key cannot
 trigger an index. `ratify` stays outside the scope vocabulary, unchanged by
 this activation: no MCP tool can reach `confirmed` power no matter what a
 key holds. `tools/list` is deliberately **not** scope-filtered — any
-authenticated key sees the full 34-tool catalogue, including writers it
+authenticated key sees the full 38-tool catalogue, including writers it
 cannot invoke; that is intended, not an oversight. A keyed capture call
 stamps `events.api_key_id` (the key's row UUID) and `events.actor` (the
 key's name) on the journaled row.
@@ -1506,6 +1509,42 @@ build if `app.services.pipeline` is reachable from either — rooted at the
 door as well as the pipeline, since the door imports the pipeline and a
 seed of the pipeline alone would leave the door itself unscanned. A
 document is candidate signal, not an asserted graph.
+
+**A document is content-first or block-first, and the flag decides who may
+write it** (increment 8, spec §8.2). `documents.properties.ingest_direction`
+is absent on every document filed through `put`, which means content-first.
+The first block verb against one **converts** it: markers the parser discarded
+are derived from the stored `content` through each block's own `char_span`, so
+the conversion is faithful rather than defaulting every list to `-`. After
+conversion `document_put` at that uri is **refused** — 409 on the route, a
+`direction_conflict` envelope from the tool — because a content push over an
+editing session would strip every block the editor placed. That refusal is
+taken under a `SELECT … FOR UPDATE` on the document row and the block verbs
+take the same lock, so the two serialise; a check ahead of the savepoint would
+be check-then-act, which is the race increment 3's compare-and-set closed.
+
+**Conversion refuses rather than converting lossily.** The parser mints no
+block for a raw HTML block or a link-reference definition, so regenerating
+`content` from the tree would silently delete them;
+`block_serializer.reproduces_source` detects those in the token stream and the
+verb raises `DocumentNotConvertible`. It also refuses when a construct is
+representable but missing from *this* tree — a document filed before its block
+type existed carries the construct in its content and no row for it, and
+`ingest_document` returns `UNCHANGED` on a byte-identical re-push without
+touching blocks, so a token-versus-block count check is what stops that
+becoming silent loss. **Widening a block type therefore obliges a re-import,
+not merely a redeploy** (measured 2026-09-02: adding `divider` left exactly
+201 filed documents with `---` in their content and no divider row).
+
+**Four block verbs, both doors** — `block_update`, `block_insert`,
+`block_move`, `block_delete` over `app/services/block_verbs.py`. Every verb
+runs one pass: lock, load the tree, apply one mutation in memory, serialise,
+write placement and document row in a SAVEPOINT, journal `blocks_edited`
+(carrying no block text), commit, then embed **only** the touched block.
+`char_span` is recomputed in that same pass — the serialiser is the only thing
+that knows where each block landed — so spans never drift and are never NULL.
+The cost model: one edit is one bulk placement UPDATE over the document's
+blocks, one document write, and one single-block embed.
 
 **Five verbs, both doors.** `put`, `search`, `outline`, `get` and
 `delete` are reachable from REST (`POST /api/v1/documents`,

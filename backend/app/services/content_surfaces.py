@@ -616,6 +616,15 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "POST /api/v1/documents",
     "DELETE /api/v1/documents/{document_id}",
     "DELETE /api/v1/documents/by-uri",
+    # Increment 8's block verbs. Same classification and same reason as the
+    # write door above: they edit a document's own blocks and answer counts
+    # and a content hash. No memory content is read or returned -- a document
+    # block is not a memory, and the block channel is firewalled from memory
+    # composition (doc 16 §5, tests/test_block_retrieval.py).
+    "POST /api/v1/documents/{document_id}/blocks",
+    "PATCH /api/v1/documents/{document_id}/blocks/{block_id}",
+    "POST /api/v1/documents/{document_id}/blocks/{block_id}/move",
+    "DELETE /api/v1/documents/{document_id}/blocks/{block_id}",
     # The search door: ranks blocks and resolves each hit's heading path.
     # Same classification and same reason as the write door immediately
     # above -- it crosses `blocks`/`documents`, never a `memories` row, so
@@ -851,6 +860,10 @@ MCP_TOOLS_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # heading tree, a filed document's own counts -- and no `memories` row
     # does, so there is nothing here for a memory-content isolation probe to
     # drive against.
+    "mcp:block_update",
+    "mcp:block_insert",
+    "mcp:block_move",
+    "mcp:block_delete",
     "mcp:document_put",
     "mcp:document_search",
     "mcp:document_outline",

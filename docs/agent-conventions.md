@@ -129,3 +129,26 @@ If you intend to edit, precondition the write: `document_put` takes an optional
 `content_hash`. A stale hash answers 409 on REST and a `hash_conflict` envelope
 on MCP, both naming the hash that actually won, so you can re-read and retry.
 Omit it for last-writer-wins.
+
+### Block-first documents are the inverse — do not `put` them at all
+
+Everything above describes a **content-first** document, which is every
+document ever filed through `document_put`.
+
+A document edited through the block verbs becomes **block-first**, and then
+`document_put` at that uri is refused outright: 409 on REST, a
+`direction_conflict` envelope on MCP. Its `content` is a serialisation of its
+blocks, so a content push would strip every block and rewrite what the
+serialiser was reading from.
+
+To change one, use the block verbs with ids from `document_get`:
+`block_update`, `block_insert`, `block_move`, `block_delete`. Send
+`block_update` the block's **source** — the field `document_get` returns
+alongside `text` — because `text` is marker-stripped and putting it back would
+demote every heading to a paragraph.
+
+The conversion happens on the first block verb and is one-way. It is also
+**refused** for a document whose source the block model cannot represent — a
+raw HTML block, or a link-reference definition — because converting would
+regenerate the content without it. Those documents stay content-first and
+`document_put` remains the way to edit them.
