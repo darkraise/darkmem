@@ -869,7 +869,18 @@ the two must never be pointed at one directory; the job's prune matches only
 its own prefix and never a `.part`, so it cannot delete a systemd dump even
 where an operator has done exactly that. Destinations and their secrets live
 in the `config` row `backup_destinations`, never in the job's
-`config_schema` (`FieldDescriptor.default` is typed `int`). **The `age`
+`config_schema` (`FieldDescriptor.default` is typed `int`).
+**Size the retention against a ~250 MB dump, not the ~3 MB one this repo's
+history shows** (measured 2026-09-02): `block_embedding_refresh` filled
+`block_embeddings__qwen3_embedding_0_6b_1024` to 665 MB of a 710 MB database,
+so a dump went from 2.8 MB to 252 MB inside one day and both producers' `14`
+was chosen when the artefact was 90x smaller. A **`local` destination is the
+one kind that double-counts**: it writes to the same disk the systemd floor
+already keeps 14 copies on, and it ships nowhere, so this host runs it at
+`retention_keep=3` while `BACKUP_KEEP` stays 14. Note what that means today:
+**no configured destination takes data off this host** — the off-host path
+exists and is exercised, but arming it is configuring an `ssh`, `s3` or
+`worker` destination on the Backups tab. **The `age`
 identity is never stored in this database**: a snapshot carrying its own
 decryption key is not encrypted at rest, so only the public recipient is
 configurable and decryption happens where the operator's identity file
