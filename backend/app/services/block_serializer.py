@@ -78,6 +78,25 @@ def _children_map(blocks: Sequence[TreeBlock]):
     return children
 
 
+def _is_ordered(block: TreeBlock) -> bool:
+    raw = (block.properties or {}).get("marker") or DEFAULT_LIST_MARKER
+    return _ORDERED_RE.match(raw) is not None
+
+
+def _same_list_run(previous: TreeBlock | None, current: TreeBlock) -> bool:
+    """Whether `current` continues the list `previous` belongs to.
+
+    The block model has no list-container shape, so two adjacent lists are
+    indistinguishable from one -- except by their markers. A bullet run
+    followed by an ordered run is two lists, and treating them as one both
+    renumbers the second wrongly (it continues the first's count) and emits
+    them without the blank line that keeps them apart.
+    """
+    if previous is None or previous.type != "list" or current.type != "list":
+        return False
+    return _is_ordered(previous) == _is_ordered(current)
+
+
 def _marker_for(block: TreeBlock, ordinal: int) -> str:
     raw = (block.properties or {}).get("marker") or DEFAULT_LIST_MARKER
     m = _ORDERED_RE.match(raw)
@@ -95,8 +114,10 @@ def _separator(parent: TreeBlock | None, siblings: list[TreeBlock], index: int) 
     current = siblings[index]
     if current.type == "table_row":
         return "\n"                    # rows are lines of their table
-    if current.type == "list" and index > 0 and siblings[index - 1].type == "list":
-        return "\n"                    # tight list
+    if current.type == "list" and index > 0 and _same_list_run(
+        siblings[index - 1], current
+    ):
+        return "\n"                    # tight list, same run
     if current.type == "list" and parent is not None and parent.type == "list":
         return "\n"                    # nested item under its parent item
     return "\n\n"
@@ -182,14 +203,26 @@ def serialize_tree(
         kids = children.get(block.id, [])
         list_ordinal = 0
         for i, kid in enumerate(kids):
-            list_ordinal = list_ordinal + 1 if kid.type == "list" else 0
+            previous = kids[i - 1] if i else None
+            if kid.type != "list":
+                list_ordinal = 0
+            elif _same_list_run(previous, kid):
+                list_ordinal += 1
+            else:
+                list_ordinal = 1        # a new list starts its own count
             write(_separator(block, kids, i))
             emit(kid, child_prefix, list_ordinal)
 
     roots = children[None]
     list_ordinal = 0
     for i, root in enumerate(roots):
-        list_ordinal = list_ordinal + 1 if root.type == "list" else 0
+        previous = roots[i - 1] if i else None
+        if root.type != "list":
+            list_ordinal = 0
+        elif _same_list_run(previous, root):
+            list_ordinal += 1
+        else:
+            list_ordinal = 1
         if i:
             write(_separator(None, roots, i))
         emit(root, "", list_ordinal)

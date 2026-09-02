@@ -66,6 +66,11 @@ ROUND_TRIP_SOURCES = [
     "# Title\n\nA paragraph with **bold** and `code`.",
     "# H1\n\n## H2\n\ndeeper prose\n\n## H2 again",
     "- one\n- two\n  - nested\n- three",
+    # Two adjacent lists of different marker styles are TWO lists. The block
+    # model has no list-container shape, so only the markers distinguish
+    # them -- run them together and the ordered one continues the bullet
+    # one's count and loses its blank line.
+    "* star\n\n1) one\n2) two",
     "1. first\n2. second\n3. third",
     "> quoted line\n> more of it",
     "```python\nprint('hi')\n```",

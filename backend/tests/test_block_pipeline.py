@@ -789,7 +789,11 @@ DOCUMENT_DOOR = "app.services.document_door"
 # door is what a caller actually reaches, and it imports the pipeline rather
 # than the other way round, so a seed of `block_pipeline` alone leaves every
 # module the door reaches past it unscanned.
-FILING_CLOSURE = import_closure(BACKEND, "app.services.block_pipeline", DOCUMENT_DOOR)
+# `block_verbs` seeds the closure too: it writes blocks, so it is a filing
+# path, and its own import graph must not reach the memory pipeline either.
+FILING_CLOSURE = import_closure(
+    BACKEND, "app.services.block_pipeline", DOCUMENT_DOOR, "app.services.block_verbs"
+)
 
 
 def test_the_filing_paths_import_closure_excludes_the_memory_pipeline():

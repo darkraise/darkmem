@@ -349,6 +349,11 @@ BLOCK_CHANNEL_MODULES = frozenset({
     "app.services.document_ingest",
     "app.services.document_parsers",
     "app.services.document_door",
+    # Increment 8's write half. Classified in the same task that creates
+    # them: an unclassified module is a hole in the scan, which is this
+    # codebase's named characteristic defect.
+    "app.services.block_verbs",
+    "app.services.block_serializer",
 })
 
 # `block_fact_sources` is deliberately absent from that set: it *is* doc 16
