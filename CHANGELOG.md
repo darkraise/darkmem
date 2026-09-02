@@ -80,6 +80,29 @@ and 2 of the project artifact store (spec §3, §4, §6).
   and `put` now echoes `content_hash` so there is something to precondition
   the next edit on.
 
+- **A project workspace.** `/projects` lists every project the corpus holds
+  with its memory, document and checkpoint counts;
+  `/projects/$project` is the workspace — an Artifacts tab (uri-segment
+  document tree, outline, block reader, section search) and a Progress tab
+  (the pinned `planning/progress.md` ledger plus that project's checkpoint
+  runs, scoped to it with no filter to wander out of). Both surfaces, and the
+  personal `/documents` page, render one set of components rather than three.
+- **`/documents` and `/projects` are in the sidebar.** `/documents` shipped
+  with no navigation entry at all, so the surface existed and could not be
+  reached from the app.
+
+### Changed
+
+- **`GET /api/v1/projects` derives from every corpus that carries a project**,
+  not `memories` alone. A project holding only documents — exactly what a
+  corpus import creates — was invisible in its own scope picker. The switcher
+  now counts items across all three corpora, since a document-only project
+  reading "0 memories" looks broken.
+- **The document list is read in full rather than one page.** The list route
+  clamps at 200 and carries no total, so a single page silently dropped more
+  than half a several-hundred-file corpus. The workspace pages until a short
+  one, dedupes by id, and says so on the surface when it stops at its guard.
+
 ### Notes
 
 - **The baseline was regenerated** to add `documents.content` — the

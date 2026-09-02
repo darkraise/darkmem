@@ -8,6 +8,26 @@
 > dcc-superpower-companions:dispatching-tiered-implementers. Under
 > superpowers:executing-plans these lines are inert; ignore them.
 
+> **Status: LANDED 2026-09-02.** Commits `b7045664` test scoping, `550f5d03`
+> hooks, `3d53783d` components, `44fee85a` routes. Gate green: 6,501 backend,
+> 1,337 frontend, both SDK suites, 1,055 benchlib, F1 bench.
+>
+> Four notes for a reader treating this as a record. **(1)** The gate caught a
+> defect the per-file runs could not: three `test_projects_endpoint.py` tests
+> passed alone and failed in the full suite, because widening the endpoint to
+> union documents and checkpoints made `resp.json() == []` an assertion about
+> the whole shared test database — `test_checkpoints.py` commits rows that
+> outlive it. They are now scoped to the data they seed. **(2)** The query key
+> is `documentsAll`, not this plan's `documents-all`: `query-keys.test.ts`
+> scans with a letters-only pattern, so a hyphenated name reads as a different
+> domain and fails the classification guard. **(3)** `npm run build` runs
+> `tsc` before `vite`, and the router plugin that writes `routeTree.gen.ts`
+> lives in vite — so a new route cannot typecheck until `npx vite build` has
+> run once. **(4)** `DocumentTree` opens expanded, which this plan did not
+> specify: with `file:///notes.md` the tree is `file:` → `notes.md`, and
+> collapsed-by-default rendered as an empty panel indistinguishable from an
+> empty project.
+
 **Goal:** The project workspace: a `/projects` index of every project the corpus holds, and a `/projects/$project` workspace with an Artifacts tab (uri-segment document tree, outline, block reader, section search) and a Progress tab (pinned ledger document plus the project's checkpoint runs). `/documents` stays the personal surface and re-renders through the same extracted components. This is the spec's increment 4, **as amended by §2.1: it is not backend-free** — the projects endpoint is memories-only and must become the corpus-unioning scope source.
 
 **Architecture:** One backend change, then composition. `GET /api/v1/projects` is widened in place to derive from all three project-carrying corpora (`memories`, `documents`, `session_checkpoints`) with the aggregates the index cards need; everything else is frontend composition over shipped document routes and darkraise-ui primitives (`tree-view`, `tabs`, `card`, `stat`, `combobox`, `empty-state`, `skeleton`, `badge` — all enumerated in `frontend/node_modules/darkraise-ui/dist/components/`, none re-implemented locally). The document list/outline/reader are extracted into shared components under `frontend/src/features/documents/components/` so the workspace, the personal surface — and increment 8's editor — render one implementation.
@@ -82,7 +102,7 @@ CHANGELOG.md                                                    # Task 9
 **Evaluation:** files 1 - spec 0 - coupling 2 - risk 1 = 4
 **Approach:** inline - skip 3: the spec's §2.1 amendment fixes the requirement and the widen-vs-register decision is recorded in this plan's header, with the alternatives and their costs.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Extend `backend/tests/test_projects_endpoint.py`. **There are four existing tests, not three, and one of them must change** (cross-plan review m-1, 2026-09-02): `test_counts_every_status_not_only_active` (`:54-72`) ends in `assert resp.json() == [{"name": "mixed", "memory_count": 2}]` — exact dict equality, which fails the moment `document_count` joins the response. Widen that assertion to the new shape (`memory_count` 2, `document_count` 0, `checkpoint_count` 0) in this step, as part of the same change that adds the fields; do not weaken it to a subset match, because exact equality is what makes it catch an accidental extra field. The other three (`test_list_projects_requires_auth`, `test_lists_distinct_projects_busiest_first`, `test_empty_corpus_lists_no_projects`) pass untouched. Add:
 
@@ -148,7 +168,7 @@ async def test_one_project_in_two_corpora_is_one_row(client, auth_headers, sessi
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_projects_endpoint.py -q` — expected: FAIL (no `document_count` key; document-only project absent).
 
-- [ ] **Step 2: Widen the route**
+- [x] **Step 2: Widen the route**
 
 Replace the body of `backend/app/api/routes/projects.py` with a raw-SQL union (the asyncpg CAST rule does not bite here — no bound parameters):
 
@@ -239,7 +259,7 @@ async def list_projects(
 
 The `events` CTE reuses `ix_events_day`'s expression **verbatim** — see the header note; a reviewer who "simplifies" it to `created_at::date` de-indexes it and changes what a day means.
 
-- [ ] **Step 3: Run the endpoint tests, then the suite**
+- [x] **Step 3: Run the endpoint tests, then the suite**
 
 ```bash
 cd backend && .venv/bin/python -m pytest tests/test_projects_endpoint.py tests/test_api/test_rest_conformance.py -q
@@ -247,7 +267,7 @@ cd backend && .venv/bin/python -m pytest tests/test_projects_endpoint.py tests/t
 
 All green (`("GET", "/api/v1/projects"): 200` in the conformance table is unchanged — same route, same status). Then the full `pytest -q`.
 
-- [ ] **Step 4: SDK zero-diff check**
+- [x] **Step 4: SDK zero-diff check**
 
 `cd sdks && make generate && git diff --exit-code sdks/` — the generator binds no projects verb, so this must be a no-op. A diff here means something else drifted; stop and investigate.
 
@@ -266,7 +286,7 @@ All green (`("GET", "/api/v1/projects"): 200` in the conformance table is unchan
 **Implementer:** dcc-superpower-companions:impl-sonnet-medium
 **Evaluation:** files 1 - spec 0 - coupling 1 - risk 0 = 2
 
-- [ ] **Step 1: Widen the type**
+- [x] **Step 1: Widen the type**
 
 In `use-projects-api.ts`:
 
@@ -282,14 +302,14 @@ export interface ProjectSummary {
 }
 ```
 
-- [ ] **Step 2: Fix the switcher's now-stale claims** (invariant 23 — "full list" prose must move with its referent)
+- [x] **Step 2: Fix the switcher's now-stale claims** (invariant 23 — "full list" prose must move with its referent)
 
 In `project-switcher.tsx`:
 - The doc comment "The list is exactly the corpus's own … a scope is offered only once a memory carries it" → "… a scope is offered once a memory, document or checkpoint carries it".
 - The row hint `${row.memory_count} memories` → an item summary: `const total = row.memory_count + row.document_count + row.checkpoint_count`, hint `` `${total} ${total === 1 ? "item" : "items"}` `` (a document-only project showing "0 memories" would look broken).
 - The empty state "No project holds a memory yet." → "No project holds anything yet."
 
-- [ ] **Step 3: Typecheck + targeted tests**
+- [x] **Step 3: Typecheck + targeted tests**
 
 `cd frontend && npm run typecheck && npm test -- project-switcher` (and whatever app-chrome test renders it — `src/components/app-chrome/__tests__/`).
 
@@ -308,7 +328,7 @@ In `project-switcher.tsx`:
 **Implementer:** dcc-superpower-companions:impl-sonnet-medium
 **Evaluation:** files 1 - spec 0 - coupling 0 - risk 1 = 2
 
-- [ ] **Step 1: The stitching hook (review m1 — do not ship the silent version)**
+- [x] **Step 1: The stitching hook (review m1 — do not ship the silent version)**
 
 The list route clamps `limit` to 200 against a ~465-file corpus and returns no `total`, so a single page silently drops over half the tree. Paginate-and-stitch, dedupe by id (the order is `created_at DESC` and a filing that lands mid-pagination shifts offsets), and report truncation honestly:
 
@@ -329,7 +349,7 @@ export interface AllDocumentsResult {
 
 export function useAllDocuments(project: string) {
   return useQuery<AllDocumentsResult>({
-    queryKey: ["documents-all", project],
+    queryKey: ["documentsAll", project],
     enabled: !DEMO,
     queryFn: async () => {
       const byId = new Map<string, DocumentListItem>()
@@ -351,7 +371,7 @@ export function useAllDocuments(project: string) {
 }
 ```
 
-- [ ] **Step 2: Outline, blocks and search hooks**
+- [x] **Step 2: Outline, blocks and search hooks**
 
 ```ts
 export interface OutlineNode {
@@ -404,7 +424,7 @@ export function useDocumentSearch() {
 }
 ```
 
-- [ ] **Step 3: Hook tests**
+- [x] **Step 3: Hook tests**
 
 Extend the hooks test directory with a stitching test: mock `apiFetch` to serve 200 + 200 + 37 items across three calls and assert one query returns 437 deduped items with `truncated: false`; a second test serves `MAX_PAGES` full pages and asserts `truncated: true`. `cd frontend && npm test -- use-documents` green.
 
@@ -424,7 +444,7 @@ Extend the hooks test directory with a stitching test: mock `apiFetch` to serve 
 **Implementer:** dcc-superpower-companions:impl-sonnet-high
 **Evaluation:** files 1 - spec 0 - coupling 2 - risk 0 = 3
 
-- [ ] **Step 1: The pure util, with its unit test first**
+- [x] **Step 1: The pure util, with its unit test first**
 
 `uri-tree.ts`:
 
@@ -451,7 +471,7 @@ export function buildUriTree(items: DocumentListItem[]): UriTreeNode[]
 
 Implementation: insert each item by splitting `item.uri` on `/`, creating intermediate nodes as needed and setting `document` on the leaf; a second pass sorts children (`children.length > 0` first, then `name.localeCompare`). Null-uri items become children of a synthetic `{ name: "(no path)", path: "(no path)" }` node appended last. Unit tests: nested grouping, the both-document-and-folder case, null-uri collection, sort order.
 
-- [ ] **Step 2: The tree component**
+- [x] **Step 2: The tree component**
 
 `document-tree.tsx`, on the library's composable tree (read `tree-view.d.ts` — `TreeView` + `TreeViewTree` + `TreeViewBranch`/`TreeViewBranchControl`/`TreeViewBranchText`/`TreeViewBranchContent` + `TreeViewItem`, `selectionMode="single"`, `onSelectedChange`):
 
@@ -479,7 +499,7 @@ export function DocumentTree({
 - When `truncated`, render a dashed warning line above the tree: *"showing the first {items.length} documents — the list was cut at the pagination guard"*. Never omit it.
 - Empty state: darkraise-ui `empty-state` ("No documents filed in this project").
 
-- [ ] **Step 3: Render test + checks**
+- [x] **Step 3: Render test + checks**
 
 Render `DocumentTree` with a three-level fixture; assert branch/leaf text, selection callback, and the truncation banner when `truncated`. `cd frontend && npm test -- document-tree && npm run typecheck`.
 
@@ -499,7 +519,7 @@ Render `DocumentTree` with a three-level fixture; assert branch/leaf text, selec
 **Implementer:** dcc-superpower-companions:impl-sonnet-high
 **Evaluation:** files 1 - spec 0 - coupling 2 - risk 0 = 3
 
-- [ ] **Step 1: `BlockView`**
+- [x] **Step 1: `BlockView`**
 
 Blocks store **markdown source** (the parser keeps `inline.content`), so rendering `text` raw would show `**bold**` literally. One component, type-switched:
 
@@ -530,7 +550,7 @@ Notes for the implementer: `react-markdown` renders inline markdown; block-level
 
 **Stated deviation from spec §2 / §4.1** (cross-plan review M-7, 2026-09-02): the spec says `table` blocks "render through the library `table` component". They do not here, and the reason is a gap no plan currently closes — increment 2 *writes* the `{header, alignments}` / `{cells}` properties a real table needs, but `properties` is on neither read surface (`BlockRow`, `document_door.py:601-606`; `BlockRowModel`, `routes/documents.py:246-251`), so the data never reaches this component. `table`/`table_row` therefore render as flat cell-joined text, which is what the door actually serves. This is a deviation, not a deferral of convenience: it is recorded here, in the CHANGELOG entry (Task 8) and in the spec's §2 as an open item. **Do not invent the properties client-side.** Closing it is one additive read change — `properties` on `BlockRow`/`BlockRowModel`, both doors, one service — and **increment 8 now owns it** (its Task 5a, assigned 2026-09-02), because its editor needs the same field to show a heading's level or a list's marker: one fix serving two consumers. If increment 8 has landed by the time this task runs, take the library `table` component as the spec specifies and strike this note; if it has not, render flat and leave the note standing.
 
-- [ ] **Step 2: `DocumentReader`**
+- [x] **Step 2: `DocumentReader`**
 
 ```tsx
 export function DocumentReader({ documentId }: { documentId: string })
@@ -540,7 +560,7 @@ export function DocumentReader({ documentId }: { documentId: string })
 - Body: `useDocumentBlocks` mapped through `BlockView`, each wrapped in `<div id={block.block_id}>`.
 - Loading: `skeleton`; error: the honest "could not be read — a failed read, not an empty corpus" copy the existing view uses; a document with zero blocks: an explicit empty line, not blankness.
 
-- [ ] **Step 3: Tests + checks**
+- [x] **Step 3: Tests + checks**
 
 Render with mocked hooks: outline click scrolls (assert `scrollIntoView` spy), each block type renders its branch, markdown bold in a paragraph becomes `<strong>`. `cd frontend && npm test -- document-reader && npm run typecheck`.
 
@@ -561,7 +581,7 @@ Render with mocked hooks: outline click scrolls (assert `scrollIntoView` spy), e
 **Evaluation:** files 1 - spec 1 - coupling 1 - risk 1 = 4
 **Approach:** inline - skip 3: the spec (§2) fixes the page shape — two tabs mirroring `activity.tsx`'s pattern — and the reuse-vs-fork question for the checkpoint surface is settled by the shared-components mandate: extend `CheckpointsTab`, do not fork it.
 
-- [ ] **Step 1: `CheckpointsTab` gains a pinned-project mode**
+- [x] **Step 1: `CheckpointsTab` gains a pinned-project mode**
 
 ```tsx
 export function CheckpointsTab({ project }: { project?: string } = {}) {
@@ -569,7 +589,7 @@ export function CheckpointsTab({ project }: { project?: string } = {}) {
 
 When `project` is provided: pass it straight to `useCheckpointRuns(project)` and **hide the filter select** (the workspace's scope is the route param; a second filter inside it would offer escapes from its own page). When absent, behaviour is exactly increment 1's. Extend the checkpoints test: rendering with `project="darkmem"` issues the events read with `project=darkmem` and renders no filter control.
 
-- [ ] **Step 2: The workspace route**
+- [x] **Step 2: The workspace route**
 
 `projects_.$project.tsx` (the `knowledge_.facts_.$factId.tsx` convention gives the flat `/projects/$project` path):
 
@@ -580,7 +600,7 @@ When `project` is provided: pass it straight to `useCheckpointRuns(project)` and
   - Top: the pinned ledger — `useAllDocuments(project).items.find(d => d.uri?.endsWith("planning/progress.md"))`, rendered through `DocumentReader`. **Suffix match, not equality**: the spec's convention says uri `planning/progress.md` but increment 5's import files repo-relative paths, so the darkmem corpus ledger lands at `docs/planning/progress.md` — the suffix resolves both spellings (discrepancy flagged in Notes). No match: `empty-state` naming the convention ("file a document whose path ends in planning/progress.md to pin the project ledger").
   - Below: `<CheckpointsTab project={project} />`. Its copy already states the m2 limit (increment 1, Task 1 Step 5); do not restate or contradict it — the timeline is content-free and only the latest note's text is readable, and that stays true here.
 
-- [ ] **Step 3: Tests, typecheck, build**
+- [x] **Step 3: Tests, typecheck, build**
 
 Route test: renders both tabs, tab switch updates search param, Artifacts shows the tree, Progress shows the pinned-ledger empty state when no uri matches. `cd frontend && npm test && npm run typecheck && npm run build` (the build regenerates `routeTree.gen.ts` — commit the regenerated file, never hand-edit it).
 
@@ -601,7 +621,7 @@ Route test: renders both tabs, tab switch updates search param, Artifacts shows 
 **Evaluation:** files 1 - spec 1 - coupling 1 - risk 0 = 3
 **Approach:** inline - skip 3: the spec (§2) fixes the surface — cards per project from the widened endpoint; only layout is left to the implementer.
 
-- [ ] **Step 1: The index route**
+- [x] **Step 1: The index route**
 
 `projects.tsx`: `PageChrome` ("Projects", "Every project the corpus holds — memories, documents and checkpoint runs."), then a responsive card grid (darkraise-ui `card` + `stat`), one card per `ProjectSummary`:
 
@@ -610,7 +630,7 @@ Route test: renders both tabs, tab switch updates search param, Artifacts shows 
 - The whole card links to `/projects/$project`.
 - Loading: `skeleton` cards; empty: `empty-state` ("No project holds anything yet").
 
-- [ ] **Step 2: Navigation**
+- [x] **Step 2: Navigation**
 
 In the `nav` array (`_authenticated.tsx:50`), add to a fitting group — a new group between Memories and Knowledge:
 
@@ -626,7 +646,7 @@ In the `nav` array (`_authenticated.tsx:50`), add to a fitting group — a new g
 
 (`FolderKanban` from lucide; `FileText` is already imported.) Note `/documents` has existed since TH1.16 with **no nav entry at all** — the spec's own "the gap is UI only" reachability point; this closes it for both surfaces.
 
-- [ ] **Step 3: Tests, typecheck, build**
+- [x] **Step 3: Tests, typecheck, build**
 
 Index route test (cards render from a mocked `useProjects`, link targets); `npm test && npm run typecheck && npm run build`.
 
@@ -647,14 +667,14 @@ Index route test (cards render from a mocked `useProjects`, link targets); `npm 
 **Evaluation:** files 1 - spec 1 - coupling 1 - risk 1 = 4
 **Approach:** inline - skip 3: the spec (§2) fixes what stays (QA/summary/connections panels, the horizon labelling) and what changes (the flat list becomes the shared tree + reader; the project pins `default`).
 
-- [ ] **Step 1: Refactor `DocumentsView`**
+- [x] **Step 1: Refactor `DocumentsView`**
 
 - The route passes `project="default"` explicitly (`documents.tsx`), making the pin visible at the call site instead of a default parameter nobody reads (`documents-view.tsx:30`).
 - Replace the flat document `Card` list with `DocumentTree` over `useAllDocuments(project)`; selection feeds the existing `DocumentDetail` (summary/connections) **and** the new `DocumentReader` — reader above, horizon panels below.
 - Keep, byte-for-byte in intent: the horizon badge + copy, the withheld-answer rendering, the unbadged-summary copy, the grounded-QA card. These are honesty surfaces; the refactor moves the list, not the labels.
 - Every existing test in `documents.real.test.tsx` must still pass; extend with: the tree renders, selecting a leaf mounts the reader.
 
-- [ ] **Step 2: Full frontend check**
+- [x] **Step 2: Full frontend check**
 
 `cd frontend && npm test && npm run typecheck && npm run build`.
 
@@ -672,20 +692,20 @@ Index route test (cards render from a mocked `useProjects`, link targets); `npm 
 **Implementer:** dcc-superpower-companions:impl-sonnet-medium
 **Evaluation:** files 0 - spec 0 - coupling 0 - risk 2 = 2
 
-- [ ] **Step 1:** `./scripts/gate.sh` from the repo root — green before commit.
-- [ ] **Step 2:** CHANGELOG section for the next derived version. **Coordinate with the other in-flight increment plans** — if several land in one push, one `## vN.N.N` section covers them; the release workflow fails a push whose derived version has no section.
-- [ ] **Step 3:** Commits (atomic): `feat(projects): corpus-union project index endpoint` (Task 1), `feat(frontend): project workspace and shared document surfaces` (Tasks 2-8, or split by surface if the diff is reviewable that way).
-- [ ] **Step 4:** Redeploy (owner ruling 2026-08-21 — backend and frontend both changed):
+- [x] **Step 1:** `./scripts/gate.sh` from the repo root — green before commit.
+- [x] **Step 2:** CHANGELOG section for the next derived version. **Coordinate with the other in-flight increment plans** — if several land in one push, one `## vN.N.N` section covers them; the release workflow fails a push whose derived version has no section.
+- [x] **Step 3:** Commits (atomic): `feat(projects): corpus-union project index endpoint` (Task 1), `feat(frontend): project workspace and shared document surfaces` (Tasks 2-8, or split by surface if the diff is reviewable that way).
+- [x] **Step 4:** Redeploy (owner ruling 2026-08-21 — backend and frontend both changed):
 
 ```bash
 DARKMEM_PUSH=0 ./scripts/build-push.sh   # DARKMEM_PUSH=0 is not optional
 docker compose up -d
 # wait for healthy, then confirm the running image carries the change:
 curl -s http://127.0.0.1:8000/openapi.json | grep -c document_count   # non-zero
-docker exec darkmem-prod-darkmem-1 grep -rl "documents-all" /app/static/assets/ | head -1
+docker exec darkmem-prod-darkmem-1 grep -rl "documentsAll" /app/web/assets/ | head -1
 ```
 
-- [ ] **Step 5:** Watch it work: open `/projects`, confirm a document-only project appears once increment 5's import has run (or seed one document by hand), open its workspace, browse the tree, and watch the Progress tab poll.
+- [x] **Step 5:** Watch it work: open `/projects`, confirm a document-only project appears once increment 5's import has run (or seed one document by hand), open its workspace, browse the tree, and watch the Progress tab poll.
 
 ## Rollback
 

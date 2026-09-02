@@ -1123,7 +1123,7 @@ function useBlockMutation<V>(fn: (v: V) => Promise<BlockWriteResponse | void>, d
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["documentBlocks", documentId] })
       void qc.invalidateQueries({ queryKey: ["documentOutline", documentId] })
-      void qc.invalidateQueries({ queryKey: ["documents-all"] })
+      void qc.invalidateQueries({ queryKey: ["documentsAll"] })
     },
   })
 }
