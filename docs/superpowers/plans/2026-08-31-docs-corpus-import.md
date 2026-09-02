@@ -8,6 +8,26 @@
 > dcc-superpower-companions:dispatching-tiered-implementers. Under
 > superpowers:executing-plans these lines are inert; ignore them.
 
+> **Status: LANDED 2026-09-02.** Commits `0a9337bf` script, `17f0bd12`
+> conventions doc. The import ran against the live instance: **475 created, 0
+> failures, exit 0** (474 measured at plan time plus the conventions doc this
+> plan writes, which the run then files).
+>
+> **This run is the first real test of increments 2 and 3 against data nobody
+> chose for them, and both hold.** Block types came back
+> `paragraph 15598 · list 15414 · table_row 6565 · heading 6556 · code 2676 ·
+> table 824 · quote 185` — table parsing is working in force rather than
+> theoretically. The oversized-block list is **15 files, not the ~27 this plan
+> predicted**, and the direction is the fix working: that 27 was measured
+> before tables dissolved into rows. The headline is
+> `docs/planning/progress.md`, whose single **235,716-character** block was the
+> defect increment 2 existed to close — it now carries 2 blocks over the floor
+> with the largest at **14,098**, a 94% reduction. No tree came near the 5,000
+> block ceiling (largest 1,132).
+>
+> Round-trip verified byte-identically against the file on disk, which
+> increment 3 made checkable for the first time.
+
 **Goal:** File the repo's `docs/` corpus into project `darkmem` through the document door (uri = repo-relative path), spot-checking block counts and oversized warnings on the way in, and write the agent-facing conventions doc the spec's increments 1, 3 and 5 all lean on. Re-runnable by construction: the `(project, uri)` upsert updates in place and the content-hash gate short-circuits unchanged files.
 
 **Architecture:** A one-shot host-side script speaking REST at the running instance — through the real door, against the real deployed artifact, with the session cookie `POST /api/v1/auth/login` sets (`backend/app/api/auth.py:99-106` accepts cookie or bearer). Not in-process: an in-process import would need `DATABASE_URL` plumbing and would bypass the transport increment 0 just proved out. The conventions doc lands in `docs/` and is therefore itself imported by the run that follows it.
@@ -68,7 +88,7 @@ docs/agent-conventions.md               # Task 2 (create)
 **Evaluation:** files 0 - spec 1 - coupling 0 - risk 1 = 2
 **Approach:** inline - skip 4: REST-vs-in-process is confined to this one file and trivially reversible; REST exercises the running artifact, which is the point of importing at all.
 
-- [ ] **Step 1: Write the script**
+- [x] **Step 1: Write the script**
 
 ```python
 #!/usr/bin/env python
@@ -186,7 +206,7 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-- [ ] **Step 2: Dry-run against the tree**
+- [x] **Step 2: Dry-run against the tree**
 
 ```bash
 cd backend && .venv/bin/python scripts/import_docs_corpus.py --dry-run
@@ -194,7 +214,7 @@ cd backend && .venv/bin/python scripts/import_docs_corpus.py --dry-run
 
 Expected: ~465 uris, every one starting `docs/`, and a skipped-by-suffix count around 249. If the parseable count is wildly off the 465 measured on 2026-08-31, the corpus moved — fine; the script derives, the plan's number is provenance.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 `chore(scripts): docs corpus import script` — no release is cut (no feat/fix), which is intended.
 
@@ -212,7 +232,7 @@ Expected: ~465 uris, every one starting `docs/`, and a skipped-by-suffix count a
 **Implementer:** dcc-superpower-companions:impl-sonnet-low
 **Evaluation:** files 0 - spec 1 - coupling 0 - risk 0 = 1
 
-- [ ] **Step 1: Write the doc.** It must carry, at minimum, each of the following — every one is a stated spec decision or a shipped constraint, cited here so the writer does not re-derive them:
+- [x] **Step 1: Write the doc.** It must carry, at minimum, each of the following — every one is a stated spec decision or a shipped constraint, cited here so the writer does not re-derive them:
 
 1. **Project naming**: `project = <repo-name>` for project artifacts, matching the `project/<repo-name>` tag convention agents already use for memories (spec §1); personal notes stay in `default`.
 2. **Uri scheme**: the repo-relative path the file had (`docs/planning/progress.md`). Re-filing the same `(project, uri)` updates in place — the upsert is the identity, unlike memory capture where every door appends.
@@ -225,9 +245,9 @@ Expected: ~465 uris, every one starting `docs/`, and a skipped-by-suffix count a
 6. **Optional `properties.kind` label** (`"artifact"` / `"note"`): decoration for later UI filtering; the project boundary is the separation. Note the REST/MCP put doors do not currently accept `properties` — the label is aspirational until a door serves it; say so rather than instructing agents to send a field the contract drops.
 7. **Round-trip honesty**: `document_get` returns block text with markdown syntax already stripped (heading markers gone, tables flattened to cell-joined rows, `hr`/`html_block` dropped). Increment 3 lands `documents.content` and an `include_content` flag, which is what makes the source retrievable — but `document_get` **without** that flag still returns blocks, not source. So: **do not** get-edit-put a document and expect the source back unless you asked for content explicitly.
 
-- [ ] **Step 2: Verify the constraints hold as written** — re-read against `checkpoints.py` bounds and the spec's §1/§3 conventions; every number in the doc must match the code, not memory.
+- [x] **Step 2: Verify the constraints hold as written** — re-read against `checkpoints.py` bounds and the spec's §1/§3 conventions; every number in the doc must match the code, not memory.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 `docs(agents): artifact store and checkpoint conventions`
 
@@ -244,14 +264,14 @@ Expected: ~465 uris, every one starting `docs/`, and a skipped-by-suffix count a
 **Implementer:** dcc-superpower-companions:impl-sonnet-medium
 **Evaluation:** files 0 - spec 0 - coupling 1 - risk 1 = 2
 
-- [ ] **Step 1: Preconditions**
+- [x] **Step 1: Preconditions**
 
 ```bash
 curl -s http://127.0.0.1:8000/openapi.json | grep -c oversized_blocks   # non-zero (parser fixes deployed)
 ./scripts/backup.sh /root/darkmem-backups                               # cheap insurance before a 465-file write
 ```
 
-- [ ] **Step 2: Run**
+- [x] **Step 2: Run**
 
 ```bash
 cd backend && DARKMEM_ADMIN_PASSWORD=... .venv/bin/python scripts/import_docs_corpus.py
@@ -259,7 +279,7 @@ cd backend && DARKMEM_ADMIN_PASSWORD=... .venv/bin/python scripts/import_docs_co
 
 Exit 0. Record the report (outcome counts, largest trees, warning list) in the task's completion report. Expect ~27 files on the oversized-warning list (the spec's measured count of files exceeding the nomic budget) — dramatically fewer than pre-table-parsing, since the mega-tables now dissolve into rows.
 
-- [ ] **Step 3: Verify storage, in SQL (the list route cannot show 465 files — m1)**
+- [x] **Step 3: Verify storage, in SQL (the list route cannot show 465 files — m1)**
 
 ```bash
 docker exec darkmem-prod-postgres-1 psql -U darkmem -d darkmem -tAc \
@@ -277,7 +297,7 @@ docker exec darkmem-prod-postgres-1 psql -U darkmem -d darkmem -tAc \
 # every count under MAX_BLOCKS 5000
 ```
 
-- [ ] **Step 4: Verify the door reads back**
+- [x] **Step 4: Verify the door reads back**
 
 ```bash
 # outline by uri
@@ -290,15 +310,31 @@ curl -s -X POST http://127.0.0.1:8000/api/v1/documents/search -b "$COOKIE_JAR" \
 
 Outline returns headings; search returns hits with `heading_path`.
 
-- [ ] **Step 5: Record the M2 behaviour**
+**Result, 2026-09-02:** both hold. The outline returns the heading tree for
+doc 16; the search returns ranked hits carrying `heading_path` and `uri`. The
+round trip was also checked beyond what this step asked for, because increment
+3 made it checkable for the first time: `include_content=true` on
+`docs/agent-conventions.md` returns content **byte-identical to the file on
+disk**.
+
+- [x] **Step 5: Record the M2 behaviour**
 
 ```bash
 curl -s http://127.0.0.1:8000/api/v1/projects -b "$COOKIE_JAR"
 ```
 
-Record whether `darkmem` appears. If it does, that is memory rows under that project name, not the documents — the route groups `memories.project` only. Either way, write one line into the completion report: *"the imported project is [visible via pre-existing memories | invisible] on the project index; the index cannot reflect documents until increment 4's M2 fix"*. Do not "fix" this here; it is a spec-amendment item.
+**This step's premise was overtaken by increment 4 and is amended (2026-09-02).**
+It was written when `GET /api/v1/projects` grouped `memories.project` alone, and
+instructed the executor to record the project as invisible. Increment 4 landed
+the M2 fix before this import ran, so the endpoint now unions documents.
 
-- [ ] **Step 6: Confirm nothing was left running** — the script is a foreground client and starts nothing; verify no stray processes anyway before reporting done.
+**Measured after the import:** `darkmem: memories=0 documents=475
+checkpoints=0`. That result is also the sharpest available confirmation that
+M2 was a real defect rather than a theoretical one — this project holds **zero**
+memories, so under the pre-increment-4 endpoint a 475-document corpus would
+have been completely invisible on its own index.
+
+- [x] **Step 6: Confirm nothing was left running** — the script is a foreground client and starts nothing; verify no stray processes anyway before reporting done.
 
 ## Rollback
 
