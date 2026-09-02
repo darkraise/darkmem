@@ -179,6 +179,22 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="backups.inventory",
+        status=REST_ONLY,
+        rest=(("GET", f"{V1}/backups/inventory"),),
+        mcp=(),
+        reason=(
+            "An operator's read of where this instance's own encrypted "
+            "snapshots landed and whether each verified, so a human can decide "
+            "whether to restore. Restoring is deliberately a shell command and "
+            "never a route (spec section 9.6), so the read exists to inform a "
+            "person at a console; an agent has no restore verb to inform. It "
+            "also enumerates destination names and reachability that nothing "
+            "an agent does with a memory depends on, which is the same "
+            "argument the destination config row above carries."
+        ),
+    ),
+    Surface(
         name="usage.read",
         status=REST_ONLY,
         rest=(

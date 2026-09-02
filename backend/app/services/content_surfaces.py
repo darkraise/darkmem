@@ -598,6 +598,11 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # door only names, and no `memories` row is read to serve either verb.
     "GET /api/v1/config/backup-destinations",
     "PUT /api/v1/config/backup-destinations",
+    # The snapshot inventory (increment 7). Filenames, sizes, timestamps and
+    # a per-destination verification badge -- the snapshots themselves carry
+    # every memory in the database, but this door names them rather than
+    # opening them, and reads no `memories` row to serve the page.
+    "GET /api/v1/backups/inventory",
     # The run listing and re-derivation (T3.28's trigger half). No memory
     # content crosses either: the listing serves a run's subject, its
     # journalled counts and how many of its rows are still live, and the

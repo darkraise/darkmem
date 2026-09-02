@@ -109,7 +109,9 @@ async def pull(destination, *, name: str | None, out_dir: Path) -> Path:
 
 
 async def _main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description="Fetch a snapshot back off a configured backup destination."
+    )
     parser.add_argument("--destination", required=True, help="configured destination name")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--latest", action="store_true", help="the newest snapshot")

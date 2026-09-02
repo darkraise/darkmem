@@ -33,12 +33,12 @@ services:
     # ProxyHeadersMiddleware defaults on and would rewrite the transport peer
     # the login limiter buckets on.
     #
-    # ONE worker (invariant 13): no --workers flag, and none of the env vars
-    # uvicorn reads for a worker count -- a text guard in
-    # test_deployment_artifact.py refuses to see either spelled out in an ops
-    # file, including in a comment like this one. The viewer is the same app
-    # with the same in-process limiter, scheduler and WebSocket fan-out; being
-    # read-only changes none of that.
+    # ONE uvicorn process (invariant 13). Two guards scan this file as text
+    # and refuse to see either the worker-count flag or the env vars uvicorn
+    # reads for one -- including inside a comment like this, which is why
+    # neither is spelled out here. The viewer is the same app with the same
+    # in-process limiter, scheduler and WebSocket fan-out; being read-only
+    # changes none of that.
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]
     environment:
       - ENVIRONMENT=production
