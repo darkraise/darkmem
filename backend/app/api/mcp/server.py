@@ -617,6 +617,7 @@ async def document_put(
     content: str,
     title: str | None = None,
     source_type: str | None = None,
+    expected_hash: str | None = None,
     ctx: Context | None = None,
 ) -> str:
     """
@@ -626,7 +627,13 @@ async def document_put(
         content: The file's text. The server never reads your filesystem.
         title: Optional; falls back to the document's first heading.
         source_type: Optional; inferred from the uri suffix.
+        expected_hash: Optional compare-and-set -- file only if the document
+            still holds this content_hash (the value a previous put or
+            document_get echoed). Omit for last-writer-wins. A mismatch
+            answers a `hash_conflict` envelope naming both hashes, never an
+            error: the caller made no mistake, it lost a race.
     """
+    from app.services.document_ingest import DocumentHashConflict
     from app.services.document_door import put_document
 
     if not _pipeline or not _pipeline.llm:
@@ -642,7 +649,20 @@ async def document_put(
                 session, _pipeline.llm,
                 project=project, uri=uri, content=content,
                 title=title, source_type=source_type, source=source,
+                expected_hash=expected_hash,
             )
+        except DocumentHashConflict as exc:
+            # A structured refusal rather than a tool error: the caller can
+            # machine-read this, re-read the document and retry. Its REST twin
+            # is a 409 carrying the same two hashes.
+            await session.rollback()
+            return json.dumps({
+                "status": "hash_conflict",
+                "document_uri": uri,
+                "project": project,
+                "expected_hash": exc.expected_hash,
+                "current_hash": exc.current_hash,
+            })
         except Exception:
             await session.rollback()
             raise
@@ -727,6 +747,7 @@ async def document_get(
     block_ids: list[str] | None = None,
     project: str | None = None,
     uri: str | None = None,
+    include_content: bool = False,
 ) -> str:
     """
     Args:
@@ -735,8 +756,16 @@ async def document_get(
             outline. An empty list names zero blocks and returns zero.
         project: Scope, when naming the document by uri.
         uri: The repo-relative path it was filed under.
+        include_content: Also return the document's verbatim filed source
+            under `content`. The result becomes `{content, blocks}` instead
+            of the bare block array -- the one flag under which this tool
+            answers an object. Off by default: the source can be a megabyte.
     """
-    from app.services.document_door import document_blocks, resolve_document_target
+    from app.services.document_door import (
+        document_blocks,
+        document_content,
+        resolve_document_target,
+    )
 
     # Parsed here rather than handed to `CAST(:ids AS uuid[])`: the REST twin
     # declares `list[UUID]` and answers 422 for a malformed one, and this door
@@ -754,6 +783,15 @@ async def document_get(
         rows = await document_blocks(
             session, document_id=target, block_ids=block_ids,
         )
+        # Inside the session block: the content read is a second statement on
+        # the same connection, and the same service function the route calls.
+        raw = (
+            await document_content(session, document_id=target)
+            if include_content
+            else None
+        )
+    if include_content:
+        return json.dumps({"content": raw, "blocks": [vars(r) for r in rows]})
     return json.dumps([vars(r) for r in rows])
 
 

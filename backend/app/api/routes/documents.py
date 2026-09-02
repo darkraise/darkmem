@@ -62,9 +62,11 @@ from app.services.block_pipeline import UnsupportedSource
 from app.services.document_connections import connections_for_document
 from app.services.document_door import (
     SEARCH_DEFAULT_LIMIT, SEARCH_MAX_LIMIT, DocumentTargetUnresolved,
-    DocumentTooLarge, delete_document, document_blocks, document_outline,
+    DocumentTooLarge, delete_document, document_blocks, document_content,
+    document_outline,
     put_document, resolve_document_target, search_sections,
 )
+from app.services.document_ingest import DocumentHashConflict
 from app.services.document_parsers import DocumentParseError
 from app.services.document_summary import read_summary
 from app.services.faithfulness_gate import FaithfulnessGate, Outcome
@@ -177,6 +179,10 @@ class DocumentPutRequest(BaseModel):
     content: str = Field(min_length=1)
     title: str | None = None
     source_type: str | None = None
+    # Optional compare-and-set: file only if the document still holds this
+    # content_hash. Omit for last-writer-wins, which is what every existing
+    # caller gets. 409 when it does not match (spec §5.3, review M1).
+    expected_hash: str | None = None
 
 
 class DocumentPutResponse(BaseModel):
@@ -196,6 +202,8 @@ class DocumentPutResponse(BaseModel):
     # parsed, so nothing was measured; 0 is a clean bill, None is no bill.
     oversized_blocks: int | None = None
     largest_block_chars: int | None = None
+    # What the document now holds -- precondition the next edit on it.
+    content_hash: str | None = None
     horizon: bool = True
 
 
@@ -259,6 +267,10 @@ class BlockRowModel(BaseModel):
 class DocumentBlocksResponse(BaseModel):
     document_id: str
     blocks: list[BlockRowModel]
+    # The verbatim filed source, which blocks.char_span indexes into. Present
+    # only when the request opted in with include_content -- absent by default
+    # so no existing reader pays for a potentially megabyte field (spec §5.2).
+    content: str | None = None
     horizon: bool = True
 
 
@@ -411,6 +423,7 @@ async def put_document_route(
             session, llm,
             project=body.project, uri=body.uri, content=body.content,
             title=body.title, source_type=body.source_type, source="api",
+            expected_hash=body.expected_hash,
         )
     except DocumentTooLarge as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
@@ -418,6 +431,15 @@ async def put_document_route(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     except DocumentParseError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    except DocumentHashConflict as exc:
+        # 409, not 422: the caller made no mistake -- it lost a race, or the
+        # document moved since it last read it. The detail names both hashes
+        # so the caller can re-read and retry without a second round trip.
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"expected_hash {exc.expected_hash} does not match the "
+            f"document's current content_hash {exc.current_hash}",
+        ) from exc
 
     return DocumentPutResponse(
         document_id=result.document_id,
@@ -427,6 +449,7 @@ async def put_document_route(
         title_applied=result.title_applied,
         oversized_blocks=result.oversized_blocks,
         largest_block_chars=result.largest_block_chars,
+        content_hash=result.content_hash,
     )
 
 
@@ -540,6 +563,7 @@ async def document_blocks_route(
     block_ids: list[UUID] | None = Query(default=None),
     project: str | None = Query(None),
     uri: str | None = Query(None),
+    include_content: bool = Query(False),
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ) -> DocumentBlocksResponse:
@@ -563,7 +587,13 @@ async def document_blocks_route(
         session, document_id=target,
         block_ids=[str(b) for b in block_ids] if block_ids is not None else None,
     )
+    content = (
+        await document_content(session, document_id=target)
+        if include_content
+        else None
+    )
     return DocumentBlocksResponse(
         document_id=target,
         blocks=[BlockRowModel(**vars(r)) for r in rows],
+        content=content,
     )

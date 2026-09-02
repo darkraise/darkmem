@@ -101,7 +101,12 @@ _RETRIEVAL_WIRE_SHAPE = (
     "ranking, the scope and the document-resolution refusals: all three verbs "
     "resolve a supplied `document_id` through "
     "`document_door.resolve_document_target`, which is also what lets the two "
-    "keyed reads take a (project, uri) pair instead."
+    "keyed reads take a (project, uri) pair instead. Since the 2026-08-31 "
+    "round-trip increment both keyed reads take include_content (default "
+    "off): on, the route adds the verbatim filed source as `content` on its "
+    "envelope and the tool answers {content, blocks} in place of the bare "
+    "array -- the one flag under which document_get answers an object, "
+    "produced by the same document_content service read on both doors."
 )
 
 _WRITE_WIRE_SHAPE = (
@@ -114,7 +119,13 @@ _WRITE_WIRE_SHAPE = (
     "doors call `put_document` and `delete_document`, so the provenance "
     "withdrawal a delete owes has one implementation, and both resolve the "
     "document to delete through `document_door.resolve_document_target`, by "
-    "id or by (project, uri)."
+    "id or by (project, uri). Since the 2026-08-31 round-trip increment put "
+    "takes an optional expected_hash compare-and-set (spec section 5.3): the "
+    "predicate rides the writer's own UPDATE, a stale hash answers 409 on the "
+    "route and a hash_conflict envelope from the tool -- one refusal produced "
+    "by DocumentHashConflict on both doors -- and PutResult now also carries "
+    "content_hash, so both doors echo the hash a caller preconditions its "
+    "next edit on."
 )
 
 

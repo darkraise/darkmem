@@ -985,3 +985,117 @@ async def test_an_ordinary_document_reports_zero_not_null(
         headers=auth_headers,
     )
     assert response.json()["oversized_blocks"] == 0
+
+
+@pytest.mark.asyncio
+async def test_include_content_returns_the_filed_source_on_both_doors(
+    client, auth_headers, both_doors
+):
+    """The round trip, asserted against the exact bytes that were PUT --
+    frontmatter fence included, since that is what char_span indexes into."""
+    import json
+
+    from app.api.mcp import server as mcp_server
+
+    source = "---\ntitle: RT\n---\n# H\n\nbody\n"
+    created = await client.post(
+        f"{V1}/documents",
+        json={"project": "p", "uri": "docs/rt.md", "content": source},
+        headers=auth_headers,
+    )
+    doc_id = created.json()["document_id"]
+
+    off = await client.get(f"{V1}/documents/{doc_id}", headers=auth_headers)
+    assert off.json()["content"] is None
+
+    on = await client.get(
+        f"{V1}/documents/{doc_id}?include_content=true", headers=auth_headers
+    )
+    assert on.json()["content"] == source
+
+    by_uri = await client.get(
+        f"{V1}/documents/by-uri?project=p&uri=docs/rt.md&include_content=true",
+        headers=auth_headers,
+    )
+    assert by_uri.json()["content"] == source
+
+    bare = json.loads(await mcp_server.document_get(document_id=doc_id))
+    assert isinstance(bare, list)
+
+    envelope = json.loads(
+        await mcp_server.document_get(document_id=doc_id, include_content=True)
+    )
+    assert isinstance(envelope, dict)
+    assert envelope["content"] == source
+    assert envelope["blocks"] == bare
+
+
+@pytest.mark.asyncio
+async def test_expected_hash_refuses_a_stale_edit_on_both_doors(
+    client, auth_headers, both_doors
+):
+    """One DocumentHashConflict, two wire shapes: 409 on the route, a
+    hash_conflict envelope from the tool. Both name the hash that won, so a
+    caller can re-read and retry without guessing."""
+    import json
+
+    from app.api.mcp import server as mcp_server
+
+    created = await client.post(
+        f"{V1}/documents",
+        json={"project": "p", "uri": "docs/cas.md", "content": "# One\n"},
+        headers=auth_headers,
+    )
+    assert created.status_code == 201
+    first_hash = created.json()["content_hash"]
+    assert first_hash
+
+    # A matching precondition is accepted and echoes the new hash.
+    ok = await client.post(
+        f"{V1}/documents",
+        json={
+            "project": "p", "uri": "docs/cas.md", "content": "# Two\n",
+            "expected_hash": first_hash,
+        },
+        headers=auth_headers,
+    )
+    assert ok.status_code == 201
+    second_hash = ok.json()["content_hash"]
+    assert second_hash != first_hash
+
+    # The stale hash is now refused on the route.
+    stale = await client.post(
+        f"{V1}/documents",
+        json={
+            "project": "p", "uri": "docs/cas.md", "content": "# Three\n",
+            "expected_hash": first_hash,
+        },
+        headers=auth_headers,
+    )
+    assert stale.status_code == 409
+    assert first_hash in stale.json()["detail"]
+
+    # The route's refusal wrote nothing: the document still holds the edit
+    # that was accepted. Checked here, before the tool call below, on purpose
+    # -- see the note on that call.
+    current = await client.get(
+        f"{V1}/documents/by-uri?project=p&uri=docs/cas.md&include_content=true",
+        headers=auth_headers,
+    )
+    assert current.json()["content"] == "# Two\n"
+
+    # ... and on the tool, as a structured envelope rather than an error.
+    #
+    # This call has to come last in this test. The conflict path rolls its
+    # session back, and the `both_doors` fixture hands the tool the *same*
+    # session the REST client is using, so the rollback discards this test's
+    # own rows too. That is a property of the fixture, not of the door: in
+    # production `document_put` opens its own session per call and the
+    # rollback reaches nothing but its own failed filing.
+    reply = json.loads(await mcp_server.document_put(
+        project="p", uri="docs/cas.md", content="# Four\n",
+        expected_hash=first_hash,
+    ))
+    assert reply["status"] == "hash_conflict"
+    assert reply["expected_hash"] == first_hash
+    assert reply["current_hash"] == second_hash

@@ -46,6 +46,7 @@ __all__ = [
     "SectionHit",
     "delete_document",
     "document_blocks",
+    "document_content",
     "document_outline",
     "put_document",
     "resolve_document_id",
@@ -152,6 +153,11 @@ class PutResult:
     # of a degradation the filing would otherwise hide behind a 201.
     oversized_blocks: int | None = None
     largest_block_chars: int | None = None
+    # The hash the document now holds, echoed so a caller can precondition
+    # its next edit on it. Without this no wire surface served one, and
+    # expected_hash would ship unusable -- a caller would have to sha256 the
+    # content itself and know the algorithm.
+    content_hash: str | None = None
 
 
 _BLOCK_IDS = text(
@@ -425,6 +431,7 @@ async def put_document(
     properties: dict | None = None,
     actor: str | None = None,
     source: str | None = None,
+    expected_hash: str | None = None,
 ) -> PutResult:
     if len(content) > MAX_CONTENT_CHARS:
         raise DocumentTooLarge(
@@ -456,6 +463,7 @@ async def put_document(
             properties=properties,
             actor=actor,
             source=source,
+            expected_hash=expected_hash,
         )
         if filed.blocks_written > MAX_BLOCKS:
             raise DocumentTooLarge(
@@ -531,6 +539,7 @@ async def put_document(
         title_applied=filed.outcome != UNCHANGED,
         oversized_blocks=filed.oversized_blocks,
         largest_block_chars=filed.largest_block_chars,
+        content_hash=filed.content_hash,
     )
 
 
@@ -648,6 +657,28 @@ async def document_outline(
         )
         for r in rows
     ]
+
+
+_DOCUMENT_CONTENT = text(
+    "SELECT content FROM documents WHERE id = CAST(:document_id AS uuid)"
+)
+
+
+async def document_content(session: AsyncSession, *, document_id: str) -> str | None:
+    """The document's verbatim source of record.
+
+    The exact text ``put`` filed -- frontmatter and fences included -- which is
+    also what every block's ``char_span`` indexes into. None for a document
+    filed from a non-text source, which has no text form to return.
+
+    Read-only, the same posture as ``document_blocks``: commits nothing and
+    opens no savepoint. Deliberately its own statement rather than a column on
+    the list or resolve reads: the source can be a megabyte, and only this
+    caller asked for it.
+    """
+    return (await session.execute(
+        _DOCUMENT_CONTENT, {"document_id": document_id}
+    )).scalar_one_or_none()
 
 
 _BLOCKS = """
