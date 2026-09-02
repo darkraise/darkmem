@@ -49,8 +49,15 @@ WORKDIR /app
 # "git: not found"; the only symptom is that indexing never works.
 # ca-certificates is already in the base image, so https clones need nothing
 # further.
+# postgresql-client: the backup_ship job dumps over the stack network, and
+# the client major must be >= the server's (pg17); trixie ships 17. age: a
+# dump is encrypted before it leaves the host, with an X25519 recipient --
+# the identity never enters the image or the database, because a snapshot
+# carrying its own decryption key defeats encryption at rest.
+# openssh-client + rsync: the ssh destination ships via scp/rsync.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git \
+    && apt-get install -y --no-install-recommends \
+        git postgresql-client age openssh-client rsync \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /opt/venv /opt/venv

@@ -78,6 +78,20 @@ services:
     volumes:
       # Persist cloned repositories across container restarts.
       - repo_data:/app/data/repositories
+      # Where backup_ship writes its dumps. A host bind mount rather than a
+      # named volume, so the host-side restore path and the operator can read
+      # what the job produced. Distinct from the systemd producer's
+      # /root/darkmem-backups on purpose: the two never share a directory, so
+      # neither's retention can prune the other's artefacts.
+      #
+      # NOT under /root. The container runs as the unprivileged `app` user and
+      # /root is 0700, so a dump directory there is one the job can neither
+      # traverse nor write -- and Docker does not chown a bind mount the way
+      # it chowns a fresh named volume. Create it on the host, owned by the
+      # image's uid, before the first ship:
+      #   APP_UID=$(docker run --rm darkraise/darkmem:latest id -u)
+      #   sudo install -d -o "$APP_UID" -g "$APP_UID" -m 0750 /srv/darkmem-dumps
+      - ${DARKMEM_DUMP_DIR:-/srv/darkmem-dumps}:/dumps
     networks:
       - darkmem
     depends_on:

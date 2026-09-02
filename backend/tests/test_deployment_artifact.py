@@ -495,3 +495,28 @@ def test_runtime_stage_installs_git():
         "the runtime stage installs no git; RepoManager._run_git shells out to "
         "the binary and no pure-Python git is in the lockfile"
     )
+
+
+def test_runtime_stage_installs_the_backup_toolchain():
+    """The backup_ship job dumps over the stack network and encrypts with
+    age; the ssh destination shells out to scp/rsync. None are in the base
+    image, and an image missing them boots green while every nightly ship
+    fails -- the process-boundary lesson applied to its own fix."""
+    runtime = _unwrapped(DOCKERFILE)
+    for package in ("postgresql-client", "age", "openssh-client", "rsync"):
+        assert package in runtime, f"runtime stage does not install {package}"
+
+
+def test_prod_app_service_mounts_a_writable_dump_directory():
+    """The container runs as the unprivileged `app` user (USER app), and a
+    host bind mount is NOT chowned by Docker the way a fresh named volume is.
+    A default under /root -- mode 0700 -- is a directory the job can neither
+    traverse nor write, so every ship would fail on its first `.part` open
+    while the image reported healthy."""
+    service = _compose(PROD_COMPOSE)["services"][APP_SERVICE]
+    mount = next((v for v in service["volumes"] if "/dumps" in v), None)
+    assert mount and "DARKMEM_DUMP_DIR" in mount, service["volumes"]
+    assert "/root" not in mount, (
+        "the dump mount's default must be reachable by the image's "
+        f"unprivileged user; /root is 0700 -- got {mount!r}"
+    )
