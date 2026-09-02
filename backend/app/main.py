@@ -238,7 +238,9 @@ async def lifespan(app: FastAPI):
         make_code_deriver_runner,
         make_citation_reverify_runner,
         make_block_embedding_runner,
+        make_backup_ship_runner,
     )
+    from app.services.backup_ship import BACKUP_SHIP_JOB_KEY
     from app.services.entity_anchoring import (
         REPO_ENTITY_ANCHORING_CONFIG_SCHEMA,
         REPO_ENTITY_ANCHORING_JOB_KEY,
@@ -341,6 +343,25 @@ async def lifespan(app: FastAPI):
         min_interval_seconds=3600,
         runner=make_llm_usage_cleanup_runner(app, async_session_factory),
         config_schema=LLM_USAGE_CONFIG_SCHEMA,
+    ))
+
+    job_registry.register(Job(
+        key=BACKUP_SHIP_JOB_KEY,
+        display_name="Backup Ship",
+        description=(
+            "Dumps the database over the stack network with the image's own "
+            "pg_dump, encrypts with the destination's age recipient, ships to "
+            "every enabled destination, reads each upload back to verify it, "
+            "and prunes per destination. Independent of the host-side systemd "
+            "backup timer by design -- two producers, no shared lock."
+        ),
+        # 04:30 -- an hour clear of the systemd timer's 03:30, because nothing
+        # can serialise the two producers (m4) and dumping twice concurrently
+        # doubles I/O on the same Postgres for no benefit.
+        default_cron="30 4 * * *",
+        min_interval_seconds=3600,
+        runner=make_backup_ship_runner(app, async_session_factory),
+        max_run_seconds=7200,
     ))
 
     job_registry.register(Job(

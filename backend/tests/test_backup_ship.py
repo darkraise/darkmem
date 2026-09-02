@@ -735,3 +735,93 @@ def test_the_default_client_factory_carries_the_configured_endpoint(monkeypatch)
     assert seen["region_name"] == "auto"
     assert seen["aws_access_key_id"] == "AK"
     assert seen["aws_secret_access_key"] == "SK"
+
+
+# ---------------------------------------------------------------------------
+# Task 7: the job
+# ---------------------------------------------------------------------------
+
+
+async def test_the_runner_hands_its_summary_to_the_run_record(monkeypatch):
+    """The summary is the run record's whole value: a nightly ship that
+    reported only "ok" would tell an operator nothing about which destination
+    verified and which one is quietly holding a corrupt snapshot."""
+    from sqlalchemy import text as _text
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.config import settings
+    from app.services.job_registry import Job, JobRegistry
+    from app.services.job_runners import make_backup_ship_runner
+
+    summary = {"dump": "darkmem-app-x.sql.gz", "shipped": 2, "verify_failed": []}
+
+    async def _fake_ship_all(session_factory):
+        return summary
+
+    monkeypatch.setattr(backup_ship, "ship_all", _fake_ship_all)
+
+    engine = create_async_engine(settings.test_database_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    registry = JobRegistry(factory)
+    registry.register(
+        Job(
+            key=backup_ship.BACKUP_SHIP_JOB_KEY,
+            display_name="Backup Ship",
+            description="d",
+            default_cron="30 4 * * *",
+            min_interval_seconds=3600,
+            runner=make_backup_ship_runner(None, factory),
+        )
+    )
+    try:
+        cfg = await registry.trigger(backup_ship.BACKUP_SHIP_JOB_KEY)
+        assert cfg.last_status == "ok"
+        async with factory() as s:
+            detail = (
+                await s.execute(
+                    _text(
+                        "SELECT detail FROM job_runs WHERE job_key = :k "
+                        "ORDER BY started_at DESC LIMIT 1"
+                    ),
+                    {"k": backup_ship.BACKUP_SHIP_JOB_KEY},
+                )
+            ).scalar_one()
+        assert detail == summary
+    finally:
+        async with factory() as s:
+            await s.execute(
+                _text("DELETE FROM job_runs WHERE job_key = :k"),
+                {"k": backup_ship.BACKUP_SHIP_JOB_KEY},
+            )
+            await s.execute(
+                _text("DELETE FROM config WHERE key = :k"),
+                {"k": f"job:{backup_ship.BACKUP_SHIP_JOB_KEY}"},
+            )
+            await s.commit()
+        await registry.stop_all()
+        await engine.dispose()
+
+
+def test_the_job_is_registered_an_hour_clear_of_the_systemd_timer():
+    """Nothing serialises the two producers -- different processes, and the
+    per-job lock binds in-process only -- so the gap is the whole mitigation
+    and belongs under test rather than in a comment alone."""
+    import ast
+
+    source = ast.parse(Path("app/main.py").read_text())
+    crons = [
+        kw.value.value
+        for node in ast.walk(source)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "Job"
+        for kw in node.keywords
+        if kw.arg == "default_cron"
+        and any(
+            k.arg == "key"
+            and isinstance(k.value, ast.Name)
+            and k.value.id == "BACKUP_SHIP_JOB_KEY"
+            for k in node.keywords
+        )
+    ]
+    assert crons == ["30 4 * * *"], crons

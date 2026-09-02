@@ -1028,3 +1028,21 @@ def make_block_embedding_runner(
                 outcome.failed,
             )
     return run
+
+
+def make_backup_ship_runner(app, session_factory: async_sessionmaker[AsyncSession]):
+    """Dump over the stack network, encrypt, ship, verify, prune (spec 9.3).
+
+    Does NOT shell to scripts/backup.sh -- the container cannot reach it (M4):
+    no compose binary, no docker socket, no mount onto the host's backup
+    directory. The systemd timer stays as the independent host-side producer,
+    separated from this one by directory and filename prefix, not by any lock
+    (m4): different processes, and the per-job asyncio.Lock binds in-process
+    only. The 04:30 default cron is what keeps the two an hour apart.
+    """
+    async def run() -> dict:
+        from app.services.backup_ship import ship_all
+
+        return await ship_all(session_factory)
+
+    return run

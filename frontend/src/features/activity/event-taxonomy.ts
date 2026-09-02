@@ -157,6 +157,15 @@ const EVENT_TYPES_WITHOUT_TAB = new Set<string>([
   // themselves on the per-object timeline, which is a different surface again.
   "api_key_created",
   "api_key_revoked",
+  // The off-host ship's outcomes (increment 6). Same reasoning as the auth
+  // family and the API-key pair above: a snapshot leaving the host is an
+  // operational fact about the box, not a memory, fact or repo lifecycle
+  // step, so none of the five tabs models it. Its surface is the Backups
+  // settings tab, which reads these rows back per destination — including
+  // the verify failure, which an operator needs beside the destination it
+  // belongs to rather than scattered through a lifecycle feed.
+  "backup_shipped",
+  "backup_verify_failed",
 ])
 
 export function categoryOfEventType(eventType: string): FeedCategory | null {

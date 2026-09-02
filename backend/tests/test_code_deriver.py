@@ -1523,7 +1523,7 @@ def test_main_registers_the_full_direct_job_roster():
         "RELATION_EMBEDDING_JOB_KEY", "REPO_ENTITY_ANCHORING_JOB_KEY",
         "REPO_ENTITY_MERGE_JOB_KEY", "CITATION_REVERIFY_JOB_KEY",
         "JOB_RUN_CLEANUP_JOB_KEY", "BLOCK_EMBEDDING_JOB_KEY",
-        "LLM_USAGE_CLEANUP_JOB_KEY",
+        "LLM_USAGE_CLEANUP_JOB_KEY", "BACKUP_SHIP_JOB_KEY",
     }
     assert keys == expected, (
         f"direct job registrations in app/main.py drifted from the roster "

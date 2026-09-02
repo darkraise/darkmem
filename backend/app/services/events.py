@@ -116,6 +116,20 @@ RESYNTHESIS_HELD = "resynthesis_held"
 API_KEY_CREATED = "api_key_created"
 API_KEY_REVOKED = "api_key_revoked"
 
+# Increment 6's off-host ship (spec §9.3-§9.4). `object_type='system'`: a
+# snapshot is the whole box, not one of the ten domain objects. Named
+# constants rather than bare literals in the list below, so the emitter can
+# import them -- `tests/test_events.py`'s scan resolves a Name it can find as
+# a module-level string constant, and that is what keeps the emit site
+# traceable instead of unresolved.
+#
+# A snapshot landed on a destination and its read-back checksum matched.
+BACKUP_SHIPPED = "backup_shipped"
+# Uploaded is not restorable: the read-back disagreed or could not be taken at
+# all. Its own value rather than a flag on the row above, so the failure is
+# countable without parsing a payload.
+BACKUP_VERIFY_FAILED = "backup_verify_failed"
+
 # Doc 04 §8.1's list is explicitly non-exhaustive ("..."); this is the subset
 # named there plus the values T1.07's call sites (capture, extraction,
 # supersession, pipeline outcomes) actually emit. Widening it is
@@ -200,16 +214,8 @@ EVENT_TYPES: list[str] = [
     "research_run",
     API_KEY_CREATED,
     API_KEY_REVOKED,
-    # Increment 6's off-host ship (spec section 9.3-9.4). `object_type='system'`:
-    # a snapshot is the whole box, not one of the ten domain objects. Landed
-    # ahead of their emitter in backup_ship.py, taxonomy-first.
-    #
-    # A snapshot landed on a destination and its read-back checksum matched.
-    "backup_shipped",
-    # Uploaded is not restorable: the read-back disagreed or could not be
-    # taken at all. Its own value rather than a flag on the row above, so the
-    # failure is countable without parsing a payload.
-    "backup_verify_failed",
+    BACKUP_SHIPPED,
+    BACKUP_VERIFY_FAILED,
 ]
 
 OBJECT_TYPES: list[str] = [

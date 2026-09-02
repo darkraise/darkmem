@@ -12,6 +12,7 @@ import {
   Palette,
   Plug,
   Search,
+  HardDriveDownload,
   Bell,
   Settings,
   ShieldCheck,
@@ -29,6 +30,7 @@ import { SecurityTab } from "@/features/settings/components/security-tab"
 import { MaintenanceTab } from "@/features/settings/components/maintenance-tab"
 import { DistributionTab } from "@/features/settings/components/distribution-tab"
 import { ResearchTab } from "@/features/settings/components/research-tab"
+import { BackupsTab } from "@/features/settings/components/backups-tab"
 import { NotificationsTab } from "@/features/settings/components/notifications-tab"
 
 const TAB_VALUES = [
@@ -130,6 +132,10 @@ function SettingsPage() {
                 <Search aria-hidden className="size-[var(--icon-size)]" />
                 Research
               </TabsTrigger>
+              <TabsTrigger className="flex-1 gap-2" value="backups">
+                <HardDriveDownload aria-hidden className="size-[var(--icon-size)]" />
+                Backups
+              </TabsTrigger>
               <TabsTrigger className="flex-1 gap-2" value="appearance">
                 <Palette aria-hidden className="size-[var(--icon-size)]" />
                 Appearance
@@ -160,6 +166,9 @@ function SettingsPage() {
         </TabsContent>
         <TabsContent value="research" className="pt-4">
           <ResearchTab />
+        </TabsContent>
+        <TabsContent value="backups" className="pt-4">
+          <BackupsTab />
         </TabsContent>
         <TabsContent value="appearance" className="space-y-4 pt-4">
           <AppearanceTab />

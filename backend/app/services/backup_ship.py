@@ -37,7 +37,7 @@ from typing import Protocol
 
 from app.config import settings
 from app.services.backup_config import DestinationConfig, load_destinations
-from app.services.events import record_event
+from app.services.events import BACKUP_SHIPPED, BACKUP_VERIFY_FAILED, record_event
 
 logger = logging.getLogger(__name__)
 
@@ -408,19 +408,34 @@ async def _artifacts_for(
     return artifacts
 
 
-async def _journal(
-    session_factory, *, event_type: str, payload: dict
-) -> None:
-    """One row per destination outcome.
+async def _journal_shipped(session_factory, payload: dict) -> None:
+    """One row per destination that landed and verified.
 
-    The boolean `record_event` returns is deliberately ignored: a ship is not a
-    verification transition, and a snapshot that landed and verified must not
-    be reported as failed because a journal row did not.
+    Written inline rather than through a helper that forwards `event_type`:
+    `tests/test_events.py`'s scan resolves the literal at the `record_event`
+    call site, and a forwarded variable is an indirection it cannot follow.
+
+    The boolean `record_event` returns is deliberately ignored. A ship is not a
+    verification transition, so a snapshot that landed and verified must not be
+    reported as failed because a journal row was not written.
     """
     async with session_factory() as session:
         await record_event(
             session,
-            event_type=event_type,
+            event_type=BACKUP_SHIPPED,
+            object_type="system",
+            source=BACKUP_SHIP_JOB_KEY,
+            payload=payload,
+        )
+        await session.commit()
+
+
+async def _journal_verify_failed(session_factory, payload: dict) -> None:
+    """One row per destination that did not end up holding what we sent."""
+    async with session_factory() as session:
+        await record_event(
+            session,
+            event_type=BACKUP_VERIFY_FAILED,
             object_type="system",
             source=BACKUP_SHIP_JOB_KEY,
             payload=payload,
@@ -470,10 +485,9 @@ async def ship_all(session_factory) -> dict:
                     raise VerifyMismatch(expected=expected, got=got)
             except VerifyMismatch as mismatch:
                 summary["verify_failed"].append(cfg.name)
-                await _journal(
+                await _journal_verify_failed(
                     session_factory,
-                    event_type="backup_verify_failed",
-                    payload={
+                    {
                         "destination": cfg.name,
                         "file": artifact.name,
                         "expected": mismatch.expected,
@@ -483,10 +497,9 @@ async def ship_all(session_factory) -> dict:
             except Exception as exc:  # noqa: BLE001 - one destination, not the run
                 logger.warning("backup_ship: %s failed: %s", cfg.name, exc)
                 summary["verify_failed"].append(cfg.name)
-                await _journal(
+                await _journal_verify_failed(
                     session_factory,
-                    event_type="backup_verify_failed",
-                    payload={
+                    {
                         "destination": cfg.name,
                         "file": artifact.name,
                         "error": str(exc),
@@ -494,10 +507,9 @@ async def ship_all(session_factory) -> dict:
                 )
             else:
                 summary["shipped"] += 1
-                await _journal(
+                await _journal_shipped(
                     session_factory,
-                    event_type="backup_shipped",
-                    payload={
+                    {
                         "destination": cfg.name,
                         "file": artifact.name,
                         "bytes": artifact.stat().st_size,

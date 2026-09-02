@@ -807,24 +807,26 @@ flaky.
 ## Jobs (`JobRegistry`)
 
 Periodic work is unified under `JobRegistry` and dispatched by cron
-expressions. **Twenty-three** registered jobs (`app/main.py`) in two groups
-(count corrected 2026-08-29: the per-repo indexing modes epic retired the
-standalone `code_reconcile` job, dropping the prior **Twenty-four** by one.
-That prior count had itself been corrected 2026-08-07, when it read
+expressions. **Twenty-four** registered jobs (`app/main.py`) in two groups
+(count corrected 2026-09-02: increment 6's `backup_ship` moved the prior
+**Twenty-three** up by one; that count had itself been corrected
+2026-08-29, when the per-repo indexing modes epic retired the
+standalone `code_reconcile` job and dropped a **Twenty-four** by one.
+That count had in turn been corrected 2026-08-07, when it read
 "Sixteen" / "ten live ones" since T2.49 landed `relation_embedding_refresh`
 without updating it, and four concurrent lanes each found it stale
 independently — a stale count on a "here is the full list" sentence is
 exactly invariant 23's concern. `tests/test_code_deriver.py` now derives the
 roster from `app/main.py`'s AST, so the next job added cannot silently
 desynchronise this list).
-The seventeen live ones: `repo_sync`,
+The eighteen live ones: `repo_sync`,
 `buffer_flush`, `code_enrichment`, `code_deriver`,
 `token_blocklist_cleanup`, `pipeline_failure_cleanup`,
 `graph_orphan_cleanup`, `tag_orphan_cleanup`,
 `expired_memory_cleanup`, `ppr_snapshot`,
 `relation_embedding_refresh`, `repo_entity_anchoring`,
 `repo_entity_merge`, `citation_reverify`, `job_run_cleanup`,
-`block_embedding_refresh`, `llm_usage_cleanup`. **`code_reconcile`'s
+`block_embedding_refresh`, `llm_usage_cleanup`, `backup_ship`. **`code_reconcile`'s
 standalone working-tree drift scan is retired; the same scan now runs
 inside `repo_sync`, per repo, gated on that repo's own
 `index_on_commit_enabled` switch and its `index_uncommitted` switch
@@ -834,13 +836,13 @@ indexing below. Note
 `buffer_flush`, `code_deriver`, `ppr_snapshot`,
 `relation_embedding_refresh`, `repo_entity_anchoring`,
 `repo_entity_merge`, `citation_reverify`, `job_run_cleanup`,
-`block_embedding_refresh` and `llm_usage_cleanup` register via
-the constants `BUFFER_FLUSH_JOB_KEY`,
+`block_embedding_refresh`, `llm_usage_cleanup` and `backup_ship`
+register via the constants `BUFFER_FLUSH_JOB_KEY`,
 `CODE_DERIVER_JOB_KEY`, `PPR_SNAPSHOT_JOB_KEY`,
 `RELATION_EMBEDDING_JOB_KEY`, `REPO_ENTITY_ANCHORING_JOB_KEY`,
 `REPO_ENTITY_MERGE_JOB_KEY`, `CITATION_REVERIFY_JOB_KEY`,
-`JOB_RUN_CLEANUP_JOB_KEY`, `BLOCK_EMBEDDING_JOB_KEY` and
-`LLM_USAGE_CLEANUP_JOB_KEY` rather
+`JOB_RUN_CLEANUP_JOB_KEY`, `BLOCK_EMBEDDING_JOB_KEY`,
+`LLM_USAGE_CLEANUP_JOB_KEY` and `BACKUP_SHIP_JOB_KEY` rather
 than string literals, so a grep for quoted keys undercounts the list —
 which is precisely how this sentence went stale for four landings.
 **`llm_usage_cleanup` prunes by age where `job_run_cleanup` beside it
@@ -848,6 +850,30 @@ prunes by row count**, and the difference is deliberate: `llm_usage`
 exists to answer "what did the last N days cost", so a row ceiling would
 shorten that answer during exactly the busy period worth investigating.
 The accepted cost is that a burst inside the window is unbounded on disk.
+
+**`backup_ship` is the off-host path, and it is the *second* producer, not
+the only one** (increment 6, spec §9.3-9.4). It runs the image's own
+`pg_dump` over the stack network — it cannot call `scripts/backup.sh`, which
+is why the runtime stage installs `postgresql-client`, `age`,
+`openssh-client` and `rsync` — encrypts with each destination's `age`
+recipient, ships, **reads every upload back and hashes it**, and prunes per
+destination. The host-side `darkmem-backup.timer` stays exactly as it is: a
+backup system that depends on the service it protects is not one, so the
+timer is the floor that survives the app being down. **Nothing serialises
+the two** — different processes, and the per-job `asyncio.Lock` binds
+in-process only — so the separation is a directory (`/srv/darkmem-dumps`
+versus `/root/darkmem-backups`), a filename prefix (`darkmem-app-` versus
+`darkmem-`) and an hour of cron (04:30 versus 03:30). Note `backup.sh`'s own
+retention glob `darkmem-*.sql.gz` **would** match this producer's files, so
+the two must never be pointed at one directory; the job's prune matches only
+its own prefix and never a `.part`, so it cannot delete a systemd dump even
+where an operator has done exactly that. Destinations and their secrets live
+in the `config` row `backup_destinations`, never in the job's
+`config_schema` (`FieldDescriptor.default` is typed `int`). **The `age`
+identity is never stored in this database**: a snapshot carrying its own
+decryption key is not encrypted at rest, so only the public recipient is
+configurable and decryption happens where the operator's identity file
+lives.
 **`ppr_snapshot`, `relation_embedding_refresh`, `repo_entity_anchoring`,
 `repo_entity_merge`, `code_deriver`, `citation_reverify` and
 `block_embedding_refresh` are Tier C but are deliberately not dream-job
@@ -1712,7 +1738,7 @@ produce.
   in-process assumptions; 17 BREAKS at N = 2), not the inert PPR
   snapshot the design docs lead with: the WebSocket fan-out, the job
   scheduler (no lease — every registered job fires N times per tick; 21
-  when T4.09 counted, 23 today, and the number is not what the finding
+  when T4.09 counted, 24 today, and the number is not what the finding
   rests on), the per-IP
   login limiter, the live orchestrator swap and seven unlocked job
   cursors all break first, and `backend/app` holds no cross-process
