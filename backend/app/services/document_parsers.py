@@ -234,6 +234,21 @@ def parse_markdown(text: str) -> list[BlockDraft]:
             i = _emit_table(tokens, i, drafts, parent(), offsets, body)
             continue
 
+        if tok.type == "hr":
+            # A thematic break carries no text -- the rule IS the block. It
+            # mints a row rather than being skipped because block-first
+            # conversion regenerates content from the tree, and a construct
+            # with no block is a construct that conversion silently deletes.
+            drafts.append({
+                "text": "",
+                "type": "divider",
+                "parent": parent(),
+                "properties": None,
+                "char_span": _span(tok.map, offsets, body),
+            })
+            i += 1
+            continue
+
         if tok.type in ("fence", "code_block"):
             drafts.append({
                 "text": tok.content.rstrip("\n"),
@@ -245,10 +260,10 @@ def parse_markdown(text: str) -> list[BlockDraft]:
             i += 1
             continue
 
-        # hr and html_block — not in the committed block-type set (doc 16 §9);
-        # skipped rather than minting a meaningless block. Tables used to be
-        # named here too; they are parsed structurally since the 2026-08-31
-        # spec §4.1 change above.
+        # html_block — not in the committed block-type set (doc 16 §9);
+        # skipped rather than minting a meaningless block. Tables were named
+        # here until the 2026-08-31 spec §4.1 change, and `hr` until
+        # 2026-09-02; both are parsed structurally above now.
         i += 1
 
     return [

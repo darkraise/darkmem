@@ -705,3 +705,49 @@ def test_split_frontmatter_returns_inner_text_and_body_offset():
     assert split_frontmatter("# No fence\n") == (None, 0)
     # A thematic break mid-document is not frontmatter.
     assert split_frontmatter("intro\n---\nkey: value\n---\n") == (None, 0)
+
+
+# ── Thematic breaks (2026-09-02) ─────────────────────────────────────
+
+
+def test_markdown_thematic_break_mints_a_divider_block():
+    """Before this, `hr` minted no block at all -- so a document's section
+    rules existed in the source and nowhere in the tree, and block-first
+    conversion would have silently dropped every one of them."""
+    drafts = parse_markdown("para one\n\n---\n\npara two")
+    assert [d.type for d in drafts] == ["paragraph", "divider", "paragraph"]
+    assert drafts[1].text == ""
+
+
+@pytest.mark.parametrize("rule", ["---", "***", "___", "- - -", "*****"])
+def test_every_thematic_break_spelling_mints_one_divider(rule):
+    drafts = parse_markdown(f"a\n\n{rule}\n\nb")
+    assert [d.type for d in drafts].count("divider") == 1
+
+
+def test_a_setext_underline_is_still_a_heading_not_a_divider():
+    """`---` directly under a line of text is a setext h2, not a rule. The
+    parser must not turn one into the other."""
+    drafts = parse_markdown("Title\n---\n\nbody")
+    assert drafts[0].type == "heading"
+    assert drafts[0].text == "Title"
+    assert "divider" not in [d.type for d in drafts]
+
+
+def test_a_fence_is_still_code_not_a_divider():
+    drafts = parse_markdown("```\n---\n```")
+    assert [d.type for d in drafts] == ["code"]
+
+
+def test_divider_span_indexes_the_rule_in_the_source():
+    source = "para one\n\n---\n\npara two"
+    drafts = parse_markdown(source)
+    lo, hi = next(d for d in drafts if d.type == "divider").char_span
+    assert source[lo:hi].strip() == "---"
+
+
+def test_divider_stays_inside_the_closed_vocabulary():
+    from app.taxonomy import BLOCK_TYPES
+
+    drafts = parse_markdown("a\n\n---\n\nb")
+    assert {d.type for d in drafts} <= set(BLOCK_TYPES)
