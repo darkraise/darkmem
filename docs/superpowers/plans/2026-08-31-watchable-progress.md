@@ -8,6 +8,18 @@
 > dcc-superpower-companions:dispatching-tiered-implementers. Under
 > superpowers:executing-plans these lines are inert; ignore them.
 
+> **Status: LANDED 2026-09-02.** Task 1 and Task 2 executed and deployed on
+> this host (`a324bb1e` feat, `47a2039a` changelog). Gate green: 6,468 backend,
+> 1,324 frontend, both SDK suites, 1,055 benchlib, F1 bench. Two corrections
+> made against the plan as written, both recorded in the commit: the test
+> sketch's `LATEST` fixture does not exist (the file has `CHECKPOINT` and a
+> `route()` helper — review finding m-7), and the filter option cannot be
+> selected with `findByText` because each run card also renders its project
+> name, so the tests use `findByRole("option")`. Task 2 Step 4's verification
+> grep is also wrong twice over: the SPA lives at `/app/web/assets`, not
+> `/app/static/assets`, and `LIVE_POLL_MS` is minified away — grep the m2 copy
+> string instead, which survives minification.
+
 **Goal:** The owner opens the Activity → Checkpoints tab in a browser and watches a running agent session's notes update live, scoped to one project. This is the spec's increment 1 ("smallest visible win"), plus the increment-0 reachability procedure it is moot without.
 
 **Architecture:** No backend change. The Checkpoints tab already groups runs from the `checkpoint_saved`/`resumed` events journal and fetches the latest digest per run; this plan adds a project filter (the `/events` read already takes a `project` SQL predicate) and a poll interval (TanStack Query `refetchInterval`, which the events hook already plumbs and the checkpoint hook gains). The "checkpoint per step" agent convention is doc-only and is carried by the conventions doc in `docs/superpowers/plans/2026-08-31-docs-corpus-import.md` (increment 5), not here.
@@ -104,7 +116,7 @@ CHANGELOG.md                                          # Task 2
 **Evaluation:** files 2 - spec 1 - coupling 0 - risk 1 = 4
 **Approach:** inline - skip 3: the review's M2 finding rules out `/api/v1/projects` as the filter source; options derive from the loaded runs instead.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Extend `frontend/src/features/activity/__tests__/checkpoints.test.tsx` (the existing mock journal already carries two projects once you change one fixture's `project` — set the `cc-run-other` event's `project` to `"other-proj"`):
 
@@ -163,11 +175,11 @@ it("states that history rows carry no step content", () => {
 
 Adjust selector details to the actual `select` component's rendered roles (read `frontend/node_modules/darkraise-ui/dist/components/select.d.ts` — the props carry their own doc comments). If fake timers fight TanStack Query's scheduling in this vitest setup, an acceptable fallback for the poll test is asserting the hook wiring instead: render a probe component that calls `useCheckpointRuns(null)` and assert `useEvents` received `refetchInterval: LIVE_POLL_MS` via a spy on the hooks module. Do not delete the poll assertion entirely — the interval is the increment.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 `cd frontend && npm test -- checkpoints` — expected: FAIL (no filter control, no `LIVE_POLL_MS` export, no limit copy).
 
-- [ ] **Step 3: `useLatestCheckpoint` gains `refetchInterval`**
+- [x] **Step 3: `useLatestCheckpoint` gains `refetchInterval`**
 
 In `frontend/src/hooks/api/use-checkpoints-api.ts:31-38`, widen the options parameter and pass it through:
 
@@ -186,7 +198,7 @@ export function useLatestCheckpoint(
 
 (`useEvents` already has the same option at `use-events-api.ts:50-61`; this makes the pair symmetric.)
 
-- [ ] **Step 4: `use-checkpoint-runs.ts` — project param and poll**
+- [x] **Step 4: `use-checkpoint-runs.ts` — project param and poll**
 
 ```ts
 /** The tab is a live watch: both queries refetch on this interval. TanStack's
@@ -210,7 +222,7 @@ export function useCheckpointRuns(project: string | null): { ... } {
 
 and in `useCheckpointDigest`, pass `{ enabled: !DEMO, refetchInterval: LIVE_POLL_MS }` to `useLatestCheckpoint`. The `queryKey: ["events", params]` already includes `project`, so filtered and unfiltered pages never share a cache entry.
 
-- [ ] **Step 5: The filter UI and the m2 copy in `checkpoints-tab.tsx`**
+- [x] **Step 5: The filter UI and the m2 copy in `checkpoints-tab.tsx`**
 
 - State: `const [projectFilter, setProjectFilter] = useState<string | null>(null)`; pass it to `useCheckpointRuns(projectFilter)`.
 - Options: accumulate every project ever seen this mount, so selecting one does not collapse the option list to itself (the filtered page only contains the filtered project):
@@ -225,7 +237,7 @@ const projectOptions = [...seenProjects.current].sort()
 - The existing `selected = runs.find((r) => r.id === selectedId) ?? runs[0] ?? null` already re-anchors selection when the filter drops the selected run; leave it.
 - Extend the tab's descriptive paragraph (the `<p className="text-muted-foreground max-w-4xl text-sm">` block) with one sentence stating the limit: *"The history below shows when each save and resume happened; only the latest note's text is readable — event payloads deliberately carry no step content, and no endpoint serves a run's past summaries."* This is invariant 14's honest-reporting posture applied to the surface itself, and it is the review's m2 condition made visible where the owner will read it.
 
-- [ ] **Step 6: Run the tests, typecheck, build**
+- [x] **Step 6: Run the tests, typecheck, build**
 
 ```bash
 cd frontend && npm test -- checkpoints && npm run typecheck && npm run build
@@ -247,19 +259,19 @@ All green. Also run the full `npm test` — the tab is rendered by `activity-com
 **Implementer:** dcc-superpower-companions:impl-sonnet-medium
 **Evaluation:** files 0 - spec 0 - coupling 0 - risk 2 = 2
 
-- [ ] **Step 1: Merge gate**
+- [x] **Step 1: Merge gate**
 
 `./scripts/gate.sh` from the repo root. Green before commit. (Plain `--full` is unreliable on this host — see Global Constraints.)
 
-- [ ] **Step 2: Changelog**
+- [x] **Step 2: Changelog**
 
 A `feat` push to master cuts a release, and a push whose derived version has no `## vN.N.N` section in `CHANGELOG.md` fails before the suite runs. Add the section for the next derived version (v1.5.0 if this is the first `feat` since v1.4.0). **Coordinate with the parser-fixes plan** (`2026-08-31-document-parser-fixes.md`): if both land in one push, one section covers both; two pushes need two sections.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 `feat(activity): project filter and live poll on checkpoints` (Task 1) — plus the CHANGELOG in the same or a `docs(changelog):` commit per the atomic-commit rule.
 
-- [ ] **Step 4: Redeploy this machine** (owner ruling 2026-08-21 — the change alters the running artifact)
+- [x] **Step 4: Redeploy this machine** (owner ruling 2026-08-21 — the change alters the running artifact)
 
 ```bash
 DARKMEM_PUSH=0 ./scripts/build-push.sh   # DARKMEM_PUSH=0 is not optional
@@ -270,7 +282,7 @@ docker exec darkmem-prod-darkmem-1 grep -rl "LIVE_POLL_MS" /app/static/assets/ |
 
 A skipped or failed build redeploys the old bits and still reports `Started` — the grep is the honest check. Never push an image from this machine; `release.yml` is the only path to a registry.
 
-- [ ] **Step 5: Watch it work**
+- [x] **Step 5: Watch it work**
 
 With increment 0 done and an agent session checkpointing (declare one `origin_key` per run to every save — the correlation is client discipline, `checkpoints.py` module docstring, final paragraph), open Activity → Checkpoints, select the project, and confirm the latest digest and the history timeline update within ~15 s of a save.
 
