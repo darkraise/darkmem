@@ -1,0 +1,156 @@
+# The backup worker (spec §9.5, redesigned after review B1).
+#
+# Same image, same SPA, same routes — but this instance serves nightly-restored
+# snapshots READ-ONLY, and the guarantee is the database role, not a flag. The
+# app connects as `darkmem_viewer`, which holds SELECT and nothing else
+# (scripts/worker/viewer-grants.sql), so no application bug can dig under it.
+# `DARKMEM_READ_ONLY` sits on top as ergonomics: it stops spend (the scheduler
+# is never armed, chat and the reranker are refused) and quiets the known
+# write-on-read paths. A reader who takes away "the flag makes it read-only"
+# has been misled.
+#
+# It never migrates. `entrypoint.sh` runs `alembic upgrade head` and stamps
+# `schema_guard`, both writes, so `command:` overrides it — the dev compose's
+# own precedent. `scripts/worker/restore-cycle.sh` does the migrate and the
+# stamp privileged, against the *side* database, while this app is still
+# serving the previous one; the swap happens only if that succeeds.
+#
+# The receiver is the ONE write door and it is a separate process that shares
+# only the dump directory with the app: no database, no session, no import
+# from app.main. `backend/tests/test_worker_receiver.py` pins that structurally.
+#
+# Bring-up is docs/runbook-backup-worker.md, on the worker machine. Nothing in
+# this repo's gate runs there.
+name: darkmem-worker
+
+services:
+  darkmem:
+    image: darkraise/darkmem:${DARKMEM_VERSION:-latest}
+    init: true
+    # Overrides the image's CMD (./entrypoint.sh) so no migration and no
+    # schema stamp ever runs from the serving process. --no-proxy-headers for
+    # the reason every other launch path carries it: uvicorn's own
+    # ProxyHeadersMiddleware defaults on and would rewrite the transport peer
+    # the login limiter buckets on.
+    #
+    # ONE worker (invariant 13): no --workers flag, and none of the env vars
+    # uvicorn reads for a worker count -- a text guard in
+    # test_deployment_artifact.py refuses to see either spelled out in an ops
+    # file, including in a comment like this one. The viewer is the same app
+    # with the same in-process limiter, scheduler and WebSocket fan-out; being
+    # read-only changes none of that.
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]
+    environment:
+      - ENVIRONMENT=production
+      # Ergonomics, never the guarantee — see the header.
+      - DARKMEM_READ_ONLY=true
+      - DB_HOST=${DB_HOST:-postgres}
+      - DB_PORT=${DB_PORT:-5432}
+      # The SELECT-only role. This line is the enforcement: pointing it at the
+      # owner role would make the worker a writable instance with a flag set.
+      - DB_USER=darkmem_viewer
+      - DB_NAME=${DB_NAME:-darkmem}
+      - DB_PASSWORD=${VIEWER_PASSWORD:?set VIEWER_PASSWORD in .env — the darkmem_viewer role's password}
+      - JWT_SECRET=${JWT_SECRET:?set JWT_SECRET in .env — see .env.example}
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
+      - TRUST_PROXY_HEADERS=${TRUST_PROXY_HEADERS:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Empty = localhost only. A worker has no reason to serve /mcp at all;
+      # leave this unset unless an agent genuinely needs to read the snapshot.
+      - MCP_ALLOWED_HOSTS=${MCP_ALLOWED_HOSTS:-}
+    ports:
+      - "8000:8000"
+    # No dumps mount, deliberately. The app neither reads nor writes
+    # snapshots; only the receiver and the host-side restore loop touch them,
+    # which is what makes "the receiver is the only write door" a shape rather
+    # than a convention.
+    volumes:
+      - repo_data:/app/data/repositories
+    networks:
+      - darkmem
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=5).status==200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "1.5"
+
+  receiver:
+    image: darkraise/darkmem:${DARKMEM_VERSION:-latest}
+    init: true
+    command: ["uvicorn", "app.worker_receiver:app", "--host", "0.0.0.0", "--port", "8100", "--no-proxy-headers"]
+    environment:
+      # Authorisation, not confidentiality: content arrives age-encrypted
+      # because increment 6 encrypts before egress. The process refuses to
+      # start below 32 characters.
+      - RECEIVER_TOKEN=${RECEIVER_TOKEN:?set RECEIVER_TOKEN in .env — 32+ characters}
+      - RECEIVER_DIR=/dumps
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    ports:
+      - "8100:8100"
+    volumes:
+      # NOT under /root, and created on the host before first boot: the
+      # container runs as the unprivileged `app` user and Docker does not chown
+      # a bind mount. The receiver refuses to start when it cannot write here,
+      # rather than accepting an upload and failing on the write.
+      #   APP_UID=$(docker run --rm darkraise/darkmem:latest id -u)
+      #   sudo install -d -o "$APP_UID" -g "$APP_UID" -m 0750 /srv/darkmem-dumps
+      - ${DARKMEM_DUMP_DIR:-/srv/darkmem-dumps}:/dumps
+    # No network at all beyond its own port: the receiver holds no database
+    # connection, so it has nothing to reach on the stack network.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8100/snapshots', timeout=5).status in (200,401) else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  postgres:
+    image: pgvector/pgvector:0.8.2-pg17
+    # Same shape as prod: listen_addresses must be '*' under bridge networking
+    # because the app reaches this across the stack network, not over loopback.
+    command: ["postgres", "-c", "max_connections=120", "-c", "listen_addresses=*"]
+    ports:
+      # Host loopback only. The restore loop runs on this host and needs it;
+      # nothing off-box does.
+      - "127.0.0.1:5432:5432"
+    shm_size: 256mb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - darkmem
+    environment:
+      # The OWNER role's credentials. The app never sees these — it connects as
+      # darkmem_viewer with VIEWER_PASSWORD. The restore loop uses these to
+      # replay, migrate, stamp and swap.
+      - POSTGRES_DB=${DB_NAME:-darkmem}
+      - POSTGRES_USER=${OWNER_USER:-darkmem}
+      - POSTGRES_PASSWORD=${OWNER_PASSWORD:?set OWNER_PASSWORD in .env — the owner role's password}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-darkmem}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+networks:
+  darkmem:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  repo_data:

@@ -29,6 +29,7 @@ ENTRYPOINT = REPO_ROOT / "entrypoint.sh"
 DEV_SERVER = REPO_ROOT / "scripts" / "start_dev_server.sh"
 PROD_COMPOSE = REPO_ROOT / "docker-compose.yml"
 DEV_COMPOSE = REPO_ROOT / "docker-compose.dev.yml"
+WORKER_COMPOSE = REPO_ROOT / "docker-compose.worker.yml"
 DOCKERFILE = REPO_ROOT / "Dockerfile"
 RESTORE = REPO_ROOT / "scripts" / "restore.sh"
 
@@ -47,6 +48,18 @@ def _uvicorn_line(path: Path) -> str:
 
 def _compose(path: Path) -> dict:
     return yaml.safe_load(path.read_text())
+
+
+def _service_env(path: Path, service: str) -> dict[str, str]:
+    """The service's environment as a dict, whatever list/mapping form it uses."""
+    raw = _compose(path)["services"][service].get("environment", [])
+    if isinstance(raw, dict):
+        return {k: str(v) for k, v in raw.items()}
+    out: dict[str, str] = {}
+    for entry in raw:
+        key, _, value = str(entry).partition("=")
+        out[key] = value
+    return out
 
 
 def _compose_command(path: Path, service: str) -> str:
@@ -84,7 +97,7 @@ def test_no_launch_path_re_enables_proxy_headers(name):
 
 
 def test_no_compose_command_re_enables_proxy_headers():
-    for path in (PROD_COMPOSE, DEV_COMPOSE):
+    for path in (PROD_COMPOSE, DEV_COMPOSE, WORKER_COMPOSE):
         for service, spec in _compose(path)["services"].items():
             argv = _compose_command(path, service)
             if "uvicorn" not in argv:
@@ -105,7 +118,14 @@ def test_entrypoint_runs_a_single_worker():
     assert "gunicorn" not in ENTRYPOINT.read_text()
 
 
-@pytest.mark.parametrize("compose", [PROD_COMPOSE, DEV_COMPOSE], ids=["prod", "dev"])
+# The worker is a launch path like any other: same app, same in-process
+# scheduler, limiter and WebSocket fan-out. A compose file nothing checks is
+# exactly where a second worker gets added later "just for the viewer".
+@pytest.mark.parametrize(
+    "compose",
+    [PROD_COMPOSE, DEV_COMPOSE, WORKER_COMPOSE],
+    ids=["prod", "dev", "worker"],
+)
 def test_no_compose_file_sets_a_worker_count(compose):
     text = compose.read_text()
     assert "WEB_CONCURRENCY" not in text
@@ -520,3 +540,69 @@ def test_prod_app_service_mounts_a_writable_dump_directory():
         "the dump mount's default must be reachable by the image's "
         f"unprivileged user; /root is 0700 -- got {mount!r}"
     )
+
+
+# ── The backup worker stack (increment 7, spec §9.5) ──────────────────
+
+
+def test_worker_app_runs_read_only_as_the_viewer_role():
+    """Two settings, and neither is the other's substitute. `DB_USER` is the
+    enforcement -- the SELECT-only role beneath every code path -- and
+    `DARKMEM_READ_ONLY` is ergonomics on top of it. A worker connecting as the
+    owner role would be a writable instance with a flag set."""
+    env = _service_env(WORKER_COMPOSE, APP_SERVICE)
+    assert env["DARKMEM_READ_ONLY"] == "true"
+    assert env["DB_USER"] == "darkmem_viewer", (
+        "the worker app must connect as the SELECT-only role, never the owner"
+    )
+
+
+def test_worker_app_never_runs_the_entrypoint():
+    """`entrypoint.sh` runs `alembic upgrade head` and stamps `schema_guard`,
+    which are writes -- and the restore loop already does both, privileged,
+    against the side database while the app still serves the previous one.
+    Overriding `command:` is what keeps the app out of that business, the same
+    way the dev compose does."""
+    command = _compose_command(WORKER_COMPOSE, APP_SERVICE)
+    assert "uvicorn" in command
+    assert "entrypoint" not in command
+    assert "alembic" not in command
+
+
+def test_worker_receiver_is_a_separate_service_running_its_own_module():
+    """The one write door is a different process. A receiver started as
+    `app.main` would be the read-only app with an upload route bolted on,
+    which is the contradiction review B1 rejected."""
+    services = _compose(WORKER_COMPOSE)["services"]
+    assert "receiver" in services
+    command = _compose_command(WORKER_COMPOSE, "receiver")
+    assert "app.worker_receiver:app" in command
+    assert "app.main" not in command
+
+
+def test_only_the_receiver_mounts_the_dump_directory():
+    """The app neither reads nor writes snapshots. Giving it the mount would
+    make "the receiver is the only write door" a convention rather than a
+    shape."""
+    services = _compose(WORKER_COMPOSE)["services"]
+    app_volumes = " ".join(services[APP_SERVICE].get("volumes", []) or [])
+    receiver_volumes = " ".join(services["receiver"].get("volumes", []) or [])
+    assert "/dumps" not in app_volumes
+    assert "/dumps" in receiver_volumes
+    # Review B-1's twin: a bind mount under /root is unreachable to the
+    # image's unprivileged user, and Docker does not chown one.
+    assert "DARKMEM_DUMP_DIR" in receiver_volumes
+    assert "/root" not in receiver_volumes
+
+
+def test_the_worker_stack_has_its_own_project_name():
+    """Both other compose files learned this the hard way: an unnamed project
+    defaults to the directory, so a worker brought up from this repo would
+    recreate the prod stack's containers."""
+    name = _compose(WORKER_COMPOSE).get("name")
+    assert name and name not in {"darkmem-prod", "darkmem"}
+
+
+def test_the_worker_stack_is_healthchecked_end_to_end():
+    for service in ("darkmem", "receiver", "postgres"):
+        assert "healthcheck" in _compose(WORKER_COMPOSE)["services"][service], service
