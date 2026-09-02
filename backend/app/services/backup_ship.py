@@ -25,8 +25,11 @@ import gzip
 import hashlib
 import logging
 import os
+import shlex
 import shutil
+import tempfile
 import time
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -345,11 +348,27 @@ class LocalDestination:
         return deleted
 
 
+def _stamp_of(name: str) -> datetime:
+    """The stamp the producer wrote into the filename.
+
+    Used where the destination cannot tell us an mtime. An unparseable name
+    falls back to the epoch rather than raising: it is a display field, and a
+    listing that 500s because one foreign file crept in is a worse surface.
+    """
+    core = name[len(JOB_PREFIX):].split(".")[0]
+    try:
+        return datetime.strptime(core, "%Y%m%d-%H%M%S").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return datetime.fromtimestamp(0, timezone.utc)
+
+
 def build_destination(cfg: DestinationConfig) -> Destination:
     if cfg.kind == "local":
         return LocalDestination(
             name=cfg.name, directory=DUMP_DIR, retention_keep=cfg.retention_keep
         )
+    if cfg.kind == "ssh":
+        return SshDestination(cfg)
     raise ValueError(f"{cfg.name}: no client for kind {cfg.kind!r}")
 
 
@@ -507,3 +526,198 @@ async def ship_all(session_factory) -> dict:
             dump.unlink(missing_ok=True)
 
     return summary
+
+
+# ---------------------------------------------------------------------------
+# The ssh destination
+# ---------------------------------------------------------------------------
+
+#: An upload of a database dump is allowed to take a long time; a read-back is
+#: allowed to take less, because it is a straight read of a file that already
+#: landed. Both are bounded so a hung transfer cannot hold the job's slot until
+#: `max_run_seconds` kills the whole run.
+SHIP_TIMEOUT_SECONDS = 3600
+READ_BACK_TIMEOUT_SECONDS = 900
+
+
+class SshDestination:
+    """scp/ssh with a pinned host key.
+
+    Key material is written into a per-operation scratch directory and removed
+    in a ``finally``: ssh will not read an identity file the world can see, and
+    a private key that outlives the operation needing it is a credential lying
+    on disk for no reason.
+
+    There is no end-to-end test against a real sshd -- this host has no such
+    fixture -- so what is proven is the argv, the pinned host key, the ``.part``
+    discipline and the prefix-scoped prune. A transfer against a live server is
+    an operator bring-up step, not a suite step.
+    """
+
+    def __init__(self, cfg: DestinationConfig):
+        if cfg.ssh is None:
+            raise ValueError(f"{cfg.name}: ssh settings required")
+        self.name = cfg.name
+        self.retention_keep = cfg.retention_keep
+        self.ssh = cfg.ssh
+
+    # -- argv ------------------------------------------------------------
+
+    def _remote_dir(self) -> str:
+        remote = self.ssh.remote_dir.strip()
+        if not remote or remote == "/":
+            raise ValueError(
+                f"{self.name}: remote_dir {self.ssh.remote_dir!r} -- a prune "
+                f"rooted at / or at nothing is not a retention pass"
+            )
+        return remote.rstrip("/")
+
+    def _ssh_base_argv(self, scratch: Path) -> list[str]:
+        """Write the key material into `scratch` and return the shared options."""
+        known_hosts = scratch / "known_hosts"
+        known_hosts.write_text(self.ssh.host_key.strip() + "\n")
+        identity = scratch / "identity"
+        identity.write_text(self.ssh.private_key)
+        identity.chmod(0o600)
+        return [
+            "-i",
+            str(identity),
+            "-o",
+            "BatchMode=yes",
+            # Pinned, never trust-on-first-use: `accept-new` would learn the
+            # key on exactly the connection an attacker would want to be on.
+            "-o",
+            "StrictHostKeyChecking=yes",
+            "-o",
+            f"UserKnownHostsFile={known_hosts}",
+            "-o",
+            "IdentitiesOnly=yes",
+        ]
+
+    def _target(self) -> str:
+        return f"{self.ssh.user}@{self.ssh.host}"
+
+    # -- process ---------------------------------------------------------
+
+    async def _run(self, argv, *, timeout: float, on_chunk=None) -> bytes:
+        """Run one command, raising on a non-zero exit with stderr's tail.
+
+        With `on_chunk` the stdout is streamed into it and ``b""`` comes back:
+        a read-back of a multi-gigabyte snapshot must never land in memory just
+        to be hashed. Without it the output is buffered and returned, which is
+        right for a directory listing.
+        """
+        proc = await asyncio.create_subprocess_exec(
+            *argv,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+
+        async def _pump() -> bytes:
+            buffered = bytearray()
+            assert proc.stdout is not None
+            while True:
+                chunk = await proc.stdout.read(_CHUNK)
+                if not chunk:
+                    break
+                if on_chunk is None:
+                    buffered.extend(chunk)
+                else:
+                    on_chunk(chunk)
+            return bytes(buffered)
+
+        try:
+            out = await asyncio.wait_for(_pump(), timeout=timeout)
+            stderr = (await proc.stderr.read()) if proc.stderr else b""
+            code = await asyncio.wait_for(proc.wait(), timeout=60)
+        except BaseException:
+            if proc.returncode is None:
+                proc.kill()
+                await proc.wait()
+            raise
+        if code != 0:
+            raise RuntimeError(
+                f"{argv[0]} exited {code}: "
+                f"{stderr.decode('utf-8', 'replace')[-500:]}"
+            )
+        return out
+
+    @asynccontextmanager
+    async def _scratch(self):
+        directory = Path(tempfile.mkdtemp(prefix="darkmem-ssh-"))
+        try:
+            yield directory, self._ssh_base_argv(directory)
+        finally:
+            await asyncio.to_thread(shutil.rmtree, directory, True)
+
+    # -- the protocol ----------------------------------------------------
+
+    async def ship(self, local_path: Path) -> None:
+        remote_dir = self._remote_dir()
+        remote = f"{remote_dir}/{local_path.name}"
+        async with self._scratch() as (_, base):
+            await self._run(
+                ["scp", "-P", str(self.ssh.port), *base, str(local_path),
+                 f"{self._target()}:{remote}.part"],
+                timeout=SHIP_TIMEOUT_SECONDS,
+            )
+            # Rename only once the bytes are all there, so a torn upload is
+            # never listed as a snapshot a restore could select.
+            await self._run(
+                ["ssh", "-p", str(self.ssh.port), *base, self._target(), "--",
+                 f"mv -- {shlex.quote(remote + '.part')} {shlex.quote(remote)}"],
+                timeout=READ_BACK_TIMEOUT_SECONDS,
+            )
+
+    async def read_back_sha256(self, name: str) -> str:
+        remote = f"{self._remote_dir()}/{name}"
+        digest = hashlib.sha256()
+        async with self._scratch() as (_, base):
+            buffered = await self._run(
+                ["ssh", "-p", str(self.ssh.port), *base, self._target(), "--",
+                 f"cat -- {shlex.quote(remote)}"],
+                timeout=READ_BACK_TIMEOUT_SECONDS,
+                on_chunk=digest.update,
+            )
+        if buffered:
+            digest.update(buffered)
+        return digest.hexdigest()
+
+    async def _remote_names(self, base: list[str]) -> list[str]:
+        out = await self._run(
+            ["ssh", "-p", str(self.ssh.port), *base, self._target(), "--",
+             f"ls -1 -- {shlex.quote(self._remote_dir())}"],
+            timeout=READ_BACK_TIMEOUT_SECONDS,
+        )
+        return [
+            line
+            for line in out.decode("utf-8", "replace").splitlines()
+            if _is_snapshot(line.strip())
+        ]
+
+    async def list_snapshots(self) -> list[SnapshotInfo]:
+        """Names only. `ls -1` carries no size and no mtime, and parsing
+        `ls -l` across remote locales is a worse answer than reporting what
+        is actually known -- the stamp in the name is the ordering key."""
+        async with self._scratch() as (_, base):
+            names = await self._remote_names(base)
+        return [
+            SnapshotInfo(name=n, size=0, modified_at=_stamp_of(n))
+            for n in sorted(names)
+        ]
+
+    async def prune(self, keep: int) -> list[str]:
+        remote_dir = self._remote_dir()
+        async with self._scratch() as (_, base):
+            names = await self._remote_names(base)
+            # Ordered by the stamp in the name, which sorts lexically because
+            # it is zero-padded and big-endian. A remote mtime would need an
+            # `ls -l` parse across an unknown locale.
+            doomed = sorted(names, reverse=True)[keep:]
+            for name in doomed:
+                await self._run(
+                    ["ssh", "-p", str(self.ssh.port), *base, self._target(), "--",
+                     f"rm -f -- {shlex.quote(remote_dir + '/' + name)}"],
+                    timeout=READ_BACK_TIMEOUT_SECONDS,
+                )
+        return doomed

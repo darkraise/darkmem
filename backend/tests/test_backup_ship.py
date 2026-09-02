@@ -162,6 +162,9 @@ async def test_sha256_file_matches_hashlib(tmp_path):
 # Task 4: the destination protocol, the local destination, journal and prune
 # ---------------------------------------------------------------------------
 
+import asyncio  # noqa: E402
+from pathlib import Path  # noqa: E402
+
 from sqlalchemy import text as sa_text  # noqa: E402
 
 from app.services import backup_config as bc  # noqa: E402
@@ -408,3 +411,177 @@ async def test_a_recipient_encrypts_and_leaves_no_plaintext(
     assert summary["shipped"] == 1
     assert list(dumps.glob("*.sql.gz.age"))
     assert not list(dumps.glob("*.sql.gz")), "the plaintext lingered beside the cipher"
+
+
+# ---------------------------------------------------------------------------
+# Task 5: the ssh destination
+#
+# Every argv is unit-tested without a network. There is no sshd fixture on
+# this host, so no end-to-end test against a real server exists -- the gap is
+# stated here rather than papered over: what is proven below is that the
+# commands are built correctly and that the pinned host key and the .part
+# discipline reach the wire, not that a real transfer succeeds.
+# ---------------------------------------------------------------------------
+
+import os  # noqa: E402
+import stat as stat_mod  # noqa: E402
+
+
+SSH_CFG = bc.DestinationConfig.model_validate(
+    {
+        "name": "nas",
+        "kind": "ssh",
+        "retention_keep": 3,
+        "age_recipient": "age1qqqqexamplerecipient",
+        "ssh": {
+            "host": "192.0.2.10",
+            "port": 2222,
+            "user": "backup",
+            "remote_dir": "/srv/darkmem",
+            "host_key": "192.0.2.10 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5examplekey",
+            "private_key": "-----BEGIN OPENSSH PRIVATE KEY-----\nexample\n",
+        },
+    }
+)
+
+
+def test_ssh_pins_the_host_key_and_never_trusts_on_first_use(tmp_path):
+    dest = backup_ship.SshDestination(SSH_CFG)
+    argv = dest._ssh_base_argv(tmp_path)
+
+    assert "-o" in argv
+    joined = " ".join(argv)
+    assert "StrictHostKeyChecking=yes" in joined
+    assert f"UserKnownHostsFile={tmp_path / 'known_hosts'}" in joined
+    # accept-new is trust-on-first-use with a nicer name; the first connection
+    # is exactly the one worth intercepting.
+    assert "accept-new" not in joined
+    assert "StrictHostKeyChecking=no" not in joined
+
+    known = (tmp_path / "known_hosts").read_text()
+    assert known.strip() == SSH_CFG.ssh.host_key
+
+
+def test_ssh_identity_file_is_private_to_this_process(tmp_path):
+    dest = backup_ship.SshDestination(SSH_CFG)
+    dest._ssh_base_argv(tmp_path)
+    identity = tmp_path / "identity"
+    assert identity.read_text() == SSH_CFG.ssh.private_key
+    mode = stat_mod.S_IMODE(os.stat(identity).st_mode)
+    assert mode == 0o600, f"identity file is {oct(mode)}; ssh refuses a loose one"
+
+
+def test_ssh_ship_uploads_to_a_part_then_renames(tmp_path, monkeypatch):
+    """The .part discipline crosses the wire too: a torn upload is never
+    listed as a snapshot, so a half-transferred file can never be selected as
+    the newest good one by a restore."""
+    calls = []
+
+    async def _run(argv, **kwargs):
+        calls.append(argv)
+        return b""
+
+    dest = backup_ship.SshDestination(SSH_CFG)
+    monkeypatch.setattr(dest, "_run", _run)
+    blob = tmp_path / "darkmem-app-20260101-000000.sql.gz.age"
+    blob.write_bytes(b"x")
+
+    asyncio.run(dest.ship(blob))
+
+    upload = next(c for c in calls if c[0] == "scp")
+    assert upload[-1].endswith(f":/srv/darkmem/{blob.name}.part")
+    assert "backup@192.0.2.10" in upload[-1]
+    rename = next(c for c in calls if c[0] == "ssh")
+    assert f"/srv/darkmem/{blob.name}.part" in " ".join(rename)
+    assert f"/srv/darkmem/{blob.name}" in " ".join(rename)
+    assert calls.index(upload) < calls.index(rename)
+
+
+def test_ssh_read_back_streams_the_remote_file_into_a_local_hash(monkeypatch):
+    """Not a remote `sha256sum`: rule 2 is about what we can read back, and a
+    remote checksum proves only that the remote agrees with itself."""
+    import hashlib
+
+    payload = b"the bytes that landed" * 500
+
+    async def _run(argv, **kwargs):
+        assert argv[0] == "ssh"
+        assert "cat" in " ".join(argv)
+        return payload
+
+    dest = backup_ship.SshDestination(SSH_CFG)
+    monkeypatch.setattr(dest, "_run", _run)
+
+    got = asyncio.run(dest.read_back_sha256("darkmem-app-20260101-000000.sql.gz.age"))
+    assert got == hashlib.sha256(payload).hexdigest()
+
+
+def test_ssh_prune_filters_the_prefix_and_deletes_beyond_keep(monkeypatch):
+    listing = b"\n".join(
+        [
+            b"darkmem-20250101-000000.sql.gz",  # the systemd producer's
+            b"darkmem-app-20260101-000000.sql.gz.age",
+            b"darkmem-app-20260102-000000.sql.gz.age",
+            b"darkmem-app-20260103-000000.sql.gz.age",
+            b"darkmem-app-20260104-000000.sql.gz.age",
+            b"darkmem-app-20260105-000000.sql.gz.age.part",  # in flight
+            b"README",
+        ]
+    )
+    removed = []
+
+    async def _run(argv, **kwargs):
+        joined = " ".join(argv)
+        if "ls" in joined:
+            return listing
+        removed.append(joined)
+        return b""
+
+    dest = backup_ship.SshDestination(SSH_CFG)
+    monkeypatch.setattr(dest, "_run", _run)
+
+    deleted = asyncio.run(dest.prune(keep=2))
+
+    assert deleted == [
+        "darkmem-app-20260102-000000.sql.gz.age",
+        "darkmem-app-20260101-000000.sql.gz.age",
+    ]
+    assert not any("darkmem-20250101" in r for r in removed)
+    assert not any(".part" in r for r in removed)
+    assert not any("README" in r for r in removed)
+
+
+def test_ssh_prune_refuses_a_dangerous_remote_dir():
+    """`rm` beyond a keep count, rooted at / or at an empty string, is not a
+    retention pass."""
+    for bad in ("", "/", "   "):
+        cfg = SSH_CFG.model_copy(deep=True)
+        cfg.ssh.remote_dir = bad
+        with pytest.raises(ValueError):
+            asyncio.run(backup_ship.SshDestination(cfg).prune(keep=1))
+
+
+def test_ssh_key_material_is_removed_after_every_operation(tmp_path, monkeypatch):
+    seen = {}
+
+    async def _run(argv, **kwargs):
+        # Capture the scratch directory the operation built its argv from.
+        for token in argv:
+            if "UserKnownHostsFile=" in str(token):
+                seen["dir"] = Path(str(token).split("=", 1)[1]).parent
+        return b""
+
+    dest = backup_ship.SshDestination(SSH_CFG)
+    monkeypatch.setattr(dest, "_run", _run)
+    blob = tmp_path / "darkmem-app-20260101-000000.sql.gz.age"
+    blob.write_bytes(b"x")
+
+    asyncio.run(dest.ship(blob))
+
+    assert seen["dir"] and not seen["dir"].exists(), (
+        "the private key outlived the operation that needed it"
+    )
+
+
+def test_build_destination_serves_the_ssh_kind():
+    assert isinstance(backup_ship.build_destination(SSH_CFG), backup_ship.SshDestination)
