@@ -50,6 +50,11 @@ from mcp.client.streamable_http import streamable_http_client  # noqa: E402
 from mcp.shared._httpx_utils import create_mcp_http_client  # noqa: E402
 
 PROJECT = "e2e-f1"
+# Deliberately names real technologies. The probe used to read "T1.64 F1 REST
+# capture probe", which contains nothing a correct extractor would pull out --
+# so "extraction produced no graph" and "there was nothing to extract" looked
+# identical, and only the first is a defect.
+REST_PROBE = "darkmem stores its memories in PostgreSQL using the pgvector extension."
 BUFFER_FLUSH_TRIGGER_RETRIES = 20
 BUFFER_FLUSH_TRIGGER_DELAY_S = 0.5
 
@@ -125,7 +130,7 @@ async def _assert_row_lands_or_records_failure(
 async def test_capture_lands_in_buffer(api_client):
     resp = await api_client.post(
         "/api/v1/memories",
-        json={"content": "T1.64 F1 REST capture probe", "project": PROJECT},
+        json={"content": REST_PROBE, "project": PROJECT},
     )
     assert resp.status_code == 202, f"expected 202, got {resp.status_code}: {resp.text}"
     body = resp.json()
@@ -191,7 +196,7 @@ async def test_mcp_capture_lands_in_buffer_and_flushes(
 async def test_capture_appears_in_search(api_client):
     active_leg = None
     if _state.get("rest_landed_active"):
-        active_leg = ("rest_memory_id", "T1.64 F1 REST capture probe")
+        active_leg = ("rest_memory_id", REST_PROBE)
     elif _state.get("mcp_landed_active"):
         active_leg = ("mcp_memory_id", "T1.64 F1 MCP capture probe")
 
@@ -260,3 +265,29 @@ async def test_extraction_left_no_failure(db_session):
         "why tests 1-4 pass regardless; its entity/relationship graph is "
         "missing. This suite must not report green on that."
     )
+
+    # No failure row is necessary but not sufficient: an extractor that parsed
+    # cleanly and returned nothing leaves no failure either, and that is the
+    # same silent-degradation shape one step further in. REST_PROBE names three
+    # real technologies precisely so "produced nothing" is a defect here rather
+    # than an honest answer.
+    entities = (await db_session.execute(
+        text(
+            "SELECT name, entity_type FROM entities "
+            "WHERE CAST(:id AS uuid) = ANY(memory_ids) ORDER BY name"
+        ),
+        {"id": memory_id},
+    )).all()
+
+    assert entities, (
+        f"extraction recorded no failure for memory {memory_id} but minted no "
+        f"entities from {REST_PROBE!r}, which names three. A clean parse that "
+        "returns an empty graph writes no pipeline_failures row, so nothing "
+        "else in this suite would notice."
+    )
+
+    # The count is not asserted, only its non-emptiness: which entities a model
+    # finds is a model property and would make this brittle across a model
+    # swap. Measured 2026-09-02 with qwen2.5:3b, for the record:
+    # darkmem/project, pgvector/tool, postgresql/database, plus 2 relations.
+
