@@ -367,3 +367,26 @@ describe("CheckpointsTab — the live watch surface (increment 1)", () => {
     ).toBeInTheDocument()
   })
 })
+
+
+describe("CheckpointsTab — pinned to one project (increment 4)", () => {
+  it("reads that project's journal and offers no filter to escape it", async () => {
+    route({ "/events": JOURNAL, "/checkpoints/latest": CHECKPOINT })
+    render(<CheckpointsTab project="darkmem" />, { wrapper })
+
+    await waitFor(() =>
+      expect(
+        vi
+          .mocked(apiFetch)
+          .mock.calls.some(([path]) =>
+            (path as string).includes("project=darkmem"),
+          ),
+      ).toBe(true),
+    )
+    // The workspace's scope is its route param; a filter here would let the
+    // reader navigate out of the page they are on.
+    expect(
+      screen.queryByRole("combobox", { name: /project/i }),
+    ).not.toBeInTheDocument()
+  })
+})

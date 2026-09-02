@@ -15,7 +15,9 @@ function DocumentsPage() {
         title="Documents"
         description="Horizon: grounded answers, single-document summaries and emergent connections over your filed documents."
       />
-      <DocumentsView />
+      {/* The pin is visible at the call site rather than a default nobody
+          reads: this surface is the personal one, scoped to `default`. */}
+      <DocumentsView project="default" />
     </div>
   )
 }

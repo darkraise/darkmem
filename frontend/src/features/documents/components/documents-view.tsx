@@ -1,16 +1,17 @@
 import { useState } from "react"
-import { Sparkles, FileText } from "lucide-react"
+import { Sparkles } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { Card, CardContent, CardHeader } from "darkraise-ui/components/card"
-import { EmptyState } from "@/components/darkmem"
+import { DocumentReader } from "./document-reader"
+import { DocumentTree } from "./document-tree"
 import { Input } from "darkraise-ui/components/input"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 
 import {
   useDocumentConnections,
   useDocumentSummary,
-  useDocuments,
+  useAllDocuments,
   useGroundedQa,
   type QaResponse,
 } from "@/hooks/api"
@@ -28,7 +29,10 @@ import {
  * 3. **The surface is labelled horizon**, on the page and on the data.
  */
 export function DocumentsView({ project = "default" }: { project?: string }) {
-  const documents = useDocuments(project)
+  // The stitched read, not the single clamped page: the list route caps at
+  // 200 and carries no total, so the flat list this replaced silently showed
+  // less than half a real corpus (review m1).
+  const documents = useAllDocuments(project)
   const [selected, setSelected] = useState<string | null>(null)
   const [question, setQuestion] = useState("")
   const qa = useGroundedQa()
@@ -57,35 +61,25 @@ export function DocumentsView({ project = "default" }: { project?: string }) {
               the document list could not be read — a failed read, not an empty
               corpus
             </p>
-          ) : (documents.data?.items ?? []).length === 0 ? (
-            <EmptyState
-              kind="empty"
-              icon={FileText}
-              title="No documents filed"
-              description="Filing a document parses it into blocks; nothing is lifted or summarised until you ask."
-            />
           ) : (
-            <div className="flex flex-col gap-1.5">
-              {(documents.data?.items ?? []).map((document) => (
-                <button
-                  key={document.id}
-                  type="button"
-                  onClick={() => setSelected(document.id)}
-                  className="border-border hover:text-primary flex flex-wrap items-center gap-2 border-t border-dashed pt-1.5 text-left text-sm transition-colors first:border-t-0 first:pt-0"
-                >
-                  <span className="font-medium">
-                    {document.title ?? "untitled document"}
-                  </span>
-                  <span className="text-muted-foreground font-mono text-sm">
-                    {document.block_count} blocks
-                  </span>
-                  {document.uri && (
-                    <span className="text-muted-foreground truncate font-mono text-sm">
-                      {document.uri}
-                    </span>
-                  )}
-                </button>
-              ))}
+            <div className="flex gap-5">
+              <div className="w-72 shrink-0">
+                <DocumentTree
+                  items={documents.data?.items ?? []}
+                  selectedId={selected}
+                  onSelect={(doc) => setSelected(doc.id)}
+                  truncated={documents.data?.truncated ?? false}
+                />
+              </div>
+              <div className="min-w-0 flex-1">
+                {selected ? (
+                  <DocumentReader documentId={selected} />
+                ) : (
+                  <p className="text-muted-foreground text-sm">
+                    Pick a document from the tree to read it.
+                  </p>
+                )}
+              </div>
             </div>
           )}
         </CardContent>

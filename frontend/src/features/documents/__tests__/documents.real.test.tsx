@@ -117,19 +117,24 @@ async function ask() {
 
 afterEach(() => vi.clearAllMocks())
 
+// The list became a uri-segment tree (increment 4): leaves render the path's
+// last segment, so a document titled "Design notes" filed at
+// file:///notes.md is selected by "notes.md". The title still renders in the
+// detail panel below -- the tree is a path view, deliberately.
+
 describe("DocumentsView — the horizon surface", () => {
   it("labels itself horizon in the IA", async () => {
     mockApi()
     render(<DocumentsView />, { wrapper })
     expect(screen.getByText("horizon")).toBeInTheDocument()
-    await waitFor(() => expect(screen.getByText("Design notes")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("notes.md")).toBeInTheDocument())
   })
 
   it("renders an empty corpus honestly rather than as a failure", async () => {
     mockApi({ list: { items: [], horizon: true } })
     render(<DocumentsView />, { wrapper })
     await waitFor(() =>
-      expect(screen.getByText("No documents filed")).toBeInTheDocument(),
+      expect(screen.getByText(/No documents filed/)).toBeInTheDocument(),
     )
   })
 })
@@ -195,7 +200,7 @@ describe("DocumentsView — summary and connections", () => {
   it("a summary renders visibly unbadged", async () => {
     mockApi()
     render(<DocumentsView />, { wrapper })
-    fireEvent.click(await screen.findByText("Design notes"))
+    fireEvent.click(await screen.findByText("notes.md"))
 
     await waitFor(() =>
       expect(screen.getByText("A report over one document.")).toBeInTheDocument(),
@@ -209,7 +214,7 @@ describe("DocumentsView — summary and connections", () => {
   it("a document with no summary says one has not been generated", async () => {
     mockApi({ summary: "missing" })
     render(<DocumentsView />, { wrapper })
-    fireEvent.click(await screen.findByText("Design notes"))
+    fireEvent.click(await screen.findByText("notes.md"))
 
     await waitFor(() =>
       expect(
@@ -232,7 +237,7 @@ describe("DocumentsView — summary and connections", () => {
       },
     })
     render(<DocumentsView />, { wrapper })
-    fireEvent.click(await screen.findByText("Design notes"))
+    fireEvent.click(await screen.findByText("notes.md"))
 
     await waitFor(() => expect(screen.getByText("Other notes")).toBeInTheDocument())
     expect(screen.getByText("postgres · linux")).toBeInTheDocument()

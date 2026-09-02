@@ -13,6 +13,7 @@ import {
   Brain,
   ClipboardCheck,
   FileText,
+  FolderKanban,
   FolderGit2,
   LayoutDashboard,
   MessageSquare,
@@ -56,6 +57,15 @@ const nav: NavGroup[] = [
     items: [
       { label: "Memories", href: "/memories", icon: Brain },
       { label: "Memory Graph", href: "/memory-graph", icon: Waypoints },
+    ],
+  },
+  {
+    label: "Projects",
+    items: [
+      { label: "Projects", href: "/projects", icon: FolderKanban },
+      // /documents shipped with TH1.16 and had no nav entry at all, so the
+      // surface existed and was unreachable. This closes that for both.
+      { label: "Documents", href: "/documents", icon: FileText },
     ],
   },
   {

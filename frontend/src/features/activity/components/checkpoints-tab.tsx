@@ -261,9 +261,16 @@ function RunDetail({
   )
 }
 
-export function CheckpointsTab() {
+/** `project` pins the tab to one scope and hides the filter: the project
+ *  workspace's scope is its route param, and a second filter inside it would
+ *  offer escapes from the page you are on. Absent, this is the standalone
+ *  Activity tab with its own filter. */
+export function CheckpointsTab({ project }: { project?: string } = {}) {
   const [projectFilter, setProjectFilter] = useState<string | null>(null)
-  const { runs, isLoading, isError } = useCheckpointRuns(projectFilter)
+  const pinned = project !== undefined
+  const { runs, isLoading, isError } = useCheckpointRuns(
+    pinned ? project : projectFilter,
+  )
   const advanced = useDetailLevel((s) => s.level) === "advanced"
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selected = runs.find((r) => r.id === selectedId) ?? runs[0] ?? null
@@ -293,6 +300,7 @@ export function CheckpointsTab() {
         event payloads deliberately carry no step content, and no endpoint
         serves a run's past summaries.
       </p>
+      {pinned ? null : (
       <div className="flex items-center gap-2">
         <Select
           value={projectFilter ?? ALL_PROJECTS}
@@ -316,6 +324,7 @@ export function CheckpointsTab() {
           </SelectContent>
         </Select>
       </div>
+      )}
       <ModuleSurface
         title="Checkpointed runs"
         state={isLoading ? "empty" : runs.length > 0 ? "populated" : "empty"}

@@ -17,6 +17,7 @@ import { Route as GuestLoginRouteImport } from './routes/_guest/login'
 import { Route as AuthenticatedUsageRouteImport } from './routes/_authenticated/usage'
 import { Route as AuthenticatedUnifiedGraphRouteImport } from './routes/_authenticated/unified-graph'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
+import { Route as AuthenticatedProjectsRouteImport } from './routes/_authenticated/projects'
 import { Route as AuthenticatedMemoryGraphRouteImport } from './routes/_authenticated/memory-graph'
 import { Route as AuthenticatedMemoriesRouteImport } from './routes/_authenticated/memories'
 import { Route as AuthenticatedKnowledgeRouteImport } from './routes/_authenticated/knowledge'
@@ -25,6 +26,7 @@ import { Route as AuthenticatedDocumentsRouteImport } from './routes/_authentica
 import { Route as AuthenticatedCodeRouteImport } from './routes/_authenticated/code'
 import { Route as AuthenticatedChatRouteImport } from './routes/_authenticated/chat'
 import { Route as AuthenticatedActivityRouteImport } from './routes/_authenticated/activity'
+import { Route as AuthenticatedProjectsProjectRouteImport } from './routes/_authenticated/projects_.$project'
 import { Route as AuthenticatedMemoriesMemoryIdRouteImport } from './routes/_authenticated/memories_.$memoryId'
 import { Route as AuthenticatedKnowledgeTopicsRouteImport } from './routes/_authenticated/knowledge_.topics'
 import { Route as AuthenticatedKnowledgeReviewRouteImport } from './routes/_authenticated/knowledge_.review'
@@ -75,6 +77,11 @@ const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedProjectsRoute = AuthenticatedProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedMemoryGraphRoute =
   AuthenticatedMemoryGraphRouteImport.update({
     id: '/memory-graph',
@@ -116,6 +123,12 @@ const AuthenticatedActivityRoute = AuthenticatedActivityRouteImport.update({
   path: '/activity',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedProjectsProjectRoute =
+  AuthenticatedProjectsProjectRouteImport.update({
+    id: '/projects_/$project',
+    path: '/projects/$project',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedMemoriesMemoryIdRoute =
   AuthenticatedMemoriesMemoryIdRouteImport.update({
     id: '/memories_/$memoryId',
@@ -185,6 +198,7 @@ export interface FileRoutesByFullPath {
   '/knowledge': typeof AuthenticatedKnowledgeRoute
   '/memories': typeof AuthenticatedMemoriesRoute
   '/memory-graph': typeof AuthenticatedMemoryGraphRoute
+  '/projects': typeof AuthenticatedProjectsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/unified-graph': typeof AuthenticatedUnifiedGraphRoute
   '/usage': typeof AuthenticatedUsageRoute
@@ -198,6 +212,7 @@ export interface FileRoutesByFullPath {
   '/knowledge/review': typeof AuthenticatedKnowledgeReviewRoute
   '/knowledge/topics': typeof AuthenticatedKnowledgeTopicsRoute
   '/memories/$memoryId': typeof AuthenticatedMemoriesMemoryIdRoute
+  '/projects/$project': typeof AuthenticatedProjectsProjectRoute
   '/knowledge/articles/$articleId': typeof AuthenticatedKnowledgeArticlesArticleIdRoute
   '/knowledge/facts/$factId': typeof AuthenticatedKnowledgeFactsFactIdRoute
 }
@@ -211,6 +226,7 @@ export interface FileRoutesByTo {
   '/knowledge': typeof AuthenticatedKnowledgeRoute
   '/memories': typeof AuthenticatedMemoriesRoute
   '/memory-graph': typeof AuthenticatedMemoryGraphRoute
+  '/projects': typeof AuthenticatedProjectsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/unified-graph': typeof AuthenticatedUnifiedGraphRoute
   '/usage': typeof AuthenticatedUsageRoute
@@ -224,6 +240,7 @@ export interface FileRoutesByTo {
   '/knowledge/review': typeof AuthenticatedKnowledgeReviewRoute
   '/knowledge/topics': typeof AuthenticatedKnowledgeTopicsRoute
   '/memories/$memoryId': typeof AuthenticatedMemoriesMemoryIdRoute
+  '/projects/$project': typeof AuthenticatedProjectsProjectRoute
   '/knowledge/articles/$articleId': typeof AuthenticatedKnowledgeArticlesArticleIdRoute
   '/knowledge/facts/$factId': typeof AuthenticatedKnowledgeFactsFactIdRoute
 }
@@ -239,6 +256,7 @@ export interface FileRoutesById {
   '/_authenticated/knowledge': typeof AuthenticatedKnowledgeRoute
   '/_authenticated/memories': typeof AuthenticatedMemoriesRoute
   '/_authenticated/memory-graph': typeof AuthenticatedMemoryGraphRoute
+  '/_authenticated/projects': typeof AuthenticatedProjectsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/unified-graph': typeof AuthenticatedUnifiedGraphRoute
   '/_authenticated/usage': typeof AuthenticatedUsageRoute
@@ -253,6 +271,7 @@ export interface FileRoutesById {
   '/_authenticated/knowledge_/review': typeof AuthenticatedKnowledgeReviewRoute
   '/_authenticated/knowledge_/topics': typeof AuthenticatedKnowledgeTopicsRoute
   '/_authenticated/memories_/$memoryId': typeof AuthenticatedMemoriesMemoryIdRoute
+  '/_authenticated/projects_/$project': typeof AuthenticatedProjectsProjectRoute
   '/_authenticated/knowledge_/articles_/$articleId': typeof AuthenticatedKnowledgeArticlesArticleIdRoute
   '/_authenticated/knowledge_/facts_/$factId': typeof AuthenticatedKnowledgeFactsFactIdRoute
 }
@@ -268,6 +287,7 @@ export interface FileRouteTypes {
     | '/knowledge'
     | '/memories'
     | '/memory-graph'
+    | '/projects'
     | '/settings'
     | '/unified-graph'
     | '/usage'
@@ -281,6 +301,7 @@ export interface FileRouteTypes {
     | '/knowledge/review'
     | '/knowledge/topics'
     | '/memories/$memoryId'
+    | '/projects/$project'
     | '/knowledge/articles/$articleId'
     | '/knowledge/facts/$factId'
   fileRoutesByTo: FileRoutesByTo
@@ -294,6 +315,7 @@ export interface FileRouteTypes {
     | '/knowledge'
     | '/memories'
     | '/memory-graph'
+    | '/projects'
     | '/settings'
     | '/unified-graph'
     | '/usage'
@@ -307,6 +329,7 @@ export interface FileRouteTypes {
     | '/knowledge/review'
     | '/knowledge/topics'
     | '/memories/$memoryId'
+    | '/projects/$project'
     | '/knowledge/articles/$articleId'
     | '/knowledge/facts/$factId'
   id:
@@ -321,6 +344,7 @@ export interface FileRouteTypes {
     | '/_authenticated/knowledge'
     | '/_authenticated/memories'
     | '/_authenticated/memory-graph'
+    | '/_authenticated/projects'
     | '/_authenticated/settings'
     | '/_authenticated/unified-graph'
     | '/_authenticated/usage'
@@ -335,6 +359,7 @@ export interface FileRouteTypes {
     | '/_authenticated/knowledge_/review'
     | '/_authenticated/knowledge_/topics'
     | '/_authenticated/memories_/$memoryId'
+    | '/_authenticated/projects_/$project'
     | '/_authenticated/knowledge_/articles_/$articleId'
     | '/_authenticated/knowledge_/facts_/$factId'
   fileRoutesById: FileRoutesById
@@ -402,6 +427,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/projects': {
+      id: '/_authenticated/projects'
+      path: '/projects'
+      fullPath: '/projects'
+      preLoaderRoute: typeof AuthenticatedProjectsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/memory-graph': {
       id: '/_authenticated/memory-graph'
       path: '/memory-graph'
@@ -456,6 +488,13 @@ declare module '@tanstack/react-router' {
       path: '/activity'
       fullPath: '/activity'
       preLoaderRoute: typeof AuthenticatedActivityRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/projects_/$project': {
+      id: '/_authenticated/projects_/$project'
+      path: '/projects/$project'
+      fullPath: '/projects/$project'
+      preLoaderRoute: typeof AuthenticatedProjectsProjectRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/memories_/$memoryId': {
@@ -540,6 +579,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedKnowledgeRoute: typeof AuthenticatedKnowledgeRoute
   AuthenticatedMemoriesRoute: typeof AuthenticatedMemoriesRoute
   AuthenticatedMemoryGraphRoute: typeof AuthenticatedMemoryGraphRoute
+  AuthenticatedProjectsRoute: typeof AuthenticatedProjectsRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedUnifiedGraphRoute: typeof AuthenticatedUnifiedGraphRoute
   AuthenticatedUsageRoute: typeof AuthenticatedUsageRoute
@@ -552,6 +592,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedKnowledgeReviewRoute: typeof AuthenticatedKnowledgeReviewRoute
   AuthenticatedKnowledgeTopicsRoute: typeof AuthenticatedKnowledgeTopicsRoute
   AuthenticatedMemoriesMemoryIdRoute: typeof AuthenticatedMemoriesMemoryIdRoute
+  AuthenticatedProjectsProjectRoute: typeof AuthenticatedProjectsProjectRoute
   AuthenticatedKnowledgeArticlesArticleIdRoute: typeof AuthenticatedKnowledgeArticlesArticleIdRoute
   AuthenticatedKnowledgeFactsFactIdRoute: typeof AuthenticatedKnowledgeFactsFactIdRoute
 }
@@ -565,6 +606,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedKnowledgeRoute: AuthenticatedKnowledgeRoute,
   AuthenticatedMemoriesRoute: AuthenticatedMemoriesRoute,
   AuthenticatedMemoryGraphRoute: AuthenticatedMemoryGraphRoute,
+  AuthenticatedProjectsRoute: AuthenticatedProjectsRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedUnifiedGraphRoute: AuthenticatedUnifiedGraphRoute,
   AuthenticatedUsageRoute: AuthenticatedUsageRoute,
@@ -577,6 +619,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedKnowledgeReviewRoute: AuthenticatedKnowledgeReviewRoute,
   AuthenticatedKnowledgeTopicsRoute: AuthenticatedKnowledgeTopicsRoute,
   AuthenticatedMemoriesMemoryIdRoute: AuthenticatedMemoriesMemoryIdRoute,
+  AuthenticatedProjectsProjectRoute: AuthenticatedProjectsProjectRoute,
   AuthenticatedKnowledgeArticlesArticleIdRoute:
     AuthenticatedKnowledgeArticlesArticleIdRoute,
   AuthenticatedKnowledgeFactsFactIdRoute:
