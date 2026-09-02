@@ -6,11 +6,40 @@ better" log, not release notes for strangers. The ladder is
 
 ## v1.5.0 — 2026-09-02
 
-**The Checkpoints tab became something you can leave open and watch.** It
-polls, it filters to one project, and it says out loud what it cannot show
-you. First increment of the project artifact store (spec §3, §6).
+**The Checkpoints tab became something you can leave open and watch, and
+filed documents stopped silently losing their biggest tables.** Increments 1
+and 2 of the project artifact store (spec §3, §4, §6).
+
+### Fixed
+
+- **A markdown table no longer parses as one giant paragraph.** The
+  `table` rule ships with markdown-it but is off under the commonmark preset,
+  so a GFM table became a single block — measured at 235,716 / 298,677 /
+  182,746 characters in three corpus files. The embedder truncates a block
+  that size and the filing still reports success, so the loss was invisible
+  at every surface. Tables now parse structurally: one `table` block carrying
+  the header cells and column alignments, one `table_row` child per data row.
+  A 300-row table that was one 60KB block is now 300 ordinary ones.
+- **YAML frontmatter is captured instead of misparsed.** commonmark reads a
+  closing `---` as a setext heading, so a document's frontmatter became part
+  of its first heading block. It is now split off before tokenising and filed
+  into `documents.properties.frontmatter`. Char spans still index into the
+  original source, fences included — the offset is added back, so nothing
+  that reads a span moved.
 
 ### Added
+
+- **An oversized-block warning on every put surface.** `oversized_blocks` and
+  `largest_block_chars` are measured once in the one writer, ride the
+  `document_filed` event, and reach both the REST and MCP put replies.
+  Counted, never refused: 27 corpus files exceed the budget and refusing
+  would block the import, so the honest move is to report the degradation
+  rather than invent a new failure mode. `null` rather than `0` when a
+  re-filed document was unchanged — nothing was parsed, so nothing was
+  measured, and `0` would be a clean bill the filing never issued.
+- **`table` and `table_row` join the closed block vocabulary**, taxonomy-first:
+  the two members landed before the parser emitted them, and doc 16 §9's
+  stance line records the widening and why.
 
 - **A project filter on the Checkpoints tab.** The predicate is pushed to
   `GET /events`, not applied to the loaded page: the journal read is capped at
@@ -36,8 +65,11 @@ you. First increment of the project artifact store (spec §3, §6).
 
 ### Notes
 
-- No backend change, no schema change, and the gate table is unchanged from
-  v1.4.0 — nothing here touches a surface a gate governs.
+- **No schema change.** `blocks.type` is plain `TEXT` with no CHECK, so the
+  vocabulary widening is a code-side edit; existing rows are untouched, and a
+  document re-shapes only when it is re-filed.
+- The gate table is unchanged from v1.4.0 — nothing here touches a surface a
+  gate governs.
 
 ## v1.4.0 — 2026-08-29
 
