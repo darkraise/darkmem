@@ -1271,6 +1271,15 @@ def _pass_two() -> None:
     # lands-here/labelled-there split the four templates already take
     # (T0.12c lands, T0.13 labels). T0.13 keeps repo_ids[], the inert
     # labelling, and the no-writer assertion.
+    #
+    # `content` is the verbatim source of record (2026-08-31 spec §5, the
+    # round-trip column); `content_hash` is its change gate and
+    # `blocks.char_span` indexes into it. NULLable on purpose: a source filed
+    # as bytes has no text form to store, and TEXT NULL is the honest shape
+    # for that rather than a lossy decode. No index -- nothing queries by
+    # content, and it must never enter the list or resolve statements, which
+    # is the read-amplification reason §5.1 gave for rejecting a jsonb bridge
+    # on this table.
     op.execute(
         """
         CREATE TABLE documents (
@@ -1280,6 +1289,7 @@ def _pass_two() -> None:
             source_type  TEXT,
             uri          TEXT,
             content_hash TEXT,
+            content      TEXT,
             properties   JSONB,
             created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
             updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
