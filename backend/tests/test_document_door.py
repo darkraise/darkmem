@@ -733,3 +733,75 @@ async def test_a_parent_cycle_does_not_hang_the_walk(session):
     deepest = next(h for h in hits if h.text.strip() == "Use the msi.")
     assert deepest.heading_path == ("Guide", "Setup", "Windows")
     assert deepest.path_truncated is True
+
+
+# ── The ingest-direction refusal (increment 8, spec §8.2) ────────────
+
+
+@pytest.mark.asyncio
+async def test_put_refuses_a_block_first_document(session):
+    """A content push over an editing session is a silent overwrite: the put
+    would strip every block the editor placed and rewrite the content it was
+    serialising from."""
+    from app.services.document_door import (
+        BLOCK_FIRST,
+        DIRECTION_KEY,
+        DocumentIsBlockFirst,
+        put_document,
+    )
+
+    stub_llm = StubEmbedder()
+    filed = await put_document(
+        session, stub_llm, project="p", uri="docs/owned.md",
+        content="# One\n\nbody\n",
+    )
+    await session.flush()
+
+    # Task 4's verbs set this for real; the fixture writes it directly.
+    await session.execute(
+        text(
+            "UPDATE documents SET properties = "
+            "COALESCE(properties,'{}'::jsonb) || jsonb_build_object("
+            "  CAST(:key AS text), CAST(:val AS text)) "
+            "WHERE id = CAST(:id AS uuid)"
+        ),
+        {"key": DIRECTION_KEY, "val": BLOCK_FIRST, "id": filed.document_id},
+    )
+    await session.flush()
+
+    with pytest.raises(DocumentIsBlockFirst):
+        await put_document(
+            session, stub_llm, project="p", uri="docs/owned.md",
+            content="# Overwritten\n",
+        )
+
+    row = (await session.execute(
+        text("SELECT content FROM documents WHERE id = CAST(:id AS uuid)"),
+        {"id": filed.document_id},
+    )).scalar_one()
+    assert row == "# One\n\nbody\n"     # the refusal wrote nothing
+
+
+@pytest.mark.asyncio
+async def test_put_still_works_on_a_content_first_document(session):
+    """The flag is absent on every document ever filed through put, and
+    absent must keep meaning content-first."""
+    from app.services.document_door import put_document
+
+    stub_llm = StubEmbedder()
+    first = await put_document(
+        session, stub_llm, project="p", uri="docs/ordinary.md", content="# A\n",
+    )
+    await session.flush()
+    second = await put_document(
+        session, stub_llm, project="p", uri="docs/ordinary.md", content="# B\n",
+    )
+    assert second.document_id == first.document_id
+    assert second.outcome == "updated"
+
+
+def test_the_blocks_edited_event_type_exists_before_its_emitter():
+    """Taxonomy-first: the vocabulary lands before Task 4 emits into it."""
+    from app.services.events import EVENT_TYPES
+
+    assert "blocks_edited" in EVENT_TYPES

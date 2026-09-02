@@ -134,6 +134,51 @@ async def resolve_document_target(
     )
 
 
+# documents.properties key recording which ingest direction owns the row
+# (spec §8.2). Absent, or any other value, means content-first -- every
+# document ever filed through put. "blocks" means the block verbs are
+# authoritative and `content` is a serialisation of their tree.
+#
+# Server-owned: neither door accepts caller properties on put, and the block
+# verbs merge this key with jsonb `||` rather than writing properties
+# wholesale, so a caller can neither set nor clear it.
+DIRECTION_KEY = "ingest_direction"
+BLOCK_FIRST = "blocks"
+
+_DIRECTION_SQL = text(
+    "SELECT properties->>'ingest_direction' FROM documents "
+    "WHERE project = CAST(:project AS text) AND uri = CAST(:uri AS text)"
+)
+
+_LOCK_DOCUMENT_BY_URI = text(
+    "SELECT id FROM documents "
+    "WHERE project = CAST(:project AS text) AND uri = CAST(:uri AS text) "
+    "FOR UPDATE"
+)
+
+
+class DocumentIsBlockFirst(ValueError):
+    """put refused: this document is owned by the block verbs (spec §8.2).
+
+    A content push over an editing session is a silent overwrite -- the put
+    would strip every block the editor placed and rewrite the content it was
+    serialising from.
+    """
+
+
+class DocumentNotConvertible(ValueError):
+    """block verb refused: this content-first document contains source the
+    block model does not represent, so converting it would regenerate
+    `content` without it (review M-2).
+
+    Spec §4.5 promises generated-region markers survive in the stored raw
+    content and §8.2 promises a content-first document's content is never
+    regenerated. Converting lossily would break both silently, on the corpus
+    this programme exists to hold. Refusing is the honest outcome until the
+    parser represents those shapes.
+    """
+
+
 @dataclass(frozen=True)
 class PutResult:
     document_id: str
@@ -439,6 +484,28 @@ async def put_document(
             f"{MAX_CONTENT_CHARS}"
         )
 
+    # Review M-3: the refusal is taken under a row lock, not before one. A
+    # SELECT ahead of the savepoint is check-then-act -- the block verbs can
+    # convert the document between the read and this put's own UPDATE, which
+    # writes properties wholesale and would erase `ingest_direction` while
+    # strip_blocks deletes the rows an editing session just placed. That is
+    # the same race increment 3's compare-and-set closed, and "unconditional"
+    # is weaker here rather than stronger: a CAS at least fails loudly.
+    #
+    # A brand-new document has no row to lock, and that is correct rather
+    # than a hole: there is nothing to convert and nothing to overwrite.
+    await session.execute(_LOCK_DOCUMENT_BY_URI, {"project": project, "uri": uri})
+    direction = (
+        await session.execute(_DIRECTION_SQL, {"project": project, "uri": uri})
+    ).scalar_one_or_none()
+    if direction == BLOCK_FIRST:
+        raise DocumentIsBlockFirst(
+            f"the document at uri {uri!r} in project {project!r} is "
+            "block-first: its content is owned by the block verbs, and a "
+            "content push would silently overwrite an editing session. "
+            "Edit it through the block verbs, or delete and re-file it."
+        )
+
     resolved_title = await _resolve_title(
         session, project=project, uri=uri, title=title, content=content,
     )
@@ -564,47 +631,65 @@ async def delete_document(session: AsyncSession, *, document_id: UUID | str) -> 
     document with no blocks, which a missing document always is.
     """
     withdrawal = await withdraw_document(session, document_id=document_id)
-
-    if withdrawal.facts_enqueued:
-        fact_ids = list(withdrawal.facts_enqueued)
-        surviving = {
-            str(row) for row in (
-                await session.execute(_STILL_SOURCED, {"ids": fact_ids})
-            ).scalars().all()
-        }
-        fact_rows = {
-            row["id"]: row for row in (
-                await session.execute(_FACT_ROWS, {"ids": fact_ids})
-            ).mappings().all()
-        }
-        triples = KnowledgeTripleRepository(session)
-        for fact_id in fact_ids:
-            row = fact_rows.get(fact_id)
-            if row is None:
-                # The fact vanished by some other route between the withdrawal
-                # and this read; nothing to expire and nothing to enqueue for.
-                continue
-            if fact_id not in surviving and row["expired_at"] is None:
-                await triples.expire(UUID(fact_id))
-            await record_event(
-                session,
-                event_type="sources_changed",
-                object_type="fact",
-                object_id=UUID(fact_id),
-                project=row["project"],
-                # The document, not the block: origin for a block source is
-                # the document (block_fact_sources.py's own rule), so this is
-                # the spelling that names what actually moved. The drain
-                # itself reads only `payload["fact_id"]` — see
-                # `verification_recompute._drain_sources_changed` — so this
-                # key is for a human tracing one fact's evidence history
-                # across both spellings, the same role `memory_id` plays on
-                # the sibling payload.
-                payload={"fact_id": fact_id, "document_id": str(document_id)},
-            )
+    await expire_facts_left_bare(session, withdrawal, document_id=str(document_id))
 
     result = await session.execute(_DELETE_DOCUMENT, {"id": str(document_id)})
     return result.rowcount > 0
+
+
+async def expire_facts_left_bare(
+    session: AsyncSession, withdrawal, *, document_id: str
+) -> None:
+    """Expire any fact the withdrawal left with no surviving source.
+
+    Factored out of `delete_document` so increment 8's block delete can close
+    the same window at subtree scope: a deleted block is evidence that no
+    longer exists, whether the whole document went or one branch of it did.
+
+    Never one already expired -- `expire` is COALESCE-idempotent, but a fact
+    identically expired twice is still one transition rather than two. And
+    never a `verification_status`: the rung stays the ladder's decision, and a
+    withdrawal that wrote one would be a second authority over that column.
+    """
+    if not withdrawal.facts_enqueued:
+        return
+
+    fact_ids = list(withdrawal.facts_enqueued)
+    surviving = {
+        str(row) for row in (
+            await session.execute(_STILL_SOURCED, {"ids": fact_ids})
+        ).scalars().all()
+    }
+    fact_rows = {
+        row["id"]: row for row in (
+            await session.execute(_FACT_ROWS, {"ids": fact_ids})
+        ).mappings().all()
+    }
+    triples = KnowledgeTripleRepository(session)
+    for fact_id in fact_ids:
+        row = fact_rows.get(fact_id)
+        if row is None:
+            # The fact vanished by some other route between the withdrawal
+            # and this read; nothing to expire and nothing to enqueue for.
+            continue
+        if fact_id not in surviving and row["expired_at"] is None:
+            await triples.expire(UUID(fact_id))
+        await record_event(
+            session,
+            event_type="sources_changed",
+            object_type="fact",
+            object_id=UUID(fact_id),
+            project=row["project"],
+            # The document, not the block: origin for a block source is the
+            # document (block_fact_sources.py's own rule), so this is the
+            # spelling that names what actually moved. The drain itself reads
+            # only `payload["fact_id"]` -- see
+            # `verification_recompute._drain_sources_changed` -- so this key
+            # is for a human tracing one fact's evidence history across both
+            # spellings, the same role `memory_id` plays on the sibling
+            # payload.
+            payload={"fact_id": fact_id, "document_id": document_id},
+        )
 
 
 @dataclass(frozen=True)

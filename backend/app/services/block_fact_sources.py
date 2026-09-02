@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from collections.abc import Sequence
 from uuid import UUID
 
 from sqlalchemy import text
@@ -37,6 +38,7 @@ __all__ = [
     "BLOCK_SOURCE_KIND",
     "BlockWithdrawal",
     "record_block_source",
+    "withdraw_blocks",
     "withdraw_document",
 ]
 
@@ -109,16 +111,43 @@ async def withdraw_document(
             _DOCUMENT_BLOCKS_SQL, {"id": str(document_id)}
         )).mappings()
     ]
-    if not blocks:
+    return await withdraw_blocks(
+        session, block_ids=blocks, document_id=str(document_id)
+    )
+
+
+async def withdraw_blocks(
+    session: AsyncSession,
+    *,
+    block_ids: Sequence[str],
+    document_id: UUID | str,
+) -> BlockWithdrawal:
+    """Withdraw the block-kind sources for exactly these blocks.
+
+    The subtree half of :func:`withdraw_document`: a block delete removes one
+    subtree rather than the document, and only that subtree's provenance goes
+    with it. ``blocks.id`` is ``fact_sources.source_ref`` for block-kind
+    sources and carries **no** foreign key, so deleting a block row without
+    this leaves a fact corroborated by evidence that no longer exists.
+
+    ``document_id`` is carried through rather than derived: the origin of a
+    block source is its document, so it is what the caller must journal, and
+    a delete has already removed the rows it could be re-derived from.
+
+    Like its caller, this deliberately demotes nothing. The ladder decides
+    what a fact's remaining corroboration is worth, and a withdrawal that
+    wrote a rung would be a second authority over the verification column.
+    """
+    if not block_ids:
         return BlockWithdrawal(str(document_id), 0, 0, ())
 
     removed = (await session.execute(
-        _DELETE_SOURCES_SQL, {"kind": BLOCK_SOURCE_KIND, "refs": blocks}
+        _DELETE_SOURCES_SQL, {"kind": BLOCK_SOURCE_KIND, "refs": list(block_ids)}
     )).mappings().all()
     fact_ids = tuple(dict.fromkeys(row["fact_id"] for row in removed))
     return BlockWithdrawal(
         document_id=str(document_id),
-        blocks=len(blocks),
+        blocks=len(block_ids),
         sources_removed=len(removed),
         facts_enqueued=fact_ids,
     )

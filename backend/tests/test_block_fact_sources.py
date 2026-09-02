@@ -26,7 +26,11 @@ from app.repositories.fact_sources import (
     _RESERVED_SOURCE_KINDS,
 )
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
-from app.services.block_fact_sources import record_block_source, withdraw_document
+from app.services.block_fact_sources import (
+    record_block_source,
+    withdraw_blocks,
+    withdraw_document,
+)
 from app.services.document_ingest import BlockDraft, file_document
 from app.services.triple_key import compute_triple_key
 
@@ -193,4 +197,64 @@ async def test_withdrawing_a_document_with_no_blocks_is_a_no_op(session):
         session, document_id="22222222-2222-2222-2222-222222222222",
     )
     assert withdrawal.blocks == 0
+    assert withdrawal.facts_enqueued == ()
+
+
+# ── Subtree-scoped withdrawal (increment 8, Task 3) ──────────────────
+
+
+async def test_withdraw_blocks_leaves_a_sibling_block_standing(session):
+    """A block delete removes one subtree, not the document, so only that
+    subtree's provenance goes. Withdrawing more would silently strip evidence
+    the caller never deleted."""
+    fact_id = await _fact(session)
+    document_id, blocks = await _file(
+        session, "Postgres runs on linux.", "A second claim.", uri="file:///sub",
+    )
+    for block_id in blocks:
+        await record_block_source(session, fact_id=fact_id, block_id=block_id)
+
+    withdrawal = await withdraw_blocks(
+        session, block_ids=[blocks[0]], document_id=document_id,
+    )
+    assert withdrawal.sources_removed == 1
+    assert withdrawal.blocks == 1
+
+    # The sibling's source survives, so the fact still has evidence.
+    remaining = (await session.execute(
+        text(
+            "SELECT count(*) FROM fact_sources "
+            "WHERE fact_id = CAST(:f AS uuid) AND source_ref = CAST(:b AS text)"
+        ),
+        {"f": str(fact_id), "b": blocks[1]},
+    )).scalar_one()
+    assert remaining == 1
+
+
+async def test_withdraw_document_still_takes_every_block(session):
+    """The delegation must not narrow the document-scoped behaviour."""
+    fact_id = await _fact(session)
+    document_id, blocks = await _file(
+        session, "Postgres runs on linux.", "A second claim.", uri="file:///whole",
+    )
+    for block_id in blocks:
+        await record_block_source(session, fact_id=fact_id, block_id=block_id)
+
+    withdrawal = await withdraw_document(session, document_id=document_id)
+    assert withdrawal.sources_removed == len(blocks)
+
+    left = (await session.execute(
+        text("SELECT count(*) FROM fact_sources WHERE fact_id = CAST(:f AS uuid)"),
+        {"f": str(fact_id)},
+    )).scalar_one()
+    assert left == 0
+
+
+async def test_withdrawing_no_blocks_writes_nothing(session):
+    """block_delete on a subtree that sourced no fact must be a no-op rather
+    than a delete with an empty IN list."""
+    withdrawal = await withdraw_blocks(
+        session, block_ids=[], document_id="00000000-0000-0000-0000-000000000000",
+    )
+    assert withdrawal.sources_removed == 0
     assert withdrawal.facts_enqueued == ()

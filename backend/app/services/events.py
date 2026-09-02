@@ -138,6 +138,11 @@ EVENT_TYPES: list[str] = [
     CONTRADICTION_SCANNED,
     CONTRADICTION_DISMISSED,
     "document_filed",
+    # Increment 8's block verbs (spec §8.2). One row per verb call; the
+    # payload names the verb, the block id and the resulting content_hash,
+    # and carries NO block text -- write-time minimization, stated here at
+    # the vocabulary because the writer lives in block_verbs.py.
+    "blocks_edited",
     # The block-embedding backstop job's run summary (T-doc-door.6). Landed
     # ahead of its emitter, taxonomy-first, same as every other value here.
     "block_embeddings_refreshed",
