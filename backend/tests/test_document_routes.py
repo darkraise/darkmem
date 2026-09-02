@@ -1099,3 +1099,140 @@ async def test_expected_hash_refuses_a_stale_edit_on_both_doors(
     assert reply["status"] == "hash_conflict"
     assert reply["expected_hash"] == first_hash
     assert reply["current_hash"] == second_hash
+
+
+@pytest.mark.asyncio
+async def test_the_block_read_serves_properties_and_source(
+    client, auth_headers, both_doors
+):
+    """`text` is marker-stripped, so an editor holding it is editing a
+    different string from the one stored. `source` is the stored one."""
+    import json
+
+    from app.api.mcp import server as mcp_server
+
+    created = await client.post(
+        f"{V1}/documents",
+        json={"project": "p", "uri": "docs/props.md",
+              "content": "## Heading two\n\n- item one\n"},
+        headers=auth_headers,
+    )
+    doc_id = created.json()["document_id"]
+
+    body = (await client.get(f"{V1}/documents/{doc_id}", headers=auth_headers)).json()
+    heading = next(b for b in body["blocks"] if b["type"] == "heading")
+    assert heading["text"] == "Heading two"          # marker stripped
+    assert heading["source"] == "## Heading two"     # marker intact
+    assert heading["properties"] == {"level": 2}
+
+    item = next(b for b in body["blocks"] if b["type"] == "list")
+    assert item["source"] == "- item one"
+
+    # Both doors, one service read.
+    tool = json.loads(await mcp_server.document_get(document_id=doc_id))
+    tool_heading = next(b for b in tool if b["type"] == "heading")
+    assert tool_heading["source"] == "## Heading two"
+    assert tool_heading["properties"] == {"level": 2}
+
+
+# ── The block verbs over REST (increment 8, Task 5) ──────────────────
+
+
+@pytest.mark.asyncio
+async def test_the_four_block_routes_round_trip(client, auth_headers, stub_llm):
+    created = await client.post(
+        f"{V1}/documents",
+        json={"project": "p", "uri": "docs/edit.md",
+              "content": "# T\n\nalpha\n\nbeta\n"},
+        headers=auth_headers,
+    )
+    doc_id = created.json()["document_id"]
+    blocks = (await client.get(f"{V1}/documents/{doc_id}", headers=auth_headers)).json()["blocks"]
+    alpha = next(b for b in blocks if b["text"] == "alpha")
+    heading = next(b for b in blocks if b["type"] == "heading")
+
+    # insert -> 201 with the minted id
+    inserted = await client.post(
+        f"{V1}/documents/{doc_id}/blocks",
+        json={"type": "paragraph", "text": "inserted", "parent_id": heading["block_id"]},
+        headers=auth_headers,
+    )
+    assert inserted.status_code == 201
+    assert inserted.json()["block_id"]
+
+    # update -> 200 with a new content hash
+    updated = await client.patch(
+        f"{V1}/documents/{doc_id}/blocks/{alpha['block_id']}",
+        json={"text": "alpha edited"}, headers=auth_headers,
+    )
+    assert updated.status_code == 200
+    assert updated.json()["content_hash"] != created.json()["content_hash"]
+
+    # move -> 200
+    moved = await client.post(
+        f"{V1}/documents/{doc_id}/blocks/{alpha['block_id']}/move",
+        json={"new_parent_id": None}, headers=auth_headers,
+    )
+    assert moved.status_code == 200
+
+    # delete -> 204, and the block is gone from the read
+    deleted = await client.delete(
+        f"{V1}/documents/{doc_id}/blocks/{alpha['block_id']}", headers=auth_headers,
+    )
+    assert deleted.status_code == 204
+    after = (await client.get(f"{V1}/documents/{doc_id}", headers=auth_headers)).json()
+    assert alpha["block_id"] not in [b["block_id"] for b in after["blocks"]]
+
+
+@pytest.mark.asyncio
+async def test_put_against_a_block_first_document_is_409(
+    client, auth_headers, stub_llm
+):
+    created = await client.post(
+        f"{V1}/documents",
+        json={"project": "p", "uri": "docs/owned2.md", "content": "# T\n\nbody\n"},
+        headers=auth_headers,
+    )
+    doc_id = created.json()["document_id"]
+    blocks = (await client.get(f"{V1}/documents/{doc_id}", headers=auth_headers)).json()["blocks"]
+
+    # The first block verb converts the document.
+    await client.patch(
+        f"{V1}/documents/{doc_id}/blocks/{blocks[-1]['block_id']}",
+        json={"text": "edited"}, headers=auth_headers,
+    )
+
+    conflict = await client.post(
+        f"{V1}/documents",
+        json={"project": "p", "uri": "docs/owned2.md", "content": "# Overwrite\n"},
+        headers=auth_headers,
+    )
+    assert conflict.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_a_block_of_another_document_404s_at_this_path(
+    client, auth_headers, stub_llm
+):
+    """It exists, but not here. The same 404 as a missing block, deliberately:
+    a 403 would confirm the id is real somewhere else."""
+    first = await client.post(
+        f"{V1}/documents",
+        json={"project": "p", "uri": "docs/one.md", "content": "# One\n\na\n"},
+        headers=auth_headers,
+    )
+    second = await client.post(
+        f"{V1}/documents",
+        json={"project": "p", "uri": "docs/two.md", "content": "# Two\n\nb\n"},
+        headers=auth_headers,
+    )
+    other_id = second.json()["document_id"]
+    other_blocks = (await client.get(
+        f"{V1}/documents/{other_id}", headers=auth_headers
+    )).json()["blocks"]
+
+    resp = await client.patch(
+        f"{V1}/documents/{first.json()['document_id']}/blocks/{other_blocks[0]['block_id']}",
+        json={"text": "nope"}, headers=auth_headers,
+    )
+    assert resp.status_code == 404

@@ -46,6 +46,13 @@ EXPECTED_STATUS = {
     # TH1.16's horizon surface. All reads plus one POST that reads: the Q&A
     # door creates nothing, so 200 rather than 201 — the convention's 201 is
     # for a resource that now exists, and a grounded answer is not stored.
+    # Increment 8's block verbs. Insert creates a resource, so 201; update
+    # and move answer the changed document's state, so 200; delete is 204
+    # with no body.
+    ("POST", "/api/v1/documents/{document_id}/blocks"): 201,
+    ("PATCH", "/api/v1/documents/{document_id}/blocks/{block_id}"): 200,
+    ("POST", "/api/v1/documents/{document_id}/blocks/{block_id}/move"): 200,
+    ("DELETE", "/api/v1/documents/{document_id}/blocks/{block_id}"): 204,
     ("GET", "/api/v1/documents"): 200,
     ("GET", "/api/v1/documents/{document_id}/summary"): 200,
     ("GET", "/api/v1/documents/{document_id}/connections"): 200,

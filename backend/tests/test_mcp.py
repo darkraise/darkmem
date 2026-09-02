@@ -1,5 +1,7 @@
 import ast
 import pathlib
+
+import pytest
 from contextlib import asynccontextmanager
 
 import app.api.mcp.server as mcp_module
@@ -17,6 +19,11 @@ SERVER_PATH = pathlib.Path(__file__).resolve().parents[1] / "app" / "api" / "mcp
 # tool a deliberate one-line diff here rather than a silent drift.
 EXPECTED_TOOLS: frozenset[str] = frozenset({
     "article_get",
+    # Increment 8's block verbs, capture-scoped.
+    "block_delete",
+    "block_insert",
+    "block_move",
+    "block_update",
     "checkpoint_latest",
     "checkpoint_save",
     "code_blast_radius",
@@ -370,3 +377,62 @@ async def test_memory_search_rows_carry_the_lifecycle_label(mcp_http_client, ses
         assert row["status"] in {"active", "superseded", "deprecated"}
         assert "superseded_by" in row
         assert "project" in row
+
+
+@pytest.mark.asyncio
+async def test_block_verbs_answer_envelopes_rather_than_tool_errors(session, monkeypatch):
+    """Review M-4: both refusals are outcomes a caller acts on, not crashes.
+
+    An agent can machine-read an envelope and switch strategy; it cannot
+    machine-read a traceback. Their REST twins are a 422 and a 409.
+    """
+    import json
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    from app.api.mcp import server as mcp_server
+    from app.services.document_door import put_document
+
+    class Stub:
+        def __init__(self):
+            self.fingerprint = "test-fp-mcp-blocks|3"
+
+        async def embed_batch_chunked(self, texts, chunk_size, concurrency):
+            return ([[1.0, 0.0, 0.0] for _ in texts], self.fingerprint)
+
+        async def embed(self, value):
+            return [1.0, 0.0, 0.0], self.fingerprint
+
+        def llm_fingerprint(self):
+            return self.fingerprint
+
+    from app.services.embedder_registry import embedder_registry
+
+    embedder_registry.forget("test-fp-mcp-blocks|3")
+    llm = Stub()
+
+    @asynccontextmanager
+    async def _ctx():
+        yield session
+
+    monkeypatch.setattr(mcp_server, "async_session_factory", lambda: _ctx())
+    monkeypatch.setattr(mcp_server, "_pipeline", SimpleNamespace(llm=llm))
+
+    # A document the block model cannot represent refuses, structured.
+    filed = await put_document(
+        session, llm, project="p", uri="mcp/raw.md",
+        content="before\n\n<div>raw</div>\n\nafter\n",
+    )
+    await session.commit()
+    blocks = json.loads(await mcp_server.document_get(document_id=filed.document_id))
+    reply = json.loads(
+        await mcp_server.block_update(block_id=blocks[0]["block_id"], text="x")
+    )
+    assert reply["status"] == "not_convertible"
+
+    # An unresolvable block refuses the same way.
+    missing = json.loads(await mcp_server.block_update(
+        block_id="00000000-0000-0000-0000-000000000000", text="x",
+    ))
+    assert missing["status"] == "unresolved"
+    embedder_registry.forget("test-fp-mcp-blocks|3")

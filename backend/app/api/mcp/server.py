@@ -634,7 +634,7 @@ async def document_put(
             error: the caller made no mistake, it lost a race.
     """
     from app.services.document_ingest import DocumentHashConflict
-    from app.services.document_door import put_document
+    from app.services.document_door import DocumentIsBlockFirst, put_document
 
     if not _pipeline or not _pipeline.llm:
         return json.dumps(_degraded("embedder not configured", document_id=None))
@@ -651,6 +651,17 @@ async def document_put(
                 title=title, source_type=source_type, source=source,
                 expected_hash=expected_hash,
             )
+        except DocumentIsBlockFirst as exc:
+            # A structured refusal, not a tool error (review M-4): its REST
+            # twin is a 409, and an agent should be able to machine-read this
+            # and switch to the block verbs rather than parse a traceback.
+            await session.rollback()
+            return json.dumps({
+                "status": "direction_conflict",
+                "document_uri": uri,
+                "project": project,
+                "reason": str(exc),
+            })
         except DocumentHashConflict as exc:
             # A structured refusal rather than a tool error: the caller can
             # machine-read this, re-read the document and retry. Its REST twin
@@ -1900,3 +1911,179 @@ async def research_run(
             "origins_manufactured": True,
             "journalled": result.journalled,
         })
+
+
+# ── Block verbs (increment 8, spec §8) ───────────────────────────────
+#
+# The thin twins of the four REST routes, over the same `block_verbs`
+# service. No `ctx`/`source` resolution: the verbs journal `blocks_edited`
+# themselves, and the editor's identity question is the session's rather than
+# a capture header's.
+#
+# Both refusals answer a structured envelope rather than a tool error. The
+# caller made no mistake in either case -- it lost a race, or it asked to edit
+# a document the block model cannot represent -- and an agent should be able
+# to machine-read the outcome and choose, which an exception traceback does
+# not allow. Their REST twins are a 409 and a 422 carrying the same reasons.
+
+
+def _block_refusal(exc: Exception, **fields) -> str | None:
+    from app.services.block_verbs import BlockCycleError, BlockTargetUnresolved
+    from app.services.document_door import DocumentNotConvertible
+
+    if isinstance(exc, DocumentNotConvertible):
+        return json.dumps({"status": "not_convertible", "reason": str(exc), **fields})
+    if isinstance(exc, BlockCycleError):
+        return json.dumps({"status": "cycle_refused", "reason": str(exc), **fields})
+    if isinstance(exc, BlockTargetUnresolved):
+        return json.dumps({"status": "unresolved", "reason": str(exc), **fields})
+    return None
+
+
+@mcp.tool(
+    description=(
+        "Edit one block's text in a block-first document. The document "
+        "converts on the first block verb, after which document_put refuses "
+        "it. Send the block's markdown source as `text`."
+    )
+)
+async def block_update(
+    block_id: str,
+    text: str,
+    type: str | None = None,
+    properties: dict | None = None,
+) -> str:
+    """
+    Args:
+        block_id: The block's id, from document_get.
+        text: The block's new text, marker-stripped as document_get returns it.
+        type: Optional; normalised through the closed block vocabulary.
+        properties: Optional; merged over the block's existing properties.
+    """
+    from app.services.block_verbs import update_block
+
+    if not _pipeline or not _pipeline.llm:
+        return json.dumps(_degraded("embedder not configured", document_id=None))
+    async with async_session_factory() as session:
+        try:
+            result = await update_block(
+                session, _pipeline.llm, block_id=block_id, text=text,
+                type=type, properties=properties,
+            )
+        except Exception as exc:
+            await session.rollback()
+            refusal = _block_refusal(exc, block_id=block_id)
+            if refusal is not None:
+                return refusal
+            raise
+    return json.dumps(vars(result))
+
+
+@mcp.tool(
+    description=(
+        "Insert a block into a document. First child of `parent_id` by "
+        "default, or directly after `after_block_id` among that parent's "
+        "children."
+    )
+)
+async def block_insert(
+    document_id: str,
+    type: str,
+    text: str,
+    parent_id: str | None = None,
+    after_block_id: str | None = None,
+    properties: dict | None = None,
+) -> str:
+    """
+    Args:
+        document_id: The document to insert into.
+        type: A block type; normalised through the closed vocabulary.
+        text: The block's text.
+        parent_id: Optional; omit for a root-level block.
+        after_block_id: Optional; omit to insert as the first child.
+        properties: Optional; a heading's level, a list item's marker.
+    """
+    from app.services.block_verbs import insert_block
+
+    if not _pipeline or not _pipeline.llm:
+        return json.dumps(_degraded("embedder not configured", document_id=None))
+    async with async_session_factory() as session:
+        try:
+            result = await insert_block(
+                session, _pipeline.llm, document_id=document_id, type=type,
+                text=text, parent_id=parent_id, after_block_id=after_block_id,
+                properties=properties,
+            )
+        except Exception as exc:
+            await session.rollback()
+            refusal = _block_refusal(exc, document_id=document_id)
+            if refusal is not None:
+                return refusal
+            raise
+    return json.dumps(vars(result))
+
+
+@mcp.tool(
+    description=(
+        "Move a block within its document, reparenting and repositioning it. "
+        "Moving a block inside its own subtree is refused."
+    )
+)
+async def block_move(
+    block_id: str,
+    new_parent_id: str | None = None,
+    after_block_id: str | None = None,
+) -> str:
+    """
+    Args:
+        block_id: The block to move.
+        new_parent_id: Optional; omit to move it to the root level.
+        after_block_id: Optional; omit to make it the first child.
+    """
+    from app.services.block_verbs import move_block
+
+    if not _pipeline or not _pipeline.llm:
+        return json.dumps(_degraded("embedder not configured", document_id=None))
+    async with async_session_factory() as session:
+        try:
+            result = await move_block(
+                session, _pipeline.llm, block_id=block_id,
+                new_parent_id=new_parent_id, after_block_id=after_block_id,
+            )
+        except Exception as exc:
+            await session.rollback()
+            refusal = _block_refusal(exc, block_id=block_id)
+            if refusal is not None:
+                return refusal
+            raise
+    return json.dumps(vars(result))
+
+
+@mcp.tool(
+    description=(
+        "Delete a block and everything nested under it. The subtree's "
+        "provenance is withdrawn with it, so a fact left with no surviving "
+        "source is expired."
+    )
+)
+async def block_delete(block_id: str) -> str:
+    """
+    Args:
+        block_id: The block to delete. Its whole subtree goes with it.
+    """
+    from app.services.block_verbs import delete_block
+
+    if not _pipeline or not _pipeline.llm:
+        return json.dumps(_degraded("embedder not configured", document_id=None))
+    async with async_session_factory() as session:
+        try:
+            result = await delete_block(
+                session, _pipeline.llm, block_id=block_id,
+            )
+        except Exception as exc:
+            await session.rollback()
+            refusal = _block_refusal(exc, block_id=block_id)
+            if refusal is not None:
+                return refusal
+            raise
+    return json.dumps(vars(result))

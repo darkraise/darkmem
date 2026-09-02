@@ -707,6 +707,17 @@ class BlockRow:
     text: str
     order_index: int | None
     char_span: tuple[int, int] | None
+    # A heading's level, a list item's marker, a table's header and column
+    # alignments. Served because `text` alone cannot render a table through a
+    # real table component, and cannot tell a level-2 heading from a level-4.
+    properties: dict | None = None
+    # The block's own markdown source, sliced server-side from the document's
+    # stored content by this block's span. `text` is marker-stripped, so it is
+    # NOT the source: a heading's text is "Foo" where its source is "## Foo".
+    # An editor holding `text` is editing a different string from the one
+    # stored, which is the conversion step the block editor exists to avoid.
+    # None when the document has no stored content or the block has no span.
+    source: str | None = None
 
 
 _OUTLINE = text(
@@ -766,13 +777,21 @@ async def document_content(session: AsyncSession, *, document_id: str) -> str | 
     )).scalar_one_or_none()
 
 
+# The join carries the document's content so `source` is sliced server-side.
+# Without it every caller would fetch the whole document and slice it itself,
+# which makes an editor's per-block read depend on a second, much larger one.
 _BLOCKS = """
-    SELECT CAST(id AS text) AS id, type, text, order_index,
-           lower(char_span) AS span_start, upper(char_span) AS span_end
-    FROM blocks
-    WHERE document_id = CAST(:document_id AS uuid)
+    SELECT CAST(b.id AS text) AS id, b.type, b.text, b.order_index,
+           b.properties,
+           lower(b.char_span) AS span_start, upper(b.char_span) AS span_end,
+           substring(d.content
+                     FROM lower(b.char_span) + 1
+                     FOR upper(b.char_span) - lower(b.char_span)) AS source
+    FROM blocks b
+    JOIN documents d ON d.id = b.document_id
+    WHERE b.document_id = CAST(:document_id AS uuid)
       {clause}
-    ORDER BY order_index
+    ORDER BY b.order_index
 """
 
 
@@ -791,7 +810,8 @@ async def document_blocks(
     `search_sections` and `document_outline`; it runs entirely inside
     whatever transaction the caller already holds.
     """
-    clause = "AND id = ANY(CAST(:ids AS uuid[]))" if block_ids is not None else ""
+    # Qualified now that the statement joins: a bare `id` is ambiguous.
+    clause = "AND b.id = ANY(CAST(:ids AS uuid[]))" if block_ids is not None else ""
     params: dict = {"document_id": document_id}
     if block_ids is not None:
         params["ids"] = block_ids
@@ -807,6 +827,8 @@ async def document_blocks(
                 if r["span_start"] is not None and r["span_end"] is not None
                 else None
             ),
+            properties=r["properties"],
+            source=r["source"],
         )
         for r in rows
     ]

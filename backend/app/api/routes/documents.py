@@ -62,9 +62,19 @@ from app.services.block_pipeline import UnsupportedSource
 from app.services.document_connections import connections_for_document
 from app.services.document_door import (
     SEARCH_DEFAULT_LIMIT, SEARCH_MAX_LIMIT, DocumentTargetUnresolved,
+    DocumentIsBlockFirst,
+    DocumentNotConvertible,
     DocumentTooLarge, delete_document, document_blocks, document_content,
     document_outline,
     put_document, resolve_document_target, search_sections,
+)
+from app.services.block_verbs import (
+    BlockCycleError,
+    BlockTargetUnresolved,
+    delete_block,
+    insert_block,
+    move_block,
+    update_block,
 )
 from app.services.document_ingest import DocumentHashConflict
 from app.services.document_parsers import DocumentParseError
@@ -207,6 +217,35 @@ class DocumentPutResponse(BaseModel):
     horizon: bool = True
 
 
+class BlockInsertRequest(BaseModel):
+    type: str = Field(min_length=1)
+    text: str
+    parent_id: str | None = None
+    after_block_id: str | None = None
+    properties: dict | None = None
+
+
+class BlockUpdateRequest(BaseModel):
+    text: str
+    type: str | None = None
+    properties: dict | None = None
+
+
+class BlockMoveRequest(BaseModel):
+    new_parent_id: str | None = None
+    after_block_id: str | None = None
+
+
+class BlockWriteResponse(BaseModel):
+    document_id: str
+    block_id: str | None
+    outcome: str
+    content_hash: str
+    blocks_total: int
+    blocks_embedded: int
+    horizon: bool = True
+
+
 class DocumentSearchRequest(BaseModel):
     query: str = Field(min_length=1)
     project: str = Field(min_length=1)
@@ -262,6 +301,11 @@ class BlockRowModel(BaseModel):
     text: str
     order_index: int | None
     char_span: tuple[int, int] | None
+    # A heading's level, a list marker, a table's header and alignments.
+    properties: dict | None = None
+    # The block's own markdown source. `text` is marker-stripped, so they
+    # differ: a heading's text is "Foo" where its source is "## Foo".
+    source: str | None = None
 
 
 class DocumentBlocksResponse(BaseModel):
@@ -431,6 +475,11 @@ async def put_document_route(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     except DocumentParseError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    except DocumentIsBlockFirst as exc:
+        # 409, the conventions' conflict shape and the same status the
+        # content-hash CAS uses: the caller made no mistake, the document is
+        # simply owned by the block verbs now.
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except DocumentHashConflict as exc:
         # 409, not 422: the caller made no mistake -- it lost a race, or the
         # document moved since it last read it. The detail names both hashes
@@ -597,3 +646,118 @@ async def document_blocks_route(
         blocks=[BlockRowModel(**vars(r)) for r in rows],
         content=content,
     )
+
+
+# ── Block verbs (increment 8, spec §8) ───────────────────────────────
+#
+# Four routes over `block_verbs`, which both doors share. A keyed handler
+# confirms the block belongs to the path's document first: a block in another
+# document does not exist *at this path*, so a mismatch is the same 404 as a
+# missing block rather than a 403 that would confirm the id exists elsewhere.
+
+
+def _block_write_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, BlockTargetUnresolved):
+        return HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
+    if isinstance(exc, BlockCycleError):
+        return HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    if isinstance(exc, (DocumentTooLarge, DocumentNotConvertible)):
+        return HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    raise exc
+
+
+async def _assert_block_is_in(session, document_id: UUID, block_id: UUID) -> None:
+    owner = (await session.execute(
+        text("SELECT CAST(document_id AS text) FROM blocks WHERE id = CAST(:id AS uuid)"),
+        {"id": str(block_id)},
+    )).scalar_one_or_none()
+    if owner is None or owner != str(document_id):
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            f"no block {block_id} in document {document_id}",
+        )
+
+
+@router.post(
+    "/{document_id}/blocks",
+    response_model=BlockWriteResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def insert_block_route(
+    document_id: UUID,
+    body: BlockInsertRequest,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+    llm=Depends(get_llm),
+) -> BlockWriteResponse:
+    """Insert a block. First child of `parent_id` by default, or after
+    `after_block_id` among that parent's children."""
+    try:
+        result = await insert_block(
+            session, llm, document_id=str(document_id), type=body.type,
+            text=body.text, parent_id=body.parent_id,
+            after_block_id=body.after_block_id, properties=body.properties,
+        )
+    except Exception as exc:
+        raise _block_write_error(exc) from exc
+    return BlockWriteResponse(**vars(result))
+
+
+@router.patch("/{document_id}/blocks/{block_id}", response_model=BlockWriteResponse)
+async def update_block_route(
+    document_id: UUID,
+    block_id: UUID,
+    body: BlockUpdateRequest,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+    llm=Depends(get_llm),
+) -> BlockWriteResponse:
+    await _assert_block_is_in(session, document_id, block_id)
+    try:
+        result = await update_block(
+            session, llm, block_id=str(block_id), text=body.text,
+            type=body.type, properties=body.properties,
+        )
+    except Exception as exc:
+        raise _block_write_error(exc) from exc
+    return BlockWriteResponse(**vars(result))
+
+
+@router.post("/{document_id}/blocks/{block_id}/move", response_model=BlockWriteResponse)
+async def move_block_route(
+    document_id: UUID,
+    block_id: UUID,
+    body: BlockMoveRequest,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+    llm=Depends(get_llm),
+) -> BlockWriteResponse:
+    """Verb-shaped POST rather than a PATCH: a move is not a partial update
+    of the block's own fields, it is a repositioning within the tree."""
+    await _assert_block_is_in(session, document_id, block_id)
+    try:
+        result = await move_block(
+            session, llm, block_id=str(block_id),
+            new_parent_id=body.new_parent_id, after_block_id=body.after_block_id,
+        )
+    except Exception as exc:
+        raise _block_write_error(exc) from exc
+    return BlockWriteResponse(**vars(result))
+
+
+@router.delete(
+    "/{document_id}/blocks/{block_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def delete_block_route(
+    document_id: UUID,
+    block_id: UUID,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+    llm=Depends(get_llm),
+) -> None:
+    """204 with no body, per the REST conventions. The subtree goes with it."""
+    await _assert_block_is_in(session, document_id, block_id)
+    try:
+        await delete_block(session, llm, block_id=str(block_id))
+    except Exception as exc:
+        raise _block_write_error(exc) from exc

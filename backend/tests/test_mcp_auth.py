@@ -392,7 +392,7 @@ def test_every_tool_declares_a_scope():
     The roster is derived from source (see tests/test_mcp.py), so this cannot
     go stale the way a hand-listed set would.
 
-    ``TOOL_SCOPES`` names all 34 rather than deriving "not a writer means a
+    ``TOOL_SCOPES`` names all 38 rather than deriving "not a writer means a
     reader". A derived partition is total by construction and therefore blind:
     it would resolve a new *capture* tool nobody classified to ``read`` and
     ship it, with this test still green. Naming all three sets makes an

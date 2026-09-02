@@ -266,6 +266,32 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="documents.block_write",
+        status=TWO_DOOR,
+        rest=(
+            ("POST", f"{V1}/documents/{{document_id}}/blocks"),
+            ("PATCH", f"{V1}/documents/{{document_id}}/blocks/{{block_id}}"),
+            ("POST", f"{V1}/documents/{{document_id}}/blocks/{{block_id}}/move"),
+            ("DELETE", f"{V1}/documents/{{document_id}}/blocks/{{block_id}}"),
+        ),
+        mcp=("block_insert", "block_update", "block_move", "block_delete"),
+        note=(
+            "Increment 8's block verbs, both doors over one service "
+            "(`block_verbs`). A document converts to block-first on its "
+            "first block verb, after which `document_put` refuses it -- 409 "
+            "on the route, a `direction_conflict` envelope from the tool. "
+            "Stated wire asymmetries, none of them a capability: the delete "
+            "route answers 204 with no body while `block_delete` answers the "
+            "full result object, the same asymmetry the documents.write row "
+            "already records; and the two refusals a caller can act on "
+            "(a document the block model cannot represent, a move into a "
+            "block's own subtree) are a 422 on the route against a "
+            "`not_convertible` / `cycle_refused` envelope from the tool, "
+            "because an agent can machine-read an envelope and cannot "
+            "machine-read a traceback."
+        ),
+    ),
+    Surface(
         name="documents.write",
         status=TWO_DOOR,
         rest=(
