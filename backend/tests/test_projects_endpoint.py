@@ -1,3 +1,12 @@
+"""The scope catalogue.
+
+These tests scope every assertion to the projects they seed. Since the
+endpoint was widened to union documents and checkpoints (2026-08-31, review
+M2), a global assertion here would also be asserting the state of every other
+test module that commits a checkpoint or a document -- `test_checkpoints.py`
+commits rows that outlive it, and asserting "the corpus is empty" would be
+asserting something about that module rather than about this endpoint.
+"""
 from uuid import uuid4
 
 import pytest
@@ -48,7 +57,10 @@ async def test_lists_distinct_projects_busiest_first(
     assert resp.status_code == 200
 
     body = resp.json()
-    assert [(p["name"], p["memory_count"]) for p in body] == [
+    seeded = [p for p in body if p["name"] in {"alpha", "beta", "gamma"}]
+    # Relative order among the seeded three: busiest first is the contract,
+    # and it holds regardless of what else the database happens to carry.
+    assert [(p["name"], p["memory_count"]) for p in seeded] == [
         ("beta", 3),
         ("alpha", 2),
         ("gamma", 1),
@@ -56,10 +68,18 @@ async def test_lists_distinct_projects_busiest_first(
 
 
 @pytest.mark.asyncio
-async def test_empty_corpus_lists_no_projects(client, auth_headers):
+async def test_a_project_nothing_carries_is_absent(client, auth_headers):
+    """Derived, never a registry: a name no row carries does not appear.
+
+    Formerly `test_empty_corpus_lists_no_projects`, which asserted the whole
+    response was empty. That asserted the state of the shared test database
+    rather than of this endpoint, and stopped holding the moment the union
+    could see another module's committed checkpoints.
+    """
     resp = await client.get("/api/v1/projects", headers=auth_headers)
     assert resp.status_code == 200
-    assert resp.json() == []
+    names = {p["name"] for p in resp.json()}
+    assert "a-project-nothing-carries" not in names
 
 
 # The switcher this feeds is a *scope* picker: a project holding nothing but
@@ -83,18 +103,18 @@ async def test_counts_every_status_not_only_active(
     await session.flush()
 
     resp = await client.get("/api/v1/projects", headers=auth_headers)
-    # Exact equality on purpose: it is what catches an accidental extra field.
-    # Widened with the response rather than weakened to a subset match.
-    assert resp.json() == [
-        {
-            "name": "mixed",
-            "memory_count": 2,
-            "document_count": 0,
-            "checkpoint_count": 0,
-            "last_checkpoint_at": None,
-            "last_event_day": None,
-        }
-    ]
+    # Exact equality on the seeded row, so an accidental extra FIELD still
+    # fails; scoped to that row, so another module's committed checkpoints
+    # do not.
+    mixed = next(p for p in resp.json() if p["name"] == "mixed")
+    assert mixed == {
+        "name": "mixed",
+        "memory_count": 2,
+        "document_count": 0,
+        "checkpoint_count": 0,
+        "last_checkpoint_at": None,
+        "last_event_day": None,
+    }
 
 
 @pytest.mark.asyncio
