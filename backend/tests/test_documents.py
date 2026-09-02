@@ -31,12 +31,14 @@ from app.repositories import documents as documents_repo
 from app.services import document_ingest as di
 from app.services.document_ingest import (
     CREATED,
+    OVERSIZED_BLOCK_CHARS,
     UNCHANGED,
     UPDATED,
     BlockDraft,
     compute_content_hash,
     file_document,
 )
+from app.services.document_parsers import parse_markdown
 
 from .conftest import test_engine
 
@@ -508,3 +510,42 @@ def test_the_event_and_object_types_are_in_the_closed_vocabularies():
 
     assert di.DOCUMENT_FILED_EVENT in EVENT_TYPES
     assert di.OBJECT_TYPE in OBJECT_TYPES
+
+
+@pytest.mark.asyncio
+async def test_an_oversized_block_is_counted_and_journalled_never_refused(session):
+    """27 corpus files exceed the budget, so refusing would block the import.
+    The degradation is real and must be reported, not prevented."""
+    big = "x" * (OVERSIZED_BLOCK_CHARS + 1)
+    content = f"# H\n\n{big}\n\nsmall\n"
+    result = await file_document(
+        session, project="p", content=content,
+        parse=lambda: parse_markdown(content), uri="notes/big.md",
+    )
+    await session.flush()
+
+    assert result.outcome == CREATED           # warned, not refused
+    assert result.oversized_blocks == 1
+    assert result.largest_block_chars == len(big)
+
+    payload = (await session.execute(text(
+        "SELECT payload FROM events WHERE event_type = 'document_filed' "
+        "AND object_id = CAST(:id AS uuid) ORDER BY created_at DESC LIMIT 1"
+    ), {"id": str(result.document_id)})).scalar_one()
+    assert payload["oversized_blocks"] == 1
+    assert payload["largest_block_chars"] == len(big)
+
+
+@pytest.mark.asyncio
+async def test_unchanged_reports_none_not_zero(session):
+    """The UNCHANGED gate returns before any parse, so nothing was measured.
+    None must not be flattened to 0 -- 0 would claim the document is fine."""
+    content = "# H\n\nfine\n"
+    await file_document(session, project="p", content=content,
+                        parse=lambda: parse_markdown(content), uri="notes/na.md")
+    await session.flush()
+    again = await file_document(session, project="p", content=content,
+                                parse=lambda: parse_markdown(content), uri="notes/na.md")
+    assert again.outcome == UNCHANGED
+    assert again.oversized_blocks is None
+    assert again.largest_block_chars is None

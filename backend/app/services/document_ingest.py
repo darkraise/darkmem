@@ -86,6 +86,7 @@ __all__ = [
     "DocumentFileFailure",
     "DocumentFileJob",
     "DocumentIngest",
+    "OVERSIZED_BLOCK_CHARS",
     "UNCHANGED",
     "UPDATED",
     "compute_content_hash",
@@ -95,6 +96,13 @@ __all__ = [
 
 DOCUMENT_FILED_EVENT = "document_filed"
 OBJECT_TYPE = "document"
+
+# A stated conservative floor in CHARACTERS, not tokens: the tighter live
+# embedder (nomic-embed-text) holds ~2048 tokens, and ~4 chars/token puts the
+# start of truncation risk at 8,000 chars. Deliberately not a per-embedder
+# probe -- that would put a model call on the parse path for a warning -- and
+# deliberately char-basis: do not "correct" this to 2048, the bases differ.
+OVERSIZED_BLOCK_CHARS = 8_000
 
 CREATED = "created"
 UPDATED = "updated"
@@ -126,6 +134,11 @@ class DocumentIngest:
     content_hash: str
     blocks_written: int = 0
     blocks_stripped: int = 0
+    # None = not measured: the UNCHANGED short-circuit returns before any
+    # parse. Measured (possibly 0) on CREATED/UPDATED. A reader must not
+    # flatten None to 0 -- 0 is a clean bill this filing never issued.
+    oversized_blocks: int | None = None
+    largest_block_chars: int | None = None
 
 
 def compute_content_hash(content: str | bytes) -> str:
@@ -247,6 +260,13 @@ async def _file_document_without_savepoint(
     rows = _resolve_tree(parse())
     await documents_repo.insert_blocks(session, resolved_id, rows)
 
+    # Counted, never refused: 27 corpus files exceed the budget and refusing
+    # would block the import. An oversized block embeds truncated while the
+    # filing reports success, so the count is the loud report invariant 14
+    # asks for in place of a silent degradation.
+    oversized = sum(1 for row in rows if len(row.text) > OVERSIZED_BLOCK_CHARS)
+    largest = max((len(row.text) for row in rows), default=0)
+
     # Best-effort, unlike a verification transition: no metric is SQL over
     # these rows, so a filing that did not journal is a lost log line rather
     # than a corrupted denominator. The payload carries no block text — a
@@ -265,12 +285,15 @@ async def _file_document_without_savepoint(
             "source_type": source_type,
             "blocks_written": len(rows),
             "blocks_stripped": stripped,
+            "oversized_blocks": oversized,
+            "largest_block_chars": largest,
         },
     )
 
     return DocumentIngest(
         resolved_id, outcome, content_hash,
         blocks_written=len(rows), blocks_stripped=stripped,
+        oversized_blocks=oversized, largest_block_chars=largest,
     )
 
 

@@ -191,6 +191,11 @@ class DocumentPutResponse(BaseModel):
     # re-filed identical document's explicit `title` (or any other field) is
     # never applied, and nothing else on the wire says so (Task 1 review, M6).
     title_applied: bool
+    # Counts of blocks whose text exceeds the embedder's budget, and the
+    # largest block's size. None when `outcome == "unchanged"` -- nothing was
+    # parsed, so nothing was measured; 0 is a clean bill, None is no bill.
+    oversized_blocks: int | None = None
+    largest_block_chars: int | None = None
     horizon: bool = True
 
 
@@ -420,6 +425,8 @@ async def put_document_route(
         blocks_filed=result.blocks_filed,
         blocks_embedded=result.blocks_embedded,
         title_applied=result.title_applied,
+        oversized_blocks=result.oversized_blocks,
+        largest_block_chars=result.largest_block_chars,
     )
 
 

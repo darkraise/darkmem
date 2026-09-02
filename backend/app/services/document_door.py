@@ -145,6 +145,13 @@ class PutResult:
     # Every transport this door reaches has to serve this signal identically,
     # which is why it is computed here rather than by each caller.
     title_applied: bool
+    # None only when `outcome == UNCHANGED`: the change gate short-circuits
+    # before any parse, so nothing was measured this filing (see
+    # `DocumentIngest`). Counts, not refusals -- an oversized block embeds
+    # truncated, and this is the loud report invariant 14 asks for in place
+    # of a degradation the filing would otherwise hide behind a 201.
+    oversized_blocks: int | None = None
+    largest_block_chars: int | None = None
 
 
 _BLOCK_IDS = text(
@@ -522,6 +529,8 @@ async def put_document(
         blocks_filed=filed.blocks_written,
         blocks_embedded=written,
         title_applied=filed.outcome != UNCHANGED,
+        oversized_blocks=filed.oversized_blocks,
+        largest_block_chars=filed.largest_block_chars,
     )
 
 

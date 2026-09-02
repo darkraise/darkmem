@@ -937,3 +937,51 @@ async def test_search_refuses_a_document_id_that_names_nothing(
             await mcp_server.document_search(
                 query="installer", project="p", document_id=bad,
             )
+
+
+@pytest.mark.asyncio
+async def test_put_reports_oversized_blocks_on_both_doors(
+    client, auth_headers, both_doors
+):
+    """The degradation is real and is reported rather than prevented: an
+    oversized block still files and still embeds, truncated. Both doors must
+    say so identically -- one PutResult produces the fields for both."""
+    import json
+
+    from app.services.document_ingest import OVERSIZED_BLOCK_CHARS
+    from app.api.mcp import server as mcp_server
+
+    big = "x" * (OVERSIZED_BLOCK_CHARS + 1)
+    response = await client.post(
+        f"{V1}/documents",
+        json={"project": "p", "uri": "docs/big.md", "content": f"# H\n\n{big}\n"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["oversized_blocks"] == 1
+    assert body["largest_block_chars"] == len(big)
+
+    # The MCP door serialises whatever the dataclass carries, so asserting the
+    # keys are actually present is what stops a rename dropping them silently.
+    reply = json.loads(
+        await mcp_server.document_put(
+            project="p", uri="docs/big2.md", content=f"# H\n\n{big}\n"
+        )
+    )
+    assert reply["oversized_blocks"] == 1
+    assert reply["largest_block_chars"] == len(big)
+
+
+@pytest.mark.asyncio
+async def test_an_ordinary_document_reports_zero_not_null(
+    client, auth_headers, stub_llm
+):
+    """0 and None are different claims: 0 is a clean bill this filing issued,
+    None is a filing that measured nothing."""
+    response = await client.post(
+        f"{V1}/documents",
+        json={"project": "p", "uri": "docs/small.md", "content": DOC},
+        headers=auth_headers,
+    )
+    assert response.json()["oversized_blocks"] == 0
