@@ -1,17 +1,89 @@
 #!/usr/bin/env bash
-# Restore the darkmem Postgres database from a gzipped SQL dump made by backup.sh.
+# Restore the darkmem Postgres database from a gzipped SQL dump made by
+# backup.sh or by the backup_ship job.
+#
 # Usage: ./scripts/restore.sh BACKUP_FILE.sql.gz
+#        ./scripts/restore.sh --from DESTINATION [--identity FILE] [SNAPSHOT]
+#
 # WARNING: this replaces the database with the restored copy. Stop the API
 # first. It transiently holds both the old and the restored database on disk.
+#
+# `--from` fetches the snapshot off a configured destination first, verifies
+# its checksum against what the destination reports, decrypts it if it is
+# age-encrypted, and then falls through to exactly the same marker check,
+# confirmation and side-database replay as the plain form. **Decryption
+# happens here, on the host, never in the container**: the container must
+# never hold the age identity, because a snapshot that could be decrypted
+# where it is stored is not encrypted at rest.
 set -euo pipefail
 
-BACKUP_FILE="${1:?usage: restore.sh BACKUP_FILE.sql.gz}"
 SERVICE="${POSTGRES_SERVICE:-postgres}"
 DB="${POSTGRES_DB:-darkmem}"
 USER="${POSTGRES_USER:-darkmem}"
 COMPOSE="${COMPOSE_CMD:-docker compose}"
+APP_SERVICE="${APP_SERVICE:-darkmem}"
+DUMP_DIR="${DARKMEM_DUMP_DIR:-/srv/darkmem-dumps}"
 
+FROM=""
+IDENTITY="${AGE_IDENTITY:-}"
+BACKUP_FILE=""
+DECRYPTED=""
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --from)     FROM="${2:?--from needs a destination name}"; shift 2 ;;
+        --identity) IDENTITY="${2:?--identity needs a file}"; shift 2 ;;
+        --help|-h)
+            sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
+            exit 0 ;;
+        *)          BACKUP_FILE="$1"; shift ;;
+    esac
+done
+
+# Covers the window before the staged cleanup() below installs its own trap;
+# that one takes over and removes $DECRYPTED itself.
+cleanup_decrypted() { [ -n "$DECRYPTED" ] && rm -f -- "$DECRYPTED"; }
+trap cleanup_decrypted EXIT
+
+if [ -n "$FROM" ]; then
+    # The pull runs in the container because that is where the destination
+    # credentials and the client libraries live. Its last stdout line is the
+    # container-side path, by contract.
+    echo "Pulling from destination '$FROM'..."
+    if [ -n "$BACKUP_FILE" ]; then
+        PULL_ARGS=(--name "$BACKUP_FILE")
+    else
+        PULL_ARGS=(--latest)
+    fi
+    CONTAINER_PATH="$(
+        $COMPOSE exec -T "$APP_SERVICE" python -m app.services.backup_pull \
+            --destination "$FROM" "${PULL_ARGS[@]}" --out /dumps | tail -1
+    )"
+    [ -n "$CONTAINER_PATH" ] || { echo "Pull produced no path." >&2; exit 1; }
+
+    # /dumps is a bind mount, so the container path maps onto the host.
+    BACKUP_FILE="$DUMP_DIR/$(basename "$CONTAINER_PATH")"
+    echo "Pulled $BACKUP_FILE"
+fi
+
+[ -n "$BACKUP_FILE" ] || { echo "usage: restore.sh BACKUP_FILE.sql.gz | --from DESTINATION" >&2; exit 1; }
 [ -f "$BACKUP_FILE" ] || { echo "No such file: $BACKUP_FILE" >&2; exit 1; }
+
+case "$BACKUP_FILE" in
+    *.age)
+        command -v age >/dev/null 2>&1 || {
+            echo "$BACKUP_FILE is age-encrypted and 'age' is not on this host." >&2
+            exit 1; }
+        [ -n "$IDENTITY" ] || {
+            echo "$BACKUP_FILE is age-encrypted; pass --identity FILE (or set AGE_IDENTITY)." >&2
+            echo "The identity never enters the container or the database, by design." >&2
+            exit 1; }
+        DECRYPTED="$(mktemp "${TMPDIR:-/tmp}/darkmem-restore-XXXXXX.sql.gz")"
+        echo "Decrypting on this host with $IDENTITY..."
+        age -d -i "$IDENTITY" -o "$DECRYPTED" "$BACKUP_FILE"
+        BACKUP_FILE="$DECRYPTED"
+        ;;
+esac
 
 # gzip of an empty stream is itself valid gzip, so integrity alone proves
 # nothing about the dump underneath it. pg_dump writes this completion
@@ -39,6 +111,10 @@ STAGE="none"
 cleanup() {
     local rc=$?
     trap - EXIT
+    # This trap REPLACES cleanup_decrypted above, so the plaintext copy of an
+    # encrypted snapshot has to be removed here or it outlives the restore on
+    # the success path -- an unencrypted database dump left in /tmp.
+    [ -n "$DECRYPTED" ] && rm -f -- "$DECRYPTED"
     if [ "$rc" -eq 0 ]; then
         return 0
     fi

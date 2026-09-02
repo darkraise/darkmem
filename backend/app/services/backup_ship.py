@@ -259,6 +259,11 @@ class Destination(Protocol):
     ``read_back_sha256`` is a full byte read-back on purpose, never a remote
     checksum the destination computes for us: section 9.4 rule 2 is about what
     *we* can read back, not what the remote claims about bytes we cannot see.
+
+    It is derived from ``stream``, which is also what ``backup_pull`` reads --
+    so a verify and a restore-time pull read the destination through exactly
+    one code path. Two readers would be two chances to disagree about what the
+    destination holds.
     """
 
     name: str
@@ -266,11 +271,22 @@ class Destination(Protocol):
 
     async def ship(self, local_path: Path) -> None: ...
 
+    async def stream(self, name: str): ...
+
     async def read_back_sha256(self, name: str) -> str: ...
 
     async def list_snapshots(self) -> list[SnapshotInfo]: ...
 
     async def prune(self, keep: int) -> list[str]: ...
+
+
+async def _hash_stream(destination, name: str) -> str:
+    """The one read-back. Chunked, so a multi-gigabyte snapshot is never
+    materialised just to be hashed."""
+    digest = hashlib.sha256()
+    async for chunk in destination.stream(name):
+        digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _is_snapshot(name: str) -> bool:
@@ -317,6 +333,15 @@ class LocalDestination:
         if local_path.resolve() == target.resolve():
             return
         await asyncio.to_thread(shutil.copyfile, local_path, target)
+
+    async def stream(self, name: str):
+        path = self.directory / name
+        with open(path, "rb") as handle:
+            while True:
+                chunk = await asyncio.to_thread(handle.read, _CHUNK)
+                if not chunk:
+                    return
+                yield chunk
 
     async def read_back_sha256(self, name: str) -> str:
         return await sha256_file(self.directory / name)
@@ -685,6 +710,41 @@ class SshDestination:
                 timeout=READ_BACK_TIMEOUT_SECONDS,
             )
 
+    async def stream(self, name: str):
+        """Chunks off a remote `cat`, straight from the subprocess.
+
+        Deliberately not routed through `_run`: that helper pushes into a sink
+        it is given, and bridging a push into a pull from inside the same event
+        loop is how you deadlock a generator. Reading the pipe here is both
+        simpler and the only shape that streams.
+        """
+        remote = f"{self._remote_dir()}/{name}"
+        async with self._scratch() as (_, base):
+            proc = await asyncio.create_subprocess_exec(
+                "ssh", "-p", str(self.ssh.port), *base, self._target(), "--",
+                f"cat -- {shlex.quote(remote)}",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            try:
+                assert proc.stdout is not None
+                while True:
+                    chunk = await proc.stdout.read(_CHUNK)
+                    if not chunk:
+                        break
+                    yield chunk
+                stderr = (await proc.stderr.read()) if proc.stderr else b""
+                code = await proc.wait()
+                if code != 0:
+                    raise RuntimeError(
+                        f"ssh cat exited {code}: "
+                        f"{stderr.decode('utf-8', 'replace')[-300:]}"
+                    )
+            finally:
+                if proc.returncode is None:
+                    proc.kill()
+                    await proc.wait()
+
     async def read_back_sha256(self, name: str) -> str:
         remote = f"{self._remote_dir()}/{name}"
         digest = hashlib.sha256()
@@ -791,6 +851,21 @@ class S3Destination:
         for chunk in iter(lambda: body.read(_CHUNK), b""):
             digest.update(chunk)
         return digest.hexdigest()
+
+    def _read_object(self, client, key: str) -> bytes:
+        return client.get_object(Bucket=self.s3.bucket, Key=key)["Body"].read()
+
+    async def stream(self, name: str):
+        """One `get_object`, read in the executor.
+
+        Chunked streaming through boto3's sync body would mean one
+        `to_thread` per chunk; at snapshot sizes the simpler shape is one
+        offloaded read. Stated rather than hidden: this materialises the
+        object, so an S3 pull is bounded by memory where the other kinds are
+        not.
+        """
+        client = self._factory()
+        yield await asyncio.to_thread(self._read_object, client, self._key(name))
 
     async def read_back_sha256(self, name: str) -> str:
         """Hash the object's own bytes, never its ETag.
@@ -905,16 +980,17 @@ class WorkerDestination:
             )
         self._raise_for(response, "upload")
 
-    async def read_back_sha256(self, name: str) -> str:
-        digest = hashlib.sha256()
+    async def stream(self, name: str):
         async with self._factory() as client:
             async with client.stream(
                 "GET", f"/snapshots/{name}", headers=self._headers()
             ) as response:
                 self._raise_for(response, "read-back")
                 async for chunk in response.aiter_bytes():
-                    digest.update(chunk)
-        return digest.hexdigest()
+                    yield chunk
+
+    async def read_back_sha256(self, name: str) -> str:
+        return await _hash_stream(self, name)
 
     async def _listing(self) -> list[dict]:
         async with self._factory() as client:

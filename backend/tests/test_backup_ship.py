@@ -975,3 +975,102 @@ def test_build_destination_serves_the_worker_kind():
     assert isinstance(
         backup_ship.build_destination(WORKER_CFG), backup_ship.WorkerDestination
     )
+
+
+# ---------------------------------------------------------------------------
+# Increment 7 Task 10: the pull helper
+#
+# A pulled snapshot gets the same distrust as an uploaded one. The read-back
+# comparison here is not ceremony: the bytes we are about to replay into a
+# database are the whole point, and a destination that hands back something
+# else must stop the restore rather than feed it.
+# ---------------------------------------------------------------------------
+
+
+class _PullSource:
+    """A destination that serves two snapshots and can be told to lie."""
+
+    def __init__(self, files: dict, *, sha=None):
+        self.name = "source"
+        self.retention_keep = 14
+        self._files = files
+        self._sha = sha
+
+    async def list_snapshots(self):
+        return [
+            backup_ship.SnapshotInfo(
+                name=n, size=len(b), modified_at=backup_ship._stamp_of(n)
+            )
+            for n, b in sorted(self._files.items())
+        ]
+
+    async def read_back_sha256(self, name):
+        if self._sha is not None:
+            return self._sha
+        import hashlib
+
+        return hashlib.sha256(self._files[name]).hexdigest()
+
+    async def stream(self, name):
+        yield self._files[name]
+
+    async def ship(self, local_path):  # pragma: no cover - not a pull verb
+        raise AssertionError("the pull path must never ship")
+
+    async def prune(self, keep):  # pragma: no cover - not a pull verb
+        raise AssertionError("the pull path must never prune")
+
+
+OLD = "darkmem-app-20260101-000000.sql.gz.age"
+NEW = "darkmem-app-20260214-000000.sql.gz.age"
+
+
+def _files():
+    return {OLD: b"the older snapshot", NEW: b"the newer snapshot"}
+
+
+async def test_pull_latest_resolves_the_newest_by_stamp(tmp_path, monkeypatch):
+    from app.services import backup_pull
+
+    source = _PullSource(_files())
+    monkeypatch.setattr(backup_pull, "_destination_for", lambda *a, **k: _resolved(source))
+
+    out = await backup_pull.pull(source, name=None, out_dir=tmp_path)
+
+    assert out.name == NEW
+    assert out.read_bytes() == b"the newer snapshot"
+    assert not list(tmp_path.glob("*.part"))
+
+
+async def test_pull_by_name_fetches_that_one(tmp_path):
+    from app.services import backup_pull
+
+    out = await backup_pull.pull(_PullSource(_files()), name=OLD, out_dir=tmp_path)
+    assert out.name == OLD
+
+
+async def test_pull_refuses_a_name_the_destination_does_not_hold(tmp_path):
+    from app.services import backup_pull
+
+    with pytest.raises(backup_pull.SnapshotNotFound):
+        await backup_pull.pull(
+            _PullSource(_files()), name="darkmem-app-19700101-000000.sql.gz", out_dir=tmp_path
+        )
+
+
+async def test_pull_refuses_a_checksum_mismatch_and_leaves_nothing(tmp_path):
+    """A pulled snapshot is about to be replayed into a database. Distrusting
+    it exactly as much as an uploaded one is the point of the verify."""
+    from app.services import backup_pull
+
+    source = _PullSource(_files(), sha="e" * 64)
+    with pytest.raises(backup_pull.PullVerifyFailed):
+        await backup_pull.pull(source, name=NEW, out_dir=tmp_path)
+    assert not list(tmp_path.glob("*"))
+
+
+async def test_pull_refuses_an_empty_destination(tmp_path):
+    from app.services import backup_pull
+
+    with pytest.raises(backup_pull.SnapshotNotFound):
+        await backup_pull.pull(_PullSource({}), name=None, out_dir=tmp_path)

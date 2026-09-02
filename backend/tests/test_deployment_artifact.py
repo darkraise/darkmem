@@ -778,3 +778,158 @@ def test_the_restore_cycle_never_writes_from_the_serving_process():
         "business reading the app's posture flag"
     )
     assert "alembic upgrade head" in body and "app.schema_guard" in body
+
+
+# ── restore.sh --from (increment 7 Task 10) ───────────────────────────
+
+
+def _invoke_restore_from(
+    tmp_path: Path, stub: Path, *, args: list[str], pulled: Path, identity: Path | None = None,
+) -> subprocess.CompletedProcess:
+    env = dict(os.environ)
+    env.update(
+        COMPOSE_CMD=str(stub),
+        POSTGRES_SERVICE="postgres",
+        POSTGRES_DB="restore_from_test",
+        POSTGRES_USER="darkmem",
+        DARKMEM_DUMP_DIR=str(pulled.parent),
+        PATH=f"{tmp_path}:{env['PATH']}",
+    )
+    env.pop("AGE_IDENTITY", None)
+    if identity is not None:
+        env["AGE_IDENTITY"] = str(identity)
+    return subprocess.run(
+        ["bash", str(RESTORE), *args],
+        input="y\n", capture_output=True, text=True, env=env, timeout=60,
+    )
+
+
+_PULL_STUB = """#!/usr/bin/env bash
+{
+  printf 'ARGS\\x1f'
+  for a in "$@"; do
+    printf '%s\\x1f' "$a"
+  done
+  printf '\\n'
+} >> "__LOG_PATH__"
+for a in "$@"; do
+  if [ "$a" = "backup_pull" ] || [ "$a" = "app.services.backup_pull" ]; then
+    echo "some client library chatter on stdout"
+    echo "/dumps/__PULLED__"
+    exit 0
+  fi
+done
+cat >/dev/null
+exit 0
+"""
+
+
+def _write_pull_stub(tmp_path: Path, log_path: Path, pulled_name: str) -> Path:
+    stub = tmp_path / "compose_pull.sh"
+    stub.write_text(
+        _PULL_STUB.replace("__LOG_PATH__", str(log_path)).replace(
+            "__PULLED__", pulled_name
+        )
+    )
+    stub.chmod(0o755)
+    return stub
+
+
+def test_restore_from_pulls_through_compose_and_replays_the_result(tmp_path):
+    """`--from` fetches, then falls through to exactly the same marker check,
+    confirmation and side-database replay as the plain form. The path is read
+    off the LAST stdout line, which is why the stub prints noise above it."""
+    dumps = tmp_path / "dumps"
+    dumps.mkdir()
+    pulled = dumps / "darkmem-app-20260101-000000.sql.gz"
+    with gzip.open(pulled, "wt") as fh:
+        fh.write("SELECT 1;\n--\nPostgreSQL database dump complete\n--\n")
+
+    log_path = tmp_path / "invocations.log"
+    log_path.write_text("")
+    stub = _write_pull_stub(tmp_path, log_path, pulled.name)
+
+    result = _invoke_restore_from(tmp_path, stub, args=["--from", "nas"], pulled=pulled)
+
+    assert result.returncode == 0, result.stderr
+    records = [_record_fields(ln) for ln in log_path.read_text().splitlines() if ln]
+    assert any("app.services.backup_pull" in " ".join(f) for f in records)
+    assert any("--latest" in f for f in records)
+    assert any(
+        "ALTER DATABASE" in " ".join(f) and "RENAME TO" in " ".join(f) for f in records
+    ), "the pull ran but the restore did not"
+
+
+def test_restore_from_passes_a_named_snapshot_through(tmp_path):
+    dumps = tmp_path / "dumps"
+    dumps.mkdir()
+    pulled = dumps / "darkmem-app-20260101-000000.sql.gz"
+    with gzip.open(pulled, "wt") as fh:
+        fh.write("SELECT 1;\n--\nPostgreSQL database dump complete\n--\n")
+    log_path = tmp_path / "invocations.log"
+    log_path.write_text("")
+    stub = _write_pull_stub(tmp_path, log_path, pulled.name)
+
+    result = _invoke_restore_from(
+        tmp_path, stub, args=["--from", "nas", pulled.name], pulled=pulled
+    )
+
+    assert result.returncode == 0, result.stderr
+    records = [_record_fields(ln) for ln in log_path.read_text().splitlines() if ln]
+    assert any("--name" in f for f in records)
+    assert not any("--latest" in f for f in records)
+
+
+def test_an_encrypted_snapshot_with_no_identity_is_refused(tmp_path):
+    """The identity never enters the container, so it has to be supplied here
+    -- and a restore that silently proceeded without decrypting would fail at
+    the marker check with a confusing message instead of this one."""
+    dumps = tmp_path / "dumps"
+    dumps.mkdir()
+    encrypted = dumps / "darkmem-app-20260101-000000.sql.gz.age"
+    encrypted.write_bytes(b"ciphertext")
+    log_path = tmp_path / "invocations.log"
+    log_path.write_text("")
+    stub = _write_pull_stub(tmp_path, log_path, encrypted.name)
+    _write_age_stub(tmp_path)
+
+    result = _invoke_restore_from(tmp_path, stub, args=["--from", "nas"], pulled=encrypted)
+
+    assert result.returncode == 1
+    assert "identity" in result.stderr.lower()
+    records = [_record_fields(ln) for ln in log_path.read_text().splitlines() if ln]
+    assert not any("ALTER DATABASE" in " ".join(f) for f in records)
+
+
+def test_an_encrypted_snapshot_is_decrypted_on_the_host_then_replayed(tmp_path):
+    dumps = tmp_path / "dumps"
+    dumps.mkdir()
+    plain = _complete_dump(tmp_path)
+    encrypted = dumps / "darkmem-app-20260101-000000.sql.gz.age"
+    encrypted.write_bytes(plain.read_bytes())  # the age stub is a copy
+    identity = tmp_path / "identity.txt"
+    identity.write_text("AGE-SECRET-KEY-STUB")
+    log_path = tmp_path / "invocations.log"
+    log_path.write_text("")
+    stub = _write_pull_stub(tmp_path, log_path, encrypted.name)
+    _write_age_stub(tmp_path)
+
+    result = _invoke_restore_from(
+        tmp_path, stub, args=["--from", "nas"], pulled=encrypted, identity=identity
+    )
+
+    assert result.returncode == 0, result.stderr
+    records = [_record_fields(ln) for ln in log_path.read_text().splitlines() if ln]
+    assert any(
+        "ALTER DATABASE" in " ".join(f) and "RENAME TO" in " ".join(f) for f in records
+    )
+
+
+def test_the_legacy_invocation_is_byte_compatible(tmp_path):
+    """The regression pin. `restore.sh FILE.sql.gz` must behave exactly as it
+    did before `--from` existed -- the argument loop treats any non-flag as
+    the positional, and nothing else changed on that path."""
+    result, log_path = _run_restore(tmp_path, _complete_dump(tmp_path), db="legacy_pin")
+    assert result.returncode == 0, result.stderr
+    records = [_record_fields(ln) for ln in log_path.read_text().splitlines() if ln]
+    assert not any("backup_pull" in " ".join(f) for f in records)
