@@ -91,6 +91,21 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
     reason:
       "GET /documents takes an explicit `project` the Documents surface supplies, the same posture its Facts and Articles siblings carry (TH1.16, doc 16 §6)",
   },
+  documentsAll: {
+    kind: "manual",
+    reason:
+      "The workspace's stitched full list takes the project as an explicit argument (the route param, not the global switcher), the same posture `documents` carries; it pages the same route until a short page and dedupes by id (review m1)",
+  },
+  documentOutline: {
+    kind: "global",
+    reason:
+      "Addressed by document id and carrying no project param, exactly like documentSummary: the document's own project scopes the read server-side, so a project-keyed cache entry would key on something the request never sends",
+  },
+  documentBlocks: {
+    kind: "global",
+    reason:
+      "Addressed by document id and carrying no project param — the same shape as documentOutline, and the read the block reader and increment 8's editor both share",
+  },
   documentSummary: {
     kind: "global",
     reason:

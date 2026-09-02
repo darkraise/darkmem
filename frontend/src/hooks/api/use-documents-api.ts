@@ -120,3 +120,100 @@ export function useGroundedQa() {
       }),
   })
 }
+
+// ── The workspace's reads (2026-08-31 spec §2, §3) ───────────────────
+
+/** The list route clamps `limit` to 200 (`backend/app/api/routes/documents.py`)
+ *  and carries no `total`, so one page cannot hold a ~465-file corpus and
+ *  cannot even say it was cut (review finding m1). Stitch pages until a short
+ *  one; dedupe by id, because the order is `created_at DESC` and a filing that
+ *  lands mid-pagination shifts every later offset. */
+const PAGE_LIMIT = 200
+const MAX_PAGES = 25 // 5,000 documents; a guard, not a target
+
+export interface AllDocumentsResult {
+  items: DocumentListItem[]
+  /** True only when MAX_PAGES was exhausted while pages were still full.
+   *  Render it as a visible banner, never drop it (invariant 14). */
+  truncated: boolean
+}
+
+export function useAllDocuments(project: string) {
+  return useQuery<AllDocumentsResult>({
+    queryKey: ["documentsAll", project],
+    enabled: !DEMO,
+    queryFn: async () => {
+      const byId = new Map<string, DocumentListItem>()
+      let truncated = false
+      for (let page = 0; ; page++) {
+        if (page >= MAX_PAGES) {
+          truncated = true
+          break
+        }
+        const res = await apiFetch<DocumentListResponse>(
+          `/documents?project=${encodeURIComponent(project)}` +
+            `&limit=${PAGE_LIMIT}&offset=${page * PAGE_LIMIT}`,
+        )
+        for (const item of res.items) byId.set(item.id, item)
+        if (res.items.length < PAGE_LIMIT) break
+      }
+      return { items: [...byId.values()], truncated }
+    },
+  })
+}
+
+export interface OutlineNode {
+  block_id: string
+  level: number
+  text: string
+  order_index: number | null
+}
+
+export interface BlockRow {
+  block_id: string
+  type: string | null
+  text: string
+  order_index: number | null
+  char_span: [number, number] | null
+}
+
+export function useDocumentOutline(documentId: string | null) {
+  return useQuery<{ document_id: string; items: OutlineNode[] }>({
+    queryKey: ["documentOutline", documentId],
+    enabled: !DEMO && Boolean(documentId),
+    queryFn: () => apiFetch(`/documents/${documentId}/outline`),
+  })
+}
+
+export function useDocumentBlocks(documentId: string | null) {
+  return useQuery<{ document_id: string; blocks: BlockRow[] }>({
+    queryKey: ["documentBlocks", documentId],
+    enabled: !DEMO && Boolean(documentId),
+    queryFn: () => apiFetch(`/documents/${documentId}`),
+  })
+}
+
+export interface SectionHit {
+  block_id: string
+  document_id: string
+  uri: string | null
+  title: string | null
+  heading_path: string[]
+  path_truncated: boolean
+  text: string
+  score: number
+}
+
+export function useDocumentSearch() {
+  return useMutation<
+    { items: SectionHit[] },
+    Error,
+    { query: string; project: string; limit?: number }
+  >({
+    mutationFn: (params) =>
+      apiFetch(`/documents/search`, {
+        method: "POST",
+        body: JSON.stringify(params),
+      }),
+  })
+}
