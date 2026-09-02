@@ -56,7 +56,62 @@ def _junit_totals(xml_path: Path) -> tuple[int, int]:
     return total, skipped
 
 
+def _extraction_model_is_servable() -> tuple[bool, str]:
+    """Is the model the seed pins for `extraction` actually on that endpoint?
+
+    Read straight off ``llm_seed`` rather than out of the booted database,
+    because that is exactly what this suite gets: it posts a bare password to
+    ``/api/v1/setup`` with no ``purposes``, so nothing overlays the prefill.
+    (A human in the wizard never lands here -- ``StepLLM.tsx`` live-probes the
+    endpoint and the operator picks from what really exists.)
+
+    Returns (servable, human-readable reason).
+    """
+    from app.services.llm_quirks import models_probe
+    from app.services.llm_seed import DEFAULT_PURPOSE_CONFIGS, OLLAMA_BASE_URL
+    from app.services.model_probe import parse_model_list
+
+    seed = next(
+        (s for s in DEFAULT_PURPOSE_CONFIGS if s.purpose == "extraction"), None
+    )
+    if seed is None:
+        return True, "no extraction seed to check"
+
+    target = models_probe(seed.api_kind, OLLAMA_BASE_URL, None)
+    try:
+        import httpx
+
+        response = httpx.get(target.url, headers=target.headers, timeout=10)
+        response.raise_for_status()
+        served = parse_model_list(response.json())
+    except Exception as exc:  # noqa: BLE001 - unreachable is its own answer
+        return False, f"could not probe {target.url}: {exc}"
+
+    if seed.model in served:
+        return True, f"{seed.model} is served by {target.url}"
+    return False, (
+        f"the seed pins model {seed.model!r} for extraction, and "
+        f"{target.url} does not serve it.\n"
+        f"  served there: {', '.join(served) or '(none)'}\n"
+        f"  Nothing requires that model -- it is a prefill. But this suite "
+        f"takes the seed verbatim, so every extraction call would 404 while "
+        f"capture, flush and search all still pass. Pull a generation model "
+        f"onto that endpoint, or repoint the seed, rather than reading a "
+        f"green run as proof the extraction path works."
+    )
+
+
 def main() -> int:
+    # Checked BEFORE the stack boots: a model the endpoint does not serve is a
+    # missing toolchain, not a red gate, and `gate.sh`'s exit-2 precedent is
+    # what that means. Without this the suite would go RED on every run here,
+    # which teaches people to ignore it -- the opposite of the point.
+    servable, reason = _extraction_model_is_servable()
+    if not servable:
+        print(f"BLOCKED: {reason}", file=sys.stderr)
+        return BLOCKED_EXIT_CODE
+    print(f"extraction model precondition: {reason}")
+
     password = secrets.token_urlsafe(16)
 
     with tempfile.TemporaryDirectory() as tmp:

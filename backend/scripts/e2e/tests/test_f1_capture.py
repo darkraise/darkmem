@@ -215,3 +215,48 @@ async def test_capture_appears_in_search(api_client):
     assert memory_id in ids, (
         f"memory {memory_id} did not appear in search results for its own content"
     )
+
+
+async def test_extraction_left_no_failure(db_session):
+    """The fifth test, and the one this suite was missing.
+
+    Tests 1-4 assert capture, flush and search. **None of them looks at
+    extraction**: ``_assert_row_lands_or_records_failure`` queries
+    ``failed_step = 'content_embedding'`` alone, and a memory whose extraction
+    404'd still lands `active` and still appears in search, because its vector
+    was written and only its entity/relationship graph is missing.
+
+    So this suite reported **green — 4 passed, 0 skipped — while every
+    extraction call in it failed** (measured 2026-09-02: `model 'qwen2.5:3b'
+    not found`). That is the same partial-failure-reads-as-a-pass shape
+    `scripts/gate.sh`'s own comment records for the embed path one layer up,
+    and the same answer applies: surface it, never reclassify it.
+
+    Deliberately a FAILURE, not a skip. A skip is what a suite says when it
+    could not run; this runs, and what it finds is that the graph half of the
+    pipeline did not work. The environment gap that *causes* it is caught
+    earlier and separately, by ``run_e2e.py``'s model precondition, which
+    exits BLOCKED — so reaching here with a failure means the model was
+    present and extraction broke anyway, which is a real defect.
+    """
+    memory_id = _state.get("rest_memory_id")
+    assert memory_id, "test_capture_lands_in_buffer must run first"
+
+    failure = (await db_session.execute(
+        text(
+            "SELECT failed_step, error_message FROM pipeline_failures "
+            "WHERE entity_type = 'memory' AND entity_id = CAST(:id AS uuid) "
+            "AND pipeline_name = 'memory_ingest' "
+            "AND failed_step IN ('extraction', 'extraction_partial') "
+            "AND resolved_at IS NULL"
+        ),
+        {"id": memory_id},
+    )).first()
+
+    assert failure is None, (
+        f"extraction failed for memory {memory_id}: "
+        f"{failure[0] if failure else ''} — {failure[1] if failure else ''}\n"
+        "The memory still landed active and still appears in search, which is "
+        "why tests 1-4 pass regardless; its entity/relationship graph is "
+        "missing. This suite must not report green on that."
+    )
