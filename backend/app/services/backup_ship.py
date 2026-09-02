@@ -369,6 +369,8 @@ def build_destination(cfg: DestinationConfig) -> Destination:
         )
     if cfg.kind == "ssh":
         return SshDestination(cfg)
+    if cfg.kind == "s3":
+        return S3Destination(cfg)
     raise ValueError(f"{cfg.name}: no client for kind {cfg.kind!r}")
 
 
@@ -720,4 +722,105 @@ class SshDestination:
                      f"rm -f -- {shlex.quote(remote_dir + '/' + name)}"],
                     timeout=READ_BACK_TIMEOUT_SECONDS,
                 )
+        return doomed
+
+
+# ---------------------------------------------------------------------------
+# The S3 destination
+# ---------------------------------------------------------------------------
+
+
+class S3Destination:
+    """AWS, R2, B2 or MinIO -- one client, distinguished by ``endpoint_url``.
+
+    boto3 is synchronous, so every call goes through ``asyncio.to_thread``: an
+    upload on the event loop would stall the single worker (invariant 13) for
+    the length of the transfer. The client is built per operation rather than
+    cached, because a credential rotation in the config row must reach the next
+    ship with no restart.
+    """
+
+    def __init__(self, cfg: DestinationConfig, *, client_factory=None):
+        if cfg.s3 is None:
+            raise ValueError(f"{cfg.name}: s3 settings required")
+        self.name = cfg.name
+        self.retention_keep = cfg.retention_keep
+        self.s3 = cfg.s3
+        self._factory = client_factory or self._client
+
+    def _client(self):
+        import boto3
+
+        return boto3.client(
+            "s3",
+            endpoint_url=self.s3.endpoint_url,
+            region_name=self.s3.region,
+            aws_access_key_id=self.s3.access_key_id,
+            aws_secret_access_key=self.s3.secret_access_key,
+        )
+
+    def _key(self, name: str) -> str:
+        return f"{self.s3.prefix}{name}"
+
+    async def ship(self, local_path: Path) -> None:
+        client = self._factory()
+        await asyncio.to_thread(
+            client.upload_file,
+            str(local_path),
+            self.s3.bucket,
+            self._key(local_path.name),
+        )
+
+    def _hash_object(self, client, key: str) -> str:
+        digest = hashlib.sha256()
+        body = client.get_object(Bucket=self.s3.bucket, Key=key)["Body"]
+        for chunk in iter(lambda: body.read(_CHUNK), b""):
+            digest.update(chunk)
+        return digest.hexdigest()
+
+    async def read_back_sha256(self, name: str) -> str:
+        """Hash the object's own bytes, never its ETag.
+
+        An ETag is a multipart-dependent digest of what the *service* thinks it
+        stored; rule 2 asks what we can read back.
+        """
+        client = self._factory()
+        return await asyncio.to_thread(self._hash_object, client, self._key(name))
+
+    def _list_all(self, client) -> list[tuple[str, int]]:
+        """Every page. Pruning off a truncated first page would compute the
+        newest `keep` from an arbitrary slice and delete everything real."""
+        out: list[tuple[str, int]] = []
+        token = None
+        while True:
+            kwargs = {"Bucket": self.s3.bucket, "Prefix": self.s3.prefix}
+            if token:
+                kwargs["ContinuationToken"] = token
+            page = client.list_objects_v2(**kwargs)
+            for obj in page.get("Contents", []):
+                name = obj["Key"][len(self.s3.prefix):]
+                if _is_snapshot(name):
+                    out.append((name, obj.get("Size", 0)))
+            if not page.get("IsTruncated"):
+                return out
+            token = page["NextContinuationToken"]
+
+    async def list_snapshots(self) -> list[SnapshotInfo]:
+        client = self._factory()
+        entries = await asyncio.to_thread(self._list_all, client)
+        return [
+            SnapshotInfo(name=n, size=size, modified_at=_stamp_of(n))
+            for n, size in sorted(entries)
+        ]
+
+    async def prune(self, keep: int) -> list[str]:
+        client = self._factory()
+        entries = await asyncio.to_thread(self._list_all, client)
+        # The stamp sorts lexically, so key order is snapshot order -- no
+        # LastModified parse, and no dependence on what the service reports.
+        doomed = sorted((n for n, _ in entries), reverse=True)[keep:]
+        for name in doomed:
+            await asyncio.to_thread(
+                client.delete_object, Bucket=self.s3.bucket, Key=self._key(name)
+            )
         return doomed

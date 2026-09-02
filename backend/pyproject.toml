@@ -68,6 +68,12 @@ dependencies = [
     # Python, permissively licensed.
     "pdfplumber>=0.11.0",
     "markdown-it-py>=3.0.0",
+    # The S3 backup destination (spec §9.2). One client covers AWS, R2, B2 and
+    # MinIO through `endpoint_url`, which is why a hand-rolled SigV4 signer is
+    # not worth writing. The SDK is synchronous and is therefore only ever
+    # called through `asyncio.to_thread` -- never on the event loop, which a
+    # single worker (invariant 13) cannot afford to block on an upload.
+    "boto3>=1.35.0",
 ]
 
 # Setuptools' flat-layout auto-discovery refuses a directory holding more than

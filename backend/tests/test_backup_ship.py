@@ -585,3 +585,153 @@ def test_ssh_key_material_is_removed_after_every_operation(tmp_path, monkeypatch
 
 def test_build_destination_serves_the_ssh_kind():
     assert isinstance(backup_ship.build_destination(SSH_CFG), backup_ship.SshDestination)
+
+
+# ---------------------------------------------------------------------------
+# Task 6: the S3 destination
+#
+# The client is injected, so nothing here reaches a network. What is worth
+# pinning is the key layout, the pagination loop (a bucket past one page must
+# not prune from a truncated listing) and that read-back streams the object's
+# body rather than trusting any ETag.
+# ---------------------------------------------------------------------------
+
+import io  # noqa: E402
+
+
+S3_CFG = bc.DestinationConfig.model_validate(
+    {
+        "name": "r2",
+        "kind": "s3",
+        "retention_keep": 2,
+        "age_recipient": "age1qqqqexamplerecipient",
+        "s3": {
+            "endpoint_url": "https://x.r2.cloudflarestorage.com",
+            "bucket": "snapshots",
+            "prefix": "darkmem/",
+            "region": "auto",
+            "access_key_id": "AK",
+            "secret_access_key": "SK",
+        },
+    }
+)
+
+
+class _FakeS3:
+    def __init__(self, objects=None, *, page_size=1000):
+        self.objects = dict(objects or {})
+        self.uploaded = []
+        self.deleted = []
+        self.list_calls = 0
+        self._page_size = page_size
+
+    def upload_file(self, filename, bucket, key):
+        self.uploaded.append((filename, bucket, key))
+        self.objects[key] = open(filename, "rb").read()
+
+    def get_object(self, Bucket, Key):  # noqa: N803 - boto3's own casing
+        return {"Body": io.BytesIO(self.objects[Key])}
+
+    def list_objects_v2(self, **kwargs):
+        self.list_calls += 1
+        keys = sorted(k for k in self.objects if k.startswith(kwargs.get("Prefix", "")))
+        token = kwargs.get("ContinuationToken")
+        start = keys.index(token) if token else 0
+        page = keys[start : start + self._page_size]
+        out = {
+            "Contents": [
+                {"Key": k, "Size": len(self.objects[k]), "LastModified": None}
+                for k in page
+            ]
+        }
+        if start + self._page_size < len(keys):
+            out["IsTruncated"] = True
+            out["NextContinuationToken"] = keys[start + self._page_size]
+        return out
+
+    def delete_object(self, Bucket, Key):  # noqa: N803
+        self.deleted.append(Key)
+        self.objects.pop(Key, None)
+
+
+def _s3(fake) -> "backup_ship.S3Destination":
+    return backup_ship.S3Destination(S3_CFG, client_factory=lambda: fake)
+
+
+async def test_s3_ship_uses_the_prefixed_key_layout(tmp_path):
+    fake = _FakeS3()
+    blob = tmp_path / "darkmem-app-20260101-000000.sql.gz.age"
+    blob.write_bytes(b"payload")
+
+    await _s3(fake).ship(blob)
+
+    assert fake.uploaded == [(str(blob), "snapshots", f"darkmem/{blob.name}")]
+
+
+async def test_s3_read_back_streams_the_body(tmp_path):
+    import hashlib
+
+    payload = b"the object as it actually landed" * 400
+    fake = _FakeS3({"darkmem/darkmem-app-20260101-000000.sql.gz.age": payload})
+
+    got = await _s3(fake).read_back_sha256("darkmem-app-20260101-000000.sql.gz.age")
+
+    assert got == hashlib.sha256(payload).hexdigest()
+
+
+async def test_s3_listing_walks_every_page(tmp_path):
+    """A bucket past one page must not prune from a truncated listing: the
+    newest keep would be computed off page one alone and everything real would
+    look like the tail."""
+    objects = {
+        f"darkmem/darkmem-app-2026{m:02d}01-000000.sql.gz.age": b"x"
+        for m in range(1, 13)
+    }
+    fake = _FakeS3(objects, page_size=5)
+
+    snapshots = await _s3(fake).list_snapshots()
+
+    assert len(snapshots) == 12
+    assert fake.list_calls == 3
+
+
+async def test_s3_prune_keeps_the_newest_and_ignores_foreign_keys():
+    objects = {
+        "darkmem/darkmem-20250101-000000.sql.gz": b"x",  # the systemd producer's
+        "darkmem/README": b"x",
+        "darkmem/darkmem-app-20260101-000000.sql.gz.age": b"x",
+        "darkmem/darkmem-app-20260102-000000.sql.gz.age": b"x",
+        "darkmem/darkmem-app-20260103-000000.sql.gz.age": b"x",
+        "darkmem/darkmem-app-20260104-000000.sql.gz.age.part": b"x",
+    }
+    fake = _FakeS3(objects)
+
+    deleted = await _s3(fake).prune(keep=2)
+
+    assert deleted == ["darkmem-app-20260101-000000.sql.gz.age"]
+    assert fake.deleted == ["darkmem/darkmem-app-20260101-000000.sql.gz.age"]
+
+
+def test_build_destination_serves_the_s3_kind():
+    assert isinstance(backup_ship.build_destination(S3_CFG), backup_ship.S3Destination)
+
+
+def test_the_default_client_factory_carries_the_configured_endpoint(monkeypatch):
+    """R2, B2 and MinIO are AWS-compatible only through `endpoint_url`; a
+    client built without it silently talks to AWS."""
+    seen = {}
+
+    def _fake_client(service, **kwargs):
+        seen.update(kwargs, service=service)
+        return object()
+
+    import boto3
+
+    monkeypatch.setattr(boto3, "client", _fake_client)
+    backup_ship.S3Destination(S3_CFG)._client()
+
+    assert seen["service"] == "s3"
+    assert seen["endpoint_url"] == "https://x.r2.cloudflarestorage.com"
+    assert seen["region_name"] == "auto"
+    assert seen["aws_access_key_id"] == "AK"
+    assert seen["aws_secret_access_key"] == "SK"
