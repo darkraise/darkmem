@@ -4,6 +4,41 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
+## v1.5.0 — 2026-09-02
+
+**The Checkpoints tab became something you can leave open and watch.** It
+polls, it filters to one project, and it says out loud what it cannot show
+you. First increment of the project artifact store (spec §3, §6).
+
+### Added
+
+- **A project filter on the Checkpoints tab.** The predicate is pushed to
+  `GET /events`, not applied to the loaded page: the journal read is capped at
+  200 rows, so a busy project could otherwise push another off the page
+  entirely and the filter would hide runs rather than narrow them. The option
+  list accumulates every project seen since the tab mounted, because the
+  filtered page contains only the project you filtered to — deriving options
+  from it would collapse the list to your own selection and strand you there.
+  The options deliberately do **not** come from `GET /api/v1/projects`: that
+  route derives from `memories` alone, so a project holding only checkpoints
+  would have been missing from its own filter.
+- **Live polling, on a 15-second interval**, for both the run journal and the
+  selected run's latest digest. An unfocused tab stops polling rather than
+  running forever.
+
+### Changed
+
+- **The tab now states its own limit.** Checkpoint history shows *when* each
+  save and resume happened, and only the newest note's text is readable —
+  event payloads carry no step content by design, and no endpoint serves a
+  run's past summaries. The surface says so where the reader is, instead of
+  looking like a history that failed to load.
+
+### Notes
+
+- No backend change, no schema change, and the gate table is unchanged from
+  v1.4.0 — nothing here touches a surface a gate governs.
+
 ## v1.4.0 — 2026-08-29
 
 **A repository's recurring upkeep stopped being one flag nobody chose.**
