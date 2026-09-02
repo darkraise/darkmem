@@ -1,4 +1,5 @@
 import Markdown from "react-markdown"
+import { Separator } from "darkraise-ui/components/separator"
 import { cn } from "darkraise-ui/lib"
 import type { BlockRow } from "@/hooks/api"
 
@@ -41,6 +42,11 @@ export function BlockView({ block }: { block: BlockRow }) {
           <Markdown>{block.text}</Markdown>
         </div>
       )
+    case "divider":
+      // A thematic break carries no text: the rule IS the block. Rendered as
+      // the library separator rather than a styled empty paragraph, which is
+      // what an unknown type would have fallen through to.
+      return <Separator className="my-1" />
     case "table":
     case "table_row":
       return (

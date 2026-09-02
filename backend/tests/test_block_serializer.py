@@ -71,6 +71,13 @@ ROUND_TRIP_SOURCES = [
     "```python\nprint('hi')\n```",
     "| Name | Age |\n|---|---:|\n| Ann | 3 |\n| Bo | 4 |",
     "# Doc\n\npara\n\n- item\n  - sub\n\n> quote\n\n```\ncode\n```",
+    # Thematic breaks round-trip since `divider` joined the vocabulary
+    # (2026-09-02). The adjacency cases matter: a `---` after a paragraph
+    # could re-parse as a setext underline if the separator ever stopped
+    # writing a blank line, which would turn a rule into a heading.
+    "para one\n\n---\n\npara two",
+    "# H\n\n---\n\nbody",
+    "- one\n- two\n\n---\n\nafter",
 ]
 
 # Shapes the parser drops on the floor: `hr` and `html_block` mint no block
@@ -78,7 +85,6 @@ ROUND_TRIP_SOURCES = [
 # into `env`. NOTHING can serialise them back, so a document containing one
 # must REFUSE conversion rather than silently lose it (review M-2).
 NON_CONVERTIBLE_SOURCES = [
-    "para one\n\n---\n\npara two",                       # thematic break
     "before\n\n<div class='x'>raw</div>\n\nafter",       # html_block
     "see [the doc][ref]\n\n[ref]: https://example.test",  # link reference
 ]
@@ -173,3 +179,41 @@ def test_a_parent_cycle_raises_instead_of_hanging():
     ]
     with pytest.raises(ValueError):
         serialize_tree(tree)
+
+
+def test_a_frontmatter_document_is_convertible():
+    """The guard parses the BODY, not the raw file.
+
+    A document's opening `---` fence is itself an `hr` token, so tokenising
+    raw content refused every frontmatter document -- and no imported document
+    has frontmatter, which is why the corpus measurement did not catch it.
+    """
+    source = "---\ntitle: T\n---\n# H\n\nbody"
+    tree, spans = _tree_and_spans(source)
+    assert reproduces_source(tree, source, spans, frontmatter="title: T") is True
+
+
+def test_inline_html_does_not_refuse_a_document():
+    """`html_inline` is a child of an `inline` token, so a top-level scan
+    never sees one -- and the raw tag survives in the paragraph's own text,
+    so it round-trips. It was dead weight in the refusal set."""
+    source = "a <b>bold</b> c"
+    tree, spans = _tree_and_spans(source)
+    assert reproduces_source(tree, source, spans) is True
+
+
+def test_a_stale_tree_is_refused_even_though_the_source_is_representable():
+    """The back door into M-2's failure.
+
+    `ingest_document` returns UNCHANGED on a byte-identical re-push without
+    touching blocks, so a document filed before `divider` existed has `---` in
+    its content and no divider row. Converting it would drop every rule. The
+    source alone looks convertible; only comparing it against the tree catches
+    this.
+    """
+    source = "para one\n\n---\n\npara two"
+    tree, spans = _tree_and_spans(source)
+    assert reproduces_source(tree, source, spans) is True
+
+    stale = [b for b in tree if b.type != "divider"]      # the pre-divider tree
+    assert reproduces_source(stale, source, spans) is False

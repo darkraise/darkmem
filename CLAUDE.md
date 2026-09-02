@@ -1494,7 +1494,8 @@ explicit operator-triggered run.
 ## Documents (`app/services/document_door.py`, block channel)
 
 A document is filed markdown or plain text, parsed into a `blocks`
-tree (headings, paragraphs, lists, code, quotes) that is deliberately
+tree (headings, paragraphs, lists, code, quotes, tables and their rows,
+dividers) that is deliberately
 **not** run through the memory pipeline: filing a document never extracts
 entities or relationships. The parser stack also handles PDF, but no
 production caller can deliver one — `content` is `str` on both doors and

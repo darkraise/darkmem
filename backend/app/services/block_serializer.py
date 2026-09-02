@@ -168,6 +168,8 @@ def serialize_tree(
                 "| " + " | ".join(header) + " |",
                 "| " + " | ".join(delim.get(a or "", "---") for a in aligns) + " |",
             ], prefix)
+        elif block.type == "divider":
+            span = emit_lines(["---"], prefix)
         elif block.type == "table_row":
             cells = props.get("cells") or [c.strip() for c in block.text.split("|")]
             span = emit_lines(["| " + " | ".join(cells) + " |"], prefix)
@@ -228,7 +230,12 @@ def derive_markers(
 
 # Token kinds the block model has no shape for. The parser mints no block for
 # these, so nothing in a tree records them and no serialiser can put them back.
-_UNREPRESENTABLE_TOKENS = frozenset({"hr", "html_block", "html_inline"})
+#
+# `hr` left this set on 2026-09-02 when it became the `divider` block type.
+# `html_inline` was never reachable here and is not unrepresentable anyway:
+# inline tokens are children of an `inline` token, so a top-level scan never
+# sees one, and the raw tag survives in the paragraph's own text.
+_UNREPRESENTABLE_TOKENS = frozenset({"html_block"})
 
 
 def reproduces_source(
@@ -249,8 +256,8 @@ def reproduces_source(
     The question is whether the source contains a construct the block model
     cannot represent. Those are detected in the token stream directly, which
     is both stricter and looser than a text diff in the right places: a
-    dropped thematic break re-parses to a tree identical to the original's,
-    so comparing trees would miss it, while whitespace never trips it.
+    dropped construct re-parses to a tree identical to the original's, so
+    comparing trees would miss it, while whitespace never trips it.
 
     **Do not relax this by removing a token kind to make more documents
     convert.** The way to convert more documents is to make the parser
@@ -258,8 +265,17 @@ def reproduces_source(
     """
     from markdown_it import MarkdownIt
 
+    from app.services.document_parsers import split_frontmatter
+
+    # Parse the BODY, not the whole file. A document's opening `---` fence is
+    # itself an `hr` token, so tokenising the raw content refused every
+    # document carrying frontmatter -- and no imported document has any, which
+    # is exactly why the corpus measurement did not catch it.
+    _, body_start = split_frontmatter(content)
+    body = content[body_start:]
+
     env: dict = {}
-    tokens = MarkdownIt("commonmark").enable("table").parse(content, env)
+    tokens = MarkdownIt("commonmark").enable("table").parse(body, env)
     if any(token.type in _UNREPRESENTABLE_TOKENS for token in tokens):
         return False
     # Link reference definitions are consumed into `env` and mint no token at
@@ -267,4 +283,16 @@ def reproduces_source(
     # definition and leave every reference to it dangling.
     if env.get("references"):
         return False
+
+    # A construct can be representable and still be missing from THIS tree.
+    # `ingest_document` returns UNCHANGED on a byte-identical re-push without
+    # touching blocks, so a document filed before `divider` existed has `---`
+    # in its content and no divider row -- and converting it would drop every
+    # rule, which is the exact failure this guard exists to prevent. Comparing
+    # counts catches a stale tree without needing to know why it is stale.
+    for token_type, block_type in (("hr", "divider"),):
+        in_source = sum(1 for t in tokens if t.type == token_type)
+        in_tree = sum(1 for b in blocks if b.type == block_type)
+        if in_source != in_tree:
+            return False
     return True
