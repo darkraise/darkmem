@@ -6,6 +6,12 @@ without touching production: *is what we backed up actually a working darkmem?*
 
 Bring-up happens on the worker machine. Nothing in this repo's gate runs there.
 
+**This procedure was rehearsed end to end on 2026-09-02** — the whole stack on one
+host as its own compose project, ship → restore → serve → reject, then torn down.
+Every step below has been run. If you are rehearsing rather than provisioning, set
+`WORKER_APP_PORT`, `WORKER_RECEIVER_PORT` and `WORKER_DB_PORT` in `.env`, since the
+defaults collide with an existing darkmem on the same host.
+
 ---
 
 ## What "read-only" honestly means

@@ -18,11 +18,38 @@ deployed build after increment 7's `stream()` refactor: a 252 MB dump landed,
 verified by read-back hash, and the new `stream()` returned the same 252,138,634
 bytes the hash was taken over.
 
-**The worker machine itself is not provisioned** -- it is a second box, and
-`docs/runbook-backup-worker.md` is its procedure. Task 13 Step 5's end-to-end check
-(configure a `worker` destination, ship, run one cycle by hand, confirm the posture
-and a 403 capture) is therefore **outstanding and owner-owned**; nothing in this
-repo's gate runs there.
+**Task 13 Step 5 was executed on 2026-09-02 as a full rehearsal on this host** --
+the worker stack brought up as its own compose project on ports 8010/8110/5442,
+driven end to end, then torn down with `down -v`. What it proved, in order:
+an `age` keypair generated and the identity kept off this repo and out of every
+database; the receiver refusing to start on an unwritable mount and passing the
+runbook's write probe; a `worker` destination configured on production; **one real
+`backup_ship` run putting a 252 MB encrypted snapshot on the receiver over https,
+read back and hash-verified** (`shipped: 2, verify_failed: []`); `restore-cycle.sh`
+decrypting, replaying, migrating, stamping `schema_guard`, granting the viewer role
+and swapping; the viewer serving the restored corpus (475 documents, 49,310 blocks,
+matching production). Then the posture, over the wire: `db_user=darkmem_viewer`,
+`read_only=true`, reads 200, and **a capture refused 403 with `code: "read_only"` --
+which is the SQLSTATE-42501 handler, so the *database* refused it, not a route
+allowlist** -- while chat, the job trigger and change-password refused 403
+`forbidden` from their own guards and refresh still reissued. `backup_pull --latest`
+fetched the snapshot back off the receiver and verified it. A re-run was a clean
+no-op. And **B1's schema-mismatch case was forced with a snapshot carrying a wrong
+baseline hash: REJECTED, the viewer never restarted, no side database left behind,
+exit 0.**
+
+**The rehearsal found one real defect**, which is what it was for: the receiver's
+healthcheck read `.status` on an endpoint that answers 401, and `urlopen` *raises*
+on 4xx -- so the container sat `unhealthy` forever while working perfectly. Fixed,
+tightened to assert the 401 (an unauthenticated 200 would mean the bearer guard is
+not armed), and pinned by a test. The published ports became variables in the same
+change, because the rehearsal could not otherwise coexist with prod.
+
+**What remains owner-owned is provisioning the second box**, from
+`docs/runbook-backup-worker.md`. Nothing in this repo's gate runs there, and the
+rehearsal cannot prove the two things a second machine is for: that the snapshot
+survives *this* host dying, and that the worker reaches the embedding endpoint
+across the LAN.
 
 **One correction to the plan, found by the work.** Review M-6's `FOR UPDATE`
 inventory was itself wrong in both directions: `services/wait_process.py` and
