@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.models.code import CodeFile, CodeSymbol
+from app.config import settings
 from app.repositories.vector import PostgresVectorRepository
 from app.services.llm import LLMOrchestrator
 from app.services.rank_fusion import RRF_K
@@ -34,7 +35,10 @@ class CodeQueryService:
     ) -> list[dict]:
         results_map: dict[str, dict] = {}
 
-        if self.llm:
+        # `settings.read_only` skips the vector arm outright rather than
+        # letting it attempt and fail: a backup worker makes no external
+        # call by ruling, and the ILIKE arm below still answers.
+        if self.llm and not settings.read_only:
             try:
                 vector, fingerprint = await self.llm.embed(query)
                 vector_repo = PostgresVectorRepository(self.session)

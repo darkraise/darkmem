@@ -88,6 +88,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.fact_sources import FactSourceRepository
 from app.repositories.vector import MemoryFilter
 from app.schemas.retrieval_trace import ChannelStatus, RetrievalEnvelope
+from app.config import settings
 from app.services.claim_gates import ungated_mapping, unserved_status
 from app.services.fact_badge import (
     BADGE_BEARING_ID_KINDS,
@@ -1367,7 +1368,10 @@ class LayerCompositionService:
         from app.services.articles_channel import ArticleChannelTrace, ArticlesChannel
 
         llm = getattr(self, "llm", None)
-        if llm is None:
+        # Read-only takes the same branch an absent orchestrator does, which is
+        # already the honest one: `semantic_ran=False` says the arm was never
+        # asked. A backup worker makes no external call by ruling.
+        if llm is None or settings.read_only:
             return ArticleChannelTrace(results=[], semantic_ran=False)
         try:
             vector, fingerprint = await llm.embed(query)

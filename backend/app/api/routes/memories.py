@@ -5,7 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 
 from app.api.auth import require_auth, require_scope
-from app.api.deps import get_memory_service
+from app.api.deps import refuse_when_read_only, get_memory_service
 from app.api.mcp.client_identity import (
     ORIGIN_HEADER,
     REST_FALLBACK_SOURCE,
@@ -155,6 +155,7 @@ async def create_memory(
 @router.post("/reason", response_model=ReasonResponse)
 async def reason(
     body: ReasonRequest,
+    _read_only=Depends(refuse_when_read_only),
     _user=Depends(require_auth),
     service: MemoryService = Depends(get_memory_service),
 ):

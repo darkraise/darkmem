@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.auth import require_auth, require_scope
-from app.api.deps import get_code_pipeline, get_repo_manager, get_session_factory
+from app.api.deps import refuse_when_read_only, get_code_pipeline, get_repo_manager, get_session_factory
 from app.database import get_session
 from app.models.code import CodeFile, CodeSymbol, Repository
 from app.schemas.code import (
@@ -86,6 +86,7 @@ def _to_response(
 @router.post("", response_model=RepoResponse, status_code=status.HTTP_201_CREATED)
 async def create_repo(
     body: RepoCreate,
+    _read_only=Depends(refuse_when_read_only),
     _user=Depends(require_auth),
     manager: RepoManager = Depends(get_repo_manager),
     pipeline: CodePipeline = Depends(get_code_pipeline),
@@ -368,6 +369,7 @@ def _spawn_repo_index(
 @router.post("/{repo_id}/reindex", status_code=status.HTTP_202_ACCEPTED)
 async def reindex_repo(
     repo_id: UUID,
+    _read_only=Depends(refuse_when_read_only),
     body: ReindexRequest = ReindexRequest(),
     _user=Depends(require_auth),
     pipeline: CodePipeline = Depends(get_code_pipeline),
@@ -408,6 +410,7 @@ async def reindex_repo(
 async def reindex_repo_files(
     repo_id: UUID,
     body: ReindexFilesRequest,
+    _read_only=Depends(refuse_when_read_only),
     principal=Depends(_require_repo_admin),
     pipeline: CodePipeline = Depends(get_code_pipeline),
     manager: RepoManager = Depends(get_repo_manager),
@@ -505,6 +508,7 @@ async def reindex_repo_files(
 @router.post("/{repo_id}/webhook", status_code=status.HTTP_202_ACCEPTED)
 async def repo_push_webhook(
     repo_id: UUID,
+    _read_only=Depends(refuse_when_read_only),
     principal=Depends(_require_repo_admin),
     pipeline: CodePipeline = Depends(get_code_pipeline),
     manager: RepoManager = Depends(get_repo_manager),

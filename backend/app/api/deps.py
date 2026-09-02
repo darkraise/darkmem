@@ -1,6 +1,7 @@
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.config import settings
 from app.database import async_session_factory, get_session
 from app.repositories.graph import PostgresGraphRepository
 from app.repositories.relational import PostgresTagRepository
@@ -86,3 +87,34 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
 
 async def get_tag_repository(session: AsyncSession = Depends(get_session)) -> PostgresTagRepository:
     return PostgresTagRepository(session)
+
+
+def refuse_when_read_only() -> None:
+    """Refuse a door that needs an external service (owner ruling 2026-09-03).
+
+    A backup worker is for viewing and backup/restore only, so nothing on it
+    may depend on a third machine being reachable -- a host whose job is
+    surviving another machine's failure is the worst place to add an outbound
+    dependency.
+
+    Declared as a dependency rather than written at the top of each handler,
+    and placed BEFORE the service dependencies that build an orchestrator, so
+    the refusal lands before anything is constructed or called. That ordering
+    is the point on every door this guards: each one dispatches an LLM, an
+    embedder or a git fetch *first* and writes *second*, so the SELECT-only
+    viewer role would stop them only after the spend or the connection had
+    already happened.
+
+    This is deliberately NOT the per-route allowlist review B1 rejected for
+    *writes* -- those are caught generically by the SQLSTATE 42501 handler,
+    which needs no list. This list exists because an external call is not a
+    write and the database never sees it.
+    """
+    if settings.read_only:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "read-only instance: this needs an external service, and a "
+                "backup worker is for viewing and backup/restore only"
+            ),
+        )

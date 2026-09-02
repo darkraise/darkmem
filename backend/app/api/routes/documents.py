@@ -56,7 +56,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
-from app.api.deps import get_llm
+from app.api.deps import refuse_when_read_only, get_llm
 from app.database import get_session
 from app.services.block_pipeline import UnsupportedSource
 from app.services.document_connections import connections_for_document
@@ -401,6 +401,7 @@ async def get_document_connections(
 @router.post("/qa", response_model=QaResponse)
 async def grounded_qa(
     body: QaRequest,
+    _read_only=Depends(refuse_when_read_only),
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
     llm=Depends(get_llm),
@@ -546,6 +547,7 @@ async def delete_document_route(
 @router.post("/search", response_model=DocumentSearchResponse)
 async def search_documents_route(
     body: DocumentSearchRequest,
+    _read_only=Depends(refuse_when_read_only),
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
     llm=Depends(get_llm),

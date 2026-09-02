@@ -9,6 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.vector import MemoryFilter
+from app.config import settings
 from app.services.access_stats import spawn_record_access
 from app.services.embedder_registry import child_table
 from app.services.llm import LLMOrchestrator
@@ -74,7 +75,17 @@ class HybridSearchService:
         themselves.
         """
         fetch_n = fusion_fetch_depth(limit)
-        vector, fingerprint = await self.llm.embed(query)
+        # Owner ruling 2026-09-03: a backup worker is for viewing and
+        # backup/restore only, so it must not depend on a third machine being
+        # reachable. The semantic arm is SKIPPED rather than attempted and
+        # caught -- `llm.embed` sits outside `_run_channels`' one-sided-failure
+        # guard, so an unreachable embedder does not degrade to keyword, it
+        # raises out of the whole search. Skipping keeps the keyword arm
+        # answering and makes the posture a decision rather than an accident.
+        if settings.read_only:
+            vector, fingerprint = None, None
+        else:
+            vector, fingerprint = await self.llm.embed(query)
         semantic_results, keyword_results, _, _ = await self._run_channels(
             query, vector, fingerprint, fetch_n, filters,
         )
@@ -109,7 +120,17 @@ class HybridSearchService:
         plain ``search`` path above never builds ``channel_scores``.
         """
         fetch_n = fusion_fetch_depth(limit)
-        vector, fingerprint = await self.llm.embed(query)
+        # Owner ruling 2026-09-03: a backup worker is for viewing and
+        # backup/restore only, so it must not depend on a third machine being
+        # reachable. The semantic arm is SKIPPED rather than attempted and
+        # caught -- `llm.embed` sits outside `_run_channels`' one-sided-failure
+        # guard, so an unreachable embedder does not degrade to keyword, it
+        # raises out of the whole search. Skipping keeps the keyword arm
+        # answering and makes the posture a decision rather than an accident.
+        if settings.read_only:
+            vector, fingerprint = None, None
+        else:
+            vector, fingerprint = await self.llm.embed(query)
         semantic_results, keyword_results, semantic_failed, keyword_failed = await self._run_channels(
             query, vector, fingerprint, fetch_n, filters,
         )
@@ -165,15 +186,23 @@ class HybridSearchService:
         # never independently failed, and the caller's session is poisoned for
         # everything it does after the search. The facts channel carries the
         # same idiom (``facts_channel._run_arms``) and they change together.
-        try:
-            async with self.session.begin_nested():
-                semantic_results = await self._semantic_search(
-                    vector, fingerprint, fetch_n, filters,
-                )
-        except Exception as e:
-            logger.error("Semantic search failed: %s", e)
+        if vector is None:
+            # Not asked, rather than asked and broke -- the distinction
+            # `layer_composition` already draws. Under the read-only posture
+            # the embedder is deliberately never called, so reporting this arm
+            # as *failed* would put an outage in the trace that never happened
+            # and would let a keyword-only answer look like a half-broken one.
             semantic_results = []
-            semantic_failed = True
+        else:
+            try:
+                async with self.session.begin_nested():
+                    semantic_results = await self._semantic_search(
+                        vector, fingerprint, fetch_n, filters,
+                    )
+            except Exception as e:
+                logger.error("Semantic search failed: %s", e)
+                semantic_results = []
+                semantic_failed = True
 
         try:
             async with self.session.begin_nested():

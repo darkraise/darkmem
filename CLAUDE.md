@@ -1769,11 +1769,25 @@ produce.
   write-on-read paths. A reader who takes away "the flag makes it read-only" has
   been misled — with the flag off and the role in place the instance is still
   read-only; with the owner role and the flag on it is **not**.
-  Two costs ride with it and are stated rather than discovered: token rotation
-  is disabled (refresh reissues without blocklisting, so a captured pre-refresh
-  token lives to its own `exp`), and **semantic search still makes one live
-  embed call per query** — a search surface that cannot embed cannot search, so
-  the embedding endpoint is an operating requirement with no keyword fallback.
+  Token rotation is disabled and stated rather than discovered: refresh
+  reissues without blocklisting, so a captured pre-refresh token lives to its
+  own `exp`. **The worker needs no external service at all** (owner ruling
+  2026-09-03, replacing an earlier requirement that it reach the embedding
+  endpoint — a host whose job is surviving another machine's failure is the
+  worst place to depend on a third). Under the flag the semantic arm is
+  *skipped* rather than attempted: `llm.embed` sits outside
+  `_run_channels`' one-sided-failure guard, so an unreachable embedder would
+  raise out of the whole search instead of degrading. Memory and code search
+  answer on their keyword/`ILIKE` arms; the articles channel reports
+  `semantic_ran=False`. **Document search is refused rather than emptied** —
+  its ranking is cosine-only with no keyword arm, so an empty result would be
+  indistinguishable from "no matches". And the doors that would spend or dial
+  out before they write are refused at a shared `refuse_when_read_only`
+  dependency (`api/deps.py`): `memories/reason`, `documents/qa`, every
+  `reembed` POST, repo create/reindex/reindex-files/webhook, chat, job
+  triggers. That list is not the per-route allowlist review B1 rejected — that
+  argument is about *writes*, which the SQLSTATE 42501 handler catches
+  generically; an external call is not a write and the database never sees it.
   The **receiver** (`app/worker_receiver.py`, its own uvicorn process) is the
   worker's one write door and it writes files, not rows: a closure walk fails
   the build if it can reach `app.main`, `app.database` or any service. The

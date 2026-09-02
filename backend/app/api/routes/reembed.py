@@ -20,6 +20,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import refuse_when_read_only
 from app.api.auth import require_auth
 from app.api.websocket import event_manager
 from app.utils.background import spawn
@@ -202,6 +203,7 @@ async def _dispatch_single_category(
 @router.post("/memories", status_code=202)
 async def reembed_memories(
     request: Request,
+    _read_only=Depends(refuse_when_read_only),
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
@@ -214,6 +216,7 @@ async def reembed_memories(
 @router.post("/code-chunks", status_code=202)
 async def reembed_code_chunks(
     request: Request,
+    _read_only=Depends(refuse_when_read_only),
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
@@ -226,6 +229,7 @@ async def reembed_code_chunks(
 @router.post("/entities", status_code=202)
 async def reembed_entities(
     request: Request,
+    _read_only=Depends(refuse_when_read_only),
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
@@ -238,6 +242,7 @@ async def reembed_entities(
 @router.post("/all", status_code=202)
 async def reembed_all(
     request: Request,
+    _read_only=Depends(refuse_when_read_only),
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):

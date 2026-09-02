@@ -57,14 +57,33 @@ be.
 | `POST /jobs/{key}/trigger` | 403 — a disarmed scheduler does not disarm the manual door |
 | Change password | 403 — the next restore overwrites it anyway |
 | Repository *file* browsing | Degrades: the worker's `repo_data` volume holds no clones. DB-backed code-graph reads work. |
+| Document search, `memories/reason`, `documents/qa`, reembed, repo reindex | 403 — each needs an external service, and a backup worker has none |
+| Semantic ranking in memory and code search | Silently absent; the keyword arm answers alone |
 | The setup wizard | 403 on `require_uninitialized`, because the snapshot carries `admin_password_hash`. Correct, no handling needed. |
 
-**Semantic search requires one live external call per query.** The query embed
-is not optional — a search surface that cannot embed cannot search — so the
-worker needs the snapshot's embedding endpoint reachable. On this owner's
-topology that is the LAN Ollama at `192.168.0.196:11434`, reachable from any LAN
-machine. There is deliberately **no keyword-only fallback**: the failure is loud
-and the requirement is stated instead.
+**The worker needs no external service at all** (owner ruling 2026-09-03,
+replacing the earlier requirement that it reach the embedding endpoint). A host
+whose whole job is surviving another machine's failure is the worst place to add
+a dependency on a third machine, so under `DARKMEM_READ_ONLY` every feature
+that needs one is disabled:
+
+- **Search still answers, on its keyword arm alone.** The semantic arm is
+  *skipped*, not attempted and caught — `llm.embed` sits outside
+  `_run_channels`' one-sided-failure guard, so an unreachable embedder would
+  otherwise raise out of the whole search rather than degrade. Code search
+  keeps its `ILIKE` arm the same way, and the articles channel reports
+  `semantic_ran=False`, which is the "could not ask" state it already had.
+- **Document search is refused, not emptied.** Its ranking is cosine-only
+  (`1 - (embedding <=> :vec)`, no keyword arm), so there is nothing to degrade
+  to — and an empty result would be indistinguishable from "no matches".
+- **Doors that would spend or dial out are refused up front**: `memories/reason`,
+  `documents/qa`, every `reembed` POST, repository create / reindex /
+  reindex-files / webhook, chat, and job triggers. Each dispatches an LLM, an
+  embedder or a git fetch *before* it writes, so the viewer role would stop
+  them only after the spend.
+
+Everything else reads normally with no network: documents, events and timeline,
+facts, checkpoints, the code graph, the snapshot inventory and the SPA.
 
 ---
 
@@ -83,8 +102,8 @@ and the requirement is stated instead.
   ```
   The recipient (public key) goes in the destination's `age_recipient` field on
   production's Backups settings tab. The identity stays here.
-- Network reachability from production to this machine's receiver port, and
-  from this machine to the embedding endpoint.
+- Network reachability from production to this machine's receiver port. Nothing
+  outbound is required: the worker calls no external service by design.
 
 ---
 
@@ -257,9 +276,10 @@ curl -s -X POST http://<worker>:8000/api/v1/memories \
   -d '{"content":"should be refused"}' | grep read_only
 ```
 
-Then log in and search. If search returns nothing, the embedding endpoint is
-unreachable — that is group E, and it is an operating requirement rather than a
-bug.
+Then log in and search. Results come from the keyword arm alone — semantic
+ranking is off here by design, so a query matching no *words* legitimately
+returns nothing even when a semantically similar memory exists. Unplug this
+machine from everything but the receiver's caller and it still serves.
 
 **The receiver is the only write door, and it writes files, not rows.** It holds
 no database connection at all; `backend/tests/test_worker_receiver.py` walks its

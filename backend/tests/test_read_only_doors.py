@@ -21,6 +21,8 @@ existed, and that pin is the point of the paired assertions below.
 """
 from __future__ import annotations
 
+import uuid
+
 import pytest
 from sqlalchemy import func, select
 
@@ -288,3 +290,128 @@ async def test_chat_refuses_before_any_llm_construction(
     )
     assert response.status_code == 403
     assert "read-only" in response.text.lower()
+
+
+# ---------------------------------------------------------------------------
+# The self-contained worker: no external service, no outbound connection
+#
+# Owner ruling 2026-09-03: a backup machine is for viewing and backup/restore
+# only, so every feature needing an external service is disabled there. The
+# argument is that a host whose whole job is surviving another machine's
+# failure must not itself depend on a third machine being reachable.
+#
+# Two shapes, and the split matters. A door that would SPEND on an external
+# service is refused up front -- the viewer role would stop the write, but
+# only after the money is gone. A read path that merely *uses* the embedder
+# degrades instead: search still answers, on its keyword arm alone.
+# ---------------------------------------------------------------------------
+
+EXTERNAL_SERVICE_DOORS = [
+    # (method, path, json) -- each reaches an LLM, an embedder or the network.
+    ("POST", "/api/v1/memories/reason", {"query": "anything"}),
+    ("POST", "/api/v1/documents/qa", {"question": "anything"}),
+    ("POST", "/api/v1/reembed/memories", None),
+    ("POST", "/api/v1/reembed/code-chunks", None),
+    ("POST", "/api/v1/reembed/entities", None),
+    ("POST", "/api/v1/reembed/all", None),
+    # Block search is cosine-only -- `search_blocks` ranks on
+    # `1 - (embedding <=> :vec)` with no keyword arm at all -- so there is
+    # nothing to degrade to. Returning empty would be indistinguishable from
+    # "no matches", so the door refuses instead.
+    ("POST", "/api/v1/documents/search", {"query": "anything"}),
+]
+
+
+@pytest.mark.parametrize("method,path,body", EXTERNAL_SERVICE_DOORS)
+async def test_external_service_doors_refuse_under_the_flag(
+    client, auth_headers, monkeypatch, method, path, body,
+):
+    """Refused before the call is made, not after the role rejects the write.
+
+    Every one of these dispatches an LLM or an embedder first and writes
+    second, so the SELECT-only role stops them only once the spend has already
+    happened -- the same reasoning that refuses chat at the door."""
+    monkeypatch.setattr(settings, "read_only", True)
+    response = await client.request(
+        method, path, headers=auth_headers, json=body,
+    )
+    assert response.status_code == 403, (
+        f"{method} {path} returned {response.status_code}, not a read-only refusal"
+    )
+    assert "read-only" in response.text.lower()
+
+
+@pytest.mark.parametrize("method,path,body", EXTERNAL_SERVICE_DOORS)
+async def test_those_doors_are_untouched_by_default(
+    client, auth_headers, method, path, body,
+):
+    """The regression pin: prod must behave exactly as it did before the flag.
+    Anything but a read-only 403 proves the guard is posture-scoped."""
+    response = await client.request(method, path, headers=auth_headers, json=body)
+    assert not (
+        response.status_code == 403 and "read-only" in response.text.lower()
+    ), f"{method} {path} refuses as read-only with the flag OFF"
+
+
+NETWORK_DOORS = [
+    ("POST", "/api/v1/repos", {"url": "https://example.com/x.git", "name": "x"}),
+    ("POST", f"/api/v1/repos/{uuid.uuid4()}/reindex", {}),
+    ("POST", f"/api/v1/repos/{uuid.uuid4()}/reindex-files", {"files": ["a.py"]}),
+]
+
+
+@pytest.mark.parametrize("method,path,body", NETWORK_DOORS)
+async def test_git_network_doors_refuse_under_the_flag(
+    client, auth_headers, monkeypatch, method, path, body,
+):
+    """A worker holds no clones, so these would fail anyway -- but they fetch
+    over the network before they fail, which is the outbound connection this
+    posture exists to remove."""
+    monkeypatch.setattr(settings, "read_only", True)
+    response = await client.request(method, path, headers=auth_headers, json=body)
+    assert response.status_code == 403, (
+        f"{method} {path} returned {response.status_code}, not a read-only refusal"
+    )
+    assert "read-only" in response.text.lower()
+
+
+async def test_search_answers_without_an_embedder_under_the_flag(monkeypatch):
+    """The point of the whole ruling: the viewer must not need a third machine.
+
+    Under the flag the semantic arm is skipped entirely rather than attempted
+    and caught -- `llm.embed` sits OUTSIDE `_run_channels`' one-sided-failure
+    guard, so an unreachable embedder does not degrade to keyword, it raises
+    out of the whole search. Skipping is also the honest reading of "disable
+    the features that need external services": not attempted, so not a
+    degradation to explain.
+    """
+    from app.services.hybrid_search import HybridSearchService
+
+    class _ExplodingLLM:
+        async def embed(self, _query):
+            raise AssertionError(
+                "read-only search must not reach the embedder at all"
+            )
+
+    monkeypatch.setattr(settings, "read_only", True)
+    service = HybridSearchService(session=None, llm=_ExplodingLLM())
+
+    captured = {}
+
+    async def _channels(query, vector, fingerprint, fetch_n, filters):
+        captured["vector"] = vector
+        captured["fingerprint"] = fingerprint
+        return [], [{"id": "kw", "score": 1.0}], False, False
+
+    monkeypatch.setattr(service, "_run_channels", _channels)
+    monkeypatch.setattr(service, "_ppr_search", lambda *a, **k: _none())
+    monkeypatch.setattr(service, "_dual_level_search", lambda *a, **k: _none())
+
+    results = await service.search("anything", limit=5)
+
+    assert captured["vector"] is None, "the semantic arm was handed a vector"
+    assert results, "keyword-only search returned nothing"
+
+
+async def _none():
+    return []
