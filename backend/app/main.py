@@ -20,6 +20,8 @@ from app.api.mcp.server import mcp as mcp_server, mcp_streamable_http_kwargs, se
 from app.api.spa import mount_spa
 from app.api.routes import analytics, api_keys as api_key_routes, git_accounts as git_account_routes, articles as articles_routes, auth, buffer as buffer_routes, chat, checkpoints as checkpoint_routes, code, config, distribution as distribution_routes, documents as documents_routes, dream_digest as dream_digest_routes, events as events_routes, facts as facts_routes, graph, hygiene_queue, jobs, knowledge_search as knowledge_search_routes, llm_providers, memories, overview as overview_routes, pipeline as pipeline_routes, pipeline_failures, projects as projects_routes, ratification as ratification_routes, reembed, repos, review_queue, setup, system, tags, topics as topics_routes, usage as usage_routes, vectors
 from app.api.websocket import websocket_endpoint
+from sqlalchemy.exc import DBAPIError
+
 from app.config import settings
 from app.schemas.envelope import ErrorDetail, ErrorEnvelope
 from app.services.events import reconcile_event_partitions
@@ -922,6 +924,34 @@ async def _validation_exception_handler(_request, exc: RequestValidationError):
     if location:
         message = f"{location}: {message}"
     return _error_response(422, "validation_error", message, errors)
+
+
+@app.exception_handler(DBAPIError)
+async def _read_only_refusal(_request, exc: DBAPIError):
+    """SQLSTATE 42501 -> 403 `read_only`, everything else untouched.
+
+    The SELECT-only viewer role refusing a write is the read-only worker
+    working as designed (review B1: enforcement below every code path). One
+    SQLSTATE check replaces the per-route allowlist the review rejected --
+    the route inventory rots, the error code cannot.
+
+    **The re-raise is the design, not a gap.** Raising from inside a Starlette
+    exception handler propagates to `ServerErrorMiddleware`, which reaches the
+    `Exception` handler just below and produces the ordinary 500 envelope. A
+    unique-violation or a syntax error therefore behaves exactly as it did
+    before this handler existed.
+
+    Registered on `DBAPIError` rather than `ProgrammingError` because that is
+    the base every driver-level error inherits from; asyncpg's
+    `InsufficientPrivilegeError.sqlstate` is where the code actually lives.
+    """
+    if getattr(getattr(exc, "orig", None), "sqlstate", None) == "42501":
+        return _error_response(
+            403,
+            "read_only",
+            "This instance is read-only; writes are refused at the database.",
+        )
+    raise exc
 
 
 @app.exception_handler(Exception)

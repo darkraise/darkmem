@@ -32,6 +32,7 @@ import asyncio
 import logging
 from collections.abc import Iterable
 
+from app.config import settings
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -127,6 +128,12 @@ def spawn_record_access(
     callers; useful for tests that want to await it deterministically
     instead of sleeping), or ``None`` when there is nothing to write.
     """
+    if settings.read_only:
+        # Increment 7 group B: a quiet no-op on the read-only worker.
+        # The SELECT-only viewer role is what actually enforces; this
+        # only stops an error being logged on every single read.
+        return None
+
     global _flush_task
     ids = [str(fid) for fid in fact_ids if fid]
     if not ids:

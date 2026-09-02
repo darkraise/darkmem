@@ -128,13 +128,19 @@ async def auth_logout(
     payload: TokenPayload = Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
-    expires_at = datetime.fromtimestamp(payload.exp, tz=timezone.utc)
-    session.add(TokenBlocklist(jti=payload.jti, expires_at=expires_at))
-    await record_event(
-        session, event_type="auth_logout", object_type="system",
-        payload={"sub": payload.sub},
-    )
-    await session.commit()
+    # C2 (increment 7): the cookie is cleared either way. Under the worker's
+    # read-only posture the blocklist insert would be refused by the viewer
+    # role and 500 the handler, leaving the operator logged in with no error
+    # they could act on. Stated cost, reported on GET /auth/security-posture:
+    # on the worker only, the cleared token stays valid until its own exp.
+    if not settings.read_only:
+        expires_at = datetime.fromtimestamp(payload.exp, tz=timezone.utc)
+        session.add(TokenBlocklist(jti=payload.jti, expires_at=expires_at))
+        await record_event(
+            session, event_type="auth_logout", object_type="system",
+            payload={"sub": payload.sub},
+        )
+        await session.commit()
 
     response = JSONResponse(content={"ok": True}, status_code=status.HTTP_200_OK)
     return clear_auth_cookie(response)
@@ -147,6 +153,18 @@ async def auth_change_password(
     payload: TokenPayload = Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
+    # C3 (increment 7): refused before the session is touched. Changing a
+    # snapshot's password is meaningless -- the next restore overwrites it --
+    # and a handler that failed halfway through the config UPDATE would leave
+    # the operator guessing which half landed.
+    if settings.read_only:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "read-only instance: the next restore would overwrite this "
+                "password anyway"
+            ),
+        )
     result = await session.execute(select(Config).where(Config.key == ADMIN_PASSWORD_KEY))
     config = result.scalar_one_or_none()
     if not config:
@@ -196,11 +214,18 @@ async def auth_refresh(
     # Rotating refresh: blocklist the presented jti before issuing a new token
     # so a captured pre-refresh token can't keep working until its 24h exp.
     # Refresh has no changed_at epoch backstop, so this is the only revocation.
-    session.add(TokenBlocklist(
-        jti=payload.jti,
-        expires_at=datetime.fromtimestamp(payload.exp, tz=timezone.utc),
-    ))
-    await session.commit()
+    #
+    # C1 (increment 7): skipped under the worker's read-only posture, because
+    # the SPA viewer this instance exists to serve would otherwise die
+    # silently at every access-token expiry. Losing the only revocation is a
+    # real cost and is reported as `read_only_token_rotation_disabled` on
+    # GET /auth/security-posture rather than left to a runbook.
+    if not settings.read_only:
+        session.add(TokenBlocklist(
+            jti=payload.jti,
+            expires_at=datetime.fromtimestamp(payload.exp, tz=timezone.utc),
+        ))
+        await session.commit()
 
     token = create_access_token({"sub": payload.sub})
     response = JSONResponse(content={"ok": True})

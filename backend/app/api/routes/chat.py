@@ -4,6 +4,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
+from app.config import settings
 from app.api.auth import require_auth
 from app.api.deps import get_chat_service
 from app.schemas.chat import (
@@ -18,6 +19,23 @@ from app.schemas.chat import (
 from app.services.chat import ChatService
 
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
+
+
+def refuse_when_read_only() -> None:
+    """C4 (increment 7): chat is unavailable on the read-only worker.
+
+    A dependency rather than a line in the handler, and declared *before*
+    `get_chat_service`, so the refusal happens before an orchestrator is
+    constructed at all. That ordering is the point: this door commits the
+    user message before the stream and then spends tokens on the snapshot's
+    restored credentials, so the failure the viewer role would stop is the
+    second one -- the money is already gone by then.
+    """
+    if settings.read_only:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="read-only instance: chat is unavailable on a backup worker",
+        )
 
 
 # ── Conversation CRUD ─────────────────────────────────
@@ -127,6 +145,7 @@ async def delete_conversation(
 async def chat_completion(
     body: CompletionRequest,
     _user=Depends(require_auth),
+    _read_only=Depends(refuse_when_read_only),
     service: ChatService = Depends(get_chat_service),
 ):
     async def event_stream():

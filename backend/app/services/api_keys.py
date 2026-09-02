@@ -53,6 +53,7 @@ import bcrypt
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.api_key import ApiKey
 from app.services.api_key_scopes import parse_scopes, read_scopes
 from app.services.events import (
@@ -291,6 +292,12 @@ async def mark_key_used(
     it is the authoritative record; this column is the operator's index into
     it.
     """
+    if settings.read_only:
+        # Increment 7 group B: the bump would be refused by the viewer role on
+        # every MCP call. Returning before the session is opened keeps a
+        # read-only worker's log about the worker rather than about this.
+        return
+
     from app.database import async_session_factory  # noqa: PLC0415
 
     try:
