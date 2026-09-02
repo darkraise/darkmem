@@ -88,55 +88,67 @@ async def lifespan(app: FastAPI):
         async with async_session_factory() as session:
             await embedder_registry.warm_cache_from_db(session)
 
-        # Permanent boot-time partition reconciliation (doc 19 §2). Runs on
-        # EVERY startup, after the migration and before anything embeds, so a
-        # fingerprint registered before a template was added gains the new
-        # parent, and a restored dump missing a child table regrows it. Every
-        # statement is IF NOT EXISTS, so the second boot is a no-op.
-        try:
-            async with async_session_factory() as session:
-                await embedder_registry.reconcile(session)
-        except Exception:
-            logger.exception("Boot-time partition reconciliation failed")
+        if settings.read_only:
+            # Increment 7's worker posture. The four reconciliations below all
+            # degrade under a caught exception, so the SELECT-only role would
+            # make them inert anyway -- but depending on a swallowed exception
+            # for correctness is the shape review B1 condemns, and a restored
+            # snapshot already carries every partition these would create.
+            logger.info(
+                "DARKMEM_READ_ONLY: boot reconciliations, project backfill and "
+                "embedder registration skipped; job registry will not be armed. "
+                "Enforcement is the database role, not this flag."
+            )
+        else:
+            # Permanent boot-time partition reconciliation (doc 19 §2). Runs on
+            # EVERY startup, after the migration and before anything embeds, so a
+            # fingerprint registered before a template was added gains the new
+            # parent, and a restored dump missing a child table regrows it. Every
+            # statement is IF NOT EXISTS, so the second boot is a no-op.
+            try:
+                async with async_session_factory() as session:
+                    await embedder_registry.reconcile(session)
+            except Exception:
+                logger.exception("Boot-time partition reconciliation failed")
 
-        # The events journal keeps its monthly children ahead of need on the
-        # same boot pass. A missing child does not degrade journaling, it stops
-        # it: a RANGE parent rejects any insert with no matching partition.
-        try:
-            async with async_session_factory() as session:
-                children = await reconcile_event_partitions(session)
-                await session.commit()
-            logger.info("events partitions reconciled: %s", ", ".join(children))
-        except Exception:
-            logger.exception("Boot-time events partition reconciliation failed")
+            # The events journal keeps its monthly children ahead of need on the
+            # same boot pass. A missing child does not degrade journaling, it stops
+            # it: a RANGE parent rejects any insert with no matching partition.
+            try:
+                async with async_session_factory() as session:
+                    children = await reconcile_event_partitions(session)
+                    await session.commit()
+                logger.info("events partitions reconciled: %s", ", ".join(children))
+            except Exception:
+                logger.exception("Boot-time events partition reconciliation failed")
 
-        # Backfill every DISTINCT memories.project into the registry on every
-        # boot (doc 04 §7, T2.07). Idempotent (`ON CONFLICT DO NOTHING`), so a
-        # restart with nothing new to backfill inserts zero rows; this is a
-        # reconciliation pass, not a migration, and lazy registration on
-        # capture (project_registry.register) is what keeps it caught up
-        # between boots.
-        try:
-            async with async_session_factory() as session:
-                inserted = await backfill_projects(session)
-                await session.commit()
-            logger.info("projects registry backfilled: %d row(s)", inserted)
-        except Exception:
-            logger.exception("Boot-time projects registry backfill failed")
+            # Backfill every DISTINCT memories.project into the registry on every
+            # boot (doc 04 §7, T2.07). Idempotent (`ON CONFLICT DO NOTHING`), so a
+            # restart with nothing new to backfill inserts zero rows; this is a
+            # reconciliation pass, not a migration, and lazy registration on
+            # capture (project_registry.register) is what keeps it caught up
+            # between boots.
+            try:
+                async with async_session_factory() as session:
+                    inserted = await backfill_projects(session)
+                    await session.commit()
+                logger.info("projects registry backfilled: %d row(s)", inserted)
+            except Exception:
+                logger.exception("Boot-time projects registry backfill failed")
 
-        llm_fp = llm.llm_fingerprint()
-        try:
-            llm_model_id, llm_dims = parse_fingerprint(llm_fp)
-            async with async_session_factory() as session:
-                await embedder_registry.register(
-                    session,
-                    EmbedderInfo(
-                        fingerprint=llm_fp, model_id=llm_model_id,
-                        dims=llm_dims, source="llm",
-                    ),
-                )
-        except Exception:
-            logger.exception("Failed to register LLM embedder %s at boot", llm_fp)
+            llm_fp = llm.llm_fingerprint()
+            try:
+                llm_model_id, llm_dims = parse_fingerprint(llm_fp)
+                async with async_session_factory() as session:
+                    await embedder_registry.register(
+                        session,
+                        EmbedderInfo(
+                            fingerprint=llm_fp, model_id=llm_model_id,
+                            dims=llm_dims, source="llm",
+                        ),
+                    )
+            except Exception:
+                logger.exception("Failed to register LLM embedder %s at boot", llm_fp)
 
         from app.api.websocket import event_manager
         pipeline = ProcessingPipeline(llm, async_session_factory, broadcast=event_manager.broadcast)
@@ -586,8 +598,13 @@ async def lifespan(app: FastAPI):
     # code_enrichment job config, if not already set. Tolerates an absent
     # enrichment_config row (it was created lazily by the removed
     # PUT /config/enrichment, so most installs never had it).
+    #
+    # Skipped under the worker's read-only posture. Unlike the boot
+    # reconciliations above, this write has no `try` around it: under the
+    # SELECT-only role it would not degrade, it would raise out of `lifespan`
+    # and the worker would never boot.
     _ce_cfg = await job_registry.load_config("code_enrichment")
-    if "batch_size" not in _ce_cfg.config:
+    if not settings.read_only and "batch_size" not in _ce_cfg.config:
         from app.models.config import Config as _Config
         from sqlalchemy import select as _select
         async with async_session_factory() as _s:
@@ -599,7 +616,13 @@ async def lifespan(app: FastAPI):
         await job_registry.set_config("code_enrichment", {"batch_size": _bs})
 
     app.state.job_registry = job_registry
-    await job_registry.start_all()
+    # Registration stays unconditional -- it is in-process, writes nothing, and
+    # keeps the Jobs page rendering on the worker. Only *arming* is gated: a
+    # job's LLM calls, git fetches and egress happen client-side of the
+    # database, so the viewer role never sees them, and `backup_ship` on a
+    # worker would ship snapshots of snapshots.
+    if not settings.read_only:
+        await job_registry.start_all()
 
     async with contextlib.AsyncExitStack() as stack:
         await stack.enter_async_context(mcp_server.session_manager.run())

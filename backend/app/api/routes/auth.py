@@ -224,6 +224,14 @@ class SecurityPostureResponse(BaseModel):
     rate_limit_max_failures: int
     rate_limit_window_seconds: float
     rate_limit_lockout_seconds: float
+    # The backup worker's posture. `read_only` is app-side ergonomics, never
+    # the guarantee -- the SELECT-only database role is what enforces. Reported
+    # here so an operator can tell which instance they are looking at.
+    read_only: bool
+    # The flag's stated cost, reported for the same reason `cookie_secure_clamped`
+    # is: under it a refresh reissues without blocklisting the token it
+    # replaces, so a captured pre-refresh token stays valid until its own exp.
+    read_only_token_rotation_disabled: bool
 
 
 def _parse_mcp_allowed_hosts(raw: str) -> list[str]:
@@ -257,6 +265,8 @@ async def auth_security_posture(
         rate_limit_max_failures=login_rate_limiter.max_failures,
         rate_limit_window_seconds=login_rate_limiter.window_seconds,
         rate_limit_lockout_seconds=login_rate_limiter.lockout_seconds,
+        read_only=settings.read_only,
+        read_only_token_rotation_disabled=settings.read_only,
     )
 
 

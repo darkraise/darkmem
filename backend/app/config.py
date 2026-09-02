@@ -2,7 +2,7 @@ import logging
 from typing import Literal
 from urllib.parse import quote
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import AliasChoices, BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 LLMApiKind = Literal[
@@ -72,6 +72,17 @@ class Settings(BaseSettings):
     database_url: str | None = None
     test_database_url: str = "postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test"
     jwt_secret: str = "darkmem-jwt-secret-change-me"
+    # The backup worker's app-side posture (spec §9.5 as redesigned after B1).
+    # NOT the enforcement: that is the SELECT-only `darkmem_viewer` role
+    # beneath every code path. This flag only (a) skips boot writers and never
+    # arms the job registry, (b) makes known write-on-read paths no-op instead
+    # of erroring under the role, (c) refuses the doors whose failure mode is
+    # money or a broken viewer session rather than a clean database refusal.
+    # A reader who takes away "the flag makes it read-only" has been misled.
+    read_only: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("DARKMEM_READ_ONLY", "READ_ONLY"),
+    )
     environment: str = "development"
     embedding_dimensions: int = 1024
     cors_origins: list[str] = []

@@ -123,3 +123,36 @@ async def test_never_leaks_a_credential(client, auth_headers, monkeypatch):
     raw = response.text
     assert "super-secret-jwt-value-xyz" not in raw
     assert "super-secret-db-password" not in raw
+
+
+# ---------------------------------------------------------------------------
+# The read-only worker's posture (increment 7, spec §9.5 as redesigned after B1)
+# ---------------------------------------------------------------------------
+
+
+async def test_read_only_defaults_off(client, auth_headers):
+    """Prod is the default posture, and it must be byte-identical to what it
+    was before the flag existed."""
+    body = (
+        await client.get("/api/v1/auth/security-posture", headers=auth_headers)
+    ).json()
+    assert body["read_only"] is False
+    assert body["read_only_token_rotation_disabled"] is False
+
+
+async def test_read_only_reports_the_token_rotation_cost(
+    client, auth_headers, monkeypatch,
+):
+    """The flag's cost is reported the way `cookie_secure_clamped` reports its
+    clamp. Under the flag a refresh no longer blocklists the token it replaces,
+    so a captured pre-refresh token stays valid until its own `exp` — an
+    operator must be able to read that off the posture rather than infer it
+    from a runbook."""
+    monkeypatch.setattr(settings, "read_only", True)
+
+    body = (
+        await client.get("/api/v1/auth/security-posture", headers=auth_headers)
+    ).json()
+
+    assert body["read_only"] is True
+    assert body["read_only_token_rotation_disabled"] is True

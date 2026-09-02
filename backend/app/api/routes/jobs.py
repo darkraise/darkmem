@@ -19,6 +19,7 @@ from sqlalchemy import func, select
 from app.api.auth import require_auth
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_session
 from app.models.job_run import JobRun
 from app.services.job_registry import FieldDescriptor, JobBusyError
@@ -196,6 +197,14 @@ async def trigger_job(
     request: Request,
     _user=Depends(require_auth),
 ) -> JobTriggerResponse:
+    # C5 (increment 7): a disarmed scheduler does not disarm this door. The
+    # trigger runs the job on demand, and an LLM or egress job spends money
+    # client-side of the database before anything the viewer role can refuse.
+    if settings.read_only:
+        raise HTTPException(
+            status_code=403,
+            detail="read-only instance: jobs cannot be triggered",
+        )
     registry = _get_registry(request)
     job = registry.get(key)
     if job is None:
