@@ -58,8 +58,12 @@ services:
       # Empty = localhost only. A worker has no reason to serve /mcp at all;
       # leave this unset unless an agent genuinely needs to read the snapshot.
       - MCP_ALLOWED_HOSTS=${MCP_ALLOWED_HOSTS:-}
+    # Published ports are variables, not literals: a worker validated beside an
+    # existing darkmem on one host -- which is how the bring-up is rehearsed --
+    # collides on every one of them otherwise. The defaults are what a
+    # dedicated worker machine wants.
     ports:
-      - "8000:8000"
+      - "${WORKER_APP_PORT:-8000}:8000"
     # No dumps mount, deliberately. The app neither reads nor writes
     # snapshots; only the receiver and the host-side restore loop touch them,
     # which is what makes "the receiver is the only write door" a shape rather
@@ -96,7 +100,7 @@ services:
       - RECEIVER_DIR=/dumps
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     ports:
-      - "8100:8100"
+      - "${WORKER_RECEIVER_PORT:-8100}:8100"
     volumes:
       # NOT under /root, and created on the host before first boot: the
       # container runs as the unprivileged `app` user and Docker does not chown
@@ -107,8 +111,13 @@ services:
       - ${DARKMEM_DUMP_DIR:-/srv/darkmem-dumps}:/dumps
     # No network at all beyond its own port: the receiver holds no database
     # connection, so it has nothing to reach on the stack network.
+    # Healthy means "serving AND the bearer guard is armed", so this asserts a
+    # 401 rather than accepting one. Note urlopen RAISES HTTPError on 4xx
+    # instead of returning a response -- a check that read `.status` never
+    # passed, which is how this container sat unhealthy while working
+    # perfectly (found rehearsing the bring-up, 2026-09-02).
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8100/snapshots', timeout=5).status in (200,401) else 1)"]
+      test: ["CMD", "python", "-c", "import urllib.request,urllib.error,sys\ntry:\n    urllib.request.urlopen('http://localhost:8100/snapshots', timeout=5)\nexcept urllib.error.HTTPError as e:\n    sys.exit(0 if e.code == 401 else 1)\nexcept Exception:\n    sys.exit(1)\nsys.exit(1)"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -123,7 +132,7 @@ services:
     ports:
       # Host loopback only. The restore loop runs on this host and needs it;
       # nothing off-box does.
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${WORKER_DB_PORT:-5432}:5432"
     shm_size: 256mb
     volumes:
       - postgres_data:/var/lib/postgresql/data

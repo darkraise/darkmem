@@ -933,3 +933,45 @@ def test_the_legacy_invocation_is_byte_compatible(tmp_path):
     assert result.returncode == 0, result.stderr
     records = [_record_fields(ln) for ln in log_path.read_text().splitlines() if ln]
     assert not any("backup_pull" in " ".join(f) for f in records)
+
+
+def test_worker_ports_are_overridable():
+    """A worker rehearsed beside an existing darkmem on one host collides on
+    every published port, and that rehearsal is how the runbook gets checked
+    before a second machine exists. The defaults are what a dedicated worker
+    wants; the variables are what makes the rehearsal possible."""
+    services = _compose(WORKER_COMPOSE)["services"]
+    published = " ".join(
+        port
+        for service in services.values()
+        for port in (service.get("ports", []) or [])
+    )
+    for var in ("WORKER_APP_PORT", "WORKER_RECEIVER_PORT", "WORKER_DB_PORT"):
+        assert var in published, f"{var} is not overridable"
+    # Postgres stays bound to host loopback whatever the port is: the restore
+    # loop needs it and nothing off-box does.
+    assert "127.0.0.1:${WORKER_DB_PORT" in published
+
+
+def test_the_receiver_healthcheck_asserts_the_bearer_guard_is_armed():
+    """Two things this must get right, and the first one bit.
+
+    `urllib.request.urlopen` RAISES `HTTPError` on 4xx rather than returning a
+    response, so a check reading `.status` on an endpoint that answers 401 can
+    never pass -- the container sits unhealthy while serving perfectly.
+
+    And the right expectation is 401, not "200 or 401": an unauthenticated GET
+    that succeeded would mean the bearer guard is not armed, which is the one
+    failure a snapshot store must never boot into.
+    """
+    check = " ".join(
+        _compose(WORKER_COMPOSE)["services"]["receiver"]["healthcheck"]["test"]
+    )
+    assert "HTTPError" in check, (
+        "the healthcheck must handle urlopen raising on 401, not read .status"
+    )
+    assert "401" in check
+    assert "200" not in check, (
+        "an unauthenticated 200 means the bearer guard is not armed; the "
+        "healthcheck must not accept it"
+    )
