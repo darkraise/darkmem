@@ -19,6 +19,18 @@
 **Spec:** `docs/superpowers/specs/2026-08-31-project-artifact-store-design.md` §8 (as redesigned), §5.2-5.3 (the content column and CAS it builds on), §8.5 (dependencies).
 **Review:** B2 (upheld against the old §8; the redesign this plan implements is the answer), M5 (the editor ADR — taken in §8.3, recorded above).
 
+**Amendments (2026-09-02, cross-plan adversarial review of all eight plans).** This plan carried the most defects of the eight, and three of them are design changes rather than corrections — read this list before executing any of Tasks 2, 4, 5, 6 or 8.
+
+- **M-2 (the conversion was lossy and silent).** Block-first conversion regenerates `documents.content` from the tree, but the tree does not contain frontmatter, thematic breaks, HTML blocks or link-reference definitions. Any `capture`-scoped caller could have converted a corpus document and silently dropped them, contradicting spec §4.5 and §8.2's "never regenerated". Fixed two ways: the serialiser re-emits frontmatter from `documents.properties.frontmatter` (increment 2 stores it, so nothing is lost there), and conversion is now **guarded by a fidelity check** that refuses rather than converting when the round trip would not reproduce the stored source. Tasks 1, 2 and 4.
+- **M-3 (the direction refusal was check-then-act).** Both the put's refusal and `_mutate` read the direction, then write across `await` boundaries with no row lock — the same M1 race increment 3 spent its Task 3 closing, re-opened on the predicate that protects an editing session. Both writers now take `FOR UPDATE` on the document row as the first statement inside their savepoint. Task 4, and increment 3's put.
+- **M-8 (a move never persisted).** `_PLACE` wrote `order_index`/`char_span`/`properties` and `_UPDATE_BLOCK` — the only statement writing `parent_id` — ran only for `updated`, so `move_block` reordered without reparenting. `_PLACE` now carries `parent_id`. Task 4.
+- **M-4** — `DocumentIsBlockFirst` had a 409 on REST and no shape at all on MCP, where the agent (the likelier caller) would get an unstructured tool error. Task 6 adds a `direction_conflict` envelope beside increment 3's `hash_conflict`.
+- **M-7** — the editor's "storage format and edit format are identical, so there is no conversion step" claim was false at block granularity: `text` is marker-stripped and `properties` is on neither read surface, so Task 8 hand-rolled a promotion regex that *is* a conversion step. New Task 5a serves `properties` and the block's own `source` on both doors; the editor now edits real source. This also closes the deviation increment 4 recorded for the library `table` component.
+- **B-2 arithmetic** — Task 6 stated literal parity headline totals (72→73, 23→24) computed before increments 6 and 7 existed; both add a surface. It now recomputes from the derived assertion. Also `m-14`: the headline is at `docs/two-door-parity.md:13`, not `:14`.
+- **m-2, m-9, m-10** — the second "all 34 tools" occurrence at `scopes.py:10`, `document-tree.tsx` listed as *Modify* against a "nothing is rewritten" promise, and `derive_markers`' two different signatures.
+
+Tasks 1, 3, 5, 7, 9, 10 and 11 were otherwise found sound, and the components this plan consumes from increment 4 (`BlockView`, `DocumentTree`, `buildUriTree`, the documents query keys) were verified to match increment 4's emitted signatures exactly.
+
 ## Prerequisites
 
 1. **Increment 3 landed and deployed** — hard dependency. This plan consumes: `documents.content TEXT NULL` written by `put_document`; `compute_content_hash` unchanged (`backend/app/services/document_ingest.py`, sha256 over UTF-8); the `include_content` read flag. If increment 3's plan (written in parallel with this one) spells any of these differently, reconcile **at execution against its landed code**, not by guessing here.
@@ -29,7 +41,7 @@
 
 - **`block_update` takes an optional `type`** (spec §8.1's table says text and properties only). Without it, turning a paragraph into a heading is a delete-plus-insert that discards the block's id and vector for a label change. The type is normalised through `normalize_block_type` like every stored type (taxonomy rule: the writer normalises).
 - **The spec's "a move renumbers its sibling run — O(siblings), not O(document)" does not survive contact with the shipped semantics, and the code wins.** `order_index` is a *global* reading-order sequence (`tests/test_block_pipeline.py:256` pins "reading order is strictly increasing across the whole tree"; `document_blocks` and `_OUTLINE` sort by it flat, `backend/app/services/document_door.py:609-651`), and the serialiser rewrites every subsequent block's `char_span` per edit regardless. The honest cost model: **one edit = one bulk placement UPDATE over the document's blocks (order_index + char_span) plus one document-row write, with re-embedding confined to the touched block.** O(document) rows, one statement, zero extra embeds — cheaper where it matters (the embed), not where it reads nicely.
-- **§5.3's `expected_hash` compare-and-set is not consumed by the block verbs.** §8.4 fixes block-first concurrency as single-user last-write-wins per block; what protects an editing session from a concurrent `document_put` is the direction refusal, which is unconditional rather than hash-gated.
+- **§5.3's `expected_hash` compare-and-set is not consumed by the block verbs.** §8.4 fixes block-first concurrency as single-user last-write-wins per block; what protects an editing session from a concurrent `document_put` is the direction refusal. **Amended 2026-09-02 (review M-3):** this originally added "which is unconditional rather than hash-gated", implying unconditional was the stronger property. It is not — an unconditional predicate evaluated in a *separate read* before the write is check-then-act, and a compare-and-set at least fails loudly. The refusal is now taken under a `FOR UPDATE` row lock held by both writers, with the direction predicate also riding the put's own UPDATE and zero-rows treated as a refusal. Unconditional-and-locked is the stronger property; unconditional-and-unlocked was the weaker one.
 
 ## Global Constraints
 
@@ -56,7 +68,8 @@ backend/app/services/block_verbs.py            # Task 4 (create): the four verbs
 backend/tests/test_block_verbs.py              # Task 4 (create)
 backend/tests/test_block_retrieval.py          # Task 4: module set += 2
 backend/tests/test_block_pipeline.py           # Task 4: closure seed += 1
-backend/app/api/routes/documents.py            # Task 5: four routes
+backend/app/services/document_door.py          # Task 5a: BlockRow += properties, source
+backend/app/api/routes/documents.py            # Task 5a: BlockRowModel; Task 5: four routes
 backend/tests/test_api/test_rest_conformance.py # Task 5: status table += 4
 backend/tests/test_document_routes.py          # Task 5: extend
 backend/app/api/mcp/server.py                  # Task 6: four tools
@@ -66,8 +79,7 @@ docs/two-door-parity.md                        # Task 6: regenerate
 backend/tests/test_mcp_auth.py                 # Task 6: stale-count docstring
 frontend/src/hooks/api/use-blocks-api.ts       # Task 7 (create)
 frontend/src/features/documents/components/block-editor.tsx  # Task 8 (create)
-frontend/src/features/documents/components/documents-view.tsx # Task 9: edit mode + new page
-frontend/src/features/documents/components/document-tree.tsx  # Task 9: nodeActions consumer
+frontend/src/features/documents/components/documents-view.tsx # Task 9: edit mode, new page, nodeActions consumer
 CLAUDE.md                                      # Task 10: Documents + MCP count updates
 docs/agent-conventions.md                      # Task 10: block-first note
 CHANGELOG.md                                   # Task 11
@@ -84,6 +96,18 @@ CHANGELOG.md                                   # Task 11
 **Interfaces:**
 - Consumes: nothing at runtime (pure); tests consume `parse_markdown` for round-trip assertions.
 - Produces: `serialize_tree` and `derive_markers` — the core Task 4 builds on.
+
+**Signatures, fixed here rather than deferred** (review m-10): this plan spelled `derive_markers` two ways — `derive_markers(tree, content)` in this task and `derive_markers(tree, meta["content"], spans)` in Task 4. **The three-argument form is correct** and is what both tasks use: the spans are what let it read each block's own marker out of the source, and without them it would have to re-parse. The signature is:
+
+```python
+def derive_markers(
+    tree: list[TreeBlock],
+    content: str,
+    spans: dict[UUID, tuple[int, int]],
+) -> list[TreeBlock]
+```
+
+A block with no span in `spans` keeps its properties unchanged — it was minted by a verb, not parsed, so there is no source to read a marker from.
 
 **Implementer:** dcc-superpower-companions:impl-opus-medium
 **Evaluation:** files 1 - spec 0 - coupling 2 - risk 2 = 5
@@ -117,6 +141,12 @@ def _skeleton(blocks) -> list[tuple]:
     ...
 
 
+def _spans_of(source: str) -> dict:
+    """{block id: char_span} for a freshly parsed tree — what derive_markers
+    and reproduces_source read each block's own marker out of."""
+    ...
+
+
 ROUND_TRIP_SOURCES = [
     "# Title\n\nA paragraph with **bold** and `code`.",
     "# H1\n\n## H2\n\ndeeper prose\n\n## H2 again",
@@ -126,6 +156,20 @@ ROUND_TRIP_SOURCES = [
     "```python\nprint('hi')\n```",
     "| Name | Age |\n|---|---:|\n| Ann | 3 |\n| Bo | 4 |",
     "# Doc\n\npara\n\n- item\n  - sub\n\n> quote\n\n```\ncode\n```",
+    # Review M-2: frontmatter round-trips because increment 2 files it into
+    # documents.properties.frontmatter, so the serialiser can re-emit it.
+    "---\ntitle: The Plan\nstatus: draft\n---\n\n# Title\n\nprose",
+]
+
+# Shapes the parser drops on the floor: `hr` and `html_block` mint no block
+# (document_parsers.py:211-213) and markdown-it consumes link-reference
+# definitions into `env`. NOTHING can serialise them back, so a document
+# containing one must REFUSE conversion rather than silently lose it
+# (review M-2). These are the guard's fixtures, not the round trip's.
+NON_CONVERTIBLE_SOURCES = [
+    "para one\n\n---\n\npara two",                    # thematic break
+    "before\n\n<div class='x'>raw</div>\n\nafter",    # html_block
+    "see [the doc][ref]\n\n[ref]: https://example.test",  # link reference
 ]
 
 
@@ -179,9 +223,33 @@ def test_a_code_block_containing_backticks_gets_a_longer_fence():
 def test_derive_markers_reads_the_marker_out_of_the_source():
     source = "* star item\n\n1) paren ordered"
     tree = _tree_from_drafts(parse_markdown(source))
-    derived = derive_markers(tree, source)
+    derived = derive_markers(tree, source, _spans_of(source))
     markers = [b.properties.get("marker") for b in derived if b.type == "list"]
     assert markers == ["*", "1)"]
+
+
+@pytest.mark.parametrize("source", ROUND_TRIP_SOURCES)
+def test_reproduces_source_reports_true_for_every_round_trip_fixture(source):
+    tree = _tree_from_drafts(parse_markdown(source))
+    assert reproduces_source(tree, source, _spans_of(source)) is True
+
+
+@pytest.mark.parametrize("source", NON_CONVERTIBLE_SOURCES)
+def test_reproduces_source_refuses_what_the_parser_dropped(source):
+    """Review M-2: the serialiser cannot emit these, so the guard that
+    gates conversion must say so. A False here is the whole protection
+    against a block verb silently rewriting a corpus document without its
+    frontmatter fence, its rules or its link definitions."""
+    tree = _tree_from_drafts(parse_markdown(source))
+    assert reproduces_source(tree, source, _spans_of(source)) is False
+
+
+def test_frontmatter_is_re_emitted_from_document_properties():
+    source = "---\ntitle: T\n---\n\n# H\n\nbody"
+    tree = _tree_from_drafts(parse_markdown(source))
+    out = serialize_tree(tree, frontmatter="title: T")
+    assert out.content.startswith("---\ntitle: T\n---\n")
+    assert "# H" in out.content
 
 
 def test_a_parent_cycle_raises_instead_of_hanging():
@@ -195,6 +263,14 @@ def test_a_parent_cycle_raises_instead_of_hanging():
 ```
 
 Run: FAIL (module absent).
+
+**Two additions the review forced into this module** (M-2), both pure and both covered by the tests above:
+
+1. **`serialize_tree(tree, *, frontmatter: str | None = None)`** re-emits a leading `---` fence when `frontmatter` is given. Increment 2 files the frontmatter text into `documents.properties.frontmatter`, so this is a stored value being restored, not a reconstruction — and without it every conversion of a corpus document would drop its front fence. The emitted fence is counted in the spans exactly as the parser counts it (`document_parsers.py`'s "spans point at the source" contract, kept by increment 2's offset shift).
+
+2. **`reproduces_source(tree, content, spans) -> bool`** — the conversion guard. It serialises the tree (with the frontmatter it was given) and reports whether the result reproduces `content` modulo trailing whitespace. This is the honest boundary: the parser drops `hr`, `html_block` and link-reference definitions, nothing in the tree records them, and no serialiser can invent them back. Rather than converting lossily and telling nobody, Task 4 refuses conversion when this returns `False`.
+
+   **Do not "fix" this by widening the comparison until it passes.** A tolerant comparison is exactly the silent loss the guard exists to prevent. The way to make more documents convertible is to make the *parser* preserve those shapes as blocks — a parser change, in increment 2's lane, not in this plan.
 
 - [ ] **Step 2: Write the module**
 
@@ -449,11 +525,35 @@ BLOCK_FIRST = "blocks"
 class DocumentIsBlockFirst(ValueError):
     """put refused: this document is owned by the block verbs (spec §8.2 —
     a content push over an editing session is a silent overwrite)."""
+
+
+class DocumentNotConvertible(ValueError):
+    """block verb refused: this content-first document contains source the
+    parser does not represent as blocks (a thematic break, a raw HTML block
+    or a link-reference definition), so converting it to block-first would
+    regenerate `content` without them (review M-2, 2026-09-02).
+
+    Spec section 4.5 promises generated-region markers survive in the stored
+    raw content and section 8.2 promises a content-first document's content
+    is never regenerated. Converting lossily would break both silently, on a
+    corpus this programme exists to hold. Refusing is the honest outcome
+    until the parser represents those shapes.
+    """
 ```
 
-In `put_document`, before the `begin_nested` filing (after the `MAX_CONTENT_CHARS` check):
+In `put_document`, **inside** the `begin_nested` filing and after the document row has been resolved — not before it (review M-3, 2026-09-02). A `SELECT` before the savepoint is check-then-act: the block verbs can convert the document between this read and the put's own `_UPDATE_DOCUMENT`, which writes `properties` wholesale and would erase `ingest_direction` while `strip_blocks` deletes the rows an editing session just placed. That is the exact M1 race increment 3 spent its Task 3 closing, re-opened on the predicate that protects an editing session — and "unconditional rather than hash-gated" (this plan's own deviation note) is *weaker* here, not stronger, because a compare-and-set at least fails loudly.
+
+So: take the row lock first, then read the direction under it.
 
 ```python
+    # Review M-3: the lock is what makes the refusal a decision rather than
+    # a guess. Both writers of this row take it as their first statement
+    # inside the savepoint, so a conversion and a put serialise instead of
+    # interleaving.
+    await session.execute(
+        text("SELECT id FROM documents WHERE id = CAST(:id AS uuid) FOR UPDATE"),
+        {"id": str(document_id)},
+    )
     direction = (
         await session.execute(_DIRECTION_SQL, {"project": project, "uri": uri})
     ).scalar_one_or_none()
@@ -467,6 +567,10 @@ In `put_document`, before the `begin_nested` filing (after the `MAX_CONTENT_CHAR
 ```
 
 with `_DIRECTION_SQL = text("SELECT properties->>'ingest_direction' FROM documents WHERE project = CAST(:project AS text) AND uri = CAST(:uri AS text)")`. The guard is the **door's**, deliberately — the same layer that owns `MAX_CONTENT_CHARS`/`MAX_BLOCKS`; `file_document` stays unguarded for in-process callers exactly as it is for the bounds.
+
+A brand-new document has no row to lock, and that is correct rather than a hole: there is nothing to convert and nothing to overwrite, so the insert path skips both statements. Carry increment 3's discipline for the predicate that *is* on the write: where `_UPDATE_DOCUMENT` writes a content-first document, its `WHERE` also carries `AND COALESCE(properties->>'ingest_direction', '') <> 'blocks'`, and **zero rows updated is a refusal, not a success** — the same rowcount check increment 3's Task 3 established for `expected_hash`. Belt and braces on purpose: the lock orders the writers, the predicate means a missed lock still cannot overwrite.
+
+**Note for the read-only worker (increment 7).** `FOR UPDATE` needs row-lock privilege beyond `SELECT`, so this statement fails under the `darkmem_viewer` role with SQLSTATE 42501 — which increment 7's global handler already maps to a 403. That is the correct behaviour (a put is a write and must refuse there), but it means `document_door` is a **writer** module for the purposes of increment 7's Task 5 `FOR UPDATE` scan and must not be listed among the pure-read modules that assert no row locks. Increment 7's plan has been corrected accordingly; if that correction is missing when this lands, fix it there rather than dropping the lock here.
 
 - [ ] **Step 3: Tests**
 
@@ -652,7 +756,8 @@ _RESOLVE_BLOCK = text(
     "WHERE id = CAST(:id AS uuid)"
 )
 _DOC_META = text(
-    "SELECT project, content, properties->>'ingest_direction' AS direction "
+    "SELECT project, content, properties->>'ingest_direction' AS direction, "
+    "       properties->>'frontmatter' AS frontmatter "
     "FROM documents WHERE id = CAST(:id AS uuid)"
 )
 _LOAD_TREE = text(
@@ -665,14 +770,23 @@ _PLACE = text(
     UPDATE blocks b
     SET order_index = u.ord,
         char_span = CAST(CAST(u.span AS text) AS int4range),
-        properties = CAST(u.props AS jsonb)
+        properties = CAST(u.props AS jsonb),
+        parent_id = CAST(u.parent AS uuid)
     FROM (SELECT unnest(CAST(:ids AS uuid[])) AS id,
                  unnest(CAST(:ords AS integer[])) AS ord,
                  unnest(CAST(:spans AS text[])) AS span,
-                 unnest(CAST(:props AS text[])) AS props) u
+                 unnest(CAST(:props AS text[])) AS props,
+                 unnest(CAST(:parents AS text[])) AS parent) u
     WHERE b.id = u.id
     """
 )
+# Review M-8, 2026-09-02: `parent_id` is the fourth unnest and it is not
+# optional. Without it the only statement writing parent_id is _UPDATE_BLOCK,
+# which runs only for verb == "updated", so move_block reordered its target
+# without ever reparenting it -- the verb silently did half its job. The
+# placement pass already rewrites the whole document's order and spans, so
+# carrying parentage in the same statement is both correct and free. NULL
+# parents ride as NULL through the text[] cast (root-level blocks).
 _INSERT_BLOCK = text(
     "INSERT INTO blocks (id, document_id, parent_id, order_index, type, text, properties) "
     "VALUES (CAST(:id AS uuid), CAST(:doc AS uuid), CAST(:parent AS uuid), "
@@ -699,6 +813,23 @@ The shared pass (private; each verb builds a mutation closure over the loaded tr
 
 ```python
 async def _mutate(session, llm, *, document_id, apply, touched_embed, verb, block_id):
+    # Review M-3: lock the document row before reading anything off it. The
+    # whole pass -- load tree, serialise in Python across awaits, place rows
+    # -- is a read-modify-write, and put_document takes the same lock, so the
+    # two serialise instead of interleaving into a tree whose blocks were
+    # stripped underneath it.
+    async with session.begin_nested():
+        await session.execute(
+            text("SELECT id FROM documents WHERE id = CAST(:id AS uuid) FOR UPDATE"),
+            {"id": document_id},
+        )
+        return await _mutate_locked(
+            session, llm, document_id=document_id, apply=apply,
+            touched_embed=touched_embed, verb=verb, block_id=block_id,
+        )
+
+
+async def _mutate_locked(session, llm, *, document_id, apply, touched_embed, verb, block_id):
     meta = (await session.execute(_DOC_META, {"id": document_id})).mappings().first()
     if meta is None:
         raise BlockTargetUnresolved("document not found")
@@ -709,11 +840,27 @@ async def _mutate(session, llm, *, document_id, apply, touched_embed, verb, bloc
              if r["lo"] is not None and r["hi"] is not None}
 
     if meta["direction"] != BLOCK_FIRST and meta["content"]:
-        tree = derive_markers(tree, meta["content"], spans)   # conversion pass
+        # Conversion pass. Review M-2: refuse rather than convert when the
+        # serialiser cannot reproduce the stored source -- the parser drops
+        # hr, html_block and link-reference definitions, and regenerating
+        # content without them is silent loss on exactly the corpus this
+        # programme exists to hold.
+        tree = derive_markers(tree, meta["content"], spans)
+        if not reproduces_source(tree, meta["content"], spans,
+                                 frontmatter=meta["frontmatter"]):
+            raise DocumentNotConvertible(
+                "this document contains source the block editor cannot "
+                "represent (a thematic break, a raw HTML block or a link "
+                "reference definition). Editing it as blocks would rewrite "
+                "the file without them. Edit it with document_put instead."
+            )
 
     tree, inserted, deleted_subtree = apply(tree)             # in-memory mutation
 
-    result = serialize_tree(tree)
+    # Frontmatter rides every serialisation, not only the conversion: an
+    # ordinary edit of an already-block-first document would otherwise drop
+    # the fence on the first save (review M-2).
+    result = serialize_tree(tree, frontmatter=meta["frontmatter"])
     if len(result.content) > MAX_CONTENT_CHARS:
         raise DocumentTooLarge(...)
     if len(tree) > MAX_BLOCKS:
@@ -768,11 +915,11 @@ async def delete_block(session, *, block_id) -> BlockWriteResult
 Semantics each closure implements against the in-memory tree:
 - **update**: replace text (and type via `normalize_block_type` when given; merge `properties`). Refuse a missing id (`BlockTargetUnresolved`). Embed the block.
 - **insert**: mint `new_id()`, type normalised; position = after `after_block_id` among the target parent's children, or first child when `None`; `parent_id=None` = root level. `after_block_id` not a child of the target parent → `BlockTargetUnresolved`. Embed the new block.
-- **move**: reparent + reposition; `new_parent_id` inside the moved block's own subtree → `BlockCycleError`. No embed (text unchanged).
+- **move**: reparent + reposition; `new_parent_id` inside the moved block's own subtree → `BlockCycleError`. No embed (text unchanged). **Its test must re-read the row from the database and assert `parent_id` actually changed**, not merely that the verb returned a result — the defect this fixes (M-8) would have passed any assertion made against the returned object or the in-memory tree.
 - **delete**: remove the subtree (computed from the loaded tree, root-first list handed to the withdrawal). No embed; the FK cascades take rows and vectors.
 - **resolution**: `update`/`move`/`delete` resolve `document_id` through `_RESOLVE_BLOCK`; a miss is `BlockTargetUnresolved`.
 
-`_PLACE`'s `props` array carries each block's (possibly marker-backfilled) properties as JSON text — the conversion writes markers in the same bulk statement; blocks with unchanged properties round-trip their own value.
+`_PLACE`'s `props` array carries each block's (possibly marker-backfilled) properties as JSON text — the conversion writes markers in the same bulk statement; blocks with unchanged properties round-trip their own value. Its `parents` array carries every block's parentage from the mutated in-memory tree, which is what makes `move_block` actually persist (review M-8); `_UPDATE_BLOCK` keeps writing `parent_id` too, harmlessly, since both derive from the same tree.
 
 - [ ] **Step 3: Classify the new modules in the firewall scans — same task, not a follow-up**
 
@@ -782,6 +929,35 @@ Semantics each closure implements against the in-memory tree:
 - [ ] **Step 4: Run**
 
 `cd backend && .venv/bin/python -m pytest tests/test_block_verbs.py tests/test_block_retrieval.py tests/test_block_pipeline.py -q`, then full `pytest -q`.
+
+---
+
+### Task 5a: Serve `properties` and each block's own source on the block read
+
+**Files:**
+- Modify: `backend/app/services/document_door.py` (`BlockRow`, `_BLOCKS`, `document_blocks`)
+- Modify: `backend/app/api/routes/documents.py` (`BlockRowModel`)
+- Modify: `backend/tests/test_document_door.py`, `backend/tests/test_document_routes.py`, `backend/tests/test_mcp.py`
+
+**Interfaces:**
+- Produces: `BlockRow.properties` and `BlockRow.source`, on both doors through the one service read — consumed by Task 8's editor and by increment 4's table render.
+
+**Implementer:** dcc-superpower-companions:impl-sonnet-medium
+
+**Why this task exists** (cross-plan review M-7, 2026-09-02). This plan's header claims "storage format and edit format being identical is what removes the conversion step where round-trip fidelity dies". That claim is false at block granularity as the plan stood, and Task 8 proved it by hand-rolling a promotion regex — which *is* a conversion step:
+
+- `blocks.text` is stored **marker-stripped** (`document_parsers.py:25-31`): a level-2 heading's text is `Foo`, not `## Foo`.
+- `properties` — which carries `level` for headings, `marker` for list items, and increment 2's `{header, alignments}` / `{cells}` for tables — is on **neither** read surface (`BlockRow`, `document_door.py:601-606`; `BlockRowModel`, `routes/documents.py:246-251`).
+
+So the editor could not show a heading's level or a list's marker, had no way to demote a heading back to a paragraph, and increment 4 could not render tables through the library `table` component the spec §2 requires. One additive read closes all three.
+
+- [ ] **Step 1: Failing tests.** `properties` round-trips on the blocks read for a heading (`{"level": 2}`) and a list item with a marker; `source` for each block equals `content[char_span]` exactly, including its marker; `source` is `None` when the document has no `content` (a bytes-filed row) or the block has no span; the MCP `document_blocks` payload carries both fields.
+
+- [ ] **Step 2: Implement.** Add `properties: dict | None` and `source: str | None` to `BlockRow` and `BlockRowModel`. `_BLOCKS` gains `properties` and joins the document's `content` so `source` is sliced server-side from `char_span` — the caller must never have to fetch the whole document and slice it itself, which would make every editor keystroke depend on a second read. One service function, both doors (invariant 17); no new route and no new tool, so `PARITY_TABLE` does not move and `sdks/generate.py` stays a zero-diff check.
+
+- [ ] **Step 3:** `pytest tests/test_document_door.py tests/test_document_routes.py tests/test_mcp.py -q`, then full `pytest -q`.
+
+**This also closes increment 4's recorded deviation** (its Task 5 Step 1 note): with `properties` served, `table` can render through the library component as spec §2 says. Landing this before increment 4's UI work is not required, but whoever lands it should strike that deviation note.
 
 ---
 
@@ -864,7 +1040,37 @@ Each keyed handler first confirms the block belongs to the path's document (the 
 
 - [ ] **Step 1: Four tools**, each the thin twin of its REST route, session posture identical to `document_put` (`server.py:614-650` — own session, rollback on raise, `json.dumps(vars(result))`). Signatures mirror the service: `block_update(block_id, text, type=None, properties=None)`, `block_insert(document_id, type, text, parent_id=None, after_block_id=None, properties=None)`, `block_move(block_id, new_parent_id=None, after_block_id=None)`, `block_delete(block_id)`. No `ctx`/`source` resolution — the verbs journal `blocks_edited` themselves and the editor's identity question is the session's, not a capture header's. Tool descriptions state the direction rule ("only for block-first documents; a document filed with document_put converts on the first block verb, after which document_put refuses it").
 
-- [ ] **Step 2: Scopes.** `CAPTURE_TOOLS` += the four (capture is the writer scope; these are writers). Update `scopes.py:21`'s docstring count (34 → 38) and `test_mcp_auth.py:395`'s docstring likewise — both are invariant-23 "full list" sentences whose referent moves here. The derived assertion at `:421` passes untouched, which is the point of deriving it.
+- [ ] **Step 1b: The two refusals need MCP wire shapes, not just REST status codes** (cross-plan review M-4, 2026-09-02)
+
+`DocumentIsBlockFirst` gets a 409 on REST (Task 5) and, as this plan stood, **nothing on MCP**: increment 3's `document_put` tool catches `DocumentHashConflict` into a `hash_conflict` envelope and re-raises everything else (`server.py:641-649` as amended by increment 3), so the agent — the caller most likely to hit this, since these tools are capture-scoped — would get an unstructured tool error where the SPA gets a structured 409. Increment 3's own argument for the envelope applies verbatim: the caller made no mistake, it lost a race, and it should be able to machine-read the outcome and recover.
+
+Add to increment 3's `document_put` try/except, beside `hash_conflict`:
+
+```python
+        except DocumentIsBlockFirst as exc:
+            await session.rollback()
+            return json.dumps({
+                "status": "direction_conflict",
+                "document_uri": uri,
+                "project": project,
+                "reason": str(exc),
+            })
+```
+
+and give the four block tools the same treatment for `DocumentNotConvertible`, whose REST twin is a 409 too:
+
+```python
+        except DocumentNotConvertible as exc:
+            await session.rollback()
+            return json.dumps({
+                "status": "not_convertible", "block_id": block_id,
+                "reason": str(exc),
+            })
+```
+
+Both refusals are outcomes a caller should handle, not crashes. Task 5 carries the REST halves (`DocumentIsBlockFirst` → 409, `DocumentNotConvertible` → 409 with a detail naming what the document contains), and the parity row in Step 3 states **both** wire shapes rather than only the route's.
+
+- [ ] **Step 2: Scopes.** `CAPTURE_TOOLS` += the four (capture is the writer scope; these are writers). Update `scopes.py:21`'s docstring count (34 → 38), **and the second occurrence in the same file at `scopes.py:10`** — "one such call as the first statement of all 34 tools - is 34 chances to omit one" — which this plan missed (review m-2, 2026-09-02); both numbers move together. Then `test_mcp_auth.py:395`'s docstring likewise. All three are invariant-23 "full list" sentences whose referent moves here. The derived assertion at `:421` passes untouched, which is the point of deriving it.
 
 - [ ] **Step 3: Parity.** Add one `PARITY_TABLE` row — surface `documents.block_write`, REST = the four routes, MCP = the four tools, status two-door, note stating: one service (`block_verbs`), the direction refusal on put, and the wire asymmetry (REST delete answers 204 with no body; `block_delete` answers the full result object — the same delete asymmetry the `documents.write` row already records). Regenerate the markdown:
 
@@ -873,7 +1079,9 @@ cd backend && .venv/bin/python -c \
   "from tests.test_door_parity import render_markdown; print(render_markdown())"
 ```
 
-and update the hand-maintained headline above the generated region (`docs/two-door-parity.md:14`): 72 surfaces → 73, 23 two-door → 24.
+and update the hand-maintained headline above the generated region — which is at **`docs/two-door-parity.md:13`**, not `:14` (review m-14).
+
+**Do not write the literal numbers this plan originally gave** (72 → 73, 23 → 24). They were computed against the tree as it stood before increments 6 and 7 were planned, and **both of those add a REST-only surface** (`config.backup_destinations` and `backups.inventory`). Whichever of the three lands last would have written a headline that disagrees with the table above it, and `test_the_committed_table_reports_its_own_counts` (`test_door_parity.py:1851-1875`) fails on exactly that. It derives the expected string from `PARITY_TABLE` and prints it, so: run the test, read the headline out of the failure message, paste it in. That is the only correct source for the number regardless of landing order.
 
 - [ ] **Step 4:** `pytest tests/test_door_parity.py tests/test_mcp_auth.py -q`, then full `pytest -q`.
 
@@ -948,7 +1156,7 @@ export function useBlockDelete(documentId: string) { /* DELETE .../blocks/{id} *
 - Extend: `frontend/src/features/documents/__tests__/`
 
 **Interfaces:**
-- Consumes: increment 4's `BlockView` (pure `{type, text}` render), Task 7's mutations, darkraise-ui `textarea`.
+- Consumes: increment 4's `BlockView` (pure `{type, text}` render), Task 5a's `source`/`properties` fields, Task 7's mutations, darkraise-ui `textarea`.
 - Produces: `BlockEditor` — Task 9 mounts it.
 
 **Implementer:** dcc-superpower-companions:impl-opus-low
@@ -958,14 +1166,19 @@ export function useBlockDelete(documentId: string) { /* DELETE .../blocks/{id} *
 - [ ] **Step 1:** `BlockEditor({ documentId, blocks })` renders the ordered block list. Per block:
 
 - **Unfocused:** `BlockView` inside a click-target that sets focus. The storage format *is* the edit format — no conversion anywhere (§8.3's whole argument).
-- **Focused:** darkraise-ui `textarea` (read `textarea.d.ts`; auto-grow if the props offer it, else rows from line count) holding exactly `block.text` — the block's markdown source as stored.
-- **Commit** (blur, `Escape`, or `Ctrl/Cmd+Enter`): if the text changed, run the type-promotion pass then `useBlockUpdate`. Promotion regexes mirror the serialiser's markers exactly, nothing more: leading `#{1,6} ` → `heading` (strip the marker into type; the level rides the update's... note: heading level lives in `properties.level`, so send `properties: {level: n}` with the update); leading `- ` / `* ` / `+ ` / `\d+[.)] ` → `list` with `properties.marker`; leading `> ` → `quote`; a ``` fence → `code`. No match → keep the current type. This replaces the slash menu inside the accepted ceiling.
+- **Focused:** darkraise-ui `textarea` (read `textarea.d.ts`; auto-grow if the props offer it, else rows from line count) holding **`block.source`** — the block's actual markdown source, marker included, served by Task 5a. Fall back to `block.text` only when `source` is `null` (a bytes-filed document, or a block with no span).
+
+  **This is the correction that makes §8.3's central claim true** (review M-7, 2026-09-02). `blocks.text` is stored marker-*stripped* — a level-2 heading's text is `Foo`, not `## Foo` — so a textarea holding `block.text` is not the storage format, and the plan's "storage format and edit format being identical means there is no conversion step" was false at block granularity. Editing the real source removes the conversion instead of relocating it into the client.
+
+- **Commit** (blur, `Escape`, or `Ctrl/Cmd+Enter`): if the source changed, run the type-promotion pass then `useBlockUpdate`. The promotion regexes mirror the serialiser's emit rules exactly, nothing more: leading `#{1,6} ` → `heading` with `properties: {level: n}`; leading `- ` / `* ` / `+ ` / `\d+[.)] ` → `list` with `properties.marker`; leading `> ` → `quote`; a ``` fence → `code`; **no marker → `paragraph`**, which is what makes a heading demotable — deleting the `## ` now demotes the block, where under the old design the marker was never shown and so could never be deleted. Send `text` as the marker-stripped remainder, matching how the parser stores it, so the server-side round trip is unchanged.
+
+  This client-side promotion mirrors Python emit rules and is a real duplication; say so in a comment naming `block_serializer.py` as the authority, and pin it with a test over the same fixture strings the serialiser's own tests use, so a change on one side fails loudly on the other.
 - **`Ctrl/Cmd+Enter` additionally** inserts a new empty `paragraph` block after the current one (`useBlockInsert` with `after_block_id`) and focuses it.
 - **`Backspace` on an empty focused block**: `useBlockDelete`, focus the previous block.
 - **`ArrowUp`/`ArrowDown`** at the textarea's first/last line: move focus between blocks.
 - **While a mutation is in flight**, keep the textarea enabled with the local value (optimistic locally; the invalidation refreshes spans and order underneath). Surface a failed mutation inline under the block ("the edit was not saved — {message}") — never silently drop keystrokes.
 
-- [ ] **Step 2: Tests.** Mock the mutation hooks: commit-on-blur fires update with the promotion applied (`# Foo` → `{type:"heading", text:"Foo", properties:{level:1}}`); Ctrl+Enter fires insert-after; Backspace-on-empty fires delete; an unchanged blur fires nothing. `npm test -- block-editor && npm run typecheck`.
+- [ ] **Step 2: Tests.** Mock the mutation hooks: focusing a heading block puts `## Foo` in the textarea (from `source`, not `Foo` from `text`); commit-on-blur fires update with the promotion applied (`# Foo` → `{type:"heading", text:"Foo", properties:{level:1}}`); **deleting the marker demotes** (`Foo` alone → `{type:"paragraph", text:"Foo"}`); Ctrl+Enter fires insert-after; Backspace-on-empty fires delete; an unchanged blur fires nothing. `npm test -- block-editor && npm run typecheck`.
 
 ---
 
@@ -973,7 +1186,7 @@ export function useBlockDelete(documentId: string) { /* DELETE .../blocks/{id} *
 
 **Files:**
 - Modify: `frontend/src/features/documents/components/documents-view.tsx`
-- Modify: `frontend/src/features/documents/components/document-tree.tsx` (consume the `nodeActions` slot increment 4 declared)
+- ~~Modify: `frontend/src/features/documents/components/document-tree.tsx`~~ — **not modified** (review m-9, 2026-09-02). Increment 4 already renders `nodeActions?.(node)`; the *consumer* that passes the slot is `documents-view.tsx`, which is the file this task edits. Listing the tree as Modify contradicted this plan's own "nothing is rewritten" promise (Prerequisites 2) and would have invited an implementer to edit a component increment 4 owns.
 - Extend: `frontend/src/features/documents/__tests__/documents.real.test.tsx`
 
 **Interfaces:**

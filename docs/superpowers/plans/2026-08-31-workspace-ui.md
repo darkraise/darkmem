@@ -15,10 +15,14 @@
 **Spec:** `docs/superpowers/specs/2026-08-31-project-artifact-store-design.md` §2 (as amended by §2.1), §3, §6 (increment 4).
 **Review:** M2 (projects endpoint memories-only — fixed here, Task 1), m1 (list clamp truncates the tree — fixed here, Task 3), m2 (checkpoint history is content-free — carried, Task 6, consistent with `docs/superpowers/plans/2026-08-31-watchable-progress.md`). Where spec and review disagree, the review wins.
 
+**Amendments (2026-09-02, cross-plan adversarial review of all eight plans).** Three defects, fixed in place: **B-3** — the new `_seed_document` helper calls `upsert_by_uri`, whose signature increment 3 changes; the coupling is now stated in the Prerequisites and the helper passes `content=None` explicitly (Task 1). **m-1** — this plan claimed three existing tests in `test_projects_endpoint.py` pass untouched; there are four, and `test_counts_every_status_not_only_active` asserts exact dict equality that the new fields break (Task 1 Step 1). **M-7** — the `table` component deferral contradicts spec §2 and is now recorded as a stated deviation with the one additive read change that would close it (Task 5 Step 1). Tasks 2, 3, 4, 6 and 7 were found sound, and the components this plan owns (`BlockView`, `DocumentTree`, `buildUriTree`) match increment 8's call sites exactly.
+
 ## Prerequisites
 
 1. **Increment 1 is landed** (`docs/superpowers/plans/2026-08-31-watchable-progress.md`): Task 6 consumes its `useCheckpointRuns(project: string | null)` signature and `LIVE_POLL_MS` export, and extends the `CheckpointsTab` that plan reshapes. Executing this plan first would produce a merge conflict on the same files.
-2. **Increments 2, 3 and 5 are NOT prerequisites.** Nothing here reads `documents.content`, the oversized-warning fields or the imported corpus. The workspace renders empty states until increment 5 files the corpus; landing 4 before 5 just means the owner sees the empty shell first. (Increment 5's plan requires 2 and 3 before *it* runs; this plan is independent of that chain.)
+2. **Increments 2, 3 and 5 are NOT prerequisites — with one coupling to increment 3 that is not a prerequisite but must be honoured** (cross-plan review B-3, 2026-09-02). Nothing here reads `documents.content`, the oversized-warning fields or the imported corpus. The workspace renders empty states until increment 5 files the corpus; landing 4 before 5 just means the owner sees the empty shell first. (Increment 5's plan requires 2 and 3 before *it* runs; this plan is independent of that chain.)
+
+   The coupling is a **shared signature**: increment 3 adds a keyword-only `content` parameter to `repositories.documents.upsert_by_uri`, which this plan's new test helper calls. Increment 3 has been amended to give that parameter a `= None` default, so the two compose in either order — **but this plan's helper must pass `content=None` explicitly anyway** (Task 1 Step 1), so it reads correctly against both signatures and states which column it is deliberately leaving empty. Do not remove that argument as redundant; it is the marker that this seam was checked.
 
 ## The scope-source decision (review M2), recorded
 
@@ -80,7 +84,7 @@ CHANGELOG.md                                                    # Task 9
 
 - [ ] **Step 1: Write the failing tests**
 
-Extend `backend/tests/test_projects_endpoint.py`. Keep the three existing tests untouched — they assert `(name, memory_count)` tuples and still pass against the widened response. Add:
+Extend `backend/tests/test_projects_endpoint.py`. **There are four existing tests, not three, and one of them must change** (cross-plan review m-1, 2026-09-02): `test_counts_every_status_not_only_active` (`:54-72`) ends in `assert resp.json() == [{"name": "mixed", "memory_count": 2}]` — exact dict equality, which fails the moment `document_count` joins the response. Widen that assertion to the new shape (`memory_count` 2, `document_count` 0, `checkpoint_count` 0) in this step, as part of the same change that adds the fields; do not weaken it to a subset match, because exact equality is what makes it catch an accidental extra field. The other three (`test_list_projects_requires_auth`, `test_lists_distinct_projects_busiest_first`, `test_empty_corpus_lists_no_projects`) pass untouched. Add:
 
 ```python
 from uuid import uuid4
@@ -93,6 +97,11 @@ async def _seed_document(session, project: str, uri: str) -> None:
     await upsert_by_uri(
         session, document_id=uuid4(), project=project, uri=uri,
         title=None, source_type="md", content_hash="x" * 64, properties=None,
+        # Increment 3 adds this keyword (defaulted to None there, so this file
+        # compiles against both signatures). Passed explicitly rather than
+        # omitted: the project index counts documents and never reads their
+        # source, so a seeded row with no content is the honest fixture.
+        content=None,
     )
 
 
@@ -517,7 +526,9 @@ export function BlockView({ block }: { block: BlockRow }) {
 }
 ```
 
-Notes for the implementer: `react-markdown` renders inline markdown; block-level nesting is not reconstructed here — the reader shows reading order, which is what `document_blocks` serves (flat, `order_index`-sorted, `backend/app/services/document_door.py:654-687`). `table`/`table_row` render as-is until increment 2's shapes are observed in data; upgrading `table` runs through the library `table` component then (`properties` are not on the blocks read response today — do not invent them).
+Notes for the implementer: `react-markdown` renders inline markdown; block-level nesting is not reconstructed here — the reader shows reading order, which is what `document_blocks` serves (flat, `order_index`-sorted, `backend/app/services/document_door.py:654-687`).
+
+**Stated deviation from spec §2 / §4.1** (cross-plan review M-7, 2026-09-02): the spec says `table` blocks "render through the library `table` component". They do not here, and the reason is a gap no plan currently closes — increment 2 *writes* the `{header, alignments}` / `{cells}` properties a real table needs, but `properties` is on neither read surface (`BlockRow`, `document_door.py:601-606`; `BlockRowModel`, `routes/documents.py:246-251`), so the data never reaches this component. `table`/`table_row` therefore render as flat cell-joined text, which is what the door actually serves. This is a deviation, not a deferral of convenience: it is recorded here, in the CHANGELOG entry (Task 8) and in the spec's §2 as an open item. **Do not invent the properties client-side.** Closing it is one additive read change — `properties` on `BlockRow`/`BlockRowModel`, both doors, one service — and **increment 8 now owns it** (its Task 5a, assigned 2026-09-02), because its editor needs the same field to show a heading's level or a list's marker: one fix serving two consumers. If increment 8 has landed by the time this task runs, take the library `table` component as the spec specifies and strike this note; if it has not, render flat and leave the note standing.
 
 - [ ] **Step 2: `DocumentReader`**
 

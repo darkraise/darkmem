@@ -14,6 +14,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-31-project-artifact-store-design.md` §5 as revised (the bridge is CUT; the column is taken now). **Review:** the 2026-08-31 adversarial review — M1 (compare-and-set, the race demonstration), M6 (retired by cutting the bridge), m3 (retired with it; the unchanged path is still re-checked here in Tasks 2 and 4).
 
+**Amendments (2026-09-02, cross-plan adversarial review of all eight plans).** Five defects were found in this plan and are fixed in place, not appended: **B-3** — `content` now carries a `= None` default on both repository writers, because increment 4 calls the old signature and declares this plan not a prerequisite (Task 2 Step 1). **M-1** — Task 8's drop/recreate destroys the increment-0 API key, the armed `auto_research` row, feature flags, job configs and repositories; Step 2 now captures them and Step 6 probes `tools/list`. **M-5** — `docs/two-door-parity.md` is *generated* from `PARITY_TABLE`, the inverse of what the Global Constraints and Tasks 5-6 said; those now edit the module constant and regenerate. **m-13** — Task 7 gains a CLAUDE.md step, which increment 8 assumes has happened. **m-6** — the "stale `$content` references" note was itself stale and is withdrawn. Tasks 1-4 and Task 8's regeneration sequence were found sound.
+
 **Sequencing that binds:** increment 3 **must land and deploy before increment 5** (`docs/superpowers/plans/2026-08-31-docs-corpus-import.md` line 25-30 already records "increment 2 deployed → increment 3 deployed → this plan"). The whole argument for taking the column now is that a regeneration is cheapest while `documents` holds 0 rows everywhere.
 
 ## Global Constraints
@@ -22,7 +24,7 @@
 - **Backend tests:** from `backend/`, `.venv/bin/python -m pytest -q`. Needs `darkmem_test` on 127.0.0.1:5433. conftest runs `DROP SCHEMA public CASCADE` + `alembic upgrade head` per session (`backend/tests/conftest.py:34-57`), so **every baseline edit is picked up automatically by the next test run**. Never point it at a real database. The parallel lanes' databases (`darkmem_test_2..5`) self-reset the same way.
 - **Merge gate:** `./scripts/gate.sh` from the repo root; green before the final commit. `--full` is unreliable on this host (earlyoom kills Chromium); never invoke Playwright bare — `backend/scripts/e2e/run_playwright_e2e.py`.
 - **Greenfield ruling (CLAUDE.md, "Greenfield until the freeze"):** no compatibility shim, no dual-write, no import path for existing rows, no backfill machinery. Prod holds **0 documents**. The regeneration's deployed-database cost is Task 8's drop/recreate plus the three-artifact restore — nothing else.
-- **Two doors, one service layer (invariant 17):** every behavior lands in `document_door` / `document_ingest` / `repositories.documents` once; REST and MCP only map it onto their wire. `docs/two-door-parity.md:57-58` is the audit of record for these verbs and `backend/tests/test_door_parity.py:62-116` mirrors its row text — amend both in lockstep (Tasks 5 and 6) or the mirror test goes red.
+- **Two doors, one service layer (invariant 17):** every behavior lands in `document_door` / `document_ingest` / `repositories.documents` once; REST and MCP only map it onto their wire. **`PARITY_TABLE` in `backend/tests/test_door_parity.py` is the audit of record, and `docs/two-door-parity.md` is GENERATED from it** — the module says so at `:9-11`, and `test_the_committed_table_is_the_enforced_table` (`:1834-1849`) compares the committed markdown byte-for-byte against `render_markdown()`. The rationale prose lives in the module-level constants `_RETRIEVAL_WIRE_SHAPE` and `_WRITE_WIRE_SHAPE` (`:83-116`), **not** in the markdown. So the sequence in Tasks 5 and 6 is: edit the constant, regenerate the doc, run the test. Hand-editing the markdown table produces a whitespace chase and a red gate. (Corrected 2026-09-02 by the cross-plan review; this constraint previously described the maintenance model backwards.)
 - **The block-channel firewall is structural** (`tests/test_block_pipeline.py`, `tests/test_block_retrieval.py` import-closure scans). Nothing here adds an import into the memory pipeline or the vault; if a scan goes red, the change is wrong, not the scan.
 - **No `$content` anywhere.** The bridge is cut (spec §5.1). If any task finds itself writing a reserved `properties` key, it has drifted into the retired design — stop.
 - **SDK generator is a zero-diff check, not a regeneration:** `sdks/generate.py` binds only `capture`, `search`, `declareContext` — no document verb — so the additive REST fields regenerate nothing. Task 7 verifies `make generate` produces no diff.
@@ -161,7 +163,7 @@ _UPDATE_DOCUMENT = text(
 )
 ```
 
-Add `content: str | None` as a keyword-only parameter to `upsert_by_uri` and `update_document` (beside `content_hash`), passed straight into the bind params. Do **not** add `content` to `_RESOLVE_BY_URI` / `_RESOLVE_BY_ID` or to `DocumentRow`: the resolve runs on every filing and must not drag a 1 MB text along — the read is Task 5's own statement.
+Add `content: str | None = None` as a keyword-only parameter to `upsert_by_uri` and `update_document` (beside `content_hash`), passed straight into the bind params. **The `= None` default is load-bearing and not a style choice** (cross-plan review B-3, 2026-09-02): increment 4's `test_projects_endpoint.py` helper calls `upsert_by_uri` with today's seven keywords and declares increment 3 not a prerequisite, so a required eighth keyword turns that suite red whichever plan lands second. The default is also the honest one — the bytes-source path stores NULL anyway (Step 2). Do **not** add `content` to `_RESOLVE_BY_URI` / `_RESOLVE_BY_ID` or to `DocumentRow`: the resolve runs on every filing and must not drag a 1 MB text along — the read is Task 5's own statement.
 
 - [ ] **Step 2: Pass it through the writer**
 
@@ -565,7 +567,14 @@ Works identically on both decorators (`/{document_id}` and `/by-uri`).
 
 - [ ] **Step 4: Parity doc + mirror**
 
-Append to `docs/two-door-parity.md` row 58's rationale cell: `Since the 2026-08-31 round-trip increment both keyed reads take include_content (default off): on, the route adds the verbatim filed source as content on its envelope and the tool answers {content, blocks} in place of the bare array -- the one flag under which document_get answers an object, produced by the same document_content service read on both doors.` Update the mirrored string block in `backend/tests/test_door_parity.py` (:62-116) with the identical sentence and run `pytest tests/test_door_parity.py -q` until the mirror agrees.
+Append to the `_RETRIEVAL_WIRE_SHAPE` constant in `backend/tests/test_door_parity.py` (`:83-116`): `Since the 2026-08-31 round-trip increment both keyed reads take include_content (default off): on, the route adds the verbatim filed source as content on its envelope and the tool answers {content, blocks} in place of the bare array -- the one flag under which document_get answers an object, produced by the same document_content service read on both doors.` Then **regenerate** `docs/two-door-parity.md` from the table — never hand-edit it:
+
+```bash
+cd backend && .venv/bin/python -c \
+  "from tests.test_door_parity import render_markdown; print(render_markdown())"
+```
+
+and paste the output between the doc's generated-table markers. No headline change: this task adds no surface, so the derived counts do not move. Run `pytest tests/test_door_parity.py -q` until `test_the_committed_table_is_the_enforced_table` agrees.
 
 - [ ] **Step 5: Wire tests**
 
@@ -663,7 +672,7 @@ The success path (`json.dumps(vars(result))`) picks up `content_hash` from `PutR
 
 - [ ] **Step 4: Parity doc + mirror**
 
-Append to `docs/two-door-parity.md` row 57's rationale cell: `Since the 2026-08-31 round-trip increment put takes an optional expected_hash compare-and-set (spec section 5.3): the predicate rides the writer's own UPDATE, a stale hash answers 409 on the route and a hash_conflict envelope from the tool -- one refusal produced by DocumentHashConflict on both doors -- and PutResult now also carries content_hash, so both doors echo the hash a caller preconditions its next edit on.` Mirror the identical sentence in `test_door_parity.py`'s write-row string and re-run the parity test.
+Append to the `_WRITE_WIRE_SHAPE` constant in `backend/tests/test_door_parity.py` (`:83-116`): `Since the 2026-08-31 round-trip increment put takes an optional expected_hash compare-and-set (spec section 5.3): the predicate rides the writer's own UPDATE, a stale hash answers 409 on the route and a hash_conflict envelope from the tool -- one refusal produced by DocumentHashConflict on both doors -- and PutResult now also carries content_hash, so both doors echo the hash a caller preconditions its next edit on.` Then regenerate `docs/two-door-parity.md` from `render_markdown()` exactly as in Task 5 Step 4 and re-run the parity test. The doc is generated; do not hand-edit the table.
 
 - [ ] **Step 5: Wire tests**
 
@@ -710,7 +719,11 @@ Both green. The gate's alembic assertion is the proof the regeneration stayed on
 
 Add the round-trip entries under the next unreleased `## vN.N.N` section (create it if absent; **coordinate the version number with any parallel increment landing in the same master push** — the release workflow refuses a push whose derived version has no matching section): `documents.content` as the source of record (baseline regenerated), `include_content` on both get doors, `expected_hash` compare-and-set with 409/`hash_conflict`, `content_hash` echoed on put.
 
-Commit: `docs(changelog): round-trip fidelity section` (chore-typed docs commits cut nothing on their own; the feat commits above are what derive the version).
+- [ ] **Step 4: CLAUDE.md** (cross-plan review m-13, 2026-09-02)
+
+The Documents section (`CLAUDE.md`, "Documents (`app/services/document_door.py`, block channel)") is contract prose and this increment changes the contract: record that `documents.content` is the stored source of record, that both keyed reads take `include_content` (default off), that `put` takes an optional `expected_hash` compare-and-set answering 409 / `hash_conflict`, and that `PutResult` echoes `content_hash`. Increment 8's plan later edits this same section assuming these sentences are already there; without this step that edit lands on prose describing a store that cannot round-trip. Keep it to a few sentences in the section's existing voice — no new heading.
+
+Commit: `docs(changelog): round-trip fidelity section` (chore-typed docs commits cut nothing on their own; the feat commits above are what derive the version). Fold the CLAUDE.md edit into the same commit or a `docs(claude):` one in the same push.
 
 ---
 
@@ -749,7 +762,31 @@ docker exec darkmem-prod-postgres-1 pg_dump -U darkmem -d darkmem \
   --data-only --table=config --column-inserts | grep admin_password_hash > /tmp/admin.sql
 ```
 
-Three artifacts, and the order below restores providers **before** purposes (`llm_purpose_configs.provider_name` is a NOT NULL FK). The full backup is the escape hatch: the drop discards every memory, event and research origin prod has accumulated (disposable by the greenfield ruling), and the runbook's "Restoring a data-only dump into a fresh database" section is the recorded route back if the owner ever wants that corpus — it is not part of this deploy.
+**The runbook's three rows are NOT the full list for this deploy** (cross-plan review M-1, 2026-09-02). `docs/runbook-deployment.md:210-253` predates every row below, and this procedure drops the whole database, not just the schema. Capture these too, in the same step:
+
+```bash
+# The agent's MCP credential. api_keys is a table (0001_baseline.py:1166),
+# so the drop destroys the row while /root/.claude.json keeps presenting the
+# token -- every MCP call then answers 401 with nothing wrong on the client
+# side. Increment 0 minted this key and no later task re-mints it.
+docker exec darkmem-prod-postgres-1 pg_dump -U darkmem -d darkmem \
+  --data-only --table=api_keys --column-inserts > /tmp/api_keys.sql
+# Operator-set config rows a re-seed does not reproduce: the armed research
+# loop (armed on this host 2026-08-17 by owner ruling), feature flags, the
+# verification ladder and its measurements, every per-job cron/config
+# override, and -- if increment 6 landed first -- the backup destinations.
+docker exec darkmem-prod-postgres-1 pg_dump -U darkmem -d darkmem \
+  --data-only --table=config --column-inserts \
+  | grep -E "auto_research|feature_flags|verification_ladder|ladder_measurements|backup_destinations|'job:" \
+  > /tmp/config_rows.sql
+# Indexed repositories and their per-repo git tokens (git_token_<repo_id>).
+docker exec darkmem-prod-postgres-1 pg_dump -U darkmem -d darkmem \
+  --data-only --table=repositories --column-inserts > /tmp/repos.sql
+```
+
+Restore these after the three LLM artifacts in Step 5. The greenfield ruling makes *data* disposable; it does not make this programme's own preconditions self-healing, and increment 0 is a manual owner procedure with no task that re-runs it. If any restore is judged not worth carrying, the alternative is explicit: re-run increment 0's mint-and-repoint procedure (`docs/superpowers/plans/2026-08-31-watchable-progress.md:31-51`) and re-arm `auto_research` through the settings door **after** Step 6, and say so in the deploy note. Silently losing the key is what this step exists to prevent.
+
+Six artifacts, and the order below restores providers **before** purposes (`llm_purpose_configs.provider_name` is a NOT NULL FK). The full backup is the escape hatch: the drop discards every memory, event and research origin prod has accumulated (disposable by the greenfield ruling), and the runbook's "Restoring a data-only dump into a fresh database" section is the recorded route back if the owner ever wants that corpus — it is not part of this deploy.
 
 - [ ] **Step 3: Build the new image BEFORE the drop**
 
@@ -771,7 +808,7 @@ docker logs darkmem-prod-darkmem-1 2>&1 | grep -i 'schema baseline'   # expect "
 
 The entrypoint migrates the regenerated baseline and `schema_guard` stamps its hash into the fresh database — the hash "moves" by construction, no code change involved.
 
-- [ ] **Step 5: Restore the three artifacts, providers first, and verify both LLM invariants**
+- [ ] **Step 5: Restore the six artifacts, providers first, and verify both LLM invariants**
 
 ```bash
 docker exec -i darkmem-prod-postgres-1 psql -U darkmem -d darkmem < /tmp/admin.sql
@@ -790,7 +827,15 @@ docker exec darkmem-prod-postgres-1 psql -U darkmem -d darkmem -c "
    where params = '{}'::jsonb and purpose <> 'embedding';"
 ```
 
-Restoring — never re-seeding — is what keeps the qualified judge identity (`gpt-5.5` at `fd39e7b2c47fa375`, spanning both tables) and every purpose's `params`; `llm_seed.py` would overwrite all of it with Ollama presets, silently.
+Then the three artifacts Step 2 added beyond the runbook's list (review M-1) — order does not matter among these, none carries a foreign key into the others:
+
+```bash
+docker exec -i darkmem-prod-postgres-1 psql -U darkmem -d darkmem < /tmp/api_keys.sql
+docker exec -i darkmem-prod-postgres-1 psql -U darkmem -d darkmem < /tmp/config_rows.sql
+docker exec -i darkmem-prod-postgres-1 psql -U darkmem -d darkmem < /tmp/repos.sql
+```
+
+Restoring — never re-seeding — is what keeps the qualified judge identity (`gpt-5.5` at `fd39e7b2c47fa375`, spanning both tables) and every purpose's `params`; `llm_seed.py` would overwrite all of it with Ollama presets, silently. The same logic is why `api_keys` is restored rather than re-minted: a re-mint means editing `/root/.claude.json` and every other client that holds the old token, and nothing reports that you forgot.
 
 - [ ] **Step 6: Verify the deploy carried the change, not just started**
 
@@ -804,7 +849,20 @@ docker exec darkmem-prod-postgres-1 psql -U darkmem -d darkmem -tAc \
     where key like 'job:%' and value->>'last_status' <> 'ok';"
 ```
 
-Compose reuses an image whose tag did not move, so a skipped build redeploys the old bits while reporting `Started` — the OpenAPI probe for the new fields is what rules that out. The job-status query is the one that would have caught the 2026-08-17 drift; run it.
+```bash
+# Reachability, not just liveness (review M-1): the key the agent presents
+# must still resolve. Anything other than 200 means the api_keys restore did
+# not happen and every agent MCP call is answering 401.
+curl -s -o /dev/null -w '%{http_code}\n' -X POST localhost:8000/mcp \
+  -H "Authorization: Bearer $(grep -o 'dmk_[A-Za-z0-9_]*' /root/.claude.json | head -1)" \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+docker exec darkmem-prod-postgres-1 psql -U darkmem -d darkmem -tAc \
+  "select key from config where key in
+     ('auto_research','feature_flags','verification_ladder');"
+```
+
+Compose reuses an image whose tag did not move, so a skipped build redeploys the old bits while reporting `Started` — the OpenAPI probe for the new fields is what rules that out. The job-status query is the one that would have caught the 2026-08-17 drift; run it. The `tools/list` probe is the one that would catch a lost API key, which no log or health check reports.
 
 - [ ] **Step 7: The dev database**
 
@@ -815,7 +873,7 @@ The dev-compose Postgres (5433) `darkmem` database, if one exists there, is now 
 ## Rollback
 
 - Tasks 1-6 are ordinary commits; revert in reverse order. Reverting Task 1 after any deploy means another drop/recreate (the stamp follows the file's content in both directions).
-- Task 8 has no in-place rollback — that is what `schema_guard`'s no-override design means. The recovery from a bad deploy is the same procedure run again with the previous image: step 2's `/tmp/*.sql` artifacts and the `scripts/backup.sh` dump are the materials. Keep all four until the deploy is verified.
+- Task 8 has no in-place rollback — that is what `schema_guard`'s no-override design means. The recovery from a bad deploy is the same procedure run again with the previous image: step 2's six `/tmp/*.sql` artifacts and the `scripts/backup.sh` dump are the materials. Keep all seven until the deploy is verified.
 - The race-proof test (Task 4) is the tripwire against a future "simplification" of the CAS back into a read-then-write: it fails deterministically under that change. Do not weaken it to unblock a refactor; the refactor is what's wrong.
 
 ## Notes on scope
@@ -823,7 +881,7 @@ The dev-compose Postgres (5433) `darkmem` database, if one exists there, is now 
 - **The spec's §5.3 SQL sketch is not what ships, and that is deliberate** (trust-the-code rule): the predicate rides `update_document`'s UPDATE rather than an `ON CONFLICT ... DO UPDATE` arm, because the writer resolves-then-splits (`document_ingest.py:210-244`) and the upsert shape would insert — not refuse — when a precondition names a vanished document. Same compare-and-set guarantee; honest missing-row edge. Recorded in Task 3's Approach line.
 - **Gap the spec missed, closed here:** §5.3's caller must pass "the" current hash, but no wire surface served one — `content_hash` appears in no response model on either door. Task 6 adds it to `PutResult`/`DocumentPutResponse`/the MCP put payload. Without it the feature ships unusable (callers would have to client-side sha256 the content and know the algorithm).
 - **m3 residue, resolved by construction, not by a backfill arm:** no deployed database can hold a NULL-content text document after Task 8, because every writer from Task 2 on stores content and the regeneration drops every database that predates it. The `UNCHANGED` path therefore repairs nothing and writes nothing (Task 2 Step 2 states the argument in the code). Bytes-filed drill documents store NULL deliberately.
-- **Stale `$content` references found (flag only — other increments' files):** `docs/superpowers/plans/2026-08-31-docs-corpus-import.md` is internally inconsistent after the spec revision: its lines 25-30 correctly record the bridge as cut and the ordering as "increment 3 deployed → this plan", but lines 38 and 318 still say "when increment 3's `$content` bridge eventually lands" and line 226 calls the store "a read-index, not a filesystem" pending "increment 3's raw-content bridge". All three describe the retired design; after this plan, `document_get(include_content=true)` returns the verbatim source and no `$content` key ever exists. Whoever executes increment 5 should read those three passages as historical. This plan does not edit that file (not its lane).
+- **~~Stale `$content` references in increment 5's plan~~ — withdrawn 2026-09-02 (cross-plan review m-6).** This note claimed `docs/superpowers/plans/2026-08-31-docs-corpus-import.md` lines 38, 226 and 318 still described the retired `$content` bridge. They do not: all three already read `documents.content` / `include_content`, and lines 27-32 record the bridge as cut. The note was stale and would have sent an increment-5 executor to read current text as historical. No `$content` reference exists in any plan; nothing to flag.
 - **The batch ingest path (`ingest_documents` / `file_documents_isolated`) takes no `expected_hash`** on purpose: the corpus import is last-writer-wins re-runnable by design, which is §5.3's own "correct for a caller that genuinely owns the document" case.
 - **`char_span` semantics:** now that the source is stored, spans index into `documents.content` exactly (they have always pointed at the original source, frontmatter and fences included — `document_parsers.py`'s contract, kept by increment 2's frontmatter task). Task 5's docstrings state it; no span code changes.
 - **Not in scope:** version history (`document_revisions` — spec §5.4, deferred with the loss restated there), any UI (increment 4's), the project-index widening (M2, increment 4's), and any change to `documents.content_hash`'s role — it keeps being the change gate, unchanged.

@@ -13,13 +13,15 @@
 **Spec:** `docs/superpowers/specs/2026-08-31-project-artifact-store-design.md` §9.1–§9.4 (§9.3 as amended after review finding M4).
 **Review:** M4 (process boundary) and m4 (no cross-process lock; event-loop stalls) are upheld and drive the architecture below. Where spec and review disagree, the review wins.
 
+**Amendments (2026-09-02, cross-plan adversarial review of all eight plans).** Five defects, fixed in place. **B-1 (blocker)** — the dump bind mount defaulted under `/root` (mode 0700) while the container runs as the unprivileged `app` user, so every ship would have failed on its first `.part` open and nothing would have surfaced until Task 10; the default moves to `/srv/darkmem-dumps`, Task 1 creates and chowns it to the image's uid, and a write probe proves it. **B-2 (blocker)** — Task 2's two new REST routes have no `PARITY_TABLE` row and no `EXPECTED_STATUS` entry, and both enumeration tests fail on an unclassified route; new Step 4b adds them, regenerates the parity doc and recomputes its headline. **m-2** — a third job-count sentence at `CLAUDE.md:1648-1649` that a grep for "Twenty-three" does not find. **m-11** — `PG_DUMP_ARGV` versus `_dump_argv()` described as both shapes at once. **m-15** — the deployment-test helper names do not exist; the real ones are `_unwrapped` / `_compose` / `_compose_command`. Tasks 3-10 were otherwise found sound.
+
 ## Architecture — the M4 correction, restated as what gets built
 
 **The job does NOT call `scripts/backup.sh`, and cannot:** the app container has no `pg_dump`, no compose binary, and no mount reaching the host's docker socket or `/root/darkmem-backups` — its only mounts are `repo_data` (`docker-compose.yml`, `volumes:` on the `darkmem` service) and, in dev, `/host-repos`. Instead:
 
 - The runtime image gains `postgresql-client`, `age`, `openssh-client` and `rsync`. **Verified 2026-08-31 against the live base image**: `python:3.12-slim` is Debian 13.6 (trixie), whose `postgresql-client` candidate is **17+278** — the same major as the `pgvector/pgvector:0.8.2-pg17` server, which matters because `pg_dump` refuses a server *newer* than itself — and whose `age` candidate is 1.2.1. No PGDG repo needed. Task 1 re-verifies at build time.
 - The job runs `pg_dump -h $DB_HOST` **over the stack network** (bridge networking; the API already reaches Postgres by service name — `docker-compose.yml` `DB_HOST=${DB_HOST:-postgres}`), streams through gzip to a `.part` file in a new dump bind mount, checks pg_dump's completion marker, renames, encrypts, ships, verifies, journals, prunes.
-- **Two independent producers is the design** (§9.3's floor argument): the systemd path writes `darkmem-<stamp>.sql.gz` into `/root/darkmem-backups`; the job writes `darkmem-app-<stamp>.sql.gz[.age]` into `${DARKMEM_DUMP_DIR:-/root/darkmem-dumps}`. **Different directories are the real separation; distinct prefixes are the belt** — note `backup.sh`'s retention glob `darkmem-*.sql.gz` (`scripts/backup.sh`, `find … -name 'darkmem-*.sql.gz'`) *would* match `darkmem-app-*`, so the two producers must never be pointed at one directory, and Task 4's prune matches only the job's own `darkmem-app-` prefix so it can never delete a systemd dump even if an operator does.
+- **Two independent producers is the design** (§9.3's floor argument): the systemd path writes `darkmem-<stamp>.sql.gz` into `/root/darkmem-backups`; the job writes `darkmem-app-<stamp>.sql.gz[.age]` into `${DARKMEM_DUMP_DIR:-/srv/darkmem-dumps}` (not under `/root`, which the container's unprivileged user cannot traverse — see Task 1). **Different directories are the real separation; distinct prefixes are the belt** — note `backup.sh`'s retention glob `darkmem-*.sql.gz` (`scripts/backup.sh`, `find … -name 'darkmem-*.sql.gz'`) *would* match `darkmem-app-*`, so the two producers must never be pointed at one directory, and Task 4's prune matches only the job's own `darkmem-app-` prefix so it can never delete a systemd dump even if an operator does.
 - **m4:** nothing serializes the job against the 03:30 timer — different processes, and the per-job `asyncio.Lock` binds only in-process. The job's default cron is `30 4 * * *` (04:30), an hour clear of the timer, and both producers' `.part` discipline makes a rare overlap benign. This is stated, not repaired.
 - **Invariant 13:** hashing, encryption and uploads are executor-offloaded (`asyncio.to_thread`) or run as subprocesses; nothing CPU-heavy blocks the single worker's event loop.
 
@@ -33,6 +35,7 @@
 - **Merge gate:** `./scripts/gate.sh` from the repo root. `--full` is unreliable on this host (earlyoom kills Chromium); never invoke Playwright bare.
 - **No schema change.** Destinations live in a `config` row (the LLM-provider shape; per-repo git tokens are the credential precedent — `backend/app/services/repo_manager.py:330` `git_token_<repo_id>`). The job's `config_schema` can carry **ints only** (`FieldDescriptor.default: int`, `backend/app/services/job_registry.py:89-98`) — no URL, bucket or credential may be smuggled into it.
 - **Taxonomy-first:** new event types land in `EVENT_TYPES` (`backend/app/services/events.py:124`) in the same task as (and before) their first emitter. `object_type="system"` is already in `OBJECT_TYPES` — do not widen it.
+- **Every new REST route must be classified in the same commit that adds it** (review B-2): `test_door_parity.py::test_every_rest_route_is_classified` and `test_rest_conformance.py::test_every_route_status_code_matches_the_convention` both enumerate `app.routes` and fail on anything unclassified. A single-door row additionally needs a *stated reason* of at least 80 characters that is not a placeholder — a design decision, not a form field. Task 2 Step 4b is where this happens for this plan.
 - **Invariant 23:** adding a job desynchronises two "full list" surfaces — `tests/test_code_deriver.py:1520-1528` (the AST roster) and CLAUDE.md's job counts ("Twenty-three", "seventeen live ones"). Task 7 updates both in the same commit as the registration.
 - **Secrets never in tree or logs:** ssh private keys and S3 secrets are stored in the config row, masked as `"***"` on every GET (the `MASKED_KEY` idiom, `backend/app/api/routes/llm_providers.py:73,107,205`), and never logged. Journal payloads carry filenames, sizes and checksums — never credentials.
 - **Backend lock:** the boto3 dependency (Task 6) regenerates `requirements.lock` only via `uv pip compile --universal pyproject.toml -o requirements.lock` (CLAUDE.md, Backend lock).
@@ -50,6 +53,9 @@ backend/app/services/events.py               # Task 2: event vocabulary
 backend/app/services/backup_config.py        # Task 2: destinations config row service (new)
 backend/app/api/routes/config.py             # Task 2: GET/PUT /config/backup-destinations
 backend/tests/test_backup_config.py          # Task 2 (new)
+backend/tests/test_door_parity.py            # Task 2: PARITY_TABLE row (review B-2)
+backend/tests/test_api/test_rest_conformance.py  # Task 2: EXPECTED_STATUS (B-2)
+docs/two-door-parity.md                      # Task 2: regenerated + headline
 backend/app/services/backup_ship.py          # Task 3: dump/encrypt core; Tasks 4-6: destinations
 backend/tests/test_backup_ship.py            # Tasks 3–6 (new)
 backend/pyproject.toml, requirements.lock    # Task 6: boto3
@@ -73,8 +79,14 @@ CHANGELOG.md                                 # Task 10
 - Modify: `docker-compose.yml` (`darkmem` service `volumes:`, and the `volumes:` assertions' subjects)
 - Modify: `backend/tests/test_deployment_artifact.py` (extend `test_runtime_stage_installs_git` at :475 with a sibling; extend `test_prod_app_service_publishes_its_port_and_keeps_its_repo_volume` at :151)
 
+**The mount must be writable by the image's unprivileged user — this is the task's real risk** (cross-plan review B-1, 2026-09-02). The runtime image drops privileges: `Dockerfile:87-88` runs `adduser --system --ingroup app app` then `USER app`. A **host bind mount is not chowned by Docker** the way a fresh named volume is, so `${DARKMEM_DUMP_DIR}` arrives owned by whoever created it — and if it does not exist, Docker creates it `root:root`. The plan's original default put it under `/root`, which is mode `0700`, so uid `app` could not even traverse into it. Every ship would fail on the first `.part` open, and Task 10 Step 5 ("watch one ship") is nine tasks later — the whole increment would land looking green.
+
+Two consequences the steps below carry:
+- **The default moves out of `/root`** to `/srv/darkmem-dumps`. `/root` is unreadable to any non-root user by design; a directory the container must write does not belong under it. The systemd producer keeps `/root/darkmem-backups` — different directories is still the m4 separation, and now one of them is actually reachable.
+- **The host directory is created and chowned to the image's uid at deploy time, not guessed.** Do **not** "simplify" this by pinning a fixed uid in the `adduser` line: `repo_data` is an existing named volume whose files are owned by the current uid, and changing it would leave the app unable to write its own clones — a silent second failure worse than the one being fixed.
+
 **Interfaces:**
-- Produces: `pg_dump` 17, `age`, `ssh`/`scp`, `rsync` binaries inside the image; `/dumps` bind mount (`${DARKMEM_DUMP_DIR:-/root/darkmem-dumps}`) — consumed by Tasks 3–7 and by increment 7's restore pull.
+- Produces: `pg_dump` 17, `age`, `ssh`/`scp`, `rsync` binaries inside the image; `/dumps` bind mount (`${DARKMEM_DUMP_DIR:-/srv/darkmem-dumps}`, created and chowned to the image's uid) — consumed by Tasks 3–7 and by increment 7's restore pull.
 
 **Implementer:** dcc-superpower-companions:impl-opus-low
 **Evaluation:** files 1 - spec 0 - coupling 2 - risk 1 = 4
@@ -87,21 +99,29 @@ def test_runtime_stage_installs_backup_toolchain():
     with age; the ssh destination shells out to scp/rsync. None of these are
     in the base image, and an image missing them boots green while every
     nightly ship fails (M4's process-boundary lesson, applied to the fix)."""
-    runtime = _runtime_stage()  # reuse the helper test_runtime_stage_installs_git uses
+    runtime = _unwrapped(DOCKERFILE)  # the helper test_runtime_stage_installs_git uses
     for pkg in ("postgresql-client", "age", "openssh-client", "rsync"):
         assert pkg in runtime, f"runtime stage does not install {pkg}"
 
 
 def test_prod_app_service_mounts_the_dump_directory():
-    compose = _prod_compose()  # reuse the existing loader helper
+    compose = _compose(PROD_COMPOSE)
     volumes = compose["services"]["darkmem"]["volumes"]
-    assert any("/dumps" in v and "DARKMEM_DUMP_DIR" in v for v in volumes), (
+    mount = next((v for v in volumes if "/dumps" in v), None)
+    assert mount and "DARKMEM_DUMP_DIR" in mount, (
         "backup_ship writes to /dumps; without the bind mount the host (and "
         "restore.sh --from) cannot see what the job produced"
     )
+    # Review B-1: the container runs as the unprivileged `app` user
+    # (Dockerfile USER app) and /root is 0700, so a default under /root is a
+    # directory the job can neither traverse nor write.
+    assert "/root" not in mount, (
+        "the dump mount's default must be reachable by the image's "
+        "unprivileged user; /root is 0700"
+    )
 ```
 
-Adapt helper names to what the file actually defines (read its top — it has loaders for the Dockerfile text and parsed compose files). Run: `cd backend && python -m pytest -q tests/test_deployment_artifact.py` — the two new tests FAIL.
+**Helper names, corrected** (review m-15): the file defines `_unwrapped(path)` for Dockerfile text, `_compose(path)` for a parsed compose file and `_compose_command(path, service)` (`test_deployment_artifact.py:38-52`) — there is no `_runtime_stage()` and no `_prod_compose()`. Use `_unwrapped(DOCKERFILE)` where the sketch above says `_runtime_stage()`, matching how `test_runtime_stage_installs_git` reads the file at `:475`. Run: `cd backend && python -m pytest -q tests/test_deployment_artifact.py` — the two new tests FAIL.
 
 - [ ] **Step 2: Dockerfile.** In the runtime stage, widen the existing apt install (keep the comment discipline — say why, not what):
 
@@ -128,10 +148,31 @@ RUN apt-get update \
       # the job produced. Distinct from the systemd producer's
       # /root/darkmem-backups on purpose (m4): the two producers never share
       # a directory, so neither's retention can prune the other's artefacts.
-      - ${DARKMEM_DUMP_DIR:-/root/darkmem-dumps}:/dumps
+      # NOT under /root: the container runs as the unprivileged `app` user and
+      # /root is 0700, so a dump directory there is unwritable and unreachable.
+      - ${DARKMEM_DUMP_DIR:-/srv/darkmem-dumps}:/dumps
+```
+
+The host side of that mount has to exist with the right owner before the first ship. Add it to this task as an operator step, run once on this machine and recorded in Task 10's deploy sequence:
+
+```bash
+# The uid is read from the image, never assumed: `adduser --system` allocates
+# from Debian's system range and the number is not stable across rebases.
+APP_UID=$(docker run --rm darkraise/darkmem:latest id -u)
+sudo install -d -o "$APP_UID" -g "$APP_UID" -m 0750 /srv/darkmem-dumps
 ```
 
 - [ ] **Step 4: Verify.** `cd backend && python -m pytest -q tests/test_deployment_artifact.py` all green. Then a real build proof (the plan's package-availability claim, re-verified where it counts): `DARKMEM_PUSH=0 ./scripts/build-push.sh` and `docker run --rm darkraise/darkmem:latest sh -c "pg_dump --version && age --version && rsync --version | head -1 && ssh -V"` — expect `pg_dump (PostgreSQL) 17.x`.
+
+**Then prove the mount is writable by the process that will write it** (review B-1) — this is the assertion the whole increment rests on, and it costs one command:
+
+```bash
+docker compose up -d
+docker exec darkmem-prod-darkmem-1 sh -c 'touch /dumps/.probe && rm /dumps/.probe' \
+  && echo "dump mount writable"
+```
+
+A failure here is the increment's core deliverable not working, not a permissions detail: fix the host directory's ownership before writing Task 3. Task 3's `run_dump` should additionally fail fast on an unwritable `DUMP_DIR` with a message naming the directory and the uid, rather than surfacing as a truncated `.part` at 04:30.
 
 ---
 
@@ -349,6 +390,48 @@ async def save_destinations(session: AsyncSession, body: dict) -> list[Destinati
   - `PUT /api/v1/config/backup-destinations` → validates via `save_destinations` under `_lock_config_row(session, BACKUP_DESTINATIONS_KEY)`; `DestinationInvalid` → 422. Response is the masked list (echo the mask, never the secret).
   Route-level tests go in `test_backup_config.py` using the app test client pattern the file's siblings use (see `tests/test_security_posture.py` for the authenticated-client fixture idiom).
 
+- [ ] **Step 4b: Classify the two new routes, or the gate is red** (cross-plan review B-2, 2026-09-02)
+
+Two enumeration-driven tests walk `app.routes` and fail on any route nobody classified. Neither was in this plan's File Structure, and both go red the moment Step 4's routes exist:
+
+1. **`backend/tests/test_door_parity.py`** — `test_every_rest_route_is_classified` (`:1362-1380`) fails a route with no `PARITY_TABLE` row. Add a `Surface` beside `config.auto_research` (`:135-150`), which is the exact precedent this task already copies:
+
+```python
+    Surface(
+        name="config.backup_destinations",
+        status=REST_ONLY,
+        rest=(
+            ("GET", f"{V1}/config/backup-destinations"),
+            ("PUT", f"{V1}/config/backup-destinations"),
+        ),
+        mcp=(),
+        reason=(
+            "Operator configuration of where this instance ships its own "
+            "encrypted snapshots, including ssh and S3 credentials. An agent "
+            "that could read or rewrite the destination list could redirect "
+            "every future backup to a destination it chose, which is exfiltration "
+            "wearing the backup system's own clothes; the secrets are masked on "
+            "read for the same reason. Backups are an operator concern with a "
+            "human at the console, so this is deliberately single-door."
+        ),
+    ),
+```
+
+`test_every_single_door_surface_states_a_real_reason` enforces a real rationale — at least `_MIN_REASON_CHARS` (80) and none of the `_NON_REASONS` placeholders ("planned", "not yet built", …). Write the reason for the person who will question the decision, not to clear the length check.
+
+2. **`backend/tests/test_api/test_rest_conformance.py`** — `test_every_route_status_code_matches_the_convention` (`:297-310`) fails a route with no `EXPECTED_STATUS` entry. Add both, mirroring the auto-research pair's values (`GET` 200, `PUT` 200 — the PUT echoes the masked list rather than creating a resource, so 200 is right and 201 would be wrong).
+
+3. **Regenerate `docs/two-door-parity.md`**, which is generated from `PARITY_TABLE`, never hand-edited (`test_door_parity.py:9-11`, `:1834-1849`):
+
+```bash
+cd backend && .venv/bin/python -c \
+  "from tests.test_door_parity import render_markdown; print(render_markdown())"
+```
+
+Paste between the generated-table markers, then update the doc's **headline counts** to what `test_the_committed_table_reports_its_own_counts` (`:1851-1875`) derives — this task adds one surface and one REST-only row, so the totals move. Do not copy a number from another plan: increment 7 adds a surface too, and increment 8's plan states literal totals computed before either existed. Read the count off the failing assertion, which prints the exact string the doc must contain.
+
+Add `backend/tests/test_door_parity.py`, `backend/tests/test_api/test_rest_conformance.py` and `docs/two-door-parity.md` to this task's Files list.
+
 - [ ] **Step 5:** `cd backend && python -m pytest -q tests/test_backup_config.py` green; full `python -m pytest -q` green.
 
 ---
@@ -372,7 +455,7 @@ async def save_destinations(session: AsyncSession, body: dict) -> list[Destinati
 async def test_dump_refuses_a_stream_without_the_completion_marker(tmp_path, monkeypatch):
     # Fake pg_dump: exits 0 but never writes the marker — the truncated
     # stream backup.sh's marker check exists for, one layer in.
-    ...  # monkeypatch backup_ship.PG_DUMP_ARGV to ["sh", "-c", "echo partial"]
+    ...  # monkeypatch backup_ship._dump_argv to return ["sh","-c","echo partial"]
     with pytest.raises(backup_ship.DumpIncomplete):
         await backup_ship.run_dump(dest_dir=tmp_path)
     assert not list(tmp_path.glob("*.sql.gz"))      # nothing renamed
@@ -393,8 +476,8 @@ async def test_encrypt_round_trips_with_age(tmp_path):
 ```
 
 - [ ] **Step 2: Implement.** Core points the code must hit:
-  - `PG_DUMP_ARGV` is module-level and built from settings at call time in a small function (`_dump_argv()`), so tests monkeypatch it: `["pg_dump", "--clean", "--if-exists", "-h", settings.db_host, "-p", str(settings.db_port), "-U", settings.db_user, settings.db_name]` — the same `--clean --if-exists` flags as `scripts/backup.sh`, so `scripts/restore.sh` replays either producer's dump identically. `PGPASSWORD` rides the subprocess env only.
-  - Stream `proc.stdout` in chunks through `gzip.GzipFile` onto `<name>.part`, keeping the **last 512 raw bytes** across chunk boundaries; after `wait()`, require exit 0 AND `b"PostgreSQL database dump complete"` in that tail (the `backup.sh` marker check, applied to the raw stream so nothing re-decompresses). On failure: delete `.part`, raise `DumpIncomplete` with stderr's tail in the message. On success: `os.replace` to `darkmem-app-<YYYYmmdd-HHMMSS>.sql.gz`.
+  - **`_dump_argv()` is a module-level function, and there is no `PG_DUMP_ARGV` constant** (cross-plan review m-11, 2026-09-02 — this bullet previously described both shapes in one sentence, and the test sketch at Step 1 monkeypatches the constant that the description says does not exist). Pick the function: settings are read at call time, and tests monkeypatch `backup_ship._dump_argv` to return `["sh", "-c", "echo partial"]`. Fix the Step 1 sketch's `monkeypatch.setattr(backup_ship, "PG_DUMP_ARGV", ...)` to patch `_dump_argv` accordingly. It returns: `["pg_dump", "--clean", "--if-exists", "-h", settings.db_host, "-p", str(settings.db_port), "-U", settings.db_user, settings.db_name]` — the same `--clean --if-exists` flags as `scripts/backup.sh`, so `scripts/restore.sh` replays either producer's dump identically. `PGPASSWORD` rides the subprocess env only.
+  - Stream `proc.stdout` in chunks through `gzip.GzipFile` onto `<name>.part`, keeping the **last 512 raw bytes** across chunk boundaries. (Compression runs on the event loop inside that chunk loop, which on a single worker is a real stall for the duration of the dump. Acceptable at 04:30 against this corpus size, and stated rather than hidden; if it ever bites, the repair is a `pg_dump | gzip` subprocess pipe, which keeps the marker check on the raw stream and moves the CPU out of the loop entirely.) after `wait()`, require exit 0 AND `b"PostgreSQL database dump complete"` in that tail (the `backup.sh` marker check, applied to the raw stream so nothing re-decompresses). On failure: delete `.part`, raise `DumpIncomplete` with stderr's tail in the message. On success: `os.replace` to `darkmem-app-<YYYYmmdd-HHMMSS>.sql.gz`.
   - `encrypt(path, recipient)`: `asyncio.create_subprocess_exec("age", "-r", recipient, "-o", str(path) + ".age", str(path))`; on success **delete the plaintext** and return the `.age` path — the plaintext must not linger beside the ciphertext on the local disk when the destination demanded encryption. (The `local` destination kind is served by the unencrypted dump when it carries no recipient; Task 4 wires who calls encrypt.)
   - `sha256_file(path)`: `await asyncio.to_thread(...)` chunked hashlib — never inline on the event loop (m4 rider / invariant 13).
 - [ ] **Step 3:** `python -m pytest -q tests/test_backup_ship.py` green.
@@ -558,7 +641,7 @@ def make_backup_ship_runner(app, session_factory: async_sessionmaker[AsyncSessio
 
 No `config_schema`: retention and destinations are the `backup_destinations` config row's (Task 2) — `FieldDescriptor` cannot carry them and must not be made to.
 
-- [ ] **Step 4: CLAUDE.md** (invariant 23 — same commit as the registration): "Twenty-three registered jobs" → "Twenty-four" with a dated correction note in the existing style; "The seventeen live ones" → eighteen, adding `backup_ship` to the list; add `BACKUP_SHIP_JOB_KEY` to the register-via-constants sentence.
+- [ ] **Step 4: CLAUDE.md** (invariant 23 — same commit as the registration): "Twenty-three registered jobs" → "Twenty-four" with a dated correction note in the existing style; "The seventeen live ones" → eighteen, adding `backup_ship` to the list; add `BACKUP_SHIP_JOB_KEY` to the register-via-constants sentence. **And the third occurrence this plan missed** (cross-plan review m-2, 2026-09-02): the invariant-13 paragraph at `CLAUDE.md:1648-1649` reads "every registered job fires N times per tick; 21 when T4.09 counted, **23 today**, and the number is not what the finding rests on" — update `23 today` to `24 today`. It is a different paragraph from the Jobs section and a `grep` for "Twenty-three" does not find it. Invariant 23 is about exactly this: a "here is the full list" sentence going stale because the count lives in more places than the editor checked.
 - [ ] **Step 5: Runner test**: monkeypatch `ship_all`, `trigger("backup_ship")` through a `JobRegistry` instance, assert the summary dict lands in the run record (see `tests/test_job_registry.py` for the harness idiom).
 - [ ] **Step 6:** Full backend suite green.
 
@@ -628,7 +711,7 @@ docker exec darkmem-prod-darkmem-1 ls /dumps
 curl -s http://127.0.0.1:8000/openapi.json | grep -o backup-destinations
 ```
 
-- [ ] **Step 5: Watch one ship.** Configure the `local` destination in the new tab, "Run now", confirm `darkmem-app-*.sql.gz` appears under `/root/darkmem-dumps` on the host and a `backup_shipped` row lands in Activity. Then restore-drill it once against a scratch database (`scripts/restore.sh` accepts either producer's dump — same `--clean --if-exists` shape) — "uploaded is not restorable" applies to the local path too.
+- [ ] **Step 5: Watch one ship.** Configure the `local` destination in the new tab, "Run now", confirm `darkmem-app-*.sql.gz` appears under `/srv/darkmem-dumps` on the host and a `backup_shipped` row lands in Activity. Then restore-drill it once against a scratch database (`scripts/restore.sh` accepts either producer's dump — same `--clean --if-exists` shape) — "uploaded is not restorable" applies to the local path too.
 
 ## Rollback
 

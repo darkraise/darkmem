@@ -52,11 +52,13 @@ B1's finding: a door-layer `READ_ONLY` posture cannot hold, because the biggest 
 | C5 | `POST /api/v1/jobs/{key}/trigger` — runs a job on demand even though `start_all` never ran | `backend/app/api/routes/jobs.py:193` | the job runs; LLM/egress jobs spend before failing | Refuse 403 under flag (Task 2, beside the boot gate it completes). |
 | C6 | Every other write door — captures (REST + MCP), settings PUTs, buffer requeue/discard, reembed, ratify, hygiene actions, `document_put`/`delete` | many | `asyncpg.exceptions.InsufficientPrivilegeError` (SQLSTATE 42501) wrapped in `sqlalchemy.exc.ProgrammingError` → 500 | **One global exception handler** (Task 3) maps SQLSTATE 42501 → HTTP 403 `{"read_only": true}`. This replaces the maintained per-route allowlist B1 rejected: the route inventory can rot, the SQLSTATE cannot. |
 
-**D. Read shapes that must keep working — proven, not assumed (Task 5's integration test runs them under the real role):** hybrid/keyword search, facts reads, `GET /events` + timeline + calendar, checkpoints latest, documents get/outline/search, code-graph reads, login (in-memory rate limiter, `auth.py`; only journal writes, which degrade), `GET /auth/security-posture`, the SPA itself. Also verified there: **no read path uses `SELECT … FOR UPDATE`** (which needs row-lock privilege beyond SELECT) — the `FOR UPDATE` users are the buffer claim (job, disarmed) and `_lock_config_row` (write doors). The setup wizard 403s on `require_uninitialized` because the snapshot carries `admin_password_hash` — correct, no handling needed. Repo *file* reads degrade (no clones in the worker's `repo_data` volume) while DB-backed code-graph reads work — accepted and stated in the runbook.
+**D. Read shapes that must keep working — proven, not assumed (Task 5's integration test runs them under the real role):** hybrid/keyword search, facts reads, `GET /events` + timeline + calendar, checkpoints latest, documents get/outline/search, code-graph reads, login (in-memory rate limiter, `auth.py`; only journal writes, which degrade), `GET /auth/security-posture`, the SPA itself. Also verified there: **no read path uses `SELECT … FOR UPDATE`** (which needs row-lock privilege beyond SELECT). **The writer inventory this plan originally gave was wrong** (cross-plan review M-6, 2026-09-02): it named "the buffer claim and `_lock_config_row`", but `_lock_config_row` takes a *transaction advisory lock* and its own comment says `FOR UPDATE` "would not do" (`api/routes/config.py:427-430`), and `job_registry.py` issues none at all. The real set is twelve modules — `repositories/knowledge_triples.py` (`:509,563,963,1138`) and `services/{buffer_flush, memory_buffer, human_adjudication, fact_lift, dream_undo, wait_process, verification_ladder, entity_merge, verification_recompute, memory_dream, supersede}.py` — every one of them a writer path, which is what makes the D-group conclusion hold. Note a plain text grep also returns `api/routes/config.py:430` and `models/memory.py:91`, which are *prose mentions in docstrings*, not uses; the scan below must not count them as either. The setup wizard 403s on `require_uninitialized` because the snapshot carries `admin_password_hash` — correct, no handling needed. Repo *file* reads degrade (no clones in the worker's `repo_data` volume) while DB-backed code-graph reads work — accepted and stated in the runbook.
 
 **E. External calls that survive on purpose:** the **query embed** on semantic search — a search surface that cannot embed cannot search, so the worker requires the snapshot's embedding endpoint to be reachable (operating requirement, stated in the runbook §prereqs; on this owner's topology that is the LAN Ollama, reachable from any LAN worker). The **reranker is clamped off** under the flag (Task 4) — an LLM scoring call per search against restored credentials is exactly the class A7 disarms, and unlike the embed it is optional. No other retrieval-path external call exists.
 
 **F. The restore/serve collision (B1's last bullet):** `restore.sh` swaps via `ALTER DATABASE … RENAME`, which requires no live connections. The loop (Task 9) therefore **verifies before swapping**: replay into a side database, migrate + stamp it privileged, grant to the viewer role — all while the app serves the *previous* database — and only on success stop the app, swap, start. A snapshot from an older baseline fails `schema_guard` **on the side database**, the swap never happens, and the worker keeps serving what it had: the viewer never goes down for exactly the snapshots one most wants to inspect, closing B1's schema-mismatch scenario. `schema_guard` running only at boot is satisfied because the app always boots after a swap.
+
+**Amendments (2026-09-02, cross-plan adversarial review of all eight plans).** Five defects, fixed in place; the B1 read-only redesign itself was reviewed line by line and found carried correctly. **B-2 (blocker)** — Task 11's new REST route is declared single-door in a docstring, which records nothing; it now takes a `PARITY_TABLE` row, an `EXPECTED_STATUS` entry and a regenerated parity doc (Step 2b). **B-1 twin (blocker)** — the receiver writes `/dumps` from a host bind mount as the same unprivileged user increment 6's job does, with the same root-owned-directory failure; Task 8 now carries the fix and a write probe. **M-6** — the `FOR UPDATE` inventory underpinning Task 5's own enforcement proof was wrong (`_lock_config_row` uses an advisory lock, `job_registry` uses none, and the real set is twelve modules); the scan now derives from the real set and ignores docstring mentions. **m-4** — `docker-compose.worker.yml` lands outside invariant 13's fixed-list worker-count tripwire. **m-5** — `read_only` reaches the posture JSON but no page renders it.
 
 ## Global Constraints
 
@@ -64,7 +66,7 @@ B1's finding: a door-layer `READ_ONLY` posture cannot hold, because the biggest 
 - **Backend tests** from `backend/`: `python -m pytest -q` (dev-compose Postgres 127.0.0.1:5433, `darkmem_test`). Task 5's role test creates a scratch cluster role and drops it in teardown.
 - **Merge gate** `./scripts/gate.sh`; never bare Playwright; `--full` unreliable on this host.
 - **No schema change anywhere in this plan.**
-- **Two-door rule scope:** the inventory read (Task 11) is an ops surface, REST-only — the same standing `documents.reads` has (`docs/two-door-parity.md`); state it in the route docstring. No MCP twin.
+- **Two-door rule scope:** the inventory read (Task 11) is an ops surface, REST-only — the same standing `documents.reads` has (`docs/two-door-parity.md`). **A docstring does not record that status** (review B-2): single-door is declared by a `Surface` row in `PARITY_TABLE` with a stated reason, plus an `EXPECTED_STATUS` entry, plus a regenerated parity doc, all in the same commit as the route. Task 11 Step 2b. No MCP twin.
 - **No in-app restore button** (§9.6). The UI renders the exact command; if a task finds itself adding a POST that restores, the plan is being violated, not extended.
 - **Secrets:** the receiver bearer token and the age identity live in env/files on the worker host, never in the database (a snapshot must not carry its own decryption key — increment 6's rule) and never in a tracked file.
 - **Redeploy rule:** backend/frontend/compose changes → Task 13 redeploys *this* machine. The worker machine itself is the owner's to provision from the runbook; nothing in the gate runs there.
@@ -98,6 +100,10 @@ docs/runbook-backup-worker.md                  # Task 9 (new)
 backend/app/services/backup_pull.py            # Task 10 (new)
 scripts/restore.sh                             # Task 10: --from
 backend/app/api/routes/backups.py              # Task 11 (new)
+backend/tests/test_door_parity.py              # Task 11: PARITY_TABLE row (review B-2)
+backend/tests/test_api/test_rest_conformance.py  # Task 11: EXPECTED_STATUS (B-2)
+docs/two-door-parity.md                        # Task 11: regenerated + headline
+frontend/src/features/settings/use-security-tab-binding.ts  # Task 12: read_only (m-5)
 frontend/src/features/settings/components/backups-tab.tsx  # Task 12
 CHANGELOG.md                                   # Task 13
 ```
@@ -217,6 +223,8 @@ Guard A6 (`main.py:568-578`) and A7 (`:581`) the same way: `if not settings.read
 ```
 
 (Adapt to the file's existing handler idiom and the real `ErrorDetail` fields; catch `DBAPIError`, the base that covers `ProgrammingError`, and re-raise everything that is not 42501. asyncpg's `InsufficientPrivilegeError.sqlstate` is `"42501"`; the test pins the attribute path.)
+
+**Why the non-42501 re-raise is correct rather than accidental** (cross-plan review m-16, 2026-09-02): `raise exc` from inside a Starlette exception handler propagates to `ServerErrorMiddleware`, which reaches the existing `@app.exception_handler(Exception)` at `main.py:883` and produces the ordinary 500 envelope. A reader checking whether the non-privilege branch loses its error handling will otherwise have to derive this; say it in a comment at the handler, because "re-raise" reads like a gap when it is the design.
 - [ ] **Step 3:** suite green, including the untouched auth tests.
 
 ---
@@ -294,7 +302,7 @@ No `GRANT` on sequences, functions or with any write verb — additions to this 
 - [ ] **Step 2: The integration test** (`tests/test_read_only_role.py`), against the test database: create a scratch role `darkmem_viewer_test` (drop in teardown — roles are cluster-global; use a fixture with `DROP ROLE IF EXISTS` guarded by ownership of test objects via `DROP OWNED`), apply the grants file's statements, open a second engine as that role, and assert:
   - `SELECT` against `memories`, `knowledge_triples`, `events`, `documents`, `session_checkpoints`, and one `memory_embeddings__<slug>` partition (register a fingerprint first with the privileged engine) all succeed;
   - `INSERT` into `memories`, `UPDATE` on `config`, `DELETE` on `events`, `SELECT … FOR UPDATE` on `memory_buffer`, and `CREATE TABLE` each raise with SQLSTATE 42501 — asserting the code, not the message;
-  - a `grep`-shaped source scan asserting **no read route module imports anything that issues `with_for_update`**: concretely, walk `rg -l "with_for_update|FOR UPDATE" backend/app` and assert every hit is in the known writer set (`memory_buffer` claim, `job_registry`, `_lock_config_row`'s module) — the D-group claim, pinned so a future read path cannot quietly acquire row locks.
+  - a source scan pinning the D-group claim, **written against the real inventory** (review M-6). Two corrections to how it is built: derive the expectation from the twelve writer modules listed in section D, not from the three-name allowlist this plan first gave; and match on *code*, not raw text, since `api/routes/config.py:430` and `models/memory.py:91` mention `FOR UPDATE` only in a docstring. Concretely: walk `rg -l "with_for_update|FOR UPDATE" backend/app`, drop hits whose only matches are inside comments or docstrings, assert the remainder equals the recorded writer set exactly (a *new* writer fails the test and takes a recorded classification — that is the point), and separately assert the **pure-read** modules named in section D (`hybrid_search`, `facts_channel`, `block_query`, `checkpoints`, `events`, `code_query`) contain no hit at all. `document_door` is deliberately **not** in that list: it serves reads *and* writes (`put_document`, `delete_document`), and increment 8 adds a `FOR UPDATE` on the document row to close its own conversion race — which fails under the viewer role with 42501 and reaches the 403 handler, exactly as a write should. Its read verbs (`document_blocks`, `document_outline`, `search_sections`) take no lock, and that is what section D's claim actually rests on; asserting the whole module is lock-free would be asserting something false about a writer. Equality rather than subset: an allowlist a future author widens to go green proves nothing, which is the failure this test exists to prevent.
 - [ ] **Step 3:** targeted test green against the dev-compose Postgres; full suite green.
 
 ---
@@ -395,7 +403,7 @@ services:
       - RECEIVER_TOKEN=${RECEIVER_TOKEN:?…}
       - RECEIVER_DIR=/dumps
     ports: ["8100:8100"]
-    volumes: ["${DARKMEM_DUMP_DIR:-/root/darkmem-dumps}:/dumps"]
+    volumes: ["${DARKMEM_DUMP_DIR:-/srv/darkmem-dumps}:/dumps"]
   postgres:
     # same pgvector image/command shape as prod; POSTGRES_* are the OWNER
     # role's — the app never sees these, only VIEWER_PASSWORD.
@@ -403,7 +411,23 @@ services:
 ```
 
 (Fill the elided blocks from `docker-compose.yml`'s postgres/healthcheck/network shape; healthchecks on all three.) Note the app has **no dumps volume** — it never reads or writes snapshots; only the receiver and the host-side loop touch them.
-- [ ] **Step 3:** tests green.
+
+**The receiver's `/dumps` mount carries increment 6's B-1 defect and needs the same fix** (cross-plan review, 2026-09-02). The receiver runs the same image, so it runs as the same unprivileged `app` user (`Dockerfile:87-88`), and a host bind mount is not chowned by Docker. Every upload would fail on its first write with the directory owned by root — and on the worker host this is the *only* thing the receiver does, so the failure is total. Two changes: the default becomes `${DARKMEM_DUMP_DIR:-/srv/darkmem-dumps}` to match increment 6 (never under `/root`, which is 0700), and the runbook's worker-provisioning section (Task 9) creates it before first boot:
+
+```bash
+APP_UID=$(docker run --rm darkraise/darkmem:latest id -u)
+sudo install -d -o "$APP_UID" -g "$APP_UID" -m 0750 /srv/darkmem-dumps
+docker compose -f docker-compose.worker.yml up -d receiver
+docker compose -f docker-compose.worker.yml exec -T receiver \
+  sh -c 'touch /dumps/.probe && rm /dumps/.probe' && echo "receiver mount writable"
+```
+
+The receiver should also refuse to start when `RECEIVER_DIR` is not writable, rather than accepting an upload and failing on the write: a receiver that 500s every POST after a green boot is the same silent shape increment 6's B-1 has.
+- [ ] **Step 3b: Bring the new compose file under invariant 13's tripwire** (cross-plan review m-4, 2026-09-02)
+
+`test_no_compose_file_sets_a_worker_count` (`test_deployment_artifact.py:108-112`) is parametrised over a fixed `[PROD_COMPOSE, DEV_COMPOSE]` list, so `docker-compose.worker.yml` lands **outside** the guard that keeps `WEB_CONCURRENCY` and `UVICORN_WORKERS` out of an ops file. Add a `WORKER_COMPOSE` constant and include it in that parametrisation. Invariant 13 binds every launch path, and a worker running the same app with the same in-process schedulers, limiter and WebSocket fan-out is a launch path; a compose file nothing checks is exactly where a second worker gets added later "just for the viewer".
+
+- [ ] **Step 4:** tests green.
 
 ---
 
@@ -452,7 +476,7 @@ services:
 
 - [ ] **Step 1: `backup_pull`** — a `__main__`-runnable async module: load the named destination (unmasked), `list_snapshots()`, resolve `--latest` or the given name, stream it into `--out` via a `.part` rename, **verify the download's sha256 against a fresh `read_back_sha256`** (a pulled snapshot gets the same distrust as an uploaded one), print the resulting container path on stdout as the last line (the shell contract). Tests: fake destination, latest resolution, `.part` discipline, checksum-mismatch refusal.
 - [ ] **Step 2: `restore.sh --from`.** Argument parsing ahead of the existing positional (keep `restore.sh FILE.sql.gz` byte-compatible — the deployment-artifact tests at :204-473 pin its behaviour and must stay green). With `--from`:
-  1. `$COMPOSE exec -T darkmem python -m app.services.backup_pull --destination "$FROM" --latest --out /dumps` → read the printed path; map `/dumps/<file>` to `${DARKMEM_DUMP_DIR:-/root/darkmem-dumps}/<file>` on the host.
+  1. `$COMPOSE exec -T darkmem python -m app.services.backup_pull --destination "$FROM" --latest --out /dumps` → read the printed path; map `/dumps/<file>` to `${DARKMEM_DUMP_DIR:-/srv/darkmem-dumps}/<file>` on the host.
   2. If the file ends `.age`: require `age` on the host and `--identity FILE` (or `$AGE_IDENTITY`); decrypt to a temp `.sql.gz`; **the identity never leaves the host** — decryption cannot happen in the container because the container must never hold the identity (inc 6's rule, restated here).
   3. Fall through to the existing marker-check → confirm → side-DB replay flow unchanged.
 - [ ] **Step 3:** new tests green (stub compose harness: `--from` invokes the pull through compose exec, refuses an `.age` with no identity, decrypts then proceeds); existing restore tests untouched and green.
@@ -475,6 +499,37 @@ services:
 
 - [ ] **Step 1: Failing tests:** two fake destinations (one listing, one whose `list_snapshots` raises — the response carries its `error` string and the other destination's rows intact: one unreachable NAS must not blank the whole inventory); `last_outcome` is the newest matching `events` row per destination (SQL over `events` filtered `event_type IN (…) AND payload->>'destination' = :name` — an indexless payload filter is fine at this row count; say so in a comment).
 - [ ] **Step 2: Implement.** REST-only, stated in the docstring with the `documents.reads` parity citation (`docs/two-door-parity.md`). Auth via the standard `require_auth` dependency. No verb here mutates anything — this is §9.6's "make the decision informed" surface, and it works identically on prod and on the worker (where it reads through the viewer role untouched).
+
+- [ ] **Step 2b: Classify the route, or the gate is red** (cross-plan review B-2, 2026-09-02)
+
+"REST-only, stated in the route docstring" is not how single-door status is recorded — a docstring satisfies no test. Two enumeration-driven guards walk `app.routes` and fail on any route nobody classified, and neither file was in this plan's File Structure:
+
+1. **`backend/tests/test_door_parity.py`** — add a `Surface` (`test_every_rest_route_is_classified`, `:1362-1380`):
+
+```python
+    Surface(
+        name="backups.inventory",
+        status=REST_ONLY,
+        rest=(("GET", f"{V1}/backups/inventory"),),
+        mcp=(),
+        reason=(
+            "An operator's read of where this instance's own encrypted "
+            "snapshots landed and whether each verified, so a human can decide "
+            "whether to restore. Restoring is deliberately a shell command and "
+            "never a route (spec section 9.6), so the read exists to inform a "
+            "person at a console; an agent has no restore verb to inform. It "
+            "also enumerates destination names an agent has no reason to know."
+        ),
+    ),
+```
+
+`test_every_single_door_surface_states_a_real_reason` requires at least 80 characters and rejects the `_NON_REASONS` placeholders — write it for a reader who will question the decision.
+
+2. **`backend/tests/test_api/test_rest_conformance.py`** — add `("GET", "/api/v1/backups/inventory"): 200` to `EXPECTED_STATUS` (`test_every_route_status_code_matches_the_convention`, `:297-310`).
+
+3. **Regenerate `docs/two-door-parity.md`** — it is generated from `PARITY_TABLE`, never hand-edited (`test_door_parity.py:9-11`, `:1834-1849`) — and update its headline to the counts `test_the_committed_table_reports_its_own_counts` (`:1851-1875`) derives. **Read the number off the failing assertion, never from another plan**: increment 6 adds a surface too, and increment 8's plan states literal totals computed before either of these existed.
+
+Add `backend/tests/test_door_parity.py`, `backend/tests/test_api/test_rest_conformance.py` and `docs/two-door-parity.md` to this task's Files list.
 - [ ] **Step 3:** suite green; `/openapi.json` shows the route.
 
 ---
@@ -495,6 +550,8 @@ services:
 
 - [ ] **Step 1: Failing tests:** the section renders per-destination snapshot rows (name, age, size, verification badge from `last_outcome`); a destination with `error` renders the error inline; the restore command block renders exactly `./scripts/restore.sh --from <name> --latest` for the selected destination with a copy button; **assert no element posts anything** — the section's queries are GET-only and there is no restore action (test: no button whose handler calls `apiFetch` with a non-GET on this section).
 - [ ] **Step 2: Implement** with darkraise-ui `card`/`timeline`/`empty-state`; the copy explains the posture in one sentence: *"Restoring replaces the live database; it is deliberately a shell command, not a button."* Add `worker` to the destination form's kind options (url + token fields, token masked).
+
+**Render the read-only posture on the Security tab too** (cross-plan review m-5, 2026-09-02). Task 1 adds `read_only` and `read_only_token_rotation_disabled` to `SecurityPostureResponse`, and its own rationale is that "an operator must be able to tell the posture from the page" — but no task renders them, so today's `"never silent"` is true of the JSON and false of the SPA. Add both to the Security tab beside the existing `cookie_secure_clamped` line (`frontend/src/features/settings/use-security-tab-binding.ts:50` already types the posture object), with copy that says what the flag does *not* do: the role is the enforcement, the flag is ergonomics, and token rotation is disabled while it is on. Add that file and the Security tab component to this task's Files list.
 - [ ] **Step 3:** `npm test -- backups && npm run typecheck && npm run build` green.
 
 ---
