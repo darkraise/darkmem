@@ -91,8 +91,32 @@ and 2 of the project artifact store (spec §3, §4, §6).
   with no navigation entry at all, so the surface existed and could not be
   reached from the app.
 
+- **A per-block editor on the documents surface.** Click a block, edit its
+  markdown source, blur to save. Editing converts a document to *block-first*:
+  its `content` becomes a serialisation of its blocks, and `document_put` at
+  that uri is refused afterwards (409, or a `direction_conflict` envelope over
+  MCP) because a content push would strip the blocks an editing session
+  placed. Four verbs on both doors — `block_update`, `block_insert`,
+  `block_move`, `block_delete` — over one service.
+- **The block read serves each block's own source.** `text` has always been
+  marker-stripped, so an editor holding it edits a different string from the
+  one stored. `source` is the stored one, sliced server-side by the block's
+  span. It is also what lets a heading be *demoted*: delete the `##` and it
+  becomes a paragraph again.
+- **`divider` is a block type.** A thematic break minted no block at all, so a
+  document's `---` section rules lived in its source and nowhere in its tree —
+  and block-first conversion, which regenerates content from the tree, would
+  have deleted every one. Measured on the imported corpus: this took the
+  editor's refusal rate from **203 of 475 documents to 3**.
+
 ### Changed
 
+- **Conversion refuses rather than converting lossily.** A document whose
+  source contains something the block model cannot represent — a raw HTML
+  block, a link-reference definition — stays content-first and says so, rather
+  than being silently rewritten without it. It also refuses when a construct
+  is representable but missing from *that document's* tree, which is what a
+  document filed before its block type existed looks like.
 - **`GET /api/v1/projects` derives from every corpus that carries a project**,
   not `memories` alone. A project holding only documents — exactly what a
   corpus import creates — was invisible in its own scope picker. The switcher

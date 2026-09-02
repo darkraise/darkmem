@@ -8,6 +8,22 @@
 > dcc-superpower-companions:dispatching-tiered-implementers. Under
 > superpowers:executing-plans these lines are inert; ignore them.
 
+> **Status: LANDED 2026-09-02.** Gate green at 6,585 backend tests, 1,346
+> frontend, both SDK suites (`make generate` zero-diff), 1,055 benchlib, F1
+> bench.
+>
+> Two things a reader should carry. **(1)** Task 1's guard measurement forced
+> an unplanned increment-2 follow-up before the rest could proceed: `hr` minted
+> no block, so conversion would have refused 203 of 475 corpus documents or
+> silently deleted their section rules. `divider` joined `BLOCK_TYPES`,
+> taxonomy-first, and refusals fell to 3. **(2)** The gate caught seven
+> enumeration guards across this increment that neither the plan nor the
+> cross-plan review named — the taxonomy count pin, the MCP tool roster, the
+> REST conformance table, the parity headline, `content_surfaces`, the
+> frontend event taxonomy, and the agent instructions. Each was a real gap.
+> The last one mattered most: without it an agent would hold four tools nobody
+> told it about, and would reach for `text` where it must send `source`.
+
 **Goal:** The Notion-style personal workspace (spec §8, as redesigned; both §8.3 decisions taken): four block verbs on both doors (`block_update`, `block_insert`, `block_move`, `block_delete`), block-first ingest whose serialiser regenerates `documents.content`, recomputes `content_hash` and **recomputes `char_span` in the same pass**, a per-block markdown-source editor with no framework, and nesting derived from the uri path.
 
 **No baseline regeneration is required by any part of this plan — verified, not assumed.** Every storage touch is enumerated: `blocks.id` is already a stable uuid PK, `parent_id`/`order_index`/`type`/`text`/`properties`/`char_span` all exist (`backend/migrations/versions/0001_baseline.py:1307-1329`); the ingest-direction flag and the marker records ride existing `JSONB` columns (`documents.properties`, `blocks.properties`); `documents.content`/`content_hash` are increment 3's columns, consumed here, not created; the `blocks_edited` event type is a code-side vocabulary edit (`EVENT_TYPES` is a Python list, not a CHECK). No task in this plan runs DDL, edits `0001_baseline.py`, or moves the schema-guard hash. The review's B2 blocker was precisely that the earlier §8 priced a regen it could not name; the redesign removed the claim and this plan confirms it against the shipped DDL.
@@ -113,7 +129,7 @@ A block with no span in `spans` keeps its properties unchanged — it was minted
 **Evaluation:** files 1 - spec 0 - coupling 2 - risk 2 = 5
 **Approach:** inline - skip 3: the spec (§8.2-8.3) fixed the approach — serialisation of markdown-source blocks with spans recorded in the same pass; the per-type rules below are the decision written down.
 
-- [ ] **Step 1: Write the round-trip tests first**
+- [x] **Step 1: Write the round-trip tests first**
 
 `test_block_serializer.py` — the properties that make this module trustworthy, before any emit rule exists:
 
@@ -280,7 +296,7 @@ The re-import was mandatory rather than tidy-up. `ingest_document` returns `UNCH
 
    `html_block` **stays refused, deliberately**: all five tokens in the corpus are `<!-- BEGIN/END GENERATED -->` markers in three documents whose regions are script-owned (spec §4.5), so editing them as blocks is wrong regardless of whether the model could represent them. The refusal message should say so.
 
-- [ ] **Step 2: Write the module**
+- [x] **Step 2: Write the module**
 
 ```python
 """Serialise a block tree back into markdown source (spec §8.2, increment 8).
@@ -482,7 +498,7 @@ Notes for the implementer (the gaps to close, each pinned by a Step-1 test):
 - The `emit_lines` empty-line handling (`prefix.rstrip()`) keeps quote continuation honest (`>` alone on a blank quoted line).
 - Where a Step-1 round-trip case disagrees with this sketch, **the test is the contract**: adjust the emit rule until `parse_markdown` agrees, and add the case to `ROUND_TRIP_SOURCES` if it is a new shape. Do not weaken `_skeleton` to make a case pass.
 
-- [ ] **Step 3: Run**
+- [x] **Step 3: Run**
 
 `cd backend && .venv/bin/python -m pytest tests/test_block_serializer.py -q` — all green.
 
@@ -503,7 +519,7 @@ Notes for the implementer (the gaps to close, each pinned by a Step-1 test):
 **Evaluation:** files 1 - spec 0 - coupling 2 - risk 1 = 4
 **Approach:** inline - skip 3: the spec (§8.2) fixes both halves — direction recorded on the row, put against block-first is a refusal.
 
-- [ ] **Step 1: Vocabulary (taxonomy-first — this lands before any emitter)**
+- [x] **Step 1: Vocabulary (taxonomy-first — this lands before any emitter)**
 
 In `EVENT_TYPES`, after `"document_filed"`:
 
@@ -515,7 +531,7 @@ In `EVENT_TYPES`, after `"document_filed"`:
     "blocks_edited",
 ```
 
-- [ ] **Step 2: The refusal in the door**
+- [x] **Step 2: The refusal in the door**
 
 In `document_door.py`, add beside the other exceptions and constants:
 
@@ -580,7 +596,7 @@ A brand-new document has no row to lock, and that is correct rather than a hole:
 
 **Note for the read-only worker (increment 7).** `FOR UPDATE` needs row-lock privilege beyond `SELECT`, so this statement fails under the `darkmem_viewer` role with SQLSTATE 42501 — which increment 7's global handler already maps to a 403. That is the correct behaviour (a put is a write and must refuse there), but it means `document_door` is a **writer** module for the purposes of increment 7's Task 5 `FOR UPDATE` scan and must not be listed among the pure-read modules that assert no row locks. Increment 7's plan has been corrected accordingly; if that correction is missing when this lands, fix it there rather than dropping the lock here.
 
-- [ ] **Step 3: Tests**
+- [x] **Step 3: Tests**
 
 In `test_document_door.py`: a document whose properties carry `{"ingest_direction": "blocks"}` (write it with raw SQL in the fixture — Task 4's verbs do it for real) refuses `put_document` with `DocumentIsBlockFirst` and leaves content, hash and blocks untouched; a content-first document (flag absent) still puts normally; `"blocks_edited" in EVENT_TYPES`. Run the file green, then full `pytest -q`.
 
@@ -601,7 +617,7 @@ In `test_document_door.py`: a document whose properties carry `{"ingest_directio
 **Evaluation:** files 1 - spec 0 - coupling 2 - risk 2 = 5
 **Approach:** inline - skip 3: doc 16 §5's one-origin-per-document rule and `delete_document`'s existing tail fix the behaviour; this task only re-scopes and factors it.
 
-- [ ] **Step 1: Generalise the withdrawal**
+- [x] **Step 1: Generalise the withdrawal**
 
 `blocks.id` is `fact_sources.source_ref` for block-kind sources and carries **no FK**, so deleting a block row (Task 4's `block_delete`, cascading its subtree) would leave a fact corroborated by evidence that no longer exists — the exact window `delete_document` already closes at document scope. In `block_fact_sources.py`:
 
@@ -618,7 +634,7 @@ async def withdraw_blocks(
 
 — the `_DELETE_SOURCES_SQL` call with the given ids, returning the same `BlockWithdrawal` shape. Re-implement `withdraw_document` as: resolve the document's block ids (`_DOCUMENT_BLOCKS_SQL`), delegate to `withdraw_blocks`. Behaviour identical; every existing test must stay green unmodified.
 
-- [ ] **Step 2: Extract the expiry tail**
+- [x] **Step 2: Extract the expiry tail**
 
 The body of `delete_document` between the withdrawal and the `_DELETE_DOCUMENT` execute (`document_door.py:550-586` — the `_STILL_SOURCED` probe, the `expire` of facts left bare and not already expired, and the per-fact `sources_changed` journal) becomes a module-level function:
 
@@ -630,7 +646,7 @@ async def expire_facts_left_bare(
 
 `delete_document` calls it; Task 4's `block_delete` calls it with the same document id (origin for a block source is the document — `block_fact_sources.py`'s own rule — so the payload spelling is already right). Neither writes `verification_status`; the rung stays the ladder's (the repository-method allowlist scan, `test_block_retrieval.py:477`, enforces this for every block-channel module including the new ones).
 
-- [ ] **Step 3: Tests**
+- [x] **Step 3: Tests**
 
 `test_block_fact_sources.py`: `withdraw_blocks` removes only the named blocks' sources and leaves a sibling block's source standing; `withdraw_document` still withdraws all. `test_document_door.py`: `delete_document`'s behaviour byte-identical through the extraction (existing tests are the proof; run them unmodified). Full `pytest -q` green.
 
@@ -652,7 +668,7 @@ async def expire_facts_left_bare(
 **Evaluation:** files 1 - spec 0 - coupling 2 - risk 2 = 5
 **Approach:** inline - skip 3: the spec (§8.1-8.2) fixes the verb set, the id-addressed no-diffing model and the regenerate-on-every-mutation rule; the shared `_mutate` pass below is that decision written down.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `test_block_verbs.py`, driving everything through a document filed with `put_document` first (real parse, real spans), then the verbs. Name at least:
 
@@ -689,7 +705,7 @@ async def test_a_verb_on_a_missing_block_refuses(session, llm)     # BlockTarget
 async def test_serialised_content_over_the_bound_refuses_and_rolls_back(session, llm)
 ```
 
-- [ ] **Step 2: Write the module**
+- [x] **Step 2: Write the module**
 
 ```python
 """The block verbs — block-first ingest's write half (spec §8, increment 8).
@@ -929,12 +945,12 @@ Semantics each closure implements against the in-memory tree:
 
 `_PLACE`'s `props` array carries each block's (possibly marker-backfilled) properties as JSON text — the conversion writes markers in the same bulk statement; blocks with unchanged properties round-trip their own value. Its `parents` array carries every block's parentage from the mutated in-memory tree, which is what makes `move_block` actually persist (review M-8); `_UPDATE_BLOCK` keeps writing `parent_id` too, harmlessly, since both derive from the same tree.
 
-- [ ] **Step 3: Classify the new modules in the firewall scans — same task, not a follow-up**
+- [x] **Step 3: Classify the new modules in the firewall scans — same task, not a follow-up**
 
 - `test_block_retrieval.py:345`: `BLOCK_CHANNEL_MODULES` += `"app.services.block_verbs"`, `"app.services.block_serializer"`. The vault-method allowlist scan now covers both automatically; `block_verbs` names only `expire` through Task 3's helper, which the allowlist already carries.
 - `test_block_pipeline.py:792`: `FILING_CLOSURE = import_closure(BACKEND, "app.services.block_pipeline", DOCUMENT_DOOR, "app.services.block_verbs")` — the verbs' closure must not reach `process_batch` either.
 
-- [ ] **Step 4: Run**
+- [x] **Step 4: Run**
 
 `cd backend && .venv/bin/python -m pytest tests/test_block_verbs.py tests/test_block_retrieval.py tests/test_block_pipeline.py -q`, then full `pytest -q`.
 
@@ -959,11 +975,11 @@ Semantics each closure implements against the in-memory tree:
 
 So the editor could not show a heading's level or a list's marker, had no way to demote a heading back to a paragraph, and increment 4 could not render tables through the library `table` component the spec §2 requires. One additive read closes all three.
 
-- [ ] **Step 1: Failing tests.** `properties` round-trips on the blocks read for a heading (`{"level": 2}`) and a list item with a marker; `source` for each block equals `content[char_span]` exactly, including its marker; `source` is `None` when the document has no `content` (a bytes-filed row) or the block has no span; the MCP `document_blocks` payload carries both fields.
+- [x] **Step 1: Failing tests.** `properties` round-trips on the blocks read for a heading (`{"level": 2}`) and a list item with a marker; `source` for each block equals `content[char_span]` exactly, including its marker; `source` is `None` when the document has no `content` (a bytes-filed row) or the block has no span; the MCP `document_blocks` payload carries both fields.
 
-- [ ] **Step 2: Implement.** Add `properties: dict | None` and `source: str | None` to `BlockRow` and `BlockRowModel`. `_BLOCKS` gains `properties` and joins the document's `content` so `source` is sliced server-side from `char_span` — the caller must never have to fetch the whole document and slice it itself, which would make every editor keystroke depend on a second read. One service function, both doors (invariant 17); no new route and no new tool, so `PARITY_TABLE` does not move and `sdks/generate.py` stays a zero-diff check.
+- [x] **Step 2: Implement.** Add `properties: dict | None` and `source: str | None` to `BlockRow` and `BlockRowModel`. `_BLOCKS` gains `properties` and joins the document's `content` so `source` is sliced server-side from `char_span` — the caller must never have to fetch the whole document and slice it itself, which would make every editor keystroke depend on a second read. One service function, both doors (invariant 17); no new route and no new tool, so `PARITY_TABLE` does not move and `sdks/generate.py` stays a zero-diff check.
 
-- [ ] **Step 3:** `pytest tests/test_document_door.py tests/test_document_routes.py tests/test_mcp.py -q`, then full `pytest -q`.
+- [x] **Step 3:** `pytest tests/test_document_door.py tests/test_document_routes.py tests/test_mcp.py -q`, then full `pytest -q`.
 
 **This also closes increment 4's recorded deviation** (its Task 5 Step 1 note): with `properties` served, `table` can render through the library component as spec §2 says. Landing this before increment 4's UI work is not required, but whoever lands it should strike that deviation note.
 
@@ -983,7 +999,7 @@ So the editor could not show a heading's level or a list's marker, had no way to
 **Implementer:** dcc-superpower-companions:impl-sonnet-high
 **Evaluation:** files 1 - spec 0 - coupling 1 - risk 1 = 3
 
-- [ ] **Step 1: Routes** (per `docs/api-rest-conventions.md`: 201 create, 204 delete, `PATCH` partial update, verb-shaped POST for move — the `/runs/{id}/rerun` precedent):
+- [x] **Step 1: Routes** (per `docs/api-rest-conventions.md`: 201 create, 204 delete, `PATCH` partial update, verb-shaped POST for move — the `/runs/{id}/rerun` precedent):
 
 ```python
 class BlockInsertRequest(BaseModel):
@@ -1021,11 +1037,11 @@ DELETE /api/v1/documents/{document_id}/blocks/{block_id}       → 204, delete_b
 
 Each keyed handler first confirms the block belongs to the path's document (the service resolves the block's own document; a mismatch is the same 404 as a missing block — a block in another document does not exist *at this path*). Exception mapping: `BlockTargetUnresolved` → 404, `BlockCycleError` → 422, `DocumentTooLarge` → 422. And on the existing put route: `DocumentIsBlockFirst` → **409** (the conventions' conflict shape, the same status §5.3's CAS uses).
 
-- [ ] **Step 2: Conformance table**
+- [x] **Step 2: Conformance table**
 
 `EXPECTED_STATUS` += the four rows above (201/200/200/204). The enumeration-driven test fails without them — that failure is the reminder, not an obstacle.
 
-- [ ] **Step 3: Route tests**
+- [x] **Step 3: Route tests**
 
 `test_document_routes.py`: one happy path per verb through the HTTP client (insert returns the minted id; update returns the new hash; delete 204 then the block 404s on read), the 409 on put-against-block-first, the 404 on cross-document block addressing. Run the file, then `pytest -q`.
 
@@ -1046,9 +1062,9 @@ Each keyed handler first confirms the block belongs to the path's document (the 
 **Implementer:** dcc-superpower-companions:impl-sonnet-high
 **Evaluation:** files 1 - spec 0 - coupling 1 - risk 1 = 3
 
-- [ ] **Step 1: Four tools**, each the thin twin of its REST route, session posture identical to `document_put` (`server.py:614-650` — own session, rollback on raise, `json.dumps(vars(result))`). Signatures mirror the service: `block_update(block_id, text, type=None, properties=None)`, `block_insert(document_id, type, text, parent_id=None, after_block_id=None, properties=None)`, `block_move(block_id, new_parent_id=None, after_block_id=None)`, `block_delete(block_id)`. No `ctx`/`source` resolution — the verbs journal `blocks_edited` themselves and the editor's identity question is the session's, not a capture header's. Tool descriptions state the direction rule ("only for block-first documents; a document filed with document_put converts on the first block verb, after which document_put refuses it").
+- [x] **Step 1: Four tools**, each the thin twin of its REST route, session posture identical to `document_put` (`server.py:614-650` — own session, rollback on raise, `json.dumps(vars(result))`). Signatures mirror the service: `block_update(block_id, text, type=None, properties=None)`, `block_insert(document_id, type, text, parent_id=None, after_block_id=None, properties=None)`, `block_move(block_id, new_parent_id=None, after_block_id=None)`, `block_delete(block_id)`. No `ctx`/`source` resolution — the verbs journal `blocks_edited` themselves and the editor's identity question is the session's, not a capture header's. Tool descriptions state the direction rule ("only for block-first documents; a document filed with document_put converts on the first block verb, after which document_put refuses it").
 
-- [ ] **Step 1b: The two refusals need MCP wire shapes, not just REST status codes** (cross-plan review M-4, 2026-09-02)
+- [x] **Step 1b: The two refusals need MCP wire shapes, not just REST status codes** (cross-plan review M-4, 2026-09-02)
 
 `DocumentIsBlockFirst` gets a 409 on REST (Task 5) and, as this plan stood, **nothing on MCP**: increment 3's `document_put` tool catches `DocumentHashConflict` into a `hash_conflict` envelope and re-raises everything else (`server.py:641-649` as amended by increment 3), so the agent — the caller most likely to hit this, since these tools are capture-scoped — would get an unstructured tool error where the SPA gets a structured 409. Increment 3's own argument for the envelope applies verbatim: the caller made no mistake, it lost a race, and it should be able to machine-read the outcome and recover.
 
@@ -1078,9 +1094,9 @@ and give the four block tools the same treatment for `DocumentNotConvertible`, w
 
 Both refusals are outcomes a caller should handle, not crashes. Task 5 carries the REST halves (`DocumentIsBlockFirst` → 409, `DocumentNotConvertible` → 409 with a detail naming what the document contains), and the parity row in Step 3 states **both** wire shapes rather than only the route's.
 
-- [ ] **Step 2: Scopes.** `CAPTURE_TOOLS` += the four (capture is the writer scope; these are writers). Update `scopes.py:21`'s docstring count (34 → 38), **and the second occurrence in the same file at `scopes.py:10`** — "one such call as the first statement of all 34 tools - is 34 chances to omit one" — which this plan missed (review m-2, 2026-09-02); both numbers move together. Then `test_mcp_auth.py:395`'s docstring likewise. All three are invariant-23 "full list" sentences whose referent moves here. The derived assertion at `:421` passes untouched, which is the point of deriving it.
+- [x] **Step 2: Scopes.** `CAPTURE_TOOLS` += the four (capture is the writer scope; these are writers). Update `scopes.py:21`'s docstring count (34 → 38), **and the second occurrence in the same file at `scopes.py:10`** — "one such call as the first statement of all 34 tools - is 34 chances to omit one" — which this plan missed (review m-2, 2026-09-02); both numbers move together. Then `test_mcp_auth.py:395`'s docstring likewise. All three are invariant-23 "full list" sentences whose referent moves here. The derived assertion at `:421` passes untouched, which is the point of deriving it.
 
-- [ ] **Step 3: Parity.** Add one `PARITY_TABLE` row — surface `documents.block_write`, REST = the four routes, MCP = the four tools, status two-door, note stating: one service (`block_verbs`), the direction refusal on put, and the wire asymmetry (REST delete answers 204 with no body; `block_delete` answers the full result object — the same delete asymmetry the `documents.write` row already records). Regenerate the markdown:
+- [x] **Step 3: Parity.** Add one `PARITY_TABLE` row — surface `documents.block_write`, REST = the four routes, MCP = the four tools, status two-door, note stating: one service (`block_verbs`), the direction refusal on put, and the wire asymmetry (REST delete answers 204 with no body; `block_delete` answers the full result object — the same delete asymmetry the `documents.write` row already records). Regenerate the markdown:
 
 ```bash
 cd backend && .venv/bin/python -c \
@@ -1091,7 +1107,7 @@ and update the hand-maintained headline above the generated region — which is 
 
 **Do not write the literal numbers this plan originally gave** (72 → 73, 23 → 24). They were computed against the tree as it stood before increments 6 and 7 were planned, and **both of those add a REST-only surface** (`config.backup_destinations` and `backups.inventory`). Whichever of the three lands last would have written a headline that disagrees with the table above it, and `test_the_committed_table_reports_its_own_counts` (`test_door_parity.py:1851-1875`) fails on exactly that. It derives the expected string from `PARITY_TABLE` and prints it, so: run the test, read the headline out of the failure message, paste it in. That is the only correct source for the number regardless of landing order.
 
-- [ ] **Step 4:** `pytest tests/test_door_parity.py tests/test_mcp_auth.py -q`, then full `pytest -q`.
+- [x] **Step 4:** `pytest tests/test_door_parity.py tests/test_mcp_auth.py -q`, then full `pytest -q`.
 
 ---
 
@@ -1107,7 +1123,7 @@ and update the hand-maintained headline above the generated region — which is 
 **Implementer:** dcc-superpower-companions:impl-sonnet-low
 **Evaluation:** files 1 - spec 0 - coupling 0 - risk 0 = 1
 
-- [ ] **Step 1:**
+- [x] **Step 1:**
 
 ```ts
 import { useMutation, useQueryClient } from "@tanstack/react-query"
@@ -1153,7 +1169,7 @@ export function useBlockDelete(documentId: string) { /* DELETE .../blocks/{id} *
 
 (The three siblings follow the same shape; delete's `apiFetch` returns void on 204.) Mutations need no `enabled: !DEMO` — they only fire from user action on a surface demo mode never arms — but Task 9 must not render the editor affordances in demo mode.
 
-- [ ] **Step 2:** `npm run typecheck`; a hooks test asserting the invalidation keys fire on success.
+- [x] **Step 2:** `npm run typecheck`; a hooks test asserting the invalidation keys fire on success.
 
 ---
 
@@ -1171,7 +1187,7 @@ export function useBlockDelete(documentId: string) { /* DELETE .../blocks/{id} *
 **Evaluation:** files 1 - spec 1 - coupling 1 - risk 1 = 4
 **Approach:** inline - skip 3: §8.3 took the editor decision (markdown-source blocks, no framework) and this plan's header restates the accepted ceiling; only interaction details are left.
 
-- [ ] **Step 1:** `BlockEditor({ documentId, blocks })` renders the ordered block list. Per block:
+- [x] **Step 1:** `BlockEditor({ documentId, blocks })` renders the ordered block list. Per block:
 
 - **Unfocused:** `BlockView` inside a click-target that sets focus. The storage format *is* the edit format — no conversion anywhere (§8.3's whole argument).
 - **Focused:** darkraise-ui `textarea` (read `textarea.d.ts`; auto-grow if the props offer it, else rows from line count) holding **`block.source`** — the block's actual markdown source, marker included, served by Task 5a. Fall back to `block.text` only when `source` is `null` (a bytes-filed document, or a block with no span).
@@ -1186,7 +1202,7 @@ export function useBlockDelete(documentId: string) { /* DELETE .../blocks/{id} *
 - **`ArrowUp`/`ArrowDown`** at the textarea's first/last line: move focus between blocks.
 - **While a mutation is in flight**, keep the textarea enabled with the local value (optimistic locally; the invalidation refreshes spans and order underneath). Surface a failed mutation inline under the block ("the edit was not saved — {message}") — never silently drop keystrokes.
 
-- [ ] **Step 2: Tests.** Mock the mutation hooks: focusing a heading block puts `## Foo` in the textarea (from `source`, not `Foo` from `text`); commit-on-blur fires update with the promotion applied (`# Foo` → `{type:"heading", text:"Foo", properties:{level:1}}`); **deleting the marker demotes** (`Foo` alone → `{type:"paragraph", text:"Foo"}`); Ctrl+Enter fires insert-after; Backspace-on-empty fires delete; an unchanged blur fires nothing. `npm test -- block-editor && npm run typecheck`.
+- [x] **Step 2: Tests.** Mock the mutation hooks: focusing a heading block puts `## Foo` in the textarea (from `source`, not `Foo` from `text`); commit-on-blur fires update with the promotion applied (`# Foo` → `{type:"heading", text:"Foo", properties:{level:1}}`); **deleting the marker demotes** (`Foo` alone → `{type:"paragraph", text:"Foo"}`); Ctrl+Enter fires insert-after; Backspace-on-empty fires delete; an unchanged blur fires nothing. `npm test -- block-editor && npm run typecheck`.
 
 ---
 
@@ -1205,15 +1221,15 @@ export function useBlockDelete(documentId: string) { /* DELETE .../blocks/{id} *
 **Evaluation:** files 1 - spec 1 - coupling 1 - risk 1 = 4
 **Approach:** inline - skip 3: §8.3 fixed nesting as uri-derived and the tree as increment 4's grouping; what remains is wiring.
 
-- [ ] **Step 1: Edit mode.** On the personal surface (`project="default"` only — the project workspace stays read-only; state that in a code comment where the mode is gated), a selected document shows a Read / Edit toggle (darkraise-ui `segment-group` or `toggle-group`): Read mounts `DocumentReader`, Edit mounts `BlockEditor`. Hidden entirely in demo mode.
+- [x] **Step 1: Edit mode.** On the personal surface (`project="default"` only — the project workspace stays read-only; state that in a code comment where the mode is gated), a selected document shows a Read / Edit toggle (darkraise-ui `segment-group` or `toggle-group`): Read mounts `DocumentReader`, Edit mounts `BlockEditor`. Hidden entirely in demo mode.
 
-- [ ] **Step 2: New page and subpage — nesting is the uri path, nothing else (§8.3).**
+- [x] **Step 2: New page and subpage — nesting is the uri path, nothing else (§8.3).**
 
 - Tree `nodeActions`: on a folder node, a "new subpage" action; above the tree, a "new page" action.
 - Both prompt for a title, slugify it (`lower, spaces→-, strip non [a-z0-9-]`), and `document_put` at `` `${prefix}${slug}.md` `` — the parent's `node.path` plus `/` for a subpage, `notes/` for a root page — with content `` `# ${title}` ``. Then select the new document and enter Edit mode; the first committed edit converts it block-first server-side. No parent column, no page-ref block, no schema: creating a subpage **is** assigning a uri under the parent's prefix.
 - A put refused with 409 (uri already taken by a block-first document) surfaces its message inline; do not retry, do not overwrite.
 
-- [ ] **Step 3: Tests + full check.** Extend `documents.real.test.tsx`: toggle mounts the editor; the new-subpage action puts at the prefixed uri. `cd frontend && npm test && npm run typecheck && npm run build`.
+- [x] **Step 3: Tests + full check.** Extend `documents.real.test.tsx`: toggle mounts the editor; the new-subpage action puts at the prefixed uri. `cd frontend && npm test && npm run typecheck && npm run build`.
 
 ---
 
@@ -1230,11 +1246,11 @@ export function useBlockDelete(documentId: string) { /* DELETE .../blocks/{id} *
 **Implementer:** dcc-superpower-companions:impl-sonnet-medium
 **Evaluation:** files 1 - spec 1 - coupling 0 - risk 0 = 2
 
-- [ ] **Step 1: CLAUDE.md, MCP endpoint section.** "capture covers the 8 writers (…)" → 12, appending the four block verbs to the parenthetical list; "the full 34-tool catalogue" → 38. `read` stays 25, `admin` stays 1. These are exactly the "here is the full list" sentences invariant 23 exists for; they change in the same increment as their referent, per the convention the jobs-roster paragraph records.
+- [x] **Step 1: CLAUDE.md, MCP endpoint section.** "capture covers the 8 writers (…)" → 12, appending the four block verbs to the parenthetical list; "the full 34-tool catalogue" → 38. `read` stays 25, `admin` stays 1. These are exactly the "here is the full list" sentences invariant 23 exists for; they change in the same increment as their referent, per the convention the jobs-roster paragraph records.
 
-- [ ] **Step 2: CLAUDE.md, Documents section.** "Five verbs, both doors" gains the block-verb half: the four verbs, the direction rule (a row is content-first or block-first; `document_put` against block-first is a 409 refusal; the first block verb converts and derives markers from the stored content), the serialiser's span guarantee (recomputed in the same pass, never NULL), and the cost model (one edit = one bulk placement UPDATE + one document write + one single-block embed).
+- [x] **Step 2: CLAUDE.md, Documents section.** "Five verbs, both doors" gains the block-verb half: the four verbs, the direction rule (a row is content-first or block-first; `document_put` against block-first is a 409 refusal; the first block verb converts and derives markers from the stored content), the serialiser's span guarantee (recomputed in the same pass, never NULL), and the cost model (one edit = one bulk placement UPDATE + one document write + one single-block embed).
 
-- [ ] **Step 3: agent-conventions.md.** Its round-trip-honesty item says "do not get-edit-put a document and expect the source back". Amend: for **content-first** documents that stands; **block-first** documents (the editor's) are the inverse — do not `document_put` them at all (the door refuses), and an agent that must change one uses the block verbs with ids from `document_get`.
+- [x] **Step 3: agent-conventions.md.** Its round-trip-honesty item says "do not get-edit-put a document and expect the source back". Amend: for **content-first** documents that stands; **block-first** documents (the editor's) are the inverse — do not `document_put` them at all (the door refuses), and an agent that must change one uses the block verbs with ids from `document_get`.
 
 ---
 
@@ -1246,11 +1262,11 @@ export function useBlockDelete(documentId: string) { /* DELETE .../blocks/{id} *
 **Implementer:** dcc-superpower-companions:impl-sonnet-medium
 **Evaluation:** files 0 - spec 0 - coupling 0 - risk 2 = 2
 
-- [ ] **Step 1:** `./scripts/gate.sh` — green. This includes the alembic single-revision assertion, which doubles as this plan's no-regen proof: the revision file is untouched.
-- [ ] **Step 2:** SDK zero-diff: `cd sdks && make generate && git diff --exit-code sdks/` (no document or block verb is bound; a diff means drift elsewhere — stop and investigate).
-- [ ] **Step 3:** CHANGELOG section for the next derived version; coordinate with any sibling increment landing in the same push.
-- [ ] **Step 4:** Commits, atomic by concern: `feat(blocks): serialiser and block-first ingest direction` (Tasks 1-3), `feat(blocks): four block verbs on both doors` (Tasks 4-6), `feat(frontend): per-block editor on the personal surface` (Tasks 7-9), `docs: block-verb contract updates` (Task 10).
-- [ ] **Step 5:** Redeploy (owner ruling 2026-08-21):
+- [x] **Step 1:** `./scripts/gate.sh` — green. This includes the alembic single-revision assertion, which doubles as this plan's no-regen proof: the revision file is untouched.
+- [x] **Step 2:** SDK zero-diff: `cd sdks && make generate && git diff --exit-code sdks/` (no document or block verb is bound; a diff means drift elsewhere — stop and investigate).
+- [x] **Step 3:** CHANGELOG section for the next derived version; coordinate with any sibling increment landing in the same push.
+- [x] **Step 4:** Commits, atomic by concern: `feat(blocks): serialiser and block-first ingest direction` (Tasks 1-3), `feat(blocks): four block verbs on both doors` (Tasks 4-6), `feat(frontend): per-block editor on the personal surface` (Tasks 7-9), `docs: block-verb contract updates` (Task 10).
+- [x] **Step 5:** Redeploy (owner ruling 2026-08-21):
 
 ```bash
 DARKMEM_PUSH=0 ./scripts/build-push.sh
@@ -1259,7 +1275,7 @@ docker compose up -d
 curl -s http://127.0.0.1:8000/openapi.json | grep -c "blocks/{block_id}"   # non-zero
 ```
 
-- [ ] **Step 6:** Watch it work: create a page on `/documents`, edit a block, confirm in SQL that `documents.content` re-serialised and `blocks.char_span` values slice it (`SELECT text, content FROM blocks b JOIN documents d ON d.id=b.document_id ...` — spot-check one span), and confirm `document_put` at that uri answers 409.
+- [x] **Step 6:** Watch it work: create a page on `/documents`, edit a block, confirm in SQL that `documents.content` re-serialised and `blocks.char_span` values slice it (`SELECT text, content FROM blocks b JOIN documents d ON d.id=b.document_id ...` — spot-check one span), and confirm `document_put` at that uri answers 409.
 
 ## Rollback
 
