@@ -33,7 +33,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-31-project-artifact-store-design.md` §5 as revised (the bridge is CUT; the column is taken now). **Review:** the 2026-08-31 adversarial review — M1 (compare-and-set, the race demonstration), M6 (retired by cutting the bridge), m3 (retired with it; the unchanged path is still re-checked here in Tasks 2 and 4).
 
-**Amendments (2026-09-02, cross-plan adversarial review of all eight plans).** Five defects were found in this plan and are fixed in place, not appended: **B-3** — `content` now carries a `= None` default on both repository writers, because increment 4 calls the old signature and declares this plan not a prerequisite (Task 2 Step 1). **M-1** — Task 8's drop/recreate destroys the increment-0 API key, the armed `auto_research` row, feature flags, job configs and repositories; Step 2 now captures them and Step 6 probes `tools/list`. **M-5** — `docs/two-door-parity.md` is *generated* from `PARITY_TABLE`, the inverse of what the Global Constraints and Tasks 5-6 said; those now edit the module constant and regenerate. **m-13** — Task 7 gains a CLAUDE.md step, which increment 8 assumes has happened. **m-6** — the "stale `$content` references" note was itself stale and is withdrawn. Tasks 1-4 and Task 8's regeneration sequence were found sound.
+**Amendments (2026-09-02, cross-plan adversarial review of all eight plans).** Five defects were found in this plan and are fixed in place, not appended: **B-3** — `content` now carries a `= None` default on both repository writers, because increment 4 calls the old signature and declares this plan not a prerequisite (Task 2 Step 1). **M-1** — Task 8's drop/recreate destroys the API key row, feature flags, job configs and repositories; Step 2 now captures them and Step 6 verifies the `api_keys` rows landed. (This amendment originally also named an "armed `auto_research` row" and a `tools/list` probe. Both were wrong and were corrected 2026-09-02: `auto_research` is absent from this database, and no key's plaintext exists anywhere, so that probe could never have passed — see Task 8's D1-D4 fixes.) **M-5** — `docs/two-door-parity.md` is *generated* from `PARITY_TABLE`, the inverse of what the Global Constraints and Tasks 5-6 said; those now edit the module constant and regenerate. **m-13** — Task 7 gains a CLAUDE.md step, which increment 8 assumes has happened. **m-6** — the "stale `$content` references" note was itself stale and is withdrawn. Tasks 1-4 and Task 8's regeneration sequence were found sound.
 
 **Sequencing that binds:** increment 3 **must land and deploy before increment 5** (`docs/superpowers/plans/2026-08-31-docs-corpus-import.md` line 25-30 already records "increment 2 deployed → increment 3 deployed → this plan"). The whole argument for taking the column now is that a regeneration is cheapest while `documents` holds 0 rows everywhere.
 
@@ -757,6 +757,8 @@ Commit: `docs(changelog): round-trip fidelity section` (chore-typed docs commits
 **Implementer:** dcc-superpower-companions:impl-opus-low
 **Evaluation:** files 0 - spec 0 - coupling 1 - risk 3 = 4
 
+**The G-C corpus is not in this database, so the drop costs the gate clear nothing** (established by an independent review, 2026-09-02, and worth stating here because it is the one thing that would make this step unsafe). `promotion_metrics_record.json` names its measured databases as `darkmem_bench_t2131` / `_sim` / `_verify`, all on the dev Postgres; `scripts/benchlib/db_target.py:18` puts `darkmem` in `FORBIDDEN_TARGETS`, so the harness cannot reach production by construction; and the corpus itself is the git-tracked `benchlib/promotion/corpus.json`. Production holds ordinary captures the greenfield ruling makes disposable.
+
 **Do not deviate from this sequence.** The one silent failure this exists to prevent: `alembic upgrade head` on a database already stamped `0001` compares `0001` to `0001` and does nothing, so a deploy without the drop reports a clean migration against a schema missing the column — and `schema_guard` will then refuse every boot. There is no override flag, on purpose.
 
 - [ ] **Step 1: Pre-flight — what is prod actually running?**
@@ -772,7 +774,12 @@ The two must match. A mismatch means prod is running a baseline that is not pre-
 - [ ] **Step 2: Backup, then capture what a re-seed does NOT reproduce**
 
 ```bash
+# BACKUP_KEEP is 14 and the prune glob is `darkmem-*.sql.gz`, which this dump
+# matches -- so the escape hatch would age out with ordinary nightlies
+# (defect D3). Copy it out from under the glob before continuing.
 ./scripts/backup.sh /root/darkmem-backups
+cp "$(ls -t /root/darkmem-backups/darkmem-*.sql.gz | head -1)" \
+   /root/darkmem-backups/pre-increment3-2026-09-02.sql.gz
 docker exec darkmem-prod-postgres-1 pg_dump -U darkmem -d darkmem \
   --data-only --table=llm_providers --column-inserts > /tmp/providers.sql
 docker exec darkmem-prod-postgres-1 pg_dump -U darkmem -d darkmem \
@@ -790,10 +797,12 @@ docker exec darkmem-prod-postgres-1 pg_dump -U darkmem -d darkmem \
 # Increment 0 minted this key and no later task re-mints it.
 docker exec darkmem-prod-postgres-1 pg_dump -U darkmem -d darkmem \
   --data-only --table=api_keys --column-inserts > /tmp/api_keys.sql
-# Operator-set config rows a re-seed does not reproduce: the armed research
-# loop (armed on this host 2026-08-17 by owner ruling), feature flags, the
-# verification ladder and its measurements, every per-job cron/config
-# override, and -- if increment 6 landed first -- the backup destinations.
+# Operator-set config rows a re-seed does not reproduce. Verified against
+# this database 2026-09-02: `feature_flags` and 24 `job:*` rows are present;
+# `auto_research`, `verification_ladder`, `ladder_measurements` and
+# `backup_destinations` are ABSENT -- an earlier amendment here asserted the
+# research loop was armed on this host, and it is not. The grep stays wide so
+# it keeps working if any of them is written later.
 docker exec darkmem-prod-postgres-1 pg_dump -U darkmem -d darkmem \
   --data-only --table=config --column-inserts \
   | grep -E "auto_research|feature_flags|verification_ladder|ladder_measurements|backup_destinations|'job:" \
@@ -803,9 +812,9 @@ docker exec darkmem-prod-postgres-1 pg_dump -U darkmem -d darkmem \
   --data-only --table=repositories --column-inserts > /tmp/repos.sql
 ```
 
-Restore these after the three LLM artifacts in Step 5. The greenfield ruling makes *data* disposable; it does not make this programme's own preconditions self-healing, and increment 0 is a manual owner procedure with no task that re-runs it. If any restore is judged not worth carrying, the alternative is explicit: re-run increment 0's mint-and-repoint procedure (`docs/superpowers/plans/2026-08-31-watchable-progress.md:31-51`) and re-arm `auto_research` through the settings door **after** Step 6, and say so in the deploy note. Silently losing the key is what this step exists to prevent.
+Restore these after the three LLM artifacts in Step 5. The greenfield ruling makes *data* disposable; it does not make this programme's own preconditions self-healing, and increment 0 is a manual owner procedure with no task that re-runs it. If any restore is judged not worth carrying, say so in the deploy note rather than discovering it later. Note `auto_research` needs no re-arming on this database — it was never armed here. Silently losing the API key is what this step exists to prevent: nothing logs it, and the holder simply starts getting 401.
 
-Six artifacts, and the order below restores providers **before** purposes (`llm_purpose_configs.provider_name` is a NOT NULL FK). The full backup is the escape hatch: the drop discards every memory, event and research origin prod has accumulated (disposable by the greenfield ruling), and the runbook's "Restoring a data-only dump into a fresh database" section is the recorded route back if the owner ever wants that corpus — it is not part of this deploy.
+Six artifacts, and the order below restores providers **before** purposes (`llm_purpose_configs.provider_name` is a NOT NULL FK). **If the escape hatch is ever used, it needs one preparatory statement.** A data-only restore halts on `COPY public.events_202608`: `events` is RANGE-partitioned by month and boot creates only the current month and the next (`events.py:341`), so an older child table does not exist in the fresh database. Run `SELECT events_ensure_partition('2026-08-01');` (and one per month the dump covers) before restoring. The added nullable column is *not* a blocker — `pg_dump` emits explicit column lists. The full backup is the escape hatch: the drop discards every memory, event and research origin prod has accumulated (disposable by the greenfield ruling), and the runbook's "Restoring a data-only dump into a fresh database" section is the recorded route back if the owner ever wants that corpus — it is not part of this deploy.
 
 - [ ] **Step 3: Build the new image BEFORE the drop**
 
@@ -846,13 +855,34 @@ docker exec darkmem-prod-postgres-1 psql -U darkmem -d darkmem -c "
    where params = '{}'::jsonb and purpose <> 'embedding';"
 ```
 
-Then the three artifacts Step 2 added beyond the runbook's list (review M-1) — order does not matter among these, none carries a foreign key into the others:
+Then the three artifacts Step 2 added beyond the runbook's list (review M-1). None carries a foreign key into the others, but **the `config` restore collides and silently does nothing unless handled** (defect D1, found 2026-09-02):
+
+`main.py:578` writes `job:code_enrichment` at boot and every job persists its own config row after its first run (`job_registry.py:416`), so by the time `/tmp/config_rows.sql` runs the fresh database **already holds `job:*` rows**. Each plain `INSERT` collides on `config_pkey`, and psql without `ON_ERROR_STOP` prints the error, continues, and **exits 0 having restored nothing**. A no-op that reports success is exactly the failure mode this whole procedure exists to prevent.
+
+Stop the API first — it stamped the schema at Step 4 and has nothing further to do here — clear the rows boot re-created, restore with errors fatal, then bring it back:
 
 ```bash
-docker exec -i darkmem-prod-postgres-1 psql -U darkmem -d darkmem < /tmp/api_keys.sql
-docker exec -i darkmem-prod-postgres-1 psql -U darkmem -d darkmem < /tmp/config_rows.sql
-docker exec -i darkmem-prod-postgres-1 psql -U darkmem -d darkmem < /tmp/repos.sql
+docker compose stop darkmem
+docker exec -i darkmem-prod-postgres-1 psql -U darkmem -d darkmem -v ON_ERROR_STOP=1 \
+  -c "DELETE FROM config WHERE key LIKE 'job:%' OR key = 'feature_flags';"
+for f in api_keys config_rows repos; do
+  docker exec -i darkmem-prod-postgres-1 psql -U darkmem -d darkmem \
+    -v ON_ERROR_STOP=1 < /tmp/$f.sql || { echo "RESTORE FAILED: $f"; break; }
+done
+docker compose up -d
 ```
+
+Use `-v ON_ERROR_STOP=1` on the three LLM restores above too. Then **count what actually landed**, and compare against the counts taken before the drop:
+
+```bash
+docker exec darkmem-prod-postgres-1 psql -U darkmem -d darkmem -tAc \
+  "select (select count(*) from config where key like 'job:%') as jobs,
+          (select count(*) from config where key = 'feature_flags') as flags,
+          (select count(*) from api_keys) as keys,
+          (select count(*) from repositories) as repos;"
+```
+
+A zero anywhere means that restore did not happen.
 
 Restoring — never re-seeding — is what keeps the qualified judge identity (`gpt-5.5` at `fd39e7b2c47fa375`, spanning both tables) and every purpose's `params`; `llm_seed.py` would overwrite all of it with Ollama presets, silently. The same logic is why `api_keys` is restored rather than re-minted: a re-mint means editing `/root/.claude.json` and every other client that holds the old token, and nothing reports that you forgot.
 
@@ -869,26 +899,25 @@ docker exec darkmem-prod-postgres-1 psql -U darkmem -d darkmem -tAc \
 ```
 
 ```bash
-# Reachability, not just liveness (review M-1): the key the agent presents
-# must still resolve. Anything other than 200 means the api_keys restore did
-# not happen and every agent MCP call is answering 401.
-curl -s -o /dev/null -w '%{http_code}\n' -X POST localhost:8000/mcp/ \
-  -H "Authorization: Bearer $(sed -n 's/^darkmem_api_key: *//p' .claude/local-credentials.md)" \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
-# Note the trailing slash on /mcp/ -- without it the answer is 405, which
-# reads like a broken endpoint rather than a dropped character.
+# The credential survived the drop (defect D2, corrected 2026-09-02). This
+# replaces a `tools/list` probe that could never have passed: the only key in
+# this database predates increment 0 and its plaintext token is recorded
+# nowhere, so no caller -- including this procedure -- can present it. A check
+# that always fails teaches nothing, and reads as the restore having failed.
+#
+# The row is what the restore must preserve, and the row is checkable with no
+# secret at all:
 docker exec darkmem-prod-postgres-1 psql -U darkmem -d darkmem -tAc \
-  "select key from config where key in
-     ('auto_research','feature_flags','verification_ladder');"
+  "select name, scopes, created_at from api_keys order by created_at;"
+# Non-empty and matching what Step 2 captured. Empty means the api_keys
+# restore did not run, and every existing key holder now gets 401.
 ```
 
-Compose reuses an image whose tag did not move, so a skipped build redeploys the old bits while reporting `Started` — the OpenAPI probe for the new fields is what rules that out. The job-status query is the one that would have caught the 2026-08-17 drift; run it. The `tools/list` probe is the one that would catch a lost API key, which no log or health check reports.
+Compose reuses an image whose tag did not move, so a skipped build redeploys the old bits while reporting `Started` — the OpenAPI probe for the new fields is what rules that out. The job-status query is the one that would have caught the 2026-08-17 drift; run it. The `api_keys` query is the one that would catch a lost credential, which no log or health check reports.
 
 - [ ] **Step 7: The dev database**
 
-The dev-compose Postgres (5433) `darkmem` database, if one exists there, is now behind the baseline: `schema_guard` will refuse the next dev-server start with the remedy in its message. That refusal is correct — drop and recreate it the same way when next needed (`psql -h localhost -p 5433 -U darkmem -d postgres -c "DROP DATABASE darkmem;" -c "CREATE DATABASE darkmem OWNER darkmem;"`, then `./scripts/start_dev_server.sh` migrates and stamps). Test databases self-reset via conftest; nothing to do.
+**Corrected 2026-09-02 (defect D4): the guard will NOT refuse here, so this must be done proactively rather than left to fail loudly.** The dev-compose Postgres (5433) `darkmem` database is at `0001` with **no `schema_baseline_sha` row at all** — it was never booted through `entrypoint.sh`, which is what stamps one. `schema_guard` treats an unstamped database as first contact and *adopts* the current baseline hash, so the next dev-server start silently accepts a schema that is missing `documents.content`, and the failure surfaces later as a column error rather than a refusal. Drop and recreate it in this step (`psql -h localhost -p 5433 -U darkmem -d postgres -c "DROP DATABASE darkmem;" -c "CREATE DATABASE darkmem OWNER darkmem;"`, then `./scripts/start_dev_server.sh` migrates and stamps). Test databases self-reset via conftest; nothing to do.
 
 ---
 
