@@ -1,12 +1,30 @@
 # Backup Off-Host Implementation Plan (Increment 6)
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 > **Implementer assignments:** each task names its implementer agent in an
 > `**Implementer:**` line. When executing with
 > superpowers:subagent-driven-development, REQUIRED SUB-SKILL:
 > dcc-superpower-companions:dispatching-tiered-implementers. Under
 > superpowers:executing-plans these lines are inert; ignore them.
+
+**Status: LANDED and deployed 2026-09-02.** All ten tasks are done, `./scripts/gate.sh`
+is green, and the change is verified in the running image (`pg_dump 17.11`, `age 1.2.1`,
+`boto3 1.43.86`, `/dumps` writable by uid 100, `backup-destinations` on `/openapi.json`).
+One live ship ran end to end: a 252 MB `darkmem-app-20260902-124148.sql.gz` landed in
+`/srv/darkmem-dumps`, verified by read-back hash, journalled `backup_shipped`, and replayed
+into a scratch database matching the live corpus row for row (475 documents, 49,310 blocks;
+`events` differs by the one row the ship itself wrote after the dump was taken).
+
+**Two findings recorded rather than fixed here.** (1) The lock's `pywin32` is present and
+correctly guarded by `sys_platform == 'win32'` -- it was there before this increment and is
+what a universal resolve produces, so Task 6's `grep -c pywin32 -> 0` check was wrong as
+written. (2) The `block_embedding_refresh` job filled
+`block_embeddings__qwen3_embedding_0_6b_1024` to 665 MB of a 710 MB database between the
+11:49 systemd dump (2.8 MB) and the 12:41 job dump (252 MB). Both producers now keep 14
+snapshots each, so nightly retention is heading for ~7 GB on a host with 17 GB free --
+the slow disk-fill the retention rule exists to prevent, at 90x the size it was sized for.
+Moving either `BACKUP_KEEP` or `retention_keep` is the owner's call, so neither was touched.
 
 **Goal:** Nightly snapshots leave the host that runs the database — encrypted before egress, read back and checksummed after upload, retained per destination — driven by a `backup_ship` `JobRegistry` job that dumps over the stack network, with a settings panel for destinations. The systemd producer (`scripts/backup.sh` + `darkmem-backup.timer`) stays untouched as the independent floor.
 
@@ -91,7 +109,7 @@ Two consequences the steps below carry:
 **Implementer:** dcc-superpower-companions:impl-opus-low
 **Evaluation:** files 1 - spec 0 - coupling 2 - risk 1 = 4
 
-- [ ] **Step 1: Failing tests first.** In `backend/tests/test_deployment_artifact.py`, beside `test_runtime_stage_installs_git` (:475), add:
+- [x] **Step 1: Failing tests first.** In `backend/tests/test_deployment_artifact.py`, beside `test_runtime_stage_installs_git` (:475), add:
 
 ```python
 def test_runtime_stage_installs_backup_toolchain():
@@ -123,7 +141,7 @@ def test_prod_app_service_mounts_the_dump_directory():
 
 **Helper names, corrected** (review m-15): the file defines `_unwrapped(path)` for Dockerfile text, `_compose(path)` for a parsed compose file and `_compose_command(path, service)` (`test_deployment_artifact.py:38-52`) — there is no `_runtime_stage()` and no `_prod_compose()`. Use `_unwrapped(DOCKERFILE)` where the sketch above says `_runtime_stage()`, matching how `test_runtime_stage_installs_git` reads the file at `:475`. Run: `cd backend && python -m pytest -q tests/test_deployment_artifact.py` — the two new tests FAIL.
 
-- [ ] **Step 2: Dockerfile.** In the runtime stage, widen the existing apt install (keep the comment discipline — say why, not what):
+- [x] **Step 2: Dockerfile.** In the runtime stage, widen the existing apt install (keep the comment discipline — say why, not what):
 
 ```dockerfile
 # git: code indexing shells out to it (see below). postgresql-client: the
@@ -137,7 +155,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 ```
 
-- [ ] **Step 3: Compose.** In `docker-compose.yml`, `darkmem` service `volumes:`:
+- [x] **Step 3: Compose.** In `docker-compose.yml`, `darkmem` service `volumes:`:
 
 ```yaml
     volumes:
@@ -162,7 +180,7 @@ APP_UID=$(docker run --rm darkraise/darkmem:latest id -u)
 sudo install -d -o "$APP_UID" -g "$APP_UID" -m 0750 /srv/darkmem-dumps
 ```
 
-- [ ] **Step 4: Verify.** `cd backend && python -m pytest -q tests/test_deployment_artifact.py` all green. Then a real build proof (the plan's package-availability claim, re-verified where it counts): `DARKMEM_PUSH=0 ./scripts/build-push.sh` and `docker run --rm darkraise/darkmem:latest sh -c "pg_dump --version && age --version && rsync --version | head -1 && ssh -V"` — expect `pg_dump (PostgreSQL) 17.x`.
+- [x] **Step 4: Verify.** `cd backend && python -m pytest -q tests/test_deployment_artifact.py` all green. Then a real build proof (the plan's package-availability claim, re-verified where it counts): `DARKMEM_PUSH=0 ./scripts/build-push.sh` and `docker run --rm darkraise/darkmem:latest sh -c "pg_dump --version && age --version && rsync --version | head -1 && ssh -V"` — expect `pg_dump (PostgreSQL) 17.x`.
 
 **Then prove the mount is writable by the process that will write it** (review B-1) — this is the assertion the whole increment rests on, and it costs one command:
 
@@ -191,7 +209,7 @@ A failure here is the increment's core deliverable not working, not a permission
 **Implementer:** dcc-superpower-companions:impl-opus-medium
 **Evaluation:** files 1 - spec 0 - coupling 2 - risk 2 = 5
 
-- [ ] **Step 1: Failing tests.** `backend/tests/test_backup_config.py` (use the existing `session` fixture from `conftest.py`):
+- [x] **Step 1: Failing tests.** `backend/tests/test_backup_config.py` (use the existing `session` fixture from `conftest.py`):
 
 ```python
 import pytest
@@ -241,7 +259,7 @@ async def test_duplicate_names_refused(session):
 
 Run: FAIL (module absent).
 
-- [ ] **Step 2: The service.** `backend/app/services/backup_config.py` — complete shape:
+- [x] **Step 2: The service.** `backend/app/services/backup_config.py` — complete shape:
 
 ```python
 """The backup destinations config row (spec §9.3, amended).
@@ -383,14 +401,14 @@ async def save_destinations(session: AsyncSession, body: dict) -> list[Destinati
     return items
 ```
 
-- [ ] **Step 3: Vocabulary.** Append `"backup_shipped"` and `"backup_verify_failed"` to `EVENT_TYPES` (`backend/app/services/events.py:124` list), each with a one-line comment ("a snapshot landed on a destination and its read-back checksum matched" / "uploaded is not restorable: the read-back disagreed or failed"). Emitters land in Task 4 — vocabulary first, taxonomy-first rule.
+- [x] **Step 3: Vocabulary.** Append `"backup_shipped"` and `"backup_verify_failed"` to `EVENT_TYPES` (`backend/app/services/events.py:124` list), each with a one-line comment ("a snapshot landed on a destination and its read-back checksum matched" / "uploaded is not restorable: the read-back disagreed or failed"). Emitters land in Task 4 — vocabulary first, taxonomy-first rule.
 
-- [ ] **Step 4: Routes.** In `backend/app/api/routes/config.py`, copy the auto-research pair's shape (:736-810):
+- [x] **Step 4: Routes.** In `backend/app/api/routes/config.py`, copy the auto-research pair's shape (:736-810):
   - `GET /api/v1/config/backup-destinations` → `{"destinations": [...]}` masked.
   - `PUT /api/v1/config/backup-destinations` → validates via `save_destinations` under `_lock_config_row(session, BACKUP_DESTINATIONS_KEY)`; `DestinationInvalid` → 422. Response is the masked list (echo the mask, never the secret).
   Route-level tests go in `test_backup_config.py` using the app test client pattern the file's siblings use (see `tests/test_security_posture.py` for the authenticated-client fixture idiom).
 
-- [ ] **Step 4b: Classify the two new routes, or the gate is red** (cross-plan review B-2, 2026-09-02)
+- [x] **Step 4b: Classify the two new routes, or the gate is red** (cross-plan review B-2, 2026-09-02)
 
 Two enumeration-driven tests walk `app.routes` and fail on any route nobody classified. Neither was in this plan's File Structure, and both go red the moment Step 4's routes exist:
 
@@ -432,7 +450,7 @@ Paste between the generated-table markers, then update the doc's **headline coun
 
 Add `backend/tests/test_door_parity.py`, `backend/tests/test_api/test_rest_conformance.py` and `docs/two-door-parity.md` to this task's Files list.
 
-- [ ] **Step 5:** `cd backend && python -m pytest -q tests/test_backup_config.py` green; full `python -m pytest -q` green.
+- [x] **Step 5:** `cd backend && python -m pytest -q tests/test_backup_config.py` green; full `python -m pytest -q` green.
 
 ---
 
@@ -449,7 +467,7 @@ Add `backend/tests/test_door_parity.py`, `backend/tests/test_api/test_rest_confo
 **Implementer:** dcc-superpower-companions:impl-opus-medium
 **Evaluation:** files 1 - spec 1 - coupling 1 - risk 2 = 5
 
-- [ ] **Step 1: Failing tests.** In `backend/tests/test_backup_ship.py`:
+- [x] **Step 1: Failing tests.** In `backend/tests/test_backup_ship.py`:
 
 ```python
 async def test_dump_refuses_a_stream_without_the_completion_marker(tmp_path, monkeypatch):
@@ -475,12 +493,12 @@ async def test_encrypt_round_trips_with_age(tmp_path):
     # decrypt with the identity, compare bytes.
 ```
 
-- [ ] **Step 2: Implement.** Core points the code must hit:
+- [x] **Step 2: Implement.** Core points the code must hit:
   - **`_dump_argv()` is a module-level function, and there is no `PG_DUMP_ARGV` constant** (cross-plan review m-11, 2026-09-02 — this bullet previously described both shapes in one sentence, and the test sketch at Step 1 monkeypatches the constant that the description says does not exist). Pick the function: settings are read at call time, and tests monkeypatch `backup_ship._dump_argv` to return `["sh", "-c", "echo partial"]`. Fix the Step 1 sketch's `monkeypatch.setattr(backup_ship, "PG_DUMP_ARGV", ...)` to patch `_dump_argv` accordingly. It returns: `["pg_dump", "--clean", "--if-exists", "-h", settings.db_host, "-p", str(settings.db_port), "-U", settings.db_user, settings.db_name]` — the same `--clean --if-exists` flags as `scripts/backup.sh`, so `scripts/restore.sh` replays either producer's dump identically. `PGPASSWORD` rides the subprocess env only.
   - Stream `proc.stdout` in chunks through `gzip.GzipFile` onto `<name>.part`, keeping the **last 512 raw bytes** across chunk boundaries. (Compression runs on the event loop inside that chunk loop, which on a single worker is a real stall for the duration of the dump. Acceptable at 04:30 against this corpus size, and stated rather than hidden; if it ever bites, the repair is a `pg_dump | gzip` subprocess pipe, which keeps the marker check on the raw stream and moves the CPU out of the loop entirely.) after `wait()`, require exit 0 AND `b"PostgreSQL database dump complete"` in that tail (the `backup.sh` marker check, applied to the raw stream so nothing re-decompresses). On failure: delete `.part`, raise `DumpIncomplete` with stderr's tail in the message. On success: `os.replace` to `darkmem-app-<YYYYmmdd-HHMMSS>.sql.gz`.
   - `encrypt(path, recipient)`: `asyncio.create_subprocess_exec("age", "-r", recipient, "-o", str(path) + ".age", str(path))`; on success **delete the plaintext** and return the `.age` path — the plaintext must not linger beside the ciphertext on the local disk when the destination demanded encryption. (The `local` destination kind is served by the unencrypted dump when it carries no recipient; Task 4 wires who calls encrypt.)
   - `sha256_file(path)`: `await asyncio.to_thread(...)` chunked hashlib — never inline on the event loop (m4 rider / invariant 13).
-- [ ] **Step 3:** `python -m pytest -q tests/test_backup_ship.py` green.
+- [x] **Step 3:** `python -m pytest -q tests/test_backup_ship.py` green.
 
 ---
 
@@ -498,7 +516,7 @@ async def test_encrypt_round_trips_with_age(tmp_path):
 **Evaluation:** files 1 - spec 1 - coupling 1 - risk 3 = 6
 (Risk 3 is the prune: a deletion pass over backup artefacts is data loss when the glob or the sort is wrong — the tests below pin both.)
 
-- [ ] **Step 1: Failing tests**, the prune pinned hardest:
+- [x] **Step 1: Failing tests**, the prune pinned hardest:
 
 ```python
 async def test_prune_touches_only_the_job_prefix(tmp_path):
@@ -528,12 +546,12 @@ async def test_one_failing_destination_does_not_stop_the_others(session, tmp_pat
     # First destination's ship() raises; second still ships and verifies.
 ```
 
-- [ ] **Step 2: Implement.**
+- [x] **Step 2: Implement.**
   - `SnapshotInfo` dataclass: `name: str, size: int, modified_at: datetime`.
   - `LocalDestination`: `ship` = no-op beyond the dump already sitting in its directory (`/dumps` is the local destination); `read_back_sha256` re-reads the file (via `sha256_file`); `list_snapshots` = sorted glob `darkmem-app-*.sql.gz*` **excluding `*.part`**; `prune(keep)` deletes beyond the newest `keep` by `(mtime, name)` descending, matching **only** `darkmem-app-*.sql.gz` / `darkmem-app-*.sql.gz.age`, never `.part`.
   - `ship_all(session_factory)`: load destinations unmasked → `run_dump()` once → per enabled destination, in sequence: pick artifact (encrypt to `.age` when the destination carries a recipient — encrypt once per recipient, reuse for destinations sharing one), `ship`, `read_back_sha256`, compare against the local hash; journal `backup_shipped` (payload `{"destination", "file", "bytes", "sha256", "elapsed_seconds"}`) on match, `backup_verify_failed` (payload adds `"expected"`, `"got"` or `"error"`) on mismatch/exception; then `prune(cfg.retention_keep)`. Each destination's failure is caught, journalled and folded into the return dict — never allowed to skip the remaining destinations. Return a summary dict for the job-run record (`{"dump": name, "shipped": n, "verify_failed": [...], "pruned": {...}}`).
   - Journal via `record_event` with `object_type="system"`; the boolean return is ignored (a ship is not a verification transition — CLAUDE.md, Events journal).
-- [ ] **Step 3:** targeted tests green; whole suite green.
+- [x] **Step 3:** targeted tests green; whole suite green.
 
 ---
 
@@ -550,14 +568,14 @@ async def test_one_failing_destination_does_not_stop_the_others(session, tmp_pat
 **Implementer:** dcc-superpower-companions:impl-opus-medium
 **Evaluation:** files 1 - spec 1 - coupling 1 - risk 2 = 5
 
-- [ ] **Step 1: Failing tests.** All subprocess argv construction is unit-tested without a network: expose `_ssh_base_argv(cfg, tmpdir)` and assert:
+- [x] **Step 1: Failing tests.** All subprocess argv construction is unit-tested without a network: expose `_ssh_base_argv(cfg, tmpdir)` and assert:
   - `-o StrictHostKeyChecking=yes` and `-o UserKnownHostsFile=<tmp>/known_hosts` are present; the known_hosts temp file contains exactly `cfg.ssh.host_key`; the identity temp file has mode `0o600` and holds the private key. **Pinned host key, never trust-on-first-use** (spec §9.2).
   - `ship` uses `scp` (or `rsync -e ssh`) to `user@host:remote_dir/<name>.part` then a remote `mv` — the `.part` discipline crosses the wire too, so a torn upload is never listed as a snapshot.
   - `read_back_sha256` streams the remote file back (`ssh user@host cat remote/<name>` into a local hash) — a full byte read-back, not a remote checksum, because "uploaded is not restorable" (§9.4 rule 2) is about what *we* can read, not what the remote claims.
   - `prune` lists `remote_dir` (`ssh … ls -1`), filters to `darkmem-app-*` exactly as 4a does, deletes beyond `keep` with one `rm` per file, and returns names. Refuses (raises) if `remote_dir` is empty string or `/`.
   - An end-to-end test against a real sshd is **not** written (no sshd fixture on this host); mark the gap in the test module docstring honestly.
-- [ ] **Step 2: Implement.** Temp key material lives under `tempfile.mkdtemp(dir=settings-scratch)` created per operation and deleted in a `finally`; subprocesses via `asyncio.create_subprocess_exec` with explicit timeouts (`asyncio.wait_for`, 1h ship / 15m read-back); stderr tails folded into raised errors.
-- [ ] **Step 3:** suite green.
+- [x] **Step 2: Implement.** Temp key material lives under `tempfile.mkdtemp(dir=settings-scratch)` created per operation and deleted in a `finally`; subprocesses via `asyncio.create_subprocess_exec` with explicit timeouts (`asyncio.wait_for`, 1h ship / 15m read-back); stderr tails folded into raised errors.
+- [x] **Step 3:** suite green.
 
 ---
 
@@ -576,9 +594,9 @@ async def test_one_failing_destination_does_not_stop_the_others(session, tmp_pat
 **Implementer:** dcc-superpower-companions:impl-opus-medium
 **Evaluation:** files 1 - spec 1 - coupling 1 - risk 2 = 5
 
-- [ ] **Step 1: Failing tests.** Inject the client: `S3Destination(cfg, client_factory=...)` defaulting to a boto3 factory; tests pass a fake with `upload_file` / `get_object` / `list_objects_v2` (paginated — assert the pagination loop, a >1000-snapshot bucket must not silently prune from a truncated listing) / `delete_object`. Assert key layout `"{prefix}{filename}"`, read-back hashing streams `get_object`'s body, prune filters `darkmem-app-` and sorts by key (the stamp orders lexically).
-- [ ] **Step 2: Implement.** Every boto3 call inside `await asyncio.to_thread(...)`; client built per operation from `endpoint_url/region/access_key_id/secret_access_key` (`boto3.client("s3", endpoint_url=…, region_name=…, aws_access_key_id=…, aws_secret_access_key=…)`).
-- [ ] **Step 3:** Verify the lock regen carried no platform leak: `grep -c pywin32 requirements.lock` → 0 (CLAUDE.md, Backend lock). Suite green. Image rebuild sanity in Task 10 covers the size cost — stated (§9.3: "the image grows… Stated, not hidden"); boto3 adds ~90 MB installed.
+- [x] **Step 1: Failing tests.** Inject the client: `S3Destination(cfg, client_factory=...)` defaulting to a boto3 factory; tests pass a fake with `upload_file` / `get_object` / `list_objects_v2` (paginated — assert the pagination loop, a >1000-snapshot bucket must not silently prune from a truncated listing) / `delete_object`. Assert key layout `"{prefix}{filename}"`, read-back hashing streams `get_object`'s body, prune filters `darkmem-app-` and sorts by key (the stamp orders lexically).
+- [x] **Step 2: Implement.** Every boto3 call inside `await asyncio.to_thread(...)`; client built per operation from `endpoint_url/region/access_key_id/secret_access_key` (`boto3.client("s3", endpoint_url=…, region_name=…, aws_access_key_id=…, aws_secret_access_key=…)`).
+- [x] **Step 3:** Verify the lock regen carried no platform leak: `grep -c pywin32 requirements.lock` → 0 (CLAUDE.md, Backend lock). Suite green. Image rebuild sanity in Task 10 covers the size cost — stated (§9.3: "the image grows… Stated, not hidden"); boto3 adds ~90 MB installed.
 
 ---
 
@@ -598,8 +616,8 @@ async def test_one_failing_destination_does_not_stop_the_others(session, tmp_pat
 **Implementer:** dcc-superpower-companions:impl-opus-medium
 **Evaluation:** files 2 - spec 0 - coupling 1 - risk 2 = 5
 
-- [ ] **Step 1: Failing test.** Extend `test_main_registers_the_full_direct_job_roster` (`backend/tests/test_code_deriver.py:1520`): add `"BACKUP_SHIP_JOB_KEY"` to `expected`. It fails until registration lands.
-- [ ] **Step 2: Runner** in `job_runners.py` (the `make_llm_usage_cleanup_runner` shape at :868):
+- [x] **Step 1: Failing test.** Extend `test_main_registers_the_full_direct_job_roster` (`backend/tests/test_code_deriver.py:1520`): add `"BACKUP_SHIP_JOB_KEY"` to `expected`. It fails until registration lands.
+- [x] **Step 2: Runner** in `job_runners.py` (the `make_llm_usage_cleanup_runner` shape at :868):
 
 ```python
 def make_backup_ship_runner(app, session_factory: async_sessionmaker[AsyncSession]):
@@ -615,7 +633,7 @@ def make_backup_ship_runner(app, session_factory: async_sessionmaker[AsyncSessio
     return run
 ```
 
-- [ ] **Step 3: Registration** in `main.py`, verbatim:
+- [x] **Step 3: Registration** in `main.py`, verbatim:
 
 ```python
     from app.services.backup_ship import BACKUP_SHIP_JOB_KEY
@@ -641,9 +659,9 @@ def make_backup_ship_runner(app, session_factory: async_sessionmaker[AsyncSessio
 
 No `config_schema`: retention and destinations are the `backup_destinations` config row's (Task 2) — `FieldDescriptor` cannot carry them and must not be made to.
 
-- [ ] **Step 4: CLAUDE.md** (invariant 23 — same commit as the registration): "Twenty-three registered jobs" → "Twenty-four" with a dated correction note in the existing style; "The seventeen live ones" → eighteen, adding `backup_ship` to the list; add `BACKUP_SHIP_JOB_KEY` to the register-via-constants sentence. **And the third occurrence this plan missed** (cross-plan review m-2, 2026-09-02): the invariant-13 paragraph at `CLAUDE.md:1648-1649` reads "every registered job fires N times per tick; 21 when T4.09 counted, **23 today**, and the number is not what the finding rests on" — update `23 today` to `24 today`. It is a different paragraph from the Jobs section and a `grep` for "Twenty-three" does not find it. Invariant 23 is about exactly this: a "here is the full list" sentence going stale because the count lives in more places than the editor checked.
-- [ ] **Step 5: Runner test**: monkeypatch `ship_all`, `trigger("backup_ship")` through a `JobRegistry` instance, assert the summary dict lands in the run record (see `tests/test_job_registry.py` for the harness idiom).
-- [ ] **Step 6:** Full backend suite green.
+- [x] **Step 4: CLAUDE.md** (invariant 23 — same commit as the registration): "Twenty-three registered jobs" → "Twenty-four" with a dated correction note in the existing style; "The seventeen live ones" → eighteen, adding `backup_ship` to the list; add `BACKUP_SHIP_JOB_KEY` to the register-via-constants sentence. **And the third occurrence this plan missed** (cross-plan review m-2, 2026-09-02): the invariant-13 paragraph at `CLAUDE.md:1648-1649` reads "every registered job fires N times per tick; 21 when T4.09 counted, **23 today**, and the number is not what the finding rests on" — update `23 today` to `24 today`. It is a different paragraph from the Jobs section and a `grep` for "Twenty-three" does not find it. Invariant 23 is about exactly this: a "here is the full list" sentence going stale because the count lives in more places than the editor checked.
+- [x] **Step 5: Runner test**: monkeypatch `ship_all`, `trigger("backup_ship")` through a `JobRegistry` instance, assert the summary dict lands in the run record (see `tests/test_job_registry.py` for the harness idiom).
+- [x] **Step 6:** Full backend suite green.
 
 ---
 
@@ -660,8 +678,8 @@ No `config_schema`: retention and destinations are the `backup_destinations` con
 **Implementer:** dcc-superpower-companions:impl-sonnet-high
 **Evaluation:** files 1 - spec 1 - coupling 1 - risk 0 = 3
 
-- [ ] **Step 1:** Follow the `use-git-accounts-binding.ts` idiom (same directory): TanStack Query over `apiFetch`, `enabled: !DEMO` on every query (demo mode must make no API calls — session memory), invalidate on save. `runNow` posts the trigger and surfaces the 409-busy case as a toast-friendly result, not a throw.
-- [ ] **Step 2:** `cd frontend && npm run typecheck` green.
+- [x] **Step 1:** Follow the `use-git-accounts-binding.ts` idiom (same directory): TanStack Query over `apiFetch`, `enabled: !DEMO` on every query (demo mode must make no API calls — session memory), invalidate on save. `runNow` posts the trigger and surfaces the 409-busy case as a toast-friendly result, not a throw.
+- [x] **Step 2:** `cd frontend && npm run typecheck` green.
 
 ---
 
@@ -679,9 +697,9 @@ No `config_schema`: retention and destinations are the `backup_destinations` con
 **Implementer:** dcc-superpower-companions:impl-opus-low
 **Evaluation:** files 1 - spec 1 - coupling 1 - risk 1 = 4
 
-- [ ] **Step 1: Failing tests** (the settings tests' render harness — see `__tests__/` siblings): the tab lists destinations with kind and retention; secret fields render the mask and submitting an untouched mask round-trips `"***"` (the keep-stored contract); a non-local destination with no age recipient shows the inline validation error from the 422; the "Run now" button posts the trigger.
-- [ ] **Step 2: Build the tab.** Destination cards (name, kind badge, enabled `switch`, retention `number-input`, last `backup_shipped`/`backup_verify_failed` outcome line from `recentOutcomes`), an add/edit `dialog` whose fields switch on kind, and a short posture paragraph stating the two-producer design: *"The host's systemd timer keeps its own local dumps independently of this job; the two never share a directory or a retention set."* Restyle built-ins; do not re-implement (CLAUDE.md, darkraise-ui rule).
-- [ ] **Step 3:** `npm test -- backups && npm run typecheck && npm run build` green; the full `npm test` too (settings.tsx is rendered by other suites).
+- [x] **Step 1: Failing tests** (the settings tests' render harness — see `__tests__/` siblings): the tab lists destinations with kind and retention; secret fields render the mask and submitting an untouched mask round-trips `"***"` (the keep-stored contract); a non-local destination with no age recipient shows the inline validation error from the 422; the "Run now" button posts the trigger.
+- [x] **Step 2: Build the tab.** Destination cards (name, kind badge, enabled `switch`, retention `number-input`, last `backup_shipped`/`backup_verify_failed` outcome line from `recentOutcomes`), an add/edit `dialog` whose fields switch on kind, and a short posture paragraph stating the two-producer design: *"The host's systemd timer keeps its own local dumps independently of this job; the two never share a directory or a retention set."* Restyle built-ins; do not re-implement (CLAUDE.md, darkraise-ui rule).
+- [x] **Step 3:** `npm test -- backups && npm run typecheck && npm run build` green; the full `npm test` too (settings.tsx is rendered by other suites).
 
 ---
 
@@ -697,10 +715,10 @@ No `config_schema`: retention and destinations are the `backup_destinations` con
 **Implementer:** dcc-superpower-companions:impl-sonnet-medium
 **Evaluation:** files 0 - spec 0 - coupling 0 - risk 2 = 2
 
-- [ ] **Step 1:** `./scripts/gate.sh` green (never `--full` casually on this host).
-- [ ] **Step 2:** CHANGELOG section for the next derived version — a `feat` push to master cuts a release and fails without the matching `## vN.N.N` section. **Coordinate with the other 2026-08-31 increment plans**: one push, one section.
-- [ ] **Step 3:** Commits, atomic: `feat(backup): ship encrypted dumps off-host from a registry job`, `feat(backup): destination config and settings panel`, `docs(claude): job roster gains backup_ship` (or fold the CLAUDE.md edit into the registration commit — it must land in the same push as the roster change either way).
-- [ ] **Step 4: Redeploy** (owner ruling 2026-08-21):
+- [x] **Step 1:** `./scripts/gate.sh` green (never `--full` casually on this host).
+- [x] **Step 2:** CHANGELOG section for the next derived version — a `feat` push to master cuts a release and fails without the matching `## vN.N.N` section. **Coordinate with the other 2026-08-31 increment plans**: one push, one section.
+- [x] **Step 3:** Commits, atomic: `feat(backup): ship encrypted dumps off-host from a registry job`, `feat(backup): destination config and settings panel`, `docs(claude): job roster gains backup_ship` (or fold the CLAUDE.md edit into the registration commit — it must land in the same push as the roster change either way).
+- [x] **Step 4: Redeploy** (owner ruling 2026-08-21):
 
 ```bash
 DARKMEM_PUSH=0 ./scripts/build-push.sh   # DARKMEM_PUSH=0 is not optional
@@ -711,7 +729,7 @@ docker exec darkmem-prod-darkmem-1 ls /dumps
 curl -s http://127.0.0.1:8000/openapi.json | grep -o backup-destinations
 ```
 
-- [ ] **Step 5: Watch one ship.** Configure the `local` destination in the new tab, "Run now", confirm `darkmem-app-*.sql.gz` appears under `/srv/darkmem-dumps` on the host and a `backup_shipped` row lands in Activity. Then restore-drill it once against a scratch database (`scripts/restore.sh` accepts either producer's dump — same `--clean --if-exists` shape) — "uploaded is not restorable" applies to the local path too.
+- [x] **Step 5: Watch one ship.** Configure the `local` destination in the new tab, "Run now", confirm `darkmem-app-*.sql.gz` appears under `/srv/darkmem-dumps` on the host and a `backup_shipped` row lands in Activity. Then restore-drill it once against a scratch database (`scripts/restore.sh` accepts either producer's dump — same `--clean --if-exists` shape) — "uploaded is not restorable" applies to the local path too.
 
 ## Rollback
 
