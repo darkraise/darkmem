@@ -29,6 +29,9 @@ import type { FeedCategory } from "@/features/activity/types"
 const EVENT_TYPE_CATEGORY: Record<string, FeedCategory> = {
   created: "capture",
   document_filed: "capture",
+  // Increment 8's block verbs. A block edit is a capture-side write to a
+  // filed document, the same tab document_filed lands on.
+  blocks_edited: "capture",
   extracted: "pipeline",
   sources_changed: "pipeline",
   verified: "verification",

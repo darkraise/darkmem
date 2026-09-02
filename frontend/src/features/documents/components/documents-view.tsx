@@ -3,6 +3,7 @@ import { Sparkles } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { Card, CardContent, CardHeader } from "darkraise-ui/components/card"
+import { BlockEditor } from "./block-editor"
 import { DocumentReader } from "./document-reader"
 import { DocumentTree } from "./document-tree"
 import { Input } from "darkraise-ui/components/input"
@@ -12,6 +13,7 @@ import {
   useDocumentConnections,
   useDocumentSummary,
   useAllDocuments,
+  useDocumentBlocks,
   useGroundedQa,
   type QaResponse,
 } from "@/hooks/api"
@@ -34,6 +36,7 @@ export function DocumentsView({ project = "default" }: { project?: string }) {
   // less than half a real corpus (review m1).
   const documents = useAllDocuments(project)
   const [selected, setSelected] = useState<string | null>(null)
+  const [editing, setEditing] = useState(false)
   const [question, setQuestion] = useState("")
   const qa = useGroundedQa()
 
@@ -73,7 +76,27 @@ export function DocumentsView({ project = "default" }: { project?: string }) {
               </div>
               <div className="min-w-0 flex-1">
                 {selected ? (
-                  <DocumentReader documentId={selected} />
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => setEditing((on) => !on)}
+                      >
+                        {editing ? "done editing" : "edit"}
+                      </Button>
+                      {editing ? (
+                        <span className="text-muted-foreground text-sm">
+                          Editing blocks converts this document to block-first;
+                          filing over it with document_put is refused afterwards.
+                        </span>
+                      ) : null}
+                    </div>
+                    {editing ? (
+                      <EditableDocument documentId={selected} />
+                    ) : (
+                      <DocumentReader documentId={selected} />
+                    )}
+                  </div>
                 ) : (
                   <p className="text-muted-foreground text-sm">
                     Pick a document from the tree to read it.
@@ -237,5 +260,24 @@ function DocumentDetail({ documentId }: { documentId: string }) {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+
+/** The editor needs the blocks the reader fetches, so it fetches them itself
+ *  rather than lifting the query into `DocumentsView` -- both mount at most
+ *  one of the two, and TanStack dedupes the shared key anyway. */
+function EditableDocument({ documentId }: { documentId: string }) {
+  const blocks = useDocumentBlocks(documentId)
+  if (blocks.isLoading) return <Skeleton className="h-24 w-full" />
+  if (blocks.isError) {
+    return (
+      <p className="text-destructive text-sm">
+        This document could not be read — a failed read, not an empty document.
+      </p>
+    )
+  }
+  return (
+    <BlockEditor documentId={documentId} blocks={blocks.data?.blocks ?? []} />
   )
 }

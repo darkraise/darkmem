@@ -172,9 +172,15 @@ export interface OutlineNode {
 export interface BlockRow {
   block_id: string
   type: string | null
+  /** Marker-stripped: a heading's text is "Foo", not "## Foo". */
   text: string
   order_index: number | null
   char_span: [number, number] | null
+  /** A heading's level, a list item's marker, a table's header/alignments. */
+  properties: Record<string, unknown> | null
+  /** The block's own markdown source, marker included. This is what an
+   *  editor edits -- `text` is a different string from the stored one. */
+  source: string | null
 }
 
 export function useDocumentOutline(documentId: string | null) {

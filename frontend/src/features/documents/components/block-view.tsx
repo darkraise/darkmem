@@ -1,21 +1,24 @@
 import Markdown from "react-markdown"
 import { Separator } from "darkraise-ui/components/separator"
-import { cn } from "darkraise-ui/lib"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "darkraise-ui/components/table"
 import type { BlockRow } from "@/hooks/api"
 
 /** One block, rendered by type. A pure render of the row -- no fetching, no
  *  state -- because increment 8's editor wraps exactly this component for its
  *  unfocused state.
  *
- * **Stated deviation from spec §2 / §4.1** (cross-plan review M-7): the spec
- * says `table` blocks render through the library `table` component. They do
- * not here, and the reason is a gap this increment cannot close on its own --
- * increment 2 writes the `{header, alignments}` / `{cells}` properties a real
- * table needs, but `properties` is on neither read surface, so the data never
- * reaches this component. `table` / `table_row` therefore render as the flat
- * cell-joined text the door actually serves. Increment 8's Task 5a adds
- * `properties` to the block read; when it lands, take the library component
- * here and strike this note. Do not invent the properties client-side.
+ * The spec's §2 requirement — `table` blocks render through the library
+ * `table` component — is met since increment 8's Task 5a put `properties` on
+ * the block read. Before that the header and alignment data increment 2
+ * writes could not reach this component at all, and the deviation was
+ * recorded here rather than papered over.
  */
 export function BlockView({ block }: { block: BlockRow }) {
   switch (block.type) {
@@ -47,18 +50,42 @@ export function BlockView({ block }: { block: BlockRow }) {
       // the library separator rather than a styled empty paragraph, which is
       // what an unknown type would have fallen through to.
       return <Separator className="my-1" />
-    case "table":
-    case "table_row":
+    case "table": {
+      // The header row is the table block's own text; its data rows are
+      // separate `table_row` children, so this renders the head only.
+      const header = (block.properties?.header as string[] | undefined) ?? []
+      if (header.length === 0) {
+        return <div className="text-muted-foreground font-mono text-sm">{block.text}</div>
+      }
       return (
-        <div
-          className={cn(
-            "font-mono text-sm",
-            block.type === "table" && "text-muted-foreground font-semibold",
-          )}
-        >
-          {block.text}
-        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              {header.map((cell, i) => (
+                <TableHead key={i}>{cell}</TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+        </Table>
       )
+    }
+    case "table_row": {
+      const cells = (block.properties?.cells as string[] | undefined) ?? []
+      if (cells.length === 0) {
+        return <div className="font-mono text-sm">{block.text}</div>
+      }
+      return (
+        <Table>
+          <TableBody>
+            <TableRow>
+              {cells.map((cell, i) => (
+                <TableCell key={i}>{cell}</TableCell>
+              ))}
+            </TableRow>
+          </TableBody>
+        </Table>
+      )
+    }
     default:
       return (
         <div className="text-sm leading-relaxed">
