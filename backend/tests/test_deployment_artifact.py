@@ -606,3 +606,175 @@ def test_the_worker_stack_has_its_own_project_name():
 def test_the_worker_stack_is_healthchecked_end_to_end():
     for service in ("darkmem", "receiver", "postgres"):
         assert "healthcheck" in _compose(WORKER_COMPOSE)["services"][service], service
+
+
+# ── The worker's restore loop (increment 7 Task 9) ────────────────────
+#
+# Driven through the same stub-compose harness the restore.sh tests use: no
+# real database is touched, and every compose invocation is recorded so the
+# ORDER can be asserted. Order is the whole design here -- verify, then swap --
+# so a test that only checked "it ran" would prove nothing worth proving.
+
+RESTORE_CYCLE = REPO_ROOT / "scripts" / "worker" / "restore-cycle.sh"
+
+_AGE_STUB = """#!/usr/bin/env bash
+# Stand-in for `age -d -i IDENTITY -o OUT IN`: copies IN to OUT.
+out=""; last=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) out="$2"; shift 2 ;;
+    -d|-i) shift; [ "$1" != "" ] && [ "${1#-}" = "$1" ] && shift ;;
+    *) last="$1"; shift ;;
+  esac
+done
+cp "$last" "$out"
+"""
+
+
+def _write_age_stub(tmp_path: Path) -> Path:
+    stub = tmp_path / "age"
+    stub.write_text(_AGE_STUB)
+    stub.chmod(0o755)
+    return stub
+
+
+def _run_cycle(
+    tmp_path: Path, *, snapshot: str | None, complete: bool = True, migrate_ok: bool = True,
+) -> tuple[subprocess.CompletedProcess, list[list[str]], Path]:
+    dumps = tmp_path / "dumps"
+    dumps.mkdir(exist_ok=True)
+    if snapshot:
+        source = _complete_dump(tmp_path) if complete else _incomplete_dump(tmp_path)
+        (dumps / snapshot).write_bytes(source.read_bytes())
+
+    log_path = tmp_path / "invocations.log"
+    # Truncated, not touched: the second call in a re-run test shares tmp_path,
+    # and a `touch` would leave the first run's records in place and make the
+    # idempotence assertion pass for the wrong reason.
+    log_path.write_text("")
+    stub = _write_stub(tmp_path, log_path)
+    if not migrate_ok:
+        # The stub exits 0 for everything; a `run` that must fail needs its own.
+        failing = tmp_path / "compose_failing.sh"
+        failing.write_text(
+            _STUB_TEMPLATE.replace("__LOG_PATH__", str(log_path)).replace(
+                "exit 0",
+                'for a in "$@"; do [ "$a" = "run" ] && exit 3; done\nexit 0',
+            )
+        )
+        failing.chmod(0o755)
+        stub = failing
+
+    age_stub = _write_age_stub(tmp_path)
+    state = tmp_path / "state"
+    identity = tmp_path / "identity.txt"
+    identity.write_text("AGE-SECRET-KEY-STUB")
+
+    env = dict(os.environ)
+    env.update(
+        PATH=f"{tmp_path}:{env['PATH']}",
+        COMPOSE_CMD=str(stub),
+        WORKER_COMPOSE=str(REPO_ROOT / "docker-compose.worker.yml"),
+        DUMP_DIR=str(dumps),
+        STATE_FILE=str(state),
+        AGE_IDENTITY=str(identity),
+        OWNER_PASSWORD="owner-pw",
+        VIEWER_PASSWORD="viewer-pw",
+        DB_NAME="darkmem",
+        GRANTS=str(REPO_ROOT / "scripts" / "worker" / "viewer-grants.sql"),
+    )
+    result = subprocess.run(
+        ["bash", str(RESTORE_CYCLE)],
+        capture_output=True, text=True, env=env, timeout=60,
+    )
+    records = [_record_fields(ln) for ln in log_path.read_text().splitlines() if ln]
+    return result, records, state
+
+
+SNAPSHOT = "darkmem-app-20260101-000000.sql.gz.age"
+
+
+def _index_of(records, predicate) -> int:
+    hits = [i for i, fields in enumerate(records) if predicate(fields)]
+    assert len(hits) == 1, (hits, records)
+    return hits[0]
+
+
+def test_restore_cycle_is_a_no_op_when_there_is_nothing_to_restore(tmp_path):
+    result, records, _ = _run_cycle(tmp_path, snapshot=None)
+    assert result.returncode == 0, result.stderr
+    assert records == [], "a compose command ran with no snapshot present"
+
+
+def test_restore_cycle_refuses_an_incomplete_dump_before_touching_compose(tmp_path):
+    """Same marker check as restore.sh, and for the same reason: gzip of a
+    truncated stream is valid gzip, so integrity proves nothing."""
+    result, records, _ = _run_cycle(tmp_path, snapshot=SNAPSHOT, complete=False)
+    assert result.returncode == 1
+    assert records == [], "a command reached compose before the dump was validated"
+
+
+def test_restore_cycle_verifies_before_it_swaps(tmp_path):
+    """The order IS the design (B1's last bullet). Replay, migrate, stamp and
+    grant all happen against the side database while the app is still serving
+    the previous one; only then does anything stop."""
+    result, records, state = _run_cycle(tmp_path, snapshot=SNAPSHOT)
+    assert result.returncode == 0, result.stderr
+
+    def has(fields, *needles):
+        joined = " ".join(fields)
+        return all(n in joined for n in needles)
+
+    idx_create = _index_of(records, lambda f: has(f, "CREATE DATABASE", "_restore_"))
+    idx_migrate = _index_of(records, lambda f: "run" in f and has(f, "alembic"))
+    idx_grants = _index_of(records, lambda f: has(f, "viewer_password"))
+    idx_stop = _index_of(records, lambda f: "stop" in f)
+    idx_drop = _index_of(
+        records, lambda f: has(f, "DROP DATABASE") and "_restore_" not in " ".join(f)
+    )
+    idx_rename = _index_of(records, lambda f: has(f, "ALTER DATABASE", "RENAME TO"))
+    idx_start = _index_of(records, lambda f: "start" in f)
+
+    assert idx_create < idx_migrate < idx_grants < idx_stop < idx_drop < idx_rename < idx_start
+    assert state.read_text().strip() == SNAPSHOT
+
+
+def test_restore_cycle_records_what_it_serves_so_a_re_run_is_a_no_op(tmp_path):
+    _run_cycle(tmp_path, snapshot=SNAPSHOT)
+    result, records, _ = _run_cycle(tmp_path, snapshot=SNAPSHOT)
+    assert result.returncode == 0
+    assert records == [], "the second run restored the snapshot it was already serving"
+
+
+def test_a_snapshot_that_fails_the_schema_guard_never_stops_the_app(tmp_path):
+    """B1's schema-mismatch answer. A snapshot from an older baseline fails
+    schema_guard against the SIDE database, so the viewer keeps serving what it
+    had -- it must not go down for exactly the snapshots one most wants to
+    inspect. Exits 0, loudly: this is an expected outcome, not a broken run."""
+    result, records, state = _run_cycle(tmp_path, snapshot=SNAPSHOT, migrate_ok=False)
+
+    assert result.returncode == 0, result.stderr
+    assert "REJECTED" in result.stdout + result.stderr
+    assert not any("stop" in fields for fields in records), (
+        "the app was stopped despite the snapshot failing verification"
+    )
+    assert not any(
+        "ALTER DATABASE" in " ".join(fields) for fields in records
+    ), "the swap happened despite the snapshot failing verification"
+    # The side database is cleaned up rather than left as debris.
+    assert any(
+        "DROP DATABASE" in " ".join(f) and "_restore_" in " ".join(f) for f in records
+    )
+    assert not state.exists(), "a rejected snapshot was recorded as being served"
+
+
+def test_the_restore_cycle_never_writes_from_the_serving_process():
+    """The loop is a host-side script on purpose: it drops and renames the
+    database the app is connected to, so the app process must never own the
+    operation that destroys its own connection target."""
+    body = RESTORE_CYCLE.read_text()
+    assert "DARKMEM_READ_ONLY" not in body, (
+        "the restore loop runs privileged and outside the app; it has no "
+        "business reading the app's posture flag"
+    )
+    assert "alembic upgrade head" in body and "app.schema_guard" in body
