@@ -19,6 +19,9 @@ const ROOTS: UriTreeNode[] = [
       node("docs/planning/progress.md", "progress.md", [], { id: "doc-1" }),
     ]),
     node("docs/readme.md", "readme.md", [], { id: "doc-2" }),
+    node("docs/notes.md", "notes.md", [
+      node("docs/notes.md/appendix.md", "appendix.md", [], { id: "doc-5" }),
+    ], { id: "doc-4" }),
   ]),
   node("src", "src", [node("src/main.ts", "main.ts", [], { id: "doc-3" })]),
 ]
@@ -51,5 +54,26 @@ describe("tree expansion", () => {
 
   it("does not treat a leaf as a folder", () => {
     expect(rootFolderPaths([node("a.md", "a.md", [], { id: "x" })])).toEqual([])
+  })
+
+  it("treats a dual node (document and folder) as a folder", () => {
+    // A dual node at root level: both a document and a folder with children
+    const dualNode = node("config.md", "config.md", [
+      node("config.md/details.md", "details.md", [], { id: "doc-6" }),
+    ], { id: "doc-4" })
+    expect(rootFolderPaths([dualNode]).sort()).toContain("config.md")
+  })
+
+  it("expands to a dual node's own path when selecting its document", () => {
+    // pathsToDocument for doc-4 (the dual node itself) should return ancestors
+    // but NOT the dual node's own path
+    expect(pathsToDocument(ROOTS, "doc-4").sort()).toEqual(["docs"].sort())
+  })
+
+  it("expands through a dual node to reach its child document", () => {
+    // pathsToDocument for doc-5 (child of dual node) should include the dual node's path
+    expect(pathsToDocument(ROOTS, "doc-5").sort()).toEqual(
+      ["docs", "docs/notes.md"].sort(),
+    )
   })
 })
