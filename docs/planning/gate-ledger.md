@@ -3602,6 +3602,51 @@ probes measure, but a future arm activation inherits this bar.
 the probe asks for exactly this and nothing the loop does can produce it: *H1
 (grounded Q&A over documents) should ship.* Recorded 2026-09-03.
 
+### G-F stability probes measured (2026-09-03): **both reproduce — and the bar's literal wording does not survive contact**
+
+Run after the bar was committed (`5f3576fd`), never before. Artifacts:
+`docs/eval/2026-09-03-gf-stability/`.
+
+**Retrieval eval — two consecutive legs, each at `live_calls: 0`** (178 calls
+cache-served). **284 lines of scoring content are byte-identical.** Exactly 7
+lines differ and every one is run-identity or wall-clock: the run id with its
+timestamp, and six twin latency figures (`p50`/`p95`).
+
+**A third, unplanned comparison is stronger than the two legs.** The committed
+`docs/eval/2026-09-03-retrieval-eval.md`, produced in an **earlier session at a
+different commit** (`515a34a1`), differs from today's runs only in run id,
+latency and the recorded git sha — every score identical across a different day,
+process and tree. That is reproduction in the sense the bar was reaching for,
+and it was not staged for.
+
+**Promotion metrics — two consecutive runs, 46 of 47 lines byte-identical with
+no filtering at all.** The single differing line is the `now`-anchored 90-day
+window, whose endpoints moved by the 0.26 s between the two invocations. Zero
+model calls by construction: the metrics are SQL over `events`.
+
+**The finding, stated rather than smoothed: "byte-identical" is not literally
+achievable by either artifact, and no amount of stability would make it so.**
+Both stamp a fresh run id; the retrieval eval stamps wall-clock latency, which
+never repeats; the promotion metrics window is anchored to `now`. A run that
+reproduced its every measurement perfectly still fails the bar as written. This
+is a defect in the bar's wording, not in the system it judges, and it was
+invisible until the bar met an artifact.
+
+**The clarification this needs, and why it is not a loosening.** Read the bar as
+*byte-identical in measured content, with run identity and wall-clock excluded*.
+That exclusion is **categorical, not numeric**: it removes fields that are not
+measurements at all, and introduces no tolerance anyone could later tune — which
+is the exact property the owner chose this bar for. A tolerance on the *scores*
+would have been a loosening; this is not one, because the scores are compared at
+full byte strictness and passed there.
+
+**This clause is the owner's to ratify, and until it is, these two probes are
+measured but not verdicted.** The loop does not reinterpret a bar it was handed,
+even in a direction it believes preserves the intent — that is the move doc 17
+§6 exists to refuse, and the fact that the reinterpretation here looks obviously
+right is precisely when the rule earns its keep. What is recorded is what was
+measured; what is withheld is the verdict.
+
 ### G-F measured (2026-08-17, TH1.10): **NOT CLEARED — entailed precision 0.888 against a 0.95 bar**
 
 Judge `gpt-5.5` at the identity T2.125 qualified for the entailment role
