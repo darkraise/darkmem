@@ -356,6 +356,17 @@ epics/features in the artifact docs, view switching and filters — and, since
 the original ruling turned on cost, an honest statement of what a task model
 adds that the checkpoint + ledger pair does not.
 
+**Written 2026-09-04: `2026-09-04-progress-board-design.md`.** Its two
+load-bearing findings, both measured rather than assumed: the epic files'
+done-when checkboxes are **not maintained (806 unchecked, 17 checked)**, so a
+board deriving completion from them would report ~2% done for a project that
+is substantially complete — `progress.md`'s Status column is the only
+completion signal. And the honest answer to the cost question is that a board
+adds **no new data at all**; what it adds is that three questions currently
+answerable only by hand-joining two files become one read. That is why the
+spec makes it a **projection, never a store** — a writable board would put
+task state in a database while the ledger that gates merges stays in git.
+
 ## 11. Rulings this spec does reverse
 
 Recorded here so they are visible rather than discovered:
