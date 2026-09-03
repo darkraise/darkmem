@@ -1,0 +1,33 @@
+{
+ "bars_gating_this_role": {
+  "faithfulness_gate_precision_bar": 0.95,
+  "faithfulness_gate_recall_bar": 0.9
+ },
+ "gate_eligible": true,
+ "git_sha": "e0258eb34dd6a9aaf5a308c5303c5f4f137d9e68",
+ "gold_pairs_sha256": "ea36bbea01d507adf0578e8c745fccd12f2b967988eebc7a32298c33926e5d71",
+ "gold_sha256": "c02734acda3291f371ba2ee8b58e613dfa445aced6cb30c766498de377716f09",
+ "judge_identity": {
+  "api_kind": "openai",
+  "base_url": "https://api.openai.com/v1",
+  "dimensions": null,
+  "identity_hash": "68db37076d50b9aa",
+  "model": "gpt-5.5",
+  "params": {
+   "reasoning_effort": "high"
+  },
+  "prompt_sha": "960fb3e2ef68eb4e",
+  "prompt_version": 1,
+  "reasoning": false
+ },
+ "ledger_run_id": "792426d2-8dbb-48ca-8ab2-4c2ef14aacbe",
+ "metrics": {
+  "entailed_precision": 0.9824561403508771,
+  "entailed_recall": 0.9333333333333333,
+  "invalid": 0,
+  "n_pairs": 260,
+  "unsupported_judged_entailed": 2
+ },
+ "recorded_at": "2026-09-03T06:12:13.590604+00:00",
+ "role": "faithfulness"
+}
