@@ -3744,18 +3744,32 @@ upgraded hedge. It also calls `structure-fragment` *"15/15 mixed"* — the slice
 holds 30 verdicts and **all six of its errors were false-accepts**, the same
 direction and the same cause.
 
-**Adjacent hazard found and NOT fixed, reported here because it is latent and
-one run from being realised.** `run_judge_qualification.py` computes one
-role-blind `judge_identity` and mints a record for **every** role whose bars
-clear, iterating `vj.JUDGE_ROLES` — which now includes `faithfulness`. Its bars
-map to `entailed_precision`/`entailed_recall`, the *same metrics* the entailment
-role's bars use, so a claim/fact qualification run that clears entailment would
-also "clear" the faithfulness role and mint its record **off the wrong gold**.
-No such record exists today (checked). Since 2026-09-03 the role-aware identity
-makes such a record fail closed on an identity mismatch rather than qualify
-anything — but the mint itself is still wrong and the guard is incidental.
-Refusing to mint `faithfulness` from that runner is a gate-design decision and
-is left to the owner.
+**Adjacent hazard found and CLOSED the same day — and it was not latent, it was
+live and test-enshrined.** `run_judge_qualification.py` derived its cleared
+roles from `vj.JUDGE_ROLES`, minting a record for every role whose bars cleared.
+`faithfulness_gate_precision_bar`/`_recall_bar` map to `entailed_precision`/
+`entailed_recall` — the **same two metrics** the entailment role's
+`groundedness_gate_*` bars use — so any claim/fact run that cleared entailment
+also "cleared" the faithfulness role and wrote
+`verification_qualification.faithfulness.json` **off a gold holding no document
+spans at all**. It would have qualified the span judge on a distribution it was
+never shown, which is the precise failure the role split exists to prevent.
+
+Worse, `test_gate_rehearsal_writes_only_a_non_default_record` **asserted** the
+three-file outcome (`for role in vj.JUDGE_ROLES`), so the suite pinned the
+defect rather than catching it — a two-role assertion that silently widened when
+TH1.09 added the third member, its own comment still reading "both roles'
+bars". No such record was ever written to the canonical directory (checked), so
+nothing was qualified by it.
+
+Closed by declaring which instrument may mint which role:
+`CLAIM_FACT_ROLES` / `SPAN_ROLES` partition `JUDGE_ROLES` beside the role
+vocabulary, a test pins the partition so a fourth role in neither set (or both)
+fails the build, and the claim/fact runner mints only from its own set. The
+faithfulness role is now mintable **only** by the span gold's runner. The
+role-aware identity landed earlier the same day would have made such a record
+fail closed on a mismatch, but that guard was incidental and the mint was still
+wrong.
 
 Artifact: `docs/eval/2026-09-03-gf-remeasure-span-prompt.log`. The 260 new cache
 entries are committed, so this run replays at 0 live calls.

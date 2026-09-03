@@ -197,7 +197,20 @@ faithfulness role still holds no qualification record, so no grounded label is
 licensed, and G-F's other three probes are untouched. Whether G-F's row moves
 is the owner's ruling.
 
-Full result, caveats and an adjacent latent hazard in
-`run_judge_qualification.py` (a role-blind mint that could write a faithfulness
-record off the claim/fact gold): the gate ledger's "G-F re-measured on the
-repaired premise framing".
+## 11. The adjacent hazard, found and closed
+
+Reported first as latent and left for the owner; on inspection it was **live and
+test-enshrined**, so it was closed the same day. `run_judge_qualification.py`
+minted a record for every role in `JUDGE_ROLES` whose bars cleared, and the
+faithfulness role's bars map to the **same two metrics** the entailment role's
+do. A clearing claim/fact run therefore wrote
+`verification_qualification.faithfulness.json` off a gold containing no document
+spans — qualifying the span judge on a distribution it was never shown. The
+suite asserted that three-file outcome rather than catching it.
+
+`CLAIM_FACT_ROLES` and `SPAN_ROLES` now partition `JUDGE_ROLES` beside the role
+vocabulary; a test pins the partition, and the claim/fact runner mints only from
+its own set. No such record had ever reached the canonical directory.
+
+Full result and caveats: the gate ledger's "G-F re-measured on the repaired
+premise framing".

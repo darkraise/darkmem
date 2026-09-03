@@ -1895,3 +1895,21 @@ async def test_qualification_state_compares_the_identity_of_the_role_it_is_asked
         session, cfg, role=vj.FAITHFULNESS_ROLE, record_path=path,
     )
     assert not any("identity mismatch" in r for r in state.reasons), state.reasons
+
+
+def test_the_qualifying_instrument_partitions_the_roles():
+    """Each role is minted by the gold that actually scores its premise
+    distribution. The claim/fact gold scores fact premises; the span gold
+    scores document-span premises. A role in neither set, or in both, is a
+    role some runner would mint off a gold that never tested it."""
+    assert vj.CLAIM_FACT_ROLES | vj.SPAN_ROLES == set(vj.JUDGE_ROLES)
+    assert not (vj.CLAIM_FACT_ROLES & vj.SPAN_ROLES)
+
+
+def test_the_faithfulness_role_is_minted_by_the_span_gold_alone():
+    """Its bars map to the same two metrics the entailment role's bars use,
+    so a claim/fact run clearing entailment would otherwise also "clear" it."""
+    assert vj.FAITHFULNESS_ROLE in vj.SPAN_ROLES
+    assert vj.FAITHFULNESS_ROLE not in vj.CLAIM_FACT_ROLES
+    shared = {vj.BAR_METRICS[k] for k in vj.JUDGE_ROLES[vj.FAITHFULNESS_ROLE]}
+    assert shared == {vj.BAR_METRICS[k] for k in vj.JUDGE_ROLES[vj.ENTAILMENT_ROLE]}

@@ -337,6 +337,22 @@ JUDGE_ROLES: dict[str, tuple[str, ...]] = {
     ),
 }
 
+# Which measurement instrument may mint each role's record. A role is
+# qualified by the gold that actually scores its premise distribution: the
+# claim/fact gold (`run_judge_qualification.py`) puts stored facts to the
+# judge, the span gold (`run_faithfulness_gate.py`) puts raw document spans.
+#
+# This is not bookkeeping. `faithfulness_gate_*` and `groundedness_gate_*` map
+# to the SAME two metrics (`entailed_precision` / `entailed_recall`), so a
+# claim/fact run that cleared the entailment role cleared the faithfulness
+# role's bars too and minted its record off a gold that never showed it a
+# document span — measured 2026-09-03, with a test asserting the behaviour it
+# should have caught. The sets partition `JUDGE_ROLES` and a test pins that, so
+# a role added to neither (or to both) fails the build rather than silently
+# becoming mintable by whichever runner happens to clear first.
+CLAIM_FACT_ROLES = frozenset({ENTAILMENT_ROLE, CONTRADICTION_ROLE})
+SPAN_ROLES = frozenset({FAITHFULNESS_ROLE})
+
 # The pair sets retired from qualification use, in full. `4975c5cc…` is the gold
 # T2.114 spent its final attempt on: the stopping rule fired, and the owner's
 # 2026-08-12 ruling retires the pairs from qualification for **any** role —

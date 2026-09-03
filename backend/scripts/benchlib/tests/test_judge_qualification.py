@@ -1442,12 +1442,14 @@ def test_gate_rehearsal_writes_only_a_non_default_record(tmp_path, monkeypatch):
     result = _run(tmp_path, stub_cls, gate=True, gold_path=gold_path,
                   record_dir=record_dir)
 
-    # One file per role, because a clearing run clears both roles' bars.
+    # One file per role THIS gold scores. It used to read `vj.JUDGE_ROLES`,
+    # which minted the span role off the claim/fact gold once TH1.09 added a
+    # third member — the assertion enshrined the defect instead of catching it.
     written = sorted(p.name for p in record_dir.iterdir())
     assert written == sorted(
-        f"verification_qualification.{role}.json" for role in vj.JUDGE_ROLES
+        f"verification_qualification.{role}.json" for role in vj.CLAIM_FACT_ROLES
     )
-    for role in vj.JUDGE_ROLES:
+    for role in vj.CLAIM_FACT_ROLES:
         record = json.loads(
             (record_dir / f"verification_qualification.{role}.json").read_text())
         assert record["role"] == role
@@ -2137,3 +2139,28 @@ def test_a_three_wide_component_collapses_two_rows_not_three_findings():
     # Three findings over one three-wide component, but only two rows collapse.
     assert len(ci["duplicate_pairs"]) == 3
     assert ci["independent_propositions"] == 11
+
+
+def test_a_clearing_claim_fact_run_never_mints_the_span_role(tmp_path, monkeypatch):
+    """`faithfulness_gate_*` and `groundedness_gate_*` map to the same two
+    metrics, so a run clearing the entailment role clears the faithfulness
+    role's bars as a side effect. Its gold holds no document spans, so that
+    record would qualify a judge on a distribution it was never shown."""
+    gold_path = _write_eligible_gold(tmp_path)
+    record_dir = tmp_path / "records"
+    record_dir.mkdir()
+    monkeypatch.setattr(vj, "VERIFICATION_BAR_DEFAULTS", {
+        **vj.VERIFICATION_BAR_DEFAULTS, "contradiction_recall_bar": 0.90,
+    })
+    stub_cls, _seen = make_stub(perfect_script(gold_path))
+    _run(tmp_path, stub_cls, gate=True, gold_path=gold_path,
+         record_dir=record_dir)
+
+    written = {p.name for p in record_dir.iterdir()}
+    for role in vj.SPAN_ROLES:
+        assert f"verification_qualification.{role}.json" not in written, (
+            f"the claim/fact runner minted the {role!r} record"
+        )
+    assert written == {
+        f"verification_qualification.{role}.json" for role in vj.CLAIM_FACT_ROLES
+    }
