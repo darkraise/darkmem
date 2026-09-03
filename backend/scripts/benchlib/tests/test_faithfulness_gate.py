@@ -627,3 +627,27 @@ def test_the_real_span_gold_scores_only_its_live_pairs():
     assert len(loaded["pairs"]) == 260
     assert len(loaded["retired_pairs"]) == 17
     assert all(not p.get("retired") for p in loaded["pairs"])
+
+
+async def test_the_gate_probes_under_the_faithfulness_role_prompt():
+    """The gate measures the faithfulness consumer, so it must be served that
+    consumer's prompt. Probing role-blind would measure a judge told its
+    premise is "a stored fact" — the framing G-F's 2026-08-17 miss was traced
+    to (docs/planning/analyses/2026-09-03-gf-premise-framing-defect.md)."""
+    from app.services import verification_judge as vj
+
+    seen: list[str] = []
+    base = make_stub_orchestrator(lambda h: "unsupported")
+
+    class Recording(base):
+        async def chat_completion(self, purpose, messages, **kwargs):
+            seen.append(messages[0]["content"])
+            return await super().chat_completion(purpose, messages, **kwargs)
+
+    await fg.score_via_live_judge(
+        PAIRS, MANIFEST, config={"verification": object()},
+        cache_dir="/dev/null-unused", orchestrator_cls=Recording,
+    )
+
+    assert seen, "no probe reached the judge"
+    assert set(seen) == {vj.SPAN_SYSTEM_PROMPT}

@@ -47,7 +47,11 @@ from benchlib.twin import (
 
 from app.config import LLMPurposeConfig
 from app.services import faithfulness_bars as fb
-from app.services.verification_judge import ProbeVerdict, VerificationJudge
+from app.services.verification_judge import (
+    FAITHFULNESS_ROLE,
+    ProbeVerdict,
+    VerificationJudge,
+)
 
 # ── the gold this module scores against — a future sibling, not this file's to author ──
 
@@ -608,7 +612,9 @@ async def score_via_live_judge(
         premise = build_premise(pair, manifest)
         before = live_call_count(llm)
         started = time.perf_counter()
-        verdicts[pair["id"]] = await judge.qualification_probe(premise, pair["hypothesis"])
+        verdicts[pair["id"]] = await judge.qualification_probe(
+            premise, pair["hypothesis"], role=FAITHFULNESS_ROLE,
+        )
         recorder.record(
             "judge_call", time.perf_counter() - started,
             served_by_label(before, live_call_count(llm)),
