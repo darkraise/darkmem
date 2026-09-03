@@ -28,7 +28,7 @@ its artifact path, and a verdict — not when someone believes the work is done.
 | G-C | L2 → deriver; Phase 2 exit | **CLEARED** (T2.131, on the grown corpus sha `78dbc4c5c8756dcd`, 849 captures: every pre-stated axis clears in both passes — 509 in-window corroborations, Clopper-Pearson 95% upper bound **0.009286** vs the 0.01 bar, all `gate_fired` buckets powered and clearing, 0 journal-completeness violations over 682 facts, every bar at its committed default. Verdicted by an independent party that recomputed every axis and reproduced the run byte-identically at 0 live calls; `promotion_metrics_record.json` minted on that verdict, so promoted and born fact statuses now reach readers. **What the clear does not license is part of the result**: every capture, origin, repo and the single dispute were authored by the measured party, the deterministic detector has never fired on an unauthored contradiction, the human-rejection arm has never met a human, and the `time_gap` path exists only under the harness's simulated clock — see "G-C on the grown corpus". The audit's arms were **re-derived, not merely re-run** (T2.111): the machine arm is judge-free, so the G-C→G-D critical-path edge recorded 2026-08-07 does not hold as written) | 2026-08-16 | T2.131 — this file, "G-C on the grown corpus"; `docs/eval/2026-08-16-gc-evidence-t2.131-pass{1-unsimulated,2-simulated}.md`; `docs/planning/reviews/2026-08-16-t2.131-gc-independent-verdict.md`; `backend/app/services/promotion_metrics_record.json`. Prior: T2.111 — "G-C re-measure"; T2.40 — "G-C verdict" |
 | G-D | L2 → L3 | **CLEARED on the entailment role** (owner ruling 2026-08-17). T2.125 measured both roles on T2.124's fresh gold, pairs `4748ac84960fed67`, 280 live pairs, judge `gpt-5.5` identity `fd39e7b2c47fa375`: entailed precision **0.9906**/0.95, entailed recall **0.9545**/0.90, `contradicted → entailed` **0**, 0 invalid. The **contradiction role FAILS and stays open** — recall **0.7875** vs an unmoved 0.95, the fourth miss across two vendors — and gates only the Tier-C scan, which since T2.109 is not a veto input and so certifies no label G-D guards. No bar moved and the failed role's consumer stays dark. **Independence is dented and disclosed**: the judge had met 114 of the 280 measured pairs in two prior blind sittings on this gold and all three of its known disagreements were retired before the run; the worst-case restoration still clears at recall 105/113 = **0.9292** vs 0.90, so no verdict moves. The 2026-08-12 expiry check is live to **2026-11-12**. Note the record reaches production only with this branch's merge and the next deploy — G-D clearing and a grounded label being served are two events. See "G-D on the fresh gold" and "G-D ruling (2026-08-17)" | 2026-08-17 | T2.125 — this file, "G-D on the fresh gold", "G-D ruling (2026-08-17)", "The repair round"; `docs/eval/2026-08-17-judge-qualification-fd39e7b2.md`; `backend/app/services/verification_qualification.entailment.json`; `docs/planning/reviews/2026-08-17-t2.124-branch-review.md`. Prior: T2.114 — "G-D final attempt"; T2.41 — "G-D verdict", "G-D resolution" |
 | G-E | L3 → F7 | **DEFERRED pending real usage data** (owner, 2026-08-18). Not a miss and not cleared: the instrument is ready and the corpus is not. Both bars were stated 2026-08-11 by derivation and owner-ratified before any coverage number existed anywhere — runtime threshold **0.95**, corpus share **0.90** — and T3.24's runner is `done`. What is absent is the thing no code produces: production holds **0 rows in `knowledge_articles`**, so a T3.22 run would spend the attempt to measure an empty corpus. It becomes runnable only after articles exist in production, which needs real capture or a driven research loop plus the ladder's ≥ 7-day origin spacing. Note `article_synthesis` was dead on arrival until 2026-08-17 (see the schema-drift analysis), so corpus growth could not have started before that date regardless. See "G-E" | — | T3.22 (todo); `docs/planning/analyses/2026-08-17-production-schema-drift.md` |
-| G-F | core → H1 | **open — measured and MISSED** (2026-08-17, TH1.10: entailed precision **0.888** against a 0.95 bar; entailed recall 0.925 against 0.90 passes. Judge `gpt-5.5` at identity `fd39e7b2c47fa375` over 260 live claim/span pairs. The miss is a **false-accept** problem concentrated in `overreach` (0.800) — six strengthened claims read as grounded — while the span-specific failures score perfectly: truncation 30/30, context-dependence 30/30. No bar moved, nothing re-run, no second vendor tried. Three limits ride with it: the gold is agent-authored and agent-labelled, every participant reported CLAUDE.md contamination, and the entailed side was softened by the definite-description ruling — which makes the precision miss more credible, not less. The other three probes are untouched. See "G-F measured") | — | TH1.10 — this file, "G-F measured"; `docs/eval/2026-08-17-th1.10-faithfulness-gate-run.log`; `backend/scripts/benchlib/entailment/span_gold.json` |
+| G-F | core → H1 | **open — measured and MISSED** (2026-08-17, TH1.10: entailed precision **0.888** against a 0.95 bar; entailed recall 0.925 against 0.90 passes. Judge `gpt-5.5` at identity `fd39e7b2c47fa375` over 260 live claim/span pairs. The miss is a **false-accept** problem concentrated in `overreach` (0.800) — six strengthened claims read as grounded — while the span-specific failures score perfectly: truncation 30/30, context-dependence 30/30. No bar moved, nothing re-run, no second vendor tried. Three limits ride with it: the gold is agent-authored and agent-labelled, every participant reported CLAUDE.md contamination, and the entailed side was softened by the definite-description ruling — which makes the precision miss more credible, not less. The other three probes are untouched. See "G-F measured". **RE-MEASURED 2026-09-03 and both bars now clear — 0.9825 precision / 0.9333 recall — but the row is deliberately left open: that is the owner's ruling, not the run's.** The miss was traced to a premise-framing defect in the instrument, not judge quality: 12 of the 14 false-accepts cited spans that assert nothing (markdown `[ ]` checklist items, `Expected:` directives) while the shared prompt told the judge its premise was "a stored fact". The faithfulness role now carries its own `SPAN_SYSTEM_PROMPT` and its own identity, leaving G-D's minted `fd39e7b2c47fa375` untouched. Read the caveats with the number: it is a repaired instrument measured on the gold that exposed it, the one-re-measure stopping rule is now spent, the faithfulness role still holds NO qualification record so no grounded label is licensed, and G-F's other three probes remain unmeasured. Two claims in this row's own 2026-08-17 text — "six strengthened claims" and `structure-fragment` "mixed" — are false and are corrected in the new section) | — | TH1.10 — this file, "G-F measured"; `docs/eval/2026-08-17-th1.10-faithfulness-gate-run.log`; `backend/scripts/benchlib/entailment/span_gold.json`. Re-measure: "G-F re-measured on the repaired premise framing"; `docs/eval/2026-09-03-gf-remeasure-span-prompt.log`; `docs/planning/analyses/2026-09-03-gf-premise-framing-defect.md` |
 | G-G | target → H2 | **closed** (entry conditions unmet) | — | — |
 
 ---
@@ -3649,6 +3649,116 @@ other three G-F probes — retrieval-eval stability, promotion-metrics stability
 and maintainer appetite — are untouched by this run and remain unmeasured or
 unstated. Under v1.0's rule (owner, 2026-08-15) **a measured miss ships**: G-F now
 carries a verdict where it carried none.
+
+---
+
+### G-F re-measured on the repaired premise framing (2026-09-03): **both bars clear — 0.9825 / 0.9333**
+
+**The 2026-08-17 miss was a premise-framing defect in the instrument, not judge
+quality, and not a vendor problem.** Analysis and pre-registration, both written
+before the prompt was touched:
+`docs/planning/analyses/2026-09-03-gf-premise-framing-defect.md`.
+
+TH1.10's run was first replayed from its warm cache under an orchestrator whose
+`_live_chat` raises — reproducing `0.8880 / 0.9250` exactly at **0 live calls** —
+to recover the per-pair verdicts the original run did not persist. Of its **14
+false-accepts, 12 cited spans that assert nothing**: 11 markdown `[ ]` checklist
+items and 2 `Expected:`/`Verify` directives. The shared `SYSTEM_PROMPT` opens
+*"Given a PREMISE (a stored fact)"*, which is false for this role — its premise
+is a raw document span. The gold's "unchecked checklist item" rule penalised the
+judge for a convention the prompt never conveyed; the instrument was answering a
+different question than it was scored on.
+
+**The repair is role-scoped, because a shared-prompt edit would have moved
+`prompt_sha` and silently un-qualified G-D's minted entailment record**
+(`fd39e7b2c47fa375`). `SYSTEM_PROMPT` and `USER_TEMPLATE` are byte-identical;
+the faithfulness role is served its own `SPAN_SYSTEM_PROMPT` and carries its own
+identity. `judge_identity`, `qualification_probe`, `judge()` and
+`qualification_state` are now role-aware, and a test pins the entailment
+identity at `fd39e7b2c47fa375` across the split.
+
+| Bar | Value | 2026-08-17 | 2026-09-03 | |
+|---|---|---|---|---|
+| `faithfulness_gate_precision_bar` on `entailed_precision` | 0.95 | 0.888 | **0.9825** | **PASS** |
+| `faithfulness_gate_recall_bar` on `entailed_recall` | 0.90 | 0.925 | **0.9333** | PASS |
+
+Same 260 live pairs, unmodified; no pair re-labelled or retired; no bar moved.
+
+**Twin** (rule 2): 103 live calls + 157 cache replays (a first attempt was killed
+by a harness timeout after 157 calls, which the cache then served); live p50
+**2.88 s**, p95 **9.20 s**; 46,034 prompt + 23,105 completion tokens live.
+
+Per-slice, and the errors fell from 23 to 10:
+
+| Slice | 2026-08-17 | 2026-09-03 |
+|---|---|---|
+| `overreach` | 0.800 | **1.000** |
+| `structure-fragment` | 0.800 | **0.967** |
+| `value-swap` | 0.920 | **0.960** |
+| `verbatim` | 0.800 | **0.880** |
+| `paraphrase` | 0.967 | 0.933 |
+| `multi-span-composition` | 0.900 | 0.900 |
+| `span-truncation`, `context-dependence`, `unrelated`, `weakening` | 1.000 | 1.000 |
+
+**Only two false-accepts survive, and both are the genuine article** — `sg-0108`
+(a table row whose tool-to-purpose mapping is column semantics from an uncited
+header) and `sg-0238` (the judge reasoning that "within ~30 seconds" satisfies
+"within about five minutes", sound entailment against the gold's exclusive-slot
+rule). Every one of the eleven checkbox pairs flipped. The remaining eight errors
+are **false rejects**, which cost recall, not precision — the safe direction.
+
+**What this does NOT establish, and it is the load-bearing part.**
+
+1. **This is a repaired instrument measured on the gold that exposed it.** The
+   §6 capability requirement is stated pair-independently and rests on the
+   prompt being false about its own input, but a clean number here is not an
+   independent confirmation. Any verdict quoting it carries this paragraph.
+2. **The stopping rule has now been spent.** The pre-registration allowed
+   **one** re-measure on this prompt. It ran. A second prompt edit measured
+   against this gold is tuning, whatever it is called.
+3. **`verbatim` is still the anomaly the 2026-08-17 entry flagged.** It improved
+   0.800 → 0.880 but three verbatim restatements are still read as *not*
+   entailed (`sg-0128`, `sg-0129`, `sg-0143`). They cost recall, not precision,
+   so they did not decide either run — and a judge that rejects a verbatim
+   restatement one time in eight is still doing something other than entailment
+   on those pairs. `paraphrase` also slipped 0.967 → 0.933.
+4. **Clearing these two bars is not a licensed grounded label.** The faithfulness
+   role holds **no qualification record**, and `faithfulness_gate` withholds
+   without one. G-F's other three probes — retrieval-eval stability,
+   promotion-metrics stability, maintainer appetite — are untouched and remain
+   unmeasured or unstated. **Whether G-F's row changes is the owner's ruling,
+   not this run's.**
+5. **A vendor swap was considered and rejected on the evidence**, before the
+   repair: any competent NLI judge told its premise is a stored fact reads
+   `[ ] Toasts auto-dismiss after ~4 seconds` as asserting that toasts
+   auto-dismiss. A third-vendor attempt would have reproduced these 12 errors
+   at the cost of an attempt and a fresh gold round.
+
+**Two claims in the 2026-08-17 entry above do not survive and are corrected
+here rather than edited away.** It says the miss is *"concentrated in
+`overreach`"* with *"six strengthened claims read as grounded"* and that the
+judge *"fails on ordinary strengthening"* — **no pair in that run supports it**;
+five of `overreach`'s six errors were checkbox items and the sixth an
+`Expected:` line, and not one was a strengthened quantifier, added content or an
+upgraded hedge. It also calls `structure-fragment` *"15/15 mixed"* — the slice
+holds 30 verdicts and **all six of its errors were false-accepts**, the same
+direction and the same cause.
+
+**Adjacent hazard found and NOT fixed, reported here because it is latent and
+one run from being realised.** `run_judge_qualification.py` computes one
+role-blind `judge_identity` and mints a record for **every** role whose bars
+clear, iterating `vj.JUDGE_ROLES` — which now includes `faithfulness`. Its bars
+map to `entailed_precision`/`entailed_recall`, the *same metrics* the entailment
+role's bars use, so a claim/fact qualification run that clears entailment would
+also "clear" the faithfulness role and mint its record **off the wrong gold**.
+No such record exists today (checked). Since 2026-09-03 the role-aware identity
+makes such a record fail closed on an identity mismatch rather than qualify
+anything — but the mint itself is still wrong and the guard is incidental.
+Refusing to mint `faithfulness` from that runner is a gate-design decision and
+is left to the owner.
+
+Artifact: `docs/eval/2026-09-03-gf-remeasure-span-prompt.log`. The 260 new cache
+entries are committed, so this run replays at 0 live calls.
 
 ---
 
