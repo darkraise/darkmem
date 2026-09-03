@@ -286,8 +286,19 @@ checkpoint + ledger pair covers the requirement. The requested Progress revamp
 — parsing task documents into a board with epic links, filters and view
 switching — **is** that model.
 
-That reversal is the owner's to make explicitly, and it should be made in the
-Progress spec rather than inherited from this one.
+**RULED 2026-09-03: the owner reverses it.** Asked to distinguish "follow the
+existing model" from "follow the project-management model", the owner
+confirmed the latter — *"I want the progress can be visually show on the
+project board"*, then *"Confirm!"* against the explicit question "reverse §7 —
+build the task board". So the artifact-store spec's §7 non-goal is withdrawn
+for the Progress surface.
+
+The reversal is recorded here because this is where the question was raised,
+but **the design belongs to the Progress spec**, which must carry: the parsers
+for the ledger formats actually in the corpus, the board model and its link to
+epics/features in the artifact docs, view switching and filters — and, since
+the original ruling turned on cost, an honest statement of what a task model
+adds that the checkpoint + ledger pair does not.
 
 ## 11. Rulings this spec does reverse
 
