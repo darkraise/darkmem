@@ -12,7 +12,7 @@ The owner's report, each item traced to code rather than restated:
 
 | Complaint | What it actually is |
 |---|---|
-| "docs tree does not render as a file browser tree" | `DocumentTree` builds a URI tree and uses `TreeViewBranchText`, but has no expand/collapse, no persisted expansion, no keyboard navigation |
+| "docs tree does not render as a file browser tree" | **Corrected 2026-09-03 after reading the component.** It already uses the full `TreeView` primitive — branches, disclosure indicators, keyboard nav all come from the library. Its actual defect is that it **expands every folder on every render**: `allFolderPaths` is collected and passed as the expanded set, so 475 documents under one root, five levels deep, render as one ~475-row wall. Expansion is uncontrolled and unpersisted |
 | "expand to full width (not view-width)" | The pane is a fixed `w-72` rail beside `flex-1`, inside the standard chrome container |
 | "md file does not render correctly" | Four named defects in `block-view.tsx` — see §4 |
 | "no ability to manage docs" | Every route exists and none is wired — see §5 |
@@ -70,14 +70,17 @@ library-first rule. The inventory was checked: `tree-view`, `resizable`,
 
 ### 3.2 The tree
 
-- `TreeView` with `TreeViewBranch` / `TreeViewBranchControl` /
-  `TreeViewBranchIndicator`: real disclosure triangles, folders that
-  expand and collapse.
-- **Expansion state persists** per project (`localStorage`), and the path to
-  the open document auto-expands on load. Landing in a collapsed tree with a
-  document open and no idea where it lives is the current experience.
-- Keyboard navigation comes from the primitive (arrows, home/end, type-ahead);
-  this is a reason to use it rather than hand-roll.
+- **The primitive stays.** `DocumentTree` already renders `TreeViewBranch` /
+  `TreeViewBranchControl` / `TreeViewBranchIndicator` / `TreeViewItem`, so
+  disclosure and keyboard navigation are already correct and are not rebuilt.
+- **Expansion becomes controlled and persisted.** Today `allFolderPaths`
+  expands everything on every render, which is why 475 documents read as a
+  wall. `TreeView` accepts `expanded: string[]` + `onExpandedChange`, so the
+  component takes the controlled pair and the workspace persists it per
+  project in `localStorage`.
+- **Default expansion is the path to the selected document, not everything.**
+  With nothing selected, only the root level opens. This is the single change
+  that turns the current wall into something navigable.
 - **Folder rows show a child count**; document rows show a **`badge` when the
   document is not lifted** (§6), because that is the state that explains an
   empty inspector.
