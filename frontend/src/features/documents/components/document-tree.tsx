@@ -26,6 +26,8 @@ export function DocumentTree({
   onSelect,
   truncated,
   nodeActions,
+  expanded,
+  onExpandedChange,
 }: {
   items: DocumentListItem[]
   selectedId: string | null
@@ -35,6 +37,10 @@ export function DocumentTree({
    *  affordance here; this surface passes nothing. Declared now so the
    *  editor extends this component rather than rewriting it. */
   nodeActions?: (node: UriTreeNode) => ReactNode
+  /** Controlled expansion. Omitted keeps the legacy expand-everything
+   *  behaviour, so increment 8's call site is unaffected. */
+  expanded?: string[]
+  onExpandedChange?: (paths: string[]) => void
 }) {
   const roots = buildUriTree(items)
   const byId = new Map(items.map((d) => [d.id, d]))
@@ -52,6 +58,14 @@ export function DocumentTree({
     }
   }
   collect(roots)
+
+  const controlled = expanded !== undefined
+  const treeExpansionProps = controlled
+    ? {
+        expanded,
+        onExpandedChange: (d: { value: string[] }) => onExpandedChange?.(d.value),
+      }
+    : { defaultExpanded: allFolderPaths }
 
   if (items.length === 0) {
     return (
@@ -97,7 +111,7 @@ export function DocumentTree({
         </p>
       ) : null}
       <TreeView
-        defaultExpanded={allFolderPaths}
+        {...treeExpansionProps}
         selectionMode="single"
         selected={selectedId ? [selectedId] : []}
         onSelectedChange={({ value }) => {

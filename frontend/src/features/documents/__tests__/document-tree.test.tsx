@@ -49,3 +49,48 @@ describe("DocumentTree", () => {
     expect(screen.getByText(/No documents filed in this project/i)).toBeInTheDocument()
   })
 })
+
+describe("DocumentTree expansion", () => {
+  it("shows only what the controlled expanded set opens", () => {
+    // The defect this fixes: the component expanded every folder, so 475
+    // documents rendered as one wall.
+    render(
+      <DocumentTree
+        items={ITEMS}
+        selectedId={null}
+        onSelect={vi.fn()}
+        truncated={false}
+        expanded={["docs"]}
+        onExpandedChange={vi.fn()}
+      />,
+    )
+    expect(screen.getByText("spec.md")).toBeInTheDocument()
+    expect(screen.queryByText("a.md")).not.toBeInTheDocument()
+  })
+
+  it("reports expansion changes as a bare array", async () => {
+    const onExpandedChange = vi.fn()
+    render(
+      <DocumentTree
+        items={ITEMS}
+        selectedId={null}
+        onSelect={vi.fn()}
+        truncated={false}
+        expanded={[]}
+        onExpandedChange={onExpandedChange}
+      />,
+    )
+    await userEvent.click(screen.getByText("docs"))
+    expect(onExpandedChange).toHaveBeenCalledWith(expect.any(Array))
+  })
+
+  it("keeps expand-everything behaviour when expanded is omitted", () => {
+    // Increment 8's editor call site passes neither prop and must be
+    // unaffected by the controlled-expansion addition.
+    render(
+      <DocumentTree items={ITEMS} selectedId={null} onSelect={vi.fn()} truncated={false} />,
+    )
+    expect(screen.getByText("a.md")).toBeInTheDocument()
+    expect(screen.getByText("spec.md")).toBeInTheDocument()
+  })
+})
