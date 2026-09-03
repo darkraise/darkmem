@@ -81,3 +81,47 @@ describe("BlockView — tables", () => {
     expect(screen.getByRole("cell", { name: "Ana" })).toBeTruthy()
   })
 })
+
+describe("BlockView — list markers", () => {
+  it("renders a bullet for an unordered item", () => {
+    render(
+      <BlockView
+        block={block({ type: "list", text: "alpha", properties: { ordered: false, marker: "-" } })}
+      />,
+    )
+    expect(screen.getByText("•")).toBeTruthy()
+  })
+
+  it("renders the item's own number for an ordered item", () => {
+    // A list may not start at 1, so the number is the item's, not its index.
+    render(
+      <BlockView
+        block={block({
+          type: "list", text: "three",
+          properties: { ordered: true, marker: "3.", number: 3 },
+        })}
+      />,
+    )
+    expect(screen.getByText("3.")).toBeTruthy()
+    expect(screen.queryByText("•")).toBeNull()
+  })
+
+  it("keeps a paren delimiter rather than normalising it to a dot", () => {
+    render(
+      <BlockView
+        block={block({
+          type: "list", text: "one",
+          properties: { ordered: true, marker: "1)", number: 1 },
+        })}
+      />,
+    )
+    expect(screen.getByText("1)")).toBeTruthy()
+  })
+
+  it("falls back to a bullet when no marker was recorded", () => {
+    // Every document filed before increment 5 carries `properties: null` on
+    // its list blocks, and stays readable until it is reparsed.
+    render(<BlockView block={block({ type: "list", text: "legacy" })} />)
+    expect(screen.getByText("•")).toBeTruthy()
+  })
+})

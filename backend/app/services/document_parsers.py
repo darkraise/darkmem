@@ -56,6 +56,7 @@ from statistics import median
 import pdfplumber
 from markdown_it import MarkdownIt
 
+from app.services.block_serializer import DEFAULT_LIST_MARKER
 from app.services.document_ingest import BlockDraft
 
 __all__ = [
@@ -142,6 +143,12 @@ def parse_markdown(text: str) -> list[BlockDraft]:
     drafts: list[dict] = []
     heading_stack: list[tuple[int, int]] = []  # (draft_index, level)
     container_stack: list[int] = []  # draft indexes of open list-items/blockquotes
+    # One frame per open list wrapper: whether it is ordered, the bullet or
+    # delimiter character the source used, and the next item's number. The
+    # wrapper mints no block of its own, so this is the only place the
+    # ordered/bullet distinction exists -- without it every item renders a
+    # bullet, which is what the parser did before increment 5.
+    list_stack: list[dict] = []
 
     def parent() -> int | None:
         if container_stack:
@@ -192,7 +199,7 @@ def parse_markdown(text: str) -> list[BlockDraft]:
                 "text": "",
                 "type": "list",
                 "parent": parent(),
-                "properties": None,
+                "properties": _list_item_properties(list_stack, tok),
                 "char_span": _span(tok.map, offsets, body),
             })
             container_stack.append(len(drafts) - 1)
@@ -221,12 +228,21 @@ def parse_markdown(text: str) -> list[BlockDraft]:
             i += 1
             continue
 
-        if tok.type in ("bullet_list_open", "bullet_list_close",
-                        "ordered_list_open", "ordered_list_close"):
-            # Transparent: the list wrapper mints no block of its own, so a
-            # nested item's parent is the enclosing item (or heading), never
-            # the list. The type vocabulary has no separate "list container"
-            # shape, and an empty-text wrapper block would be unretrievable.
+        if tok.type in ("bullet_list_open", "ordered_list_open"):
+            # Transparent as a BLOCK: the list wrapper mints no block of its
+            # own, so a nested item's parent is the enclosing item (or
+            # heading), never the list. The type vocabulary has no separate
+            # "list container" shape, and an empty-text wrapper block would be
+            # unretrievable. It is not transparent as *data*, though -- the
+            # ordered/bullet distinction and the start number live only here,
+            # so a frame is pushed for the items to read.
+            list_stack.append(_open_list_frame(tok, body))
+            i += 1
+            continue
+
+        if tok.type in ("bullet_list_close", "ordered_list_close"):
+            if list_stack:
+                list_stack.pop()
             i += 1
             continue
 
@@ -342,6 +358,66 @@ def _emit_table(tokens, i, drafts, parent_index, offsets, body) -> int:
     table["text"] = " | ".join(header)
     table["properties"] = {"header": header, "alignments": alignments}
     return i + 1
+
+
+
+# ── list markers ──────────────────────────────────────────────────────
+#
+# The `marker` key is the full marker string as spelled -- "-" or "3." --
+# because `block_serializer` already defines it that way and reads it back
+# on every block-first conversion. `DEFAULT_LIST_MARKER` is imported from
+# there rather than re-spelled so the two cannot drift.
+
+
+def _open_list_frame(tok, body: str) -> dict:
+    """The state one open list wrapper carries for its items.
+
+    `markup` is the character the source actually used -- `-`, `*` or `+` for
+    a bullet list, `.` or `)` for an ordered one -- so a round-trip does not
+    rewrite one spelling into another. An ordered list may start anywhere,
+    and markdown-it puts that start on the wrapper's `attrs`, so it is read
+    here rather than assumed to be 1.
+    """
+    ordered = tok.type == "ordered_list_open"
+    start = 1
+    if ordered:
+        try:
+            start = int(tok.attrGet("start"))
+        except (AttributeError, TypeError, ValueError):
+            start = 1
+    return {
+        "ordered": ordered,
+        "markup": getattr(tok, "markup", None) or (
+            "." if ordered else DEFAULT_LIST_MARKER
+        ),
+        "next": start,
+    }
+
+
+def _list_item_properties(list_stack: list[dict], tok) -> dict:
+    """This item's marker properties, read off its enclosing wrapper.
+
+    A defensive default rather than a raise when the stack is empty: a list
+    item outside any wrapper is not something markdown-it emits, and failing
+    a whole document's parse over it would trade a rendering detail for the
+    document.
+    """
+    frame = list_stack[-1] if list_stack else None
+    if frame is None:
+        return {"ordered": False, "marker": DEFAULT_LIST_MARKER}
+    if not frame["ordered"]:
+        # `markup` is the bullet character itself for a bullet item.
+        marker = getattr(tok, "markup", None) or frame["markup"]
+        return {"ordered": False, "marker": marker}
+    number = frame["next"]
+    frame["next"] = number + 1
+    # The full marker as it is spelled, "3." not ".", because that is the
+    # convention `block_serializer` already reads: `_is_ordered` matches the
+    # whole string against `^\d+([.)])$` and `_marker_for` re-derives the
+    # ordinal from its delimiter group. Writing markdown-it's bare `markup`
+    # here would make every ordered item read as a bullet on the way back out.
+    delimiter = getattr(tok, "markup", None) or "."
+    return {"ordered": True, "marker": f"{number}{delimiter}", "number": number}
 
 
 def _line_offsets(text: str) -> list[int]:

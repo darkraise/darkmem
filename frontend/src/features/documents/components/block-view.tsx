@@ -75,13 +75,29 @@ export function BlockView({
           <Markdown>{block.text}</Markdown>
         </blockquote>
       )
-    case "list":
+    case "list": {
+      // A bullet unless the parser recorded an ordered marker. Every document
+      // filed before increment 5 carries no list properties at all, so the
+      // fallback is what those render until they are reparsed -- the same
+      // bullet they have always shown, not a wrong number.
+      // `marker` is the full marker as spelled ("-" or "3."), the convention
+      // `block_serializer` owns; `ordered` and `number` are the parser's
+      // explicit restatement of it. Prefer the marker so one string decides
+      // what is rendered and what a round-trip writes back.
+      const marker = block.properties?.marker
+      const ordered =
+        block.properties?.ordered === true ||
+        (typeof marker === "string" && /^\d+[.)]$/.test(marker))
+      const label = ordered && typeof marker === "string" ? marker : "\u2022"
       return (
         <div className="flex gap-2 text-sm">
-          <span aria-hidden>•</span>
+          <span aria-hidden className={ordered ? "tabular-nums" : undefined}>
+            {label}
+          </span>
           <Markdown>{block.text}</Markdown>
         </div>
       )
+    }
     case "divider":
       // A thematic break carries no text: the rule IS the block. Rendered as
       // the library separator rather than a styled empty paragraph, which is

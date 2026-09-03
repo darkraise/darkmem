@@ -183,6 +183,7 @@ async def file_document(
     actor: str | None = None,
     source: str | None = None,
     expected_hash: str | None = None,
+    force_reparse: bool = False,
 ) -> DocumentIngest:
     """File `content` as a document and replace its blocks, atomically.
     Does not commit.
@@ -206,6 +207,7 @@ async def file_document(
             actor=actor,
             source=source,
             expected_hash=expected_hash,
+            force_reparse=force_reparse,
         )
 
 
@@ -223,6 +225,7 @@ async def _file_document_without_savepoint(
     actor: str | None = None,
     source: str | None = None,
     expected_hash: str | None = None,
+    force_reparse: bool = False,
 ) -> DocumentIngest:
     """`file_document`'s body with the atomic replace taken away.
 
@@ -275,7 +278,17 @@ async def _file_document_without_savepoint(
     # document is as I last saw it" failed, and refusing is the consistent
     # contract even where the write would have been a no-op. A matching
     # expected_hash still short-circuits here exactly as before.
-    if existing is not None and existing.content_hash == content_hash:
+    # `force_reparse` is the corpus-rewrite escape and nothing else: after a
+    # parser change the filed blocks are stale while the bytes are identical,
+    # so the change gate -- correct for every ordinary filing -- is exactly
+    # what stops the fix reaching them. No door sets it; only the maintenance
+    # script does. `expected_hash` is still honoured above, so forcing does
+    # not also defeat a caller's compare-and-set.
+    if (
+        existing is not None
+        and existing.content_hash == content_hash
+        and not force_reparse
+    ):
         return DocumentIngest(existing.id, UNCHANGED, content_hash)
 
     if existing is None:
