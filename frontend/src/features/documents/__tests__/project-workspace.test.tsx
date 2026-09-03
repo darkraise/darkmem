@@ -57,6 +57,15 @@ function mockDocuments(result: unknown | "fail") {
     if (path.startsWith("/documents/search")) {
       return Promise.resolve({ items: [] })
     }
+    // The reader pane's detail panels. Without their own arms these fall
+    // through to the list payload, and a DocumentListItem has no
+    // `shared_entities`, so the connections panel throws on render.
+    if (path.endsWith("/connections")) {
+      return Promise.resolve({ items: [], horizon: true })
+    }
+    if (path.endsWith("/summary")) {
+      return Promise.resolve(null)
+    }
     if (path.startsWith("/documents")) {
       return result === "fail"
         ? Promise.reject(new Error("boom"))

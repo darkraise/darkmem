@@ -42,3 +42,42 @@ describe("BlockView — heading rendering", () => {
     expect(heading.textContent).not.toContain("`")
   })
 })
+
+describe("BlockView — tables", () => {
+  const header = block({
+    block_id: "t1", type: "table", text: "Name | Role",
+    properties: { header: ["Name", "Role"], alignments: [null, null] },
+  })
+  const rowA = block({
+    block_id: "r1", type: "table_row", text: "Ana | Lead",
+    parent_id: "t1", properties: { cells: ["Ana", "Lead"] },
+  })
+  const rowB = block({
+    block_id: "r2", type: "table_row", text: "Bo | Reviewer",
+    parent_id: "t1", properties: { cells: ["Bo", "Reviewer"] },
+  })
+
+  it("renders a table's header and all its rows as ONE table", () => {
+    // Each data row used to render its own <table>, so columns did not line
+    // up across rows of what is visually one table.
+    render(<BlockView block={header} rows={[rowA, rowB]} />)
+    const tables = screen.getAllByRole("table")
+    expect(tables).toHaveLength(1)
+    expect(screen.getByRole("columnheader", { name: "Name" })).toBeTruthy()
+    expect(screen.getByRole("cell", { name: "Ana" })).toBeTruthy()
+    expect(screen.getByRole("cell", { name: "Reviewer" })).toBeTruthy()
+  })
+
+  it("still renders a header-only table when it has no data rows", () => {
+    render(<BlockView block={header} />)
+    expect(screen.getAllByRole("table")).toHaveLength(1)
+    expect(screen.getByRole("columnheader", { name: "Role" })).toBeTruthy()
+  })
+
+  it("renders an orphan table_row on its own, for a block_ids drill-down", () => {
+    // `block_ids` scopes strictly, so a row can legitimately arrive without
+    // its table. Dropping it would silently lose content.
+    render(<BlockView block={rowA} />)
+    expect(screen.getByRole("cell", { name: "Ana" })).toBeTruthy()
+  })
+})

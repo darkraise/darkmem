@@ -613,6 +613,12 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "POST /api/v1/config/auto-research/runs/{event_id}/rerun",
     "GET /api/v1/documents",
     "GET /api/v1/documents/{document_id}/summary",
+    # The summarize trigger. Same classification as its GET twin: the prose
+    # is generated from this document's own blocks, so document content
+    # crosses and no `memories` row does. It spends a model call, which is a
+    # cost question rather than a scoping one -- `refuse_when_read_only` on
+    # the route is what answers that.
+    "POST /api/v1/documents/{document_id}/summary",
     "GET /api/v1/documents/{document_id}/connections",
     "POST /api/v1/documents/qa",
     # The write door: filing and deleting a document. Same classification as

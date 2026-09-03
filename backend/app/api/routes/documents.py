@@ -78,7 +78,10 @@ from app.services.block_verbs import (
 )
 from app.services.document_ingest import DocumentHashConflict
 from app.services.document_parsers import DocumentParseError
-from app.services.document_summary import read_summary
+from app.repositories.documents import resolve_by_id
+from app.services.document_summary import (
+    EmptySummaryError, read_summary, summarise_document,
+)
 from app.services.faithfulness_gate import FaithfulnessGate, Outcome
 from app.services.grounded_qa import GroundedQaService
 
@@ -352,6 +355,59 @@ async def list_documents(
     )).mappings().all()
     return DocumentListResponse(
         items=[DocumentListItem(**dict(row)) for row in rows]
+    )
+
+
+@router.post(
+    "/{document_id}/summary",
+    response_model=DocumentSummaryResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_document_summary(
+    document_id: UUID,
+    _read_only=Depends(refuse_when_read_only),
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+    llm=Depends(get_llm),
+) -> DocumentSummaryResponse:
+    """Generate this document's summary and store it. 201, because it creates
+    the summary the GET twin reads.
+
+    `summarise_document` shipped with no caller at all, so the GET route read
+    a property nothing in the tree could write and every summary panel was
+    empty by construction. This is that missing door.
+
+    Spends an LLM call on the `summarization` purpose, which is why it carries
+    `refuse_when_read_only` -- an external call is not a database write, so
+    the viewer role's SQLSTATE 42501 handler would never catch it.
+
+    422 rather than an empty 200 when the document has no blocks to summarise:
+    `summarise_document` deliberately answers None there instead of storing
+    "", so that "no summary yet" and "its summary is empty prose" stay
+    different answers on the GET.
+    """
+    if await resolve_by_id(session, document_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"no document {document_id}",
+        )
+    try:
+        summary = await summarise_document(session, llm, document_id=document_id)
+    except EmptySummaryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc),
+        ) from exc
+    if summary is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="this document has no blocks to summarise",
+        )
+    await session.commit()
+    return DocumentSummaryResponse(
+        document_id=summary.document_id,
+        text=summary.text,
+        generated_at=summary.generated_at,
+        block_count=summary.block_count,
     )
 
 

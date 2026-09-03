@@ -164,15 +164,17 @@ reader and each inspector panel each get all four states.
 editing and this spec surfaces them (§5); a WYSIWYG surface is a separate
 project.
 
-## 5. Document management — wiring, not new backend
+## 5. Document management — mostly wiring
 
-Every route below is shipped and unused by this page:
+Every route below is shipped and unused by this page, **except the summarize
+POST, which did not exist at all** — this section's original title said "wiring,
+not new backend" and was wrong for exactly one row (corrected 2026-09-04):
 
 | Action | Route | Note |
 |---|---|---|
 | Update | `POST /api/v1/documents` | The `(project, uri)` upsert **is** update. Send `expected_hash` — it is a compare-and-set and answers 409 on a stale hash |
 | Delete | `DELETE /documents/{id}` | Withdraws fact provenance, then expires facts left unsourced |
-| Summarize | `GET /{id}/summary` | `document_summary.py`, on the `summarization` purpose |
+| Summarize | **`POST /{id}/summary`** (new), then `GET /{id}/summary` | **Corrected 2026-09-04 while implementing increment 3.** `summarise_document` shipped with **no caller anywhere in `backend/app`** — no route, no job, no MCP tool — so the GET read a property nothing in the tree could ever write and the summary panel was empty by construction on every install. Wiring it needed one new route, not wiring. It spends an LLM call on the `summarization` purpose, so it carries `refuse_when_read_only` beside `require_auth`, and answers 422 rather than an empty 200 for a document with no blocks |
 | Per-block edit | `PATCH/POST/DELETE .../blocks/…` | Increment 8's four verbs |
 | Connections | `GET /{id}/connections` | Vacuous until lifting (§2) |
 | Grounded Q&A | `POST /documents/qa` | G-F cleared 2026-09-03, so it may now serve a grounded label |
@@ -283,7 +285,7 @@ re-import.)
 | 1 | **Frame and tree** — full-bleed layout, resizable panes, scroll areas, real `TreeView` with persisted expansion, breadcrumb | none | — |
 | 2 | **Rendering** — `block-view` defects 1, 2 and 4 (§4): real heading levels, headings through `<Markdown>`, list nesting | `blocks.parent_id` onto the block read surface (one field, both doors) | — |
 | 5 | **List markers** — defect 3 (§4): the parser writes a list block's marker, and the 475 filed documents are re-imported so existing rows carry it | parser + re-import | 2 |
-| 3 | **Management** — wire update / delete / summarize / block edit / connections, with the context menu and confirm dialogs (§5) | none | 1 |
+| 3 | **Management** — wire delete / summarize / block edit / connections, with the confirm dialog (§5) | the summarize POST (one route) | 1 |
 | 4 | **Lift and related memories** — the lift route, the guard test, the related-memories read, the priced bulk run (§6) | new route + read | 1, and §6.3's measurement |
 
 Increment 4 is the only one that can be blocked by a decision, which is why it
