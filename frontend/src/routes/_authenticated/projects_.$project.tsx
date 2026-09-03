@@ -22,7 +22,11 @@ function ProjectWorkspacePage() {
   const navigate = useNavigate()
 
   return (
-    <div className="space-y-4">
+    // Carries FULL_HEIGHT_ROUTES' definite `main` height down to
+    // ProjectWorkspace's resizable group, matching chat.tsx's precedent:
+    // `lg:` only, so a small screen keeps natural document flow instead of
+    // being clamped to the viewport.
+    <div className="flex flex-col gap-4 lg:h-full lg:min-h-0">
       <PageChrome
         icon={FolderTree}
         title={project}
@@ -30,6 +34,11 @@ function ProjectWorkspacePage() {
       />
 
       <ProjectWorkspace
+        // Every piece of state ProjectWorkspace owns (expansion, selection,
+        // search focus) is meaningful only within one project. Remounting on
+        // project change is what makes that true, rather than an effect
+        // racing the render to correct it after the fact.
+        key={project}
         project={project}
         tab={tab ?? "artifacts"}
         onTabChange={(next) =>

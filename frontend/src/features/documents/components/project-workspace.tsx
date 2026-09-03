@@ -1,14 +1,33 @@
-import { useState, type ReactNode } from "react"
+import { useMemo, useState, type ReactNode } from "react"
 import { FolderTree, Search } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { Card } from "darkraise-ui/components/card"
 import { Input } from "darkraise-ui/components/input"
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "darkraise-ui/components/breadcrumb"
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "darkraise-ui/components/resizable"
+import { ScrollArea } from "darkraise-ui/components/scroll-area"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "darkraise-ui/components/tabs"
 import { EmptyState } from "@/components/darkmem"
 import { CheckpointsTab } from "@/features/activity/components/checkpoints-tab"
 import { DocumentReader } from "@/features/documents/components/document-reader"
 import { DocumentTree } from "@/features/documents/components/document-tree"
+import {
+  expansionStorageKey,
+  pathsToDocument,
+  rootFolderPaths,
+} from "@/features/documents/tree-expansion"
+import { buildUriTree } from "@/features/documents/uri-tree"
 import {
   useAllDocuments,
   useDocumentSearch,
@@ -31,6 +50,24 @@ function RegionLabel({ children }: { children: ReactNode }) {
     <p className="text-muted-foreground pb-1.5 font-mono text-[10px] tracking-wide uppercase">
       {children}
     </p>
+  )
+}
+
+/** Breadcrumb showing the path to an open document. */
+function DocumentCrumbs({ uri }: { uri: string | null }) {
+  if (!uri) return null
+  const parts = uri.split("/").filter(Boolean)
+  return (
+    <Breadcrumb aria-label="document path" className="pb-2">
+      <BreadcrumbList>
+        {parts.map((part, i) => (
+          <BreadcrumbItem key={`${part}-${i}`}>
+            <BreadcrumbPage>{part}</BreadcrumbPage>
+            {i < parts.length - 1 ? <BreadcrumbSeparator /> : null}
+          </BreadcrumbItem>
+        ))}
+      </BreadcrumbList>
+    </Breadcrumb>
   )
 }
 
@@ -58,17 +95,72 @@ export function ProjectWorkspace({
   const [query, setQuery] = useState("")
   const search = useDocumentSearch()
 
+  const roots = useMemo(() => buildUriTree(items), [items])
+  // Lazy initialiser rather than an effect: the route mounts a fresh
+  // ProjectWorkspace instance per project (`key={project}`), so this only
+  // ever needs to run once, at mount, with no post-commit correction window
+  // where a stale project's `expanded` could render against a new tree. A
+  // read that throws (private mode, blocked storage) falls back to the
+  // derived default rather than failing the pane.
+  const [expanded, setExpanded] = useState<string[] | null>(() => {
+    try {
+      const raw = window.localStorage.getItem(expansionStorageKey(project))
+      const parsed: unknown = raw ? JSON.parse(raw) : null
+      return Array.isArray(parsed) ? (parsed as string[]) : null
+    } catch {
+      return null
+    }
+  })
+
+  // The base is whatever the user has stored (their own toggles), or the
+  // top-level default when nothing is stored yet. A selection UNIONS its
+  // ancestor path into that base rather than replacing it -- replacing
+  // collapsed every folder not on the selected document's path, and once
+  // `expanded` became non-null (any toggle at all) the reveal never ran
+  // again, including for search hits, which can select a document buried
+  // inside a folder the user never opened.
+  const effectiveExpanded = useMemo(() => {
+    const base = expanded ?? rootFolderPaths(roots)
+    if (!selected) return base
+    const toReveal = pathsToDocument(roots, selected.id)
+    if (toReveal.length === 0) return base
+    return Array.from(new Set([...base, ...toReveal]))
+  }, [expanded, selected, roots])
+
+  const handleExpandedChange = (paths: string[]) => {
+    setExpanded(paths)
+    try {
+      window.localStorage.setItem(
+        expansionStorageKey(project),
+        JSON.stringify(paths),
+      )
+    } catch {
+      // Persistence is a convenience; losing it must not break the tree.
+    }
+  }
+
   const ledger = items.find((d) => d.uri?.endsWith(LEDGER_SUFFIX)) ?? null
   const hits = search.data?.items ?? []
 
   return (
-    <Tabs value={tab} onValueChange={(value) => onTabChange(value as WorkspaceTab)}>
+    <Tabs
+      value={tab}
+      onValueChange={(value) => onTabChange(value as WorkspaceTab)}
+      // Carries the route root's `lg:h-full` down to the resizable group
+      // below: `flex flex-col` is structural at every width, `lg:flex-1
+      // lg:min-h-0` is what actually claims the height, matching the
+      // `lg:`-only prefixing chat.tsx's height chain uses.
+      className="flex flex-col lg:min-h-0 lg:flex-1"
+    >
       <TabsList>
         <TabsTrigger value="artifacts">Artifacts</TabsTrigger>
         <TabsTrigger value="progress">Progress</TabsTrigger>
       </TabsList>
 
-      <TabsContent value="artifacts" className="space-y-3.5">
+      <TabsContent
+        value="artifacts"
+        className="flex flex-col space-y-3.5 lg:min-h-0 lg:flex-1"
+      >
         <form
           className="border-border bg-muted/20 flex gap-2 rounded-md border p-2"
           onSubmit={(e) => {
@@ -127,47 +219,68 @@ export function ProjectWorkspace({
           </div>
         ) : null}
 
-        <div className="flex flex-col gap-5 lg:flex-row">
-          <div className="w-full shrink-0 lg:w-72">
-            <RegionLabel>documents</RegionLabel>
-            {documents.isError ? (
-              <p className="text-destructive text-sm">
-                This project's documents could not be loaded — a failed read,
-                not an empty project.
-              </p>
-            ) : documents.isLoading ? (
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-2/3" />
-                <Skeleton className="h-4 w-1/2" />
-                <Skeleton className="h-4 w-3/4" />
-              </div>
-            ) : (
-              <DocumentTree
-                items={items}
-                selectedId={selected?.id ?? null}
-                onSelect={(doc) => {
-                  setSelected(doc)
-                  setFocusBlockId(null)
-                }}
-                truncated={documents.data?.truncated ?? false}
-              />
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            {selected ? (
-              <Card className="p-4">
-                <DocumentReader documentId={selected.id} focusBlockId={focusBlockId} />
-              </Card>
-            ) : (
-              <EmptyState
-                kind="empty"
-                icon={FolderTree}
-                title="Nothing selected"
-                description="Pick a document from the tree to read it."
-              />
-            )}
-          </div>
-        </div>
+        <ResizablePanelGroup
+          orientation="horizontal"
+          // The floor for a broken or absent height chain (small screens,
+          // where the ancestors above deliberately carry no height): without
+          // it the panes collapse to zero. Once the chain above is real (at
+          // `lg`), the library's own `h-full` fills the real flexed height
+          // instead, so the floor stands down rather than driving the layout.
+          className="min-h-[60vh] lg:min-h-0 lg:flex-1"
+        >
+          <ResizablePanel defaultSize={26} minSize={15} maxSize={45} id="tree">
+            <ScrollArea className="h-full pr-2">
+              <RegionLabel>documents</RegionLabel>
+              {documents.isError ? (
+                <p className="text-destructive text-sm">
+                  This project's documents could not be loaded — a failed
+                  read, not an empty project.
+                </p>
+              ) : documents.isLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-2/3" />
+                  <Skeleton className="h-4 w-1/2" />
+                  <Skeleton className="h-4 w-3/4" />
+                </div>
+              ) : (
+                <DocumentTree
+                  items={items}
+                  selectedId={selected?.id ?? null}
+                  onSelect={(doc) => {
+                    setSelected(doc)
+                    setFocusBlockId(null)
+                  }}
+                  truncated={documents.data?.truncated ?? false}
+                  expanded={effectiveExpanded}
+                  onExpandedChange={handleExpandedChange}
+                />
+              )}
+            </ScrollArea>
+          </ResizablePanel>
+          <ResizableHandle withHandle />
+          <ResizablePanel defaultSize={74} id="reader">
+            <ScrollArea className="h-full pl-2">
+              {selected ? (
+                <div>
+                  <DocumentCrumbs uri={selected.uri ?? null} />
+                  <Card className="p-4">
+                    <DocumentReader
+                      documentId={selected.id}
+                      focusBlockId={focusBlockId}
+                    />
+                  </Card>
+                </div>
+              ) : (
+                <EmptyState
+                  kind="empty"
+                  icon={FolderTree}
+                  title="Nothing selected"
+                  description="Pick a document from the tree to read it."
+                />
+              )}
+            </ScrollArea>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </TabsContent>
 
       <TabsContent value="progress" className="space-y-5">

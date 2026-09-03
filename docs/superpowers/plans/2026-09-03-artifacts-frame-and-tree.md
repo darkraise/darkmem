@@ -45,10 +45,10 @@ the selected document's path. A breadcrumb over the reader names where you are.
 |---|---|
 | `frontend/src/features/documents/tree-expansion.ts` | **Create.** Pure helpers: derive default expanded paths from a selected document, and the localStorage key. No React. |
 | `frontend/src/features/documents/__tests__/tree-expansion.test.ts` | **Create.** Unit tests for the above. |
-| `frontend/src/features/documents/components/document-tree.tsx` | **Modify.** Accept controlled `expanded` + `onExpandedChange`; stop collecting `allFolderPaths`. Add folder child counts. |
+| `frontend/src/features/documents/components/document-tree.tsx` | **Modify.** Accept controlled `expanded` + `onExpandedChange`, keeping the uncontrolled `defaultExpanded` fallback for increment 8's call site. (Folder child counts are NOT in this increment — see "Deliberately not".) |
 | `frontend/src/features/documents/components/project-workspace.tsx` | **Modify.** Own expansion state, persist it, render the resizable frame with scroll areas and the breadcrumb. |
 | `frontend/src/features/documents/__tests__/project-workspace.test.tsx` | **Modify.** Extend the existing four-state suite. |
-| `frontend/src/routes/_authenticated/projects_.$project.tsx` | **Modify.** Opt the route out of the centred container. |
+| `frontend/src/routes/_authenticated.tsx` | **Modify.** Add `"/projects/"` to `FULL_WIDTH_ROUTES` and `FULL_HEIGHT_ROUTES`. This is where the caps live — the leaf route file cannot lift them. |
 
 ---
 
@@ -567,7 +567,7 @@ Expected: PASS. Then `npm run build`.
 
 ```bash
 git add frontend/src/features/documents/components/project-workspace.tsx \
-        frontend/src/routes/_authenticated/projects_.\$project.tsx \
+        frontend/src/routes/_authenticated.tsx \
         frontend/src/features/documents/__tests__/project-workspace.test.tsx
 git commit -m "feat(ui): full-bleed resizable artifacts frame"
 ```

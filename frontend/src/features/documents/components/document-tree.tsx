@@ -26,6 +26,8 @@ export function DocumentTree({
   onSelect,
   truncated,
   nodeActions,
+  expanded,
+  onExpandedChange,
 }: {
   items: DocumentListItem[]
   selectedId: string | null
@@ -35,23 +37,42 @@ export function DocumentTree({
    *  affordance here; this surface passes nothing. Declared now so the
    *  editor extends this component rather than rewriting it. */
   nodeActions?: (node: UriTreeNode) => ReactNode
+  /** Controlled expansion. Omitted keeps the legacy expand-everything
+   *  behaviour, so increment 8's call site is unaffected. */
+  expanded?: string[]
+  onExpandedChange?: (paths: string[]) => void
 }) {
   const roots = buildUriTree(items)
   const byId = new Map(items.map((d) => [d.id, d]))
 
-  // Expanded by default. A collapsed tree of one `file:` or `docs` node reads
-  // as an empty panel -- the reader has to guess that anything is in there --
-  // and the corpus this renders is a few hundred files, not a filesystem.
-  const allFolderPaths: string[] = []
-  const collect = (nodes: UriTreeNode[]) => {
-    for (const node of nodes) {
-      if (node.children.length > 0) {
-        allFolderPaths.push(node.path)
-        collect(node.children)
+  const controlled = expanded !== undefined
+  const treeExpansionProps = controlled
+    ? {
+        expanded,
+        onExpandedChange: (d: { value: string[] }) => onExpandedChange?.(d.value),
       }
-    }
-  }
-  collect(roots)
+    : {
+        // Expanded by default. A collapsed tree of one `file:` or `docs`
+        // node reads as an empty panel -- the reader has to guess that
+        // anything is in there -- and the corpus this renders is a few
+        // hundred files, not a filesystem. Only collected on this
+        // uncontrolled path: the controlled caller discards the result, and
+        // walking every node on each render is dead work over hundreds of
+        // files per keystroke.
+        defaultExpanded: (() => {
+          const allFolderPaths: string[] = []
+          const collect = (nodes: UriTreeNode[]) => {
+            for (const node of nodes) {
+              if (node.children.length > 0) {
+                allFolderPaths.push(node.path)
+                collect(node.children)
+              }
+            }
+          }
+          collect(roots)
+          return allFolderPaths
+        })(),
+      }
 
   if (items.length === 0) {
     return (
@@ -97,7 +118,7 @@ export function DocumentTree({
         </p>
       ) : null}
       <TreeView
-        defaultExpanded={allFolderPaths}
+        {...treeExpansionProps}
         selectionMode="single"
         selected={selectedId ? [selectedId] : []}
         onSelectedChange={({ value }) => {
