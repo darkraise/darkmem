@@ -203,6 +203,24 @@ describe("project workspace — layout", () => {
     // attribute that could change with a bundler bump.
     expect(await screen.findByRole("separator")).toBeInTheDocument()
   })
+
+  it("names where the open document lives", async () => {
+    mockDocuments({ items: [DOC] })
+    renderWorkspace()
+    fireEvent.click(await screen.findByText("design.md"))
+    // DOC.uri is "notes/design.md"; both segments must be readable.
+    const crumbs = await screen.findByLabelText("document path")
+    expect(crumbs).toHaveTextContent("notes")
+    expect(crumbs).toHaveTextContent("design.md")
+  })
+
+  it("renders nothing when no document is selected", async () => {
+    mockDocuments({ items: [DOC] })
+    renderWorkspace()
+    await screen.findByText("design.md")
+    // The breadcrumb must not render when nothing is selected
+    expect(screen.queryByLabelText("document path")).not.toBeInTheDocument()
+  })
 })
 
 describe("project workspace — tree expansion", () => {

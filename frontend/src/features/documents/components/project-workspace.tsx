@@ -4,6 +4,13 @@ import { Button } from "darkraise-ui/components/button"
 import { Card } from "darkraise-ui/components/card"
 import { Input } from "darkraise-ui/components/input"
 import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "darkraise-ui/components/breadcrumb"
+import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
@@ -43,6 +50,24 @@ function RegionLabel({ children }: { children: ReactNode }) {
     <p className="text-muted-foreground pb-1.5 font-mono text-[10px] tracking-wide uppercase">
       {children}
     </p>
+  )
+}
+
+/** Breadcrumb showing the path to an open document. */
+function DocumentCrumbs({ uri }: { uri: string | null }) {
+  if (!uri) return null
+  const parts = uri.split("/").filter(Boolean)
+  return (
+    <Breadcrumb aria-label="document path" className="pb-2">
+      <BreadcrumbList>
+        {parts.map((part, i) => (
+          <BreadcrumbItem key={`${part}-${i}`}>
+            <BreadcrumbPage>{part}</BreadcrumbPage>
+            {i < parts.length - 1 ? <BreadcrumbSeparator /> : null}
+          </BreadcrumbItem>
+        ))}
+      </BreadcrumbList>
+    </Breadcrumb>
   )
 }
 
@@ -205,12 +230,15 @@ export function ProjectWorkspace({
           <ResizablePanel defaultSize={74} id="reader">
             <ScrollArea className="h-full pl-2">
               {selected ? (
-                <Card className="p-4">
-                  <DocumentReader
-                    documentId={selected.id}
-                    focusBlockId={focusBlockId}
-                  />
-                </Card>
+                <div>
+                  <DocumentCrumbs uri={selected.uri ?? null} />
+                  <Card className="p-4">
+                    <DocumentReader
+                      documentId={selected.id}
+                      focusBlockId={focusBlockId}
+                    />
+                  </Card>
+                </div>
               ) : (
                 <EmptyState
                   kind="empty"
