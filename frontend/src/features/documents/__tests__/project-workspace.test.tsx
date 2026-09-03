@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -32,6 +33,7 @@ vi.mock("@/features/activity/components/checkpoints-tab", () => ({
 
 import { apiFetch } from "@/lib/api"
 import { ProjectWorkspace } from "../components/project-workspace"
+import { expansionStorageKey } from "../tree-expansion"
 
 const DOC = {
   id: "11111111-1111-1111-1111-111111111111",
@@ -71,7 +73,10 @@ function renderWorkspace(props: Partial<Parameters<typeof ProjectWorkspace>[0]> 
   )
 }
 
-afterEach(() => vi.clearAllMocks())
+afterEach(() => {
+  vi.clearAllMocks()
+  window.localStorage.clear()
+})
 
 describe("project workspace — the states a reader must be able to tell apart", () => {
   it("says so when a search matched nothing, instead of rendering nothing", async () => {
@@ -161,13 +166,35 @@ describe("project workspace — tree expansion", () => {
     expect(screen.queryByText("progress.md")).not.toBeInTheDocument()
   })
 
-  it("remembers expansion per project across mounts", async () => {
-    mockDocuments({ items: [DOC] })
+  it("restores a deeper expansion from localStorage, not just the top level", async () => {
+    // The default (no selection) opens top-level folders only, so
+    // "docs/planning" stays collapsed and "progress.md" is hidden -- see the
+    // test above. A stored value naming that deeper folder must override the
+    // default, or this test is indistinguishable from that one passing twice.
+    mockDocuments({ items: [DOC, { ...DOC, id: "doc-2", uri: "docs/planning/progress.md" }] })
     window.localStorage.setItem(
-      "darkmem:artifacts:expanded:darkmem",
-      JSON.stringify(["notes"]),
+      expansionStorageKey("darkmem"),
+      JSON.stringify(["docs", "docs/planning"]),
     )
     renderWorkspace()
-    expect(await screen.findByText("design.md")).toBeInTheDocument()
+    expect(await screen.findByText("progress.md")).toBeInTheDocument()
+  })
+
+  it("writes an expansion change to localStorage", async () => {
+    // Drives a real branch toggle through the UI (as document-tree.test.tsx
+    // does) rather than calling onExpandedChange directly, so this covers the
+    // wiring between the tree and the persisted key, not just the handler.
+    mockDocuments({ items: [DOC, { ...DOC, id: "doc-2", uri: "docs/planning/progress.md" }] })
+    renderWorkspace()
+    // "docs" is open by default (top level); its child "planning" is a
+    // collapsed folder -- clicking it expands it.
+    await screen.findByText("planning")
+    await userEvent.click(screen.getByText("planning"))
+
+    await waitFor(() => {
+      const raw = window.localStorage.getItem(expansionStorageKey("darkmem"))
+      expect(raw).not.toBeNull()
+      expect(JSON.parse(raw as string)).toContain("docs/planning")
+    })
   })
 })
