@@ -6,6 +6,45 @@ better" log, not release notes for strangers. The ladder is
 
 ## v1.5.0 — 2026-09-02
 
+**G-F cleared, and the faithfulness judge stopped being asked the wrong
+question.** The gate that guards grounded Q&A over documents had missed its
+precision bar at 0.888 since 2026-08-17. The miss turned out to be the
+instrument, not the model.
+
+### Fixed
+
+- **The faithfulness judge was told its premise is "a stored fact".** It is
+  not — in this role the premise is a raw document span, which may be a
+  checklist item, an instruction or an `Expected:` line that asserts nothing.
+  Replaying the old run from its cache at zero live calls showed **12 of its 14
+  false-accepts were exactly that**: 11 markdown `[ ]` checklist items and 2
+  directives, each read as a claim about the system because the prompt said the
+  premise was a fact. The gold had been right all along; it caught a defect in
+  the judge's specification. Precision went **0.888 → 0.9825**, recall 0.925 →
+  0.9333, errors 23 → 10, and only two genuine false-accepts remain. The repair
+  is role-scoped: the shared prompt is byte-identical, so the separately
+  qualified entailment judge was not disturbed.
+- **A qualification record could be minted from the wrong gold.** The
+  faithfulness role's bars measure the same two metrics as the entailment
+  role's, so every clearing claim/fact run also wrote a *faithfulness* record —
+  off a gold containing no document spans, qualifying the span judge on a
+  distribution it had never seen. A test asserted that outcome rather than
+  catching it. Each role is now mintable only by the gold that scores it.
+- **The span gold had no way to mint its own role's record**, so once the wrong
+  door was shut the role was unmintable by anything. It now mints behind an
+  explicit `--gate`, and writes nothing when a bar is missed.
+
+### Changed
+
+- **Grounded labels can now be served.** The faithfulness qualification record
+  is minted and deployed, and production already resolves the verification
+  purpose at the qualified identity. Two disclosures ride with the number and
+  are recorded in the gate ledger rather than buried: it is a repaired
+  instrument scored against the gold that exposed its own defect, and that gold
+  is agent-authored. An independent confirmation on a fresh gold is still owed.
+
+## v1.5.0 (earlier) — 2026-09-02
+
 **The Checkpoints tab became something you can leave open and watch, and
 filed documents stopped silently losing their biggest tables.** Increments 1
 and 2 of the project artifact store (spec §3, §4, §6).
