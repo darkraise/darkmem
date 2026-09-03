@@ -49,6 +49,7 @@ _TARGETS = text(
            content IS NULL AS no_content
     FROM documents
     WHERE (CAST(:project AS text) IS NULL OR project = CAST(:project AS text))
+      AND (CAST(:uri AS text) IS NULL OR uri = CAST(:uri AS text))
     ORDER BY created_at
     """
 )
@@ -56,9 +57,13 @@ _TARGETS = text(
 _CONTENT = text("SELECT content FROM documents WHERE id = CAST(:id AS uuid)")
 
 
-async def run(project: str | None, limit: int | None, dry_run: bool) -> int:
+async def run(
+    project: str | None, uri: str | None, limit: int | None, dry_run: bool,
+) -> int:
     async with async_session_factory() as session:
-        rows = (await session.execute(_TARGETS, {"project": project})).mappings().all()
+        rows = (await session.execute(
+            _TARGETS, {"project": project, "uri": uri},
+        )).mappings().all()
 
     targets = [r for r in rows if not r["no_content"]]
     skipped = [r for r in rows if r["no_content"]]
@@ -111,12 +116,14 @@ async def run(project: str | None, limit: int | None, dry_run: bool) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--project", default=None, help="limit to one project")
+    ap.add_argument("--uri", default=None,
+                    help="reparse exactly one document, for a spot check")
     ap.add_argument("--limit", type=int, default=None,
                     help="reparse at most N documents; size a run before committing to it")
     ap.add_argument("--dry-run", action="store_true",
                     help="report what would be reparsed; no writes, no embed calls")
     args = ap.parse_args()
-    return asyncio.run(run(args.project, args.limit, args.dry_run))
+    return asyncio.run(run(args.project, args.uri, args.limit, args.dry_run))
 
 
 if __name__ == "__main__":
