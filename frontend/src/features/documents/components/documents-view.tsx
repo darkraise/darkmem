@@ -3,7 +3,7 @@ import { Sparkles } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { Card, CardContent, CardHeader } from "darkraise-ui/components/card"
-import { BlockEditor } from "./block-editor"
+import { EditableDocument } from "./editable-document"
 import { DocumentReader } from "./document-reader"
 import { DocumentTree } from "./document-tree"
 import { Input } from "darkraise-ui/components/input"
@@ -13,7 +13,6 @@ import {
   useDocumentConnections,
   useDocumentSummary,
   useAllDocuments,
-  useDocumentBlocks,
   useGroundedQa,
   type QaResponse,
 } from "@/hooks/api"
@@ -264,20 +263,4 @@ function DocumentDetail({ documentId }: { documentId: string }) {
 }
 
 
-/** The editor needs the blocks the reader fetches, so it fetches them itself
- *  rather than lifting the query into `DocumentsView` -- both mount at most
- *  one of the two, and TanStack dedupes the shared key anyway. */
-function EditableDocument({ documentId }: { documentId: string }) {
-  const blocks = useDocumentBlocks(documentId)
-  if (blocks.isLoading) return <Skeleton className="h-24 w-full" />
-  if (blocks.isError) {
-    return (
-      <p className="text-destructive text-sm">
-        This document could not be read — a failed read, not an empty document.
-      </p>
-    )
-  }
-  return (
-    <BlockEditor documentId={documentId} blocks={blocks.data?.blocks ?? []} />
-  )
-}
+

@@ -833,3 +833,49 @@ async def test_document_blocks_serves_parent_id_so_nesting_survives_the_wire(ses
     assert heading.parent_id is None
     assert outer.parent_id == heading.block_id
     assert inner.parent_id == outer.block_id
+
+
+@pytest.mark.asyncio
+async def test_force_reparse_rewrites_blocks_for_byte_identical_content(session):
+    """The mechanism increment 5's corpus rewrite needs.
+
+    `content_hash` is the change gate, so a re-push of byte-identical content
+    returns UNCHANGED and never touches a block. That is right for ordinary
+    filings and wrong after a parser change: the 475 filed documents carry
+    blocks the old parser produced, and no amount of re-pushing the same bytes
+    replaces them -- the same trap CLAUDE.md records for `divider`, where 201
+    documents kept `---` in their content and no divider row.
+
+    `force_reparse` bypasses the gate only for a caller that asks; every door
+    leaves it False, so no filing path changes behaviour.
+    """
+    llm = StubEmbedder()
+    content = "- alpha\n- beta\n"
+    first = await put_document(
+        session, llm, project="p", uri="docs/l.md", content=content,
+    )
+    assert first.outcome == "created"
+
+    # The gate: same bytes, nothing refiled.
+    unchanged = await put_document(
+        session, llm, project="p", uri="docs/l.md", content=content,
+    )
+    assert unchanged.outcome == "unchanged"
+    assert unchanged.blocks_filed == 0
+
+    before = {r.block_id for r in await document_blocks(
+        session, document_id=first.document_id,
+    )}
+
+    forced = await put_document(
+        session, llm, project="p", uri="docs/l.md", content=content,
+        force_reparse=True,
+    )
+    assert forced.outcome != "unchanged"
+    assert forced.blocks_filed > 0
+
+    after = await document_blocks(session, document_id=first.document_id)
+    # Blocks are replaced, not appended: filing strips the prior set and
+    # mints new ids, so the document does not grow a second copy of itself.
+    assert len(after) == len(before)
+    assert {r.block_id for r in after}.isdisjoint(before)

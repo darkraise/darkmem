@@ -20,7 +20,13 @@ import { Skeleton } from "darkraise-ui/components/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "darkraise-ui/components/tabs"
 import { EmptyState } from "@/components/darkmem"
 import { CheckpointsTab } from "@/features/activity/components/checkpoints-tab"
+import {
+  DocumentActions,
+  DocumentDetail,
+  type ReaderMode,
+} from "@/features/documents/components/document-actions"
 import { DocumentReader } from "@/features/documents/components/document-reader"
+import { EditableDocument } from "@/features/documents/components/editable-document"
 import { DocumentTree } from "@/features/documents/components/document-tree"
 import {
   expansionStorageKey,
@@ -93,6 +99,9 @@ export function ProjectWorkspace({
    *  reader at the top, losing the section the user actually matched. */
   const [focusBlockId, setFocusBlockId] = useState<string | null>(null)
   const [query, setQuery] = useState("")
+  // Reading is the default for every selection: the block editor commits on
+  // blur, so landing in it makes a stray keystroke a real edit.
+  const [mode, setMode] = useState<ReaderMode>("read")
   const search = useDocumentSearch()
 
   const roots = useMemo(() => buildUriTree(items), [items])
@@ -263,6 +272,7 @@ export function ProjectWorkspace({
                   onSelect={(doc) => {
                     setSelected(doc)
                     setFocusBlockId(null)
+                    setMode("read")
                   }}
                   truncated={documents.data?.truncated ?? false}
                   expanded={effectiveExpanded}
@@ -277,12 +287,27 @@ export function ProjectWorkspace({
               {selected ? (
                 <div>
                   <DocumentCrumbs uri={selected.uri ?? null} />
+                  <DocumentActions
+                    document={selected}
+                    mode={mode}
+                    onModeChange={setMode}
+                    onDeleted={() => {
+                      setSelected(null)
+                      setFocusBlockId(null)
+                      setMode("read")
+                    }}
+                  />
                   <Card className="p-4">
-                    <DocumentReader
-                      documentId={selected.id}
-                      focusBlockId={focusBlockId}
-                    />
+                    {mode === "read" ? (
+                      <DocumentReader
+                        documentId={selected.id}
+                        focusBlockId={focusBlockId}
+                      />
+                    ) : (
+                      <EditableDocument documentId={selected.id} />
+                    )}
                   </Card>
+                  <DocumentDetail documentId={selected.id} />
                 </div>
               ) : (
                 <EmptyState

@@ -141,6 +141,21 @@ reader and each inspector panel each get all four states.
    parser change and the re-import together. Increment 2 shipped 1, 2 and 4
    and deliberately left the bullet as-is rather than rendering half the
    corpus correctly.
+   **Shipped 2026-09-04 as increment 5**, with two findings the deferral did
+   not anticipate. First, the `marker` key is **shared with
+   `block_serializer`**, which defines it as the marker *as spelled* (`"3."`,
+   not `"."`) and reads it back on every block-first conversion — writing
+   markdown-it's bare `markup` would have made every ordered item the parser
+   produces read as a bullet on the way out, silently rewriting ordered lists.
+   The parser now imports `DEFAULT_LIST_MARKER` from that module and a test
+   pins the two conventions together. Second, **a re-import does not reparse
+   anything**: `content_hash` is the change gate, so re-pushing a document's
+   own bytes returns `unchanged` and never touches a block. That needed a new
+   mechanism — `force_reparse`, off on every door, set only by
+   `backend/scripts/reparse_documents.py`, which reads `documents.content`
+   (the stored source of record) and re-files in place, so it needs neither
+   the original files nor a login. Its cost is re-embedding, not parsing:
+   filing mints fresh block ids, so every block embeds again.
 4. **Blocks render flat.** `document-reader.tsx` states this is deliberate —
    defensible for a reader, wrong for a browser, and it means nested lists lose
    their nesting. **Corrected 2026-09-03: the mechanism named here was wrong,
@@ -164,15 +179,17 @@ reader and each inspector panel each get all four states.
 editing and this spec surfaces them (§5); a WYSIWYG surface is a separate
 project.
 
-## 5. Document management — wiring, not new backend
+## 5. Document management — mostly wiring
 
-Every route below is shipped and unused by this page:
+Every route below is shipped and unused by this page, **except the summarize
+POST, which did not exist at all** — this section's original title said "wiring,
+not new backend" and was wrong for exactly one row (corrected 2026-09-04):
 
 | Action | Route | Note |
 |---|---|---|
 | Update | `POST /api/v1/documents` | The `(project, uri)` upsert **is** update. Send `expected_hash` — it is a compare-and-set and answers 409 on a stale hash |
 | Delete | `DELETE /documents/{id}` | Withdraws fact provenance, then expires facts left unsourced |
-| Summarize | `GET /{id}/summary` | `document_summary.py`, on the `summarization` purpose |
+| Summarize | **`POST /{id}/summary`** (new), then `GET /{id}/summary` | **Corrected 2026-09-04 while implementing increment 3.** `summarise_document` shipped with **no caller anywhere in `backend/app`** — no route, no job, no MCP tool — so the GET read a property nothing in the tree could ever write and the summary panel was empty by construction on every install. Wiring it needed one new route, not wiring. It spends an LLM call on the `summarization` purpose, so it carries `refuse_when_read_only` beside `require_auth`, and answers 422 rather than an empty 200 for a document with no blocks |
 | Per-block edit | `PATCH/POST/DELETE .../blocks/…` | Increment 8's four verbs |
 | Connections | `GET /{id}/connections` | Vacuous until lifting (§2) |
 | Grounded Q&A | `POST /documents/qa` | G-F cleared 2026-09-03, so it may now serve a grounded label |
@@ -282,8 +299,8 @@ re-import.)
 |---|---|---|---|
 | 1 | **Frame and tree** — full-bleed layout, resizable panes, scroll areas, real `TreeView` with persisted expansion, breadcrumb | none | — |
 | 2 | **Rendering** — `block-view` defects 1, 2 and 4 (§4): real heading levels, headings through `<Markdown>`, list nesting | `blocks.parent_id` onto the block read surface (one field, both doors) | — |
-| 5 | **List markers** — defect 3 (§4): the parser writes a list block's marker, and the 475 filed documents are re-imported so existing rows carry it | parser + re-import | 2 |
-| 3 | **Management** — wire update / delete / summarize / block edit / connections, with the context menu and confirm dialogs (§5) | none | 1 |
+| 5 | **List markers** — defect 3 (§4): the parser writes a list block's marker, and the 475 filed documents are reparsed so existing rows carry it | parser + `force_reparse` + a maintenance script | 2 |
+| 3 | **Management** — wire delete / summarize / block edit / connections, with the confirm dialog (§5) | the summarize POST (one route) | 1 |
 | 4 | **Lift and related memories** — the lift route, the guard test, the related-memories read, the priced bulk run (§6) | new route + read | 1, and §6.3's measurement |
 
 Increment 4 is the only one that can be blocked by a decision, which is why it
@@ -338,6 +355,17 @@ for the ledger formats actually in the corpus, the board model and its link to
 epics/features in the artifact docs, view switching and filters — and, since
 the original ruling turned on cost, an honest statement of what a task model
 adds that the checkpoint + ledger pair does not.
+
+**Written 2026-09-04: `2026-09-04-progress-board-design.md`.** Its two
+load-bearing findings, both measured rather than assumed: the epic files'
+done-when checkboxes are **not maintained (806 unchecked, 17 checked)**, so a
+board deriving completion from them would report ~2% done for a project that
+is substantially complete — `progress.md`'s Status column is the only
+completion signal. And the honest answer to the cost question is that a board
+adds **no new data at all**; what it adds is that three questions currently
+answerable only by hand-joining two files become one read. That is why the
+spec makes it a **projection, never a store** — a writable board would put
+task state in a database while the ledger that gates merges stays in git.
 
 ## 11. Rulings this spec does reverse
 

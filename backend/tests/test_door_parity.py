@@ -282,6 +282,27 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="documents.summarize",
+        status=REST_ONLY,
+        rest=(("POST", f"{V1}/documents/{{document_id}}/summary"),),
+        mcp=(),
+        reason=(
+            "Single-door on the two-door ruling's own reasoning, not despite "
+            "it. The owner ruling of 2026-08-23 landed documents.write and "
+            "documents.retrieval on both doors because those five verbs "
+            "generate nothing and label nothing -- they file a document or "
+            "return its own text with a cosine score. This verb generates "
+            "prose from a model, so the clause that carried those five does "
+            "not reach it, and extending two-door to a generating verb is an "
+            "owner decision rather than an inference from a ruling about "
+            "non-generating ones. It is unlike grounded_qa in the other "
+            "direction: no eval gate governs it and it carries no label, so "
+            "the block here is a pending decision, not a closed gate. The "
+            "read twin (GET) stays REST-only with the reads for its own "
+            "unrelated reasons."
+        ),
+    ),
+    Surface(
         name="documents.grounded_qa",
         status=REST_ONLY,
         rest=(("POST", f"{V1}/documents/qa"),),

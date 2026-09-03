@@ -47,6 +47,34 @@ export function listDepths(rows: BlockRow[]): Record<string, number> {
   return depths
 }
 
+/** A table block's data rows, keyed by the table's id, plus the set of row
+ *  ids the table has adopted so the body does not render them twice.
+ *
+ *  `table_row` blocks carry the table as their `parent_id`, so this is exact
+ *  rather than an adjacency guess. A row whose table is not in this result --
+ *  a `block_ids` drill-down can return one -- is left in the body and renders
+ *  standalone, because dropping it would silently lose content.
+ */
+export function adoptTableRows(rows: BlockRow[]): {
+  rowsByTable: Map<string, BlockRow[]>
+  adopted: Set<string>
+} {
+  const tables = new Set(
+    rows.filter((r) => r.type === "table").map((r) => r.block_id),
+  )
+  const rowsByTable = new Map<string, BlockRow[]>()
+  const adopted = new Set<string>()
+  for (const row of rows) {
+    if (row.type !== "table_row") continue
+    if (row.parent_id === null || !tables.has(row.parent_id)) continue
+    const bucket = rowsByTable.get(row.parent_id)
+    if (bucket) bucket.push(row)
+    else rowsByTable.set(row.parent_id, [row])
+    adopted.add(row.block_id)
+  }
+  return { rowsByTable, adopted }
+}
+
 export function DocumentReader({
   documentId,
   focusBlockId = null,
@@ -89,6 +117,8 @@ export function DocumentReader({
 
   const rows = blocks.data?.blocks ?? []
   const depths = listDepths(rows)
+  const { rowsByTable, adopted } = adoptTableRows(rows)
+  const body = rows.filter((block) => !adopted.has(block.block_id))
   if (rows.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">
@@ -121,7 +151,7 @@ export function DocumentReader({
       ) : null}
 
       <div ref={bodyRef} className="min-w-0 flex-1 space-y-2.5">
-        {rows.map((block) => {
+        {body.map((block) => {
           const depth = depths[block.block_id] ?? 0
           return (
             <div
@@ -136,7 +166,10 @@ export function DocumentReader({
                   : undefined
               }
             >
-              <BlockView block={block} />
+              <BlockView
+                block={block}
+                rows={rowsByTable.get(block.block_id) ?? []}
+              />
             </div>
           )
         })}

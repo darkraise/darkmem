@@ -160,11 +160,33 @@ def test_the_module_never_touches_the_fact_ladder():
 # ── regeneration is explicit: nothing under app/ calls it ────────────
 
 
+# The one module allowed to trigger a summary: the explicit operator door.
+#
+# Narrowed from "nothing under app/" on 2026-09-04, the same way this file's
+# sibling scan was narrowed when TH1.16's read door landed. The rule this
+# guard enforces is that regeneration is *explicit* -- the docstring below
+# names the two hazards, and both are implicit paths: a re-ingest rewriting
+# the summary, and a summary refreshing itself. An operator pressing
+# Summarize is neither.
+#
+# Before the narrowing the scan forbade every caller under app/, which made
+# doc 16 §6's committed single-document summary permanently unreachable: the
+# GET door read a property that nothing in the tree could write, so the panel
+# was empty by construction on every install. That is what the narrowing
+# fixes, and it is deliberately an allowlist of exactly one module rather
+# than a relaxed predicate -- a job, the ingest path or the pipeline calling
+# this is still the failure this guard exists to catch.
+SUMMARY_TRIGGER_DOOR = "app/api/routes/documents.py"
+
+
 @pytest.mark.filterwarnings("ignore::pytest.PytestWarning")
-def test_no_module_under_app_triggers_a_summary():
+def test_only_the_explicit_door_triggers_a_summary():
     """A re-ingest that silently rewrote the summary would spend a model call
     per file operation, and a summary that refreshed itself would make "the
-    summary says X" a moving claim about a document nobody edited."""
+    summary says X" a moving claim about a document nobody edited.
+
+    Neither hazard is an operator asking for one, which is why the door is
+    allowed and everything else is not."""
     app_root = BACKEND / "app"
     sources = [p for p in app_root.rglob("*.py") if "__pycache__" not in str(p)]
     assert len(sources) > 100, "the scan would pass vacuously; check the glob"
@@ -172,6 +194,8 @@ def test_no_module_under_app_triggers_a_summary():
     offenders = []
     for path in sources:
         if path == MODULE:
+            continue
+        if path.relative_to(BACKEND).as_posix() == SUMMARY_TRIGGER_DOOR:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
@@ -187,8 +211,48 @@ def test_no_module_under_app_triggers_a_summary():
                 break
     assert not offenders, (
         f"a module under app/ can trigger a summary: {offenders} — regeneration "
-        "is explicit by design (doc 16 §6)"
+        "is explicit by design (doc 16 §6). Only "
+        f"{SUMMARY_TRIGGER_DOOR} may, because it is the operator's own request."
     )
+
+
+def test_the_allowed_trigger_door_actually_triggers():
+    """The allowlist must name a module that really calls it. An allowlist
+    entry for a module that stopped calling `summarise_document` would sit
+    there silently exempting a future implicit caller in the same file."""
+    door = ast.parse((BACKEND / SUMMARY_TRIGGER_DOOR).read_text(encoding="utf-8"))
+    calls = [
+        node for node in ast.walk(door)
+        if isinstance(node, ast.Call)
+        and (
+            (isinstance(node.func, ast.Name) and node.func.id == "summarise_document")
+            or (isinstance(node.func, ast.Attribute) and node.func.attr == "summarise_document")
+        )
+    ]
+    assert len(calls) == 1, (
+        f"{SUMMARY_TRIGGER_DOOR} should hold exactly one trigger call, found "
+        f"{len(calls)} — a second one is a second door hiding inside the "
+        "exemption this allowlist grants."
+    )
+
+
+def test_the_ingest_and_job_paths_are_still_convicted():
+    """The narrowing must not have turned the scan off. Both named hazards --
+    a re-ingest and a scheduled refresh -- are still caught."""
+    import textwrap
+
+    hazard = ast.parse(textwrap.dedent("""
+        from app.services.document_summary import summarise_document
+        async def on_ingest(session, llm, document_id):
+            await summarise_document(session, llm, document_id=document_id)
+    """))
+    triggers = [
+        node for node in ast.walk(hazard)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "summarise_document"
+    ]
+    assert triggers, "the scan's own predicate stopped matching a real trigger"
 
 
 def test_the_trigger_scan_separates_generating_from_reading():

@@ -55,6 +55,10 @@ EXPECTED_STATUS = {
     ("DELETE", "/api/v1/documents/{document_id}/blocks/{block_id}"): 204,
     ("GET", "/api/v1/documents"): 200,
     ("GET", "/api/v1/documents/{document_id}/summary"): 200,
+    # 201: it creates the summary the GET twin reads (api-rest-conventions
+    # "201 create"), rather than 202 -- the model call runs inline and the
+    # response carries the finished summary, so nothing is accepted-for-later.
+    ("POST", "/api/v1/documents/{document_id}/summary"): 201,
     ("GET", "/api/v1/documents/{document_id}/connections"): 200,
     ("GET", "/api/v1/documents/{document_id}/outline"): 200,
     ("GET", "/api/v1/documents/{document_id}"): 200,

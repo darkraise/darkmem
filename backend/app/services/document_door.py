@@ -477,6 +477,7 @@ async def put_document(
     actor: str | None = None,
     source: str | None = None,
     expected_hash: str | None = None,
+    force_reparse: bool = False,
 ) -> PutResult:
     if len(content) > MAX_CONTENT_CHARS:
         raise DocumentTooLarge(
@@ -531,6 +532,7 @@ async def put_document(
             actor=actor,
             source=source,
             expected_hash=expected_hash,
+            force_reparse=force_reparse,
         )
         if filed.blocks_written > MAX_BLOCKS:
             raise DocumentTooLarge(

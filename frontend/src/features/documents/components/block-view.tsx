@@ -38,7 +38,17 @@ const HEADING_CLASS: Record<number, string> = {
  * writes could not reach this component at all, and the deviation was
  * recorded here rather than papered over.
  */
-export function BlockView({ block }: { block: BlockRow }) {
+export function BlockView({
+  block,
+  rows = [],
+}: {
+  block: BlockRow
+  /** A `table` block's own data rows, which are its `parent_id` children.
+   *  Passed in rather than fetched because the caller already holds the whole
+   *  block list, and rendering each row as its own `<table>` -- what this
+   *  component did before -- left columns unaligned across one visual table. */
+  rows?: BlockRow[]
+}) {
   switch (block.type) {
     case "heading": {
       // `properties.level` is what the parser wrote from the `#` count.
@@ -65,13 +75,29 @@ export function BlockView({ block }: { block: BlockRow }) {
           <Markdown>{block.text}</Markdown>
         </blockquote>
       )
-    case "list":
+    case "list": {
+      // A bullet unless the parser recorded an ordered marker. Every document
+      // filed before increment 5 carries no list properties at all, so the
+      // fallback is what those render until they are reparsed -- the same
+      // bullet they have always shown, not a wrong number.
+      // `marker` is the full marker as spelled ("-" or "3."), the convention
+      // `block_serializer` owns; `ordered` and `number` are the parser's
+      // explicit restatement of it. Prefer the marker so one string decides
+      // what is rendered and what a round-trip writes back.
+      const marker = block.properties?.marker
+      const ordered =
+        block.properties?.ordered === true ||
+        (typeof marker === "string" && /^\d+[.)]$/.test(marker))
+      const label = ordered && typeof marker === "string" ? marker : "\u2022"
       return (
         <div className="flex gap-2 text-sm">
-          <span aria-hidden>•</span>
+          <span aria-hidden className={ordered ? "tabular-nums" : undefined}>
+            {label}
+          </span>
           <Markdown>{block.text}</Markdown>
         </div>
       )
+    }
     case "divider":
       // A thematic break carries no text: the rule IS the block. Rendered as
       // the library separator rather than a styled empty paragraph, which is
@@ -93,10 +119,29 @@ export function BlockView({ block }: { block: BlockRow }) {
               ))}
             </TableRow>
           </TableHeader>
+          {rows.length > 0 ? (
+            <TableBody>
+              {rows.map((row) => {
+                const cells =
+                  (row.properties?.cells as string[] | undefined) ?? []
+                return (
+                  <TableRow key={row.block_id}>
+                    {cells.map((cell, i) => (
+                      <TableCell key={i}>{cell}</TableCell>
+                    ))}
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          ) : null}
         </Table>
       )
     }
     case "table_row": {
+      // Reached only when this row arrives without its table -- a `block_ids`
+      // drill-down scopes strictly, so that is legitimate and dropping the
+      // row would silently lose content. In a whole-document read the table
+      // adopts its rows above and this case never runs.
       const cells = (block.properties?.cells as string[] | undefined) ?? []
       if (cells.length === 0) {
         return <div className="font-mono text-sm">{block.text}</div>

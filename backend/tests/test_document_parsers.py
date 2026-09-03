@@ -751,3 +751,84 @@ def test_divider_stays_inside_the_closed_vocabulary():
 
     drafts = parse_markdown("a\n\n---\n\nb")
     assert {d.type for d in drafts} <= set(BLOCK_TYPES)
+
+
+# ── list markers (increment 5) ────────────────────────────────────────
+#
+# The parser used to discard the bullet/ordered distinction entirely --
+# `bullet_list_open` and `ordered_list_open` were both "transparent" and every
+# list block was written with `properties: None`. Nothing on the read surface
+# could tell an ordered list from a bullet one, so every list item rendered a
+# bullet. The marker rides `properties` now, matching the key the block
+# editor's `promote()` already writes.
+
+
+def test_markdown_bullet_list_items_carry_their_marker():
+    drafts = parse_markdown("- alpha\n- beta\n")
+    items = [d for d in drafts if d.type == "list"]
+    assert [d.text for d in items] == ["alpha", "beta"]
+    for item in items:
+        assert item.properties is not None
+        assert item.properties["ordered"] is False
+        assert item.properties["marker"] == "-"
+
+
+def test_markdown_ordered_list_items_carry_their_number():
+    """An ordered list is not "a bullet list with digits": the item's own
+    number is what a renderer needs, because a list may not start at 1."""
+    drafts = parse_markdown("3. three\n4. four\n")
+    items = [d for d in drafts if d.type == "list"]
+    assert [d.text for d in items] == ["three", "four"]
+    assert items[0].properties["ordered"] is True
+    assert items[0].properties["number"] == 3
+    assert items[1].properties["number"] == 4
+
+
+def test_markdown_a_nested_ordered_list_restarts_its_own_numbering():
+    drafts = parse_markdown("- outer\n    1. one\n    2. two\n")
+    items = {d.text: d for d in drafts if d.type == "list"}
+    assert items["outer"].properties["ordered"] is False
+    assert items["one"].properties["ordered"] is True
+    assert items["one"].properties["number"] == 1
+    assert items["two"].properties["number"] == 2
+
+
+def test_markdown_preserves_the_bullet_character_actually_used():
+    """`*` and `-` are both bullets and a round-trip must not silently
+    rewrite one into the other."""
+    drafts = parse_markdown("* star\n")
+    items = [d for d in drafts if d.type == "list"]
+    assert items[0].properties["marker"] == "*"
+
+
+def test_the_parsers_marker_is_the_serialisers_marker():
+    """The two modules share one `marker` convention and must not drift.
+
+    `block_serializer` defines it as the full marker string as spelled -- it
+    matches `^\\d+([.)])$` to decide ordered-ness and re-derives the ordinal
+    from that delimiter group. Writing markdown-it's bare `markup` (just `.`)
+    would make every ordered item the parser produces read as a BULLET on the
+    way back out, silently rewriting ordered lists on any block-first
+    conversion.
+    """
+    from app.services.block_serializer import _is_ordered, _marker_for
+
+    class _Block:
+        def __init__(self, properties):
+            self.properties = properties
+            self.type = "list"
+
+    drafts = parse_markdown("2. two\n3. three\n")
+    items = [d for d in drafts if d.type == "list"]
+    assert [_is_ordered(_Block(d.properties)) for d in items] == [True, True]
+    # And the serialiser renumbers from its own ordinal, keeping the delimiter.
+    assert _marker_for(_Block(items[0].properties), 2) == "2."
+
+    bullets = [d for d in parse_markdown("- a\n") if d.type == "list"]
+    assert _is_ordered(_Block(bullets[0].properties)) is False
+
+
+def test_a_paren_delimited_ordered_list_keeps_its_delimiter():
+    drafts = parse_markdown("1) one\n")
+    item = next(d for d in drafts if d.type == "list")
+    assert item.properties["marker"] == "1)"

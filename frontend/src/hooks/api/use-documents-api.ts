@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { ApiError, apiFetch } from "@/lib/api"
 import { DEMO } from "@/lib/demo-flag"
@@ -90,6 +90,40 @@ export function useDocumentSummary(documentId: string | null) {
         if (error instanceof ApiError && error.status === 404) return null
         throw error
       }
+    },
+  })
+}
+
+/** Generate and store this document's summary. A POST because it creates the
+ *  summary the GET twin reads -- and it spends an LLM call, so it is never
+ *  fired implicitly by opening a document. */
+export function useDocumentSummarize(documentId: string | null) {
+  const qc = useQueryClient()
+  return useMutation<DocumentSummary, Error, void>({
+    mutationFn: () =>
+      apiFetch<DocumentSummary>(`/documents/${documentId}/summary`, {
+        method: "POST",
+      }),
+    onSuccess: (summary) => {
+      // Seed rather than only invalidate: the generated summary is already
+      // the authoritative body, so a refetch would spend a round trip to
+      // learn what this response just said.
+      qc.setQueryData(["documentSummary", documentId], summary)
+    },
+  })
+}
+
+/** Delete withdraws this document's block sources and expires any fact left
+ *  with no surviving source, so the confirm copy has to say more than "this
+ *  removes the row". `documentsAll` and `documents` both hold the tree. */
+export function useDocumentDelete() {
+  const qc = useQueryClient()
+  return useMutation<void, Error, string>({
+    mutationFn: (documentId) =>
+      apiFetch<void>(`/documents/${documentId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["documentsAll"] })
+      void qc.invalidateQueries({ queryKey: ["documents"] })
     },
   })
 }
