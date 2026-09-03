@@ -103,11 +103,13 @@ async def run(
             except Exception as exc:  # per-document isolation, same posture
                 await session.rollback()  # as the corpus importer's
                 failed += 1
-                print(f"  [{index}/{len(targets)}] FAILED {row['uri']}: {exc}")
+                print(f"  [{index}/{len(targets)}] FAILED {row['uri']}: {exc}",
+                      flush=True)
                 continue
         filed += 1
         print(f"  [{index}/{len(targets)}] {row['uri']}: "
-              f"{result.blocks_filed} block(s), {result.blocks_embedded} embedded")
+              f"{result.blocks_filed} block(s), {result.blocks_embedded} embedded",
+              flush=True)
 
     print(f"\nreparsed {filed}, failed {failed}")
     return 1 if failed else 0
