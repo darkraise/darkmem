@@ -832,3 +832,46 @@ def test_a_paren_delimited_ordered_list_keeps_its_delimiter():
     drafts = parse_markdown("1) one\n")
     item = next(d for d in drafts if d.type == "list")
     assert item.properties["marker"] == "1)"
+
+
+def test_note_list_items_carry_their_marker_too():
+    """`parse_note` mints `list` blocks exactly as `parse_markdown` does, and
+    increment 5 fixed only the markdown side -- which left every note-sourced
+    list rendering a bullet. Measured on production: 115 list blocks across 10
+    `source_type='note'` documents still had no marker after the corpus
+    reparse, and they were the only ones that did.
+    """
+    drafts = parse_note("- alpha\n- beta\n")
+    items = [d for d in drafts if d.type == "list"]
+    assert [d.properties["marker"] for d in items] == ["-", "-"]
+    assert all(d.properties["ordered"] is False for d in items)
+
+
+def test_note_ordered_items_carry_their_own_number():
+    drafts = parse_note("2. two\n3. three\n")
+    items = [d for d in drafts if d.type == "list"]
+    assert [d.properties["marker"] for d in items] == ["2.", "3."]
+    assert [d.properties["number"] for d in items] == [2, 3]
+    assert all(d.properties["ordered"] is True for d in items)
+
+
+def test_note_markers_use_the_serialisers_convention():
+    from app.services.block_serializer import _is_ordered
+
+    class _Block:
+        def __init__(self, properties):
+            self.properties, self.type = properties, "list"
+
+    ordered = [d for d in parse_note("1) one\n") if d.type == "list"]
+    assert ordered[0].properties["marker"] == "1)"
+    assert _is_ordered(_Block(ordered[0].properties)) is True
+
+    bullet = [d for d in parse_note("* star\n") if d.type == "list"]
+    assert _is_ordered(_Block(bullet[0].properties)) is False
+
+
+def test_note_normalises_a_unicode_bullet_to_a_writable_marker():
+    """`_BULLET_RE` accepts `•`, which is not a marker the serialiser can emit
+    -- it would round-trip into content markdown cannot re-parse as a list."""
+    items = [d for d in parse_note("• dot\n") if d.type == "list"]
+    assert items[0].properties["marker"] == "-"

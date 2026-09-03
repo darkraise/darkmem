@@ -442,6 +442,9 @@ def _span(token_map, offsets: list[int], text: str) -> tuple[int, int] | None:
 
 _BLANK_RUN_RE = re.compile(r"\n[ \t]*\n+")
 _BULLET_RE = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+")
+# The marker itself, so a note's list items carry the same `marker` property
+# `parse_markdown` writes and `block_serializer` reads back.
+_NOTE_MARKER_RE = re.compile(r"^\s*([-*•]|\d+[.)])\s+")
 _HEADING_MAX_CHARS = 80
 _HEADING_TERMINAL_PUNCTUATION = ".?!:;,"
 
@@ -474,6 +477,7 @@ def parse_note(text: str) -> list[BlockDraft]:
                     continue
                 drafts.append(BlockDraft(
                     text=item_text, type="list", parent=heading_index,
+                    properties=_note_marker_properties(line),
                     char_span=(line_start, line_end),
                 ))
         elif _looks_like_heading(lines):
@@ -487,6 +491,30 @@ def parse_note(text: str) -> list[BlockDraft]:
             ))
 
     return drafts
+
+
+
+def _note_marker_properties(line: str) -> dict:
+    """This note line's marker, in `block_serializer`'s convention.
+
+    A note has no list wrapper to read ordered-ness off, so each line carries
+    its own marker and its own number -- which is the number the author wrote,
+    not a position, exactly as it is for markdown.
+
+    `•` is accepted by `_BULLET_RE` but is **not** a marker the serialiser can
+    emit: round-tripping it would write content markdown cannot re-parse as a
+    list. It normalises to the default bullet, which is a deliberate rewrite
+    of the spelling rather than a faithful record of it.
+    """
+    match = _NOTE_MARKER_RE.match(line)
+    if match is None:
+        return {"ordered": False, "marker": DEFAULT_LIST_MARKER}
+    marker = match.group(1)
+    if marker in ("-", "*", "+"):
+        return {"ordered": False, "marker": marker}
+    if marker == "\u2022":
+        return {"ordered": False, "marker": DEFAULT_LIST_MARKER}
+    return {"ordered": True, "marker": marker, "number": int(marker[:-1])}
 
 
 def _looks_like_heading(lines: list[str]) -> bool:
