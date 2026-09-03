@@ -64,7 +64,7 @@ function ProjectCard({ row }: { row: ProjectSummary }) {
 }
 
 function ProjectsIndexPage() {
-  const { data, isLoading } = useProjects()
+  const { data, isLoading, isError } = useProjects()
   const rows = data ?? []
 
   return (
@@ -74,7 +74,13 @@ function ProjectsIndexPage() {
         title="Projects"
         description="Every project the corpus holds — memories, documents and checkpoint runs."
       />
-      {isLoading ? (
+      {isError ? (
+        // Not the empty state: "no project holds anything yet" is a claim
+        // about the corpus, and on a failed read it is a false one.
+        <p className="text-destructive text-sm">
+          Projects could not be loaded — a failed read, not an empty corpus.
+        </p>
+      ) : isLoading ? (
         <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2 xl:grid-cols-3">
           {[0, 1, 2].map((i) => (
             <Skeleton key={i} className="h-32 w-full" />
