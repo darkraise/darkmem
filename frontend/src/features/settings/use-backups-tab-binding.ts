@@ -117,6 +117,7 @@ export function useBackupsTabBinding() {
     save,
     runNow,
     isLoading: DEMO ? false : destinationsQuery.isLoading,
+    isError: DEMO ? false : destinationsQuery.isError,
     isSaving: saveMutation.isPending,
     isRunning: triggerJob.isPending,
     saveError: saveMutation.error,

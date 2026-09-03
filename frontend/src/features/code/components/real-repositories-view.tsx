@@ -490,7 +490,7 @@ function RepoRow({
 // reindex dialog, live phase label, create/edit/delete, auto-provision
 // state, and the task list — the full doc-13 §4.2 Repositories surface.
 export function RealRepositoriesView() {
-  const { data: repos, isLoading } = useRepos()
+  const { data: repos, isLoading, isError } = useRepos()
   const deleteRepo = useDeleteRepo()
   const reindexRepo = useReindexRepo()
 
@@ -508,7 +508,14 @@ export function RealRepositoriesView() {
         <AddRepoDialog />
       </div>
 
-      {isLoading ? (
+      {isError ? (
+        // Not the empty state: it invites the operator to add a repository
+        // they already have, on a read that merely failed.
+        <p className="text-destructive p-3 text-sm">
+          Repositories could not be loaded — a failed read, not an unindexed
+          instance.
+        </p>
+      ) : isLoading ? (
         <p className="text-muted-foreground p-3 text-sm">
           Loading repositories…
         </p>

@@ -41,7 +41,7 @@ export function SecurityPanel() {
   const [offset, setOffset] = useState(0)
   const action = FILTERS[filterIdx]?.action
 
-  const { data, isLoading } = useAuditLog({ limit: PAGE_SIZE, offset, action })
+  const { data, isLoading, isError } = useAuditLog({ limit: PAGE_SIZE, offset, action })
   const items: AuditEntry[] = data?.items ?? []
   const total = data?.total ?? 0
 
@@ -80,7 +80,15 @@ export function SecurityPanel() {
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-4">
-          {isLoading ? (
+          {isError ? (
+            // Not the empty state: an audit surface that renders "no events"
+            // on a failed read is the one screen that must never understate
+            // what it holds.
+            <p className="text-destructive text-sm">
+              The audit log could not be loaded — a failed read, not an empty
+              journal.
+            </p>
+          ) : isLoading ? (
             <div className="bg-muted h-40 animate-pulse rounded" />
           ) : items.length === 0 ? (
             <EmptyState

@@ -69,7 +69,7 @@ export function RealMemoryGraphPage() {
     new Set(),
   )
 
-  const { data, isLoading, isFetching } = useUnifiedGraph(
+  const { data, isLoading, isFetching, isError } = useUnifiedGraph(
     debouncedSimilarity,
     debouncedMinSize,
     entityLayerEnabled,
@@ -229,7 +229,14 @@ export function RealMemoryGraphPage() {
       <h1 className="sr-only">Memory Graph</h1>
       <div className="flex min-w-0 flex-1 flex-col">
         {isLoading && <GraphSkeleton />}
-        {!isLoading && memoryCount === 0 && (
+        {isError && (
+          // Not the empty state: "no graph yet" tells the operator their
+          // ingest produced nothing, on a read that merely failed.
+          <p className="text-destructive p-3 text-sm">
+            The graph could not be loaded — a failed read, not an empty graph.
+          </p>
+        )}
+        {!isLoading && !isError && memoryCount === 0 && (
           <EmptyState
             kind="empty"
             icon={Waypoints}

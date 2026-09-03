@@ -90,7 +90,8 @@ export function RealCodeGraphView({
     repos?.find((r) => r.status === "ready") ??
     repos?.find(() => true)
 
-  const { data: raw, isLoading: graphLoading } = useCodeGraph(repo?.id ?? null)
+  const { data: raw, isLoading: graphLoading, isError: graphError } =
+    useCodeGraph(repo?.id ?? null)
   const { data: files } = useCodeFiles(repo?.id ?? null)
 
   const graph = useMemo(
@@ -233,6 +234,14 @@ export function RealCodeGraphView({
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         {toolbar}
+        {graphError ? (
+          // Not the empty state: it tells the operator this repo was never
+          // indexed and sends them to reindex a graph that may well exist.
+          <p className="text-destructive p-3 text-sm">
+            The code graph could not be loaded — a failed read, not an
+            unindexed repository.
+          </p>
+        ) : (
         <EmptyState
           kind="empty"
           icon={FolderGit2}
@@ -244,6 +253,7 @@ export function RealCodeGraphView({
             </Button>
           }
         />
+        )}
       </div>
     )
   }

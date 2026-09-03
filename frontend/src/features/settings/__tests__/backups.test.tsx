@@ -325,3 +325,19 @@ describe("BackupsTab", () => {
     ).toBeInTheDocument()
   })
 })
+
+
+describe("a failed destinations read is not an unconfigured backup system", () => {
+  it("reports the failure instead of claiming no destinations are configured", async () => {
+    // "No destinations configured" tells an operator their backups are not
+    // set up. On a failed read that is false, and it is the most alarming
+    // false thing this tab can say.
+    vi.mocked(apiFetch).mockRejectedValue(new Error("boom"))
+    render(<BackupsTab />, { wrapper })
+
+    expect(await screen.findByText(/could not be loaded/i)).toBeInTheDocument()
+    expect(
+      screen.queryByText(/no destinations configured/i),
+    ).not.toBeInTheDocument()
+  })
+})

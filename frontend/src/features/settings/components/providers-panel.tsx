@@ -16,7 +16,7 @@ import { ProviderDialog } from "./provider-dialog"
 import { ProviderItem } from "./provider-item"
 
 export function ProvidersPanel() {
-  const { data, isLoading } = useLlmProviders()
+  const { data, isLoading, isError } = useLlmProviders()
   const layout = useProvidersLayout((s) => s.layout)
   const setLayout = useProvidersLayout((s) => s.setLayout)
   // `null` with the dialog open is the add case; a provider is the edit case.
@@ -68,7 +68,14 @@ export function ProvidersPanel() {
   return (
     <div className="space-y-4">
       {header}
-      {providers.length === 0 ? (
+      {isError ? (
+        // Not the empty state: "No providers configured" invites an operator
+        // to re-add connections that already exist.
+        <p className="text-destructive text-sm">
+          Providers could not be loaded — a failed read, not an unconfigured
+          instance.
+        </p>
+      ) : providers.length === 0 ? (
         <EmptyState
           kind="empty"
           icon={Plug}

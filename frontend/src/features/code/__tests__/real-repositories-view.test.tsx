@@ -329,3 +329,19 @@ describe("RealRepositoriesView", () => {
     ).not.toBeChecked()
   })
 })
+
+
+describe("a failed repository list is not an unindexed instance", () => {
+  it("reports the failure instead of claiming no repositories are indexed", async () => {
+    // `repos && repos.length > 0 ? ... : EmptyState` sends an errored read to
+    // the empty state, which invites the operator to add a repository they
+    // already have.
+    vi.mocked(apiFetch).mockRejectedValue(new Error("boom"))
+    render(<RealRepositoriesView />, { wrapper })
+
+    expect(await screen.findByText(/could not be loaded/i)).toBeInTheDocument()
+    expect(
+      screen.queryByText(/no repositories indexed yet/i),
+    ).not.toBeInTheDocument()
+  })
+})

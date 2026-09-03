@@ -51,6 +51,7 @@ export function BackupsTab() {
     save,
     runNow,
     isLoading,
+    isError,
     isSaving,
     isRunning,
   } = useBackupsTabBinding()
@@ -129,7 +130,15 @@ export function BackupsTab() {
           </p>
         ) : null}
 
-        {destinations.length === 0 && !isLoading ? (
+        {isError ? (
+          // Not the empty state: "No destinations configured" tells an
+          // operator their backups are not set up, which on a failed read is
+          // both false and the most alarming thing this tab can say.
+          <p className="text-destructive text-sm">
+            Backup destinations could not be loaded — a failed read, not an
+            unconfigured backup system.
+          </p>
+        ) : destinations.length === 0 && !isLoading ? (
           <EmptyState
             kind="empty"
             icon={HardDriveDownload}
