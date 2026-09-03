@@ -148,15 +148,17 @@ const FULL_BLEED_ROUTES = ["/memory-graph", "/code/graph"] as const
  *  and the observer never fires — so the graph renders nothing, with no error
  *  and an empty-looking page. That stayed invisible while those pages had no
  *  data to draw, because the empty state carries its own height. */
-const FULL_HEIGHT_ROUTES = ["/chat"] as const
+const FULL_HEIGHT_ROUTES = ["/chat", "/projects/"] as const
 
 /** Routes that drop the reading-width cap without being a pan/zoom canvas.
  *  Chat is one: its three panes are resizable, so every capped pixel is width
- *  the reader cannot give to the conversation or the retrieval context. Kept
- *  separate from FULL_BLEED_ROUTES because that list also means "measures its
- *  own container", which is a claim about the canvas pages and not about
- *  this one. */
-const FULL_WIDTH_ROUTES = ["/chat"] as const
+ *  the reader cannot give to the conversation or the retrieval context. A
+ *  project workspace (`/projects/<name>`, trailing slash so the `/projects`
+ *  index card grid stays capped) is the other: its tree/reader split is
+ *  resizable the same way. Kept separate from FULL_BLEED_ROUTES because that
+ *  list also means "measures its own container", which is a claim about the
+ *  canvas pages and not about either of these. */
+const FULL_WIDTH_ROUTES = ["/chat", "/projects/"] as const
 
 function AuthenticatedLayout() {
   const layout = useLayoutStore((s) => s.layout)

@@ -3,6 +3,12 @@ import { FolderTree, Search } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { Card } from "darkraise-ui/components/card"
 import { Input } from "darkraise-ui/components/input"
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "darkraise-ui/components/resizable"
+import { ScrollArea } from "darkraise-ui/components/scroll-area"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "darkraise-ui/components/tabs"
 import { EmptyState } from "@/components/darkmem"
@@ -165,49 +171,57 @@ export function ProjectWorkspace({
           </div>
         ) : null}
 
-        <div className="flex flex-col gap-5 lg:flex-row">
-          <div className="w-full shrink-0 lg:w-72">
-            <RegionLabel>documents</RegionLabel>
-            {documents.isError ? (
-              <p className="text-destructive text-sm">
-                This project's documents could not be loaded — a failed read,
-                not an empty project.
-              </p>
-            ) : documents.isLoading ? (
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-2/3" />
-                <Skeleton className="h-4 w-1/2" />
-                <Skeleton className="h-4 w-3/4" />
-              </div>
-            ) : (
-              <DocumentTree
-                items={items}
-                selectedId={selected?.id ?? null}
-                onSelect={(doc) => {
-                  setSelected(doc)
-                  setFocusBlockId(null)
-                }}
-                truncated={documents.data?.truncated ?? false}
-                expanded={effectiveExpanded}
-                onExpandedChange={handleExpandedChange}
-              />
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            {selected ? (
-              <Card className="p-4">
-                <DocumentReader documentId={selected.id} focusBlockId={focusBlockId} />
-              </Card>
-            ) : (
-              <EmptyState
-                kind="empty"
-                icon={FolderTree}
-                title="Nothing selected"
-                description="Pick a document from the tree to read it."
-              />
-            )}
-          </div>
-        </div>
+        <ResizablePanelGroup orientation="horizontal" className="min-h-[60vh]">
+          <ResizablePanel defaultSize={26} minSize={15} maxSize={45} id="tree">
+            <ScrollArea className="h-full pr-2">
+              <RegionLabel>documents</RegionLabel>
+              {documents.isError ? (
+                <p className="text-destructive text-sm">
+                  This project's documents could not be loaded — a failed
+                  read, not an empty project.
+                </p>
+              ) : documents.isLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-2/3" />
+                  <Skeleton className="h-4 w-1/2" />
+                  <Skeleton className="h-4 w-3/4" />
+                </div>
+              ) : (
+                <DocumentTree
+                  items={items}
+                  selectedId={selected?.id ?? null}
+                  onSelect={(doc) => {
+                    setSelected(doc)
+                    setFocusBlockId(null)
+                  }}
+                  truncated={documents.data?.truncated ?? false}
+                  expanded={effectiveExpanded}
+                  onExpandedChange={handleExpandedChange}
+                />
+              )}
+            </ScrollArea>
+          </ResizablePanel>
+          <ResizableHandle withHandle />
+          <ResizablePanel defaultSize={74} id="reader">
+            <ScrollArea className="h-full pl-2">
+              {selected ? (
+                <Card className="p-4">
+                  <DocumentReader
+                    documentId={selected.id}
+                    focusBlockId={focusBlockId}
+                  />
+                </Card>
+              ) : (
+                <EmptyState
+                  kind="empty"
+                  icon={FolderTree}
+                  title="Nothing selected"
+                  description="Pick a document from the tree to read it."
+                />
+              )}
+            </ScrollArea>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </TabsContent>
 
       <TabsContent value="progress" className="space-y-5">

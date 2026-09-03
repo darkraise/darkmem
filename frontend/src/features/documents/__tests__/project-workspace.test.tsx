@@ -192,6 +192,19 @@ describe("project workspace — the states a reader must be able to tell apart",
   })
 })
 
+describe("project workspace — layout", () => {
+  it("gives the tree and reader a draggable split", async () => {
+    mockDocuments({ items: [DOC] })
+    renderWorkspace()
+    await screen.findByText("design.md")
+    // The handle is the affordance; without it the panes are a fixed w-72 rail.
+    // The library gives it role="separator" with aria-orientation (verified in
+    // dist/chunk-ZU5NS2PO.js), so assert the accessible role, not a data
+    // attribute that could change with a bundler bump.
+    expect(await screen.findByRole("separator")).toBeInTheDocument()
+  })
+})
+
 describe("project workspace — tree expansion", () => {
   it("opens only the top level, not every folder, on first load", async () => {
     // 475 documents all expanded is the reported "hard to navigate".
