@@ -176,7 +176,14 @@ export interface BlockRow {
   text: string
   order_index: number | null
   char_span: [number, number] | null
-  /** A heading's level, a list item's marker, a table's header/alignments. */
+  /** The enclosing block, or null at the top level. A nested list item's
+   *  parent is the enclosing *item* -- the list wrapper mints no block -- so
+   *  nesting is rebuilt from this alone, never inferred from order_index. */
+  parent_id: string | null
+  /** A heading's level, a table's header/alignments. NOT a list marker on a
+   *  parsed document: `parse_markdown` writes no properties for a list block.
+   *  The block editor's `promote` does write `marker`, so the key exists on
+   *  edited blocks only. */
   properties: Record<string, unknown> | null
   /** The block's own markdown source, marker included. This is what an
    *  editor edits -- `text` is a different string from the stored one. */

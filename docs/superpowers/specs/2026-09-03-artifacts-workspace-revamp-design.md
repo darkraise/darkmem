@@ -125,11 +125,40 @@ reader and each inspector panel each get all four states.
    and an `h4` are visually identical. Render the real level.
 2. **Heading text bypasses `<Markdown>`**, so inline code in a heading shows
    literal backticks.
-3. **Every list item renders `•`.** `properties` carries the marker; an
-   ordered list renders as bullets.
+3. **Every list item renders `•`.** **Corrected 2026-09-03 while
+   implementing increment 2: this defect's stated premise was false.**
+   `properties` does *not* carry the marker on a filed document —
+   `parse_markdown` writes `properties: None` for every list block, and
+   discards the `bullet_list_open` / `ordered_list_open` distinction as
+   "transparent" on purpose. So nothing on the read surface can tell an
+   ordered list from a bullet one, and rendering it is not a frontend change:
+   it needs the **parser** to write the marker, plus a **re-import of all 475
+   filed documents**, on the same widening rule CLAUDE.md records for
+   `divider`. The `marker` key does already exist and has one writer — the
+   block editor's `promote()` — so an *edited* block carries it and a parsed
+   one does not, which is the split-brain a partial fix would ship.
+   **Owner ruling 2026-09-03: deferred to its own increment**, which owns the
+   parser change and the re-import together. Increment 2 shipped 1, 2 and 4
+   and deliberately left the bullet as-is rather than rendering half the
+   corpus correctly.
 4. **Blocks render flat.** `document-reader.tsx` states this is deliberate —
    defensible for a reader, wrong for a browser, and it means nested lists lose
-   their nesting. Reconstruct nesting from `properties` + `order_index`.
+   their nesting. **Corrected 2026-09-03: the mechanism named here was wrong,
+   and the real one is exact rather than inferred.** Nesting is not
+   reconstructed from `properties` + `order_index`: `blocks.parent_id` exists,
+   is written by the parser and is indexed by the baseline — it was simply
+   absent from the read surface (`BlockRow` / `BlockRowModel`), so every
+   reader saw a flat list. Increment 2 puts it on the surface (both doors get
+   it free: MCP's `document_get` serialises with `vars(r)`).
+   Depth counts **`list` ancestors only**, never the parent-chain length:
+   every block under a heading carries that heading as its parent, so a raw
+   chain length would indent an entire document body under its title. Counting
+   list ancestors also catches what a chain length would miss — a code block
+   inside a list item indents with its item. Rendered as indentation on the
+   existing flat sibling list rather than as semantic `<ul>`/`<ol>` grouping,
+   because without defect 3's marker every `<ol>` would be a guess, and
+   because the flat list is what `focusBlockId`'s scroll query and the
+   outline's `#id` anchors address.
 
 **Not in scope:** a markdown editor. Increment 8's block verbs already provide
 editing and this spec surfaces them (§5); a WYSIWYG surface is a separate
@@ -241,19 +270,26 @@ state — it is a smaller corpus.
 
 ## 7. Sequencing
 
-Four increments. **1 and 2 are independently shippable and need no backend**,
+Five increments. **1 and 2 are independently shippable and need no LLM spend**,
 which is deliberate: the owner's loudest complaints are navigational and should
-not wait behind an LLM spend.
+not wait behind one. (This read "need no backend" and named four increments
+until 2026-09-03; both were corrected while implementing 2 — see §4's defects 3
+and 4. Increment 2 turned out to need one read-surface field, and defect 3 was
+split out as increment 5 because it needs a parser change and a corpus
+re-import.)
 
 | # | Increment | Backend | Depends on |
 |---|---|---|---|
 | 1 | **Frame and tree** — full-bleed layout, resizable panes, scroll areas, real `TreeView` with persisted expansion, breadcrumb | none | — |
-| 2 | **Rendering** — the four `block-view` defects (§4), including nesting | none | — |
+| 2 | **Rendering** — `block-view` defects 1, 2 and 4 (§4): real heading levels, headings through `<Markdown>`, list nesting | `blocks.parent_id` onto the block read surface (one field, both doors) | — |
+| 5 | **List markers** — defect 3 (§4): the parser writes a list block's marker, and the 475 filed documents are re-imported so existing rows carry it | parser + re-import | 2 |
 | 3 | **Management** — wire update / delete / summarize / block edit / connections, with the context menu and confirm dialogs (§5) | none | 1 |
 | 4 | **Lift and related memories** — the lift route, the guard test, the related-memories read, the priced bulk run (§6) | new route + read | 1, and §6.3's measurement |
 
 Increment 4 is the only one that can be blocked by a decision, which is why it
-is last rather than first.
+is last rather than first. Increment 5 is unblocked but deliberately unsequenced
+against 3 and 4: it is the only one that rewrites the corpus, so it should not
+share a change with work the owner is reviewing visually.
 
 ## 8. What NOT to build
 

@@ -301,7 +301,12 @@ class BlockRowModel(BaseModel):
     text: str
     order_index: int | None
     char_span: tuple[int, int] | None
-    # A heading's level, a list marker, a table's header and alignments.
+    # The enclosing block, or None at the top level. A nested list item's
+    # parent is the enclosing *item*, so a renderer rebuilds the tree from
+    # this alone rather than inferring depth.
+    parent_id: str | None = None
+    # A heading's level, a table's header and alignments. NOT a list marker:
+    # the parser writes no properties for a list block at all.
     properties: dict | None = None
     # The block's own markdown source. `text` is marker-stripped, so they
     # differ: a heading's text is "Foo" where its source is "## Foo".

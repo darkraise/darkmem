@@ -368,6 +368,36 @@ describe("project workspace — tree expansion", () => {
     expect(revealed).toBeInTheDocument()
   })
 
+  it("lets a folder on the open document's own path stay collapsed", async () => {
+    // The reveal used to be re-derived on every render and unioned into the
+    // rendered set, so collapsing a folder on the selected document's path
+    // was undone on the very next render and the folder sprang back open.
+    // A reveal belongs to a selection *change*, not to every frame.
+    mockDocuments({
+      items: [DOC, { ...DOC, id: "doc-2", uri: "docs/planning/progress.md" }],
+    })
+    renderWorkspace()
+
+    // "docs" is a top-level folder and open by default, so "planning" is
+    // already visible; opening it exposes the document to select.
+    await screen.findByText("design.md")
+    await userEvent.click(await screen.findByText("planning"))
+    await userEvent.click(await screen.findByText("progress.md"))
+    expect(
+      await screen.findByRole("treeitem", { name: "progress.md" }),
+    ).toBeInTheDocument()
+
+    // Now collapse "planning" while its own document is the open one. The
+    // breadcrumb names the same segment, so scope to the tree row.
+    await userEvent.click(screen.getByRole("treeitem", { name: /planning/ }))
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("treeitem", { name: "progress.md" }),
+      ).not.toBeInTheDocument()
+    })
+  })
+
   it("does not leak one project's expansion into another on project switch", async () => {
     // project-a has a stored deep expansion; project-b has none. Switching
     // must not carry project-a's opened-ness into project-b's tree -- the

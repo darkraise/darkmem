@@ -19,7 +19,7 @@ vi.mock("@/hooks/api", async (importOriginal) => ({
 function block(over: Partial<BlockRow>): BlockRow {
   return {
     block_id: "b1", type: "paragraph", text: "body", order_index: 0,
-    char_span: null, properties: null, source: "body", ...over,
+    char_span: null, parent_id: null, properties: null, source: "body", ...over,
   }
 }
 
