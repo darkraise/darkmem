@@ -4,7 +4,7 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
-## v1.5.0 — 2026-09-02
+## v1.5.0 — 2026-09-03
 
 **G-F cleared, and the faithfulness judge stopped being asked the wrong
 question.** The gate that guards grounded Q&A over documents had missed its
@@ -43,7 +43,7 @@ instrument, not the model.
   instrument scored against the gold that exposed its own defect, and that gold
   is agent-authored. An independent confirmation on a fresh gold is still owed.
 
-## v1.5.0 (earlier) — 2026-09-02
+### The project artifact store (increments 1-8)
 
 **The Checkpoints tab became something you can leave open and watch, and
 filed documents stopped silently losing their biggest tables.** Increments 1
