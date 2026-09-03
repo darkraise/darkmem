@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { FolderTree, Search } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { Card } from "darkraise-ui/components/card"
@@ -112,20 +112,15 @@ export function ProjectWorkspace({
     }
   })
 
-  // The base is whatever the user has stored (their own toggles), or the
-  // top-level default when nothing is stored yet. A selection UNIONS its
-  // ancestor path into that base rather than replacing it -- replacing
-  // collapsed every folder not on the selected document's path, and once
-  // `expanded` became non-null (any toggle at all) the reveal never ran
-  // again, including for search hits, which can select a document buried
-  // inside a folder the user never opened.
-  const effectiveExpanded = useMemo(() => {
-    const base = expanded ?? rootFolderPaths(roots)
-    if (!selected) return base
-    const toReveal = pathsToDocument(roots, selected.id)
-    if (toReveal.length === 0) return base
-    return Array.from(new Set([...base, ...toReveal]))
-  }, [expanded, selected, roots])
+  // Whatever the user has stored (their own toggles), or the top-level
+  // default when nothing is stored yet. The reveal is NOT folded in here:
+  // deriving it per render made it win over the user every frame, so
+  // collapsing a folder on the open document's own path sprang straight
+  // back open. It is applied once per selection change instead, below.
+  const effectiveExpanded = useMemo(
+    () => expanded ?? rootFolderPaths(roots),
+    [expanded, roots],
+  )
 
   const handleExpandedChange = (paths: string[]) => {
     setExpanded(paths)
@@ -138,6 +133,25 @@ export function ProjectWorkspace({
       // Persistence is a convenience; losing it must not break the tree.
     }
   }
+
+  // A selection UNIONS its ancestor path into the expanded set -- once, when
+  // the selection changes. Unioning rather than replacing is what keeps a
+  // sibling folder open; doing it on a change rather than on every render is
+  // what lets the user collapse a folder the open document lives in.
+  //
+  // Keyed on the document id, not on `selected`'s identity, and re-attempted
+  // while the path is empty: a search hit can select a document before its
+  // tree row exists, and the reveal has to land when `roots` catches up.
+  const revealedFor = useRef<string | null>(null)
+  useEffect(() => {
+    if (!selected || revealedFor.current === selected.id) return
+    const toReveal = pathsToDocument(roots, selected.id)
+    if (toReveal.length === 0) return
+    revealedFor.current = selected.id
+    const base = expanded ?? rootFolderPaths(roots)
+    const next = Array.from(new Set([...base, ...toReveal]))
+    if (next.length !== base.length) handleExpandedChange(next)
+  }, [selected, roots, expanded])
 
   const ledger = items.find((d) => d.uri?.endsWith(LEDGER_SUFFIX)) ?? null
   const hits = search.data?.items ?? []
