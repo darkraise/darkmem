@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { useMemo, useState, type ReactNode } from "react"
 import { FolderTree, Search } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { Card } from "darkraise-ui/components/card"
@@ -65,20 +65,20 @@ export function ProjectWorkspace({
   const search = useDocumentSearch()
 
   const roots = useMemo(() => buildUriTree(items), [items])
-  const [expanded, setExpanded] = useState<string[] | null>(null)
-
-  // Read once per project. A read that throws (private mode, blocked storage)
-  // falls back to the derived default rather than failing the pane.
-  useEffect(() => {
-    let stored: string[] | null = null
+  // Lazy initialiser rather than an effect: the route mounts a fresh
+  // ProjectWorkspace instance per project (`key={project}`), so this only
+  // ever needs to run once, at mount, with no post-commit correction window
+  // where a stale project's `expanded` could render against a new tree. A
+  // read that throws (private mode, blocked storage) falls back to the
+  // derived default rather than failing the pane.
+  const [expanded, setExpanded] = useState<string[] | null>(() => {
     try {
       const raw = window.localStorage.getItem(expansionStorageKey(project))
-      if (raw) stored = JSON.parse(raw) as string[]
+      return raw ? (JSON.parse(raw) as string[]) : null
     } catch {
-      stored = null
+      return null
     }
-    setExpanded(stored ?? null)
-  }, [project])
+  })
 
   const effectiveExpanded =
     expanded ??

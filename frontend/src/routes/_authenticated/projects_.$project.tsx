@@ -30,6 +30,11 @@ function ProjectWorkspacePage() {
       />
 
       <ProjectWorkspace
+        // Every piece of state ProjectWorkspace owns (expansion, selection,
+        // search focus) is meaningful only within one project. Remounting on
+        // project change is what makes that true, rather than an effect
+        // racing the render to correct it after the fact.
+        key={project}
         project={project}
         tab={tab ?? "artifacts"}
         onTabChange={(next) =>

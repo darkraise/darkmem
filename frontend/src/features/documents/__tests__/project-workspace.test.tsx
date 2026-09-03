@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import type { ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/demo-flag", () => ({ DEMO: false }))
@@ -70,6 +70,41 @@ function renderWorkspace(props: Partial<Parameters<typeof ProjectWorkspace>[0]> 
   return render(
     <ProjectWorkspace project="darkmem" tab="artifacts" onTabChange={vi.fn()} {...props} />,
     { wrapper },
+  )
+}
+
+/** Mirrors the route's own render: `key={project}` forces React to discard
+ *  the whole ProjectWorkspace instance on a project switch, rather than
+ *  re-rendering the same one in place — see
+ *  `src/routes/_authenticated/projects_.$project.tsx`. `withKey=false` lets
+ *  the mutation run reproduce the pre-fix behaviour to prove this test can
+ *  fail. */
+function ProjectSwitcher({
+  initial,
+  next,
+  withKey = true,
+}: {
+  initial: string
+  next: string
+  withKey?: boolean
+}) {
+  const [project, setProject] = useState(initial)
+  return (
+    <>
+      <button type="button" onClick={() => setProject(next)}>
+        switch project
+      </button>
+      {withKey ? (
+        <ProjectWorkspace
+          key={project}
+          project={project}
+          tab="artifacts"
+          onTabChange={vi.fn()}
+        />
+      ) : (
+        <ProjectWorkspace project={project} tab="artifacts" onTabChange={vi.fn()} />
+      )}
+    </>
   )
 }
 
@@ -196,5 +231,29 @@ describe("project workspace — tree expansion", () => {
       expect(raw).not.toBeNull()
       expect(JSON.parse(raw as string)).toContain("docs/planning")
     })
+  })
+
+  it("does not leak one project's expansion into another on project switch", async () => {
+    // project-a has a stored deep expansion; project-b has none. Switching
+    // must not carry project-a's opened-ness into project-b's tree -- the
+    // route remounts ProjectWorkspace per project (key={project}) for
+    // exactly this reason.
+    mockDocuments({ items: [DOC, { ...DOC, id: "doc-2", uri: "docs/planning/progress.md" }] })
+    window.localStorage.setItem(
+      expansionStorageKey("project-a"),
+      JSON.stringify(["docs", "docs/planning"]),
+    )
+    render(<ProjectSwitcher initial="project-a" next="project-b" />, { wrapper })
+
+    // project-a's stored expansion opens the deep folder.
+    expect(await screen.findByText("progress.md")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText("switch project"))
+
+    // project-b has no stored value, so it falls back to its own default
+    // (top-level folders only) -- "docs/planning" stays collapsed and
+    // project-a's expansion did not leak across the switch.
+    await screen.findByText("notes")
+    expect(screen.queryByText("progress.md")).not.toBeInTheDocument()
   })
 })
