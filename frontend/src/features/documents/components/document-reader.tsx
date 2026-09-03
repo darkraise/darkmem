@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { useDocumentBlocks, useDocumentOutline } from "@/hooks/api"
 import { BlockView } from "./block-view"
@@ -8,9 +9,29 @@ import { BlockView } from "./block-view"
  * sorted list -- so block-level nesting is deliberately not reconstructed
  * here. The outline is the structure the reader navigates by.
  */
-export function DocumentReader({ documentId }: { documentId: string }) {
+export function DocumentReader({
+  documentId,
+  focusBlockId = null,
+}: {
+  documentId: string
+  /** Scroll to and mark this block once the body has rendered. A section
+   *  search that only opened the document would drop the reader at the top,
+   *  losing the section they matched. */
+  focusBlockId?: string | null
+}) {
   const outline = useDocumentOutline(documentId)
   const blocks = useDocumentBlocks(documentId)
+  const bodyRef = useRef<HTMLDivElement>(null)
+
+  const ready = !blocks.isLoading && !blocks.isError
+  useEffect(() => {
+    if (!focusBlockId || !ready) return
+    // Query within this reader rather than the document: two readers can be
+    // mounted (the artifacts pane and the ledger), and block ids are unique
+    // per document, not per page.
+    const target = bodyRef.current?.querySelector(`[data-block-id="${focusBlockId}"]`)
+    target?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }, [focusBlockId, ready, documentId])
 
   if (blocks.isLoading) {
     return (
@@ -60,9 +81,18 @@ export function DocumentReader({ documentId }: { documentId: string }) {
         </nav>
       ) : null}
 
-      <div className="min-w-0 flex-1 space-y-2.5">
+      <div ref={bodyRef} className="min-w-0 flex-1 space-y-2.5">
         {rows.map((block) => (
-          <div key={block.block_id} id={block.block_id}>
+          <div
+            key={block.block_id}
+            id={block.block_id}
+            data-block-id={block.block_id}
+            className={
+              block.block_id === focusBlockId
+                ? "ring-primary/40 rounded-sm ring-2 ring-offset-2 ring-offset-transparent"
+                : undefined
+            }
+          >
             <BlockView block={block} />
           </div>
         ))}
