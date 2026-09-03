@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { FolderTree, Search } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { Card } from "darkraise-ui/components/card"
@@ -9,6 +9,12 @@ import { EmptyState } from "@/components/darkmem"
 import { CheckpointsTab } from "@/features/activity/components/checkpoints-tab"
 import { DocumentReader } from "@/features/documents/components/document-reader"
 import { DocumentTree } from "@/features/documents/components/document-tree"
+import {
+  expansionStorageKey,
+  pathsToDocument,
+  rootFolderPaths,
+} from "@/features/documents/tree-expansion"
+import { buildUriTree } from "@/features/documents/uri-tree"
 import {
   useAllDocuments,
   useDocumentSearch,
@@ -57,6 +63,38 @@ export function ProjectWorkspace({
   const [focusBlockId, setFocusBlockId] = useState<string | null>(null)
   const [query, setQuery] = useState("")
   const search = useDocumentSearch()
+
+  const roots = useMemo(() => buildUriTree(items), [items])
+  const [expanded, setExpanded] = useState<string[] | null>(null)
+
+  // Read once per project. A read that throws (private mode, blocked storage)
+  // falls back to the derived default rather than failing the pane.
+  useEffect(() => {
+    let stored: string[] | null = null
+    try {
+      const raw = window.localStorage.getItem(expansionStorageKey(project))
+      if (raw) stored = JSON.parse(raw) as string[]
+    } catch {
+      stored = null
+    }
+    setExpanded(stored ?? null)
+  }, [project])
+
+  const effectiveExpanded =
+    expanded ??
+    (selected ? pathsToDocument(roots, selected.id) : rootFolderPaths(roots))
+
+  const handleExpandedChange = (paths: string[]) => {
+    setExpanded(paths)
+    try {
+      window.localStorage.setItem(
+        expansionStorageKey(project),
+        JSON.stringify(paths),
+      )
+    } catch {
+      // Persistence is a convenience; losing it must not break the tree.
+    }
+  }
 
   const ledger = items.find((d) => d.uri?.endsWith(LEDGER_SUFFIX)) ?? null
   const hits = search.data?.items ?? []
@@ -150,6 +188,8 @@ export function ProjectWorkspace({
                   setFocusBlockId(null)
                 }}
                 truncated={documents.data?.truncated ?? false}
+                expanded={effectiveExpanded}
+                onExpandedChange={handleExpandedChange}
               />
             )}
           </div>

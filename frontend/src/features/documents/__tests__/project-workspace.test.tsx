@@ -151,3 +151,23 @@ describe("project workspace — the states a reader must be able to tell apart",
     )
   })
 })
+
+describe("project workspace — tree expansion", () => {
+  it("opens only the top level, not every folder, on first load", async () => {
+    // 475 documents all expanded is the reported "hard to navigate".
+    mockDocuments({ items: [DOC, { ...DOC, id: "doc-2", uri: "docs/planning/progress.md" }] })
+    renderWorkspace()
+    expect(await screen.findByText("notes")).toBeInTheDocument()
+    expect(screen.queryByText("progress.md")).not.toBeInTheDocument()
+  })
+
+  it("remembers expansion per project across mounts", async () => {
+    mockDocuments({ items: [DOC] })
+    window.localStorage.setItem(
+      "darkmem:artifacts:expanded:darkmem",
+      JSON.stringify(["notes"]),
+    )
+    renderWorkspace()
+    expect(await screen.findByText("design.md")).toBeInTheDocument()
+  })
+})
