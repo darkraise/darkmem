@@ -1164,9 +1164,15 @@ def test_the_canonical_records_are_absent_on_this_branch(role):
     `contradiction`'s recall measured 0.7875 against an unmoved 0.95, the fourth
     such miss across two vendors (0.7937 / 0.8814 / 0.8875 / 0.7875). The
     2026-08-12 ruling holds: the bar does not move, the role stays NOT CLEARED,
-    and the Tier-C scan stays dead. `faithfulness` (TH1.09) has never been
-    measured at all — G-F is open and its claim/span gold does not exist. A
-    record appearing for either without a cleared run is the failure this pin
+    and the Tier-C scan stays dead.
+
+    **`faithfulness` joined the minted set on 2026-09-03** — the second
+    deliberate diff this pin has ever demanded, and it follows a ledger verdict
+    exactly as the rule requires: G-F CLEARED at precision 0.9825 against 0.95
+    and recall 0.9333 against 0.90 on the span gold, after the premise-framing
+    repair. Read the ledger's disclosures before trusting that number — it is a
+    repaired instrument scored against the gold that exposed its own defect. A
+    record appearing for a role without a cleared run is the failure this pin
     exists for.
 
     **Absent is the default, and the merge that made this test red is why.**
@@ -1182,7 +1188,7 @@ def test_the_canonical_records_are_absent_on_this_branch(role):
 
     # Roles whose record a cleared gate run has minted. Adding to this set is
     # the deliberate diff the pin demands; it may only follow a ledger verdict.
-    MINTED = {vj.ENTAILMENT_ROLE}
+    MINTED = {vj.ENTAILMENT_ROLE, vj.FAITHFULNESS_ROLE}
 
     path = vj.qualification_record_path(role)
     if role not in MINTED:
@@ -1192,20 +1198,19 @@ def test_the_canonical_records_are_absent_on_this_branch(role):
         )
         return
 
-    assert path.exists(), "T2.125 minted the entailment record; see the ledger"
+    assert path.exists(), f"a cleared run minted the {role!r} record; see the ledger"
     record = json.loads(path.read_text(encoding="utf-8"))
-    assert record["role"] == "entailment"
+    assert record["role"] == role
     assert record["gate_eligible"] is True
     # It qualifies against ONE pair set, and carries that set's content hash.
     # The cross-check against the live gold lives in the benchlib suite, where
     # `pairs_content_hash` is importable — `benchlib` is not on the path here.
     assert len(record["gold_pairs_sha256"]) == 64
     int(record["gold_pairs_sha256"], 16)
-    # Only the two bars that gate this role, never the contradiction pair.
-    assert set(record["bars_gating_this_role"]) == {
-        "groundedness_gate_precision_bar",
-        "groundedness_gate_recall_bar",
-    }
+    # Only the two bars that gate THIS role, never another role's pair.
+    # Derived from JUDGE_ROLES rather than restated, so a record minted
+    # against the wrong role's bars fails here instead of reading plausible.
+    assert set(record["bars_gating_this_role"]) == set(vj.JUDGE_ROLES[role])
 
 
 def test_the_pre_split_bundled_record_path_is_not_resurrected():
