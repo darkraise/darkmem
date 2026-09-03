@@ -1749,3 +1749,167 @@ def test_the_judge_prompt_is_not_reachable_through_the_editable_module():
     ]
     assert calls == [], "the judge prompt must not be resolved through prompt.get()"
     assert "verification" not in prompt_mod.list_purposes()
+
+
+# ── the faithfulness role's premise framing (2026-09-03) ─────────────────
+# G-F's precision miss was a premise-framing defect, not judge quality: 12 of
+# its 14 false-accepts cited spans that assert nothing (markdown `[ ]` items,
+# `Expected:` directives) while the shared prompt tells the judge the premise
+# is "a stored fact". Analysis and pre-registration:
+# docs/planning/analyses/2026-09-03-gf-premise-framing-defect.md
+
+
+def _pinned_entailment_config():
+    """The exact resolved config G-D's minted record binds to."""
+    from app.config import LLMPurposeConfig
+    return LLMPurposeConfig(
+        model="gpt-5.5",
+        base_url="https://api.openai.com/v1",
+        api_key="sk-test",
+        api_kind="openai",
+        params={"reasoning_effort": "high"},
+    )
+
+
+def test_the_faithfulness_role_is_told_its_premise_is_cited_text():
+    """The role's premise is a document span, which may assert nothing. The
+    shared prompt calls the premise "a stored fact", which is false here."""
+    messages = vj.build_messages("p", "h", role=vj.FAITHFULNESS_ROLE)
+    system = messages[0]["content"]
+    assert system != vj.SYSTEM_PROMPT
+    assert "stored fact" not in system
+
+
+def test_the_faithfulness_prompt_carries_the_unasserted_span_requirement():
+    """The capability requirement, stated in the prompt the judge is served:
+    text recording something to verify, do or expect is not an assertion."""
+    system = vj.build_messages("p", "h", role=vj.FAITHFULNESS_ROLE)[0]["content"]
+    lowered = system.lower()
+    for token in ("checklist", "verify", "expect"):
+        assert token in lowered, f"the span prompt must name {token!r}"
+
+
+def test_every_other_role_keeps_the_shared_prompt_byte_identical():
+    """Editing the shared prompt would move the entailment identity and
+    un-qualify G-D's minted record, so the other roles must not shift."""
+    for role in (None, vj.ENTAILMENT_ROLE, vj.CONTRADICTION_ROLE):
+        messages = vj.build_messages("p", "h", role=role)
+        assert messages[0]["content"] == vj.SYSTEM_PROMPT
+        assert messages == vj.build_messages("p", "h")
+
+
+def test_the_entailment_identity_is_unmoved_by_the_role_split():
+    """The minted record binds fd39e7b2c47fa375. A role-aware identity that
+    changed this would silently evaporate G-D's clear."""
+    cfg = _pinned_entailment_config()
+    assert vj.judge_identity_hash(vj.judge_identity(cfg)) == "fd39e7b2c47fa375"
+    assert vj.judge_identity_hash(
+        vj.judge_identity(cfg, role=vj.ENTAILMENT_ROLE)
+    ) == "fd39e7b2c47fa375"
+
+
+def test_the_faithfulness_identity_is_its_own():
+    """A record minted for one role must not qualify a judge serving the
+    other, and the prompts genuinely differ, so the hashes must too."""
+    cfg = _pinned_entailment_config()
+    entailment = vj.judge_identity_hash(vj.judge_identity(cfg, role=vj.ENTAILMENT_ROLE))
+    faithfulness = vj.judge_identity_hash(vj.judge_identity(cfg, role=vj.FAITHFULNESS_ROLE))
+    assert entailment != faithfulness
+
+
+def test_the_faithfulness_identity_folds_the_prompt_it_serves(monkeypatch):
+    """The served prompt and the hashed prompt must be the same object for
+    this role too — the half-done refactor this module already guards against."""
+    cfg = _pinned_entailment_config()
+    before = vj.judge_identity_hash(vj.judge_identity(cfg, role=vj.FAITHFULNESS_ROLE))
+    monkeypatch.setattr(vj, "SPAN_SYSTEM_PROMPT", vj.SPAN_SYSTEM_PROMPT + " ")
+    after = vj.judge_identity_hash(vj.judge_identity(cfg, role=vj.FAITHFULNESS_ROLE))
+    assert before != after
+    # and the edit must not have disturbed the qualified entailment identity
+    assert vj.judge_identity_hash(
+        vj.judge_identity(cfg, role=vj.ENTAILMENT_ROLE)
+    ) == "fd39e7b2c47fa375"
+
+
+class _PromptCapturingLLM:
+    """Records the system prompt it was served; returns a fixed verdict."""
+
+    def __init__(self, config):
+        self.config = config
+        self.system_prompts: list[str] = []
+
+    async def chat_completion(self, purpose, messages, **kwargs):
+        self.system_prompts.append(messages[0]["content"])
+        return '{"verdict": "unsupported", "reason": "r"}'
+
+
+@pytest.mark.asyncio
+async def test_the_probe_serves_the_faithfulness_role_its_own_prompt():
+    """The prompt exists to be served. A role-blind probe would leave the
+    span framing defined and never sent."""
+    llm = _PromptCapturingLLM(_judge_config())
+    judge = vj.VerificationJudge(llm)
+
+    await judge.qualification_probe("p", "h", role=vj.FAITHFULNESS_ROLE)
+    assert llm.system_prompts == [vj.SPAN_SYSTEM_PROMPT]
+
+    await judge.qualification_probe("p", "h")
+    assert llm.system_prompts[-1] == vj.SYSTEM_PROMPT
+
+
+@pytest.mark.asyncio
+async def test_the_served_door_carries_the_role_through_to_the_prompt(monkeypatch):
+    """`judge()` is the door a consumer uses. If it drops the role, the
+    product keeps the blind spot the gate run just measured away."""
+    llm = _PromptCapturingLLM(_judge_config())
+    judge = vj.VerificationJudge(llm)
+
+    async def _qualified(session, config, *, role, record_path=None):
+        return vj.QualificationState(True, (), "hash")
+
+    monkeypatch.setattr(vj, "qualification_state", _qualified)
+    await judge.judge(None, "p", "h", role=vj.FAITHFULNESS_ROLE)
+    assert llm.system_prompts == [vj.SPAN_SYSTEM_PROMPT]
+
+
+@pytest.mark.asyncio
+async def test_qualification_state_compares_the_identity_of_the_role_it_is_asked_about(
+    session, tmp_path,
+):
+    """A faithfulness record must be checked against the faithfulness
+    identity. Comparing a role-blind hash would accept a record minted under
+    the shared prompt as qualifying the span judge."""
+    cfg = {"verification": _pinned_entailment_config()}
+    identity = vj.judge_identity(cfg["verification"], role=vj.FAITHFULNESS_ROLE)
+    record = _record(
+        cfg, role=vj.FAITHFULNESS_ROLE,
+        metrics={"entailed_precision": 0.99, "entailed_recall": 0.99},
+    )
+    record["judge_identity"] = {
+        **identity, "identity_hash": vj.judge_identity_hash(identity),
+    }
+    path = tmp_path / "faithfulness.json"
+    path.write_text(json.dumps(record))
+
+    state = await vj.qualification_state(
+        session, cfg, role=vj.FAITHFULNESS_ROLE, record_path=path,
+    )
+    assert not any("identity mismatch" in r for r in state.reasons), state.reasons
+
+
+def test_the_qualifying_instrument_partitions_the_roles():
+    """Each role is minted by the gold that actually scores its premise
+    distribution. The claim/fact gold scores fact premises; the span gold
+    scores document-span premises. A role in neither set, or in both, is a
+    role some runner would mint off a gold that never tested it."""
+    assert vj.CLAIM_FACT_ROLES | vj.SPAN_ROLES == set(vj.JUDGE_ROLES)
+    assert not (vj.CLAIM_FACT_ROLES & vj.SPAN_ROLES)
+
+
+def test_the_faithfulness_role_is_minted_by_the_span_gold_alone():
+    """Its bars map to the same two metrics the entailment role's bars use,
+    so a claim/fact run clearing entailment would otherwise also "clear" it."""
+    assert vj.FAITHFULNESS_ROLE in vj.SPAN_ROLES
+    assert vj.FAITHFULNESS_ROLE not in vj.CLAIM_FACT_ROLES
+    shared = {vj.BAR_METRICS[k] for k in vj.JUDGE_ROLES[vj.FAITHFULNESS_ROLE]}
+    assert shared == {vj.BAR_METRICS[k] for k in vj.JUDGE_ROLES[vj.ENTAILMENT_ROLE]}

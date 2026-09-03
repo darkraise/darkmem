@@ -531,11 +531,15 @@ async def run_qualification(
         # role that missed one mints nothing. The verdict printed per role is
         # what "G-D as redefined" now means — two verdicts, not one — and a run
         # that clears neither is the same NOT CLEARED it always was.
+        # Only the roles THIS gold scores. `faithfulness` gates on the same
+        # two metrics the entailment role does, so without this it cleared
+        # here and minted a record off a gold holding no document spans.
+        mintable = vj.CLAIM_FACT_ROLES
         cleared_roles = [
             role for role, bar_keys in vj.JUDGE_ROLES.items()
-            if not (set(bar_keys) & missed_bars)
+            if role in mintable and not (set(bar_keys) & missed_bars)
         ]
-        for role in sorted(vj.JUDGE_ROLES):
+        for role in sorted(mintable):
             verdict = "CLEARED" if role in cleared_roles else "NOT CLEARED"
             print(f"  role {role}: {verdict} "
                   f"({', '.join(vj.JUDGE_ROLES[role])})")
@@ -569,7 +573,7 @@ async def run_qualification(
             print(f"[4/4] gate run MISSED {len(missed)} bar(s): "
                   f"{', '.join(missed)} — no record written for the role(s) "
                   f"they gate. G-D stays closed for "
-                  f"{', '.join(sorted(set(vj.JUDGE_ROLES) - set(cleared_roles)))}.")
+                  f"{', '.join(sorted(set(mintable) - set(cleared_roles)))}.")
         if not cleared_roles:
             print("[4/4] no role cleared — nothing was minted.")
     else:

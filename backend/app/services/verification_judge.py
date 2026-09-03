@@ -10,9 +10,16 @@ construction every consumer will run.
 doc 17 §6 amended 2026-08-12, owner-ratified). A consumer is admitted for the
 discrimination it actually makes: the entailment role branches on ``entailed``
 and gates on the entailed pair, the contradiction role branches on
-``contradicted`` and gates on the contradiction pair. Nothing about the judge
-splits — one purpose, one prompt, one identity hash, one measurement run — only
-the *record* does, so `judge()` takes the role the caller is asking as. The
+``contradicted`` and gates on the contradiction pair. One purpose and one
+measurement run per role, so `judge()` takes the role the caller is asking as.
+**The prompt no longer follows that "nothing splits" rule, and this sentence
+said it did until 2026-09-03**: the faithfulness role is served
+``SPAN_SYSTEM_PROMPT`` because its premise is a raw document span rather than a
+stored fact, so it carries its own ``prompt_sha`` and therefore its own identity
+hash. That is scoped to the prompt alone — still one purpose, one model, one
+parser — and it is what keeps repairing one role from moving another role's
+identity. The
+
 rejected alternative in §6 is per-consumer *judges* (three purposes, three
 models, drifting independently); this is not that, but the roles do now hold
 qualification state independently, which is that alternative's nearest
@@ -98,12 +105,61 @@ Judge only what the texts assert. Respond with JSON:
 {"verdict": "entailed" | "contradicted" | "unsupported", "reason": "<one sentence>"}
 """
 
+# The faithfulness role's premise is a raw document span, not a stored fact.
+# A span may record something to verify, to do, or to expect without asserting
+# that it holds — an unchecked checklist item, an imperative, an `Expected:`
+# line — and the shared prompt's "a stored fact" framing tells the judge the
+# opposite. G-F's 2026-08-17 miss was 12 such spans out of 14 false-accepts:
+# docs/planning/analyses/2026-09-03-gf-premise-framing-defect.md
+SPAN_SYSTEM_PROMPT = """\
+You are a strict natural-language-inference judge. Given a PREMISE (text quoted
+verbatim from a document) and a HYPOTHESIS (a claim about the system), return
+exactly one verdict:
+
+- "entailed": the premise alone makes the hypothesis true. A hypothesis that
+  is strictly weaker than the premise (less precise, a subset of what the
+  premise asserts) is still entailed. Use only the premise — never outside
+  knowledge or plausibility.
+- "contradicted": the premise and the hypothesis cannot both be true. This
+  includes: a different value in a slot the premise fills exclusively; a
+  present-tense claim of a state whose validity window the premise explicitly
+  closes; an explicit negation; a reversed relation when the relation is
+  exclusive in direction.
+- "unsupported": neither of the above. A hypothesis that adds anything the
+  premise does not assert (extra hosts, versions, causes, quantifiers,
+  vendors) is unsupported, not entailed — even if plausible. A hypothesis the
+  premise merely implicates but does not assert is unsupported, not
+  contradicted.
+
+The premise is quoted document text, so it does not always assert anything.
+Text that records something to verify, to do, or to expect states an intention,
+not a fact about the system: an unchecked checklist item ("[ ] ..."), an
+imperative instruction, a step in a procedure, an "Expected:" or "Verify ..."
+line. A hypothesis claiming the system exhibits the behaviour is "unsupported"
+by such a premise, however exactly the words match. A checklist item that is
+marked done asserts only that it was checked.
+
+Judge only what the texts assert. Respond with JSON:
+{"verdict": "entailed" | "contradicted" | "unsupported", "reason": "<one sentence>"}
+"""
+
 USER_TEMPLATE = "PREMISE:\n{premise}\n\nHYPOTHESIS:\n{hypothesis}"
 
 
-def build_messages(premise: str, hypothesis: str) -> list[dict]:
+def _system_prompt_for(role: str | None) -> str:
+    """The system prompt a role is served.
+
+    Role-scoped rather than shared because editing ``SYSTEM_PROMPT`` moves
+    ``prompt_sha`` and therefore the judge identity, which would un-qualify
+    G-D's minted entailment record (``fd39e7b2c47fa375``) as a side effect of
+    repairing a different role.
+    """
+    return SPAN_SYSTEM_PROMPT if role == FAITHFULNESS_ROLE else SYSTEM_PROMPT
+
+
+def build_messages(premise: str, hypothesis: str, *, role: str | None = None) -> list[dict]:
     return [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": _system_prompt_for(role)},
         {"role": "user", "content": USER_TEMPLATE.format(premise=premise, hypothesis=hypothesis)},
     ]
 
@@ -152,13 +208,18 @@ class VerificationJudge:
     def __init__(self, llm):
         self.llm = llm
 
-    async def qualification_probe(self, premise: str, hypothesis: str) -> ProbeVerdict:
+    async def qualification_probe(
+        self, premise: str, hypothesis: str, *, role: str | None = None,
+    ) -> ProbeVerdict:
         """The ungated door, named for its only lawful caller: the
         qualification harness must be able to measure an unqualified judge.
-        A source scan pins that nothing else under ``app/`` reaches it."""
+        A source scan pins that nothing else under ``app/`` reaches it.
+
+        ``role`` selects the system prompt, so a harness measuring one role
+        measures the prompt that role is actually served."""
         raw = await self.llm.chat_completion(
             "verification",
-            build_messages(premise, hypothesis),
+            build_messages(premise, hypothesis, role=role),
             response_format={"type": "json_object"},
             seed=_content_seed(premise + "\n" + hypothesis),
         )
@@ -196,7 +257,7 @@ class VerificationJudge:
                 "role at its current identity and bars; no consumer may ship "
                 "on its verdicts (doc 17 §6). Reasons: " + "; ".join(state.reasons)
             )
-        return await self.qualification_probe(premise, hypothesis)
+        return await self.qualification_probe(premise, hypothesis, role=role)
 
 
 # ── judge identity: what a qualification is recorded against ─────────────
@@ -208,18 +269,23 @@ class VerificationJudge:
 IDENTITY_FIELDS = ("model", "base_url", "api_kind", "dimensions", "reasoning", "params")
 
 
-def judge_identity(cfg) -> dict:
+def judge_identity(cfg, *, role: str | None = None) -> dict:
     """The identity a qualification binds to: the resolved purpose config's
     behaviour-shaping fields plus the prompt version and the hash of ALL
     prompt text (system prompt + user-message template — both are sent on
     every call, so an edit to either is a judge change and must move the
-    identity even without a version bump)."""
+    identity even without a version bump).
+
+    The system prompt hashed is the one that role is actually served, so a
+    role whose prompt differs gets its own identity and a record minted for
+    one cannot qualify a judge serving another.
+    """
     identity = {field: getattr(cfg, field, None) for field in IDENTITY_FIELDS}
     identity["prompt_version"] = JUDGE_PROMPT_VERSION
     # NUL-joined so text migrating across the system-prompt/template boundary
     # cannot keep the hash.
     identity["prompt_sha"] = hashlib.sha256(
-        (SYSTEM_PROMPT + "\x00" + USER_TEMPLATE).encode("utf-8")
+        (_system_prompt_for(role) + "\x00" + USER_TEMPLATE).encode("utf-8")
     ).hexdigest()[:16]
     return identity
 
@@ -270,6 +336,22 @@ JUDGE_ROLES: dict[str, tuple[str, ...]] = {
         "faithfulness_gate_recall_bar",
     ),
 }
+
+# Which measurement instrument may mint each role's record. A role is
+# qualified by the gold that actually scores its premise distribution: the
+# claim/fact gold (`run_judge_qualification.py`) puts stored facts to the
+# judge, the span gold (`run_faithfulness_gate.py`) puts raw document spans.
+#
+# This is not bookkeeping. `faithfulness_gate_*` and `groundedness_gate_*` map
+# to the SAME two metrics (`entailed_precision` / `entailed_recall`), so a
+# claim/fact run that cleared the entailment role cleared the faithfulness
+# role's bars too and minted its record off a gold that never showed it a
+# document span — measured 2026-09-03, with a test asserting the behaviour it
+# should have caught. The sets partition `JUDGE_ROLES` and a test pins that, so
+# a role added to neither (or to both) fails the build rather than silently
+# becoming mintable by whichever runner happens to clear first.
+CLAIM_FACT_ROLES = frozenset({ENTAILMENT_ROLE, CONTRADICTION_ROLE})
+SPAN_ROLES = frozenset({FAITHFULNESS_ROLE})
 
 # The pair sets retired from qualification use, in full. `4975c5cc…` is the gold
 # T2.114 spent its final attempt on: the stopping rule fired, and the owner's
@@ -533,7 +615,7 @@ async def qualification_state(
     if cfg is None:
         reasons.append("no verification purpose in the resolved LLM config")
     else:
-        current_hash = judge_identity_hash(judge_identity(cfg))
+        current_hash = judge_identity_hash(judge_identity(cfg, role=role))
         recorded = record.get("judge_identity") or {}
         recorded_hash = recorded.get("identity_hash")
         if recorded_hash != current_hash:
