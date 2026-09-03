@@ -214,12 +214,34 @@ describe("project workspace — layout", () => {
     expect(crumbs).toHaveTextContent("design.md")
   })
 
-  it("renders nothing when no document is selected", async () => {
+  it("does not render the breadcrumb when no document is selected", async () => {
+    // The reader pane itself still renders an EmptyState in this case; this
+    // test is only about the breadcrumb, which must stay absent until a
+    // document is picked.
     mockDocuments({ items: [DOC] })
     renderWorkspace()
     await screen.findByText("design.md")
-    // The breadcrumb must not render when nothing is selected
     expect(screen.queryByLabelText("document path")).not.toBeInTheDocument()
+  })
+
+  it("carries a height chain down to the resizable group at lg", async () => {
+    // jsdom performs no layout, so this cannot verify anything renders at a
+    // real pixel height -- only that the class chain the layout depends on is
+    // present. Visual confirmation needs the running app.
+    mockDocuments({ items: [DOC] })
+    const { container } = renderWorkspace()
+    await screen.findByText("design.md")
+
+    const tabs = container.querySelector(".dr-tabs")
+    expect(tabs).toHaveClass("flex", "flex-col", "lg:min-h-0", "lg:flex-1")
+
+    // Only the active tab's panel is mounted (the library unmounts the
+    // inactive one), so there is exactly one `tabpanel`.
+    const artifactsPanel = container.querySelector('[role="tabpanel"]')
+    expect(artifactsPanel).toHaveClass("lg:min-h-0", "lg:flex-1")
+
+    const panelGroup = container.querySelector(".dr-resizable-panel-group")
+    expect(panelGroup).toHaveClass("min-h-[60vh]", "lg:min-h-0", "lg:flex-1")
   })
 })
 
@@ -246,6 +268,18 @@ describe("project workspace — tree expansion", () => {
     expect(await screen.findByText("progress.md")).toBeInTheDocument()
   })
 
+  it("falls back to the default expansion when localStorage holds a non-array value", async () => {
+    // A corrupted or hand-edited key (e.g. "{}") must not reach the tree
+    // library as `expanded`, where `.includes(...)` throws and takes the
+    // pane down -- it must fall back to the same top-level default an
+    // absent key produces.
+    mockDocuments({ items: [DOC, { ...DOC, id: "doc-2", uri: "docs/planning/progress.md" }] })
+    window.localStorage.setItem(expansionStorageKey("darkmem"), JSON.stringify({}))
+    renderWorkspace()
+    expect(await screen.findByText("notes")).toBeInTheDocument()
+    expect(screen.queryByText("progress.md")).not.toBeInTheDocument()
+  })
+
   it("writes an expansion change to localStorage", async () => {
     // Drives a real branch toggle through the UI (as document-tree.test.tsx
     // does) rather than calling onExpandedChange directly, so this covers the
@@ -262,6 +296,76 @@ describe("project workspace — tree expansion", () => {
       expect(raw).not.toBeNull()
       expect(JSON.parse(raw as string)).toContain("docs/planning")
     })
+  })
+
+  it("does not collapse a sibling folder that was open when a document is selected", async () => {
+    // Default expansion opens every top-level folder ("notes", "docs" and
+    // "src" all have children). Selecting a document under "notes" must not
+    // collapse "src" -- replacing the expanded set with only the selected
+    // document's own ancestor path did exactly that.
+    const DOC_SRC = { ...DOC, id: "doc-src", uri: "src/readme.md" }
+    mockDocuments({
+      items: [DOC, { ...DOC, id: "doc-2", uri: "docs/planning/progress.md" }, DOC_SRC],
+    })
+    renderWorkspace()
+    await screen.findByText("design.md")
+    // "src" is a top-level folder, open by default -- its direct child is
+    // visible before any selection is made.
+    expect(await screen.findByText("readme.md")).toBeInTheDocument()
+
+    await userEvent.click(screen.getByText("design.md"))
+
+    // Selecting a document inside the sibling "notes" folder must not
+    // collapse "src".
+    expect(screen.getByText("readme.md")).toBeInTheDocument()
+  })
+
+  it("reveals a document inside a collapsed folder when a search hit selects it", async () => {
+    // A persisted expansion (only "notes" open) is what a returning user
+    // sees -- and what the search-hit selection path used to leave
+    // untouched once `expanded` was non-null, so a hit inside "docs/planning"
+    // selected the document with no reveal at all.
+    window.localStorage.setItem(
+      expansionStorageKey("darkmem"),
+      JSON.stringify(["notes"]),
+    )
+    const DOC_2 = { ...DOC, id: "doc-2", uri: "docs/planning/progress.md" }
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path.startsWith("/documents/search")) {
+        return Promise.resolve({
+          items: [
+            {
+              block_id: "block-77",
+              document_id: DOC_2.id,
+              heading_path: ["Progress"],
+              path_truncated: false,
+              text: "progress note",
+            },
+          ],
+        })
+      }
+      if (path.startsWith("/documents")) {
+        return Promise.resolve({ items: [DOC, DOC_2] })
+      }
+      return Promise.resolve({})
+    })
+    renderWorkspace()
+    await screen.findByText("design.md")
+    // "docs/planning" is collapsed by the persisted expansion -- only
+    // "notes" is open, so "docs" itself is collapsed too.
+    expect(screen.queryByText("progress.md")).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText("search documents"), {
+      target: { value: "progress" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: /search/i }))
+    fireEvent.click(await screen.findByText("progress note"))
+
+    // Selecting the hit also renders a breadcrumb naming the same segment,
+    // so scope to the tree row rather than the plain text, which now
+    // matches twice.
+    const revealed = await screen.findByRole("treeitem", { name: "progress.md" })
+    expect(revealed).toBeInTheDocument()
   })
 
   it("does not leak one project's expansion into another on project switch", async () => {
@@ -286,5 +390,32 @@ describe("project workspace — tree expansion", () => {
     // project-a's expansion did not leak across the switch.
     await screen.findByText("notes")
     expect(screen.queryByText("progress.md")).not.toBeInTheDocument()
+  })
+
+  it("leaks one project's expansion into another WITHOUT the remount key", async () => {
+    // This is the regression the test above guards against, made real: the
+    // route's `key={project}` is what discards ProjectWorkspace's own state
+    // on a project switch. Without it, React reuses the same component
+    // instance and project-a's `expanded` state rides straight into
+    // project-b's tree.
+    mockDocuments({ items: [DOC, { ...DOC, id: "doc-2", uri: "docs/planning/progress.md" }] })
+    window.localStorage.setItem(
+      expansionStorageKey("project-a"),
+      JSON.stringify(["docs", "docs/planning"]),
+    )
+    render(
+      <ProjectSwitcher initial="project-a" next="project-b" withKey={false} />,
+      { wrapper },
+    )
+
+    expect(await screen.findByText("progress.md")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText("switch project"))
+
+    // project-b has no stored value of its own, but the un-keyed instance
+    // never re-initialised its `expanded` state, so project-a's deep
+    // expansion is still in effect.
+    await screen.findByText("notes")
+    expect(screen.getByText("progress.md")).toBeInTheDocument()
   })
 })

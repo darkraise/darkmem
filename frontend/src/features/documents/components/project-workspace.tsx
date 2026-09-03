@@ -105,15 +105,27 @@ export function ProjectWorkspace({
   const [expanded, setExpanded] = useState<string[] | null>(() => {
     try {
       const raw = window.localStorage.getItem(expansionStorageKey(project))
-      return raw ? (JSON.parse(raw) as string[]) : null
+      const parsed: unknown = raw ? JSON.parse(raw) : null
+      return Array.isArray(parsed) ? (parsed as string[]) : null
     } catch {
       return null
     }
   })
 
-  const effectiveExpanded =
-    expanded ??
-    (selected ? pathsToDocument(roots, selected.id) : rootFolderPaths(roots))
+  // The base is whatever the user has stored (their own toggles), or the
+  // top-level default when nothing is stored yet. A selection UNIONS its
+  // ancestor path into that base rather than replacing it -- replacing
+  // collapsed every folder not on the selected document's path, and once
+  // `expanded` became non-null (any toggle at all) the reveal never ran
+  // again, including for search hits, which can select a document buried
+  // inside a folder the user never opened.
+  const effectiveExpanded = useMemo(() => {
+    const base = expanded ?? rootFolderPaths(roots)
+    if (!selected) return base
+    const toReveal = pathsToDocument(roots, selected.id)
+    if (toReveal.length === 0) return base
+    return Array.from(new Set([...base, ...toReveal]))
+  }, [expanded, selected, roots])
 
   const handleExpandedChange = (paths: string[]) => {
     setExpanded(paths)
@@ -131,13 +143,24 @@ export function ProjectWorkspace({
   const hits = search.data?.items ?? []
 
   return (
-    <Tabs value={tab} onValueChange={(value) => onTabChange(value as WorkspaceTab)}>
+    <Tabs
+      value={tab}
+      onValueChange={(value) => onTabChange(value as WorkspaceTab)}
+      // Carries the route root's `lg:h-full` down to the resizable group
+      // below: `flex flex-col` is structural at every width, `lg:flex-1
+      // lg:min-h-0` is what actually claims the height, matching the
+      // `lg:`-only prefixing chat.tsx's height chain uses.
+      className="flex flex-col lg:min-h-0 lg:flex-1"
+    >
       <TabsList>
         <TabsTrigger value="artifacts">Artifacts</TabsTrigger>
         <TabsTrigger value="progress">Progress</TabsTrigger>
       </TabsList>
 
-      <TabsContent value="artifacts" className="space-y-3.5">
+      <TabsContent
+        value="artifacts"
+        className="flex flex-col space-y-3.5 lg:min-h-0 lg:flex-1"
+      >
         <form
           className="border-border bg-muted/20 flex gap-2 rounded-md border p-2"
           onSubmit={(e) => {
@@ -196,7 +219,15 @@ export function ProjectWorkspace({
           </div>
         ) : null}
 
-        <ResizablePanelGroup orientation="horizontal" className="min-h-[60vh]">
+        <ResizablePanelGroup
+          orientation="horizontal"
+          // The floor for a broken or absent height chain (small screens,
+          // where the ancestors above deliberately carry no height): without
+          // it the panes collapse to zero. Once the chain above is real (at
+          // `lg`), the library's own `h-full` fills the real flexed height
+          // instead, so the floor stands down rather than driving the layout.
+          className="min-h-[60vh] lg:min-h-0 lg:flex-1"
+        >
           <ResizablePanel defaultSize={26} minSize={15} maxSize={45} id="tree">
             <ScrollArea className="h-full pr-2">
               <RegionLabel>documents</RegionLabel>
