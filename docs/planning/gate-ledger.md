@@ -3565,7 +3565,7 @@ owner's to move with a recorded argument, and it may never be moved to make a ru
 |---|---|---|---|---|
 | Retrieval eval stable | — | — | — | — |
 | Promotion metrics stable | — | — | — | — |
-| Faithfulness (span-support coverage) on block-span entailment gold | precision **0.95**, recall **0.90**, set in TH1.01 before the build | precision **0.888**, recall **0.925** | `docs/eval/2026-08-17-th1.10-faithfulness-gate-run.log` | **MISS** (precision) |
+| Faithfulness (span-support coverage) on block-span entailment gold | precision **0.95**, recall **0.90**, set in TH1.01 before the build | 2026-08-17: precision **0.888**, recall 0.925. 2026-09-03 after the premise-framing repair: precision **0.9825**, recall **0.9333** | `docs/eval/2026-08-17-th1.10-faithfulness-gate-run.log`; `docs/eval/2026-09-03-gf-remeasure-span-prompt.log` | **MISS** (precision) → **both bars clear**, on a repaired instrument measured against the gold that exposed it; the owner rules whether that counts as this probe's pass |
 | Maintainer appetite | Explicitly stated | — | — | — |
 
 ### G-F measured (2026-08-17, TH1.10): **NOT CLEARED — entailed precision 0.888 against a 0.95 bar**
