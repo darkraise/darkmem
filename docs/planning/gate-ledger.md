@@ -3568,6 +3568,40 @@ owner's to move with a recorded argument, and it may never be moved to make a ru
 | Faithfulness (span-support coverage) on block-span entailment gold | precision **0.95**, recall **0.90**, set in TH1.01 before the build | 2026-08-17: precision **0.888**, recall 0.925. 2026-09-03 after the premise-framing repair: precision **0.9825**, recall **0.9333** | `docs/eval/2026-08-17-th1.10-faithfulness-gate-run.log`; `docs/eval/2026-09-03-gf-remeasure-span-prompt.log` | **MISS** (precision) → **both bars clear**, on a repaired instrument measured against the gold that exposed it; the owner rules whether that counts as this probe's pass |
 | Maintainer appetite | Explicitly stated | — | — | — |
 
+### G-F's three open probes — bars stated and appetite recorded (2026-09-03, owner ruling)
+
+**Written before either stability probe was run.** The two probes carried a dash
+where their bar belonged since the gate was defined, so they could not be
+measured, let alone missed. Naming the shape after measuring would be fitting,
+which is why this section is committed ahead of the runs rather than beside
+their results.
+
+**Probe 1 — faithfulness: RULED A PASS on the 2026-09-03 re-measure**
+(precision 0.9825/0.95, recall 0.9333/0.90). The owner accepts it **with the
+disclosure permanently attached**, and the disclosure is not a footnote: the
+requirement was stated pair-independently and the re-measure pre-registered
+before the prompt was touched, but the number is a **repaired instrument scored
+against the gold that exposed its defect**, the one-re-measure stopping rule is
+spent, and independence was never established. Any later reader quoting the
+0.9825 quotes this sentence with it.
+
+**Probes 2 and 3 — stability: the bar is BYTE-IDENTICAL REPLAY AT 0 LIVE
+CALLS.** Owner's ruling, chosen for two properties. It is the discipline this
+repo already rests on elsewhere — G-C's clear turns on an independent party
+reproducing a run byte-identically from a warm cache — and it is **pass/fail
+with no tolerance anybody could later tune**. A stated numeric tolerance would
+have needed a number, and every number available to choose from would have come
+from looking at the variance it was meant to judge. The accepted cost is stated
+rather than discovered: a genuinely nondeterministic arm **fails this outright
+instead of degrading**, and the `w_ppr` arm is already known to be
+non-byte-reproducible on its on leg (snapshot KNN with no deterministic
+tie-break). That is a property of an arm at weight 0, not of the read path these
+probes measure, but a future arm activation inherits this bar.
+
+**Probe 4 — maintainer appetite: STATED.** The owner's words, recorded because
+the probe asks for exactly this and nothing the loop does can produce it: *H1
+(grounded Q&A over documents) should ship.* Recorded 2026-09-03.
+
 ### G-F measured (2026-08-17, TH1.10): **NOT CLEARED — entailed precision 0.888 against a 0.95 bar**
 
 Judge `gpt-5.5` at the identity T2.125 qualified for the entailment role
