@@ -206,6 +206,64 @@ and 2 of the project artifact store (spec §3, §4, §6).
   than half a several-hundred-file corpus. The workspace pages until a short
   one, dedupes by id, and says so on the surface when it stops at its guard.
 
+### The artifacts workspace (increments 1-3, 5)
+
+**Filed documents became something you can browse and read rather than a
+list, and markdown started rendering as markdown.** The Artifacts tab of
+`/projects/$project` (spec `2026-09-03-artifacts-workspace-revamp-design.md`).
+
+### Fixed
+
+- **Every heading rendered at the same size.** `properties.level` had been on
+  the read surface since increment 8 and was unused, so an `h1` and an `h4`
+  were visually identical. Heading text also bypassed the markdown renderer,
+  so inline code in a heading showed literal backticks. Both render properly
+  now, and the level drives the real tag, so the document outline and screen
+  readers agree with what you see.
+- **Nested lists lost their nesting.** Blocks rendered flat. `blocks.parent_id`
+  was written by the parser and indexed by the baseline all along — it was
+  simply missing from the block read surface, so no reader could see the
+  structure. Serving it fixes both doors at once. Depth counts *list*
+  ancestors only: every block under a heading carries that heading as its
+  parent, so a naive parent-chain would have indented whole document bodies
+  under their titles.
+- **Ordered lists rendered as bullets.** The parser discarded the
+  bullet-versus-ordered distinction entirely and wrote no properties for a
+  list block at all, so nothing downstream could tell them apart. It now
+  records the marker as spelled — sharing the convention `block_serializer`
+  already owns, so a block-first round trip does not silently rewrite `1.`
+  into a bullet.
+- **A table's rows each rendered as their own table**, so columns did not line
+  up across what is visually one table. Rows carry the table as their parent,
+  so the fix is exact rather than adjacency-guessing.
+- **A folder on the open document's path sprang back open when collapsed.**
+  The reveal was re-derived every render and unioned into the displayed set,
+  so it beat the user every frame. It now applies once per selection change —
+  a search hit still reveals a document buried in a folder you never opened.
+
+### Added
+
+- **Document management on the reader pane**: a read/edit toggle, summarize,
+  and delete behind a confirm dialog that states what delete actually does —
+  it withdraws every block of the document as evidence and expires any fact
+  left with no surviving source.
+- **`POST /documents/{id}/summary`.** The summary panel could never fill,
+  because `summarise_document` shipped with no caller anywhere in the app —
+  no route, no job, no tool — so the existing `GET` read a property nothing in
+  the tree could write. This is the missing door. It is an explicit act that
+  spends a model call, so it is never fired by opening a document.
+- **A reparse path for parser changes.** `content_hash` is the change gate, so
+  re-pushing a document's own bytes files nothing — right for ordinary
+  filings, and exactly what stops a *parser* fix reaching already-filed
+  documents. `scripts/reparse_documents.py` re-files in place from
+  `documents.content`, so it needs neither the original files nor a login.
+  Its cost is re-embedding rather than parsing.
+- **A test that the workspace panes actually fill the viewport.** jsdom
+  performs no layout, so every unit assertion about the tree and reader panes
+  passed whether they filled the window or collapsed to nothing. A Playwright
+  spec now pins real heights, side-by-side placement and independent
+  scrolling.
+
 ### Notes
 
 - **The baseline was regenerated** to add `documents.content` — the
