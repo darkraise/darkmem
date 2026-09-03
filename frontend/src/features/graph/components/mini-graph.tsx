@@ -18,13 +18,22 @@ export function MiniGraph({
   onNavigate,
   onEntitySelect,
 }: MiniGraphProps) {
-  const { data, isLoading } = useMemoryContext(memoryId)
+  const { data, isLoading, isError } = useMemoryContext(memoryId)
   const { palette } = useMemoryGraphTheme()
 
   if (isLoading)
     return (
       <p className="text-muted-foreground p-2 text-sm">Loading context…</p>
     )
+  if (isError) {
+    // Not the empty state: "no entities extracted yet" tells the reader their
+    // pipeline did not extract, on a read that merely failed.
+    return (
+      <p className="text-destructive p-2 text-sm">
+        Context could not be loaded — a failed read, not an empty graph.
+      </p>
+    )
+  }
   if (!data || (data.entities.length === 0 && data.neighbors.length === 0)) {
     return (
       <p className="text-muted-foreground p-2 text-sm">

@@ -17,11 +17,13 @@ import {
 export function useGitAccountsData(): {
   data: GitAccountsResponse
   isLoading: boolean
+  isError: boolean
 } {
   const demo = useDemoGitAccounts()
   const query = useGitAccounts()
   const source = DEMO ? demo : query.data
   const isLoading = DEMO ? false : query.isLoading
+  const isError = DEMO ? false : query.isError
 
   // Memoised because the normalisation would otherwise mint a fresh
   // object on every render, and a consumer that lists it in an effect's
@@ -34,7 +36,8 @@ export function useGitAccountsData(): {
         providers: source?.providers ?? [],
       },
       isLoading,
+      isError,
     }),
-    [source, isLoading],
+    [source, isLoading, isError],
   )
 }

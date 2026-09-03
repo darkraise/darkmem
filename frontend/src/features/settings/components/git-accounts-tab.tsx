@@ -41,7 +41,7 @@ function formatVerified(at: string | null): string {
 }
 
 export function GitAccountsTab() {
-  const { data, isLoading } = useGitAccountsData()
+  const { data, isLoading, isError } = useGitAccountsData()
   const update = useUpdateGitAccount()
   const [editing, setEditing] = useState<GitAccount | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -88,7 +88,14 @@ export function GitAccountsTab() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isError ? (
+            // Not the empty state: "No git accounts" invites re-adding a
+            // token the instance already holds.
+            <p className="text-destructive text-sm">
+              Git accounts could not be loaded — a failed read, not an empty
+              credential store.
+            </p>
+          ) : isLoading ? (
             <div className="space-y-2">
               {Array.from({ length: 2 }, (_, i) => (
                 <Skeleton key={i} className="h-16 w-full rounded-md" />
