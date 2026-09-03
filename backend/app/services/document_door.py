@@ -707,9 +707,16 @@ class BlockRow:
     text: str
     order_index: int | None
     char_span: tuple[int, int] | None
-    # A heading's level, a list item's marker, a table's header and column
-    # alignments. Served because `text` alone cannot render a table through a
-    # real table component, and cannot tell a level-2 heading from a level-4.
+    # The enclosing block, or None at the document's top level. The parser
+    # makes a nested list item's parent the enclosing *item* -- the list
+    # wrapper is transparent and mints no block -- so a renderer rebuilds the
+    # tree from this column alone rather than inferring depth from anything.
+    parent_id: str | None = None
+    # A heading's level, a table's header and column alignments. Served
+    # because `text` alone cannot render a table through a real table
+    # component, and cannot tell a level-2 heading from a level-4. It does
+    # NOT carry a list item's marker: `parse_markdown` writes `None` for
+    # every list block, so ordered-vs-bullet is not on this surface at all.
     properties: dict | None = None
     # The block's own markdown source, sliced server-side from the document's
     # stored content by this block's span. `text` is marker-stripped, so it is
@@ -782,6 +789,7 @@ async def document_content(session: AsyncSession, *, document_id: str) -> str | 
 # which makes an editor's per-block read depend on a second, much larger one.
 _BLOCKS = """
     SELECT CAST(b.id AS text) AS id, b.type, b.text, b.order_index,
+           CAST(b.parent_id AS text) AS parent_id,
            b.properties,
            lower(b.char_span) AS span_start, upper(b.char_span) AS span_end,
            substring(d.content
@@ -821,7 +829,7 @@ async def document_blocks(
     return [
         BlockRow(
             block_id=r["id"], type=r["type"], text=r["text"] or "",
-            order_index=r["order_index"],
+            order_index=r["order_index"], parent_id=r["parent_id"],
             char_span=(
                 (r["span_start"], r["span_end"])
                 if r["span_start"] is not None and r["span_end"] is not None

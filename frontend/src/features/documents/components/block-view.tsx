@@ -1,3 +1,4 @@
+import type { ReactNode } from "react"
 import Markdown from "react-markdown"
 import { Separator } from "darkraise-ui/components/separator"
 import {
@@ -9,6 +10,23 @@ import {
   TableRow,
 } from "darkraise-ui/components/table"
 import type { BlockRow } from "@/hooks/api"
+
+/** Heading text is inline content, so the markdown wrapper paragraph would
+ *  put a block element inside an `<h*>`. Unwrapping it keeps inline code and
+ *  emphasis working without breaking the heading's own layout. */
+const INLINE_ONLY = { p: ({ children }: { children?: ReactNode }) => <>{children}</> }
+
+/** Visual weight per level. A level is a document-structure fact, so it drives
+ *  the tag for accessibility and the outline; the sizes keep the reader from
+ *  rendering an h1 at browser-default proportions inside a pane. */
+const HEADING_CLASS: Record<number, string> = {
+  1: "text-xl font-semibold tracking-tight",
+  2: "text-lg font-semibold tracking-tight",
+  3: "text-base font-semibold tracking-tight",
+  4: "text-sm font-semibold tracking-tight",
+  5: "text-sm font-medium tracking-tight",
+  6: "text-muted-foreground text-sm font-medium tracking-tight",
+}
 
 /** One block, rendered by type. A pure render of the row -- no fetching, no
  *  state -- because increment 8's editor wraps exactly this component for its
@@ -22,10 +40,19 @@ import type { BlockRow } from "@/hooks/api"
  */
 export function BlockView({ block }: { block: BlockRow }) {
   switch (block.type) {
-    case "heading":
+    case "heading": {
+      // `properties.level` is what the parser wrote from the `#` count.
+      // Clamped rather than trusted: a block minted by the editor may carry
+      // no level, and an out-of-range one would build an invalid tag name.
+      const raw = Number(block.properties?.level)
+      const level = Number.isInteger(raw) && raw >= 1 && raw <= 6 ? raw : 2
+      const Tag = `h${level}` as "h1" | "h2" | "h3" | "h4" | "h5" | "h6"
       return (
-        <h3 className="text-base font-semibold tracking-tight">{block.text}</h3>
+        <Tag className={HEADING_CLASS[level]}>
+          <Markdown components={INLINE_ONLY}>{block.text}</Markdown>
+        </Tag>
       )
+    }
     case "code":
       return (
         <pre className="border-border bg-muted/40 overflow-x-auto rounded-md border p-3 font-mono text-sm whitespace-pre-wrap">

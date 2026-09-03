@@ -805,3 +805,31 @@ def test_the_blocks_edited_event_type_exists_before_its_emitter():
     from app.services.events import EVENT_TYPES
 
     assert "blocks_edited" in EVENT_TYPES
+
+
+@pytest.mark.asyncio
+async def test_document_blocks_serves_parent_id_so_nesting_survives_the_wire(session):
+    """`blocks.parent_id` is written by the parser and indexed by the
+    baseline, but was absent from the read surface -- so every reader saw a
+    flat list and a nested list lost its nesting with no way to recover it.
+
+    The parser makes a nested item's parent the *enclosing item*, never the
+    list wrapper (`bullet_list_open` is transparent), so the child here must
+    point at the outer item's own block id.
+    """
+    llm = StubEmbedder()
+    result = await put_document(
+        session, llm, project="p", uri="docs/nested.md",
+        content="# Title\n\n- outer\n    - inner\n",
+    )
+
+    rows = await document_blocks(session, document_id=result.document_id)
+    by_text = {r.text: r for r in rows}
+
+    heading = by_text["Title"]
+    outer = by_text["outer"]
+    inner = by_text["inner"]
+
+    assert heading.parent_id is None
+    assert outer.parent_id == heading.block_id
+    assert inner.parent_id == outer.block_id
