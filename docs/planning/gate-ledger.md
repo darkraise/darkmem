@@ -3631,10 +3631,16 @@ cache-served). **284 lines of scoring content are byte-identical.** Exactly 7
 lines differ and every one is run-identity or wall-clock: the run id with its
 timestamp, and six twin latency figures (`p50`/`p95`).
 
-**A third, unplanned comparison is stronger than the two legs.** The committed
-`docs/eval/2026-09-03-retrieval-eval.md`, produced in an **earlier session at a
-different commit** (`515a34a1`), differs from today's runs only in run id,
-latency and the recorded git sha — every score identical across a different day,
+**A third, unplanned comparison is stronger than the two legs.** A report
+produced in an **earlier session at a different commit** (`515a34a1`, run id
+`efb4e8fa`) differs from today's runs only in run id, latency and the recorded
+git sha. It is preserved as
+`docs/eval/2026-09-03-gf-stability/retrieval-eval-prior-commit-515a34a1.md`
+rather than cited at its original dated path: citing that path made it gate
+evidence, which the eval runner's own overwrite guard then correctly refused to
+let the routine gate replay overwrite. Copying it here is the remedy that guard
+prescribes — never overwrite a cited artifact, mint a differently-named one and
+move the citation in the same commit — every score identical across a different day,
 process and tree. That is reproduction in the sense the bar was reaching for,
 and it was not staged for.
 
