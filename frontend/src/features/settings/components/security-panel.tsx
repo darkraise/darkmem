@@ -36,12 +36,21 @@ function detailText(details: Record<string, unknown>): string {
   return ""
 }
 
+/** UNREACHABLE as of 2026-09-03: nothing imports this module or its export,
+ *  the settings barrel re-exports only `./schemas`, there is no dynamic
+ *  import, and neither of its strings appears in any built chunk. The live
+ *  Security surface is `security-tab.tsx`.
+ *
+ *  The `isError` guard below is therefore defensive, not a shipped repair —
+ *  it is kept so this cannot be wired up fail-open, since an audit surface
+ *  that renders "no events" on a failed read understates what it holds. The
+ *  real resolution is to delete this file; that is the owner's call. */
 export function SecurityPanel() {
   const [filterIdx, setFilterIdx] = useState(0)
   const [offset, setOffset] = useState(0)
   const action = FILTERS[filterIdx]?.action
 
-  const { data, isLoading } = useAuditLog({ limit: PAGE_SIZE, offset, action })
+  const { data, isLoading, isError } = useAuditLog({ limit: PAGE_SIZE, offset, action })
   const items: AuditEntry[] = data?.items ?? []
   const total = data?.total ?? 0
 
@@ -80,7 +89,15 @@ export function SecurityPanel() {
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-4">
-          {isLoading ? (
+          {isError ? (
+            // Not the empty state: an audit surface that renders "no events"
+            // on a failed read is the one screen that must never understate
+            // what it holds.
+            <p className="text-destructive text-sm">
+              The audit log could not be loaded — a failed read, not an empty
+              journal.
+            </p>
+          ) : isLoading ? (
             <div className="bg-muted h-40 animate-pulse rounded" />
           ) : items.length === 0 ? (
             <EmptyState
