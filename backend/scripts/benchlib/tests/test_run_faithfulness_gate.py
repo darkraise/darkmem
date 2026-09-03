@@ -291,3 +291,34 @@ async def test_fetch_bar_rows_actually_refuses_a_write(monkeypatch):
     finally:
         await engine.dispose()
     assert "read-only" in str(caught.value).lower()
+
+
+# ── minting, behind an explicit gate flag (2026-09-03) ───────────────────
+
+
+def test_the_runner_mints_nothing_without_the_gate_flag(tmp_path, monkeypatch):
+    """Scoring a gold is not the same act as minting a record. The claim/fact
+    runner has always required --gate; this one had no mint path at all, so
+    the flag has to arrive with it rather than after it."""
+    import benchlib.run_faithfulness_gate as rfg
+    assert "--gate" in _flags(rfg)
+    assert "--record-dir" in _flags(rfg)
+
+
+def _flags(mod):
+    import argparse, contextlib, io
+    parser_flags = []
+    real = argparse.ArgumentParser.add_argument
+
+    def spy(self, *a, **k):
+        parser_flags.extend([x for x in a if isinstance(x, str)])
+        return real(self, *a, **k)
+
+    argparse.ArgumentParser.add_argument = spy
+    try:
+        with contextlib.redirect_stdout(io.StringIO()), \
+                contextlib.suppress(SystemExit):
+            mod.main(["--help"])
+    finally:
+        argparse.ArgumentParser.add_argument = real
+    return parser_flags

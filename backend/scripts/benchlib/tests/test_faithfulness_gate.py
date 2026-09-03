@@ -651,3 +651,92 @@ async def test_the_gate_probes_under_the_faithfulness_role_prompt():
 
     assert seen, "no probe reached the judge"
     assert set(seen) == {vj.SPAN_SYSTEM_PROMPT}
+
+
+# ── minting the faithfulness qualification record (2026-09-03) ───────────
+# Before this, `run_judge_qualification.py` minted the role off the claim/fact
+# gold (wrong gold) and the span runner minted nothing, so after that door was
+# shut the role was unmintable by anything.
+
+
+def _clearing_score():
+    """A score that clears both faithfulness bars, with two false accepts so
+    the disclosure cell is a real number rather than a lucky zero."""
+    verdicts = {}
+    for p in PAIRS:
+        verdicts[p["id"]] = _stub_verdict(
+            "entailed" if p["verdict"] == "entailed" else "unsupported"
+        )
+    return fg.score_span_judgments(PAIRS, verdicts)
+
+
+def _stub_verdict(v):
+    from app.services.verification_judge import ProbeVerdict
+    return ProbeVerdict(verdict=v, reason="stub", raw="{}", valid=True)
+
+
+def test_the_record_discloses_the_span_leak_cell(tmp_path):
+    """`qualification_state` fails the role closed unless the record states
+    `unsupported_judged_entailed` — a span that does not support the sentence
+    judged as if it did, which is what serves a hallucination as grounded."""
+    from app.services import verification_judge as vj
+
+    target = tmp_path / "faithfulness.json"
+    fg.write_faithfulness_record(
+        target,
+        gold_path=fg.SPAN_GOLD_PATH,
+        identity=vj.judge_identity(_cfg(), role=vj.FAITHFULNESS_ROLE),
+        score=_clearing_score(),
+        ledger_run_id="run-1",
+        git_sha="deadbeef",
+        timestamp="2026-09-03T00:00:00+00:00",
+    )
+    record = json.loads(target.read_text())
+    assert record["role"] == vj.FAITHFULNESS_ROLE
+    assert isinstance(record["metrics"][vj.SPAN_LEAK_DISCLOSURE_METRIC], int)
+
+
+def test_the_record_binds_the_faithfulness_identity_not_the_shared_one(tmp_path):
+    """A record carrying the entailment identity would never match the judge
+    this role actually serves, and would fail closed forever."""
+    from app.services import verification_judge as vj
+
+    target = tmp_path / "faithfulness.json"
+    fg.write_faithfulness_record(
+        target, gold_path=fg.SPAN_GOLD_PATH,
+        identity=vj.judge_identity(_cfg(), role=vj.FAITHFULNESS_ROLE),
+        score=_clearing_score(), ledger_run_id="r", git_sha="s",
+        timestamp="2026-09-03T00:00:00+00:00",
+    )
+    record = json.loads(target.read_text())
+    expected = vj.judge_identity(_cfg(), role=vj.FAITHFULNESS_ROLE)
+    assert record["judge_identity"]["identity_hash"] == vj.judge_identity_hash(expected)
+    assert record["judge_identity"]["identity_hash"] != vj.judge_identity_hash(
+        vj.judge_identity(_cfg(), role=vj.ENTAILMENT_ROLE)
+    )
+
+
+def test_the_canonical_record_is_refused_from_a_non_canonical_gold(tmp_path):
+    """The rehearsal guard the claim/fact writer already has: an easy gold
+    must not be able to mint the record the app-side reader honours."""
+    from app.services import verification_judge as vj
+
+    fake_gold = tmp_path / "easy_gold.json"
+    fake_gold.write_text("{}")
+    with pytest.raises(ValueError, match="canonical"):
+        fg.write_faithfulness_record(
+            vj.qualification_record_path(vj.FAITHFULNESS_ROLE),
+            gold_path=fake_gold,
+            identity=vj.judge_identity(_cfg(), role=vj.FAITHFULNESS_ROLE),
+            score=_clearing_score(), ledger_run_id="r", git_sha="s",
+            timestamp="2026-09-03T00:00:00+00:00",
+        )
+
+
+def _cfg():
+    from app.config import LLMPurposeConfig
+    return LLMPurposeConfig(
+        model="gpt-5.5", base_url="https://api.openai.com/v1",
+        api_key="sk-test", api_kind="openai",
+        params={"reasoning_effort": "high"},
+    )

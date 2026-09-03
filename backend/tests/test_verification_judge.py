@@ -1913,3 +1913,35 @@ def test_the_faithfulness_role_is_minted_by_the_span_gold_alone():
     assert vj.FAITHFULNESS_ROLE not in vj.CLAIM_FACT_ROLES
     shared = {vj.BAR_METRICS[k] for k in vj.JUDGE_ROLES[vj.FAITHFULNESS_ROLE]}
     assert shared == {vj.BAR_METRICS[k] for k in vj.JUDGE_ROLES[vj.ENTAILMENT_ROLE]}
+
+
+@pytest.mark.asyncio
+async def test_a_minted_faithfulness_record_satisfies_the_reader(session, tmp_path):
+    """Writer and reader must agree. A record the harness can mint but
+    `qualification_state` refuses is worse than none: it reads as qualified
+    everywhere a human looks and licenses nothing."""
+    import sys
+    sys.path.insert(0, str(__import__("pathlib").Path(vj.__file__).parents[2] / "scripts"))
+    from benchlib import faithfulness_gate as fg
+
+    cfg = {"verification": _pinned_entailment_config()}
+    identity = vj.judge_identity(cfg["verification"], role=vj.FAITHFULNESS_ROLE)
+    verdicts = {
+        p["id"]: vj.ProbeVerdict(
+            verdict="entailed" if p["verdict"] == "entailed" else "unsupported",
+            reason="stub", raw="{}", valid=True,
+        )
+        for p in fg.load_span_gold()["pairs"]
+    }
+    score = fg.score_span_judgments(fg.load_span_gold()["pairs"], verdicts)
+
+    target = tmp_path / "faithfulness.json"
+    fg.write_faithfulness_record(
+        target, gold_path=fg.SPAN_GOLD_PATH, identity=identity, score=score,
+        ledger_run_id="run-1", git_sha="sha", timestamp="2026-09-03T00:00:00+00:00",
+    )
+
+    state = await vj.qualification_state(
+        session, cfg, role=vj.FAITHFULNESS_ROLE, record_path=target,
+    )
+    assert state.qualified, state.reasons

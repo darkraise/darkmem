@@ -47,6 +47,7 @@ from benchlib.twin import (
 
 from app.config import LLMPurposeConfig
 from app.services import faithfulness_bars as fb
+from app.services import verification_judge
 from app.services.verification_judge import (
     FAITHFULNESS_ROLE,
     ProbeVerdict,
@@ -623,3 +624,88 @@ async def score_via_live_judge(
     score = score_span_judgments(pairs, verdicts)
     twin = Twin.capture(recorder, llm.tokens, declared_channels=("judge_call",))
     return score, twin, verdicts
+
+
+def write_faithfulness_record(
+    record_path: str | Path,
+    *,
+    gold_path: str | Path,
+    identity: dict,
+    score: FaithfulnessScore,
+    ledger_run_id: str,
+    git_sha: str,
+    timestamp: str,
+) -> None:
+    """Mint the faithfulness role's qualification record.
+
+    Deliberately NOT ``judge_qualification.write_qualification_record``: that
+    writer computes its gold hash through ``entailment_gold`` and refuses any
+    canonical path whose gold is not the claim/fact gold, so it can neither
+    describe this gold nor ever mint this role. Sharing it was the defect --
+    until 2026-09-03 the claim/fact runner minted this role off the claim/fact
+    gold, qualifying the span judge on a distribution it was never shown.
+
+    ``identity`` is the caller's, but it must be the identity this role is
+    actually served: a record carrying the shared prompt's hash would fail the
+    reader's identity check forever, which is a silent no-op rather than a
+    refusal.
+    """
+    record_path = Path(record_path)
+    gold_path = Path(gold_path)
+
+    canonical_record = verification_judge.qualification_record_path(
+        FAITHFULNESS_ROLE
+    ).resolve()
+    if record_path.resolve() == canonical_record \
+            and gold_path.resolve() != SPAN_GOLD_PATH.resolve():
+        raise ValueError(
+            "refusing to write the canonical faithfulness record from a "
+            f"non-canonical gold ({gold_path}); rehearsals must use a "
+            "non-default record path"
+        )
+
+    gold_doc = load_span_gold(gold_path) if gold_path.exists() else {"pairs": []}
+    gold_pairs_sha256 = entailment_gold.pairs_content_hash(gold_doc["pairs"])
+    # The reader refuses a retired pair set too. Deliberately not one check:
+    # the writer's job is never to create the artifact, the reader's never to
+    # honour one that exists.
+    if verification_judge.is_retired_pair_set(gold_pairs_sha256):
+        raise ValueError(
+            f"refusing to write a faithfulness record for pair set "
+            f"{gold_pairs_sha256[:8]}: it is retired from qualification"
+        )
+
+    expected = verification_judge.judge_identity_hash(
+        {k: v for k, v in identity.items() if k != "identity_hash"}
+    )
+    # The span analogue of the claim/fact leak cell: gold `not-entailed` that
+    # the judge called `entailed`. That is the cell which serves a
+    # hallucination under a grounded badge, and the reader fails the role
+    # closed unless the record states it.
+    leak = int((score.confusion.get("not-entailed") or {}).get("entailed", 0))
+
+    record = {
+        "role": FAITHFULNESS_ROLE,
+        "judge_identity": {**identity, "identity_hash": expected},
+        "metrics": {
+            "entailed_precision": score.entailed_precision,
+            "entailed_recall": score.entailed_recall,
+            verification_judge.SPAN_LEAK_DISCLOSURE_METRIC: leak,
+            "invalid": score.invalid,
+            "n_pairs": score.n_pairs,
+        },
+        "bars_gating_this_role": {
+            key: fb.FAITHFULNESS_BAR_DEFAULTS[key]
+            for key in verification_judge.JUDGE_ROLES[FAITHFULNESS_ROLE]
+        },
+        "gold_sha256": hashlib.sha256(gold_path.read_bytes()).hexdigest(),
+        "gold_pairs_sha256": gold_pairs_sha256,
+        "gate_eligible": True,
+        "ledger_run_id": ledger_run_id,
+        "git_sha": git_sha,
+        "recorded_at": timestamp,
+    }
+    record_path.parent.mkdir(parents=True, exist_ok=True)
+    record_path.write_text(
+        json.dumps(record, indent=1, sort_keys=True), encoding="utf-8"
+    )

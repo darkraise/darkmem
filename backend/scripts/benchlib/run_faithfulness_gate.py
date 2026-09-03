@@ -33,6 +33,9 @@ belong to pytest, which drops and recreates them under a concurrent run.
 from __future__ import annotations
 
 import argparse
+import subprocess
+import uuid
+from datetime import datetime, timezone
 import asyncio
 import json
 import sys
@@ -51,6 +54,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # no
 from benchlib import db_target, faithfulness_gate as fg  # noqa: E402
 
 from app.services import faithfulness_bars as fb  # noqa: E402
+from app.services import verification_judge as vj  # noqa: E402
 from app.services.verification_judge import JUDGE_ROLES  # noqa: E402
 
 FORBIDDEN_DATABASE_NAMES = {"darkmem_test"}
@@ -131,6 +135,20 @@ async def _run(argv: list[str] | None = None) -> int:
         "--live", action="store_true",
         help="actually probe the judge against a present gold (spends a "
              "measurement attempt); refused without --api-key",
+    )
+    parser.add_argument(
+        "--gate", action="store_true",
+        help="mint the faithfulness qualification record when BOTH bars "
+             "clear. Scoring a gold and minting a record are two acts: a "
+             "run without this flag reports its numbers and writes nothing, "
+             "and a run with it writes nothing unless the bars clear. "
+             "Mirrors run_judge_qualification.py.",
+    )
+    parser.add_argument(
+        "--record-dir", default=None,
+        help="where the record is written (default: the canonical path the "
+             "app-side reader honours). A rehearsal against a non-canonical "
+             "gold is refused at the canonical path.",
     )
     parser.add_argument("--api-key", default=None)
     parser.add_argument("--model", default=None)
@@ -247,7 +265,50 @@ async def _run(argv: list[str] | None = None) -> int:
     )
     print()
     print(fg.render_cost_twin(twin))
+
+    if args.gate:
+        clears = fb.faithfulness_role_clears(
+            score.entailed_precision or 0.0, score.entailed_recall or 0.0, bars,
+        )
+        print()
+        print("== mint ==")
+        if not clears:
+            # The 2026-08-08 rule this runner inherits rather than reinvents: a
+            # missed bar leaves its report and no record. A record carrying its
+            # own failing numbers is a key in the door that turns the moment a
+            # bar is loosened, and a bar is a config row.
+            print("bars not cleared — no record written.")
+        else:
+            target = (
+                Path(args.record_dir)
+                / f"verification_qualification.{vj.FAITHFULNESS_ROLE}.json"
+                if args.record_dir is not None
+                else vj.qualification_record_path(vj.FAITHFULNESS_ROLE)
+            )
+            fg.write_faithfulness_record(
+                target,
+                gold_path=Path(args.gold),
+                identity=vj.judge_identity(
+                    config["verification"], role=vj.FAITHFULNESS_ROLE,
+                ),
+                score=score,
+                ledger_run_id=str(uuid.uuid4()),
+                git_sha=_git_sha(),
+                timestamp=datetime.now(timezone.utc).isoformat(),
+            )
+            print(f"both bars cleared — record written to {target}")
+
     return 0 if bars_ok else 1
+
+
+def _git_sha() -> str:
+    try:
+        return subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, capture_output=True,
+            text=True, check=True, timeout=10,
+        ).stdout.strip()
+    except (subprocess.SubprocessError, OSError):
+        return "unknown"
 
 
 def main(argv: list[str] | None = None) -> int:
