@@ -111,6 +111,11 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
     reason:
       "Addressed by document ids and carrying no project param, the same shape as documentBlocks. The key is the sorted id list rather than one id: the Progress board reads nine documents at once, and a hook per document would mean a variable number of hooks",
   },
+  documentRelatedMemories: {
+    kind: "global",
+    reason:
+      "Addressed by document id and carrying no project param, the same shape as documentConnections: the read derives its project scope from the document server-side, so a project-keyed cache entry would key on something the request never sends",
+  },
   documentSummary: {
     kind: "global",
     reason:

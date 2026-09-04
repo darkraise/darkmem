@@ -256,6 +256,48 @@ export function useDocumentContents(documentIds: string[]) {
   })
 }
 
+export interface RelatedMemory {
+  memory_id: string
+  content: string
+  memory_type: string | null
+  status: string
+  source: string | null
+  shared_entities: string[]
+}
+
+/**
+ * Memories asserting what this document's lift asserted.
+ *
+ * `lifted: false` is not an empty list -- it means the document has never
+ * been lifted, and the surface offers the lift instead of rendering a blank
+ * panel that reads as "nothing relates to this".
+ */
+export function useRelatedMemories(documentId: string | null) {
+  return useQuery<{ items: RelatedMemory[]; lifted: boolean }>({
+    queryKey: ["documentRelatedMemories", documentId],
+    enabled: !DEMO && Boolean(documentId),
+    queryFn: () => apiFetch(`/documents/${documentId}/related-memories`),
+  })
+}
+
+/** Lift this document's propositions into ordinary memories.
+ *
+ * Idempotent: the service strips the prior lift keyed on `document_id`, so a
+ * second lift replaces the first rather than doubling it. */
+export function useDocumentLift(documentId: string | null) {
+  const queryClient = useQueryClient()
+  return useMutation<{ lifted: number; stripped: number; memory_ids: string[] }>({
+    mutationFn: () =>
+      apiFetch(`/documents/${documentId}/lift`, { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["documentRelatedMemories", documentId],
+      })
+      queryClient.invalidateQueries({ queryKey: ["documentConnections", documentId] })
+    },
+  })
+}
+
 export function useDocumentOutline(documentId: string | null) {
   return useQuery<{ document_id: string; items: OutlineNode[] }>({
     queryKey: ["documentOutline", documentId],
