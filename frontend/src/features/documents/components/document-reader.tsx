@@ -75,6 +75,40 @@ export function adoptTableRows(rows: BlockRow[]): {
   return { rowsByTable, adopted }
 }
 
+/** Vertical rhythm, which a uniform gap cannot express.
+ *
+ * The body used to be `space-y-2.5`: the same gap between two list items as
+ * between a paragraph and the heading of the next section, so nothing on the
+ * page grouped and a document read as one flat column. Prose needs a heading
+ * to own the space above it, and a run of list items to sit tighter than the
+ * paragraphs around them.
+ *
+ * Returned as a class per row rather than a `space-y` on the parent, because
+ * the gap depends on which two block types meet.
+ */
+export function blockSpacing(
+  block: BlockRow,
+  previous: BlockRow | undefined,
+  index: number,
+): string {
+  if (index === 0) return ""
+  // A heading opens a section: the space belongs above it, and more of it the
+  // higher the level.
+  if (block.type === "heading") {
+    const level = Number(block.properties?.level)
+    return level === 1 || level === 2 ? "mt-6" : "mt-5"
+  }
+  // The first row after a heading stays close to it -- it is that heading's
+  // content, not a new thing.
+  if (previous?.type === "heading") return "mt-1.5"
+  // Consecutive list items are one list.
+  if (block.type === "list" && previous?.type === "list") return "mt-1"
+  if (block.type === "table_row") return "mt-0"
+  if (block.type === "divider") return "mt-5"
+  if (previous?.type === "divider") return "mt-5"
+  return "mt-3"
+}
+
 export function DocumentReader({
   documentId,
   focusBlockId = null,
@@ -150,9 +184,10 @@ export function DocumentReader({
         </nav>
       ) : null}
 
-      <div ref={bodyRef} className="min-w-0 flex-1 space-y-2.5">
-        {body.map((block) => {
+      <div ref={bodyRef} className="min-w-0 flex-1">
+        {body.map((block, i) => {
           const depth = depths[block.block_id] ?? 0
+          const previous = body[i - 1]
           return (
             <div
               key={block.block_id}
@@ -160,11 +195,14 @@ export function DocumentReader({
               data-block-id={block.block_id}
               data-depth={depth}
               style={depth > 0 ? { paddingLeft: `${depth * 18}px` } : undefined}
-              className={
+              className={[
+                blockSpacing(block, previous, i),
                 block.block_id === focusBlockId
                   ? "ring-primary/40 rounded-sm ring-2 ring-offset-2 ring-offset-transparent"
-                  : undefined
-              }
+                  : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
             >
               <BlockView
                 block={block}

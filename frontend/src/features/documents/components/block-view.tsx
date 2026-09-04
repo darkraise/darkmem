@@ -1,5 +1,3 @@
-import type { ReactNode } from "react"
-import Markdown from "react-markdown"
 import { Separator } from "darkraise-ui/components/separator"
 import {
   Table,
@@ -10,22 +8,23 @@ import {
   TableRow,
 } from "darkraise-ui/components/table"
 import type { BlockRow } from "@/hooks/api"
-
-/** Heading text is inline content, so the markdown wrapper paragraph would
- *  put a block element inside an `<h*>`. Unwrapping it keeps inline code and
- *  emphasis working without breaking the heading's own layout. */
-const INLINE_ONLY = { p: ({ children }: { children?: ReactNode }) => <>{children}</> }
+import { CodeBlock, InlineMarkdown } from "@/components/markdown"
 
 /** Visual weight per level. A level is a document-structure fact, so it drives
  *  the tag for accessibility and the outline; the sizes keep the reader from
- *  rendering an h1 at browser-default proportions inside a pane. */
+ *  rendering an h1 at browser-default proportions inside a pane.
+ *
+ * Every level below 3 used to land on `text-sm`, which is the body size --
+ * so an h4, an h5 and a paragraph were the same size and weight, and a
+ * document's structure below the second level was invisible. Each level now
+ * steps, and h6 changes KIND rather than shrinking below the body text. */
 const HEADING_CLASS: Record<number, string> = {
-  1: "text-xl font-semibold tracking-tight",
-  2: "text-lg font-semibold tracking-tight",
-  3: "text-base font-semibold tracking-tight",
-  4: "text-sm font-semibold tracking-tight",
-  5: "text-sm font-medium tracking-tight",
-  6: "text-muted-foreground text-sm font-medium tracking-tight",
+  1: "text-2xl font-semibold tracking-tight",
+  2: "text-xl font-semibold tracking-tight",
+  3: "text-lg font-semibold tracking-tight",
+  4: "text-base font-semibold tracking-tight",
+  5: "text-sm font-semibold tracking-tight",
+  6: "text-muted-foreground font-mono text-xs font-semibold tracking-wide uppercase",
 }
 
 /** One block, rendered by type. A pure render of the row -- no fetching, no
@@ -59,20 +58,24 @@ export function BlockView({
       const Tag = `h${level}` as "h1" | "h2" | "h3" | "h4" | "h5" | "h6"
       return (
         <Tag className={HEADING_CLASS[level]}>
-          <Markdown components={INLINE_ONLY}>{block.text}</Markdown>
+          <InlineMarkdown>{block.text}</InlineMarkdown>
         </Tag>
       )
     }
     case "code":
+      // `overflow-x-auto` and `whitespace-pre-wrap` used to be set together,
+      // which cannot both apply: the wrap means the box never overflows, so
+      // long lines broke mid-token instead of scrolling. CodeBlock scrolls.
       return (
-        <pre className="border-border bg-muted/40 overflow-x-auto rounded-md border p-3 font-mono text-sm whitespace-pre-wrap">
-          {block.text}
-        </pre>
+        <CodeBlock
+          code={block.text}
+          language={block.properties?.language as string | undefined}
+        />
       )
     case "quote":
       return (
         <blockquote className="border-primary/40 text-muted-foreground border-l-2 pl-3 text-sm italic">
-          <Markdown>{block.text}</Markdown>
+          <InlineMarkdown>{block.text}</InlineMarkdown>
         </blockquote>
       )
     case "list": {
@@ -90,11 +93,20 @@ export function BlockView({
         (typeof marker === "string" && /^\d+[.)]$/.test(marker))
       const label = ordered && typeof marker === "string" ? marker : "\u2022"
       return (
-        <div className="flex gap-2 text-sm">
-          <span aria-hidden className={ordered ? "tabular-nums" : undefined}>
+        <div className="flex gap-2 text-sm leading-relaxed">
+          <span
+            aria-hidden
+            className={
+              ordered
+                ? "text-muted-foreground shrink-0 tabular-nums"
+                : "text-muted-foreground shrink-0"
+            }
+          >
             {label}
           </span>
-          <Markdown>{block.text}</Markdown>
+          <div className="min-w-0 flex-1">
+            <InlineMarkdown>{block.text}</InlineMarkdown>
+          </div>
         </div>
       )
     }
@@ -161,7 +173,7 @@ export function BlockView({
     default:
       return (
         <div className="text-sm leading-relaxed">
-          <Markdown>{block.text}</Markdown>
+          <InlineMarkdown>{block.text}</InlineMarkdown>
         </div>
       )
   }
