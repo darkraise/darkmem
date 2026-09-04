@@ -161,6 +161,27 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
                "from the caller, so neither door can widen it.",
     ),
     ContentSurface(
+        key="document_related_memories",
+        kind=_R,
+        front_doors=("GET /api/v1/documents/{document_id}/related-memories",),
+        crosses=("content",),
+        scoping=Scoping.SCOPED,
+        # `status` rides the row because a related memory may be superseded or
+        # deprecated, and a maintenance surface that hid that would invite an
+        # edit to a row the pipeline has already retired.
+        labels=("project", "status"),
+        decided_by="spec 2026-09-03 §6.2",
+        reason="The sibling documents reads sit in ROUTES_WITHOUT_MEMORY_CONTENT "
+               "because no `memories` row crosses them. This one is different "
+               "and is classified on what it actually returns: `m.content` for "
+               "every related memory. The scope is derived from the document "
+               "rather than accepted from the caller -- `_PROJECT_SQL` reads the "
+               "document's own project and the query binds it -- so the door has "
+               "no wide mode and a caller cannot widen it. Single-door on REST; "
+               "an MCP twin would hand an agent an L1-keyed memory list, which "
+               "is graph.candidate_read's own block.",
+    ),
+    ContentSurface(
         key="memory_overview",
         kind=_R,
         front_doors=("GET /api/v1/knowledge/overview", "mcp:memory_overview"),
@@ -619,6 +640,11 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # cost question rather than a scoping one -- `refuse_when_read_only` on
     # the route is what answers that.
     "POST /api/v1/documents/{document_id}/summary",
+    # The lift MINTS memories, but its response carries only their ids -- no
+    # `memories` row content crosses the wire, which is this bucket's claim.
+    # The memories it writes are then served by the ordinary memory surfaces,
+    # which are classified on their own terms above.
+    "POST /api/v1/documents/{document_id}/lift",
     "GET /api/v1/documents/{document_id}/connections",
     "POST /api/v1/documents/qa",
     # The write door: filing and deleting a document. Same classification as

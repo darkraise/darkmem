@@ -282,6 +282,45 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="documents.related_memories",
+        status=REST_ONLY,
+        rest=(("GET", f"{V1}/documents/{{document_id}}/related-memories"),),
+        mcp=(),
+        reason=(
+            "Single-door for documents.reads' own last clause, one hop over. "
+            "That row keeps `connections` REST-only because it serves L1 "
+            "entity names read off `entities.memory_ids`, and doc 12 section 4 "
+            "fixes L1 as never directly served on a retrieval surface. This "
+            "verb reaches the same rows by the same key and returns the "
+            "memories rather than the documents, so if anything the clause "
+            "binds it harder: an MCP twin would hand an agent an L1-keyed "
+            "memory list, which is exactly graph.candidate_read's block. The "
+            "agent's sanctioned path to these rows is memory_search, which "
+            "ranks them, and the shared-entity count here is deliberately "
+            "evidence rather than a score."
+        ),
+    ),
+    Surface(
+        name="documents.lift",
+        status=REST_ONLY,
+        rest=(("POST", f"{V1}/documents/{{document_id}}/lift"),),
+        mcp=(),
+        reason=(
+            "Single-door on documents.summarize's own reasoning. The owner "
+            "ruling of 2026-08-23 landed documents.write and "
+            "documents.retrieval on both doors because those five verbs "
+            "generate nothing and label nothing. This verb extracts "
+            "propositions from a model and MINTS MEMORIES from them, which is "
+            "further past that clause than summarize is -- it does not merely "
+            "generate prose, it writes rows into the corpus that retrieval "
+            "then serves. Extending two-door to it is an owner decision, not "
+            "an inference. The spec's section 6.1 adds the REST route because "
+            "a human asked for one and preserves the note's actual concern, "
+            "which is scheduled calling: `test_document_lift_door.py` fails "
+            "the build if any job module so much as references the function."
+        ),
+    ),
+    Surface(
         name="documents.summarize",
         status=REST_ONLY,
         rest=(("POST", f"{V1}/documents/{{document_id}}/summary"),),
