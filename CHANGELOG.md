@@ -264,6 +264,17 @@ list, and markdown started rendering as markdown.** The Artifacts tab of
   spec now pins real heights, side-by-side placement and independent
   scrolling.
 
+- **The Progress board's two parsers**, over `docs/planning/progress.md` and
+  `docs/planning/tasks/*.md`, with golden tests against the real committed
+  files rather than fixtures. No UI yet; the board is increments 2-4. Landing
+  the parsers alone was the point, and it paid: the design spec's task-id
+  pattern silently dropped all 18 `TH*` rows while still parsing 291 and
+  reporting a plausible distribution, which is where the spec's own
+  measurements came from. The corpus holds 309 tasks, not 312, and **zero**
+  are `blocked` rather than the one the spec's motivation rests on. The tests
+  therefore assert what a count cannot -- that the ledger and the epic files
+  describe the *same* 309 ids -- and the spec is corrected in place.
+
 ### Notes
 
 - **The baseline was regenerated** to add `documents.content` — the
