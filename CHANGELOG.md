@@ -4,6 +4,72 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
+## v1.6.0 — 2026-09-04
+
+**The project workspace, made usable.** Three surfaces the owner reported as
+wrong, plus the markdown rendering underneath them.
+
+### Added
+
+- **The Progress board.** The Progress tab rendered `progress.md` through the
+  document reader, so the one question a board exists to answer — what can I
+  start right now — still meant joining a 309-row table against eight epic
+  files by hand. The board does that join: status columns with epic and lane
+  grouping, filters over epic, lane, owner, model and text, and a derived
+  **startable** filter that resolves each task's dependencies and its epic's
+  entry gate. A `blocked` card renders its Note in full, which is the one thing
+  the eleven-column table genuinely hides.
+- **Syntax-highlighted code blocks with their language labelled.** The parser
+  has stored `properties.language` since it was written and nothing read it.
+
+### Fixed
+
+- **The document reader used none of the app's markdown styling.** Chat and the
+  prompt viewer shared `.md-prose`; the reader called a bare `<Markdown>` and
+  got Tailwind's preflight instead. Links rendered as plain body text with no
+  colour and no underline, inline code had no chip, and `~~strikethrough~~`
+  reached the page as literal tildes. All three surfaces now share one
+  markdown module, with `remark-gfm` for strikethrough and autolinks.
+- **Every markdown surface was broken in light mode.** `.md-prose` applied
+  `prose-invert` — the *dark* variant — unconditionally, while the theme
+  switcher offers light/dark/system. Chat included. Now gated on the
+  `data-mode` attribute the theme provider stamps.
+- **Headings below level 3 were the same size and weight as body text**, so a
+  document's structure below the second level was invisible. Each level now
+  steps, and h6 changes kind rather than shrinking below the text around it.
+- **A uniform gap between every block** meant the same distance between two
+  list items as between a paragraph and the next section's heading, so nothing
+  on the page grouped. Spacing now depends on which two block types meet.
+- **A code block set `overflow-x-auto` and `whitespace-pre-wrap` together**,
+  which cannot both apply: the wrap meant the box never overflowed, so long
+  lines broke mid-token instead of scrolling.
+- **The artifacts tree was a plain outline.** It now reads as a file explorer:
+  per-extension icons, a folder icon that opens with its branch, dense rows,
+  full-row hit target and an indent guide per level — all restyling
+  darkraise-ui's own `TreeView` rather than replacing it.
+- **The project page had no back button.** The mechanism already existed —
+  `AppPageHeader` renders one whenever a page declares a `parent` — and the
+  route never declared one. The label also moves into a tooltip, which closes
+  a quieter defect: the top-nav layout hid the text label in CSS, so that
+  layout already showed a bare arrow with nothing naming its destination.
+
+### Notes
+
+- **The Progress board's own design spec was wrong about the corpus, and the
+  parsers found it.** Its task-id pattern dropped all 18 `TH*` rows while still
+  parsing 291 and reporting a plausible distribution — which is where the
+  spec's measurements came from. The corpus holds **309** tasks, not 312, and
+  **zero** are `blocked` rather than the one the spec's motivation rests on.
+  The golden tests therefore assert what a count cannot: the ledger's row ids
+  and the epic files' task ids are the same set. Spec corrected in place.
+- **The board is a projection, never a second store.** It writes nothing;
+  `progress.md` stays canonical and hand-edited. The cost, stated rather than
+  discovered: dragging a card is not possible, and the board fills only for a
+  project whose corpus holds those planning files.
+- Four Playwright tests cover what jsdom cannot — real row heights, a leaf
+  indented past its folder, the folder icon's state flip, and board columns
+  laid out side by side rather than stacked.
+
 ## v1.5.0 — 2026-09-03
 
 **G-F cleared, and the faithfulness judge stopped being asked the wrong
