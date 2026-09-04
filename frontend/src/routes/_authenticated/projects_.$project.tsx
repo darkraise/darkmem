@@ -30,6 +30,7 @@ function ProjectWorkspacePage() {
       <PageChrome
         icon={FolderTree}
         title={project}
+        parent={{ label: "Projects", href: "/projects" }}
         description="Everything this project holds: its filed artifacts, and the progress its sessions recorded."
       />
 

@@ -70,6 +70,26 @@ describe("PageChrome / AppPageHeader", () => {
     expect(back).toHaveAttribute("href", "/memories")
   })
 
+  it("renders the back link icon-only, naming its destination accessibly", () => {
+    // The label used to render as text beside the arrow and the top-nav
+    // layout hid it in CSS, so that layout showed a bare arrow with nothing
+    // saying where it led. Icon-only everywhere, with the destination in the
+    // accessible name and a tooltip -- so this asserts the absence of the
+    // visible text, which is the part a render-it-and-look test would miss.
+    render(
+      <>
+        <PageChrome
+          title="Memory detail"
+          parent={{ label: "Memories", href: "/memories" }}
+        />
+        <AppPageHeader />
+      </>,
+    )
+    const back = screen.getByRole("link", { name: "Back to Memories" })
+    expect(back.textContent?.trim()).toBe("")
+    expect(screen.queryByText("Memories")).not.toBeInTheDocument()
+  })
+
   it("omits the back link on a page with no parent", () => {
     render(
       <>
