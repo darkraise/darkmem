@@ -33,8 +33,19 @@
   --text-4xl: 2.3125rem; /* 36px -> 37px */
 }
 
+/* The app's one markdown treatment. Used by the chat transcript, the prompt
+   viewer and the document reader through `components/markdown`.
+
+   `prose-invert` used to be applied unconditionally, which is the DARK
+   variant: the theme switcher offers light/dark/system (`theme.config.ts`
+   lists `mode` as a switcher axis), so every markdown surface rendered
+   light-on-light for anyone who chose it. The library stamps
+   `data-mode` on `<html>`, so the invert is gated on that instead. */
 .md-prose {
-  @apply prose prose-invert max-w-none text-sm;
+  @apply prose max-w-none text-sm;
+}
+[data-mode="dark"] .md-prose {
+  @apply prose-invert;
 }
 .md-prose pre {
   @apply border-border rounded-lg border bg-[#0c1018] p-3;
@@ -60,6 +71,98 @@
 }
 .md-prose hr {
   @apply border-border;
+}
+
+/* A code block owns its own bordered box, so the `pre` inside it must not
+   also carry prose's block margins -- they render as dead space inside the
+   border. An arbitrary variant (`[&_pre]:m-0`) does not reliably win here:
+   the typography plugin's rules land in a later cascade layer, so this is
+   written as a plain rule in the app's own stylesheet instead. */
+.md-code pre {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+/* Inline-only markdown, for a surface that owns its own block layout.
+
+   The document reader renders one BLOCK per row -- headings, lists, code,
+   quotes and tables are block types there, not markdown output -- so what
+   `react-markdown` produces inside a row is only ever inline content.
+   Applying `.md-prose` per row instead would hand prose the `h*`, `p` and
+   `ul` margins that BlockView is deliberately in charge of, and the two
+   would fight over every gap.
+
+   Without this the rows got Tailwind's preflight and nothing else: links
+   rendered as plain body text with no colour and no underline, inline code
+   had no chip, and `strong` was indistinguishable from its neighbours. */
+.md-inline a {
+  @apply text-primary underline-offset-2 hover:underline;
+}
+.md-inline code {
+  @apply text-primary bg-muted rounded px-1.5 py-0.5 font-mono text-[0.9em];
+}
+.md-inline strong {
+  @apply text-foreground font-semibold;
+}
+.md-inline em {
+  @apply italic;
+}
+.md-inline del {
+  @apply text-muted-foreground line-through;
+}
+.md-inline p {
+  @apply m-0;
+}
+
+/* Syntax highlighting tokens, written against the app's own theme rather
+   than importing one of highlight.js's fixed palettes -- an imported theme
+   is a hardcoded light or dark palette, which is exactly the bug the
+   `prose-invert` gate above fixes. */
+.hljs-comment,
+.hljs-quote {
+  @apply text-muted-foreground italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-type {
+  @apply text-violet-600 dark:text-violet-400;
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-addition {
+  @apply text-emerald-600 dark:text-emerald-400;
+}
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet {
+  @apply text-amber-600 dark:text-amber-400;
+}
+.hljs-title,
+.hljs-section,
+.hljs-name {
+  @apply text-sky-600 dark:text-sky-400;
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable {
+  @apply text-rose-600 dark:text-rose-400;
+}
+.hljs-built_in,
+.hljs-class .hljs-title {
+  @apply text-cyan-600 dark:text-cyan-400;
+}
+.hljs-meta,
+.hljs-deletion {
+  @apply text-muted-foreground;
+}
+.hljs-emphasis {
+  @apply italic;
+}
+.hljs-strong {
+  @apply font-semibold;
 }
 
 @keyframes pulse-glow {

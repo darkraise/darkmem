@@ -1,5 +1,6 @@
 import { useEffect, useRef, useMemo } from "react"
-import ReactMarkdown, { type Components } from "react-markdown"
+import { type Components } from "react-markdown"
+import { AppMarkdown } from "@/components/markdown"
 import { Bot, User, FileText, Diamond, MessageCircle } from "lucide-react"
 import { Avatar, AvatarFallback } from "darkraise-ui/components/avatar"
 import { Button } from "darkraise-ui/components/button"
@@ -388,9 +389,7 @@ function AssistantMessage({
     <div className="flex gap-3">
       <AssistantAvatar />
       <div className="min-w-0 flex-1">
-        <div className="md-prose">
-          <ReactMarkdown components={components}>{processed}</ReactMarkdown>
-        </div>
+        <AppMarkdown components={components}>{processed}</AppMarkdown>
         <div className="mt-1 flex items-center gap-2">
           <span className="text-muted-foreground/70 text-sm">
             {formatTime(msg.created_at)}
@@ -457,9 +456,7 @@ function StreamingMessage({
     <div className="animate-in fade-in flex gap-3 duration-200">
       <AssistantAvatar />
       <div className="min-w-0 flex-1">
-        <div className="md-prose">
-          <ReactMarkdown components={components}>{processed}</ReactMarkdown>
-        </div>
+        <AppMarkdown components={components}>{processed}</AppMarkdown>
         {sources && (
           <SourceBadges
             memories={sources.memories}
