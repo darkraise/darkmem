@@ -27,6 +27,8 @@ import {
 } from "@/features/documents/components/document-actions"
 import { DocumentReader } from "@/features/documents/components/document-reader"
 import { EditableDocument } from "@/features/documents/components/editable-document"
+import { ProgressBoard } from "@/features/progress/components/progress-board"
+import { useProgressCorpus } from "@/features/progress/use-progress-corpus"
 import { DocumentTree } from "@/features/documents/components/document-tree"
 import {
   expansionStorageKey,
@@ -103,6 +105,7 @@ export function ProjectWorkspace({
   // blur, so landing in it makes a stray keystroke a real edit.
   const [mode, setMode] = useState<ReaderMode>("read")
   const search = useDocumentSearch()
+  const corpus = useProgressCorpus(items)
 
   const roots = useMemo(() => buildUriTree(items), [items])
   // Lazy initialiser rather than an effect: the route mounts a fresh
@@ -162,7 +165,6 @@ export function ProjectWorkspace({
     if (next.length !== base.length) handleExpandedChange(next)
   }, [selected, roots, expanded])
 
-  const ledger = items.find((d) => d.uri?.endsWith(LEDGER_SUFFIX)) ?? null
   const hits = search.data?.items ?? []
 
   return (
@@ -324,11 +326,14 @@ export function ProjectWorkspace({
 
       <TabsContent value="progress" className="space-y-5">
         <div>
-          <RegionLabel>project ledger</RegionLabel>
-          {ledger ? (
-            <Card className="p-4">
-              <DocumentReader documentId={ledger.id} />
-            </Card>
+          <RegionLabel>project board</RegionLabel>
+          {/* A projection of the ledger and the epic files, never a second
+              store: the board writes nothing, so `progress.md` stays the one
+              place task state lives. That is what keeps it cheap, and it is
+              also why the board fills only for a project whose corpus holds
+              those files. */}
+          {corpus.present ? (
+            <ProgressBoard corpus={corpus} />
           ) : (
             <EmptyState
               kind="empty"

@@ -33,6 +33,20 @@ describe("DocumentTree", () => {
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: "3" }))
   })
 
+  it("gives each leaf its extension's icon and each folder both states", () => {
+    // The explorer look is CSS over darkraise-ui's parts, so jsdom cannot
+    // confirm which folder icon is *visible* -- it performs no layout. What
+    // it can confirm is that both are rendered, which is what the
+    // `data-state` rule switches between, and that a leaf picked up an icon
+    // keyed on its own extension rather than a single generic glyph.
+    const { container } = render(
+      <DocumentTree items={ITEMS} selectedId={null} onSelect={vi.fn()} truncated={false} />,
+    )
+    expect(container.querySelector(".lucide-folder")).toBeInTheDocument()
+    expect(container.querySelector(".lucide-folder-open")).toBeInTheDocument()
+    expect(container.querySelector(".lucide-file-text")).toBeInTheDocument()
+  })
+
   it("shows the truncation banner rather than a quietly short tree", () => {
     // Invariant 14: the pagination guard is a real limit and the surface has
     // to say so -- an incomplete tree that looks complete is the defect.

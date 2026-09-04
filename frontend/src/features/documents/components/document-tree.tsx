@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { FileText } from "lucide-react"
+import { FileText, Folder, FolderOpen } from "lucide-react"
 import {
   TreeView,
   TreeViewBranch,
@@ -13,12 +13,26 @@ import {
 import { EmptyState } from "@/components/darkmem"
 import type { DocumentListItem } from "@/hooks/api"
 import { buildUriTree, type UriTreeNode } from "../uri-tree"
+import { fileIcon } from "../file-icons"
+
+/** Dense explorer rows. The library's default padding gives a comfortable
+ *  list; a file tree wants a scannable column, so rows are tightened and the
+ *  whole row -- not just the text -- is the hit target and the highlight. */
+const ROW =
+  "flex min-w-0 items-center gap-1.5 rounded-sm px-1.5 py-[3px] text-[13px] leading-5"
 
 /** The one hierarchy implementation both document surfaces render.
  *
  * Selection is keyed on the *document id* and folders carry their path, so
  * the two key spaces cannot collide: a folder named like a uuid still selects
  * nothing, because no document maps to it.
+ *
+ * Styled as a file explorer rather than a generic outline: per-extension leaf
+ * icons, a folder icon that opens with its branch, dense rows and an indent
+ * guide per level. All of it is `className` on darkraise-ui's own TreeView
+ * parts -- the library ships the behaviour (roving focus, selection, keyboard
+ * traversal) and re-implementing that to change its looks would be the trade
+ * the UI rule warns against.
  */
 export function DocumentTree({
   items,
@@ -87,23 +101,51 @@ export function DocumentTree({
 
   const renderNode = (node: UriTreeNode): ReactNode => {
     const actions = nodeActions?.(node)
+
     if (node.children.length > 0) {
       return (
         <TreeViewBranch key={node.path} value={node.path}>
-          <TreeViewBranchControl>
-            <TreeViewBranchIndicator />
-            <TreeViewBranchText>{node.name}</TreeViewBranchText>
+          <TreeViewBranchControl
+            className={`group hover:bg-muted/60 cursor-pointer ${ROW}`}
+          >
+            <TreeViewBranchIndicator className="text-muted-foreground shrink-0" />
+            {/* Both icons render and CSS picks one off the control's own
+                `data-state`. Deriving it in JS would need the live open set,
+                which the uncontrolled caller does not have. */}
+            <Folder
+              aria-hidden
+              className="size-4 shrink-0 text-sky-700/80 group-data-[state=open]:hidden dark:text-sky-300/80"
+            />
+            <FolderOpen
+              aria-hidden
+              className="hidden size-4 shrink-0 text-sky-700/80 group-data-[state=open]:block dark:text-sky-300/80"
+            />
+            <TreeViewBranchText className="truncate">
+              {node.name}
+            </TreeViewBranchText>
             {actions}
           </TreeViewBranchControl>
-          <TreeViewBranchContent>
+          {/* The indent guide: one hairline per level, the way an explorer
+              shows which rows belong to which folder. */}
+          <TreeViewBranchContent className="border-border/60 ml-[13px] border-l pl-2">
             {node.children.map(renderNode)}
           </TreeViewBranchContent>
         </TreeViewBranch>
       )
     }
+
+    const { icon: Icon, className: iconTone } = fileIcon(node.name)
     return (
-      <TreeViewItem key={node.path} value={node.document?.id ?? node.path}>
-        {node.name}
+      <TreeViewItem
+        key={node.path}
+        value={node.document?.id ?? node.path}
+        className={`hover:bg-muted/60 cursor-pointer ${ROW}`}
+      >
+        {/* Aligns leaf text with a sibling folder's, whose row spends this
+            width on the chevron. */}
+        <span aria-hidden className="w-3.5 shrink-0" />
+        <Icon aria-hidden className={`size-4 shrink-0 ${iconTone}`} />
+        <span className="truncate">{node.name}</span>
         {actions}
       </TreeViewItem>
     )
