@@ -180,6 +180,32 @@ SUMMARY_TRIGGER_DOOR = "app/api/routes/documents.py"
 
 
 @pytest.mark.filterwarnings("ignore::pytest.PytestWarning")
+def triggers_a_summary(tree: ast.AST) -> bool:
+    """The guard's own predicate: does this tree CALL `summarise_document`?
+
+    Named and shared rather than inlined in the scan below, because the test
+    that checks the scan still convicts the two named hazards has to exercise
+    THIS function. It used to write its own copy of the walk and assert that
+    copy matched a synthetic hazard -- which passes no matter what the real
+    scan does, so a widened allowlist, a narrowed glob or a broken match
+    predicate would all have gone undetected by the test whose docstring says
+    it catches exactly that.
+
+    Matches a call, never a reference: `summarise_document` appearing in an
+    `__all__` or as the target of its own `def` is not a trigger, which is why
+    the defining module needs no exemption from the scan.
+    """
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Name) and func.id == "summarise_document":
+            return True
+        if isinstance(func, ast.Attribute) and func.attr == "summarise_document":
+            return True
+    return False
+
+
 def test_only_the_explicit_door_triggers_a_summary():
     """A re-ingest that silently rewrote the summary would spend a model call
     per file operation, and a summary that refreshed itself would make "the
@@ -193,22 +219,16 @@ def test_only_the_explicit_door_triggers_a_summary():
 
     offenders = []
     for path in sources:
-        if path == MODULE:
-            continue
+        # `document_summary.py` is NOT exempt. It used to be skipped wholesale,
+        # which is wider than the reason for skipping it: the predicate matches
+        # a call, and the module's `def` and `__all__` entry are not calls. The
+        # exemption meanwhile hid the second named hazard -- a summary that
+        # refreshes itself -- from the guard, in the one module where such a
+        # helper would most naturally be written.
         if path.relative_to(BACKEND).as_posix() == SUMMARY_TRIGGER_DOOR:
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-            func = node.func
-            named = (
-                (isinstance(func, ast.Name) and func.id == "summarise_document")
-                or (isinstance(func, ast.Attribute) and func.attr == "summarise_document")
-            )
-            if named:
-                offenders.append(str(path.relative_to(BACKEND)))
-                break
+        if triggers_a_summary(ast.parse(path.read_text(encoding="utf-8"))):
+            offenders.append(str(path.relative_to(BACKEND)))
     assert not offenders, (
         f"a module under app/ can trigger a summary: {offenders} — regeneration "
         "is explicit by design (doc 16 §6). Only "
@@ -238,21 +258,52 @@ def test_the_allowed_trigger_door_actually_triggers():
 
 def test_the_ingest_and_job_paths_are_still_convicted():
     """The narrowing must not have turned the scan off. Both named hazards --
-    a re-ingest and a scheduled refresh -- are still caught."""
+    a re-ingest and a scheduled refresh -- are still caught.
+
+    This runs the GUARD's predicate, not a copy of it. Written against its own
+    inline walk, this test passed regardless of what the scan above did, which
+    made it evidence of nothing."""
     import textwrap
 
-    hazard = ast.parse(textwrap.dedent("""
+    reingest = ast.parse(textwrap.dedent("""
         from app.services.document_summary import summarise_document
         async def on_ingest(session, llm, document_id):
             await summarise_document(session, llm, document_id=document_id)
     """))
-    triggers = [
-        node for node in ast.walk(hazard)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "summarise_document"
-    ]
-    assert triggers, "the scan's own predicate stopped matching a real trigger"
+    scheduled = ast.parse(textwrap.dedent("""
+        from app.services import document_summary
+        async def refresh_all(session, llm, ids):
+            for document_id in ids:
+                await document_summary.summarise_document(
+                    session, llm, document_id=document_id
+                )
+    """))
+    assert triggers_a_summary(reingest), "the re-ingest hazard is no longer caught"
+    assert triggers_a_summary(scheduled), (
+        "the scheduled-refresh hazard is no longer caught"
+    )
+
+
+def test_the_scan_does_not_convict_the_definition_itself():
+    """Why `document_summary.py` needs no exemption.
+
+    The predicate matches a CALL. A module that defines the function and
+    exports it in `__all__` calls nothing, so it passes the scan on its own
+    merits -- which is what lets the exemption be removed rather than
+    trusted. The exemption was wider than its reason, and it hid the second
+    named hazard (a summary that refreshes itself) in the one module where
+    such a helper would most naturally be written."""
+    import textwrap
+
+    defining = ast.parse(textwrap.dedent("""
+        __all__ = ["summarise_document"]
+
+        async def summarise_document(session, llm, *, document_id):
+            return None
+    """))
+    assert not triggers_a_summary(defining)
+    # And the real module, which is the case that actually matters.
+    assert not triggers_a_summary(ast.parse(MODULE.read_text(encoding="utf-8")))
 
 
 def test_the_trigger_scan_separates_generating_from_reading():
