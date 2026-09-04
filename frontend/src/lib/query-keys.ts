@@ -106,6 +106,11 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
     reason:
       "Addressed by document id and carrying no project param — the same shape as documentOutline, and the read the block reader and increment 8's editor both share",
   },
+  documentContents: {
+    kind: "global",
+    reason:
+      "Addressed by document ids and carrying no project param, the same shape as documentBlocks. The key is the sorted id list rather than one id: the Progress board reads nine documents at once, and a hook per document would mean a variable number of hooks",
+  },
   documentSummary: {
     kind: "global",
     reason:

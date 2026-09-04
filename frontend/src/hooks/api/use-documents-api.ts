@@ -224,6 +224,38 @@ export interface BlockRow {
   source: string | null
 }
 
+/**
+ * A document's stored source, for a caller that needs the markdown itself
+ * rather than the parsed block tree.
+ *
+ * `include_content` is off by default on this route because the column can be
+ * megabytes, so no existing reader pays for it; the Progress board is the
+ * first caller that does, because it re-parses the ledger's own table.
+ *
+ * Takes a LIST of ids and issues one request each: the board reads nine
+ * documents (the ledger plus eight epic files) and a hook per document would
+ * mean a variable number of hooks, which React forbids.
+ */
+export function useDocumentContents(documentIds: string[]) {
+  const key = [...documentIds].sort().join(",")
+  return useQuery<Map<string, string>>({
+    queryKey: ["documentContents", key],
+    enabled: !DEMO && documentIds.length > 0,
+    queryFn: async () => {
+      const out = new Map<string, string>()
+      await Promise.all(
+        documentIds.map(async (id) => {
+          const res = await apiFetch<{ content: string | null }>(
+            `/documents/${id}?include_content=true`,
+          )
+          if (res.content) out.set(id, res.content)
+        }),
+      )
+      return out
+    },
+  })
+}
+
 export function useDocumentOutline(documentId: string | null) {
   return useQuery<{ document_id: string; items: OutlineNode[] }>({
     queryKey: ["documentOutline", documentId],
