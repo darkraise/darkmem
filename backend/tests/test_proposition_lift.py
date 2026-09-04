@@ -215,6 +215,25 @@ def _calls_named(tree: ast.AST, names: set[str]) -> bool:
     return False
 
 
+# The one module allowed to trigger a lift: the explicit operator door.
+#
+# Narrowed from "nothing under app/" on 2026-09-04, when spec §6.1 added
+# `POST /documents/{id}/lift`. `routes/documents.py` had recorded why there
+# was no door -- "a route is the easiest way for something to call it on a
+# schedule; nothing in EH1 needs one **before a human asks**" -- and the
+# reason survives the narrowing intact, because the hazard it names is
+# SCHEDULED calling. An operator pressing Lift is not that, and
+# `test_document_lift_door.py` is where the scheduled half is now pinned:
+# no job module may so much as reference `lift_document`, by call OR by bare
+# name, since a `JobRegistry` runner takes no arguments and would be
+# registered as a reference.
+#
+# Deliberately an allowlist of exactly one module rather than a relaxed
+# predicate: an ingest path, a job or the pipeline calling this is still the
+# failure this guard exists to catch.
+LIFT_TRIGGER_DOOR = "app/api/routes/documents.py"
+
+
 def test_no_module_under_app_triggers_a_lift():
     app_root = BACKEND / "app"
     sources = [p for p in app_root.rglob("*.py") if "__pycache__" not in str(p)]
@@ -222,14 +241,51 @@ def test_no_module_under_app_triggers_a_lift():
 
     offenders = []
     for path in sources:
-        if path == MODULE:
+        # `proposition_lift.py` itself is NOT exempt. It used to be skipped
+        # wholesale, which is wider than the reason for skipping it: the
+        # predicate matches a CALL, and the module's own `def` is not one. The
+        # exemption meanwhile hid a self-triggering lift in the one module
+        # where such a helper would most naturally be written -- the same
+        # defect this project fixed in the summary guard the same day.
+        if path.relative_to(BACKEND).as_posix() == LIFT_TRIGGER_DOOR:
             continue
         if _calls_named(ast.parse(path.read_text(encoding="utf-8")), {"lift_document"}):
             offenders.append(str(path.relative_to(BACKEND)))
     assert not offenders, (
         f"a module under app/ can trigger a lift: {offenders} — lifting is "
         "on-demand only (doc 16 §5), and an ingest that lifted silently would "
-        "turn filing a document into minting claims nobody asked for"
+        "turn filing a document into minting claims nobody asked for. Only "
+        f"{LIFT_TRIGGER_DOOR} may, because it is the operator's own request."
+    )
+
+
+def test_the_allowed_lift_door_actually_triggers():
+    """The allowlist must name a module that really calls it. An entry for a
+    module that stopped calling `lift_document` would sit there silently
+    exempting a future implicit caller in the same file."""
+    door = ast.parse((BACKEND / LIFT_TRIGGER_DOOR).read_text(encoding="utf-8"))
+    calls = [
+        node for node in ast.walk(door)
+        if isinstance(node, ast.Call)
+        and (
+            (isinstance(node.func, ast.Name) and node.func.id == "lift_document")
+            or (isinstance(node.func, ast.Attribute) and node.func.attr == "lift_document")
+        )
+    ]
+    assert len(calls) == 1, (
+        f"{LIFT_TRIGGER_DOOR} should hold exactly one lift call, found "
+        f"{len(calls)} — a second one is a second door hiding inside the "
+        "exemption this allowlist grants."
+    )
+
+
+def test_the_lift_module_itself_is_scanned():
+    """Why `proposition_lift.py` needs no exemption: it defines the function
+    and calls `strip_document_lift`, never `lift_document`. Removing the skip
+    is therefore safe AND it restores coverage of a self-triggering refresh
+    written into that module."""
+    assert not _calls_named(
+        ast.parse(MODULE.read_text(encoding="utf-8")), {"lift_document"}
     )
 
 
