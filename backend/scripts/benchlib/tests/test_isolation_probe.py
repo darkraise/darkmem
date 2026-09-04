@@ -11,6 +11,7 @@ break this suite. What is pinned instead:
 """
 import pytest
 import pytest_asyncio
+from sqlalchemy import text
 
 from benchlib import isolation_probe
 from benchlib.isolation_probe import DRIVERS, run_probe
@@ -594,3 +595,41 @@ async def test_widening_the_capture_buffer_preview_slice_fails_the_probe(
         == "memory content crossed past its declared preview"
     ]
     assert breaches, "no boundary violation despite the widened preview slice"
+
+
+async def test_a_dropped_project_predicate_on_related_memories_fails_the_probe(
+    baseline_report, monkeypatch,
+):
+    """The related-memories read is scoped in SQL, and this is what proves it.
+
+    The seeded lifted document is in OBSERVER and its proposition shares the
+    `redis` entity with `b_active`, which is in FOREIGN. So the entity walk
+    reaches across the boundary by construction and only the project predicate
+    stops it -- which makes a predicate-free variant the exact mutation worth
+    pinning.
+
+    Without this test the driver is a vacuous clean: it observes rows and
+    classifies them, but nothing asserts that removing the predicate changes
+    the verdict. Verified by running it against a mutated module before it was
+    kept.
+    """
+    from app.services import document_related
+
+    predicate_free = text(
+        str(document_related._RELATED_SQL).replace(
+            # CAST, because a bare bind in this position has no inferable
+            # type and asyncpg refuses it (the cross-cutting invariant).
+            "WHERE m.project = :project", "WHERE CAST(:project AS text) IS NOT NULL"
+        )
+    )
+    monkeypatch.setattr(document_related, "_RELATED_SQL", predicate_free)
+    mutated = await run_probe()
+
+    assert mutated.count() > baseline_report.count()
+    breaches = [
+        c for c in mutated.violations()
+        if c.verdict is Verdict.V1
+        and c.sighting.surface == "document_related_memories"
+        and any("outside requested" in reason for reason in c.reasons)
+    ]
+    assert breaches, "no named project-breach row despite the removed predicate"

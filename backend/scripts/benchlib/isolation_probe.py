@@ -351,6 +351,8 @@ class ProbeContext:
     fact_ids: dict[str, uuid.UUID]
     article_ids: dict[str, uuid.UUID]
     retention_conversation_id: str
+    lifted_document_id: str = ""
+    lifted_memory_id: uuid.UUID | None = None
     scoped_conversation_id: str | None = None
     wide_conversation_id: str | None = None
     notes: list[str] = field(default_factory=list)
@@ -465,6 +467,7 @@ async def _seed(session_factory, stub: StubOrchestrator, old: StubOrchestrator) 
     from app.config import FEATURE_FLAGS_DEFAULTS
     from app.models.config import Config
     from app.models.memory import Memory
+    from app.services.proposition_lift import PROVENANCE_KEY as LIFT_PROVENANCE_KEY
     from app.repositories.fact_sources import FactSourceRepository
     from app.repositories.memory_communities import (
         CommunityDraft,
@@ -535,12 +538,47 @@ async def _seed(session_factory, stub: StubOrchestrator, old: StubOrchestrator) 
                 },
             )
 
+        # A lifted document, for the related-memories surface (spec §6.2).
+        #
+        # The probe corpus held no documents at all, which is why the document
+        # reads sit in ROUTES_WITHOUT_MEMORY_CONTENT -- driving them against
+        # memory fixtures produces zero sightings and a vacuously clean result.
+        # `related-memories` is the exception that has to be driven: it returns
+        # `memories.content`, so a missing project predicate there leaks a
+        # foreign row.
+        #
+        # The lifted memory is attached to `redis` below, which ALREADY spans
+        # both projects (`a_active`, `b_active`, `a_super`). So the driver's
+        # question is the sharp one: asking an OBSERVER document for related
+        # memories must not return the FOREIGN project's `b_active`, even
+        # though the two share an entity.
+        lifted_document_id = str(uuid.uuid4())
+        await session.execute(
+            text(
+                "INSERT INTO documents (id, project, uri, title, source_type, "
+                "content_hash) VALUES (CAST(:id AS uuid), :project, :uri, :title, "
+                "'note', :hash)"
+            ),
+            {"id": lifted_document_id, "project": OBSERVER,
+             "uri": "file:///iso/lifted.md", "title": "iso lifted document",
+             "hash": "iso-lifted-hash"},
+        )
+        lifted_memory = Memory(
+            content="alpha redis proposition lifted from a document",
+            source="document", project=OBSERVER, status="active",
+            metadata_={LIFT_PROVENANCE_KEY: {"document_id": lifted_document_id}},
+        )
+        session.add(lifted_memory)
+        await session.flush()
+        lifted_memory_id = lifted_memory.id
+
         redis_entity_id = str(uuid.uuid4())
         alpha_cache_id = str(uuid.uuid4())
         beta_db_id = str(uuid.uuid4())
         entity_rows = (
             (redis_entity_id, "redis", "tool",
-             [memory_ids["a_active"], memory_ids["b_active"], memory_ids["a_super"]]),
+             [memory_ids["a_active"], memory_ids["b_active"], memory_ids["a_super"],
+              lifted_memory_id]),
             (alpha_cache_id, "alpha cache", "concept", [memory_ids["a_super"]]),
             (beta_db_id, "beta db", "tool", [memory_ids["b_active"]]),
         )
@@ -794,6 +832,8 @@ async def _seed(session_factory, stub: StubOrchestrator, old: StubOrchestrator) 
         "fact_ids": fact_ids,
         "article_ids": article_ids,
         "retention_conversation_id": retention_conversation_id,
+        "lifted_document_id": lifted_document_id,
+        "lifted_memory_id": lifted_memory_id,
     }
 
 
@@ -1177,6 +1217,45 @@ async def _drive_duplicates_probe(ctx: ProbeContext) -> list[Sighting]:
         "memory_find_duplicates", {"memory_id": source_id, "threshold": 0.9},
     )
     await account_rows("mcp:memory_find_duplicates", body, json.loads(body))
+    return out
+
+
+async def _drive_document_related_memories(ctx: ProbeContext) -> list[Sighting]:
+    """The related-memories read, asked the sharp question.
+
+    The seeded lifted memory shares the `redis` entity with `a_active` (this
+    project), `a_super` (this project, superseded) and `b_active` (the FOREIGN
+    project). So a door that walked the entity without a project predicate
+    would hand a caller a foreign row, and the classification would be a lie.
+
+    The document's own lift is deliberately absent from the expected set: the
+    query excludes it, because every lifted memory shares every entity with
+    itself and returning it would be every row and no information.
+    """
+    surface = "document_related_memories"
+    out: list[Sighting] = []
+    ids_to_fx = {str(mid): FIXTURES_BY_KEY[key] for key, mid in ctx.memory_ids.items()}
+    case = "seed the lifted document; scope derived from the document"
+    door = "GET /api/v1/documents/{document_id}/related-memories"
+
+    response = await ctx.client.get(
+        f"/api/v1/documents/{ctx.lifted_document_id}/related-memories",
+        headers=ctx.headers,
+    )
+    response.raise_for_status()
+    payload = response.json()
+
+    accounted: set[str] = set()
+    for row in payload.get("items", []):
+        fx = ids_to_fx.get(str(row["memory_id"]))
+        if fx is None:
+            continue
+        accounted.add(fx.key)
+        out.append(_mem(
+            surface, door, case, fx,
+            req_p=OBSERVER, req_s=ACTIVE_STATUSES,
+        ))
+    out.extend(_account_body(surface, door, case, response.text, accounted))
     return out
 
 
@@ -2631,6 +2710,7 @@ DRIVERS = {
     "graph_memory_context": _drive_graph_memory_context,
     "bulk_partition_read": _drive_bulk_partition_read,
     "duplicates_probe": _drive_duplicates_probe,
+    "document_related_memories": _drive_document_related_memories,
     "memory_overview": _drive_memory_overview,
     "knowledge_composed_search": _drive_knowledge_composed_search,
     "code_search": _drive_code_search,
@@ -2752,6 +2832,8 @@ async def run_probe() -> ProbeReport:
             failure_id=seeded["failure_id"],
             fact_ids=seeded["fact_ids"], article_ids=seeded["article_ids"],
             retention_conversation_id=seeded["retention_conversation_id"],
+            lifted_document_id=seeded["lifted_document_id"],
+            lifted_memory_id=seeded["lifted_memory_id"],
         )
         for key in registry_keys:
             report.add(await DRIVERS[key](ctx))
