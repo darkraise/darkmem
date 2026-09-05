@@ -72,11 +72,9 @@ _DOCUMENTS_RULING = (
     "tests/test_block_retrieval.py bars that structurally: no module "
     "that mints a fact, moves one on the verification ladder or "
     "synthesises an article from the vault can reach, through its own "
-    "import closure, a module that reads a block row -- doc 16 section "
-    "5's on-demand lift is the only route from a block to a fact, and "
-    "that lift carries no block text into the vault and reaches no "
-    "module that can search or fetch a block. This does not clear G-F "
-    "and no bar moved."
+    "import closure, a module that reads a block row -- and there is no "
+    "route from a block to a fact at all, so the firewall holds with no "
+    "exception. This does not clear G-F and no bar moved."
 )
 
 # The wire differences, recorded rather than left to be discovered, and one
@@ -291,33 +289,19 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "That row keeps `connections` REST-only because it serves L1 "
             "entity names read off `entities.memory_ids`, and doc 12 section 4 "
             "fixes L1 as never directly served on a retrieval surface. This "
-            "verb reaches the same rows by the same key and returns the "
-            "memories rather than the documents, so if anything the clause "
-            "binds it harder: an MCP twin would hand an agent an L1-keyed "
-            "memory list, which is exactly graph.candidate_read's block. The "
-            "agent's sanctioned path to these rows is memory_search, which "
-            "ranks them, and the shared-entity count here is deliberately "
-            "evidence rather than a score."
-        ),
-    ),
-    Surface(
-        name="documents.lift",
-        status=REST_ONLY,
-        rest=(("POST", f"{V1}/documents/{{document_id}}/lift"),),
-        mcp=(),
-        reason=(
-            "Single-door on documents.summarize's own reasoning. The owner "
-            "ruling of 2026-08-23 landed documents.write and "
-            "documents.retrieval on both doors because those five verbs "
-            "generate nothing and label nothing. This verb extracts "
-            "propositions from a model and MINTS MEMORIES from them, which is "
-            "further past that clause than summarize is -- it does not merely "
-            "generate prose, it writes rows into the corpus that retrieval "
-            "then serves. Extending two-door to it is an owner decision, not "
-            "an inference. The spec's section 6.1 adds the REST route because "
-            "a human asked for one and preserves the note's actual concern, "
-            "which is scheduled calling: `test_document_lift_door.py` fails "
-            "the build if any job module so much as references the function."
+            "verb returns the memories rather than the documents, so if "
+            "anything the clause binds it harder: an MCP twin would hand an "
+            "agent an L1-keyed memory list, which is exactly "
+            "graph.candidate_read's block. It ranks by cosine over the "
+            "vectors both sides already carry rather than by an entity walk, "
+            "and the scope is still derived from the document -- "
+            "`document_similarity.resolve_shared_fingerprint` picks the "
+            "shared partition and the project predicate binds the document's "
+            "own project -- so a caller cannot widen it. The agent's "
+            "sanctioned path to these rows is memory_search, which ranks them "
+            "against a query, and the score and passage here are deliberately "
+            "evidence for a maintenance read rather than a retrieval "
+            "surface."
         ),
     ),
     Surface(
