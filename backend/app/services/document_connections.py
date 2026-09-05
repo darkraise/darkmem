@@ -12,44 +12,77 @@ document, three orders of magnitude past `document_related`'s 89ms, because
 here *both* sides of the join scale with block count rather than one side
 being a small memory table. That is a real cost, not a tuning miss, and it is
 the reason this module runs an ANN probe per block instead: measured on the
-same corpus, 494ms typical and 3.4s worst case.
+same corpus, with `app/database.py`'s own connection settings applied
+(`hnsw.ef_search = 100`, `hnsw.iterative_scan = relaxed_order` -- a number
+measured without them, e.g. in a bare `psql` session that never issued those
+`SET`s, is not this surface's number, since pgvector 0.8.2 registers those
+GUCs lazily and silently falls back to its 40/off defaults until something
+sets them), 785ms on a 282-block document and 2,085ms on the corpus's
+1,132-block outlier.
 
-**This surface is therefore approximate where `document_related` is exact.**
-`ORDER BY t.embedding <=> m.embedding LIMIT N` per probe is what lets the
-planner use the HNSW index; ordering by the derived `score DESC` instead
-defeats it and falls back to the same exact scan this module replaced.
-`app/database.py` sets `hnsw.ef_search = 100` and `hnsw.iterative_scan =
-relaxed_order` connection-wide -- the same tunable `search_blocks` (TH1.06)
-already accepts for the block channel, so trading exactness for latency here
-is consistent with the rest of the codebase rather than a new risk. The named
-cost: a true nearest block can be missed, which can drop a marginal document
-out of the results entirely. Wider is more correct and slower; this module
-does not tune that trade further than the one measured above.
+**This surface is therefore approximate where `document_related` is exact,
+in the same way the rest of the block channel already is.** `search_blocks`
+(TH1.06) runs its ANN probe under the same connection-wide `ef_search` /
+`iterative_scan` setting -- it does not itself configure or accept either
+one, both live only in `app/database.py` -- so this module is not taking on a
+new kind of risk, it is the second caller of a trade the codebase already
+made once. `ORDER BY t.embedding <=> m.embedding LIMIT N` per probe is what
+lets the planner use the HNSW index; ordering by the derived `score DESC`
+instead defeats it and falls back to the same exact scan this module
+replaced. The named cost: `ef_search=100` can still miss the true nearest
+block, which can drop a marginal document out of the results entirely. Wider
+is more correct and slower; this module does not tune that trade further
+than the one measured above.
 
 **No block cap.** An earlier design capped probes per document and ordered by
 block count to decide who gets probed at reduced depth; that ordering was
 measured to drop the *best* match on exactly the documents where the cap
 bound -- one measured case moved 0.843 -> 0.505. The uncapped worst case
-(3.4s on the corpus's largest document, affecting a small minority of
-documents) is judged worth it against silently returning the wrong answer to
-correctly-shaped queries.
+(measured above) is judged worth it against silently returning the wrong
+answer to correctly-shaped queries.
 
-**Each probe fetches 10 nearest, not 1**, because the probe is unscoped: it
-is not restricted to the *other* documents this call cares about, so a
-probe's ten nearest blocks can be entirely the queried document's own blocks
-(self-matches) or blocks in a different project. Those rows survive into the
-intermediate result and are then correctly dropped by the same project-scope
-and self-exclusion predicates `document_related` uses, but a probe that only
-ever returned its single nearest neighbour would forfeit any real
-cross-document match sitting just past a self-match, undercounting matches
-disproportionately on documents whose blocks closely resemble each other.
+**The LATERAL excludes the queried document's own blocks**
+(`tb.document_id <> :document_id`), because leaving them in wastes probe
+slots on matches the outer `WHERE` was always going to discard anyway: a
+document full of near-duplicate blocks (repeated headings, short list items)
+can fill all ten slots with its own text before a single cross-document
+candidate is considered, silently returning no connections for exactly the
+documents most likely to need finding one. Because `iterative_scan =
+relaxed_order` really is on for every application connection, adding this
+predicate inside the LATERAL does not turn the ANN probe into a post-filter
+over ten raw candidates -- the index scan itself keeps expanding until it has
+ten survivors -- so it cost nothing measurable (785ms unfiltered vs 586ms
+filtered on the 282-block document; 2,085ms vs 2,173ms, within noise, on the
+1,132-block one).
+
+**Each probe still fetches 10 nearest, not 1, and a truncation risk remains
+even with the document exclusion**: the probe is not scoped to the calling
+document's own project, so all ten slots can still be consumed by another
+*project's* blocks -- correctly dropped by the outer `other.project =
+:project` predicate, but at the cost of returning nothing for a real
+same-project match that happened to rank behind ten foreign-project
+near-duplicates. `search_blocks`'s own remedy for exactly this shape is an
+over-fetch multiplier (`SEMANTIC_FETCH_MULTIPLIER`,
+`block_embeddings.py:302-333`, fetching `limit * multiplier` candidates before
+the project filter trims them) rather than a bare `LIMIT`; this module does
+not adopt it because the measured cost above does not warrant it yet, but it
+is the documented next lever if a corpus with heavier cross-project density
+ever needs it.
+
+**Cold-cache cost.** The 2,085ms figure above was measured warm. The very
+first probe against a cold `block_embeddings` partition measured 12.2s on the
+corpus's largest document before settling to 1.3-1.4s on every subsequent,
+warm-cache run. `block_embeddings__qwen3_embedding_0_6b_1024` is ~665MB (doc
+CLAUDE.md, backup sizing note), so this is not only a boot-time cost: it
+recurs whenever that partition is evicted from Postgres's buffer cache, which
+includes a nightly backup dump reading through it and `block_embedding_refresh`
+rewriting it, not only a process restart.
 
 The former basis was `entities.memory_ids` over the memories a lift minted.
 Nothing is lifted any more, so that walk would return an empty list forever.
 """
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -58,8 +91,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.document_similarity import resolve_shared_fingerprint
 from app.services.embedder_registry import child_table
-
-logger = logging.getLogger(__name__)
 
 __all__ = [
     "DocumentConnection", "DocumentConnections", "connections_for_document",
@@ -89,10 +120,11 @@ _DOCUMENT_SQL = text(
     "SELECT project FROM documents WHERE id = CAST(:id AS uuid)"
 )
 
-# Nearest per probe, not the single nearest -- the probe is unscoped (see the
-# module docstring), so a self-match or a foreign-project match can occupy
-# the top slot without leaving room for the cross-document match this surface
-# exists to find.
+# Nearest per probe, not the single nearest -- the probe excludes the
+# queried document's own blocks but is not scoped to its project (see the
+# module docstring), so a foreign-project match can still occupy a slot
+# without leaving room for the cross-document match this surface exists to
+# find.
 _PROBE_LIMIT = 10
 
 
@@ -117,6 +149,7 @@ def _connections_sql(blocks_table: str) -> str:
                        1 - (t.embedding <=> m.embedding)   AS score
                 FROM {blocks_table} t
                 JOIN blocks tb ON tb.id = t.block_id
+                WHERE tb.document_id <> CAST(:document_id AS uuid)
                 ORDER BY t.embedding <=> m.embedding
                 LIMIT {_PROBE_LIMIT}
             ) p

@@ -228,6 +228,60 @@ async def test_a_document_is_never_connected_to_itself(session):
 
 
 @pytest.mark.asyncio
+async def test_the_lateral_excludes_the_queried_documents_own_blocks(session):
+    """Fix round 2, finding I1: without `tb.document_id <> :document_id`
+    inside the LATERAL, a document made of near-duplicate blocks can fill
+    every one of its ten probe slots with copies of its own text before a
+    single cross-document candidate is even considered -- silently starving
+    the real match rather than merely wasting a slot the outer `WHERE` would
+    have dropped anyway. Ten identical mine-blocks (all at cosine distance 0
+    from each other) plus one, strictly farther, same-project target
+    reproduces that shape exactly: with the exclusion in place only the
+    target is ever a LATERAL candidate; without it the ten self-matches
+    alone fill `_PROBE_LIMIT` and the target is never probed at all."""
+    await _register(session)
+    mine, mine_blocks = await _file_blocks(
+        session, texts=tuple(f"mine {i}" for i in range(10)),
+    )
+    for block_id in mine_blocks:
+        await _embed_block(session, block_id, DIRECTION_A)
+    target, target_blocks = await _file_blocks(session)
+    await _embed_block(session, target_blocks[0], DIRECTION_BETWEEN)
+
+    result = await connections_for_document(session, document_id=mine)
+
+    assert result.embedded is True
+    assert [item.document_id for item in result.items] == [target]
+
+
+@pytest.mark.asyncio
+async def test_the_probe_limit_of_ten_survives_a_nearer_foreign_block(session):
+    """M3: `_PROBE_LIMIT` must fetch more than the single nearest candidate,
+    because the probe is not scoped to the calling project even after
+    excluding the queried document's own blocks (finding I1's remaining
+    truncation risk, named in the module docstring). A foreign-project block
+    identical to mine's own direction scores 1.0 and sorts strictly ahead of
+    the real, same-project target (0.7071); with `_PROBE_LIMIT` reduced to 1
+    the foreign block alone fills the LATERAL's one slot, the outer project
+    predicate then correctly drops it, and the real match never surfaces --
+    proving the limit must stay above 1, not merely that it is a positive
+    number."""
+    await _register(session)
+    mine, mine_blocks = await _file_blocks(session)
+    await _embed_block(session, mine_blocks[0], DIRECTION_A)
+    target, target_blocks = await _file_blocks(session)
+    await _embed_block(session, target_blocks[0], DIRECTION_BETWEEN)
+    foreign, foreign_blocks = await _file_blocks(session, project=OTHER_PROJECT)
+    await _embed_block(session, foreign_blocks[0], DIRECTION_A)
+
+    result = await connections_for_document(session, document_id=mine)
+
+    assert result.embedded is True
+    assert [item.document_id for item in result.items] == [target]
+    assert result.items[0].score == pytest.approx(0.7071, abs=1e-3)
+
+
+@pytest.mark.asyncio
 async def test_items_are_ordered_by_score_descending(session):
     """Document ids are time-ordered UUIDv7, so creating the higher-scoring
     document first would let an id-ordered mutation pass by coincidence. The
