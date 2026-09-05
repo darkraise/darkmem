@@ -1723,14 +1723,30 @@ The vault half walks the import closure of every module that mints a
 fact, moves one on the ladder or synthesises an article from the vault,
 and fails the build if one can reach a module that reads a block row.
 Scoped to minting rather than to "writes `knowledge_triples`"
-deliberately: **no block-channel module writes the vault at all any
-more** — `document_door`'s only vault write was the withdrawal the
-retired bridge called, and nothing replaced it — so a raw-SQL-text
-coverage guard has no writer to catch in the first place; the scan is
-rooted at minting because "reachable from a minting module" is the
-property that stays meaningful even after the one writer this channel
-ever had is gone, where "writes `knowledge_triples`" would describe an
-empty set and prove nothing. **That the block channel may only read the
+deliberately, and the difference is directional, not a matter of which
+set is bigger: the firewall is about a block *becoming* a verified
+fact, so the scan is rooted at the modules that can *make* one — mint,
+promote on the ladder, or synthesise an article from the vault — and a
+module that only reads blocks without ever minting or promoting
+anything is not one of its subjects. A raw-SQL-text derivation over
+`INSERT INTO` / `UPDATE` / `DELETE FROM knowledge_triples` does find a
+real, non-empty set this way — the repository plus every ladder, lift
+and synthesis writer, asserted inside `VAULT_WRITERS` — but that
+derivation is a **staleness guard on the hand-written `VAULT_WRITERS`
+list**, not the root rule itself: today "writes `knowledge_triples`"
+and "mints or promotes" sweep in the same modules, and minting is
+chosen as the root because it names the property the firewall actually
+protects, independent of whether the SQL-text derivation happens to
+agree with it. `document_door` itself illustrates why the distinction
+matters: it reads blocks by construction, and it used to be the
+withdraw-then-expire pass's own writer, calling the bridge's withdrawal
+and then `expire` itself — a real vault write, on a module a
+"reads blocks" seed list would otherwise miss. That pass went with the
+bridge and `document_door` writes nothing today, but the scan's root
+rule was never "does this module currently write" — it is "can this
+module mint or promote", which stays the right question whether or not
+today's tree happens to have a writer sitting on a block-reading
+module. **That the block channel may only read the
 vault, never write or promote, is pinned at the method level:**
 a third scan reads every block-channel module's own AST and fails the
 build if one names any `KnowledgeTripleRepository` method outside a

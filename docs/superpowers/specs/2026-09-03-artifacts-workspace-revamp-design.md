@@ -23,7 +23,19 @@ The owner's report, each item traced to code rather than restated:
 **Production holds 475 documents and 49,310 blocks, and 0 memories,
 0 entities, 0 facts.**
 
-Two consequences, both load-bearing:
+**Amended 2026-09-05: this section is historical framing, kept for the
+measurement it records rather than for its present-tense claims, which
+are now false and are the reason the owner later ruled the way §5 and
+§6 describe.** At the time this was written, `document_connections.py`
+did read `entities` plus the lift's provenance and did return nothing
+with zero entities present, and lifting was ruled in scope to fix that.
+Neither is true today: the lift and the entity-derived connections basis
+are both retired, and `document_connections.py` is re-based onto cosine
+similarity over block vectors (§6.2), which is not vacuous against an
+empty entity graph because it never reads the entity graph at all.
+
+Two consequences, both load-bearing **as of this section's original
+writing**:
 
 1. **Related-memories cannot work by reading the graph, because there is no
    graph.** Any design that joins documents to memories through entities
@@ -32,11 +44,15 @@ Two consequences, both load-bearing:
    `document_connections.py` reads `entities` + the lift's provenance; with
    zero entities it returns nothing, silently, today.
 
-This is the same hole that blocks G-E and `T3.22` ("pending a corpus"). The
+This is the same hole that blocked G-E and `T3.22` ("pending a corpus"). The
 documents were imported; nothing was ever lifted.
 
-**Owner ruling, 2026-09-03: lifting is in scope for this project.** Building
-related-memories without it would ship an empty panel and call it a feature.
+**Owner ruling, 2026-09-03: lifting is in scope for this project.**
+Building related-memories without it would ship an empty panel and call
+it a feature. **That ruling was itself reversed on 2026-09-05** — see
+§6.1 and §6.2 — once the priced sample showed the lift's actual output
+shape made it unusable regardless of the empty-panel problem it was
+meant to solve.
 
 ## 3. Layout and interaction — the UI/UX, which is the point of the revamp
 
@@ -346,7 +362,14 @@ share a change with work the owner is reviewing visually.
   continuous with no seam to badge against (p50 0.503, p90 0.612, p99
   0.750), so any percentage, bar or badge would manufacture a threshold the
   data does not have.
-- **A scheduled lift.** See §6.1 — the whole reason the route was withheld.
+- **A scheduled lift.** §6.1 argued the route should stay human-invoked
+  rather than reachable from a schedule. **Amended 2026-09-05: this
+  bullet said "the whole reason the route was withheld" — the route was
+  not withheld, it was built** (`POST /{document_id}/lift`,
+  `backend/app/api/routes/documents.py:44`), measured, and then deleted
+  along with the rest of the lift on the owner's retirement ruling. The
+  anti-scheduling argument is what kept it out of `JobRegistry` while it
+  existed; it is moot now that no lift route exists to schedule at all.
 - **A second global Ctrl+K.** See §3.2.
 - **The Progress board.** §10.
 
