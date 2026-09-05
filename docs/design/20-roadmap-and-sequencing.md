@@ -28,8 +28,10 @@ Every mechanism referenced below carries its owning doc's tag — **(exists toda
 | 2 | The truth core (L2) | Verified facts + `fact_sources` + the verification ladder, review/hygiene queues, `projects` registry, `fact_sources` origin-diversity counting (over the `origin_key` born at capture in Phase 1, doc 05 §2.1), the consolidation ("dreaming") job family, memory relations, topics; then the code deriver once L2 is proven live | 08, 06, 09 (topics), 10 (deriver) |
 | 3 | Synthesis & reach (L3) | Subject articles behind the groundedness gate; auto-research (F7) as a committed fast-follow; distribution — inject v1, onboarding, SDKs, browser capture | 09, 15 |
 | 4 | Hardening & scale | `ApiKey` activation + exposed-deployment posture, repo push webhook, inject `watch`, auto-scrape opt-in, the multi-replica decision if ever taken | 18, 10, 15, 02 |
-| H1 | Documents / PKM (horizon lane) | The block pipeline, block retrieval, faithfulness gate, proposition lifting, analysis surface | 16 |
+| H1 | Documents / PKM (horizon lane) | The block pipeline, block retrieval, faithfulness gate, cosine-based analysis surface | 16 |
 | H2 | .NET migration (horizon lane) | The SQL-first baseline replay + harness-paritied port, on appetite | 19, 03a |
+
+**Amendment, owner ruling 2026-09-05.** H1's row above used to list "proposition lifting" as horizon work still to be built. It is retired, not horizon: a priced sample lift minted 2,058 memories from 7 documents and extrapolated to ~104,000 across the corpus, so it will not ship in any form (doc 16 §5). H1's analysis surface (cross-document and document-to-memory connections) is re-based on cosine similarity over block vectors instead (doc 16 §6).
 
 The phase sequence with its gates — solid edges are the committed path, dashed edges are appetite-gated horizon lanes; every *gate* edge is a measured number defined in doc 17 (§4), except the Phase-4 edge, which is demand-gated rather than scheduled (§10):
 
@@ -192,7 +194,7 @@ flowchart TB
         E4["multi-replica decision if ever taken (inv 13)"]
     end
     subgraph HZ["Horizon lanes"]
-        F1H["H1: block pipeline, faithfulness gate, proposition lifting (doc 16)"]
+        F1H["H1: block pipeline, faithfulness gate, cosine analysis (doc 16; lift retired 2026-09-05)"]
         F2H["H1+: MCP-resource inject transport (doc 15)"]
         F3H["H2: .NET replay via DbUp + registry port (doc 19)"]
     end

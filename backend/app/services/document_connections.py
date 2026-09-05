@@ -22,11 +22,15 @@ silently falls back to its 40/off defaults until something sets them):
 320-623ms on a 282-block document, 2,739-3,964ms on the corpus's 1,132-block
 outlier (`E2-truth-core`). A narrower query -- projecting only ids and score,
 not the full block-pair evidence this statement actually returns -- measures
-faster on a same-sized pair (785ms / 2,085ms unfiltered before the
-document-exclusion predicate below existed, 586ms / 2,173ms filtered after);
-that pair is a comparison of what a lighter projection costs and what adding
-the exclusion predicate costs, not a second measurement of this surface's own
-number.
+faster than the statement above only on the large document (2,085ms vs.
+2,739-3,964ms unfiltered); on the 282-block document it is in fact slower
+(785ms vs. 320-623ms), a difference within noise at that size rather than a
+real saving. Correction, 2026-09-05: an earlier version of this paragraph
+called the narrower query faster without that qualifier, which held for the
+1,132-block document and did not for the 282-block one. Filtered numbers
+(586ms / 2,173ms, after the document-exclusion predicate below existed) are a
+comparison of what adding that predicate costs on top of the narrower
+projection, not a second measurement of this surface's own number.
 
 **This surface is therefore approximate where `document_related` is exact,
 in the same way the rest of the block channel already is.** `search_blocks`

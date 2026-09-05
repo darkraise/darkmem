@@ -135,6 +135,13 @@ is the evidence, which is what §2's reversal obliges.
 
 ### 3.2 Query shape: one scan, and the cost model is stated honestly
 
+**Scope note, post-implementation (2026-09-05): this section is `document_related`'s
+(blocks vs. the project's memory vectors) and its exact-scan conclusion held —
+78 ms measured, no correction needed here. `document_connections` (blocks vs.
+other documents' blocks) is a different, quadratic case and does *not* share
+this section's exact-scan shape; §4's own correction covers what shipped there
+and the mismeasurement that preceded it.**
+
 Revision 1 specified a `LATERAL` ANN probe per block and claimed it "uses the
 HNSW index once per block rather than computing a full cross product". **The
 review refuted that.** Built at 20,000 vectors, the planner with the project
@@ -312,6 +319,58 @@ floor, top-N with the matching passage pair shown, the fingerprint derived from
 data, and scoping to the document's own project in SQL. The caption changes —
 "emergent from shared entities after lifting" describes a mechanism that will
 not exist.
+
+**Correction, post-implementation (2026-09-05): the shape above is not what
+shipped.** "A same-table join... the shape `search_blocks` already serves"
+described an **exact** self-join — both sides scanned in full, the same shape
+§3.2 uses for `document_related`, which is safe there only because one side
+(the project's memory vectors) is small. Here *both* sides are the same
+`block_embeddings__<slug>` partition, so both scale with block count, and the
+join is quadratic rather than linear. Implemented as written, it measured
+**166,526 ms** (166.5 s) on the live database for the corpus's largest filed
+document (`E2-truth-core.md`, 1,132 non-empty blocks) — three orders of
+magnitude past `document_related`'s cost on the same document — which tripped
+a deliberate hard stop rather than shipping. `backend/app/services/document_connections.py`
+was rewritten to probe instead of join: a `LATERAL` **ANN probe per block**
+(`ORDER BY t.embedding <=> m.embedding LIMIT 10`, using the HNSW index rather
+than defeating it by ordering on the derived `score`), excluding the queried
+document's own blocks, max-aggregated by document exactly as §3.1 specifies,
+and with **no block cap** for the same reason §3.3 drops the cap on
+`document_related` — an earlier per-document probe cap ordered by block count
+was measured to drop the *best* cross-document match on the documents that
+most needed it (one case moved 0.843 → 0.505). This surface is therefore
+approximate (an ANN probe can miss the true nearest block) where
+`document_related` stays exact, the same trade `search_blocks` already made
+for the block channel.
+
+**A second correction belongs beside the first: the numbers this section
+implies for that probe were themselves mismeasured at first, on a basis
+error rather than a code error.** An initial pass measured this replacement
+statement at 494 ms typical / 3,436 ms (3.4 s) worst case, and the gap
+between that and a wider `ef_search` was read as evidence the tuning was not
+helping. That reading was wrong: those numbers were taken in a plain `psql`
+session, where `SHOW hnsw.ef_search` **errors** rather than reporting a
+value, because pgvector 0.8.2 registers its HNSW GUCs lazily — a session that
+never issues the app's `SET`s silently runs at pgvector's own defaults
+(`ef_search=40`, `iterative_scan` off) rather than the tuned ones, and a bare
+`psql` session issues no such `SET`. `app/database.py:23-24` sets
+`hnsw.ef_search = 100` and `hnsw.iterative_scan = 'relaxed_order'` on every
+*application* connection, so 494 ms / 3,436 ms was never this surface's
+number — it measured the untuned default, not the shipped configuration.
+Re-measured under the app's real settings, two different queries produced two
+different pairs of numbers, and both belong in the record because a later
+docstring correction (`document_connections.py`) conflated them: a **narrower
+query** projecting only ids and score (not the full block-pair evidence the
+shipped statement returns) measured **785 ms typical / 2,085 ms worst**; the
+**statement actually shipped**, which does return the full evidence, measures
+**320–623 ms typical / 2,739–3,964 ms worst**. The narrower projection is not
+a second measurement of the shipped surface's own cost — it is a comparison
+of what a lighter projection would cost, and it measures faster than the
+shipped statement only on the large (1,132-block) document; on the small
+(282-block) one it is in fact *slower* (785 ms vs. 320–623 ms), a difference
+within noise at that size rather than a real saving. Neither pair is the
+494 ms / 3,436 ms figure, and neither should be read as superseding the
+other — they are different queries under the same, correctly-tuned settings.
 
 ## 5. What is removed
 
