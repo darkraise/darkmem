@@ -354,6 +354,10 @@ BLOCK_CHANNEL_MODULES = frozenset({
     # codebase's named characteristic defect.
     "app.services.block_verbs",
     "app.services.block_serializer",
+    # Reads block rows (via its own child-table probes) to resolve the
+    # fingerprint a relatedness read compares under; classified here per
+    # the same rule.
+    "app.services.document_similarity",
 })
 
 # `block_fact_sources` is deliberately absent from that set: it *is* doc 16
