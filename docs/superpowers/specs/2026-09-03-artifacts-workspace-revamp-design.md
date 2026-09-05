@@ -204,46 +204,45 @@ human edit the same document.
 
 ## 6. Lifting and related memories — the only new backend
 
-### 6.1 The lift door
+### 6.1 The lift door — retired
 
-`documents.py` records: *"**No lift door.** `lift_document` is on-demand by
-design and a route is the easiest way for something to call it on a schedule;
-nothing in EH1 needs one **before a human asks**."*
+**This section proposed `POST /api/v1/documents/{id}/lift` and a one-shot bulk
+lift script. Neither shipped as a permanent surface: the owner retired the
+on-demand proposition lift entirely (ruling 2026-09-05), on the pricing
+measurement §6.3 records below.** The section is kept for its reasoning
+rather than deleted, because that reasoning — a route is the easiest way for
+something to call a lift on a schedule, so the door should stay human-invoked
+— is still correct about doors in general; it is moot only because there is
+no lift door of any kind left to guard. `lift_document`,
+`block_fact_sources` (the bridge a lift's output would have crossed into the
+vault through) and every caller of either are deleted. There is no route
+from a block to a fact at all, not a gated or on-demand one.
 
-**This spec is the human asking, so the route is added — and the reason the
-note gives is preserved rather than discarded.** The concern is *scheduled*
-calling, not human calling. So:
+### 6.2 Related memories — re-based onto cosine, entity basis reversed
 
-- `POST /api/v1/documents/{id}/lift`, behind `require_auth` and
-  `refuse_when_read_only` (it writes, and it dials out through the LLM).
-- **It declares no `config_schema` and is registered in no `JobRegistry` job.**
-  A test asserts the route is unreachable from the job registry, so the hazard
-  the note names cannot arrive later by accident.
-- Idempotent by construction: `lift_document` strips the prior lift keyed on
-  `document_id` before rewriting, so a second lift replaces the first.
-- Returns the `LiftResult`; `None` (no blocks) is reported as "nothing to
-  lift", never as success.
+**This section originally read related memories off the lifted propositions'
+entities, via `entities.memory_ids[]`. That basis is gone with the lift
+(§6.1), and `related-memories` and `document-connections` are now re-based
+onto cosine similarity over block vectors instead** — the read goes
+document → block vectors → nearest memory vectors by cosine, no entity graph
+and no lifted proposition anywhere on the path.
 
-A **bulk lift** for the 475 already-filed documents runs as a one-shot host
-script through this route, not as a job — same reasoning.
-
-### 6.2 Related memories
-
-Given a lifted document, the entities its propositions minted carry
-`entities.memory_ids[]`, which names every memory asserting the same thing.
-That is the whole read.
-
-- **No LLM call**, matching `document_connections.py`, whose module contract
-  says the moment a connections feature generates prose it has become unbadged
-  synthesis and belongs to doc 09.
-- **No new table.**
-- **It never touches the block channel**, so `test_block_retrieval.py`'s three
-  scans and the retrieval firewall are untouched. The read goes
-  document → lifted propositions → entities → memories; no block row crosses
-  into ranking and no fact is minted.
-- **Shared-entity count is evidence, not a score.** Ordering is by how many
-  entities are shared, and nothing normalises that into a similarity number —
-  the rule `document_connections.py` already states for itself.
+- **No LLM call** still holds, and for the same reason: the moment a
+  connections feature generates prose it has become unbadged synthesis and
+  belongs to doc 09. Cosine ordering is not prose.
+- **No new table** still holds — the read is over embeddings already
+  written for retrieval.
+- **It still never touches the block channel's write side** — reading block
+  *vectors* to rank memories is the surface `test_block_retrieval.py`'s scans
+  were written to police, and they were extended rather than bypassed: no
+  block row crosses into `HybridSearchService` or `LayerCompositionService`'s
+  ranking, and no fact is minted from a block.
+- **"Shared-entity count is evidence, not a score" is reversed by the same
+  2026-09-05 ruling, and §8 names the reversal explicitly.** With the entity
+  basis gone there is nothing left to count; the replacement is a cosine
+  similarity number, which is exactly the "similarity score" §8 originally
+  ruled out building. See §8 for the stated constraint that ships instead of
+  the badge or percentage that ruling was guarding against.
 
 **The UI presents this as a maintenance surface, because that is the owner's
 stated purpose:** for each related memory, show what it shares with the
@@ -266,24 +265,29 @@ sanctioned path is capturing a *new* memory carrying a REPLACES-family
 relation, which is what `detect_supersessions` acts on. The UI offers that as
 "replace with a new memory", never as a status toggle.
 
-### 6.3 The cost of lifting 475 documents, stated before it is spent
+### 6.3 The cost of lifting 475 documents — measured, and it is what retired the feature
 
-`lift_document` takes an `llm` and extracts propositions per document, so the
-bulk lift of the existing corpus is a **real spend, not a migration**. 475
-documents over 49,310 blocks is the largest single LLM expenditure this project
-has proposed, and nothing in this tree has measured it.
+**This section priced the bulk lift before it was committed. The pricing
+sample is what retired it, not a follow-up decision made afterward: the
+binding constraint turned out to be corpus composition, not call price or
+token volume, which is a different failure mode than the one this section
+was budgeting against.**
 
-**So it is measured before it is committed:** the bulk script runs a sample of
-20 documents first and reports live calls, tokens and wall-clock through the
-existing cost twin, and the full run happens only on the owner's say-so with
-that number in hand. A run that quietly spends an unmeasured amount on a
-corpus nobody has priced is exactly the shape this project's gate ledger
-refuses elsewhere.
+The sample: 7 documents minted 2,058 memories against a corpus of 50
+documents. Extrapolated across the corpus's 47,811 non-empty blocks, a full
+run was on the order of 104,000 memories from roughly 152,000 LLM calls, at a
+sample spend of $0.72. The per-call and per-token cost was unremarkable — the
+number that mattered was the *memory count* the corpus's document composition
+would produce, which was disproportionate to the corpus's actual size and
+made the lift's output unusable as a memory population regardless of what it
+cost to generate. Pricing the calls and tokens, which is what this section
+set out to do, answered the wrong question; the measurement that actually
+decided the outcome was what the sample's *output shape* revealed about the
+corpus, not its bill.
 
-Two mitigations that are properties of the code, not hopes: the lift is
-idempotent (`strip_document_lift` keyed on `document_id`, so a re-run replaces
-rather than doubles), and it is per-document, so a partial run is not a broken
-state — it is a smaller corpus.
+The mitigations this section listed — idempotent re-lift, per-document
+partial-run safety — are moot along with the feature they protected;
+`lift_document` and `strip_document_lift` are deleted.
 
 ## 7. Sequencing
 
@@ -314,7 +318,17 @@ share a change with work the owner is reviewing visually.
   own project.
 - **Prose over several documents.** That is doc 09's articles, with grounding,
   citations and a ladder. Connections and related-memories return rows.
-- **A similarity score.** See §6.2.
+- **A similarity score — reversed by owner ruling, 2026-09-05.** This bullet
+  ruled out rendering a similarity score, on the entity-count basis §6.2
+  originally used. With that basis retired and related-memories re-based onto
+  cosine (§6.2), a similarity score is exactly what the surface now shows —
+  but under a stated constraint that is the actual guard this bullet was
+  reaching for: the score is an ordering key rendered as a **raw cosine value
+  to three decimals**, never normalised into a percentage, never rendered as
+  a bar, and never a pass/fail badge. The corpus's cosine distribution is
+  continuous with no seam to badge against (p50 0.503, p90 0.612, p99
+  0.750), so any percentage, bar or badge would manufacture a threshold the
+  data does not have.
 - **A scheduled lift.** See §6.1 — the whole reason the route was withheld.
 - **A second global Ctrl+K.** See §3.2.
 - **The Progress board.** §10.
@@ -323,8 +337,10 @@ share a change with work the owner is reviewing visually.
 
 TDD throughout. The load-bearing tests:
 
-- The lift route is **not reachable from `JobRegistry`** — the hazard §6.1
-  inherits.
+- **Structural relatedness pin (shipped, Task 8):** nothing under
+  `app/services` imports either relatedness surface's ranking module — the
+  route is guarded by import-closure structure, not by a route-reachability
+  test against a lift door that no longer exists.
 - `test_block_retrieval.py`'s existing scans still pass, proving related-memories
   did not open a path from blocks into ranking or fact-minting.
 - Each pane renders four distinct states (loading / failed / empty / populated),

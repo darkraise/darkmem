@@ -288,8 +288,8 @@ The review verified the classification mechanically rather than accepting the
 prose: it walked all nine `VAULT_WRITERS` closures with the test's own
 `import_closure` and none reaches `document_related`, `document_connections`,
 `routes.documents`, `block_embeddings` or `block_query`. The promoting-method
-scan forbids the repository's 11 public methods minus 5 allowlisted, none of
-which a cosine read names. The fusion scan inspects only the four fusion
+scan forbids the repository's 11 public methods minus 4 allowlisted (`as_of`,
+`get`, `get_live`, `list_live`), none of which a cosine read names. The fusion scan inspects only the four fusion
 modules' imports. The classification holds.
 
 **Stated without softening:** this is blocks ranking memories, on a surface

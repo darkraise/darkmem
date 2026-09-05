@@ -4,6 +4,21 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
+## Unreleased
+
+### Removed
+
+- **The on-demand proposition lift and the block-to-fact bridge.** A pricing
+  sample (7 documents minting 2,058 memories against a 50-document corpus)
+  extrapolated to roughly 104,000 memories and 152,000 LLM calls for a full
+  corpus run, a cost the corpus's composition — not call price or token
+  volume — made structurally uneconomical. The lift and
+  `block_fact_sources`, the bridge that would have carried a fact from a
+  lifted block into the vault, are both deleted: there is no route from a
+  block to a fact any more. `related-memories` and `document-connections`
+  are re-based onto cosine similarity over block vectors instead of the
+  retired entity basis.
+
 ## v1.6.0 — 2026-09-04
 
 **The project workspace, made usable.** Three surfaces the owner reported as
