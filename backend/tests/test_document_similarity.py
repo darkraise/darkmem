@@ -1,7 +1,7 @@
 """The fingerprint a relatedness read compares under (spec §3.5)."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from uuid import UUID
 
 import pytest
 from sqlalchemy import text
@@ -76,7 +76,7 @@ async def _embed_blocks(session, fingerprint: str, block_ids: list[str]) -> None
         )
 
 
-async def _insert_memory(session, *, project=PROJECT) -> str:
+async def _insert_memory(session, *, project=PROJECT) -> UUID:
     memory_id = new_id()
     await session.execute(
         text(
@@ -241,3 +241,57 @@ async def test_block_counterpart_matches_another_documents_blocks(session):
         session, document_id=document_id, project=PROJECT, counterpart="block",
     )
     assert result == FINGERPRINT
+
+
+@pytest.mark.asyncio
+async def test_a_one_sided_fingerprint_missing_the_document_is_skipped(session):
+    """The newer fingerprint has the counterpart but not the document itself;
+    the older, complete fingerprint is returned instead — proving the
+    `if not has_document: continue` guard skips rather than short-circuits."""
+    await _register(session, FINGERPRINT)
+    await _register(session, OTHER_FINGERPRINT)
+    await _set_registered_at(session, FINGERPRINT, seconds_ago=20)
+    await _set_registered_at(session, OTHER_FINGERPRINT, seconds_ago=10)
+
+    document_id, block_ids = await _file_blocks(session)
+    await _embed_blocks(session, FINGERPRINT, block_ids)
+    memory_id = await _insert_memory(session)
+    await _embed_memory(session, FINGERPRINT, memory_id)
+    # OTHER_FINGERPRINT (newer) gets a memory vector but never embeds the
+    # queried document's own blocks.
+    await _embed_memory(session, OTHER_FINGERPRINT, memory_id)
+
+    result = await resolve_shared_fingerprint(
+        session, document_id=document_id, project=PROJECT, counterpart="memory",
+    )
+    assert result == FINGERPRINT
+
+
+@pytest.mark.asyncio
+async def test_returns_none_when_the_only_live_fingerprint_misses_the_document(session):
+    await _register(session, FINGERPRINT)
+    document_id, _block_ids = await _file_blocks(session)
+    memory_id = await _insert_memory(session)
+    await _embed_memory(session, FINGERPRINT, memory_id)
+    # The document's own blocks are never embedded under FINGERPRINT.
+
+    result = await resolve_shared_fingerprint(
+        session, document_id=document_id, project=PROJECT, counterpart="memory",
+    )
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_block_counterpart_does_not_cross_a_project_boundary(session):
+    await _register(session, FINGERPRINT)
+    document_id, block_ids = await _file_blocks(session)
+    await _embed_blocks(session, FINGERPRINT, block_ids)
+    _other_document_id, other_block_ids = await _file_blocks(
+        session, project="t-document-similarity-other", texts=("other content",),
+    )
+    await _embed_blocks(session, FINGERPRINT, other_block_ids)
+
+    result = await resolve_shared_fingerprint(
+        session, document_id=document_id, project=PROJECT, counterpart="block",
+    )
+    assert result is None
