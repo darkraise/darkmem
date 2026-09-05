@@ -9,7 +9,9 @@ better" log, not release notes for strangers. The ladder is
 ### Removed
 
 - **The on-demand proposition lift and the block-to-fact bridge.** A pricing
-  sample (7 documents minting 2,058 memories against a 50-document corpus)
+  sample — 7 documents minting 2,058 memories into a corpus of 50 hand-captured
+  **memories** (the document corpus is 475 documents; this line said
+  "a 50-document corpus", wrong unit and a denominator off by roughly tenfold) —
   extrapolated to roughly 104,000 memories and 152,000 LLM calls for a full
   corpus run, a cost the corpus's composition — not call price or token
   volume — made structurally uneconomical. The lift and

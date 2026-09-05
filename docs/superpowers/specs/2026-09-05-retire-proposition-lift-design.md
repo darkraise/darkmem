@@ -160,16 +160,21 @@ So the shape is the one the planner was going to choose anyway: **a single
 statement joining the document's block vectors against the project's memory
 vectors, max-aggregated per memory, ordered, limited.** No `LATERAL`, no
 per-block `k`, no probe cap. Measured on prod against the corpus's largest
-document (`E2-truth-core.md`, 1,132 non-empty blocks × 50 memories = 56,600
-distance computations): **78 ms**, plan is a hash join over two sequential
-scans.
+document (`E2-truth-core.md`, 1,132 non-empty blocks × the `darkmem` project's
+20 memories = 22,640 distance computations): **78 ms**, plan is a hash join
+over two sequential scans. *Corrected 2026-09-05: the multiplier read 50
+memories = 56,600 computations. 50 is the **corpus-wide** memory count across
+all eight projects; this statement is project-scoped and that document's
+project holds 20 (verified against the live database, 2026-09-05). The
+measurement was of the real scoped query — only the arithmetic printed beside
+it was unscoped, so the timing stands and the product does not.*
 
 **The honest cost model: this is O(document blocks × project memories) and uses
 no index.** It is correct at any size and fast at this one. The threshold at
 which it needs restructuring is the project's memory count, not its document
-count — at ~50 memories a 1,132-block document costs 78 ms; at 10,000 memories
-the same document would cost roughly 200× that and the surface would need an
-over-fetching ANN probe with the `SEMANTIC_FETCH_MULTIPLIER` discipline.
+count — at the ~20 memories that project holds a 1,132-block document costs
+78 ms; at 10,000 memories the same document would cost roughly 500× that and
+the surface would need an over-fetching ANN probe with the `SEMANTIC_FETCH_MULTIPLIER` discipline.
 
 Worth stating because it is load-bearing rather than lucky: **the owner's
 ruling is what keeps this shape viable.** A corpus that does not absorb 104,000
@@ -260,21 +265,57 @@ why document search is refused on the backup worker. `resolve_read_fingerprint`
 is a data probe biased toward a stale populated partition after a rotation, so
 the panel would serve old-embedder rows while search serves the active one.
 
-Instead: pick the **newest fingerprint in which both this document's blocks and
-this project's memories have vectors**. Zero calls, no staleness bias in the
-harmful direction, and it degrades correctly — during a rotation the panel
-serves the old fingerprint's comparison until both sides finish re-embedding,
-which is right, because a cosine across fingerprints has no defined value.
+Instead: pick a fingerprint **holding a vector for every block of this document
+and at least one on the counterpart side**, newest first; failing that, the
+newest holding *some* of this document's blocks and a counterpart. Zero calls,
+and no staleness bias in the harmful direction, because a cosine across
+fingerprints has no defined value.
 
-The envelope therefore carries `comparable_memories: int` beside the items, and
-the surface distinguishes:
+**Amended 2026-09-05, after the branch review.** This paragraph read "it
+degrades correctly — during a rotation the panel serves the old fingerprint's
+comparison until both sides finish re-embedding". The implementation checked
+`EXISTS`, not completeness, and both re-embed paths are incremental
+(`reembed.py` commits per batch, `block_embedding_refresh` embeds `batch`
+blocks per tick), so a new partition holding one row of three won the
+resolution — reproduced with NEW at 1/3 blocks and 1/3 memories beating OLD at
+3/3 on both sides. The document-side completeness preference above is the
+repair. **The counterpart side is still existence-only**, deliberately:
+completeness there costs a scan of the project's memories (or of every other
+document's blocks) on every panel read, which is unmeasured and is not what the
+reproduction turned on. So the honest guarantee is *the document side is
+compared whole where any live fingerprint can do that*, not *both sides are
+complete*.
+
+The envelope therefore carries `comparable_memories: int` beside the items —
+counted over `memories` **at any fingerprint**, never inside the resolved
+partition, which is what makes it independent of `embedded`:
 
 | State | Meaning |
 |---|---|
-| document has no blocks | nothing to compare from |
-| no shared fingerprint | blocks or memories not embedded yet; self-resolving |
-| `comparable_memories = 0` | the project holds no comparable memory |
-| `comparable_memories > 0`, items returned | the nearest N, with scores |
+| `comparable_memories = 0` | the project holds no memory; nothing to compare against, and nothing resolves it but capturing one |
+| `comparable_memories > 0`, `embedded` false | memories exist, no fingerprint holds both sides yet; resolved by the block refresh and the `reembed` POST |
+| `embedded` true, no items | the comparison ran and returned nothing |
+| `embedded` true, items returned | the nearest N, with scores |
+
+**Amended 2026-09-05: the table above used to lead with "no shared
+fingerprint … self-resolving" and list `comparable_memories = 0` as a separate
+state.** Those were one state on the wire, not two: `comparable_memories` was
+counted inside the resolved partition, so a project with no embedded memory
+returned `embedded=False, comparable_memories=0` and a zero-memory project
+rendered "still being embedded" permanently — nothing will ever embed a memory
+that does not exist, so "self-resolving" was false of exactly the case that
+needed it. Reproduced by the review against `darkmem_bench`: a fully embedded document in a
+project with zero memories, and a single-document project's connections, both
+answered `embedded=False comparable=0 items=0`. The count is
+fingerprint-independent now and **a reader must test `comparable_* === 0`
+before `embedded`**. The "document has no blocks" row is dropped: it is not
+separately observable — a document with no blocks embeds nothing, so it
+arrives as `embedded=False` like any other unembedded document.
+
+`document_connections` carries the identical shape in `comparable_documents`,
+which counts the project's other documents at any fingerprint; that count was
+already fingerprint-independent and `document_related`'s was corrected to
+match.
 
 ### 3.6 Firewall classification
 

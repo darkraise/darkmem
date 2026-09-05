@@ -280,10 +280,19 @@ anywhere on its path.
 stated purpose:** for each related memory, show what it shares with the
 document and give the actions that are actually available. **Amended
 2026-09-05: this said an unlifted document "says so and offers the lift" —
-there is no lift to offer any more.** A document with no comparable memory
-under the cosine basis (`comparable_memories = 0`, per
-`2026-09-05-retire-proposition-lift-design.md` §3.5's states table) says so
-and renders an empty state; there is no lift action to fall back to.
+there is no lift to offer any more.** A document in a project with no memory to compare
+against (`comparable_memories = 0`, per
+`2026-09-05-retire-proposition-lift-design.md` §3.5's states table) says exactly
+that — "no memories in this project to compare against" — and offers no action,
+because none exists: capturing a memory is the only thing that changes it.
+**Amended 2026-09-05 (branch review):** this said the state "renders an empty
+state", which under-describes it and read as interchangeable with the two other
+empty renderings. It is not: the card distinguishes *nothing to compare
+against* (this state), *not embedded yet* (`embedded=false` with a positive
+count, which the block refresh and the `reembed` POST do resolve on their own),
+*the comparison ran and returned nothing*, and a failed read. The count is
+tested before `embedded` in the UI, because `embedded` is false in the first
+two states alike.
 
 **Three of the four maintenance actions exist; "supersede" does not, and this
 spec's first draft wrongly promised it.** `PUT /memories/{id}` accepts
@@ -310,7 +319,13 @@ token volume, which is a different failure mode than the one this section
 was budgeting against.**
 
 The sample: 7 documents minted 2,058 memories against a corpus of 50
-documents. Extrapolated across the corpus's 47,811 non-empty blocks, a full
+**memories**. *Corrected 2026-09-05: this read "a corpus of 50 documents".
+The corpus is 475 documents and 50 memories (verified against the live
+database, 2026-09-05); 50 was always the memory count, which is the
+denominator the argument turns on — the whole finding is that the lift's
+output dwarfs the hand-captured memory population, and stating it against
+documents both names the wrong unit and understates the document corpus
+tenfold.* Extrapolated across the corpus's 47,811 non-empty blocks, a full
 run was on the order of 104,000 memories from roughly 152,000 LLM calls, at a
 sample spend of $0.72. The per-call and per-token cost was unremarkable — the
 number that mattered was the *memory count* the corpus's document composition
