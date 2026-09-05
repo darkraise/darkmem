@@ -136,11 +136,17 @@ is the evidence, which is what §2's reversal obliges.
 ### 3.2 Query shape: one scan, and the cost model is stated honestly
 
 **Scope note, post-implementation (2026-09-05): this section is `document_related`'s
-(blocks vs. the project's memory vectors) and its exact-scan conclusion held —
-78 ms measured, no correction needed here. `document_connections` (blocks vs.
-other documents' blocks) is a different, quadratic case and does *not* share
-this section's exact-scan shape; §4's own correction covers what shipped there
-and the mismeasurement that preceded it.**
+(blocks vs. the project's memory vectors) and its exact-scan conclusion held.
+This section's own measurement, below, is the pre-implementation figure: 78 ms
+on the same 1,132-block-vs-50-memory case this design specced. The shipped
+statement's own docstring (`document_related.py:32`) re-measured the identical
+case at 89 ms — the two are the same query at the same size, just measured at
+different points (design-time estimate vs. shipped, three-run measurement);
+neither supersedes the other, and no correction to this section's exact-scan
+conclusion is needed. `document_connections` (blocks vs. other documents'
+blocks) is a different, quadratic case and does *not* share this section's
+exact-scan shape; §4's own correction covers what shipped there and the
+mismeasurement that preceded it.**
 
 Revision 1 specified a `LATERAL` ANN probe per block and claimed it "uses the
 HNSW index once per block rather than computing a full cross product". **The
@@ -329,8 +335,12 @@ described an **exact** self-join — both sides scanned in full, the same shape
 join is quadratic rather than linear. Implemented as written, it measured
 **166,526 ms** (166.5 s) on the live database for the corpus's largest filed
 document (`E2-truth-core.md`, 1,132 non-empty blocks) — three orders of
-magnitude past `document_related`'s cost on the same document — which tripped
-a deliberate hard stop rather than shipping. `backend/app/services/document_connections.py`
+magnitude past `document_related`'s cost on the same document. The exact
+self-join **was committed to the branch and measured live** (`document_connections.py`'s
+own docstring says so: "was shipped first and measured on the live corpus at
+166.5s"), then replaced before the branch merged to master — "shipping" there
+means landing on the implementation branch this measurement forced a
+correction on, not reaching production. `backend/app/services/document_connections.py`
 was rewritten to probe instead of join: a `LATERAL` **ANN probe per block**
 (`ORDER BY t.embedding <=> m.embedding LIMIT 10`, using the HNSW index rather
 than defeating it by ordering on the derived `score`), excluding the queried

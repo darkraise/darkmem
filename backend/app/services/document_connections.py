@@ -24,10 +24,12 @@ outlier (`E2-truth-core`). A narrower query -- projecting only ids and score,
 not the full block-pair evidence this statement actually returns -- measures
 faster than the statement above only on the large document (2,085ms vs.
 2,739-3,964ms unfiltered); on the 282-block document it is in fact slower
-(785ms vs. 320-623ms), a difference within noise at that size rather than a
-real saving. Correction, 2026-09-05: an earlier version of this paragraph
-called the narrower query faster without that qualifier, which held for the
-1,132-block document and did not for the 282-block one. Filtered numbers
+(785ms vs. 320-623ms) -- 785ms is a single reading, not a three-run range, but
+it sits 26% above the top of the shipped statement's 320-623ms range, which is
+a real gap rather than noise at that size. Correction, 2026-09-05: an earlier
+version of this paragraph called the narrower query faster without that
+qualifier, which held for the 1,132-block document and did not for the
+282-block one. Filtered numbers
 (586ms / 2,173ms, after the document-exclusion predicate below existed) are a
 comparison of what adding that predicate costs on top of the narrower
 projection, not a second measurement of this surface's own number.
