@@ -253,8 +253,14 @@ function DocumentDetail({ documentId }: { documentId: string }) {
               no other documents in this project to compare against
             </p>
           ) : connections.data.items.length === 0 ? (
+            // The comparable count is every other document in the project,
+            // embedded or not, and the probe is bounded -- so this arm means
+            // the others are not embedded under this fingerprint, or foreign
+            // blocks crowded the probe. It never means "nothing is near":
+            // the read applies no similarity floor.
             <p className="text-muted-foreground text-sm italic">
-              no document in this project has a nearby passage
+              no other document in this project is embedded under a shared
+              fingerprint yet
             </p>
           ) : (
             <div className="flex flex-col gap-2">

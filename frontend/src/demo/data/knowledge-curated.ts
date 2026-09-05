@@ -110,8 +110,8 @@ export const CURATED_FACTS: DemoFact[] = [
       "semantic_weight defaults to 0.7 in the RRF fusion formula (k=60) — the semantic channel is weighted 70% against the keyword channel's 30% before fusion.",
     verification_status: "corroborated",
     claim:
-      "asserted by 4 distinct origins of kinds [block, code, memory], no known contradiction, as of 2026-07-22",
-    meta: "asserted by 4 distinct origins",
+      "asserted by 3 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-22",
+    meta: "asserted by 3 distinct origins",
     review_state: null,
     as_of: "2026-07-22",
     sources: [

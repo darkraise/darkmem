@@ -58,8 +58,9 @@ function mockDocuments(result: unknown | "fail") {
       return Promise.resolve({ items: [] })
     }
     // The reader pane's detail panels. Without their own arms these fall
-    // through to the list payload, which carries none of the connections
-    // envelope's fields, so the connections panel throws on render.
+    // through to the list payload, which carries no `embedded`, so the
+    // connections panel would render "not comparable yet" for every
+    // document and this file would be asserting against the wrong state.
     if (path.endsWith("/connections")) {
       return Promise.resolve({ items: [], embedded: true, comparable_documents: 0 })
     }

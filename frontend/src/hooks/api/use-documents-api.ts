@@ -3,10 +3,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ApiError, apiFetch } from "@/lib/api"
 import { DEMO } from "@/lib/demo-flag"
 
-/** The list and search payloads carry `horizon`; the two relatedness reads
- *  (connections, related memories) do not -- they answer with `embedded` plus
- *  a comparable count instead, which is what says whether the comparison could
- *  be made at all. The label rides the data, not
+/** Every documents payload carries `horizon` except the summary and the two
+ *  relatedness reads (connections, related memories); those answer with
+ *  `embedded` plus a comparable count instead, which is what says whether the
+ *  comparison could be made at all. The label rides the data, not
  *  only the page chrome: a client rendering this anywhere else must still be
  *  able to say what it is looking at. */
 export interface DocumentListItem {
