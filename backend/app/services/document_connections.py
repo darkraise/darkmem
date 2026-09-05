@@ -1,25 +1,16 @@
-"""Cross-document connections, emergent from the shared graph (TH1.15, §6).
+"""Documents nearest this one, by cosine over block vectors (§4).
 
-**No new analysis engine, and that is the decision rather than a constraint.**
-Two documents are connected because their lifted propositions minted entities
-in the *same* graph — the one Phase 4 already dedups and Phase 5 already
-writes. There is no new table, no new job family, no traversal of its own and
-no model call: this module is a read over `entities.memory_ids` and the
-provenance the lift already stored.
+The sibling of `document_related`, one hop further out: that module asks which
+*memories* resemble this document, this asks which other *documents* do.
 
-**A multi-document write-up is an article, and articles are doc 09's.** This
-returns which documents share which entities and nothing more. The moment a
-"connections" feature generates prose about several documents it has become
-unbadged synthesis reading blocks, which doc 16 §6 puts out of scope and doc 09
-already owns properly — with grounding, citations and a ladder. So the module
-makes no LLM call at all, and a test pins that rather than trusting the
-sentence.
+Everything `document_related` decides applies here and for the same reasons --
+no LLM call, max-aggregation over the argmax block pair, no floor, the
+fingerprint derived from data, project scoping in SQL -- with one difference
+that makes this the cheaper of the two: both sides are the *same* partition, so
+this is a same-table join.
 
-**Shared entity count is evidence, not a score.** The rows come back ordered by
-how many entities two documents have in common, because that is the only
-ordering the underlying data supports honestly. Nothing here weights, decays or
-normalises it into a similarity number, which would read as a measurement
-nobody made.
+The former basis was `entities.memory_ids` over the memories a lift minted.
+Nothing is lifted any more, so that walk would return an empty list forever.
 """
 from __future__ import annotations
 
@@ -30,92 +21,133 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.proposition_lift import PROVENANCE_KEY
+from app.services.document_similarity import resolve_shared_fingerprint
+from app.services.embedder_registry import child_table
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["DocumentConnection", "connections_for_document"]
+__all__ = [
+    "DocumentConnection", "DocumentConnections", "connections_for_document",
+]
 
 
 @dataclass(frozen=True)
 class DocumentConnection:
     document_id: str
     title: str | None
-    shared_entities: tuple[str, ...]
+    score: float
+    block_id: str
+    block_text: str
+    other_block_id: str
+    other_block_text: str
 
-    @property
-    def shared_count(self) -> int:
-        return len(self.shared_entities)
+
+@dataclass(frozen=True)
+class DocumentConnections:
+    document_id: str
+    embedded: bool
+    comparable_documents: int
+    items: tuple[DocumentConnection, ...]
 
 
-# One statement, over tables that already exist. Read bottom-up:
-#   `mine`   — the memories this document's lift minted, by provenance;
-#   `theirs` — every other lifted memory, with the document it came from;
-#   the join — entities asserted by both, which is the connection.
-# `entities.memory_ids` is the existing GIN-indexed array Phase 5 maintains;
-# nothing here writes it, and nothing here needs a traversal.
-_CONNECTIONS_SQL = text(
-    """
-    WITH mine AS (
-        SELECT id FROM memories
-        WHERE metadata -> :key ->> 'document_id' = :document_id
-    ),
-    theirs AS (
-        SELECT id, metadata -> :key ->> 'document_id' AS document_id
-        FROM memories
-        WHERE metadata -> :key ->> 'document_id' IS NOT NULL
-          AND metadata -> :key ->> 'document_id' <> :document_id
-          AND project = :project
-    )
-    SELECT theirs.document_id AS document_id,
-           d.title            AS title,
-           array_agg(DISTINCT e.name) AS shared
-    FROM entities e
-    JOIN mine   ON e.memory_ids @> ARRAY[mine.id]
-    JOIN theirs ON e.memory_ids @> ARRAY[theirs.id]
-    JOIN documents d ON d.id = CAST(theirs.document_id AS uuid)
-    GROUP BY theirs.document_id, d.title
-    ORDER BY count(DISTINCT e.name) DESC, theirs.document_id
-    LIMIT :limit
-    """
-)
-
-_PROJECT_SQL = text(
+_DOCUMENT_SQL = text(
     "SELECT project FROM documents WHERE id = CAST(:id AS uuid)"
 )
 
 
+def _connections_sql(blocks_table: str) -> str:
+    """Interpolated, not bound: a table identifier from `child_table` over a
+    fingerprint read out of `embedders`, never from a caller."""
+    return f"""
+        SELECT other.id::text      AS document_id,
+               other.title         AS title,
+               best.score          AS score,
+               best.block_id::text AS block_id,
+               best.block_text     AS block_text,
+               best.other_block_id::text AS other_block_id,
+               best.other_block_text     AS other_block_text
+        FROM documents other
+        JOIN LATERAL (
+            SELECT mine_b.id    AS block_id,
+                   mine_b.text  AS block_text,
+                   their_b.id   AS other_block_id,
+                   their_b.text AS other_block_text,
+                   1 - (mine.embedding <=> theirs.embedding) AS score
+            FROM {blocks_table} mine
+            JOIN blocks mine_b ON mine_b.id = mine.block_id
+            JOIN {blocks_table} theirs ON true
+            JOIN blocks their_b ON their_b.id = theirs.block_id
+            WHERE mine_b.document_id = CAST(:document_id AS uuid)
+              AND their_b.document_id = other.id
+            ORDER BY score DESC
+            LIMIT 1
+        ) best ON true
+        WHERE other.project = :project
+          AND other.id <> CAST(:document_id AS uuid)
+        ORDER BY best.score DESC, other.id
+        LIMIT :limit
+    """
+
+
+def _comparable_sql() -> str:
+    return (
+        "SELECT count(*) FROM documents "
+        "WHERE project = :project AND id <> CAST(:document_id AS uuid)"
+    )
+
+
 async def connections_for_document(
     session: AsyncSession, *, document_id: UUID | str, limit: int = 20,
-) -> list[DocumentConnection]:
-    """Which other documents share entities with this one.
+) -> DocumentConnections:
+    """Which other documents are nearest this one, and which passages matched.
 
     Scoped to the document's own project in SQL. A connection across projects
     would cross the isolation boundary doc 18 §8 calls a security one — and it
     would do it in the surface whose whole purpose is to suggest things a
     reader has not thought of, which is the worst place to leak.
     """
+    key = str(document_id)
     project = (await session.execute(
-        _PROJECT_SQL, {"id": str(document_id)}
+        _DOCUMENT_SQL, {"id": key}
     )).scalar_one_or_none()
     if project is None:
-        return []
+        return DocumentConnections(
+            document_id=key, embedded=False, comparable_documents=0, items=(),
+        )
+
+    fingerprint = await resolve_shared_fingerprint(
+        session, document_id=key, project=project, counterpart="block",
+    )
+    if fingerprint is None:
+        return DocumentConnections(
+            document_id=key, embedded=False, comparable_documents=0, items=(),
+        )
+
+    blocks_table = child_table("block_embeddings", fingerprint)
+
+    comparable = await session.scalar(
+        text(_comparable_sql()), {"project": project, "document_id": key},
+    )
 
     rows = (await session.execute(
-        _CONNECTIONS_SQL,
-        {
-            "key": PROVENANCE_KEY,
-            "document_id": str(document_id),
-            "project": project,
-            "limit": limit,
-        },
+        text(_connections_sql(blocks_table)),
+        {"document_id": key, "project": project, "limit": limit},
     )).mappings().all()
 
-    return [
-        DocumentConnection(
-            document_id=row["document_id"],
-            title=row["title"],
-            shared_entities=tuple(sorted(row["shared"] or ())),
-        )
-        for row in rows
-    ]
+    return DocumentConnections(
+        document_id=key,
+        embedded=True,
+        comparable_documents=int(comparable or 0),
+        items=tuple(
+            DocumentConnection(
+                document_id=row["document_id"],
+                title=row["title"],
+                score=float(row["score"]),
+                block_id=row["block_id"],
+                block_text=row["block_text"],
+                other_block_id=row["other_block_id"],
+                other_block_text=row["other_block_text"],
+            )
+            for row in rows
+        ),
+    )
