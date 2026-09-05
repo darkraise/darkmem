@@ -311,23 +311,47 @@ def test_the_composition_refuses_a_block_candidate_outright():
         _ = LAYER_BY_ID_KIND["block"]
 
 
+def test_no_service_module_imports_the_relatedness_surfaces():
+    """Spec §3.6: these read block vectors and rank memories by them. That is
+    permitted on a per-document panel outside the composition and nowhere
+    else, so the pin is structural -- a test asserting today's results hold
+    no block cannot pin "cannot"."""
+    surfaces = ("app.services.document_related", "app.services.document_connections")
+    offenders = []
+    for path in app_sources(BACKEND):
+        try:
+            dotted = str(path.relative_to(BACKEND / "app/services").with_suffix(""))
+        except ValueError:
+            continue
+        dotted = f"app.services.{dotted.replace('/', '.')}"
+        if path.name in {"document_related.py", "document_connections.py"}:
+            continue
+        closure = import_closure(BACKEND, dotted)
+        for surface in surfaces:
+            if surface in closure:
+                offenders.append((path.name, surface))
+    assert offenders == [], f"a service reached a relatedness surface: {offenders}"
+
+
 # ── never lifted unasked: the same firewall's vault side ────────────
 #
 # The scan above is doc 16's retrieval half — a block may not be fused into a
 # ranked memory result. This is its other half: a block may not become a
-# verified fact except through the on-demand lift doc 16 §5 owns. That half
-# was honoured behaviourally and untested structurally, which is how a
-# citation to "the structural test" came to overstate what it checks.
+# verified fact at all — the on-demand lift and the block-to-fact bridge that
+# would have been that route are both retired. That half was honoured
+# behaviourally and untested structurally, which is how a citation to "the
+# structural test" came to overstate what it checks.
 #
 # The seeds are the minting, ladder-moving and vault-synthesising modules,
 # not "everything that touches knowledge_triples", and the difference is not
-# tidiness: `document_door` writes the vault too — it expires a fact whose
-# last source its delete just withdrew — and reads blocks by construction.
-# That is the withdrawal direction, which removes evidence and can only
-# demote. The firewall is about a block *becoming* a verified fact, so a
-# module that only ever takes evidence away is not one of its subjects, and a
-# seed list that swept it in would assert something false about this door.
-# That "only ever takes evidence away" is not left as a reading of today's
+# tidiness: `document_door` reads blocks by construction, and its
+# withdraw-then-expire pass — which used to remove evidence a delete had just
+# withdrawn — went with the bridge; it withdraws nothing today.
+# The firewall is about a block *becoming* a verified fact, so a
+# module that reads blocks but never mints or promotes anything is not one of
+# its subjects, and a seed list that swept it in would assert something false
+# about this door.
+# That "never mints or promotes" is not left as a reading of today's
 # code: `test_no_block_channel_module_can_promote_a_fact`, at the bottom of
 # this file, pins it at the method level.
 
@@ -359,6 +383,11 @@ BLOCK_CHANNEL_MODULES = frozenset({
     # fingerprint a relatedness read compares under; classified here per
     # the same rule.
     "app.services.document_similarity",
+    # The relatedness surfaces (spec §3.6). They read block rows and block
+    # vectors, so they are classified here in the change that gives them that
+    # reach -- an unclassified module is a hole in the scan.
+    "app.services.document_related",
+    "app.services.document_connections",
 })
 
 _VAULT_RULES = ReachabilityRules(
@@ -382,10 +411,13 @@ def test_no_vault_writers_import_closure_reaches_the_block_channel(writer):
     """A module that mints or promotes a fact must not be able to read a block.
 
     Rooted at the writers rather than at the block channel because the claim
-    is directional: the lift may reach the vault, the vault may not reach the
-    blocks. Walked transitively, since a helper two hops down that imported
-    the block channel would defeat a direct-import check while making the
-    reach entirely real.
+    is directional: a block channel module may hold the vault repository to
+    read from it (see `BLOCK_CHANNEL_MAY_CALL_ON_THE_VAULT` below — reads
+    only, since the withdrawal capability retired with the bridge), but no
+    vault writer may reach the blocks at all — there is no route from a
+    block to a fact left in this tree. Walked transitively, since a helper
+    two hops down that imported the block channel would defeat a
+    direct-import check while making the reach entirely real.
     """
     paths = _closure_paths(writer)
     assert len(paths) >= 3, (
@@ -443,25 +475,28 @@ def test_the_vault_scan_reports_a_module_that_does_reach_the_block_channel():
 
 # ── the withdrawal direction, pinned ─────────────────────────────────
 #
-# The seed list above leaves `document_door` out of `VAULT_WRITERS` on the
-# ground that it only ever *withdraws* — it expires a fact whose last source
-# its own delete removed, and removing evidence can only demote. That is a
-# property of today's code and of nothing else: the module holds a
-# `KnowledgeTripleRepository`, so `insert_open` or `set_verification_status`
-# is one line away, and neither scan above would notice. The coverage guard
-# derives writers from raw `knowledge_triples` SQL text, which a call through
-# the repository does not produce, and the reach scan is rooted at the
-# minting modules, which `document_door` would still not be one of by name.
+# No block-channel module holds a `KnowledgeTripleRepository` today, not even
+# to withdraw: the block-to-fact bridge that gave `document_door` a
+# withdraw-then-expire pass is retired, and nothing replaced it, so `expire`
+# has no more a caller here than `insert_open` does. This pin is prospective
+# rather than descriptive of a live caller: neither scan above would notice a
+# block channel module that started calling `insert_open` or
+# `set_verification_status`, because the coverage guard derives writers from
+# raw `knowledge_triples` SQL text, which a call through the repository does
+# not produce, and the reach scan is rooted at the minting modules, which no
+# block channel module is one of by name.
 #
-# So the exclusion is pinned here directly, at the method level.
+# So the exclusion is pinned here directly, at the method level, fail-closed
+# against a future block-channel module that does hold the repository.
 
 # Everything a block-channel module may call on the vault repository. The
 # forbidden set is derived as the complement, never listed: a method added to
 # `KnowledgeTripleRepository` is forbidden to this channel until someone
-# classifies it here, which is the fail-closed direction. `expire` is the
-# withdrawal itself; the rest are reads.
+# classifies it here, which is the fail-closed direction. All of these are
+# reads — the withdrawal method (`expire`) has no caller left to permit since
+# the bridge that called it is retired, so it is not classified here either.
 BLOCK_CHANNEL_MAY_CALL_ON_THE_VAULT = frozenset({
-    "as_of", "expire", "get", "get_live", "list_live",
+    "as_of", "get", "get_live", "list_live",
 })
 
 
@@ -486,22 +521,23 @@ def _attributes_named(source: str) -> set[str]:
 
 @pytest.mark.parametrize("module_name", sorted(BLOCK_CHANNEL_MODULES))
 def test_no_block_channel_module_can_promote_a_fact(module_name):
-    """A block-channel module may take evidence away from the vault; it may
-    never put a fact in one or move one up the ladder.
+    """A block-channel module may only read the vault; it may never put a
+    fact in one, move one up the ladder, or withdraw evidence from one.
 
-    Named methods rather than import reach, because the import is legitimate:
-    `document_door` must hold the repository to expire an unsourced fact. It
-    is the *verbs* that are the boundary, and doc 16 §5's lift is the only
-    route from a block to a fact.
+    Named methods rather than import reach, because a future block channel
+    module holding the repository would still be bound by the verbs it
+    calls, not by whether it holds the import. There is no route from a
+    block to a fact at all — the on-demand lift and the block-to-fact bridge
+    that would have carried one are both retired.
     """
     path = module_path(module_name, BACKEND)
     assert path is not None, f"{module_name} moved — re-point this scan"
     offenders = _attributes_named(path.read_text()) & _promoting_vault_methods()
     assert not offenders, (
         f"{module_name} names {sorted(offenders)} on the vault repository. A "
-        "block channel module may only withdraw evidence (`expire`); minting "
-        "a fact or moving one up the ladder from here would let a block "
-        "become a verified fact outside doc 16 §5's on-demand lift."
+        "block channel module may only read it; minting a fact, moving one "
+        "up the ladder, or withdrawing one from here would open a route "
+        "from a block to a verified fact where none exists today."
     )
 
 
@@ -510,7 +546,7 @@ def test_the_promoting_method_scan_catches_a_promotion():
     repository's would pass silently and become a comment."""
     promoting = _promoting_vault_methods()
     assert "insert_open" in promoting and "set_verification_status" in promoting
-    assert "expire" not in promoting
+    assert "expire" in promoting
 
     breach = "triples = KnowledgeTripleRepository(session)\nawait triples.insert_open(row)\n"
     assert _attributes_named(breach) & promoting == {"insert_open"}
