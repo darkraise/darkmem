@@ -37,14 +37,28 @@ migration discipline begins; nothing before it is grandfathered.
   **`--full` needs `DEEPSEEK_API_KEY` exported** (the retrieval eval refuses to
   start without it) — though on a warm cache that eval is a replay at **0 live
   calls**, so the key is a precondition rather than a spend.
-  **A red Playwright leg on this host is a kill before it is a regression.**
-  An `earlyoom` daemon runs here and the suite is already at `workers: 1`, so
-  there is no tuning headroom: measured 2026-09-02, one unchanged commit gave
-  47 passed → 13 failed → 47 passed, the failures being `Target crashed` and
-  `ERR_CONNECTION_REFUSED` after the vite server died. Re-run it standalone
-  through `backend/scripts/e2e/run_playwright_e2e.py` before believing a red,
-  and never invoke Playwright bare. This was recorded in five 2026-08-31 plans
-  and nowhere a later session would look, which is why it kept being
+  **A red gate leg on this host is a kill before it is a regression, and the
+  hazard is the HOST, not any one leg.** An `earlyoom` daemon runs here and
+  every leg is already serialised (`workers: 1` on Playwright), so there is no
+  tuning headroom. **Exit 143 anywhere in a gate is a SIGTERM, not a
+  failure — check `free -h` before believing a red**; a kill lands at ~80%
+  swap and lands on whichever leg happened to be running, so it is not a
+  property of the leg that went red. This was written for the Playwright leg
+  alone until 2026-09-05, when the same daemon was measured killing the
+  frontend vitest and backend pytest legs too. **`./scripts/gate.sh --full`
+  cannot complete on this host**: two attempts, two SIGTERM kills at different
+  legs, both at ~80% swap, while every leg passed when run on its own. Run the
+  legs individually instead — `tests/test_api/test_rest_conformance.py`,
+  `scripts/benchlib/tests` (name the path; see the `testpaths` note below),
+  `sdks/` `make generate` plus both SDK suites.
+  The Playwright leg's own measurement stands as the worked example: 2026-09-02,
+  one unchanged commit gave 47 passed → 13 failed → 47 passed, the failures
+  being `Target crashed` and `ERR_CONNECTION_REFUSED` after the vite server
+  died. Re-run it standalone through
+  `backend/scripts/e2e/run_playwright_e2e.py` before believing a red, and never
+  invoke Playwright bare — a bare `npx playwright test` points `/api` at the
+  live instance on `:8000`. This was recorded in five 2026-08-31 plans and
+  nowhere a later session would look, which is why it kept being
   rediscovered. **`pyproject.toml` sets
   `testpaths = ["tests"]`, so plain `pytest -q` does NOT collect
   `scripts/benchlib/tests`** — run the gate, or the harness can break while the
