@@ -1,7 +1,14 @@
 """Memories nearest a document, by cosine (spec §3).
 
-The no-model-call scan below is retained verbatim from the entity-walk version:
-the basis changed, the rule that this surface generates no prose did not.
+The no-model-call scan below carries the entity-walk version's rule --
+this surface generates no prose and reaches no model -- but not its exact
+wording: the forbidden-marker tuple has changed twice since, once because the
+brief's own "embed" marker was unsatisfiable against a module that legitimately
+reads `embedder_registry` and the `*_embeddings` partition tables, and again
+because that first fix missed the wrapper functions (`embed_blocks`,
+`embed_facts`, `embed_relations`, `embed_repo_entities`) that call an
+orchestrator internally without the literal substring `"embed("` appearing at
+the call site.
 
 The behavioural tests below go past the brief's own minimal set: a stub that
 returns an early `RelatedMemories(embedded=False, ...)` for every call would
@@ -63,11 +70,16 @@ def _code_only() -> str:
 
 def test_the_module_makes_no_model_call():
     code = _code_only()
-    # "embed(" / "embed_batch" catch an actual embed call; the bare word
-    # "embed" would also convict `embedder_registry` and the
+    # "embed(" catches a direct call; "embed_" catches the four wrapper
+    # functions that take an orchestrator and call it internally
+    # (`embed_blocks`, `embed_facts`, `embed_relations`,
+    # `embed_repo_entities`) without "embed(" appearing at the call site. The
+    # bare word "embed" would also convict `embedder_registry` and the
     # `memory_embeddings` / `block_embeddings` table names this module reads
-    # by identifier, which are not model calls.
-    for forbidden in ("chat_completion", "llm", "embed(", "embed_batch", "generate"):
+    # by identifier, and "embedded" on `RelatedMemories` -- none of which are
+    # model calls -- so it is deliberately not used; "embed_" is absent from
+    # all four of those and would not be.
+    for forbidden in ("chat_completion", "llm", "embed(", "embed_", "generate"):
         assert forbidden not in code, f"{forbidden} reached document_related"
 
 
@@ -91,6 +103,28 @@ async def test_an_unknown_document_is_not_embedded(session):
     from uuid import uuid4
     related = await related_memories_for_document(session, document_id=uuid4())
     assert isinstance(related, RelatedMemories)
+    assert related.embedded is False
+    assert related.comparable_memories == 0
+    assert related.items == ()
+
+
+@pytest.mark.asyncio
+async def test_a_known_document_with_no_shared_fingerprint_is_not_embedded(session):
+    """The four-state envelope's other `embedded=False` path: a document that
+    exists and has blocks, but resolves no fingerprint holding vectors on
+    both sides -- because nothing has embedded it yet. Distinct from the
+    unknown-document path above; if `related_memories_for_document` special-
+    cased "no matching document row" without a real fingerprint check, that
+    path could report `embedded=True` here by accident."""
+    await _register(session)
+    document_id, _block_ids = await _file_blocks(session)
+    # No block is embedded under any fingerprint, so
+    # `resolve_shared_fingerprint` can find no live fingerprint holding this
+    # document's vectors -- this is "nothing could be compared yet", not
+    # "nothing relates".
+
+    related = await related_memories_for_document(session, document_id=document_id)
+
     assert related.embedded is False
     assert related.comparable_memories == 0
     assert related.items == ()
