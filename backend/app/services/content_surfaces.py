@@ -168,18 +168,25 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
         scoping=Scoping.SCOPED,
         # `status` rides the row because a related memory may be superseded or
         # deprecated, and a maintenance surface that hid that would invite an
-        # edit to a row the pipeline has already retired.
+        # edit to a row the pipeline has already retired. `project` rides it
+        # because this declaration is only worth something if the label is on
+        # the wire -- `RelatedMemoryItem` served no `project` until 2026-09-05,
+        # so the guard was passing on the declaration alone.
         labels=("project", "status"),
-        decided_by="spec 2026-09-03 §6.2",
+        decided_by="spec 2026-09-05 §3",
         reason="The sibling documents reads sit in ROUTES_WITHOUT_MEMORY_CONTENT "
                "because no `memories` row crosses them. This one is different "
                "and is classified on what it actually returns: `m.content` for "
-               "every related memory. The scope is derived from the document "
-               "rather than accepted from the caller -- `_PROJECT_SQL` reads the "
-               "document's own project and the query binds it -- so the door has "
-               "no wide mode and a caller cannot widen it. Single-door on REST; "
-               "an MCP twin would hand an agent an L1-keyed memory list, which "
-               "is graph.candidate_read's own block.",
+               "every related memory. The ranking is cosine over the vectors "
+               "both sides already carry, not an entity walk, and the scope is "
+               "still derived from the document rather than accepted from the "
+               "caller -- `document_similarity.resolve_shared_fingerprint` "
+               "picks the one partition both sides are embedded in, and the "
+               "project predicate inside `_related_sql` binds the document's "
+               "own project -- so the door has no wide mode and a caller "
+               "cannot widen it. Single-door on REST; an MCP twin would hand "
+               "an agent an L1-keyed memory list, which is "
+               "graph.candidate_read's own block.",
     ),
     ContentSurface(
         key="memory_overview",
@@ -640,22 +647,19 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # cost question rather than a scoping one -- `refuse_when_read_only` on
     # the route is what answers that.
     "POST /api/v1/documents/{document_id}/summary",
-    # The lift MINTS memories, but its response carries only their ids -- no
-    # `memories` row content crosses the wire, which is this bucket's claim.
-    # The memories it writes are then served by the ordinary memory surfaces,
-    # which are classified on their own terms above.
-    "POST /api/v1/documents/{document_id}/lift",
     "GET /api/v1/documents/{document_id}/connections",
     "POST /api/v1/documents/qa",
     # The write door: filing and deleting a document. Same classification as
     # the reads above and for the same reason -- never a `memories` row, so
     # there is no memory content for an isolation probe to drive against.
-    # The tables these touch are wider than `documents`/`blocks`: a delete
-    # withdraws the document's `fact_sources` rows, expires a
-    # `knowledge_triples` row left with none, and journals `events`. None of
-    # that reads or returns memory content, which is the claim this bucket
-    # makes; it is named here so the next reader does not take the narrower
-    # sentence as the inventory.
+    # The tables these touch are wider than `documents` alone, but not by
+    # much any more: a delete removes the document row and cascades its
+    # blocks and their vectors. It withdraws no provenance, expires no fact
+    # and journals nothing -- there is no route from a block to a fact for it
+    # to withdraw, and no delete event type for it to write. None of that
+    # reads or returns memory content, which is the claim this bucket makes;
+    # it is named here so the next reader does not take the narrower sentence
+    # as the inventory.
     "POST /api/v1/documents",
     "DELETE /api/v1/documents/{document_id}",
     "DELETE /api/v1/documents/by-uri",

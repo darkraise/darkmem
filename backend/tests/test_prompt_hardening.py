@@ -114,15 +114,6 @@ def test_the_remaining_prompts_carry_a_guard_sentence():
         assert _GUARD_HINT in source.lower(), f"{module.__name__} has no guard"
 
 
-def test_proposition_lift_forwards_a_content_seed():
-    """Reproducibility contract: the same input replays to the same JSON."""
-    import inspect
-
-    from app.services import proposition_lift
-
-    assert "_content_seed" in inspect.getsource(proposition_lift)
-
-
 def test_document_summary_refuses_an_empty_completion():
     """Storing an empty summary is worse than failing: nothing signals it."""
     import inspect

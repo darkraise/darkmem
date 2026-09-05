@@ -22,7 +22,6 @@ import { toast } from "darkraise-ui/components/sonner"
 import {
   useDocumentConnections,
   useRelatedMemories,
-  useDocumentLift,
   useDocumentDelete,
   useDocumentSummarize,
   useDocumentSummary,
@@ -99,10 +98,8 @@ export function DocumentActions({
               Delete {document.title ?? document.uri ?? "this document"}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              This does more than remove the row. Deleting withdraws every
-              block of this document as a source of evidence, and any fact
-              left with no surviving source is expired. Facts still sourced
-              some other way keep their rung. This cannot be undone.
+              This removes the document and all of its blocks, including
+              their embeddings. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -131,9 +128,8 @@ export function DocumentActions({
 /** Summary and connections, side by side under the reader.
  *
  * Both are honest about being empty rather than absent: no summary has been
- * generated until someone spends the call, and connections stay empty for
- * every document until lifting runs, because they are emergent from shared
- * entities and this corpus has none.
+ * generated until someone spends the call, and a connections read that could
+ * not be made says so rather than rendering as an empty list.
  */
 export function DocumentDetail({ documentId }: { documentId: string }) {
   const summary = useDocumentSummary(documentId)
@@ -172,26 +168,63 @@ export function DocumentDetail({ documentId }: { documentId: string }) {
             Connections
           </p>
           <p className="text-muted-foreground text-sm">
-            Emergent from shared entities after lifting — not a synthesis.
+            Nearest documents in this project, by passage similarity.
           </p>
         </CardHeader>
         <CardContent>
           {connections.isLoading ? (
             <Skeleton className="h-16 w-full rounded-md" />
-          ) : (connections.data?.items ?? []).length === 0 ? (
+          ) : connections.isError ? (
+            <p className="text-destructive text-sm italic">
+              connections could not be read — this is a failed read, not an
+              empty one
+            </p>
+          ) : connections.data?.comparable_documents === 0 ? (
+            // Tested before `embedded`, because `embedded` is false in this
+            // state too: a project with one document resolves no fingerprint
+            // holding both sides, and the "still being embedded" copy below
+            // would then never come true — nothing embeds a document that
+            // does not exist. The count is fingerprint-independent, so it is
+            // the arm that can tell the two apart.
             <p className="text-muted-foreground text-sm italic">
-              no shared entities with another document
+              no other documents in this project to compare against
+            </p>
+          ) : !connections.data?.embedded ? (
+            <p className="text-muted-foreground text-sm italic">
+              not comparable yet — this document's blocks or this project's
+              other documents are still being embedded
+            </p>
+          ) : connections.data.items.length === 0 ? (
+            // The probe takes each passage's ten nearest blocks with no
+            // project filter and the outer query then drops the foreign ones,
+            // so this arm fires when every window was filled by other
+            // projects. It cannot mean "nothing is embedded" -- `embedded`
+            // already proves a same-project counterpart carries a vector under
+            // this fingerprint -- and it cannot mean "nothing is near", since
+            // the read applies no similarity floor.
+            <p className="text-muted-foreground text-sm italic">
+              no other document in this project surfaced — the comparison
+              samples each passage's nearest neighbours rather than scanning
+              every document, so a distant match can fall outside that window
             </p>
           ) : (
-            <div className="flex flex-col gap-1.5">
-              {(connections.data?.items ?? []).map((connection) => (
+            <div className="flex flex-col gap-2">
+              {connections.data.items.map((connection) => (
                 <div key={connection.document_id} className="text-sm">
-                  <span className="font-medium">
-                    {connection.title ?? "untitled document"}
-                  </span>
-                  <span className="text-muted-foreground ml-2 font-mono text-sm">
-                    {connection.shared_entities.join(" · ")}
-                  </span>
+                  <div className="flex items-start gap-1.5">
+                    <span className="font-medium">
+                      {connection.title ?? "untitled document"}
+                    </span>
+                    <span className="text-muted-foreground shrink-0 font-mono text-sm">
+                      {connection.score.toFixed(3)}
+                    </span>
+                  </div>
+                  <p className="text-muted-foreground line-clamp-2">
+                    {connection.block_text}
+                  </p>
+                  <p className="text-muted-foreground line-clamp-2 italic">
+                    {connection.other_block_text}
+                  </p>
                 </div>
               ))}
             </div>
@@ -204,22 +237,30 @@ export function DocumentDetail({ documentId }: { documentId: string }) {
   )
 }
 
-/** Memories that assert what this document asserts, and what to do about them.
+/** Memories whose text sits near a passage of this document.
  *
  * A maintenance surface, which is the owner's stated purpose for it. Two
  * things it deliberately does not do: it renders no prose about what a
  * document and a memory share (that would be unbadged synthesis, which doc 09
- * owns with grounding and a ladder), and it shows the shared entity names
- * rather than a similarity score, because the count is evidence and a
- * normalised number would read as a measurement nobody made.
+ * owns with grounding and a ladder), and it renders the score as a raw number
+ * rather than a percentage or a badge, because the distribution is continuous
+ * and any banding would assert a precision nobody measured. The matching
+ * passage is the evidence, not the score.
  *
- * An UNLIFTED document is not an empty list. Rendering both the same way tells
- * a reader "nothing relates to this" when the truth is "nobody has asked yet",
- * so the unlifted state says so and offers the lift.
+ * A read that could not be made is not an empty list, so `embedded: false` and
+ * a zero comparable count render distinctly — and the count is tested first,
+ * because `embedded` is false in both states. Neither offers an action, but
+ * they are not resolved by the same thing and neither is resolved by this
+ * card: a pending embed is ordinarily finished by the filing path, which
+ * embeds a document's blocks at filing time, and by the pipeline's Phase 1
+ * at buffer flush on the memory side — the hourly `block_embedding_refresh`
+ * is a backstop for gaps and the `reembed` POST is an operator action after
+ * a rotation, neither the normal route. `comparable_memories = 0` is
+ * resolved only by capturing a memory in this project. Nothing resolves it
+ * on its own.
  */
 function RelatedMemoriesCard({ documentId }: { documentId: string }) {
   const related = useRelatedMemories(documentId)
-  const lift = useDocumentLift(documentId)
 
   return (
     <Card elevation="low">
@@ -229,40 +270,43 @@ function RelatedMemoriesCard({ documentId }: { documentId: string }) {
           Related memories
         </p>
         <p className="text-muted-foreground text-sm">
-          Memories asserting what this document's lift asserted — ordered by
-          shared entities, which is evidence rather than a score.
+          Memories near a passage of this document — the passage is the
+          evidence, the score only orders the rows.
         </p>
       </CardHeader>
       <CardContent>
         {related.isLoading ? (
           <Skeleton className="h-16 w-full rounded-md" />
-        ) : !related.data?.lifted ? (
-          <div className="space-y-2">
-            <p className="text-muted-foreground text-sm italic">
-              this document has not been lifted, so it asserts nothing yet —
-              which is different from having no relations
-            </p>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => lift.mutate()}
-              disabled={lift.isPending}
-            >
-              {lift.isPending ? "Lifting…" : "Lift this document"}
-            </Button>
-            <p className="text-muted-foreground text-sm">
-              Lifting spends a model call per block and mints ordinary
-              memories. It is idempotent: lifting again replaces the previous
-              lift rather than doubling it.
-            </p>
-          </div>
-        ) : (related.data?.items ?? []).length === 0 ? (
+        ) : related.isError ? (
+          <p className="text-destructive text-sm italic">
+            related memories could not be read — this is a failed read, not an
+            empty one
+          </p>
+        ) : related.data?.comparable_memories === 0 ? (
+          // Tested before `embedded`, for the reason the connections card
+          // above gives: a project holding no memory resolves no shared
+          // fingerprint either, so `!embedded` would swallow this state and
+          // render "still being embedded" about a memory that will never be
+          // captured.
           <p className="text-muted-foreground text-sm italic">
-            lifted, and no other memory asserts the same entities
+            no memories in this project to compare against
+          </p>
+        ) : !related.data?.embedded ? (
+          <p className="text-muted-foreground text-sm italic">
+            not comparable yet — this document's blocks or this project's
+            memories are still being embedded
+          </p>
+        ) : related.data.items.length === 0 ? (
+          // Defensive: unreachable while `comparable_memories > 0`. The read
+          // applies no similarity floor and inner-joins every comparable
+          // memory to this document's best block in the shared partition, so
+          // a comparable memory always yields a row.
+          <p className="text-muted-foreground text-sm italic">
+            no rows came back for this document
           </p>
         ) : (
           <div className="flex flex-col gap-2">
-            {(related.data?.items ?? []).map((memory) => (
+            {related.data.items.map((memory) => (
               <div key={memory.memory_id} className="text-sm">
                 <div className="flex items-start gap-1.5">
                   <span className="line-clamp-2">{memory.content}</span>
@@ -271,10 +315,13 @@ function RelatedMemoriesCard({ documentId }: { documentId: string }) {
                       {memory.status}
                     </Badge>
                   )}
+                  <span className="text-muted-foreground shrink-0 font-mono text-sm">
+                    {memory.score.toFixed(3)}
+                  </span>
                 </div>
-                <span className="text-muted-foreground font-mono text-sm">
-                  {memory.shared_entities.join(" · ")}
-                </span>
+                <p className="text-muted-foreground line-clamp-2">
+                  {memory.block_text}
+                </p>
               </div>
             ))}
           </div>

@@ -45,13 +45,15 @@ describe("DocumentActions", () => {
   })
 
   it("states what delete does beyond removing the row", async () => {
-    // The consequence is provenance withdrawal and fact expiry, which a user
-    // cannot infer from the word "delete".
+    // Deleting a document cascades its blocks and their embeddings. It
+    // withdraws no provenance and expires no fact — nothing mints a fact
+    // from a block, so there is none to withdraw.
     renderActions()
     await userEvent.click(screen.getByRole("button", { name: /delete/i }))
     const dialog = await screen.findByRole("alertdialog")
-    expect(dialog.textContent).toMatch(/withdraws every\s+block of this document as a source/i)
-    expect(dialog.textContent).toMatch(/expired/i)
+    expect(dialog.textContent).toMatch(/blocks/i)
+    expect(dialog.textContent).toMatch(/embeddings/i)
+    expect(dialog.textContent).toMatch(/cannot be undone/i)
   })
 
   it("deletes only after the confirm action, then tells the parent", async () => {

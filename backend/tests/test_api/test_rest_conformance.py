@@ -61,9 +61,6 @@ EXPECTED_STATUS = {
     ("POST", "/api/v1/documents/{document_id}/summary"): 201,
     ("GET", "/api/v1/documents/{document_id}/connections"): 200,
     ("GET", "/api/v1/documents/{document_id}/related-memories"): 200,
-    # 201: it creates the memories the lift mints, the same reason the
-    # summary POST above is 201 rather than 200.
-    ("POST", "/api/v1/documents/{document_id}/lift"): 201,
     ("GET", "/api/v1/documents/{document_id}/outline"): 200,
     ("GET", "/api/v1/documents/{document_id}"): 200,
     ("POST", "/api/v1/documents/qa"): 200,

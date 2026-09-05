@@ -267,15 +267,15 @@ async def test_an_unrecognised_kind_is_rejected_and_writes_nothing(session):
     assert await _row_count(session, fact_id) == 0
 
 
-@pytest.mark.parametrize("kind,hint", [("document", "'block'")])
-async def test_a_reserved_kind_names_its_missing_producer(session, kind, hint):
-    """`document` is doc 08 §4.1's wording for content that arrives as `block`.
+@pytest.mark.parametrize("kind", ["document", "block"])
+async def test_a_reserved_kind_names_its_missing_producer(session, kind):
+    """Both spellings of document content are reserved, not writable.
 
-    `block` was the other row here until TH1.12 shipped its producer — the
-    reservation read "no producer writes one yet", which stopped being true
-    rather than being relaxed. `document` stays reserved because doc 04 §8.3's
-    column vocabulary still has no such value, and a caller following doc 08's
-    wording deserves to be pointed at where document content actually lands.
+    `document` is doc 08 §4.1's wording; `block` was writable while the
+    block-to-fact bridge existed and stopped being so when that bridge was
+    retired with nothing ever having called its writer. Neither has a
+    producer, and a caller reaching for either deserves to be told that
+    rather than to have the row refused as an unrecognised typo.
     """
     repo = FactSourceRepository(session)
     fact_id = await _fact(session)
@@ -288,7 +288,7 @@ async def test_a_reserved_kind_names_its_missing_producer(session, kind, hint):
             origin_key="doc-1",
         )
 
-    assert hint in str(raised.value)
+    assert "corroborate nothing" in str(raised.value)
     assert await _row_count(session, fact_id) == 0
 
 
@@ -313,7 +313,7 @@ async def test_an_empty_identity_field_is_rejected(session, field, kwargs):
 async def test_each_source_kind_round_trips(session):
     repo = FactSourceRepository(session)
     fact_id = await _fact(session)
-    assert SOURCE_KINDS == {"memory", "code", "block", "human"}
+    assert SOURCE_KINDS == {"memory", "code", "human"}
 
     await _add(repo, fact_id, kind="memory", ref="memory-1", origin="mcp:agent-run-1")
     await _add(
@@ -324,19 +324,15 @@ async def test_each_source_kind_round_trips(session):
         origin="repo-42",
         detail={"commit_sha": "abc123", "file_path": "app.py"},
     )
-    # TH1.12: the ref is the block, the origin is its document — which is what
-    # makes a many-block document one origin rather than many.
-    await _add(repo, fact_id, kind="block", ref="block-9", origin="document-3")
     human = await _add(repo, fact_id, kind="human", ref="user-7", origin="human:user-7")
 
     profile = await repo.origin_profile(fact_id)
-    assert profile.source_kinds == ("block", "code", "human", "memory")
-    assert profile.origin_count == 4
+    assert profile.source_kinds == ("code", "human", "memory")
+    assert profile.origin_count == 3
     assert human["source_kind"] == "human"
     assert human["source_ref"] == "user-7"
 
     stored = {o.origin_key: o.source_kinds for o in profile.origins}
-    assert stored["document-3"] == ("block",)
     assert stored["repo-42"] == ("code",)
     assert stored["human:user-7"] == ("human",)
     assert stored["mcp:agent-run-1"] == ("memory",)
@@ -639,9 +635,9 @@ async def test_facts_for_source_does_not_cross_projects(session):
     ) == [theirs]
 
 
-# `block` left this list when TH1.12 gave it a producer; it is a writable
-# kind now, so refusing it would refuse a real withdrawal sweep.
-@pytest.mark.parametrize("kind", ["article", "document", "memories"])
+# `block` is back on this list: the bridge that made it writable is retired,
+# so a withdrawal sweep for one would sweep a kind nothing ever wrote.
+@pytest.mark.parametrize("kind", ["article", "document", "block", "memories"])
 async def test_facts_for_source_refuses_a_kind_add_source_could_not_write(session, kind):
     """A typo must raise, not answer "nothing to withdraw" with an empty list."""
     repo = FactSourceRepository(session)
@@ -657,3 +653,10 @@ async def test_facts_for_source_is_empty_for_an_unknown_source(session):
 
     assert await repo.facts_for_source("memory", "memory-zzz", project=PROJECT) == []
     assert await repo.facts_for_source("code", "memory-a", project=PROJECT) == []
+
+
+def test_block_is_not_a_source_kind():
+    """Spec §5: nothing mints a block-kind source, so a reserved value under a
+    comment claiming its producer shipped is a stale claim, not an option."""
+    from app.repositories.fact_sources import SOURCE_KINDS
+    assert "block" not in SOURCE_KINDS

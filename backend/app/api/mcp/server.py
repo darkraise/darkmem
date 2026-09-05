@@ -836,10 +836,10 @@ async def document_delete(
             session, document_id=document_id, project=project, uri=uri,
         )
         try:
-            # Never a raw DELETE: `fact_sources.source_ref` carries no foreign
-            # key, so the cascade cannot reach it and the shared service is
-            # what withdraws the block sources and enqueues the facts that
-            # lost one. It relies on this caller to commit.
+            # Never a raw DELETE: the shared service is where a delete's
+            # shape is decided, so both doors remove the same rows rather
+            # than one door growing its own. It relies on this caller to
+            # commit.
             if not await delete_document(session, document_id=target):
                 raise DocumentTargetUnresolved("document not found")
             await session.commit()
@@ -2061,9 +2061,8 @@ async def block_move(
 
 @mcp.tool(
     description=(
-        "Delete a block and everything nested under it. The subtree's "
-        "provenance is withdrawn with it, so a fact left with no surviving "
-        "source is expired."
+        "Delete a block and everything nested under it. The block channel "
+        "mints no fact, so nothing is withdrawn or expired elsewhere."
     )
 )
 async def block_delete(block_id: str) -> str:

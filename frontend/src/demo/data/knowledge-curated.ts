@@ -110,8 +110,8 @@ export const CURATED_FACTS: DemoFact[] = [
       "semantic_weight defaults to 0.7 in the RRF fusion formula (k=60) — the semantic channel is weighted 70% against the keyword channel's 30% before fusion.",
     verification_status: "corroborated",
     claim:
-      "asserted by 4 distinct origins of kinds [block, code, memory], no known contradiction, as of 2026-07-22",
-    meta: "asserted by 4 distinct origins",
+      "asserted by 3 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-22",
+    meta: "asserted by 3 distinct origins",
     review_state: null,
     as_of: "2026-07-22",
     sources: [
@@ -135,13 +135,6 @@ export const CURATED_FACTS: DemoFact[] = [
         ref: "code backend/app/services/hybrid_search.py@d81e4f0",
         detail: "basis: constant SEMANTIC_WEIGHT_DEFAULT = 0.7 parsed from source",
         at: "indexed 2026-06-03",
-      },
-      {
-        origin_key: "document:d-4471",
-        kind: "block",
-        ref: "block “RRF tuning notes.md § Fusion weights”",
-        detail: "excerpted paragraph confirming the 0.7 / 0.3 split",
-        at: "indexed 2026-05-20",
       },
       {
         origin_key: "session:review-2026-07-19",

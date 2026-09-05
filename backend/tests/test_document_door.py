@@ -1,16 +1,10 @@
-from datetime import datetime, timezone
-
 import pytest
 from sqlalchemy import text
 
-from app.repositories.fact_sources import FactSourceRepository
-from app.repositories.knowledge_triples import KnowledgeTripleRepository
-from app.services.block_fact_sources import record_block_source
 from app.services.document_door import (
     DocumentTooLarge, MAX_BLOCKS, MAX_CONTENT_CHARS, delete_document, document_blocks,
     put_document, search_sections,
 )
-from app.services.triple_key import compute_triple_key
 
 # `parse_fingerprint` requires `model_id|dims`; the stub reports 3-dim
 # vectors, so the fingerprint must carry that dims suffix or
@@ -414,99 +408,14 @@ async def test_block_count_refusal_on_reupload_leaves_prior_blocks_intact(sessio
     assert surviving_block_ids == prior_block_ids
 
 
-# ── delete_document closes the provenance window (fix round 2) ────────
-
-
-async def _fact(session, *, subject: str = "postgres") -> str:
-    row = await KnowledgeTripleRepository(session).insert_open(
-        triple_key=compute_triple_key("p", subject, "RUNS_ON", "linux"),
-        subject_name=subject,
-        object_name="linux",
-        rel_type="RUNS_ON",
-        fact=f"{subject} runs on linux",
-        reference_time=datetime(2026, 8, 16, tzinfo=timezone.utc),
-        project="p",
-    )
-    return row["id"]
-
-
-async def _blocks_of(session, document_id: str) -> list[str]:
-    rows = (await session.execute(
-        text(
-            "SELECT CAST(id AS text) AS id FROM blocks "
-            "WHERE document_id = CAST(:document_id AS uuid) ORDER BY id"
-        ),
-        {"document_id": document_id},
-    )).scalars().all()
-    return list(rows)
-
-
-async def _sources_changed_count(session, fact_id: str) -> int:
-    return (await session.execute(
-        text(
-            "SELECT count(*) FROM events WHERE event_type = 'sources_changed' "
-            "AND object_type = 'fact' AND object_id = CAST(:f AS uuid)"
-        ),
-        {"f": fact_id},
-    )).scalar_one()
+# ── delete_document removes the row and its blocks ────────────────────
 
 
 @pytest.mark.asyncio
-async def test_delete_with_a_remaining_source_enqueues_but_does_not_expire(session):
-    """A fact that loses one of several sources gets an event and no expiry:
-    it is still corroborated, just less so, and the ladder decides what that
-    is worth on its own recompute -- not this function."""
-    llm = StubEmbedder()
-    fact_id = await _fact(session)
-    first = await put_document(session, llm, project="p", uri="docs/first.md", content=DOC)
-    second = await put_document(session, llm, project="p", uri="docs/second.md", content=DOC)
-    first_blocks = await _blocks_of(session, first.document_id)
-    second_blocks = await _blocks_of(session, second.document_id)
-    await record_block_source(session, fact_id=fact_id, block_id=first_blocks[0])
-    await record_block_source(session, fact_id=fact_id, block_id=second_blocks[0])
-    before_events = await _sources_changed_count(session, fact_id)
-
-    existed = await delete_document(session, document_id=first.document_id)
-
-    assert existed is True
-    expired_at = (await session.execute(
-        text("SELECT expired_at FROM knowledge_triples WHERE id = CAST(:f AS uuid)"),
-        {"f": fact_id},
-    )).scalar_one()
-    assert expired_at is None
-    assert await FactSourceRepository(session).count_distinct_origins(fact_id) == 1
-    assert await _sources_changed_count(session, fact_id) == before_events + 1
-
-
-@pytest.mark.asyncio
-async def test_delete_with_the_only_source_expires_the_fact(session):
-    """A fact that loses its only source gets both: the event that reaches
-    the recompute's fast arm, and the inline expiry doc 08 §3.3 permits at
-    this tier -- the same deterministic action `fact_provenance._withdraw`
-    already takes for a memory's last source."""
-    llm = StubEmbedder()
-    fact_id = await _fact(session)
-    doc = await put_document(session, llm, project="p", uri="docs/sole.md", content=DOC)
-    blocks = await _blocks_of(session, doc.document_id)
-    await record_block_source(session, fact_id=fact_id, block_id=blocks[0])
-    before_events = await _sources_changed_count(session, fact_id)
-
-    existed = await delete_document(session, document_id=doc.document_id)
-
-    assert existed is True
-    expired_at = (await session.execute(
-        text("SELECT expired_at FROM knowledge_triples WHERE id = CAST(:f AS uuid)"),
-        {"f": fact_id},
-    )).scalar_one()
-    assert expired_at is not None
-    assert await _sources_changed_count(session, fact_id) == before_events + 1
-
-
-@pytest.mark.asyncio
-async def test_delete_with_no_block_sources_writes_nothing_and_still_deletes(session):
-    """The common case today: no `record_block_source` call ever ran against
-    this document, so `withdraw_document` is a no-op and there is nothing to
-    enqueue for -- but the document must still go."""
+async def test_delete_removes_the_document_and_writes_no_provenance_event(session):
+    """A document's blocks corroborate no fact, so a delete has no provenance
+    window to close -- it removes the row, and journals nothing about
+    sources."""
     llm = StubEmbedder()
     doc = await put_document(session, llm, project="p", uri="docs/bare.md", content=DOC)
     events_before = (await session.execute(

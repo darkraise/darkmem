@@ -3,8 +3,12 @@
 Doc 16 §4 resolves the fuse-or-separate question in favour of **separate**:
 block retrieval is its own channel and its own tool, the document-side twin of
 code search, and document content reaches the four-layer memory/vault
-composition only as *lifted facts* (§5), never as raw block rows. Three reasons
-are recorded there and all three bind this module:
+composition **not at all** — never as raw block rows, and, since proposition
+lifting was retired (doc 16 §5, owner ruling 2026-09-05), never as a lifted
+fact either. The clause used to read "only as lifted facts (§5)"; the bridge
+that clause named is deleted, so the firewall below is now absolute rather
+than having had one sanctioned crossing. Three reasons are recorded there and
+all three bind this module:
 
 1. **The firewall.** Fusing blocks would make the core read path depend on the
    unshipped EH1 horizon, which is the one thing a horizon lane may never

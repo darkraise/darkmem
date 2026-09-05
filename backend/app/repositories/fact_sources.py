@@ -118,26 +118,19 @@ logger = logging.getLogger(__name__)
 # exception covers.
 CODE_SOURCE_KIND = "code"
 
-# Document content, spelled once for the same reason `code` is: the provenance
-# writer, the one-document-one-origin rule and the withdrawal that closes a
-# document's window all key on it (TH1.12).
-BLOCK_SOURCE_KIND = "block"
-
-# The kinds that may assert a fact today. Doc 04 §8.3's vocabulary is
-# {memory, block, code, human}, and `block` joined it when TH1.12 shipped its
-# producer — the reserved entry below said "no producer writes one yet", which
-# stopped being true rather than being relaxed.
-SOURCE_KINDS = frozenset(
-    {MEMORY_SOURCE_KIND, CODE_SOURCE_KIND, BLOCK_SOURCE_KIND, "human"}
-)
+# The kinds that may assert a fact today: {memory, code, human}. Document
+# content is not among them — nothing mints a source from a block, so the two
+# spellings a caller might reach for are reserved below rather than writable.
+SOURCE_KINDS = frozenset({MEMORY_SOURCE_KIND, CODE_SOURCE_KIND, "human"})
 
 _RESERVED_SOURCE_KINDS = {
-    # Doc 08 §4.1 names a `document` origin ("document -> document_id"); doc 04
-    # §8.3's column vocabulary has no such value, so document content arrives
-    # under the `block` kind — with the *document* as the origin_key, which is
-    # what makes a 400-block document one origin rather than 400. A caller
-    # following the former deserves to be told.
-    "document": "document content arrives under the 'block' kind, with the document id as its origin_key",
+    # Doc 08 §4.1 names a `document` origin ("document -> document_id") and
+    # `block` was writable while the block-to-fact bridge existed. It is not
+    # any more: a document's blocks corroborate no fact, so a caller reaching
+    # for either spelling deserves to be told that rather than to have the row
+    # refused as an unrecognised typo.
+    "document": "document content sources no fact; a document's blocks corroborate nothing",
+    "block": "document content sources no fact; a document's blocks corroborate nothing",
 }
 
 # Named only to make the refusal legible. Anything outside SOURCE_KINDS is

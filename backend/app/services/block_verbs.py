@@ -19,7 +19,6 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.block_embeddings import embed_blocks
-from app.services.block_fact_sources import withdraw_blocks
 from app.services.block_serializer import (
     TreeBlock,
     derive_markers,
@@ -32,7 +31,6 @@ from app.services.document_door import (
     MAX_CONTENT_CHARS,
     DocumentNotConvertible,
     DocumentTooLarge,
-    expire_facts_left_bare,
 )
 from app.services.document_ingest import compute_content_hash
 from app.services.events import record_event
@@ -212,14 +210,6 @@ async def _mutate(session, llm, *, document_id, apply, touched_embed, verb, bloc
 
     async with session.begin_nested():
         if deleted_subtree:
-            withdrawal = await withdraw_blocks(
-                session,
-                block_ids=[str(b) for b in deleted_subtree],
-                document_id=document_id,
-            )
-            await expire_facts_left_bare(
-                session, withdrawal, document_id=document_id
-            )
             # The subtree's root only: parent_id ON DELETE CASCADE takes the
             # rest, and block_embeddings__<slug> cascades in every partition.
             await session.execute(

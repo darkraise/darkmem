@@ -1557,7 +1557,11 @@ import closure of **this module and `block_pipeline` both** and fails the
 build if `app.services.pipeline` is reachable from either — rooted at the
 door as well as the pipeline, since the door imports the pipeline and a
 seed of the pipeline alone would leave the door itself unscanned. A
-document is candidate signal, not an asserted graph.
+document is candidate signal, not an asserted graph. **Documents are
+parsed, embedded and retrievable, and never extracted into memories** —
+the on-demand proposition lift that would have carried candidate signal
+into the fact vault was retired (2026-09-05); see the firewall paragraph
+below.
 
 **A document is content-first or block-first, and the flag decides who may
 write it** (increment 8, spec §8.2). `documents.properties.ingest_direction`
@@ -1674,16 +1678,19 @@ re-pushing N unchanged documents in a pass now makes N embedding calls;
 the hourly sweep still pays this once, this door pays it once per
 request.
 
-**Delete withdraws provenance before removing the row.**
-`fact_sources.source_ref` carries no foreign key, so deleting a document
-does not cascade to any fact a block corroborated. `delete_document`
-withdraws the block sources first, then expires any fact left with no
-surviving source (never one still sourced some other way, never one
-already expired), and journals a `sources_changed` event per affected
-fact so the Tier-C recompute's fast arm — not its slow reconciliation
-backstop — is what ordinarily reaches it. Neither this function nor the
-withdrawal it calls writes `verification_status`; the rung stays the
-ladder's decision.
+**Delete removes the row and cascades; there is no provenance to
+withdraw.** This paragraph described `delete_document` withdrawing
+`fact_sources` rows a block corroborated and expiring any fact left
+unsourced, until the proposition lift and the block-to-fact bridge that
+would have written those sources were retired (2026-09-05). Nothing
+mints a `fact_sources` row from a block, so a document's blocks
+corroborate no fact: `delete_document` removes the document row, which
+cascades its blocks and their vectors, withdraws no provenance, expires
+no fact, and journals nothing at all — there is no delete event type.
+The withdraw-then-expire
+pass it used to run was the withdrawal half of a bridge whose attaching
+half never had a caller, which made it a permanent no-op; it went with
+the bridge.
 
 **Owner ruling, 2026-08-23: `documents.write` and `documents.retrieval`
 are two-door.** `docs/two-door-parity.md` is the audit of record. The
@@ -1696,35 +1703,65 @@ no bar**; it is a parity decision, not a capability one. `documents.reads`
 (the list/summary/connections browsing routes) stays REST-only for its
 own, unrelated reasons.
 
-**The block channel is firewalled from memory composition.** A block row
-is retrievable only through the verbs above; it is never fused into
-`HybridSearchService` or `LayerCompositionService`'s ranking, and never
-lifted into the L1 graph except through the on-demand lift doc 16 §5
-owns. `tests/test_block_retrieval.py` enforces both halves
-structurally, rather than only checking that today's ranked results happen
-not to contain a block. The retrieval half walks the fusion modules' own
-imports and the composition's channel and id-kind registries and fails the
-build if a block becomes reachable from either. The vault half walks the
-import closure of every module that mints a fact, moves one on the ladder
-or synthesises an article from the vault, and fails the build if one can
-reach a module that reads a block row — doc 16 §5's lift is left as the
-only route from a block to a fact, and `block_fact_sources`, which is that
-lift, is excluded from the forbidden set on a narrower ground than "it
-never touches a block": it does query `blocks`, but only to resolve ids —
-no block text crosses into the vault through it — and the scan checks that
-it reaches no module that could fetch any. Scoped to minting rather than to "writes
-`knowledge_triples`" deliberately: `document_door` does both write the
-vault and read blocks, expiring a fact whose last source its own delete
-withdrew, and that withdrawal direction can only demote. **That direction
-is itself pinned, not assumed:** a third scan reads every block-channel
-module's own AST and fails the build if one names any
-`KnowledgeTripleRepository` method outside a small allowlist — `expire`
-plus the reads. The forbidden set is the complement, so a method added to
-that repository is forbidden to this channel until someone classifies it.
-Without it, `insert_open` or `set_verification_status` inside
-`document_door` would satisfy both other scans: the coverage guard derives
-writers from raw SQL text, which a call through the repository does not
-produce.
+**The block channel is firewalled from memory composition, and the
+firewall is now absolute.** A block row is retrievable only through the
+verbs above; it is never fused into `HybridSearchService` or
+`LayerCompositionService`'s ranking, and it is never lifted into the L1
+graph — the on-demand proposition lift (doc 16 §5) and the
+block-to-fact bridge (`block_fact_sources`) that would have carried a
+route from a block to a fact are both retired (2026-09-05). This
+paragraph used to name `block_fact_sources` as a deliberate, narrow
+exception to the forbidden set, excluded because it queried `blocks`
+only to resolve ids and let no block text cross into the vault; that
+exception is gone along with the module, and there is no route from a
+block to a fact at all. `tests/test_block_retrieval.py` enforces both
+halves structurally, rather than only checking that today's ranked
+results happen not to contain a block. The retrieval half walks the
+fusion modules' own imports and the composition's channel and id-kind
+registries and fails the build if a block becomes reachable from either.
+The vault half walks the import closure of every module that mints a
+fact, moves one on the ladder or synthesises an article from the vault,
+and fails the build if one can reach a module that reads a block row.
+Scoped to minting rather than to "writes `knowledge_triples`"
+deliberately, and the difference is directional, not a matter of which
+set is bigger: the firewall is about a block *becoming* a verified
+fact, so the scan is rooted at the modules that can *make* one — mint,
+promote on the ladder, or synthesise an article from the vault — and a
+module that only reads blocks without ever minting or promoting
+anything is not one of its subjects. A raw-SQL-text derivation over
+`INSERT INTO` / `UPDATE` / `DELETE FROM knowledge_triples` finds three
+modules today — the repository itself, `verification_recompute` and
+`entity_merge` — and that is narrower than the nine
+`VAULT_WRITERS` seeds: `fact_lift` writes through the repository, so a
+text scan cannot see it; `article_synthesis` does not write the vault
+at all and is a seed because it synthesises *from* it. That is
+why the derivation is a **staleness guard on the hand-written seed
+list** rather than the root rule, and why the method-level scan exists
+beside it. "Writes the vault" and "mints or promotes a fact" are also
+not the same predicate — `fact_provenance` calls `expire` and mints
+nothing — so rooting the scan at minting names the property the
+firewall is about rather than a proxy for it. A list rooted at "touches
+`knowledge_triples`" would additionally have swept `document_door` in
+(it reads blocks by construction) and then asserted something false
+about it: `document_door` was once the withdraw-then-expire pass's own
+writer, calling the bridge's withdrawal and then `expire` itself, but
+that pass went with the bridge and it writes nothing today — the
+negative control at `test_block_retrieval.py:471-475` shows its
+closure still reaches the block channel, which is exactly why the
+minting root, not a "touches the vault" root, is the one that stays
+correct. **That the block channel may only read the
+vault, never write or promote, is pinned at the method level:**
+a third scan reads every block-channel module's own AST and fails the
+build if one names any `KnowledgeTripleRepository` method outside a
+four-method allowlist — `as_of`, `get`, `get_live`, `list_live`, all
+reads. `expire` is not on it: the withdraw-then-expire pass that once
+called it was the withdrawal half of the retired bridge, and it has no
+caller left to permit. The forbidden set is the complement of the
+allowlist with no exception, so a method added to that repository is
+forbidden to this channel until someone classifies it. Without it,
+`insert_open` or `set_verification_status` inside `document_door` would
+satisfy both other scans: the coverage guard derives writers from raw
+SQL text, which a call through the repository does not produce.
 
 ## Cross-cutting invariants
 

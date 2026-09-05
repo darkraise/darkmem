@@ -54,6 +54,7 @@ from app.services.hygiene_queue import HYGIENE_PREVIEW_CHARS
 DIMS = 8
 ACTIVE_MODEL = "probe-embedder"
 OLD_MODEL = "probe-embedder-old"
+RELATED_MODEL = "probe-embedder-related"
 GHOST_MODEL = "probe-ghost"
 
 OBSERVER = "iso-alpha"
@@ -352,7 +353,6 @@ class ProbeContext:
     article_ids: dict[str, uuid.UUID]
     retention_conversation_id: str
     lifted_document_id: str = ""
-    lifted_memory_id: uuid.UUID | None = None
     scoped_conversation_id: str | None = None
     wide_conversation_id: str | None = None
     notes: list[str] = field(default_factory=list)
@@ -467,7 +467,6 @@ async def _seed(session_factory, stub: StubOrchestrator, old: StubOrchestrator) 
     from app.config import FEATURE_FLAGS_DEFAULTS
     from app.models.config import Config
     from app.models.memory import Memory
-    from app.services.proposition_lift import PROVENANCE_KEY as LIFT_PROVENANCE_KEY
     from app.repositories.fact_sources import FactSourceRepository
     from app.repositories.memory_communities import (
         CommunityDraft,
@@ -538,7 +537,7 @@ async def _seed(session_factory, stub: StubOrchestrator, old: StubOrchestrator) 
                 },
             )
 
-        # A lifted document, for the related-memories surface (spec §6.2).
+        # A document for the related-memories surface (spec §6.2).
         #
         # The probe corpus held no documents at all, which is why the document
         # reads sit in ROUTES_WITHOUT_MEMORY_CONTENT -- driving them against
@@ -547,11 +546,27 @@ async def _seed(session_factory, stub: StubOrchestrator, old: StubOrchestrator) 
         # `memories.content`, so a missing project predicate there leaks a
         # foreign row.
         #
-        # The lifted memory is attached to `redis` below, which ALREADY spans
-        # both projects (`a_active`, `b_active`, `a_super`). So the driver's
-        # question is the sharp one: asking an OBSERVER document for related
-        # memories must not return the FOREIGN project's `b_active`, even
-        # though the two share an entity.
+        # The surface is cosine between the document's block vectors and the
+        # project's memory vectors, so the fixture has to seed real vectors on
+        # both sides or the mutation test is vacuous: with nothing embedded the
+        # predicate-free variant returns exactly what the intact one does --
+        # nothing -- and the probe reports clean either way.
+        #
+        # They are seeded under a fingerprint of their own, registered last and
+        # holding the ONLY block rows for this document, so
+        # `resolve_shared_fingerprint` lands on it deterministically and no
+        # other surface can be reached by these rows (every other read resolves
+        # the active fingerprint, whose partition already holds data).
+        # Under it: the block and the FOREIGN `b_active` carry the SAME vector,
+        # making their cosine exactly 1.0, so a dropped project predicate puts
+        # the foreign row at rank 1 rather than merely somewhere in the page.
+        # The OBSERVER `a_active` carries a different one, which is both the
+        # legitimate answer the intact surface returns and the counterpart row
+        # `resolve_shared_fingerprint` requires in the document's own project.
+        related_fp = f"{RELATED_MODEL}|{DIMS}"
+        await embedder_registry.register(session, EmbedderInfo(
+            fingerprint=related_fp, model_id=RELATED_MODEL, dims=DIMS, source="llm",
+        ))
         lifted_document_id = str(uuid.uuid4())
         await session.execute(
             text(
@@ -560,25 +575,59 @@ async def _seed(session_factory, stub: StubOrchestrator, old: StubOrchestrator) 
                 "'note', :hash)"
             ),
             {"id": lifted_document_id, "project": OBSERVER,
-             "uri": "file:///iso/lifted.md", "title": "iso lifted document",
-             "hash": "iso-lifted-hash"},
+             "uri": "file:///iso/related.md", "title": "iso related document",
+             "hash": "iso-related-hash"},
         )
-        lifted_memory = Memory(
-            content="alpha redis proposition lifted from a document",
-            source="document", project=OBSERVER, status="active",
-            metadata_={LIFT_PROVENANCE_KEY: {"document_id": lifted_document_id}},
+        related_block_id = str(uuid.uuid4())
+        block_text = "alpha redis paragraph in an observer document"
+        await session.execute(
+            text(
+                "INSERT INTO blocks (id, document_id, order_index, type, text, "
+                "properties, char_span) VALUES (CAST(:id AS uuid), "
+                "CAST(:doc AS uuid), 0, 'paragraph', :text, "
+                "CAST(:props AS jsonb), int4range(0, :end))"
+            ),
+            {"id": related_block_id, "doc": lifted_document_id, "text": block_text,
+             "props": json.dumps({}), "end": len(block_text)},
         )
-        session.add(lifted_memory)
-        await session.flush()
-        lifted_memory_id = lifted_memory.id
+        related_vector = _hash_vector("iso related block")
+        await session.execute(
+            text(
+                f"INSERT INTO {child_table('block_embeddings', related_fp)} "
+                "(block_id, fingerprint, embedding, payload) VALUES "
+                "(CAST(:bid AS uuid), :fp, CAST(:vec AS vector), '{}'::jsonb)"
+            ),
+            {"bid": related_block_id, "fp": related_fp, "vec": str(related_vector)},
+        )
+        related_table = child_table("memory_embeddings", related_fp)
+        for key, vector in (
+            ("b_active", related_vector),
+            ("a_active", _hash_vector("iso related observer counterpart")),
+        ):
+            await session.execute(
+                text(
+                    f"INSERT INTO {related_table} "
+                    "(memory_id, fingerprint, embedding, payload) VALUES "
+                    "(CAST(:mid AS uuid), :fp, CAST(:vec AS vector), "
+                    "CAST(:payload AS jsonb))"
+                ),
+                {
+                    "mid": str(memory_ids[key]), "fp": related_fp,
+                    "vec": str(vector),
+                    "payload": json.dumps({
+                        "content": FIXTURES_BY_KEY[key].content, "source": "probe",
+                        "tags": [], "memory_type": "fact",
+                        "created_at": "2026-07-28T00:00:00+00:00",
+                    }),
+                },
+            )
 
         redis_entity_id = str(uuid.uuid4())
         alpha_cache_id = str(uuid.uuid4())
         beta_db_id = str(uuid.uuid4())
         entity_rows = (
             (redis_entity_id, "redis", "tool",
-             [memory_ids["a_active"], memory_ids["b_active"], memory_ids["a_super"],
-              lifted_memory_id]),
+             [memory_ids["a_active"], memory_ids["b_active"], memory_ids["a_super"]]),
             (alpha_cache_id, "alpha cache", "concept", [memory_ids["a_super"]]),
             (beta_db_id, "beta db", "tool", [memory_ids["b_active"]]),
         )
@@ -833,7 +882,6 @@ async def _seed(session_factory, stub: StubOrchestrator, old: StubOrchestrator) 
         "article_ids": article_ids,
         "retention_conversation_id": retention_conversation_id,
         "lifted_document_id": lifted_document_id,
-        "lifted_memory_id": lifted_memory_id,
     }
 
 
@@ -1223,14 +1271,14 @@ async def _drive_duplicates_probe(ctx: ProbeContext) -> list[Sighting]:
 async def _drive_document_related_memories(ctx: ProbeContext) -> list[Sighting]:
     """The related-memories read, asked the sharp question.
 
-    The seeded lifted memory shares the `redis` entity with `a_active` (this
-    project), `a_super` (this project, superseded) and `b_active` (the FOREIGN
-    project). So a door that walked the entity without a project predicate
-    would hand a caller a foreign row, and the classification would be a lie.
+    The surface is cosine between the seeded OBSERVER document's block vector
+    and the project's memory vectors. The fixture gives the FOREIGN `b_active`
+    the block's own vector, so its cosine is exactly 1.0 and a door missing the
+    project predicate hands the caller that foreign row at rank 1.
 
-    The document's own lift is deliberately absent from the expected set: the
-    query excludes it, because every lifted memory shares every entity with
-    itself and returning it would be every row and no information.
+    `embedded` is asserted rather than read past: an `embedded=false` answer
+    means no shared fingerprint was found and the comparison never ran, which
+    would make an empty page look like a clean one.
     """
     surface = "document_related_memories"
     out: list[Sighting] = []
@@ -1244,6 +1292,11 @@ async def _drive_document_related_memories(ctx: ProbeContext) -> list[Sighting]:
     )
     response.raise_for_status()
     payload = response.json()
+    if not payload.get("embedded"):
+        raise AssertionError(
+            "related-memories answered embedded=false: no shared fingerprint, "
+            "so the comparison never ran and the surface proves nothing"
+        )
 
     accounted: set[str] = set()
     for row in payload.get("items", []):
@@ -2833,7 +2886,6 @@ async def run_probe() -> ProbeReport:
             fact_ids=seeded["fact_ids"], article_ids=seeded["article_ids"],
             retention_conversation_id=seeded["retention_conversation_id"],
             lifted_document_id=seeded["lifted_document_id"],
-            lifted_memory_id=seeded["lifted_memory_id"],
         )
         for key in registry_keys:
             report.add(await DRIVERS[key](ctx))

@@ -63,7 +63,11 @@ function mockApi(overrides: Record<string, unknown> = {}) {
       )
     }
     if (path.endsWith("/connections")) {
-      return Promise.resolve(overrides.connections ?? { items: [], horizon: true })
+      return Promise.resolve(overrides.connections ?? {
+        items: [],
+        embedded: true,
+        comparable_documents: 0,
+      })
     }
     if (path === "/documents/qa") {
       return Promise.resolve(overrides.qa ?? WITHHELD)
@@ -223,23 +227,61 @@ describe("DocumentsView — summary and connections", () => {
     )
   })
 
-  it("connections render their shared entities", async () => {
+  it("a single-document project says so rather than 'still being embedded'", async () => {
+    // Both `embedded: false` and `comparable_documents: 0` hold here, and the
+    // arm order is what decides which sentence the reader gets. Nothing will
+    // ever embed a document this project does not have, so the pending copy
+    // would be permanent and false.
+    mockApi({
+      connections: { items: [], embedded: false, comparable_documents: 0 },
+    })
+    render(<DocumentsView />, { wrapper })
+    fireEvent.click(await screen.findByText("notes.md"))
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/no other documents in this project to compare against/),
+      ).toBeInTheDocument(),
+    )
+    expect(screen.queryByText(/still being embedded/)).not.toBeInTheDocument()
+  })
+
+  it("an unembedded sibling document renders the pending copy instead", async () => {
+    mockApi({
+      connections: { items: [], embedded: false, comparable_documents: 2 },
+    })
+    render(<DocumentsView />, { wrapper })
+    fireEvent.click(await screen.findByText("notes.md"))
+
+    await waitFor(() =>
+      expect(screen.getByText(/still being embedded/)).toBeInTheDocument(),
+    )
+  })
+
+  it("connections render the matching passages and a raw score", async () => {
     mockApi({
       connections: {
         items: [
           {
             document_id: "33333333-3333-3333-3333-333333333333",
             title: "Other notes",
-            shared_entities: ["postgres", "linux"],
+            score: 0.6123,
+            block_id: "44444444-4444-4444-4444-444444444444",
+            block_text: "postgres tuning notes",
+            other_block_id: "55555555-5555-5555-5555-555555555555",
+            other_block_text: "linux kernel parameters",
           },
         ],
-        horizon: true,
+        embedded: true,
+        comparable_documents: 4,
       },
     })
     render(<DocumentsView />, { wrapper })
     fireEvent.click(await screen.findByText("notes.md"))
 
     await waitFor(() => expect(screen.getByText("Other notes")).toBeInTheDocument())
-    expect(screen.getByText("postgres · linux")).toBeInTheDocument()
+    expect(screen.getByText("0.612")).toBeInTheDocument()
+    expect(screen.getByText("postgres tuning notes")).toBeInTheDocument()
+    expect(screen.getByText("linux kernel parameters")).toBeInTheDocument()
   })
 })

@@ -26,7 +26,9 @@ Wave-1 engine mechanics (with docs 06, 10, 11). Part of the unified target desig
 | MCP `memory_add` | MCP tool | JSON ack (buffered handle) | exists today |
 | MCP `memory_batch_add` | MCP tool, 1–100 | JSON ack; cap mirrors HTTP | exists today |
 | Browser capture | new ingestion source → buffer | `202` accept | target-new (doc 15) |
-| Filed document | parse → blocks → propositions | deferred | horizon (doc 16) |
+| Filed document | parse → blocks → embeddings | shipped | doc 16 |
+
+**Amendment, owner ruling 2026-09-05.** The filed-document row above used to read `parse → blocks → propositions`, `deferred`, `horizon (doc 16)`, describing the on-demand proposition lift doc 16 §5 designed. That lift is retired, not deferred, after a priced sample minted 2,058 memories from 7 documents and extrapolated to ~104,000 across the corpus — a two-thousand-fold expansion no threshold could tame. A filed document never enters this table's buffered-capture path at all; it parses into blocks and embeds them (doc 16 §3), and that pipeline is shipped, not horizon.
 
 The `202` is the REST-conventions "async-accepted" verb (doc 12 owns the wire contract); with the buffer in place capture is *genuinely* 202, not a synchronous call wearing an async label. The MCP batch cap stays 1–100, mirrored on the raw entry dicts before validation so `memory_batch_add` and `POST /memories/batch` never diverge (invariant 17).
 

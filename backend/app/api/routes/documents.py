@@ -31,8 +31,8 @@ it answers 422 `invalid uuid` for every by-uri call, which is why
 **This is the EH1 horizon's one door and it adds no semantics.** Every read is
 a call into a service that already exists and already carries the honesty rule
 it enforces: `read_summary` (unbadged by construction), `connections_for_document`
-(emergent, no model call), and the grounded Q&A flow behind its faithfulness
-gate. The door's own job is to serve those answers without softening them.
+(cosine over block vectors, no model call), and the grounded Q&A flow behind its
+faithfulness gate. The door's own job is to serve those answers without softening them.
 
 **The Q&A response is the gate's verdict, not the answer plus a hint.** It
 carries `grounded`, `outcome`, the counts the decision was made on, and the
@@ -41,9 +41,17 @@ all**. A withheld answer whose text was still on the wire would be served as
 ungrounded prose by any client that forgot to read a flag, which is exactly
 invariant 14's failure. The label is the payload in that case.
 
-**No lift door.** `lift_document` is on-demand by design and a route is the
-easiest way for something to call it on a schedule; nothing in EH1 needs one
-before a human asks, so the trigger stays out of the HTTP surface (TH1.11).
+**No lift door.** `POST /{document_id}/lift` existed and was removed with
+proposition lifting itself, on the ruling's own grounds (spec §1, §1.1):
+granularity and volume, not synthesis. The extraction unit was one block, and
+most blocks are too small to hold a standalone assertion -- a priced sample
+minted 2.17 propositions per block, one memory per 67 characters of source,
+101 of them from headings restated as claims -- which extrapolated to roughly
+104,000 machine-extracted memories against the 50 the corpus was hand-captured
+with. Relatedness is now a cosine join over vectors both sides already carry,
+which mints no row at all. ("Unbadged synthesis" is the spec's phrase for
+generated prose, which is what this door still must not serve; it is not what
+the lift did wrong.)
 """
 from __future__ import annotations
 
@@ -56,12 +64,11 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
-from app.api.deps import refuse_when_read_only, get_llm, get_memory_service
+from app.api.deps import refuse_when_read_only, get_llm
 from app.database import get_session
 from app.services.block_pipeline import UnsupportedSource
 from app.services.document_connections import connections_for_document
 from app.services.document_related import related_memories_for_document
-from app.services.proposition_lift import lift_document
 from app.services.document_door import (
     SEARCH_DEFAULT_LIMIT, SEARCH_MAX_LIMIT, DocumentTargetUnresolved,
     DocumentIsBlockFirst,
@@ -142,39 +149,54 @@ class DocumentSummaryResponse(BaseModel):
     badged: bool = False
 
 
-class DocumentConnectionItem(BaseModel):
-    document_id: str
-    title: str | None
-    shared_entities: list[str]
-
-
-class DocumentConnectionsResponse(BaseModel):
-    items: list[DocumentConnectionItem]
-    horizon: bool = True
-
-
 class RelatedMemoryItem(BaseModel):
     memory_id: str
     content: str
     memory_type: str | None = None
     status: str
     source: str | None = None
-    shared_entities: list[str]
+    # `content_surfaces` declares this surface labels `project` and `status`;
+    # the label defence is worth nothing unless the label is on the wire.
+    project: str
+    # The passage is the evidence and the score is an ordering key -- never a
+    # calibrated relevance measure. The distribution is continuous, so a client
+    # rendering this as a percentage or a badge asserts a precision nobody
+    # measured.
+    score: float
+    block_id: str
+    block_text: str
+    span_start: int | None = None
+    span_end: int | None = None
 
 
 class RelatedMemoriesResponse(BaseModel):
     items: list[RelatedMemoryItem]
-    # False means "this document has not been lifted", which is a different
-    # answer from an empty list and the surface offers the lift instead.
-    lifted: bool
+    # False means the comparison could not be made -- no live fingerprint holds
+    # vectors for both this document and the project's memories -- which is a
+    # different answer from an empty list. It does NOT distinguish "the project
+    # holds no memory": `comparable_memories` does, and it is counted
+    # independently of the fingerprint for exactly that reason, so a client
+    # must test `comparable_memories == 0` before it tests `embedded`.
+    embedded: bool
+    comparable_memories: int
 
 
-class DocumentLiftResponse(BaseModel):
+class DocumentConnectionItem(BaseModel):
     document_id: str
-    project: str
-    lifted: int
-    stripped: int
-    memory_ids: list[str]
+    title: str | None = None
+    score: float
+    block_id: str
+    block_text: str
+    other_block_id: str
+    other_block_text: str
+
+
+class DocumentConnectionsResponse(BaseModel):
+    items: list[DocumentConnectionItem]
+    # `RelatedMemoriesResponse`'s twin, and read the same way: test
+    # `comparable_documents == 0` before `embedded`.
+    embedded: bool
+    comparable_documents: int
 
 
 class QaRequest(BaseModel):
@@ -470,18 +492,30 @@ async def get_document_connections(
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ) -> DocumentConnectionsResponse:
+    """Documents nearest this one, with the passage pair that matched.
+
+    No model call and no new table: both sides are already embedded, so this is
+    a join. `embedded=false` says the comparison could not be made rather than
+    that nothing relates.
+    """
     connections = await connections_for_document(
         session, document_id=document_id, limit=limit,
     )
     return DocumentConnectionsResponse(
+        embedded=connections.embedded,
+        comparable_documents=connections.comparable_documents,
         items=[
             DocumentConnectionItem(
                 document_id=c.document_id,
                 title=c.title,
-                shared_entities=list(c.shared_entities),
+                score=c.score,
+                block_id=c.block_id,
+                block_text=c.block_text,
+                other_block_id=c.other_block_id,
+                other_block_text=c.other_block_text,
             )
-            for c in connections
-        ]
+            for c in connections.items
+        ],
     )
 
 
@@ -494,18 +528,18 @@ async def get_related_memories(
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ) -> RelatedMemoriesResponse:
-    """Memories asserting what this document's lift asserted.
+    """Memories nearest this document, with the passage that matched.
 
-    No model call and no new table: the read walks the entity rows Phase 5
-    already maintains. `lifted=false` is not an empty result -- it says the
-    document has never been lifted, so the surface can offer that instead of
-    rendering a blank list that reads as "nothing relates to this".
+    No model call and no new table: both sides are already embedded, so this is
+    a join. `embedded=false` says the comparison could not be made rather than
+    that nothing relates.
     """
     related = await related_memories_for_document(
         session, document_id=document_id, limit=limit,
     )
     return RelatedMemoriesResponse(
-        lifted=related.lifted,
+        embedded=related.embedded,
+        comparable_memories=related.comparable_memories,
         items=[
             RelatedMemoryItem(
                 memory_id=m.memory_id,
@@ -513,65 +547,15 @@ async def get_related_memories(
                 memory_type=m.memory_type,
                 status=m.status,
                 source=m.source,
-                shared_entities=list(m.shared_entities),
+                project=m.project,
+                score=m.score,
+                block_id=m.block_id,
+                block_text=m.block_text,
+                span_start=m.span_start,
+                span_end=m.span_end,
             )
             for m in related.items
         ],
-    )
-
-
-@router.post(
-    "/{document_id}/lift",
-    response_model=DocumentLiftResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def lift_document_route(
-    document_id: UUID,
-    _read_only=Depends(refuse_when_read_only),
-    _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
-    llm=Depends(get_llm),
-    memory_service=Depends(get_memory_service),
-) -> DocumentLiftResponse:
-    """Lift this document's propositions into ordinary memories.
-
-    `documents.py` recorded "**No lift door.** `lift_document` is on-demand by
-    design and a route is the easiest way for something to call it on a
-    schedule; nothing in EH1 needs one **before a human asks**." The spec's §6
-    is the human asking, and the reason that note gives is kept rather than
-    discarded: the hazard named is *scheduled* calling, not human calling.
-
-    So this route declares no `config_schema` and is registered in no
-    `JobRegistry` job, and a test asserts it is unreachable from the registry
-    -- the hazard cannot arrive later by accident.
-
-    201 because it creates memories. Idempotent by construction:
-    `lift_document` strips the prior lift keyed on `document_id` before
-    rewriting, so a second lift replaces the first rather than doubling it.
-
-    422 rather than an empty 201 for a document with no blocks: `lift_document`
-    answers `None` there, and "nothing to lift" is a different answer from
-    "lifted zero propositions from a document that had text".
-    """
-    if await resolve_by_id(session, document_id) is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"no document {document_id}",
-        )
-    result = await lift_document(
-        session, llm, memory_service, document_id=document_id, actor="api",
-    )
-    if result is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="this document holds no blocks, so there is nothing to lift",
-        )
-    return DocumentLiftResponse(
-        document_id=result.document_id,
-        project=result.project,
-        lifted=result.lifted,
-        stripped=result.stripped,
-        memory_ids=list(result.memory_ids),
     )
 
 
@@ -692,15 +676,12 @@ async def delete_document_route(
     """Remove a document, its block subtree and its vectors.
 
     `blocks.document_id` cascades and `block_embeddings__<slug>` cascades
-    from there, so one delete takes all three in every partition. Neither
-    cascade reaches `fact_sources`: `source_ref` carries no foreign key, so
-    a fact a deleted document's blocks corroborated would otherwise keep
-    its origin count and its verification rung on evidence that no longer
-    exists, and never get recomputed until the slow reconciliation arm's
-    rotation happened to reach it. `delete_document` closes that window —
-    withdrawing the block sources, expiring any fact left with none, and
-    enqueueing every affected fact for the ordinary verification recompute
-    — before the row goes. Wire-shape production belongs in the shared
+    from there, so one delete takes all three in every partition. There is
+    no provenance to close behind it: nothing mints a `fact_sources` row
+    from a block, so a document's blocks corroborate no fact and deleting
+    one cannot leave a fact standing on evidence that no longer exists. It
+    journals nothing either — there is no delete event type.
+    Wire-shape production belongs in the shared
     service, not here, so an MCP delete twin calls the same function rather
     than re-implementing this — the same reason `title_applied` has one
     producer rather than one per transport.

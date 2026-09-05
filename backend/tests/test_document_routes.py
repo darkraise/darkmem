@@ -725,52 +725,6 @@ async def test_document_put_resolves_its_source_through_the_client_ladder(
 
 
 @pytest.mark.asyncio
-async def test_document_delete_closes_the_provenance_window(session, both_doors):
-    """The tool goes through `delete_document`, not a raw DELETE.
-
-    `fact_sources.source_ref` carries no foreign key, so the cascade cannot
-    reach it: a fact this document solely sourced would keep its origin count
-    and its rung on evidence that no longer exists. This is the assertion a
-    re-inlined `DELETE FROM documents` fails.
-    """
-    import json
-
-    from sqlalchemy import text as _text
-
-    from app.api.mcp import server as mcp_server
-    from tests.test_document_door import _blocks_of, _fact, _sources_changed_count
-
-    fact_id = await _fact(session)
-    filed = json.loads(await mcp_server.document_put(
-        project="p", uri="docs/sourced.md", content=DOC,
-    ))
-    blocks = await _blocks_of(session, filed["document_id"])
-    from app.services.block_fact_sources import record_block_source
-
-    await record_block_source(session, fact_id=fact_id, block_id=blocks[0])
-    before = await _sources_changed_count(session, fact_id)
-
-    result = json.loads(await mcp_server.document_delete(
-        project="p", uri="docs/sourced.md",
-    ))
-
-    assert result == {"document_id": filed["document_id"], "deleted": True}
-    assert (await session.execute(
-        _text("SELECT count(*) FROM documents WHERE id = CAST(:d AS uuid)"),
-        {"d": filed["document_id"]},
-    )).scalar_one() == 0
-    expired_at = (await session.execute(
-        _text("SELECT expired_at FROM knowledge_triples WHERE id = CAST(:f AS uuid)"),
-        {"f": fact_id},
-    )).scalar_one()
-    assert expired_at is not None, (
-        "a fact left with no source must be expired -- the raw DELETE the plan "
-        "sketched never reaches this"
-    )
-    assert await _sources_changed_count(session, fact_id) == before + 1
-
-
-@pytest.mark.asyncio
 async def test_document_delete_by_uri_on_the_rest_door(client, auth_headers, both_doors):
     await _put_nested(client, auth_headers)
 
@@ -1236,3 +1190,97 @@ async def test_a_block_of_another_document_404s_at_this_path(
         json={"text": "nope"}, headers=auth_headers,
     )
     assert resp.status_code == 404
+
+
+async def _file_one(client, auth_headers, uri: str = "docs/rel.md") -> str:
+    created = await client.post(
+        f"{V1}/documents",
+        json={"project": "p", "uri": uri, "content": DOC},
+        headers=auth_headers,
+    )
+    assert created.status_code == 201
+    return created.json()["document_id"]
+
+
+@pytest.mark.asyncio
+async def test_the_lift_route_is_gone(client, auth_headers, stub_llm):
+    document_id = await _file_one(client, auth_headers, "docs/gone.md")
+
+    response = await client.post(
+        f"{V1}/documents/{document_id}/lift", headers=auth_headers
+    )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_related_memories_reports_its_comparison_state(
+    client, auth_headers, stub_llm
+):
+    document_id = await _file_one(client, auth_headers, "docs/state.md")
+
+    response = await client.get(
+        f"{V1}/documents/{document_id}/related-memories", headers=auth_headers
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"items", "embedded", "comparable_memories"}
+    assert isinstance(body["embedded"], bool)
+    assert isinstance(body["comparable_memories"], int)
+
+
+@pytest.mark.asyncio
+async def test_connections_report_their_comparison_state(
+    client, auth_headers, stub_llm
+):
+    document_id = await _file_one(client, auth_headers, "docs/conn.md")
+
+    response = await client.get(
+        f"{V1}/documents/{document_id}/connections", headers=auth_headers
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"items", "embedded", "comparable_documents"}
+
+
+@pytest.mark.asyncio
+async def test_a_related_item_carries_its_matching_passage(
+    client, auth_headers, stub_llm, session
+):
+    """Spec §3.4: the passage is the evidence, the score is an ordering key."""
+    from app.models.memory import Memory
+    from app.services.embedder_registry import child_table
+    from sqlalchemy import text as sql_text
+
+    document_id = await _file_one(client, auth_headers, "docs/passage.md")
+
+    memory = Memory(content="First para.", project="p", source="api")
+    session.add(memory)
+    await session.flush()
+    await session.execute(
+        sql_text(
+            f"INSERT INTO {child_table('memory_embeddings', FINGERPRINT)} "
+            "(memory_id, fingerprint, embedding) VALUES (CAST(:mid AS uuid), :fp, CAST(:vec AS vector))"
+        ),
+        {"mid": str(memory.id), "fp": FINGERPRINT, "vec": "[1.0,0.0,0.0]"},
+    )
+    await session.commit()
+
+    response = await client.get(
+        f"{V1}/documents/{document_id}/related-memories", headers=auth_headers
+    )
+
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert items, "the seeded memory should be comparable to the filed document"
+    for item in items:
+        assert set(item) == {
+            # `project` rides the row because `content_surfaces` declares this
+            # surface labels it; the declaration was true of nothing on the
+            # wire until 2026-09-05.
+            "memory_id", "content", "memory_type", "status", "source",
+            "project", "score",
+            "block_id", "block_text", "span_start", "span_end",
+        }
