@@ -8,10 +8,16 @@ these two scans cannot fail together because a shared helper moved.
 The behavioural tests go past the brief's own minimal set: a stub that returns
 an early `DocumentConnections(embedded=False, ...)` for every call would pass
 the brief's one given test. The scoping predicate (`other.project = :project`),
-self-exclusion (`other.id <> :document_id`), the max-aggregation (the argmax
-block pair, not the mean or the first), and the ordering are each pinned
-separately because each is a single-line mutation a stub-shaped implementation
-would not fail on.
+the max-aggregation (the argmax block pair, not the mean or the first), and
+the ordering are each pinned separately because each is a single-line mutation
+a stub-shaped implementation would not fail on. Self-exclusion is not a single
+predicate: it is enforced at two layers (the LATERAL's own
+`tb.document_id <> :document_id` and the outer query's
+`other.id <> :document_id`), pinned by two different tests --
+`test_the_lateral_excludes_the_queried_documents_own_blocks` for the inner
+layer, and `test_a_document_is_never_connected_to_itself` as the
+both-layers-gone tripwire, which by design does not fail when only one layer
+is removed.
 """
 import ast
 from pathlib import Path
@@ -209,11 +215,15 @@ async def test_a_document_outside_the_project_is_excluded(session):
 
 @pytest.mark.asyncio
 async def test_a_document_is_never_connected_to_itself(session):
-    """`other.id <> CAST(:document_id AS uuid)` is what makes this decidable:
-    mine's own block is embedded identically to theirs', so without that
-    predicate the same-table LATERAL would also match mine against its own
-    block (score 1.0) and report mine as connected to itself alongside
-    theirs -- two items instead of one."""
+    """Self-exclusion is enforced at two layers now: the LATERAL's own
+    `tb.document_id <> :document_id` (pinned separately by
+    `test_the_lateral_excludes_the_queried_documents_own_blocks`) and this
+    query's outer `other.id <> CAST(:document_id AS uuid)`. This test is the
+    both-layers-gone tripwire, not a single-predicate pin: removing either
+    layer alone still leaves the other one excluding mine's own document, so
+    this test only fails when both are removed together. Kept anyway,
+    because "both layers were silently deleted in the same change" is
+    exactly the kind of regression a single test should still catch."""
     await _register(session)
     mine, mine_blocks = await _file_blocks(session)
     await _embed_block(session, mine_blocks[0], DIRECTION_A)
@@ -255,7 +265,7 @@ async def test_the_lateral_excludes_the_queried_documents_own_blocks(session):
 
 
 @pytest.mark.asyncio
-async def test_the_probe_limit_of_ten_survives_a_nearer_foreign_block(session):
+async def test_the_probe_limit_above_one_survives_a_nearer_foreign_block(session):
     """M3: `_PROBE_LIMIT` must fetch more than the single nearest candidate,
     because the probe is not scoped to the calling project even after
     excluding the queried document's own blocks (finding I1's remaining

@@ -11,18 +11,26 @@ shipped first and measured on the live corpus at 166.5s for the largest filed
 document, three orders of magnitude past `document_related`'s 89ms, because
 here *both* sides of the join scale with block count rather than one side
 being a small memory table. That is a real cost, not a tuning miss, and it is
-the reason this module runs an ANN probe per block instead: measured on the
-same corpus, with `app/database.py`'s own connection settings applied
-(`hnsw.ef_search = 100`, `hnsw.iterative_scan = relaxed_order` -- a number
-measured without them, e.g. in a bare `psql` session that never issued those
-`SET`s, is not this surface's number, since pgvector 0.8.2 registers those
-GUCs lazily and silently falls back to its 40/off defaults until something
-sets them), 785ms on a 282-block document and 2,085ms on the corpus's
-1,132-block outlier.
+the reason this module runs an ANN probe per block instead.
+
+**Measured cost of the statement actually shipped** (three runs each, with
+`app/database.py`'s own connection settings applied -- `hnsw.ef_search =
+100`, `hnsw.iterative_scan = relaxed_order`; a number measured without them,
+e.g. in a bare `psql` session that never issued those `SET`s, is not this
+surface's number, since pgvector 0.8.2 registers those GUCs lazily and
+silently falls back to its 40/off defaults until something sets them):
+320-623ms on a 282-block document, 2,739-3,964ms on the corpus's 1,132-block
+outlier (`E2-truth-core`). A narrower query -- projecting only ids and score,
+not the full block-pair evidence this statement actually returns -- measures
+faster on a same-sized pair (785ms / 2,085ms unfiltered before the
+document-exclusion predicate below existed, 586ms / 2,173ms filtered after);
+that pair is a comparison of what a lighter projection costs and what adding
+the exclusion predicate costs, not a second measurement of this surface's own
+number.
 
 **This surface is therefore approximate where `document_related` is exact,
 in the same way the rest of the block channel already is.** `search_blocks`
-(TH1.06) runs its ANN probe under the same connection-wide `ef_search` /
+(TH1.06) runs its own ANN probe under the same connection-wide `ef_search` /
 `iterative_scan` setting -- it does not itself configure or accept either
 one, both live only in `app/database.py` -- so this module is not taking on a
 new kind of risk, it is the second caller of a trade the codebase already
@@ -51,9 +59,13 @@ documents most likely to need finding one. Because `iterative_scan =
 relaxed_order` really is on for every application connection, adding this
 predicate inside the LATERAL does not turn the ANN probe into a post-filter
 over ten raw candidates -- the index scan itself keeps expanding until it has
-ten survivors -- so it cost nothing measurable (785ms unfiltered vs 586ms
-filtered on the 282-block document; 2,085ms vs 2,173ms, within noise, on the
-1,132-block one).
+ten survivors -- so on the narrower-projection comparison above it cost
+nothing measurable (785ms unfiltered vs 586ms filtered on the 282-block
+document; 2,085ms vs 2,173ms, within noise, on the 1,132-block one). The
+outer query also excludes the queried document (`other.id <>
+:document_id`), which is now redundant with the LATERAL's own exclusion --
+kept as a second, independent layer rather than removed; see the comment
+beside it.
 
 **Each probe still fetches 10 nearest, not 1, and a truncation risk remains
 even with the document exclusion**: the probe is not scoped to the calling
@@ -61,22 +73,28 @@ document's own project, so all ten slots can still be consumed by another
 *project's* blocks -- correctly dropped by the outer `other.project =
 :project` predicate, but at the cost of returning nothing for a real
 same-project match that happened to rank behind ten foreign-project
-near-duplicates. `search_blocks`'s own remedy for exactly this shape is an
+near-duplicates. `search_blocks`'s own remedy for exactly this shape is its
 over-fetch multiplier (`SEMANTIC_FETCH_MULTIPLIER`,
-`block_embeddings.py:302-333`, fetching `limit * multiplier` candidates before
-the project filter trims them) rather than a bare `LIMIT`; this module does
-not adopt it because the measured cost above does not warrant it yet, but it
-is the documented next lever if a corpus with heavier cross-project density
-ever needs it.
+`block_embeddings.py:302-333`): its project predicate sits *inside* the same
+ANN statement's `WHERE`, evaluated as a post-scan filter over the raw HNSW
+candidate stream, so its `LIMIT` asks for `limit * multiplier` rows to
+compensate for however many of those candidates the project filter is going
+to discard, then the caller slices the survivors back down to `limit`
+afterward. This module does not adopt that pattern because the measured cost
+above does not warrant it yet, but it is the documented next lever if a
+corpus with heavier cross-project density ever needs it.
 
-**Cold-cache cost.** The 2,085ms figure above was measured warm. The very
-first probe against a cold `block_embeddings` partition measured 12.2s on the
-corpus's largest document before settling to 1.3-1.4s on every subsequent,
-warm-cache run. `block_embeddings__qwen3_embedding_0_6b_1024` is ~665MB (doc
-CLAUDE.md, backup sizing note), so this is not only a boot-time cost: it
-recurs whenever that partition is evicted from Postgres's buffer cache, which
-includes a nightly backup dump reading through it and `block_embedding_refresh`
-rewriting it, not only a process restart.
+**Cold-cache cost is not yet measured under the app's own settings.** An
+earlier 12.2s / 1.3-1.4s cold-vs-warm pair was measured in a bare `psql`
+session before the `ef_search` / `iterative_scan` correction above landed --
+the exact basis this docstring's own first paragraph says is not this
+surface's number -- so it is not repeated here as a comparable figure.
+`block_embeddings__qwen3_embedding_0_6b_1024` is ~665MB (doc CLAUDE.md,
+backup sizing note), so a cold-cache cost is a real question whenever that
+partition is evicted -- a nightly backup dump reading through it or
+`block_embedding_refresh` rewriting it, not only a process restart -- it has
+simply not been measured yet with the settings this surface actually runs
+under.
 
 The former basis was `entities.memory_ids` over the memories a lift minted.
 Nothing is lifted any more, so that walk would return an empty list forever.
@@ -171,6 +189,7 @@ def _connections_sql(blocks_table: str) -> str:
         FROM best
         JOIN documents other ON other.id = best.document_id
         WHERE other.project = :project
+          -- Deliberately redundant with the LATERAL's own document exclusion above -- a second layer, not dead weight.
           AND other.id <> CAST(:document_id AS uuid)
         ORDER BY best.score DESC, other.id
         LIMIT :limit
