@@ -1277,6 +1277,10 @@ async def test_a_related_item_carries_its_matching_passage(
     assert items, "the seeded memory should be comparable to the filed document"
     for item in items:
         assert set(item) == {
-            "memory_id", "content", "memory_type", "status", "source", "score",
+            # `project` rides the row because `content_surfaces` declares this
+            # surface labels it; the declaration was true of nothing on the
+            # wire until 2026-09-05.
+            "memory_id", "content", "memory_type", "status", "source",
+            "project", "score",
             "block_id", "block_text", "span_start", "span_end",
         }

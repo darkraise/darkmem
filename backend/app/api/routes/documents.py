@@ -31,8 +31,8 @@ it answers 422 `invalid uuid` for every by-uri call, which is why
 **This is the EH1 horizon's one door and it adds no semantics.** Every read is
 a call into a service that already exists and already carries the honesty rule
 it enforces: `read_summary` (unbadged by construction), `connections_for_document`
-(emergent, no model call), and the grounded Q&A flow behind its faithfulness
-gate. The door's own job is to serve those answers without softening them.
+(cosine over block vectors, no model call), and the grounded Q&A flow behind its
+faithfulness gate. The door's own job is to serve those answers without softening them.
 
 **The Q&A response is the gate's verdict, not the answer plus a hint.** It
 carries `grounded`, `outcome`, the counts the decision was made on, and the
@@ -42,9 +42,16 @@ ungrounded prose by any client that forgot to read a flag, which is exactly
 invariant 14's failure. The label is the payload in that case.
 
 **No lift door.** `POST /{document_id}/lift` existed and was removed with
-proposition lifting itself: a document is candidate signal, and asserting its
-sentences as memories put unbadged synthesis into the L1 graph. Relatedness is
-now a cosine join over vectors both sides already carry, which asserts nothing.
+proposition lifting itself, on the ruling's own grounds (spec §1, §1.1):
+granularity and volume, not synthesis. The extraction unit was one block, and
+most blocks are too small to hold a standalone assertion -- a priced sample
+minted 2.17 propositions per block, one memory per 67 characters of source,
+101 of them from headings restated as claims -- which extrapolated to roughly
+104,000 machine-extracted memories against the 50 the corpus was hand-captured
+with. Relatedness is now a cosine join over vectors both sides already carry,
+which mints no row at all. ("Unbadged synthesis" is the spec's phrase for
+generated prose, which is what this door still must not serve; it is not what
+the lift did wrong.)
 """
 from __future__ import annotations
 
@@ -148,6 +155,9 @@ class RelatedMemoryItem(BaseModel):
     memory_type: str | None = None
     status: str
     source: str | None = None
+    # `content_surfaces` declares this surface labels `project` and `status`;
+    # the label defence is worth nothing unless the label is on the wire.
+    project: str
     # The passage is the evidence and the score is an ordering key -- never a
     # calibrated relevance measure. The distribution is continuous, so a client
     # rendering this as a percentage or a badge asserts a precision nobody
@@ -161,9 +171,12 @@ class RelatedMemoryItem(BaseModel):
 
 class RelatedMemoriesResponse(BaseModel):
     items: list[RelatedMemoryItem]
-    # False means the comparison could not be made -- one side is not embedded
-    # under any shared fingerprint yet -- which is a different answer from an
-    # empty list, and different again from a project holding no memory.
+    # False means the comparison could not be made -- no live fingerprint holds
+    # vectors for both this document and the project's memories -- which is a
+    # different answer from an empty list. It does NOT distinguish "the project
+    # holds no memory": `comparable_memories` does, and it is counted
+    # independently of the fingerprint for exactly that reason, so a client
+    # must test `comparable_memories == 0` before it tests `embedded`.
     embedded: bool
     comparable_memories: int
 
@@ -180,6 +193,8 @@ class DocumentConnectionItem(BaseModel):
 
 class DocumentConnectionsResponse(BaseModel):
     items: list[DocumentConnectionItem]
+    # `RelatedMemoriesResponse`'s twin, and read the same way: test
+    # `comparable_documents == 0` before `embedded`.
     embedded: bool
     comparable_documents: int
 
@@ -532,6 +547,7 @@ async def get_related_memories(
                 memory_type=m.memory_type,
                 status=m.status,
                 source=m.source,
+                project=m.project,
                 score=m.score,
                 block_id=m.block_id,
                 block_text=m.block_text,

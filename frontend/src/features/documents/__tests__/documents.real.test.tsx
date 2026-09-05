@@ -227,6 +227,37 @@ describe("DocumentsView — summary and connections", () => {
     )
   })
 
+  it("a single-document project says so rather than 'still being embedded'", async () => {
+    // Both `embedded: false` and `comparable_documents: 0` hold here, and the
+    // arm order is what decides which sentence the reader gets. Nothing will
+    // ever embed a document this project does not have, so the pending copy
+    // would be permanent and false.
+    mockApi({
+      connections: { items: [], embedded: false, comparable_documents: 0 },
+    })
+    render(<DocumentsView />, { wrapper })
+    fireEvent.click(await screen.findByText("notes.md"))
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/no other documents in this project to compare against/),
+      ).toBeInTheDocument(),
+    )
+    expect(screen.queryByText(/still being embedded/)).not.toBeInTheDocument()
+  })
+
+  it("an unembedded sibling document renders the pending copy instead", async () => {
+    mockApi({
+      connections: { items: [], embedded: false, comparable_documents: 2 },
+    })
+    render(<DocumentsView />, { wrapper })
+    fireEvent.click(await screen.findByText("notes.md"))
+
+    await waitFor(() =>
+      expect(screen.getByText(/still being embedded/)).toBeInTheDocument(),
+    )
+  })
+
   it("connections render the matching passages and a raw score", async () => {
     mockApi({
       connections: {

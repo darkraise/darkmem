@@ -168,7 +168,10 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
         scoping=Scoping.SCOPED,
         # `status` rides the row because a related memory may be superseded or
         # deprecated, and a maintenance surface that hid that would invite an
-        # edit to a row the pipeline has already retired.
+        # edit to a row the pipeline has already retired. `project` rides it
+        # because this declaration is only worth something if the label is on
+        # the wire -- `RelatedMemoryItem` served no `project` until 2026-09-05,
+        # so the guard was passing on the declaration alone.
         labels=("project", "status"),
         decided_by="spec 2026-09-05 §3",
         reason="The sibling documents reads sit in ROUTES_WITHOUT_MEMORY_CONTENT "

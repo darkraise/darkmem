@@ -29,7 +29,14 @@ returns the nearest N with the score and the passage, and the reader judges.
 O(document blocks x project memories) and uses no index: the project predicate
 defeats the HNSW path, and forcing the index yields a post-scan filter with no
 over-fetch to compensate. Measured on the corpus's largest document (1,132
-blocks against 50 memories): 89 ms. What keeps that viable is the owner's
+blocks against the `darkmem` project's 20 memories = 22,640 distance
+computations): 89 ms. Correction, 2026-09-05: the multiplier was stated as 50
+memories, which is the *corpus-wide* memory count across all eight projects;
+the query is project-scoped and that document's project holds 20 (verified
+against the live database on 2026-09-05). The measurement was of the real
+scoped query -- only the arithmetic beside it was unscoped.
+
+What keeps that viable is the owner's
 ruling that documents are never extracted into memories -- a corpus that does
 not absorb a hundred thousand machine-extracted propositions is a corpus small
 enough to scan. The threshold to revisit is the project's *memory* count.
@@ -58,6 +65,7 @@ class RelatedMemory:
     memory_type: str | None
     status: str
     source: str | None
+    project: str
     score: float
     block_id: str
     block_text: str
@@ -67,14 +75,26 @@ class RelatedMemory:
 
 @dataclass(frozen=True)
 class RelatedMemories:
-    """Four states, not two.
+    """Four states, and `comparable_memories` is what separates two of them.
 
-    `embedded` false says the comparison could not be made -- no shared
-    fingerprint, because one side has not been embedded yet. That is different
-    from `comparable_memories = 0` (the project holds no memory to compare
-    against) and different again from an empty `items`. Rendering the three
-    alike tells a reader "nothing relates to this" when the truth is "nothing
-    could be compared yet", which is a different claim.
+    `comparable_memories` counts the project's memories **at any fingerprint**,
+    so it is independent of `embedded` and is answered even when no comparison
+    could be made. That independence is the whole point, and it was not true
+    until 2026-09-05: the count used to be read out of the shared partition
+    the fingerprint resolved to, so a project with no embedded memory reported
+    `embedded=False, comparable_memories=0` and the two states below collapsed
+    into one on the wire. A zero-memory project then rendered "still being
+    embedded" forever, since nothing will ever embed a memory that does not
+    exist.
+
+    - `comparable_memories = 0` -- the project holds no memory, so there is
+      nothing to compare against and nothing will change that but capturing
+      one. A reader must test this **before** `embedded`.
+    - `comparable_memories > 0` with `embedded` false -- memories exist but no
+      live fingerprint holds vectors for both this document and them yet.
+    - `embedded` true with empty `items` -- the comparison ran and returned
+      nothing.
+    - `embedded` true with items -- the nearest N, with scores.
     """
 
     document_id: str
@@ -98,6 +118,7 @@ def _related_sql(memories_table: str, blocks_table: str) -> str:
                m.memory_type       AS memory_type,
                m.status            AS status,
                m.source            AS source,
+               m.project           AS project,
                best.score          AS score,
                best.block_id::text AS block_id,
                best.block_text     AS block_text,
@@ -123,11 +144,11 @@ def _related_sql(memories_table: str, blocks_table: str) -> str:
     """
 
 
-def _comparable_sql(memories_table: str) -> str:
-    return (
-        f"SELECT count(*) FROM {memories_table} me "
-        f"JOIN memories m ON m.id = me.memory_id WHERE m.project = :project"
-    )
+# Fingerprint-independent on purpose: this answers "does the project hold
+# anything to compare against", which is a question about the corpus, not
+# about what has been embedded. Counting inside the shared partition instead
+# made the zero-memory and not-yet-embedded states indistinguishable.
+_COMPARABLE_SQL = text("SELECT count(*) FROM memories WHERE project = :project")
 
 
 async def related_memories_for_document(
@@ -150,20 +171,23 @@ async def related_memories_for_document(
             document_id=key, embedded=False, comparable_memories=0, items=(),
         )
 
+    comparable = int(await session.scalar(
+        _COMPARABLE_SQL, {"project": project},
+    ) or 0)
+
     fingerprint = await resolve_shared_fingerprint(
         session, document_id=key, project=project, counterpart="memory",
     )
     if fingerprint is None:
         return RelatedMemories(
-            document_id=key, embedded=False, comparable_memories=0, items=(),
+            document_id=key,
+            embedded=False,
+            comparable_memories=comparable,
+            items=(),
         )
 
     memories_table = child_table("memory_embeddings", fingerprint)
     blocks_table = child_table("block_embeddings", fingerprint)
-
-    comparable = await session.scalar(
-        text(_comparable_sql(memories_table)), {"project": project},
-    )
 
     rows = (await session.execute(
         text(_related_sql(memories_table, blocks_table)),
@@ -173,7 +197,7 @@ async def related_memories_for_document(
     return RelatedMemories(
         document_id=key,
         embedded=True,
-        comparable_memories=int(comparable or 0),
+        comparable_memories=comparable,
         items=tuple(
             RelatedMemory(
                 memory_id=row["memory_id"],
@@ -181,6 +205,7 @@ async def related_memories_for_document(
                 memory_type=row["memory_type"],
                 status=row["status"],
                 source=row["source"],
+                project=row["project"],
                 score=float(row["score"]),
                 block_id=row["block_id"],
                 block_text=row["block_text"],

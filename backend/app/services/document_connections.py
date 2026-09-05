@@ -134,6 +134,14 @@ class DocumentConnection:
 
 @dataclass(frozen=True)
 class DocumentConnections:
+    """`document_related.RelatedMemories`' twin, with the same state table.
+
+    `comparable_documents` counts the project's other documents at any
+    fingerprint, so `comparable_documents = 0` ("nothing to compare against")
+    is distinguishable from `embedded=False` with a positive count ("not
+    embedded yet"), and a reader must test the count first.
+    """
+
     document_id: str
     embedded: bool
     comparable_documents: int
@@ -202,11 +210,16 @@ def _connections_sql(blocks_table: str) -> str:
     """
 
 
-def _comparable_sql() -> str:
-    return (
-        "SELECT count(*) FROM documents "
-        "WHERE project = :project AND id <> CAST(:document_id AS uuid)"
-    )
+# Fingerprint-independent, and it always was: this counts the project's other
+# documents whether or not they are embedded, because it answers "is there
+# anything to compare against", not "how much is indexed". `document_related`'s
+# twin was corrected to match on 2026-09-05 -- it used to count inside the
+# resolved partition, which made "no counterpart exists" and "not embedded
+# yet" the same two values on the wire.
+_COMPARABLE_SQL = text(
+    "SELECT count(*) FROM documents "
+    "WHERE project = :project AND id <> CAST(:document_id AS uuid)"
+)
 
 
 async def connections_for_document(
@@ -228,19 +241,22 @@ async def connections_for_document(
             document_id=key, embedded=False, comparable_documents=0, items=(),
         )
 
+    comparable = int(await session.scalar(
+        _COMPARABLE_SQL, {"project": project, "document_id": key},
+    ) or 0)
+
     fingerprint = await resolve_shared_fingerprint(
         session, document_id=key, project=project, counterpart="block",
     )
     if fingerprint is None:
         return DocumentConnections(
-            document_id=key, embedded=False, comparable_documents=0, items=(),
+            document_id=key,
+            embedded=False,
+            comparable_documents=comparable,
+            items=(),
         )
 
     blocks_table = child_table("block_embeddings", fingerprint)
-
-    comparable = await session.scalar(
-        text(_comparable_sql()), {"project": project, "document_id": key},
-    )
 
     rows = (await session.execute(
         text(_connections_sql(blocks_table)),
@@ -250,7 +266,7 @@ async def connections_for_document(
     return DocumentConnections(
         document_id=key,
         embedded=True,
-        comparable_documents=int(comparable or 0),
+        comparable_documents=comparable,
         items=tuple(
             DocumentConnection(
                 document_id=row["document_id"],

@@ -315,10 +315,12 @@ async def test_items_are_ordered_by_score_descending(session):
 
 @pytest.mark.asyncio
 async def test_comparable_documents_counts_the_project_not_the_returned_page(session):
-    """A `limit` narrower than the project's embedded-document count must not
+    """A `limit` narrower than the project's other-document count must not
     shrink `comparable_documents` to match -- that field answers "how many
     documents could this one be compared against", not "how many are on this
-    page"."""
+    page". The count is over `documents` at any fingerprint, so it is the
+    project's other-document count, embedded or not -- the same meaning
+    `document_related.comparable_memories` was corrected to on 2026-09-05."""
     await _register(session)
     mine, mine_blocks = await _file_blocks(session)
     await _embed_block(session, mine_blocks[0], DIRECTION_A)
@@ -331,3 +333,38 @@ async def test_comparable_documents_counts_the_project_not_the_returned_page(ses
 
     assert len(result.items) == 1
     assert result.comparable_documents == 3
+
+
+@pytest.mark.asyncio
+async def test_a_single_document_project_reports_zero_comparable(session):
+    """A fully embedded document that is the project's only one resolves no
+    shared fingerprint -- the counterpart side of the pair is empty -- so
+    `embedded` is False and `comparable_documents` is 0. The pair means
+    "nothing to compare against", and nothing will resolve it but filing a
+    second document; the UI must read the count before it reads `embedded`."""
+    await _register(session)
+    document_id, block_ids = await _file_blocks(session)
+    await _embed_block(session, block_ids[0], DIRECTION_A)
+
+    result = await connections_for_document(session, document_id=document_id)
+
+    assert result.embedded is False
+    assert result.comparable_documents == 0
+    assert result.items == ()
+
+
+@pytest.mark.asyncio
+async def test_an_unembedded_sibling_document_still_counts_as_comparable(session):
+    """The genuinely-pending state: a sibling exists but carries no vector,
+    so no fingerprint holds both sides and the comparison really is waiting
+    on an embed."""
+    await _register(session)
+    document_id, block_ids = await _file_blocks(session)
+    await _embed_block(session, block_ids[0], DIRECTION_A)
+    await _file_blocks(session, texts=("unembedded sibling",))
+
+    result = await connections_for_document(session, document_id=document_id)
+
+    assert result.embedded is False
+    assert result.comparable_documents == 1
+    assert result.items == ()

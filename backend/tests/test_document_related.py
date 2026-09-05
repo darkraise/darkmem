@@ -271,10 +271,11 @@ async def test_items_are_ordered_by_score_descending(session):
 
 @pytest.mark.asyncio
 async def test_comparable_memories_counts_the_project_not_the_returned_page(session):
-    """A `limit` narrower than the project's embedded-memory count must not
-    shrink `comparable_memories` to match -- that field answers "how many
-    memories could this document be compared against", not "how many are on
-    this page"."""
+    """A `limit` narrower than the project's memory count must not shrink
+    `comparable_memories` to match -- that field answers "how many memories
+    could this document be compared against", not "how many are on this
+    page". The count is over `memories` at any fingerprint, so it is the
+    project's memory count, not its embedded-memory count."""
     await _register(session)
     document_id, block_ids = await _file_blocks(session)
     await _embed_block(session, block_ids[0], DIRECTION_A)
@@ -289,3 +290,60 @@ async def test_comparable_memories_counts_the_project_not_the_returned_page(sess
 
     assert len(related.items) == 1
     assert related.comparable_memories == 3
+
+
+@pytest.mark.asyncio
+async def test_a_project_with_no_memories_reports_zero_comparable(session):
+    """The state that used to be unreachable, and rendered as a lie.
+
+    A fully embedded document in a project holding no memory resolves no
+    shared fingerprint -- the memory side of the pair is empty -- so
+    `embedded` is False. While `comparable_memories` was counted inside that
+    same unresolved partition it came back 0 too, and the UI's `!embedded`
+    arm rendered "still being embedded" forever: nothing will ever embed a
+    memory that does not exist. The count is fingerprint-independent now, so
+    the pair `(False, 0)` means "nothing to compare against".
+    """
+    await _register(session)
+    document_id, block_ids = await _file_blocks(session)
+    await _embed_block(session, block_ids[0], DIRECTION_A)
+
+    related = await related_memories_for_document(session, document_id=document_id)
+
+    assert related.embedded is False
+    assert related.comparable_memories == 0
+    assert related.items == ()
+
+
+@pytest.mark.asyncio
+async def test_unembedded_memories_still_count_as_comparable(session):
+    """The other half of the same distinction: memories exist but are not
+    embedded under any shared fingerprint, so the comparison is genuinely
+    pending. `(embedded=False, comparable_memories>0)` is the state the
+    "still being embedded" copy is true of."""
+    await _register(session)
+    document_id, block_ids = await _file_blocks(session)
+    await _embed_block(session, block_ids[0], DIRECTION_A)
+    await _memory(session)
+    await _memory(session)
+
+    related = await related_memories_for_document(session, document_id=document_id)
+
+    assert related.embedded is False
+    assert related.comparable_memories == 2
+    assert related.items == ()
+
+
+@pytest.mark.asyncio
+async def test_a_related_item_carries_its_project(session):
+    """`content_surfaces` declares this surface labels `project`; the label
+    defence is a declaration until the column is on the row."""
+    await _register(session)
+    document_id, block_ids = await _file_blocks(session)
+    await _embed_block(session, block_ids[0], DIRECTION_A)
+    memory_id = await _memory(session)
+    await _embed_memory(session, memory_id, DIRECTION_A)
+
+    related = await related_memories_for_document(session, document_id=document_id)
+
+    assert [item.project for item in related.items] == [PROJECT]

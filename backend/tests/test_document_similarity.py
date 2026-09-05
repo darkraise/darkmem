@@ -247,7 +247,7 @@ async def test_block_counterpart_matches_another_documents_blocks(session):
 async def test_a_one_sided_fingerprint_missing_the_document_is_skipped(session):
     """The newer fingerprint has the counterpart but not the document itself;
     the older, complete fingerprint is returned instead — proving the
-    `if not has_document: continue` guard skips rather than short-circuits."""
+    zero-coverage guard skips rather than short-circuits."""
     await _register(session, FINGERPRINT)
     await _register(session, OTHER_FINGERPRINT)
     await _set_registered_at(session, FINGERPRINT, seconds_ago=20)
@@ -295,3 +295,47 @@ async def test_block_counterpart_does_not_cross_a_project_boundary(session):
         session, document_id=document_id, project=PROJECT, counterpart="block",
     )
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_full_document_coverage_beats_a_newer_partial_fingerprint(session):
+    """The rotation case the docstring used to overclaim about.
+
+    Both fingerprints hold a memory vector and at least one of this
+    document's blocks, so the pre-2026-09-05 `EXISTS` resolver returned the
+    newer one and compared against a third of the document. Coverage is
+    counted now, so the older, complete partition wins.
+    """
+    await _register(session, FINGERPRINT)
+    await _register(session, OTHER_FINGERPRINT)
+    await _set_registered_at(session, FINGERPRINT, seconds_ago=20)
+    await _set_registered_at(session, OTHER_FINGERPRINT, seconds_ago=10)
+
+    document_id, block_ids = await _file_blocks(session, texts=("one", "two", "three"))
+    await _embed_blocks(session, FINGERPRINT, block_ids)
+    await _embed_blocks(session, OTHER_FINGERPRINT, block_ids[:1])
+    memory_id = await _insert_memory(session)
+    await _embed_memory(session, FINGERPRINT, memory_id)
+    await _embed_memory(session, OTHER_FINGERPRINT, memory_id)
+
+    result = await resolve_shared_fingerprint(
+        session, document_id=document_id, project=PROJECT, counterpart="memory",
+    )
+    assert result == FINGERPRINT
+
+
+@pytest.mark.asyncio
+async def test_a_partial_fingerprint_is_still_served_when_none_is_complete(session):
+    """Preference, not a requirement: half an answer under one defined basis
+    beats no answer at all, which is what the fallback exists for."""
+    await _register(session, FINGERPRINT)
+
+    document_id, block_ids = await _file_blocks(session, texts=("one", "two", "three"))
+    await _embed_blocks(session, FINGERPRINT, block_ids[:1])
+    memory_id = await _insert_memory(session)
+    await _embed_memory(session, FINGERPRINT, memory_id)
+
+    result = await resolve_shared_fingerprint(
+        session, document_id=document_id, project=PROJECT, counterpart="memory",
+    )
+    assert result == FINGERPRINT

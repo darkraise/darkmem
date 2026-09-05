@@ -280,6 +280,9 @@ export interface RelatedMemory {
   memory_type: string | null
   status: string
   source: string | null
+  /** The document's own project, which scopes the read. Served because
+   * `content_surfaces` declares this surface labels it. */
+  project: string
   /** An ordering key, never a calibrated relevance measure -- the score
    * distribution is continuous, so rendering this as a percentage or a badge
    * would assert a precision nobody measured. Show the passage. */
@@ -292,8 +295,11 @@ export interface RelatedMemory {
 
 export interface RelatedMemoriesResponse {
   items: RelatedMemory[]
-  /** False means the comparison could not be made -- one side is not embedded
-   * under any shared fingerprint yet. Different from an empty list. */
+  /** False means the comparison could not be made -- no live fingerprint
+   * holds vectors for both this document and the project's memories yet.
+   * Different from an empty list, and NOT the "no memory exists" state:
+   * that is `comparable_memories === 0`, which is counted independently of
+   * the fingerprint and must be tested first. */
   embedded: boolean
   comparable_memories: number
 }

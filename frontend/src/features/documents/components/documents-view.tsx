@@ -243,14 +243,20 @@ function DocumentDetail({ documentId }: { documentId: string }) {
               connections could not be read — this is a failed read, not an
               empty one
             </p>
+          ) : connections.data?.comparable_documents === 0 ? (
+            // Tested before `embedded`, because `embedded` is false in this
+            // state too: a project with one document resolves no fingerprint
+            // holding both sides, and the "still being embedded" copy below
+            // would then never come true — nothing embeds a document that
+            // does not exist. The count is fingerprint-independent, so it is
+            // the arm that can tell the two apart.
+            <p className="text-muted-foreground text-sm italic">
+              no other documents in this project to compare against
+            </p>
           ) : !connections.data?.embedded ? (
             <p className="text-muted-foreground text-sm italic">
               not comparable yet — this document's blocks or this project's
               other documents are still being embedded
-            </p>
-          ) : connections.data.comparable_documents === 0 ? (
-            <p className="text-muted-foreground text-sm italic">
-              no other documents in this project to compare against
             </p>
           ) : connections.data.items.length === 0 ? (
             // The probe takes each passage's ten nearest blocks with no

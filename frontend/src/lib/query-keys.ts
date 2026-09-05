@@ -114,7 +114,7 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
   documentRelatedMemories: {
     kind: "global",
     reason:
-      "Addressed by document id and carrying no project param, the same shape as documentConnections: the read resolves the active embedder fingerprint and the document's own project server-side, so a project-keyed cache entry would key on something the request never sends",
+      "Addressed by document id and carrying no project param, the same shape as documentConnections: the read picks the newest shared fingerprint out of the data (never the active one — resolving that is an embed call a test forbids by name) and derives the document's own project server-side, so a project-keyed cache entry would key on something the request never sends",
   },
   documentSummary: {
     kind: "global",
@@ -124,7 +124,7 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
   documentConnections: {
     kind: "global",
     reason:
-      "Addressed by document id, and the passage-similarity query scopes itself to that document's project and to the active embedder fingerprint in SQL — deliberately, since a cross-project suggestion surface is the worst place to leak an isolation boundary, and a cross-fingerprint cosine has no defined meaning",
+      "Addressed by document id, and the passage-similarity query scopes itself to that document's project and to a fingerprint both sides hold vectors under — picked from the data, never the active embedder, which the read is forbidden to resolve. Deliberate on both counts: a cross-project suggestion surface is the worst place to leak an isolation boundary, and a cross-fingerprint cosine has no defined meaning",
   },
 
   backupDestinations: {

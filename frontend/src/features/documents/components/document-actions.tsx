@@ -179,14 +179,20 @@ export function DocumentDetail({ documentId }: { documentId: string }) {
               connections could not be read — this is a failed read, not an
               empty one
             </p>
+          ) : connections.data?.comparable_documents === 0 ? (
+            // Tested before `embedded`, because `embedded` is false in this
+            // state too: a project with one document resolves no fingerprint
+            // holding both sides, and the "still being embedded" copy below
+            // would then never come true — nothing embeds a document that
+            // does not exist. The count is fingerprint-independent, so it is
+            // the arm that can tell the two apart.
+            <p className="text-muted-foreground text-sm italic">
+              no other documents in this project to compare against
+            </p>
           ) : !connections.data?.embedded ? (
             <p className="text-muted-foreground text-sm italic">
               not comparable yet — this document's blocks or this project's
               other documents are still being embedded
-            </p>
-          ) : connections.data.comparable_documents === 0 ? (
-            <p className="text-muted-foreground text-sm italic">
-              no other documents in this project to compare against
             </p>
           ) : connections.data.items.length === 0 ? (
             // The probe takes each passage's ten nearest blocks with no
@@ -242,8 +248,13 @@ export function DocumentDetail({ documentId }: { documentId: string }) {
  * passage is the evidence, not the score.
  *
  * A read that could not be made is not an empty list, so `embedded: false` and
- * a zero comparable count render distinctly. Neither offers an action: the
- * hourly `block_embedding_refresh` resolves the first on its own.
+ * a zero comparable count render distinctly — and the count is tested first,
+ * because `embedded` is false in both states. Neither offers an action, but
+ * they are not resolved by the same thing and neither is resolved by this
+ * card: a pending embed is finished by the hourly `block_embedding_refresh`
+ * on the block side and by the `reembed` POST on the memory side, while
+ * `comparable_memories = 0` is resolved only by capturing a memory in this
+ * project. Nothing resolves it on its own.
  */
 function RelatedMemoriesCard({ documentId }: { documentId: string }) {
   const related = useRelatedMemories(documentId)
@@ -268,14 +279,19 @@ function RelatedMemoriesCard({ documentId }: { documentId: string }) {
             related memories could not be read — this is a failed read, not an
             empty one
           </p>
+        ) : related.data?.comparable_memories === 0 ? (
+          // Tested before `embedded`, for the reason the connections card
+          // above gives: a project holding no memory resolves no shared
+          // fingerprint either, so `!embedded` would swallow this state and
+          // render "still being embedded" about a memory that will never be
+          // captured.
+          <p className="text-muted-foreground text-sm italic">
+            no memories in this project to compare against
+          </p>
         ) : !related.data?.embedded ? (
           <p className="text-muted-foreground text-sm italic">
             not comparable yet — this document's blocks or this project's
             memories are still being embedded
-          </p>
-        ) : related.data.comparable_memories === 0 ? (
-          <p className="text-muted-foreground text-sm italic">
-            no memories in this project to compare against
           </p>
         ) : related.data.items.length === 0 ? (
           // Defensive: unreachable while `comparable_memories > 0`. The read
