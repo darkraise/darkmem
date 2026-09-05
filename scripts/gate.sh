@@ -299,8 +299,13 @@ if [ "$FULL" -eq 1 ]; then
             DARKMEM_OLLAMA_BASE_URL="${DARKMEM_OLLAMA_BASE_URL:-http://192.168.0.196:11434/v1}" \
             "$PY" scripts/e2e/run_e2e.py
 
-    # Boots its own disposable stack on :8000 (matching vite.config.ts's
-    # hardcoded proxy target), sets E2E_DISPOSABLE_STACK=1 so auth.spec.ts,
+    # Boots its own disposable stack on :8322 and points vite's proxy at it
+    # through E2E_API_TARGET (the port was :8000 and the proxy target was
+    # hardcoded until 2026-08-12 — that default collided with the live
+    # instance, which is the whole reason both are variables now). Unlike the
+    # API e2e leg above, DARKMEM_OLLAMA_BASE_URL is NOT exported here: the
+    # script sets its own default, so a standalone re-run of a red leg seeds
+    # the same embedder the gate does. Sets E2E_DISPOSABLE_STACK=1 so auth.spec.ts,
     # code-real-mode.spec.ts and code-wiki-empty.spec.ts skip
     # seedAdminPassword() (T1.58 Ruling 4's darkmem target is never this
     # run's database), runs `npm run test:e2e`, tears the stack down — one
