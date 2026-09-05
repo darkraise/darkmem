@@ -441,10 +441,12 @@ def test_the_vault_scan_covers_every_module_that_writes_the_vault():
     writer that issues its own statement; a writer that goes through
     `KnowledgeTripleRepository` is usually covered anyway, the repository
     being a seed and every closure that reaches it therefore scanned. A module
-    that does neither is outside what a static derivation here can see, and a
-    withdrawal-only writer that legitimately reads blocks (the comment above
-    `VAULT_WRITERS`) belongs outside the seeds rather than inside them — so
-    this guard says "reachable by some scan", never "is a minting module".
+    that does neither is outside what a static derivation here can see. There
+    is no withdrawal-only writer left to carve out that exception for: the
+    block channel may read the vault repository but never write it in any
+    direction, withdrawal included (`BLOCK_CHANNEL_MAY_CALL_ON_THE_VAULT`
+    below), so this guard says "reachable by some scan", never "is a minting
+    module".
     """
     covered: set[str] = set()
     for writer in VAULT_WRITERS:
@@ -473,7 +475,7 @@ def test_the_vault_scan_reports_a_module_that_does_reach_the_block_channel():
     assert find_forbidden_reach(paths, BACKEND, _VAULT_RULES)
 
 
-# ── the withdrawal direction, pinned ─────────────────────────────────
+# ── no vault write from the block channel, pinned ────────────────────
 #
 # No block-channel module holds a `KnowledgeTripleRepository` today, not even
 # to withdraw: the block-to-fact bridge that gave `document_door` a
