@@ -80,32 +80,32 @@ from app.services.document_similarity import resolve_shared_fingerprint
 
 
 @pytest.mark.asyncio
-async def test_returns_none_when_no_embedder_is_registered(db_session):
+async def test_returns_none_when_no_embedder_is_registered(session):
     result = await resolve_shared_fingerprint(
-        db_session, document_id="00000000-0000-0000-0000-000000000000",
+        session, document_id="00000000-0000-0000-0000-000000000000",
         project="default", counterpart="memory",
     )
     assert result is None
 
 
 @pytest.mark.asyncio
-async def test_rejects_an_unknown_counterpart(db_session):
+async def test_rejects_an_unknown_counterpart(session):
     with pytest.raises(ValueError):
         await resolve_shared_fingerprint(
-            db_session, document_id="00000000-0000-0000-0000-000000000000",
+            session, document_id="00000000-0000-0000-0000-000000000000",
             project="default", counterpart="article",
         )
 
 
 @pytest.mark.asyncio
-async def test_skips_a_retired_embedder(db_session):
+async def test_skips_a_retired_embedder(session):
     """A retired fingerprint is never a comparison basis, even holding rows."""
-    await db_session.execute(text(
+    await session.execute(text(
         "INSERT INTO embedders (fingerprint, model_id, dims, source, retired_at) "
         "VALUES ('retired_fp', 'm', 4, 'llm', now())"
     ))
     result = await resolve_shared_fingerprint(
-        db_session, document_id="00000000-0000-0000-0000-000000000000",
+        session, document_id="00000000-0000-0000-0000-000000000000",
         project="default", counterpart="memory",
     )
     assert result is None
@@ -311,9 +311,9 @@ def test_the_module_applies_no_score_floor():
 
 
 @pytest.mark.asyncio
-async def test_an_unknown_document_is_not_embedded(db_session):
+async def test_an_unknown_document_is_not_embedded(session):
     from uuid import uuid4
-    related = await related_memories_for_document(db_session, document_id=uuid4())
+    related = await related_memories_for_document(session, document_id=uuid4())
     assert isinstance(related, RelatedMemories)
     assert related.embedded is False
     assert related.comparable_memories == 0
@@ -561,12 +561,12 @@ Task 2 uses (no model call, no embedder-resolved fingerprint, no floor) plus:
 
 ```python
 @pytest.mark.asyncio
-async def test_an_unknown_document_is_not_embedded(db_session):
+async def test_an_unknown_document_is_not_embedded(session):
     from uuid import uuid4
     from app.services.document_connections import (
         DocumentConnections, connections_for_document,
     )
-    result = await connections_for_document(db_session, document_id=uuid4())
+    result = await connections_for_document(session, document_id=uuid4())
     assert isinstance(result, DocumentConnections)
     assert result.embedded is False
     assert result.comparable_documents == 0
@@ -800,7 +800,10 @@ git commit -m "feat(documents): re-base connections on cosine"
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `backend/tests/test_document_routes.py`:
+Add to `backend/tests/test_document_routes.py`. **There is no `filed_document`
+fixture** — this file files documents inline through its own module-local
+helpers. Follow that existing convention to obtain a filed document id; the
+signatures below show what to assert, not a fixture to invent.
 
 ```python
 @pytest.mark.asyncio
@@ -1071,6 +1074,14 @@ Then:
 - `document_door.py:614-642` — `delete_document` keeps its docstring claim that it "withdraws provenance before removing the row". Rewrite that paragraph: a document's blocks source no fact, so a delete removes the row and its blocks and journals, with nothing to withdraw. Delete `expire_facts_left_bare` (line 642), which loses its only caller.
 - `fact_sources.py:124-141` — remove `BLOCK_SOURCE_KIND` from `SOURCE_KINDS` and delete the comment saying its producer shipped.
 - `test_document_door.py:8,455-520` and `test_document_routes.py:748-750` — delete the tests that call `record_block_source` and assert the fact expiry. They assert behaviour that no longer exists; do not rewrite them to assert the absence, which Step 2's test already does.
+- `tests/test_block_retrieval.py:359,367,408` — delete the comment explaining
+  why `block_fact_sources` is absent from the forbidden set, the
+  `SANCTIONED_LIFT = "app.services.block_fact_sources"` binding, and
+  `test_the_sanctioned_lift_reaches_no_module_that_can_fetch_a_block`. **This
+  is why it lands here and not in Task 8:** Step 5 below runs the full backend
+  suite, which collects this file, and it cannot go green while these lines
+  name a module this task deletes. The forbidden set becomes the complement
+  with no exception.
 
 - [ ] **Step 5: Run the suite**
 
@@ -1195,13 +1206,18 @@ In `test_block_retrieval.py:345-357`, add to `BLOCK_CHANNEL_MODULES`:
     "app.services.document_connections",
 ```
 
-- [ ] **Step 4: Remove the `block_fact_sources` exception**
+- [ ] **Step 4: Confirm the `block_fact_sources` exception is already gone**
 
-The vault scan carries a three-paragraph justification for leaving
-`block_fact_sources` out of the forbidden set (around
-`test_the_sanctioned_lift_reaches_no_module_that_can_fetch_a_block`, line 408).
-Delete that test and its explanatory comment: the module is gone, so the
-forbidden set is now the complement with no exception.
+Task 6 removed `SANCTIONED_LIFT`, its explanatory comment and
+`test_the_sanctioned_lift_reaches_no_module_that_can_fetch_a_block`, because
+that task deletes the module those lines name and its own full-suite run could
+not otherwise pass. Verify rather than repeat:
+
+```bash
+rg -n "block_fact_sources|SANCTIONED_LIFT" backend/tests/test_block_retrieval.py
+```
+Expected: no output. **If anything is found, delete it here** — Task 6 left work
+behind.
 
 - [ ] **Step 5: Run the whole file**
 
