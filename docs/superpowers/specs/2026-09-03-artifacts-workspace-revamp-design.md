@@ -252,9 +252,12 @@ from a block to a fact at all, not a gated or on-demand one.
 **This section originally read related memories off the lifted propositions'
 entities, via `entities.memory_ids[]`. That basis is gone with the lift
 (§6.1), and `related-memories` and `document-connections` are now re-based
-onto cosine similarity over block vectors instead** — the read goes
-document → block vectors → nearest memory vectors by cosine, no entity graph
-and no lifted proposition anywhere on the path.
+onto cosine similarity over block vectors instead** — `document_related`
+goes document → block vectors → nearest *memory* vectors by cosine;
+`document_connections` is one hop further out and goes document → block
+vectors → nearest *other documents'* block vectors, per its own docstring.
+Neither reads the entity graph and neither reaches a lifted proposition
+anywhere on its path.
 
 - **No LLM call** still holds, and for the same reason: the moment a
   connections feature generates prose it has become unbadged synthesis and

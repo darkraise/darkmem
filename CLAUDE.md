@@ -1729,24 +1729,26 @@ fact, so the scan is rooted at the modules that can *make* one — mint,
 promote on the ladder, or synthesise an article from the vault — and a
 module that only reads blocks without ever minting or promoting
 anything is not one of its subjects. A raw-SQL-text derivation over
-`INSERT INTO` / `UPDATE` / `DELETE FROM knowledge_triples` does find a
-real, non-empty set this way — the repository plus every ladder, lift
-and synthesis writer, asserted inside `VAULT_WRITERS` — but that
-derivation is a **staleness guard on the hand-written `VAULT_WRITERS`
-list**, not the root rule itself: today "writes `knowledge_triples`"
-and "mints or promotes" sweep in the same modules, and minting is
-chosen as the root because it names the property the firewall actually
-protects, independent of whether the SQL-text derivation happens to
-agree with it. `document_door` itself illustrates why the distinction
-matters: it reads blocks by construction, and it used to be the
-withdraw-then-expire pass's own writer, calling the bridge's withdrawal
-and then `expire` itself — a real vault write, on a module a
-"reads blocks" seed list would otherwise miss. That pass went with the
-bridge and `document_door` writes nothing today, but the scan's root
-rule was never "does this module currently write" — it is "can this
-module mint or promote", which stays the right question whether or not
-today's tree happens to have a writer sitting on a block-reading
-module. **That the block channel may only read the
+`INSERT INTO` / `UPDATE` / `DELETE FROM knowledge_triples` finds three
+modules today — the repository itself, `verification_recompute` and
+`entity_merge` — and that is deliberately *narrower* than the nine
+`VAULT_WRITERS` seeds: `fact_lift` and `article_synthesis` write
+through the repository, so a text scan cannot see them at all. That is
+why the derivation is a **staleness guard on the hand-written seed
+list** rather than the root rule, and why the method-level scan exists
+beside it. "Writes the vault" and "mints or promotes a fact" are also
+not the same predicate — `fact_provenance` calls `expire` and mints
+nothing — so rooting the scan at minting names the property the
+firewall is about rather than a proxy for it. A list rooted at "touches
+`knowledge_triples`" would additionally have swept `document_door` in
+(it reads blocks by construction) and then asserted something false
+about it: `document_door` was once the withdraw-then-expire pass's own
+writer, calling the bridge's withdrawal and then `expire` itself, but
+that pass went with the bridge and it writes nothing today — the
+negative control at `test_block_retrieval.py:471-475` shows its
+closure still reaches the block channel, which is exactly why the
+minting root, not a "touches the vault" root, is the one that stays
+correct. **That the block channel may only read the
 vault, never write or promote, is pinned at the method level:**
 a third scan reads every block-channel module's own AST and fails the
 build if one names any `KnowledgeTripleRepository` method outside a
