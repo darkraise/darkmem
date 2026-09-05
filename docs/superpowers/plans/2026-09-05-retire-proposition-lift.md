@@ -1206,6 +1206,11 @@ In `test_block_retrieval.py:345-357`, add to `BLOCK_CHANNEL_MODULES`:
     "app.services.document_connections",
 ```
 
+`"app.services.document_similarity"` is already in this set — Task 1's review
+found it missing and Task 1's fix round added it, since that module reads block
+rows too and this set's own comment requires classification in the creating
+task. Verify it is present; do not add it twice.
+
 - [ ] **Step 4: Confirm the `block_fact_sources` exception is already gone**
 
 Task 6 removed `SANCTIONED_LIFT`, its explanatory comment and
