@@ -251,10 +251,13 @@ export function DocumentDetail({ documentId }: { documentId: string }) {
  * a zero comparable count render distinctly — and the count is tested first,
  * because `embedded` is false in both states. Neither offers an action, but
  * they are not resolved by the same thing and neither is resolved by this
- * card: a pending embed is finished by the hourly `block_embedding_refresh`
- * on the block side and by the `reembed` POST on the memory side, while
- * `comparable_memories = 0` is resolved only by capturing a memory in this
- * project. Nothing resolves it on its own.
+ * card: a pending embed is ordinarily finished by the filing path, which
+ * embeds a document's blocks at filing time, and by the pipeline's Phase 1
+ * at buffer flush on the memory side — the hourly `block_embedding_refresh`
+ * is a backstop for gaps and the `reembed` POST is an operator action after
+ * a rotation, neither the normal route. `comparable_memories = 0` is
+ * resolved only by capturing a memory in this project. Nothing resolves it
+ * on its own.
  */
 function RelatedMemoriesCard({ documentId }: { documentId: string }) {
   const related = useRelatedMemories(documentId)

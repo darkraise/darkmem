@@ -158,8 +158,10 @@ with `SEMANTIC_FETCH_MULTIPLIER`, which revision 1's shape had no equivalent of.
 
 So the shape is the one the planner was going to choose anyway: **a single
 statement joining the document's block vectors against the project's memory
-vectors, max-aggregated per memory, ordered, limited.** No `LATERAL`, no
-per-block `k`, no probe cap. Measured on prod against the corpus's largest
+vectors, max-aggregated per memory, ordered, limited.** No ANN probe per
+block, no per-block `k`, no probe cap — the `LATERAL` join survives, carrying
+out the argmax block per memory over an exact scan, not an index probe.
+Measured on prod against the corpus's largest
 document (`E2-truth-core.md`, 1,132 non-empty blocks × the `darkmem` project's
 20 memories = 22,640 distance computations): **78 ms**, plan is a hash join
 over two sequential scans. *Corrected 2026-09-05: the multiplier read 50

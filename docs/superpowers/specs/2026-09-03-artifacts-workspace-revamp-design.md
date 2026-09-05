@@ -289,7 +289,10 @@ because none exists: capturing a memory is the only thing that changes it.
 state", which under-describes it and read as interchangeable with the two other
 empty renderings. It is not: the card distinguishes *nothing to compare
 against* (this state), *not embedded yet* (`embedded=false` with a positive
-count, which the block refresh and the `reembed` POST do resolve on their own),
+count, ordinarily resolved by the filing path (blocks) or the pipeline's
+Phase 1 at buffer flush (memories), with the hourly `block_embedding_refresh`
+as a backstop for gaps and the `reembed` POST as an operator action after a
+rotation),
 *the comparison ran and returned nothing*, and a failed read. The count is
 tested before `embedded` in the UI, because `embedded` is false in the first
 two states alike.
