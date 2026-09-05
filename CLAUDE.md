@@ -1731,9 +1731,10 @@ module that only reads blocks without ever minting or promoting
 anything is not one of its subjects. A raw-SQL-text derivation over
 `INSERT INTO` / `UPDATE` / `DELETE FROM knowledge_triples` finds three
 modules today — the repository itself, `verification_recompute` and
-`entity_merge` — and that is deliberately *narrower* than the nine
-`VAULT_WRITERS` seeds: `fact_lift` and `article_synthesis` write
-through the repository, so a text scan cannot see them at all. That is
+`entity_merge` — and that is narrower than the nine
+`VAULT_WRITERS` seeds: `fact_lift` writes through the repository, so a
+text scan cannot see it; `article_synthesis` does not write the vault
+at all and is a seed because it synthesises *from* it. That is
 why the derivation is a **staleness guard on the hand-written seed
 list** rather than the root rule, and why the method-level scan exists
 beside it. "Writes the vault" and "mints or promotes a fact" are also
