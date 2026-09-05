@@ -602,27 +602,30 @@ async def test_a_dropped_project_predicate_on_related_memories_fails_the_probe(
 ):
     """The related-memories read is scoped in SQL, and this is what proves it.
 
-    The seeded lifted document is in OBSERVER and its proposition shares the
-    `redis` entity with `b_active`, which is in FOREIGN. So the entity walk
-    reaches across the boundary by construction and only the project predicate
-    stops it -- which makes a predicate-free variant the exact mutation worth
-    pinning.
+    The seeded OBSERVER document's block and the FOREIGN `b_active` carry the
+    same vector under the same fingerprint, so their cosine is exactly 1.0 and
+    only the project predicate keeps that row out of the page. That makes a
+    predicate-free variant the exact mutation worth pinning.
 
-    Without this test the driver is a vacuous clean: it observes rows and
-    classifies them, but nothing asserts that removing the predicate changes
-    the verdict. Verified by running it against a mutated module before it was
-    kept.
+    The predicate now lives inside `_related_sql`, a builder rather than a
+    module-level constant, so the mutation targets the builder. And the fixture
+    seeds real vectors on both sides deliberately: with nothing embedded the
+    mutated surface would return nothing either, and the test would pass while
+    proving that a leak is undetectable. Verified by running it against the
+    mutated module before it was kept.
     """
     from app.services import document_related
 
-    predicate_free = text(
-        str(document_related._RELATED_SQL).replace(
-            # CAST, because a bare bind in this position has no inferable
-            # type and asyncpg refuses it (the cross-cutting invariant).
+    original = document_related._related_sql
+
+    def predicate_free(memories_table: str, blocks_table: str) -> str:
+        # CAST, because a bare bind in this position has no inferable type and
+        # asyncpg refuses it (the cross-cutting invariant).
+        return original(memories_table, blocks_table).replace(
             "WHERE m.project = :project", "WHERE CAST(:project AS text) IS NOT NULL"
         )
-    )
-    monkeypatch.setattr(document_related, "_RELATED_SQL", predicate_free)
+
+    monkeypatch.setattr(document_related, "_related_sql", predicate_free)
     mutated = await run_probe()
 
     assert mutated.count() > baseline_report.count()
