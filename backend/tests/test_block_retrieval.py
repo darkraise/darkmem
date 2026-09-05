@@ -11,8 +11,9 @@ are read — the two places a block would have to appear before it could be
 fused. Doc 16's firewall runs both ways, so the vault half is walked too: no
 module that mints a fact, moves one on the verification ladder, or synthesises
 an article from the vault may reach — through its own import closure — a
-module that reads a block row, leaving doc 16 §5's on-demand lift as the only
-route from a block to a fact.
+module that reads a block row. There is no route from a block to a fact at
+all: the on-demand lift and the block-to-fact bridge are both retired, so the
+forbidden set is the complement with no exception.
 
 **"Pushed into SQL" is proven by making the Python-side alternative fail.** A
 test that filtered correctly would pass either way. Here the other project
@@ -360,16 +361,6 @@ BLOCK_CHANNEL_MODULES = frozenset({
     "app.services.document_similarity",
 })
 
-# `block_fact_sources` is deliberately absent from that set: it *is* doc 16
-# §5's lift, so forbidding it would forbid the sanctioned crossing rather than
-# the unsanctioned one. What makes leaving it out safe is narrower than "it
-# never touches a block". It does query `blocks`, in two SELECTs that project
-# ids and nothing else (`_BLOCK_DOCUMENT_SQL` resolves a block's document,
-# `_DOCUMENT_BLOCKS_SQL` a document's blocks) — no block text crosses into the
-# vault through it, and it reaches no module that could go and fetch any,
-# which is the half the test below checks.
-SANCTIONED_LIFT = "app.services.block_fact_sources"
-
 _VAULT_RULES = ReachabilityRules(
     forbidden_modules=BLOCK_CHANNEL_MODULES,
     forbidden_attrs=frozenset({
@@ -404,23 +395,9 @@ def test_no_vault_writers_import_closure_reaches_the_block_channel(writer):
     offenders = find_forbidden_reach(paths, BACKEND, _VAULT_RULES)
     assert not offenders, (
         f"{writer} can now reach the block channel:\n" + "\n".join(offenders) +
-        "\nA block becomes a fact only through doc 16 §5's on-demand lift; a "
-        "vault writer that can read blocks itself is a Tier-3 firewall breach."
+        "\nNo route from a block to a fact exists; a vault writer that can "
+        "read blocks itself is a Tier-3 firewall breach."
     )
-
-
-def test_the_sanctioned_lift_reaches_no_module_that_can_fetch_a_block():
-    """Why `block_fact_sources` is safe to leave out of the forbidden set: it
-    resolves block and document ids against `blocks` and reaches nothing that
-    could turn one into content.
-
-    The closure is what this asserts. That its own two SELECTs project ids and
-    never `text` is read off the module, not enforced here — stated that way
-    rather than folded into the assertion's name, since a test that checks one
-    of two properties must not be cited for both.
-    """
-    reachable = import_closure(BACKEND, SANCTIONED_LIFT)
-    assert reachable & BLOCK_CHANNEL_MODULES == set()
 
 
 def test_the_vault_scan_covers_every_module_that_writes_the_vault():

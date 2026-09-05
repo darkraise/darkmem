@@ -725,52 +725,6 @@ async def test_document_put_resolves_its_source_through_the_client_ladder(
 
 
 @pytest.mark.asyncio
-async def test_document_delete_closes_the_provenance_window(session, both_doors):
-    """The tool goes through `delete_document`, not a raw DELETE.
-
-    `fact_sources.source_ref` carries no foreign key, so the cascade cannot
-    reach it: a fact this document solely sourced would keep its origin count
-    and its rung on evidence that no longer exists. This is the assertion a
-    re-inlined `DELETE FROM documents` fails.
-    """
-    import json
-
-    from sqlalchemy import text as _text
-
-    from app.api.mcp import server as mcp_server
-    from tests.test_document_door import _blocks_of, _fact, _sources_changed_count
-
-    fact_id = await _fact(session)
-    filed = json.loads(await mcp_server.document_put(
-        project="p", uri="docs/sourced.md", content=DOC,
-    ))
-    blocks = await _blocks_of(session, filed["document_id"])
-    from app.services.block_fact_sources import record_block_source
-
-    await record_block_source(session, fact_id=fact_id, block_id=blocks[0])
-    before = await _sources_changed_count(session, fact_id)
-
-    result = json.loads(await mcp_server.document_delete(
-        project="p", uri="docs/sourced.md",
-    ))
-
-    assert result == {"document_id": filed["document_id"], "deleted": True}
-    assert (await session.execute(
-        _text("SELECT count(*) FROM documents WHERE id = CAST(:d AS uuid)"),
-        {"d": filed["document_id"]},
-    )).scalar_one() == 0
-    expired_at = (await session.execute(
-        _text("SELECT expired_at FROM knowledge_triples WHERE id = CAST(:f AS uuid)"),
-        {"f": fact_id},
-    )).scalar_one()
-    assert expired_at is not None, (
-        "a fact left with no source must be expired -- the raw DELETE the plan "
-        "sketched never reaches this"
-    )
-    assert await _sources_changed_count(session, fact_id) == before + 1
-
-
-@pytest.mark.asyncio
 async def test_document_delete_by_uri_on_the_rest_door(client, auth_headers, both_doors):
     await _put_nested(client, auth_headers)
 
