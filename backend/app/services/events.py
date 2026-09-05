@@ -137,6 +137,24 @@ BACKUP_VERIFY_FAILED = "backup_verify_failed"
 # any emitter ships it.
 EVENT_TYPES: list[str] = [
     "created",
+    # The three memory-door actions `PostgresAuditRepository.log` forwards
+    # unmapped. Its `_ACTION_EVENT_TYPE` remaps only "create" and "pipeline";
+    # every other action reaches `record_event` as its own imperative spelling,
+    # so these three sit beside the past-participle values rather than matching
+    # them. The vocabulary is corrected to the emitted literal, never the other
+    # way around -- the same call `setup_complete` below records, and here it
+    # is load-bearing twice over: `tests/test_mcp_auth.py` asserts the literal
+    # "delete" in the journal, and the audit endpoint's action filter excludes
+    # these exact strings.
+    #
+    # They warned on every memory update, delete and merge from the day the
+    # vocabulary closed. Neither AST guard could see them: both resolve
+    # `_ACTION_EVENT_TYPE.get(action, action)` to the dict's *mapped* values
+    # and are blind to the pass-through default, which is why the scan reports
+    # no unresolved site here either.
+    "update",
+    "delete",
+    "merge",
     "superseded",
     "deprecated",
     "expired",
