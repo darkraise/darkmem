@@ -47,7 +47,7 @@ import type { FactRowData } from "@/features/knowledge/use-facts"
 // either way (T1.64 plan §5.4).
 interface TestFactSource {
   origin_key: string
-  kind: "memory" | "code" | "block" | "human"
+  kind: "memory" | "code" | "human"
   ref: string
   detail: string
   at: string

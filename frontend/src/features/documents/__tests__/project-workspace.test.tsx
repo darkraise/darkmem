@@ -58,10 +58,10 @@ function mockDocuments(result: unknown | "fail") {
       return Promise.resolve({ items: [] })
     }
     // The reader pane's detail panels. Without their own arms these fall
-    // through to the list payload, and a DocumentListItem has no
-    // `shared_entities`, so the connections panel throws on render.
+    // through to the list payload, which carries none of the connections
+    // envelope's fields, so the connections panel throws on render.
     if (path.endsWith("/connections")) {
-      return Promise.resolve({ items: [], horizon: true })
+      return Promise.resolve({ items: [], embedded: true, comparable_documents: 0 })
     }
     if (path.endsWith("/summary")) {
       return Promise.resolve(null)

@@ -22,7 +22,6 @@ import { toast } from "darkraise-ui/components/sonner"
 import {
   useDocumentConnections,
   useRelatedMemories,
-  useDocumentLift,
   useDocumentDelete,
   useDocumentSummarize,
   useDocumentSummary,
@@ -131,9 +130,8 @@ export function DocumentActions({
 /** Summary and connections, side by side under the reader.
  *
  * Both are honest about being empty rather than absent: no summary has been
- * generated until someone spends the call, and connections stay empty for
- * every document until lifting runs, because they are emergent from shared
- * entities and this corpus has none.
+ * generated until someone spends the call, and a connections read that could
+ * not be made says so rather than rendering as an empty list.
  */
 export function DocumentDetail({ documentId }: { documentId: string }) {
   const summary = useDocumentSummary(documentId)
@@ -172,26 +170,48 @@ export function DocumentDetail({ documentId }: { documentId: string }) {
             Connections
           </p>
           <p className="text-muted-foreground text-sm">
-            Emergent from shared entities after lifting — not a synthesis.
+            Nearest documents in this project, by passage similarity.
           </p>
         </CardHeader>
         <CardContent>
           {connections.isLoading ? (
             <Skeleton className="h-16 w-full rounded-md" />
-          ) : (connections.data?.items ?? []).length === 0 ? (
+          ) : connections.isError ? (
+            <p className="text-destructive text-sm italic">
+              connections could not be read — this is a failed read, not an
+              empty one
+            </p>
+          ) : !connections.data?.embedded ? (
             <p className="text-muted-foreground text-sm italic">
-              no shared entities with another document
+              not comparable yet — this document's blocks or this project's
+              other documents are still being embedded
+            </p>
+          ) : connections.data.comparable_documents === 0 ? (
+            <p className="text-muted-foreground text-sm italic">
+              no other documents in this project to compare against
+            </p>
+          ) : connections.data.items.length === 0 ? (
+            <p className="text-muted-foreground text-sm italic">
+              no document in this project has a nearby passage
             </p>
           ) : (
-            <div className="flex flex-col gap-1.5">
-              {(connections.data?.items ?? []).map((connection) => (
+            <div className="flex flex-col gap-2">
+              {connections.data.items.map((connection) => (
                 <div key={connection.document_id} className="text-sm">
-                  <span className="font-medium">
-                    {connection.title ?? "untitled document"}
-                  </span>
-                  <span className="text-muted-foreground ml-2 font-mono text-sm">
-                    {connection.shared_entities.join(" · ")}
-                  </span>
+                  <div className="flex items-start gap-1.5">
+                    <span className="font-medium">
+                      {connection.title ?? "untitled document"}
+                    </span>
+                    <span className="text-muted-foreground shrink-0 font-mono text-sm">
+                      {connection.score.toFixed(3)}
+                    </span>
+                  </div>
+                  <p className="text-muted-foreground line-clamp-2">
+                    {connection.block_text}
+                  </p>
+                  <p className="text-muted-foreground line-clamp-2 italic">
+                    {connection.other_block_text}
+                  </p>
                 </div>
               ))}
             </div>
@@ -204,22 +224,22 @@ export function DocumentDetail({ documentId }: { documentId: string }) {
   )
 }
 
-/** Memories that assert what this document asserts, and what to do about them.
+/** Memories whose text sits near a passage of this document.
  *
  * A maintenance surface, which is the owner's stated purpose for it. Two
  * things it deliberately does not do: it renders no prose about what a
  * document and a memory share (that would be unbadged synthesis, which doc 09
- * owns with grounding and a ladder), and it shows the shared entity names
- * rather than a similarity score, because the count is evidence and a
- * normalised number would read as a measurement nobody made.
+ * owns with grounding and a ladder), and it renders the score as a raw number
+ * rather than a percentage or a badge, because the distribution is continuous
+ * and any banding would assert a precision nobody measured. The matching
+ * passage is the evidence, not the score.
  *
- * An UNLIFTED document is not an empty list. Rendering both the same way tells
- * a reader "nothing relates to this" when the truth is "nobody has asked yet",
- * so the unlifted state says so and offers the lift.
+ * A read that could not be made is not an empty list, so `embedded: false` and
+ * a zero comparable count render distinctly. Neither offers an action: the
+ * hourly `block_embedding_refresh` resolves the first on its own.
  */
 function RelatedMemoriesCard({ documentId }: { documentId: string }) {
   const related = useRelatedMemories(documentId)
-  const lift = useDocumentLift(documentId)
 
   return (
     <Card elevation="low">
@@ -229,40 +249,34 @@ function RelatedMemoriesCard({ documentId }: { documentId: string }) {
           Related memories
         </p>
         <p className="text-muted-foreground text-sm">
-          Memories asserting what this document's lift asserted — ordered by
-          shared entities, which is evidence rather than a score.
+          Memories near a passage of this document — the passage is the
+          evidence, the score only orders the rows.
         </p>
       </CardHeader>
       <CardContent>
         {related.isLoading ? (
           <Skeleton className="h-16 w-full rounded-md" />
-        ) : !related.data?.lifted ? (
-          <div className="space-y-2">
-            <p className="text-muted-foreground text-sm italic">
-              this document has not been lifted, so it asserts nothing yet —
-              which is different from having no relations
-            </p>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => lift.mutate()}
-              disabled={lift.isPending}
-            >
-              {lift.isPending ? "Lifting…" : "Lift this document"}
-            </Button>
-            <p className="text-muted-foreground text-sm">
-              Lifting spends a model call per block and mints ordinary
-              memories. It is idempotent: lifting again replaces the previous
-              lift rather than doubling it.
-            </p>
-          </div>
-        ) : (related.data?.items ?? []).length === 0 ? (
+        ) : related.isError ? (
+          <p className="text-destructive text-sm italic">
+            related memories could not be read — this is a failed read, not an
+            empty one
+          </p>
+        ) : !related.data?.embedded ? (
           <p className="text-muted-foreground text-sm italic">
-            lifted, and no other memory asserts the same entities
+            not comparable yet — this document's blocks or this project's
+            memories are still being embedded
+          </p>
+        ) : related.data.comparable_memories === 0 ? (
+          <p className="text-muted-foreground text-sm italic">
+            no memories in this project to compare against
+          </p>
+        ) : related.data.items.length === 0 ? (
+          <p className="text-muted-foreground text-sm italic">
+            no memory in this project has a nearby passage
           </p>
         ) : (
           <div className="flex flex-col gap-2">
-            {(related.data?.items ?? []).map((memory) => (
+            {related.data.items.map((memory) => (
               <div key={memory.memory_id} className="text-sm">
                 <div className="flex items-start gap-1.5">
                   <span className="line-clamp-2">{memory.content}</span>
@@ -271,10 +285,13 @@ function RelatedMemoriesCard({ documentId }: { documentId: string }) {
                       {memory.status}
                     </Badge>
                   )}
+                  <span className="text-muted-foreground shrink-0 font-mono text-sm">
+                    {memory.score.toFixed(3)}
+                  </span>
                 </div>
-                <span className="text-muted-foreground font-mono text-sm">
-                  {memory.shared_entities.join(" · ")}
-                </span>
+                <p className="text-muted-foreground line-clamp-2">
+                  {memory.block_text}
+                </p>
               </div>
             ))}
           </div>

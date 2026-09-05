@@ -64,7 +64,7 @@ export interface MemorySearchOutcome {
 // Knowledge vault (Wave 2) — facts, articles, topics, review + hygiene queues
 // ---------------------------------------------------------------------------
 
-export type OriginKind = "memory" | "code" | "block" | "human"
+export type OriginKind = "memory" | "code" | "human"
 
 export interface FactSource {
   origin_key: string

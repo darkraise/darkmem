@@ -3,7 +3,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ApiError, apiFetch } from "@/lib/api"
 import { DEMO } from "@/lib/demo-flag"
 
-/** Every documents payload carries `horizon`. The label rides the data, not
+/** The list and search payloads carry `horizon`; the two relatedness reads
+ *  (connections, related memories) do not -- they answer with `embedded` plus
+ *  a comparable count instead, which is what says whether the comparison could
+ *  be made at all. The label rides the data, not
  *  only the page chrome: a client rendering this anywhere else must still be
  *  able to say what it is looking at. */
 export interface DocumentListItem {
@@ -33,7 +36,22 @@ export interface DocumentSummary {
 export interface DocumentConnection {
   document_id: string
   title: string | null
-  shared_entities: string[]
+  /** An ordering key, never a calibrated relevance measure -- the score
+   * distribution is continuous, so rendering this as a percentage or a badge
+   * would assert a precision nobody measured. Show the passage. */
+  score: number
+  block_id: string
+  block_text: string
+  other_block_id: string
+  other_block_text: string
+}
+
+export interface DocumentConnectionsResponse {
+  items: DocumentConnection[]
+  /** False means the comparison could not be made -- one side is not embedded
+   * under any shared fingerprint yet. Different from an empty list. */
+  embedded: boolean
+  comparable_documents: number
 }
 
 export interface QaCitation {
@@ -129,11 +147,11 @@ export function useDocumentDelete() {
 }
 
 export function useDocumentConnections(documentId: string | null) {
-  return useQuery<{ items: DocumentConnection[]; horizon: boolean }>({
+  return useQuery<DocumentConnectionsResponse>({
     queryKey: ["documentConnections", documentId],
     enabled: !DEMO && Boolean(documentId),
     queryFn: () =>
-      apiFetch<{ items: DocumentConnection[]; horizon: boolean }>(
+      apiFetch<DocumentConnectionsResponse>(
         `/documents/${documentId}/connections`,
       ),
   })
@@ -262,39 +280,29 @@ export interface RelatedMemory {
   memory_type: string | null
   status: string
   source: string | null
-  shared_entities: string[]
+  /** An ordering key, never a calibrated relevance measure -- the score
+   * distribution is continuous, so rendering this as a percentage or a badge
+   * would assert a precision nobody measured. Show the passage. */
+  score: number
+  block_id: string
+  block_text: string
+  span_start: number | null
+  span_end: number | null
 }
 
-/**
- * Memories asserting what this document's lift asserted.
- *
- * `lifted: false` is not an empty list -- it means the document has never
- * been lifted, and the surface offers the lift instead of rendering a blank
- * panel that reads as "nothing relates to this".
- */
+export interface RelatedMemoriesResponse {
+  items: RelatedMemory[]
+  /** False means the comparison could not be made -- one side is not embedded
+   * under any shared fingerprint yet. Different from an empty list. */
+  embedded: boolean
+  comparable_memories: number
+}
+
 export function useRelatedMemories(documentId: string | null) {
-  return useQuery<{ items: RelatedMemory[]; lifted: boolean }>({
+  return useQuery<RelatedMemoriesResponse>({
     queryKey: ["documentRelatedMemories", documentId],
     enabled: !DEMO && Boolean(documentId),
     queryFn: () => apiFetch(`/documents/${documentId}/related-memories`),
-  })
-}
-
-/** Lift this document's propositions into ordinary memories.
- *
- * Idempotent: the service strips the prior lift keyed on `document_id`, so a
- * second lift replaces the first rather than doubling it. */
-export function useDocumentLift(documentId: string | null) {
-  const queryClient = useQueryClient()
-  return useMutation<{ lifted: number; stripped: number; memory_ids: string[] }>({
-    mutationFn: () =>
-      apiFetch(`/documents/${documentId}/lift`, { method: "POST" }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["documentRelatedMemories", documentId],
-      })
-      queryClient.invalidateQueries({ queryKey: ["documentConnections", documentId] })
-    },
   })
 }
 

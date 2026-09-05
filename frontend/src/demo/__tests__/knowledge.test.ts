@@ -23,13 +23,13 @@ afterEach(() => {
 
 describe("origin grouping", () => {
   it("counts DISTINCT origin_key, never raw rows — the echo pair counts once", () => {
-    expect(heroFact.sources).toHaveLength(5)
-    expect(distinctOriginCount(heroFact.sources)).toBe(4)
+    expect(heroFact.sources).toHaveLength(4)
+    expect(distinctOriginCount(heroFact.sources)).toBe(3)
   })
 
   it("groups rows by origin_key preserving first-seen order", () => {
     const groups = groupSourcesByOrigin(heroFact.sources)
-    expect(groups).toHaveLength(4)
+    expect(groups).toHaveLength(3)
     expect(groups[0]?.origin_key).toBe("session:9f21b7c4")
     expect(groups[0]?.rows).toHaveLength(2)
   })

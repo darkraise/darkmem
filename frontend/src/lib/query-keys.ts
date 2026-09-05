@@ -114,7 +114,7 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
   documentRelatedMemories: {
     kind: "global",
     reason:
-      "Addressed by document id and carrying no project param, the same shape as documentConnections: the read derives its project scope from the document server-side, so a project-keyed cache entry would key on something the request never sends",
+      "Addressed by document id and carrying no project param, the same shape as documentConnections: the read resolves the active embedder fingerprint and the document's own project server-side, so a project-keyed cache entry would key on something the request never sends",
   },
   documentSummary: {
     kind: "global",
@@ -124,7 +124,7 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
   documentConnections: {
     kind: "global",
     reason:
-      "Addressed by document id, and the connections query scopes itself to that document's project in SQL — deliberately, since a cross-project suggestion surface is the worst place to leak an isolation boundary",
+      "Addressed by document id, and the passage-similarity query scopes itself to that document's project and to the active embedder fingerprint in SQL — deliberately, since a cross-project suggestion surface is the worst place to leak an isolation boundary, and a cross-fingerprint cosine has no defined meaning",
   },
 
   backupDestinations: {

@@ -137,13 +137,6 @@ export const CURATED_FACTS: DemoFact[] = [
         at: "indexed 2026-06-03",
       },
       {
-        origin_key: "document:d-4471",
-        kind: "block",
-        ref: "block “RRF tuning notes.md § Fusion weights”",
-        detail: "excerpted paragraph confirming the 0.7 / 0.3 split",
-        at: "indexed 2026-05-20",
-      },
-      {
         origin_key: "session:review-2026-07-19",
         kind: "memory",
         ref: "memory 3a9c02e1",

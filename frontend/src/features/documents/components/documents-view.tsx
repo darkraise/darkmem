@@ -232,26 +232,48 @@ function DocumentDetail({ documentId }: { documentId: string }) {
         <CardHeader className="space-y-1 pb-3">
           <p className="text-sm font-semibold">Connections</p>
           <p className="text-muted-foreground text-sm">
-            Emergent from shared entities after lifting — not a synthesis.
+            Nearest documents in this project, by passage similarity.
           </p>
         </CardHeader>
         <CardContent>
           {connections.isLoading ? (
             <Skeleton className="h-16 w-full rounded-md" />
-          ) : (connections.data?.items ?? []).length === 0 ? (
+          ) : connections.isError ? (
+            <p className="text-destructive text-sm italic">
+              connections could not be read — this is a failed read, not an
+              empty one
+            </p>
+          ) : !connections.data?.embedded ? (
             <p className="text-muted-foreground text-sm italic">
-              no shared entities with another document
+              not comparable yet — this document's blocks or this project's
+              other documents are still being embedded
+            </p>
+          ) : connections.data.comparable_documents === 0 ? (
+            <p className="text-muted-foreground text-sm italic">
+              no other documents in this project to compare against
+            </p>
+          ) : connections.data.items.length === 0 ? (
+            <p className="text-muted-foreground text-sm italic">
+              no document in this project has a nearby passage
             </p>
           ) : (
-            <div className="flex flex-col gap-1.5">
-              {(connections.data?.items ?? []).map((connection) => (
+            <div className="flex flex-col gap-2">
+              {connections.data.items.map((connection) => (
                 <div key={connection.document_id} className="text-sm">
-                  <span className="font-medium">
-                    {connection.title ?? "untitled document"}
-                  </span>
-                  <span className="text-muted-foreground ml-2 font-mono text-sm">
-                    {connection.shared_entities.join(" · ")}
-                  </span>
+                  <div className="flex items-start gap-1.5">
+                    <span className="font-medium">
+                      {connection.title ?? "untitled document"}
+                    </span>
+                    <span className="text-muted-foreground shrink-0 font-mono text-sm">
+                      {connection.score.toFixed(3)}
+                    </span>
+                  </div>
+                  <p className="text-muted-foreground line-clamp-2">
+                    {connection.block_text}
+                  </p>
+                  <p className="text-muted-foreground line-clamp-2 italic">
+                    {connection.other_block_text}
+                  </p>
                 </div>
               ))}
             </div>
