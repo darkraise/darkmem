@@ -1686,7 +1686,8 @@ would have written those sources were retired (2026-09-05). Nothing
 mints a `fact_sources` row from a block, so a document's blocks
 corroborate no fact: `delete_document` removes the document row, which
 cascades its blocks and their vectors, withdraws no provenance, expires
-no fact, and journals no `sources_changed` event. The withdraw-then-expire
+no fact, and journals nothing at all — there is no delete event type.
+The withdraw-then-expire
 pass it used to run was the withdrawal half of a bridge whose attaching
 half never had a caller, which made it a permanent no-op; it went with
 the bridge.
@@ -1722,10 +1723,15 @@ The vault half walks the import closure of every module that mints a
 fact, moves one on the ladder or synthesises an article from the vault,
 and fails the build if one can reach a module that reads a block row.
 Scoped to minting rather than to "writes `knowledge_triples`"
-deliberately: `document_door` does both write the vault and read blocks
-on unrelated paths, and a raw-SQL-text coverage guard would not catch a
-call made through the repository. **That the block channel may only
-read the vault, never write or promote, is pinned at the method level:**
+deliberately: **no block-channel module writes the vault at all any
+more** — `document_door`'s only vault write was the withdrawal the
+retired bridge called, and nothing replaced it — so a raw-SQL-text
+coverage guard has no writer to catch in the first place; the scan is
+rooted at minting because "reachable from a minting module" is the
+property that stays meaningful even after the one writer this channel
+ever had is gone, where "writes `knowledge_triples`" would describe an
+empty set and prove nothing. **That the block channel may only read the
+vault, never write or promote, is pinned at the method level:**
 a third scan reads every block-channel module's own AST and fails the
 build if one names any `KnowledgeTripleRepository` method outside a
 four-method allowlist — `as_of`, `get`, `get_live`, `list_live`, all

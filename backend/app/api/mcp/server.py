@@ -2061,9 +2061,8 @@ async def block_move(
 
 @mcp.tool(
     description=(
-        "Delete a block and everything nested under it. The subtree's "
-        "provenance is withdrawn with it, so a fact left with no surviving "
-        "source is expired."
+        "Delete a block and everything nested under it. The block channel "
+        "mints no fact, so nothing is withdrawn or expired elsewhere."
     )
 )
 async def block_delete(block_id: str) -> str:

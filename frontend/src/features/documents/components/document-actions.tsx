@@ -98,10 +98,8 @@ export function DocumentActions({
               Delete {document.title ?? document.uri ?? "this document"}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              This does more than remove the row. Deleting withdraws every
-              block of this document as a source of evidence, and any fact
-              left with no surviving source is expired. Facts still sourced
-              some other way keep their rung. This cannot be undone.
+              This removes the document and all of its blocks, including
+              their embeddings. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

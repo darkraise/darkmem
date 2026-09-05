@@ -48,8 +48,12 @@ library-first rule. The inventory was checked: `tree-view`, `resizable`,
 
 ### 3.1 Frame
 
+**Amended 2026-09-05: the `lift-all` toolbar button below was never built —
+the lift and its bulk script are retired (§6.1).** The toolbar carries
+project, search and view-toggle only.
+
 ```
-┌─ toolbar: project · search · view toggle · lift-all ──────────────┐
+┌─ toolbar: project · search · view toggle ──────────────────────────┐
 ├──────────┬──────────────────────────────────┬────────────────────┤
 │ tree     │ reader                           │ inspector (toggle) │
 │ (resiz.) │ breadcrumb + outline + blocks    │ summary / memories │
@@ -81,10 +85,15 @@ library-first rule. The inventory was checked: `tree-view`, `resizable`,
 - **Default expansion is the path to the selected document, not everything.**
   With nothing selected, only the root level opens. This is the single change
   that turns the current wall into something navigable.
-- **Folder rows show a child count**; document rows show a **`badge` when the
-  document is not lifted** (§6), because that is the state that explains an
-  empty inspector.
-- `ContextMenu` on every row — open, summarize, lift, copy URI, delete. This
+- **Folder rows show a child count.** **Amended 2026-09-05: this said
+  document rows show a `badge` "when the document is not lifted" (§6) —
+  there is no lifted/unlifted state any more.** The related-memories basis is
+  now cosine over block vectors (§6.2), whose empty state is
+  `comparable_memories = 0`, not "not lifted"; a badge for that state, if
+  one ships, would read that way instead.
+- `ContextMenu` on every row — open, summarize, copy URI, delete.
+  **Amended 2026-09-05: `lift` is removed from this list; there is no lift
+  action.** This
   is the affordance a file browser is expected to have and is where document
   management lives (§5).
 - `Command` palette for quick-open by path, the way Ctrl+P works in VS Code.
@@ -188,15 +197,19 @@ not new backend" and was wrong for exactly one row (corrected 2026-09-04):
 | Action | Route | Note |
 |---|---|---|
 | Update | `POST /api/v1/documents` | The `(project, uri)` upsert **is** update. Send `expected_hash` — it is a compare-and-set and answers 409 on a stale hash |
-| Delete | `DELETE /documents/{id}` | Withdraws fact provenance, then expires facts left unsourced |
+| Delete | `DELETE /documents/{id}` | Removes the row and cascades its blocks and their vectors. **Amended 2026-09-05: this row read "Withdraws fact provenance, then expires facts left unsourced" — true only while the retired block-to-fact bridge existed. Nothing mints a fact from a block, so delete withdraws no provenance, expires no fact, and journals nothing (`routes/documents.py:667`: no delete event type).** |
 | Summarize | **`POST /{id}/summary`** (new), then `GET /{id}/summary` | **Corrected 2026-09-04 while implementing increment 3.** `summarise_document` shipped with **no caller anywhere in `backend/app`** — no route, no job, no MCP tool — so the GET read a property nothing in the tree could ever write and the summary panel was empty by construction on every install. Wiring it needed one new route, not wiring. It spends an LLM call on the `summarization` purpose, so it carries `refuse_when_read_only` beside `require_auth`, and answers 422 rather than an empty 200 for a document with no blocks |
 | Per-block edit | `PATCH/POST/DELETE .../blocks/…` | Increment 8's four verbs |
-| Connections | `GET /{id}/connections` | Vacuous until lifting (§2) |
+| Connections | `GET /{id}/connections` | **Amended 2026-09-05: this row read "Vacuous until lifting (§2)". The lift is retired; connections are re-based onto cosine over block vectors (§6.2) and are not vacuous.** |
 | Grounded Q&A | `POST /documents/qa` | G-F cleared 2026-09-03, so it may now serve a grounded label |
 
-**Delete is confirmed through `alert-dialog`, never a bare button**, and the
-dialog states what delete does beyond removing the row: it withdraws block
-sources and expires any fact left with no surviving source.
+**Delete is confirmed through `alert-dialog`, never a bare button. Amended
+2026-09-05: this paragraph said the dialog states that delete "withdraws
+block sources and expires any fact left with no surviving source" — false
+now that the block-to-fact bridge is retired.** Nothing mints a fact from a
+block, so delete has no provenance to withdraw; the dialog must say only
+what deletion actually does — remove the document and cascade its blocks
+and their vectors, with no other effect and no undo.
 
 **Update uses `expected_hash` from the last read.** Omitting it is
 last-writer-wins, which is the wrong default for a surface where an agent and a
@@ -246,8 +259,12 @@ and no lifted proposition anywhere on the path.
 
 **The UI presents this as a maintenance surface, because that is the owner's
 stated purpose:** for each related memory, show what it shares with the
-document and give the actions that are actually available. An unlifted document
-says so and offers the lift, rather than rendering an empty list.
+document and give the actions that are actually available. **Amended
+2026-09-05: this said an unlifted document "says so and offers the lift" —
+there is no lift to offer any more.** A document with no comparable memory
+under the cosine basis (`comparable_memories = 0`, per
+`2026-09-05-retire-proposition-lift-design.md` §3.5's states table) says so
+and renders an empty state; there is no lift action to fall back to.
 
 **Three of the four maintenance actions exist; "supersede" does not, and this
 spec's first draft wrongly promised it.** `PUT /memories/{id}` accepts
@@ -305,7 +322,7 @@ re-import.)
 | 2 | **Rendering** — `block-view` defects 1, 2 and 4 (§4): real heading levels, headings through `<Markdown>`, list nesting | `blocks.parent_id` onto the block read surface (one field, both doors) | — |
 | 5 | **List markers** — defect 3 (§4): the parser writes a list block's marker, and the 475 filed documents are reparsed so existing rows carry it | parser + `force_reparse` + a maintenance script | 2 |
 | 3 | **Management** — wire delete / summarize / block edit / connections, with the confirm dialog (§5) | the summarize POST (one route) | 1 |
-| 4 | **Lift and related memories** — the lift route, the guard test, the related-memories read, the priced bulk run (§6) | new route + read | 1, and §6.3's measurement |
+| 4 | **Related memories** — the related-memories read, the priced bulk-lift measurement that retired the lift route itself (§6) | new read (cosine over block vectors, §6.2) | 1, and §6.3's measurement |
 
 Increment 4 is the only one that can be blocked by a decision, which is why it
 is last rather than first. Increment 5 is unblocked but deliberately unsequenced
@@ -338,9 +355,11 @@ share a change with work the owner is reviewing visually.
 TDD throughout. The load-bearing tests:
 
 - **Structural relatedness pin (shipped, Task 8):** nothing under
-  `app/services` imports either relatedness surface's ranking module — the
-  route is guarded by import-closure structure, not by a route-reachability
-  test against a lift door that no longer exists.
+  `app/services` imports either relatedness surface's ranking module — this
+  guards the services layer, not the route: `api/routes/documents.py`
+  legitimately imports both surfaces to serve them and sits outside the
+  scan by design. The pin replaces a route-reachability test against a lift
+  door that no longer exists.
 - `test_block_retrieval.py`'s existing scans still pass, proving related-memories
   did not open a path from blocks into ranking or fact-minting.
 - Each pane renders four distinct states (loading / failed / empty / populated),
@@ -388,7 +407,10 @@ task state in a database while the ledger that gates merges stays in git.
 Recorded here so they are visible rather than discovered:
 
 1. **"No lift door"** (`documents.py`) — reversed, with the anti-scheduling
-   reason preserved as a test (§6.1).
+   reason preserved as a test (§6.1). **Amended 2026-09-05: that reversal was
+   itself reversed by the owner's retirement ruling the same day — the lift
+   door never shipped as a permanent surface, and there is no lift of any
+   kind, scheduled or on-demand, left in the tree.**
 2. **"Blocks render flat"** (`document-reader.tsx`) — reversed for the browser
    (§4, defect 4).
 

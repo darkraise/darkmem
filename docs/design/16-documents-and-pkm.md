@@ -81,10 +81,15 @@ flowchart LR
     STRIP --> WRITE["write blocks: tree, char_span, type, order_index"]
     WRITE --> EMB["embed each block -> block_embeddings__slug<br/>register fingerprint before insert (inv 2)"]
     EMB --> DONE["document retrievable"]
-    DONE -.->|"on demand, Tier-C (section 5)"| LIFT["proposition lifting -> memories -> F2 -> vault"]
 
     MEMPIPE["memory pipeline (doc 05): 5 phases -> L1 graph"] -.->|"variant of"| PARSE
 ```
+
+**Amended 2026-09-05: the diagram above dropped its `DONE -.->|"on demand,
+Tier-C (section 5)"| LIFT["proposition lifting -> memories -> F2 -> vault"]`
+edge.** The on-demand proposition lift it depicted is retired along with the
+block-to-fact bridge; `document retrievable` is the terminal state and no
+edge leaves it.
 
 **The parser stack is a genuine ADR-shaped technology choice, and it must respect doc 03 §3.3's no-heavy-ML floor — so it is recorded ADR-style here and flagged back to doc 03 as an amendment when the horizon is scheduled.** The forces are three: the parse must produce a *structured* block tree with character offsets (for `char_span`) and, for PDFs, page/bbox provenance (for `blocks.properties`); it must not reintroduce the native ML stack the 2026-05-01 consolidation removed (`torch`/`transformers` are an optional classification-only extra, and the reshape does not widen that — doc 03 §3.3); and it must stay inside the one-image, permissively-licensed deployment. The recommendation:
 
@@ -96,11 +101,16 @@ flowchart LR
 
 The load-bearing rejection is the ML-based PDF layout parsers: they give the best structure but reintroduce exactly the multi-gigabyte native-ML dependency doc 03 §3.3 spent a consolidation removing, so they are out on principle, not on quality. `pdfplumber`'s character-level extraction is enough to segment blocks and record spans; richer layout is a later, demand-gated concern. **This ADR is flagged to doc 03 as a new layer entry ("document parsing") to be folded in when the horizon is scheduled** — it is not in doc 03 today because the horizon is not committed, and adding a dependency floor for an unshipped feature would itself be over-claiming.
 
-**Re-ingest is strip-before-rewrite by `document_id` — invariant 8 generalised, exactly as doc 05 §4 and doc 04 §8.5 fix it.** When a changed document is re-filed, the pipeline deletes *all* of the document's blocks by `document_id` before re-chunking; the block `ON DELETE CASCADE` on `parent_id` collapses the subtree and the `block_embeddings__<slug>` FK CASCADE takes the vectors, so no stale block or orphaned vector survives a re-ingest. This is the block-analog of `delete_by_memory_id` stripping a memory's prior graph contributions (invariant 8), and it is what makes re-filing an edited document idempotent: the second ingest of the same content is a `content_hash` no-op, and the ingest of edited content produces exactly the new tree with nothing left over. Because block ids are freshly minted on each re-ingest, nothing durable may FK a block id across ingests — the same churn rule communities live by (doc 04 §8.4); the durable anchor a citation or a lifted proposition keys on is `document_id` plus the within-document `char_span`, not the block id (§5).
+**Re-ingest is strip-before-rewrite by `document_id` — invariant 8 generalised, exactly as doc 05 §4 and doc 04 §8.5 fix it.** When a changed document is re-filed, the pipeline deletes *all* of the document's blocks by `document_id` before re-chunking; the block `ON DELETE CASCADE` on `parent_id` collapses the subtree and the `block_embeddings__<slug>` FK CASCADE takes the vectors, so no stale block or orphaned vector survives a re-ingest. This is the block-analog of `delete_by_memory_id` stripping a memory's prior graph contributions (invariant 8), and it is what makes re-filing an edited document idempotent: the second ingest of the same content is a `content_hash` no-op, and the ingest of edited content produces exactly the new tree with nothing left over. Because block ids are freshly minted on each re-ingest, nothing durable may FK a block id across ingests — the same churn rule communities live by (doc 04 §8.4); the durable anchor a citation keys on is `document_id` plus the within-document `char_span`, not the block id (§5). **Amended 2026-09-05: this sentence used to name "a citation or a lifted proposition" as the thing keying on that anchor — the lift is retired, so a citation is the only thing that does today.**
 
 **The block-embedding write obeys fingerprint discipline identically to every other family (invariant 2).** Each block's text is embedded and written to `block_embeddings__<slug>` through `child_table`, with `_register_fingerprint` called before the first partition insert and the partition self-healing under the boot-time reconciliation if the active embedder rotated (doc 04 §5.3/§12). Long blocks that exceed the embedder's token window are chunked at embed time via payload spans — the same technique articles use (doc 04 §8.8) — rather than by splitting a block into sub-blocks, because a block is the citation unit and must stay one object. No phase of this pipeline joins two `__<slug>` tables.
 
-The document lifecycle as a state machine — filed, parsed, embedded, retrievable, and (optionally, on demand) lifted; re-ingest re-enters on a content-hash change:
+The document lifecycle as a state machine — filed, parsed, embedded, retrievable; re-ingest re-enters on a content-hash change:
+
+**Amended 2026-09-05: the diagram below dropped the `lifted` state and its
+two transitions (`retrievable --> lifted` and `lifted --> parsed`).** The
+on-demand proposition lift they depicted is retired; `retrievable` is now
+the terminal state past which only re-filing moves a document.
 
 ```mermaid
 stateDiagram-v2
@@ -111,9 +121,7 @@ stateDiagram-v2
     parsed --> chunked : block tree written, strip-by-document_id first
     chunked --> embedded : blocks embedded into block_embeddings__slug
     embedded --> retrievable : block channel can serve it (section 4)
-    retrievable --> lifted : human opts document into proposition lifting (section 5)
     retrievable --> parsed : re-filed with changed content — strip + re-chunk
-    lifted --> parsed : re-filed — lifted contributions re-derived by document_id
     note right of chunked
         strip-before-rewrite by document_id (inv 8):
         CASCADE takes the subtree and block embeddings.
