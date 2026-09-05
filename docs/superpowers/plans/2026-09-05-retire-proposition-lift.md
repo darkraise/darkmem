@@ -1025,7 +1025,7 @@ git commit -m "refactor(documents): delete proposition lifting"
 
 **Files:**
 - Delete: `backend/app/services/block_fact_sources.py`, `backend/tests/test_block_fact_sources.py`
-- Modify: `backend/app/services/block_verbs.py:22`, `backend/app/services/document_door.py:29,614-642`, `backend/app/services/fact_sources.py:124-141`, `backend/tests/test_document_door.py:8,455-520`, `backend/tests/test_document_routes.py:748-750`
+- Modify: `backend/app/services/block_verbs.py:22`, `backend/app/services/document_door.py:29,614-642`, `backend/app/repositories/fact_sources.py:124-141`, `backend/tests/test_document_door.py:8,455-520`, `backend/tests/test_document_routes.py:748-750`
 
 **Interfaces:**
 - Consumes: nothing.
@@ -1053,7 +1053,7 @@ Add to `backend/tests/test_fact_sources.py`:
 def test_block_is_not_a_source_kind():
     """Spec §5: nothing mints a block-kind source, so a reserved value under a
     comment claiming its producer shipped is a stale claim, not an option."""
-    from app.services.fact_sources import SOURCE_KINDS
+    from app.repositories.fact_sources import SOURCE_KINDS
     assert "block" not in SOURCE_KINDS
 ```
 

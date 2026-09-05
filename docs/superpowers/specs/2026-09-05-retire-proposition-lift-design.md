@@ -340,7 +340,7 @@ incomplete inventory here is the implementer's defect rather than the gate's.
   change.
 - `app/services/document_door.py:642` — `expire_facts_left_bare` loses its only
   callers.
-- `app/services/fact_sources.py:124-141` — `BLOCK_SOURCE_KIND` stays in
+- `app/repositories/fact_sources.py:124-141` — `BLOCK_SOURCE_KIND` stays in
   `SOURCE_KINDS` under a comment saying its producer shipped. **Decide
   explicitly: reserved or dropped.**
 - `tests/test_document_door.py:8,455-520`, `tests/test_document_routes.py:748-750`
