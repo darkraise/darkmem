@@ -54,7 +54,34 @@ from e2e import stack  # noqa: E402
 PLAYWRIGHT_PORT = int(os.environ.get("E2E_PLAYWRIGHT_PORT", "8322"))
 
 
+# The seeded `embedding` purpose's endpoint, and the one asymmetry between
+# this leg and the API e2e leg beside it in `gate.sh`.
+#
+# `llm_seed.OLLAMA_BASE_URL` falls back to `http://localhost:11434/v1`, which
+# nothing on this host serves — the embedder lives on the LAN. `gate.sh`
+# exports `DARKMEM_OLLAMA_BASE_URL` for `run_e2e.py` (the API e2e leg) and
+# never did for this one, so every stack this script booted seeded an
+# embedding purpose pointing at a closed port. It went unnoticed because no
+# Playwright spec had ever embedded anything: the specs read surfaces, and a
+# surface with no corpus renders its empty state without dialing out. The
+# first spec to file a document (`document-relatedness-panels.spec.ts`) got a
+# 500 from `POST /api/v1/documents` — filing embeds the document's blocks in
+# the same request — which reads as a UI failure and is not one.
+#
+# Set here rather than in `gate.sh` so a standalone re-run of this script
+# (which CLAUDE.md prescribes for re-checking a red Playwright leg) behaves
+# the same as the gate's own invocation. An already-exported value wins, the
+# way `gate.sh`'s own `${VAR:-default}` lets it.
+OLLAMA_BASE_URL = os.environ.get(
+    "DARKMEM_OLLAMA_BASE_URL", "http://192.168.0.196:11434/v1",
+)
+
+
 def main() -> int:
+    # Read by `llm_seed` inside the uvicorn `stack.boot` spawns, which
+    # inherits this process's environment — so it must be set before boot,
+    # not alongside the npm subprocess's env below.
+    os.environ["DARKMEM_OLLAMA_BASE_URL"] = OLLAMA_BASE_URL
     password = secrets.token_urlsafe(16)
     # T2.90: seeds one real Layer-2 fact (via the real fact_lift, over
     # hand-seeded Layer-1 rows — see e2e/seed_facts.py) so
