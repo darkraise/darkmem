@@ -253,14 +253,17 @@ function DocumentDetail({ documentId }: { documentId: string }) {
               no other documents in this project to compare against
             </p>
           ) : connections.data.items.length === 0 ? (
-            // The comparable count is every other document in the project,
-            // embedded or not, and the probe is bounded -- so this arm means
-            // the others are not embedded under this fingerprint, or foreign
-            // blocks crowded the probe. It never means "nothing is near":
+            // The probe takes each passage's ten nearest blocks with no
+            // project filter and the outer query then drops the foreign ones,
+            // so this arm fires when every window was filled by other
+            // projects. It cannot mean "nothing is embedded" -- `embedded`
+            // already proves a same-project counterpart carries a vector under
+            // this fingerprint -- and it cannot mean "nothing is near", since
             // the read applies no similarity floor.
             <p className="text-muted-foreground text-sm italic">
-              no other document in this project is embedded under a shared
-              fingerprint yet
+              no other document in this project surfaced — the comparison
+              samples each passage's nearest neighbours rather than scanning
+              every document, so a distant match can fall outside that window
             </p>
           ) : (
             <div className="flex flex-col gap-2">
