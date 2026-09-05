@@ -1236,3 +1236,93 @@ async def test_a_block_of_another_document_404s_at_this_path(
         json={"text": "nope"}, headers=auth_headers,
     )
     assert resp.status_code == 404
+
+
+async def _file_one(client, auth_headers, uri: str = "docs/rel.md") -> str:
+    created = await client.post(
+        f"{V1}/documents",
+        json={"project": "p", "uri": uri, "content": DOC},
+        headers=auth_headers,
+    )
+    assert created.status_code == 201
+    return created.json()["document_id"]
+
+
+@pytest.mark.asyncio
+async def test_the_lift_route_is_gone(client, auth_headers, stub_llm):
+    document_id = await _file_one(client, auth_headers, "docs/gone.md")
+
+    response = await client.post(
+        f"{V1}/documents/{document_id}/lift", headers=auth_headers
+    )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_related_memories_reports_its_comparison_state(
+    client, auth_headers, stub_llm
+):
+    document_id = await _file_one(client, auth_headers, "docs/state.md")
+
+    response = await client.get(
+        f"{V1}/documents/{document_id}/related-memories", headers=auth_headers
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"items", "embedded", "comparable_memories"}
+    assert isinstance(body["embedded"], bool)
+    assert isinstance(body["comparable_memories"], int)
+
+
+@pytest.mark.asyncio
+async def test_connections_report_their_comparison_state(
+    client, auth_headers, stub_llm
+):
+    document_id = await _file_one(client, auth_headers, "docs/conn.md")
+
+    response = await client.get(
+        f"{V1}/documents/{document_id}/connections", headers=auth_headers
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"items", "embedded", "comparable_documents"}
+
+
+@pytest.mark.asyncio
+async def test_a_related_item_carries_its_matching_passage(
+    client, auth_headers, stub_llm, session
+):
+    """Spec §3.4: the passage is the evidence, the score is an ordering key."""
+    from app.models.memory import Memory
+    from app.services.embedder_registry import child_table
+    from sqlalchemy import text as sql_text
+
+    document_id = await _file_one(client, auth_headers, "docs/passage.md")
+
+    memory = Memory(content="First para.", project="p", source="api")
+    session.add(memory)
+    await session.flush()
+    await session.execute(
+        sql_text(
+            f"INSERT INTO {child_table('memory_embeddings', FINGERPRINT)} "
+            "(memory_id, fingerprint, embedding) VALUES (CAST(:mid AS uuid), :fp, CAST(:vec AS vector))"
+        ),
+        {"mid": str(memory.id), "fp": FINGERPRINT, "vec": "[1.0,0.0,0.0]"},
+    )
+    await session.commit()
+
+    response = await client.get(
+        f"{V1}/documents/{document_id}/related-memories", headers=auth_headers
+    )
+
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert items, "the seeded memory should be comparable to the filed document"
+    for item in items:
+        assert set(item) == {
+            "memory_id", "content", "memory_type", "status", "source", "score",
+            "block_id", "block_text", "span_start", "span_end",
+        }

@@ -154,7 +154,9 @@ async def test_connections_serve_an_empty_list_rather_than_a_404(
     client, session, auth_headers,
 ):
     """A document with no connections is an ordinary answer, not an error —
-    and the horizon label rides it either way."""
+    and the comparison state rides it either way. `embedded` is false here
+    because nothing embedded this document's blocks, which is a different
+    answer from "nothing relates to it"."""
     document_id = await _file(session, "Body.", uri="file:///d/conn")
 
     response = await client.get(
@@ -162,7 +164,9 @@ async def test_connections_serve_an_empty_list_rather_than_a_404(
     )
 
     assert response.status_code == 200, response.text
-    assert response.json() == {"items": [], "horizon": True}
+    assert response.json() == {
+        "items": [], "embedded": False, "comparable_documents": 0,
+    }
 
 
 # ── grounded Q&A, behind its gate ────────────────────────────────────
