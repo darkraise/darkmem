@@ -1,197 +1,50 @@
-"""Memories related to a document, through the entities its lift minted (§6.2).
+"""Memories nearest a document, by cosine (spec §3).
 
-The sibling of `test_document_connections.py` and pinned the same way: the
-behavioural half is small, and the structural half is the task. Each "must not"
-clause is checked against the parsed source rather than by example, because
-every one of them is satisfied by a module that simply has not grown the thing
-yet.
+The no-model-call scan below is retained verbatim from the entity-walk version:
+the basis changed, the rule that this surface generates no prose did not.
 
-The distinction that matters and is easy to lose: an **unlifted** document is
-not an empty result. A surface that renders both the same way tells a reader
-"nothing relates to this document" when the truth is "nobody has asked yet".
+The behavioural tests below go past the brief's own minimal set: a stub that
+returns an early `RelatedMemories(embedded=False, ...)` for every call would
+pass every test the brief gave verbatim. The scoping predicate
+(`m.project = :project`), the max-aggregation (the argmax block, not the mean
+or the first), and the ordering are pinned separately because each is a
+single-line mutation a stub-shaped implementation would not fail on.
 """
-from __future__ import annotations
-
 import ast
-import json
 from pathlib import Path
-from uuid import uuid4
 
 import pytest
 from sqlalchemy import text
 
 from app.services.document_ingest import BlockDraft, file_document
-from app.services.document_related import related_memories_for_document
-from app.services.proposition_lift import PROVENANCE_KEY
+from app.services.document_related import (
+    RelatedMemories, related_memories_for_document,
+)
+from app.services.embedder_registry import EmbedderInfo, child_table, embedder_registry
+from app.utils.ids import new_id
 
-pytestmark = pytest.mark.asyncio
+MODULE = Path(__file__).resolve().parents[1] / "app/services/document_related.py"
 
-BACKEND = Path(__file__).resolve().parent.parent
-MODULE = BACKEND / "app" / "services" / "document_related.py"
-PROJECT = "rel-docs"
-OTHER_PROJECT = "rel-other"
+PROJECT = "t-document-related"
+OTHER_PROJECT = "t-document-related-other"
+FINGERPRINT = "docrelated_fp"
+DIMS = 4
 
-
-async def _document(session, title: str, *, project: str = PROJECT, uri: str) -> str:
-    ingest = await file_document(
-        session, project=project, content="body",
-        parse=lambda: [BlockDraft(text="body", type="paragraph")],
-        title=title, source_type="note", uri=uri,
-    )
-    await session.flush()
-    return str(ingest.document_id)
-
-
-async def _memory(
-    session, *, content: str, project: str = PROJECT,
-    document_id: str | None = None, status: str = "active",
-) -> str:
-    """A memory, optionally carrying a document's lift provenance."""
-    memory_id = str(uuid4())
-    metadata = (
-        json.dumps({PROVENANCE_KEY: {"document_id": document_id}})
-        if document_id else json.dumps({})
-    )
-    await session.execute(
-        text(
-            "INSERT INTO memories (id, content, source, project, status, metadata) "
-            "VALUES (CAST(:id AS uuid), :content, 'document', :project, :status, "
-            "CAST(:metadata AS jsonb))"
-        ),
-        {
-            "id": memory_id, "content": content, "project": project,
-            "status": status, "metadata": metadata,
-        },
-    )
-    return memory_id
-
-
-async def _entity(session, name: str, memory_ids: list[str]) -> None:
-    await session.execute(
-        text(
-            "INSERT INTO entities (id, name, entity_type, memory_ids) "
-            "VALUES (CAST(:id AS uuid), :name, 'concept', CAST(:ids AS uuid[]))"
-        ),
-        {"id": str(uuid4()), "name": name, "ids": memory_ids},
-    )
-    await session.flush()
-
-
-# ── the relation is the shared graph ─────────────────────────────────
-
-
-async def test_a_memory_asserting_the_same_entity_is_related(session):
-    doc = await _document(session, "Doc", uri="file:///r/one")
-    lifted = await _memory(session, content="a lifted proposition", document_id=doc)
-    other = await _memory(session, content="an ordinary memory")
-    await _entity(session, "postgres", [lifted, other])
-
-    related = await related_memories_for_document(session, document_id=doc)
-
-    assert related.lifted is True
-    assert [m.memory_id for m in related.items] == [other]
-    assert related.items[0].shared_entities == ("postgres",)
-    assert related.items[0].content == "an ordinary memory"
-
-
-async def test_the_documents_own_lift_is_never_related_to_itself(session):
-    # Every lifted memory shares every entity with itself, so without the
-    # exclusion this surface would return the document's own lift as its top
-    # result -- every row and no information.
-    doc = await _document(session, "Doc", uri="file:///r/self")
-    one = await _memory(session, content="p one", document_id=doc)
-    two = await _memory(session, content="p two", document_id=doc)
-    await _entity(session, "postgres", [one, two])
-
-    related = await related_memories_for_document(session, document_id=doc)
-
-    assert related.lifted is True
-    assert related.items == ()
-
-
-async def test_more_shared_entities_rank_higher(session):
-    doc = await _document(session, "Doc", uri="file:///r/rank")
-    lifted = await _memory(session, content="p", document_id=doc)
-    strong = await _memory(session, content="shares two")
-    weak = await _memory(session, content="shares one")
-    await _entity(session, "postgres", [lifted, strong, weak])
-    await _entity(session, "pgvector", [lifted, strong])
-
-    related = await related_memories_for_document(session, document_id=doc)
-
-    assert [m.memory_id for m in related.items] == [strong, weak]
-    assert related.items[0].shared_count == 2
-    assert related.items[1].shared_count == 1
-
-
-async def test_a_memory_in_another_project_is_never_related(session):
-    # This surface exists to show a reader rows they had not thought of, which
-    # is the worst place to cross an isolation boundary (doc 18 §8).
-    doc = await _document(session, "Doc", uri="file:///r/scope")
-    lifted = await _memory(session, content="p", document_id=doc)
-    foreign = await _memory(session, content="foreign", project=OTHER_PROJECT)
-    await _entity(session, "postgres", [lifted, foreign])
-
-    related = await related_memories_for_document(session, document_id=doc)
-
-    assert related.items == ()
-
-
-async def test_a_superseded_memory_still_reports_its_status(session):
-    # A maintenance surface that hid the status would invite an edit to a row
-    # the pipeline has already retired.
-    doc = await _document(session, "Doc", uri="file:///r/status")
-    lifted = await _memory(session, content="p", document_id=doc)
-    old = await _memory(session, content="retired", status="deprecated")
-    await _entity(session, "postgres", [lifted, old])
-
-    related = await related_memories_for_document(session, document_id=doc)
-
-    assert [m.status for m in related.items] == ["deprecated"]
-
-
-# ── unlifted is not empty ────────────────────────────────────────────
-
-
-async def test_an_unlifted_document_says_so_rather_than_returning_empty(session):
-    doc = await _document(session, "Doc", uri="file:///r/unlifted")
-    other = await _memory(session, content="an ordinary memory")
-    await _entity(session, "postgres", [other])
-
-    related = await related_memories_for_document(session, document_id=doc)
-
-    assert related.lifted is False
-    assert related.items == ()
-
-
-async def test_a_lifted_document_with_no_relations_is_lifted_and_empty(session):
-    doc = await _document(session, "Doc", uri="file:///r/lonely")
-    lifted = await _memory(session, content="p", document_id=doc)
-    await _entity(session, "postgres", [lifted])
-
-    related = await related_memories_for_document(session, document_id=doc)
-
-    # The pair the UI must tell apart: lifted, and genuinely nothing related.
-    assert related.lifted is True
-    assert related.items == ()
-
-
-async def test_an_unknown_document_is_not_an_error(session):
-    related = await related_memories_for_document(session, document_id=uuid4())
-    assert related.lifted is False
-    assert related.items == ()
-
-
-# ── structural: no engine, no synthesis, no block channel ────────────
+# Orthogonal unit directions so cosine similarity is exact and decidable:
+# identical direction scores 1.0, orthogonal scores 0.0, and a 45-degree
+# vector scores exactly 1/sqrt(2) -- no ambiguity from a parallel or a
+# zero-vector edge case.
+DIRECTION_A = [1.0, 0.0, 0.0, 0.0]
+DIRECTION_B = [0.0, 1.0, 0.0, 0.0]
+DIRECTION_BETWEEN = [1.0, 1.0, 0.0, 0.0]
 
 
 def _code_only() -> str:
     """The module's source with every docstring removed.
 
     A raw-text scan would convict this module of the sentences in its own
-    header explaining why it makes no model call and computes no score -- the
-    trap `test_document_summary.py` records and solves the same way. What the
-    scans below must read is the code.
+    header explaining why it makes no model call -- the trap
+    `test_document_summary.py` records and solves the same way.
     """
     tree = ast.parse(MODULE.read_text(encoding="utf-8"))
     for node in ast.walk(tree):
@@ -209,42 +62,196 @@ def _code_only() -> str:
 
 
 def test_the_module_makes_no_model_call():
-    """The moment a relatedness feature writes prose about what a document and
-    a memory share, it has become unbadged synthesis -- which doc 09 owns
-    properly, with grounding and a ladder."""
     code = _code_only()
-    for forbidden in ("llm", "chat_completion", "LLMOrchestrator", "purpose"):
-        assert forbidden not in code, f"{forbidden} reached the related read"
+    # "embed(" / "embed_batch" catch an actual embed call; the bare word
+    # "embed" would also convict `embedder_registry` and the
+    # `memory_embeddings` / `block_embeddings` table names this module reads
+    # by identifier, which are not model calls.
+    for forbidden in ("chat_completion", "llm", "embed(", "embed_batch", "generate"):
+        assert forbidden not in code, f"{forbidden} reached document_related"
 
 
-def test_the_module_reads_no_block_row():
-    """The path is document -> lifted memories -> entities -> memories. A
-    block row crossing here would put the block channel into a memory-content
-    surface, which `test_block_retrieval.py`'s firewall forbids."""
+def test_the_module_does_not_resolve_a_fingerprint_through_the_embedder():
+    """Spec §3.5: both embedder resolvers are network or stale; neither is
+    permitted here."""
     code = _code_only()
-    assert "blocks" not in code
-    assert "block_embeddings" not in code
+    assert "resolve_active_fingerprint" not in code
+    assert "resolve_read_fingerprint" not in code
 
 
-def test_the_module_creates_no_table():
-    """Every relation it names already exists."""
+def test_the_module_applies_no_score_floor():
+    """Spec §3.3: the distribution is continuous, so a floor encodes a
+    precision claim the data does not support."""
     code = _code_only()
-    for ddl in ("CREATE TABLE", "CREATE INDEX", "ALTER TABLE"):
-        assert ddl not in code
+    assert "MIN_SCORE" not in code
 
 
-def test_the_module_writes_nothing():
-    """A read surface. An INSERT here would mean the act of looking at a
-    document changed the corpus."""
-    code = _code_only().upper()
-    for write in ("INSERT INTO", "UPDATE ", "DELETE FROM"):
-        assert write not in code
+@pytest.mark.asyncio
+async def test_an_unknown_document_is_not_embedded(session):
+    from uuid import uuid4
+    related = await related_memories_for_document(session, document_id=uuid4())
+    assert isinstance(related, RelatedMemories)
+    assert related.embedded is False
+    assert related.comparable_memories == 0
+    assert related.items == ()
 
 
-def test_nothing_normalises_the_shared_count_into_a_score():
-    """Shared-entity count is evidence. A similarity number would read as a
-    measurement nobody made -- the rule `document_connections` states for
-    itself."""
-    code = _code_only().lower()
-    for scoring in ("similarity", "normalis", "normaliz", "/ total", "weight"):
-        assert scoring not in code
+# ── behavioural: the query shape, not just the early returns ─────────
+
+
+@pytest.fixture(autouse=True)
+def _forget_probe_fingerprint():
+    """The registry cache is process-wide while the test database is rolled
+    back; without this a later test finds the fingerprint "known", skips the
+    DDL, and inserts into a child table its own transaction never created."""
+    embedder_registry.forget(FINGERPRINT)
+    yield
+    embedder_registry.forget(FINGERPRINT)
+
+
+async def _register(session) -> None:
+    await embedder_registry.register(
+        session,
+        EmbedderInfo(fingerprint=FINGERPRINT, model_id="m", dims=DIMS, source="llm"),
+    )
+
+
+async def _file_blocks(session, *, project=PROJECT, texts=("content",)) -> tuple[str, list[str]]:
+    drafts = [BlockDraft(text=t, type="paragraph") for t in texts]
+    ingest = await file_document(
+        session, project=project, content="\n\n".join(texts),
+        parse=lambda: drafts, title="probe", source_type="note",
+    )
+    await session.flush()
+    rows = (await session.execute(
+        text("SELECT id FROM blocks WHERE document_id = CAST(:d AS uuid) ORDER BY order_index"),
+        {"d": str(ingest.document_id)},
+    )).scalars().all()
+    return str(ingest.document_id), [str(r) for r in rows]
+
+
+async def _embed_block(session, block_id: str, vector: list[float]) -> None:
+    table = child_table("block_embeddings", FINGERPRINT)
+    await session.execute(
+        text(
+            f"INSERT INTO {table} (block_id, fingerprint, embedding, created_at) "
+            f"VALUES (CAST(:id AS uuid), :fp, CAST(:vec AS vector), now())"
+        ),
+        {"id": block_id, "fp": FINGERPRINT, "vec": str(vector)},
+    )
+
+
+async def _memory(session, *, project=PROJECT) -> str:
+    memory_id = new_id()
+    await session.execute(
+        text(
+            "INSERT INTO memories (id, content, source, project, status) "
+            "VALUES (CAST(:id AS uuid), 'seed', 'api', :project, 'active')"
+        ),
+        {"id": memory_id, "project": project},
+    )
+    return str(memory_id)
+
+
+async def _embed_memory(session, memory_id: str, vector: list[float]) -> None:
+    table = child_table("memory_embeddings", FINGERPRINT)
+    await session.execute(
+        text(
+            f"INSERT INTO {table} (memory_id, fingerprint, embedding, created_at) "
+            f"VALUES (CAST(:id AS uuid), :fp, CAST(:vec AS vector), now())"
+        ),
+        {"id": memory_id, "fp": FINGERPRINT, "vec": str(vector)},
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_best_matching_block_wins_not_the_mean_or_the_first(session):
+    """Spec §3's max-aggregation: one row per memory, scored by its single
+    best-matching block. Block one (first by order_index) is orthogonal to
+    the memory and block two is identical to it -- a mean would score 0.5
+    and a "first block" bug would report block one's score of 0.0."""
+    await _register(session)
+    document_id, block_ids = await _file_blocks(
+        session, texts=("block one", "block two"),
+    )
+    await _embed_block(session, block_ids[0], DIRECTION_A)
+    await _embed_block(session, block_ids[1], DIRECTION_B)
+    memory_id = await _memory(session)
+    await _embed_memory(session, memory_id, DIRECTION_B)
+
+    related = await related_memories_for_document(session, document_id=document_id)
+
+    assert related.embedded is True
+    assert len(related.items) == 1
+    item = related.items[0]
+    assert item.memory_id == memory_id
+    assert item.block_id == block_ids[1]
+    assert item.block_text == "block two"
+    assert item.score == pytest.approx(1.0)
+
+
+@pytest.mark.asyncio
+async def test_a_memory_outside_the_documents_project_is_excluded(session):
+    """Doc 18 §8's isolation boundary: the same predicate must scope both the
+    returned rows and the comparable-memories count, or a cross-project
+    vector match would leak into one but not the other. An in-project memory
+    is also embedded so the comparison is possible at all (with none, the
+    fingerprint resolver correctly reports `embedded=False`, which would
+    make this test pass for the wrong reason)."""
+    await _register(session)
+    document_id, block_ids = await _file_blocks(session)
+    await _embed_block(session, block_ids[0], DIRECTION_A)
+    own_memory = await _memory(session)
+    await _embed_memory(session, own_memory, DIRECTION_A)
+    foreign_memory = await _memory(session, project=OTHER_PROJECT)
+    await _embed_memory(session, foreign_memory, DIRECTION_A)
+
+    related = await related_memories_for_document(session, document_id=document_id)
+
+    assert related.embedded is True
+    assert [item.memory_id for item in related.items] == [own_memory]
+    assert related.comparable_memories == 1
+
+
+@pytest.mark.asyncio
+async def test_items_are_ordered_by_score_descending(session):
+    """`memory_id` is a time-ordered UUIDv7, so creating the higher-scoring
+    memory first would let an id-ordered mutation pass by coincidence. The
+    weaker match is created first here, decoupling id order from score
+    order, so only an actual score sort satisfies the assertion."""
+    await _register(session)
+    document_id, block_ids = await _file_blocks(session)
+    await _embed_block(session, block_ids[0], DIRECTION_A)
+
+    weak = await _memory(session)
+    await _embed_memory(session, weak, DIRECTION_BETWEEN)
+    strong = await _memory(session)
+    await _embed_memory(session, strong, DIRECTION_A)
+
+    related = await related_memories_for_document(session, document_id=document_id)
+
+    assert [item.memory_id for item in related.items] == [strong, weak]
+    assert related.items[0].score == pytest.approx(1.0)
+    assert related.items[1].score == pytest.approx(0.7071, abs=1e-3)
+
+
+@pytest.mark.asyncio
+async def test_comparable_memories_counts_the_project_not_the_returned_page(session):
+    """A `limit` narrower than the project's embedded-memory count must not
+    shrink `comparable_memories` to match -- that field answers "how many
+    memories could this document be compared against", not "how many are on
+    this page"."""
+    await _register(session)
+    document_id, block_ids = await _file_blocks(session)
+    await _embed_block(session, block_ids[0], DIRECTION_A)
+
+    for _ in range(3):
+        memory_id = await _memory(session)
+        await _embed_memory(session, memory_id, DIRECTION_A)
+
+    related = await related_memories_for_document(
+        session, document_id=document_id, limit=1,
+    )
+
+    assert len(related.items) == 1
+    assert related.comparable_memories == 3
