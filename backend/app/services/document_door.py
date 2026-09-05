@@ -596,7 +596,7 @@ async def put_document(
 
 
 async def delete_document(session: AsyncSession, *, document_id: UUID | str) -> bool:
-    """Remove a document, its blocks and its journal placement.
+    """Remove a document and, by cascade, its blocks and their vectors.
 
     There is no provenance to close behind it: nothing mints a `fact_sources`
     row from a block, so a document's blocks corroborate no fact and deleting

@@ -649,12 +649,14 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # The write door: filing and deleting a document. Same classification as
     # the reads above and for the same reason -- never a `memories` row, so
     # there is no memory content for an isolation probe to drive against.
-    # The tables these touch are wider than `documents`/`blocks`: a delete
-    # removes the document, its blocks and journals `events`. It withdraws no
-    # provenance and expires no fact -- there is no route from a block to a
-    # fact for it to withdraw. None of that reads or returns memory content,
-    # which is the claim this bucket makes; it is named here so the next
-    # reader does not take the narrower sentence as the inventory.
+    # The tables these touch are wider than `documents` alone, but not by
+    # much any more: a delete removes the document row and cascades its
+    # blocks and their vectors. It withdraws no provenance, expires no fact
+    # and journals nothing -- there is no route from a block to a fact for it
+    # to withdraw, and no delete event type for it to write. None of that
+    # reads or returns memory content, which is the claim this bucket makes;
+    # it is named here so the next reader does not take the narrower sentence
+    # as the inventory.
     "POST /api/v1/documents",
     "DELETE /api/v1/documents/{document_id}",
     "DELETE /api/v1/documents/by-uri",

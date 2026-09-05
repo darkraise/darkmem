@@ -660,15 +660,12 @@ async def delete_document_route(
     """Remove a document, its block subtree and its vectors.
 
     `blocks.document_id` cascades and `block_embeddings__<slug>` cascades
-    from there, so one delete takes all three in every partition. Neither
-    cascade reaches `fact_sources`: `source_ref` carries no foreign key, so
-    a fact a deleted document's blocks corroborated would otherwise keep
-    its origin count and its verification rung on evidence that no longer
-    exists, and never get recomputed until the slow reconciliation arm's
-    rotation happened to reach it. `delete_document` closes that window —
-    withdrawing the block sources, expiring any fact left with none, and
-    enqueueing every affected fact for the ordinary verification recompute
-    — before the row goes. Wire-shape production belongs in the shared
+    from there, so one delete takes all three in every partition. There is
+    no provenance to close behind it: nothing mints a `fact_sources` row
+    from a block, so a document's blocks corroborate no fact and deleting
+    one cannot leave a fact standing on evidence that no longer exists. It
+    journals nothing either — there is no delete event type.
+    Wire-shape production belongs in the shared
     service, not here, so an MCP delete twin calls the same function rather
     than re-implementing this — the same reason `title_applied` has one
     producer rather than one per transport.
