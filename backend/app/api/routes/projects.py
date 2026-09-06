@@ -14,11 +14,17 @@ router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 class ProjectSummary(BaseModel):
     """A project any corpus actually contains.
 
-    Derived, never a registry -- a project exists here because a memory, a
+    Derived for every ordinary project -- one exists here because a memory, a
     document or a checkpoint carries it, and stops existing when the last of
     them is deleted. Widened 2026-08-31 (spec §2.1, review M2): grouping
     ``memories.project`` alone made a document-only project -- exactly what
     the corpus import creates -- invisible to its own scope picker.
+
+    One exception, and it is the reason this endpoint reads the ``projects``
+    registry at all: a ``kind='personal'`` row is served even holding nothing.
+    The notes workspace's scope has to be selectable *before* anything has been
+    filed into it, so deriving it from its own contents would make it
+    unreachable exactly when it is empty.
     """
 
     name: str
