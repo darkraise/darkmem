@@ -505,3 +505,60 @@ describe("project workspace — the reader's own chrome", () => {
     )
   })
 })
+
+describe("project workspace — the two scrollbars that used to overlap", () => {
+  it("reserves the reader scrollbar's gutter so it does not paint over the outline", async () => {
+    // The bar is `absolute right-0 w-2.5` on the ScrollArea ROOT while the
+    // viewport is inset by the root's padding. With no right padding the bar
+    // is drawn over whatever the scrolling content puts at that edge, which
+    // is the outline rail.
+    mockDocuments({ items: [DOC] })
+    const { container } = renderWorkspace()
+    fireEvent.click(await screen.findByText("design.md"))
+
+    const readerScroller = container.querySelector(
+      '[data-panel-id="reader"] .dr-scroll-area',
+    )
+    expect(readerScroller).toHaveClass("pr-3")
+
+    const treeScroller = container.querySelector(
+      '[data-panel-id="tree"] .dr-scroll-area',
+    )
+    expect(treeScroller).toHaveClass("pr-3")
+  })
+
+  it("gives the outline no scroller of its own", async () => {
+    // A capped, overflowing rail put a SECOND scrollbar a few pixels from the
+    // reader's, each scrolling something different. The timeline renders at
+    // its natural height instead.
+    mockDocuments({ items: [DOC] })
+    renderWorkspace()
+    fireEvent.click(await screen.findByText("design.md"))
+
+    const rail = (await screen.findByLabelText("document outline")).closest("aside")
+    expect(rail).not.toBeNull()
+    expect(rail!.className).not.toMatch(/overflow-/)
+    expect(rail!.className).not.toMatch(/max-h-/)
+  })
+
+  it("renders each heading as a timeline item", async () => {
+    mockDocuments({ items: [DOC] })
+    const { container } = renderWorkspace()
+    fireEvent.click(await screen.findByText("design.md"))
+
+    await screen.findByLabelText("document outline")
+    // Two headings are mocked for this document.
+    expect(container.querySelectorAll(".dr-timeline-item")).toHaveLength(2)
+    // The active heading is the one the reader is focused on, and nothing is
+    // focused until a jump is made.
+    expect(
+      container.querySelectorAll('.dr-timeline-indicator[data-status="current"]'),
+    ).toHaveLength(0)
+    fireEvent.click(screen.getByRole("button", { name: "Storage" }))
+    await waitFor(() =>
+      expect(
+        container.querySelectorAll('.dr-timeline-indicator[data-status="current"]'),
+      ).toHaveLength(1),
+    )
+  })
+})

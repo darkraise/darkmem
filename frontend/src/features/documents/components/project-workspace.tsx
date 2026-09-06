@@ -255,7 +255,10 @@ export function ProjectWorkspace({
           className="min-h-[60vh] lg:min-h-0 lg:flex-1"
         >
           <ResizablePanel defaultSize={26} minSize={15} maxSize={45} id="tree">
-            <ScrollArea className="h-full pr-2">
+            {/* Same gutter as the reader's, and for the same reason: the
+                bar is 10px and an 8px pad left it 2px over the rows -- which
+                a full-width selected fill makes visible. */}
+            <ScrollArea className="h-full pr-3">
               <RegionLabel>documents</RegionLabel>
               {documents.isError ? (
                 <p className="text-destructive text-sm">
@@ -286,7 +289,12 @@ export function ProjectWorkspace({
           </ResizablePanel>
           <ResizableHandle withHandle />
           <ResizablePanel defaultSize={74} id="reader">
-            <ScrollArea className="h-full pl-2">
+            {/* `pr-3` is the scrollbar's gutter, not decoration. The bar is
+                `absolute right-0 w-2.5` on the ScrollArea ROOT while the
+                viewport is inset by this padding, so the padding is what
+                moves the bar off the content instead of over it. Without it
+                the document's scrollbar sat on top of the outline rail. */}
+            <ScrollArea className="h-full pl-2 pr-3">
               {selected ? (
                 <div>
                   {/* The path and the toolbar ride the scroll: a long
@@ -332,7 +340,7 @@ export function ProjectWorkspace({
                         stretched flex item is already as tall as the row, so
                         it has nothing to stick within. `top-12` clears the
                         header bar above rather than sliding under it. */}
-                    <aside className="sticky top-12 hidden max-h-[70vh] w-56 shrink-0 self-start overflow-y-auto pt-1 xl:block">
+                    <aside className="sticky top-12 hidden w-56 shrink-0 self-start pt-1 xl:block">
                       <DocumentOutline
                         documentId={selected.id}
                         activeBlockId={focusBlockId}
