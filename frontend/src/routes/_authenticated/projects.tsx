@@ -65,7 +65,9 @@ function ProjectCard({ row }: { row: ProjectSummary }) {
 
 function ProjectsIndexPage() {
   const { data, isLoading, isError } = useProjects()
-  const rows = data ?? []
+  // The notes space has its own route and its own workspace; offering it
+  // here would open it in a surface built for project artifacts.
+  const rows = (data ?? []).filter((row) => row.kind !== "personal")
 
   return (
     <div className="space-y-4">
