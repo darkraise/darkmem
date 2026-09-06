@@ -1591,10 +1591,13 @@ take the same lock, so the two serialise; a check ahead of the savepoint would
 be check-then-act, which is the race increment 3's compare-and-set closed.
 
 **Conversion refuses rather than converting lossily.** The parser mints no
-block for a raw HTML block or a link-reference definition, so regenerating
-`content` from the tree would silently delete them;
-`block_serializer.reproduces_source` detects those in the token stream and the
-verb raises `DocumentNotConvertible`. It also refuses when a construct is
+block for a link-reference definition — markdown-it consumes it into `env`
+before any token is minted — so regenerating `content` from the tree would
+silently delete it and leave every reference to it dangling;
+`block_serializer.reproduces_source` detects that in the parser's `env` and
+the verb raises `DocumentNotConvertible`. A raw HTML block stood beside it
+until 2026-09-07, when it became the `html` block type and started converting
+like any other construct. It also refuses when a construct is
 representable but missing from *this* tree — a document filed before its block
 type existed carries the construct in its content and no row for it, and
 `ingest_document` returns `UNCHANGED` on a byte-identical re-push without

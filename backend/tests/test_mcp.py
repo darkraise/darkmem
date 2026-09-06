@@ -385,6 +385,12 @@ async def test_block_verbs_answer_envelopes_rather_than_tool_errors(session, mon
 
     An agent can machine-read an envelope and switch strategy; it cannot
     machine-read a traceback. Their REST twins are a 422 and a 409.
+
+    The unconvertible half is a link-reference definition: markdown-it
+    consumes it into `env`, minting no token and no block, so nothing can
+    serialise it back and converting would leave every reference dangling.
+    (Raw HTML stood here until 2026-09-07; it mints an `html` block now and
+    converts.)
     """
     import json
     from contextlib import asynccontextmanager
@@ -421,7 +427,7 @@ async def test_block_verbs_answer_envelopes_rather_than_tool_errors(session, mon
     # A document the block model cannot represent refuses, structured.
     filed = await put_document(
         session, llm, project="p", uri="mcp/raw.md",
-        content="before\n\n<div>raw</div>\n\nafter\n",
+        content="see [the doc][ref]\n\n[ref]: https://example.test\n",
     )
     await session.commit()
     blocks = json.loads(await mcp_server.document_get(document_id=filed.document_id))
