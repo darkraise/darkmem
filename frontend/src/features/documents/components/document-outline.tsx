@@ -245,7 +245,7 @@ export function DocumentOutline({
                     data-outline-block={node.block_id}
                     onClick={() => onNavigate(node.block_id)}
                     style={{ paddingLeft: `${style.indent}px` }}
-                    className={`hover:bg-muted/60 focus-visible:ring-primary/40 block w-full truncate rounded-sm py-0.5 pr-1.5 text-left leading-5 transition-colors focus-visible:ring-2 focus-visible:outline-none ${
+                    className={`hover:bg-muted/60 focus-visible:ring-primary/40 block w-full cursor-pointer truncate rounded-sm py-0.5 pr-1.5 text-left leading-5 transition-colors focus-visible:ring-2 focus-visible:outline-none ${
                       active
                         ? "text-primary text-sm font-semibold"
                         : `${style.text} hover:text-foreground`

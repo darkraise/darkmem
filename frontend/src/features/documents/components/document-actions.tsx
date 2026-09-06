@@ -238,7 +238,7 @@ export function DocumentDetail({
                           type: "button" as const,
                           onClick: open,
                           className:
-                            "group hover:bg-muted/50 focus-visible:ring-primary/40 -mx-1.5 rounded-sm px-1.5 py-1 text-left text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none",
+                            "group hover:bg-muted/50 focus-visible:ring-primary/40 -mx-1.5 cursor-pointer rounded-sm px-1.5 py-1 text-left text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none",
                         }
                       : { className: "text-sm" })}
                   >
@@ -354,7 +354,7 @@ function RelatedMemoriesCard({ documentId }: { documentId: string }) {
                 key={memory.memory_id}
                 type="button"
                 onClick={() => setPeek(memory.memory_id)}
-                className="hover:bg-muted/50 focus-visible:ring-primary/40 -mx-1.5 rounded-sm px-1.5 py-1 text-left text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none"
+                className="hover:bg-muted/50 focus-visible:ring-primary/40 -mx-1.5 cursor-pointer rounded-sm px-1.5 py-1 text-left text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none"
               >
                 <div className="flex items-start gap-1.5">
                   <span className="line-clamp-2">{memory.content}</span>

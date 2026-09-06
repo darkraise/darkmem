@@ -250,7 +250,7 @@ export function ProjectWorkspace({
               <button
                 key={hit.block_id}
                 type="button"
-                className="hover:bg-muted/40 focus-visible:ring-primary/40 block w-full rounded p-1.5 text-left text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none"
+                className="hover:bg-muted/40 focus-visible:ring-primary/40 block w-full cursor-pointer rounded p-1.5 text-left text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none"
                 onClick={() => {
                   const doc = items.find((d) => d.id === hit.document_id)
                   if (doc) {
