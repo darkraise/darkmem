@@ -183,4 +183,50 @@ describe("DocumentTree — VSCode-shaped rows", () => {
       expect(row.className).not.toMatch(/\bm[lxs]?-/)
     }
   })
+
+  it("renders a chevron inside the branch indicator", () => {
+    // The library's indicator renders only what it is given, so an empty one
+    // is a silently invisible expander: the branch still toggles, and nothing
+    // on the row says it can be.
+    const { container } = render(
+      <DocumentTree items={ITEMS} selectedId={null} onSelect={vi.fn()} truncated={false} />,
+    )
+    for (const indicator of container.querySelectorAll(
+      ".dr-tree-view-branch-indicator",
+    )) {
+      expect(indicator.querySelector("svg.lucide-chevron-right")).not.toBeNull()
+    }
+  })
+
+  it("puts every guide on an icon column's centre", () => {
+    // One indent step is one icon column, so an ancestor at depth `level` has
+    // its folder icon centred at `(level + 1) * step + icon / 2` inside every
+    // descendant row -- which is also where that descendant's own chevron
+    // column sits. jsdom performs no layout, so the invariant is asserted on
+    // the expression that produces it: guide, indent and icon width all have
+    // to be written in terms of one `--icon-size`, because a hardcoded pixel
+    // icon re-breaks the alignment wherever `--icon-scale` is not its default.
+    const { container } = render(
+      <DocumentTree items={ITEMS} selectedId={null} onSelect={vi.fn()} truncated={false} />,
+    )
+    const tree = container.querySelector(".dr-tree-view-tree") as HTMLElement
+    const step = tree.style.getPropertyValue("--tree-view-indent")
+    expect(step).toContain("var(--icon-size)")
+
+    const guides = container.querySelectorAll("span[aria-hidden].absolute")
+    expect(guides.length).toBeGreaterThan(0)
+    for (const guide of guides) {
+      const left = (guide as HTMLElement).style.left
+      expect(left).toContain(step)
+      expect(left).toContain("var(--icon-size) / 2")
+    }
+
+    // Both icon slots are one column wide. A leaf's spacer stands in for the
+    // chevron the branch rows spend that width on.
+    for (const svg of container.querySelectorAll(
+      ".lucide-folder, .lucide-folder-open, .lucide-file-text",
+    )) {
+      expect(svg.getAttribute("class")).toContain("size-[var(--icon-size)]")
+    }
+  })
 })

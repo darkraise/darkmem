@@ -20,6 +20,15 @@ import { useDocumentOutline } from "@/hooks/api"
  * reader scanning the rail can then tell a section from a subsection without
  * comparing two rows' left edges.
  *
+ * `dot` sizes the disc INSIDE the indicator, never the indicator itself. Each
+ * `TimelineItem` is its own grid whose rail column is as wide as its own
+ * indicator, so sizing the indicator per level gave every level a different
+ * rail width: the dots sat on four different x positions, the connectors
+ * zig-zagged between them, and the text column moved by level on top of the
+ * indent below -- which is what made the rail read as unaligned. The
+ * indicator is one fixed box at every level now and only the disc inside it
+ * changes.
+ *
  * Levels past 4 are clamped rather than continuing to shrink: below `text-xs`
  * the label stops being readable, and a document nesting six deep is asking
  * the rail to render structure the pane has no width for.
@@ -30,6 +39,20 @@ const LEVEL_STYLE: Record<number, { dot: string; text: string; indent: number }>
   3: { dot: "0.375rem", text: "text-xs text-muted-foreground", indent: 18 },
   4: { dot: "0.25rem", text: "text-xs text-muted-foreground/80", indent: 26 },
 }
+
+/** One rail row's height, and the single number the dot and the text are both
+ *  aligned to.
+ *
+ * The indicator is a grid item in row 1 with `align-self: start`, so its box
+ * height -- not any alignment property -- is what decides where the disc
+ * lands: the disc is centred in the box, so the box has to be exactly as tall
+ * as the label's first line box for the two centres to coincide. It was the
+ * dot's own diameter before, which parked every dot against the top of its
+ * label instead of beside it. `leading-5` on the button then holds that line
+ * box at one height across `text-sm` and `text-xs` alike, so a level-3 row
+ * does not quietly re-break the alignment 2px the other way.
+ */
+const ROW_H = "1.5rem" // leading-5 (1.25rem) + the button's py-0.5, twice.
 
 /** The reader's sticky path-and-toolbar bar, which the rail parks below.
  *  Mirrors the `top-12` the workspace pins the rail at. */
@@ -175,6 +198,10 @@ export function DocumentOutline({
             {
               "--timeline-gap": "0.375rem",
               "--timeline-column-gap": "0.5rem",
+              // The rail column's width, fixed for every level so the dots
+              // and the connectors form one straight line and the text
+              // column starts at the same x on every row.
+              "--timeline-dot-size": "0.625rem",
             } as CSSProperties
           }
         >
@@ -182,21 +209,43 @@ export function DocumentOutline({
             const active = node.block_id === activeBlockId
             const style = levelStyle(node.level)
             return (
-              <TimelineItem
-                key={node.block_id}
-                style={{ "--timeline-dot-size": style.dot } as CSSProperties}
-              >
+              <TimelineItem key={node.block_id}>
+                {/* Spans BOTH grid rows and hangs half a row below its own,
+                    so the line runs dot-centre to dot-centre unbroken. The
+                    library's connector starts under the indicator, which is
+                    continuous only while the dot fills the whole row -- once
+                    the dot is centred beside its label, that leaves a gap
+                    above and below every marker. Drawn before the indicator
+                    so the dot paints over it. */}
+                <TimelineConnector
+                  className="[grid-row:1_/_3]"
+                  style={{
+                    marginTop: `calc(${ROW_H} / 2)`,
+                    marginBottom: `calc(${ROW_H} / -2)`,
+                  }}
+                />
                 <TimelineIndicator
                   data-status={active ? "current" : "upcoming"}
-                />
-                <TimelineConnector />
+                  className="relative z-10 rounded-none border-0 bg-transparent shadow-none"
+                  style={{ height: ROW_H }}
+                >
+                  <span
+                    aria-hidden
+                    className={`rounded-full transition-colors ${
+                      active
+                        ? "bg-primary ring-primary/25 ring-2"
+                        : "bg-muted-foreground/40"
+                    }`}
+                    style={{ width: style.dot, height: style.dot }}
+                  />
+                </TimelineIndicator>
                 <TimelineContent>
                   <button
                     type="button"
                     data-outline-block={node.block_id}
                     onClick={() => onNavigate(node.block_id)}
                     style={{ paddingLeft: `${style.indent}px` }}
-                    className={`hover:bg-muted/60 focus-visible:ring-primary/40 block w-full truncate rounded-sm py-0.5 pr-1.5 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none ${
+                    className={`hover:bg-muted/60 focus-visible:ring-primary/40 block w-full truncate rounded-sm py-0.5 pr-1.5 text-left leading-5 transition-colors focus-visible:ring-2 focus-visible:outline-none ${
                       active
                         ? "text-primary text-sm font-semibold"
                         : `${style.text} hover:text-foreground`

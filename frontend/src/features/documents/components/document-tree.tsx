@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from "react"
-import { FileText, Folder, FolderOpen } from "lucide-react"
+import { ChevronRight, FileText, Folder, FolderOpen } from "lucide-react"
 import {
   TreeView,
   TreeViewBranch,
@@ -29,7 +29,7 @@ import { fileIcon } from "../file-icons"
  * column of names rather than scanned as chrome. */
 const ROW = "w-full min-w-0 text-base"
 
-/** Pixels of indent per nesting level, and where each level's guide sits.
+/** Indent, and where each level's guide sits.
  *
  * The library already indents the ROW -- `paddingInlineStart: calc(depth *
  * var(--tree-view-indent, 1rem))` -- which is the VSCode shape: every row is
@@ -40,23 +40,34 @@ const ROW = "w-full min-w-0 text-base"
  * the container indents the rows themselves, so a nested row's box started
  * further right and was narrower -- which is what made a selected nested row
  * render as a short offset bar. The container carries no indent now and the
- * only knob is the library's own variable, dialled down from its 16px
- * default: a file pane is four or five levels deep and 16px spent four times
- * is a third of a narrow column.
+ * only knob is the library's own variable.
+ *
+ * One step is exactly one icon column: `--icon-size` for the chevron plus the
+ * row's own gap. That equality is what makes the guides land: a child row's
+ * chevron then starts precisely where its parent's folder icon starts, so one
+ * vertical line at the parent icon's centre runs down through every
+ * descendant's chevron column. An indent smaller than the column (this was
+ * 12px) puts the child's chevron under the *middle* of the parent's icon and
+ * no single x can align with both, which is why the guides used to sit beside
+ * the folder icon rather than under it. Both icon slots therefore have to
+ * stay `--icon-size` wide -- a hardcoded `18px` on the folder or file icon
+ * re-breaks the alignment wherever `--icon-scale` is not 1.125.
  */
-const INDENT_PX = 12
-
-/** Half a step, so a guide lands under the chevron of the row that owns it
- *  rather than on the boundary between two levels. */
-const GUIDE_OFFSET_PX = 6
+const ROW_GAP = "gap-1.5"
+const INDENT = "calc(var(--icon-size) + 0.375rem)"
 
 /** The nesting guides.
  *
  * Absolutely positioned rather than laid out: the row is a flex line with a
- * `gap-2`, so a guide block placed in flow picked that gap up and drifted
- * away from the icon it belongs in front of. Out of flow, each hairline
- * lands exactly on its own indent step and nothing about the row's own
- * layout changes.
+ * gap, so a guide block placed in flow picked that gap up and drifted away
+ * from the icon it belongs in front of. Out of flow, each hairline lands
+ * exactly on the centre of the icon column its owner occupies and nothing
+ * about the row's own layout changes.
+ *
+ * `left` is measured from the row's left edge (the row is the containing
+ * block), which is the same edge at every depth because every row is the full
+ * pane width -- so an ancestor at depth `level` has its icon centred at
+ * `(level + 1) * indent + icon / 2` inside any of its descendants' rows.
  */
 function IndentGuides({ depth }: { depth: number }) {
   if (depth === 0) return null
@@ -67,7 +78,9 @@ function IndentGuides({ depth }: { depth: number }) {
           key={level}
           aria-hidden
           className="border-border/60 pointer-events-none absolute inset-y-0 border-l group-data-[selected=true]:opacity-0"
-          style={{ left: `${level * INDENT_PX + GUIDE_OFFSET_PX}px` }}
+          style={{
+            left: `calc(${level + 1} * ${INDENT} + var(--icon-size) / 2)`,
+          }}
         />
       ))}
     </>
@@ -158,19 +171,24 @@ export function DocumentTree({
     if (node.children.length > 0) {
       return (
         <TreeViewBranch key={node.path} value={node.path}>
-          <TreeViewBranchControl className={`group relative ${ROW}`}>
+          <TreeViewBranchControl className={`group relative ${ROW_GAP} ${ROW}`}>
             <IndentGuides depth={depth} />
-            <TreeViewBranchIndicator className="text-muted-foreground shrink-0" />
+            {/* The library's indicator renders only what it is given and
+                rotates it on `data-state=open`; with no child it was an
+                empty box, so the tree shipped with an invisible chevron. */}
+            <TreeViewBranchIndicator className="text-muted-foreground shrink-0">
+              <ChevronRight aria-hidden className="size-3.5" />
+            </TreeViewBranchIndicator>
             {/* Both icons render and CSS picks one off the control's own
                 `data-state`. Deriving it in JS would need the live open set,
                 which the uncontrolled caller does not have. */}
             <Folder
               aria-hidden
-              className="size-[18px] shrink-0 text-sky-700/80 group-data-[state=open]:hidden dark:text-sky-300/80"
+              className="size-[var(--icon-size)] shrink-0 text-sky-700/80 group-data-[state=open]:hidden dark:text-sky-300/80"
             />
             <FolderOpen
               aria-hidden
-              className="hidden size-[18px] shrink-0 text-sky-700/80 group-data-[state=open]:block dark:text-sky-300/80"
+              className="hidden size-[var(--icon-size)] shrink-0 text-sky-700/80 group-data-[state=open]:block dark:text-sky-300/80"
             />
             <TreeViewBranchText className="truncate">
               {node.name}
@@ -192,13 +210,13 @@ export function DocumentTree({
       <TreeViewItem
         key={node.path}
         value={node.document?.id ?? node.path}
-        className={`group relative ${ROW}`}
+        className={`group relative ${ROW_GAP} ${ROW}`}
       >
         <IndentGuides depth={depth} />
         {/* Aligns leaf text with a sibling folder's, whose row spends this
             width on the chevron. */}
         <span aria-hidden className="w-[var(--icon-size)] shrink-0" />
-        <Icon aria-hidden className={`size-[18px] shrink-0 ${iconTone}`} />
+        <Icon aria-hidden className={`size-[var(--icon-size)] shrink-0 ${iconTone}`} />
         <span className="truncate">{node.name}</span>
         {actions}
       </TreeViewItem>
@@ -224,7 +242,7 @@ export function DocumentTree({
       >
         <TreeViewTree
           className="gap-0 pl-1"
-          style={{ "--tree-view-indent": `${INDENT_PX}px` } as CSSProperties}
+          style={{ "--tree-view-indent": INDENT } as CSSProperties}
         >
           {roots.map((root) => renderNode(root, 0))}
         </TreeViewTree>

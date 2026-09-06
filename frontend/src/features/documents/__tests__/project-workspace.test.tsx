@@ -145,6 +145,10 @@ afterEach(() => {
   window.localStorage.clear()
 })
 
+/** Mirrors `ROW_H` in document-outline.tsx: one rail row, which is the
+ *  label's `leading-5` line box plus its `py-0.5`. */
+const ROW_H = "1.5rem"
+
 describe("project workspace — the states a reader must be able to tell apart", () => {
   it("says so when a search matched nothing, instead of rendering nothing", async () => {
     // Rendering null for zero hits makes "searched, no matches" look exactly
@@ -611,6 +615,58 @@ describe("project workspace — the two scrollbars that used to overlap", () => 
     const scroller = outline.querySelector(".overflow-y-auto")
     expect(scroller).not.toBeNull()
     expect(scroller!.className).toMatch(/scrollbar-width:none/)
+  })
+
+  it("aligns every dot with its own label and with the other dots", async () => {
+    // Two failures, one cause: each `TimelineItem` is its own grid whose rail
+    // column is as wide as its own indicator, and the indicator's own box
+    // height is what decides where the dot sits vertically. Sizing the
+    // indicator per level therefore put the dots on four different x
+    // positions AND parked each one against the top of its label. The dot is
+    // an inner disc now: one fixed indicator box at every level, one row
+    // height the label's line box is held to.
+    mockDocuments({ items: [DOC] })
+    const { container } = renderWorkspace()
+    fireEvent.click(await screen.findByText("design.md"))
+    await screen.findByLabelText("document outline")
+
+    const rail = container.querySelector(".dr-timeline") as HTMLElement
+    expect(rail.style.getPropertyValue("--timeline-dot-size")).not.toBe("")
+
+    for (const item of container.querySelectorAll(".dr-timeline-item")) {
+      // No per-item rail width: that is what made the column ragged.
+      expect((item as HTMLElement).style.getPropertyValue("--timeline-dot-size")).toBe("")
+      const indicator = item.querySelector(".dr-timeline-indicator") as HTMLElement
+      // One box height at every level, with the disc centred inside it.
+      expect(indicator.style.height).toBe(ROW_H)
+      expect(indicator.querySelector("span[aria-hidden]")).not.toBeNull()
+      // The label's line box is pinned so a `text-xs` level cannot drift
+      // against a dot centred for a `text-sm` one.
+      expect(item.querySelector("button")!.className).toContain("leading-5")
+    }
+  })
+
+  it("runs the connector from dot centre to dot centre", async () => {
+    // The library's connector starts under the indicator, which is unbroken
+    // only while the dot fills the whole row. With the dot centred beside its
+    // label that leaves a gap above and below every marker, so the connector
+    // spans both grid rows and hangs half a row below its own.
+    mockDocuments({ items: [DOC] })
+    const { container } = renderWorkspace()
+    fireEvent.click(await screen.findByText("design.md"))
+    await screen.findByLabelText("document outline")
+
+    const connectors = container.querySelectorAll(".dr-timeline-connector")
+    expect(connectors.length).toBeGreaterThan(0)
+    for (const connector of connectors) {
+      expect(connector.className).toContain("[grid-row:1_/_3]")
+      // jsdom folds the `calc()` the component writes, so the assertion is on
+      // the folded pair: down by half a row, back up by the same half.
+      const style = (connector as HTMLElement).style
+      const half = Number.parseFloat(ROW_H) / 2
+      expect(style.marginTop).toContain(`${half}rem`)
+      expect(style.marginBottom).toContain(`-${half}rem`)
+    }
   })
 
   it("differentiates heading levels on more than indentation", async () => {
