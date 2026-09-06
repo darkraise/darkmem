@@ -397,6 +397,11 @@ BLOCK_TYPES: list[str] = [
     "table",
     "table_row",
     "divider",
+    # Raw HTML: an opaque run the markdown parser hands back verbatim. It is a
+    # stored type rather than a skipped token because skipping it made every
+    # document containing `<img>` or `<details>` unconvertible to block-first,
+    # and an imported Obsidian or Notion note routinely carries both.
+    "html",
 ]
 
 _BLOCK_TYPE_SET: frozenset[str] = frozenset(BLOCK_TYPES)
@@ -428,11 +433,12 @@ LEGACY_BLOCK_TYPE_MAP: dict[str, str] = {
     "thematic_break": "divider",
     "horizontal_rule": "divider",
     "rule": "divider",
+    "html_block": "html",
 }
 
 
 def normalize_block_type(raw_type: str | None) -> str:
-    """Return one of the eight stored ``BLOCK_TYPES``.
+    """Return one of the nine stored ``BLOCK_TYPES``.
 
     Unknown values fall back to ``paragraph``: a block whose kind is unrecognised
     is still retrievable prose, and dropping it would lose the text along with

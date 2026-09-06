@@ -65,9 +65,11 @@ def test_vocabularies_have_their_documented_sizes():
     # silently truncates. 2026-09-02: `divider`, because `hr` mints no block,
     # so the block editor's conversion guard refused 201 of the 475 imported
     # corpus documents rather than silently dropping their section rules.
+    # 2026-09-07: `html`, because skipping raw HTML made any document
+    # containing it permanently unconvertible to block-first.
     # A count that moves without this table moving is the taxonomy-first rule
     # being skipped.
-    assert len(BLOCK_TYPES) == 8
+    assert len(BLOCK_TYPES) == 9
 
 
 def test_memory_types_carry_the_two_layer_zero_recall_kinds():
@@ -521,3 +523,15 @@ async def test_update_memory_maps_a_legacy_alias(session):
         )
     ).scalar_one()
     assert stored == "problem"
+
+
+def test_html_is_a_stored_block_type():
+    """Raw HTML is a construct the parser used to skip, which made any
+    document containing it permanently unconvertible to block-first. It is a
+    block type now, so it round-trips instead."""
+    from app.taxonomy import BLOCK_TYPES, normalize_block_type
+
+    assert "html" in BLOCK_TYPES
+    assert normalize_block_type("html") == "html"
+    # markdown-it's own token name maps onto it rather than falling back.
+    assert normalize_block_type("html_block") == "html"
