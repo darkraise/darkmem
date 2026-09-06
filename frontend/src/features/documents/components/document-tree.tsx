@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import type { CSSProperties, ReactNode } from "react"
 import { FileText, Folder, FolderOpen } from "lucide-react"
 import {
   TreeView,
@@ -25,13 +25,54 @@ import { fileIcon } from "../file-icons"
  * what made a *selected* row turn muted the moment the pointer entered it:
  * a local `hover:bg-muted/60` outranked `[data-selected=true]`'s fill.
  *
- * `w-full` is what makes the highlight the whole row rather than the row's
- * content: these rows sit in a horizontally scrollable pane, where a
- * stretch-sized `li` stops at the viewport edge and the fill ends mid-row.
- *
  * Only the type size is ours, and only because a file browser is read as a
  * column of names rather than scanned as chrome. */
 const ROW = "w-full min-w-0 text-base"
+
+/** Pixels of indent per nesting level, and where each level's guide sits.
+ *
+ * The library already indents the ROW -- `paddingInlineStart: calc(depth *
+ * var(--tree-view-indent, 1rem))` -- which is the VSCode shape: every row is
+ * the full width of the pane at every depth and only its padding moves, so
+ * the hover and the selected fill are the same bar everywhere.
+ *
+ * This tree used to indent the child `ul` instead, on top of that. Indenting
+ * the container indents the rows themselves, so a nested row's box started
+ * further right and was narrower -- which is what made a selected nested row
+ * render as a short offset bar. The container carries no indent now and the
+ * only knob is the library's own variable, dialled down from its 16px
+ * default: a file pane is four or five levels deep and 16px spent four times
+ * is a third of a narrow column.
+ */
+const INDENT_PX = 12
+
+/** Half a step, so a guide lands under the chevron of the row that owns it
+ *  rather than on the boundary between two levels. */
+const GUIDE_OFFSET_PX = 6
+
+/** The nesting guides.
+ *
+ * Absolutely positioned rather than laid out: the row is a flex line with a
+ * `gap-2`, so a guide block placed in flow picked that gap up and drifted
+ * away from the icon it belongs in front of. Out of flow, each hairline
+ * lands exactly on its own indent step and nothing about the row's own
+ * layout changes.
+ */
+function IndentGuides({ depth }: { depth: number }) {
+  if (depth === 0) return null
+  return (
+    <>
+      {Array.from({ length: depth }, (_, level) => (
+        <span
+          key={level}
+          aria-hidden
+          className="border-border/60 pointer-events-none absolute inset-y-0 border-l group-data-[selected=true]:opacity-0"
+          style={{ left: `${level * INDENT_PX + GUIDE_OFFSET_PX}px` }}
+        />
+      ))}
+    </>
+  )
+}
 
 /** The one hierarchy implementation both document surfaces render.
  *
@@ -111,13 +152,14 @@ export function DocumentTree({
     )
   }
 
-  const renderNode = (node: UriTreeNode): ReactNode => {
+  const renderNode = (node: UriTreeNode, depth = 0): ReactNode => {
     const actions = nodeActions?.(node)
 
     if (node.children.length > 0) {
       return (
         <TreeViewBranch key={node.path} value={node.path}>
-          <TreeViewBranchControl className={`group ${ROW}`}>
+          <TreeViewBranchControl className={`group relative ${ROW}`}>
+            <IndentGuides depth={depth} />
             <TreeViewBranchIndicator className="text-muted-foreground shrink-0" />
             {/* Both icons render and CSS picks one off the control's own
                 `data-state`. Deriving it in JS would need the live open set,
@@ -135,10 +177,11 @@ export function DocumentTree({
             </TreeViewBranchText>
             {actions}
           </TreeViewBranchControl>
-          {/* The indent guide: one hairline per level, the way an explorer
-              shows which rows belong to which folder. */}
-          <TreeViewBranchContent className="border-border/60 ml-[17px] border-l pl-2">
-            {node.children.map(renderNode)}
+          {/* No indent of its own: the nesting is drawn inside each child
+              row by `Indent`, so every row keeps the full pane width. The
+              gap is dropped so the guides run unbroken between rows. */}
+          <TreeViewBranchContent className="gap-0">
+            {node.children.map((child) => renderNode(child, depth + 1))}
           </TreeViewBranchContent>
         </TreeViewBranch>
       )
@@ -149,8 +192,9 @@ export function DocumentTree({
       <TreeViewItem
         key={node.path}
         value={node.document?.id ?? node.path}
-        className={ROW}
+        className={`group relative ${ROW}`}
       >
+        <IndentGuides depth={depth} />
         {/* Aligns leaf text with a sibling folder's, whose row spends this
             width on the chevron. */}
         <span aria-hidden className="w-[var(--icon-size)] shrink-0" />
@@ -178,7 +222,12 @@ export function DocumentTree({
           if (doc) onSelect(doc)
         }}
       >
-        <TreeViewTree>{roots.map(renderNode)}</TreeViewTree>
+        <TreeViewTree
+          className="gap-0 pl-1"
+          style={{ "--tree-view-indent": `${INDENT_PX}px` } as CSSProperties}
+        >
+          {roots.map((root) => renderNode(root, 0))}
+        </TreeViewTree>
       </TreeView>
     </div>
   )

@@ -149,3 +149,38 @@ describe("DocumentTree — the library's own selection treatment", () => {
     }
   })
 })
+
+describe("DocumentTree — VSCode-shaped rows", () => {
+  /** `ITEMS` files documents under folders, so the tree has depth. */
+  it("indents inside the row, never on the container", () => {
+    // Indenting the child `ul` indents the ROWS: a nested row's box starts
+    // further right and is narrower, so its hover and its selected fill are
+    // a short bar rather than a full-width one. That was the reported
+    // "selection state visual still wrong".
+    const { container } = render(
+      <DocumentTree items={ITEMS} selectedId={null} onSelect={vi.fn()} truncated={false} />,
+    )
+    const groups = container.querySelectorAll(".dr-tree-view-branch-content")
+    expect(groups.length).toBeGreaterThan(0)
+    for (const group of groups) {
+      expect(group.className).not.toMatch(/\bm[lxs]?-/)
+      expect(group.className).not.toMatch(/\bp[lx]-/)
+      expect(group.className).not.toMatch(/border-l/)
+    }
+  })
+
+  it("gives a nested row the same width as a root row", () => {
+    const { container } = render(
+      <DocumentTree items={ITEMS} selectedId={null} onSelect={vi.fn()} truncated={false} />,
+    )
+    const rows = container.querySelectorAll(
+      ".dr-tree-view-item, .dr-tree-view-branch-control",
+    )
+    // jsdom performs no layout, so width is asserted through the class that
+    // produces it plus the absence of any per-depth offset on the row.
+    for (const row of rows) {
+      expect(row).toHaveClass("w-full")
+      expect(row.className).not.toMatch(/\bm[lxs]?-/)
+    }
+  })
+})
