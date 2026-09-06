@@ -1605,6 +1605,20 @@ touching blocks, so a token-versus-block count check is what stops that
 becoming silent loss. **Widening a block type therefore obliges a re-import,
 not merely a redeploy** (measured 2026-09-02: adding `divider` left exactly
 201 filed documents with `---` in their content and no divider row).
+**And the guard does not catch everything it converts: a quote with a
+non-paragraph child converts, and its regenerated source does not re-parse to
+the tree it came from** — measured 2026-09-07 at **43 of 492** documents, with
+block counts moving in both directions. `_separator` returns `"\n\n"` between a
+quote and a non-paragraph child and writes that separator without the quote
+prefix, so the blank line terminates the blockquote and the document re-parses
+as two; `code`, `divider` and `list` children fail identically and `html` is a
+fourth member of the class, not the cause. The same sweep against master's
+`serialize_tree` names the same 43 documents, so this is **pre-existing**, not
+introduced by the `html` widening. `reproduces_source` structurally cannot see
+it: it checks token kinds and counts, never that its own output re-parses, and
+the counts match. The fix belongs in `_separator` — thread the child prefix
+through, so the separator between a quote's children carries the `>` — and is a
+prerequisite for the notes editor.
 
 **Four block verbs, both doors** — `block_update`, `block_insert`,
 `block_move`, `block_delete` over `app/services/block_verbs.py`. Every verb
