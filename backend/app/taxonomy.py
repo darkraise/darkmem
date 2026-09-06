@@ -376,13 +376,18 @@ def is_projected_memory_relation_type(raw_type: str | None) -> bool:
 # that normalises — TH1.02 is the first writer, so the vocabulary lands with it
 # rather than with the parsers that will emit into it (taxonomy-first).
 #
-# Widened to eight across two changes, each from a measurement rather than a
+# Widened to nine across three changes, each from a measurement rather than a
 # preference. 2026-08-31 (spec §4.1) for structural table parsing. The
 # justification doc 16 §9 asked for is measured, not aesthetic: a GFM table
 # parsed as one paragraph produced single blocks of 235,716 / 298,677 /
 # 182,746 characters, which the embedder truncates while the filing reports
 # success. `table` carries the header cells and column alignments in its
 # properties; each data row is a `table_row` child of it.
+#
+# 2026-09-07 (this spec's Task 1) for raw HTML. The parser skipped
+# `html_block` entirely, so any document containing raw HTML carried a
+# construct with no block row, which made it permanently unconvertible to
+# block-first and therefore permanently uneditable in the notes UI.
 #
 # Unlike the four above, no LLM emits these: a parser does. That changes who
 # gets it wrong, not whether the fallback is needed — a markdown token stream
