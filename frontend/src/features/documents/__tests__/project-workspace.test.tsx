@@ -67,6 +67,15 @@ function mockDocuments(result: unknown | "fail") {
     if (path.endsWith("/summary")) {
       return Promise.resolve(null)
     }
+    if (path.endsWith("/outline")) {
+      return Promise.resolve({
+        document_id: DOC.id,
+        items: [
+          { block_id: "block-h1", level: 1, text: "Design notes", order_index: 0 },
+          { block_id: "block-h2", level: 2, text: "Storage", order_index: 4 },
+        ],
+      })
+    }
     if (path.startsWith("/documents")) {
       return result === "fail"
         ? Promise.reject(new Error("boom"))
@@ -457,5 +466,42 @@ describe("project workspace — tree expansion", () => {
     // expansion is still in effect.
     await screen.findByText("notes")
     expect(screen.getByText("progress.md")).toBeInTheDocument()
+  })
+})
+
+describe("project workspace — the reader's own chrome", () => {
+  it("keeps the path and the toolbar with the reader as it scrolls", async () => {
+    // jsdom performs no layout, so this asserts the class chain the sticky
+    // header depends on, not a rendered position. A long document otherwise
+    // scrolls its own identity and every action off the top.
+    mockDocuments({ items: [DOC] })
+    renderWorkspace()
+    fireEvent.click(await screen.findByText("design.md"))
+
+    const crumbs = await screen.findByLabelText("document path")
+    const bar = crumbs.closest("div.sticky")
+    expect(bar).not.toBeNull()
+    expect(bar).toHaveClass("sticky", "top-0")
+    // The toolbar rides the same bar, not a separate row below it.
+    expect(bar).toContainElement(screen.getByRole("button", { name: /^edit$/i }))
+  })
+
+  it("parks the outline in a sticky rail and jumps the reader to a heading", async () => {
+    mockDocuments({ items: [DOC] })
+    renderWorkspace()
+    fireEvent.click(await screen.findByText("design.md"))
+
+    const outline = await screen.findByLabelText("document outline")
+    const rail = outline.closest("aside")
+    expect(rail).toHaveClass("sticky", "self-start")
+
+    // The jump is a callback carrying the block id, never an `#id` anchor:
+    // two readers can be mounted and block ids are unique per document.
+    fireEvent.click(screen.getByRole("button", { name: "Storage" }))
+    await waitFor(() =>
+      expect(
+        screen.getByText(`reader:${DOC.id}:focus=block-h2`),
+      ).toBeInTheDocument(),
+    )
   })
 })

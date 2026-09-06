@@ -71,6 +71,35 @@ describe("DocumentActions", () => {
     expect(onDeleted).toHaveBeenCalled()
   })
 
+  it("offers Edit as a button, not a Read/Edit pair", async () => {
+    // A two-state toggle spends a control on "read", which is where every
+    // selection already lands, and offers a choice where there is one action.
+    const onModeChange = vi.fn()
+    renderActions({ onModeChange })
+    expect(screen.queryByRole("radio", { name: /read/i })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: /^edit$/i }))
+    expect(onModeChange).toHaveBeenCalledWith("edit")
+  })
+
+  it("is the way back out of edit mode too, and says which mode it is in", async () => {
+    const onModeChange = vi.fn()
+    renderActions({ mode: "edit", onModeChange })
+    const back = screen.getByRole("button", { name: /^read$/i })
+    expect(back).toHaveAttribute("aria-pressed", "true")
+    await userEvent.click(back)
+    expect(onModeChange).toHaveBeenCalledWith("read")
+  })
+
+  it("names every icon-only control, so none is an unlabelled glyph", () => {
+    // The toolbar is icon-only: without an accessible name each control is a
+    // guess to anyone who does not recognise the glyph, and nothing at all to
+    // a screen reader.
+    renderActions()
+    for (const name of [/^edit$/i, /^summarize$/i, /^delete$/i]) {
+      expect(screen.getByRole("button", { name })).toBeInTheDocument()
+    }
+  })
+
   it("summarizes on an explicit click, never on mount", async () => {
     // It spends an LLM call, so opening a document must not fire it.
     renderActions()

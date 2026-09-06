@@ -112,12 +112,18 @@ export function blockSpacing(
 export function DocumentReader({
   documentId,
   focusBlockId = null,
+  showOutline = true,
 }: {
   documentId: string
   /** Scroll to and mark this block once the body has rendered. A section
    *  search that only opened the document would drop the reader at the top,
    *  losing the section they matched. */
   focusBlockId?: string | null
+  /** The inline outline rail. Off for a caller that mounts `DocumentOutline`
+   *  itself -- the artifacts workspace parks it in a sticky right column, and
+   *  two rails for one document would be two jump lists disagreeing about
+   *  where the reader is. */
+  showOutline?: boolean
 }) {
   const outline = useDocumentOutline(documentId)
   const blocks = useDocumentBlocks(documentId)
@@ -163,7 +169,7 @@ export function DocumentReader({
 
   return (
     <div className="flex gap-5">
-      {(outline.data?.items.length ?? 0) > 0 ? (
+      {showOutline && (outline.data?.items.length ?? 0) > 0 ? (
         <nav className="hidden w-52 shrink-0 lg:block">
           <p className="text-muted-foreground pb-1.5 font-mono text-[10px] tracking-wide uppercase">
             outline
@@ -196,6 +202,10 @@ export function DocumentReader({
               data-depth={depth}
               style={depth > 0 ? { paddingLeft: `${depth * 18}px` } : undefined}
               className={[
+                // The reader's own header bar is sticky over this column, so
+                // a block scrolled to by the outline or a search hit must
+                // stop below it rather than under it.
+                "scroll-mt-16",
                 blockSpacing(block, previous, i),
                 block.block_id === focusBlockId
                   ? "ring-primary/40 rounded-sm ring-2 ring-offset-2 ring-offset-transparent"

@@ -125,3 +125,37 @@ describe("BlockView — list markers", () => {
     expect(screen.getByText("•")).toBeTruthy()
   })
 })
+
+describe("BlockView — GFM task items", () => {
+  it("renders a task item as a checkbox rather than literal brackets", () => {
+    // `remark-gfm` only builds a checkbox inside a real `<ul>`. This surface
+    // renders one row per block with no list wrapper, so the marker reaches
+    // the row as the literal text "[x] ...".
+    const { container } = render(
+      <BlockView
+        block={block({ type: "list", text: "[x] land the outline rail", properties: { marker: "-" } })}
+      />,
+    )
+    expect(screen.queryByText(/\[x\]/)).toBeNull()
+    expect(screen.getByText("land the outline rail")).toBeTruthy()
+    expect(container.querySelector("svg")).not.toBeNull()
+  })
+
+  it("tells a done item from an open one", () => {
+    const done = render(
+      <BlockView block={block({ type: "list", text: "[x] done" })} />,
+    )
+    const open = render(
+      <BlockView block={block({ block_id: "b2", type: "list", text: "[ ] open" })} />,
+    )
+    expect(done.container.innerHTML).not.toEqual(open.container.innerHTML)
+    expect(screen.getByText("open")).toBeTruthy()
+  })
+
+  it("leaves a bracketed line that is not a task alone", () => {
+    // "[note] ..." and "[2] ..." are ordinary text; only a single space or
+    // x/X between the brackets is GFM's marker.
+    render(<BlockView block={block({ type: "list", text: "[note] not a task" })} />)
+    expect(screen.getByText("[note] not a task")).toBeTruthy()
+  })
+})

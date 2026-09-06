@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Brain, FileText, Link2, Loader2, Trash2 } from "lucide-react"
+import { BookOpen, Brain, FileText, Link2, Loader2, Pencil, Trash2 } from "lucide-react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,14 +11,11 @@ import {
   AlertDialogTitle,
 } from "darkraise-ui/components/alert-dialog"
 import { Badge } from "darkraise-ui/components/badge"
-import { Button } from "darkraise-ui/components/button"
 import { Card, CardContent, CardHeader } from "darkraise-ui/components/card"
-import {
-  SegmentGroup,
-  SegmentGroupItem,
-} from "darkraise-ui/components/segment-group"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { toast } from "darkraise-ui/components/sonner"
+import { IconButton } from "@/components/darkmem"
+import { MemoryPeekDialog } from "@/features/memories/components/memory-peek-dialog"
 import {
   useDocumentConnections,
   useRelatedMemories,
@@ -30,9 +27,18 @@ import {
 
 export type ReaderMode = "read" | "edit"
 
-/** The document-level controls the workspace was missing: mode, summarize,
- *  delete. Every route behind these already shipped -- except the summarize
- *  POST, which did not exist at all, so the summary panel could never fill.
+/** The document-level controls: edit, summarize, delete.
+ *
+ * Icon-only with a tooltip that is also the accessible name -- `IconButton`
+ * makes that label mandatory, so the row is compact without becoming a row of
+ * unnamed glyphs. It has to be compact: this bar is sticky over a scrolling
+ * document and shares its line with the path.
+ *
+ * Edit is a BUTTON, not a read/edit segmented pair. A two-state toggle spends
+ * a control on "read", which is where every selection already lands, and
+ * offers a choice where there is really one action. Pressed state carries the
+ * mode instead (`aria-pressed`, a filled variant and the inverse glyph), so
+ * the way back out is the same control.
  */
 export function DocumentActions({
   document,
@@ -48,23 +54,24 @@ export function DocumentActions({
   const [confirmOpen, setConfirmOpen] = useState(false)
   const summarize = useDocumentSummarize(document.id)
   const remove = useDocumentDelete()
+  const editing = mode === "edit"
 
   return (
-    <div className="flex flex-wrap items-center gap-2 pb-2">
-      <SegmentGroup
-        value={mode}
-        onValueChange={(value) => onModeChange(value as ReaderMode)}
-      >
-        <SegmentGroupItem value="read">Read</SegmentGroupItem>
-        <SegmentGroupItem value="edit">Edit</SegmentGroupItem>
-      </SegmentGroup>
+    <div className="flex items-center gap-1">
+      <IconButton
+        icon={editing ? BookOpen : Pencil}
+        label={editing ? "Read" : "Edit"}
+        variant={editing ? "default" : "ghost"}
+        aria-pressed={editing}
+        onClick={() => onModeChange(editing ? "read" : "edit")}
+      />
 
-      <div className="flex-1" />
-
-      <Button
-        variant="outline"
-        size="sm"
+      <IconButton
+        icon={summarize.isPending ? Loader2 : FileText}
+        label="Summarize"
+        variant="ghost"
         disabled={summarize.isPending}
+        className={summarize.isPending ? "[&_svg]:animate-spin" : undefined}
         onClick={() =>
           summarize.mutate(undefined, {
             onSuccess: () => toast.success("Summary generated"),
@@ -73,23 +80,15 @@ export function DocumentActions({
             onError: (error) => toast.error(error.message),
           })
         }
-      >
-        {summarize.isPending ? (
-          <Loader2 className="size-4 animate-spin" />
-        ) : (
-          <FileText className="size-4" />
-        )}
-        Summarize
-      </Button>
+      />
 
-      <Button
-        variant="destructive"
-        size="sm"
+      <IconButton
+        icon={Trash2}
+        label="Delete"
+        variant="ghost"
+        className="text-destructive hover:text-destructive"
         onClick={() => setConfirmOpen(true)}
-      >
-        <Trash2 className="size-4" />
-        Delete
-      </Button>
+      />
 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
@@ -131,7 +130,17 @@ export function DocumentActions({
  * generated until someone spends the call, and a connections read that could
  * not be made says so rather than rendering as an empty list.
  */
-export function DocumentDetail({ documentId }: { documentId: string }) {
+export function DocumentDetail({
+  documentId,
+  onOpenDocument,
+}: {
+  documentId: string
+  /** Open a connected document in the same reader, focused on the passage
+   *  that made it a connection. Omitted where the surface has no reader to
+   *  steer (the legacy documents page), and the rows stay inert there rather
+   *  than offering a navigation that would go nowhere. */
+  onOpenDocument?: (documentId: string, blockId: string) => void
+}) {
   const summary = useDocumentSummary(documentId)
   const connections = useDocumentConnections(documentId)
 
@@ -208,25 +217,54 @@ export function DocumentDetail({ documentId }: { documentId: string }) {
               every document, so a distant match can fall outside that window
             </p>
           ) : (
-            <div className="flex flex-col gap-2">
-              {connections.data.items.map((connection) => (
-                <div key={connection.document_id} className="text-sm">
-                  <div className="flex items-start gap-1.5">
-                    <span className="font-medium">
-                      {connection.title ?? "untitled document"}
-                    </span>
-                    <span className="text-muted-foreground shrink-0 font-mono text-sm">
-                      {connection.score.toFixed(3)}
-                    </span>
-                  </div>
-                  <p className="text-muted-foreground line-clamp-2">
-                    {connection.block_text}
-                  </p>
-                  <p className="text-muted-foreground line-clamp-2 italic">
-                    {connection.other_block_text}
-                  </p>
-                </div>
-              ))}
+            <div className="flex flex-col gap-1">
+              {connections.data.items.map((connection) => {
+                // `other_block_id` is the passage in the OTHER document, which
+                // is the one worth landing on -- `block_id` is the passage in
+                // the document already open.
+                const open = onOpenDocument
+                  ? () =>
+                      onOpenDocument(
+                        connection.document_id,
+                        connection.other_block_id,
+                      )
+                  : undefined
+                const Row = open ? "button" : "div"
+                return (
+                  <Row
+                    key={connection.document_id}
+                    {...(open
+                      ? {
+                          type: "button" as const,
+                          onClick: open,
+                          className:
+                            "group hover:bg-muted/50 focus-visible:ring-primary/40 -mx-1.5 rounded-sm px-1.5 py-1 text-left text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none",
+                        }
+                      : { className: "text-sm" })}
+                  >
+                    <div className="flex items-start gap-1.5">
+                      <span
+                        className={
+                          open
+                            ? "text-primary font-medium underline-offset-2 group-hover:underline"
+                            : "font-medium"
+                        }
+                      >
+                        {connection.title ?? "untitled document"}
+                      </span>
+                      <span className="text-muted-foreground shrink-0 font-mono text-sm">
+                        {connection.score.toFixed(3)}
+                      </span>
+                    </div>
+                    <p className="text-muted-foreground line-clamp-2">
+                      {connection.block_text}
+                    </p>
+                    <p className="text-muted-foreground line-clamp-2 italic">
+                      {connection.other_block_text}
+                    </p>
+                  </Row>
+                )
+              })}
             </div>
           )}
         </CardContent>
@@ -261,6 +299,11 @@ export function DocumentDetail({ documentId }: { documentId: string }) {
  */
 function RelatedMemoriesCard({ documentId }: { documentId: string }) {
   const related = useRelatedMemories(documentId)
+  /** The memory a row opened, read in a dialog rather than by leaving the
+   *  page: this card is a maintenance surface beside an open document, and
+   *  routing away from that document to read one memory loses the context
+   *  that made the memory interesting. */
+  const [peek, setPeek] = useState<string | null>(null)
 
   return (
     <Card elevation="low">
@@ -305,9 +348,14 @@ function RelatedMemoriesCard({ documentId }: { documentId: string }) {
             no rows came back for this document
           </p>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1">
             {related.data.items.map((memory) => (
-              <div key={memory.memory_id} className="text-sm">
+              <button
+                key={memory.memory_id}
+                type="button"
+                onClick={() => setPeek(memory.memory_id)}
+                className="hover:bg-muted/50 focus-visible:ring-primary/40 -mx-1.5 rounded-sm px-1.5 py-1 text-left text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none"
+              >
                 <div className="flex items-start gap-1.5">
                   <span className="line-clamp-2">{memory.content}</span>
                   {memory.status !== "active" && (
@@ -322,11 +370,12 @@ function RelatedMemoriesCard({ documentId }: { documentId: string }) {
                 <p className="text-muted-foreground line-clamp-2">
                   {memory.block_text}
                 </p>
-              </div>
+              </button>
             ))}
           </div>
         )}
       </CardContent>
+      <MemoryPeekDialog memoryId={peek} onClose={() => setPeek(null)} />
     </Card>
   )
 }

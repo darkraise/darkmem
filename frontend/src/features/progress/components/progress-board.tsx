@@ -172,7 +172,7 @@ export function ProgressBoard({ corpus }: { corpus: ProgressCorpus }) {
           </Button>
         )}
 
-        <span className="text-muted-foreground ml-auto text-xs">
+        <span className="text-muted-foreground ml-auto text-sm">
           {visible.length} of {corpus.tasks.length}
         </span>
       </div>
@@ -188,10 +188,10 @@ export function ProgressBoard({ corpus }: { corpus: ProgressCorpus }) {
         <ScrollArea className="min-h-0 flex-1">
           <div className="flex items-start gap-3 pb-3">
             {columns.map(([key, entries]) => (
-              <section key={key} className="w-64 shrink-0">
+              <section key={key} className="w-72 shrink-0">
                 <header className="flex items-center gap-1.5 pb-2">
-                  <h3 className="text-[13px] font-semibold capitalize">{key}</h3>
-                  <Badge variant="secondary" className="h-4 px-1 text-[10px]">
+                  <h3 className="text-sm font-semibold capitalize">{key}</h3>
+                  <Badge variant="secondary" className="h-5 px-1.5 text-xs">
                     {entries.length}
                   </Badge>
                 </header>
@@ -217,7 +217,7 @@ export function ProgressBoard({ corpus }: { corpus: ProgressCorpus }) {
       )}
 
       {corpus.orphanRows.length > 0 && (
-        <p className="text-muted-foreground text-xs">
+        <p className="text-muted-foreground text-sm">
           {corpus.orphanRows.length} ledger row(s) have no task in any epic
           file — the two files have drifted.
         </p>

@@ -1,3 +1,4 @@
+import { Square, SquareCheck } from "lucide-react"
 import { Separator } from "darkraise-ui/components/separator"
 import {
   Table,
@@ -92,6 +93,36 @@ export function BlockView({
         block.properties?.ordered === true ||
         (typeof marker === "string" && /^\d+[.)]$/.test(marker))
       const label = ordered && typeof marker === "string" ? marker : "\u2022"
+
+      // A GFM task item. `remark-gfm` only builds a checkbox inside a real
+      // `<ul>`, and this surface renders one row per block with no list
+      // wrapper, so the `[ ]` / `[x]` reaches the row as literal text. It is
+      // read here rather than left to render as two brackets and a letter.
+      const task = /^\[([ xX])\]\s+/.exec(block.text)
+      if (task) {
+        const checked = task[1] !== " "
+        return (
+          <div className="flex gap-2 text-sm leading-relaxed">
+            {checked ? (
+              <SquareCheck
+                aria-hidden
+                className="text-primary mt-[3px] size-3.5 shrink-0"
+              />
+            ) : (
+              <Square
+                aria-hidden
+                className="text-muted-foreground mt-[3px] size-3.5 shrink-0"
+              />
+            )}
+            <div
+              className={`min-w-0 flex-1 ${checked ? "text-muted-foreground" : ""}`}
+            >
+              <InlineMarkdown>{block.text.slice(task[0].length)}</InlineMarkdown>
+            </div>
+          </div>
+        )
+      }
+
       return (
         <div className="flex gap-2 text-sm leading-relaxed">
           <span

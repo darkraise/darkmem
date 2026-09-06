@@ -108,3 +108,44 @@ describe("DocumentTree expansion", () => {
     expect(screen.getByText("spec.md")).toBeInTheDocument()
   })
 })
+
+describe("DocumentTree — the library's own selection treatment", () => {
+  it("carries no local hover fill, so a selected row keeps its selected fill", () => {
+    // Tailwind flattens `@layer components` and `@layer utilities` into one
+    // sheet with utilities last, so a local `hover:bg-*` on these rows lands
+    // after the library's `.dr-tree-view-item:hover` and wins the tie -- the
+    // tree then hovers in a colour the rest of the app's trees do not use.
+    const { container } = render(
+      <DocumentTree items={ITEMS} selectedId={null} onSelect={vi.fn()} truncated={false} />,
+    )
+    for (const row of container.querySelectorAll(
+      ".dr-tree-view-item, .dr-tree-view-branch-control",
+    )) {
+      expect(row.className).not.toMatch(/hover:bg-/)
+    }
+  })
+
+  it("gives the row its full width, so the highlight is the row and not its text", () => {
+    const { container } = render(
+      <DocumentTree items={ITEMS} selectedId={null} onSelect={vi.fn()} truncated={false} />,
+    )
+    const rows = container.querySelectorAll(
+      ".dr-tree-view-item, .dr-tree-view-branch-control",
+    )
+    expect(rows.length).toBeGreaterThan(0)
+    for (const row of rows) expect(row).toHaveClass("w-full")
+  })
+
+  it("keeps the library's own row padding rather than a local override", () => {
+    // The padding IS the row height, and the selected fill is drawn on the
+    // row -- overriding it to `py-[3px]` made selection read as a thin bar.
+    const { container } = render(
+      <DocumentTree items={ITEMS} selectedId={null} onSelect={vi.fn()} truncated={false} />,
+    )
+    for (const row of container.querySelectorAll(
+      ".dr-tree-view-item, .dr-tree-view-branch-control",
+    )) {
+      expect(row.className).not.toMatch(/\bp[xy]?-/)
+    }
+  })
+})

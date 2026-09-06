@@ -25,6 +25,7 @@ import {
   DocumentDetail,
   type ReaderMode,
 } from "@/features/documents/components/document-actions"
+import { DocumentOutline } from "@/features/documents/components/document-outline"
 import { DocumentReader } from "@/features/documents/components/document-reader"
 import { EditableDocument } from "@/features/documents/components/editable-document"
 import { ProgressBoard } from "@/features/progress/components/progress-board"
@@ -66,7 +67,7 @@ function DocumentCrumbs({ uri }: { uri: string | null }) {
   if (!uri) return null
   const parts = uri.split("/").filter(Boolean)
   return (
-    <Breadcrumb aria-label="document path" className="pb-2">
+    <Breadcrumb aria-label="document path" className="min-w-0">
       <BreadcrumbList>
         {parts.map((part, i) => (
           <BreadcrumbItem key={`${part}-${i}`}>
@@ -288,28 +289,71 @@ export function ProjectWorkspace({
             <ScrollArea className="h-full pl-2">
               {selected ? (
                 <div>
-                  <DocumentCrumbs uri={selected.uri ?? null} />
-                  <DocumentActions
-                    document={selected}
-                    mode={mode}
-                    onModeChange={setMode}
-                    onDeleted={() => {
-                      setSelected(null)
-                      setFocusBlockId(null)
+                  {/* The path and the toolbar ride the scroll: a long
+                      document otherwise scrolls its own identity and every
+                      action off the top, and the reader has to come back up
+                      to answer "which file is this" or to press Edit.
+                      `sticky` resolves against the ScrollArea's own viewport,
+                      which is the element that scrolls here. */}
+                  <div className="bg-background border-border/60 sticky top-0 z-20 mb-3.5 flex h-12 items-center gap-2 border-b">
+                    <DocumentCrumbs uri={selected.uri ?? null} />
+                    <div className="flex-1" />
+                    <DocumentActions
+                      document={selected}
+                      mode={mode}
+                      onModeChange={setMode}
+                      onDeleted={() => {
+                        setSelected(null)
+                        setFocusBlockId(null)
+                        setMode("read")
+                      }}
+                    />
+                  </div>
+
+                  <div className="flex gap-5">
+                    <div className="min-w-0 flex-1">
+                      <Card className="p-4">
+                        {mode === "read" ? (
+                          <DocumentReader
+                            documentId={selected.id}
+                            focusBlockId={focusBlockId}
+                            // The outline is mounted beside the reader, in
+                            // the sticky rail below, so the reader's own rail
+                            // would be a second jump list for one document.
+                            showOutline={false}
+                          />
+                        ) : (
+                          <EditableDocument documentId={selected.id} />
+                        )}
+                      </Card>
+                    </div>
+
+                    {/* `self-start` is what makes this sticky at all: a
+                        stretched flex item is already as tall as the row, so
+                        it has nothing to stick within. `top-12` clears the
+                        header bar above rather than sliding under it. */}
+                    <aside className="sticky top-12 hidden max-h-[70vh] w-56 shrink-0 self-start overflow-y-auto pt-1 xl:block">
+                      <DocumentOutline
+                        documentId={selected.id}
+                        activeBlockId={focusBlockId}
+                        onNavigate={setFocusBlockId}
+                      />
+                    </aside>
+                  </div>
+
+                  {/* Below the split, not inside the body column: these three
+                      cards want the reader pane's full width, and the outline
+                      rail's stick range ends where the document does. */}
+                  <DocumentDetail
+                    documentId={selected.id}
+                    onOpenDocument={(documentId, blockId) => {
+                      const doc = items.find((d) => d.id === documentId)
+                      if (!doc) return
+                      setSelected(doc)
+                      setFocusBlockId(blockId)
                       setMode("read")
                     }}
                   />
-                  <Card className="p-4">
-                    {mode === "read" ? (
-                      <DocumentReader
-                        documentId={selected.id}
-                        focusBlockId={focusBlockId}
-                      />
-                    ) : (
-                      <EditableDocument documentId={selected.id} />
-                    )}
-                  </Card>
-                  <DocumentDetail documentId={selected.id} />
                 </div>
               ) : (
                 <EmptyState

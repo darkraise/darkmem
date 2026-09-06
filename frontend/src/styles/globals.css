@@ -114,6 +114,36 @@
 .md-inline p {
   @apply m-0;
 }
+/* The rest of what GFM and plain markdown can put inside one row. Without
+   these an `==mark==` renders as body text, a `<kbd>` as body text, a
+   footnote reference as an unstyled number, and an inline image at whatever
+   intrinsic size it was authored at -- which in a document pane means a
+   1200px screenshot pushing the whole column sideways. */
+.md-inline mark {
+  @apply bg-warning/25 text-foreground rounded-sm px-0.5;
+}
+.md-inline kbd {
+  @apply border-border bg-muted text-foreground rounded border px-1 py-px font-mono text-[0.8em];
+}
+.md-inline sup,
+.md-inline sub {
+  @apply text-[0.75em];
+}
+.md-inline sup a,
+.md-inline sub a {
+  @apply no-underline;
+}
+.md-inline img {
+  @apply my-0 inline-block max-h-64 max-w-full rounded-md align-middle;
+}
+/* A URL or a symbol path with no spaces has no break opportunity, so one long
+   token in a narrow reader column overflows the row rather than wrapping. */
+.md-inline code {
+  @apply break-words;
+}
+.md-inline abbr {
+  @apply decoration-muted-foreground cursor-help underline decoration-dotted underline-offset-2;
+}
 
 /* Syntax highlighting tokens, written against the app's own theme rather
    than importing one of highlight.js's fixed palettes -- an imported theme

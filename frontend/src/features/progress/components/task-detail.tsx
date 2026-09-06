@@ -35,7 +35,7 @@ export function TaskDetail({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-baseline gap-2">
-            <span className="text-primary font-mono text-sm">{task.id}</span>
+            <span className="text-primary font-mono text-base">{task.id}</span>
             <span>{plainText(task.title)}</span>
           </DialogTitle>
           <DialogDescription>
@@ -75,7 +75,7 @@ export function TaskDetail({
 
             {task.doneWhen.length > 0 && (
               <Field label="The implementer's done-when checklist">
-                <p className="text-muted-foreground mb-2 text-xs leading-relaxed">
+                <p className="text-muted-foreground mb-2 text-sm leading-relaxed">
                   Not a progress measure. These boxes are not maintained —
                   806 unchecked against 17 checked across the whole corpus —
                   so an unchecked item does not mean unfinished work. Status
@@ -111,7 +111,7 @@ export function TaskDetail({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="text-muted-foreground pb-1 font-mono text-[10px] tracking-wide uppercase">
+      <p className="text-muted-foreground pb-1 font-mono text-xs tracking-wide uppercase">
         {label}
       </p>
       {children}

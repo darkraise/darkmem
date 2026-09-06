@@ -15,11 +15,23 @@ import type { DocumentListItem } from "@/hooks/api"
 import { buildUriTree, type UriTreeNode } from "../uri-tree"
 import { fileIcon } from "../file-icons"
 
-/** Dense explorer rows. The library's default padding gives a comfortable
- *  list; a file tree wants a scannable column, so rows are tightened and the
- *  whole row -- not just the text -- is the hit target and the highlight. */
-const ROW =
-  "flex min-w-0 items-center gap-1.5 rounded-sm px-1.5 py-[3px] text-[13px] leading-5"
+/** Explorer rows.
+ *
+ * Deliberately thin: everything the library's own `.dr-tree-view-item` /
+ * `.dr-tree-view-branch-control` rule already sets -- the flex row, the gap,
+ * the padding, the radius, the `bg-accent` hover and the `bg-primary-fill`
+ * selected fill -- is left to it, because a Tailwind utility here lands in
+ * the `utilities` layer and beats the library's `components` layer. That is
+ * what made a *selected* row turn muted the moment the pointer entered it:
+ * a local `hover:bg-muted/60` outranked `[data-selected=true]`'s fill.
+ *
+ * `w-full` is what makes the highlight the whole row rather than the row's
+ * content: these rows sit in a horizontally scrollable pane, where a
+ * stretch-sized `li` stops at the viewport edge and the fill ends mid-row.
+ *
+ * Only the type size is ours, and only because a file browser is read as a
+ * column of names rather than scanned as chrome. */
+const ROW = "w-full min-w-0 text-base"
 
 /** The one hierarchy implementation both document surfaces render.
  *
@@ -105,20 +117,18 @@ export function DocumentTree({
     if (node.children.length > 0) {
       return (
         <TreeViewBranch key={node.path} value={node.path}>
-          <TreeViewBranchControl
-            className={`group hover:bg-muted/60 cursor-pointer ${ROW}`}
-          >
+          <TreeViewBranchControl className={`group ${ROW}`}>
             <TreeViewBranchIndicator className="text-muted-foreground shrink-0" />
             {/* Both icons render and CSS picks one off the control's own
                 `data-state`. Deriving it in JS would need the live open set,
                 which the uncontrolled caller does not have. */}
             <Folder
               aria-hidden
-              className="size-4 shrink-0 text-sky-700/80 group-data-[state=open]:hidden dark:text-sky-300/80"
+              className="size-[18px] shrink-0 text-sky-700/80 group-data-[state=open]:hidden dark:text-sky-300/80"
             />
             <FolderOpen
               aria-hidden
-              className="hidden size-4 shrink-0 text-sky-700/80 group-data-[state=open]:block dark:text-sky-300/80"
+              className="hidden size-[18px] shrink-0 text-sky-700/80 group-data-[state=open]:block dark:text-sky-300/80"
             />
             <TreeViewBranchText className="truncate">
               {node.name}
@@ -127,7 +137,7 @@ export function DocumentTree({
           </TreeViewBranchControl>
           {/* The indent guide: one hairline per level, the way an explorer
               shows which rows belong to which folder. */}
-          <TreeViewBranchContent className="border-border/60 ml-[13px] border-l pl-2">
+          <TreeViewBranchContent className="border-border/60 ml-[17px] border-l pl-2">
             {node.children.map(renderNode)}
           </TreeViewBranchContent>
         </TreeViewBranch>
@@ -139,12 +149,12 @@ export function DocumentTree({
       <TreeViewItem
         key={node.path}
         value={node.document?.id ?? node.path}
-        className={`hover:bg-muted/60 cursor-pointer ${ROW}`}
+        className={ROW}
       >
         {/* Aligns leaf text with a sibling folder's, whose row spends this
             width on the chevron. */}
-        <span aria-hidden className="w-3.5 shrink-0" />
-        <Icon aria-hidden className={`size-4 shrink-0 ${iconTone}`} />
+        <span aria-hidden className="w-[var(--icon-size)] shrink-0" />
+        <Icon aria-hidden className={`size-[18px] shrink-0 ${iconTone}`} />
         <span className="truncate">{node.name}</span>
         {actions}
       </TreeViewItem>
