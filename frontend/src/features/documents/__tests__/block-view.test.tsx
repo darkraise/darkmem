@@ -167,6 +167,9 @@ describe("BlockView — html blocks", () => {
     // file or a capture-scoped key executes script under the operator's session
     // cookie. Live rendering is a separate owner decision behind
     // `rehype-sanitize`; until then this block is source, shown as source.
+    // These two assertions are a real regression guard against someone
+    // adding `rehype-raw` to the markdown pipeline later -- that is the
+    // actual hazard this test exists to catch.
     const { container } = render(
       <BlockView
         block={block({ type: "html", text: "<img src=x onerror=alert(1)>" })}
@@ -174,5 +177,15 @@ describe("BlockView — html blocks", () => {
     )
     expect(container.querySelector("img")).toBeNull()
     expect(container.textContent).toContain("<img src=x onerror=alert(1)>")
+
+    // The escaping alone does not discriminate this branch from the
+    // catch-all `default` branch, which also happens to escape via
+    // `react-markdown`'s own default behaviour (it rewrites unrendered
+    // `raw` nodes to text rather than dropping them). Assert on what
+    // `CodeBlock` actually renders -- a highlighted `<pre><code>` labelled
+    // with the given language -- so this test fails if the `case "html":`
+    // branch is ever removed and rendering falls back to `default`.
+    expect(container.querySelector("pre")).not.toBeNull()
+    expect(container.querySelector("code.language-html")).not.toBeNull()
   })
 })
