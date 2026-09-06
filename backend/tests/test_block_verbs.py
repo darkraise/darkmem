@@ -138,10 +138,12 @@ async def test_first_verb_converts_and_derives_markers(session):
 
 @pytest.mark.asyncio
 async def test_conversion_refuses_a_document_it_cannot_reproduce(session):
-    """Review M-2: an html_block has no block shape, so converting would
-    regenerate the content without it."""
+    """Review M-2: a link reference definition is consumed into the parser's
+    `env` and mints no block, so converting would regenerate the content
+    without it and leave every reference dangling. (Raw HTML used to stand
+    here; it has a block shape since 2026-09-07 and converts now.)"""
     llm, doc_id = await _file(
-        session, "before\n\n<div class='x'>raw</div>\n\nafter\n", "v/d.md",
+        session, "see [the doc][ref]\n\n[ref]: https://example.test\n", "v/d.md",
     )
     rows = await _blocks(session, doc_id)
     with pytest.raises(DocumentNotConvertible):
@@ -149,7 +151,7 @@ async def test_conversion_refuses_a_document_it_cannot_reproduce(session):
 
     doc = await _doc(session, doc_id)
     assert doc["direction"] is None            # nothing converted
-    assert "<div class='x'>raw</div>" in doc["content"]
+    assert "[ref]: https://example.test" in doc["content"]
 
 
 @pytest.mark.asyncio

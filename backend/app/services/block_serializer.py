@@ -194,6 +194,10 @@ def serialize_tree(
         elif block.type == "table_row":
             cells = props.get("cells") or [c.strip() for c in block.text.split("|")]
             span = emit_lines(["| " + " | ".join(cells) + " |"], prefix)
+        elif block.type == "html":
+            # Verbatim. The run is opaque to markdown, so there is nothing to
+            # normalise and any normalisation would change what re-parses.
+            span = emit_lines(block.text.split("\n") if block.text else [""], prefix)
         else:  # paragraph and anything normalised to it
             span = emit_lines(block.text.split("\n") if block.text else [""], prefix)
 
@@ -264,11 +268,16 @@ def derive_markers(
 # Token kinds the block model has no shape for. The parser mints no block for
 # these, so nothing in a tree records them and no serialiser can put them back.
 #
-# `hr` left this set on 2026-09-02 when it became the `divider` block type.
+# `hr` left this set on 2026-09-02 when it became the `divider` block type, and
+# `html_block` on 2026-09-07 when it became `html`. The set is empty rather
+# than deleted: the guard below is the shape that keeps a future construct from
+# converting lossily, and an empty frozenset says "nothing is unrepresentable
+# today", which is a different claim from "we stopped checking".
+#
 # `html_inline` was never reachable here and is not unrepresentable anyway:
 # inline tokens are children of an `inline` token, so a top-level scan never
 # sees one, and the raw tag survives in the paragraph's own text.
-_UNREPRESENTABLE_TOKENS = frozenset({"html_block"})
+_UNREPRESENTABLE_TOKENS: frozenset[str] = frozenset()
 
 
 def reproduces_source(
@@ -323,7 +332,7 @@ def reproduces_source(
     # in its content and no divider row -- and converting it would drop every
     # rule, which is the exact failure this guard exists to prevent. Comparing
     # counts catches a stale tree without needing to know why it is stale.
-    for token_type, block_type in (("hr", "divider"),):
+    for token_type, block_type in (("hr", "divider"), ("html_block", "html")):
         in_source = sum(1 for t in tokens if t.type == token_type)
         in_tree = sum(1 for b in blocks if b.type == block_type)
         if in_source != in_tree:
