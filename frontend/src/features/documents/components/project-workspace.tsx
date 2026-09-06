@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react"
 import { FolderTree, Search } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { Card } from "darkraise-ui/components/card"
@@ -101,6 +108,12 @@ export function ProjectWorkspace({
   /** The block a search hit named. Selecting only the document drops the
    *  reader at the top, losing the section the user actually matched. */
   const [focusBlockId, setFocusBlockId] = useState<string | null>(null)
+  /** The heading the reader is currently under, reported by the body as it
+   *  scrolls. Separate from `focusBlockId`, which is where the reader was
+   *  SENT: one is a standing position, the other a one-off jump, and folding
+   *  them together would make the outline marker jump back to the last click
+   *  every time the document re-rendered. */
+  const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null)
   const [query, setQuery] = useState("")
   // Reading is the default for every selection: the block editor commits on
   // blur, so landing in it makes a stray keystroke a real edit.
@@ -165,6 +178,10 @@ export function ProjectWorkspace({
     const next = Array.from(new Set([...base, ...toReveal]))
     if (next.length !== base.length) handleExpandedChange(next)
   }, [selected, roots, expanded])
+
+  const handleActiveHeading = useCallback((blockId: string | null) => {
+    setActiveHeadingId(blockId)
+  }, [])
 
   const hits = search.data?.items ?? []
 
@@ -325,6 +342,7 @@ export function ProjectWorkspace({
                           <DocumentReader
                             documentId={selected.id}
                             focusBlockId={focusBlockId}
+                            onActiveHeadingChange={handleActiveHeading}
                             // The outline is mounted beside the reader, in
                             // the sticky rail below, so the reader's own rail
                             // would be a second jump list for one document.
@@ -340,10 +358,10 @@ export function ProjectWorkspace({
                         stretched flex item is already as tall as the row, so
                         it has nothing to stick within. `top-12` clears the
                         header bar above rather than sliding under it. */}
-                    <aside className="sticky top-12 hidden w-56 shrink-0 self-start pt-1 xl:block">
+                    <aside className="sticky top-12 hidden max-h-[calc(100vh-16rem)] w-56 shrink-0 flex-col self-start pt-1 xl:flex">
                       <DocumentOutline
                         documentId={selected.id}
-                        activeBlockId={focusBlockId}
+                        activeBlockId={activeHeadingId}
                         onNavigate={setFocusBlockId}
                       />
                     </aside>

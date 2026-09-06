@@ -22,10 +22,23 @@ vi.mock("@/features/documents/components/document-reader", () => ({
   DocumentReader: ({
     documentId,
     focusBlockId,
+    onActiveHeadingChange,
   }: {
     documentId: string
     focusBlockId?: string | null
-  }) => <div>reader:{documentId}:focus={focusBlockId ?? "none"}</div>,
+    onActiveHeadingChange?: (blockId: string | null) => void
+  }) => (
+    <div>
+      reader:{documentId}:focus={focusBlockId ?? "none"}
+      {/* Stands in for the scrollspy. The real reader reports this from a
+          scroll listener over its own body; jsdom performs no layout, so the
+          only thing the workspace's own suite can assert is that whatever the
+          reader reports is what the rail marks. */}
+      <button type="button" onClick={() => onActiveHeadingChange?.("block-h2")}>
+        report heading
+      </button>
+    </div>
+  ),
 }))
 vi.mock("@/features/activity/components/checkpoints-tab", () => ({
   CheckpointsTab: () => <div>checkpoints-tab</div>,
@@ -527,18 +540,22 @@ describe("project workspace — the two scrollbars that used to overlap", () => 
     expect(treeScroller).toHaveClass("pr-3")
   })
 
-  it("gives the outline no scroller of its own", async () => {
+  it("gives the outline no VISIBLE scroller of its own", async () => {
     // A capped, overflowing rail put a SECOND scrollbar a few pixels from the
-    // reader's, each scrolling something different. The timeline renders at
-    // its natural height instead.
+    // reader's, each scrolling something different. The rail still scrolls --
+    // it has to, to follow a long document -- but it drives itself, so its bar
+    // is hidden rather than offered as a control nobody needs to touch.
     mockDocuments({ items: [DOC] })
     renderWorkspace()
     fireEvent.click(await screen.findByText("design.md"))
 
-    const rail = (await screen.findByLabelText("document outline")).closest("aside")
-    expect(rail).not.toBeNull()
-    expect(rail!.className).not.toMatch(/overflow-/)
-    expect(rail!.className).not.toMatch(/max-h-/)
+    const nav = await screen.findByLabelText("document outline")
+    const aside = nav.closest("aside")
+    // Bounded, or the rail has nothing to scroll within.
+    expect(aside!.className).toMatch(/max-h-/)
+    const scroller = nav.querySelector(".overflow-y-auto")
+    expect(scroller).not.toBeNull()
+    expect(scroller!.className).toMatch(/scrollbar-width:none/)
   })
 
   it("renders each heading as a timeline item", async () => {
@@ -549,16 +566,65 @@ describe("project workspace — the two scrollbars that used to overlap", () => 
     await screen.findByLabelText("document outline")
     // Two headings are mocked for this document.
     expect(container.querySelectorAll(".dr-timeline-item")).toHaveLength(2)
-    // The active heading is the one the reader is focused on, and nothing is
-    // focused until a jump is made.
+    // The marker follows the READER's reported position, not the last click:
+    // one is a standing position, the other a one-off jump.
     expect(
       container.querySelectorAll('.dr-timeline-indicator[data-status="current"]'),
     ).toHaveLength(0)
-    fireEvent.click(screen.getByRole("button", { name: "Storage" }))
+    fireEvent.click(screen.getByRole("button", { name: "report heading" }))
     await waitFor(() =>
       expect(
         container.querySelectorAll('.dr-timeline-indicator[data-status="current"]'),
       ).toHaveLength(1),
     )
+    expect(
+      container.querySelector('[data-outline-block="block-h2"]'),
+    ).toHaveClass("text-primary")
+  })
+
+  it("marks nothing when the reader reports no heading", async () => {
+    // A document with no headings has no current section. Leaving the last
+    // one marked would point the rail at a section of the previous document.
+    mockDocuments({ items: [DOC] })
+    const { container } = renderWorkspace()
+    fireEvent.click(await screen.findByText("design.md"))
+    await screen.findByLabelText("document outline")
+
+    fireEvent.click(screen.getByRole("button", { name: "report heading" }))
+    await waitFor(() =>
+      expect(
+        container.querySelectorAll('.dr-timeline-indicator[data-status="current"]'),
+      ).toHaveLength(1),
+    )
+  })
+
+  it("keeps the rail's own scroller invisible", async () => {
+    // The rail is driven by the document's scroll and by clicks, so a bar
+    // here would be a control that never needs using, sitting beside the
+    // reader's bar that does.
+    mockDocuments({ items: [DOC] })
+    const outline = await (async () => {
+      renderWorkspace()
+      fireEvent.click(await screen.findByText("design.md"))
+      return screen.findByLabelText("document outline")
+    })()
+    const scroller = outline.querySelector(".overflow-y-auto")
+    expect(scroller).not.toBeNull()
+    expect(scroller!.className).toMatch(/scrollbar-width:none/)
+  })
+
+  it("differentiates heading levels on more than indentation", async () => {
+    // Indentation alone does not survive truncation: a long h3 and a long h1
+    // both become an ellipsis at the same width.
+    mockDocuments({ items: [DOC] })
+    renderWorkspace()
+    fireEvent.click(await screen.findByText("design.md"))
+    await screen.findByLabelText("document outline")
+
+    // The mocked outline is one level-1 and one level-2 heading.
+    const h1 = screen.getByRole("button", { name: "Design notes" })
+    const h2 = screen.getByRole("button", { name: "Storage" })
+    expect(h1.className).not.toEqual(h2.className)
+    expect(h1.style.paddingLeft).not.toEqual(h2.style.paddingLeft)
   })
 })

@@ -113,6 +113,7 @@ export function DocumentReader({
   documentId,
   focusBlockId = null,
   showOutline = true,
+  onActiveHeadingChange,
 }: {
   documentId: string
   /** Scroll to and mark this block once the body has rendered. A section
@@ -124,6 +125,10 @@ export function DocumentReader({
    *  two rails for one document would be two jump lists disagreeing about
    *  where the reader is. */
   showOutline?: boolean
+  /** The heading the reader is currently under, reported as the body scrolls.
+   *  Lives here rather than in the outline because only this component knows
+   *  which rows are headings and which element scrolls them. */
+  onActiveHeadingChange?: (blockId: string | null) => void
 }) {
   const outline = useDocumentOutline(documentId)
   const blocks = useDocumentBlocks(documentId)
@@ -138,6 +143,66 @@ export function DocumentReader({
     const target = bodyRef.current?.querySelector(`[data-block-id="${focusBlockId}"]`)
     target?.scrollIntoView({ behavior: "smooth", block: "start" })
   }, [focusBlockId, ready, documentId])
+
+  // Which heading the body is currently under, recomputed as it scrolls.
+  //
+  // A geometry read on scroll rather than an IntersectionObserver: the
+  // question is "which heading did we last pass", and that has an answer even
+  // when NO heading is on screen -- a long section scrolls its own heading out
+  // of view, and an observer watching for intersections reports nothing there
+  // and leaves the rail pointing at whatever was last seen entering. The last
+  // heading above the fold is the section you are in, by definition.
+  //
+  // The scroller is the ScrollArea's viewport, not the window, so it is found
+  // from the body rather than assumed.
+  useEffect(() => {
+    if (!ready || !onActiveHeadingChange) return
+    const body = bodyRef.current
+    const root = body?.closest<HTMLElement>("[data-darkraise-scroll-viewport]")
+    if (!body || !root) return
+
+    let frame = 0
+    let last: string | null = null
+    const measure = () => {
+      frame = 0
+      const headings = body.querySelectorAll<HTMLElement>("[data-heading]")
+      // Reported, not skipped: a document with no headings has no current
+      // section, and returning early would leave the rail marking a heading
+      // from the document that was open before this one.
+      if (headings.length === 0) {
+        if (last !== null) {
+          last = null
+          onActiveHeadingChange(null)
+        }
+        return
+      }
+      // Matches the block rows' own `scroll-mt-16`: a heading parked under the
+      // sticky header is one the reader cannot see, so it must not count as
+      // the current one.
+      const line = root.getBoundingClientRect().top + 64
+      let current = headings[0]!.dataset.blockId ?? null
+      for (const heading of headings) {
+        if (heading.getBoundingClientRect().top > line) break
+        current = heading.dataset.blockId ?? current
+      }
+      if (current !== last) {
+        last = current
+        onActiveHeadingChange(current)
+      }
+    }
+    const onScroll = () => {
+      // Coalesced to one read per frame: the handler is pure geometry and a
+      // scroll fires far more often than the rail can usefully move.
+      if (frame === 0) frame = requestAnimationFrame(measure)
+    }
+
+    measure()
+    root.addEventListener("scroll", onScroll, { passive: true })
+    return () => {
+      root.removeEventListener("scroll", onScroll)
+      if (frame !== 0) cancelAnimationFrame(frame)
+    }
+  }, [ready, documentId, onActiveHeadingChange])
 
   if (blocks.isLoading) {
     return (
@@ -200,6 +265,9 @@ export function DocumentReader({
               id={block.block_id}
               data-block-id={block.block_id}
               data-depth={depth}
+              // The scrollspy's selector. A data attribute rather than a
+              // class so a styling change cannot silently unhook it.
+              data-heading={block.type === "heading" ? "" : undefined}
               style={depth > 0 ? { paddingLeft: `${depth * 18}px` } : undefined}
               className={[
                 // The reader's own header bar is sticky over this column, so
