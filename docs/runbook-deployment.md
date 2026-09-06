@@ -98,8 +98,9 @@ have to be. Rehearsed against a copy of production on the dev database
 (2026-08-23, the `llm_usage` cutover).
 
 **The precondition, and it is the whole safety argument.** Diff the baseline
-against the deployed revision and confirm there are **no deletions and no
-modifications** — new `CREATE TABLE` / `CREATE INDEX` statements only:
+against the deployed revision and confirm there are **no deletions, and no change
+to any existing object** — the new statements must be whole new tables and
+indexes, standing alone:
 
 ```bash
 git diff <deployed-ref>...HEAD -- backend/migrations/versions/0001_baseline.py
@@ -108,6 +109,28 @@ git diff <deployed-ref>...HEAD -- backend/migrations/versions/0001_baseline.py
 If that diff removes or changes a single line, stop and use the drop. An altered
 column, a widened constraint or a dropped index cannot be reached this way, and a
 partially applied baseline is worse than a rebuilt one.
+
+**A pure-insertion diff does NOT establish the precondition, and reading it as
+one is the trap.** A column added *inside* an existing `CREATE TABLE` is a
+**modification** of that table even though the diff shows only `+` lines — the
+baseline is regenerated in place, so a new column arrives as an inserted line in
+a statement that already existed. Step 1's `pg_dump --table=<new_table>` emits
+only the tables you name, so it never carries such a column, nor an index or
+constraint declared against an existing table. The result lands the new tables
+and **silently misses everything added to the old ones**, which is the drift this
+whole section exists to prevent. Read the diff for what each hunk is *inside*,
+never for its `+`/`−` counts. Worked example: the notes-foundation baseline diff
+is +86/−0 and still fails this test — three of its nine new objects
+(`projects.kind`, `documents.pinned_at`, `blocks.search_vector`) are columns
+inside existing tables, and `ux_projects_one_personal`,
+`ix_documents_project_updated` and the `search_vector` GIN index are declared
+against tables that already exist.
+
+**A stored generated column added to a populated table is a full table
+rewrite**, on either path — Postgres must compute and write the value for every
+existing row, holding an `ACCESS EXCLUSIVE` lock throughout. Budget the downtime
+against the table's real size, and do not assume "just a column" is instant
+because other `ADD COLUMN` forms are.
 
 **Never transcribe the DDL by hand.** Derive it from the same code path a fresh
 install runs, so what lands on production is what `alembic upgrade head` builds:
