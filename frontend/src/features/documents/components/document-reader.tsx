@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react"
+import { memo, useEffect, useMemo, useRef } from "react"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { useDocumentBlocks, useDocumentOutline } from "@/hooks/api"
 import type { BlockRow } from "@/hooks/api"
@@ -109,7 +109,17 @@ export function blockSpacing(
   return "mt-3"
 }
 
-export function DocumentReader({
+/** Memoised, because the artifacts workspace holds the reader's *reported*
+ *  heading as its own state and renders the rail beside it.
+ *
+ * Every heading the body scrolls past is a `setState` in that parent, so
+ * without this the reader re-rendered its whole block list once per crossing
+ * -- measured on a 120-heading, 1200-block document as a ~1.4s frozen frame
+ * per heading, which is the rail visibly lagging the scroll. Its props are
+ * stable across that state change by construction: the callback is the
+ * workspace's own `useCallback`, and nothing else about the reader depends on
+ * where the reader currently is. */
+export const DocumentReader = memo(function DocumentReader({
   documentId,
   focusBlockId = null,
   showOutline = true,
@@ -204,6 +214,19 @@ export function DocumentReader({
     }
   }, [ready, documentId, onActiveHeadingChange])
 
+  const rows = blocks.data?.blocks ?? []
+  // Three full passes over the block list, and none of them depends on
+  // anything but the list itself -- so they run once per document rather than
+  // once per render.
+  const { depths, rowsByTable, body } = useMemo(() => {
+    const { rowsByTable: byTable, adopted } = adoptTableRows(rows)
+    return {
+      depths: listDepths(rows),
+      rowsByTable: byTable,
+      body: rows.filter((block) => !adopted.has(block.block_id)),
+    }
+  }, [rows])
+
   if (blocks.isLoading) {
     return (
       <div className="space-y-2">
@@ -220,10 +243,6 @@ export function DocumentReader({
     )
   }
 
-  const rows = blocks.data?.blocks ?? []
-  const depths = listDepths(rows)
-  const { rowsByTable, adopted } = adoptTableRows(rows)
-  const body = rows.filter((block) => !adopted.has(block.block_id))
   if (rows.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">
@@ -292,4 +311,4 @@ export function DocumentReader({
       </div>
     </div>
   )
-}
+})

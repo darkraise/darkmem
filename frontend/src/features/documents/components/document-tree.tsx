@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react"
+import { memo, useMemo, type CSSProperties, type ReactNode } from "react"
 import { ChevronRight, FileText, Folder, FolderOpen } from "lucide-react"
 import {
   TreeView,
@@ -60,14 +60,17 @@ const INDENT = "calc(var(--icon-size) + 0.375rem)"
  *
  * Absolutely positioned rather than laid out: the row is a flex line with a
  * gap, so a guide block placed in flow picked that gap up and drifted away
- * from the icon it belongs in front of. Out of flow, each hairline lands
- * exactly on the centre of the icon column its owner occupies and nothing
- * about the row's own layout changes.
+ * from the column it belongs to. Out of flow, each hairline lands exactly on
+ * the centre of its owner's CHEVRON and nothing about the row's own layout
+ * changes: the line descends from the expander that opened the branch, which
+ * is what a reader follows back up to find the parent.
  *
  * `left` is measured from the row's left edge (the row is the containing
  * block), which is the same edge at every depth because every row is the full
- * pane width -- so an ancestor at depth `level` has its icon centred at
- * `(level + 1) * indent + icon / 2` inside any of its descendants' rows.
+ * pane width -- so an ancestor at depth `level` has its chevron centred at
+ * `level * indent + icon / 2` inside any of its descendants' rows. Every
+ * guide therefore sits one whole column left of the row's own chevron and
+ * crosses nothing.
  */
 function IndentGuides({ depth }: { depth: number }) {
   if (depth === 0) return null
@@ -79,7 +82,7 @@ function IndentGuides({ depth }: { depth: number }) {
           aria-hidden
           className="border-border/60 pointer-events-none absolute inset-y-0 border-l group-data-[selected=true]:opacity-0"
           style={{
-            left: `calc(${level + 1} * ${INDENT} + var(--icon-size) / 2)`,
+            left: `calc(${level} * ${INDENT} + var(--icon-size) / 2)`,
           }}
         />
       ))}
@@ -100,7 +103,7 @@ function IndentGuides({ depth }: { depth: number }) {
  * traversal) and re-implementing that to change its looks would be the trade
  * the UI rule warns against.
  */
-export function DocumentTree({
+export const DocumentTree = memo(function DocumentTree({
   items,
   selectedId,
   onSelect,
@@ -122,8 +125,11 @@ export function DocumentTree({
   expanded?: string[]
   onExpandedChange?: (paths: string[]) => void
 }) {
-  const roots = buildUriTree(items)
-  const byId = new Map(items.map((d) => [d.id, d]))
+  // Rebuilt per document list, not per render: the artifacts workspace holds
+  // the reader's reported heading as its own state, so a scroll through a
+  // long document re-renders this pane once per heading crossed.
+  const roots = useMemo(() => buildUriTree(items), [items])
+  const byId = useMemo(() => new Map(items.map((d) => [d.id, d])), [items])
 
   const controlled = expanded !== undefined
   const treeExpansionProps = controlled
@@ -249,4 +255,4 @@ export function DocumentTree({
       </TreeView>
     </div>
   )
-}
+})

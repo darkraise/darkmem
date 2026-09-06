@@ -198,14 +198,15 @@ describe("DocumentTree — VSCode-shaped rows", () => {
     }
   })
 
-  it("puts every guide on an icon column's centre", () => {
-    // One indent step is one icon column, so an ancestor at depth `level` has
-    // its folder icon centred at `(level + 1) * step + icon / 2` inside every
-    // descendant row -- which is also where that descendant's own chevron
-    // column sits. jsdom performs no layout, so the invariant is asserted on
-    // the expression that produces it: guide, indent and icon width all have
-    // to be written in terms of one `--icon-size`, because a hardcoded pixel
-    // icon re-breaks the alignment wherever `--icon-scale` is not its default.
+  it("puts every guide on its owner's chevron centre", () => {
+    // A guide descends from the expander that opened the branch: an ancestor
+    // at depth `level` has its chevron centred at `level * step + icon / 2`
+    // inside every descendant row, which is one whole column left of that
+    // row's own chevron, so no guide crosses a glyph. jsdom performs no
+    // layout, so the invariant is asserted on the expression that produces
+    // it: guide, indent and icon width all have to be written in terms of one
+    // `--icon-size`, because a hardcoded pixel icon re-breaks the alignment
+    // wherever `--icon-scale` is not its default.
     const { container } = render(
       <DocumentTree items={ITEMS} selectedId={null} onSelect={vi.fn()} truncated={false} />,
     )
@@ -228,5 +229,15 @@ describe("DocumentTree — VSCode-shaped rows", () => {
     )) {
       expect(svg.getAttribute("class")).toContain("size-[var(--icon-size)]")
     }
+  })
+
+  it("is memoised, so a scroll cannot re-render the whole pane", () => {
+    // The artifacts workspace holds the reader's reported heading as its own
+    // state, so every heading a long document scrolls past re-renders this
+    // pane. Rebuilding the uri tree over a few hundred documents at that rate
+    // is what the rail's lag was made of.
+    expect((DocumentTree as unknown as { $$typeof: symbol }).$$typeof).toBe(
+      Symbol.for("react.memo"),
+    )
   })
 })

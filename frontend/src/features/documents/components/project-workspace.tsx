@@ -183,6 +183,13 @@ export function ProjectWorkspace({
     setActiveHeadingId(blockId)
   }, [])
 
+  // Stable, so the memoised tree is not re-rendered by a heading crossing.
+  const handleSelectDocument = useCallback((doc: DocumentListItem) => {
+    setSelected(doc)
+    setFocusBlockId(null)
+    setMode("read")
+  }, [])
+
   const hits = search.data?.items ?? []
 
   return (
@@ -292,11 +299,7 @@ export function ProjectWorkspace({
                 <DocumentTree
                   items={items}
                   selectedId={selected?.id ?? null}
-                  onSelect={(doc) => {
-                    setSelected(doc)
-                    setFocusBlockId(null)
-                    setMode("read")
-                  }}
+                  onSelect={handleSelectDocument}
                   truncated={documents.data?.truncated ?? false}
                   expanded={effectiveExpanded}
                   onExpandedChange={handleExpandedChange}
