@@ -28,7 +28,7 @@ from app.services.events import reconcile_event_partitions
 from app.services.llm import LLMOrchestrator
 from app.services.llm_quirks import models_probe
 from app.services.pipeline import ProcessingPipeline
-from app.services.project_registry import backfill as backfill_projects
+from app.services.project_registry import backfill as backfill_projects, seed_personal_project
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +132,7 @@ async def lifespan(app: FastAPI):
             # between boots.
             try:
                 async with async_session_factory() as session:
+                    await seed_personal_project(session)
                     inserted = await backfill_projects(session)
                     await session.commit()
                 logger.info("projects registry backfilled: %d row(s)", inserted)
