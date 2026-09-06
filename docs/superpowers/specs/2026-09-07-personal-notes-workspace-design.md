@@ -3,7 +3,8 @@
 Date: 2026-09-07
 Status: design. Supersedes AS §8 of
 `2026-08-31-project-artifact-store-design.md` (the personal-workspace section)
-and retakes four of its rulings, each recorded in §14. The seven increments of
+and retakes four of its rulings, each recorded in §14. Revised 2026-09-07 after
+a second adversarial pass (2 blockers, 9 majors, all applied). The increments of
 §12 are separately plannable; none is planned yet. No code is written by this
 document.
 
@@ -23,12 +24,21 @@ nesting decisions, so the ring was not the decider and no judge pass was spent
 ranking it. The scouts' drafts became evidence for *retaking* AS §8.3, and the
 shipped design is a graft of all three: scout C's block-first verb reuse and
 single-table storage, scout A's CodeMirror substrate, scout B's observation that
-the artifact-store spec already ruled here. One advisory pass (Fable) reviewed
-the result and produced ten findings, all folded in where they land: the inert
+the artifact-store spec already ruled here. Two advisory passes (Fable) reviewed the
+result. The first produced ten findings, folded in where they land: the inert
 catalogue column (§1), the missing metadata verb (§4), the compare-and-set that
 AS §8.4 assumed but no verb carries (§5), the tag sweep that would delete note
 tags hourly (§7), and the conversion refusal that would make imported notes
-uneditable (§12).
+uneditable (§12). The second reviewed the written spec and returned two
+blockers and nine majors, all applied: the block verbs take parsed fields
+rather than source and nothing in the tree writes `uri` at all (§4), a `put`
+racing a rename reopens the M-3 overwrite (§4.3), the merge seam destroys a
+list item's children and the insert seam renumbers its run (§3), the
+read-only worker cannot both raise and answer (§8), the `html` type carries an
+XSS decision (§12), the seed belongs at boot rather than in the wizard (§1),
+increment 1 is four lanes with a forced order (§12), and two claims of mine
+were simply false — `update_document` writes `title` but not `uri`, and the
+SDK generator never sees this epic (Invariant check).
 
 ## Decision summary
 
@@ -40,8 +50,8 @@ named beside it below.
 | 1 | Space | One `documents` table; notes live in a minted `notes` project carrying an enforced `projects.kind='personal'` singleton | one column + partial unique index | §1 |
 | 2 | Nesting | Derived from the `uri` path, unchanged from §8.3 | none | §2 |
 | 3 | Editor | Per-block CodeMirror 6 over each block's markdown source; markdown stays both the storage and the edit format | none | §3 |
-| 4 | Write path | The four shipped block verbs, plus one new `document_update` metadata verb on both doors | none | §4 |
-| 5 | Concurrency | `expected_hash` on all four block verbs; a serialised client mutation queue | none | §5 |
+| 4 | Write path | The four shipped block verbs + a server-side `source` mode on `block_update`; one new `document_update` metadata verb in two shapes on both doors | none | §4 |
+| 5 | Concurrency | `expected_hash` on all four block verbs; `include_hash` on the MCP blocks read; a serialised client mutation queue | none | §5 |
 | 6 | Links | `document_links`, extracted inside `_mutate` after serialisation; unresolved links persist as stubs | new table | §6 |
 | 7 | Tags | `document_tags` against the existing `tags` table, with the orphan sweep and histogram widened | new table | §7 |
 | 8 | Search | `blocks.search_vector` fused with the cosine arm under RRF inside the block channel | one generated column + GIN | §8 |
@@ -91,13 +101,27 @@ surface"; see §14.
 `session_checkpoints` (`app/api/routes/projects.py`, `_UNION_SQL`, whose
 docstring says "Derived, never a registry") and never reads `projects` at all.
 So the catalogue must LEFT JOIN `projects` for `kind`, `ProjectSummary` must
-carry it, and the union must not drop a personal project holding zero
-documents. The project switcher then filters the personal project out of the
-project workspace, where it does not belong.
+carry it, and `SELECT name FROM projects WHERE kind = 'personal'` joins the
+`names` CTE so an empty personal project still appears. Both project-shaped
+surfaces then filter it out: the project switcher and `/documents`, neither of
+which should list the notes space as an ordinary project.
 
-Seeding sites, all three of which must move together: the setup wizard's
-finalize step (which seeds no projects today), the deployment runbook's
-re-seed list, and a test fixture.
+**The seed goes at boot, not in the wizard.** `project_registry.register` runs
+on every capture and `backfill_projects` runs at boot, both
+`INSERT ... ON CONFLICT DO NOTHING` — so a memory captured into `notes` before
+any seed mints the row with `kind` defaulting to `'project'`, and a later
+DO-NOTHING seed would leave it wrong forever. The seed therefore sits beside
+`backfill_projects` as
+`INSERT INTO projects (name, kind) VALUES ('notes','personal')
+ON CONFLICT (name) DO UPDATE SET kind = 'personal'`, which is idempotent,
+self-heals that race, survives a regeneration without a runbook step, and is
+skipped under `DARKMEM_READ_ONLY` like every other boot writer. A test fixture
+mints it for the suite. The wizard and the runbook re-seed list are **not**
+sites for it.
+
+**`kind` gates no write, and that is accepted.** An agent naming
+`project='notes'` on a capture lands a memory in the personal space; nothing
+refuses it. The column separates surfaces, not permissions.
 
 ## 2. Nesting, unchanged
 
@@ -147,10 +171,22 @@ for bold/italic/link plus a selection-triggered format bar.
 
 Cross-block behaviour is hand-wired, and this is the largest unbounded item in
 the design: Up/Down at a block edge moves focus, Enter at the end is
-`block_insert`, Backspace at the start merges into the previous block
-(`block_update` then `block_delete`), Tab/Shift-Tab re-parents a list item via
-`block_move`. Notion carries the same seams; it is a known quantity of work,
-not a research problem, but it is where an estimate will move.
+`block_insert`, Backspace at the start merges into the previous block,
+Tab/Shift-Tab re-parents a list item via `block_move`. Notion carries the same
+seams; it is a known quantity of work, not a research problem, but it is where
+an estimate will move.
+
+**Two of those seams do not survive contact with the shipped verbs, and both
+are specified here rather than left to the implementer.** `delete_block`
+removes the target's whole `_subtree` (`block_verbs.py`, `_subtree`), so
+"merge = `block_update` then `block_delete`" destroys a merged list item's
+children. Merge therefore takes a `keep_children` flag on `block_delete`, which
+re-parents the doomed block's children onto its parent in the same `apply`
+pass; a per-child `block_move` loop is rejected because it is N transactions
+where one will do. And Enter after an ordered list item must copy
+`properties.marker` onto the new block: `_same_list_run` in the serialiser
+splits a run whose markers differ, so an inserted item that falls back to
+`DEFAULT_LIST_MARKER` silently renumbers the list above it.
 
 **Stated ceiling of this design, so it is not discovered later:** tables are
 edited as markdown source, not as a grid. There are no column layouts, no
@@ -168,46 +204,122 @@ are authoritative, `content` and `char_span` are regenerated by the serialiser
 on each mutation, and `document_put` against a note is refused exactly as it is
 for any block-first document.
 
-**The gap AS §8 did not see: the block verbs cannot rename, move or pin.**
-`_WRITE_DOC` (`app/services/block_verbs.py`) updates only `content`,
-`content_hash` and the `ingest_direction` flag. The sole writer of
-`documents.title` and `documents.uri` is `update_document`
-(`app/repositories/documents.py`), reachable only through `put_document`, which
-refuses block-first rows. As shipped, a converted note can never be renamed,
-moved or pinned — three of v1's stated requirements.
+### 4.1 The verbs take parsed fields, not source — so the server parses
 
-**Decision: one new verb, `document_update`, on both doors**, taking
-`title`, `uri`, `pinned`, `tags` — all of it document metadata, so it is one
-verb rather than four. Every field is optional and an absent field leaves its
-column untouched; a present `tags` **replaces** the document's tag set rather
-than merging into it, because a merge-only verb cannot remove a tag and would
-need a second verb to do it. On a `uri` change it also re-resolves `document_links`
-stubs (§6) and rewrites `target_uri` for links pointing at the old path, in the
-same transaction. The verb takes either one document id or the list of a
-subtree's ids, so a folder rename is one call and one transaction rather than N
-racing ones.
+`update_block` takes `(block_id, text, type?, properties?)` where `text` is
+**marker-stripped**, and `BlockUpdateRequest` mirrors it. The shipped editor
+closes that gap in the browser with `promote(source)`
+(`frontend/src/features/documents/components/block-editor.tsx`), whose own
+comment calls it "a real duplication" of `block_serializer`. It handles
+heading, divider, list, quote, code and paragraph only — no `table`,
+`table_row`, no `html`, no nested prefix (a served nested item's `source`
+carries its indent, because `emit_lines` records `start` before writing the
+prefix), and a paragraph source containing a blank line is written back as one
+block whose text re-parses as two, so the tree and `content` diverge with no
+guard, because `reproduces_source` never re-runs on a block-first row.
 
-This also closes a gap agents have today: nothing lets an agent re-file a
+Per-block CodeMirror inherits every one of those holes, so the design closes
+them at the server instead:
+
+**`block_update` gains a `source` mode**, mutually exclusive with
+`text`/`type`/`properties`. The server strips the block's own container prefix,
+runs `parse_markdown` on the remainder, and applies the result **only when it
+yields exactly one top-level draft**; anything else is refused with
+`source_not_one_block` (422 on REST, an envelope from the tool). A split is
+therefore an explicit `block_insert` by the editor, never an accident of
+typing. `promote` is retired with its duplication.
+
+### 4.2 Nothing in the tree can rename a document
+
+`_UPDATE_DOCUMENT` (`app/repositories/documents.py`) writes `title`,
+`source_type`, `content_hash`, `content` and `properties` — **and no `uri`**;
+`upsert_by_uri` writes `title` too, on insert and on conflict. So `uri` has no
+writer at all after a row is inserted, and `title` has two. A converted note can
+never be renamed, moved or pinned: three of v1's stated requirements.
+
+**Decision: one metadata verb in two shapes.**
+
+- `PATCH /api/v1/documents/{document_id}` → 200, body `{title?, uri?, pinned?,
+  tags?}`. Every field is optional; an absent field leaves its column
+  untouched. A present `tags` **replaces** the document's tag set rather than
+  merging, because a merge-only verb cannot remove a tag. `pinned: true` writes
+  `now()`, `false` writes NULL. `project` is deliberately not a field — moving a
+  document between spaces is not a rename, and allowing it here would let one
+  call cross the boundary AS §1 rests on.
+- `POST /api/v1/documents/rename`, body `{project, uri_prefix,
+  new_uri_prefix}`, for a subtree. The server selects
+  `uri = :prefix OR uri LIKE :prefix || '/%'` and rewrites all of them in one
+  transaction — the earlier draft said the verb takes "the list of a subtree's
+  ids" alongside a single `uri`, which is unimplementable, since N rows need N
+  distinct paths.
+- MCP `document_update` carries both shapes as modes of one tool.
+
+`PATCH` rather than `PUT` follows `docs/api-rest-conventions.md`; the
+per-route status map in `test_rest_conformance.py` gains both rows.
+
+**Refusals, both defined rather than left to the constraint.** A rename onto an
+occupied path violates `ux_documents_project_uri` and answers `uri_conflict`
+(409 / envelope). A rename of a block-first document is permitted — it touches
+no block — but `document_put` at the vacated path is not (below).
+
+**`document_updated` lands in `EVENT_TYPES` before the emitter ships**; the
+vocabulary holds only `document_filed` and `blocks_edited` today, and widening
+is taxonomy-first.
+
+**Lock order, because a subtree rename and a link rewrite touch two tables.**
+`SELECT id FROM documents WHERE ... ORDER BY id FOR UPDATE` — the same lock
+`_mutate` takes, in a deterministic order so two subtree renames cannot
+deadlock — then `UPDATE documents`, then `document_links`: rewrite `target_uri`
+by `target_document_id` for resolved links, then re-resolve stubs whose
+`target_uri` now matches a live document.
+
+### 4.3 The race the new verb reopens
+
+`put_document` locks by `(project, uri)`, and **at a path with no row there is
+nothing to lock**. A `put` aimed at a path that a rename is concurrently
+vacating passes the direction check against nothing, then `upsert_by_uri`'s
+`ON CONFLICT DO UPDATE` blocks on the rename's uncommitted unique entry and
+fires against the renamed block-first row — writing `properties` wholesale,
+erasing `ingest_direction`, and stripping the editor's blocks. This is review
+finding M-3's race, reopened by the new verb.
+
+The direction refusal therefore **rides the upsert** rather than preceding it:
+`DO UPDATE ... WHERE documents.properties->>'ingest_direction' IS DISTINCT FROM
+'blocks'`, with rowcount 0 raising `DocumentIsBlockFirst`. A check before the
+statement is check-then-act, which is the shape that race is made of.
+
+This verb also closes a gap agents have today: nothing lets an agent re-file a
 renamed artifact.
 
 ## 5. Concurrency
 
-AS §8.4 says last-write-wins per block "under AS §5.3's compare-and-set". **That is
-not true of the block verbs today** — `_WRITE_DOC` carries no predicate. The
+AS §8.4 says last-write-wins per block "under AS §5.3's compare-and-set". **That
+is not true of the block verbs today** — `_WRITE_DOC` carries no predicate. The
 design makes it true:
 
 - `expected_hash` on all four verbs, not two: `insert` and `move` rewrite
-  `content_hash` as much as `update` does.
-- `content_hash` served on `GET /documents/{id}` and on the blocks read, which
-  `DocumentBlocksResponse` does not carry today — without it the editor has no
-  hash for its first edit, the same gap AS §5.3 found for `put`.
-- A **serialised client mutation queue**. The shipped editor
-  (`frontend/src/features/documents/components/block-editor.tsx`) fires a
-  commit and an insert synchronously; with a precondition the second call would
-  carry a stale hash and 409 against its own predecessor.
+  `content_hash` as much as `update` does. On `DELETE` it is a query parameter,
+  not a body field.
+- `_DOC_META` must select `content_hash`; it does not today, and the compare
+  has nothing to read otherwise.
+- `content_hash` served on the blocks read. REST's `DocumentBlocksResponse`
+  gains the field additively. **MCP needs a shape decision, not a field**:
+  `document_get` answers a bare JSON array, and an array cannot carry a hash, so
+  it gains `include_hash` returning `{content_hash, blocks}` — the same
+  object-under-a-flag shape `include_content` already established, recorded in
+  the parity table beside it. Without this an MCP agent cannot precondition its
+  first edit.
+- A **serialised client mutation queue**. The shipped editor fires a commit and
+  an insert synchronously; with a precondition the second call would carry a
+  stale hash and 409 against its own predecessor.
 
 The lock in `_mutate` is the first statement of the transaction, so a compare
 placed after it is CAS-equivalent and needs no restructuring.
+
+**Undo.** CodeMirror's history is per instance, so an insert, a delete or a
+move has no client-side undo at all — the revision history of §10 is the only
+recovery path for those. Stated here because a user will expect Ctrl+Z to
+cross a block boundary and it will not.
 
 ## 6. Links
 
@@ -219,6 +331,14 @@ ON DELETE SET NULL, target_uri TEXT NOT NULL, link_text TEXT)`.
 `target_document_id` is what makes a link to a note that does not exist yet a
 first-class stub — it renders as an offer to create that note, which is how both
 products behave.
+
+**Link grammar, defined so two implementers cannot disagree.** `[[target]]`
+and `[[target|display]]` take a **project-relative uri with the `.md` suffix
+omitted**; `target_uri` stores the canonical uri, suffix included. Titles are
+display text only and never a resolution key — Obsidian resolves basenames, and
+an implementer reading "autocomplete note titles" would have built that.
+Extraction covers `paragraph`, `list`, `quote` and `heading` text and never
+`code` or `html` blocks, where `[[` is source, not a link.
 
 **Resolution is scoped to the linking document's own project.** A note may not
 link into a project's artifacts and an artifact may not link into the notes
@@ -245,9 +365,13 @@ enforces it.
 
 ## 7. Tags
 
-`document_tags (document_id, tag_id, PRIMARY KEY (document_id, tag_id))`
-against the existing generic `tags (id SERIAL, name UNIQUE, category)` table,
-mirroring `memory_tags`.
+`document_tags (document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
+tag_id INTEGER REFERENCES tags(id) ON DELETE CASCADE,
+PRIMARY KEY (document_id, tag_id))` against the existing generic
+`tags (id SERIAL, name UNIQUE, category)` table, mirroring `memory_tags`.
+
+Tag writes go through `set_tags`' existing writer path rather than a second
+one, so `tag_category(name)` and `TAG_NAME_MAX_LENGTH` apply on both doors.
 
 **Two shipped behaviours must widen in the same change or notes lose their
 tags hourly.** `RelationalRepository.prune_orphans`
@@ -262,12 +386,14 @@ would undercount. Both widen to consider `document_tags`.
 `blocks.search_vector tsvector` (generated, GIN-indexed) fused with the existing
 cosine arm under RRF inside `BlockQueryService.search`, importing `RRF_K` from
 `app/services/rank_fusion.py` — the AST guards fail the build on a second RRF
-constant bound anywhere else.
+constant bound anywhere else. The generated expression blanks `code` and `html`
+blocks: their text is source, and indexing it makes every note that mentions a
+function name a hit for it.
 
-This retakes AS §7's "no keyword/RRF arm for block search now", which named itself
-the sanctioned later refinement if search quality was measured wanting. A daily
-driver makes it wanted. The arm stays inside the block channel and touches no
-composition path, so the three structural scans are unaffected.
+This retakes AS §7's "no keyword/RRF arm for block search now", which named
+itself the sanctioned later refinement if search quality was measured wanting. A
+daily driver makes it wanted. The arm stays inside the block channel and touches
+no composition path, so the three structural scans are unaffected.
 
 Three consequences, decided here rather than left implicit:
 
@@ -275,20 +401,26 @@ Three consequences, decided here rather than left implicit:
   meaning. Folding the fused value into `score` is the trap `CLAUDE.md` already
   warns memory-search consumers about. `test_the_channel_ranks_its_own_corpus`
   asserts ordering by `score` and moves to the new key.
-- **An embedder failure still raises rather than degrading to keyword-only.**
-  `test_an_embedder_failure_raises_rather_than_reading_as_no_match` pins this,
-  and a search that quietly answers on one arm is indistinguishable from a
-  complete one.
-- **The read-only worker's refusal of document search expires.** It refuses
-  because the channel is cosine-only with no keyword arm (`app/api/deps.py`);
-  once the arm exists the worker answers on it, as memory and code search
-  already do there. Lifting that refusal is part of this change, not a
-  follow-up.
+- **An embedder failure still raises** with the read-only flag off:
+  `test_an_embedder_failure_raises_rather_than_reading_as_no_match` pins it, and
+  a search that quietly answers on one arm is indistinguishable from a complete
+  one.
+- **The read-only worker skips the embed rather than attempting it.** Those two
+  sentences would contradict each other if the worker *tried* the arm, so it
+  follows the shipped pattern: `hybrid_search` already sets `vector=None` under
+  `settings.read_only`, and `BlockQueryService.search` does the same, running
+  keyword-only and reporting `semantic_ran=False` on both doors' envelopes — the
+  articles-channel precedent. `refuse_when_read_only` then comes off the
+  document-search route **only**; the QA and reembed routes keep it, because
+  they dial out.
 
-Benchmark before committing to a generated column: every `_PLACE` rewrite is
-non-HOT because `order_index` is indexed, so each edit inserts fresh GIN
-entries for every block in the document. If `EXPLAIN` shows that dominating, a
-trigger that fires only on a `text` change replaces the generated column.
+Benchmark before committing to a generated column: `_PLACE` rewrites every
+block row of the document on each mutation, so each edit produces a new row
+version per block and fresh GIN entries with it (HOT applies per row, and only
+rows whose indexed columns did not change keep it — the bloat concern stands
+either way, since autovacuum does not run on this host). If `EXPLAIN` shows that
+dominating, a trigger firing only on a `text` change replaces the generated
+column.
 
 ## 9. Attachments
 
@@ -309,17 +441,29 @@ whether the local retention drops again.
 TEXT NOT NULL, content_hash TEXT NOT NULL, created_at)` — a **full `content`
 snapshot** per commit, not a block delta, because the serialiser already
 produces exactly that string on every mutation and a delta format would be a
-second representation to keep faithful. AS §5.4 deferred version history and said
-to decide it alongside anything riding a regeneration; this is that
-regeneration, and retrofitting it later costs another drop-and-recreate. A
-daily driver where a bad edit an hour ago is unrecoverable is not one.
+second representation to keep faithful. The snapshot is the **post-image**: the
+state the document reached, so restoring a revision is a write of exactly what
+is stored rather than a reconstruction.
+
+AS §5.4 deferred version history and said to decide it alongside anything
+riding a regeneration; this is that regeneration, and retrofitting it later
+costs another drop-and-recreate. A daily driver where a bad edit an hour ago is
+unrecoverable is not one. It is also the only undo an insert, delete or move
+has (§5).
+
+`document_put`'s UPDATED path writes a revision too. A wholesale overwrite of a
+document is exactly the "bad overwrite" AS §5.4 named, and it is the case a
+per-block history would otherwise miss entirely.
 
 Two bounds ride with it, for the reason §9 gives about dumps. Consecutive
 commits inside a coalescing window (default 5 minutes) **replace** the window's
 snapshot rather than appending — a per-keystroke-batch editor would otherwise
-write a full copy of the note every few seconds. And a retention bound (default
-50 revisions per document, swept by the existing `job_run_cleanup` sibling
-pattern) keeps an actively edited note from dominating the nightly dump.
+write a full copy of the note every few seconds. And retention (default 50
+revisions per document) is trimmed **in the same statement, inside `_mutate`'s
+savepoint** — deliberately not a job: a new `JobRegistry` entry would move the
+24-job roster that `test_main_registers_the_full_direct_job_roster` derives from
+`main.py`, and `CLAUDE.md`'s count with it, for work that belongs in the
+transaction that caused it.
 
 ## 11. Surfaces, doors and parity
 
@@ -341,8 +485,11 @@ whether a verb generates or labels anything:
 | Recents / pinned list | REST | human picker state, under the `project.catalog` precedent |
 | Attachment upload | REST | a browser paste path; an agent files content, not binaries |
 
-Every single-door row needs its reason written into the parity table, under 80
-characters and free of schedule words, or `test_door_parity` fails.
+Every single-door row needs its reason written into the parity table — **at
+least** 80 characters (`_MIN_REASON_CHARS` is a floor, not a ceiling: the test
+refuses a reason too short to be one) and free of schedule words — or
+`test_door_parity` fails. `include_hash` (§5) is recorded in the same table
+beside `include_content`.
 
 One new MCP tool moves the enumeration counts by one: `TOOL_SCOPES` (it is a
 `capture`-scope writer), the prompt roster, `CLAUDE.md`'s 12/25/38 counts, and
@@ -350,38 +497,72 @@ the SDK regeneration.
 
 ## 12. Sequencing
 
-1. **Backend foundation.** Baseline regen (`projects.kind` + singleton index,
-   `document_links`, `document_tags`, `blocks.search_vector`,
-   `documents.pinned_at`, `document_revisions`, an index on
-   `documents (project, updated_at)` for recents — none exists);
-   the `notes` project seeded at setup and in the runbook; `document_update`
-   on both doors; `expected_hash` on all four verbs; `content_hash` served on
-   document reads; the tag sweep and histogram widened; the catalogue joined to
-   `kind`; **and the `html` block type**.
+Increment 1 is four lanes with a forced order, not one increment:
+
+- **1a — the `html` block type** (code-only: `BLOCK_TYPES`, the parser's
+  `html_block` branch, a serialiser branch, and the `reproduces_source` count
+  check). Must precede 1b's re-import.
+- **1b — the baseline regeneration**, all six schema objects in one
+  drop-and-recreate under one owner (`projects.kind` + singleton index,
+  `document_links`, `document_tags`, `blocks.search_vector`,
+  `documents.pinned_at`, `document_revisions`, and an index on
+  `documents (project, updated_at)` for recents — none exists), plus the
+  catalogue join, the boot seed, and then the corpus re-import.
+- **1c — the compare-and-set lane** (`expected_hash` on all four verbs,
+  `_DOC_META` selecting `content_hash`, `content_hash` served on both doors'
+  blocks reads including MCP's `include_hash`). Independent of 1b.
+- **1d — the tag sweep and histogram widened.** Must precede 1e.
+- **1e — `document_update`** in both shapes, `document_updated` in
+  `EVENT_TYPES`, the rename refusals, and the upsert-riding direction predicate
+  of §4.3.
+
+Two ordering constraints, each with a concrete failure if inverted. **1a before
+1b's re-import**, or every html-bearing document files with no `html` row and
+the count check then refuses to convert it, needing
+`scripts/reparse_documents.py --force` to recover. **1d before 1e**, or the
+first `document_tags` row written by the new verb is deleted within the hour by
+`prune_orphans`, which removes any tag no `memory_tags` row references.
+
+Then:
+
 2. **Workspace shell.** `/notes` route, tree with drag-to-move, create, rename,
    delete, pin. Usable as a notes app; editing is still the shipped textarea.
 3. **The editor.** Per-block CM6, live preview, slash menu, inline formatting,
-   checkboxes, callouts, cross-block keys, drag, the mutation queue.
+   checkboxes, callouts, the cross-block seams of §3, drag, the mutation queue,
+   and `block_update`'s `source` mode with `promote` retired.
 4. **Links.** `[[` autocomplete, extraction, backlinks panel, unlinked
    mentions, stub creation.
 5. **Finding.** The RRF keyword arm, Ctrl+K, tag browser, recents/pinned, the
-   read-only worker's refusal lifted.
+   read-only worker's document-search refusal lifted.
 6. **Attachments.** Table, upload route, serving path, paste handler, dump
    sizing.
 7. **Graph.** Over `document_links`, reusing the existing renderers.
 
-**Why the `html` block type is in increment 1 rather than beside the import
-work.** `block_serializer.reproduces_source` refuses conversion on any raw HTML
-block or link-reference definition, and `_mutate` raises
-`DocumentNotConvertible` — so an imported Obsidian or Notion note carrying
-`<img>`, `<details>` or an HTML comment would be readable and permanently
-uneditable, because the documented escape (`document_put`) is refused on
-block-first rows and the notes UI exposes no other path. Widening the block type
-is taxonomy-first and code-side only, but `CLAUDE.md` records that widening a
-block type **obliges a re-import rather than a redeploy** — adding `divider`
-left 201 filed documents carrying `---` with no divider row. Doing it before a
-corpus exists makes that free. The serialiser's guard is not relaxed; it gets a
-block type to be faithful with.
+**Why `html` leads, and what it is not.** `block_serializer.reproduces_source`
+refuses conversion on any raw HTML block or link-reference definition, and
+`_mutate` raises `DocumentNotConvertible` — so an imported Obsidian or Notion
+note carrying `<img>`, `<details>` or an HTML comment would be readable and
+permanently uneditable, because the documented escape (`document_put`) is
+refused on block-first rows and the notes UI exposes no other path. The
+serialiser's guard is **not** relaxed; it gets a block type to be faithful
+with, which means `_UNREPRESENTABLE_TOKENS` drops `html_block` *and* the
+count-check tuple gains `("html_block", "html")` — without the second half a
+document filed before the widening converts lossily instead of refusing.
+
+The earlier claim that this is free "before any corpus exists" was wrong:
+production already holds the artifacts corpus (446 files). What makes it free
+is that 1b re-imports that corpus anyway, and `CLAUDE.md` records why the
+re-import is the thing that matters — widening a block type obliges a
+re-import rather than a redeploy, as adding `divider` left 201 filed documents
+carrying `---` with no divider row.
+
+**`html` blocks render as escaped source**, through the `code` path with
+language `html`. The SPA's markdown pipeline carries no `rehype-raw`, so raw
+HTML is escaped today; an implementer making `<img>` and `<details>` "work"
+would add it, and that is the first place an imported file or a capture-scoped
+key executes script under the operator's session cookie. Live HTML rendering is
+a separate owner decision behind `rehype-sanitize`, not a detail of this
+increment.
 
 ## 13. What NOT to build
 
@@ -424,38 +605,56 @@ superseded by `/notes` as a consequence of (2).
 
 ## 15. Risks
 
-- **Cross-block editing seams** (merge, split, selection) are the unbounded
-  part of increment 3.
+- **The cross-block seams are specified, not solved.** §3 fixes the two that
+  the shipped verbs actively break (subtree deletion on merge, marker loss on
+  insert); selection across blocks, and undo across a block boundary, remain
+  genuinely absent. Increment 3 is where an estimate moves.
 - **Every commit is O(document) in row placement**, because `order_index` is a
-  global reading order and `_PLACE` rewrites every block row — AS §8.1's own
-  2026-09-01 correction. Acceptable for personal notes; a fractional index
-  stays an optimisation to reach for only on measurement.
+  global reading order and `_PLACE` rewrites every block row of the document —
+  AS §8.1's own 2026-09-01 correction. Every one of those is a new row version,
+  and autovacuum does not run on this host, so the bloat is real even though
+  the correctness is not in question. Acceptable for personal notes; a
+  fractional index stays an optimisation to reach for only on measurement.
 - **Frontend invalidation is currently corpus-wide**: every block verb
   invalidates `documentsAll`, which re-stitches up to 25 pages of the project.
   Dropped for `update` and `move` in increment 3.
 - **Enumeration churn.** One new verb on two doors trips the parity test, the
-  content-surface scoping test, REST conformance, `TOOL_SCOPES`, the MCP auth
-  and prompt-roster tests, `CLAUDE.md`'s counts and the SDK generator. Only the
-  full gate catches all of them.
+  content-surface scoping test, REST conformance's status map, `TOOL_SCOPES`,
+  the MCP auth test, `EVENT_TYPES`, `CLAUDE.md`'s counts and the block-type
+  "eight" in `normalize_block_type`'s docstring. Only the full gate catches all
+  of them.
 - **The import ceiling.** Even with an `html` block type, the conversion guard
   is deliberately strict; a construct nobody anticipated still refuses rather
-  than converting lossily. That is the correct failure, but it is a failure the
-  UI must explain.
+  than converting lossily. That is the correct failure, but the UI must explain
+  it rather than showing a dead editor.
+- **A stale-tree conversion is the quiet one.** A document filed before a block
+  type existed carries the construct in its content and no row for it, and the
+  count check is the only thing standing between that and silent loss. It is
+  load-bearing in 1a, not a detail.
 
 ## Invariant check
 
 - **Inv 13**: no workers added; the editor is a browser client.
 - **Inv 15**: nothing here reaches a dream job from capture or retrieval, and
   no note becomes a fact — the vault-minting closure is untouched.
-- **Inv 17**: `document_update` and the new REST fields flow through
-  `sdks/generate.py`; the generator refuses a verb the contract does not serve.
-- **Inv 23**: the "full list" surfaces this touches — `BLOCK_TYPES`, the
-  two-door parity table, `TOOL_SCOPES`, `BLOCK_CHANNEL_MODULES` and
-  `CLAUDE.md`'s tool counts — are edited in the increments that change their
-  referents, not after.
+- **Inv 17**: **the SDK is untouched.** An earlier draft claimed
+  `document_update` "flows through `sdks/generate.py`"; it does not —
+  `VERBS` binds three verbs to `/api/v1/memories` routes only, so the generator
+  emits nothing for this epic and `make generate` stays in the gate as a
+  no-op check. The same correction applies to the MCP prompt roster, whose test
+  matches `memory_*|code_*|list_repos` and so never sees `document_update`.
+- **Inv 23**: the "full list" surfaces this touches are edited in the
+  increments that change their referents, not after — `BLOCK_TYPES` and
+  `normalize_block_type`'s "eight", `EVENT_TYPES`, the two-door parity table
+  (including the `include_hash` row and the backlinks/recents/graph route
+  list), `TOOL_SCOPES`, `BLOCK_CHANNEL_MODULES`,
+  `content_surfaces.REST_ROUTES_WITHOUT_MEMORY_CONTENT`, the
+  `test_rest_conformance` status map, and `CLAUDE.md`'s tool counts.
 - **Doc 16 firewall**: the keyword arm lives inside the block channel; the link
   and tag modules read blocks and write their own tables, reaching no
   `KnowledgeTripleRepository` method outside the four-method read allowlist.
-- **Taxonomy-first**: `html` lands in `BLOCK_TYPES` before the parser emits it.
+- **Taxonomy-first**: `html` lands in `BLOCK_TYPES` before the parser emits it;
+  `document_updated` lands in `EVENT_TYPES` before the verb emits it.
 - **Schema freeze**: unaffected. The freeze is still an event — after v1.0 and
   the owner's visual review — and this regeneration precedes it.
+
