@@ -159,3 +159,20 @@ describe("BlockView — GFM task items", () => {
     expect(screen.getByText("[note] not a task")).toBeTruthy()
   })
 })
+
+describe("BlockView — html blocks", () => {
+  it("renders an html block as escaped source, never as live markup", () => {
+    // The markdown pipeline carries no `rehype-raw`, so HTML is escaped today.
+    // Making <img>/<details> "work" by adding it is the first place an imported
+    // file or a capture-scoped key executes script under the operator's session
+    // cookie. Live rendering is a separate owner decision behind
+    // `rehype-sanitize`; until then this block is source, shown as source.
+    const { container } = render(
+      <BlockView
+        block={block({ type: "html", text: "<img src=x onerror=alert(1)>" })}
+      />,
+    )
+    expect(container.querySelector("img")).toBeNull()
+    expect(container.textContent).toContain("<img src=x onerror=alert(1)>")
+  })
+})
