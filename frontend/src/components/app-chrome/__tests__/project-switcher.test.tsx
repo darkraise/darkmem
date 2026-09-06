@@ -192,4 +192,24 @@ describe("ProjectSwitcher", () => {
     expect(useProjectStore.getState().activeProject).toBe("production")
     expect(useContextStore.getState().declared).toBeNull()
   })
+
+  it("omits the personal notes space from the scope list", async () => {
+    // The notes space has its own route and its own workspace. Offering it
+    // here would open it in a surface built for project artifacts.
+    mockUseProjects.mockReturnValue({
+      data: [
+        { name: "darkmem", kind: "project", memory_count: 3,
+          document_count: 0, checkpoint_count: 0,
+          last_checkpoint_at: null, last_event_day: null },
+        { name: "notes", kind: "personal", memory_count: 0,
+          document_count: 12, checkpoint_count: 0,
+          last_checkpoint_at: null, last_event_day: null },
+      ],
+      isLoading: false,
+    })
+    renderSwitcher()
+    await userEvent.click(screen.getByRole("button", { name: /project scope/i }))
+    expect(screen.getByText("darkmem")).toBeInTheDocument()
+    expect(screen.queryByText("notes")).toBeNull()
+  })
 })

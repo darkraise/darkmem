@@ -4,6 +4,9 @@ import { DEMO } from "@/lib/demo-flag"
 
 export interface ProjectSummary {
   name: string
+  /** `personal` is the notes workspace's own scope. It has its own route, so
+   *  project-shaped pickers filter it out rather than offering it. */
+  kind: "project" | "personal"
   memory_count: number
   document_count: number
   checkpoint_count: number
