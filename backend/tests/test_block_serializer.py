@@ -83,16 +83,19 @@ ROUND_TRIP_SOURCES = [
     "para one\n\n---\n\npara two",
     "# H\n\n---\n\nbody",
     "- one\n- two\n\n---\n\nafter",
+    # Raw HTML round-trips since `html` joined the vocabulary (2026-09-07).
+    # A fixture here is what tests parser-to-serialiser agreement: the block
+    # text is whatever the parser stored, not a string this file chose.
+    "before\n\n<div class='x'>raw</div>\n\nafter",
 ]
 
-# Shapes the parser drops on the floor: `hr` and `html_block` mint no block
-# (document_parsers.py) and markdown-it consumes link-reference definitions
-# into `env`. NOTHING can serialise them back, so a document containing one
-# must REFUSE conversion rather than silently lose it (review M-2).
+# Shapes the parser drops on the floor. Only ONE kind is left: markdown-it
+# consumes link-reference definitions into `env`, minting no token and no
+# block, so nothing can serialise them back and a document containing one
+# must REFUSE conversion rather than silently lose it (review M-2). `hr`
+# left this list on 2026-09-02 as `divider` and raw HTML on 2026-09-07 as
+# `html` -- both now have block shapes and both round-trip above.
 NON_CONVERTIBLE_SOURCES = [
-    # Raw HTML left this list on 2026-09-07: the parser mints an `html` block
-    # for it and the serialiser emits it verbatim, so it converts now. Link
-    # reference definitions are consumed into `env` and mint no block at all.
     "see [the doc][ref]\n\n[ref]: https://example.test",  # link reference
 ]
 
