@@ -6,6 +6,32 @@ better" log, not release notes for strangers. The ladder is
 
 ## Unreleased
 
+### Added
+
+- **An `html` block type, so a document containing raw HTML can be edited at
+  all.** The parser minted no block for an HTML run, which meant regenerating
+  the document's source from its tree would silently delete it — so the
+  conversion guard refused, permanently, every document containing one. Raw
+  HTML now parses, serialises verbatim and round-trips, and the guard's
+  unrepresentable set is down to the link-reference definition alone. It
+  renders as **escaped source, never live markup**: the markdown pipeline
+  carries no `rehype-raw`, and adding one to make `<img>`/`<details>` render is
+  the first place an imported file would execute script under the operator's
+  session cookie.
+- **Six schema objects for the notes workspace**, landed in the baseline ahead
+  of the surfaces that use them: `projects.kind` (with a partial unique index
+  admitting exactly one `personal` space), `documents.pinned_at`,
+  `blocks.search_vector` (a stored generated column, blanked for `code` and
+  `html` because that text is source rather than prose, GIN-indexed), and the
+  `document_links`, `document_tags` and `document_revisions` tables. Wiki-link
+  targets are nullable on purpose — `[[a-page]]` pointing at a note that does
+  not exist yet is a first-class stub, not an error.
+- **The personal notes space is seeded at boot**, not by the setup wizard: a
+  capture naming `notes` before any seed ran would mint the row with `kind`
+  defaulting to `project`, so the seed repairs an existing row rather than
+  only inserting. It is served on the catalogue and kept out of project
+  pickers — a space, not a project.
+
 ### Removed
 
 - **The on-demand proposition lift and the block-to-fact bridge.** A pricing
@@ -20,6 +46,24 @@ better" log, not release notes for strangers. The ladder is
   block to a fact any more. `related-memories` and `document-connections`
   are re-based onto cosine similarity over block vectors instead of the
   retired entity basis.
+
+### Notes
+
+- **Deploying this is destructive.** The baseline is regenerated in place, so
+  the revision id does not move and `alembic upgrade head` will report a clean
+  migration against a database that does not have these objects —
+  `schema_guard` is what catches it and refuses to start. Drop and recreate the
+  database, then **re-seed `admin_password_hash`, all eight
+  `llm_purpose_configs` rows and the two `llm_providers` rows**; the
+  `verification` row especially, since `llm_seed.py` does not reproduce it at
+  the qualified judge identity. The additive path in
+  `docs/runbook-deployment.md` is **not** available here despite this diff
+  being +86/−0: three of the nine objects are columns added inside existing
+  `CREATE TABLE` statements, which that procedure's `pg_dump --table=` step
+  does not emit. That runbook's precondition has been restated to say so.
+- **`blocks.search_vector` is a stored generated column on a populated table**,
+  so adding it rewrites every row under an `ACCESS EXCLUSIVE` lock. On the
+  recreate path this is paid at import time rather than as downtime.
 
 ## v1.6.0 — 2026-09-04
 
