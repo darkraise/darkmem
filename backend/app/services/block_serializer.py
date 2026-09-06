@@ -296,10 +296,18 @@ def reproduces_source(
     document containing a table for a difference that loses nothing.
 
     The question is whether the source contains a construct the block model
-    cannot represent. Those are detected in the token stream directly, which
-    is both stricter and looser than a text diff in the right places: a
-    dropped construct re-parses to a tree identical to the original's, so
-    comparing trees would miss it, while whitespace never trips it.
+    cannot represent. Detection is at the token level rather than by text
+    diff, which is both stricter and looser in the right places: a dropped
+    construct re-parses to a tree identical to the original's, so comparing
+    trees would miss it, while whitespace never trips it.
+
+    Today the only construct that trips it is the **link reference
+    definition**, caught through ``env["references"]`` -- it is consumed into
+    the parser env and mints no token at all. The token-stream scan over
+    ``_UNREPRESENTABLE_TOKENS`` matches nothing, because that set is
+    deliberately empty: every construct the parser emits a token for now has
+    a block type. The branch stands ready for a future construct rather than
+    being dead code, and its comment says why.
 
     **Do not relax this by removing a token kind to make more documents
     convert.** The way to convert more documents is to make the parser

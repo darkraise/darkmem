@@ -29,11 +29,18 @@ BACKEND = Path(__file__).resolve().parent.parent
 # `tests/test_documents.py` exercises both tables against real rows, which is
 # strictly stronger than asserting they stay empty.
 #
-# The set is now EMPTY, so every test below that loops over it quantifies over
-# nothing. As with INERT_COLUMNS, each of those skips with a reason rather than
-# passing silently: a green tick on a vacuous loop reads exactly like a green
-# tick on a real one. The scaffold is kept for the next table that lands inert.
-INERT_TABLES: dict[str, str] = {}
+# The set went EMPTY at that point and is populated again by the notes
+# workspace's three satellite tables, which the regenerated baseline creates
+# with no writer anywhere. Their first writers are later lanes of the notes
+# epic, which carry no task ids yet -- the value is the lane rather than a
+# number so it cannot read as a task that exists. `docs/planning/
+# baseline-schema-inventory.md` §7 is NOT yet updated for these three; that is
+# recorded as owed rather than done.
+INERT_TABLES: dict[str, str] = {
+    "document_links": "the wiki-link lane (extractor + backlink read)",
+    "document_tags": "the note-tagging lane",
+    "document_revisions": "the version-history lane",
+}
 # repositories.index_debt is no longer here: T1.39, its declared first writer
 # (schema inventory §7), landed the re-trace drain that writes it.
 # entities.repo_ids and entity_relations.repo_ids are no longer here: T2.27,
