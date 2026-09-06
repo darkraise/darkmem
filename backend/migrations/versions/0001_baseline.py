@@ -315,10 +315,19 @@ def _pass_two() -> None:
         CREATE TABLE projects (
             name         TEXT PRIMARY KEY,
             display_name TEXT,
+            kind         TEXT NOT NULL DEFAULT 'project'
+                         CHECK (kind IN ('project', 'personal')),
             properties   JSONB NOT NULL DEFAULT '{}'::jsonb,
             created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
         )
         """
+    )
+
+    # Exactly one personal space, enforced rather than conventional: this is
+    # the whole reason `kind` is a column and not a `properties` label.
+    op.execute(
+        "CREATE UNIQUE INDEX ux_projects_one_personal ON projects (kind) "
+        "WHERE kind = 'personal'"
     )
 
     # ------------------------------------------------------------------
@@ -1291,6 +1300,7 @@ def _pass_two() -> None:
             content_hash TEXT,
             content      TEXT,
             properties   JSONB,
+            pinned_at    TIMESTAMPTZ,
             created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
             updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
             CONSTRAINT documents_pkey PRIMARY KEY (id)
@@ -1303,6 +1313,12 @@ def _pass_two() -> None:
     op.execute(
         "CREATE UNIQUE INDEX ux_documents_project_uri ON documents (project, uri) "
         "WHERE uri IS NOT NULL"
+    )
+    # The notes sidebar reads recents as (project, updated_at DESC); without
+    # this it is a seq scan over the whole corpus.
+    op.execute(
+        "CREATE INDEX ix_documents_project_updated "
+        "ON documents (project, updated_at DESC)"
     )
     op.execute(
         "CREATE TRIGGER documents_touch_updated_at BEFORE UPDATE "
@@ -1324,12 +1340,79 @@ def _pass_two() -> None:
             text        TEXT,
             properties  JSONB,
             char_span   INT4RANGE,
+            search_vector TSVECTOR GENERATED ALWAYS AS (
+                to_tsvector(
+                    'english',
+                    CASE WHEN type IN ('code', 'html') THEN '' ELSE coalesce(text, '') END
+                )
+            ) STORED,
             CONSTRAINT blocks_pkey PRIMARY KEY (id)
         )
         """
     )
     op.execute("CREATE INDEX ix_blocks_document_order ON blocks (document_id, order_index)")
     op.execute("CREATE INDEX ix_blocks_parent ON blocks (parent_id)")
+    op.execute("CREATE INDEX ix_blocks_search_vector ON blocks USING GIN (search_vector)")
+
+    # Wiki-links. `target_document_id` is nullable on purpose: `[[a-page]]`
+    # pointing at a note that does not exist yet is a first-class stub, and
+    # ON DELETE SET NULL turns a deleted target back into one rather than
+    # erasing the backlink.
+    op.execute(
+        """
+        CREATE TABLE document_links (
+            id                 UUID NOT NULL,
+            source_document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+            source_block_id    UUID REFERENCES blocks(id) ON DELETE CASCADE,
+            target_document_id UUID REFERENCES documents(id) ON DELETE SET NULL,
+            target_uri         TEXT NOT NULL,
+            link_text          TEXT,
+            CONSTRAINT document_links_pkey PRIMARY KEY (id)
+        )
+        """
+    )
+    op.execute(
+        "CREATE INDEX ix_document_links_target ON document_links (target_document_id)"
+    )
+    op.execute(
+        "CREATE INDEX ix_document_links_target_uri ON document_links (target_uri)"
+    )
+    op.execute(
+        "CREATE INDEX ix_document_links_source ON document_links (source_document_id)"
+    )
+
+    # Documents reuse the generic `tags` registry rather than minting a second
+    # vocabulary, exactly as `memory_tags` does.
+    op.execute(
+        """
+        CREATE TABLE document_tags (
+            document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+            tag_id      INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+            CONSTRAINT document_tags_pkey PRIMARY KEY (document_id, tag_id)
+        )
+        """
+    )
+    op.execute("CREATE INDEX ix_document_tags_tag ON document_tags (tag_id)")
+
+    # Version history: a full post-image snapshot per commit, not a delta --
+    # the serialiser already produces exactly this string on every mutation,
+    # and a delta format would be a second representation to keep faithful.
+    op.execute(
+        """
+        CREATE TABLE document_revisions (
+            id           UUID NOT NULL,
+            document_id  UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+            content      TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+            CONSTRAINT document_revisions_pkey PRIMARY KEY (id)
+        )
+        """
+    )
+    op.execute(
+        "CREATE INDEX ix_document_revisions_document "
+        "ON document_revisions (document_id, created_at DESC)"
+    )
 
     # ------------------------------------------------------------------
     # events — the durable, append-only operation stream (doc 04 §8.1)
@@ -1541,6 +1624,9 @@ def downgrade() -> None:
         "fact_access_stats",
         "fact_sources",
         "knowledge_triples",
+        "document_revisions",
+        "document_tags",
+        "document_links",
         "blocks",
         "documents",
         "memory_buffer",
