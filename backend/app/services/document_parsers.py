@@ -276,10 +276,22 @@ def parse_markdown(text: str) -> list[BlockDraft]:
             i += 1
             continue
 
-        # html_block — not in the committed block-type set (doc 16 §9);
-        # skipped rather than minting a meaningless block. Tables were named
-        # here until the 2026-08-31 spec §4.1 change, and `hr` until
-        # 2026-09-02; both are parsed structurally above now.
+        # html_block — a stored type since the notes workspace needed imported
+        # documents to convert (2026-09-07 spec §12). The content is opaque:
+        # markdown-it hands back the raw run, and re-emitting it between blank
+        # lines re-tokenises to the same single token, so the round-trip holds
+        # for every CommonMark HTML-block kind.
+        if tok.type == "html_block":
+            drafts.append({
+                "text": tok.content.rstrip("\n"),
+                "type": "html",
+                "parent": parent(),
+                "properties": None,
+                "char_span": _span(tok.map, offsets, body),
+            })
+            i += 1
+            continue
+
         i += 1
 
     return [
