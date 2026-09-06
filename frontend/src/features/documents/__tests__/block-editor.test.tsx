@@ -52,6 +52,29 @@ describe("promote — mirrors the serialiser's emit rules", () => {
   it("reads a quote", () => {
     expect(promote("> quoted")).toEqual({ type: "quote", text: "quoted" })
   })
+
+  it("keeps a stored html block html at the fallback", () => {
+    // An html block's source IS its text, so no marker rule matches it and
+    // the fallback would demote it. `search_vector` blanks source types, so a
+    // demotion indexes raw markup as prose.
+    expect(promote("<div>x</div>", "html")).toEqual({
+      type: "html", text: "<div>x</div>",
+    })
+  })
+
+  it("does not infer html from a leading angle bracket", () => {
+    // CommonMark type-7: `<b>bold</b> text` is a paragraph. The stored type is
+    // preserved, never guessed, so this stays a paragraph.
+    expect(promote("<b>bold</b> text", "paragraph")).toEqual({
+      type: "paragraph", text: "<b>bold</b> text",
+    })
+  })
+
+  it("still promotes a stored html block that gains a marker", () => {
+    expect(promote("# Foo", "html")).toEqual({
+      type: "heading", text: "Foo", properties: { level: 1 },
+    })
+  })
 })
 
 describe("BlockEditor", () => {
@@ -83,6 +106,29 @@ describe("BlockEditor", () => {
       expect.objectContaining({
         blockId: "b1", type: "heading", text: "Promoted",
         properties: { level: 1 },
+      }),
+      expect.anything(),
+    )
+  })
+
+  it("commits an edited html block as html, not paragraph", async () => {
+    render(
+      <BlockEditor
+        documentId="d1"
+        blocks={[
+          block({ type: "html", text: "<div>x</div>", source: "<div>x</div>" }),
+        ]}
+      />,
+    )
+    await userEvent.click(screen.getByRole("button"))
+    const area = screen.getByRole("textbox")
+    await userEvent.clear(area)
+    await userEvent.type(area, "<div>y</div>")
+    await userEvent.tab()
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        blockId: "b1", type: "html", text: "<div>y</div>",
       }),
       expect.anything(),
     )
