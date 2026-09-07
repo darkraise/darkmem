@@ -769,7 +769,6 @@ describe("project workspace — the tree-management capability", () => {
 
     expect(screen.queryByRole("tab", { name: /progress/i })).toBeNull()
     expect(screen.queryByRole("tab", { name: /artifacts/i })).toBeNull()
-    expect(screen.queryByText("checkpoints-tab")).toBeNull()
     expect(contentReads()).toHaveLength(0)
   })
 
@@ -778,8 +777,33 @@ describe("project workspace — the tree-management capability", () => {
     renderWorkspace({ treeManagement: true })
 
     expect(await screen.findByText(/nothing selected/i)).toBeInTheDocument()
-    expect(screen.queryByText(/planning\/progress\.md/)).toBeNull()
     expect(screen.queryByText(/pick a document/i)).toBeNull()
+  })
+
+  // Rendered at `tab="progress"` on purpose. darkraise-ui's TabsContent wraps
+  // its panel in `Presence` with `present: isSelected`, and an unselected panel
+  // renders null on the first pass -- so at `tab="artifacts"` the progress
+  // panel is absent whether or not the gate exists, and asserting its absence
+  // there proves nothing. The OFF half is what makes the ON half mean anything.
+  it("renders the progress panel when tree management is off", async () => {
+    mockDocuments({ items: [DOC] })
+    renderWorkspace({ tab: "progress" })
+
+    expect(await screen.findByText("checkpoints-tab")).toBeInTheDocument()
+    expect(screen.getByText(/planning\/progress\.md/)).toBeInTheDocument()
+  })
+
+  it("renders no progress panel when tree management is on", async () => {
+    mockDocuments({ items: [DOC] })
+    renderWorkspace({ tab: "progress", treeManagement: true })
+    // Nothing else is on screen to wait for: with no progress panel and the
+    // artifacts panel unselected, this state renders empty. `/notes` never
+    // enters it -- it passes `tab="artifacts"` -- so waiting on the document
+    // read is what lets the render settle before the absence is asserted.
+    await waitFor(() => expect(apiFetch).toHaveBeenCalled())
+
+    expect(screen.queryByText("checkpoints-tab")).toBeNull()
+    expect(screen.queryByText(/planning\/progress\.md/)).toBeNull()
   })
 
   it("threads an empty-state action into the tree", async () => {
@@ -793,5 +817,15 @@ describe("project workspace — the tree-management capability", () => {
     expect(
       await screen.findByRole("button", { name: /new note/i }),
     ).toBeInTheDocument()
+  })
+
+  it("ignores an empty-state action while tree management is off", async () => {
+    // The corpus browser has no create verb, so the type must not permit
+    // "tree management off, but a create button in the empty tree".
+    mockDocuments({ items: [] })
+    renderWorkspace({ treeEmptyAction: <button type="button">new note</button> })
+
+    expect(await screen.findByText(/no documents filed/i)).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /new note/i })).toBeNull()
   })
 })

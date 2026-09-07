@@ -50,6 +50,10 @@ import {
   type DocumentListItem,
 } from "@/hooks/api"
 
+/** Hoisted rather than a `[]` literal per render: a fresh array defeats the
+ *  `useMemo`s inside `useProgressCorpus`. */
+const NO_DOCUMENTS: DocumentListItem[] = []
+
 export const TAB_VALUES = ["artifacts", "progress"] as const
 export type WorkspaceTab = (typeof TAB_VALUES)[number]
 
@@ -140,7 +144,7 @@ export function ProjectWorkspace({
   // Fed an empty list under tree management, which is what makes the hook
   // inert: its content read is `enabled` on a non-empty id list, so the
   // ledger scan the Progress tab needs costs nothing where there is no tab.
-  const corpus = useProgressCorpus(treeManagement ? [] : items)
+  const corpus = useProgressCorpus(treeManagement ? NO_DOCUMENTS : items)
 
   const roots = useMemo(() => buildUriTree(items), [items])
   // Lazy initialiser rather than an effect: the route mounts a fresh
@@ -329,7 +333,7 @@ export function ProjectWorkspace({
                   truncated={documents.data?.truncated ?? false}
                   expanded={effectiveExpanded}
                   onExpandedChange={handleExpandedChange}
-                  emptyAction={treeEmptyAction}
+                  emptyAction={treeManagement ? treeEmptyAction : undefined}
                 />
               )}
             </ScrollArea>
@@ -418,7 +422,7 @@ export function ProjectWorkspace({
                   title="Nothing selected"
                   description={
                     treeManagement
-                      ? "Pick a note from the tree to read it, or start a new one."
+                      ? "Pick a note from the tree to read it."
                       : "Pick a document from the tree to read it."
                   }
                 />
