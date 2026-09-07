@@ -71,6 +71,28 @@ migration discipline begins; nothing before it is grandfathered.
   `postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test`),
   then runs `DROP SCHEMA public CASCADE` and `alembic upgrade head` —
   never point it at a real database.
+- **The guards leg is mandatory after registering any route or MCP tool**, and
+  it is what a full-suite run on this host cannot be relied on to give you.
+  One new door trips a spread of full-list enumeration guards that no
+  door-local test touches, and every one of them lives outside the module the
+  work was in — the 2026-09-07 notes branch shipped an MCP tool with
+  `test_content_surface_scoping` red for eight tasks because each task ran its
+  own targeted legs. From `backend/`, on a lane database of its own
+  (`darkmem_test_2..5`, keeping `darkmem_test` for the controller):
+
+  ```
+  TEST_DATABASE_URL=postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test_2 \
+    python -m pytest -q tests/test_content_surface_scoping.py tests/test_door_parity.py \
+      tests/test_prompt_agent_instructions.py tests/test_api/test_rest_conformance.py \
+      tests/test_sdk_generator.py tests/test_spa_edge.py tests/test_events.py \
+      tests/test_mcp_auth.py tests/test_inert_objects.py tests/test_api/test_tags.py \
+      tests/test_block_pipeline.py tests/test_block_retrieval.py tests/test_auto_research.py
+  ```
+
+  It runs in ~40s and needs no LLM key. Two guards it does **not** cover and
+  which must be re-read by hand: `docs/two-door-parity.md`'s headline counts
+  sentence sits outside the generated block, and this file's own tool and job
+  counts are prose.
 - Frontend (from `frontend/`): `npm run typecheck` (= `tsc -b`; plain
   `tsc` misses the project refs), `npm test` (vitest; excludes
   `tests/`, which is Playwright e2e via `npm run test:e2e`),
