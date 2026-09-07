@@ -58,6 +58,7 @@ __all__ = [
     "document_hash",
     "document_outline",
     "put_document",
+    "rename_documents",
     "resolve_document_id",
     "resolve_document_target",
     "search_sections",
@@ -744,6 +745,77 @@ async def update_document_metadata(
             )
         },
     )
+
+
+async def rename_documents(
+    session: AsyncSession,
+    *,
+    project: str,
+    uri_prefix: str,
+    new_uri_prefix: str,
+) -> int:
+    """Rewrite a uri prefix across a subtree in one transaction.
+
+    Rows are locked in id order -- the same lock `update_document_metadata`
+    takes -- so two concurrent subtree renames cannot deadlock against each
+    other. The match avoids LIKE because `_` and `%` are metacharacters there
+    and a prefix of `notes/a_b` would over-match `notes/axb`; comparing a
+    fixed-length slice of the uri has no metacharacter class at all.
+
+    Every row goes through `update_document_metadata` rather than one bulk
+    UPDATE, so each renamed document gets its own `document_updated` row and
+    the same `DocumentUriConflict` mapping instead of a second write path
+    reproducing both.
+    """
+    rows = (await session.execute(
+        text(
+            "SELECT CAST(id AS text) AS id, uri FROM documents "
+            "WHERE project = CAST(:p AS text) "
+            "  AND (uri = CAST(:u AS text) "
+            "       OR left(uri, length(CAST(:u AS text)) + 1) "
+            "          = CAST(:u AS text) || '/') "
+            "ORDER BY id FOR UPDATE"
+        ),
+        {"p": project, "u": uri_prefix},
+    )).mappings().all()
+
+    moved: list[str] = []
+    for row in rows:
+        await update_document_metadata(
+            session,
+            document_id=row["id"],
+            uri=new_uri_prefix + row["uri"][len(uri_prefix):],
+        )
+        moved.append(row["id"])
+
+    if moved:
+        # A resolved link holds the target's id, so its denormalised
+        # `target_uri` is stale the moment the target moves; carrying the id
+        # means the repair needs no string surgery on the link side.
+        await session.execute(
+            text(
+                "UPDATE document_links l SET target_uri = d.uri "
+                "FROM documents d WHERE d.id = l.target_document_id "
+                "  AND l.target_document_id = ANY(CAST(:ids AS uuid[])) "
+                "  AND l.target_uri IS DISTINCT FROM d.uri"
+            ),
+            {"ids": moved},
+        )
+        # A stub points at a uri nobody had filed. A rename can land a
+        # document on exactly that uri, which resolves the stub -- so the
+        # second pass is over unresolved links, not over the moved set.
+        await session.execute(
+            text(
+                "UPDATE document_links l SET target_document_id = d.id "
+                "FROM documents d "
+                "WHERE l.target_document_id IS NULL "
+                "  AND d.project = CAST(:p AS text) "
+                "  AND d.uri = l.target_uri"
+            ),
+            {"p": project},
+        )
+
+    return len(rows)
 
 
 @dataclass(frozen=True)

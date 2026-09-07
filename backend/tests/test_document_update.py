@@ -16,6 +16,7 @@ from app.services.document_door import (
     DocumentTargetUnresolved,
     DocumentUriConflict,
     put_document,
+    rename_documents,
     update_document_metadata,
 )
 
@@ -54,9 +55,12 @@ class StubEmbedder:
 
 
 async def _file(session, content: str, uri: str):
+    """`source_type` is explicit because a subtree prefix such as `notes/a` is
+    itself a filed document with no suffix to infer a parser from."""
     llm = StubEmbedder()
     result = await put_document(
         session, llm, project="p", uri=uri, content=content,
+        source_type="md",
     )
     await session.commit()
     return llm, result.document_id
@@ -264,3 +268,104 @@ async def test_the_update_journals_one_event_carrying_no_document_text(session):
     assert row["event_type"] == "document_updated"
     assert "secret prose" not in json.dumps(row["payload"])
     assert row["payload"]["fields"] == ["title"]
+
+
+async def _uris(session, project: str) -> set[str]:
+    rows = (await session.execute(
+        text("SELECT uri FROM documents WHERE project = CAST(:p AS text)"),
+        {"p": project},
+    )).scalars().all()
+    return set(rows)
+
+
+@pytest.mark.asyncio
+async def test_a_subtree_rename_rewrites_every_descendant(session):
+    for uri in ("notes/a", "notes/a/one.md", "notes/a/two.md"):
+        await _file(session, "body", uri)
+    assert await rename_documents(session, project="p", uri_prefix="notes/a",
+                                  new_uri_prefix="notes/b") == 3
+    assert await _uris(session, "p") == {
+        "notes/b", "notes/b/one.md", "notes/b/two.md"}
+
+
+@pytest.mark.asyncio
+async def test_a_prefix_containing_a_wildcard_does_not_over_match(session):
+    """`_` and `%` are LIKE metacharacters. A prefix of `notes/a_b` must not
+    match `notes/axb`."""
+    await _file(session, "body", "notes/a_b/one.md")
+    await _file(session, "body", "notes/axb/two.md")
+    await rename_documents(session, project="p", uri_prefix="notes/a_b",
+                           new_uri_prefix="notes/z")
+    assert "notes/axb/two.md" in await _uris(session, "p")
+
+
+@pytest.mark.asyncio
+async def test_a_sibling_sharing_the_prefix_as_a_name_is_untouched(session):
+    """`notes/ab` starts with `notes/a` but is not inside it."""
+    await _file(session, "body", "notes/a/one.md")
+    await _file(session, "body", "notes/ab")
+    assert await rename_documents(session, project="p", uri_prefix="notes/a",
+                                  new_uri_prefix="notes/b") == 1
+    assert await _uris(session, "p") == {"notes/b/one.md", "notes/ab"}
+
+
+@pytest.mark.asyncio
+async def test_another_project_sharing_the_prefix_is_untouched(session):
+    await _file(session, "body", "notes/a/one.md")
+    llm = StubEmbedder()
+    await put_document(session, llm, project="q", uri="notes/a/one.md",
+                       content="body", source_type="md")
+    await session.commit()
+    assert await rename_documents(session, project="p", uri_prefix="notes/a",
+                                  new_uri_prefix="notes/b") == 1
+    assert await _uris(session, "q") == {"notes/a/one.md"}
+
+
+@pytest.mark.asyncio
+async def test_a_rename_onto_an_occupied_path_refuses(session):
+    await _file(session, "one", "notes/a/one.md")
+    await _file(session, "two", "notes/b/one.md")
+    with pytest.raises(DocumentUriConflict):
+        await rename_documents(session, project="p", uri_prefix="notes/a",
+                               new_uri_prefix="notes/b")
+
+
+@pytest.mark.asyncio
+async def test_each_renamed_document_journals_its_own_update(session):
+    _, first = await _file(session, "body", "notes/a/one.md")
+    _, second = await _file(session, "body", "notes/a/two.md")
+    await rename_documents(session, project="p", uri_prefix="notes/a",
+                           new_uri_prefix="notes/b")
+    for doc in (first, second):
+        row = await _latest_event(session, doc)
+        assert row["event_type"] == "document_updated"
+        assert row["payload"]["fields"] == ["uri"]
+
+
+@pytest.mark.asyncio
+async def test_the_rename_rewrites_links_and_matches_none_today(session):
+    """Nothing in this tree writes `document_links` yet, so the two link
+    statements are asserted to run and to affect zero rows -- manufacturing
+    link rows no producer creates would test the fixture, not the code."""
+    from sqlalchemy import event
+    from sqlalchemy.engine import Engine
+
+    await _file(session, "body", "notes/a/one.md")
+    statements: list[str] = []
+
+    def _capture(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    event.listen(Engine, "before_cursor_execute", _capture)
+    try:
+        await rename_documents(session, project="p", uri_prefix="notes/a",
+                               new_uri_prefix="notes/b")
+    finally:
+        event.remove(Engine, "before_cursor_execute", _capture)
+
+    link_updates = [s for s in statements if "UPDATE document_links" in s]
+    assert len(link_updates) == 2
+    remaining = (await session.execute(
+        text("SELECT count(*) FROM document_links")
+    )).scalar_one()
+    assert remaining == 0
