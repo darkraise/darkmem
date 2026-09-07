@@ -8,7 +8,10 @@ import {
 import { createMutationQueue } from "@/features/documents/lib/mutation-queue"
 import { apiFetch } from "@/lib/api"
 import { DEMO } from "@/lib/demo-flag"
-import { documentBlocksQuery } from "./use-documents-api"
+import {
+  documentBlocksQuery,
+  type DocumentBlocksResponse,
+} from "./use-documents-api"
 
 export interface BlockWriteResponse {
   document_id: string
@@ -19,35 +22,43 @@ export interface BlockWriteResponse {
   blocks_embedded: number
 }
 
-/** One queue per document, held outside React.
+/** One queue per document, held outside React and created at its first write.
  *
  *  The editor calls the update, insert and delete hooks separately, so a
  *  queue owned by a hook instance would give each verb its own chain and
  *  serialise nothing -- which is the case the queue exists for, since the
  *  commit and the insert that follow one keystroke are two different verbs.
  *  Keyed by document id so two open documents never wait on each other.
+ *  Created lazily so its seed is the hash the blocks query holds at the moment
+ *  of the first write, not the one it held when the editor mounted.
  */
-const queues = new Map<
-  string,
-  { queue: ReturnType<typeof createMutationQueue>; holders: number }
->()
+const queues = new Map<string, ReturnType<typeof createMutationQueue>>()
+const holders = new Map<string, number>()
 
 function queueFor(documentId: string, qc: QueryClient) {
   const existing = queues.get(documentId)
-  if (existing) return existing.queue
-  // Seeded null so the first mutation reads the hash it is about to use,
-  // rather than one captured before the editor rendered.
-  const queue = createMutationQueue(null, async () => {
-    // The re-read is the only fetch the queue makes, and the demo runs
-    // against no API at all -- one unguarded request signs the demo out.
+  if (existing) return existing
+  const seed =
+    qc.getQueryData<DocumentBlocksResponse>(
+      documentBlocksQuery(documentId).queryKey,
+    )?.content_hash ?? null
+  const queue = createMutationQueue(seed, async () => {
+    // The demo runs against no API at all -- one unguarded request signs it
+    // out -- and no hash means the write goes unpreconditioned, which is what
+    // the demo's mocked writes already assume.
     if (DEMO) return ""
-    const data = await qc.fetchQuery({
-      ...documentBlocksQuery(documentId),
-      staleTime: 0,
-    })
+    // Read straight through the query function rather than through
+    // `fetchQuery`: an invalidation fired by the write this re-read follows
+    // cancels whatever occupies the cache's in-flight slot for the key
+    // (`refetchQueries` defaults `cancelRefetch` on), and a cancelled re-read
+    // would reject the mutation waiting on it -- a silently lost edit. This
+    // call shares no slot with the cache, so nothing can cancel it, and the
+    // invalidation keeps its own guarantee that the view refetches after the
+    // write.
+    const data = await documentBlocksQuery(documentId).queryFn()
     return data.content_hash ?? ""
   })
-  queues.set(documentId, { queue, holders: 0 })
+  queues.set(documentId, queue)
   return queue
 }
 
@@ -55,18 +66,19 @@ function queueFor(documentId: string, qc: QueryClient) {
  *  cannot grow for the length of a session and no hash survives into a visit
  *  that would have to discover by refusal that the document had moved.
  */
-function useQueueLifetime(documentId: string, qc: QueryClient) {
+function useQueueLifetime(documentId: string) {
   useEffect(() => {
-    queueFor(documentId, qc)
-    const entry = queues.get(documentId)!
-    entry.holders += 1
+    holders.set(documentId, (holders.get(documentId) ?? 0) + 1)
     return () => {
-      entry.holders -= 1
-      if (entry.holders <= 0 && queues.get(documentId) === entry) {
+      const left = (holders.get(documentId) ?? 1) - 1
+      if (left > 0) {
+        holders.set(documentId, left)
+      } else {
+        holders.delete(documentId)
         queues.delete(documentId)
       }
     }
-  }, [documentId, qc])
+  }, [documentId])
 }
 
 /** All four verbs invalidate the document's blocks and its outline.
@@ -86,7 +98,7 @@ function useBlockMutation<V>(
   documentId: string,
 ) {
   const qc = useQueryClient()
-  useQueueLifetime(documentId, qc)
+  useQueueLifetime(documentId)
   return useMutation({
     mutationFn: (value: V) =>
       queueFor(documentId, qc).enqueue(async (hash) => {
