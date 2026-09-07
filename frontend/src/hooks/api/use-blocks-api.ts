@@ -109,7 +109,15 @@ function useBlockMutation<V>(
         const result = await fn(value, hash)
         return { result, content_hash: result?.content_hash ?? null }
       }),
-    onSuccess: () => {
+    // Settled, not succeeded: a refusal is exactly when the rendered tree is
+    // known to be wrong. The queue re-reads the hash before the next write, so
+    // without this the editor would send the winner's hash carrying text
+    // edited over the loser's view -- the clobber the precondition exists to
+    // stop, one retry later. Refetching cannot prevent that outright without
+    // blocking edits until it lands; it narrows the window to one round trip.
+    // One handler rather than an onError beside an onSuccess, so the two paths
+    // cannot come to invalidate different keys.
+    onSettled: () => {
       void qc.invalidateQueries({ queryKey: ["documentBlocks", documentId] })
       void qc.invalidateQueries({ queryKey: ["documentOutline", documentId] })
       void qc.invalidateQueries({ queryKey: ["documentsAll"] })
@@ -117,9 +125,13 @@ function useBlockMutation<V>(
   })
 }
 
-/** An empty hash means none is known -- a document stored from bytes holds no
- *  content to hash. Omitting the field keeps that document's edits on the
- *  last-writer-wins path the routes default to, rather than refusing them all.
+/** An empty hash means none is known, and the demo's re-read is the only thing
+ *  that produces one -- it answers "" because it makes no request at all. Every
+ *  filed document has a `content_hash`, including one filed from bytes: that
+ *  document stores no `content`, but the hash is taken over its bytes. So
+ *  omitting the field is the demo's path, plus a defence against a null the
+ *  server does not send; either way the write falls back to the last-writer-wins
+ *  the routes default to, rather than being refused.
  */
 function precondition(hash: string) {
   return hash === "" ? undefined : hash
