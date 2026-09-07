@@ -18,6 +18,7 @@ import {
   LayoutDashboard,
   MessageSquare,
   Network,
+  NotebookPen,
   ScrollText,
   Settings,
   Tags,
@@ -66,6 +67,7 @@ const nav: NavGroup[] = [
       // /documents shipped with TH1.16 and had no nav entry at all, so the
       // surface existed and was unreachable. This closes that for both.
       { label: "Documents", href: "/documents", icon: FileText },
+      { label: "Notes", href: "/notes", icon: NotebookPen },
     ],
   },
   {
@@ -148,7 +150,7 @@ const FULL_BLEED_ROUTES = ["/memory-graph", "/code/graph"] as const
  *  and the observer never fires — so the graph renders nothing, with no error
  *  and an empty-looking page. That stayed invisible while those pages had no
  *  data to draw, because the empty state carries its own height. */
-const FULL_HEIGHT_ROUTES = ["/chat", "/projects/"] as const
+export const FULL_HEIGHT_ROUTES = ["/chat", "/projects/", "/notes"] as const
 
 /** Routes that drop the reading-width cap without being a pan/zoom canvas.
  *  Chat is one: its three panes are resizable, so every capped pixel is width

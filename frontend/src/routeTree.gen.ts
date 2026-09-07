@@ -18,6 +18,7 @@ import { Route as AuthenticatedUsageRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedUnifiedGraphRouteImport } from './routes/_authenticated/unified-graph'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedProjectsRouteImport } from './routes/_authenticated/projects'
+import { Route as AuthenticatedNotesRouteImport } from './routes/_authenticated/notes'
 import { Route as AuthenticatedMemoryGraphRouteImport } from './routes/_authenticated/memory-graph'
 import { Route as AuthenticatedMemoriesRouteImport } from './routes/_authenticated/memories'
 import { Route as AuthenticatedKnowledgeRouteImport } from './routes/_authenticated/knowledge'
@@ -80,6 +81,11 @@ const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
 const AuthenticatedProjectsRoute = AuthenticatedProjectsRouteImport.update({
   id: '/projects',
   path: '/projects',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedNotesRoute = AuthenticatedNotesRouteImport.update({
+  id: '/notes',
+  path: '/notes',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedMemoryGraphRoute =
@@ -198,6 +204,7 @@ export interface FileRoutesByFullPath {
   '/knowledge': typeof AuthenticatedKnowledgeRoute
   '/memories': typeof AuthenticatedMemoriesRoute
   '/memory-graph': typeof AuthenticatedMemoryGraphRoute
+  '/notes': typeof AuthenticatedNotesRoute
   '/projects': typeof AuthenticatedProjectsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/unified-graph': typeof AuthenticatedUnifiedGraphRoute
@@ -226,6 +233,7 @@ export interface FileRoutesByTo {
   '/knowledge': typeof AuthenticatedKnowledgeRoute
   '/memories': typeof AuthenticatedMemoriesRoute
   '/memory-graph': typeof AuthenticatedMemoryGraphRoute
+  '/notes': typeof AuthenticatedNotesRoute
   '/projects': typeof AuthenticatedProjectsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/unified-graph': typeof AuthenticatedUnifiedGraphRoute
@@ -256,6 +264,7 @@ export interface FileRoutesById {
   '/_authenticated/knowledge': typeof AuthenticatedKnowledgeRoute
   '/_authenticated/memories': typeof AuthenticatedMemoriesRoute
   '/_authenticated/memory-graph': typeof AuthenticatedMemoryGraphRoute
+  '/_authenticated/notes': typeof AuthenticatedNotesRoute
   '/_authenticated/projects': typeof AuthenticatedProjectsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/unified-graph': typeof AuthenticatedUnifiedGraphRoute
@@ -287,6 +296,7 @@ export interface FileRouteTypes {
     | '/knowledge'
     | '/memories'
     | '/memory-graph'
+    | '/notes'
     | '/projects'
     | '/settings'
     | '/unified-graph'
@@ -315,6 +325,7 @@ export interface FileRouteTypes {
     | '/knowledge'
     | '/memories'
     | '/memory-graph'
+    | '/notes'
     | '/projects'
     | '/settings'
     | '/unified-graph'
@@ -344,6 +355,7 @@ export interface FileRouteTypes {
     | '/_authenticated/knowledge'
     | '/_authenticated/memories'
     | '/_authenticated/memory-graph'
+    | '/_authenticated/notes'
     | '/_authenticated/projects'
     | '/_authenticated/settings'
     | '/_authenticated/unified-graph'
@@ -432,6 +444,13 @@ declare module '@tanstack/react-router' {
       path: '/projects'
       fullPath: '/projects'
       preLoaderRoute: typeof AuthenticatedProjectsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/notes': {
+      id: '/_authenticated/notes'
+      path: '/notes'
+      fullPath: '/notes'
+      preLoaderRoute: typeof AuthenticatedNotesRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/memory-graph': {
@@ -579,6 +598,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedKnowledgeRoute: typeof AuthenticatedKnowledgeRoute
   AuthenticatedMemoriesRoute: typeof AuthenticatedMemoriesRoute
   AuthenticatedMemoryGraphRoute: typeof AuthenticatedMemoryGraphRoute
+  AuthenticatedNotesRoute: typeof AuthenticatedNotesRoute
   AuthenticatedProjectsRoute: typeof AuthenticatedProjectsRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedUnifiedGraphRoute: typeof AuthenticatedUnifiedGraphRoute
@@ -606,6 +626,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedKnowledgeRoute: AuthenticatedKnowledgeRoute,
   AuthenticatedMemoriesRoute: AuthenticatedMemoriesRoute,
   AuthenticatedMemoryGraphRoute: AuthenticatedMemoryGraphRoute,
+  AuthenticatedNotesRoute: AuthenticatedNotesRoute,
   AuthenticatedProjectsRoute: AuthenticatedProjectsRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedUnifiedGraphRoute: AuthenticatedUnifiedGraphRoute,
