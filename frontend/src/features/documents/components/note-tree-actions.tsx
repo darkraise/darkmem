@@ -42,7 +42,13 @@ export function NoteTreeActions({
       >
         <MoreHorizontal aria-hidden className="size-4" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent
+        align="end"
+        // The content is portalled, but React synthetic events bubble the
+        // React ancestor chain, not the DOM one, so an item's click still
+        // reaches the row's select/expand handler without this.
+        onClick={(event) => event.stopPropagation()}
+      >
         {document ? null : (
           <DropdownMenuItem onSelect={() => onNewNote(node.path)}>
             New note

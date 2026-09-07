@@ -55,7 +55,8 @@ describe("NoteTreeActions", () => {
       />,
     )
     await userEvent.click(screen.getByRole("button", { name: /actions/i }))
-    expect(screen.getByText(/pin/i)).toBeInTheDocument()
+    expect(screen.getByText("Pin")).toBeInTheDocument()
+    expect(screen.queryByText(/new note/i)).not.toBeInTheDocument()
   })
 
   it("labels the pin action from the document's pin state", async () => {
@@ -91,6 +92,31 @@ describe("NoteTreeActions", () => {
     await userEvent.click(screen.getByRole("button", { name: /actions/i }))
     await userEvent.click(screen.getByText(/new note/i))
     expect(onNewNote).toHaveBeenCalledWith("notes/a")
+
+    await userEvent.click(screen.getByRole("button", { name: /actions/i }))
+    await userEvent.click(screen.getByText("Delete"))
+    expect(onDelete).toHaveBeenCalledWith(folder)
+  })
+
+  it("reports rename and pin with their node", async () => {
+    const onRename = vi.fn()
+    const onTogglePin = vi.fn()
+    render(
+      <NoteTreeActions
+        node={leaf}
+        onNewNote={noop}
+        onRename={onRename}
+        onTogglePin={onTogglePin}
+        onDelete={noop}
+      />,
+    )
+    await userEvent.click(screen.getByRole("button", { name: /actions/i }))
+    await userEvent.click(screen.getByText("Rename"))
+    expect(onRename).toHaveBeenCalledWith(leaf)
+
+    await userEvent.click(screen.getByRole("button", { name: /actions/i }))
+    await userEvent.click(screen.getByText("Pin"))
+    expect(onTogglePin).toHaveBeenCalledWith(leaf)
   })
 
   it("offers no folder actions on the orphan bucket", () => {
@@ -112,6 +138,36 @@ describe("NoteTreeActions", () => {
       />,
     )
     expect(screen.queryByRole("button", { name: /actions/i })).toBeNull()
+  })
+
+  it("does not select or expand the row it hangs off", async () => {
+    // Mounted through the real tree: the menu is portalled, but React
+    // synthetic events bubble the React ancestor chain, so a click inside it
+    // still reaches the row's own handler.
+    const onSelect = vi.fn()
+    render(
+      <DocumentTree
+        items={[leaf.document!]}
+        selectedId={null}
+        onSelect={onSelect}
+        truncated={false}
+        nodeActions={(node) => (
+          <NoteTreeActions
+            node={node}
+            onNewNote={noop}
+            onRename={noop}
+            onTogglePin={noop}
+            onDelete={noop}
+          />
+        )}
+      />,
+    )
+    const trigger = screen.getByRole("button", { name: /actions for b\.md/i })
+    await userEvent.click(trigger)
+    expect(onSelect).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByText("Delete"))
+    expect(onSelect).not.toHaveBeenCalled()
   })
 
   it("renders an action in the empty state so an empty space can be filled", () => {
