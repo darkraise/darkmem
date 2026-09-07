@@ -759,6 +759,7 @@ async def document_get(
     project: str | None = None,
     uri: str | None = None,
     include_content: bool = False,
+    include_hash: bool = False,
 ) -> str:
     """
     Args:
@@ -769,12 +770,19 @@ async def document_get(
         uri: The repo-relative path it was filed under.
         include_content: Also return the document's verbatim filed source
             under `content`. The result becomes `{content, blocks}` instead
-            of the bare block array -- the one flag under which this tool
-            answers an object. Off by default: the source can be a megabyte.
+            of the bare block array -- one of the two flags that box this
+            tool's reply, `include_hash` being the other, since a bare array
+            has nowhere to carry a field. Off by default: the source can be a
+            megabyte.
+        include_hash: Also return the document's current `content_hash` under
+            `content_hash`, to precondition a later block verb on. Boxes the
+            reply the same way `include_content` does -- a bare array has
+            nowhere to carry a field.
     """
     from app.services.document_door import (
         document_blocks,
         document_content,
+        document_hash,
         resolve_document_target,
     )
 
@@ -801,9 +809,21 @@ async def document_get(
             if include_content
             else None
         )
-    if include_content:
-        return json.dumps({"content": raw, "blocks": [vars(r) for r in rows]})
-    return json.dumps([vars(r) for r in rows])
+        current_hash = (
+            await document_hash(session, document_id=target)
+            if include_hash
+            else None
+        )
+    blocks = [vars(r) for r in rows]
+    if include_content or include_hash:
+        boxed: dict = {}
+        if include_content:
+            boxed["content"] = raw
+        if include_hash:
+            boxed["content_hash"] = current_hash
+        boxed["blocks"] = blocks
+        return json.dumps(boxed)
+    return json.dumps(blocks)
 
 
 @mcp.tool(
@@ -1920,17 +1940,31 @@ async def research_run(
 # themselves, and the editor's identity question is the session's rather than
 # a capture header's.
 #
-# Both refusals answer a structured envelope rather than a tool error. The
-# caller made no mistake in either case -- it lost a race, or it asked to edit
-# a document the block model cannot represent -- and an agent should be able
-# to machine-read the outcome and choose, which an exception traceback does
-# not allow. Their REST twins are a 409 and a 422 carrying the same reasons.
+# Four refusals answer a structured envelope rather than a tool error, and in
+# none of them did the caller make an avoidable mistake: it lost a race
+# (`hash_conflict`), or it asked to edit a document the block model cannot
+# represent (`not_convertible`), to move a block inside its own subtree
+# (`cycle_refused`), or to address a block that is not where it said it was
+# (`unresolved`). An agent can machine-read an envelope and choose; it cannot
+# machine-read a traceback. Their REST twins are a 409, a 422, a 422 and a 404
+# carrying the same reasons.
 
 
 def _block_refusal(exc: Exception, **fields) -> str | None:
     from app.services.block_verbs import BlockCycleError, BlockTargetUnresolved
     from app.services.document_door import DocumentNotConvertible
+    from app.services.document_ingest import DocumentHashConflict
 
+    if isinstance(exc, DocumentHashConflict):
+        # The caller lost a race rather than making a mistake, so it gets a
+        # machine-readable outcome it can re-read and retry from. REST answers
+        # the same refusal as a 409.
+        return json.dumps({
+            "status": "hash_conflict",
+            "expected_hash": exc.expected_hash,
+            "current_hash": exc.current_hash,
+            **fields,
+        })
     if isinstance(exc, DocumentNotConvertible):
         return json.dumps({"status": "not_convertible", "reason": str(exc), **fields})
     if isinstance(exc, BlockCycleError):
@@ -1952,6 +1986,7 @@ async def block_update(
     text: str,
     type: str | None = None,
     properties: dict | None = None,
+    expected_hash: str | None = None,
 ) -> str:
     """
     Args:
@@ -1959,6 +1994,8 @@ async def block_update(
         text: The block's new text, marker-stripped as document_get returns it.
         type: Optional; normalised through the closed block vocabulary.
         properties: Optional; merged over the block's existing properties.
+        expected_hash: Optional; the document's `content_hash` as you last saw
+            it, from document_get with include_hash. A mismatch refuses.
     """
     from app.services.block_verbs import update_block
 
@@ -1968,7 +2005,7 @@ async def block_update(
         try:
             result = await update_block(
                 session, _pipeline.llm, block_id=block_id, text=text,
-                type=type, properties=properties,
+                type=type, properties=properties, expected_hash=expected_hash,
             )
         except Exception as exc:
             await session.rollback()
@@ -1993,6 +2030,7 @@ async def block_insert(
     parent_id: str | None = None,
     after_block_id: str | None = None,
     properties: dict | None = None,
+    expected_hash: str | None = None,
 ) -> str:
     """
     Args:
@@ -2002,6 +2040,8 @@ async def block_insert(
         parent_id: Optional; omit for a root-level block.
         after_block_id: Optional; omit to insert as the first child.
         properties: Optional; a heading's level, a list item's marker.
+        expected_hash: Optional; the document's `content_hash` as you last saw
+            it, from document_get with include_hash. A mismatch refuses.
     """
     from app.services.block_verbs import insert_block
 
@@ -2012,7 +2052,7 @@ async def block_insert(
             result = await insert_block(
                 session, _pipeline.llm, document_id=document_id, type=type,
                 text=text, parent_id=parent_id, after_block_id=after_block_id,
-                properties=properties,
+                properties=properties, expected_hash=expected_hash,
             )
         except Exception as exc:
             await session.rollback()
@@ -2033,12 +2073,15 @@ async def block_move(
     block_id: str,
     new_parent_id: str | None = None,
     after_block_id: str | None = None,
+    expected_hash: str | None = None,
 ) -> str:
     """
     Args:
         block_id: The block to move.
         new_parent_id: Optional; omit to move it to the root level.
         after_block_id: Optional; omit to make it the first child.
+        expected_hash: Optional; the document's `content_hash` as you last saw
+            it, from document_get with include_hash. A mismatch refuses.
     """
     from app.services.block_verbs import move_block
 
@@ -2049,6 +2092,7 @@ async def block_move(
             result = await move_block(
                 session, _pipeline.llm, block_id=block_id,
                 new_parent_id=new_parent_id, after_block_id=after_block_id,
+                expected_hash=expected_hash,
             )
         except Exception as exc:
             await session.rollback()
@@ -2065,10 +2109,12 @@ async def block_move(
         "mints no fact, so nothing is withdrawn or expired elsewhere."
     )
 )
-async def block_delete(block_id: str) -> str:
+async def block_delete(block_id: str, expected_hash: str | None = None) -> str:
     """
     Args:
         block_id: The block to delete. Its whole subtree goes with it.
+        expected_hash: Optional; the document's `content_hash` as you last saw
+            it, from document_get with include_hash. A mismatch refuses.
     """
     from app.services.block_verbs import delete_block
 
@@ -2078,6 +2124,7 @@ async def block_delete(block_id: str) -> str:
         try:
             result = await delete_block(
                 session, _pipeline.llm, block_id=block_id,
+                expected_hash=expected_hash,
             )
         except Exception as exc:
             await session.rollback()

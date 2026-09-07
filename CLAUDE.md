@@ -1646,6 +1646,19 @@ that knows where each block landed — so spans never drift and are never NULL.
 The cost model: one edit is one bulk placement UPDATE over the document's
 blocks, one document write, and one single-block embed.
 
+**All four verbs take an optional `expected_hash`.** The comparison happens
+after that pass's row lock, never before it — above the lock it would be
+check-then-act, and both racing lanes would pass their own check. A stale hash
+answers 409 on the route and a `hash_conflict` envelope from the tool, the same
+`DocumentHashConflict` behind two wire shapes that `put` already uses, and
+nothing is written on either door. The hash rides the query string on
+`DELETE .../blocks/{block_id}` because a DELETE carries no body here. The blocks
+read serves `content_hash` **unconditionally** on its envelope, and MCP
+`document_get` takes `include_hash` to answer `{content_hash, blocks}` — so the
+hash a read serves preconditions a write, and the `content_hash` that write
+answers preconditions the next one with no read in between. Omitting the field
+keeps last-writer-wins, which is what the batch import path relies on.
+
 **Five verbs, both doors.** `put`, `search`, `outline`, `get` and
 `delete` are reachable from REST (`POST /api/v1/documents`,
 `POST .../search`, `GET .../{id}/outline`, `GET .../{id}` and the
@@ -1678,9 +1691,11 @@ always pointed at the source, and now the source is kept. Both keyed reads
 take `include_content` (default off, so no existing reader pays for a
 potentially megabyte field): on, `GET /documents/{id}` and the `by-uri` twin
 add `content` to the envelope, and MCP `document_get` answers
-`{content, blocks}` in place of its bare array — the one flag under which that
-tool returns an object. One service read, `document_door.document_content`,
-serves both doors.
+`{content, blocks}` in place of its bare array. It is one of **two** flags that
+box that tool's reply — `include_hash` is the other, and with both set the
+object carries `content`, `content_hash` and `blocks` — because a bare JSON
+array has nowhere to carry a scalar field. One service read,
+`document_door.document_content`, serves both doors.
 
 **`put` takes an optional `expected_hash` compare-and-set.** The predicate
 rides the writer's own UPDATE with a rowcount check (`update_document` returns

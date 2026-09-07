@@ -32,7 +32,7 @@ from app.services.document_door import (
     DocumentNotConvertible,
     DocumentTooLarge,
 )
-from app.services.document_ingest import compute_content_hash
+from app.services.document_ingest import DocumentHashConflict, compute_content_hash
 from app.services.events import record_event
 from app.taxonomy import normalize_block_type
 from app.utils.ids import new_id
@@ -79,7 +79,8 @@ _RESOLVE_BLOCK = text(
     "WHERE id = CAST(:id AS uuid)"
 )
 _DOC_META = text(
-    "SELECT project, content, properties->>'ingest_direction' AS direction, "
+    "SELECT project, content, content_hash, "
+    "       properties->>'ingest_direction' AS direction, "
     "       properties->>'frontmatter' AS frontmatter "
     "FROM documents WHERE id = CAST(:id AS uuid)"
 )
@@ -147,7 +148,8 @@ def _subtree(tree: list[TreeBlock], root: UUID) -> list[UUID]:
     return out
 
 
-async def _mutate(session, llm, *, document_id, apply, touched_embed, verb, block_id):
+async def _mutate(session, llm, *, document_id, apply, touched_embed, verb,
+                  block_id, expected_hash=None):
     """Lock, load, mutate in memory, serialise, write, journal, embed.
 
     Review M-3: the lock is the first statement, before anything is read off
@@ -161,6 +163,15 @@ async def _mutate(session, llm, *, document_id, apply, touched_embed, verb, bloc
     meta = (await session.execute(_DOC_META, {"id": document_id})).mappings().first()
     if meta is None:
         raise BlockTargetUnresolved(f"no document with id {document_id}")
+    # After the lock, which is what makes this a compare-and-set rather than a
+    # check-then-act: no writer can move content_hash between this read and
+    # the write below, because both are inside one held row lock.
+    if expected_hash is not None and meta["content_hash"] != expected_hash:
+        raise DocumentHashConflict(
+            document_id=document_id,
+            expected_hash=expected_hash,
+            current_hash=meta["content_hash"],
+        )
     rows = (await session.execute(_LOAD_TREE, {"id": document_id})).mappings().all()
     tree = [
         TreeBlock(r["id"], r["parent_id"], r["order_index"], r["type"],
@@ -291,6 +302,7 @@ async def _document_of(session: AsyncSession, block_id: str) -> str:
 async def update_block(
     session: AsyncSession, llm, *, block_id: str,
     text: str, type: str | None = None, properties: dict | None = None,
+    expected_hash: str | None = None,
 ) -> BlockWriteResult:
     document_id = await _document_of(session, block_id)
     target = UUID(block_id)
@@ -312,13 +324,14 @@ async def update_block(
         return out, None, []
 
     return await _mutate(session, llm, document_id=document_id, apply=apply,
-                         touched_embed=block_id, verb="updated", block_id=block_id)
+                         touched_embed=block_id, verb="updated",
+                         block_id=block_id, expected_hash=expected_hash)
 
 
 async def insert_block(
     session: AsyncSession, llm, *, document_id: str, type: str, text: str,
     parent_id: str | None = None, after_block_id: str | None = None,
-    properties: dict | None = None,
+    properties: dict | None = None, expected_hash: str | None = None,
 ) -> BlockWriteResult:
     minted = new_id()
     parent = None if parent_id is None else UUID(parent_id)
@@ -350,12 +363,13 @@ async def insert_block(
 
     return await _mutate(session, llm, document_id=document_id, apply=apply,
                          touched_embed=str(minted), verb="inserted",
-                         block_id=str(minted))
+                         block_id=str(minted), expected_hash=expected_hash)
 
 
 async def move_block(
     session: AsyncSession, llm, *, block_id: str,
     new_parent_id: str | None = None, after_block_id: str | None = None,
+    expected_hash: str | None = None,
 ) -> BlockWriteResult:
     document_id = await _document_of(session, block_id)
     target = UUID(block_id)
@@ -397,11 +411,13 @@ async def move_block(
 
     # No embed: a move changes position, never text.
     return await _mutate(session, llm, document_id=document_id, apply=apply,
-                         touched_embed=None, verb="moved", block_id=block_id)
+                         touched_embed=None, verb="moved", block_id=block_id,
+                         expected_hash=expected_hash)
 
 
 async def delete_block(
     session: AsyncSession, llm, *, block_id: str,
+    expected_hash: str | None = None,
 ) -> BlockWriteResult:
     document_id = await _document_of(session, block_id)
     target = UUID(block_id)
@@ -415,4 +431,5 @@ async def delete_block(
 
     # No embed: the rows and their vectors go with the cascade.
     return await _mutate(session, llm, document_id=document_id, apply=apply,
-                         touched_embed=None, verb="deleted", block_id=block_id)
+                         touched_embed=None, verb="deleted", block_id=block_id,
+                         expected_hash=expected_hash)

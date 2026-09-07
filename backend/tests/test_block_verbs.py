@@ -19,7 +19,7 @@ from app.services.block_verbs import (
     update_block,
 )
 from app.services.document_door import DocumentNotConvertible, put_document
-from app.services.document_ingest import compute_content_hash
+from app.services.document_ingest import DocumentHashConflict, compute_content_hash
 
 
 FINGERPRINT = "test-fp-verbs|3"
@@ -280,3 +280,113 @@ async def test_a_move_embeds_nothing(session):
     await move_block(session, llm, block_id=alpha["id"], new_parent_id=second["id"])
 
     assert llm.batches == []
+
+
+async def _hash_of(session, document_id):
+    return (await session.execute(
+        text("SELECT content_hash FROM documents WHERE id = CAST(:id AS uuid)"),
+        {"id": document_id},
+    )).scalar_one()
+
+
+@pytest.mark.asyncio
+async def test_a_stale_expected_hash_refuses_every_verb(session):
+    """All four verbs rewrite content_hash, so all four take the precondition.
+    Insert and move rewrite it as much as update does, so a caller that
+    preconditions only its updates still clobbers a concurrent insert."""
+    llm, doc = await _file(session, "# T\n\npara", "notes/cas.md")
+    block = (await _blocks(session, doc))[0]["id"]
+    stale = "0" * 64
+
+    for call in (
+        lambda: update_block(session, llm, block_id=block, text="x",
+                             expected_hash=stale),
+        lambda: insert_block(session, llm, document_id=doc, type="paragraph",
+                             text="x", expected_hash=stale),
+        lambda: move_block(session, llm, block_id=block, expected_hash=stale),
+        lambda: delete_block(session, llm, block_id=block, expected_hash=stale),
+    ):
+        with pytest.raises(DocumentHashConflict):
+            await call()
+
+
+@pytest.mark.asyncio
+async def test_the_conflict_names_the_hash_that_actually_holds(session):
+    llm, doc = await _file(session, "# T\n\npara", "notes/cas2.md")
+    block = (await _blocks(session, doc))[0]["id"]
+    live = await _hash_of(session, doc)
+
+    with pytest.raises(DocumentHashConflict) as caught:
+        await update_block(session, llm, block_id=block, text="x",
+                           expected_hash="0" * 64)
+
+    assert caught.value.expected_hash == "0" * 64
+    assert caught.value.current_hash == live
+
+
+@pytest.mark.asyncio
+async def test_a_matching_expected_hash_applies_the_edit(session):
+    llm, doc = await _file(session, "# T\n\npara", "notes/cas3.md")
+    block = (await _blocks(session, doc))[0]["id"]
+
+    result = await update_block(session, llm, block_id=block, text="edited",
+                                expected_hash=await _hash_of(session, doc))
+
+    assert result.content_hash == await _hash_of(session, doc)
+    assert [b["text"] for b in await _blocks(session, doc)][0] == "edited"
+
+
+@pytest.mark.asyncio
+async def test_omitting_the_hash_stays_last_writer_wins(session):
+    """The precondition is opt-in. Every shipped caller omits it today."""
+    llm, doc = await _file(session, "# T\n\npara", "notes/cas4.md")
+    block = (await _blocks(session, doc))[0]["id"]
+    await update_block(session, llm, block_id=block, text="edited")
+    assert [b["text"] for b in await _blocks(session, doc)][0] == "edited"
+
+
+def test_the_row_lock_precedes_the_hash_comparison():
+    """What makes the precondition a compare-and-set rather than a
+    check-then-act, asserted on the source because no fixture can assert it on
+    behaviour: `tests/conftest.py` binds the session factory to one connection,
+    so two sessions cannot contend for the lock and a comparison hoisted above
+    it would leave every test in this file green.
+    """
+    import ast
+    import inspect
+    import textwrap
+
+    from app.services import block_verbs
+
+    body = ast.parse(
+        textwrap.dedent(inspect.getsource(block_verbs._mutate))
+    ).body[0]
+
+    locks = [
+        node.lineno
+        for node in ast.walk(body)
+        if isinstance(node, ast.Name) and node.id == "_LOCK_DOCUMENT"
+    ]
+    # The comparison itself, not a mention of the parameter: the signature and
+    # the docstring name it too, and neither decides the ordering.
+    compares = [
+        node.lineno
+        for node in ast.walk(body)
+        if isinstance(node, ast.If)
+        and any(
+            isinstance(inner, ast.Name) and inner.id == "expected_hash"
+            for inner in ast.walk(node.test)
+        )
+        and any(
+            isinstance(inner, ast.Name) and inner.id == "DocumentHashConflict"
+            for inner in ast.walk(node)
+        )
+    ]
+
+    assert locks, "_mutate no longer takes the document row lock"
+    assert compares, "_mutate no longer compares expected_hash"
+    assert min(locks) < min(compares), (
+        "the expected_hash comparison must happen under the row lock: above "
+        "it, a concurrent writer can move content_hash between the check and "
+        "the write and both lanes win"
+    )

@@ -101,11 +101,15 @@ OBJECT_TYPE = "document"
 class DocumentHashConflict(Exception):
     """``expected_hash`` did not match the document's current ``content_hash``.
 
-    Raised after the SAVEPOINT has rolled the filing back, like every other
-    ``file_document`` failure: nothing was written. ``current_hash`` is the
-    hash that actually holds -- re-read after the compare-and-set matched zero
-    rows, so under a race it names the winner -- or None when the precondition
-    named a document that does not exist.
+    Two raise sites, one guarantee. ``file_document`` raises it after the
+    SAVEPOINT has rolled the filing back, like every other filing failure; a
+    block verb raises it under the document's row lock, before any savepoint
+    has opened. Nothing was written on either path.
+
+    ``current_hash`` is the hash that actually holds, so under a race it names
+    the winner: re-read after the compare-and-set matched zero rows on the
+    filing path, read under the lock on the block path. None when the
+    precondition named a document that does not exist.
     """
 
     def __init__(self, *, document_id, expected_hash: str, current_hash: str | None):

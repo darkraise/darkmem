@@ -74,6 +74,7 @@ from app.services.document_door import (
     DocumentIsBlockFirst,
     DocumentNotConvertible,
     DocumentTooLarge, delete_document, document_blocks, document_content,
+    document_hash,
     document_outline,
     put_document, resolve_document_target, search_sections,
 )
@@ -274,17 +275,20 @@ class BlockInsertRequest(BaseModel):
     parent_id: str | None = None
     after_block_id: str | None = None
     properties: dict | None = None
+    expected_hash: str | None = None
 
 
 class BlockUpdateRequest(BaseModel):
     text: str
     type: str | None = None
     properties: dict | None = None
+    expected_hash: str | None = None
 
 
 class BlockMoveRequest(BaseModel):
     new_parent_id: str | None = None
     after_block_id: str | None = None
+    expected_hash: str | None = None
 
 
 class BlockWriteResponse(BaseModel):
@@ -371,6 +375,9 @@ class DocumentBlocksResponse(BaseModel):
     # only when the request opted in with include_content -- absent by default
     # so no existing reader pays for a potentially megabyte field (spec §5.2).
     content: str | None = None
+    # Served unconditionally: one short string, and without it a caller cannot
+    # precondition its first edit at all (spec section 5).
+    content_hash: str | None = None
     horizon: bool = True
 
 
@@ -805,6 +812,7 @@ async def document_blocks_route(
         document_id=target,
         blocks=[BlockRowModel(**vars(r)) for r in rows],
         content=content,
+        content_hash=await document_hash(session, document_id=target),
     )
 
 
@@ -823,6 +831,15 @@ def _block_write_error(exc: Exception) -> HTTPException:
         return HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
     if isinstance(exc, (DocumentTooLarge, DocumentNotConvertible)):
         return HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    if isinstance(exc, DocumentHashConflict):
+        # 409, not 422: the caller made no mistake -- it lost a race, or the
+        # document moved since it last read it. The detail names both hashes
+        # so it can re-read and retry without a second round trip.
+        return HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"expected_hash {exc.expected_hash} does not match the "
+            f"document's current content_hash {exc.current_hash}",
+        )
     raise exc
 
 
@@ -857,6 +874,7 @@ async def insert_block_route(
             session, llm, document_id=str(document_id), type=body.type,
             text=body.text, parent_id=body.parent_id,
             after_block_id=body.after_block_id, properties=body.properties,
+            expected_hash=body.expected_hash,
         )
     except Exception as exc:
         raise _block_write_error(exc) from exc
@@ -877,6 +895,7 @@ async def update_block_route(
         result = await update_block(
             session, llm, block_id=str(block_id), text=body.text,
             type=body.type, properties=body.properties,
+            expected_hash=body.expected_hash,
         )
     except Exception as exc:
         raise _block_write_error(exc) from exc
@@ -899,6 +918,7 @@ async def move_block_route(
         result = await move_block(
             session, llm, block_id=str(block_id),
             new_parent_id=body.new_parent_id, after_block_id=body.after_block_id,
+            expected_hash=body.expected_hash,
         )
     except Exception as exc:
         raise _block_write_error(exc) from exc
@@ -911,13 +931,20 @@ async def move_block_route(
 async def delete_block_route(
     document_id: UUID,
     block_id: UUID,
+    expected_hash: str | None = Query(
+        None, description="Refuse unless the document's content_hash matches."
+    ),
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
     llm=Depends(get_llm),
 ) -> None:
-    """204 with no body, per the REST conventions. The subtree goes with it."""
+    """204 with no body, per the REST conventions. The subtree goes with it.
+
+    `expected_hash` rides the query string here, not a body field: DELETE
+    carries no body in this API's conventions, so a body field would be
+    silently ignored rather than refused."""
     await _assert_block_is_in(session, document_id, block_id)
     try:
-        await delete_block(session, llm, block_id=str(block_id))
+        await delete_block(session, llm, block_id=str(block_id), expected_hash=expected_hash)
     except Exception as exc:
         raise _block_write_error(exc) from exc

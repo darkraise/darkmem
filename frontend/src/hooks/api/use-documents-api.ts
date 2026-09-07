@@ -320,11 +320,29 @@ export function useDocumentOutline(documentId: string | null) {
   })
 }
 
-export function useDocumentBlocks(documentId: string | null) {
-  return useQuery<{ document_id: string; blocks: BlockRow[] }>({
+export interface DocumentBlocksResponse {
+  document_id: string
+  blocks: BlockRow[]
+  /** The hash a block write must precondition on. Nullable because the route's
+   *  response model is, not because any filed document lacks one -- a document
+   *  filed from bytes stores no `content` and still has its hash, taken over
+   *  those bytes. */
+  content_hash: string | null
+}
+
+/** Shared so a re-read of the hash resolves the same cache entry the editor
+ *  renders from, rather than a second one under a duplicated key. */
+export function documentBlocksQuery(documentId: string) {
+  return {
     queryKey: ["documentBlocks", documentId],
+    queryFn: () => apiFetch<DocumentBlocksResponse>(`/documents/${documentId}`),
+  }
+}
+
+export function useDocumentBlocks(documentId: string | null) {
+  return useQuery<DocumentBlocksResponse>({
+    ...documentBlocksQuery(documentId ?? ""),
     enabled: !DEMO && Boolean(documentId),
-    queryFn: () => apiFetch(`/documents/${documentId}`),
   })
 }
 

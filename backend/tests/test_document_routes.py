@@ -32,6 +32,36 @@ def stub_llm():
     app.state.llm = previous
 
 
+@pytest.fixture
+def filed(client, auth_headers, stub_llm):
+    """File a document over the route; return its id."""
+
+    async def _filed(uri: str, content: str) -> str:
+        response = await client.post(
+            f"{V1}/documents",
+            json={"project": "p", "uri": uri, "content": content},
+            headers=auth_headers,
+        )
+        assert response.status_code == 201
+        return response.json()["document_id"]
+
+    return _filed
+
+
+@pytest.fixture
+def first_block(client, auth_headers):
+    """Read a document's first block id."""
+
+    async def _first_block(document_id: str) -> str:
+        response = await client.get(
+            f"{V1}/documents/{document_id}", headers=auth_headers
+        )
+        assert response.status_code == 200
+        return response.json()["blocks"][0]["block_id"]
+
+    return _first_block
+
+
 @pytest.mark.asyncio
 async def test_put_creates_and_reports_both_counts(client, auth_headers, stub_llm):
     response = await client.post(
@@ -1190,6 +1220,117 @@ async def test_a_block_of_another_document_404s_at_this_path(
         json={"text": "nope"}, headers=auth_headers,
     )
     assert resp.status_code == 404
+
+
+# ── content_hash precondition on the block routes ─────────────────────
+
+
+@pytest.mark.asyncio
+async def test_the_blocks_read_serves_the_documents_hash(client, auth_headers, filed):
+    doc = await filed("notes/h.md", "# T\n\npara")
+    body = (await client.get(f"{V1}/documents/{doc}",
+                             headers=auth_headers)).json()
+    assert body["content_hash"], "a caller cannot precondition its first edit"
+
+
+@pytest.mark.asyncio
+async def test_a_stale_hash_answers_409_naming_both_hashes(
+    client, auth_headers, filed, first_block,
+):
+    doc = await filed("notes/h2.md", "# T\n\npara")
+    response = await client.patch(
+        f"{V1}/documents/{doc}/blocks/{await first_block(doc)}",
+        json={"text": "x", "expected_hash": "0" * 64},
+        headers=auth_headers,
+    )
+    assert response.status_code == 409
+    assert "0" * 64 in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_delete_takes_the_hash_as_a_query_parameter(
+    client, auth_headers, filed, first_block,
+):
+    """DELETE carries no body in this API's conventions, so the precondition
+    rides the query string. A body field here would be silently ignored."""
+    doc = await filed("notes/h3.md", "# T\n\npara")
+    response = await client.delete(
+        f"{V1}/documents/{doc}/blocks/{await first_block(doc)}"
+        f"?expected_hash={'0' * 64}",
+        headers=auth_headers,
+    )
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_insert_route_forwards_the_hash_to_the_service(
+    client, auth_headers, filed, first_block,
+):
+    doc = await filed("notes/h4.md", "# T\n\npara")
+    parent = await first_block(doc)
+    response = await client.post(
+        f"{V1}/documents/{doc}/blocks",
+        json={
+            "type": "paragraph", "text": "inserted", "parent_id": parent,
+            "expected_hash": "0" * 64,
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 409
+    assert "0" * 64 in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_move_route_forwards_the_hash_to_the_service(
+    client, auth_headers, filed, first_block,
+):
+    doc = await filed("notes/h5.md", "# T\n\npara")
+    block = await first_block(doc)
+    response = await client.post(
+        f"{V1}/documents/{doc}/blocks/{block}/move",
+        json={"new_parent_id": None, "expected_hash": "0" * 64},
+        headers=auth_headers,
+    )
+    assert response.status_code == 409
+    assert "0" * 64 in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_a_served_hash_preconditions_the_next_two_writes(
+    client, auth_headers, filed, first_block,
+):
+    """The chain the editor's queue is built on, end to end over the routes:
+    the hash a read serves preconditions a write, and the hash that write
+    answers preconditions the one after it, with no read in between. Asserted
+    at the door because that is where a caller meets it -- a schema that
+    dropped the field from the response, or a route that stopped forwarding
+    it, breaks the chain without breaking the service."""
+    doc = await filed("notes/chain.md", "# T\n\npara")
+    block = await first_block(doc)
+
+    served = (await client.get(
+        f"{V1}/documents/{doc}", headers=auth_headers
+    )).json()["content_hash"]
+    assert served, "the read serves no hash, so the precondition below is a no-op"
+
+    patched = await client.patch(
+        f"{V1}/documents/{doc}/blocks/{block}",
+        json={"text": "edited", "expected_hash": served},
+        headers=auth_headers,
+    )
+    assert patched.status_code == 200, patched.text
+
+    inserted = await client.post(
+        f"{V1}/documents/{doc}/blocks",
+        json={
+            "type": "paragraph",
+            "text": "appended",
+            "expected_hash": patched.json()["content_hash"],
+        },
+        headers=auth_headers,
+    )
+    assert inserted.status_code == 201, inserted.text
+    assert inserted.json()["content_hash"] != patched.json()["content_hash"]
 
 
 async def _file_one(client, auth_headers, uri: str = "docs/rel.md") -> str:

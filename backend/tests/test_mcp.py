@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 
 import app.api.mcp.server as mcp_module
 from app.api.mcp.server import code_search, mcp
+from app.services.embedder_registry import embedder_registry
 
 SERVER_PATH = pathlib.Path(__file__).resolve().parents[1] / "app" / "api" / "mcp" / "server.py"
 
@@ -442,3 +443,115 @@ async def test_block_verbs_answer_envelopes_rather_than_tool_errors(session, mon
     ))
     assert missing["status"] == "unresolved"
     embedder_registry.forget("test-fp-mcp-blocks|3")
+
+
+_HASH_FP = "test-fp-mcp-hash|3"
+
+
+class _HashStub:
+    """Embedder stand-in: the block verbs embed the block they touched."""
+
+    def __init__(self):
+        self.fingerprint = _HASH_FP
+
+    async def embed_batch_chunked(self, texts, chunk_size, concurrency):
+        return ([[1.0, 0.0, 0.0] for _ in texts], self.fingerprint)
+
+    async def embed(self, value):
+        return [1.0, 0.0, 0.0], self.fingerprint
+
+    def llm_fingerprint(self):
+        return self.fingerprint
+
+
+def _patch_mcp(monkeypatch, session, llm):
+    from types import SimpleNamespace
+
+    from app.api.mcp import server as mcp_server
+
+    embedder_registry.forget(_HASH_FP)
+
+    @asynccontextmanager
+    async def _ctx():
+        yield session
+
+    monkeypatch.setattr(mcp_server, "async_session_factory", lambda: _ctx())
+    monkeypatch.setattr(mcp_server, "_pipeline", SimpleNamespace(llm=llm))
+
+
+@pytest.mark.asyncio
+async def test_document_get_answers_an_object_when_include_hash_is_set(
+    session, monkeypatch,
+):
+    """A bare array has nowhere to carry a hash, so the flag boxes the reply
+    the same way `include_content` already does, and neither flag leaves the
+    array shape every existing caller parses untouched.
+    """
+    import json
+
+    from app.api.mcp import server as mcp_server
+    from app.services.document_door import put_document
+
+    llm = _HashStub()
+    _patch_mcp(monkeypatch, session, llm)
+    filed = await put_document(
+        session, llm, project="p", uri="mcp/hash.md",
+        content="# Title\n\nA paragraph.\n",
+    )
+    await session.commit()
+
+    bare = json.loads(await mcp_server.document_get(document_id=filed.document_id))
+    assert isinstance(bare, list)
+
+    boxed = json.loads(await mcp_server.document_get(
+        document_id=filed.document_id, include_hash=True))
+    assert set(boxed) == {"content_hash", "blocks"}
+    assert boxed["blocks"] == bare
+    assert boxed["content_hash"] == filed.content_hash
+
+    both = json.loads(await mcp_server.document_get(
+        document_id=filed.document_id, include_hash=True, include_content=True))
+    assert set(both) == {"content", "content_hash", "blocks"}
+    embedder_registry.forget(_HASH_FP)
+
+
+@pytest.mark.parametrize("verb", ["update", "insert", "move", "delete"])
+@pytest.mark.asyncio
+async def test_a_stale_hash_answers_a_conflict_envelope(session, monkeypatch, verb):
+    """A lost race is an outcome the caller acts on, not a crash: every block
+    verb answers the same machine-readable refusal its REST twin answers 409
+    for. One verb per case -- a refusal rolls the session back.
+    """
+    import json
+
+    from app.api.mcp import server as mcp_server
+    from app.services.document_door import put_document
+
+    llm = _HashStub()
+    _patch_mcp(monkeypatch, session, llm)
+    filed = await put_document(
+        session, llm, project="p", uri="mcp/hash.md",
+        content="# Title\n\nA paragraph.\n",
+    )
+    await session.commit()
+    blocks = json.loads(await mcp_server.document_get(document_id=filed.document_id))
+    block_id = blocks[0]["block_id"]
+    stale = "0" * 64
+
+    if verb == "update":
+        call = mcp_server.block_update(block_id=block_id, text="x", expected_hash=stale)
+    elif verb == "insert":
+        call = mcp_server.block_insert(
+            document_id=filed.document_id, type="paragraph", text="x",
+            expected_hash=stale,
+        )
+    elif verb == "move":
+        call = mcp_server.block_move(block_id=block_id, expected_hash=stale)
+    else:
+        call = mcp_server.block_delete(block_id=block_id, expected_hash=stale)
+
+    envelope = json.loads(await call)
+    assert envelope["status"] == "hash_conflict"
+    assert envelope["expected_hash"] == stale
+    assert envelope["current_hash"] == filed.content_hash
+    embedder_registry.forget(_HASH_FP)
