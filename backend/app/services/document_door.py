@@ -46,6 +46,7 @@ __all__ = [
     "SEARCH_MAX_LIMIT",
     "BlockRow",
     "DocumentIsBlockFirst",
+    "DocumentJournalWriteFailed",
     "DocumentNothingToChange",
     "DocumentTargetUnresolved",
     "DocumentTooLarge",
@@ -94,6 +95,24 @@ class DocumentTooLarge(ValueError):
 
 class DocumentTargetUnresolved(ValueError):
     """Nothing a caller named resolves to a document that exists."""
+
+
+class DocumentJournalWriteFailed(RuntimeError):
+    """A bulk delete could not be journalled, so it must not happen.
+
+    `record_event` degrades loudly and never raises, which is right for a
+    capture: a lost log line must not fail an ingest that can simply be
+    repeated. Four callers already take the opposite contract for the same
+    reason this one does -- `set_verification_status`, `ratify`,
+    `record_human_verdict` and `dismiss_contradiction_suspicion` raise on a
+    `False` because for them the row is not a log line, it *is* the record,
+    so the write and its row have to be atomic.
+
+    A subtree delete is that case with more force than a capture. It is
+    unrecoverable, it cascades blocks and their vectors, and over MCP the
+    event's `api_key_id` is the only thing that says who ran it. Failing
+    closed costs the caller a retry; failing open loses the audit for good.
+    """
 
 
 class DocumentNothingToChange(ValueError):
@@ -920,7 +939,7 @@ async def delete_documents(
     # `documents`, so the rows outlive their subject by design -- that is
     # what makes this an audit trail rather than a cache.
     for row in rows:
-        await record_event(
+        landed = await record_event(
             session,
             event_type="documents_deleted",
             object_type="document",
@@ -928,6 +947,16 @@ async def delete_documents(
             project=row["project"],
             payload={"uri": row["uri"], "uri_prefix": uri_prefix},
         )
+        if not landed:
+            # Raising here rather than after the loop is what makes the
+            # refusal free: the `DELETE` below never runs, so the caller is
+            # left with a transaction to roll back rather than an unaudited
+            # delete to explain. Same posture `update_document_metadata`
+            # takes on its own refusals.
+            raise DocumentJournalWriteFailed(
+                f"documents_deleted did not land for {row['uri']!r}; "
+                "refusing to delete unaudited"
+            )
 
     await session.execute(
         text("DELETE FROM documents WHERE id = ANY(CAST(:ids AS uuid[]))"),

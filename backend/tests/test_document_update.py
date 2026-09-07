@@ -13,6 +13,7 @@ from sqlalchemy import text
 from uuid import uuid4
 
 from app.services.document_door import (
+    DocumentJournalWriteFailed,
     DocumentNothingToChange,
     DocumentTargetUnresolved,
     DocumentUriConflict,
@@ -477,3 +478,22 @@ async def test_an_empty_prefix_is_refused(session):
     with pytest.raises(DocumentNothingToChange):
         await delete_documents(session, project="p", uri_prefix="")
     assert await _uris(session, "p") == {"notes/a/one.md"}
+
+
+@pytest.mark.asyncio
+async def test_a_subtree_delete_refuses_when_the_journal_write_fails(
+    session, monkeypatch
+):
+    """The strict journal contract: an unaudited bulk delete must not commit."""
+    await _file(session, "body", "notes/a/one.md")
+    await _file(session, "body", "notes/a/two.md")
+
+    async def _fails(*args, **kwargs):
+        return False
+
+    monkeypatch.setattr("app.services.document_door.record_event", _fails)
+    with pytest.raises(DocumentJournalWriteFailed):
+        await delete_documents(session, project="p", uri_prefix="notes/a")
+    # The assertion that matters: a raise after the DELETE would satisfy the
+    # one above and still have destroyed the subtree.
+    assert await _uris(session, "p") == {"notes/a/one.md", "notes/a/two.md"}
