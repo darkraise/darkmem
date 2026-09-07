@@ -1382,12 +1382,12 @@ Authorization is per tool, not per door: `capture` covers the 13 writers
 increment 8's four block verbs `block_update`, `block_insert`, `block_move`,
 `block_delete` — a key that can edit a document's blocks can rewrite its
 content, which is `document_put`'s own power);
-`read` covers 25; `admin` covers the 2 destructive-control tools
+`read` covers 25; `admin` covers the 2 repository-scale control tools
 (`code_reindex`, the first MCP write door into the code subsystem —
 `docs/superpowers/specs/2026-08-28-file-scoped-reindex-design.md` §6.1 — and
 increment 2's `document_delete_subtree`).
 Scopes do not imply one another. `admin` reaches exactly those two
-tools — repository control and a whole-subtree erase, neither of them memory
+tools — a repository index and a whole-subtree erase, neither of them memory
 writing — so a key holding only `admin` reaches nothing else, and a `capture`
 key can trigger no index and delete no subtree. **The subtree delete is a
 separate tool rather than a mode on `document_delete` precisely because

@@ -316,7 +316,8 @@ async def test_a_key_holding_the_scope_succeeds(door, mint_key):
 
 async def test_an_admin_only_key_reaches_only_admin_tools(door, mint_key):
     """``admin`` is a real scope and deliberately implies nothing: it reaches
-    ``code_reindex`` and nothing in ``CAPTURE_TOOLS`` or ``READ_TOOLS``."""
+    ``code_reindex`` and ``document_delete_subtree``, and nothing in
+    ``CAPTURE_TOOLS`` or ``READ_TOOLS``."""
     _row_id, credential = await mint_key(scopes=["admin"])
 
     for tool in ("memory_stats", "memory_add"):
@@ -392,7 +393,7 @@ def test_every_tool_declares_a_scope():
     The roster is derived from source (see tests/test_mcp.py), so this cannot
     go stale the way a hand-listed set would.
 
-    ``TOOL_SCOPES`` names all 39 rather than deriving "not a writer means a
+    ``TOOL_SCOPES`` names all 40 rather than deriving "not a writer means a
     reader". A derived partition is total by construction and therefore blind:
     it would resolve a new *capture* tool nobody classified to ``read`` and
     ship it, with this test still green. Naming all three sets makes an

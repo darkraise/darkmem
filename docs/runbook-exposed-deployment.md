@@ -104,8 +104,8 @@ purpose, and it is the surface the minimal client speaks:
 | `admin` | `POST /repos/{id}/webhook`, `POST /repos/{id}/reindex-files` |
 
 **`/mcp` is scoped far more widely, and separately** (doc 18 §5's second
-activation, 2026-08-26): of its 39 tools, 13 require `capture`, 25 require
-`read` and one requires `admin`, so a `capture`-scoped key reaches all 13 MCP
+activation, 2026-08-26): of its 40 tools, 13 require `capture`, 25 require
+`read` and two require `admin`, so a `capture`-scoped key reaches all 13 MCP
 writer tools — `memory_add`, `memory_batch_add`, `memory_update`,
 `memory_delete`, `document_put`, `document_update`, `document_delete`,
 `checkpoint_save`, `research_run`, `block_update`, `block_insert`,
@@ -114,14 +114,31 @@ writer tools — `memory_add`, `memory_batch_add`, `memory_update`,
 as the whole reach of a key of any scope.
 
 **A leaked `admin` key now reaches `/mcp` too, which it did not before
-2026-08-28.** `code_reindex` is the one `admin`-scoped tool, and its blast
-radius is the same as the webhook's rather than a read of your data: it can
-trigger a repository index at will, which spends embedder budget per run, and
-on a *clone* repository the run's own `pull_repo` executes `git reset --hard`
-against the fetched head — uncommitted work in darkmem's clone directory does
-not survive it. It cannot mint a credential (no MCP tool can) and it asserts
-nothing into the graph. Rotate an exposed `admin` key on that basis, not on
-the old "admin reaches no MCP tool" one.
+2026-08-28 — and since 2026-09-07 its blast radius includes destroying your
+data.** Two tools are `admin`-scoped, and the second is the severe one:
+
+- `code_reindex` (2026-08-28) can trigger a repository index at will, which
+  spends embedder budget per run, and on a *clone* repository the run's own
+  `pull_repo` executes `git reset --hard` against the fetched head —
+  uncommitted work in darkmem's clone directory does not survive it. It
+  rebuilds the code graph and asserts nothing into the memory graph.
+- `document_delete_subtree` (2026-09-07) **deletes every document under any
+  `(project, uri_prefix)` the caller names, in one call**. It cascades each
+  document's blocks and their vectors, and there is no undo: the `events`
+  journal records one `documents_deleted` row per document, naming the key
+  that ran it, but a journal row is an audit trail and not a backup. Restoring
+  the corpus means restoring from a dump (`docs/runbook-backup-worker.md`).
+  A caller needs no id and no prior read — a project name and a prefix guess
+  are the whole address.
+
+So the pair's radius is: spend budget, discard uncommitted work in the clone
+directory, and **erase filed documents irrecoverably**. Neither can mint a
+credential (no MCP tool can) and neither reaches `confirmed` power. **Rotate
+an exposed `admin` key immediately and treat the corpus as suspect until you
+have checked the journal** — `GET /events` filtered to `documents_deleted`
+tells you what was erased and under which key name. Do not rotate on the
+older "its blast radius is the same as the webhook's" basis, and do not rotate
+on the older-still "admin reaches no MCP tool" one; both understate this.
 
 Everything else stays human-session-only. That is a deliberate boundary rather
 than an oversight: widening `read` to the fact vault or the code graph decides
