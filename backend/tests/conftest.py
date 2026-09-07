@@ -69,10 +69,24 @@ async def setup_database():
 async def session(setup_database):
     connection = await test_engine.connect()
     transaction = await connection.begin()
-    # The outer transaction above is the isolation boundary, and SQLAlchemy's
-    # default join_transaction_mode="conditional_savepoint" already runs this
-    # session inside its own SAVEPOINT on it, so a commit() in a test cannot
-    # reach it. The 1.x recipe that reopened that savepoint by hand from an
+    # The outer transaction above is the isolation boundary. SQLAlchemy's
+    # default join_transaction_mode="conditional_savepoint" resolves to
+    # "rollback_only" here -- there is no nested transaction on the connection,
+    # so no SAVEPOINT is opened and the session joins the outer transaction
+    # directly (orm/session.py:1210-1214). What that buys is one-directional:
+    # should_commit is False, so a commit() in a test is dropped rather than
+    # propagated, but a ROLLBACK is not, and one ends the boundary outright.
+    #
+    # So a test that drives a rollback path before its own writes LEAKS. Every
+    # door that answers a refusal rolls back the session it was handed --
+    # `document_update`'s uri_conflict/unresolved envelopes and
+    # `document_delete`'s bare `except Exception` both do -- and once one has
+    # run, anything the test writes afterwards autobegins a session-owned
+    # transaction and commits for real, surviving the teardown rollback and
+    # colliding with whatever module claims those ids next. Order such a test
+    # writes-then-refusals, or give the call its own session.
+    #
+    # The 1.x recipe that reopened a savepoint by hand from an
     # "after_transaction_end" listener is therefore redundant here, and it was
     # not harmless: it fired while an application-level session.begin_nested()
     # was still unwinding, and the InvalidRequestError that raised was caught
