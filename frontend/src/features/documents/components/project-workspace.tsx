@@ -6,8 +6,27 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { FolderTree, Search } from "lucide-react"
+import { FolderTree, Plus, Search } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "darkraise-ui/components/alert-dialog"
 import { Button } from "darkraise-ui/components/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "darkraise-ui/components/dialog"
+import { Label } from "darkraise-ui/components/label"
+import { toast } from "darkraise-ui/components/sonner"
 import { Card } from "darkraise-ui/components/card"
 import { Input } from "darkraise-ui/components/input"
 import {
@@ -38,21 +57,50 @@ import { EditableDocument } from "@/features/documents/components/editable-docum
 import { ProgressBoard } from "@/features/progress/components/progress-board"
 import { useProgressCorpus } from "@/features/progress/use-progress-corpus"
 import { DocumentTree } from "@/features/documents/components/document-tree"
+import { NoteTreeActions } from "@/features/documents/components/note-tree-actions"
 import {
   expansionStorageKey,
   pathsToDocument,
   rootFolderPaths,
 } from "@/features/documents/tree-expansion"
-import { buildUriTree } from "@/features/documents/uri-tree"
+import { buildUriTree, NO_PATH, type UriTreeNode } from "@/features/documents/uri-tree"
 import {
   useAllDocuments,
+  useDocumentCreate,
+  useDocumentDelete,
+  useDocumentMetadataUpdate,
   useDocumentSearch,
+  useDocumentSubtreeDelete,
+  useDocumentSubtreeRename,
   type DocumentListItem,
 } from "@/hooks/api"
 
 /** Hoisted rather than a `[]` literal per render: a fresh array defeats the
  *  `useMemo`s inside `useProgressCorpus`. */
 const NO_DOCUMENTS: DocumentListItem[] = []
+
+/** `document_put` upserts on `(project, uri)`, so a create at a uri that
+ *  already exists returns that document's id and files nothing. Mint a free
+ *  one against the tree we already hold. */
+function freeUri(items: DocumentListItem[], folder: string, base = "untitled") {
+  const taken = new Set(items.map((d) => d.uri).filter(Boolean) as string[])
+  const at = (n: number) =>
+    `${folder ? `${folder}/` : ""}${base}${n === 1 ? "" : `-${n}`}.md`
+  let n = 1
+  while (taken.has(at(n))) n += 1
+  return at(n)
+}
+
+function parentPath(path: string) {
+  const cut = path.lastIndexOf("/")
+  return cut === -1 ? "" : path.slice(0, cut)
+}
+
+/** True for the node itself and for anything filed beneath it. Matches the
+ *  subtree routes' own SQL predicate (`uri = prefix OR uri LIKE prefix/%`). */
+function underPrefix(uri: string | null | undefined, prefix: string) {
+  return Boolean(uri) && (uri === prefix || uri!.startsWith(`${prefix}/`))
+}
 
 export const TAB_VALUES = ["artifacts", "progress"] as const
 export type WorkspaceTab = (typeof TAB_VALUES)[number]
@@ -102,7 +150,6 @@ export function ProjectWorkspace({
   tab,
   onTabChange,
   treeManagement = false,
-  treeEmptyAction,
 }: {
   project: string
   tab: WorkspaceTab
@@ -112,9 +159,6 @@ export function ProjectWorkspace({
    *  gates rather than `editable`, because that surface is already editable
    *  -- it has the block editor and a delete. */
   treeManagement?: boolean
-  /** The affordance an empty tree offers. Threaded rather than rendered
-   *  here: this component owns no create verb. */
-  treeEmptyAction?: ReactNode
 }) {
   const documents = useAllDocuments(project)
   const items = documents.data?.items ?? []
@@ -193,12 +237,16 @@ export function ProjectWorkspace({
   // Keyed on the document id, not on `selected`'s identity, and re-attempted
   // while the path is empty: a search hit can select a document before its
   // tree row exists, and the reveal has to land when `roots` catches up.
+  // Keyed on `(id, uri)`, not on the id alone: the id alone is a second
+  // snapshot, so after a move that changed the document's folder the effect
+  // returned early and the new folder stayed collapsed.
   const revealedFor = useRef<string | null>(null)
   useEffect(() => {
-    if (!selected || revealedFor.current === selected.id) return
+    const key = selected ? `${selected.id}\u0000${selected.uri ?? ""}` : null
+    if (!selected || revealedFor.current === key) return
     const toReveal = pathsToDocument(roots, selected.id)
     if (toReveal.length === 0) return
-    revealedFor.current = selected.id
+    revealedFor.current = key
     const base = expanded ?? rootFolderPaths(roots)
     const next = Array.from(new Set([...base, ...toReveal]))
     if (next.length !== base.length) handleExpandedChange(next)
@@ -214,6 +262,115 @@ export function ProjectWorkspace({
     setFocusBlockId(null)
     setMode("read")
   }, [])
+
+  const createNote = useDocumentCreate()
+  const patchMetadata = useDocumentMetadataUpdate()
+  const renameSubtree = useDocumentSubtreeRename()
+  const deleteSubtree = useDocumentSubtreeDelete()
+  const deleteDocument = useDocumentDelete()
+
+  const [renameTarget, setRenameTarget] = useState<UriTreeNode | null>(null)
+  const [renameValue, setRenameValue] = useState("")
+  const [deleteTarget, setDeleteTarget] = useState<UriTreeNode | null>(null)
+
+  const clearSelection = useCallback(() => {
+    setSelectedId(null)
+    setFocusBlockId(null)
+    setMode("read")
+  }, [])
+
+  const handleNewNote = useCallback(
+    (folderPath: string) => {
+      const folder = folderPath === NO_PATH ? "" : folderPath
+      createNote.mutate(
+        { project, uri: freeUri(items, folder) },
+        {
+          onSuccess: ({ document_id }) => setSelectedId(document_id),
+          onError: (error) => toast.error(error.message),
+        },
+      )
+    },
+    [createNote, items, project],
+  )
+
+  const handleTogglePin = useCallback(
+    (node: UriTreeNode) => {
+      const document = node.document
+      if (!document) return
+      patchMetadata.mutate(
+        { documentId: document.id, pinned: !document.pinned_at },
+        { onError: (error) => toast.error(error.message) },
+      )
+    },
+    [patchMetadata],
+  )
+
+  const handleOpenRename = useCallback((node: UriTreeNode) => {
+    setRenameTarget(node)
+    setRenameValue(node.name)
+  }, [])
+
+  const commitRename = () => {
+    const node = renameTarget
+    const name = renameValue.trim()
+    if (!node) return
+    if (!name || name === node.name || name.includes("/")) {
+      setRenameTarget(null)
+      return
+    }
+    const parent = parentPath(node.path)
+    const next = parent ? `${parent}/${name}` : name
+    const settle = {
+      onSuccess: () => setRenameTarget(null),
+      onError: (error: Error) => toast.error(error.message),
+    }
+    // A node can be BOTH a document and a folder -- `a/b.md` and
+    // `a/b.md/c.md` coexist. Renaming the document alone would strand every
+    // descendant under the old prefix, and the subtree route's predicate
+    // matches `uri = prefix` as well as `uri LIKE prefix/%`, so it moves the
+    // document with its children in one call. Children decide, not the row.
+    if (node.children.length > 0) {
+      renameSubtree.mutate(
+        { project, uri_prefix: node.path, new_uri_prefix: next },
+        settle,
+      )
+    } else if (node.document) {
+      patchMetadata.mutate({ documentId: node.document.id, uri: next }, settle)
+    } else {
+      setRenameTarget(null)
+    }
+  }
+
+  const commitDelete = () => {
+    const node = deleteTarget
+    if (!node) return
+    const settle = {
+      onSuccess: () => setDeleteTarget(null),
+      onError: (error: Error) => toast.error(error.message),
+    }
+    if (node.children.length > 0) {
+      if (selected && underPrefix(selected.uri, node.path)) clearSelection()
+      deleteSubtree.mutate({ project, uri_prefix: node.path }, settle)
+    } else if (node.document) {
+      if (selected?.id === node.document.id) clearSelection()
+      deleteDocument.mutate(node.document.id, settle)
+    } else {
+      setDeleteTarget(null)
+    }
+  }
+
+  const nodeActions = useCallback(
+    (node: UriTreeNode) => (
+      <NoteTreeActions
+        node={node}
+        onNewNote={handleNewNote}
+        onRename={handleOpenRename}
+        onTogglePin={handleTogglePin}
+        onDelete={setDeleteTarget}
+      />
+    ),
+    [handleNewNote, handleOpenRename, handleTogglePin],
+  )
 
   const hits = search.data?.items ?? []
 
@@ -313,7 +470,23 @@ export function ProjectWorkspace({
                 bar is 10px and an 8px pad left it 2px over the rows -- which
                 a full-width selected fill makes visible. */}
             <ScrollArea className="h-full pr-3">
-              <RegionLabel>documents</RegionLabel>
+              {treeManagement ? (
+                <div className="flex items-center justify-between gap-2">
+                  <RegionLabel>notes</RegionLabel>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="mb-1.5"
+                    onClick={() => handleNewNote("")}
+                  >
+                    <Plus className="mr-1 size-3.5" />
+                    New note
+                  </Button>
+                </div>
+              ) : (
+                <RegionLabel>documents</RegionLabel>
+              )}
               {documents.isError ? (
                 <p className="text-destructive text-sm">
                   This project's documents could not be loaded — a failed
@@ -333,7 +506,15 @@ export function ProjectWorkspace({
                   truncated={documents.data?.truncated ?? false}
                   expanded={effectiveExpanded}
                   onExpandedChange={handleExpandedChange}
-                  emptyAction={treeManagement ? treeEmptyAction : undefined}
+                  nodeActions={treeManagement ? nodeActions : undefined}
+                  emptyAction={
+                    treeManagement ? (
+                      <Button type="button" onClick={() => handleNewNote("")}>
+                        <Plus className="mr-1 size-3.5" />
+                        New note
+                      </Button>
+                    ) : undefined
+                  }
                 />
               )}
             </ScrollArea>
@@ -431,6 +612,68 @@ export function ProjectWorkspace({
           </ResizablePanel>
         </ResizablePanelGroup>
       </TabsContent>
+
+      <Dialog
+        open={renameTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setRenameTarget(null)
+        }}
+      >
+        <DialogContent>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              commitRename()
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>Rename {renameTarget?.name}</DialogTitle>
+            </DialogHeader>
+            <Label htmlFor="note-rename" className="sr-only">
+              New name
+            </Label>
+            <Input
+              id="note-rename"
+              autoFocus
+              aria-label="New name"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+            />
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setRenameTarget(null)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit">Rename</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {deleteTarget?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget && deleteTarget.children.length > 0
+                ? "This removes every note filed under this path, with their blocks and embeddings. This cannot be undone."
+                : "This removes the note and all of its blocks, including their embeddings. This cannot be undone."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={commitDelete}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {treeManagement ? null : (
         <TabsContent value="progress" className="space-y-5">

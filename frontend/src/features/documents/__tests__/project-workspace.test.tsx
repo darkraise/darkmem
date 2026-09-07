@@ -806,26 +806,214 @@ describe("project workspace — the tree-management capability", () => {
     expect(screen.queryByText(/planning\/progress\.md/)).toBeNull()
   })
 
-  it("threads an empty-state action into the tree", async () => {
-    // Task 10 supplies the button; the path has to exist for it to land in.
+  it("offers a create affordance inside the empty tree", async () => {
+    // The workspace builds the button itself rather than taking it as a
+    // prop: an empty tree renders before any row, so `nodeActions` -- which
+    // only ever hangs off a row -- reaches nothing here.
     mockDocuments({ items: [] })
-    renderWorkspace({
-      treeManagement: true,
-      treeEmptyAction: <button type="button">new note</button>,
-    })
+    renderWorkspace({ treeManagement: true })
 
     expect(
-      await screen.findByRole("button", { name: /new note/i }),
-    ).toBeInTheDocument()
+      await screen.findAllByRole("button", { name: /new note/i }),
+    ).not.toHaveLength(0)
   })
 
-  it("ignores an empty-state action while tree management is off", async () => {
-    // The corpus browser has no create verb, so the type must not permit
-    // "tree management off, but a create button in the empty tree".
+  it("offers no create affordance in an empty tree while management is off", async () => {
+    // The corpus browser has no create verb at all.
     mockDocuments({ items: [] })
-    renderWorkspace({ treeEmptyAction: <button type="button">new note</button> })
+    renderWorkspace()
 
     expect(await screen.findByText(/no documents filed/i)).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /new note/i })).toBeNull()
+  })
+})
+
+/** The bodies the workspace sent, by route. */
+function bodiesFor(match: (path: string) => boolean) {
+  return vi
+    .mocked(apiFetch)
+    .mock.calls.filter(([path]) => match(String(path)))
+    .map(([, init]) => JSON.parse(String((init as RequestInit | undefined)?.body ?? "{}")))
+}
+
+const ORPHAN = {
+  id: "33333333-3333-3333-3333-333333333333",
+  title: "No uri note",
+  uri: null,
+  source_type: "note",
+  project: "darkmem",
+  block_count: 1,
+}
+
+async function openMenu(name: RegExp) {
+  await userEvent.click(screen.getByLabelText(name))
+}
+
+describe("project workspace — the note actions", () => {
+  afterEach(() => {
+    vi.mocked(apiFetch).mockReset()
+  })
+
+  it("mints a uri no document holds when creating a note", async () => {
+    // `document_put` upserts on `(project, uri)`: re-using `untitled.md`
+    // would return the existing document's id and file nothing at all.
+    mockDocuments({
+      items: [{ ...DOC, uri: "untitled.md" }, { ...DOC, id: "d2", uri: "untitled-2.md" }],
+    })
+    renderWorkspace({ treeManagement: true })
+    await screen.findByText("untitled.md")
+
+    await userEvent.click(screen.getByRole("button", { name: /new note/i }))
+
+    await waitFor(() =>
+      expect(bodiesFor((p) => p === "/documents")).toHaveLength(1),
+    )
+    expect(bodiesFor((p) => p === "/documents")[0]).toMatchObject({
+      project: "darkmem",
+      uri: "untitled-3.md",
+    })
+  })
+
+  it("renames a note by its uri, never its title", async () => {
+    // The tree renders the uri's last segment, so a title PATCH changes
+    // nothing the user can see and reads as a broken rename.
+    mockDocuments({ items: [DOC] })
+    renderWorkspace({ treeManagement: true })
+    await screen.findByText("design.md")
+
+    await openMenu(/actions for design\.md/i)
+    await userEvent.click(await screen.findByText("Rename"))
+    const input = screen.getByRole("textbox", { name: /new name/i })
+    await userEvent.clear(input)
+    await userEvent.type(input, "renamed.md{Enter}")
+
+    await waitFor(() =>
+      expect(bodiesFor((p) => p === `/documents/${DOC.id}`)).toHaveLength(1),
+    )
+    const body = bodiesFor((p) => p === `/documents/${DOC.id}`)[0]
+    expect(body).toEqual({ uri: "notes/renamed.md" })
+  })
+
+  it("renames a folder through the subtree route", async () => {
+    mockDocuments({ items: [DOC] })
+    renderWorkspace({ treeManagement: true })
+    await screen.findByText("design.md")
+
+    await openMenu(/actions for notes/i)
+    await userEvent.click(await screen.findByText("Rename"))
+    const input = screen.getByRole("textbox", { name: /new name/i })
+    await userEvent.clear(input)
+    await userEvent.type(input, "journal{Enter}")
+
+    await waitFor(() =>
+      expect(bodiesFor((p) => p === "/documents/rename")).toHaveLength(1),
+    )
+    expect(bodiesFor((p) => p === "/documents/rename")[0]).toEqual({
+      project: "darkmem",
+      uri_prefix: "notes",
+      new_uri_prefix: "journal",
+    })
+  })
+
+  it("renames a document that also has descendants as a subtree", async () => {
+    // `a/b.md` and `a/b.md/c.md` coexist: renaming the document alone would
+    // strand every descendant under the old prefix. The subtree route matches
+    // `uri = prefix` too, so it moves the document AND its children.
+    mockDocuments({
+      items: [
+        { ...DOC, uri: "notes/design.md" },
+        { ...DOC, id: "d2", uri: "notes/design.md/appendix.md" },
+      ],
+    })
+    renderWorkspace({ treeManagement: true })
+    await screen.findByText("design.md")
+
+    await openMenu(/actions for design\.md/i)
+    await userEvent.click(await screen.findByText("Rename"))
+    const input = screen.getByRole("textbox", { name: /new name/i })
+    await userEvent.clear(input)
+    await userEvent.type(input, "spec.md{Enter}")
+
+    await waitFor(() =>
+      expect(bodiesFor((p) => p === "/documents/rename")).toHaveLength(1),
+    )
+    expect(bodiesFor((p) => p === "/documents/rename")[0]).toEqual({
+      project: "darkmem",
+      uri_prefix: "notes/design.md",
+      new_uri_prefix: "notes/spec.md",
+    })
+    expect(bodiesFor((p) => p.startsWith(`/documents/${DOC.id}`))).toHaveLength(0)
+  })
+
+  it("confirms before deleting a folder, then uses the subtree route", async () => {
+    mockDocuments({ items: [DOC] })
+    renderWorkspace({ treeManagement: true })
+    await screen.findByText("design.md")
+
+    await openMenu(/actions for notes/i)
+    await userEvent.click(await screen.findByText("Delete"))
+    // Nothing is sent until the confirm is answered.
+    expect(bodiesFor((p) => p === "/documents/delete")).toHaveLength(0)
+
+    const dialog = await screen.findByRole("alertdialog")
+    await userEvent.click(within(dialog).getByRole("button", { name: /^delete$/i }))
+
+    await waitFor(() =>
+      expect(bodiesFor((p) => p === "/documents/delete")).toHaveLength(1),
+    )
+    expect(bodiesFor((p) => p === "/documents/delete")[0]).toEqual({
+      project: "darkmem",
+      uri_prefix: "notes",
+    })
+  })
+
+  it("clears the selection when a delete removes the selected document", async () => {
+    mockDocuments({ items: [DOC] })
+    renderWorkspace({ treeManagement: true })
+    await userEvent.click(await screen.findByText("design.md"))
+    expect(await screen.findByText(/reader:/)).toBeInTheDocument()
+
+    await openMenu(/actions for design\.md/i)
+    await userEvent.click(await screen.findByText("Delete"))
+    const dialog = await screen.findByRole("alertdialog")
+    await userEvent.click(within(dialog).getByRole("button", { name: /^delete$/i }))
+
+    expect(await screen.findByText(/nothing selected/i)).toBeInTheDocument()
+  })
+
+  it("offers no rename on a document that has no uri to rename", async () => {
+    // The `(no path)` bucket's children are documents with a NULL uri, so
+    // every uri-shaped operation on them would carry a path matching nothing.
+    mockDocuments({ items: [DOC, ORPHAN] })
+    renderWorkspace({ treeManagement: true })
+    await screen.findByText("No uri note")
+
+    await openMenu(/actions for No uri note/i)
+    expect(await screen.findByText("Delete")).toBeInTheDocument()
+    expect(screen.queryByText("Rename")).toBeNull()
+  })
+
+  it("reveals the new folder after a document's uri changes under it", async () => {
+    // `revealedFor` used to be keyed on the id alone, which is a second
+    // snapshot: after a move the effect returned early and the new folder
+    // stayed collapsed.
+    window.localStorage.setItem(
+      expansionStorageKey("darkmem"),
+      JSON.stringify(["notes"]),
+    )
+    const OTHER = { ...DOC, id: "d2", uri: "archive/keep.md" }
+    mockDocuments({ items: [DOC, OTHER] })
+    renderWorkspace({ treeManagement: true })
+    await userEvent.click(await screen.findByText("design.md"))
+
+    mockDocuments({ items: [{ ...DOC, uri: "archive/design.md" }, OTHER] })
+    await lastQueryClient?.invalidateQueries({ queryKey: ["documentsAll"] })
+    await waitFor(() =>
+      expect(screen.getByLabelText("document path")).toHaveTextContent("archive"),
+    )
+
+    expect(
+      await screen.findByRole("treeitem", { name: "design.md" }),
+    ).toBeInTheDocument()
   })
 })

@@ -30,6 +30,10 @@ export function NoteTreeActions({
   if (node.path === NO_PATH) return null
 
   const document = node.document
+  // A `(no path)` child is a document with a NULL uri. Rename rewrites a
+  // uri, so it has nothing to act on here -- and the subtree verbs would
+  // carry a prefix matching no row at all.
+  const renamable = !node.path.startsWith(`${NO_PATH}/`)
 
   return (
     <DropdownMenu>
@@ -54,9 +58,11 @@ export function NoteTreeActions({
             New note
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem onSelect={() => onRename(node)}>
-          Rename
-        </DropdownMenuItem>
+        {renamable ? (
+          <DropdownMenuItem onSelect={() => onRename(node)}>
+            Rename
+          </DropdownMenuItem>
+        ) : null}
         {document ? (
           <DropdownMenuItem onSelect={() => onTogglePin(node)}>
             {document.pinned_at ? "Unpin" : "Pin"}
