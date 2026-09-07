@@ -109,6 +109,7 @@ export const DocumentTree = memo(function DocumentTree({
   onSelect,
   truncated,
   nodeActions,
+  emptyAction,
   expanded,
   onExpandedChange,
 }: {
@@ -120,6 +121,10 @@ export const DocumentTree = memo(function DocumentTree({
    *  affordance here; this surface passes nothing. Declared now so the
    *  editor extends this component rather than rewriting it. */
   nodeActions?: (node: UriTreeNode) => ReactNode
+  /** Rendered inside the empty state. Without it an empty space has no
+   *  affordance at all: this branch returns before any row, and `nodeActions`
+   *  only ever hangs off a row. */
+  emptyAction?: ReactNode
   /** Controlled expansion. Omitted keeps the legacy expand-everything
    *  behaviour, so increment 8's call site is unaffected. */
   expanded?: string[]
@@ -167,6 +172,7 @@ export const DocumentTree = memo(function DocumentTree({
         icon={FileText}
         title="No documents filed in this project"
         description="A document appears here the moment it is filed — over REST or over MCP."
+        action={emptyAction}
       />
     )
   }
