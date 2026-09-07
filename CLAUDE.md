@@ -1657,7 +1657,8 @@ read serves `content_hash` **unconditionally** on its envelope, and MCP
 `document_get` takes `include_hash` to answer `{content_hash, blocks}` — so the
 hash a read serves preconditions a write, and the `content_hash` that write
 answers preconditions the next one with no read in between. Omitting the field
-keeps last-writer-wins, which is what the batch import path relies on.
+keeps last-writer-wins, which is what every caller shipped before this door
+gained the precondition still does.
 
 **Five verbs, both doors.** `put`, `search`, `outline`, `get` and
 `delete` are reachable from REST (`POST /api/v1/documents`,
