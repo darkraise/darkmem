@@ -1,12 +1,14 @@
 import { memo, useCallback, useMemo, useState, type CSSProperties, type ReactNode } from "react"
 import {
   DndContext,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useDraggable,
   useDroppable,
   useSensor,
   useSensors,
   pointerWithin,
+  type Collision,
   type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
@@ -118,20 +120,75 @@ function IndentGuides({ depth }: { depth: number }) {
  * arrow-key traversal `TreeViewTree` handles by bubbling. `attributes` is
  * therefore never spread anywhere.
  */
-const DRAG_PREFIX = "drag:"
-const DROP_PREFIX = "drop:"
+export const DRAG_PREFIX = "drag:"
+export const DROP_PREFIX = "drop:"
 
-const ROOT_DROP_ID = DROP_PREFIX
+/** The pane itself, so a row can be moved back to the top level. */
+export const ROOT_DROP_ID = DROP_PREFIX
 
-/** The pane itself is a droppable so a row can be moved back to the top
- *  level, and it encloses every other one -- so an area-ranking detector
- *  (dnd-kit's default) would let it win every hover. A folder underneath the
+export function buildPathMap(roots: UriTreeNode[]): Map<string, UriTreeNode> {
+  const map = new Map<string, UriTreeNode>()
+  const walk = (nodes: UriTreeNode[]) => {
+    for (const node of nodes) {
+      map.set(node.path, node)
+      walk(node.children)
+    }
+  }
+  walk(roots)
+  return map
+}
+
+/** Which node a release over `node` actually means.
+ *
+ *  A leaf resolves to its PARENT rather than being an inert droppable. Left
+ *  disabled, a release over a sibling row fell through to the pane droppable
+ *  underneath and resolved to "move to the top level" -- an accepted uri
+ *  rewrite from the likeliest accidental release position there is. Resolved
+ *  to the parent it lands on `moveTarget`'s own "already there" refusal.
+ */
+export function dropTargetFor(
+  byPath: Map<string, UriTreeNode>,
+  node: UriTreeNode,
+): UriTreeNode | null {
+  if (node.children.length > 0) return node
+  const parent = node.path.slice(0, node.path.lastIndexOf("/"))
+  return parent ? (byPath.get(parent) ?? null) : null
+}
+
+/** The whole drop decision, as a pure function of the tree and the two ids. */
+export function resolveDrop(
+  byPath: Map<string, UriTreeNode>,
+  activeId: string,
+  overId: string | null,
+): MoveTarget | null {
+  const dragged = byPath.get(activeId.slice(DRAG_PREFIX.length))
+  if (!dragged || overId === null) return null
+  const overPath = overId.slice(DROP_PREFIX.length)
+  const over = overPath ? byPath.get(overPath) : undefined
+  if (overPath && !over) return null
+  return moveTarget(dragged, over ? dropTargetFor(byPath, over) : null)
+}
+
+/** The pane droppable encloses every other one, so an area-ranking detector
+ *  (dnd-kit's default) would let it win every hover. A row underneath the
  *  pointer therefore always outranks it. */
-const preferInnermost: CollisionDetection = (args) => {
-  const hits = pointerWithin(args)
+export function preferInnermost(hits: Collision[]): Collision[] {
   const inner = hits.filter((c) => c.id !== ROOT_DROP_ID)
   return inner.length > 0 ? inner : hits
 }
+
+const collisionDetection: CollisionDetection = (args) =>
+  preferInnermost(pointerWithin(args))
+
+/** Mouse and touch are separate sensors on purpose. A single `PointerSensor`
+ *  needs `touch-action: none` on the handle, which covers most of every row
+ *  and would disable native panning of the tree outright -- a touch scroll
+ *  started on any row would never scroll. A long-press delay separates a
+ *  touch drag from a pan without taking the gesture away. */
+const MOUSE_ACTIVATION = { activationConstraint: { distance: 6 } } as const
+const TOUCH_ACTIVATION = {
+  activationConstraint: { delay: 220, tolerance: 6 },
+} as const
 
 /** Drop-to-root. Rendered only inside the context, so the hook it calls can
  *  never run on the drag-free path. */
@@ -142,43 +199,58 @@ function RootDroppable({
   activeNode: UriTreeNode | null
   children: ReactNode
 }) {
-  const { setNodeRef } = useDroppable({
+  const { setNodeRef, isOver } = useDroppable({
     id: ROOT_DROP_ID,
     disabled: activeNode !== null && moveTarget(activeNode, null) === null,
   })
-  return <div ref={setNodeRef}>{children}</div>
+  return (
+    <div
+      ref={setNodeRef}
+      data-drop-over={isOver || undefined}
+      className="outline-primary/70 rounded-md data-[drop-over]:outline-1 data-[drop-over]:outline-dashed"
+    >
+      {children}
+    </div>
+  )
 }
 
 function RowHandle({
   node,
+  dropTarget,
   activeNode,
   children,
 }: {
   node: UriTreeNode
+  dropTarget: UriTreeNode | null
   activeNode: UriTreeNode | null
   children: ReactNode
 }) {
-  const { setNodeRef: setDragRef, listeners } = useDraggable({
+  const { setNodeRef: setDragRef, listeners, isDragging } = useDraggable({
     id: `${DRAG_PREFIX}${node.path}`,
   })
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: `${DROP_PREFIX}${node.path}`,
     // A droppable the resolver would refuse is not offered at all, so the
     // hover affordance can never promise a move that does nothing.
-    disabled:
-      node.children.length === 0 ||
-      (activeNode !== null && moveTarget(activeNode, node) === null),
+    disabled: activeNode !== null && moveTarget(activeNode, dropTarget) === null,
   })
+  // Stable across renders: an inline arrow re-registers the droppable and
+  // re-runs its ResizeObserver on every one.
+  const setRef = useCallback(
+    (el: HTMLElement | null) => {
+      setDragRef(el)
+      setDropRef(el)
+    },
+    [setDragRef, setDropRef],
+  )
   return (
     <span
       data-drag-handle
       data-drop-over={isOver || undefined}
-      ref={(el) => {
-        setDragRef(el)
-        setDropRef(el)
-      }}
+      data-dragging={isDragging || undefined}
+      ref={setRef}
       {...listeners}
-      className="ring-primary flex min-w-0 flex-1 touch-none items-center gap-1.5 rounded-sm data-[drop-over]:ring-1"
+      className="ring-primary flex min-w-0 flex-1 items-center gap-1.5 rounded-sm data-[dragging]:opacity-50 data-[drop-over]:ring-1"
     >
       {children}
     </span>
@@ -234,23 +306,14 @@ export const DocumentTree = memo(function DocumentTree({
   // long document re-renders this pane once per heading crossed.
   const roots = useMemo(() => buildUriTree(items), [items])
   const byId = useMemo(() => new Map(items.map((d) => [d.id, d])), [items])
-  const byPath = useMemo(() => {
-    const map = new Map<string, UriTreeNode>()
-    const walk = (nodes: UriTreeNode[]) => {
-      for (const node of nodes) {
-        map.set(node.path, node)
-        walk(node.children)
-      }
-    }
-    walk(roots)
-    return map
-  }, [roots])
+  const byPath = useMemo(() => buildPathMap(roots), [roots])
 
   const [activeNode, setActiveNode] = useState<UriTreeNode | null>(null)
   const sensors = useSensors(
     // Without a distance every click is a zero-length drag and the row never
     // selects.
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(MouseSensor, MOUSE_ACTIVATION),
+    useSensor(TouchSensor, TOUCH_ACTIVATION),
   )
   const onDragStart = useCallback(
     (event: DragStartEvent) => {
@@ -261,11 +324,12 @@ export const DocumentTree = memo(function DocumentTree({
   )
   const onDragEnd = useCallback(
     (event: DragEndEvent) => {
-      const dragged = byPath.get(String(event.active.id).slice(DRAG_PREFIX.length))
       setActiveNode(null)
-      if (!dragged || !event.over) return
-      const dropPath = String(event.over.id).slice(DROP_PREFIX.length)
-      const target = moveTarget(dragged, dropPath ? (byPath.get(dropPath) ?? null) : null)
+      const target = resolveDrop(
+        byPath,
+        String(event.active.id),
+        event.over ? String(event.over.id) : null,
+      )
       if (target) onMove?.(target)
     },
     [byPath, onMove],
@@ -317,7 +381,11 @@ export const DocumentTree = memo(function DocumentTree({
     const actions = nodeActions?.(node)
     const handle = (children: ReactNode): ReactNode =>
       onMove ? (
-        <RowHandle node={node} activeNode={activeNode}>
+        <RowHandle
+          node={node}
+          dropTarget={dropTargetFor(byPath, node)}
+          activeNode={activeNode}
+        >
           {children}
         </RowHandle>
       ) : (
@@ -399,7 +467,7 @@ export const DocumentTree = memo(function DocumentTree({
         enabled={onMove !== undefined}
         activeNode={activeNode}
         sensors={sensors}
-        collisionDetection={preferInnermost}
+        collisionDetection={collisionDetection}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
         onDragCancel={onDragCancel}
