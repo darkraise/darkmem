@@ -198,13 +198,14 @@ describe("the block hooks share one chain per document", () => {
  *
  *  A re-read taken through the cache does not get a fetch of its own when one
  *  is already in flight for the key: `Query.fetch` hands back the running
- *  retryer's promise unwrapped. The write that preceded the re-read has just
- *  put such a fetch there -- its own `onSuccess` invalidation -- so the
- *  re-read lands on it. The next invalidation then cancels that retryer, and
- *  the rejection arrives at the mutation still waiting to be sent. The cost is
- *  a lost edit, not a stale view, which is why the re-read stays out of the
- *  cache entirely. A fetch the re-read started itself has no such second
- *  owner.
+ *  retryer's promise unwrapped. That in-flight fetch is an EARLIER write's
+ *  invalidation -- the first update's, below -- and the delete sitting right
+ *  before the re-read is what CANCELS it, its own invalidation landing a few
+ *  ticks after the re-read has already attached. One write supplies the fetch
+ *  and a later one kills it, so the race takes three mutations, not two. The
+ *  rejection then arrives at the mutation still waiting to be sent: a lost
+ *  edit, not a stale view, which is why the re-read stays out of the cache. A
+ *  fetch the re-read started itself has no such second owner.
  */
 describe("a write behind a delete, with a read still in flight", () => {
   beforeEach(() => {
