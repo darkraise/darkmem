@@ -127,18 +127,19 @@ data.** Two tools are `admin`-scoped, and the second is the severe one:
   document's blocks and their vectors, and there is no undo: the `events`
   journal records one `documents_deleted` row per document, naming the key
   that ran it, but a journal row is an audit trail and not a backup, and
-  **there is no corpus-scoped undo**. The only documented recovery is the
-  whole-database restore in `docs/runbook-deployment.md` ("Restoring a
-  data-only dump into a fresh database"), and it is a rollback of
-  *everything*: every memory, fact and event since the last 03:30 dump goes
-  back with the documents, including the `documents_deleted` rows the
-  paragraph below tells you to read — so read and save them first. Documents
-  filed since that dump are lost either way. Nothing documents a selective
-  restore of `documents` → `blocks` → the per-fingerprint
-  `block_embeddings__<slug>` children, and the restore procedure's own two
-  traps (missing child tables, a failed `COPY` that silently eats the tables
-  after it) apply in full. A caller needs no id and no prior read — a project
-  name and a prefix guess are the whole address.
+  **there is no corpus-scoped undo**. The only documented recovery is
+  `scripts/restore.sh` (`docs/wiki/deployment-guide.md`, `README.md`), which
+  replays a `backup.sh` or `backup_ship` dump into a side database and swaps
+  it in — and that is a rollback of *everything*: every memory, fact and event
+  since the last nightly dump goes back with the documents, including the
+  `documents_deleted` rows the paragraph below tells you to read, so read and
+  save them first. Documents filed since that dump are lost either way.
+  Nothing documents a selective restore of `documents` → `blocks` → the
+  per-fingerprint `block_embeddings__<slug>` children. Check which dump is
+  actually newest before you choose one: the host timer and the `backup_ship`
+  job run on different schedules and write to different directories. A caller
+  needs no id and no prior read — a project name and a prefix guess are the
+  whole address.
 
 So the pair's radius is: spend budget, discard uncommitted work in the clone
 directory, and **erase filed documents irrecoverably**. Neither can mint a
