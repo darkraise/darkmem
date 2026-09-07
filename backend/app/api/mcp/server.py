@@ -923,6 +923,39 @@ async def document_update(
             "reason": "the subtree mode needs project, uri_prefix and new_uri_prefix",
         })
 
+    # A field belonging to the mode that was not selected is refused rather
+    # than dropped. Silently ignoring it would answer `ok` for a call that
+    # moved none of what the caller asked to move, and the REST twin forbids
+    # extras outright -- a dropped key is a 422 there.
+    stray = sorted(
+        name for name, value in (
+            (("project", project), ("uri_prefix", uri_prefix),
+             ("new_uri_prefix", new_uri_prefix))
+            if not subtree else
+            (("title", title), ("uri", uri), ("pinned", pinned), ("tags", tags))
+        )
+        if value is not None
+    )
+    if stray:
+        return json.dumps({
+            "status": "invalid_mode",
+            "reason": (
+                f"{', '.join(stray)} belongs to the other mode; this call "
+                "would have ignored it"
+            ),
+        })
+
+    if document_id is not None:
+        try:
+            UUID(str(document_id))
+        except ValueError:
+            # Its REST twin refuses the same shape as a 422 on the path
+            # parameter, before any handler runs.
+            return json.dumps({
+                "status": "unresolved",
+                "reason": f"document_id is not a uuid: {document_id!r}",
+            })
+
     # The `tags` table's own columns are the only guard below this door:
     # `get_or_create` validates nothing, so a name or a derived category
     # longer than its column reaches the driver as a DataError with no
