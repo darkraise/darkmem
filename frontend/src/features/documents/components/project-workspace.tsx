@@ -218,17 +218,24 @@ export function ProjectWorkspace({
     [expanded, roots],
   )
 
-  const handleExpandedChange = (paths: string[]) => {
-    setExpanded(paths)
-    try {
-      window.localStorage.setItem(
-        expansionStorageKey(project),
-        JSON.stringify(paths),
-      )
-    } catch {
-      // Persistence is a convenience; losing it must not break the tree.
-    }
-  }
+  // `useCallback`, not a plain declaration: this is a prop of the memoised
+  // `DocumentTree`, whose comparison is shallow over EVERY prop, so one fresh
+  // function here re-rendered the whole tree once per heading the reader
+  // scrolls past -- on both surfaces, the corpus browser included.
+  const handleExpandedChange = useCallback(
+    (paths: string[]) => {
+      setExpanded(paths)
+      try {
+        window.localStorage.setItem(
+          expansionStorageKey(project),
+          JSON.stringify(paths),
+        )
+      } catch {
+        // Persistence is a convenience; losing it must not break the tree.
+      }
+    },
+    [project],
+  )
 
   // A selection UNIONS its ancestor path into the expanded set -- once, when
   // the selection changes. Unioning rather than replacing is what keeps a
@@ -303,8 +310,11 @@ export function ProjectWorkspace({
     },
     // `.mutate` rather than the mutation object: `useMutation` returns a new
     // result every render, so depending on it would change `nodeActions`'
-    // identity on every frame and defeat `DocumentTree`'s `memo` -- the tree
-    // would re-render on each heading the reader scrolls past.
+    // identity on every frame. That is one of THREE props that have to stay
+    // stable for `DocumentTree`'s `memo` to hold -- `handleExpandedChange`
+    // and `emptyAction` are the others, and the shallow compare needs all of
+    // them. `project-workspace-render.test.tsx` is what actually pins it;
+    // this comment describes an intent, that test measures the result.
     [createNote.mutate, items, project, truncated],
   )
 
@@ -379,6 +389,19 @@ export function ProjectWorkspace({
       setDeleteTarget(null)
     }
   }
+
+  // Memoised for the same reason as `nodeActions`: inline JSX is a fresh
+  // object every render, and one is enough to defeat the shallow compare.
+  const emptyAction = useMemo(
+    () =>
+      treeManagement ? (
+        <Button type="button" onClick={() => handleNewNote("")}>
+          <Plus className="mr-1 size-3.5" />
+          New note
+        </Button>
+      ) : undefined,
+    [treeManagement, handleNewNote],
+  )
 
   const nodeActions = useCallback(
     (node: UriTreeNode) => (
@@ -528,14 +551,7 @@ export function ProjectWorkspace({
                   expanded={effectiveExpanded}
                   onExpandedChange={handleExpandedChange}
                   nodeActions={treeManagement ? nodeActions : undefined}
-                  emptyAction={
-                    treeManagement ? (
-                      <Button type="button" onClick={() => handleNewNote("")}>
-                        <Plus className="mr-1 size-3.5" />
-                        New note
-                      </Button>
-                    ) : undefined
-                  }
+                  emptyAction={emptyAction}
                 />
               )}
             </ScrollArea>
