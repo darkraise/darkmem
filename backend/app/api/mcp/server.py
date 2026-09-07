@@ -945,6 +945,15 @@ async def document_update(
             ),
         })
 
+    # Its REST twin puts `min_length=1` on uri, so an empty path is a 422
+    # before the handler runs. Without this the empty string is a named field
+    # here and would be written.
+    if uri is not None and not uri:
+        return json.dumps({
+            "status": "invalid_mode",
+            "reason": "uri must not be empty",
+        })
+
     if document_id is not None:
         try:
             UUID(str(document_id))
@@ -962,7 +971,13 @@ async def document_update(
     # savepoint under it -- a poisoned transaction rather than a refusal.
     # One shared validator with the capture and REST doors so they cannot
     # drift apart.
-    validate_tag_lengths(tags)
+    # An envelope rather than a tool error, which is what every other refusal
+    # on this tool answers; the validator itself raises ValueError because its
+    # first caller is a pydantic field validator.
+    try:
+        validate_tag_lengths(tags)
+    except ValueError as exc:
+        return json.dumps({"status": "invalid_tags", "reason": str(exc)})
 
     async with async_session_factory() as session:
         try:

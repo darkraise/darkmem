@@ -1515,6 +1515,16 @@ async def test_patch_of_a_missing_document_is_404(client, auth_headers):
     assert response.status_code == 404
 
 
+async def test_patch_refuses_an_empty_uri(client, auth_headers, filed):
+    doc = await filed("notes/emptyuri.md", "body")
+
+    response = await client.patch(
+        f"{V1}/documents/{doc}", json={"uri": ""}, headers=auth_headers
+    )
+
+    assert response.status_code == 422
+
+
 async def test_patch_naming_no_field_is_422(client, auth_headers, filed):
     """An empty body is well formed and asks for nothing, and writing it would
     leave a permanent `{"fields": []}` row in an append-only table."""

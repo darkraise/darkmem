@@ -734,7 +734,13 @@ async def test_document_update_refusals_are_envelopes(session, monkeypatch):
 async def test_document_update_bounds_tag_lengths_at_the_door(session, monkeypatch):
     """`get_or_create` validates nothing, so an over-long tag would reach the
     driver as a DataError with no savepoint under it -- a poisoned transaction
-    rather than a refusal."""
+    rather than a refusal.
+
+    An envelope rather than a tool error, because every other refusal on this
+    tool is one; the shared validator raises `ValueError` because its first
+    caller is a pydantic field validator.
+    """
+    import json
     from contextlib import asynccontextmanager
     from types import SimpleNamespace
 
@@ -747,20 +753,42 @@ async def test_document_update_bounds_tag_lengths_at_the_door(session, monkeypat
     monkeypatch.setattr(mcp_server, "async_session_factory", lambda: _ctx())
     monkeypatch.setattr(mcp_server, "_pipeline", SimpleNamespace(llm=object()))
 
-    with pytest.raises(ValueError):
-        await mcp_server.document_update(
-            document_id="00000000-0000-0000-0000-000000000000",
-            tags=["x" * 400],
-        )
+    long_name = json.loads(await mcp_server.document_update(
+        document_id="00000000-0000-0000-0000-000000000000",
+        tags=["x" * 400],
+    ))
+    assert long_name["status"] == "invalid_tags"
 
     # The category axis -- everything before the first `/` -- is the one the
     # REST route missed. A name inside its own bound can still derive a
     # category over the category column's.
-    with pytest.raises(ValueError):
-        await mcp_server.document_update(
-            document_id="00000000-0000-0000-0000-000000000000",
-            tags=["a" * 60 + "/x"],
-        )
+    long_category = json.loads(await mcp_server.document_update(
+        document_id="00000000-0000-0000-0000-000000000000",
+        tags=["a" * 60 + "/x"],
+    ))
+    assert long_category["status"] == "invalid_tags"
+
+
+@pytest.mark.asyncio
+async def test_document_update_refuses_an_empty_uri(session, monkeypatch):
+    """Its REST twin puts `min_length=1` on uri, so the empty string is a 422
+    there before the handler runs."""
+    import json
+    from contextlib import asynccontextmanager
+
+    from app.api.mcp import server as mcp_server
+
+    @asynccontextmanager
+    async def _ctx():
+        yield session
+
+    monkeypatch.setattr(mcp_server, "async_session_factory", lambda: _ctx())
+
+    empty = json.loads(await mcp_server.document_update(
+        document_id="00000000-0000-0000-0000-000000000000", uri="",
+    ))
+    assert empty["status"] == "invalid_mode"
+    assert "uri" in empty["reason"]
 
 
 @pytest.mark.asyncio
