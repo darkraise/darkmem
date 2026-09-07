@@ -131,15 +131,18 @@ data.** Two tools are `admin`-scoped, and the second is the severe one:
   `scripts/restore.sh` (`docs/wiki/deployment-guide.md`, `README.md`), which
   replays a `backup.sh` or `backup_ship` dump into a side database and swaps
   it in — and that is a rollback of *everything*: every memory, fact and event
-  since the last nightly dump goes back with the documents, including the
+  since the dump you restore goes back with the documents, including the
   `documents_deleted` rows the paragraph below tells you to read, so read and
   save them first. Documents filed since that dump are lost either way.
   Nothing documents a selective restore of `documents` → `blocks` → the
-  per-fingerprint `block_embeddings__<slug>` children. Check which dump is
-  actually newest before you choose one: the host timer and the `backup_ship`
-  job run on different schedules and write to different directories. A caller
-  needs no id and no prior read — a project name and a prefix guess are the
-  whole address.
+  per-fingerprint `block_embeddings__<slug>` children. **Choose the newest
+  dump taken *before* the erase, not the newest dump on disk** — the
+  `created_at` on the first `documents_deleted` row is the cutoff, which is
+  the other reason to read those rows first. The two producers run an hour
+  apart and write to different directories, so an erase falling between them
+  leaves the newest file on disk already missing the documents, and restoring
+  it recovers nothing. A caller needs no id and no prior read — a project name
+  and a prefix guess are the whole address.
 
 So the pair's radius is: spend budget, discard uncommitted work in the clone
 directory, and **erase filed documents irrecoverably**. Neither can mint a
