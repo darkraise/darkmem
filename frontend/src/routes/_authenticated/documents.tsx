@@ -10,6 +10,7 @@ import {
 } from "darkraise-ui/components/select"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { PageChrome } from "@/components/app-chrome"
+import { EmptyState } from "@/components/darkmem"
 import { DocumentsView } from "@/features/documents/components/documents-view"
 import { useProjects } from "@/hooks/api"
 
@@ -44,9 +45,16 @@ function DocumentsPage() {
       ) : isLoading ? (
         <Skeleton className="h-64 w-full" />
       ) : rows.length === 0 ? (
-        <p className="text-muted-foreground text-sm">
-          No project holds any documents yet.
-        </p>
+        // The condition this guards is "no non-personal project exists at
+        // all" -- a project that exists but holds zero documents still
+        // falls through to the picker below, where DocumentsView renders
+        // its own honest empty-corpus state.
+        <EmptyState
+          kind="empty"
+          icon={FileText}
+          title="No project holds anything yet"
+          description="A project appears here once a memory, document or checkpoint carries its name."
+        />
       ) : (
         <>
           <Select value={project} onValueChange={setSelected}>

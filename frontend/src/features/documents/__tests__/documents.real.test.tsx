@@ -335,6 +335,9 @@ describe("/documents route — project picker", () => {
     ])
     renderRoute("/documents")
     await userEvent.click(await screen.findByRole("combobox"))
+    // A positive assertion too: the dropdown genuinely opened and listed the
+    // eligible project, rather than this test passing because it never did.
+    expect(await screen.findByRole("option", { name: "darkmem" })).toBeInTheDocument()
     expect(screen.queryByText("notes")).toBeNull()
   })
 
