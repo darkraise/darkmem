@@ -770,8 +770,10 @@ async def document_get(
         uri: The repo-relative path it was filed under.
         include_content: Also return the document's verbatim filed source
             under `content`. The result becomes `{content, blocks}` instead
-            of the bare block array -- the one flag under which this tool
-            answers an object. Off by default: the source can be a megabyte.
+            of the bare block array -- one of the two flags that box this
+            tool's reply, `include_hash` being the other, since a bare array
+            has nowhere to carry a field. Off by default: the source can be a
+            megabyte.
         include_hash: Also return the document's current `content_hash` under
             `content_hash`, to precondition a later block verb on. Boxes the
             reply the same way `include_content` does -- a bare array has
@@ -1938,11 +1940,14 @@ async def research_run(
 # themselves, and the editor's identity question is the session's rather than
 # a capture header's.
 #
-# Both refusals answer a structured envelope rather than a tool error. The
-# caller made no mistake in either case -- it lost a race, or it asked to edit
-# a document the block model cannot represent -- and an agent should be able
-# to machine-read the outcome and choose, which an exception traceback does
-# not allow. Their REST twins are a 409 and a 422 carrying the same reasons.
+# Four refusals answer a structured envelope rather than a tool error, and in
+# none of them did the caller make an avoidable mistake: it lost a race
+# (`hash_conflict`), or it asked to edit a document the block model cannot
+# represent (`not_convertible`), to move a block inside its own subtree
+# (`cycle_refused`), or to address a block that is not where it said it was
+# (`unresolved`). An agent can machine-read an envelope and choose; it cannot
+# machine-read a traceback. Their REST twins are a 409, a 422, a 422 and a 404
+# carrying the same reasons.
 
 
 def _block_refusal(exc: Exception, **fields) -> str | None:

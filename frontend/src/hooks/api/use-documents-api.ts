@@ -323,8 +323,10 @@ export function useDocumentOutline(documentId: string | null) {
 export interface DocumentBlocksResponse {
   document_id: string
   blocks: BlockRow[]
-  /** The hash a block write must precondition on. Null for a document whose
-   *  source was bytes, which stores no content to hash. */
+  /** The hash a block write must precondition on. Nullable because the route's
+   *  response model is, not because any filed document lacks one -- a document
+   *  filed from bytes stores no `content` and still has its hash, taken over
+   *  those bytes. */
   content_hash: string | null
 }
 
