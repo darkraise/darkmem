@@ -360,6 +360,96 @@ export interface SectionHit {
   score: number
 }
 
+/** Both list keys, the pair `useDocumentDelete` already invalidates. Every
+ *  mutation below changes what the tree renders, so they all invalidate the
+ *  same two. */
+function invalidateDocumentLists(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: ["documentsAll"] })
+  void qc.invalidateQueries({ queryKey: ["documents"] })
+}
+
+export interface DocumentCreateParams {
+  project: string
+  uri: string
+  title?: string
+}
+
+export function useDocumentCreate() {
+  const qc = useQueryClient()
+  return useMutation<{ document_id: string }, Error, DocumentCreateParams>({
+    // Seeded content, never empty: `DocumentPutRequest.content` is
+    // `min_length=1`, so an empty body is a 422. And note `document_put` is
+    // an UPSERT on `(project, uri)` -- the caller mints a uri no document
+    // holds, or this silently returns the existing document's id.
+    mutationFn: ({ project, uri, title }) =>
+      apiFetch(`/documents`, {
+        method: "POST",
+        body: JSON.stringify({
+          project,
+          uri,
+          content: `# ${title ?? "Untitled"}\n`,
+          title: title ?? "Untitled",
+        }),
+      }),
+    onSuccess: () => invalidateDocumentLists(qc),
+  })
+}
+
+export interface DocumentMetadataParams {
+  documentId: string
+  title?: string
+  uri?: string
+  pinned?: boolean
+  tags?: string[]
+}
+
+export function useDocumentMetadataUpdate() {
+  const qc = useQueryClient()
+  return useMutation<{ document_id: string }, Error, DocumentMetadataParams>({
+    mutationFn: ({ documentId, ...fields }) =>
+      apiFetch(`/documents/${documentId}`, {
+        method: "PATCH",
+        body: JSON.stringify(fields),
+      }),
+    onSuccess: () => invalidateDocumentLists(qc),
+  })
+}
+
+export interface SubtreeRenameParams {
+  project: string
+  uri_prefix: string
+  new_uri_prefix: string
+}
+
+export function useDocumentSubtreeRename() {
+  const qc = useQueryClient()
+  return useMutation<{ renamed: number }, Error, SubtreeRenameParams>({
+    mutationFn: (body) =>
+      apiFetch(`/documents/rename`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => invalidateDocumentLists(qc),
+  })
+}
+
+export interface SubtreeDeleteParams {
+  project: string
+  uri_prefix: string
+}
+
+export function useDocumentSubtreeDelete() {
+  const qc = useQueryClient()
+  return useMutation<{ deleted: number }, Error, SubtreeDeleteParams>({
+    mutationFn: (body) =>
+      apiFetch(`/documents/delete`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => invalidateDocumentLists(qc),
+  })
+}
+
 export function useDocumentSearch() {
   return useMutation<
     { items: SectionHit[] },
