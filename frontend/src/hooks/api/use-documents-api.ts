@@ -16,6 +16,9 @@ export interface DocumentListItem {
   source_type: string | null
   project: string
   block_count: number
+  /** Optional so the four existing test fixtures that build this shape by
+   *  hand keep typechecking. The API always sends it. */
+  pinned_at?: string | null
 }
 
 export interface DocumentListResponse {

@@ -1457,6 +1457,31 @@ async def test_patch_updates_one_document(client, auth_headers, filed, session):
     assert row["pinned_at"] is not None
 
 
+async def test_the_list_serves_pinned_at(client, auth_headers, filed):
+    """The tree reads pin state from the list; a pin control with no readable
+    state is not shippable."""
+    from app.services.document_door import update_document_metadata
+
+    doc = await filed("notes/pinme.md", "body")
+
+    before = await client.get(
+        f"{V1}/documents", params={"project": "p"}, headers=auth_headers
+    )
+    assert before.status_code == 200
+    row = next(r for r in before.json()["items"] if r["id"] == doc)
+    assert row["pinned_at"] is None
+
+    await client.patch(
+        f"{V1}/documents/{doc}", json={"pinned": True}, headers=auth_headers
+    )
+
+    after = await client.get(
+        f"{V1}/documents", params={"project": "p"}, headers=auth_headers
+    )
+    pinned = next(r for r in after.json()["items"] if r["id"] == doc)
+    assert pinned["pinned_at"] is not None
+
+
 async def test_patch_refuses_a_project_field(client, auth_headers, filed):
     """Moving a document between spaces is not a rename. The field is absent
     from the model and extra keys are forbidden, so this is 422 rather than a

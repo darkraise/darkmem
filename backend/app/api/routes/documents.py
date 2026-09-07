@@ -58,6 +58,7 @@ the lift did wrong.)
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -135,6 +136,11 @@ class DocumentListItem(BaseModel):
     source_type: str | None
     project: str
     block_count: int
+    # Served here and NOT on the keyed reads: those are TWO_DOOR and MCP
+    # `document_get` has no metadata slot, so a REST-only field there would
+    # be a wire divergence. This route is `documents.reads`, REST-only
+    # already, so the field costs no parity.
+    pinned_at: datetime | None = None
 
 
 class DocumentListResponse(BaseModel):
@@ -426,13 +432,13 @@ class DocumentBlocksResponse(BaseModel):
 _LIST_SQL = text(
     """
     SELECT CAST(d.id AS text) AS id, d.title, d.uri, d.source_type, d.project,
-           count(b.id) AS block_count
+           d.pinned_at, count(b.id) AS block_count
     FROM documents d
     LEFT JOIN blocks b ON b.document_id = d.id
     -- CAST because asyncpg cannot infer a bare parameter's type in an
     -- IS NULL comparison (the cross-cutting invariant on raw-SQL params).
     WHERE (CAST(:project AS text) IS NULL OR d.project = CAST(:project AS text))
-    GROUP BY d.id, d.title, d.uri, d.source_type, d.project
+    GROUP BY d.id, d.title, d.uri, d.source_type, d.project, d.pinned_at
     ORDER BY d.created_at DESC
     LIMIT :limit OFFSET :offset
     """
