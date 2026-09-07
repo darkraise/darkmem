@@ -4,10 +4,61 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
-## Unreleased
+## v1.8.0 — 2026-09-07
+
+**A document's metadata is editable, on both doors, and a serialised block
+tree re-parses to itself.** Retitle, move, pin and re-tag one document or
+rewrite a whole `uri` subtree; precondition a block edit on the document's
+content hash the way `put` already allows; and three serialiser defects that
+made 29 of the corpus's documents fail their own round trip.
+
+### Added
+
+- **A metadata verb and a subtree rename, on both doors.** `PATCH
+  /api/v1/documents/{id}` moves one document's title, `uri`, pinned flag or
+  tag set; `POST /api/v1/documents/rename` rewrites a whole `uri_prefix`
+  subtree and answers the count it moved. MCP carries both as modes of one
+  `document_update`, dispatched on whether the call names a `document_id` or a
+  `uri_prefix` and refusing one that names both or neither. An omitted field
+  writes no assignment at all, so a rename cannot silently unpin a document or
+  strip its tags, and `project` is deliberately not a field: moving a document
+  between spaces is not a rename. A rename onto a `(project, uri)` another
+  document holds is refused rather than merging the two, since that identity
+  is what re-filing upserts on.
+- **The block verbs take an optional `expected_hash`**, the compare-and-set
+  `document_put` already had. The comparison happens after the row lock, never
+  before it — above the lock both racing lanes pass their own check — and a
+  stale hash answers 409 on the route and a `hash_conflict` envelope from the
+  tool, writing nothing on either door. The blocks read serves `content_hash`
+  unconditionally and `document_get` takes `include_hash`, so the hash a read
+  serves preconditions a write and that write's answer preconditions the next
+  one with no read in between. Omitting it keeps last-writer-wins, which is
+  what every caller shipped before this still gets.
+- **`document_updated` joins the events vocabulary.** One journal row per
+  edited document, naming which fields moved and carrying none of their
+  values.
 
 ### Fixed
 
+- **A tag shared between a memory and a document is no longer dropped from
+  the tag list, and its count is no longer multiplied.** The counts query
+  joined `memory_tags` directly, so widening it to `document_tags` the same
+  way would have reported the product of the two link counts rather than their
+  sum, and a document-only tag was invisible entirely. Both link tables are
+  counted as correlated subqueries. Note the served field is still named
+  `memory_count` and now carries a memory-plus-document sum; renaming it is a
+  REST and MCP contract change and is owed separately.
+- **A subtree rename into or out of its own path is now order-independent.**
+  The rows move one at a time through a unique index, and iterating them in id
+  order made which one moved first a coin flip on UUID sort — `notes/a ->
+  notes/a/x` either raised a 409 or rewrote both rows, on identical input.
+  Depth orders it: deepest first moving into a subtree, shallowest first
+  moving out to an ancestor. Lock acquisition stays in id order, so two
+  concurrent renames still cannot deadlock.
+- **An edit that changes nothing is refused rather than journalled.** A PATCH
+  naming no field wrote `{"fields": []}` and a rename onto the prefix it
+  already holds wrote one row per document, both into an append-only table
+  that can never take them back.
 - **A serialised block tree now re-parses to itself.** Sweeping the
   492-document corpus found 29 documents whose regenerated source did not,
   from three separate serialiser defects: the blank line between a quote's
