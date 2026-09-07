@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
-import type { ReactNode } from "react"
+import userEvent from "@testing-library/user-event"
+import type { ComponentType, ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/demo-flag", () => ({ DEMO: false }))
@@ -16,7 +17,9 @@ vi.mock("@/lib/api", () => {
 })
 
 import { apiFetch, ApiError } from "@/lib/api"
+import type { ProjectSummary } from "@/hooks/api"
 import { DocumentsView } from "../components/documents-view"
+import { Route as DocumentsRoute } from "../../../routes/_authenticated/documents"
 
 /**
  * TH1.16's four done-when clauses, each tested for the reason it exists.
@@ -117,6 +120,32 @@ async function ask() {
     target: { value: "what colour is the sky" },
   })
   fireEvent.click(screen.getByRole("button", { name: /Ask/ }))
+}
+
+function renderRoute(_path: string) {
+  const Component = DocumentsRoute.options.component as ComponentType
+  render(<Component />, { wrapper })
+}
+
+function mockProjects(
+  rows: Array<
+    Pick<ProjectSummary, "name" | "kind" | "document_count">
+  >,
+) {
+  const full: ProjectSummary[] = rows.map((row) => ({
+    memory_count: 0,
+    checkpoint_count: 0,
+    last_checkpoint_at: null,
+    last_event_day: null,
+    ...row,
+  }))
+  vi.mocked(apiFetch).mockImplementation((path: string) => {
+    if (path === "/projects") return Promise.resolve(full)
+    if (path.startsWith("/documents")) {
+      return Promise.resolve({ items: [], horizon: true })
+    }
+    return Promise.reject(new Error(`unexpected apiFetch(${path})`))
+  })
 }
 
 afterEach(() => vi.clearAllMocks())
@@ -283,5 +312,43 @@ describe("DocumentsView — summary and connections", () => {
     expect(screen.getByText("0.612")).toBeInTheDocument()
     expect(screen.getByText("postgres tuning notes")).toBeInTheDocument()
     expect(screen.getByText("linux kernel parameters")).toBeInTheDocument()
+  })
+})
+
+describe("/documents route — project picker", () => {
+  it("defaults to a project that actually holds documents", async () => {
+    mockProjects([
+      { name: "empty", kind: "project", document_count: 0 },
+      { name: "darkmem", kind: "project", document_count: 475 },
+      { name: "notes", kind: "personal", document_count: 3 },
+    ])
+    renderRoute("/documents")
+    // `useProjects` orders busiest-first by a different measure, so the
+    // default needs its own document_count filter.
+    expect(await screen.findByRole("combobox")).toHaveTextContent("darkmem")
+  })
+
+  it("keeps the personal space out of the picker", async () => {
+    mockProjects([
+      { name: "darkmem", kind: "project", document_count: 475 },
+      { name: "notes", kind: "personal", document_count: 3 },
+    ])
+    renderRoute("/documents")
+    await userEvent.click(await screen.findByRole("combobox"))
+    expect(screen.queryByText("notes")).toBeNull()
+  })
+
+  it("reports a failed project read instead of an empty corpus", async () => {
+    vi.mocked(apiFetch).mockRejectedValue(new Error("boom"))
+    renderRoute("/documents")
+    expect(await screen.findByText(/could not be loaded/i)).toBeInTheDocument()
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument()
+  })
+
+  it("says so when the corpus holds no non-personal project", async () => {
+    mockProjects([{ name: "notes", kind: "personal", document_count: 3 }])
+    renderRoute("/documents")
+    expect(await screen.findByText(/no project holds/i)).toBeInTheDocument()
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument()
   })
 })
