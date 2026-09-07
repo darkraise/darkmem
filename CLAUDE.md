@@ -1352,9 +1352,10 @@ or `host:*`) adds LAN hosts; `*` disables the check entirely. Default
 by disabling either guard. Browser Origins are allowlisted to the same
 hosts. `memory_batch_add` mirrors the HTTP 1–100 batch cap.
 
-Authorization is per tool, not per door: `capture` covers the 12 writers
+Authorization is per tool, not per door: `capture` covers the 13 writers
 (`memory_add`, `memory_batch_add`, `memory_update`, `memory_delete`,
-`document_put`, `document_delete`, `checkpoint_save`, `research_run`, and
+`document_put`, `document_update`, `document_delete`, `checkpoint_save`,
+`research_run`, and
 increment 8's four block verbs `block_update`, `block_insert`, `block_move`,
 `block_delete` — a key that can edit a document's blocks can rewrite its
 content, which is `document_put`'s own power);
@@ -1367,7 +1368,7 @@ holding only `admin` reaches nothing else, and a `capture` key cannot
 trigger an index. `ratify` stays outside the scope vocabulary, unchanged by
 this activation: no MCP tool can reach `confirmed` power no matter what a
 key holds. `tools/list` is deliberately **not** scope-filtered — any
-authenticated key sees the full 38-tool catalogue, including writers it
+authenticated key sees the full 39-tool catalogue, including writers it
 cannot invoke; that is intended, not an oversight. A keyed capture call
 stamps `events.api_key_id` (the key's row UUID) and `events.actor` (the
 key's name) on the journaled row.
@@ -1673,6 +1674,18 @@ rather than creating a second one. That upsert is this door's own shape
 and has no analogue on the memory side, where all four capture doors
 append a row per capture and `origin_key` is corroboration identity, never
 a dedup key.
+
+**Metadata is a sixth verb, also on both doors.** `PATCH
+/api/v1/documents/{document_id}` moves one document's `title`, `uri`, `pinned`
+flag or tag set; `POST /api/v1/documents/rename` rewrites a whole `uri_prefix`
+subtree and answers the count of rows it moved. MCP carries both as modes of
+one `document_update`, dispatched on whether the call names a `document_id` or
+a `uri_prefix` and refusing a call naming both or neither. A rename onto a
+`(project, uri)` another document already holds is refused rather than
+merging the two — 409 on the route, a `uri_conflict` envelope from the tool —
+since that identity is what re-filing upserts on. Tag names resolve through
+the shared tag repository, so a document's tags carry the same name bound and
+`tag_category` a memory's do.
 
 **Bounds, refused at the door.** `MAX_CONTENT_CHARS` (1,000,000
 characters) and `MAX_BLOCKS` (5,000) are both checked in `put_document`.
