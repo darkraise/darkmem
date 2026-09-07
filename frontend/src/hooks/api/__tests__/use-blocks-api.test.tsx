@@ -1,10 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { renderHook, waitFor, act } from "@testing-library/react"
-import {
-  QueryClient,
-  QueryClientProvider,
-  QueryObserver,
-} from "@tanstack/react-query"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 
 vi.mock("@/lib/demo-flag", () => ({ DEMO: false }))
@@ -32,6 +28,11 @@ let seen: Seen[]
  *  be distinguishable in the assertions. */
 let readHash: string
 let writeCount: number
+/** Reads are held open on demand. A read that answers instantly can never be
+ *  in flight when the next thing happens, which is the whole subject of the
+ *  in-flight-slot test below. */
+let deferReads: boolean
+let pendingReads: Array<() => void>
 
 function serve(path: string, init?: RequestInit) {
   const method = init?.method ?? "GET"
@@ -41,10 +42,14 @@ function serve(path: string, init?: RequestInit) {
     body: init?.body ? JSON.parse(String(init.body)) : null,
   })
   if (method === "GET") {
-    return Promise.resolve({
+    const answer = () => ({
       document_id: DOC,
       blocks: [],
       content_hash: readHash,
+    })
+    if (!deferReads) return Promise.resolve(answer())
+    return new Promise((resolve) => {
+      pendingReads.push(() => resolve(answer()))
     })
   }
   // Delete is 204 with no body, and it moved the document -- so a read after
@@ -98,6 +103,8 @@ describe("the block hooks share one chain per document", () => {
     seen = []
     readHash = "h0"
     writeCount = 0
+    deferReads = false
+    pendingReads = []
     vi.mocked(apiFetch).mockImplementation(serve as never)
   })
 
@@ -120,11 +127,12 @@ describe("the block hooks share one chain per document", () => {
     })
 
     const [patch, post] = writes()
+    // Both writes go out before the first one's invalidation refetch, which is
+    // what says the insert took the update's answer rather than re-reading:
+    // a re-read would be a GET sitting between them.
+    expect(seen.slice(0, 2).map((c) => c.method)).toEqual(["PATCH", "POST"])
     expect(patch!.method).toBe("PATCH")
     expect(post!.method).toBe("POST")
-    // The seed comes from the blocks query's cached hash, so the first write
-    // costs no read of its own.
-    expect(seen[0]!.method).toBe("PATCH")
     expect(patch!.body!.expected_hash).toBe("h0")
     expect(post!.body!.expected_hash).toBe("w1")
   })
@@ -186,38 +194,70 @@ describe("the block hooks share one chain per document", () => {
 })
 
 /** Why the re-read calls the query function directly instead of going through
- *  `fetchQuery`. An invalidation cancels whatever occupies the cache's
- *  in-flight slot for a key, and the queue's re-read is awaited by a mutation
- *  that has not been sent yet -- so a cancelled re-read is a lost edit, not a
- *  stale view. The ordering that produces it is not ours to control: a
- *  reconnect refetch, a second observer mounting or any later invalidation of
- *  this key all fire on their own schedule.
+ *  `fetchQuery`.
+ *
+ *  A re-read taken through the cache does not get a fetch of its own when one
+ *  is already in flight for the key: `Query.fetch` hands back the running
+ *  retryer's promise unwrapped. The write that preceded the re-read has just
+ *  put such a fetch there -- its own `onSuccess` invalidation -- so the
+ *  re-read lands on it. The next invalidation then cancels that retryer, and
+ *  the rejection arrives at the mutation still waiting to be sent. The cost is
+ *  a lost edit, not a stale view, which is why the re-read stays out of the
+ *  cache entirely. A fetch the re-read started itself has no such second
+ *  owner.
  */
-describe("the cache's in-flight slot", () => {
-  it("cancels a fetchQuery an invalidation lands on", async () => {
-    const qc = makeClient()
-    const options = {
-      queryKey: ["documentBlocks", "probe"],
-      queryFn: () =>
-        new Promise((resolve) => setTimeout(() => resolve("read"), 20)),
+describe("a write behind a delete, with a read still in flight", () => {
+  beforeEach(() => {
+    seen = []
+    readHash = "h0"
+    writeCount = 0
+    deferReads = false
+    pendingReads = []
+    vi.mocked(apiFetch).mockImplementation(serve as never)
+  })
+
+  async function settle() {
+    for (let i = 0; i < 10; i += 1) {
+      const batch = pendingReads
+      pendingReads = []
+      batch.forEach((resolve) => resolve())
+      await act(async () => {
+        await Promise.resolve()
+      })
     }
-    const unsubscribe = new QueryObserver(qc, options as never).subscribe(
-      () => {},
+  }
+
+  it("is still sent after the delete's invalidation lands", async () => {
+    const qc = makeClient()
+    qc.setQueryData(["documentBlocks", DOC], {
+      document_id: DOC,
+      blocks: [],
+      content_hash: "h0",
+    })
+    // Every read from here is held open, so the invalidation each write fires
+    // is still fetching when the next one runs.
+    deferReads = true
+    const { result } = renderHook(
+      () => ({ ...useEditorHooks(DOC), second: useBlockUpdate(DOC) }),
+      { wrapper: wrapperFor(qc) },
     )
-    await qc.fetchQuery(options as never)
 
-    // A write's invalidation puts a refetch in the slot; the re-read that
-    // follows it dedupes onto that refetch rather than starting its own, and
-    // the next invalidation cancels the one retryer they now share.
-    void qc.invalidateQueries({ queryKey: options.queryKey })
-    const cacheRead = qc.fetchQuery({ ...options, staleTime: 0 } as never)
-    void qc.invalidateQueries({ queryKey: options.queryKey })
-    await expect(cacheRead).rejects.toThrow("CancelledError")
+    act(() => {
+      result.current.update.mutate({ blockId: "b1", text: "one" })
+    })
+    await waitFor(() => expect(result.current.update.isSuccess).toBe(true))
+    // The first write's invalidation is now fetching and will not finish.
 
-    // The same read taken outside the cache is untouched by the same event.
-    const directRead = options.queryFn()
-    void qc.invalidateQueries({ queryKey: options.queryKey })
-    await expect(directRead).resolves.toBe("read")
-    unsubscribe()
+    act(() => {
+      result.current.remove.mutate({ blockId: "b2" })
+      result.current.second.mutate({ blockId: "b3", text: "three" })
+    })
+    await waitFor(() => expect(result.current.remove.isSuccess).toBe(true))
+    await settle()
+
+    await waitFor(() => expect(result.current.second.isSuccess).toBe(true))
+    expect(result.current.second.error).toBeNull()
+    expect(writes().map((c) => c.method)).toEqual(["PATCH", "DELETE", "PATCH"])
+    expect(writes()[2]!.body!.expected_hash).toBe("h-after-delete")
   })
 })

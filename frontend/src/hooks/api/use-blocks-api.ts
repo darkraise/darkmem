@@ -48,13 +48,15 @@ function queueFor(documentId: string, qc: QueryClient) {
     // the demo's mocked writes already assume.
     if (DEMO) return ""
     // Read straight through the query function rather than through
-    // `fetchQuery`: an invalidation fired by the write this re-read follows
-    // cancels whatever occupies the cache's in-flight slot for the key
-    // (`refetchQueries` defaults `cancelRefetch` on), and a cancelled re-read
-    // would reject the mutation waiting on it -- a silently lost edit. This
-    // call shares no slot with the cache, so nothing can cancel it, and the
-    // invalidation keeps its own guarantee that the view refetches after the
-    // write.
+    // `fetchQuery`. A cache read taken while a fetch is already running for
+    // the key does not start one of its own -- it is handed that fetch's
+    // retryer promise, unwrapped -- and the write immediately before this
+    // re-read has just put such a fetch there through its own invalidation.
+    // The next invalidation cancels that retryer, and the rejection surfaces
+    // here, in a mutation that has not been sent yet: a lost edit rather than
+    // a stale view. A fetch this call starts itself has no second owner to
+    // cancel it, and the invalidation keeps its own guarantee that the view
+    // refetches after the write.
     const data = await documentBlocksQuery(documentId).queryFn()
     return data.content_hash ?? ""
   })
