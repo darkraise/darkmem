@@ -875,3 +875,33 @@ def test_note_normalises_a_unicode_bullet_to_a_writable_marker():
     -- it would round-trip into content markdown cannot re-parse as a list."""
     items = [d for d in parse_note("• dot\n") if d.type == "list"]
     assert items[0].properties["marker"] == "-"
+
+
+def test_raw_html_becomes_an_html_block():
+    """The parser skipped `html_block` entirely, so a document containing one
+    had a construct in its content and no row for it -- which is exactly the
+    state the conversion guard refuses."""
+    from app.services.document_parsers import parse_markdown
+
+    drafts = parse_markdown(
+        "Before\n\n<details>\n<summary>More</summary>\n</details>\n\nAfter\n"
+    )
+    kinds = [d.type for d in drafts]
+    assert kinds == ["paragraph", "html", "paragraph"]
+
+    html = drafts[1]
+    # Verbatim: the block is opaque to markdown, so nothing inside it is
+    # re-interpreted and nothing about it is normalised.
+    assert html.text == "<details>\n<summary>More</summary>\n</details>"
+    assert html.properties is None
+
+
+def test_an_html_block_containing_markdown_characters_stays_opaque():
+    """`#` and `-` inside a raw HTML run are not a heading and not a list.
+    If the parser ever re-tokenised the content, the serialiser would emit
+    something that re-parses differently."""
+    from app.services.document_parsers import parse_markdown
+
+    drafts = parse_markdown("<div>\n# not a heading\n- not a list\n</div>\n")
+    assert [d.type for d in drafts] == ["html"]
+    assert drafts[0].text == "<div>\n# not a heading\n- not a list\n</div>"

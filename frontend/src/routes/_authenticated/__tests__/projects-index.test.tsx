@@ -54,3 +54,38 @@ describe("projects index — a failed list is not an empty corpus", () => {
     ).toBeInTheDocument()
   })
 })
+
+describe("projects index — the personal notes space is not a project card", () => {
+  it("omits the personal notes space from the catalogue", async () => {
+    // The notes space has its own route and its own workspace. Offering it
+    // here would open it in a surface built for project artifacts.
+    vi.mocked(apiFetch).mockResolvedValue([
+      { name: "darkmem", kind: "project", memory_count: 3, document_count: 0,
+        checkpoint_count: 0, last_checkpoint_at: null, last_event_day: null },
+      { name: "notes", kind: "personal", memory_count: 0, document_count: 12,
+        checkpoint_count: 0, last_checkpoint_at: null, last_event_day: null },
+    ])
+    const Component = (Route.options ?? Route).component as ComponentType
+    render(<Component />, { wrapper })
+
+    expect(await screen.findByText("darkmem")).toBeInTheDocument()
+    expect(screen.queryByText("notes")).not.toBeInTheDocument()
+  })
+
+  it("shows the empty state when only the personal notes space exists", async () => {
+    // Filtering it out must feed the same rows the empty-state check reads,
+    // or a corpus holding only the notes space would render neither a card
+    // nor the empty state.
+    vi.mocked(apiFetch).mockResolvedValue([
+      { name: "notes", kind: "personal", memory_count: 0, document_count: 12,
+        checkpoint_count: 0, last_checkpoint_at: null, last_event_day: null },
+    ])
+    const Component = (Route.options ?? Route).component as ComponentType
+    render(<Component />, { wrapper })
+
+    expect(
+      await screen.findByText(/no project holds anything yet/i),
+    ).toBeInTheDocument()
+    expect(screen.queryByText("notes")).not.toBeInTheDocument()
+  })
+})

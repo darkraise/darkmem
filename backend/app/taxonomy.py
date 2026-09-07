@@ -376,13 +376,18 @@ def is_projected_memory_relation_type(raw_type: str | None) -> bool:
 # that normalises — TH1.02 is the first writer, so the vocabulary lands with it
 # rather than with the parsers that will emit into it (taxonomy-first).
 #
-# Widened to eight across two changes, each from a measurement rather than a
+# Widened to nine across three changes, each from a measurement rather than a
 # preference. 2026-08-31 (spec §4.1) for structural table parsing. The
 # justification doc 16 §9 asked for is measured, not aesthetic: a GFM table
 # parsed as one paragraph produced single blocks of 235,716 / 298,677 /
 # 182,746 characters, which the embedder truncates while the filing reports
 # success. `table` carries the header cells and column alignments in its
 # properties; each data row is a `table_row` child of it.
+#
+# 2026-09-07 (this spec's Task 1) for raw HTML. The parser skipped
+# `html_block` entirely, so any document containing raw HTML carried a
+# construct with no block row, which made it permanently unconvertible to
+# block-first and therefore permanently uneditable in the notes UI.
 #
 # Unlike the four above, no LLM emits these: a parser does. That changes who
 # gets it wrong, not whether the fallback is needed — a markdown token stream
@@ -397,6 +402,11 @@ BLOCK_TYPES: list[str] = [
     "table",
     "table_row",
     "divider",
+    # Raw HTML: an opaque run the markdown parser hands back verbatim. It is a
+    # stored type rather than a skipped token because skipping it made every
+    # document containing `<img>` or `<details>` unconvertible to block-first,
+    # and an imported Obsidian or Notion note routinely carries both.
+    "html",
 ]
 
 _BLOCK_TYPE_SET: frozenset[str] = frozenset(BLOCK_TYPES)
@@ -428,11 +438,12 @@ LEGACY_BLOCK_TYPE_MAP: dict[str, str] = {
     "thematic_break": "divider",
     "horizontal_rule": "divider",
     "rule": "divider",
+    "html_block": "html",
 }
 
 
 def normalize_block_type(raw_type: str | None) -> str:
-    """Return one of the eight stored ``BLOCK_TYPES``.
+    """Return one of the nine stored ``BLOCK_TYPES``.
 
     Unknown values fall back to ``paragraph``: a block whose kind is unrecognised
     is still retrievable prose, and dropping it would lose the text along with

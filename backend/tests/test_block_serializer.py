@@ -83,14 +83,19 @@ ROUND_TRIP_SOURCES = [
     "para one\n\n---\n\npara two",
     "# H\n\n---\n\nbody",
     "- one\n- two\n\n---\n\nafter",
+    # Raw HTML round-trips since `html` joined the vocabulary (2026-09-07).
+    # A fixture here is what tests parser-to-serialiser agreement: the block
+    # text is whatever the parser stored, not a string this file chose.
+    "before\n\n<div class='x'>raw</div>\n\nafter",
 ]
 
-# Shapes the parser drops on the floor: `hr` and `html_block` mint no block
-# (document_parsers.py) and markdown-it consumes link-reference definitions
-# into `env`. NOTHING can serialise them back, so a document containing one
-# must REFUSE conversion rather than silently lose it (review M-2).
+# Shapes the parser drops on the floor. Only ONE kind is left: markdown-it
+# consumes link-reference definitions into `env`, minting no token and no
+# block, so nothing can serialise them back and a document containing one
+# must REFUSE conversion rather than silently lose it (review M-2). `hr`
+# left this list on 2026-09-02 as `divider` and raw HTML on 2026-09-07 as
+# `html` -- both now have block shapes and both round-trip above.
 NON_CONVERTIBLE_SOURCES = [
-    "before\n\n<div class='x'>raw</div>\n\nafter",       # html_block
     "see [the doc][ref]\n\n[ref]: https://example.test",  # link reference
 ]
 
@@ -162,8 +167,8 @@ def test_reproduces_source_is_true_for_every_round_trip_fixture(source):
 def test_reproduces_source_refuses_what_the_parser_dropped(source):
     """Review M-2: the serialiser cannot emit these, so the guard that gates
     conversion must say so. A False here is the whole protection against a
-    block verb silently rewriting a corpus document without its rules, its
-    raw HTML or its link definitions."""
+    block verb silently rewriting a corpus document without its rules or its
+    link definitions."""
     tree, spans = _tree_and_spans(source)
     assert reproduces_source(tree, source, spans) is False
 
@@ -222,3 +227,56 @@ def test_a_stale_tree_is_refused_even_though_the_source_is_representable():
 
     stale = [b for b in tree if b.type != "divider"]      # the pre-divider tree
     assert reproduces_source(stale, source, spans) is False
+
+
+def test_html_round_trips_verbatim():
+    """The block is opaque, so serialising it is writing its text back. A
+    normalising branch here would change what re-parses."""
+    from app.services.block_serializer import TreeBlock, serialize_tree
+
+    blocks = [
+        TreeBlock(id=uuid4(), parent_id=None, order_index=0,
+                  type="paragraph", text="Before", properties=None),
+        TreeBlock(id=uuid4(), parent_id=None, order_index=1, type="html",
+                  text="<details>\n<summary>More</summary>\n</details>",
+                  properties=None),
+    ]
+    out = serialize_tree(blocks)
+    assert out.content == (
+        "Before\n\n<details>\n<summary>More</summary>\n</details>"
+    )
+
+
+def test_a_document_with_html_converts_when_the_tree_has_it():
+    """Before the html type existed this document was permanently
+    unconvertible, which meant permanently uneditable in the notes UI."""
+    from app.services.block_serializer import TreeBlock, reproduces_source
+
+    content = "Before\n\n<div>x</div>\n\nAfter\n"
+    blocks = [
+        TreeBlock(id=uuid4(), parent_id=None, order_index=0,
+                  type="paragraph", text="Before", properties=None),
+        TreeBlock(id=uuid4(), parent_id=None, order_index=1,
+                  type="html", text="<div>x</div>", properties=None),
+        TreeBlock(id=uuid4(), parent_id=None, order_index=2,
+                  type="paragraph", text="After", properties=None),
+    ]
+    assert reproduces_source(blocks, content, {}) is True
+
+
+def test_a_stale_tree_missing_its_html_block_still_refuses():
+    """The count check is the half that keeps the guard honest. A document
+    filed BEFORE the html type existed carries the construct in its content
+    and no row for it, and `ingest_document` returns UNCHANGED on a
+    byte-identical re-push without touching blocks -- so without this check
+    the conversion would silently drop the HTML."""
+    from app.services.block_serializer import TreeBlock, reproduces_source
+
+    content = "Before\n\n<div>x</div>\n\nAfter\n"
+    stale = [
+        TreeBlock(id=uuid4(), parent_id=None, order_index=0,
+                  type="paragraph", text="Before", properties=None),
+        TreeBlock(id=uuid4(), parent_id=None, order_index=1,
+                  type="paragraph", text="After", properties=None),
+    ]
+    assert reproduces_source(stale, content, {}) is False

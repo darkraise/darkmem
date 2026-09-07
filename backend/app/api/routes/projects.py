@@ -14,14 +14,21 @@ router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 class ProjectSummary(BaseModel):
     """A project any corpus actually contains.
 
-    Derived, never a registry -- a project exists here because a memory, a
+    Derived for every ordinary project -- one exists here because a memory, a
     document or a checkpoint carries it, and stops existing when the last of
     them is deleted. Widened 2026-08-31 (spec §2.1, review M2): grouping
     ``memories.project`` alone made a document-only project -- exactly what
     the corpus import creates -- invisible to its own scope picker.
+
+    One exception, and it is the reason this endpoint reads the ``projects``
+    registry at all: a ``kind='personal'`` row is served even holding nothing.
+    The notes workspace's scope has to be selectable *before* anything has been
+    filed into it, so deriving it from its own contents would make it
+    unreachable exactly when it is empty.
     """
 
     name: str
+    kind: str = "project"
     memory_count: int
     document_count: int
     checkpoint_count: int
@@ -40,6 +47,10 @@ _UNION_SQL = text(
         SELECT project FROM documents
         UNION
         SELECT project FROM session_checkpoints
+        UNION
+        -- A registered personal space appears even holding nothing: it is the
+        -- notes workspace's own scope, not a project that happens to exist.
+        SELECT name FROM projects WHERE kind = 'personal'
     ),
     m AS (SELECT project, count(*) AS n FROM memories GROUP BY project),
     d AS (SELECT project, count(*) AS n FROM documents GROUP BY project),
@@ -49,6 +60,7 @@ _UNION_SQL = text(
                  max((created_at AT TIME ZONE 'UTC')::date) AS latest_day
           FROM events GROUP BY project)
     SELECT names.project AS name,
+           COALESCE(p.kind, 'project') AS kind,
            COALESCE(m.n, 0) AS memory_count,
            COALESCE(d.n, 0) AS document_count,
            COALESCE(c.n, 0) AS checkpoint_count,
@@ -59,6 +71,7 @@ _UNION_SQL = text(
     LEFT JOIN d ON d.project = names.project
     LEFT JOIN c ON c.project = names.project
     LEFT JOIN e ON e.project = names.project
+    LEFT JOIN projects p ON p.name = names.project
     WHERE names.project IS NOT NULL AND names.project <> ''
     ORDER BY COALESCE(m.n, 0) + COALESCE(d.n, 0) + COALESCE(c.n, 0) DESC,
              names.project ASC

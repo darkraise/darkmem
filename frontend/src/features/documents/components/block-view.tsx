@@ -73,6 +73,13 @@ export function BlockView({
           language={block.properties?.language as string | undefined}
         />
       )
+    case "html":
+      // Escaped source, never live markup. The markdown pipeline carries no
+      // `rehype-raw`, so adding one to make <img>/<details> render is the
+      // first place an imported file executes script under the operator's
+      // session cookie. Live HTML is a separate owner decision behind
+      // `rehype-sanitize` (2026-09-07 spec §12).
+      return <CodeBlock code={block.text} language="html" />
     case "quote":
       return (
         <blockquote className="border-primary/40 text-muted-foreground border-l-2 pl-3 text-sm italic">

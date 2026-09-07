@@ -109,6 +109,7 @@ async def test_counts_every_status_not_only_active(
     mixed = next(p for p in resp.json() if p["name"] == "mixed")
     assert mixed == {
         "name": "mixed",
+        "kind": "project",
         "memory_count": 2,
         "document_count": 0,
         "checkpoint_count": 0,

@@ -31,6 +31,18 @@ _REGISTER = text(
     "INSERT INTO projects (name) VALUES (:name) ON CONFLICT (name) DO NOTHING"
 )
 
+# The personal notes space. Seeded at boot rather than in the setup wizard:
+# `register` runs on every capture with ON CONFLICT DO NOTHING, so a memory
+# captured into `notes` before any seed mints the row with `kind` defaulting to
+# 'project'. DO UPDATE is what makes the seed self-heal that race, and it
+# survives a baseline regeneration without a runbook step.
+PERSONAL_PROJECT = "notes"
+
+_SEED_PERSONAL = text(
+    "INSERT INTO projects (name, kind) VALUES (:name, 'personal') "
+    "ON CONFLICT (name) DO UPDATE SET kind = 'personal'"
+)
+
 _BACKFILL = text(
     "INSERT INTO projects (name) "
     "SELECT DISTINCT project FROM memories "
@@ -62,3 +74,11 @@ async def backfill(session: AsyncSession) -> int:
     """
     result = await session.execute(_BACKFILL)
     return result.rowcount or 0
+
+
+async def seed_personal_project(session: AsyncSession) -> None:
+    """Ensure the one `kind='personal'` project row exists.
+
+    Idempotent, and a repair as much as a seed.
+    """
+    await session.execute(_SEED_PERSONAL, {"name": PERSONAL_PROJECT})

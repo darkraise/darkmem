@@ -20,8 +20,21 @@ import { BlockView } from "./block-view"
  *  Deleting a marker DEMOTES: no marker means paragraph. That is only
  *  possible because the editor holds `source` rather than `text` -- with the
  *  marker never shown, it could never be deleted.
+ *
+ *  `stored` is the block's own type, and it decides the fallback for the one
+ *  type that has no marker to read back: an `html` block's source IS its
+ *  text, so every marker rule misses it and the fallback would demote it to
+ *  paragraph on its first edit. That is not cosmetic -- `blocks.search_vector`
+ *  blanks `type IN ('code','html')` because that text is source, so a demoted
+ *  block is indexed as prose and stops rendering through `CodeBlock`.
+ *  The type is PRESERVED, never inferred: CommonMark's type-7 rule makes
+ *  `<b>bold</b> text` a paragraph, so a leading-`<` test would start
+ *  misclassifying ordinary prose.
  */
-export function promote(source: string): {
+export function promote(
+  source: string,
+  stored?: string | null,
+): {
   type: string
   text: string
   properties?: Record<string, unknown>
@@ -47,6 +60,7 @@ export function promote(source: string): {
     const lines = source.split("\n")
     return { type: "code", text: lines.slice(1, -1).join("\n") }
   }
+  if (stored === "html") return { type: "html", text: source }
   return { type: "paragraph", text: source }
 }
 
@@ -82,7 +96,7 @@ export function BlockEditor({
     const next = draft
     setFocused(null)
     if (next === sourceOf(block)) return
-    const { type, text, properties } = promote(next)
+    const { type, text, properties } = promote(next, block.type)
     update.mutate(
       { blockId: block.block_id, text, type, properties: properties ?? null },
       {

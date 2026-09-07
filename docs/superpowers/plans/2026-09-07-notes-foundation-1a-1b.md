@@ -886,14 +886,15 @@ async def test_an_empty_personal_project_still_appears_with_its_kind(session, cl
     await seed_personal_project(session)
     await session.commit()
 
-    body = (await client.get("/api/v1/projects")).json()
-    rows = {p["name"]: p for p in body["items"]}
+    # The route is `response_model=list[ProjectSummary]` — a bare list, not
+    # an envelope. Verified at app/api/routes/projects.py:69.
+    rows = {p["name"]: p for p in (await client.get("/api/v1/projects")).json()}
     assert "notes" in rows
     assert rows["notes"]["kind"] == "personal"
     assert rows["notes"]["document_count"] == 0
 ```
 
-Match `client` and `session` to the fixtures the sibling route tests use — read the top of an existing `tests/test_*_route*.py` or `tests/test_api/` file and copy them exactly. If the response is a bare list rather than `{"items": [...]}`, assert against the shape the route actually returns.
+Match `client` and `session` to the fixtures the sibling route tests use — read the top of an existing `tests/test_*_route*.py` or `tests/test_api/` file and copy them exactly.
 
 - [ ] **Step 2: Run the test to verify it fails**
 

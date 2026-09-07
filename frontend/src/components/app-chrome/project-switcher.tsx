@@ -50,7 +50,7 @@ export function ProjectSwitcher() {
     setOpen(false)
   }
 
-  const rows = projects ?? []
+  const rows = (projects ?? []).filter((p) => p.kind !== "personal")
   const isAll = activeProject === ALL_PROJECTS
 
   return (

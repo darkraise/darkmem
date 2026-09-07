@@ -114,7 +114,12 @@ def test_the_reconciliation_writers_are_gated(main_tree):
     left to a caught exception: a restored snapshot already carries its
     partitions, so there is nothing to reconcile, and depending on an
     exception being swallowed for correctness is the shape B1 condemns."""
-    for attr in ("reconcile", "reconcile_event_partitions", "backfill_projects"):
+    for attr in (
+        "reconcile",
+        "reconcile_event_partitions",
+        "seed_personal_project",
+        "backfill_projects",
+    ):
         assert _guarded_by_read_only(
             main_tree,
             lambda node, a=attr: (

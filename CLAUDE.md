@@ -1561,7 +1561,7 @@ explicit operator-triggered run.
 
 A document is filed markdown or plain text, parsed into a `blocks`
 tree (headings, paragraphs, lists, code, quotes, tables and their rows,
-dividers) that is deliberately
+dividers, raw HTML) that is deliberately
 **not** run through the memory pipeline: filing a document never extracts
 entities or relationships. The parser stack also handles PDF, but no
 production caller can deliver one — `content` is `str` on both doors and
@@ -1591,10 +1591,13 @@ take the same lock, so the two serialise; a check ahead of the savepoint would
 be check-then-act, which is the race increment 3's compare-and-set closed.
 
 **Conversion refuses rather than converting lossily.** The parser mints no
-block for a raw HTML block or a link-reference definition, so regenerating
-`content` from the tree would silently delete them;
-`block_serializer.reproduces_source` detects those in the token stream and the
-verb raises `DocumentNotConvertible`. It also refuses when a construct is
+block for a link-reference definition — markdown-it consumes it into `env`
+before any token is minted — so regenerating `content` from the tree would
+silently delete it and leave every reference to it dangling;
+`block_serializer.reproduces_source` detects that in the parser's `env` and
+the verb raises `DocumentNotConvertible`. A raw HTML block stood beside it
+until 2026-09-07, when it became the `html` block type and started converting
+like any other construct. It also refuses when a construct is
 representable but missing from *this* tree — a document filed before its block
 type existed carries the construct in its content and no row for it, and
 `ingest_document` returns `UNCHANGED` on a byte-identical re-push without
@@ -1602,6 +1605,20 @@ touching blocks, so a token-versus-block count check is what stops that
 becoming silent loss. **Widening a block type therefore obliges a re-import,
 not merely a redeploy** (measured 2026-09-02: adding `divider` left exactly
 201 filed documents with `---` in their content and no divider row).
+**And the guard does not catch everything it converts: a quote with a
+non-paragraph child converts, and its regenerated source does not re-parse to
+the tree it came from** — measured 2026-09-07 at **43 of 492** documents, with
+block counts moving in both directions. `_separator` returns `"\n\n"` between a
+quote and a non-paragraph child and writes that separator without the quote
+prefix, so the blank line terminates the blockquote and the document re-parses
+as two; `code`, `divider` and `list` children fail identically and `html` is a
+fourth member of the class, not the cause. The same sweep against master's
+`serialize_tree` names the same 43 documents, so this is **pre-existing**, not
+introduced by the `html` widening. `reproduces_source` structurally cannot see
+it: it checks token kinds and counts, never that its own output re-parses, and
+the counts match. The fix belongs in `_separator` — thread the child prefix
+through, so the separator between a quote's children carries the `>` — and is a
+prerequisite for the notes editor.
 
 **Four block verbs, both doors** — `block_update`, `block_insert`,
 `block_move`, `block_delete` over `app/services/block_verbs.py`. Every verb
