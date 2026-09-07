@@ -1605,20 +1605,36 @@ touching blocks, so a token-versus-block count check is what stops that
 becoming silent loss. **Widening a block type therefore obliges a re-import,
 not merely a redeploy** (measured 2026-09-02: adding `divider` left exactly
 201 filed documents with `---` in their content and no divider row).
-**And the guard does not catch everything it converts: a quote with a
-non-paragraph child converts, and its regenerated source does not re-parse to
-the tree it came from** — measured 2026-09-07 at **43 of 492** documents, with
-block counts moving in both directions. `_separator` returns `"\n\n"` between a
-quote and a non-paragraph child and writes that separator without the quote
-prefix, so the blank line terminates the blockquote and the document re-parses
-as two; `code`, `divider` and `list` children fail identically and `html` is a
-fourth member of the class, not the cause. The same sweep against master's
-`serialize_tree` names the same 43 documents, so this is **pre-existing**, not
-introduced by the `html` widening. `reproduces_source` structurally cannot see
-it: it checks token kinds and counts, never that its own output re-parses, and
-the counts match. The fix belongs in `_separator` — thread the child prefix
-through, so the separator between a quote's children carries the `>` — and is a
-prerequisite for the notes editor.
+**The guard does not catch everything it converts, and the round trip is a
+property no guard checks**: `reproduces_source` compares token kinds and
+counts, never that its own output re-parses to the tree it came from. A sweep
+of the 492-document corpus on 2026-09-07 found **29** documents where it does
+not. Three independent serialiser defects, all now fixed and all pinned by
+fixtures in `ROUND_TRIP_SOURCES`:
+
+- `_separator` wrote its blank line **without the caller's prefix**, so the
+  line terminated an enclosing blockquote and every non-paragraph child
+  re-parsed as a quote of its own. It takes the child prefix now. The class is
+  wider than the four types first recorded — `heading`, `quote` and `table`
+  children fail identically to `list`, `code`, `divider` and `html`, and a
+  quote's *paragraph* children never fail only because the parser folds them
+  into the quote's own text rather than minting a block.
+- **Table cells were joined with `` | `` unescaped.** The parser stores a cell
+  containing a `|` with the escape already removed, so emitting it bare
+  declared a column the delimiter row did not have: the row re-parsed with the
+  cell **truncated at the pipe**, or the whole table degraded to a paragraph.
+  This was the only one of the three that destroyed text rather than
+  restructuring it, and it was the widest — 24 of the 29.
+- **A multi-line (setext) heading was emitted as one-line ATX**, so everything
+  after the first newline re-parsed as a paragraph. A heading whose text
+  carries a newline goes back out in setext form.
+
+**What remains is a parser defect, not a serialiser one** (6 documents, no text
+lost — the character count is identical and the blocks are re-ordered). The
+parser folds a blockquote's paragraph children into the quote's own `text`, so
+their position relative to a sibling heading is not recorded anywhere and the
+round trip moves them ahead of it. Fixing it changes how documents parse, which
+obliges a re-import rather than a redeploy.
 
 **Four block verbs, both doors** — `block_update`, `block_insert`,
 `block_move`, `block_delete` over `app/services/block_verbs.py`. Every verb
