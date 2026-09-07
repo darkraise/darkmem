@@ -310,11 +310,12 @@ export function ProjectWorkspace({
     },
     // `.mutate` rather than the mutation object: `useMutation` returns a new
     // result every render, so depending on it would change `nodeActions`'
-    // identity on every frame. That is one of THREE props that have to stay
-    // stable for `DocumentTree`'s `memo` to hold -- `handleExpandedChange`
-    // and `emptyAction` are the others, and the shallow compare needs all of
-    // them. `project-workspace-render.test.tsx` is what actually pins it;
-    // this comment describes an intent, that test measures the result.
+    // identity on every frame. `DocumentTree` is `memo`'d with the default
+    // shallow compare, which reads EVERY prop the call site passes -- so no
+    // count belongs in this sentence and no list here stays true. What holds
+    // the property is `project-workspace-render.test.tsx`, which counts that
+    // component's own renders across a heading crossing and fails on any
+    // fresh object added to the call site, this one included.
     [createNote.mutate, items, project, truncated],
   )
 

@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { Profiler, useState, type ReactNode } from "react"
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/demo-flag", () => ({ DEMO: false }))
 vi.mock("@/lib/api", () => ({ apiFetch: vi.fn(), ApiError: class extends Error {} }))
@@ -101,25 +101,42 @@ async function countTreeRenders(treeManagement: boolean) {
   await userEvent.click(await screen.findByText("design.md"))
   await screen.findByText("report heading")
 
-  // Baseline taken after the selection has settled; the delta is what the
+  // Proves the spy is bound to the module `document-tree.tsx` actually
+  // imports, and that a leaf really rendered. Without it a zero count is
+  // ambiguous: memo bailed (what is under test), the mock never intercepted,
+  // or the tree drew no rows at all.
+  expect(rowRenders).toHaveBeenCalledWith("design.md")
+
+  // Baseline taken after the selection has settled; the deltas are what the
   // crossings cost.
   rowRenders.mockClear()
+  const rendersBefore = renders
   await userEvent.click(screen.getByText("report heading"))
   const afterOne = rowRenders.mock.calls.length
   await userEvent.click(screen.getByText("report heading"))
   return {
     perCrossing: afterOne,
     second: rowRenders.mock.calls.length - afterOne,
-    workspaceRenders: renders,
+    // The DELTA, not the total: counting from mount is satisfied by the mount
+    // itself, so it would prove nothing about the two clicks. If the reader
+    // stub's `onActiveHeadingChange` ever stopped reaching
+    // `setActiveHeadingId` -- a prop rename does it -- the row count would
+    // read zero and this test would go green having measured nothing.
+    workspaceRenders: renders - rendersBefore,
   }
 }
 
 describe("project workspace — the memoised tree is really skipped", () => {
+  beforeEach(() => {
+    rowRenders.mockClear()
+  })
+
   it("does not re-render the tree on a heading crossing under tree management", async () => {
     const { perCrossing, second, workspaceRenders } = await countTreeRenders(true)
-    // The workspace itself DOES re-render -- it holds `activeHeadingId` --
-    // which is what makes the assertion meaningful rather than vacuous.
-    expect(workspaceRenders).toBeGreaterThan(0)
+    // The workspace itself DOES re-render on each of the two crossings -- it
+    // holds `activeHeadingId` -- which is what makes a zero row count mean
+    // "the memo skipped it" rather than "nothing happened".
+    expect(workspaceRenders).toBeGreaterThanOrEqual(2)
     expect(perCrossing).toBe(0)
     expect(second).toBe(0)
   })
@@ -128,7 +145,7 @@ describe("project workspace — the memoised tree is really skipped", () => {
     // `onExpandedChange` was a plain declaration, so this surface -- which
     // predates every note action -- was paying the same cost.
     const { perCrossing, second, workspaceRenders } = await countTreeRenders(false)
-    expect(workspaceRenders).toBeGreaterThan(0)
+    expect(workspaceRenders).toBeGreaterThanOrEqual(2)
     expect(perCrossing).toBe(0)
     expect(second).toBe(0)
   })
