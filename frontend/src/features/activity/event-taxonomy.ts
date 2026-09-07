@@ -32,6 +32,10 @@ const EVENT_TYPE_CATEGORY: Record<string, FeedCategory> = {
   // Increment 8's block verbs. A block edit is a capture-side write to a
   // filed document, the same tab document_filed lands on.
   blocks_edited: "capture",
+  // The metadata verb and the subtree rename. A retitle, move, pin or re-tag
+  // is a capture-side write to a filed document, the same tab the other two
+  // document writes land on.
+  document_updated: "capture",
   extracted: "pipeline",
   sources_changed: "pipeline",
   verified: "verification",

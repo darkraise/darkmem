@@ -86,7 +86,8 @@ migration discipline begins; nothing before it is grandfathered.
       tests/test_prompt_agent_instructions.py tests/test_api/test_rest_conformance.py \
       tests/test_sdk_generator.py tests/test_spa_edge.py tests/test_events.py \
       tests/test_mcp_auth.py tests/test_inert_objects.py tests/test_api/test_tags.py \
-      tests/test_block_pipeline.py tests/test_block_retrieval.py tests/test_auto_research.py
+      tests/test_block_pipeline.py tests/test_block_retrieval.py tests/test_auto_research.py \\
+      tests/test_event_taxonomy_map.py
   ```
 
   It runs in ~40s and needs no LLM key. Two guards it does **not** cover and
