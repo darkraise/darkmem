@@ -165,6 +165,11 @@ the default render exposes no context menu and no create button. On, tree rows
 gain New note, New folder, Rename, Move to…, Pin/Unpin, Delete, and the header
 gains a create button.
 
+**"New folder" files a note, because a folder is not an object.** Folders are
+derived from the uri path (epic spec §2), so an empty one cannot exist — there
+is no row to carry it. The command takes a folder name and files one seeded
+note inside it (`<folder>/untitled.md`), which is what makes the folder appear.
+
 Four branch points the flag has to answer beyond the menu, all of which the
 component renders unconditionally today:
 
