@@ -10,103 +10,111 @@
 
 **Goal:** Give the block verbs a real compare-and-set, widen the tag sweep so a note-only tag survives the hour, and ship `document_update` so a converted note can be renamed, moved and pinned.
 
-**Architecture:** Three lanes. **1c** threads an `expected_hash` precondition through `_mutate` and all four block verbs, serves `content_hash` on both doors' block reads, and serialises the editor's client-side mutations so a burst cannot 409 against itself. **1d** widens `prune_orphans` and the tag histogram to consider `document_tags`, which must land before any code writes such a row. **1e** adds the metadata verb in two shapes (`PATCH` for one document, `POST .../rename` for a subtree) plus the MCP tool, and moves the block-first direction refusal onto the upsert predicate so it cannot be raced.
+**Architecture:** Three lanes. **1c** threads an `expected_hash` precondition through `_mutate` and all four block verbs, serves `content_hash` on both doors' block reads, and serialises the editor's mutations. **1d** gives `document_tags` a mapped Table object and widens `prune_orphans` and the tag histogram to use it. **1e** adds the metadata verb in two shapes plus the MCP tool, and puts the block-first direction refusal on **both** the existing-row path and the upsert.
 
-**Tech Stack:** FastAPI, SQLAlchemy async + raw SQL with asyncpg CASTs, Postgres 16, `mcp==2.1.1` (`MCPServer`), React + TanStack Router, vitest, pytest.
+**Tech Stack:** FastAPI, SQLAlchemy async + raw SQL with asyncpg CASTs, Postgres 16, `mcp==2.1.1` (`MCPServer`), React + TanStack Query, vitest, pytest.
 
-**Spec:** `docs/superpowers/specs/2026-09-07-personal-notes-workspace-design.md` (1c is §5, 1d is §7, 1e is §4.2 and §4.3; the sequencing and its two ordering constraints are §12)
+**Spec:** `docs/superpowers/specs/2026-09-07-personal-notes-workspace-design.md` (1c is §5, 1d is §7, 1e is §4.2 and §4.3; sequencing is §12). **§4.3 was amended 2026-09-07** after review found its original instruction would cause data loss — see Task 8.
 
 ## Global Constraints
 
-- **Lane order is forced: 1d must land before 1e.** The first `document_tags` row `document_update` writes is deleted within the hour by `tag_orphan_cleanup` if `prune_orphans` has not been widened first. Tasks 5 precedes tasks 7-9 for this reason and no other.
-- **Lane 1c is independent of the 1b baseline** and may proceed in parallel with 1d/1e. It touches no schema.
-- **No new schema.** Every column and table these lanes use was created by the 1b baseline regeneration (`document_tags`, `documents.pinned_at`, `projects.kind`). If a task finds one missing, stop — the branch is not on the regenerated baseline.
-- **Reuse `DocumentHashConflict`** (`app/services/document_ingest.py`), which already carries `expected_hash` / `current_hash` and already has a 409 mapping on REST and a `hash_conflict` envelope on MCP. Do not define a second conflict exception.
-- **`EVENT_TYPES` is widened taxonomy-first**: the value lands in the vocabulary in its own commit, before any code emits it.
-- **Raw-SQL params need CASTs** (`CAST(:id AS uuid)`, `CAST(:hash AS text)`), or asyncpg raises `IndeterminateDatatypeError`.
-- **One new MCP tool trips several full-list guards.** `document_update` moves the catalogue from 38 tools to 39 and the `capture` scope from 12 writers to 13. Both counts appear in `CLAUDE.md` and in test assertions; the task that adds the tool updates every one of them.
+- **Lane order is forced: 1d (Task 5) must land before 1e (Tasks 7-12).** The first `document_tags` row the metadata verb writes is deleted within the hour by `tag_orphan_cleanup` if `prune_orphans` has not been widened first. Verified: `document_tags.tag_id` is `ON DELETE CASCADE` (`0001_baseline.py:1390`), `prune_orphans` deletes any tag lacking a `memory_tags` row, and the job is registered hourly at `app/main.py:458`.
+- **Lane 1c (Tasks 1-4) is independent** of 1d/1e and may run in parallel.
+- **No new schema.** `document_tags`, `documents.pinned_at`, `document_links` and `projects.kind` all exist in the baseline on master (1a-1b merged at `d0c8b95b`). What does *not* exist is a **mapped Table object** for `document_tags` — Task 5 creates it.
+- **Reuse `DocumentHashConflict`** (`app/services/document_ingest.py:101`). It carries `expected_hash` / `current_hash` and already has a 409 mapping and an MCP `hash_conflict` envelope. Do not add a second conflict exception. `block_verbs.py:34` already imports from `document_ingest`, so Task 1's import creates no cycle.
+- **New exception classes go in `document_ingest.py`, not `document_door.py`.** `document_door` imports the repository; a repository raising a `document_door` class would close a cycle.
+- **Teach the shared error mappers, never add a per-site `except`.** REST has `_block_write_error` (`app/api/routes/documents.py:819`); MCP has `_block_refusal` (`app/api/mcp/server.py:1930`).
+- **Raw-SQL params need CASTs**, or asyncpg raises `IndeterminateDatatypeError`.
 - **Commit messages:** `<type>(<scope>): <subject>`, subject <= 50 chars, imperative, no period.
+
+### Test conventions this plan follows
+
+There is **no** `filed_note`, `llm`, or `mcp` fixture in this repo. Do not invent one.
+
+- Block/document service tests are `async def`, take `session`, and file through the local `_file(session, content, uri) -> (llm, document_id)` helper with the local `StubEmbedder` (`tests/test_block_verbs.py:41-68`).
+- Route tests use the **async** `client` fixture (`tests/conftest.py:141`, an httpx `AsyncClient`) and must `await` and pass `auth_headers`, or they 401 on `require_auth`.
+- MCP tests call the tool function directly — `mcp_server.block_update(...)` — with `monkeypatch` on `async_session_factory` and `_pipeline` (`tests/test_mcp.py:383-440`).
+- Real test paths: `tests/test_document_routes.py` (not `test_documents_routes.py`), `tests/test_api/test_tags.py`, `tests/test_api/test_rest_conformance.py`, `tests/test_repositories.py` (holds the existing `prune_orphans` test at :78).
 
 ---
 
 ## File Structure
 
-| File | Responsibility | Lane |
+| File | Responsibility | Task |
 |---|---|---|
-| `backend/app/services/block_verbs.py` | `_DOC_META` gains `content_hash`; `_mutate` and the four verbs gain `expected_hash` | 1c |
-| `backend/app/api/routes/documents.py` | `expected_hash` on four block routes; `content_hash` on `DocumentBlocksResponse`; new `PATCH` and `rename` routes | 1c, 1e |
-| `backend/app/api/mcp/server.py` | `expected_hash` on four block tools; `include_hash` on `document_get`; new `document_update` tool | 1c, 1e |
-| `frontend/src/features/documents/components/block-editor.tsx` | serialised mutation queue | 1c |
-| `backend/app/repositories/relational.py` | `prune_orphans` and `get_with_counts` widen to `document_tags` | 1d |
-| `backend/app/services/analytics.py` | tag histogram widens to `document_tags` | 1d |
-| `backend/app/services/events.py` | `document_updated` joins `EVENT_TYPES` | 1e |
-| `backend/app/repositories/documents.py` | the direction predicate on `upsert_by_uri`; the existing `update_document` is untouched | 1e |
-| `backend/app/services/document_door.py` | `update_document_metadata` / `rename_documents` service verbs, `DocumentUriConflict` | 1e |
+| `backend/app/services/block_verbs.py` | `_DOC_META` gains `content_hash`; `_mutate` and the four verbs gain `expected_hash` | 1 |
+| `backend/app/api/routes/documents.py` | `expected_hash` on four block routes; `content_hash` on the blocks read; `_block_write_error` learns the conflict; new `PATCH` and `rename` routes | 2, 10 |
+| `backend/app/api/mcp/server.py` | `expected_hash` on four block tools; `include_hash`; `_block_refusal` learns the conflict; `document_update` | 3, 11 |
+| `frontend/src/features/documents/lib/mutation-queue.ts` | serialised queue with hash tracking and re-read | 4 |
+| `backend/app/models/memory.py` | `document_tags` Table object beside `memory_tags` | 5 |
+| `backend/app/repositories/relational.py`, `app/services/analytics.py` | sweep and histogram widen to `document_tags` | 5 |
+| `backend/app/services/events.py` | `document_updated` joins `EVENT_TYPES` | 6 |
+| `backend/app/services/document_door.py` | `update_document_metadata`, `set_document_tags`, `rename_documents` | 7, 9 |
+| `backend/app/services/document_ingest.py` | `DocumentUriConflict`; the upsert-side direction guard | 7, 8 |
+| `backend/app/api/mcp/scopes.py`, `app/services/prompt.py` | the new tool's scope and its place in the agent roster | 11, 12 |
 
 ---
 
 ### Task 1: Compare-and-set in the block verbs
 
 **Files:**
-- Modify: `backend/app/services/block_verbs.py:81-85` (`_DOC_META`), `:150-175` (`_mutate`), `:291`, `:318`, `:356`, `:403` (the four verb signatures)
+- Modify: `backend/app/services/block_verbs.py:81-85` (`_DOC_META`), `:150-175` (`_mutate`), `:291`, `:318`, `:356`, `:403`
 - Test: `backend/tests/test_block_verbs.py`
 
 **Interfaces:**
-- Consumes: `DocumentHashConflict(document_id=, expected_hash=, current_hash=)` from `app.services.document_ingest`
-- Produces: every verb gains a keyword-only `expected_hash: str | None = None`. Signatures after this task:
+- Consumes: `DocumentHashConflict` from `app.services.document_ingest`
+- Produces: each verb gains keyword-only `expected_hash: str | None = None`:
   - `update_block(session, llm, *, block_id: str, text: str, type: str | None = None, properties: dict | None = None, expected_hash: str | None = None) -> BlockWriteResult`
   - `insert_block(session, llm, *, document_id: str, type: str, text: str, parent_id: str | None = None, after_block_id: str | None = None, properties: dict | None = None, expected_hash: str | None = None) -> BlockWriteResult`
   - `move_block(session, llm, *, block_id: str, new_parent_id: str | None = None, after_block_id: str | None = None, expected_hash: str | None = None) -> BlockWriteResult`
   - `delete_block(session, llm, *, block_id: str, expected_hash: str | None = None) -> BlockWriteResult`
+- Note `BlockWriteResult.content_hash` already exists (`block_verbs.py:65-71`) and already carries the post-write hash. Nothing needs adding for a caller to chain edits.
 
 **Implementer:** dcc-superpower-companions:impl-opus-high
 **Evaluation:** files 1 - spec 0 - coupling 2 - risk 3 = 6
-**Approach:** inline - skip 3: the spec fixes the design (§5 says the compare goes after the existing lock, which is already the transaction's first statement, so it is CAS-equivalent with no restructuring)
+**Approach:** inline - skip 3: §5 fixes the design, and the lock is already `_mutate`'s first statement (`block_verbs.py:159`), so the compare is CAS-equivalent where it sits
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing tests**
 
-Add to `backend/tests/test_block_verbs.py`:
+Append to `backend/tests/test_block_verbs.py`. These use the file's own `_file` helper and `StubEmbedder` — there is no `filed_note` or `llm` fixture in this repo.
 
 ```python
-import pytest
-from app.services.block_verbs import (
-    delete_block, insert_block, move_block, update_block,
-)
-from app.services.document_ingest import DocumentHashConflict
+async def _hash_of(session, document_id):
+    return (await session.execute(
+        text("SELECT content_hash FROM documents WHERE id = CAST(:id AS uuid)"),
+        {"id": document_id},
+    )).scalar_one()
 
 
 @pytest.mark.asyncio
-async def test_a_stale_expected_hash_refuses_every_verb(session, llm, filed_note):
+async def test_a_stale_expected_hash_refuses_every_verb(session):
     """All four verbs rewrite content_hash, so all four take the precondition.
-
-    The spec is explicit that this is four verbs and not two: insert and move
-    rewrite the document's content exactly as update does, so a caller that
-    preconditions only its updates still clobbers a concurrent insert.
-    """
-    doc_id, block_id = filed_note
+    Insert and move rewrite it as much as update does, so a caller that
+    preconditions only its updates still clobbers a concurrent insert."""
+    llm, doc = await _file(session, "# T\n\npara", "notes/cas.md")
+    block = (await _blocks(session, doc))[0]["id"]
     stale = "0" * 64
 
-    with pytest.raises(DocumentHashConflict):
-        await update_block(session, llm, block_id=block_id, text="x",
-                           expected_hash=stale)
-    with pytest.raises(DocumentHashConflict):
-        await insert_block(session, llm, document_id=doc_id, type="paragraph",
-                           text="x", expected_hash=stale)
-    with pytest.raises(DocumentHashConflict):
-        await move_block(session, llm, block_id=block_id, expected_hash=stale)
-    with pytest.raises(DocumentHashConflict):
-        await delete_block(session, llm, block_id=block_id, expected_hash=stale)
+    for call in (
+        lambda: update_block(session, llm, block_id=block, text="x",
+                             expected_hash=stale),
+        lambda: insert_block(session, llm, document_id=doc, type="paragraph",
+                             text="x", expected_hash=stale),
+        lambda: move_block(session, llm, block_id=block, expected_hash=stale),
+        lambda: delete_block(session, llm, block_id=block, expected_hash=stale),
+    ):
+        with pytest.raises(DocumentHashConflict):
+            await call()
 
 
 @pytest.mark.asyncio
-async def test_the_conflict_names_the_hash_that_actually_holds(
-    session, llm, filed_note, current_hash_of,
-):
-    doc_id, block_id = filed_note
-    live = await current_hash_of(doc_id)
+async def test_the_conflict_names_the_hash_that_actually_holds(session):
+    llm, doc = await _file(session, "# T\n\npara", "notes/cas2.md")
+    block = (await _blocks(session, doc))[0]["id"]
+    live = await _hash_of(session, doc)
 
     with pytest.raises(DocumentHashConflict) as caught:
-        await update_block(session, llm, block_id=block_id, text="x",
+        await update_block(session, llm, block_id=block, text="x",
                            expected_hash="0" * 64)
 
     assert caught.value.expected_hash == "0" * 64
@@ -114,63 +122,34 @@ async def test_the_conflict_names_the_hash_that_actually_holds(
 
 
 @pytest.mark.asyncio
-async def test_a_matching_expected_hash_applies_the_edit(
-    session, llm, filed_note, current_hash_of, text_of,
-):
-    doc_id, block_id = filed_note
-    await update_block(session, llm, block_id=block_id, text="edited",
-                       expected_hash=await current_hash_of(doc_id))
-    assert await text_of(block_id) == "edited"
+async def test_a_matching_expected_hash_applies_the_edit(session):
+    llm, doc = await _file(session, "# T\n\npara", "notes/cas3.md")
+    block = (await _blocks(session, doc))[0]["id"]
+
+    result = await update_block(session, llm, block_id=block, text="edited",
+                                expected_hash=await _hash_of(session, doc))
+
+    assert result.content_hash == await _hash_of(session, doc)
+    assert [b["text"] for b in await _blocks(session, doc)][0] == "edited"
 
 
 @pytest.mark.asyncio
-async def test_omitting_the_hash_stays_last_writer_wins(
-    session, llm, filed_note, text_of,
-):
-    """The precondition is opt-in. Every shipped caller omits it today, and
-    making it mandatory would break them all at once."""
-    _, block_id = filed_note
-    await update_block(session, llm, block_id=block_id, text="edited")
-    assert await text_of(block_id) == "edited"
+async def test_omitting_the_hash_stays_last_writer_wins(session):
+    """The precondition is opt-in. Every shipped caller omits it today."""
+    llm, doc = await _file(session, "# T\n\npara", "notes/cas4.md")
+    block = (await _blocks(session, doc))[0]["id"]
+    await update_block(session, llm, block_id=block, text="edited")
+    assert [b["text"] for b in await _blocks(session, doc)][0] == "edited"
 ```
 
-Add these fixtures to the same file if they are not already present:
+Add `DocumentHashConflict` to the file's existing `from app.services.document_ingest import compute_content_hash` line.
 
-```python
-import pytest_asyncio
-from sqlalchemy import text as sa_text
-
-
-@pytest_asyncio.fixture
-async def current_hash_of(session):
-    async def read(document_id: str) -> str:
-        row = (await session.execute(
-            sa_text("SELECT content_hash FROM documents "
-                    "WHERE id = CAST(:id AS uuid)"),
-            {"id": document_id},
-        )).scalar_one()
-        return row
-    return read
-
-
-@pytest_asyncio.fixture
-async def text_of(session):
-    async def read(block_id: str) -> str:
-        return (await session.execute(
-            sa_text("SELECT text FROM blocks WHERE id = CAST(:id AS uuid)"),
-            {"id": block_id},
-        )).scalar_one()
-    return read
-```
-
-- [ ] **Step 2: Run the tests to verify they fail**
+- [ ] **Step 2: Run to verify they fail**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_block_verbs.py -k expected_hash -v`
-Expected: FAIL with `TypeError: update_block() got an unexpected keyword argument 'expected_hash'`. If instead they fail on a missing fixture, fix the fixture and re-run until the failure is the missing keyword — a fixture error proves nothing about the feature.
+Expected: FAIL with `TypeError: update_block() got an unexpected keyword argument 'expected_hash'`.
 
 - [ ] **Step 3: Make `_DOC_META` read the hash**
-
-The compare has nothing to read otherwise. In `backend/app/services/block_verbs.py`:
 
 ```python
 _DOC_META = text(
@@ -183,28 +162,17 @@ _DOC_META = text(
 
 - [ ] **Step 4: Compare inside `_mutate`, after the lock**
 
-Change the signature and add the compare immediately after the `meta is None` guard:
-
 ```python
 async def _mutate(session, llm, *, document_id, apply, touched_embed, verb,
                   block_id, expected_hash=None):
-    """Lock, load, mutate in memory, serialise, write, journal, embed.
+```
 
-    Review M-3: the lock is the first statement, before anything is read off
-    the row. The whole pass is a read-modify-write that crosses several
-    awaits, and `put_document` takes the same lock, so the two serialise
-    instead of interleaving into a tree whose blocks were stripped underneath
-    it.
+and immediately after the existing `if meta is None:` guard:
 
-    The compare sits after that lock, which is what makes it a compare-and-set
-    rather than a check-then-act: no writer can move `content_hash` between
-    the read and the write, because they are inside one held row lock.
-    """
-    await session.execute(_LOCK_DOCUMENT, {"id": document_id})
-
-    meta = (await session.execute(_DOC_META, {"id": document_id})).mappings().first()
-    if meta is None:
-        raise BlockTargetUnresolved(f"no document with id {document_id}")
+```python
+    # After the lock, which is what makes this a compare-and-set rather than a
+    # check-then-act: no writer can move content_hash between this read and
+    # the write below, because both are inside one held row lock.
     if expected_hash is not None and meta["content_hash"] != expected_hash:
         raise DocumentHashConflict(
             document_id=document_id,
@@ -213,34 +181,20 @@ async def _mutate(session, llm, *, document_id, apply, touched_embed, verb,
         )
 ```
 
-Add the import at the top of the module:
-
-```python
-from app.services.document_ingest import DocumentHashConflict
-```
+Add `DocumentHashConflict` to the existing `document_ingest` import at `block_verbs.py:34`.
 
 - [ ] **Step 5: Thread the parameter through all four verbs**
 
-Each verb gains the keyword-only parameter and forwards it. `update_block`:
+Each of `update_block`, `insert_block`, `move_block`, `delete_block` gains `expected_hash: str | None = None` as its last keyword-only parameter and passes `expected_hash=expected_hash` on its `_mutate(...)` call. Change nothing else in the four bodies.
 
-```python
-async def update_block(
-    session: AsyncSession, llm, *, block_id: str,
-    text: str, type: str | None = None, properties: dict | None = None,
-    expected_hash: str | None = None,
-) -> BlockWriteResult:
-```
-
-and its `_mutate(...)` call gains `expected_hash=expected_hash`. Repeat verbatim for `insert_block`, `move_block` and `delete_block` — each adds the same keyword-only parameter with the same default and forwards it on its own `_mutate` call. Change nothing else in the four bodies.
-
-- [ ] **Step 6: Run the tests to verify they pass**
+- [ ] **Step 6: Run to verify they pass**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_block_verbs.py -v`
-Expected: PASS, including every pre-existing test in the file — they all omit `expected_hash` and must keep working unchanged.
+Expected: PASS, including every pre-existing test — they all omit `expected_hash`.
 
 - [ ] **Step 7: Prove the compare is load-bearing**
 
-Comment out the two-line `if expected_hash is not None ...` guard, re-run, and confirm the three refusal tests fail. Restore it. A precondition that passes with the check removed is testing nothing.
+Comment out the `if expected_hash is not None ...` guard, re-run, confirm the refusal tests fail, restore it.
 
 - [ ] **Step 8: Commit**
 
@@ -254,118 +208,137 @@ git commit -m "feat(documents): precondition the block verbs on a hash"
 ### Task 2: Serve and accept the hash on REST
 
 **Files:**
-- Modify: `backend/app/api/routes/documents.py:367-374` (`DocumentBlocksResponse`), `:768-805` (the blocks read), and the four block-verb routes
-- Test: `backend/tests/test_documents_routes.py`, `backend/tests/test_rest_conformance.py`
+- Modify: `backend/app/api/routes/documents.py:367-374` (`DocumentBlocksResponse`), `:768-808` (the blocks read), `:819-826` (`_block_write_error`), `:866`, `:886`, `:908` (the verb routes)
+- Test: `backend/tests/test_document_routes.py`, `backend/tests/test_api/test_rest_conformance.py`
 
 **Interfaces:**
-- Consumes: `expected_hash` on the four verbs from Task 1
-- Produces: `DocumentBlocksResponse.content_hash: str | None`; `expected_hash` as a body field on the update/insert/move routes and a **query parameter** on the delete route
+- Consumes: `expected_hash` on the four verbs (Task 1)
+- Produces: `DocumentBlocksResponse.content_hash: str | None`; `expected_hash` as a body field on `BlockUpdateRequest` / `BlockInsertRequest` / `BlockMoveRequest`, and a **query parameter** on delete
 
 **Implementer:** dcc-superpower-companions:impl-sonnet-high
 **Evaluation:** files 1 - spec 0 - coupling 1 - risk 1 = 3
-**Approach:** inline - skip 3: §5 fixes both the field placement and the query-parameter exception for DELETE
+**Approach:** inline - skip 3: §5 fixes the field placement and the query-parameter exception for DELETE
 
-- [ ] **Step 1: Write the failing test**
+> **The real routes are `/{document_id}/blocks/{block_id}`**, not `/blocks/{block_id}`. They take `document_id: UUID`, `_user=Depends(require_auth)`, and call `_assert_block_is_in` first. Do not register a new route path.
+
+- [ ] **Step 1: Write the failing tests**
 
 ```python
-def test_the_blocks_read_serves_the_documents_hash(client, filed_note):
-    doc_id, _ = filed_note
-    body = client.get(f"/api/v1/documents/{doc_id}").json()
+@pytest.mark.asyncio
+async def test_the_blocks_read_serves_the_documents_hash(client, auth_headers, filed):
+    doc = await filed("notes/h.md", "# T\n\npara")
+    body = (await client.get(f"/api/v1/documents/{doc}",
+                             headers=auth_headers)).json()
     assert body["content_hash"], "a caller cannot precondition its first edit"
 
 
-def test_a_stale_hash_answers_409_naming_both_hashes(client, filed_note):
-    doc_id, block_id = filed_note
-    response = client.patch(
-        f"/api/v1/documents/blocks/{block_id}",
+@pytest.mark.asyncio
+async def test_a_stale_hash_answers_409_naming_both_hashes(
+    client, auth_headers, filed, first_block,
+):
+    doc = await filed("notes/h2.md", "# T\n\npara")
+    response = await client.patch(
+        f"/api/v1/documents/{doc}/blocks/{await first_block(doc)}",
         json={"text": "x", "expected_hash": "0" * 64},
+        headers=auth_headers,
     )
     assert response.status_code == 409
     assert "0" * 64 in response.json()["detail"]
 
 
-def test_delete_takes_the_hash_as_a_query_parameter(client, filed_note):
+@pytest.mark.asyncio
+async def test_delete_takes_the_hash_as_a_query_parameter(
+    client, auth_headers, filed, first_block,
+):
     """DELETE carries no body in this API's conventions, so the precondition
     rides the query string. A body field here would be silently ignored."""
-    _, block_id = filed_note
-    response = client.delete(
-        f"/api/v1/documents/blocks/{block_id}?expected_hash={'0' * 64}"
+    doc = await filed("notes/h3.md", "# T\n\npara")
+    response = await client.delete(
+        f"/api/v1/documents/{doc}/blocks/{await first_block(doc)}"
+        f"?expected_hash={'0' * 64}",
+        headers=auth_headers,
     )
     assert response.status_code == 409
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+Define `filed` and `first_block` as local helpers in this test module (file a document over the route, return its id; read its first block id) — they do not exist as shared fixtures.
 
-Run: `cd backend && .venv/bin/python -m pytest tests/test_documents_routes.py -k hash -v`
-Expected: FAIL — the first on `KeyError: 'content_hash'`, the other two on `200` instead of `409`.
+- [ ] **Step 2: Run to verify they fail**
 
-- [ ] **Step 3: Add the field to the response model**
+Run: `cd backend && .venv/bin/python -m pytest tests/test_document_routes.py -k hash -v`
+Expected: FAIL — the first on `KeyError: 'content_hash'`, the other two on `200`.
+
+- [ ] **Step 3: Serve the hash**
 
 ```python
 class DocumentBlocksResponse(BaseModel):
     document_id: str
     blocks: list[BlockRowModel]
-    # The verbatim filed source, which blocks.char_span indexes into. Present
-    # only when the request opted in with include_content -- absent by default
-    # so no existing reader pays for a potentially megabyte field (spec §5.2).
     content: str | None = None
-    # Served unconditionally: it is one short string, and without it a caller
-    # cannot precondition its first edit at all (spec §5).
+    # Served unconditionally: one short string, and without it a caller cannot
+    # precondition its first edit at all (spec section 5).
     content_hash: str | None = None
     horizon: bool = True
 ```
 
-Populate it in the `DocumentBlocksResponse(...)` construction at `:804` by selecting `content_hash` alongside the fields the read already loads.
+Select `content_hash` in the read at `:768-808` and pass it to the constructor.
 
-- [ ] **Step 4: Accept the precondition on the four routes**
+- [ ] **Step 4: Accept the precondition**
 
-Add `expected_hash: str | None = None` to the request body models for update, insert and move, and forward it to the verb call. For delete, add it as a query parameter:
+Add `expected_hash: str | None = None` to `BlockUpdateRequest`, `BlockInsertRequest` and `BlockMoveRequest`, and forward `expected_hash=body.expected_hash` on each verb call. For delete, add a parameter (`Query` is already imported in this module):
 
 ```python
-@router.delete("/blocks/{block_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_block_route(
-    block_id: str,
+    document_id: UUID,
+    block_id: UUID,
     expected_hash: str | None = Query(
-        None,
-        description="Refuse unless the document's content_hash still matches.",
+        None, description="Refuse unless the document's content_hash matches."
     ),
+    _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
     llm=Depends(get_llm),
 ) -> None:
-    ...
-    await delete_block(session, llm, block_id=block_id,
-                       expected_hash=expected_hash)
 ```
 
-- [ ] **Step 5: Map the conflict to 409**
+forwarding `expected_hash=expected_hash`.
 
-Wrap each of the four route bodies, reusing the existing handler's wording so the two conflict sites read identically:
+- [ ] **Step 5: Teach the shared mapper**
+
+All four routes already funnel through `_block_write_error`. Add one clause there rather than four `except` blocks:
 
 ```python
-    except DocumentHashConflict as exc:
+def _block_write_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, BlockTargetUnresolved):
+        return HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
+    if isinstance(exc, BlockCycleError):
+        return HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    if isinstance(exc, (DocumentTooLarge, DocumentNotConvertible)):
+        return HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    if isinstance(exc, DocumentHashConflict):
         # 409, not 422: the caller made no mistake -- it lost a race, or the
         # document moved since it last read it. The detail names both hashes
-        # so the caller can re-read and retry without a second round trip.
-        raise HTTPException(
+        # so it can re-read and retry without a second round trip.
+        return HTTPException(
             status.HTTP_409_CONFLICT,
             f"expected_hash {exc.expected_hash} does not match the "
             f"document's current content_hash {exc.current_hash}",
-        ) from exc
+        )
+    raise exc
 ```
 
-- [ ] **Step 6: Update the conformance status map**
+- [ ] **Step 6: Update the conformance map**
 
-`tests/test_rest_conformance.py` pins a per-route status map. The four block routes gain 409 as a documented outcome. Run the suite and add exactly the rows it names as missing — do not guess the keys.
+Run `tests/test_api/test_rest_conformance.py` and add exactly the rows it names as missing. Do not guess keys.
 
-- [ ] **Step 7: Run the tests to verify they pass**
+- [ ] **Step 7: Run to verify they pass**
 
-Run: `cd backend && .venv/bin/python -m pytest tests/test_documents_routes.py tests/test_rest_conformance.py -q`
+Run: `cd backend && .venv/bin/python -m pytest tests/test_document_routes.py tests/test_api/test_rest_conformance.py -q`
 Expected: PASS.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add backend/app/api/routes/documents.py backend/tests/test_documents_routes.py backend/tests/test_rest_conformance.py
+git add backend/app/api/routes/documents.py backend/tests/
 git commit -m "feat(documents): precondition the block routes"
 ```
 
@@ -374,78 +347,96 @@ git commit -m "feat(documents): precondition the block routes"
 ### Task 3: Serve and accept the hash on MCP
 
 **Files:**
-- Modify: `backend/app/api/mcp/server.py:756-810` (`document_get`), `:1950`, `:1989`, `:2032`, `:2068` (the four block tools)
-- Test: `backend/tests/test_mcp.py`
+- Modify: `backend/app/api/mcp/server.py:756-810` (`document_get`), `:1930-1940` (`_block_refusal`), `:1950`, `:1989`, `:2032`, `:2068`
 - Modify: `docs/two-door-parity.md`
+- Test: `backend/tests/test_mcp.py`
 
 **Interfaces:**
-- Consumes: `expected_hash` on the four verbs from Task 1
-- Produces: `document_get(..., include_hash: bool = False)` returning `{content_hash, blocks}` when set; `expected_hash: str | None = None` on all four block tools
+- Consumes: `expected_hash` on the four verbs (Task 1)
+- Produces: `document_get(..., include_hash: bool = False)` returning `{content_hash, blocks}` when set; `expected_hash` on all four block tools
 
 **Implementer:** dcc-superpower-companions:impl-opus-low
 **Evaluation:** files 1 - spec 0 - coupling 1 - risk 2 = 4
-**Approach:** inline - skip 3: §5 decides the shape explicitly — an array cannot carry a hash, so it is a flag returning an object, the same shape `include_content` already established
+**Approach:** inline - skip 3: §5 decides the shape — an array cannot carry a hash, so it is a flag returning an object, the shape `include_content` already established
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing tests**
+
+Follow `tests/test_mcp.py:383-440`: call the tool function directly with `monkeypatch` on `async_session_factory` and `_pipeline`. There is no `mcp` fixture.
 
 ```python
 @pytest.mark.asyncio
-async def test_document_get_answers_an_object_when_include_hash_is_set(mcp):
-    """An array cannot carry a hash. This is the same object-under-a-flag
-    shape include_content already uses, not a new convention."""
-    bare = json.loads(await mcp.call("document_get", {"document_id": DOC}))
+async def test_document_get_answers_an_object_when_include_hash_is_set(
+    monkeypatch, session_factory, filed_doc,
+):
+    """An array cannot carry a hash. Same object-under-a-flag shape
+    include_content already uses, not a new convention."""
+    _patch(monkeypatch, session_factory)
+    bare = json.loads(await mcp_server.document_get(document_id=filed_doc))
     assert isinstance(bare, list)
 
-    with_hash = json.loads(await mcp.call(
-        "document_get", {"document_id": DOC, "include_hash": True}))
-    assert set(with_hash) == {"content_hash", "blocks"}
-    assert with_hash["blocks"] == bare
+    boxed = json.loads(
+        await mcp_server.document_get(document_id=filed_doc, include_hash=True))
+    assert set(boxed) == {"content_hash", "blocks"}
+    assert boxed["blocks"] == bare
 
 
 @pytest.mark.asyncio
-async def test_a_stale_hash_answers_a_conflict_envelope_not_a_tool_error(mcp):
-    envelope = json.loads(await mcp.call(
-        "block_update", {"block_id": BLOCK, "text": "x",
-                         "expected_hash": "0" * 64}))
+async def test_a_stale_hash_answers_a_conflict_envelope(
+    monkeypatch, session_factory, filed_doc, first_block_id,
+):
+    _patch(monkeypatch, session_factory)
+    envelope = json.loads(await mcp_server.block_update(
+        block_id=first_block_id, text="x", expected_hash="0" * 64))
     assert envelope["status"] == "hash_conflict"
     assert envelope["expected_hash"] == "0" * 64
     assert envelope["current_hash"]
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [ ] **Step 2: Run to verify they fail**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_mcp.py -k "include_hash or conflict_envelope" -v`
-Expected: FAIL — `include_hash` is an unexpected argument, and `block_update` raises rather than returning an envelope.
+Expected: FAIL — unexpected argument, and `block_update` raises rather than returning an envelope.
 
-- [ ] **Step 3: Add `include_hash` to `document_get`**
+- [ ] **Step 3: Add `include_hash`**
 
-Mirror the `include_content` branch exactly. When both flags are set the object carries `content`, `content_hash` and `blocks`; when neither is set the bare array is returned unchanged, so no existing caller's parse breaks.
+Mirror the existing `include_content` branch. With both flags set the object carries `content`, `content_hash` and `blocks`; with neither, the bare array is returned unchanged so no existing caller's parse breaks.
 
-- [ ] **Step 4: Add `expected_hash` to the four block tools**
-
-Each tool gains `expected_hash: str | None = None`, forwards it, and catches the conflict into the established envelope:
+- [ ] **Step 4: Teach `_block_refusal`, then thread the parameter**
 
 ```python
-        except DocumentHashConflict as exc:
-            # A structured refusal rather than a tool error: the caller can
-            # machine-read this, re-read the document and retry. Its REST twin
-            # is a 409 carrying the same two hashes.
-            await session.rollback()
-            return json.dumps({
-                "status": "hash_conflict",
-                "expected_hash": exc.expected_hash,
-                "current_hash": exc.current_hash,
-            })
+def _block_refusal(exc: Exception, **fields) -> str | None:
+    from app.services.block_verbs import BlockCycleError, BlockTargetUnresolved
+    from app.services.document_door import DocumentNotConvertible
+    from app.services.document_ingest import DocumentHashConflict
+
+    if isinstance(exc, DocumentNotConvertible):
+        return json.dumps({"status": "not_convertible", "reason": str(exc), **fields})
+    if isinstance(exc, BlockCycleError):
+        return json.dumps({"status": "cycle_refused", "reason": str(exc), **fields})
+    if isinstance(exc, BlockTargetUnresolved):
+        return json.dumps({"status": "unresolved", "reason": str(exc), **fields})
+    if isinstance(exc, DocumentHashConflict):
+        # A structured refusal rather than a tool error: the caller can
+        # machine-read this, re-read and retry. Its REST twin is a 409.
+        return json.dumps({
+            "status": "hash_conflict",
+            "expected_hash": exc.expected_hash,
+            "current_hash": exc.current_hash,
+            **fields,
+        })
+    return None
 ```
+
+Each of the four tools gains `expected_hash: str | None = None` and forwards it. **Confirm each tool's `except` calling `_block_refusal` runs before any bare `except Exception`**, or the envelope is never reached.
 
 - [ ] **Step 5: Record the flag in the parity table**
 
-`docs/two-door-parity.md` records `include_content` as an object-under-a-flag. Add `include_hash` beside it, stating that it is the same shape and why the array could not carry the field.
+Add `include_hash` to `docs/two-door-parity.md` beside `include_content`, stating it is the same shape and why the array could not carry the field. `_MIN_REASON_CHARS` is 80 (`tests/test_door_parity.py:1565`) for any row needing a reason.
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [ ] **Step 6: Run to verify they pass**
 
-Run: `cd backend && .venv/bin/python -m pytest tests/test_mcp.py -q`
-Expected: PASS. The tool count is unchanged by this task — no tool was added, so no catalogue guard should move. If one does, stop: it means a tool was added by accident.
+Run: `cd backend && .venv/bin/python -m pytest tests/test_mcp.py tests/test_door_parity.py -q`
+Expected: PASS. No tool was added, so `EXPECTED_TOOLS` must not move. If it does, a tool was added by accident.
 
 - [ ] **Step 7: Commit**
 
@@ -460,26 +451,30 @@ git commit -m "feat(mcp): precondition the block tools on a hash"
 
 **Files:**
 - Create: `frontend/src/features/documents/lib/mutation-queue.ts`
-- Modify: `frontend/src/features/documents/components/block-editor.tsx`
+- Modify: `frontend/src/hooks/api/use-blocks-api.ts:36-105`, `frontend/src/hooks/api/use-documents-api.ts:323-325`
 - Test: `frontend/src/features/documents/__tests__/mutation-queue.test.ts`
 
 **Interfaces:**
-- Consumes: `content_hash` from the REST blocks read (Task 2)
-- Produces: `createMutationQueue(): { enqueue<T>(fn: (hash: string) => Promise<{result: T, content_hash: string}>): Promise<T> }` — runs one mutation at a time and feeds each the hash the previous one returned
+- Consumes: `content_hash` on the blocks read (Task 2); `BlockWriteResponse.content_hash`, which already exists
+- Produces: `createMutationQueue(initialHash: string | null, reread: () => Promise<string>)` with `enqueue<T>(fn: (hash: string) => Promise<{ result: T; content_hash: string | null }>): Promise<T>`
 
 **Implementer:** dcc-superpower-companions:impl-opus-medium
 **Evaluation:** files 1 - spec 1 - coupling 1 - risk 2 = 5
-**Approach:** inline - skip 3: §5 names the requirement (a serialised client queue) and the failure it prevents (a synchronous commit-then-insert carrying a stale hash and 409ing against its own predecessor)
+**Approach:** inline - skip 3: §5 names the requirement and the failure it prevents
 
-- [ ] **Step 1: Write the failing test**
+> **Two shapes the queue must survive**, both found in review. `DELETE .../blocks/{id}` answers **204 with no body** (`routes:908`, `use-blocks-api.ts:102` types it `apiFetch<void>`), so a delete yields no new hash. And after a rejection the tracked hash is stale forever unless something re-reads it. Both are handled by letting a mutation return `content_hash: null` and giving the queue a `reread`.
+
+- [ ] **Step 1: Write the failing tests**
 
 ```typescript
 import { describe, expect, it } from 'vitest'
 import { createMutationQueue } from '../lib/mutation-queue'
 
+const noReread = async () => 'unused'
+
 describe('the mutation queue', () => {
   it('feeds each mutation the hash the previous one returned', async () => {
-    const queue = createMutationQueue('hash-0')
+    const queue = createMutationQueue('hash-0', noReread)
     const seen: string[] = []
     const run = (next: string) => queue.enqueue(async (hash) => {
       seen.push(hash)
@@ -493,7 +488,7 @@ describe('the mutation queue', () => {
   })
 
   it('runs one mutation at a time', async () => {
-    const queue = createMutationQueue('hash-0')
+    const queue = createMutationQueue('hash-0', noReread)
     let live = 0
     let peak = 0
     const run = () => queue.enqueue(async (hash) => {
@@ -508,10 +503,35 @@ describe('the mutation queue', () => {
 
     expect(peak).toBe(1)
   })
+
+  it('re-reads the hash after a mutation that returns none', async () => {
+    // DELETE answers 204 with no body, so it yields no hash.
+    const queue = createMutationQueue('hash-0', async () => 'hash-fresh')
+    const seen: string[] = []
+    await queue.enqueue(async () => ({ result: null, content_hash: null }))
+    await queue.enqueue(async (hash) => {
+      seen.push(hash)
+      return { result: null, content_hash: hash }
+    })
+    expect(seen).toEqual(['hash-fresh'])
+  })
+
+  it('re-reads the hash after a rejection instead of wedging', async () => {
+    const queue = createMutationQueue('hash-0', async () => 'hash-fresh')
+    const seen: string[] = []
+    await expect(queue.enqueue(async () => {
+      throw new Error('409')
+    })).rejects.toThrow('409')
+    await queue.enqueue(async (hash) => {
+      seen.push(hash)
+      return { result: null, content_hash: hash }
+    })
+    expect(seen).toEqual(['hash-fresh'])
+  })
 })
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [ ] **Step 2: Run to verify they fail**
 
 Run: `cd frontend && npx vitest run src/features/documents/__tests__/mutation-queue.test.ts`
 Expected: FAIL — the module does not exist.
@@ -519,24 +539,35 @@ Expected: FAIL — the module does not exist.
 - [ ] **Step 3: Write the queue**
 
 ```typescript
-type Mutation<T> = (hash: string) => Promise<{ result: T; content_hash: string }>
+type Mutation<T> = (hash: string) => Promise<{ result: T; content_hash: string | null }>
 
-export function createMutationQueue(initialHash: string) {
+export function createMutationQueue(
+  initialHash: string | null,
+  reread: () => Promise<string>,
+) {
   let hash = initialHash
   // The tail of the chain. Each enqueue appends to it, so mutations run in
-  // call order and each one sees the hash its predecessor produced. Without
-  // this the editor's synchronous commit-then-insert sends both with the same
-  // hash and the second 409s against the first (spec section 5).
+  // call order and each sees the hash its predecessor produced. Without this
+  // the editor's synchronous commit-then-insert sends both with the same hash
+  // and the second 409s against the first (spec section 5).
   let tail: Promise<unknown> = Promise.resolve()
 
   function enqueue<T>(fn: Mutation<T>): Promise<T> {
     const run = tail.then(async () => {
-      const { result, content_hash } = await fn(hash)
-      hash = content_hash
-      return result
+      // null after a delete (204, no body) or after a rejection dropped it.
+      if (hash === null) hash = await reread()
+      try {
+        const { result, content_hash } = await fn(hash)
+        hash = content_hash
+        return result
+      } catch (error) {
+        // Drop the hash rather than keep a stale one: a 409 means the document
+        // moved, and every later mutation would carry the losing hash forever.
+        hash = null
+        throw error
+      }
     })
-    // Keep the chain alive after a rejection, or one failed mutation would
-    // wedge every later one.
+    // Keep the chain alive after a rejection, or one failure wedges the rest.
     tail = run.catch(() => undefined)
     return run as Promise<T>
   }
@@ -545,84 +576,113 @@ export function createMutationQueue(initialHash: string) {
 }
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [ ] **Step 4: Run to verify they pass**
 
 Run: `cd frontend && npx vitest run src/features/documents/__tests__/mutation-queue.test.ts`
-Expected: PASS.
+Expected: PASS, all four.
 
-- [ ] **Step 5: Route the editor's writes through it**
+- [ ] **Step 5: Type the hash onto the blocks query**
 
-In `block-editor.tsx`, construct the queue from the `content_hash` the blocks read returned and send every block mutation through `enqueue`, passing the hash as `expected_hash` and returning the response's new `content_hash`. Do not change what the editor sends otherwise.
+`use-documents-api.ts:324` types the response as `{ document_id, blocks }`. Add `content_hash: string | null` so the queue's seed is typed rather than cast.
 
-- [ ] **Step 6: Run the frontend suite**
+- [ ] **Step 6: Route the block hooks through the queue**
+
+In `use-blocks-api.ts`, hold one queue per `documentId`, seeded from the blocks query's `content_hash` with `reread` refetching that query. Each of the four hooks sends its current hash as `expected_hash` and returns the response's `content_hash` — `null` for delete, which is `apiFetch<void>`.
+
+- [ ] **Step 7: Run the frontend suite**
 
 Run: `cd frontend && npm run typecheck && npm test`
-Expected: PASS, all files.
+Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add frontend/src/features/documents
+git add frontend/src
 git commit -m "feat(documents): serialise the editor's mutations"
 ```
 
 ---
 
-### Task 5: Widen the tag sweep and the histogram
+### Task 5: Map `document_tags` and widen the sweep
 
 **Files:**
-- Modify: `backend/app/repositories/relational.py:241` (`get_with_counts`), `:249-267` (`prune_orphans`)
-- Modify: `backend/app/services/analytics.py:267-270`
-- Test: `backend/tests/test_tags.py`
+- Modify: `backend/app/models/memory.py:31` area (add the Table beside `memory_tags`)
+- Modify: `backend/app/repositories/relational.py:239` (`get_with_counts`), `:249-267` (`prune_orphans`)
+- Modify: `backend/app/services/analytics.py:266-272`
+- Test: `backend/tests/test_repositories.py` (the existing `prune_orphans` test is at :78), `backend/tests/test_api/test_tags.py`
 
 **Interfaces:**
-- Consumes: the `document_tags` table from the 1b baseline
-- Produces: nothing other tasks call. **Tasks 7-9 depend on this task having landed**, not on an interface it exports.
+- Produces: `document_tags` Table object importable from `app.models.memory`
+- **Tasks 7-12 depend on this task having landed**, not on an interface it exports.
 
-**Implementer:** dcc-superpower-companions:impl-opus-low
-**Evaluation:** files 1 - spec 0 - coupling 0 - risk 3 = 4
+**Implementer:** dcc-superpower-companions:impl-opus-medium
+**Evaluation:** files 2 - spec 0 - coupling 0 - risk 3 = 5
 **Approach:** inline - skip 3: §7 states both call sites and the widening exactly
 
-- [ ] **Step 1: Write the failing test**
+> **The table exists in the baseline but has no mapped Table object** — `grep -rn document_tags backend/app/` finds nothing outside the migration. Both widenings need one, so this task creates it first.
+
+- [ ] **Step 1: Write the failing tests**
 
 ```python
 @pytest.mark.asyncio
-async def test_a_note_only_tag_survives_the_sweep(session, tagged_document):
+async def test_a_note_only_tag_survives_the_sweep(session, note_tagged):
     """tag_orphan_cleanup runs hourly. Before this widening it deleted every
     tag with no memory_tags row, so a tag carried only by a note -- and its
     document_tags links, under the cascade -- vanished within the hour."""
     repo = RelationalRepository(session)
     await repo.prune_orphans()
-
-    survivors = {t.name for t in await repo.list_all()}
-    assert "note-only" in survivors
+    assert "note-only" in {t.name for t in await repo.list_all()}
 
 
 @pytest.mark.asyncio
-async def test_the_histogram_counts_a_documents_tag(session, tagged_document):
-    counts = dict(
-        (tag.name, n) for tag, n in
-        await RelationalRepository(session).get_with_counts()
-    )
+async def test_the_histogram_counts_a_documents_tag(session, note_tagged):
+    counts = {t.name: n for t, n in
+              await RelationalRepository(session).get_with_counts()}
     assert counts["note-only"] == 1
 
 
 @pytest.mark.asyncio
-async def test_a_tag_with_no_reference_of_either_kind_is_still_swept(
-    session, orphan_tag,
-):
+async def test_a_tag_referenced_by_neither_is_still_swept(session, orphan_tag):
     """The widening must not turn the sweep off."""
     repo = RelationalRepository(session)
     assert await repo.prune_orphans() >= 1
     assert "abandoned" not in {t.name for t in await repo.list_all()}
+
+
+@pytest.mark.asyncio
+async def test_the_count_sums_rather_than_multiplies(session, doubly_tagged):
+    """Two memories and two documents is 4, not 8. A join across both link
+    tables multiplies the rows and passes every single-reference test."""
+    counts = {t.name: n for t, n in
+              await RelationalRepository(session).get_with_counts()}
+    assert counts["shared"] == 4
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+Write `note_tagged`, `orphan_tag` and `doubly_tagged` locally in the test module, inserting `tags` and `document_tags` rows with raw SQL — nothing writes `document_tags` until Task 7.
 
-Run: `cd backend && .venv/bin/python -m pytest tests/test_tags.py -k "note_only or histogram" -v`
-Expected: FAIL — the tag is deleted by the sweep, and the histogram reports 0.
+- [ ] **Step 2: Run to verify they fail**
 
-- [ ] **Step 3: Widen `prune_orphans`**
+Run: `cd backend && .venv/bin/python -m pytest tests/test_repositories.py -k "note_only or histogram or sums" -v`
+Expected: FAIL — the tag is swept, and the counts report 0.
+
+- [ ] **Step 3: Map the table**
+
+Beside `memory_tags` in `backend/app/models/memory.py`:
+
+```python
+document_tags = Table(
+    "document_tags",
+    Base.metadata,
+    Column("document_id", UUID(as_uuid=True),
+           ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True),
+    Column("tag_id", Integer,
+           ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
+)
+```
+
+Match the baseline's column types exactly — read `0001_baseline.py`'s `document_tags` definition rather than trusting this snippet.
+
+- [ ] **Step 4: Widen `prune_orphans`**
 
 ```python
     async def prune_orphans(self) -> int:
@@ -632,8 +692,7 @@ Expected: FAIL — the tag is deleted by the sweep, and the histogram reports 0.
         ``memory_tags`` and ``document_tags``, both ON DELETE CASCADE. Checking
         only the first deletes a tag carried by a note alone -- and its links
         with it under the cascade -- within the hour ``tag_orphan_cleanup``
-        next runs. Mirrors ``PostgresGraphRepository.prune_orphan_entities``
-        for the graph."""
+        next runs."""
         result = await self.session.execute(
             sa_text("""
                 DELETE FROM tags t
@@ -649,9 +708,9 @@ Expected: FAIL — the tag is deleted by the sweep, and the histogram reports 0.
         return len(result.scalars().all())
 ```
 
-- [ ] **Step 4: Widen both counts**
+- [ ] **Step 5: Widen both counts with correlated subqueries**
 
-`get_with_counts` and the `analytics.py` histogram each count `memory_tags` rows only. Both become the sum of the two link tables. Use a correlated subquery per table rather than joining both — joining two one-to-many tables multiplies the rows and inflates every count:
+A join across two one-to-many tables multiplies the rows, so each side counts on its own:
 
 ```python
         memory_count = (
@@ -669,19 +728,17 @@ Expected: FAIL — the tag is deleted by the sweep, and the histogram reports 0.
         stmt = select(Tag, (memory_count + document_count).label("count"))
 ```
 
-- [ ] **Step 5: Run to verify they pass**
+Apply the same shape in `analytics.py:266-272`, which orders by the count.
 
-Run: `cd backend && .venv/bin/python -m pytest tests/test_tags.py -q`
-Expected: PASS, including the third test — the sweep must still delete a genuinely unreferenced tag.
+- [ ] **Step 6: Run to verify they pass**
 
-- [ ] **Step 6: Prove the join was not used**
-
-Create a tag carried by two memories and two documents and assert its count is 4, not 8. A join-based widening passes the single-reference tests and fails this one.
+Run: `cd backend && .venv/bin/python -m pytest tests/test_repositories.py tests/test_api/test_tags.py -q`
+Expected: PASS, including the pre-existing prune test at :78 and the sums-rather-than-multiplies test.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add backend/app/repositories/relational.py backend/app/services/analytics.py backend/tests/test_tags.py
+git add backend/app/models/memory.py backend/app/repositories/relational.py backend/app/services/analytics.py backend/tests/
 git commit -m "fix(tags): count and keep a document-only tag"
 ```
 
@@ -716,7 +773,7 @@ Expected: FAIL on the assertion.
 
 - [ ] **Step 3: Add the value**
 
-Add `"document_updated"` beside `"document_filed"` and `"blocks_edited"` in `EVENT_TYPES`, with a comment noting it is the metadata verb's journal row and carries no document text.
+Add `"document_updated"` beside `"document_filed"` and `"blocks_edited"`, with a comment noting it is the metadata verb's journal row and carries no document text.
 
 - [ ] **Step 4: Run to verify it passes**
 
@@ -732,125 +789,100 @@ git commit -m "feat(events): admit the document_updated type"
 
 ---
 
-### Task 7: The metadata and rename writers
+### Task 7: The single-document metadata writer
 
 **Files:**
-- Modify: `backend/app/repositories/documents.py:100-130` (`_UPDATE_DOCUMENT` area), `:159-197` (`upsert_by_uri`)
 - Modify: `backend/app/services/document_door.py`
+- Modify: `backend/app/services/document_ingest.py` (add `DocumentUriConflict` beside `DocumentHashConflict` at :101)
 - Test: `backend/tests/test_document_update.py` (create)
 
 **Interfaces:**
-- Consumes: `"document_updated"` from Task 6; the widened sweep from Task 5
+- Consumes: `"document_updated"` (Task 6); the mapped `document_tags` and widened sweep (Task 5)
 - Produces:
-  - `document_door.update_document_metadata(session, *, document_id: UUID, title: str | None = None, uri: str | None = None, pinned: bool | None = None, tags: list[str] | None = None) -> DocumentUpdateResult`
-  - `document_door.rename_documents(session, *, project: str, uri_prefix: str, new_uri_prefix: str) -> int` (returns rows rewritten)
-  - `class DocumentUriConflict(ValueError)` with `.uri`
-  - `document_door.set_document_tags(session, document_id: UUID, names: list[str]) -> None`, which writes through the existing `get_or_create` tag path
+  - `document_door.update_document_metadata(session, *, document_id: UUID, title: str | None = None, uri: str | None = None, pinned: bool | None = None, tags: list[str] | None = None) -> None`
+  - `document_door.set_document_tags(session, document_id: UUID, names: list[str]) -> None`
+  - `document_ingest.DocumentUriConflict(ValueError)` with `.uri`, re-exported from `document_door`
 
-**Implementer:** dcc-superpower-companions:impl-opus-high
-**Evaluation:** files 1 - spec 0 - coupling 2 - risk 3 = 6
-**Approach:** inline - skip 3: §4.2 fixes the field set, the lock order and the refusals; §4.3 fixes the direction predicate and says explicitly why it must ride the upsert
+**Implementer:** dcc-superpower-companions:impl-opus-medium
+**Evaluation:** files 1 - spec 0 - coupling 2 - risk 2 = 5
+**Approach:** inline - skip 3: §4.2 fixes the field set and the refusals
 
-- [ ] **Step 1: Write the failing test**
+> **The name is `update_document_metadata`, not `update_document`.** `app/repositories/documents.py:198` already defines `update_document` with an unrelated signature. **`DocumentUriConflict` lives in `document_ingest`**, because `document_door` imports the repository and a repository raising a door class would close a cycle.
+
+- [ ] **Step 1: Write the failing tests**
 
 ```python
 @pytest.mark.asyncio
-async def test_a_document_can_be_renamed_moved_and_pinned(session, filed_note):
-    doc_id, _ = filed_note
-    await update_document_metadata(session, document_id=doc_id, title="New",
-                          uri="notes/new.md", pinned=True)
-    row = await read_document(session, doc_id)
-    assert (row.title, row.uri) == ("New", "notes/new.md")
-    assert row.pinned_at is not None
+async def test_a_document_can_be_renamed_moved_and_pinned(session):
+    _, doc = await _file(session, "# T\n\npara", "notes/a.md")
+    await update_document_metadata(session, document_id=doc, title="New",
+                                   uri="notes/new.md", pinned=True)
+    row = await _read(session, doc)
+    assert (row["title"], row["uri"]) == ("New", "notes/new.md")
+    assert row["pinned_at"] is not None
 
 
 @pytest.mark.asyncio
-async def test_an_absent_field_leaves_its_column_untouched(session, filed_note):
-    doc_id, _ = filed_note
-    before = await read_document(session, doc_id)
-    await update_document_metadata(session, document_id=doc_id, pinned=True)
-    after = await read_document(session, doc_id)
-    assert after.title == before.title and after.uri == before.uri
+async def test_an_absent_field_leaves_its_column_untouched(session):
+    _, doc = await _file(session, "# T\n\npara", "notes/b.md")
+    before = await _read(session, doc)
+    await update_document_metadata(session, document_id=doc, pinned=True)
+    after = await _read(session, doc)
+    assert (after["title"], after["uri"]) == (before["title"], before["uri"])
 
 
 @pytest.mark.asyncio
-async def test_present_tags_replace_rather_than_merge(session, filed_note):
+async def test_present_tags_replace_rather_than_merge(session):
     """A merge-only verb cannot remove a tag, which is why this replaces."""
-    doc_id, _ = filed_note
-    await update_document_metadata(session, document_id=doc_id, tags=["a", "b"])
-    await update_document_metadata(session, document_id=doc_id, tags=["b"])
-    assert await tags_of(session, doc_id) == {"b"}
+    _, doc = await _file(session, "# T\n\npara", "notes/c.md")
+    await update_document_metadata(session, document_id=doc, tags=["a", "b"])
+    await update_document_metadata(session, document_id=doc, tags=["b"])
+    assert await _tags(session, doc) == {"b"}
 
 
 @pytest.mark.asyncio
-async def test_pinned_false_clears_the_column(session, filed_note):
-    doc_id, _ = filed_note
-    await update_document_metadata(session, document_id=doc_id, pinned=True)
-    await update_document_metadata(session, document_id=doc_id, pinned=False)
-    assert (await read_document(session, doc_id)).pinned_at is None
+async def test_pinned_false_clears_the_column(session):
+    _, doc = await _file(session, "# T\n\npara", "notes/d.md")
+    await update_document_metadata(session, document_id=doc, pinned=True)
+    await update_document_metadata(session, document_id=doc, pinned=False)
+    assert (await _read(session, doc))["pinned_at"] is None
 
 
 @pytest.mark.asyncio
-async def test_renaming_onto_an_occupied_path_refuses(session, two_notes):
-    first, second = two_notes
+async def test_renaming_onto_an_occupied_path_refuses(session):
+    _, first = await _file(session, "one", "notes/e.md")
+    await _file(session, "two", "notes/f.md")
     with pytest.raises(DocumentUriConflict):
         await update_document_metadata(session, document_id=first,
-                              uri=(await read_document(session, second)).uri)
+                                       uri="notes/f.md")
 
 
 @pytest.mark.asyncio
-async def test_a_subtree_rename_rewrites_every_descendant(session, subtree):
-    rewritten = await rename_documents(
-        session, project="notes", uri_prefix="notes/a",
-        new_uri_prefix="notes/b",
-    )
-    assert rewritten == 3          # the prefix itself and two descendants
-    assert await uris_in(session, "notes") == {
-        "notes/b", "notes/b/one.md", "notes/b/two.md",
-    }
-
-
-@pytest.mark.asyncio
-async def test_a_put_at_a_vacated_path_cannot_strip_a_block_first_row(
-    session, filed_note,
-):
-    """Spec section 4.3. The direction refusal rides the upsert predicate, so a
-    put racing a rename fires against the renamed row and is refused rather
-    than writing properties wholesale and erasing its blocks."""
-    doc_id, _ = filed_note
-    with pytest.raises(DocumentIsBlockFirst):
-        await put_document(session, project="notes",
-                           uri=(await read_document(session, doc_id)).uri,
-                           content="clobber")
-    assert await block_count(session, doc_id) > 0
-
-
-@pytest.mark.asyncio
-async def test_the_update_journals_one_event_carrying_no_document_text(
-    session, filed_note,
-):
-    doc_id, _ = filed_note
-    await update_document_metadata(session, document_id=doc_id, title="New")
-    row = await latest_event(session, object_id=doc_id)
+async def test_the_update_journals_one_event_carrying_no_document_text(session):
+    _, doc = await _file(session, "# T\n\nsecret prose", "notes/g.md")
+    await update_document_metadata(session, document_id=doc, title="New")
+    row = await _latest_event(session, doc)
     assert row["event_type"] == "document_updated"
-    assert "clobber" not in json.dumps(row["payload"])
+    assert "secret prose" not in json.dumps(row["payload"])
 ```
+
+Write `_read`, `_tags` and `_latest_event` locally, and reuse the `_file`/`StubEmbedder` pattern from `tests/test_block_verbs.py:41-68`.
 
 - [ ] **Step 2: Run to verify they fail**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_document_update.py -v`
-Expected: FAIL on the import — `update_document_metadata` and `rename_documents` do not exist.
+Expected: FAIL on the import — `update_document_metadata` does not exist.
 
-- [ ] **Step 3: Write the single-document writer**
+- [ ] **Step 3: Write the writer**
 
-A partial update: build the SET list from the fields that were actually passed, so an absent field emits no assignment at all rather than writing NULL over a column.
+Only the named fields are written, so an absent field emits no assignment rather than writing NULL over a column. Every user value is bound; only the `now()` / `NULL` constants are interpolated.
 
 ```python
 _PIN = {True: "now()", False: "NULL"}
 
 
-async def update_document_metadata(session, *, document_id, title=None, uri=None,
-                          pinned=None, tags=None):
+async def update_document_metadata(session, *, document_id, title=None,
+                                   uri=None, pinned=None, tags=None):
     """Write only the fields the caller named.
 
     `project` is deliberately not a field: moving a document between spaces is
@@ -859,9 +891,11 @@ async def update_document_metadata(session, *, document_id, title=None, uri=None
     """
     sets, params = [], {"id": str(document_id)}
     if title is not None:
-        sets.append("title = CAST(:title AS text)"); params["title"] = title
+        sets.append("title = CAST(:title AS text)")
+        params["title"] = title
     if uri is not None:
-        sets.append("uri = CAST(:uri AS text)"); params["uri"] = uri
+        sets.append("uri = CAST(:uri AS text)")
+        params["uri"] = uri
     if pinned is not None:
         sets.append(f"pinned_at = {_PIN[pinned]}")
     if sets:
@@ -871,127 +905,303 @@ async def update_document_metadata(session, *, document_id, title=None, uri=None
                      "WHERE id = CAST(:id AS uuid)"),
                 params,
             )
+            await session.flush()
         except IntegrityError as exc:
-            await session.rollback()
             raise DocumentUriConflict(uri) from exc
     if tags is not None:
         await set_document_tags(session, document_id, tags)
-    await record_event(session, event_type="document_updated",
-                       object_type="document", object_id=str(document_id),
-                       payload={"fields": sorted(
-                           k for k, v in
-                           {"title": title, "uri": uri,
-                            "pinned": pinned, "tags": tags}.items()
-                           if v is not None)})
+    await record_event(
+        session, event_type="document_updated", object_type="document",
+        object_id=str(document_id),
+        payload={"fields": sorted(
+            k for k, v in {"title": title, "uri": uri,
+                           "pinned": pinned, "tags": tags}.items()
+            if v is not None)},
+    )
 ```
 
-Write `set_document_tags` to go through the existing `get_or_create` writer path so `tag_category(name)` and `TAG_NAME_MAX_LENGTH` apply — do not insert into `tags` directly.
+Add `from sqlalchemy.exc import IntegrityError` and the `record_event` import to this module — neither is there today (imports are at `document_door.py:15-31`).
 
-- [ ] **Step 4: Write the subtree rename with a deterministic lock order**
+- [ ] **Step 4: Write `set_document_tags` through the existing tag path**
+
+Resolve each name through the existing `get_or_create` so `tag_category(name)` and `TAG_NAME_MAX_LENGTH` apply on both doors, then replace the link set: delete this document's `document_tags` rows and insert the resolved ids. Do not insert into `tags` directly.
+
+- [ ] **Step 5: Run to verify they pass**
+
+Run: `cd backend && .venv/bin/python -m pytest tests/test_document_update.py -q`
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add backend/app/services/document_door.py backend/app/services/document_ingest.py backend/tests/test_document_update.py
+git commit -m "feat(documents): add the metadata writer"
+```
+
+---
+
+### Task 8: Both direction guards
+
+**Files:**
+- Modify: `backend/app/repositories/documents.py:159-196` (`upsert_by_uri`)
+- Test: `backend/tests/test_document_door.py`
+
+**Interfaces:**
+- Consumes: `DocumentIsBlockFirst` (today at `document_door.py:157`; move it to `document_ingest.py` in this task)
+- Produces: no new symbol. Changes `upsert_by_uri` to refuse a predicate-excluded conflict.
+
+**Implementer:** dcc-superpower-companions:impl-opus-high
+**Evaluation:** files 1 - spec 0 - coupling 2 - risk 3 = 6
+**Approach:** inline - skip 3: §4.3 as amended fixes both guards and names the path each covers
+
+> **Read this before writing code — the spec was wrong and was amended on 2026-09-07.**
+>
+> §4.3 originally said the refusal should ride the upsert *rather than* preceding it, and that a pre-statement check is check-then-act. Both halves are false. `ingest_document` (`document_ingest.py:296-320`) branches: an **existing** `(project, uri)` is written through `update_document` / `_UPDATE_DOCUMENT`, and **`upsert_by_uri` runs only when the resolve found nothing**. Removing the pre-check would therefore leave every plain `document_put` over a converted note unguarded — writing `properties` wholesale and stripping its blocks, the exact loss §4.3 exists to prevent. The pre-check is also not check-then-act for an existing row: it runs *after* `_LOCK_DOCUMENT_BY_URI ... FOR UPDATE` (`document_door.py:481`), and `_mutate` locks the same row by id, so they serialise.
+>
+> **Keep the existing pre-check exactly as it is. Add the predicate as a second guard, for the vacated-path race only.**
+
+- [ ] **Step 1: Write the failing tests**
+
+```python
+@pytest.mark.asyncio
+async def test_the_upsert_refuses_a_block_first_row_it_collides_with(session):
+    """The vacated-path race: a put resolves nothing, inserts, and collides
+    with a block-first row whose uri a concurrent rename just freed. The
+    ON CONFLICT predicate is what refuses it -- the pre-check saw no row."""
+    llm, doc = await _file(session, "# T\n\npara", "notes/race.md")
+    await update_block(session, llm, block_id=await _first(session, doc),
+                       text="converted")           # now block-first
+    await session.commit()
+
+    with pytest.raises(DocumentIsBlockFirst):
+        await documents_repo.upsert_by_uri(
+            session, document_id=new_id(), project="p", uri="notes/race.md",
+            title="t", source_type="markdown", content_hash="deadbeef",
+            content="clobber", properties={},
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_first_time_insert_is_not_mistaken_for_a_refusal(session):
+    """A non-conflicting INSERT returns its row, so zero rows means the
+    predicate excluded a conflict and nothing else."""
+    resolved = await documents_repo.upsert_by_uri(
+        session, document_id=new_id(), project="p", uri="notes/fresh.md",
+        title="t", source_type="markdown", content_hash="cafe",
+        content="body", properties={},
+    )
+    assert resolved is not None
+
+
+@pytest.mark.asyncio
+async def test_the_ordinary_put_over_a_converted_note_is_still_refused(session):
+    """The pre-check, not the predicate, is what fires here -- and it is the
+    one that fires in practice. This test is what fails if someone follows
+    the unamended spec and deletes it."""
+    llm, doc = await _file(session, "# T\n\npara", "notes/ordinary.md")
+    await update_block(session, llm, block_id=await _first(session, doc),
+                       text="converted")
+    with pytest.raises(DocumentIsBlockFirst):
+        await put_document(session, llm, project="p", uri="notes/ordinary.md",
+                           content="clobber")
+```
+
+- [ ] **Step 2: Run to verify the first fails and the third passes**
+
+Run: `cd backend && .venv/bin/python -m pytest tests/test_document_door.py -k "upsert_refuses or first_time_insert or ordinary_put" -v`
+Expected: the first FAILS (no predicate yet), the second PASSES, and **the third PASSES against unchanged code** — it is the regression guard for the pre-check, not a test of new behaviour. Do not "fix" it.
+
+- [ ] **Step 3: Add the predicate**
+
+In `upsert_by_uri`'s `ON CONFLICT (project, uri) DO UPDATE SET ...`:
+
+```sql
+    WHERE documents.properties->>'ingest_direction' IS DISTINCT FROM 'blocks'
+```
+
+- [ ] **Step 4: Handle the zero-row outcome**
+
+The statement ends `RETURNING id` with `.scalar_one()`; a predicate-excluded conflict returns **zero rows**, and `scalar_one()` raises `NoResultFound` before any rowcount is read. Switch to `.scalar_one_or_none()`:
+
+```python
+    resolved = (await session.execute(_UPSERT_BY_URI, params)).scalar_one_or_none()
+    if resolved is None:
+        # The conflict target existed and the predicate excluded it: the row
+        # at this uri is block-first. A non-conflicting INSERT returns its own
+        # row, so zero rows means this and nothing else.
+        raise DocumentIsBlockFirst(
+            f"the document at uri {uri!r} in project {project!r} is "
+            "block-first: its content is owned by the block verbs."
+        )
+    return resolved
+```
+
+Move `DocumentIsBlockFirst` from `document_door.py:157` to `document_ingest.py` and re-export it from the door, so the repository does not import the door.
+
+- [ ] **Step 5: Run to verify they pass**
+
+Run: `cd backend && .venv/bin/python -m pytest tests/test_document_door.py tests/test_block_verbs.py tests/test_mcp.py -q`
+Expected: PASS, all three new tests plus every pre-existing door, verb and MCP test.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add backend/app/repositories/documents.py backend/app/services/ backend/tests/test_document_door.py
+git commit -m "fix(documents): guard both put paths on direction"
+```
+
+---
+
+### Task 9: The subtree rename
+
+**Files:**
+- Modify: `backend/app/services/document_door.py`
+- Test: `backend/tests/test_document_update.py`
+
+**Interfaces:**
+- Consumes: `update_document_metadata` and `DocumentUriConflict` (Task 7)
+- Produces: `document_door.rename_documents(session, *, project: str, uri_prefix: str, new_uri_prefix: str) -> int` returning the count rewritten
+
+**Implementer:** dcc-superpower-companions:impl-opus-low
+**Evaluation:** files 1 - spec 0 - coupling 1 - risk 2 = 4
+**Approach:** inline - skip 3: §4.2 fixes the selection, the lock order and the link rewrite
+
+- [ ] **Step 1: Write the failing tests**
+
+```python
+@pytest.mark.asyncio
+async def test_a_subtree_rename_rewrites_every_descendant(session):
+    for uri in ("notes/a", "notes/a/one.md", "notes/a/two.md"):
+        await _file(session, "body", uri)
+    assert await rename_documents(session, project="p", uri_prefix="notes/a",
+                                  new_uri_prefix="notes/b") == 3
+    assert await _uris(session, "p") == {
+        "notes/b", "notes/b/one.md", "notes/b/two.md"}
+
+
+@pytest.mark.asyncio
+async def test_a_prefix_containing_a_wildcard_does_not_over_match(session):
+    """`_` and `%` are LIKE metacharacters. A prefix of `notes/a_b` must not
+    match `notes/axb`."""
+    await _file(session, "body", "notes/a_b/one.md")
+    await _file(session, "body", "notes/axb/two.md")
+    await rename_documents(session, project="p", uri_prefix="notes/a_b",
+                           new_uri_prefix="notes/z")
+    assert "notes/axb/two.md" in await _uris(session, "p")
+```
+
+- [ ] **Step 2: Run to verify they fail**
+
+Run: `cd backend && .venv/bin/python -m pytest tests/test_document_update.py -k rename -v`
+Expected: FAIL on the import.
+
+- [ ] **Step 3: Write it, avoiding LIKE metacharacters**
 
 ```python
 async def rename_documents(session, *, project, uri_prefix, new_uri_prefix):
     """Rewrite a prefix across a subtree in one transaction.
 
     Rows are locked in id order -- the same lock `_mutate` takes -- so two
-    concurrent subtree renames cannot deadlock against each other.
+    concurrent subtree renames cannot deadlock against each other. The match
+    avoids LIKE because `_` and `%` in a uri would over-match.
     """
-    ids = (await session.execute(
-        text("SELECT id FROM documents "
+    rows = (await session.execute(
+        text("SELECT CAST(id AS text) AS id, uri FROM documents "
              "WHERE project = CAST(:p AS text) "
-             "  AND (uri = CAST(:u AS text) OR uri LIKE CAST(:u AS text) || '/%') "
+             "  AND (uri = CAST(:u AS text) "
+             "       OR left(uri, length(CAST(:u AS text)) + 1) "
+             "          = CAST(:u AS text) || '/') "
              "ORDER BY id FOR UPDATE"),
         {"p": project, "u": uri_prefix},
-    )).scalars().all()
-    ...
+    )).mappings().all()
+
+    for row in rows:
+        await update_document_metadata(
+            session, document_id=row["id"],
+            uri=new_uri_prefix + row["uri"][len(uri_prefix):],
+        )
+    return len(rows)
 ```
 
-Then `UPDATE documents`, then `document_links`: rewrite `target_uri` by `target_document_id` for resolved links, and re-resolve stubs whose `target_uri` now matches a live document. Journal one `document_updated` row per renamed document.
+Routing each row through `update_document_metadata` gives every renamed document its own `document_updated` row and the same `DocumentUriConflict` mapping, rather than a second write path.
 
-- [ ] **Step 5: Move the direction refusal onto the upsert**
+- [ ] **Step 4: Rewrite the links**
 
-In `upsert_by_uri`, add the predicate to the conflict clause and treat a zero rowcount as the refusal:
+After the documents are updated, rewrite `document_links.target_uri` by `target_document_id` for resolved links, then re-resolve stubs whose `target_uri` now matches a live document. Nothing writes `document_links` yet, so assert the statements run and affect zero rows rather than inventing fixture data.
 
-```sql
-    ON CONFLICT (project, uri) DO UPDATE SET ...
-    WHERE documents.properties->>'ingest_direction' IS DISTINCT FROM 'blocks'
-```
+- [ ] **Step 5: Run to verify they pass**
 
-```python
-    if result.rowcount == 0:
-        raise DocumentIsBlockFirst(uri)
-```
+Run: `cd backend && .venv/bin/python -m pytest tests/test_document_update.py -q`
+Expected: PASS.
 
-Remove the pre-statement direction check this replaces. A check before the statement is check-then-act, which is the shape the race is made of — leaving both is not belt-and-braces, it reintroduces the window.
-
-- [ ] **Step 6: Run to verify they pass**
-
-Run: `cd backend && .venv/bin/python -m pytest tests/test_document_update.py tests/test_document_door.py -q`
-Expected: PASS, including every pre-existing document-door test.
-
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add backend/app/repositories/documents.py backend/app/services/document_door.py backend/tests/test_document_update.py
-git commit -m "feat(documents): add the metadata and rename verbs"
+git add backend/app/services/document_door.py backend/tests/test_document_update.py
+git commit -m "feat(documents): rename a document subtree"
 ```
 
 ---
 
-### Task 8: The REST metadata routes
+### Task 10: The REST metadata routes
 
 **Files:**
 - Modify: `backend/app/api/routes/documents.py`
-- Test: `backend/tests/test_documents_routes.py`, `backend/tests/test_rest_conformance.py`
+- Modify: `docs/two-door-parity.md`
+- Test: `backend/tests/test_document_routes.py`, `backend/tests/test_api/test_rest_conformance.py`, `backend/tests/test_door_parity.py`
 
 **Interfaces:**
-- Consumes: `update_document_metadata`, `rename_documents`, `DocumentUriConflict` from Task 7
+- Consumes: `update_document_metadata`, `rename_documents`, `DocumentUriConflict` (Tasks 7 and 9)
 - Produces: `PATCH /api/v1/documents/{document_id}` → 200; `POST /api/v1/documents/rename` → 200
 
 **Implementer:** dcc-superpower-companions:impl-opus-low
 **Evaluation:** files 1 - spec 0 - coupling 1 - risk 2 = 4
 **Approach:** inline - skip 3: §4.2 fixes both routes, their bodies and their statuses, and cites `docs/api-rest-conventions.md` for PATCH over PUT
 
-- [ ] **Step 1: Write the failing test**
+> **A new REST route trips `tests/test_door_parity.py:1481 test_every_rest_route_is_classified`**, not only the conformance map. Both routes are single-door until Task 11 lands the MCP twin, and a single-door row must state a reason of at least `_MIN_REASON_CHARS` = 80 characters (`test_door_parity.py:1565`).
+
+- [ ] **Step 1: Write the failing tests**
 
 ```python
-def test_patch_updates_one_document(client, filed_note):
-    doc_id, _ = filed_note
-    response = client.patch(f"/api/v1/documents/{doc_id}",
-                            json={"title": "New", "pinned": True})
+@pytest.mark.asyncio
+async def test_patch_updates_one_document(client, auth_headers, filed):
+    doc = await filed("notes/p.md", "body")
+    response = await client.patch(f"/api/v1/documents/{doc}",
+                                  json={"title": "New", "pinned": True},
+                                  headers=auth_headers)
     assert response.status_code == 200
 
 
-def test_patch_refuses_a_project_field(client, filed_note):
+@pytest.mark.asyncio
+async def test_patch_refuses_a_project_field(client, auth_headers, filed):
     """Moving a document between spaces is not a rename. The field is absent
-    from the model, so an extra key is rejected rather than ignored."""
-    doc_id, _ = filed_note
-    assert client.patch(f"/api/v1/documents/{doc_id}",
-                        json={"project": "other"}).status_code == 422
+    from the model and extra keys are forbidden, so this is 422 rather than a
+    silently dropped key."""
+    doc = await filed("notes/q.md", "body")
+    assert (await client.patch(f"/api/v1/documents/{doc}",
+                               json={"project": "other"},
+                               headers=auth_headers)).status_code == 422
 
 
-def test_a_rename_onto_an_occupied_path_answers_409(client, two_notes):
-    first, second = two_notes
-    taken = client.get(f"/api/v1/documents/{second}").json()["uri"]
-    assert client.patch(f"/api/v1/documents/{first}",
-                        json={"uri": taken}).status_code == 409
-
-
-def test_the_subtree_rename_route_rewrites_descendants(client, subtree):
-    response = client.post("/api/v1/documents/rename", json={
-        "project": "notes", "uri_prefix": "notes/a",
-        "new_uri_prefix": "notes/b",
-    })
-    assert response.status_code == 200
-    assert response.json()["renamed"] == 3
+@pytest.mark.asyncio
+async def test_a_rename_onto_an_occupied_path_answers_409(
+    client, auth_headers, filed,
+):
+    first = await filed("notes/r.md", "one")
+    await filed("notes/s.md", "two")
+    assert (await client.patch(f"/api/v1/documents/{first}",
+                               json={"uri": "notes/s.md"},
+                               headers=auth_headers)).status_code == 409
 ```
+
+The occupied path is the uri the test filed, not one read back off `GET /documents/{id}` — `DocumentBlocksResponse` has no `uri` field.
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cd backend && .venv/bin/python -m pytest tests/test_documents_routes.py -k "patch or rename" -v`
+Run: `cd backend && .venv/bin/python -m pytest tests/test_document_routes.py -k "patch or rename" -v`
 Expected: FAIL with 405 — the routes do not exist.
 
-- [ ] **Step 3: Add both routes**
+- [ ] **Step 3: Add the models and routes**
 
 ```python
 class DocumentPatchRequest(BaseModel):
@@ -1011,71 +1221,71 @@ class DocumentRenameRequest(BaseModel):
     new_uri_prefix: str
 ```
 
-Map `DocumentUriConflict` to 409 in both routes, reusing the conflict wording already used for `DocumentIsBlockFirst`.
+Add `ConfigDict` to the module's pydantic import (line 62 imports only `BaseModel, Field`). Both routes take `_user=Depends(require_auth)` like every sibling, and map `DocumentUriConflict` to 409.
 
-- [ ] **Step 4: Add both rows to the conformance status map**
+- [ ] **Step 4: Classify both routes and add the conformance rows**
 
-`tests/test_rest_conformance.py` pins a per-route status map, and a new route with no row fails it. Add `PATCH /documents/{document_id}` → 200 and `POST /documents/rename` → 200, each with 409.
+Add both to `docs/two-door-parity.md` as single-door with a reason of 80+ characters saying the MCP twin lands in Task 11, and add their rows to the conformance status map.
 
 - [ ] **Step 5: Run to verify they pass**
 
-Run: `cd backend && .venv/bin/python -m pytest tests/test_documents_routes.py tests/test_rest_conformance.py -q`
+Run: `cd backend && .venv/bin/python -m pytest tests/test_document_routes.py tests/test_api/test_rest_conformance.py tests/test_door_parity.py -q`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add backend/app/api/routes/documents.py backend/tests/
+git add backend/app/api/routes/documents.py backend/tests/ docs/two-door-parity.md
 git commit -m "feat(documents): add the metadata rest routes"
 ```
 
 ---
 
-### Task 9: The MCP `document_update` tool
+### Task 11: The MCP `document_update` tool
 
 **Files:**
-- Modify: `backend/app/api/mcp/server.py`
-- Modify: `CLAUDE.md` (the tool count and the `capture` writer count), `docs/two-door-parity.md`
-- Test: `backend/tests/test_mcp.py`
+- Modify: `backend/app/api/mcp/server.py`, `backend/app/api/mcp/scopes.py:46` (`CAPTURE_TOOLS`)
+- Test: `backend/tests/test_mcp.py:20` (`EXPECTED_TOOLS`)
 
 **Interfaces:**
-- Consumes: `update_document_metadata`, `rename_documents`, `DocumentUriConflict` from Task 7
-- Produces: MCP tool `document_update`, `capture` scope, carrying both shapes as modes
+- Consumes: `update_document_metadata`, `rename_documents`, `DocumentUriConflict` (Tasks 7 and 9)
+- Produces: MCP tool `document_update`, `capture`-scoped, carrying both shapes as modes
 
 **Implementer:** dcc-superpower-companions:impl-opus-low
 **Evaluation:** files 1 - spec 0 - coupling 1 - risk 2 = 4
 **Approach:** inline - skip 3: §4.2 states that MCP carries both shapes as modes of one tool
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing tests**
 
 ```python
 @pytest.mark.asyncio
-async def test_document_update_carries_both_shapes_as_modes(mcp):
-    single = json.loads(await mcp.call(
-        "document_update", {"document_id": DOC, "title": "New"}))
+async def test_document_update_carries_both_shapes_as_modes(
+    monkeypatch, session_factory, filed_doc,
+):
+    _patch(monkeypatch, session_factory)
+    single = json.loads(await mcp_server.document_update(
+        document_id=filed_doc, title="New"))
     assert single["status"] == "ok"
 
-    subtree = json.loads(await mcp.call("document_update", {
-        "project": "notes", "uri_prefix": "notes/a",
-        "new_uri_prefix": "notes/b",
-    }))
+    subtree = json.loads(await mcp_server.document_update(
+        project="p", uri_prefix="notes/a", new_uri_prefix="notes/b"))
     assert subtree["renamed"] == 3
 
 
-@pytest.mark.asyncio
-async def test_document_update_needs_the_capture_scope(mcp_read_only_key):
-    """A key that can edit a document's metadata can rename it, which is
-    capture power, not read power."""
-    with pytest.raises(PermissionError):
-        await mcp_read_only_key.call(
-            "document_update", {"document_id": DOC, "title": "New"})
+def test_document_update_is_capture_scoped():
+    """A key that can rename a document holds capture power, not read power."""
+    from app.api.mcp.scopes import CAPTURE_TOOLS, READ_TOOLS
+    assert "document_update" in CAPTURE_TOOLS
+    assert "document_update" not in READ_TOOLS
 
 
 @pytest.mark.asyncio
-async def test_a_uri_conflict_is_an_envelope_not_a_tool_error(mcp, two_notes):
-    envelope = json.loads(await mcp.call(
-        "document_update", {"document_id": two_notes[0], "uri": TAKEN_URI}))
-    assert envelope["status"] == "uri_conflict"
+async def test_naming_neither_mode_refuses_with_an_envelope(
+    monkeypatch, session_factory,
+):
+    _patch(monkeypatch, session_factory)
+    envelope = json.loads(await mcp_server.document_update(title="New"))
+    assert envelope["status"] == "invalid_mode"
 ```
 
 - [ ] **Step 2: Run to verify they fail**
@@ -1085,32 +1295,84 @@ Expected: FAIL — no such tool.
 
 - [ ] **Step 3: Add the tool**
 
-One tool, two modes, dispatched on whether `document_id` or `uri_prefix` was given. Refuse a call carrying both, and a call carrying neither, with an envelope rather than a tool error. Register it under the `capture` scope.
+One tool, two modes, dispatched on whether `document_id` or `uri_prefix` was given. Refuse a call carrying both, or neither, with an `invalid_mode` envelope rather than a tool error. Map `DocumentUriConflict` to a `uri_conflict` envelope.
 
-- [ ] **Step 4: Update every enumeration guard the new tool moves**
+- [ ] **Step 4: Register the scope and the expected-tools set**
 
-Run the full backend suite, not just `test_mcp.py`. One new tool trips several full-list assertions — the catalogue count (38 → 39), the `capture` writer count (12 → 13), the scope map, and the parity table. Update `CLAUDE.md`'s MCP section for both counts and add the row to `docs/two-door-parity.md`. Do not update a count until a test names it: a guessed count that happens to match hides the guard that should have caught it.
+Add `"document_update"` to `CAPTURE_TOOLS` (`scopes.py:46`) and to `EXPECTED_TOOLS` (`tests/test_mcp.py:20`). Both are pinned **sets**, not counts.
 
-- [ ] **Step 5: Run the full backend suite**
+- [ ] **Step 5: Run the MCP suites**
 
-Run: `cd backend && .venv/bin/python -m pytest -q`
-Expected: PASS. This is the only step that catches the enumeration guards, which is why it is the whole suite rather than one file.
+Run: `cd backend && .venv/bin/python -m pytest tests/test_mcp.py tests/test_mcp_auth.py tests/test_mcp_reindex.py -q`
+Expected: PASS. `test_mcp_auth.py:404-421` and `test_mcp_reindex.py:46` derive their partitions from `CAPTURE_TOOLS`, so they follow automatically once the scope is registered.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add backend/app/api/mcp/server.py backend/tests/test_mcp.py CLAUDE.md docs/two-door-parity.md
+git add backend/app/api/mcp/server.py backend/app/api/mcp/scopes.py backend/tests/
 git commit -m "feat(mcp): add the document_update tool"
+```
+
+---
+
+### Task 12: The enumeration sweep
+
+**Files:**
+- Modify: `backend/app/services/prompt.py:689` area (`PROMPTS["agent_instructions"]`)
+- Modify: `CLAUDE.md`, `docs/two-door-parity.md`, `docs/runbook-exposed-deployment.md:106-110`
+- Test: `backend/tests/test_prompt_agent_instructions.py:27-30`, `backend/tests/test_door_parity.py`
+
+**Interfaces:**
+- Consumes: the registered tool (Task 11)
+- Produces: nothing. This task exists because the counts and rosters live in prose that no earlier task's tests read.
+
+**Implementer:** dcc-superpower-companions:impl-opus-low
+**Evaluation:** files 2 - spec 0 - coupling 1 - risk 1 = 4
+**Approach:** inline - skip 3: the guards are enumerable and each names its own required edit
+
+> **`test_prompt_agent_instructions.py:27-30` requires every tool name to appear inside `PROMPTS["agent_instructions"]`.** It is the guard most easily missed, because nothing about adding a tool suggests editing a prompt.
+>
+> **CLAUDE.md and two docstrings carry literal counts that no test reads** (`scopes.py:21`, `test_mcp_auth.py:395`), so a "do not update a count until a test names it" rule never fires for them — update them by inspection. `docs/runbook-exposed-deployment.md:106-110` already says "34 tools, 8 capture" and was **stale before this plan started**; correct it to the true figure while here.
+
+- [ ] **Step 1: Run the guards to see what is red**
+
+Run: `cd backend && .venv/bin/python -m pytest tests/test_prompt_agent_instructions.py tests/test_door_parity.py -q`
+Expected: FAIL, naming `document_update` as absent from the agent roster and the parity table.
+
+- [ ] **Step 2: Add the tool to the agent instructions**
+
+Add a `- **document_update** — rename, move, pin or re-tag a document.` line beside the existing `- **document_put**` entry at `prompt.py:689`.
+
+- [ ] **Step 3: Flip both new REST rows to two-door**
+
+Task 10 filed `PATCH /documents/{document_id}` and `POST /documents/rename` as single-door with a reason. Both now have an MCP twin, so change them to two-door and remove the exemption reason — `test_a_two_door_surface_states_no_exemption` (`test_door_parity.py:1611`) fails if a reason is left behind.
+
+- [ ] **Step 4: Correct the prose counts**
+
+Derive the true totals from the code rather than from this plan: `len(EXPECTED_TOOLS)` for the catalogue and `len(CAPTURE_TOOLS)` for the writers. Update `CLAUDE.md`'s MCP section, the docstrings at `scopes.py:21` and `test_mcp_auth.py:395`, and the stale figures in `docs/runbook-exposed-deployment.md:106-110`.
+
+- [ ] **Step 5: Run the full backend suite**
+
+Run: `cd backend && .venv/bin/python -m pytest -q`
+Expected: PASS. This is the only step that catches every enumeration guard, which is why it is the whole suite.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add backend/app/services/prompt.py backend/tests/ CLAUDE.md docs/
+git commit -m "docs(mcp): record the document_update tool"
 ```
 
 ---
 
 ## After the lanes land
 
-- **Run `./scripts/gate.sh`.** Note it cannot complete `--full` on this host; run the legs individually per `CLAUDE.md`.
-- **Add a `## Unreleased` changelog entry** — or fold into the section for the version the next push derives. Check `python3 scripts/next_version.py plan` **after a `git fetch`**: this repo's tags are written by CI, so a stale local tag list makes that command return a plausible wrong answer.
-- **Lanes 1c-1e change the running artifact**, so the redeploy rule applies once the owner clears the cutover.
+- **Run `./scripts/gate.sh`.** `--full` cannot complete on this host; run the legs individually per `CLAUDE.md`.
+- **Add a changelog entry.** Check `python3 scripts/next_version.py plan` **after `git fetch`** — this repo's tags are written by CI, so a stale local tag list makes that command return a plausible wrong answer, and the release guard matches `## vN.N.N` and will not accept "Unreleased".
+- **These lanes change the running artifact**, so the redeploy rule applies once the owner clears the cutover.
 
 ## What this plan does NOT do
 
-`block_update`'s `source` mode and the retirement of `promote` (spec §4.1) are **not** in these lanes. §12 places them in increment 3, the editor increment, because the mode exists to serve per-block CodeMirror and has no caller until then. Landing it here would ship an untested-in-anger parser path behind a flag nothing sets.
+`block_update`'s `source` mode and the retirement of `promote` (spec §4.1) are **not** in these lanes. §12 places them in increment 3, the editor increment, because the mode exists to serve per-block CodeMirror and has no caller until then.
+
+**One question left open for Task 9's implementer to raise, not decide:** a single-document `uri` change does not rewrite `document_links`, while `rename_documents` does. §4.2 binds the link rewrite to the subtree verb only. Nothing writes `document_links` yet, so the stakes are currently zero — but the asymmetry should be settled before the links increment, not after.

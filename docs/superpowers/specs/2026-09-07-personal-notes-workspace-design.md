@@ -283,10 +283,38 @@ fires against the renamed block-first row — writing `properties` wholesale,
 erasing `ingest_direction`, and stripping the editor's blocks. This is review
 finding M-3's race, reopened by the new verb.
 
-The direction refusal therefore **rides the upsert** rather than preceding it:
-`DO UPDATE ... WHERE documents.properties->>'ingest_direction' IS DISTINCT FROM
-'blocks'`, with rowcount 0 raising `DocumentIsBlockFirst`. A check before the
-statement is check-then-act, which is the shape that race is made of.
+The direction refusal therefore rides the upsert **as well as** preceding it —
+two guards covering two different paths, not one replacing the other.
+
+**Amended 2026-09-07, before implementation.** This section previously said the
+refusal rides the upsert *rather than* preceding it, and that "a check before
+the statement is check-then-act". Both halves are wrong, and following them
+would have caused the data loss this section exists to prevent.
+`ingest_document` (`app/services/document_ingest.py`) branches on whether the
+document already exists: an existing `(project, uri)` is written through
+`update_document` / `_UPDATE_DOCUMENT`, and **`upsert_by_uri` runs only when
+the resolve found nothing**. A predicate on the upsert's `ON CONFLICT` is
+therefore reached only in the race, never on the ordinary path — so removing
+the pre-check would leave every plain `document_put` over a converted note
+unguarded, writing `properties` wholesale and stripping its blocks. The
+pre-check is also not check-then-act for an existing row: it runs *after*
+`_LOCK_DOCUMENT_BY_URI ... FOR UPDATE` (`document_door.py`), and `_mutate`
+locks the same row by id, so the two serialise. It is check-then-act only in
+the case where there is no row to lock, which is exactly the case the upsert
+predicate covers.
+
+So both, each named with the path it guards:
+
+- **The existing-row path** keeps the locked pre-check in `put_document`,
+  unchanged. This is the ordinary refusal and the one that fires in practice.
+- **The vacated-path race** gains
+  `DO UPDATE ... WHERE documents.properties->>'ingest_direction' IS DISTINCT
+  FROM 'blocks'` on `upsert_by_uri`. Note the statement ends `RETURNING id`
+  with `.scalar_one()`: a predicate-excluded conflict returns zero rows and
+  raises `NoResultFound` before any rowcount is read, so the call site must
+  use `.scalar_one_or_none()` and raise `DocumentIsBlockFirst` on the None.
+  The zero-row outcome is otherwise unambiguous — a non-conflicting INSERT
+  returns its row.
 
 This verb also closes a gap agents have today: nothing lets an agent re-file a
 renamed artifact.
