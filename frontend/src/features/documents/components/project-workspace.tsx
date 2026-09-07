@@ -97,10 +97,20 @@ export function ProjectWorkspace({
   project,
   tab,
   onTabChange,
+  treeManagement = false,
+  treeEmptyAction,
 }: {
   project: string
   tab: WorkspaceTab
   onTabChange: (tab: WorkspaceTab) => void
+  /** Tree management: create, rename, move, pin, delete. Off is the corpus
+   *  browser at `/projects/$project`, which is unchanged. Named for what it
+   *  gates rather than `editable`, because that surface is already editable
+   *  -- it has the block editor and a delete. */
+  treeManagement?: boolean
+  /** The affordance an empty tree offers. Threaded rather than rendered
+   *  here: this component owns no create verb. */
+  treeEmptyAction?: ReactNode
 }) {
   const documents = useAllDocuments(project)
   const items = documents.data?.items ?? []
@@ -127,7 +137,10 @@ export function ProjectWorkspace({
   // blur, so landing in it makes a stray keystroke a real edit.
   const [mode, setMode] = useState<ReaderMode>("read")
   const search = useDocumentSearch()
-  const corpus = useProgressCorpus(items)
+  // Fed an empty list under tree management, which is what makes the hook
+  // inert: its content read is `enabled` on a non-empty id list, so the
+  // ledger scan the Progress tab needs costs nothing where there is no tab.
+  const corpus = useProgressCorpus(treeManagement ? [] : items)
 
   const roots = useMemo(() => buildUriTree(items), [items])
   // Lazy initialiser rather than an effect: the route mounts a fresh
@@ -210,10 +223,15 @@ export function ProjectWorkspace({
       // `lg:`-only prefixing chat.tsx's height chain uses.
       className="flex flex-col lg:min-h-0 lg:flex-1"
     >
-      <TabsList>
-        <TabsTrigger value="artifacts">Artifacts</TabsTrigger>
-        <TabsTrigger value="progress">Progress</TabsTrigger>
-      </TabsList>
+      {/* A progress ledger is a project artifact recorded by sessions. The
+          personal space has neither, so the tab would be permanently empty
+          -- and with one tab left the strip is not a choice. */}
+      {treeManagement ? null : (
+        <TabsList>
+          <TabsTrigger value="artifacts">Artifacts</TabsTrigger>
+          <TabsTrigger value="progress">Progress</TabsTrigger>
+        </TabsList>
+      )}
 
       <TabsContent
         value="artifacts"
@@ -311,6 +329,7 @@ export function ProjectWorkspace({
                   truncated={documents.data?.truncated ?? false}
                   expanded={effectiveExpanded}
                   onExpandedChange={handleExpandedChange}
+                  emptyAction={treeEmptyAction}
                 />
               )}
             </ScrollArea>
@@ -397,7 +416,11 @@ export function ProjectWorkspace({
                   kind="empty"
                   icon={FolderTree}
                   title="Nothing selected"
-                  description="Pick a document from the tree to read it."
+                  description={
+                    treeManagement
+                      ? "Pick a note from the tree to read it, or start a new one."
+                      : "Pick a document from the tree to read it."
+                  }
                 />
               )}
             </ScrollArea>
@@ -405,27 +428,29 @@ export function ProjectWorkspace({
         </ResizablePanelGroup>
       </TabsContent>
 
-      <TabsContent value="progress" className="space-y-5">
-        <div>
-          <RegionLabel>project board</RegionLabel>
-          {/* A projection of the ledger and the epic files, never a second
-              store: the board writes nothing, so `progress.md` stays the one
-              place task state lives. That is what keeps it cheap, and it is
-              also why the board fills only for a project whose corpus holds
-              those files. */}
-          {corpus.present ? (
-            <ProgressBoard corpus={corpus} />
-          ) : (
-            <EmptyState
-              kind="empty"
-              icon={FolderTree}
-              title="No ledger pinned"
-              description={`File a document whose path ends in ${LEDGER_SUFFIX} to pin this project's ledger here.`}
-            />
-          )}
-        </div>
-        <CheckpointsTab project={project} />
-      </TabsContent>
+      {treeManagement ? null : (
+        <TabsContent value="progress" className="space-y-5">
+          <div>
+            <RegionLabel>project board</RegionLabel>
+            {/* A projection of the ledger and the epic files, never a second
+                store: the board writes nothing, so `progress.md` stays the one
+                place task state lives. That is what keeps it cheap, and it is
+                also why the board fills only for a project whose corpus holds
+                those files. */}
+            {corpus.present ? (
+              <ProgressBoard corpus={corpus} />
+            ) : (
+              <EmptyState
+                kind="empty"
+                icon={FolderTree}
+                title="No ledger pinned"
+                description={`File a document whose path ends in ${LEDGER_SUFFIX} to pin this project's ledger here.`}
+              />
+            )}
+          </div>
+          <CheckpointsTab project={project} />
+        </TabsContent>
+      )}
     </Tabs>
   )
 }

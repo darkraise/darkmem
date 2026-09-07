@@ -719,3 +719,79 @@ describe("project workspace — the two scrollbars that used to overlap", () => 
     expect(h1.style.paddingLeft).not.toEqual(h2.style.paddingLeft)
   })
 })
+
+/** The ledger the progress corpus looks for. Its presence is what makes the
+ *  corpus fetch document contents at all, so it is what lets a test tell an
+ *  inert scan from a skipped one. */
+const LEDGER = {
+  id: "22222222-2222-2222-2222-222222222222",
+  title: "progress",
+  uri: "docs/planning/progress.md",
+  source_type: "note",
+  project: "darkmem",
+  block_count: 1,
+}
+
+function contentReads() {
+  return vi
+    .mocked(apiFetch)
+    .mock.calls.filter(([path]) => String(path).includes("include_content=true"))
+}
+
+describe("project workspace — the tree-management capability", () => {
+  it("renders the workspace unchanged when tree management is off", async () => {
+    mockDocuments({ items: [DOC, LEDGER] })
+    renderWorkspace()
+    await screen.findByText("design.md")
+
+    expect(screen.getByRole("tab", { name: /progress/i })).toBeInTheDocument()
+    // The corpus scan is the Progress tab's data layer; off by default means
+    // it still runs, which is what makes the `on` case a real difference.
+    await waitFor(() => expect(contentReads().length).toBeGreaterThan(0))
+  })
+
+  it("exposes no tree-management affordances by default", async () => {
+    mockDocuments({ items: [DOC] })
+    renderWorkspace()
+    await screen.findByText("design.md")
+
+    expect(screen.queryByLabelText(/^Actions for /)).toBeNull()
+    expect(screen.queryByRole("button", { name: /new note/i })).toBeNull()
+  })
+
+  it("hides the tab strip and the progress scan when tree management is on", async () => {
+    // A progress ledger is a project artifact recorded by sessions; the
+    // personal space has none, so the tab would be permanently empty and the
+    // ledger scan a fetch on every mount for nothing.
+    mockDocuments({ items: [DOC, LEDGER] })
+    renderWorkspace({ treeManagement: true })
+    await screen.findByText("design.md")
+
+    expect(screen.queryByRole("tab", { name: /progress/i })).toBeNull()
+    expect(screen.queryByRole("tab", { name: /artifacts/i })).toBeNull()
+    expect(screen.queryByText("checkpoints-tab")).toBeNull()
+    expect(contentReads()).toHaveLength(0)
+  })
+
+  it("shows a notes empty state rather than the progress-ledger one", async () => {
+    mockDocuments({ items: [] })
+    renderWorkspace({ treeManagement: true })
+
+    expect(await screen.findByText(/nothing selected/i)).toBeInTheDocument()
+    expect(screen.queryByText(/planning\/progress\.md/)).toBeNull()
+    expect(screen.queryByText(/pick a document/i)).toBeNull()
+  })
+
+  it("threads an empty-state action into the tree", async () => {
+    // Task 10 supplies the button; the path has to exist for it to land in.
+    mockDocuments({ items: [] })
+    renderWorkspace({
+      treeManagement: true,
+      treeEmptyAction: <button type="button">new note</button>,
+    })
+
+    expect(
+      await screen.findByRole("button", { name: /new note/i }),
+    ).toBeInTheDocument()
+  })
+})
