@@ -19,7 +19,7 @@ from app.services.block_verbs import (
     update_block,
 )
 from app.services.document_door import DocumentNotConvertible, put_document
-from app.services.document_ingest import compute_content_hash
+from app.services.document_ingest import DocumentHashConflict, compute_content_hash
 
 
 FINGERPRINT = "test-fp-verbs|3"
@@ -280,3 +280,66 @@ async def test_a_move_embeds_nothing(session):
     await move_block(session, llm, block_id=alpha["id"], new_parent_id=second["id"])
 
     assert llm.batches == []
+
+
+async def _hash_of(session, document_id):
+    return (await session.execute(
+        text("SELECT content_hash FROM documents WHERE id = CAST(:id AS uuid)"),
+        {"id": document_id},
+    )).scalar_one()
+
+
+@pytest.mark.asyncio
+async def test_a_stale_expected_hash_refuses_every_verb(session):
+    """All four verbs rewrite content_hash, so all four take the precondition.
+    Insert and move rewrite it as much as update does, so a caller that
+    preconditions only its updates still clobbers a concurrent insert."""
+    llm, doc = await _file(session, "# T\n\npara", "notes/cas.md")
+    block = (await _blocks(session, doc))[0]["id"]
+    stale = "0" * 64
+
+    for call in (
+        lambda: update_block(session, llm, block_id=block, text="x",
+                             expected_hash=stale),
+        lambda: insert_block(session, llm, document_id=doc, type="paragraph",
+                             text="x", expected_hash=stale),
+        lambda: move_block(session, llm, block_id=block, expected_hash=stale),
+        lambda: delete_block(session, llm, block_id=block, expected_hash=stale),
+    ):
+        with pytest.raises(DocumentHashConflict):
+            await call()
+
+
+@pytest.mark.asyncio
+async def test_the_conflict_names_the_hash_that_actually_holds(session):
+    llm, doc = await _file(session, "# T\n\npara", "notes/cas2.md")
+    block = (await _blocks(session, doc))[0]["id"]
+    live = await _hash_of(session, doc)
+
+    with pytest.raises(DocumentHashConflict) as caught:
+        await update_block(session, llm, block_id=block, text="x",
+                           expected_hash="0" * 64)
+
+    assert caught.value.expected_hash == "0" * 64
+    assert caught.value.current_hash == live
+
+
+@pytest.mark.asyncio
+async def test_a_matching_expected_hash_applies_the_edit(session):
+    llm, doc = await _file(session, "# T\n\npara", "notes/cas3.md")
+    block = (await _blocks(session, doc))[0]["id"]
+
+    result = await update_block(session, llm, block_id=block, text="edited",
+                                expected_hash=await _hash_of(session, doc))
+
+    assert result.content_hash == await _hash_of(session, doc)
+    assert [b["text"] for b in await _blocks(session, doc)][0] == "edited"
+
+
+@pytest.mark.asyncio
+async def test_omitting_the_hash_stays_last_writer_wins(session):
+    """The precondition is opt-in. Every shipped caller omits it today."""
+    llm, doc = await _file(session, "# T\n\npara", "notes/cas4.md")
+    block = (await _blocks(session, doc))[0]["id"]
+    await update_block(session, llm, block_id=block, text="edited")
+    assert [b["text"] for b in await _blocks(session, doc)][0] == "edited"
