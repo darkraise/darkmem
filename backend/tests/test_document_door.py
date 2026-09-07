@@ -709,6 +709,123 @@ async def test_put_still_works_on_a_content_first_document(session):
     assert second.outcome == "updated"
 
 
+# ── Both put paths are guarded, each by its own instrument ───────────
+
+
+async def _file(session, content: str, uri: str):
+    llm = StubEmbedder()
+    result = await put_document(
+        session, llm, project="p", uri=uri, content=content,
+    )
+    await session.commit()
+    return llm, result.document_id
+
+
+async def _first(session, document_id):
+    return (await session.execute(
+        text(
+            "SELECT CAST(id AS text) FROM blocks "
+            "WHERE document_id = CAST(:id AS uuid) "
+            "ORDER BY order_index LIMIT 1"
+        ),
+        {"id": str(document_id)},
+    )).scalar_one()
+
+
+def test_the_documents_repository_names_no_service():
+    """`DocumentIsBlockFirst` is raised by the repository and caught on both
+    doors, so it has to live somewhere both can reach. The repository is that
+    place only while it stays a leaf: `document_ingest` imports it, so a
+    service module it imported back would close a cycle -- and the cycle fires
+    on whichever entry point imports the service first, which under pytest is
+    never the case. So the suite would stay green while the app failed to
+    boot. This asserts the property directly instead.
+
+    `ast.walk` rather than `tree.body`: a deferred import inside a function
+    body is the shape that closes the cycle just as surely, and is exactly
+    what a reader reaches for when the module-level one raises.
+    """
+    import ast
+    import pathlib
+
+    path = pathlib.Path(__file__).resolve().parents[1] / "app" / "repositories" / "documents.py"
+    package = "app.repositories"
+    offenders = []
+    for node in ast.walk(ast.parse(path.read_text(), filename=str(path))):
+        if isinstance(node, ast.Import):
+            named = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            # A relative import spells the same module without naming it:
+            # level 1 is this package, each further level strips a segment.
+            base = package.rsplit(".", node.level - 1)[0] if node.level else ""
+            named = [".".join(part for part in (base, node.module) if part)]
+        else:
+            continue
+        offenders += [
+            f"line {node.lineno}: {name}"
+            for name in named
+            if name == "app.services" or name.startswith("app.services.")
+        ]
+    assert not offenders, (
+        "app/repositories/documents.py must name no service module:\n"
+        + "\n".join(offenders)
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_upsert_refuses_a_block_first_row_it_collides_with(session):
+    """The vacated-path race: a put resolves nothing, inserts, and collides
+    with a block-first row whose uri a concurrent rename just freed. The
+    ON CONFLICT predicate is what refuses it -- the pre-check saw no row."""
+    from app.repositories import documents as documents_repo
+    from app.services.block_verbs import update_block
+    from app.services.document_door import DocumentIsBlockFirst
+    from app.utils.ids import new_id
+
+    llm, doc = await _file(session, "# T\n\npara", "notes/race.md")
+    await update_block(session, llm, block_id=await _first(session, doc),
+                       text="converted")           # now block-first
+    await session.commit()
+
+    with pytest.raises(DocumentIsBlockFirst):
+        await documents_repo.upsert_by_uri(
+            session, document_id=new_id(), project="p", uri="notes/race.md",
+            title="t", source_type="markdown", content_hash="deadbeef",
+            content="clobber", properties={},
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_first_time_insert_is_not_mistaken_for_a_refusal(session):
+    """A non-conflicting INSERT returns its row, so zero rows means the
+    predicate excluded a conflict and nothing else."""
+    from app.repositories import documents as documents_repo
+    from app.utils.ids import new_id
+
+    resolved = await documents_repo.upsert_by_uri(
+        session, document_id=new_id(), project="p", uri="notes/fresh.md",
+        title="t", source_type="markdown", content_hash="cafe",
+        content="body", properties={},
+    )
+    assert resolved is not None
+
+
+@pytest.mark.asyncio
+async def test_the_ordinary_put_over_a_converted_note_is_still_refused(session):
+    """The pre-check, not the predicate, is what fires here -- and it is the
+    one that fires in practice. This test is what fails if someone deletes
+    it in favour of the predicate alone."""
+    from app.services.block_verbs import update_block
+    from app.services.document_door import DocumentIsBlockFirst
+
+    llm, doc = await _file(session, "# T\n\npara", "notes/ordinary.md")
+    await update_block(session, llm, block_id=await _first(session, doc),
+                       text="converted")
+    with pytest.raises(DocumentIsBlockFirst):
+        await put_document(session, llm, project="p", uri="notes/ordinary.md",
+                           content="clobber")
+
+
 def test_the_blocks_edited_event_type_exists_before_its_emitter():
     """Taxonomy-first: the vocabulary lands before Task 4 emits into it."""
     from app.services.events import EVENT_TYPES

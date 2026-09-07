@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.pipeline_failure import PipelineFailure
-from app.models.memory import Memory, Tag, memory_tags
+from app.models.memory import Memory, Tag, document_tags, memory_tags
 from app.repositories.relational import PostgresAuditRepository
 from app.services.pipeline import ProcessingPipeline
 
@@ -263,11 +263,27 @@ class AnalyticsService:
         sources = [{"name": r.source, "count": r.count} for r in source_rows]
 
         # Top tags
+        # Each link table counts in its own correlated subquery: a join across
+        # both multiplies the rows where a sum adds them, inflating the rank. A
+        # tag on three memories and two documents is 5 here, 6 under count(*)
+        # over the double join and 12 under summed per-column counts. The
+        # difference is invisible at two and two, where both are 4.
+        tag_memory_count = (
+            select(func.count())
+            .select_from(memory_tags)
+            .where(memory_tags.c.tag_id == Tag.id)
+            .scalar_subquery()
+        )
+        tag_document_count = (
+            select(func.count())
+            .select_from(document_tags)
+            .where(document_tags.c.tag_id == Tag.id)
+            .scalar_subquery()
+        )
+        tag_total = (tag_memory_count + tag_document_count).label("count")
         tag_stmt = (
-            select(Tag.name, func.count(memory_tags.c.memory_id).label("count"))
-            .outerjoin(memory_tags)
-            .group_by(Tag.name)
-            .order_by(func.count(memory_tags.c.memory_id).desc())
+            select(Tag.name, tag_total)
+            .order_by(tag_total.desc())
             .limit(5)
         )
         tag_rows = (await self.session.execute(tag_stmt)).all()

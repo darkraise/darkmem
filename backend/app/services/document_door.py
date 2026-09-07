@@ -19,25 +19,37 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.repositories.documents import resolve_by_id, resolve_by_uri
+from app.models.memory import document_tags
+from app.repositories.documents import (
+    DocumentIsBlockFirst,
+    resolve_by_id,
+    resolve_by_uri,
+)
+from app.repositories.relational import PostgresTagRepository
 from app.services.block_embeddings import (
     PARENT_TABLE, ensure_partition, embed_blocks, resolve_active_fingerprint,
 )
 from app.services.block_pipeline import ingest_document
 from app.services.block_query import BlockQueryService
-from app.services.document_ingest import UNCHANGED
+from app.services.document_ingest import UNCHANGED, DocumentUriConflict
 from app.services.embedder_registry import child_table
+from app.services.events import record_event
 
 __all__ = [
+    "DOCUMENT_UPDATED_EVENT",
     "MAX_BLOCKS",
     "MAX_CONTENT_CHARS",
     "SEARCH_DEFAULT_LIMIT",
     "SEARCH_MAX_LIMIT",
     "BlockRow",
+    "DocumentIsBlockFirst",
+    "DocumentNothingToChange",
     "DocumentTargetUnresolved",
     "DocumentTooLarge",
+    "DocumentUriConflict",
     "OutlineNode",
     "PutResult",
     "SectionHit",
@@ -47,9 +59,11 @@ __all__ = [
     "document_hash",
     "document_outline",
     "put_document",
+    "rename_documents",
     "resolve_document_id",
     "resolve_document_target",
     "search_sections",
+    "update_document_metadata",
 ]
 
 # An order of magnitude above any plan or ledger. These exist to refuse a
@@ -58,6 +72,12 @@ __all__ = [
 # `buffer_wait_timeout_seconds` to degrade against.
 MAX_CONTENT_CHARS = 1_000_000
 MAX_BLOCKS = 5_000
+
+DOCUMENT_UPDATED_EVENT = "document_updated"
+
+# Only the two constants below are ever interpolated into the UPDATE; every
+# caller-supplied value is bound.
+_PIN_ASSIGNMENT = {True: "pinned_at = now()", False: "pinned_at = NULL"}
 
 # The section-search page, named here rather than on either door: the REST
 # body model and the MCP tool's clamp are two enforcement sites for one bound,
@@ -73,6 +93,16 @@ class DocumentTooLarge(ValueError):
 
 class DocumentTargetUnresolved(ValueError):
     """Nothing a caller named resolves to a document that exists."""
+
+
+class DocumentNothingToChange(ValueError):
+    """The call named no change, so writing it would journal an empty edit.
+
+    `events` is append-only, so a metadata call naming no field and a subtree
+    rename whose new prefix equals the old one leave a permanent row saying an
+    edit happened when none did. Refusing is what keeps the journal a record
+    of edits rather than of calls.
+    """
 
 
 async def resolve_document_id(
@@ -153,15 +183,6 @@ _LOCK_DOCUMENT_BY_URI = text(
     "WHERE project = CAST(:project AS text) AND uri = CAST(:uri AS text) "
     "FOR UPDATE"
 )
-
-
-class DocumentIsBlockFirst(ValueError):
-    """put refused: this document is owned by the block verbs (spec §8.2).
-
-    A content push over an editing session is a silent overwrite -- the put
-    would strip every block the editor placed and rewrite the content it was
-    serialising from.
-    """
 
 
 class DocumentNotConvertible(ValueError):
@@ -611,6 +632,241 @@ async def delete_document(session: AsyncSession, *, document_id: UUID | str) -> 
     """
     result = await session.execute(_DELETE_DOCUMENT, {"id": str(document_id)})
     return result.rowcount > 0
+
+
+async def _set_document_tags(
+    session: AsyncSession, document_id: UUID | str, names: list[str],
+) -> None:
+    """Replace the document's tag set with `names`.
+
+    Private, and deliberately so: it takes no lock of its own. The `FOR
+    UPDATE` on the document row that makes a concurrent replacement serialise
+    lives in `update_document_metadata`, its one caller, so a second caller
+    reaching this directly would reopen that race.
+
+    A present list replaces rather than merges, because a merge-only verb
+    cannot remove a tag. Names resolve through the shared tag repository so
+    `tag_category` and the name bound apply identically on both doors, and so
+    a document links the same `tags` row a memory carrying that name would.
+    """
+    doc_id = document_id if isinstance(document_id, UUID) else UUID(str(document_id))
+    repo = PostgresTagRepository(session)
+    tag_ids: list[int] = []
+    for name in dict.fromkeys(names):
+        tag = await repo.get_or_create(name)
+        tag_ids.append(tag.id)
+
+    await session.execute(
+        document_tags.delete().where(document_tags.c.document_id == doc_id)
+    )
+    if tag_ids:
+        await session.execute(
+            document_tags.insert(),
+            [{"document_id": doc_id, "tag_id": tag_id} for tag_id in tag_ids],
+        )
+    await session.flush()
+
+
+async def update_document_metadata(
+    session: AsyncSession,
+    *,
+    document_id: UUID | str,
+    title: str | None = None,
+    uri: str | None = None,
+    pinned: bool | None = None,
+    tags: list[str] | None = None,
+) -> None:
+    """Write only the fields the caller named.
+
+    An unnamed field emits no assignment at all rather than writing NULL over
+    its column, so renaming a document cannot silently unpin it or strip its
+    tags.
+
+    `project` is deliberately not a field: moving a document between spaces is
+    not a rename, and allowing it here would let one call cross the boundary
+    the personal space rests on.
+
+    A call naming no field at all is refused rather than journalled: `events`
+    is append-only, so it would leave a permanent `{"fields": []}` row saying
+    an edit happened when none did.
+    """
+    if title is None and uri is None and pinned is None and tags is None:
+        raise DocumentNothingToChange(
+            "name at least one of title, uri, pinned or tags"
+        )
+    doc_id = document_id if isinstance(document_id, UUID) else UUID(str(document_id))
+    assignments: list[str] = []
+    params: dict = {"id": str(doc_id)}
+    if title is not None:
+        assignments.append("title = CAST(:title AS text)")
+        params["title"] = title
+    if uri is not None:
+        assignments.append("uri = CAST(:uri AS text)")
+        params["uri"] = uri
+    if pinned is not None:
+        assignments.append(_PIN_ASSIGNMENT[pinned])
+
+    if assignments:
+        try:
+            # ux_documents_project_uri is what refuses a collision, and a
+            # failed statement aborts the transaction it runs in -- so this
+            # runs in a SAVEPOINT, leaving the caller's transaction usable
+            # after the refusal rather than poisoned by it. RETURNING folds
+            # the rowcount check and the project lookup into the same round
+            # trip, and the UPDATE's own row lock is what serialises this
+            # against a concurrent _set_document_tags on the same document.
+            async with session.begin_nested():
+                project = (await session.execute(
+                    text(
+                        f"UPDATE documents SET {', '.join(assignments)} "
+                        "WHERE id = CAST(:id AS uuid) RETURNING project"
+                    ),
+                    params,
+                )).scalar_one_or_none()
+        except IntegrityError as exc:
+            raise DocumentUriConflict(uri) from exc
+        if project is None:
+            raise DocumentTargetUnresolved(f"document not found: {doc_id}")
+    else:
+        # No column assignment means a tags-only or entirely empty call, so
+        # nothing above confirmed the row exists or locked it. Both matter
+        # here: the lock is what makes a concurrent _set_document_tags
+        # replace rather than race (`put_document` and `block_verbs._mutate`
+        # already serialise on this row the same way), and the existence
+        # check is what stops a phantom `document_updated` event for an id
+        # nobody ever filed -- `events` is append-only, so that row would
+        # never be undone.
+        project = (await session.execute(
+            text(
+                "SELECT project FROM documents WHERE id = CAST(:id AS uuid) "
+                "FOR UPDATE"
+            ),
+            {"id": str(doc_id)},
+        )).scalar_one_or_none()
+        if project is None:
+            raise DocumentTargetUnresolved(f"document not found: {doc_id}")
+
+    if tags is not None:
+        await _set_document_tags(session, doc_id, tags)
+
+    # The payload names which fields moved and carries none of their values:
+    # write-time minimization, and a journal row outlives the document it
+    # describes.
+    await record_event(
+        session,
+        event_type=DOCUMENT_UPDATED_EVENT,
+        object_type="document",
+        object_id=doc_id,
+        project=project,
+        payload={
+            "fields": sorted(
+                name for name, value in (
+                    ("title", title), ("uri", uri),
+                    ("pinned", pinned), ("tags", tags),
+                )
+                if value is not None
+            )
+        },
+    )
+
+
+async def rename_documents(
+    session: AsyncSession,
+    *,
+    project: str,
+    uri_prefix: str,
+    new_uri_prefix: str,
+) -> int:
+    """Rewrite a uri prefix across a subtree in one transaction.
+
+    Rows are locked in id order -- the same lock `update_document_metadata`
+    takes -- so two concurrent subtree renames cannot deadlock against each
+    other. The match avoids LIKE because `_` and `%` are metacharacters there
+    and a prefix of `notes/a_b` would over-match `notes/axb`; comparing a
+    fixed-length slice of the uri has no metacharacter class at all.
+
+    **Locking order and iteration order are deliberately different.** The rows
+    move one at a time through a unique index, so a row whose target is
+    another row's current uri must move second -- and in id order that is a
+    coin flip on UUID sort, which is how `notes/a -> notes/a/x` came out as a
+    `DocumentUriConflict` or as a correct rewrite depending on which id
+    happened to be smaller. The mapping is injective, so the collision is
+    always transient and always between two rows of this set, and depth
+    orders it: moving a subtree *into* itself, the colliding row is the
+    deeper one, so the deepest moves first; moving one *out* to an ancestor
+    prefix, the colliding row is the shallower one, so the shallowest moves
+    first. Anything else -- disjoint prefixes -- has no intra-set collision at
+    all and takes either order. A collision with a document outside the set is
+    a real conflict and still raises.
+
+    Every row goes through `update_document_metadata` rather than one bulk
+    UPDATE, so each renamed document gets its own `document_updated` row and
+    the same `DocumentUriConflict` mapping instead of a second write path
+    reproducing both.
+    """
+    if new_uri_prefix == uri_prefix:
+        raise DocumentNothingToChange(
+            f"new_uri_prefix equals uri_prefix ({uri_prefix!r}); nothing moves"
+        )
+
+    rows = (await session.execute(
+        text(
+            "SELECT CAST(id AS text) AS id, uri FROM documents "
+            "WHERE project = CAST(:p AS text) "
+            "  AND (uri = CAST(:u AS text) "
+            "       OR left(uri, length(CAST(:u AS text)) + 1) "
+            "          = CAST(:u AS text) || '/') "
+            "ORDER BY id FOR UPDATE"
+        ),
+        {"p": project, "u": uri_prefix},
+    )).mappings().all()
+
+    # Deepest-first when the new prefix sits under the old one, shallowest-
+    # first when the old sits under the new; see the docstring. `sorted` is
+    # stable, so rows of equal depth keep the id order they were locked in.
+    descend = new_uri_prefix.startswith(uri_prefix + "/")
+    for row in sorted(rows, key=lambda r: len(r["uri"]), reverse=descend):
+        await update_document_metadata(
+            session,
+            document_id=row["id"],
+            uri=new_uri_prefix + row["uri"][len(uri_prefix):],
+        )
+
+    if rows:
+        moved = [row["id"] for row in rows]
+        # A resolved link holds the target's id, so its denormalised
+        # `target_uri` is stale the moment the target moves; carrying the id
+        # means the repair needs no string surgery on the link side.
+        await session.execute(
+            text(
+                "UPDATE document_links l SET target_uri = d.uri "
+                "FROM documents d WHERE d.id = l.target_document_id "
+                "  AND l.target_document_id = ANY(CAST(:ids AS uuid[])) "
+                "  AND l.target_uri IS DISTINCT FROM d.uri"
+            ),
+            {"ids": moved},
+        )
+        # A stub points at a uri nobody had filed, and a rename can land a
+        # document on exactly that uri -- so this pass is over unresolved
+        # links rather than over the moved set. The source document is joined
+        # to require that both ends sit in one project: `(project, uri)` is
+        # the identity, so an unscoped match resolves a stub against whichever
+        # project happens to hold the path, and a link crossing that boundary
+        # is what the personal space rests on not happening.
+        await session.execute(
+            text(
+                "UPDATE document_links l SET target_document_id = d.id "
+                "FROM documents s, documents d "
+                "WHERE s.id = l.source_document_id "
+                "  AND l.target_document_id IS NULL "
+                "  AND d.id = ANY(CAST(:ids AS uuid[])) "
+                "  AND d.project = s.project "
+                "  AND d.uri = l.target_uri"
+            ),
+            {"ids": moved},
+        )
+
+    return len(rows)
 
 
 @dataclass(frozen=True)

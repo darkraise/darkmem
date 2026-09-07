@@ -43,6 +43,7 @@ EXPECTED_TOOLS: frozenset[str] = frozenset({
     "document_outline",
     "document_put",
     "document_search",
+    "document_update",
     "fact_get",
     "knowledge_search",
     "list_repos",
@@ -555,3 +556,299 @@ async def test_a_stale_hash_answers_a_conflict_envelope(session, monkeypatch, ve
     assert envelope["expected_hash"] == stale
     assert envelope["current_hash"] == filed.content_hash
     embedder_registry.forget(_HASH_FP)
+
+
+@pytest.mark.asyncio
+async def test_document_update_carries_both_shapes_as_modes(session, monkeypatch):
+    """One tool, two modes: a single document's metadata, or a subtree rename.
+
+    Spec §4.2 puts both shapes on one MCP tool where REST serves two routes,
+    so the mode is dispatched on which address the caller named.
+    """
+    import json
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    from app.api.mcp import server as mcp_server
+    from app.services.document_door import put_document
+
+    class Stub:
+        def __init__(self):
+            self.fingerprint = "test-fp-mcp-docupdate|3"
+
+        async def embed_batch_chunked(self, texts, chunk_size, concurrency):
+            return ([[1.0, 0.0, 0.0] for _ in texts], self.fingerprint)
+
+        async def embed(self, value):
+            return [1.0, 0.0, 0.0], self.fingerprint
+
+        def llm_fingerprint(self):
+            return self.fingerprint
+
+    embedder_registry.forget("test-fp-mcp-docupdate|3")
+    llm = Stub()
+
+    @asynccontextmanager
+    async def _ctx():
+        yield session
+
+    monkeypatch.setattr(mcp_server, "async_session_factory", lambda: _ctx())
+    monkeypatch.setattr(mcp_server, "_pipeline", SimpleNamespace(llm=llm))
+
+    filed = await put_document(
+        session, llm, project="mcp-docupdate", uri="mcpnotes/a/one.md", content="# One\n",
+    )
+    for uri in ("mcpnotes/a/two.md", "mcpnotes/a/deep/three.md"):
+        await put_document(session, llm, project="mcp-docupdate", uri=uri, content="# X\n")
+    await session.commit()
+
+    single = json.loads(await mcp_server.document_update(
+        document_id=str(filed.document_id), title="New", pinned=True,
+        tags=["topic/notes"],
+    ))
+    assert single["status"] == "ok"
+    assert single["document_id"] == str(filed.document_id)
+
+    subtree = json.loads(await mcp_server.document_update(
+        project="mcp-docupdate", uri_prefix="mcpnotes/a", new_uri_prefix="mcpnotes/b",
+    ))
+    assert subtree["status"] == "ok"
+    assert subtree["renamed"] == 3
+    embedder_registry.forget("test-fp-mcp-docupdate|3")
+
+
+def test_document_update_is_capture_scoped():
+    """A key that can rename a document holds capture power, not read power."""
+    from app.api.mcp.scopes import CAPTURE_TOOLS, READ_TOOLS
+
+    assert "document_update" in CAPTURE_TOOLS
+    assert "document_update" not in READ_TOOLS
+
+
+@pytest.mark.asyncio
+async def test_document_update_refuses_an_ambiguous_mode(session, monkeypatch):
+    """Naming neither address, or both, is a refusal envelope, not a crash.
+
+    The caller can machine-read an envelope and pick a mode; it cannot
+    machine-read a traceback.
+    """
+    import json
+    from contextlib import asynccontextmanager
+
+    from app.api.mcp import server as mcp_server
+
+    @asynccontextmanager
+    async def _ctx():
+        yield session
+
+    monkeypatch.setattr(mcp_server, "async_session_factory", lambda: _ctx())
+
+    neither = json.loads(await mcp_server.document_update(title="New"))
+    assert neither["status"] == "invalid_mode"
+
+    both = json.loads(await mcp_server.document_update(
+        document_id="00000000-0000-0000-0000-000000000000",
+        project="mcp-docupdate", uri_prefix="mcpnotes/a", new_uri_prefix="mcpnotes/b",
+    ))
+    assert both["status"] == "invalid_mode"
+
+    incomplete = json.loads(await mcp_server.document_update(
+        project="mcp-docupdate", uri_prefix="mcpnotes/a",
+    ))
+    assert incomplete["status"] == "invalid_mode"
+
+
+@pytest.mark.asyncio
+async def test_document_update_refusals_are_envelopes(session, monkeypatch):
+    """An unresolvable target, a malformed id and an occupied path answer the
+    same shapes the block verbs and the REST twin already use.
+
+    The order is load-bearing: a refusal path rolls back the session, and the
+    `session` fixture hands out a session bound to the test's own outer
+    transaction, so a rollback ends that isolation boundary and anything
+    written afterwards commits for real. Writing first keeps every leak
+    inside this test's own rows.
+    """
+    import json
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    from app.api.mcp import server as mcp_server
+    from app.services.document_door import put_document
+
+    class Stub:
+        def __init__(self):
+            self.fingerprint = "test-fp-mcp-docupdate2|3"
+
+        async def embed_batch_chunked(self, texts, chunk_size, concurrency):
+            return ([[1.0, 0.0, 0.0] for _ in texts], self.fingerprint)
+
+        async def embed(self, value):
+            return [1.0, 0.0, 0.0], self.fingerprint
+
+        def llm_fingerprint(self):
+            return self.fingerprint
+
+    embedder_registry.forget("test-fp-mcp-docupdate2|3")
+    llm = Stub()
+
+    @asynccontextmanager
+    async def _ctx():
+        yield session
+
+    monkeypatch.setattr(mcp_server, "async_session_factory", lambda: _ctx())
+    monkeypatch.setattr(mcp_server, "_pipeline", SimpleNamespace(llm=llm))
+
+    # Every write this test makes happens before the first refusal. A refusal
+    # rolls back the session it was handed, and under the `session` fixture
+    # that is the fixture's own connection -- see the ordering note in the
+    # docstring.
+    first = await put_document(
+        session, llm, project="mcp-docupdate", uri="mcptaken/one.md", content="# One\n",
+    )
+    await put_document(
+        session, llm, project="mcp-docupdate", uri="mcptaken/two.md", content="# Two\n",
+    )
+    await session.commit()
+
+    conflict = json.loads(await mcp_server.document_update(
+        document_id=str(first.document_id), uri="mcptaken/two.md",
+    ))
+    assert conflict["status"] == "uri_conflict"
+
+    missing = json.loads(await mcp_server.document_update(
+        document_id="00000000-0000-0000-0000-000000000000", title="New",
+    ))
+    assert missing["status"] == "unresolved"
+
+    # A malformed id is the same refusal rather than a tool error: its REST
+    # twin is a 422 on the path parameter.
+    malformed = json.loads(await mcp_server.document_update(
+        document_id="not-a-uuid", title="New",
+    ))
+    assert malformed["status"] == "unresolved"
+    embedder_registry.forget("test-fp-mcp-docupdate2|3")
+
+
+@pytest.mark.asyncio
+async def test_document_update_bounds_tag_lengths_at_the_door(session, monkeypatch):
+    """`get_or_create` validates nothing, so an over-long tag would reach the
+    driver as a DataError with no savepoint under it -- a poisoned transaction
+    rather than a refusal.
+
+    An envelope rather than a tool error, because every other refusal on this
+    tool is one; the shared validator raises `ValueError` because its first
+    caller is a pydantic field validator.
+    """
+    import json
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    from app.api.mcp import server as mcp_server
+
+    @asynccontextmanager
+    async def _ctx():
+        yield session
+
+    monkeypatch.setattr(mcp_server, "async_session_factory", lambda: _ctx())
+    monkeypatch.setattr(mcp_server, "_pipeline", SimpleNamespace(llm=object()))
+
+    long_name = json.loads(await mcp_server.document_update(
+        document_id="00000000-0000-0000-0000-000000000000",
+        tags=["x" * 400],
+    ))
+    assert long_name["status"] == "invalid_tags"
+
+    # The category axis -- everything before the first `/` -- is the one the
+    # REST route missed. A name inside its own bound can still derive a
+    # category over the category column's.
+    long_category = json.loads(await mcp_server.document_update(
+        document_id="00000000-0000-0000-0000-000000000000",
+        tags=["a" * 60 + "/x"],
+    ))
+    assert long_category["status"] == "invalid_tags"
+
+
+@pytest.mark.asyncio
+async def test_document_update_refuses_an_empty_uri(session, monkeypatch):
+    """Its REST twin puts `min_length=1` on uri, so the empty string is a 422
+    there before the handler runs."""
+    import json
+    from contextlib import asynccontextmanager
+
+    from app.api.mcp import server as mcp_server
+
+    @asynccontextmanager
+    async def _ctx():
+        yield session
+
+    monkeypatch.setattr(mcp_server, "async_session_factory", lambda: _ctx())
+
+    empty = json.loads(await mcp_server.document_update(
+        document_id="00000000-0000-0000-0000-000000000000", uri="",
+    ))
+    assert empty["status"] == "invalid_mode"
+    assert "uri" in empty["reason"]
+
+
+@pytest.mark.asyncio
+async def test_document_update_refuses_a_call_that_changes_nothing(session, monkeypatch):
+    """Both shapes journal into an append-only table while moving nothing: a
+    metadata call naming no field, and a rename onto the prefix it holds.
+
+    Neither reaches a write, so no ordering note applies -- the refusals here
+    precede any row this test could leak.
+    """
+    import json
+    from contextlib import asynccontextmanager
+
+    from app.api.mcp import server as mcp_server
+
+    @asynccontextmanager
+    async def _ctx():
+        yield session
+
+    monkeypatch.setattr(mcp_server, "async_session_factory", lambda: _ctx())
+
+    no_fields = json.loads(await mcp_server.document_update(
+        document_id="00000000-0000-0000-0000-000000000000",
+    ))
+    assert no_fields["status"] == "no_change"
+
+    same_prefix = json.loads(await mcp_server.document_update(
+        project="mcp-docupdate", uri_prefix="mcpnotes/a",
+        new_uri_prefix="mcpnotes/a",
+    ))
+    assert same_prefix["status"] == "no_change"
+
+
+@pytest.mark.asyncio
+async def test_document_update_refuses_a_field_from_the_other_mode(session, monkeypatch):
+    """A dropped key would answer `ok` for a call that moved nothing.
+
+    The REST twin forbids extras, so naming `project` on a metadata edit is a
+    422 there; here it is an `invalid_mode` envelope rather than silence.
+    """
+    import json
+    from contextlib import asynccontextmanager
+
+    from app.api.mcp import server as mcp_server
+
+    @asynccontextmanager
+    async def _ctx():
+        yield session
+
+    monkeypatch.setattr(mcp_server, "async_session_factory", lambda: _ctx())
+
+    crossed = json.loads(await mcp_server.document_update(
+        document_id="00000000-0000-0000-0000-000000000000",
+        title="New", project="q",
+    ))
+    assert crossed["status"] == "invalid_mode"
+    assert "project" in crossed["reason"]
+
+    other_way = json.loads(await mcp_server.document_update(
+        project="q", uri_prefix="a", new_uri_prefix="b", pinned=True,
+    ))
+    assert other_way["status"] == "invalid_mode"
+    assert "pinned" in other_way["reason"]

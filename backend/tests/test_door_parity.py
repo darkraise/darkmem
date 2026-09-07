@@ -402,6 +402,45 @@ PARITY_TABLE: tuple[Surface, ...] = (
         note=f"{_DOCUMENTS_RULING} {_WRITE_WIRE_SHAPE}",
     ),
     Surface(
+        name="documents.metadata",
+        status=TWO_DOOR,
+        rest=(
+            ("PATCH", f"{V1}/documents/{{document_id}}"),
+            ("POST", f"{V1}/documents/rename"),
+        ),
+        mcp=("document_update",),
+        note=(
+            "A metadata edit is a rename, a pin and a tag set: it generates "
+            "nothing and labels nothing, so it sits with documents.write "
+            "under the owner ruling of 2026-08-23 rather than behind a gate. "
+            "The wire shapes differ on purpose. REST serves two routes "
+            "because they address different things; MCP carries both as "
+            "modes of one `document_update`, dispatched on whether the call "
+            "names a `document_id` or a `uri_prefix`, and refuses a call "
+            "naming both or neither with an `invalid_mode` envelope. The "
+            "refusals map the same two service errors the routes do: "
+            "DocumentUriConflict is a 409 against a `uri_conflict` envelope, "
+            "DocumentTargetUnresolved a 404 against an `unresolved` one -- "
+            "the same envelope-not-traceback rule the block verbs follow, and "
+            "a malformed id joins them rather than escaping as a tool error. "
+            "Neither door lets a field cross modes: the request model forbids "
+            "extras, so naming `project` on a PATCH is a 422, and the tool "
+            "answers `invalid_mode` for any field belonging to the mode the "
+            "call did not select -- silently dropping it would answer `ok` "
+            "for a call that moved nothing of what was asked. "
+            "PATCH rather than PUT per docs/api-rest-conventions.md -- the "
+            "body names only the fields that move, and an unnamed field "
+            "writes no assignment at all rather than NULLing its column. "
+            "`project` is absent from the model and extras are forbidden, so "
+            "moving a document between spaces is a 422 rather than a "
+            "silently dropped key. The subtree rename is a POST because its "
+            "body is the whole address of the work and it names no single "
+            "document; it answers the count of rows rewritten. A rename onto "
+            "an occupied path is a 409 on both verbs, the shape the "
+            "content-hash CAS already uses."
+        ),
+    ),
+    Surface(
         name="documents.retrieval",
         status=TWO_DOOR,
         rest=(
@@ -1967,6 +2006,24 @@ def render_markdown() -> str:
             f"{_STATUS_LABEL[surface.status]} | {_cell(prose)} |"
         )
     return "\n".join(lines)
+
+
+async def test_the_metadata_row_flips_when_its_mcp_twin_lands():
+    """The one flip no other guard catches.
+
+    Registering the twin trips `test_every_mcp_tool_is_classified`, and
+    filing it in this row without moving the status trips
+    `test_statuses_match_the_doors_the_row_actually_names`. Filing it in a
+    fresh MCP-only row of its own evades both and leaves this row asserting
+    a single-door reason that is no longer true.
+    """
+    if "document_update" not in await live_mcp_surface():
+        return
+    row = next(s for s in PARITY_TABLE if s.name == "documents.metadata")
+    assert row.status != REST_ONLY, (
+        "documents.metadata still claims REST-only while `document_update` is "
+        "registered -- move the tools onto this row and flip its status"
+    )
 
 
 def test_the_committed_table_is_the_enforced_table():

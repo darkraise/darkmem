@@ -104,12 +104,13 @@ purpose, and it is the surface the minimal client speaks:
 | `admin` | `POST /repos/{id}/webhook`, `POST /repos/{id}/reindex-files` |
 
 **`/mcp` is scoped far more widely, and separately** (doc 18 §5's second
-activation, 2026-08-26): of its 34 tools, 8 require `capture`, 25 require
-`read` and one requires `admin`, so a `capture`-scoped key reaches all 8 MCP
+activation, 2026-08-26): of its 39 tools, 13 require `capture`, 25 require
+`read` and one requires `admin`, so a `capture`-scoped key reaches all 13 MCP
 writer tools — `memory_add`, `memory_batch_add`, `memory_update`,
-`memory_delete`, `document_put`, `document_delete`, `checkpoint_save`,
-`research_run` — not only the two REST routes above, and a `read`-scoped key
-reaches the 25 readers. The table above is REST's reach only; do not read it
+`memory_delete`, `document_put`, `document_update`, `document_delete`,
+`checkpoint_save`, `research_run`, `block_update`, `block_insert`,
+`block_move`, `block_delete` — not only the two REST routes above, and a
+`read`-scoped key reaches the 25 readers. The table above is REST's reach only; do not read it
 as the whole reach of a key of any scope.
 
 **A leaked `admin` key now reaches `/mcp` too, which it did not before

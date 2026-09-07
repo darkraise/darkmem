@@ -1425,3 +1425,222 @@ async def test_a_related_item_carries_its_matching_passage(
             "project", "score",
             "block_id", "block_text", "span_start", "span_end",
         }
+
+
+# --- the metadata verb and the subtree rename -------------------------------
+
+
+async def test_patch_updates_one_document(client, auth_headers, filed, session):
+    doc = await filed("notes/p.md", "body")
+
+    response = await client.patch(
+        f"{V1}/documents/{doc}",
+        json={"title": "New", "pinned": True},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["document_id"] == doc
+
+    # Read the row back: a 200 and an id echo alone would also be answered by
+    # a handler that ignored the body. `pinned` is served by no read route,
+    # so the assertion goes to the column.
+    from sqlalchemy import text as sql_text
+
+    row = (await session.execute(
+        sql_text(
+            "SELECT title, pinned_at FROM documents WHERE id = CAST(:id AS uuid)"
+        ),
+        {"id": doc},
+    )).mappings().one()
+    assert row["title"] == "New"
+    assert row["pinned_at"] is not None
+
+
+async def test_patch_refuses_a_project_field(client, auth_headers, filed):
+    """Moving a document between spaces is not a rename. The field is absent
+    from the model and extra keys are forbidden, so this is 422 rather than a
+    silently dropped key."""
+    doc = await filed("notes/q.md", "body")
+
+    response = await client.patch(
+        f"{V1}/documents/{doc}", json={"project": "other"}, headers=auth_headers
+    )
+
+    assert response.status_code == 422
+
+
+async def test_patch_refuses_an_over_long_tag(client, auth_headers, filed):
+    """The column is the only length guard the service has, so an over-long
+    name would reach the driver as a DataError with no savepoint under it."""
+    from app.models.memory import TAG_NAME_MAX_LENGTH
+
+    doc = await filed("notes/t.md", "body")
+
+    response = await client.patch(
+        f"{V1}/documents/{doc}",
+        json={"tags": ["x" * (TAG_NAME_MAX_LENGTH + 1)]},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422
+
+
+async def test_patch_refuses_a_tag_whose_category_is_over_long(
+    client, auth_headers, filed,
+):
+    """`get_or_create` derives the category from everything before the first
+    slash and writes it to a narrower column than the name's, so a tag can
+    clear the name bound and still raise from the INSERT."""
+    from app.models.memory import TAG_CATEGORY_MAX_LENGTH
+
+    doc = await filed("notes/c.md", "body")
+
+    response = await client.patch(
+        f"{V1}/documents/{doc}",
+        json={"tags": ["x" * (TAG_CATEGORY_MAX_LENGTH + 1) + "/y"]},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422
+
+
+async def test_patch_of_a_missing_document_is_404(client, auth_headers):
+    response = await client.patch(
+        f"{V1}/documents/00000000-0000-0000-0000-000000000000",
+        json={"title": "New"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 404
+
+
+async def test_patch_refuses_an_empty_uri(client, auth_headers, filed):
+    doc = await filed("notes/emptyuri.md", "body")
+
+    response = await client.patch(
+        f"{V1}/documents/{doc}", json={"uri": ""}, headers=auth_headers
+    )
+
+    assert response.status_code == 422
+
+
+async def test_patch_naming_no_field_is_422(client, auth_headers, filed):
+    """An empty body is well formed and asks for nothing, and writing it would
+    leave a permanent `{"fields": []}` row in an append-only table."""
+    doc = await filed("notes/nofield.md", "body")
+
+    response = await client.patch(
+        f"{V1}/documents/{doc}", json={}, headers=auth_headers
+    )
+
+    assert response.status_code == 422
+
+
+async def test_a_rename_onto_the_prefix_it_already_holds_is_422(
+    client, auth_headers, filed,
+):
+    """One `document_updated` row per document for a call that moves nothing."""
+    await filed("same/a.md", "one")
+
+    response = await client.post(
+        f"{V1}/documents/rename",
+        json={"project": "p", "uri_prefix": "same", "new_uri_prefix": "same"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422
+
+
+async def test_a_rename_into_its_own_subtree_is_order_independent(
+    client, auth_headers, filed,
+):
+    """`nest/a.md`'s target is `nest/deep/a.md`, which another row of the same
+    set currently holds, so that row must move first. Iterating the locked
+    rows in id order made which one went first a coin flip on UUID sort: the
+    same call either answered 409 or produced this result."""
+    await filed("nest/a.md", "one")
+    await filed("nest/deep/a.md", "two")
+
+    response = await client.post(
+        f"{V1}/documents/rename",
+        json={"project": "p", "uri_prefix": "nest", "new_uri_prefix": "nest/deep"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["renamed"] == 2
+    for uri in ("nest/deep/a.md", "nest/deep/deep/a.md"):
+        found = await client.get(
+            f"{V1}/documents/by-uri", params={"project": "p", "uri": uri},
+            headers=auth_headers,
+        )
+        assert found.status_code == 200, uri
+
+
+async def test_patch_requires_auth(client, auth_headers, filed):
+    doc = await filed("notes/auth.md", "body")
+
+    response = await client.patch(f"{V1}/documents/{doc}", json={"title": "New"})
+
+    assert response.status_code == 401
+
+
+async def test_a_rename_onto_an_occupied_path_answers_409(
+    client, auth_headers, filed,
+):
+    first = await filed("notes/r.md", "one")
+    await filed("notes/s.md", "two")
+
+    response = await client.patch(
+        f"{V1}/documents/{first}", json={"uri": "notes/s.md"}, headers=auth_headers
+    )
+
+    assert response.status_code == 409
+
+
+async def test_rename_rewrites_a_subtree_and_reports_the_count(
+    client, auth_headers, filed,
+):
+    await filed("old/a.md", "one")
+    await filed("old/nested/b.md", "two")
+    await filed("other/c.md", "three")
+
+    response = await client.post(
+        f"{V1}/documents/rename",
+        json={"project": "p", "uri_prefix": "old", "new_uri_prefix": "new"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["renamed"] == 2
+
+    moved = await client.get(
+        f"{V1}/documents/by-uri", params={"project": "p", "uri": "new/nested/b.md"},
+        headers=auth_headers,
+    )
+    assert moved.status_code == 200
+
+
+async def test_a_subtree_rename_onto_an_occupied_path_answers_409(
+    client, auth_headers, filed,
+):
+    await filed("src/a.md", "one")
+    await filed("dst/a.md", "two")
+
+    response = await client.post(
+        f"{V1}/documents/rename",
+        json={"project": "p", "uri_prefix": "src", "new_uri_prefix": "dst"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 409
+
+
+async def test_rename_requires_auth(client):
+    response = await client.post(
+        f"{V1}/documents/rename",
+        json={"project": "p", "uri_prefix": "old", "new_uri_prefix": "new"},
+    )
+
+    assert response.status_code == 401

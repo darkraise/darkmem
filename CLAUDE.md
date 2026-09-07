@@ -71,6 +71,29 @@ migration discipline begins; nothing before it is grandfathered.
   `postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test`),
   then runs `DROP SCHEMA public CASCADE` and `alembic upgrade head` —
   never point it at a real database.
+- **The guards leg is mandatory after registering any route or MCP tool**, and
+  it is what a full-suite run on this host cannot be relied on to give you.
+  One new door trips a spread of full-list enumeration guards that no
+  door-local test touches, and every one of them lives outside the module the
+  work was in — the 2026-09-07 notes branch shipped an MCP tool with
+  `test_content_surface_scoping` red for eight tasks because each task ran its
+  own targeted legs. From `backend/`, on a lane database of its own
+  (`darkmem_test_2..5`, keeping `darkmem_test` for the controller):
+
+  ```
+  TEST_DATABASE_URL=postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test_2 \
+    python -m pytest -q tests/test_content_surface_scoping.py tests/test_door_parity.py \
+      tests/test_prompt_agent_instructions.py tests/test_api/test_rest_conformance.py \
+      tests/test_sdk_generator.py tests/test_spa_edge.py tests/test_events.py \
+      tests/test_mcp_auth.py tests/test_inert_objects.py tests/test_api/test_tags.py \
+      tests/test_block_pipeline.py tests/test_block_retrieval.py tests/test_auto_research.py \\
+      tests/test_event_taxonomy_map.py
+  ```
+
+  It runs in ~40s and needs no LLM key. Two guards it does **not** cover and
+  which must be re-read by hand: `docs/two-door-parity.md`'s headline counts
+  sentence sits outside the generated block, and this file's own tool and job
+  counts are prose.
 - Frontend (from `frontend/`): `npm run typecheck` (= `tsc -b`; plain
   `tsc` misses the project refs), `npm test` (vitest; excludes
   `tests/`, which is Playwright e2e via `npm run test:e2e`),
@@ -1352,9 +1375,10 @@ or `host:*`) adds LAN hosts; `*` disables the check entirely. Default
 by disabling either guard. Browser Origins are allowlisted to the same
 hosts. `memory_batch_add` mirrors the HTTP 1–100 batch cap.
 
-Authorization is per tool, not per door: `capture` covers the 12 writers
+Authorization is per tool, not per door: `capture` covers the 13 writers
 (`memory_add`, `memory_batch_add`, `memory_update`, `memory_delete`,
-`document_put`, `document_delete`, `checkpoint_save`, `research_run`, and
+`document_put`, `document_update`, `document_delete`, `checkpoint_save`,
+`research_run`, and
 increment 8's four block verbs `block_update`, `block_insert`, `block_move`,
 `block_delete` — a key that can edit a document's blocks can rewrite its
 content, which is `document_put`'s own power);
@@ -1367,7 +1391,7 @@ holding only `admin` reaches nothing else, and a `capture` key cannot
 trigger an index. `ratify` stays outside the scope vocabulary, unchanged by
 this activation: no MCP tool can reach `confirmed` power no matter what a
 key holds. `tools/list` is deliberately **not** scope-filtered — any
-authenticated key sees the full 38-tool catalogue, including writers it
+authenticated key sees the full 39-tool catalogue, including writers it
 cannot invoke; that is intended, not an oversight. A keyed capture call
 stamps `events.api_key_id` (the key's row UUID) and `events.actor` (the
 key's name) on the journaled row.
@@ -1673,6 +1697,24 @@ rather than creating a second one. That upsert is this door's own shape
 and has no analogue on the memory side, where all four capture doors
 append a row per capture and `origin_key` is corroboration identity, never
 a dedup key.
+
+**Metadata is a sixth verb, also on both doors.** `PATCH
+/api/v1/documents/{document_id}` moves one document's `title`, `uri`, `pinned`
+flag or tag set; `POST /api/v1/documents/rename` rewrites a whole `uri_prefix`
+subtree and answers the count of rows it moved. MCP carries both as modes of
+one `document_update`, dispatched on whether the call names a `document_id` or
+a `uri_prefix` and refusing a call naming both or neither. A rename onto a
+`(project, uri)` another document already holds is refused rather than
+merging the two — 409 on the route, a `uri_conflict` envelope from the tool —
+since that identity is what re-filing upserts on. Both doors bound tag names
+and their derived categories through `validate_tag_lengths` before any write —
+`PostgresTagRepository.get_or_create` validates nothing, so an over-long name
+below that check reaches the driver as a `DataError` in an unsavepointed
+transaction rather than a refusal. The repository is what derives
+`tag_category`, so a document links the same `tags` row a memory would. Note
+that one refusal is the tool's exception to its envelope shape: the validator
+raises `ValueError`, which escapes `document_update` as a tool error rather
+than the `uri_conflict`-style envelope its other refusals use.
 
 **Bounds, refused at the door.** `MAX_CONTENT_CHARS` (1,000,000
 characters) and `MAX_BLOCKS` (5,000) are both checked in `put_document`.

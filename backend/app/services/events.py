@@ -170,6 +170,8 @@ EVENT_TYPES: list[str] = [
     CONTRADICTION_SCANNED,
     CONTRADICTION_DISMISSED,
     "document_filed",
+    # The metadata verb's journal row; carries no document text.
+    "document_updated",
     # Increment 8's block verbs (spec §8.2). One row per verb call; the
     # payload names the verb, the block id and the resulting content_hash,
     # and carries NO block text -- write-time minimization, stated here at

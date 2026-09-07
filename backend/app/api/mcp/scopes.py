@@ -7,7 +7,7 @@ would be exploitable by a non-conforming client.
 
 **The gate is one dispatch-level middleware, not a call in each tool body.**
 The alternative the plan described - one such call as the first
-statement of all 38 tools - is 38 chances to omit one, and an omission is
+statement of all 39 tools - is 39 chances to omit one, and an omission is
 silent: the tool ships reachable by any valid key. Nothing in the type system,
 the decorator or the test suite can see a missing first statement, so the only
 guard available would be a test that re-derives the roster and hopes. Here the
@@ -18,7 +18,7 @@ and that direction is closed the other way round: an unlisted name is
 **refused**, not defaulted. A tool nobody classified is unreachable rather than
 readable, and ``tests/test_mcp_auth.py`` fails the build on the drift.
 
-That is also why ``TOOL_SCOPES`` names all 38 rather than deriving "everything
+That is also why ``TOOL_SCOPES`` names all 39 rather than deriving "everything
 not in ``CAPTURE_TOOLS`` is a reader". A derived partition is total by
 construction, which sounds like the stronger property and is the weaker one: it
 makes a new *writer* that nobody remembered to list resolve to ``read`` and
@@ -50,6 +50,9 @@ CAPTURE_TOOLS: frozenset[str] = frozenset({
     "memory_delete",
     "document_put",
     "document_delete",
+    # A key that can rename or re-tag a document holds writer power over it,
+    # which is `capture`'s scope and never `read`'s.
+    "document_update",
     "checkpoint_save",
     "research_run",
     # Increment 8's block verbs. `capture` is the writer scope and these are

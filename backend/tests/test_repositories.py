@@ -1,3 +1,8 @@
+import uuid
+
+import pytest
+from sqlalchemy import text as sa_text
+
 from app.models.memory import Memory, Tag
 from app.repositories.relational import PostgresMemoryRepository, PostgresTagRepository
 
@@ -95,3 +100,92 @@ async def test_prune_orphans_removes_unreferenced_tags(session):
     assert remaining == {"in-use"}
 
 
+async def _file_document(session, uri: str) -> uuid.UUID:
+    document_id = uuid.uuid4()
+    await session.execute(
+        sa_text(
+            "INSERT INTO documents (id, project, uri, title) "
+            "VALUES (CAST(:id AS uuid), :project, :uri, :title)"
+        ),
+        {"id": str(document_id), "project": "default", "uri": uri, "title": uri},
+    )
+    return document_id
+
+
+async def _link_document_tag(session, document_id: uuid.UUID, tag_id: int) -> None:
+    await session.execute(
+        sa_text(
+            "INSERT INTO document_tags (document_id, tag_id) "
+            "VALUES (CAST(:document_id AS uuid), CAST(:tag_id AS integer))"
+        ),
+        {"document_id": str(document_id), "tag_id": tag_id},
+    )
+
+
+@pytest.fixture
+async def note_tagged(session):
+    """A tag carried by one document and by no memory at all."""
+    tag = await PostgresTagRepository(session).get_or_create("note-only")
+    document_id = await _file_document(session, "notes/only.md")
+    await _link_document_tag(session, document_id, tag.id)
+    await session.flush()
+
+
+@pytest.fixture
+async def orphan_tag(session):
+    await PostgresTagRepository(session).get_or_create("abandoned")
+    await session.flush()
+
+
+@pytest.fixture
+async def doubly_tagged(session):
+    """One tag on three memories and two documents.
+
+    The two counts are deliberately unequal. At 2 and 2 the sum and the product
+    coincide at 4, so a joined count over both link tables reports the summed
+    answer by accident and the test it was written to catch passes."""
+    mem_repo = PostgresMemoryRepository(session)
+    tag = await PostgresTagRepository(session).get_or_create("shared")
+    for i in range(3):
+        memory = await mem_repo.create(
+            content=f"shared {i}", source="test", source_agent=None,
+            memory_type=None, importance=0.5, metadata={},
+        )
+        await mem_repo.set_tags(memory.id, ["shared"])
+    for i in range(2):
+        document_id = await _file_document(session, f"notes/shared-{i}.md")
+        await _link_document_tag(session, document_id, tag.id)
+    await session.flush()
+
+
+async def test_a_note_only_tag_survives_the_sweep(session, note_tagged):
+    """tag_orphan_cleanup runs hourly. Before this widening it deleted every
+    tag with no memory_tags row, so a tag carried only by a note -- and its
+    document_tags links, under the cascade -- vanished within the hour."""
+    repo = PostgresTagRepository(session)
+    await repo.prune_orphans()
+    assert "note-only" in {t.name for t in await repo.list_all()}
+
+
+async def test_the_histogram_counts_a_documents_tag(session, note_tagged):
+    counts = {t.name: n for t, n in
+              await PostgresTagRepository(session).get_with_counts()}
+    assert counts["note-only"] == 1
+
+
+async def test_a_tag_referenced_by_neither_is_still_swept(session, orphan_tag):
+    """The widening must not turn the sweep off."""
+    repo = PostgresTagRepository(session)
+    assert await repo.prune_orphans() >= 1
+    assert "abandoned" not in {t.name for t in await repo.list_all()}
+
+
+async def test_the_count_sums_rather_than_multiplies(session, doubly_tagged):
+    """Three memories and two documents is 5. A join across both link tables
+    yields six rows, which the join spellings report as 6 (count(*)) or 12
+    (summed per-column counts). The counts are unequal on purpose: at two and
+    two the product and the sum coincide at 4, so a join reports the summed
+    answer by accident and this guard silently stops guarding."""
+    counts = {t.name: n for t, n in
+              await PostgresTagRepository(session).get_with_counts()}
+    assert counts["shared"] == 5
