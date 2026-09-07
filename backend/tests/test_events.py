@@ -346,3 +346,9 @@ def test_auth_family_resolves_through_the_record_audit_wrapper():
             f"{value!r} is emitted only through _record_audit's wrapper "
             f"shape and the scan failed to trace it"
         )
+
+
+def test_document_updated_is_in_the_vocabulary():
+    """Widening is taxonomy-first: the value lands before its emitter ships,
+    or the first emission logs an unknown-type warning and misfiles the row."""
+    assert "document_updated" in EVENT_TYPES
