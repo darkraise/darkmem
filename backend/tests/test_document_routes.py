@@ -1222,7 +1222,7 @@ async def test_a_block_of_another_document_404s_at_this_path(
     assert resp.status_code == 404
 
 
-# ── content_hash precondition on the block routes (notes lane 1c) ────
+# ── content_hash precondition on the block routes ─────────────────────
 
 
 @pytest.mark.asyncio
@@ -1260,6 +1260,39 @@ async def test_delete_takes_the_hash_as_a_query_parameter(
         headers=auth_headers,
     )
     assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_insert_route_forwards_the_hash_to_the_service(
+    client, auth_headers, filed, first_block,
+):
+    doc = await filed("notes/h4.md", "# T\n\npara")
+    parent = await first_block(doc)
+    response = await client.post(
+        f"{V1}/documents/{doc}/blocks",
+        json={
+            "type": "paragraph", "text": "inserted", "parent_id": parent,
+            "expected_hash": "0" * 64,
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 409
+    assert "0" * 64 in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_move_route_forwards_the_hash_to_the_service(
+    client, auth_headers, filed, first_block,
+):
+    doc = await filed("notes/h5.md", "# T\n\npara")
+    block = await first_block(doc)
+    response = await client.post(
+        f"{V1}/documents/{doc}/blocks/{block}/move",
+        json={"new_parent_id": None, "expected_hash": "0" * 64},
+        headers=auth_headers,
+    )
+    assert response.status_code == 409
+    assert "0" * 64 in response.json()["detail"]
 
 
 async def _file_one(client, auth_headers, uri: str = "docs/rel.md") -> str:
