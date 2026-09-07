@@ -1382,16 +1382,24 @@ Authorization is per tool, not per door: `capture` covers the 13 writers
 increment 8's four block verbs `block_update`, `block_insert`, `block_move`,
 `block_delete` — a key that can edit a document's blocks can rewrite its
 content, which is `document_put`'s own power);
-`read` covers 25; `admin` covers the 1 repository-control tool
+`read` covers 25; `admin` covers the 2 destructive-control tools
 (`code_reindex`, the first MCP write door into the code subsystem —
-`docs/superpowers/specs/2026-08-28-file-scoped-reindex-design.md` §6.1).
-Scopes do not imply one another. `admin` reaches exactly one
-tool, `code_reindex` — repository control, not memory writing — so a key
-holding only `admin` reaches nothing else, and a `capture` key cannot
-trigger an index. `ratify` stays outside the scope vocabulary, unchanged by
+`docs/superpowers/specs/2026-08-28-file-scoped-reindex-design.md` §6.1 — and
+increment 2's `document_delete_subtree`).
+Scopes do not imply one another. `admin` reaches exactly those two
+tools — repository control and a whole-subtree erase, neither of them memory
+writing — so a key holding only `admin` reaches nothing else, and a `capture`
+key can trigger no index and delete no subtree. **The subtree delete is a
+separate tool rather than a mode on `document_delete` precisely because
+scopes are per tool**: a mode would have inherited `capture` and let any
+capture key erase a project's whole corpus. Its REST twin,
+`POST /api/v1/documents/delete`, sits behind ordinary auth with every other
+document route — the scope asymmetry is real and is recorded on
+`docs/two-door-parity.md`'s `documents.write` row, because the REST door has
+no per-verb grant for a mode to inherit. `ratify` stays outside the scope vocabulary, unchanged by
 this activation: no MCP tool can reach `confirmed` power no matter what a
 key holds. `tools/list` is deliberately **not** scope-filtered — any
-authenticated key sees the full 39-tool catalogue, including writers it
+authenticated key sees the full 40-tool catalogue, including writers it
 cannot invoke; that is intended, not an oversight. A keyed capture call
 stamps `events.api_key_id` (the key's row UUID) and `events.actor` (the
 key's name) on the journaled row.

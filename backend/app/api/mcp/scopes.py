@@ -94,6 +94,9 @@ READ_TOOLS: frozenset[str] = frozenset({
 
 ADMIN_TOOLS: frozenset[str] = frozenset({
     "code_reindex",
+    # Erasing a whole uri subtree is repository-scale control, not memory
+    # writing: a capture key deletes one document it can name.
+    "document_delete_subtree",
 })
 
 _pairs = (

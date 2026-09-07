@@ -673,6 +673,8 @@ async def test_naming_no_document_is_404_on_rest_and_an_error_on_the_tool(
     """Never a silent empty result. An outline of nothing and an outline with
     no headings are different answers, and the door that returned `[]` for
     both would report a document that does not exist as an empty one."""
+    import json
+
     from app.api.mcp import server as mcp_server
     from app.services.document_door import DocumentTargetUnresolved
 
@@ -695,8 +697,12 @@ async def test_naming_no_document_is_404_on_rest_and_an_error_on_the_tool(
         await mcp_server.document_outline(project="p", uri="docs/never-filed.md")
     with pytest.raises(DocumentTargetUnresolved):
         await mcp_server.document_get(project="p", uri="docs/never-filed.md")
-    with pytest.raises(DocumentTargetUnresolved):
+    # The delete answers an envelope where the two reads raise: it is a
+    # writer, and its sibling writer document_update already answers one.
+    unresolved = json.loads(
         await mcp_server.document_delete(project="p", uri="docs/never-filed.md")
+    )
+    assert unresolved["status"] == "unresolved"
 
 
 @pytest.mark.asyncio

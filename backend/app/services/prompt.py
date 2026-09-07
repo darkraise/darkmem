@@ -692,6 +692,8 @@ PROMPTS: dict[str, str] = {
         "- **document_get** — one document by id, or by `(project, uri)`.\n"
         "- **document_update** — rename, move, pin or re-tag a document.\n"
         "- **document_delete** — remove a filed document.\n"
+        "- **document_delete_subtree** — delete every document under a uri "
+        "prefix, in one transaction; needs an admin-scoped key.\n"
         "\n"
         "Editing a document block by block, rather than re-filing the whole "
         "thing: use the block verbs with ids from `document_get`. The first "

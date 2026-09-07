@@ -928,6 +928,9 @@ MCP_TOOLS_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "mcp:document_outline",
     "mcp:document_get",
     "mcp:document_delete",
+    # The subtree delete's MCP half. Same reason as its REST twin: it removes
+    # documents and answers a count, and no `memories` row crosses it.
+    "mcp:document_delete_subtree",
     # The metadata verb's MCP half, both modes. Same reason as its REST twins
     # above -- it rewrites a document's own title, uri, pin and tag set and
     # answers an id or a count, and no `memories` row crosses it.

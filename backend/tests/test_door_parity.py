@@ -132,7 +132,28 @@ _WRITE_WIRE_SHAPE = (
     "route and a hash_conflict envelope from the tool -- one refusal produced "
     "by DocumentHashConflict on both doors -- and PutResult now also carries "
     "content_hash, so both doors echo the hash a caller preconditions its "
-    "next edit on."
+    "next edit on. Since the 2026-09-07 workspace-shell increment the row "
+    "also carries the subtree delete, and it is the one place on this table "
+    "where the two doors differ in *authority* rather than in wire shape. "
+    "POST /documents/delete sits behind the same ordinary auth every other "
+    "route on this row does; the MCP twin `document_delete_subtree` is held "
+    "at `admin`, the scope `code_reindex` has and the only other tool that "
+    "holds it. That is deliberate and not a parity gap: MCP scopes are per "
+    "tool, so a subtree mode on `document_delete` would have inherited "
+    "`capture` and let any capture key erase a project's corpus, where the "
+    "REST door has no such per-verb grant to inherit. Both doors call one "
+    "`delete_documents`, which journals one `documents_deleted` row per "
+    "document before removing any of them and refuses the whole delete if a "
+    "journal write does not land -- and MCP alone fills that row's `actor` "
+    "and `api_key_id` from the presented key, since REST has no key to name. "
+    "The refusals map as the rest of this row does: an empty `uri_prefix` is "
+    "a 422 against a `no_change` envelope, and the tool answers `ok` with the "
+    "count removed where the route answers its own body. Naming a prefix "
+    "nothing was filed under is a success reporting 0 on both doors, not a "
+    "refusal: nothing is asserted about a subtree that is already absent. "
+    "`document_delete`'s own unresolved target became a `unresolved` "
+    "envelope in the same change, so the two document writers no longer "
+    "disagree on DocumentTargetUnresolved."
 )
 
 
@@ -399,7 +420,7 @@ PARITY_TABLE: tuple[Surface, ...] = (
             ("DELETE", f"{V1}/documents/by-uri"),
             ("POST", f"{V1}/documents/delete"),
         ),
-        mcp=("document_put", "document_delete"),
+        mcp=("document_put", "document_delete", "document_delete_subtree"),
         note=f"{_DOCUMENTS_RULING} {_WRITE_WIRE_SHAPE}",
     ),
     Surface(
