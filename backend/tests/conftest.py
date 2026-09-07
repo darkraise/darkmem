@@ -84,14 +84,17 @@ async def session(setup_database):
     # run, anything the test writes afterwards autobegins a session-owned
     # transaction and commits for real, surviving the teardown rollback and
     # colliding with whatever module claims those ids next. Order such a test
-    # writes-then-refusals, or give the call its own session.
+    # writes-then-refusals. A second session is no escape: `session_factory`
+    # binds to this same connection, so it resolves to "rollback_only" too and
+    # its rollback ends the same boundary, while a session on its own
+    # connection cannot see the test's uncommitted rows at all.
     #
     # The 1.x recipe that reopened a savepoint by hand from an
-    # "after_transaction_end" listener is therefore redundant here, and it was
-    # not harmless: it fired while an application-level session.begin_nested()
-    # was still unwinding, and the InvalidRequestError that raised was caught
-    # and reported by events.record_event as a journal failure on every call
-    # in the suite, masking real ones.
+    # "after_transaction_end" listener does not apply here. It was removed as
+    # harmful rather than as inert -- it fired while an application-level
+    # session.begin_nested() was still unwinding, and the InvalidRequestError
+    # that raised was caught and reported by events.record_event as a journal
+    # failure on every call in the suite, masking real ones.
     async_session = AsyncSession(bind=connection, expire_on_commit=False)
 
     yield async_session
