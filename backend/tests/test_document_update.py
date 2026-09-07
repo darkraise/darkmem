@@ -294,9 +294,16 @@ async def test_a_prefix_containing_a_wildcard_does_not_over_match(session):
     match `notes/axb`."""
     await _file(session, "body", "notes/a_b/one.md")
     await _file(session, "body", "notes/axb/two.md")
+    await _file(session, "body", "notes/a%c/three.md")
+    await _file(session, "body", "notes/aXc/four.md")
     await rename_documents(session, project="p", uri_prefix="notes/a_b",
                            new_uri_prefix="notes/z")
-    assert "notes/axb/two.md" in await _uris(session, "p")
+    await rename_documents(session, project="p", uri_prefix="notes/a%c",
+                           new_uri_prefix="notes/y")
+    assert await _uris(session, "p") == {
+        "notes/z/one.md", "notes/axb/two.md",
+        "notes/y/three.md", "notes/aXc/four.md",
+    }
 
 
 @pytest.mark.asyncio

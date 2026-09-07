@@ -779,16 +779,15 @@ async def rename_documents(
         {"p": project, "u": uri_prefix},
     )).mappings().all()
 
-    moved: list[str] = []
     for row in rows:
         await update_document_metadata(
             session,
             document_id=row["id"],
             uri=new_uri_prefix + row["uri"][len(uri_prefix):],
         )
-        moved.append(row["id"])
 
-    if moved:
+    if rows:
+        moved = [row["id"] for row in rows]
         # A resolved link holds the target's id, so its denormalised
         # `target_uri` is stale the moment the target moves; carrying the id
         # means the repair needs no string surgery on the link side.
@@ -801,18 +800,24 @@ async def rename_documents(
             ),
             {"ids": moved},
         )
-        # A stub points at a uri nobody had filed. A rename can land a
-        # document on exactly that uri, which resolves the stub -- so the
-        # second pass is over unresolved links, not over the moved set.
+        # A stub points at a uri nobody had filed, and a rename can land a
+        # document on exactly that uri -- so this pass is over unresolved
+        # links rather than over the moved set. The source document is joined
+        # to require that both ends sit in one project: `(project, uri)` is
+        # the identity, so an unscoped match resolves a stub against whichever
+        # project happens to hold the path, and a link crossing that boundary
+        # is what the personal space rests on not happening.
         await session.execute(
             text(
                 "UPDATE document_links l SET target_document_id = d.id "
-                "FROM documents d "
-                "WHERE l.target_document_id IS NULL "
-                "  AND d.project = CAST(:p AS text) "
+                "FROM documents s, documents d "
+                "WHERE s.id = l.source_document_id "
+                "  AND l.target_document_id IS NULL "
+                "  AND d.id = ANY(CAST(:ids AS uuid[])) "
+                "  AND d.project = s.project "
                 "  AND d.uri = l.target_uri"
             ),
-            {"p": project},
+            {"ids": moved},
         )
 
     return len(rows)
