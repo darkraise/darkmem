@@ -1515,6 +1515,32 @@ async def test_patch_of_a_missing_document_is_404(client, auth_headers):
     assert response.status_code == 404
 
 
+async def test_a_rename_into_its_own_subtree_is_order_independent(
+    client, auth_headers, filed,
+):
+    """`nest/a.md`'s target is `nest/deep/a.md`, which another row of the same
+    set currently holds, so that row must move first. Iterating the locked
+    rows in id order made which one went first a coin flip on UUID sort: the
+    same call either answered 409 or produced this result."""
+    await filed("nest/a.md", "one")
+    await filed("nest/deep/a.md", "two")
+
+    response = await client.post(
+        f"{V1}/documents/rename",
+        json={"project": "p", "uri_prefix": "nest", "new_uri_prefix": "nest/deep"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["renamed"] == 2
+    for uri in ("nest/deep/a.md", "nest/deep/deep/a.md"):
+        found = await client.get(
+            f"{V1}/documents/by-uri", params={"project": "p", "uri": uri},
+            headers=auth_headers,
+        )
+        assert found.status_code == 200, uri
+
+
 async def test_patch_requires_auth(client, auth_headers, filed):
     doc = await filed("notes/auth.md", "body")
 

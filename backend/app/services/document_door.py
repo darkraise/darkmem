@@ -766,6 +766,20 @@ async def rename_documents(
     and a prefix of `notes/a_b` would over-match `notes/axb`; comparing a
     fixed-length slice of the uri has no metacharacter class at all.
 
+    **Locking order and iteration order are deliberately different.** The rows
+    move one at a time through a unique index, so a row whose target is
+    another row's current uri must move second -- and in id order that is a
+    coin flip on UUID sort, which is how `notes/a -> notes/a/x` came out as a
+    `DocumentUriConflict` or as a correct rewrite depending on which id
+    happened to be smaller. The mapping is injective, so the collision is
+    always transient and always between two rows of this set, and depth
+    orders it: moving a subtree *into* itself, the colliding row is the
+    deeper one, so the deepest moves first; moving one *out* to an ancestor
+    prefix, the colliding row is the shallower one, so the shallowest moves
+    first. Anything else -- disjoint prefixes -- has no intra-set collision at
+    all and takes either order. A collision with a document outside the set is
+    a real conflict and still raises.
+
     Every row goes through `update_document_metadata` rather than one bulk
     UPDATE, so each renamed document gets its own `document_updated` row and
     the same `DocumentUriConflict` mapping instead of a second write path
@@ -783,7 +797,11 @@ async def rename_documents(
         {"p": project, "u": uri_prefix},
     )).mappings().all()
 
-    for row in rows:
+    # Deepest-first when the new prefix sits under the old one, shallowest-
+    # first when the old sits under the new; see the docstring. `sorted` is
+    # stable, so rows of equal depth keep the id order they were locked in.
+    descend = new_uri_prefix.startswith(uri_prefix + "/")
+    for row in sorted(rows, key=lambda r: len(r["uri"]), reverse=descend):
         await update_document_metadata(
             session,
             document_id=row["id"],

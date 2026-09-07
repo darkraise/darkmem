@@ -329,6 +329,30 @@ async def test_another_project_sharing_the_prefix_is_untouched(session):
 
 
 @pytest.mark.asyncio
+async def test_a_rename_into_its_own_subtree_is_order_independent(session):
+    """The rows move one at a time through a unique index, so `notes/a/x`'s
+    move must precede `notes/a`'s. Iterating in id order made which one went
+    first a coin flip on UUID sort: the same call either raised
+    `DocumentUriConflict` or produced this result."""
+    await _file(session, "body", "notes/a")
+    await _file(session, "body", "notes/a/x")
+    assert await rename_documents(session, project="p", uri_prefix="notes/a",
+                                  new_uri_prefix="notes/a/x") == 2
+    assert await _uris(session, "p") == {"notes/a/x", "notes/a/x/x"}
+
+
+@pytest.mark.asyncio
+async def test_a_rename_out_to_an_ancestor_prefix_is_order_independent(session):
+    """The mirror image: moving a subtree up, the row that must move first is
+    the shallowest, not the deepest."""
+    await _file(session, "body", "notes/a/x/t.md")
+    await _file(session, "body", "notes/a/x/x/t.md")
+    assert await rename_documents(session, project="p", uri_prefix="notes/a/x",
+                                  new_uri_prefix="notes/a") == 2
+    assert await _uris(session, "p") == {"notes/a/t.md", "notes/a/x/t.md"}
+
+
+@pytest.mark.asyncio
 async def test_a_rename_onto_an_occupied_path_refuses(session):
     await _file(session, "one", "notes/a/one.md")
     await _file(session, "two", "notes/b/one.md")
