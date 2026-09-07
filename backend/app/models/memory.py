@@ -37,10 +37,15 @@ memory_tags = Table(
 
 # Documents reuse the same `tags` registry rather than minting a second
 # vocabulary, so every count and sweep over `tags` has two link tables to read.
+# `document_id` carries no ForeignKey because `documents` has no mapped model —
+# the document repository works in raw SQL — and an unresolvable reference in
+# this metadata raises NoReferencedTableError on any autogenerate or
+# `sorted_tables` walk. This Table exists to be queried; the baseline owns the
+# DDL and the real ON DELETE CASCADE constraint, as it owns ix_document_tags_tag.
 document_tags = Table(
     "document_tags",
     Base.metadata,
-    Column("document_id", UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True),
+    Column("document_id", UUID(as_uuid=True), primary_key=True),
     Column("tag_id", Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
 )
 

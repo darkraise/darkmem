@@ -139,15 +139,20 @@ async def orphan_tag(session):
 
 @pytest.fixture
 async def doubly_tagged(session):
-    """One tag on two memories and two documents: four references, not eight."""
+    """One tag on three memories and two documents.
+
+    The two counts are deliberately unequal. At 2 and 2 the sum and the product
+    coincide at 4, so a joined count over both link tables reports the summed
+    answer by accident and the test it was written to catch passes."""
     mem_repo = PostgresMemoryRepository(session)
     tag = await PostgresTagRepository(session).get_or_create("shared")
-    for i in range(2):
+    for i in range(3):
         memory = await mem_repo.create(
             content=f"shared {i}", source="test", source_agent=None,
             memory_type=None, importance=0.5, metadata={},
         )
         await mem_repo.set_tags(memory.id, ["shared"])
+    for i in range(2):
         document_id = await _file_document(session, f"notes/shared-{i}.md")
         await _link_document_tag(session, document_id, tag.id)
     await session.flush()
@@ -176,8 +181,9 @@ async def test_a_tag_referenced_by_neither_is_still_swept(session, orphan_tag):
 
 
 async def test_the_count_sums_rather_than_multiplies(session, doubly_tagged):
-    """Two memories and two documents is 4, not 8. A join across both link
-    tables multiplies the rows and passes every single-reference test."""
+    """Three memories and two documents is 5. A join across both link tables
+    yields six rows, which every join-based spelling then reports as 6 or 10 --
+    and each of those passes every single-reference test."""
     counts = {t.name: n for t, n in
               await PostgresTagRepository(session).get_with_counts()}
-    assert counts["shared"] == 4
+    assert counts["shared"] == 5
