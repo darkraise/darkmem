@@ -23,18 +23,18 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.memory import document_tags
-from app.repositories.documents import resolve_by_id, resolve_by_uri
+from app.repositories.documents import (
+    DocumentIsBlockFirst,
+    resolve_by_id,
+    resolve_by_uri,
+)
 from app.repositories.relational import PostgresTagRepository
 from app.services.block_embeddings import (
     PARENT_TABLE, ensure_partition, embed_blocks, resolve_active_fingerprint,
 )
 from app.services.block_pipeline import ingest_document
 from app.services.block_query import BlockQueryService
-from app.services.document_ingest import (
-    UNCHANGED,
-    DocumentIsBlockFirst,
-    DocumentUriConflict,
-)
+from app.services.document_ingest import UNCHANGED, DocumentUriConflict
 from app.services.embedder_registry import child_table
 from app.services.events import record_event
 

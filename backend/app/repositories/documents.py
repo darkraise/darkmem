@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 __all__ = [
     "BlockRow",
+    "DocumentIsBlockFirst",
     "DocumentRow",
     "insert_blocks",
     "resolve_by_id",
@@ -39,6 +40,21 @@ __all__ = [
     "update_document",
     "upsert_by_uri",
 ]
+
+
+class DocumentIsBlockFirst(ValueError):
+    """put refused: this document is owned by the block verbs (spec §8.2).
+
+    A content push over an editing session is a silent overwrite -- the put
+    would strip every block the editor placed and rewrite the content it was
+    serialising from.
+
+    It lives in the repository because that is where the statement carrying
+    one of the two refusals lives, and because this module names no service:
+    ``document_ingest`` imports it, so an exception defined over there and
+    raised here would close an import cycle. ``document_door`` re-exports it
+    for the two doors.
+    """
 
 
 @dataclass(frozen=True)
@@ -188,11 +204,6 @@ async def upsert_by_uri(
     Raises `DocumentIsBlockFirst` when the row it would fold onto is owned by
     the block verbs.
     """
-    # Deferred: `document_ingest` imports this module, so naming the exception
-    # at module scope closes an import cycle whenever the service is imported
-    # first.
-    from app.services.document_ingest import DocumentIsBlockFirst
-
     resolved = (
         await session.execute(
             _UPSERT_BY_URI,

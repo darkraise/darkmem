@@ -86,7 +86,6 @@ __all__ = [
     "DocumentFileFailure",
     "DocumentFileJob",
     "DocumentHashConflict",
-    "DocumentIsBlockFirst",
     "DocumentUriConflict",
     "DocumentIngest",
     "OVERSIZED_BLOCK_CHARS",
@@ -124,25 +123,11 @@ class DocumentHashConflict(Exception):
         )
 
 
-class DocumentIsBlockFirst(ValueError):
-    """put refused: this document is owned by the block verbs (spec §8.2).
-
-    A content push over an editing session is a silent overwrite -- the put
-    would strip every block the editor placed and rewrite the content it was
-    serialising from.
-
-    It lives here rather than in ``document_door`` because both the door and
-    the repository raise it, and a repository raising a door class would close
-    an import cycle. ``document_door`` re-exports it.
-    """
-
-
 class DocumentUriConflict(ValueError):
     """A rename would land on a ``(project, uri)`` another document holds.
 
-    It lives here rather than in ``document_door`` because the door imports
-    the repository layer, so a repository raising a door class would close an
-    import cycle.
+    It sits beside the other conflict classes this module defines; its only
+    raise site is ``document_door``, which imports it from here.
     """
 
     def __init__(self, uri: str | None):

@@ -732,6 +732,46 @@ async def _first(session, document_id):
     )).scalar_one()
 
 
+def test_the_documents_repository_names_no_service():
+    """`DocumentIsBlockFirst` is raised by the repository and caught on both
+    doors, so it has to live somewhere both can reach. The repository is that
+    place only while it stays a leaf: `document_ingest` imports it, so a
+    service module it imported back would close a cycle -- and the cycle fires
+    on whichever entry point imports the service first, which under pytest is
+    never the case. So the suite would stay green while the app failed to
+    boot. This asserts the property directly instead.
+
+    `ast.walk` rather than `tree.body`: a deferred import inside a function
+    body is the shape that closes the cycle just as surely, and is exactly
+    what a reader reaches for when the module-level one raises.
+    """
+    import ast
+    import pathlib
+
+    path = pathlib.Path(__file__).resolve().parents[1] / "app" / "repositories" / "documents.py"
+    package = "app.repositories"
+    offenders = []
+    for node in ast.walk(ast.parse(path.read_text(), filename=str(path))):
+        if isinstance(node, ast.Import):
+            named = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            # A relative import spells the same module without naming it:
+            # level 1 is this package, each further level strips a segment.
+            base = package.rsplit(".", node.level - 1)[0] if node.level else ""
+            named = [".".join(part for part in (base, node.module) if part)]
+        else:
+            continue
+        offenders += [
+            f"line {node.lineno}: {name}"
+            for name in named
+            if name == "app.services" or name.startswith("app.services.")
+        ]
+    assert not offenders, (
+        "app/repositories/documents.py must name no service module:\n"
+        + "\n".join(offenders)
+    )
+
+
 @pytest.mark.asyncio
 async def test_the_upsert_refuses_a_block_first_row_it_collides_with(session):
     """The vacated-path race: a put resolves nothing, inserts, and collides
