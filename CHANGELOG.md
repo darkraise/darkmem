@@ -4,13 +4,13 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
-## v1.6.0 — 2026-09-07
+## v1.7.0 — 2026-09-07
 
-**The project workspace made usable, and the foundation under a personal
-notes space.** Three surfaces the owner reported as wrong plus the markdown
-rendering underneath them; then an `html` block type, the six schema objects
-the notes workspace stands on, and the seeded personal space itself. The
-on-demand proposition lift is retired in the same cut.
+**The foundation under a personal notes space, and the retirement of the
+proposition lift.** An `html` block type so a document carrying raw HTML can
+be edited at all, the six schema objects the notes workspace stands on, and
+the seeded personal space itself. The on-demand lift from blocks into the
+fact vault is deleted rather than repaired.
 
 ### Added
 
@@ -38,17 +38,6 @@ on-demand proposition lift is retired in the same cut.
   only inserting. It is served on the catalogue and kept out of project
   pickers — a space, not a project.
 
-- **The Progress board.** The Progress tab rendered `progress.md` through the
-  document reader, so the one question a board exists to answer — what can I
-  start right now — still meant joining a 309-row table against eight epic
-  files by hand. The board does that join: status columns with epic and lane
-  grouping, filters over epic, lane, owner, model and text, and a derived
-  **startable** filter that resolves each task's dependencies and its epic's
-  entry gate. A `blocked` card renders its Note in full, which is the one thing
-  the eleven-column table genuinely hides.
-- **Syntax-highlighted code blocks with their language labelled.** The parser
-  has stored `properties.language` since it was written and nothing read it.
-
 ### Removed
 
 - **The on-demand proposition lift and the block-to-fact bridge.** A pricing
@@ -63,6 +52,42 @@ on-demand proposition lift is retired in the same cut.
   block to a fact any more. `related-memories` and `document-connections`
   are re-based onto cosine similarity over block vectors instead of the
   retired entity basis.
+
+### Notes
+
+- **Deploying this is destructive.** The baseline is regenerated in place, so
+  the revision id does not move and `alembic upgrade head` will report a clean
+  migration against a database that does not have these objects —
+  `schema_guard` is what catches it and refuses to start. Drop and recreate the
+  database, then **re-seed `admin_password_hash`, all eight
+  `llm_purpose_configs` rows and the two `llm_providers` rows**; the
+  `verification` row especially, since `llm_seed.py` does not reproduce it at
+  the qualified judge identity. The additive path in
+  `docs/runbook-deployment.md` is **not** available here despite this diff
+  being +86/−0: three of the nine objects are columns added inside existing
+  `CREATE TABLE` statements, which that procedure's `pg_dump --table=` step
+  does not emit. That runbook's precondition has been restated to say so.
+- **`blocks.search_vector` is a stored generated column on a populated table**,
+  so adding it rewrites every row under an `ACCESS EXCLUSIVE` lock. On the
+  recreate path this is paid at import time rather than as downtime.
+
+## v1.6.0 — 2026-09-04
+
+**The project workspace, made usable.** Three surfaces the owner reported as
+wrong, plus the markdown rendering underneath them.
+
+### Added
+
+- **The Progress board.** The Progress tab rendered `progress.md` through the
+  document reader, so the one question a board exists to answer — what can I
+  start right now — still meant joining a 309-row table against eight epic
+  files by hand. The board does that join: status columns with epic and lane
+  grouping, filters over epic, lane, owner, model and text, and a derived
+  **startable** filter that resolves each task's dependencies and its epic's
+  entry gate. A `blocked` card renders its Note in full, which is the one thing
+  the eleven-column table genuinely hides.
+- **Syntax-highlighted code blocks with their language labelled.** The parser
+  has stored `properties.language` since it was written and nothing read it.
 
 ### Fixed
 
@@ -96,22 +121,6 @@ on-demand proposition lift is retired in the same cut.
   layout already showed a bare arrow with nothing naming its destination.
 
 ### Notes
-
-- **Deploying this is destructive.** The baseline is regenerated in place, so
-  the revision id does not move and `alembic upgrade head` will report a clean
-  migration against a database that does not have these objects —
-  `schema_guard` is what catches it and refuses to start. Drop and recreate the
-  database, then **re-seed `admin_password_hash`, all eight
-  `llm_purpose_configs` rows and the two `llm_providers` rows**; the
-  `verification` row especially, since `llm_seed.py` does not reproduce it at
-  the qualified judge identity. The additive path in
-  `docs/runbook-deployment.md` is **not** available here despite this diff
-  being +86/−0: three of the nine objects are columns added inside existing
-  `CREATE TABLE` statements, which that procedure's `pg_dump --table=` step
-  does not emit. That runbook's precondition has been restated to say so.
-- **`blocks.search_vector` is a stored generated column on a populated table**,
-  so adding it rewrites every row under an `ACCESS EXCLUSIVE` lock. On the
-  recreate path this is paid at import time rather than as downtime.
 
 - **The Progress board's own design spec was wrong about the corpus, and the
   parsers found it.** Its task-id pattern dropped all 18 `TH*` rows while still
