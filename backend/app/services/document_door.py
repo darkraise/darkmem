@@ -44,6 +44,7 @@ __all__ = [
     "delete_document",
     "document_blocks",
     "document_content",
+    "document_hash",
     "document_outline",
     "put_document",
     "resolve_document_id",
@@ -701,6 +702,24 @@ async def document_content(session: AsyncSession, *, document_id: str) -> str | 
     """
     return (await session.execute(
         _DOCUMENT_CONTENT, {"document_id": document_id}
+    )).scalar_one_or_none()
+
+
+_DOCUMENT_HASH = text(
+    "SELECT content_hash FROM documents WHERE id = CAST(:document_id AS uuid)"
+)
+
+
+async def document_hash(session: AsyncSession, *, document_id: str) -> str | None:
+    """The document's current `content_hash` -- what a caller preconditions
+    its next edit on.
+
+    Its own statement, separate from `document_content`: the hash is one
+    short string, so unlike the verbatim source it is served unconditionally
+    and must not ride that function's `include_content` gate.
+    """
+    return (await session.execute(
+        _DOCUMENT_HASH, {"document_id": document_id}
     )).scalar_one_or_none()
 
 

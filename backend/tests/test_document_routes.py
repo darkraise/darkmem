@@ -32,6 +32,36 @@ def stub_llm():
     app.state.llm = previous
 
 
+@pytest.fixture
+def filed(client, auth_headers, stub_llm):
+    """File a document over the route; return its id."""
+
+    async def _filed(uri: str, content: str) -> str:
+        response = await client.post(
+            f"{V1}/documents",
+            json={"project": "p", "uri": uri, "content": content},
+            headers=auth_headers,
+        )
+        assert response.status_code == 201
+        return response.json()["document_id"]
+
+    return _filed
+
+
+@pytest.fixture
+def first_block(client, auth_headers):
+    """Read a document's first block id."""
+
+    async def _first_block(document_id: str) -> str:
+        response = await client.get(
+            f"{V1}/documents/{document_id}", headers=auth_headers
+        )
+        assert response.status_code == 200
+        return response.json()["blocks"][0]["block_id"]
+
+    return _first_block
+
+
 @pytest.mark.asyncio
 async def test_put_creates_and_reports_both_counts(client, auth_headers, stub_llm):
     response = await client.post(
@@ -1190,6 +1220,46 @@ async def test_a_block_of_another_document_404s_at_this_path(
         json={"text": "nope"}, headers=auth_headers,
     )
     assert resp.status_code == 404
+
+
+# ── content_hash precondition on the block routes (notes lane 1c) ────
+
+
+@pytest.mark.asyncio
+async def test_the_blocks_read_serves_the_documents_hash(client, auth_headers, filed):
+    doc = await filed("notes/h.md", "# T\n\npara")
+    body = (await client.get(f"{V1}/documents/{doc}",
+                             headers=auth_headers)).json()
+    assert body["content_hash"], "a caller cannot precondition its first edit"
+
+
+@pytest.mark.asyncio
+async def test_a_stale_hash_answers_409_naming_both_hashes(
+    client, auth_headers, filed, first_block,
+):
+    doc = await filed("notes/h2.md", "# T\n\npara")
+    response = await client.patch(
+        f"{V1}/documents/{doc}/blocks/{await first_block(doc)}",
+        json={"text": "x", "expected_hash": "0" * 64},
+        headers=auth_headers,
+    )
+    assert response.status_code == 409
+    assert "0" * 64 in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_delete_takes_the_hash_as_a_query_parameter(
+    client, auth_headers, filed, first_block,
+):
+    """DELETE carries no body in this API's conventions, so the precondition
+    rides the query string. A body field here would be silently ignored."""
+    doc = await filed("notes/h3.md", "# T\n\npara")
+    response = await client.delete(
+        f"{V1}/documents/{doc}/blocks/{await first_block(doc)}"
+        f"?expected_hash={'0' * 64}",
+        headers=auth_headers,
+    )
+    assert response.status_code == 409
 
 
 async def _file_one(client, auth_headers, uri: str = "docs/rel.md") -> str:
