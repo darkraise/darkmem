@@ -904,8 +904,8 @@ async def document_update(
     """
     from app.schemas.memory import validate_tag_lengths
     from app.services.document_door import (
-        DocumentTargetUnresolved, DocumentUriConflict, rename_documents,
-        update_document_metadata,
+        DocumentNothingToChange, DocumentTargetUnresolved,
+        DocumentUriConflict, rename_documents, update_document_metadata,
     )
 
     subtree = uri_prefix is not None or new_uri_prefix is not None
@@ -986,6 +986,11 @@ async def document_update(
         except DocumentTargetUnresolved as exc:
             await session.rollback()
             return json.dumps({"status": "unresolved", "reason": str(exc)})
+        except DocumentNothingToChange as exc:
+            # The REST twins answer 422 for the same two shapes: a call that
+            # names no field, and a rename onto the prefix it already has.
+            await session.rollback()
+            return json.dumps({"status": "no_change", "reason": str(exc)})
         except Exception:
             await session.rollback()
             raise

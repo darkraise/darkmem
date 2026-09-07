@@ -13,6 +13,7 @@ from sqlalchemy import text
 from uuid import uuid4
 
 from app.services.document_door import (
+    DocumentNothingToChange,
     DocumentTargetUnresolved,
     DocumentUriConflict,
     put_document,
@@ -255,9 +256,20 @@ async def test_a_tags_only_call_against_a_missing_id_refuses(session):
 @pytest.mark.asyncio
 async def test_an_entirely_empty_call_against_a_missing_id_refuses(session):
     missing = uuid4()
-    with pytest.raises(DocumentTargetUnresolved):
+    with pytest.raises(DocumentNothingToChange):
         await update_document_metadata(session, document_id=missing)
     assert await _event_count(session, missing) == 0
+
+
+@pytest.mark.asyncio
+async def test_a_call_naming_no_field_refuses_and_journals_nothing(session):
+    """An empty call used to journal `{"fields": []}` against a real document,
+    which `events` can never take back."""
+    _, doc = await _file(session, "body", "notes/empty.md")
+    before = await _event_count(session, doc)
+    with pytest.raises(DocumentNothingToChange):
+        await update_document_metadata(session, document_id=doc)
+    assert await _event_count(session, doc) == before
 
 
 @pytest.mark.asyncio
@@ -326,6 +338,18 @@ async def test_another_project_sharing_the_prefix_is_untouched(session):
     assert await rename_documents(session, project="p", uri_prefix="notes/a",
                                   new_uri_prefix="notes/b") == 1
     assert await _uris(session, "q") == {"notes/a/one.md"}
+
+
+@pytest.mark.asyncio
+async def test_a_rename_onto_the_prefix_it_already_holds_refuses(session):
+    """It would journal one `document_updated` row per document for a call
+    that moves nothing, into an append-only table."""
+    _, doc = await _file(session, "body", "notes/a/one.md")
+    before = await _event_count(session, doc)
+    with pytest.raises(DocumentNothingToChange):
+        await rename_documents(session, project="p", uri_prefix="notes/a",
+                               new_uri_prefix="notes/a")
+    assert await _event_count(session, doc) == before
 
 
 @pytest.mark.asyncio

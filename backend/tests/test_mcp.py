@@ -764,6 +764,37 @@ async def test_document_update_bounds_tag_lengths_at_the_door(session, monkeypat
 
 
 @pytest.mark.asyncio
+async def test_document_update_refuses_a_call_that_changes_nothing(session, monkeypatch):
+    """Both shapes journal into an append-only table while moving nothing: a
+    metadata call naming no field, and a rename onto the prefix it holds.
+
+    Neither reaches a write, so no ordering note applies -- the refusals here
+    precede any row this test could leak.
+    """
+    import json
+    from contextlib import asynccontextmanager
+
+    from app.api.mcp import server as mcp_server
+
+    @asynccontextmanager
+    async def _ctx():
+        yield session
+
+    monkeypatch.setattr(mcp_server, "async_session_factory", lambda: _ctx())
+
+    no_fields = json.loads(await mcp_server.document_update(
+        document_id="00000000-0000-0000-0000-000000000000",
+    ))
+    assert no_fields["status"] == "no_change"
+
+    same_prefix = json.loads(await mcp_server.document_update(
+        project="mcp-docupdate", uri_prefix="mcpnotes/a",
+        new_uri_prefix="mcpnotes/a",
+    ))
+    assert same_prefix["status"] == "no_change"
+
+
+@pytest.mark.asyncio
 async def test_document_update_refuses_a_field_from_the_other_mode(session, monkeypatch):
     """A dropped key would answer `ok` for a call that moved nothing.
 

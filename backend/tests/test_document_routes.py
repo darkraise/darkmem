@@ -1515,6 +1515,33 @@ async def test_patch_of_a_missing_document_is_404(client, auth_headers):
     assert response.status_code == 404
 
 
+async def test_patch_naming_no_field_is_422(client, auth_headers, filed):
+    """An empty body is well formed and asks for nothing, and writing it would
+    leave a permanent `{"fields": []}` row in an append-only table."""
+    doc = await filed("notes/nofield.md", "body")
+
+    response = await client.patch(
+        f"{V1}/documents/{doc}", json={}, headers=auth_headers
+    )
+
+    assert response.status_code == 422
+
+
+async def test_a_rename_onto_the_prefix_it_already_holds_is_422(
+    client, auth_headers, filed,
+):
+    """One `document_updated` row per document for a call that moves nothing."""
+    await filed("same/a.md", "one")
+
+    response = await client.post(
+        f"{V1}/documents/rename",
+        json={"project": "p", "uri_prefix": "same", "new_uri_prefix": "same"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422
+
+
 async def test_a_rename_into_its_own_subtree_is_order_independent(
     client, auth_headers, filed,
 ):

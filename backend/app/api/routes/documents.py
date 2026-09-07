@@ -75,6 +75,7 @@ from app.services.document_door import (
     SEARCH_DEFAULT_LIMIT, SEARCH_MAX_LIMIT, DocumentTargetUnresolved,
     DocumentIsBlockFirst,
     DocumentNotConvertible,
+    DocumentNothingToChange,
     DocumentTooLarge, DocumentUriConflict, delete_document, document_blocks,
     document_content,
     document_hash,
@@ -733,6 +734,10 @@ async def rename_documents_route(
         )
     except DocumentUriConflict as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except DocumentNothingToChange as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)
+        ) from exc
     await session.commit()
     return DocumentRenameResponse(renamed=renamed)
 
@@ -760,6 +765,12 @@ async def patch_document_route(
         # 409, the same shape the content-hash CAS and the block-first
         # refusal use: the caller made no mistake, the path is taken.
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except DocumentNothingToChange as exc:
+        # 422 rather than 200: the body is well formed and names nothing to
+        # do, which is the same class as a body pydantic would reject.
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)
+        ) from exc
     await session.commit()
     return DocumentPatchResponse(document_id=str(document_id))
 

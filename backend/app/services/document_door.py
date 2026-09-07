@@ -46,6 +46,7 @@ __all__ = [
     "SEARCH_MAX_LIMIT",
     "BlockRow",
     "DocumentIsBlockFirst",
+    "DocumentNothingToChange",
     "DocumentTargetUnresolved",
     "DocumentTooLarge",
     "DocumentUriConflict",
@@ -92,6 +93,16 @@ class DocumentTooLarge(ValueError):
 
 class DocumentTargetUnresolved(ValueError):
     """Nothing a caller named resolves to a document that exists."""
+
+
+class DocumentNothingToChange(ValueError):
+    """The call named no change, so writing it would journal an empty edit.
+
+    `events` is append-only, so a metadata call naming no field and a subtree
+    rename whose new prefix equals the old one leave a permanent row saying an
+    edit happened when none did. Refusing is what keeps the journal a record
+    of edits rather than of calls.
+    """
 
 
 async def resolve_document_id(
@@ -674,7 +685,15 @@ async def update_document_metadata(
     `project` is deliberately not a field: moving a document between spaces is
     not a rename, and allowing it here would let one call cross the boundary
     the personal space rests on.
+
+    A call naming no field at all is refused rather than journalled: `events`
+    is append-only, so it would leave a permanent `{"fields": []}` row saying
+    an edit happened when none did.
     """
+    if title is None and uri is None and pinned is None and tags is None:
+        raise DocumentNothingToChange(
+            "name at least one of title, uri, pinned or tags"
+        )
     doc_id = document_id if isinstance(document_id, UUID) else UUID(str(document_id))
     assignments: list[str] = []
     params: dict = {"id": str(doc_id)}
@@ -785,6 +804,11 @@ async def rename_documents(
     the same `DocumentUriConflict` mapping instead of a second write path
     reproducing both.
     """
+    if new_uri_prefix == uri_prefix:
+        raise DocumentNothingToChange(
+            f"new_uri_prefix equals uri_prefix ({uri_prefix!r}); nothing moves"
+        )
+
     rows = (await session.execute(
         text(
             "SELECT CAST(id AS text) AS id, uri FROM documents "
