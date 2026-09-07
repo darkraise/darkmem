@@ -402,6 +402,38 @@ PARITY_TABLE: tuple[Surface, ...] = (
         note=f"{_DOCUMENTS_RULING} {_WRITE_WIRE_SHAPE}",
     ),
     Surface(
+        name="documents.metadata",
+        status=REST_ONLY,
+        rest=(
+            ("PATCH", f"{V1}/documents/{{document_id}}"),
+            ("POST", f"{V1}/documents/rename"),
+        ),
+        mcp=(),
+        reason=(
+            "Single-door only until the MCP twin lands beside it in the very "
+            "next task of this increment, which is the one that turns this "
+            "row two-door -- the verbs are already one service "
+            "(`update_document_metadata` and `rename_documents` in "
+            "`document_door`), so nothing about the capability is "
+            "REST-shaped and no ruling makes it so. A metadata edit is a "
+            "rename, a pin and a tag set: it generates nothing and labels "
+            "nothing, so it sits with documents.write under the owner "
+            "ruling of 2026-08-23 rather than behind a gate."
+        ),
+        note=(
+            "PATCH rather than PUT per docs/api-rest-conventions.md -- the "
+            "body names only the fields that move, and an unnamed field "
+            "writes no assignment at all rather than NULLing its column. "
+            "`project` is absent from the model and extras are forbidden, so "
+            "moving a document between spaces is a 422 rather than a "
+            "silently dropped key. The subtree rename is a POST because its "
+            "body is the whole address of the work and it names no single "
+            "document; it answers the count of rows rewritten. A rename onto "
+            "an occupied path is a 409 on both verbs, the shape the "
+            "content-hash CAS already uses."
+        ),
+    ),
+    Surface(
         name="documents.retrieval",
         status=TWO_DOOR,
         rest=(

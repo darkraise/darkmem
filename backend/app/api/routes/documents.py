@@ -8,6 +8,8 @@ Provides:
   - GET    /api/v1/documents/{document_id}
   - POST   /api/v1/documents/qa
   - POST   /api/v1/documents
+  - PATCH  /api/v1/documents/{document_id}
+  - POST   /api/v1/documents/rename
   - DELETE /api/v1/documents/{document_id}
   - POST   /api/v1/documents/search
   - GET    /api/v1/documents/by-uri/outline
@@ -59,7 +61,7 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -73,10 +75,12 @@ from app.services.document_door import (
     SEARCH_DEFAULT_LIMIT, SEARCH_MAX_LIMIT, DocumentTargetUnresolved,
     DocumentIsBlockFirst,
     DocumentNotConvertible,
-    DocumentTooLarge, delete_document, document_blocks, document_content,
+    DocumentTooLarge, DocumentUriConflict, delete_document, document_blocks,
+    document_content,
     document_hash,
     document_outline,
-    put_document, resolve_document_target, search_sections,
+    put_document, rename_documents, resolve_document_target, search_sections,
+    update_document_metadata,
 )
 from app.services.block_verbs import (
     BlockCycleError,
@@ -92,6 +96,7 @@ from app.repositories.documents import resolve_by_id
 from app.services.document_summary import (
     EmptySummaryError, read_summary, summarise_document,
 )
+from app.models.memory import TAG_NAME_MAX_LENGTH
 from app.services.faithfulness_gate import FaithfulnessGate, Outcome
 from app.services.grounded_qa import GroundedQaService
 
@@ -245,6 +250,52 @@ class DocumentPutRequest(BaseModel):
     # content_hash. Omit for last-writer-wins, which is what every existing
     # caller gets. 409 when it does not match (spec §5.3, review M1).
     expected_hash: str | None = None
+
+
+class DocumentPatchRequest(BaseModel):
+    # `project` is deliberately absent: moving a document between spaces is
+    # not a rename, and forbidding extras makes an attempt a 422 rather than a
+    # silently dropped key.
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = None
+    uri: str | None = Field(default=None, min_length=1, max_length=500)
+    pinned: bool | None = None
+    tags: list[str] | None = None
+
+    @field_validator("tags")
+    @classmethod
+    def _bound_tag_names(cls, value: list[str] | None) -> list[str] | None:
+        """The tag column's length is the only guard below this door.
+
+        `get_or_create` validates nothing, so an over-long name reaches the
+        driver as a DataError with no savepoint under it -- a 500 rather than
+        a refusal, and a poisoned transaction with it.
+        """
+        if value is not None:
+            for tag in value:
+                if len(tag) > TAG_NAME_MAX_LENGTH:
+                    raise ValueError(
+                        f"tag exceeds the {TAG_NAME_MAX_LENGTH}-character "
+                        f"limit: {tag[:40]!r}..."
+                    )
+        return value
+
+
+class DocumentPatchResponse(BaseModel):
+    document_id: str
+
+
+class DocumentRenameRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    project: str = Field(min_length=1, max_length=200)
+    uri_prefix: str = Field(min_length=1, max_length=500)
+    new_uri_prefix: str = Field(min_length=1, max_length=500)
+
+
+class DocumentRenameResponse(BaseModel):
+    renamed: int
 
 
 class DocumentPutResponse(BaseModel):
@@ -669,6 +720,58 @@ async def put_document_route(
         largest_block_chars=result.largest_block_chars,
         content_hash=result.content_hash,
     )
+
+
+@router.post("/rename", response_model=DocumentRenameResponse)
+async def rename_documents_route(
+    body: DocumentRenameRequest,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+) -> DocumentRenameResponse:
+    """Rewrite a uri prefix across a subtree.
+
+    A POST rather than a PATCH because the request names no single document:
+    the body carries the whole address of the work, which is the conventions'
+    complex-request shape.
+    """
+    try:
+        renamed = await rename_documents(
+            session,
+            project=body.project,
+            uri_prefix=body.uri_prefix,
+            new_uri_prefix=body.new_uri_prefix,
+        )
+    except DocumentUriConflict as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    await session.commit()
+    return DocumentRenameResponse(renamed=renamed)
+
+
+@router.patch("/{document_id}", response_model=DocumentPatchResponse)
+async def patch_document_route(
+    document_id: UUID,
+    body: DocumentPatchRequest,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+) -> DocumentPatchResponse:
+    """Write only the metadata fields the caller named."""
+    try:
+        await update_document_metadata(
+            session,
+            document_id=document_id,
+            title=body.title,
+            uri=body.uri,
+            pinned=body.pinned,
+            tags=body.tags,
+        )
+    except DocumentTargetUnresolved as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except DocumentUriConflict as exc:
+        # 409, the same shape the content-hash CAS and the block-first
+        # refusal use: the caller made no mistake, the path is taken.
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    await session.commit()
+    return DocumentPatchResponse(document_id=str(document_id))
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
