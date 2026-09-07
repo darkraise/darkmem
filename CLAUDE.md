@@ -1683,9 +1683,15 @@ one `document_update`, dispatched on whether the call names a `document_id` or
 a `uri_prefix` and refusing a call naming both or neither. A rename onto a
 `(project, uri)` another document already holds is refused rather than
 merging the two — 409 on the route, a `uri_conflict` envelope from the tool —
-since that identity is what re-filing upserts on. Tag names resolve through
-the shared tag repository, so a document's tags carry the same name bound and
-`tag_category` a memory's do.
+since that identity is what re-filing upserts on. Both doors bound tag names
+and their derived categories through `validate_tag_lengths` before any write —
+`PostgresTagRepository.get_or_create` validates nothing, so an over-long name
+below that check reaches the driver as a `DataError` in an unsavepointed
+transaction rather than a refusal. The repository is what derives
+`tag_category`, so a document links the same `tags` row a memory would. Note
+that one refusal is the tool's exception to its envelope shape: the validator
+raises `ValueError`, which escapes `document_update` as a tool error rather
+than the `uri_conflict`-style envelope its other refusals use.
 
 **Bounds, refused at the door.** `MAX_CONTENT_CHARS` (1,000,000
 characters) and `MAX_BLOCKS` (5,000) are both checked in `put_document`.
