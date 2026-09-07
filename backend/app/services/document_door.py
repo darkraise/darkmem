@@ -39,6 +39,7 @@ from app.services.embedder_registry import child_table
 from app.services.events import record_event
 
 __all__ = [
+    "DOCUMENTS_DELETED_EVENT",
     "DOCUMENT_UPDATED_EVENT",
     "MAX_BLOCKS",
     "MAX_CONTENT_CHARS",
@@ -76,6 +77,7 @@ MAX_CONTENT_CHARS = 1_000_000
 MAX_BLOCKS = 5_000
 
 DOCUMENT_UPDATED_EVENT = "document_updated"
+DOCUMENTS_DELETED_EVENT = "documents_deleted"
 
 # Only the two constants below are ever interpolated into the UPDATE; every
 # caller-supplied value is bound.
@@ -102,11 +104,11 @@ class DocumentJournalWriteFailed(RuntimeError):
 
     `record_event` degrades loudly and never raises, which is right for a
     capture: a lost log line must not fail an ingest that can simply be
-    repeated. Four callers already take the opposite contract for the same
-    reason this one does -- `set_verification_status`, `ratify`,
-    `record_human_verdict` and `dismiss_contradiction_suspicion` raise on a
-    `False` because for them the row is not a log line, it *is* the record,
-    so the write and its row have to be atomic.
+    repeated. It returns whether the row landed so that a caller for whom the
+    row is not a log line but *is* the record can take the opposite contract
+    and make the write and its row atomic -- see the strict-caller paragraph
+    of CLAUDE.md's "Events journal" section for that contract and who holds
+    it.
 
     A subtree delete is that case with more force than a capture. It is
     unrecoverable, it cascades blocks and their vectors, and over MCP the
@@ -894,6 +896,8 @@ async def delete_documents(
     *,
     project: str,
     uri_prefix: str,
+    actor: str | None = None,
+    api_key_id: UUID | None = None,
 ) -> int:
     """Delete a whole uri subtree in one transaction, journaling each row.
 
@@ -912,6 +916,15 @@ async def delete_documents(
     `delete_document` journals nothing and that is right for a single note;
     a bulk delete is unrecoverable, cascades blocks and their vectors, and
     over MCP the event's `api_key_id` is the only record of who ran it.
+
+    `actor` and `api_key_id` are what make that last clause true rather than
+    aspirational, so they are threaded here rather than left to the doors:
+    a door cannot supply an identity this signature does not take, and a
+    later task widening it is how the journal-before-delete ordering gets
+    re-derived by someone who did not write it. Both are optional because
+    REST does not have them to give -- it authenticates its own way and its
+    sibling journal writers pass neither -- while MCP fills both from
+    `current_key_name()` / `current_api_key_id()`.
     """
     if not uri_prefix:
         # `left(uri, 0 + 1) = '/'` matches nothing, so an unrefused empty
@@ -941,10 +954,12 @@ async def delete_documents(
     for row in rows:
         landed = await record_event(
             session,
-            event_type="documents_deleted",
+            event_type=DOCUMENTS_DELETED_EVENT,
             object_type="document",
             object_id=UUID(row["id"]),
             project=row["project"],
+            actor=actor,
+            api_key_id=api_key_id,
             payload={"uri": row["uri"], "uri_prefix": uri_prefix},
         )
         if not landed:

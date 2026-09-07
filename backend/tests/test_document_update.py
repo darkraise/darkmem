@@ -13,6 +13,7 @@ from sqlalchemy import text
 from uuid import uuid4
 
 from app.services.document_door import (
+    DOCUMENTS_DELETED_EVENT,
     DocumentJournalWriteFailed,
     DocumentNothingToChange,
     DocumentTargetUnresolved,
@@ -497,3 +498,25 @@ async def test_a_subtree_delete_refuses_when_the_journal_write_fails(
     # The assertion that matters: a raise after the DELETE would satisfy the
     # one above and still have destroyed the subtree.
     assert await _uris(session, "p") == {"notes/a/one.md", "notes/a/two.md"}
+
+
+@pytest.mark.asyncio
+async def test_a_subtree_delete_journals_the_caller_identity(session):
+    """The refusal above protects an audit row; these are what make it one."""
+    _, doc = await _file(session, "body", "notes/a/one.md")
+    key_id = uuid4()
+    assert await delete_documents(
+        session, project="p", uri_prefix="notes/a",
+        actor="agent-key", api_key_id=key_id,
+    ) == 1
+    row = (await session.execute(
+        text(
+            "SELECT event_type, actor, CAST(api_key_id AS text) AS api_key_id "
+            "FROM events WHERE object_id = CAST(:id AS uuid) "
+            "ORDER BY created_at DESC, id DESC LIMIT 1"
+        ),
+        {"id": str(doc)},
+    )).mappings().one()
+    assert row["event_type"] == DOCUMENTS_DELETED_EVENT
+    assert row["actor"] == "agent-key"
+    assert row["api_key_id"] == str(key_id)
