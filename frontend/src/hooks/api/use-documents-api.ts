@@ -320,11 +320,27 @@ export function useDocumentOutline(documentId: string | null) {
   })
 }
 
-export function useDocumentBlocks(documentId: string | null) {
-  return useQuery<{ document_id: string; blocks: BlockRow[] }>({
+export interface DocumentBlocksResponse {
+  document_id: string
+  blocks: BlockRow[]
+  /** The hash a block write must precondition on. Null for a document whose
+   *  source was bytes, which stores no content to hash. */
+  content_hash: string | null
+}
+
+/** Shared so a re-read of the hash resolves the same cache entry the editor
+ *  renders from, rather than a second one under a duplicated key. */
+export function documentBlocksQuery(documentId: string) {
+  return {
     queryKey: ["documentBlocks", documentId],
+    queryFn: () => apiFetch<DocumentBlocksResponse>(`/documents/${documentId}`),
+  }
+}
+
+export function useDocumentBlocks(documentId: string | null) {
+  return useQuery<DocumentBlocksResponse>({
+    ...documentBlocksQuery(documentId ?? ""),
     enabled: !DEMO && Boolean(documentId),
-    queryFn: () => apiFetch(`/documents/${documentId}`),
   })
 }
 
