@@ -4,6 +4,22 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
+## Unreleased
+
+### Fixed
+
+- **A serialised block tree now re-parses to itself.** Sweeping the
+  492-document corpus found 29 documents whose regenerated source did not,
+  from three separate serialiser defects: the blank line between a quote's
+  children carried no `>` prefix and so ended the blockquote; a table cell
+  holding a `|` was emitted unescaped, which declared a column the delimiter
+  row did not have and **truncated the cell's text** on re-parse; and a
+  multi-line setext heading was emitted as one-line ATX, so everything past
+  the first newline became a paragraph. The middle one was the only defect
+  that destroyed text, and it was the widest at 24 of the 29. Down to 6, all
+  of which re-order blocks without losing a character — a parser-side fold of
+  a blockquote's paragraph children, not a serialiser defect.
+
 ## v1.7.0 — 2026-09-07
 
 **The foundation under a personal notes space, and the retirement of the
