@@ -28,7 +28,13 @@ vi.mock("@/features/documents/components/document-reader", () => ({
 /** Records the `nodeActions` reference the workspace hands down on each
  *  render. Stubbing the tree is the only way to observe that identity: the
  *  real component is `memo`'d precisely so it does NOT re-render, which is
- *  what makes the defect invisible from the outside. */
+ *  what makes the defect invisible from the outside.
+ *
+ *  What this CANNOT see is whether the render was actually skipped: `memo`
+ *  compares every prop shallowly, so one fresh object anywhere else in the
+ *  list defeats it while this reference stays stable and this test stays
+ *  green. `project-workspace-render.test.tsx` measures the outcome; this one
+ *  guards a single necessary input to it. */
 const seen: Array<unknown> = []
 vi.mock("@/features/documents/components/document-tree", () => ({
   DocumentTree: ({
