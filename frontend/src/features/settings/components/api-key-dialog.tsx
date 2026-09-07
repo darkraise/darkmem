@@ -28,7 +28,12 @@ import { useCreateApiKey, type ApiKeyCreated } from "@/hooks/api"
 const SCOPE_ITEMS = [
   { value: "capture", label: "Save new memories" },
   { value: "read", label: "Search and read memories" },
-  { value: "admin", label: "Receive push updates" },
+  // `admin` is the destructive one and the label must say so before the
+  // key is granted: it reaches `code_reindex` and `document_delete_subtree`,
+  // which erases every document under a uri prefix with no undo. It read
+  // "Receive push updates" until 2026-09-07, which named the webhook it was
+  // first granted for and nothing it has been widened to since.
+  { value: "admin", label: "Reindex repositories and delete document subtrees" },
 ]
 
 /**
