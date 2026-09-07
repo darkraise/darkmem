@@ -403,24 +403,25 @@ PARITY_TABLE: tuple[Surface, ...] = (
     ),
     Surface(
         name="documents.metadata",
-        status=REST_ONLY,
+        status=TWO_DOOR,
         rest=(
             ("PATCH", f"{V1}/documents/{{document_id}}"),
             ("POST", f"{V1}/documents/rename"),
         ),
-        mcp=(),
-        reason=(
-            "Single-door only until the MCP twin lands beside it in the very "
-            "next task of this increment, which is the one that turns this "
-            "row two-door -- the verbs are already one service "
-            "(`update_document_metadata` and `rename_documents` in "
-            "`document_door`), so nothing about the capability is "
-            "REST-shaped and no ruling makes it so. A metadata edit is a "
-            "rename, a pin and a tag set: it generates nothing and labels "
-            "nothing, so it sits with documents.write under the owner "
-            "ruling of 2026-08-23 rather than behind a gate."
-        ),
+        mcp=("document_update",),
         note=(
+            "A metadata edit is a rename, a pin and a tag set: it generates "
+            "nothing and labels nothing, so it sits with documents.write "
+            "under the owner ruling of 2026-08-23 rather than behind a gate. "
+            "The wire shapes differ on purpose. REST serves two routes "
+            "because they address different things; MCP carries both as "
+            "modes of one `document_update`, dispatched on whether the call "
+            "names a `document_id` or a `uri_prefix`, and refuses a call "
+            "naming both or neither with an `invalid_mode` envelope. The "
+            "refusals map the same two service errors the routes do: "
+            "DocumentUriConflict is a 409 against a `uri_conflict` envelope, "
+            "DocumentTargetUnresolved a 404 against an `unresolved` one -- "
+            "the same envelope-not-traceback rule the block verbs follow. "
             "PATCH rather than PUT per docs/api-rest-conventions.md -- the "
             "body names only the fields that move, and an unnamed field "
             "writes no assignment at all rather than NULLing its column. "

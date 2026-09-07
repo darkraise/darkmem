@@ -869,6 +869,101 @@ async def document_delete(
     return json.dumps({"document_id": target, "deleted": True})
 
 
+@mcp.tool(
+    description=(
+        "Edit a document's metadata, or rename a whole subtree. Name a "
+        "document_id to retitle, move, pin or re-tag one document; name a "
+        "project plus uri_prefix and new_uri_prefix to rewrite that prefix "
+        "across every document under it. Never both."
+    )
+)
+async def document_update(
+    document_id: str | None = None,
+    title: str | None = None,
+    uri: str | None = None,
+    pinned: bool | None = None,
+    tags: list[str] | None = None,
+    project: str | None = None,
+    uri_prefix: str | None = None,
+    new_uri_prefix: str | None = None,
+) -> str:
+    """
+    Args:
+        document_id: The single-document mode's address, from document_get.
+        title: Optional new title.
+        uri: Optional new path. Onto an occupied path this refuses.
+        pinned: Optional; true pins, false unpins.
+        tags: Optional; replaces the document's tag set rather than merging.
+        project: Scope, for the subtree mode.
+        uri_prefix: The prefix to rewrite, for the subtree mode.
+        new_uri_prefix: What to rewrite it to.
+
+    An omitted field writes no assignment at all, so a rename cannot silently
+    unpin a document or strip its tags. `project` is not a single-document
+    field: moving a document between spaces is not a rename.
+    """
+    from app.schemas.memory import validate_tag_lengths
+    from app.services.document_door import (
+        DocumentTargetUnresolved, DocumentUriConflict, rename_documents,
+        update_document_metadata,
+    )
+
+    subtree = uri_prefix is not None or new_uri_prefix is not None
+    if (document_id is None) == (not subtree):
+        return json.dumps({
+            "status": "invalid_mode",
+            "reason": (
+                "name a document_id, or a project with uri_prefix and "
+                "new_uri_prefix -- never both and never neither"
+            ),
+        })
+    if subtree and not (project and uri_prefix and new_uri_prefix):
+        return json.dumps({
+            "status": "invalid_mode",
+            "reason": "the subtree mode needs project, uri_prefix and new_uri_prefix",
+        })
+
+    # The `tags` table's own columns are the only guard below this door:
+    # `get_or_create` validates nothing, so a name or a derived category
+    # longer than its column reaches the driver as a DataError with no
+    # savepoint under it -- a poisoned transaction rather than a refusal.
+    # One shared validator with the capture and REST doors so they cannot
+    # drift apart.
+    validate_tag_lengths(tags)
+
+    async with async_session_factory() as session:
+        try:
+            if subtree:
+                renamed = await rename_documents(
+                    session, project=project, uri_prefix=uri_prefix,
+                    new_uri_prefix=new_uri_prefix,
+                )
+            else:
+                await update_document_metadata(
+                    session, document_id=document_id, title=title, uri=uri,
+                    pinned=pinned, tags=tags,
+                )
+            await session.commit()
+        except DocumentUriConflict as exc:
+            # Structured refusals rather than tool errors, the shape the
+            # block verbs already answer: the path is taken, or the document
+            # is gone. Their REST twins are a 409 and a 404.
+            await session.rollback()
+            return json.dumps({"status": "uri_conflict", "reason": str(exc)})
+        except DocumentTargetUnresolved as exc:
+            await session.rollback()
+            return json.dumps({"status": "unresolved", "reason": str(exc)})
+        except Exception:
+            await session.rollback()
+            raise
+
+    if subtree:
+        return json.dumps({
+            "status": "ok", "project": project, "renamed": renamed,
+        })
+    return json.dumps({"status": "ok", "document_id": document_id})
+
+
 # ---------------------------------------------------------------------------
 # Code knowledge tools
 # ---------------------------------------------------------------------------
