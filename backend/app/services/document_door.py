@@ -19,18 +19,23 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.memory import document_tags
 from app.repositories.documents import resolve_by_id, resolve_by_uri
+from app.repositories.relational import PostgresTagRepository
 from app.services.block_embeddings import (
     PARENT_TABLE, ensure_partition, embed_blocks, resolve_active_fingerprint,
 )
 from app.services.block_pipeline import ingest_document
 from app.services.block_query import BlockQueryService
-from app.services.document_ingest import UNCHANGED
+from app.services.document_ingest import UNCHANGED, DocumentUriConflict
 from app.services.embedder_registry import child_table
+from app.services.events import record_event
 
 __all__ = [
+    "DOCUMENT_UPDATED_EVENT",
     "MAX_BLOCKS",
     "MAX_CONTENT_CHARS",
     "SEARCH_DEFAULT_LIMIT",
@@ -38,6 +43,7 @@ __all__ = [
     "BlockRow",
     "DocumentTargetUnresolved",
     "DocumentTooLarge",
+    "DocumentUriConflict",
     "OutlineNode",
     "PutResult",
     "SectionHit",
@@ -50,6 +56,8 @@ __all__ = [
     "resolve_document_id",
     "resolve_document_target",
     "search_sections",
+    "set_document_tags",
+    "update_document_metadata",
 ]
 
 # An order of magnitude above any plan or ledger. These exist to refuse a
@@ -58,6 +66,12 @@ __all__ = [
 # `buffer_wait_timeout_seconds` to degrade against.
 MAX_CONTENT_CHARS = 1_000_000
 MAX_BLOCKS = 5_000
+
+DOCUMENT_UPDATED_EVENT = "document_updated"
+
+# Only the two constants below are ever interpolated into the UPDATE; every
+# caller-supplied value is bound.
+_PIN_ASSIGNMENT = {True: "pinned_at = now()", False: "pinned_at = NULL"}
 
 # The section-search page, named here rather than on either door: the REST
 # body model and the MCP tool's clamp are two enforcement sites for one bound,
@@ -611,6 +625,111 @@ async def delete_document(session: AsyncSession, *, document_id: UUID | str) -> 
     """
     result = await session.execute(_DELETE_DOCUMENT, {"id": str(document_id)})
     return result.rowcount > 0
+
+
+async def set_document_tags(
+    session: AsyncSession, document_id: UUID | str, names: list[str],
+) -> None:
+    """Replace the document's tag set with `names`.
+
+    A present list replaces rather than merges, because a merge-only verb
+    cannot remove a tag. Names resolve through the shared tag repository so
+    `tag_category` and the name bound apply identically on both doors, and so
+    a document links the same `tags` row a memory carrying that name would.
+    """
+    doc_id = document_id if isinstance(document_id, UUID) else UUID(str(document_id))
+    repo = PostgresTagRepository(session)
+    tag_ids: list[int] = []
+    for name in dict.fromkeys(names):
+        tag = await repo.get_or_create(name)
+        tag_ids.append(tag.id)
+
+    await session.execute(
+        document_tags.delete().where(document_tags.c.document_id == doc_id)
+    )
+    if tag_ids:
+        await session.execute(
+            document_tags.insert(),
+            [{"document_id": doc_id, "tag_id": tag_id} for tag_id in tag_ids],
+        )
+    await session.flush()
+
+
+async def update_document_metadata(
+    session: AsyncSession,
+    *,
+    document_id: UUID | str,
+    title: str | None = None,
+    uri: str | None = None,
+    pinned: bool | None = None,
+    tags: list[str] | None = None,
+) -> None:
+    """Write only the fields the caller named.
+
+    An unnamed field emits no assignment at all rather than writing NULL over
+    its column, so renaming a document cannot silently unpin it or strip its
+    tags.
+
+    `project` is deliberately not a field: moving a document between spaces is
+    not a rename, and allowing it here would let one call cross the boundary
+    the personal space rests on.
+    """
+    doc_id = document_id if isinstance(document_id, UUID) else UUID(str(document_id))
+    assignments: list[str] = []
+    params: dict = {"id": str(doc_id)}
+    if title is not None:
+        assignments.append("title = CAST(:title AS text)")
+        params["title"] = title
+    if uri is not None:
+        assignments.append("uri = CAST(:uri AS text)")
+        params["uri"] = uri
+    if pinned is not None:
+        assignments.append(_PIN_ASSIGNMENT[pinned])
+
+    if assignments:
+        try:
+            # ux_documents_project_uri is what refuses a collision, and a
+            # failed statement aborts the transaction it runs in -- so this
+            # runs in a SAVEPOINT, leaving the caller's transaction usable
+            # after the refusal rather than poisoned by it.
+            async with session.begin_nested():
+                await session.execute(
+                    text(
+                        f"UPDATE documents SET {', '.join(assignments)} "
+                        "WHERE id = CAST(:id AS uuid)"
+                    ),
+                    params,
+                )
+        except IntegrityError as exc:
+            raise DocumentUriConflict(uri) from exc
+
+    if tags is not None:
+        await set_document_tags(session, doc_id, tags)
+
+    project = (await session.execute(
+        text("SELECT project FROM documents WHERE id = CAST(:id AS uuid)"),
+        {"id": str(doc_id)},
+    )).scalar_one_or_none()
+
+    # The payload names which fields moved and carries none of their values:
+    # write-time minimization, and a journal row outlives the document it
+    # describes.
+    await record_event(
+        session,
+        event_type=DOCUMENT_UPDATED_EVENT,
+        object_type="document",
+        object_id=doc_id,
+        project=project,
+        payload={
+            "fields": sorted(
+                name for name, value in (
+                    ("title", title), ("uri", uri),
+                    ("pinned", pinned), ("tags", tags),
+                )
+                if value is not None
+            )
+        },
+    )
 
 
 @dataclass(frozen=True)

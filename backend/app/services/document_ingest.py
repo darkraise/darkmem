@@ -86,6 +86,7 @@ __all__ = [
     "DocumentFileFailure",
     "DocumentFileJob",
     "DocumentHashConflict",
+    "DocumentUriConflict",
     "DocumentIngest",
     "OVERSIZED_BLOCK_CHARS",
     "UNCHANGED",
@@ -119,6 +120,21 @@ class DocumentHashConflict(Exception):
         super().__init__(
             f"expected_hash {expected_hash} does not match the document's "
             f"current content_hash {current_hash}"
+        )
+
+
+class DocumentUriConflict(ValueError):
+    """A rename would land on a ``(project, uri)`` another document holds.
+
+    It lives here rather than in ``document_door`` because the door imports
+    the repository layer, so a repository raising a door class would close an
+    import cycle.
+    """
+
+    def __init__(self, uri: str | None):
+        self.uri = uri
+        super().__init__(
+            f"another document in this project already holds the uri {uri!r}"
         )
 
 
