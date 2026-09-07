@@ -62,7 +62,6 @@ __all__ = [
     "resolve_document_id",
     "resolve_document_target",
     "search_sections",
-    "set_document_tags",
     "update_document_metadata",
 ]
 
@@ -624,10 +623,15 @@ async def delete_document(session: AsyncSession, *, document_id: UUID | str) -> 
     return result.rowcount > 0
 
 
-async def set_document_tags(
+async def _set_document_tags(
     session: AsyncSession, document_id: UUID | str, names: list[str],
 ) -> None:
     """Replace the document's tag set with `names`.
+
+    Private, and deliberately so: it takes no lock of its own. The `FOR
+    UPDATE` on the document row that makes a concurrent replacement serialise
+    lives in `update_document_metadata`, its one caller, so a second caller
+    reaching this directly would reopen that race.
 
     A present list replaces rather than merges, because a merge-only verb
     cannot remove a tag. Names resolve through the shared tag repository so
@@ -691,7 +695,7 @@ async def update_document_metadata(
             # after the refusal rather than poisoned by it. RETURNING folds
             # the rowcount check and the project lookup into the same round
             # trip, and the UPDATE's own row lock is what serialises this
-            # against a concurrent set_document_tags on the same document.
+            # against a concurrent _set_document_tags on the same document.
             async with session.begin_nested():
                 project = (await session.execute(
                     text(
@@ -707,7 +711,7 @@ async def update_document_metadata(
     else:
         # No column assignment means a tags-only or entirely empty call, so
         # nothing above confirmed the row exists or locked it. Both matter
-        # here: the lock is what makes a concurrent set_document_tags
+        # here: the lock is what makes a concurrent _set_document_tags
         # replace rather than race (`put_document` and `block_verbs._mutate`
         # already serialise on this row the same way), and the existence
         # check is what stops a phantom `document_updated` event for an id
@@ -724,7 +728,7 @@ async def update_document_metadata(
             raise DocumentTargetUnresolved(f"document not found: {doc_id}")
 
     if tags is not None:
-        await set_document_tags(session, doc_id, tags)
+        await _set_document_tags(session, doc_id, tags)
 
     # The payload names which fields moved and carries none of their values:
     # write-time minimization, and a journal row outlives the document it

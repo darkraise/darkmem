@@ -37,7 +37,7 @@ BACKEND = Path(__file__).resolve().parent.parent
 # baseline-schema-inventory.md` §7 is NOT yet updated for these three; that is
 # recorded as owed rather than done.
 #
-# `document_tags` is no longer here: the metadata writer's `set_document_tags`
+# `document_tags` is no longer here: the metadata writer's `_set_document_tags`
 # (`app/services/document_door.py`) landed as its first writer, replacing the
 # document's tag link set on `update_document_metadata(..., tags=...)`.
 # `document_links` is no longer here: the subtree rename's link repair
