@@ -104,7 +104,15 @@ _RETRIEVAL_WIRE_SHAPE = (
     "off): on, the route adds the verbatim filed source as `content` on its "
     "envelope and the tool answers {content, blocks} in place of the bare "
     "array -- the one flag under which document_get answers an object, "
-    "produced by the same document_content service read on both doors."
+    "produced by the same document_content service read on both doors. "
+    "`include_hash` (default off) is the same shape for the same reason: a "
+    "bare JSON array has nowhere to carry a scalar field, so setting it boxes "
+    "the reply as {content_hash, blocks}, and with both flags set the object "
+    "carries content, content_hash and blocks. The route serves the hash on "
+    "its envelope unconditionally, since an envelope already has a place to "
+    "put it; both doors read it through the one document_hash service call, "
+    "and a caller uses it to precondition its next block verb on "
+    "expected_hash."
 )
 
 _WRITE_WIRE_SHAPE = (
