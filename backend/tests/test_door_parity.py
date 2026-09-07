@@ -2001,6 +2001,24 @@ def render_markdown() -> str:
     return "\n".join(lines)
 
 
+async def test_the_metadata_row_flips_when_its_mcp_twin_lands():
+    """The one flip no other guard catches.
+
+    Registering the twin trips `test_every_mcp_tool_is_classified`, and
+    filing it in this row without moving the status trips
+    `test_statuses_match_the_doors_the_row_actually_names`. Filing it in a
+    fresh MCP-only row of its own evades both and leaves this row asserting
+    a single-door reason that is no longer true.
+    """
+    if "document_update" not in await live_mcp_surface():
+        return
+    row = next(s for s in PARITY_TABLE if s.name == "documents.metadata")
+    assert row.status != REST_ONLY, (
+        "documents.metadata still claims REST-only while `document_update` is "
+        "registered -- move the tools onto this row and flip its status"
+    )
+
+
 def test_the_committed_table_is_the_enforced_table():
     """One source of truth. Regenerate the doc with:
 

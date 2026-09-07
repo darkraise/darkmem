@@ -1430,7 +1430,7 @@ async def test_a_related_item_carries_its_matching_passage(
 # --- the metadata verb and the subtree rename -------------------------------
 
 
-async def test_patch_updates_one_document(client, auth_headers, filed):
+async def test_patch_updates_one_document(client, auth_headers, filed, session):
     doc = await filed("notes/p.md", "body")
 
     response = await client.patch(
@@ -1441,6 +1441,20 @@ async def test_patch_updates_one_document(client, auth_headers, filed):
 
     assert response.status_code == 200
     assert response.json()["document_id"] == doc
+
+    # Read the row back: a 200 and an id echo alone would also be answered by
+    # a handler that ignored the body. `pinned` is served by no read route,
+    # so the assertion goes to the column.
+    from sqlalchemy import text as sql_text
+
+    row = (await session.execute(
+        sql_text(
+            "SELECT title, pinned_at FROM documents WHERE id = CAST(:id AS uuid)"
+        ),
+        {"id": doc},
+    )).mappings().one()
+    assert row["title"] == "New"
+    assert row["pinned_at"] is not None
 
 
 async def test_patch_refuses_a_project_field(client, auth_headers, filed):
@@ -1466,6 +1480,25 @@ async def test_patch_refuses_an_over_long_tag(client, auth_headers, filed):
     response = await client.patch(
         f"{V1}/documents/{doc}",
         json={"tags": ["x" * (TAG_NAME_MAX_LENGTH + 1)]},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422
+
+
+async def test_patch_refuses_a_tag_whose_category_is_over_long(
+    client, auth_headers, filed,
+):
+    """`get_or_create` derives the category from everything before the first
+    slash and writes it to a narrower column than the name's, so a tag can
+    clear the name bound and still raise from the INSERT."""
+    from app.models.memory import TAG_CATEGORY_MAX_LENGTH
+
+    doc = await filed("notes/c.md", "body")
+
+    response = await client.patch(
+        f"{V1}/documents/{doc}",
+        json={"tags": ["x" * (TAG_CATEGORY_MAX_LENGTH + 1) + "/y"]},
         headers=auth_headers,
     )
 

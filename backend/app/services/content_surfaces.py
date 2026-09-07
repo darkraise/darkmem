@@ -693,6 +693,14 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "GET /api/v1/documents/{document_id}",
     "GET /api/v1/documents/by-uri/outline",
     "GET /api/v1/documents/by-uri",
+    # The metadata verb and the subtree rename. Same classification and same
+    # reason as the write door above -- they rewrite a document's own title,
+    # uri, pin and tag set, and answer an id or a count. `tags` is the shared
+    # table the memory side also writes, but nothing here reads or returns a
+    # `memories` row, so there is no memory content for an isolation probe to
+    # drive against.
+    "PATCH /api/v1/documents/{document_id}",
+    "POST /api/v1/documents/rename",
     # Session checkpoints (T3.16). No memory content crosses: a checkpoint is
     # the agent's own note about its run, written by the agent and never
     # derived from a `memories` row — this surface reads that table and no

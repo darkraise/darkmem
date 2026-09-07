@@ -16,7 +16,7 @@ from app.schemas.retrieval_trace import MemoryResultTrace, RetrievalEnvelope
 MemoryStatus = Literal["active", "deprecated", "superseded"]
 
 
-def _validate_tag_lengths(tags: list[str] | None) -> list[str] | None:
+def validate_tag_lengths(tags: list[str] | None) -> list[str] | None:
     """Reject a tag the `tags` table cannot hold, at the door.
 
     Capture is a 202 accept: the write it acknowledges happens later, in the
@@ -64,7 +64,7 @@ class MemoryCreate(BaseModel):
     expires_at: datetime | None = None
     project: str | None = None
 
-    _check_tags = field_validator("tags")(_validate_tag_lengths)
+    _check_tags = field_validator("tags")(validate_tag_lengths)
 
 
 class CaptureAck(BaseModel):
@@ -115,7 +115,7 @@ class MemoryUpdate(BaseModel):
     project: str | None = None
     status: MemoryStatus | None = None
 
-    _check_tags = field_validator("tags")(_validate_tag_lengths)
+    _check_tags = field_validator("tags")(validate_tag_lengths)
 
     @model_validator(mode="before")
     @classmethod

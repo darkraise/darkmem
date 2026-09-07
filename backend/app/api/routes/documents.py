@@ -96,7 +96,7 @@ from app.repositories.documents import resolve_by_id
 from app.services.document_summary import (
     EmptySummaryError, read_summary, summarise_document,
 )
-from app.models.memory import TAG_NAME_MAX_LENGTH
+from app.schemas.memory import validate_tag_lengths
 from app.services.faithfulness_gate import FaithfulnessGate, Outcome
 from app.services.grounded_qa import GroundedQaService
 
@@ -263,23 +263,13 @@ class DocumentPatchRequest(BaseModel):
     pinned: bool | None = None
     tags: list[str] | None = None
 
-    @field_validator("tags")
-    @classmethod
-    def _bound_tag_names(cls, value: list[str] | None) -> list[str] | None:
-        """The tag column's length is the only guard below this door.
-
-        `get_or_create` validates nothing, so an over-long name reaches the
-        driver as a DataError with no savepoint under it -- a 500 rather than
-        a refusal, and a poisoned transaction with it.
-        """
-        if value is not None:
-            for tag in value:
-                if len(tag) > TAG_NAME_MAX_LENGTH:
-                    raise ValueError(
-                        f"tag exceeds the {TAG_NAME_MAX_LENGTH}-character "
-                        f"limit: {tag[:40]!r}..."
-                    )
-        return value
+    # The `tags` table's own columns are the only guard below this door:
+    # `get_or_create` validates nothing, so a name or a derived category
+    # longer than its column raises a driver DataError with no savepoint
+    # under it -- a 500 and a poisoned transaction rather than a refusal.
+    # The capture door's validator covers both axes; one shared function so
+    # the two cannot drift apart.
+    _bound_tags = field_validator("tags")(validate_tag_lengths)
 
 
 class DocumentPatchResponse(BaseModel):
