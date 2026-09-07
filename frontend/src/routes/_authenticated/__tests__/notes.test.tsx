@@ -30,8 +30,9 @@ vi.mock("@/features/documents/components/project-workspace", () => ({
 }))
 
 import { apiFetch } from "@/lib/api"
+import { usePageChrome } from "@/components/app-chrome"
 import { Route } from "../notes"
-import { FULL_HEIGHT_ROUTES } from "../../_authenticated"
+import { FULL_HEIGHT_ROUTES, FULL_WIDTH_ROUTES } from "../../_authenticated"
 
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({
@@ -83,8 +84,45 @@ describe("notes route", () => {
     expect(workspace).toHaveAttribute("data-tree-management", "true")
   })
 
+  it("reports a failed catalogue read instead of a blank page", async () => {
+    // `return null` on a rejected read left the user staring at an empty
+    // content area with no message -- the defect `projects.tsx` was already
+    // fixed for ("a failed list is not an empty corpus").
+    vi.mocked(apiFetch).mockRejectedValue(new Error("boom"))
+    renderRoute()
+
+    expect(await screen.findByText(/could not be loaded/i)).toBeInTheDocument()
+    expect(screen.queryByTestId("workspace-project")).not.toBeInTheDocument()
+    expect(screen.queryByText(/no personal space/i)).not.toBeInTheDocument()
+  })
+
+  it("says so when the catalogue holds no personal space", async () => {
+    vi.mocked(apiFetch).mockResolvedValue([row("darkmem", "project")])
+    renderRoute()
+
+    expect(await screen.findByText(/no personal space/i)).toBeInTheDocument()
+    expect(screen.queryByTestId("workspace-project")).not.toBeInTheDocument()
+  })
+
+  it("publishes the page chrome on every branch, not only the resolved one", async () => {
+    // PageChrome renders nothing itself -- it publishes into the header
+    // store -- so an early `return null` above it left the header blank too.
+    vi.mocked(apiFetch).mockRejectedValue(new Error("boom"))
+    renderRoute()
+
+    await screen.findByText(/could not be loaded/i)
+    expect(usePageChrome.getState().title).toBe("Notes")
+  })
+
   it("is registered as a full-height route", () => {
     // Without this the resizable split falls back to the 60vh floor.
     expect(FULL_HEIGHT_ROUTES).toContain("/notes")
+  })
+
+  it("is registered as a full-width route", () => {
+    // Identical ProjectWorkspace, identical resizable split: boxing it into
+    // the reading-width column while /projects/<name> fills the screen has
+    // no argument behind it.
+    expect(FULL_WIDTH_ROUTES).toContain("/notes")
   })
 })
