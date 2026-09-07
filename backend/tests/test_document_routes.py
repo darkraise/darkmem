@@ -1295,6 +1295,44 @@ async def test_move_route_forwards_the_hash_to_the_service(
     assert "0" * 64 in response.json()["detail"]
 
 
+@pytest.mark.asyncio
+async def test_a_served_hash_preconditions_the_next_two_writes(
+    client, auth_headers, filed, first_block,
+):
+    """The chain the editor's queue is built on, end to end over the routes:
+    the hash a read serves preconditions a write, and the hash that write
+    answers preconditions the one after it, with no read in between. Asserted
+    at the door because that is where a caller meets it -- a schema that
+    dropped the field from the response, or a route that stopped forwarding
+    it, breaks the chain without breaking the service."""
+    doc = await filed("notes/chain.md", "# T\n\npara")
+    block = await first_block(doc)
+
+    served = (await client.get(
+        f"{V1}/documents/{doc}", headers=auth_headers
+    )).json()["content_hash"]
+    assert served, "the read serves no hash, so the precondition below is a no-op"
+
+    patched = await client.patch(
+        f"{V1}/documents/{doc}/blocks/{block}",
+        json={"text": "edited", "expected_hash": served},
+        headers=auth_headers,
+    )
+    assert patched.status_code == 200, patched.text
+
+    inserted = await client.post(
+        f"{V1}/documents/{doc}/blocks",
+        json={
+            "type": "paragraph",
+            "text": "appended",
+            "expected_hash": patched.json()["content_hash"],
+        },
+        headers=auth_headers,
+    )
+    assert inserted.status_code == 201, inserted.text
+    assert inserted.json()["content_hash"] != patched.json()["content_hash"]
+
+
 async def _file_one(client, auth_headers, uri: str = "docs/rel.md") -> str:
     created = await client.post(
         f"{V1}/documents",

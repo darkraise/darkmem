@@ -10,6 +10,7 @@ import { apiFetch } from "@/lib/api"
 import {
   useBlockDelete,
   useBlockInsert,
+  useBlockMove,
   useBlockUpdate,
 } from "../use-blocks-api"
 import { useDocumentBlocks } from "../use-documents-api"
@@ -33,6 +34,10 @@ let writeCount: number
  *  in-flight-slot test below. */
 let deferReads: boolean
 let pendingReads: Array<() => void>
+/** Refuses the next write, as a stale precondition does, and moves the hash a
+ *  read answers -- a 409 means another writer got there first, so the document
+ *  the next read sees is not the one the editor is rendering. */
+let refuseNextWrite: boolean
 
 function serve(path: string, init?: RequestInit) {
   const method = init?.method ?? "GET"
@@ -51,6 +56,11 @@ function serve(path: string, init?: RequestInit) {
     return new Promise((resolve) => {
       pendingReads.push(() => resolve(answer()))
     })
+  }
+  if (refuseNextWrite) {
+    refuseNextWrite = false
+    readHash = "h-concurrent"
+    return Promise.reject(new Error("409 expected_hash does not match"))
   }
   // Delete is 204 with no body, and it moved the document -- so a read after
   // one answers a hash no write handed back.
@@ -92,6 +102,7 @@ function useEditorHooks(documentId: string) {
     blocks: useDocumentBlocks(documentId),
     update: useBlockUpdate(documentId),
     insert: useBlockInsert(documentId),
+    move: useBlockMove(documentId),
     remove: useBlockDelete(documentId),
   }
 }
@@ -105,6 +116,7 @@ describe("the block hooks share one chain per document", () => {
     writeCount = 0
     deferReads = false
     pendingReads = []
+    refuseNextWrite = false
     vi.mocked(apiFetch).mockImplementation(serve as never)
   })
 
@@ -135,6 +147,31 @@ describe("the block hooks share one chain per document", () => {
     expect(post!.method).toBe("POST")
     expect(patch!.body!.expected_hash).toBe("h0")
     expect(post!.body!.expected_hash).toBe("w1")
+  })
+
+  it("sends a move with the hash the queue is carrying", async () => {
+    const qc = makeClient()
+    const { result } = renderHook(() => useEditorHooks(DOC), {
+      wrapper: wrapperFor(qc),
+    })
+    await waitFor(() => expect(result.current.blocks.isSuccess).toBe(true))
+    seen = []
+
+    act(() => {
+      result.current.update.mutate({ blockId: "b1", text: "one" })
+      result.current.move.mutate({ blockId: "b1", newParentId: "b2" })
+    })
+    await waitFor(() => {
+      expect(result.current.update.isSuccess).toBe(true)
+      expect(result.current.move.isSuccess).toBe(true)
+    })
+
+    const move = writes()[1]!
+    expect(move.path).toContain("/move")
+    // A move rewrites content_hash exactly as an update does, so it carries
+    // the precondition too -- and only the queue can supply this value, since
+    // it is the update's answer and no read ran between the two.
+    expect(move.body!.expected_hash).toBe("w1")
   })
 
   it("survives a delete's own invalidation and still sends the next write", async () => {
@@ -214,6 +251,7 @@ describe("a write behind a delete, with a read still in flight", () => {
     writeCount = 0
     deferReads = false
     pendingReads = []
+    refuseNextWrite = false
     vi.mocked(apiFetch).mockImplementation(serve as never)
   })
 
@@ -260,5 +298,62 @@ describe("a write behind a delete, with a read still in flight", () => {
     expect(result.current.second.error).toBeNull()
     expect(writes().map((c) => c.method)).toEqual(["PATCH", "DELETE", "PATCH"])
     expect(writes()[2]!.body!.expected_hash).toBe("h-after-delete")
+  })
+})
+
+
+/** What a refusal has to move, beyond the queue's own hash.
+ *
+ *  A 409 says another writer won, so the tree the editor is rendering is the
+ *  losing one. The queue drops its hash and re-reads before the next write --
+ *  outside the cache, deliberately -- so the next write is preconditioned on
+ *  the winner's hash. That is the dangerous half on its own: text typed over a
+ *  view that never showed the winner's change then passes the precondition and
+ *  overwrites it. So the rejection has to invalidate the rendered tree too,
+ *  which narrows the exposure from the rest of the session to one round trip.
+ */
+describe("a refused write leaves no stale view behind", () => {
+  beforeEach(() => {
+    seen = []
+    readHash = "h0"
+    writeCount = 0
+    deferReads = false
+    pendingReads = []
+    refuseNextWrite = false
+    vi.mocked(apiFetch).mockImplementation(serve as never)
+  })
+
+  it("refetches the blocks after a 409, before the next write goes out", async () => {
+    const qc = makeClient()
+    const { result } = renderHook(() => useEditorHooks(DOC), {
+      wrapper: wrapperFor(qc),
+    })
+    await waitFor(() => expect(result.current.blocks.isSuccess).toBe(true))
+    expect(result.current.blocks.data!.content_hash).toBe("h0")
+    seen = []
+
+    refuseNextWrite = true
+    act(() => {
+      result.current.update.mutate({ blockId: "b1", text: "one" })
+    })
+    await waitFor(() => expect(result.current.update.isError).toBe(true))
+
+    await waitFor(() =>
+      expect(result.current.blocks.data!.content_hash).toBe("h-concurrent"),
+    )
+
+    act(() => {
+      result.current.update.mutate({ blockId: "b1", text: "two" })
+    })
+    await waitFor(() => expect(result.current.update.isSuccess).toBe(true))
+
+    const second = writes()[1]!
+    expect(second.body!.expected_hash).toBe("h-concurrent")
+    // The read that repaired the view went out before the write that follows
+    // it, which is what makes the exposure one round trip rather than a
+    // session.
+    const firstRead = seen.findIndex((call) => call.method === "GET")
+    expect(firstRead).toBeGreaterThan(-1)
+    expect(firstRead).toBeLessThan(seen.indexOf(second))
   })
 })

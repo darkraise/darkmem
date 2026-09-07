@@ -343,3 +343,50 @@ async def test_omitting_the_hash_stays_last_writer_wins(session):
     block = (await _blocks(session, doc))[0]["id"]
     await update_block(session, llm, block_id=block, text="edited")
     assert [b["text"] for b in await _blocks(session, doc)][0] == "edited"
+
+
+def test_the_row_lock_precedes_the_hash_comparison():
+    """What makes the precondition a compare-and-set rather than a
+    check-then-act, asserted on the source because no fixture can assert it on
+    behaviour: `tests/conftest.py` binds the session factory to one connection,
+    so two sessions cannot contend for the lock and a comparison hoisted above
+    it would leave every test in this file green.
+    """
+    import ast
+    import inspect
+    import textwrap
+
+    from app.services import block_verbs
+
+    body = ast.parse(
+        textwrap.dedent(inspect.getsource(block_verbs._mutate))
+    ).body[0]
+
+    locks = [
+        node.lineno
+        for node in ast.walk(body)
+        if isinstance(node, ast.Name) and node.id == "_LOCK_DOCUMENT"
+    ]
+    # The comparison itself, not a mention of the parameter: the signature and
+    # the docstring name it too, and neither decides the ordering.
+    compares = [
+        node.lineno
+        for node in ast.walk(body)
+        if isinstance(node, ast.If)
+        and any(
+            isinstance(inner, ast.Name) and inner.id == "expected_hash"
+            for inner in ast.walk(node.test)
+        )
+        and any(
+            isinstance(inner, ast.Name) and inner.id == "DocumentHashConflict"
+            for inner in ast.walk(node)
+        )
+    ]
+
+    assert locks, "_mutate no longer takes the document row lock"
+    assert compares, "_mutate no longer compares expected_hash"
+    assert min(locks) < min(compares), (
+        "the expected_hash comparison must happen under the row lock: above "
+        "it, a concurrent writer can move content_hash between the check and "
+        "the write and both lanes win"
+    )
