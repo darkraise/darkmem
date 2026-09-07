@@ -40,10 +40,17 @@ vi.mock("@/features/documents/components/document-reader", () => ({
     </div>
   ),
 }))
+// The workspace's refusals speak through a toast and nothing else, so the
+// toast is the only observable they have.
+vi.mock("darkraise-ui/components/sonner", () => ({
+  toast: { error: vi.fn(), success: vi.fn() },
+  Toaster: () => null,
+}))
 vi.mock("@/features/activity/components/checkpoints-tab", () => ({
   CheckpointsTab: () => <div>checkpoints-tab</div>,
 }))
 
+import { toast } from "darkraise-ui/components/sonner"
 import { apiFetch } from "@/lib/api"
 import { ProjectWorkspace } from "../components/project-workspace"
 import { expansionStorageKey } from "../tree-expansion"
@@ -852,6 +859,48 @@ async function openMenu(name: RegExp) {
 describe("project workspace — the note actions", () => {
   afterEach(() => {
     vi.mocked(apiFetch).mockReset()
+    vi.mocked(toast.error).mockClear()
+  })
+
+  it("says so when a rename is given a path rather than a name", async () => {
+    // A name carrying a separator is an attempted MOVE, which this surface
+    // has no verb for. Closing the dialog with nothing changed is the
+    // "silent renders like clean" failure; the refusal has to be audible.
+    mockDocuments({ items: [DOC] })
+    renderWorkspace({ treeManagement: true })
+    await screen.findByText("design.md")
+
+    await openMenu(/actions for design\.md/i)
+    await userEvent.click(await screen.findByText("Rename"))
+    const input = screen.getByRole("textbox", { name: /new name/i })
+    await userEvent.clear(input)
+    await userEvent.type(input, "moved/design.md{Enter}")
+
+    expect(bodiesFor((p) => p === `/documents/${DOC.id}`)).toHaveLength(0)
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+      expect.stringMatching(/name, not a path|cannot contain/i),
+    )
+  })
+
+  it("refuses to mint a uri against a truncated list", async () => {
+    // `put_document` is a content-replacing upsert, so a blind mint above the
+    // page cap does not "file nothing" -- it would overwrite an unloaded
+    // document's blocks with the seed body.
+    mockDocuments({ items: [DOC] })
+    renderWorkspace({ treeManagement: true })
+    await screen.findByText("design.md")
+    lastQueryClient?.setQueryData(["documentsAll", "darkmem"], {
+      items: [DOC],
+      truncated: true,
+    })
+    expect(await screen.findByText(/first 1 documents/i)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole("button", { name: /new note/i }))
+
+    expect(bodiesFor((p) => p === "/documents")).toHaveLength(0)
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+      expect.stringMatching(/truncated|too many|cut/i),
+    )
   })
 
   it("mints a uri no document holds when creating a note", async () => {

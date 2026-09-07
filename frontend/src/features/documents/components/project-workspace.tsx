@@ -162,6 +162,7 @@ export function ProjectWorkspace({
 }) {
   const documents = useAllDocuments(project)
   const items = documents.data?.items ?? []
+  const truncated = documents.data?.truncated ?? false
   // The id, never the row. A stored `DocumentListItem` is a snapshot: after
   // a rename, move or delete it describes a document that no longer exists
   // in that shape, and the breadcrumbs, the reveal effect and the reader all
@@ -234,12 +235,12 @@ export function ProjectWorkspace({
   // sibling folder open; doing it on a change rather than on every render is
   // what lets the user collapse a folder the open document lives in.
   //
-  // Keyed on the document id, not on `selected`'s identity, and re-attempted
-  // while the path is empty: a search hit can select a document before its
-  // tree row exists, and the reveal has to land when `roots` catches up.
-  // Keyed on `(id, uri)`, not on the id alone: the id alone is a second
-  // snapshot, so after a move that changed the document's folder the effect
-  // returned early and the new folder stayed collapsed.
+  // Keyed on the pair `(id, uri)` rather than on `selected`'s identity, and
+  // re-attempted while the path is empty: a search hit can select a document
+  // before its tree row exists, and the reveal has to land when `roots`
+  // catches up. The uri is half the key because the id alone is a second
+  // snapshot -- after a move that changed the document's folder, an id-keyed
+  // guard returned early and the new folder stayed collapsed.
   const revealedFor = useRef<string | null>(null)
   useEffect(() => {
     const key = selected ? `${selected.id}\u0000${selected.uri ?? ""}` : null
@@ -281,6 +282,16 @@ export function ProjectWorkspace({
 
   const handleNewNote = useCallback(
     (folderPath: string) => {
+      // The mint is only as good as the list it reads. Above the page cap
+      // `items` is a partial view, and a collision is NOT a no-op: the door
+      // is a content-replacing upsert on `(project, uri)`, so a blind mint
+      // would overwrite an unloaded document's blocks with the seed body.
+      if (truncated) {
+        toast.error(
+          "This project's document list was cut at the pagination guard, so a new note's path cannot be checked against it.",
+        )
+        return
+      }
       const folder = folderPath === NO_PATH ? "" : folderPath
       createNote.mutate(
         { project, uri: freeUri(items, folder) },
@@ -290,7 +301,11 @@ export function ProjectWorkspace({
         },
       )
     },
-    [createNote, items, project],
+    // `.mutate` rather than the mutation object: `useMutation` returns a new
+    // result every render, so depending on it would change `nodeActions`'
+    // identity on every frame and defeat `DocumentTree`'s `memo` -- the tree
+    // would re-render on each heading the reader scrolls past.
+    [createNote.mutate, items, project, truncated],
   )
 
   const handleTogglePin = useCallback(
@@ -302,7 +317,7 @@ export function ProjectWorkspace({
         { onError: (error) => toast.error(error.message) },
       )
     },
-    [patchMetadata],
+    [patchMetadata.mutate],
   )
 
   const handleOpenRename = useCallback((node: UriTreeNode) => {
@@ -314,7 +329,13 @@ export function ProjectWorkspace({
     const node = renameTarget
     const name = renameValue.trim()
     if (!node) return
-    if (!name || name === node.name || name.includes("/")) {
+    if (name.includes("/")) {
+      // A separator is an attempted move, which this surface has no verb for.
+      toast.error("Enter a name, not a path — a note cannot be moved here.")
+      setRenameTarget(null)
+      return
+    }
+    if (!name || name === node.name) {
       setRenameTarget(null)
       return
     }
@@ -503,7 +524,7 @@ export function ProjectWorkspace({
                   items={items}
                   selectedId={selected?.id ?? null}
                   onSelect={handleSelectDocument}
-                  truncated={documents.data?.truncated ?? false}
+                  truncated={truncated}
                   expanded={effectiveExpanded}
                   onExpandedChange={handleExpandedChange}
                   nodeActions={treeManagement ? nodeActions : undefined}
