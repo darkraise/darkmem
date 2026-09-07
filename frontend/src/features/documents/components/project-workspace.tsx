@@ -104,7 +104,15 @@ export function ProjectWorkspace({
 }) {
   const documents = useAllDocuments(project)
   const items = documents.data?.items ?? []
-  const [selected, setSelected] = useState<DocumentListItem | null>(null)
+  // The id, never the row. A stored `DocumentListItem` is a snapshot: after
+  // a rename, move or delete it describes a document that no longer exists
+  // in that shape, and the breadcrumbs, the reveal effect and the reader all
+  // read it. Deriving from `items` makes the selection track the list.
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const selected = useMemo(
+    () => items.find((d) => d.id === selectedId) ?? null,
+    [items, selectedId],
+  )
   /** The block a search hit named. Selecting only the document drops the
    *  reader at the top, losing the section the user actually matched. */
   const [focusBlockId, setFocusBlockId] = useState<string | null>(null)
@@ -185,7 +193,7 @@ export function ProjectWorkspace({
 
   // Stable, so the memoised tree is not re-rendered by a heading crossing.
   const handleSelectDocument = useCallback((doc: DocumentListItem) => {
-    setSelected(doc)
+    setSelectedId(doc.id)
     setFocusBlockId(null)
     setMode("read")
   }, [])
@@ -254,7 +262,7 @@ export function ProjectWorkspace({
                 onClick={() => {
                   const doc = items.find((d) => d.id === hit.document_id)
                   if (doc) {
-                    setSelected(doc)
+                    setSelectedId(doc.id)
                     setFocusBlockId(hit.block_id)
                   }
                 }}
@@ -331,7 +339,7 @@ export function ProjectWorkspace({
                       mode={mode}
                       onModeChange={setMode}
                       onDeleted={() => {
-                        setSelected(null)
+                        setSelectedId(null)
                         setFocusBlockId(null)
                         setMode("read")
                       }}
@@ -378,7 +386,7 @@ export function ProjectWorkspace({
                     onOpenDocument={(documentId, blockId) => {
                       const doc = items.find((d) => d.id === documentId)
                       if (!doc) return
-                      setSelected(doc)
+                      setSelectedId(doc.id)
                       setFocusBlockId(blockId)
                       setMode("read")
                     }}

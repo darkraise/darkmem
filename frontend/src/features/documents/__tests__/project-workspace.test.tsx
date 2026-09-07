@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { useState, type ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -57,9 +57,19 @@ const DOC = {
   block_count: 3,
 }
 
+// Stashed so a test can drive the cache directly (invalidate, force a
+// refetch) the way a real mutation's `onSuccess` would, without remounting
+// the tree. Held in `useState` so the same client survives every re-render
+// of this wrapper -- a fresh one per render would carry no cached data.
+let lastQueryClient: QueryClient | null = null
+
 function wrapper({ children }: { children: ReactNode }) {
-  const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  const [qc] = useState(() => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    lastQueryClient = client
+    return client
   })
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
 }
@@ -225,6 +235,31 @@ describe("project workspace — the states a reader must be able to tell apart",
         screen.getByText(`reader:${DOC.id}:focus=block-42`),
       ).toBeInTheDocument(),
     )
+  })
+})
+
+describe("project workspace — selection identity", () => {
+  it("follows the selected document when its uri changes under it", async () => {
+    // The selection used to be a snapshot object, so a move left the
+    // breadcrumbs rendering the path the document no longer had.
+    const first = { ...DOC, id: "d1", title: "A", uri: "old/a.md" }
+    const moved = { ...DOC, id: "d1", title: "A", uri: "new/a.md" }
+
+    mockDocuments({ items: [first] })
+    renderWorkspace()
+
+    await userEvent.click(await screen.findByText("a.md"))
+    const crumbs = () => screen.getByLabelText("document path")
+    expect(within(crumbs()).getByText(/old/)).toBeInTheDocument()
+
+    // Simulates what a real rename/move mutation does on success: the same
+    // ProjectWorkspace instance stays mounted and its document list
+    // refetches under it, rather than the tree remounting.
+    mockDocuments({ items: [moved] })
+    await lastQueryClient?.invalidateQueries({ queryKey: ["documentsAll", "darkmem"] })
+
+    await waitFor(() => expect(within(crumbs()).getByText(/new/)).toBeInTheDocument())
+    expect(within(crumbs()).queryByText(/old/)).not.toBeInTheDocument()
   })
 })
 
