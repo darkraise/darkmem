@@ -1669,3 +1669,54 @@ async def test_rename_requires_auth(client):
     )
 
     assert response.status_code == 401
+
+
+async def test_subtree_delete_removes_the_tree_and_reports_the_count(
+    client, auth_headers, filed,
+):
+    await filed("gone/a.md", "one")
+    await filed("gone/nested/b.md", "two")
+    await filed("kept/c.md", "three")
+
+    response = await client.post(
+        f"{V1}/documents/delete",
+        json={"project": "p", "uri_prefix": "gone"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["deleted"] == 2
+
+    kept = await client.get(
+        f"{V1}/documents/by-uri", params={"project": "p", "uri": "kept/c.md"},
+        headers=auth_headers,
+    )
+    assert kept.status_code == 200
+
+
+async def test_subtree_delete_of_nothing_reports_zero(client, auth_headers, filed):
+    await filed("kept/c.md", "three")
+    response = await client.post(
+        f"{V1}/documents/delete",
+        json={"project": "p", "uri_prefix": "absent"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["deleted"] == 0
+
+
+async def test_subtree_delete_refuses_an_empty_prefix(client, auth_headers):
+    response = await client.post(
+        f"{V1}/documents/delete",
+        json={"project": "p", "uri_prefix": ""},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
+
+
+async def test_subtree_delete_requires_auth(client):
+    response = await client.post(
+        f"{V1}/documents/delete",
+        json={"project": "p", "uri_prefix": "gone"},
+    )
+    assert response.status_code == 401

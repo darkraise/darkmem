@@ -397,6 +397,7 @@ PARITY_TABLE: tuple[Surface, ...] = (
             ("POST", f"{V1}/documents"),
             ("DELETE", f"{V1}/documents/{{document_id}}"),
             ("DELETE", f"{V1}/documents/by-uri"),
+            ("POST", f"{V1}/documents/delete"),
         ),
         mcp=("document_put", "document_delete"),
         note=f"{_DOCUMENTS_RULING} {_WRITE_WIRE_SHAPE}",

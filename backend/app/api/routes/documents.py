@@ -10,6 +10,7 @@ Provides:
   - POST   /api/v1/documents
   - PATCH  /api/v1/documents/{document_id}
   - POST   /api/v1/documents/rename
+  - POST   /api/v1/documents/delete
   - DELETE /api/v1/documents/{document_id}
   - POST   /api/v1/documents/search
   - GET    /api/v1/documents/by-uri/outline
@@ -77,7 +78,8 @@ from app.services.document_door import (
     DocumentIsBlockFirst,
     DocumentNotConvertible,
     DocumentNothingToChange,
-    DocumentTooLarge, DocumentUriConflict, delete_document, document_blocks,
+    DocumentTooLarge, DocumentUriConflict, delete_document, delete_documents,
+    document_blocks,
     document_content,
     document_hash,
     document_outline,
@@ -293,6 +295,17 @@ class DocumentRenameRequest(BaseModel):
 
 class DocumentRenameResponse(BaseModel):
     renamed: int
+
+
+class DocumentSubtreeDeleteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    project: str = Field(min_length=1, max_length=200)
+    uri_prefix: str = Field(min_length=1, max_length=500)
+
+
+class DocumentSubtreeDeleteResponse(BaseModel):
+    deleted: int
 
 
 class DocumentPutResponse(BaseModel):
@@ -746,6 +759,30 @@ async def rename_documents_route(
         ) from exc
     await session.commit()
     return DocumentRenameResponse(renamed=renamed)
+
+
+@router.post("/delete", response_model=DocumentSubtreeDeleteResponse)
+async def delete_subtree_route(
+    body: DocumentSubtreeDeleteRequest,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+) -> DocumentSubtreeDeleteResponse:
+    """Delete every document under a uri prefix.
+
+    POST rather than DELETE, and 200 rather than 204: `DELETE`-with-body is
+    poorly supported by clients and proxies, and the reply is a count. The
+    conventions name `POST /memories/delete` as the bulk-delete precedent.
+    """
+    try:
+        deleted = await delete_documents(
+            session, project=body.project, uri_prefix=body.uri_prefix,
+        )
+    except DocumentNothingToChange as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)
+        ) from exc
+    await session.commit()
+    return DocumentSubtreeDeleteResponse(deleted=deleted)
 
 
 @router.patch("/{document_id}", response_model=DocumentPatchResponse)

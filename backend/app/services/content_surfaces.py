@@ -701,6 +701,10 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # drive against.
     "PATCH /api/v1/documents/{document_id}",
     "POST /api/v1/documents/rename",
+    # The subtree delete (increment 2). Same classification and reason as the
+    # write door above -- it removes documents and answers a count, and no
+    # `memories` row crosses it.
+    "POST /api/v1/documents/delete",
     # Session checkpoints (T3.16). No memory content crosses: a checkpoint is
     # the agent's own note about its run, written by the agent and never
     # derived from a `memories` row — this surface reads that table and no
