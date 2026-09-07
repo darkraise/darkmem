@@ -36,9 +36,12 @@ BACKEND = Path(__file__).resolve().parent.parent
 # number so it cannot read as a task that exists. `docs/planning/
 # baseline-schema-inventory.md` §7 is NOT yet updated for these three; that is
 # recorded as owed rather than done.
+#
+# `document_tags` is no longer here: the metadata writer's `set_document_tags`
+# (`app/services/document_door.py`) landed as its first writer, replacing the
+# document's tag link set on `update_document_metadata(..., tags=...)`.
 INERT_TABLES: dict[str, str] = {
     "document_links": "the wiki-link lane (extractor + backlink read)",
-    "document_tags": "the note-tagging lane",
     "document_revisions": "the version-history lane",
 }
 # repositories.index_debt is no longer here: T1.39, its declared first writer
