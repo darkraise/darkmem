@@ -87,6 +87,25 @@ ROUND_TRIP_SOURCES = [
     # A fixture here is what tests parser-to-serialiser agreement: the block
     # text is whatever the parser stored, not a string this file chose.
     "before\n\n<div class='x'>raw</div>\n\nafter",
+    # A quote's children are separated by a blank line that must itself carry
+    # the quote prefix. An unprefixed blank line ENDS the blockquote, so the
+    # child re-parses as a second quote and the tree gains a block. Every
+    # non-paragraph child is affected -- a quote's paragraph children are
+    # folded into its own text by the parser and mint no block at all.
+    "> lead\n>\n> - item\n> - two",
+    "> lead\n>\n> ```\n> code\n> ```",
+    "> lead\n>\n> # inner heading",
+    "> lead\n>\n> | A | B |\n> | --- | --- |\n> | 1 | 2 |",
+    # A `|` inside a table cell is escaped in the source and stored UNESCAPED
+    # in `header`/`cells`, so the serialiser has to put the backslash back.
+    # Emitting it bare splits the row into more columns than the delimiter
+    # declares, which truncates the cell's text -- content loss, not just a
+    # restructure.
+    "| a \\| b | c |\n| --- | --- |\n| x \\| y | z |",
+    # A setext heading's content may span several lines, and the parser keeps
+    # the newline in `text`. Emitted as one-line ATX that newline ends the
+    # heading, so the remainder re-parses as a paragraph.
+    "line one\nline two\n=====",
 ]
 
 # Shapes the parser drops on the floor. Only ONE kind is left: markdown-it
@@ -119,6 +138,17 @@ def test_every_span_slices_its_own_block_back_out(source):
         lo, hi = placed.char_span
         sliced = result.content[lo:hi]
         block = by_id[placed.block_id]
+        props = block.properties or {}
+        if block.type in ("table", "table_row"):
+            # A table's `text` is the ` | ` join of its cells, so a cell
+            # holding a `|` makes that string one no valid source can
+            # contain -- the source has to escape it. Assert the cells
+            # survive into the span instead, which is the property that
+            # matters: the joined form is covered by the round trip.
+            cells = props.get("header") or props.get("cells") or []
+            for cell in cells:
+                assert cell.replace("|", r"\|") in sliced
+            continue
         first_text_line = (block.text or "").split("\n", 1)[0]
         assert first_text_line in sliced or block.text == ""
 
