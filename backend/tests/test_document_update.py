@@ -10,7 +10,10 @@ import json
 import pytest
 from sqlalchemy import text
 
+from uuid import uuid4
+
 from app.services.document_door import (
+    DocumentTargetUnresolved,
     DocumentUriConflict,
     put_document,
     update_document_metadata,
@@ -79,6 +82,13 @@ async def _tags(session, document_id) -> set[str]:
         {"id": str(document_id)},
     )).scalars().all()
     return set(rows)
+
+
+async def _event_count(session, document_id) -> int:
+    return (await session.execute(
+        text("SELECT count(*) FROM events WHERE object_id = CAST(:id AS uuid)"),
+        {"id": str(document_id)},
+    )).scalar_one()
 
 
 async def _latest_event(session, document_id):
@@ -220,6 +230,30 @@ async def test_a_refused_rename_leaves_the_session_usable(session):
     assert (await _read(session, first))["uri"] == "notes/e2.md"
     await update_document_metadata(session, document_id=first, title="Still works")
     assert (await _read(session, first))["title"] == "Still works"
+
+
+@pytest.mark.asyncio
+async def test_a_title_only_call_against_a_missing_id_refuses(session):
+    missing = uuid4()
+    with pytest.raises(DocumentTargetUnresolved):
+        await update_document_metadata(session, document_id=missing, title="New")
+    assert await _event_count(session, missing) == 0
+
+
+@pytest.mark.asyncio
+async def test_a_tags_only_call_against_a_missing_id_refuses(session):
+    missing = uuid4()
+    with pytest.raises(DocumentTargetUnresolved):
+        await update_document_metadata(session, document_id=missing, tags=["a"])
+    assert await _event_count(session, missing) == 0
+
+
+@pytest.mark.asyncio
+async def test_an_entirely_empty_call_against_a_missing_id_refuses(session):
+    missing = uuid4()
+    with pytest.raises(DocumentTargetUnresolved):
+        await update_document_metadata(session, document_id=missing)
+    assert await _event_count(session, missing) == 0
 
 
 @pytest.mark.asyncio
