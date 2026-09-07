@@ -110,7 +110,22 @@ def _fence_for(text: str) -> str:
     return "`" * max(3, longest + 1)
 
 
-def _separator(parent: TreeBlock | None, siblings: list[TreeBlock], index: int) -> str:
+def _cell(text: str) -> str:
+    r"""A `|` inside a cell is stored unescaped, so put the backslash back.
+
+    Emitted bare it declares a column the delimiter row does not have, and
+    the row's text is truncated at that point rather than the table merely
+    rendering oddly.
+    """
+    return text.replace("|", r"\|")
+
+
+def _separator(
+    parent: TreeBlock | None,
+    siblings: list[TreeBlock],
+    index: int,
+    prefix: str = "",
+) -> str:
     current = siblings[index]
     if current.type == "table_row":
         return "\n"                    # rows are lines of their table
@@ -120,7 +135,10 @@ def _separator(parent: TreeBlock | None, siblings: list[TreeBlock], index: int) 
         return "\n"                    # tight list, same run
     if current.type == "list" and parent is not None and parent.type == "list":
         return "\n"                    # nested item under its parent item
-    return "\n\n"
+    # The blank line carries the caller's prefix. Unprefixed it terminates an
+    # enclosing blockquote, and the child re-parses as a quote of its own.
+    # `rstrip` matches how `emit_lines` writes an empty line: "> ", not "> ".
+    return "\n" + prefix.rstrip() + "\n"
 
 
 def serialize_tree(
@@ -161,7 +179,16 @@ def serialize_tree(
         child_prefix = prefix
         if block.type == "heading":
             level = int(props.get("level") or 1)
-            span = emit_lines([f"{'#' * level} {block.text}"], prefix)
+            if "\n" in (block.text or "") and level <= 2:
+                # A setext heading's content may span lines. ATX cannot hold a
+                # newline -- the remainder would re-parse as a paragraph -- so
+                # a multi-line heading goes back out in the form it came in.
+                underline = "=" if level == 1 else "-"
+                span = emit_lines(
+                    [*block.text.split("\n"), underline * 3], prefix,
+                )
+            else:
+                span = emit_lines([f"{'#' * level} {block.text}"], prefix)
         elif block.type == "code":
             fence = _fence_for(block.text)
             info = props.get("language") or ""
@@ -186,14 +213,16 @@ def serialize_tree(
             aligns = props.get("alignments") or [None] * len(header)
             delim = {"left": ":---", "right": "---:", "center": ":---:"}
             span = emit_lines([
-                "| " + " | ".join(header) + " |",
+                "| " + " | ".join(_cell(c) for c in header) + " |",
                 "| " + " | ".join(delim.get(a or "", "---") for a in aligns) + " |",
             ], prefix)
         elif block.type == "divider":
             span = emit_lines(["---"], prefix)
         elif block.type == "table_row":
             cells = props.get("cells") or [c.strip() for c in block.text.split("|")]
-            span = emit_lines(["| " + " | ".join(cells) + " |"], prefix)
+            span = emit_lines(
+                ["| " + " | ".join(_cell(c) for c in cells) + " |"], prefix,
+            )
         elif block.type == "html":
             # Verbatim. The run is opaque to markdown, so there is nothing to
             # normalise and any normalisation would change what re-parses.
@@ -214,7 +243,7 @@ def serialize_tree(
                 list_ordinal += 1
             else:
                 list_ordinal = 1        # a new list starts its own count
-            write(_separator(block, kids, i))
+            write(_separator(block, kids, i, child_prefix))
             emit(kid, child_prefix, list_ordinal)
 
     roots = children[None]
