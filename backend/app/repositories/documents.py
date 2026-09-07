@@ -72,6 +72,12 @@ _RESOLVE_BY_ID = text(
     "WHERE id = CAST(:id AS uuid)"
 )
 
+# The `ON CONFLICT ... WHERE` arm guards the one put path this statement is
+# on: a caller whose resolve found nothing, and whose INSERT then collides
+# with a block-first row another lane freed and refiled. `put_document`'s own
+# locked pre-check is the guard for the ordinary path, where an existing row
+# is written through `_UPDATE_DOCUMENT` and this statement never runs, so
+# neither guard subsumes the other.
 _UPSERT_BY_URI = text(
     """
     INSERT INTO documents (id, project, uri, title, source_type, content_hash,
@@ -86,6 +92,7 @@ _UPSERT_BY_URI = text(
         content_hash = EXCLUDED.content_hash,
         content = EXCLUDED.content,
         properties = EXCLUDED.properties
+    WHERE documents.properties->>'ingest_direction' IS DISTINCT FROM 'blocks'
     RETURNING id
     """
 )
@@ -177,8 +184,16 @@ async def upsert_by_uri(
     something else filed this uri between the caller's resolve and this write.
     A NULL `uri` never conflicts — the unique index is partial — so uri-less
     documents always insert.
+
+    Raises `DocumentIsBlockFirst` when the row it would fold onto is owned by
+    the block verbs.
     """
-    return (
+    # Deferred: `document_ingest` imports this module, so naming the exception
+    # at module scope closes an import cycle whenever the service is imported
+    # first.
+    from app.services.document_ingest import DocumentIsBlockFirst
+
+    resolved = (
         await session.execute(
             _UPSERT_BY_URI,
             {
@@ -192,7 +207,16 @@ async def upsert_by_uri(
                 "properties": None if properties is None else json.dumps(properties),
             },
         )
-    ).scalar_one()
+    ).scalar_one_or_none()
+    if resolved is None:
+        # The conflict target existed and the predicate excluded it: the row at
+        # this uri is block-first. A non-conflicting INSERT returns its own row,
+        # so zero rows means this and nothing else.
+        raise DocumentIsBlockFirst(
+            f"the document at uri {uri!r} in project {project!r} is "
+            "block-first: its content is owned by the block verbs."
+        )
+    return resolved
 
 
 async def update_document(

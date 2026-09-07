@@ -86,6 +86,7 @@ __all__ = [
     "DocumentFileFailure",
     "DocumentFileJob",
     "DocumentHashConflict",
+    "DocumentIsBlockFirst",
     "DocumentUriConflict",
     "DocumentIngest",
     "OVERSIZED_BLOCK_CHARS",
@@ -121,6 +122,19 @@ class DocumentHashConflict(Exception):
             f"expected_hash {expected_hash} does not match the document's "
             f"current content_hash {current_hash}"
         )
+
+
+class DocumentIsBlockFirst(ValueError):
+    """put refused: this document is owned by the block verbs (spec §8.2).
+
+    A content push over an editing session is a silent overwrite -- the put
+    would strip every block the editor placed and rewrite the content it was
+    serialising from.
+
+    It lives here rather than in ``document_door`` because both the door and
+    the repository raise it, and a repository raising a door class would close
+    an import cycle. ``document_door`` re-exports it.
+    """
 
 
 class DocumentUriConflict(ValueError):

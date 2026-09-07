@@ -30,7 +30,11 @@ from app.services.block_embeddings import (
 )
 from app.services.block_pipeline import ingest_document
 from app.services.block_query import BlockQueryService
-from app.services.document_ingest import UNCHANGED, DocumentUriConflict
+from app.services.document_ingest import (
+    UNCHANGED,
+    DocumentIsBlockFirst,
+    DocumentUriConflict,
+)
 from app.services.embedder_registry import child_table
 from app.services.events import record_event
 
@@ -41,6 +45,7 @@ __all__ = [
     "SEARCH_DEFAULT_LIMIT",
     "SEARCH_MAX_LIMIT",
     "BlockRow",
+    "DocumentIsBlockFirst",
     "DocumentTargetUnresolved",
     "DocumentTooLarge",
     "DocumentUriConflict",
@@ -167,15 +172,6 @@ _LOCK_DOCUMENT_BY_URI = text(
     "WHERE project = CAST(:project AS text) AND uri = CAST(:uri AS text) "
     "FOR UPDATE"
 )
-
-
-class DocumentIsBlockFirst(ValueError):
-    """put refused: this document is owned by the block verbs (spec §8.2).
-
-    A content push over an editing session is a silent overwrite -- the put
-    would strip every block the editor placed and rewrite the content it was
-    serialising from.
-    """
 
 
 class DocumentNotConvertible(ValueError):
