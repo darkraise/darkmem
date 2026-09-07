@@ -263,9 +263,11 @@ class AnalyticsService:
         sources = [{"name": r.source, "count": r.count} for r in source_rows]
 
         # Top tags
-        # Each link table counts in its own correlated subquery: joining both
-        # into one statement multiplies the rows, so a tag on two memories and
-        # two documents would rank as if it had eight references.
+        # Each link table counts in its own correlated subquery: a join across
+        # both multiplies the rows where a sum adds them, inflating the rank. A
+        # tag on three memories and two documents is 5 here, 6 under count(*)
+        # over the double join and 12 under summed per-column counts. The
+        # difference is invisible at two and two, where both are 4.
         tag_memory_count = (
             select(func.count())
             .select_from(memory_tags)

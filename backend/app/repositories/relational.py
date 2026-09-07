@@ -237,9 +237,11 @@ class PostgresTagRepository(TagRepositoryBase):
         return list(result.scalars().all())
 
     async def get_with_counts(self):
-        # Each link table counts in its own correlated subquery: joining both
-        # into one statement multiplies the rows, so a tag on two memories and
-        # two documents would report eight references instead of four.
+        # Each link table counts in its own correlated subquery: a join across
+        # both multiplies the rows where a sum adds them. A tag on three
+        # memories and two documents is 5 here, 6 under count(*) over the
+        # double join and 12 under summed per-column counts. The difference is
+        # invisible at two and two, where the product and the sum are both 4.
         memory_count = (
             select(func.count())
             .select_from(memory_tags)

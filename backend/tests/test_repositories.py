@@ -182,8 +182,10 @@ async def test_a_tag_referenced_by_neither_is_still_swept(session, orphan_tag):
 
 async def test_the_count_sums_rather_than_multiplies(session, doubly_tagged):
     """Three memories and two documents is 5. A join across both link tables
-    yields six rows, which every join-based spelling then reports as 6 or 10 --
-    and each of those passes every single-reference test."""
+    yields six rows, which the join spellings report as 6 (count(*)) or 12
+    (summed per-column counts). The counts are unequal on purpose: at two and
+    two the product and the sum coincide at 4, so a join reports the summed
+    answer by accident and this guard silently stops guarding."""
     counts = {t.name: n for t, n in
               await PostgresTagRepository(session).get_with_counts()}
     assert counts["shared"] == 5
