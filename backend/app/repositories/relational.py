@@ -5,7 +5,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.memory import Memory, Tag, memory_tags, tag_category
+from app.models.memory import Memory, Tag, document_tags, memory_tags, tag_category
 from app.services.events import record_event
 
 from .base import AuditRepositoryBase, MemoryRepositoryBase, TagRepositoryBase
@@ -237,29 +237,47 @@ class PostgresTagRepository(TagRepositoryBase):
         return list(result.scalars().all())
 
     async def get_with_counts(self):
+        # Each link table counts in its own correlated subquery: joining both
+        # into one statement multiplies the rows, so a tag on two memories and
+        # two documents would report eight references instead of four.
+        memory_count = (
+            select(func.count())
+            .select_from(memory_tags)
+            .where(memory_tags.c.tag_id == Tag.id)
+            .scalar_subquery()
+        )
+        document_count = (
+            select(func.count())
+            .select_from(document_tags)
+            .where(document_tags.c.tag_id == Tag.id)
+            .scalar_subquery()
+        )
         stmt = (
-            select(Tag, func.count(memory_tags.c.memory_id).label("count"))
-            .outerjoin(memory_tags)
-            .group_by(Tag.id)
+            select(Tag, (memory_count + document_count).label("count"))
             .order_by(Tag.name)
         )
         result = await self.session.execute(stmt)
         return [(row[0], row[1]) for row in result.all()]
 
     async def prune_orphans(self) -> int:
-        """Delete tags no memory references any more, returning the count.
+        """Delete tags nothing references any more, returning the count.
 
-        Tags are auto-created from memory tag strings and linked only through
-        ``memory_tags`` (ON DELETE CASCADE). Deleting a memory drops the link
-        rows but leaves the tag row behind, so the ``tags`` table — and every
-        count derived from it (dashboard stat, tag filter dropdown) — keeps
-        showing tags that no live memory carries. Mirrors
+        Tags are auto-created from memory tag strings and linked through two
+        tables, ``memory_tags`` and ``document_tags``, both ON DELETE CASCADE.
+        Deleting the referent drops the link rows but leaves the tag row
+        behind, so the ``tags`` table — and every count derived from it
+        (dashboard stat, tag filter dropdown) — keeps showing tags nothing
+        carries. Checking only the first table deletes a tag carried by a
+        document alone, taking its links with it under the cascade. Mirrors
         ``PostgresGraphRepository.prune_orphan_entities`` for the graph."""
         result = await self.session.execute(
             sa_text("""
                 DELETE FROM tags t
                 WHERE NOT EXISTS (
                     SELECT 1 FROM memory_tags mt WHERE mt.tag_id = t.id
+                )
+                AND NOT EXISTS (
+                    SELECT 1 FROM document_tags dt WHERE dt.tag_id = t.id
                 )
                 RETURNING t.id
             """)

@@ -35,6 +35,15 @@ memory_tags = Table(
     Column("tag_id", Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
 )
 
+# Documents reuse the same `tags` registry rather than minting a second
+# vocabulary, so every count and sweep over `tags` has two link tables to read.
+document_tags = Table(
+    "document_tags",
+    Base.metadata,
+    Column("document_id", UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True),
+    Column("tag_id", Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
+)
+
 
 class Memory(Base):
     __tablename__ = "memories"
