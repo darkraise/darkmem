@@ -11,9 +11,11 @@ import {
   dropTargetFor,
   preferInnermost,
   resolveDrop,
+  ROW_DROP_DISABLED,
 } from "../components/document-tree"
 import { buildUriTree } from "../uri-tree"
 import type { DocumentListItem } from "@/hooks/api"
+import type { MoveTarget } from "../move-target"
 
 function doc(id: string, uri: string): DocumentListItem {
   return { id, title: null, uri, source_type: "md", project: "p", block_count: 1 }
@@ -25,6 +27,10 @@ const DROP_ITEMS = [
   doc("1", "docs/a.md"),
   doc("2", "docs/b.md"),
   doc("3", "notes/c.md"),
+  // A root-level leaf whose name minus its last character is a folder path.
+  // `path.lastIndexOf("/")` is -1 here, and an unguarded `slice(0, -1)`
+  // makes "docs2" resolve into "docs".
+  doc("4", "docs2"),
 ]
 const DROP_PATHS = buildPathMap(buildUriTree(DROP_ITEMS))
 const drop = (active: string, over: string | null) =>
@@ -166,5 +172,61 @@ describe("preferInnermost", () => {
     expect(preferInnermost([hit(ROOT_DROP_ID), hit(`${DROP_PREFIX}docs`)]).map((c) => c.id))
       .toEqual([`${DROP_PREFIX}docs`])
     expect(preferInnermost([hit(ROOT_DROP_ID)]).map((c) => c.id)).toEqual([ROOT_DROP_ID])
+  })
+})
+
+describe("what dnd-kit actually delivers to resolveDrop", () => {
+  /** Models dnd-kit's own pipeline rather than calling `resolveDrop` with an
+   *  id it would never produce. `DndContext` filters droppables through
+   *  `getEnabled()` BEFORE it calls the collision detector, so a row
+   *  droppable that is `disabled` is not a candidate at all -- it falls
+   *  through to the pane, which encloses it, and resolves as a move to the
+   *  top level. That residue is the whole failure mode and it lives outside
+   *  `resolveDrop`, so a test that feeds the function directly cannot see
+   *  it. */
+  function deliver(dragged: string, hitPaths: string[]): MoveTarget | null {
+    const rowHits = ROW_DROP_DISABLED
+      ? []
+      : hitPaths.map((path) => ({ id: `${DROP_PREFIX}${path}`, data: {} }) as never)
+    // The pane encloses every row, so it is always under the pointer too.
+    const hits = [{ id: ROOT_DROP_ID, data: {} } as never, ...rowHits]
+    const over = preferInnermost(hits)[0]
+    return resolveDrop(DROP_PATHS, `${DRAG_PREFIX}${dragged}`, over ? String(over.id) : null)
+  }
+
+  it("refuses a release over a sibling leaf instead of moving to the root", () => {
+    expect(deliver("docs/a.md", ["docs/b.md"])).toBeNull()
+  })
+
+  it("refuses a release over the dragged row itself", () => {
+    expect(deliver("docs/a.md", ["docs/a.md"])).toBeNull()
+  })
+
+  it("refuses a release over the dragged row's own parent folder", () => {
+    expect(deliver("docs/a.md", ["docs"])).toBeNull()
+  })
+
+  it("still moves into another folder, and to the root over empty pane", () => {
+    expect(deliver("docs/a.md", ["notes"])).toEqual({
+      kind: "document",
+      documentId: "1",
+      uri: "notes/a.md",
+    })
+    expect(deliver("docs/a.md", [])).toEqual({
+      kind: "document",
+      documentId: "1",
+      uri: "a.md",
+    })
+  })
+})
+
+describe("dropTargetFor on a root-level leaf", () => {
+  it("resolves to the top level, never into a folder its name shadows", () => {
+    expect(dropTargetFor(DROP_PATHS, DROP_PATHS.get("docs2")!)).toBeNull()
+    expect(drop("notes/c.md", `${DROP_PREFIX}docs2`)).toEqual({
+      kind: "document",
+      documentId: "3",
+      uri: "c.md",
+    })
   })
 })

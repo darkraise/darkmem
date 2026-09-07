@@ -151,9 +151,24 @@ export function dropTargetFor(
   node: UriTreeNode,
 ): UriTreeNode | null {
   if (node.children.length > 0) return node
-  const parent = node.path.slice(0, node.path.lastIndexOf("/"))
+  const leaf = node.path.split("/").pop()!
+  // `Math.max(0, ...)` rather than a bare `lastIndexOf`: a root-level leaf
+  // has no slash, and `"docs2".slice(0, -1)` is the truthy `"docs"` -- which
+  // resolved a root leaf into whatever folder its own name shadows.
+  const parent = node.path.slice(0, Math.max(0, node.path.length - leaf.length - 1))
   return parent ? (byPath.get(parent) ?? null) : null
 }
+
+/** Row droppables are NEVER disabled, and that is the fix rather than an
+ *  omission. `DndContext` filters droppables through `getEnabled()` BEFORE
+ *  it calls the collision detector, so a row disabled because `moveTarget`
+ *  refuses it is not a candidate at all: the pointer falls through to the
+ *  pane droppable that encloses it and the release resolves as a move to the
+ *  top level -- an accepted uri rewrite from a position the UI had just
+ *  declared refused. Every row stays a candidate and `resolveDrop` is the
+ *  one place a drop is refused; the hover ring is gated on `moveTarget`
+ *  separately, so a refused row still looks refused. */
+export const ROW_DROP_DISABLED = false
 
 /** The whole drop decision, as a pure function of the tree and the two ids. */
 export function resolveDrop(
@@ -199,14 +214,12 @@ function RootDroppable({
   activeNode: UriTreeNode | null
   children: ReactNode
 }) {
-  const { setNodeRef, isOver } = useDroppable({
-    id: ROOT_DROP_ID,
-    disabled: activeNode !== null && moveTarget(activeNode, null) === null,
-  })
+  const { setNodeRef, isOver } = useDroppable({ id: ROOT_DROP_ID })
+  const refused = activeNode !== null && moveTarget(activeNode, null) === null
   return (
     <div
       ref={setNodeRef}
-      data-drop-over={isOver || undefined}
+      data-drop-over={(isOver && !refused) || undefined}
       className="outline-primary/70 rounded-md data-[drop-over]:outline-1 data-[drop-over]:outline-dashed"
     >
       {children}
@@ -230,10 +243,10 @@ function RowHandle({
   })
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: `${DROP_PREFIX}${node.path}`,
-    // A droppable the resolver would refuse is not offered at all, so the
-    // hover affordance can never promise a move that does nothing.
-    disabled: activeNode !== null && moveTarget(activeNode, dropTarget) === null,
+    disabled: ROW_DROP_DISABLED,
   })
+  // The ring, not the candidacy, is what a refused target loses.
+  const refused = activeNode !== null && moveTarget(activeNode, dropTarget) === null
   // Stable across renders: an inline arrow re-registers the droppable and
   // re-runs its ResizeObserver on every one.
   const setRef = useCallback(
@@ -246,7 +259,7 @@ function RowHandle({
   return (
     <span
       data-drag-handle
-      data-drop-over={isOver || undefined}
+      data-drop-over={(isOver && !refused) || undefined}
       data-dragging={isDragging || undefined}
       ref={setRef}
       {...listeners}
