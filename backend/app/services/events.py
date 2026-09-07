@@ -177,6 +177,11 @@ EVENT_TYPES: list[str] = [
     # and carries NO block text -- write-time minimization, stated here at
     # the vocabulary because the writer lives in block_verbs.py.
     "blocks_edited",
+    # The subtree delete's journal row, one per deleted document (increment 2).
+    # `delete_document` journals nothing and that is right for one note; a
+    # bulk delete is unrecoverable and, over MCP, the event's `api_key_id` is
+    # the only record of who ran it. Carries ids and the prefix, no content.
+    "documents_deleted",
     # The block-embedding backstop job's run summary (T-doc-door.6). Landed
     # ahead of its emitter, taxonomy-first, same as every other value here.
     "block_embeddings_refreshed",
