@@ -16,6 +16,7 @@ from app.services.document_door import (
     DocumentNothingToChange,
     DocumentTargetUnresolved,
     DocumentUriConflict,
+    delete_documents,
     put_document,
     rename_documents,
     update_document_metadata,
@@ -424,3 +425,55 @@ async def test_the_rename_rewrites_links_and_matches_none_today(session):
         text("SELECT count(*) FROM document_links")
     )).scalar_one()
     assert remaining == 0
+
+
+@pytest.mark.asyncio
+async def test_a_subtree_delete_removes_every_descendant(session):
+    for uri in ("notes/a", "notes/a/one.md", "notes/a/two.md", "notes/b.md"):
+        await _file(session, "body", uri)
+    assert await delete_documents(session, project="p", uri_prefix="notes/a") == 3
+    assert await _uris(session, "p") == {"notes/b.md"}
+
+
+@pytest.mark.asyncio
+async def test_a_subtree_delete_does_not_over_match_a_wildcard(session):
+    """`_` and `%` are LIKE metacharacters; the match must not use LIKE."""
+    await _file(session, "body", "notes/a_b/one.md")
+    await _file(session, "body", "notes/axb/two.md")
+    assert await delete_documents(session, project="p", uri_prefix="notes/a_b") == 1
+    assert await _uris(session, "p") == {"notes/axb/two.md"}
+
+
+@pytest.mark.asyncio
+async def test_a_subtree_delete_is_scoped_to_its_project(session):
+    await _file(session, "body", "notes/a/one.md")
+    llm = StubEmbedder()
+    await put_document(session, llm, project="q", uri="notes/a/one.md",
+                       content="body", source_type="md")
+    await session.commit()
+    assert await delete_documents(session, project="p", uri_prefix="notes/a") == 1
+    assert await _uris(session, "q") == {"notes/a/one.md"}
+
+
+@pytest.mark.asyncio
+async def test_a_subtree_delete_journals_one_row_per_document(session):
+    _, first = await _file(session, "body", "notes/a/one.md")
+    _, second = await _file(session, "body", "notes/a/two.md")
+    await delete_documents(session, project="p", uri_prefix="notes/a")
+    for doc in (first, second):
+        assert await _event_count(session, doc) >= 1
+        row = await _latest_event(session, doc)
+        assert row["event_type"] == "documents_deleted"
+        assert row["payload"]["uri_prefix"] == "notes/a"
+        # Write-time minimization: ids and the prefix, never content.
+        assert "content" not in row["payload"]
+
+
+@pytest.mark.asyncio
+async def test_an_empty_prefix_is_refused(session):
+    """At the SQL an empty prefix degenerates to `left(uri, 1) = '/'` and
+    matches nothing, which would report a successful delete of zero rows."""
+    await _file(session, "body", "notes/a/one.md")
+    with pytest.raises(DocumentNothingToChange):
+        await delete_documents(session, project="p", uri_prefix="")
+    assert await _uris(session, "p") == {"notes/a/one.md"}
