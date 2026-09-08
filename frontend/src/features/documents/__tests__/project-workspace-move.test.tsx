@@ -134,25 +134,28 @@ describe("project workspace — a drop is a real uri rewrite", () => {
     )
   })
 
-  it("surfaces a 409 naming the occupied path, without losing the tree", async () => {
+  it("surfaces a 409 in the server's own words, naming the colliding uri", async () => {
     // A move onto an occupied path is a real refusal, not a bug: the target
-    // uri is another document's identity.
+    // uri is another document's identity. The message is the server's --
+    // `DocumentUriConflict` names the ONE document that collides, which on a
+    // subtree move is not the prefix the reader dropped.
     mockList()
     await renderWorkspace()
     vi.mocked(apiFetch).mockRejectedValueOnce(
-      new ApiError("Document already exists at that uri", 409),
-    )
-    lastOnMove!({ kind: "document", documentId: ONE.id, uri: "b/two.md" })
-    await waitFor(() =>
-      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
-        expect.stringContaining("b/two.md"),
+      new ApiError(
+        "another document in this project already holds the uri 'b/two.md'",
+        409,
       ),
     )
-    expect(String(vi.mocked(toast.error).mock.calls[0]?.[0])).toMatch(/already/i)
-    expect(screen.getByText("tree")).toBeInTheDocument()
+    lastOnMove!({ kind: "subtree", uriPrefix: "a", newUriPrefix: "b" })
+    await waitFor(() =>
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+        "another document in this project already holds the uri 'b/two.md'",
+      ),
+    )
   })
 
-  it("reports a non-409 failure in the server's own words", async () => {
+  it("reports a non-409 failure in the server's own words too", async () => {
     mockList()
     await renderWorkspace()
     vi.mocked(apiFetch).mockRejectedValueOnce(new ApiError("Storage is full", 500))
