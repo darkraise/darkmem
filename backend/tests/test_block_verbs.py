@@ -450,11 +450,11 @@ async def _page(session, *, project="p", content="", title="P"):
 async def test_a_page_block_resolves_to_the_page_owner(session):
     """`_document_of` read one column, so a page block resolved to None and
     every verb built on it silently targeted nothing."""
-    from app.services.block_verbs import _owner_of
+    from app.services.block_verbs import PAGE_OWNER, _owner_of
 
     page_id, block_id = await _page(session, content="page prose\n")
 
-    owner, owner_id = await _owner_of(session, block_id)
+    owner, owner_id = await _owner_of(session, block_id, PAGE_OWNER)
     assert owner.kind == "page"
     assert owner_id == page_id
 
@@ -475,11 +475,13 @@ async def test_a_document_block_still_resolves_to_the_document_owner(session):
 async def test_a_page_edit_journals_object_type_page(session):
     """The journal's `object_type` rides the owner descriptor; filing a page
     edit as a document would misplace it on `GET /events/timeline`."""
+    from app.services.block_verbs import PAGE_OWNER
+
     llm = StubEmbedder()
     page_id, block_id = await _page(session, content="page prose\n")
 
     result = await update_block(session, llm, block_id=block_id,
-                                text="page prose edited")
+                                text="page prose edited", owner=PAGE_OWNER)
 
     assert result.owner_kind == "page"
     assert result.owner_id == page_id
@@ -496,10 +498,13 @@ async def test_a_page_edit_journals_object_type_page(session):
 
 @pytest.mark.asyncio
 async def test_a_page_edit_rewrites_the_page_content(session):
+    from app.services.block_verbs import PAGE_OWNER
+
     llm = StubEmbedder()
     page_id, block_id = await _page(session, content="page prose\n")
 
-    await update_block(session, llm, block_id=block_id, text="rewritten")
+    await update_block(session, llm, block_id=block_id, text="rewritten",
+                       owner=PAGE_OWNER)
 
     row = (await session.execute(
         text(
@@ -514,6 +519,8 @@ async def test_a_page_edit_rewrites_the_page_content(session):
 
 @pytest.mark.asyncio
 async def test_a_verb_against_a_trashed_page_refuses(session):
+    from app.services.block_verbs import PAGE_OWNER
+
     llm = StubEmbedder()
     page_id, block_id = await _page(session, content="page prose\n")
     await session.execute(
@@ -522,7 +529,8 @@ async def test_a_verb_against_a_trashed_page_refuses(session):
     )
 
     with pytest.raises(BlockTargetUnresolved):
-        await update_block(session, llm, block_id=block_id, text="nope")
+        await update_block(session, llm, block_id=block_id, text="nope",
+                           owner=PAGE_OWNER)
 
 
 @pytest.mark.asyncio
@@ -559,4 +567,55 @@ async def test_a_missing_page_is_refused_by_its_own_noun(session):
                            document_id="00000000-0000-0000-0000-000000000000",
                            type="paragraph", text="x", owner=PAGE_OWNER)
     assert "page" in str(caught.value)
+    assert "document" not in str(caught.value)
+
+
+@pytest.mark.asyncio
+async def test_a_page_edit_never_runs_the_conversion_pass(session):
+    """A page has no authored source to reproduce, so content the serialiser
+    cannot round-trip must not refuse the edit -- the refusal's remedy is
+    `document_put`, which a page has no door for."""
+    from app.services.block_verbs import PAGE_OWNER
+
+    llm = StubEmbedder()
+    page_id, block_id = await _page(
+        session, content="[ref]: https://example.test\n"
+    )
+
+    result = await update_block(session, llm, block_id=block_id, text="edited",
+                                owner=PAGE_OWNER)
+
+    assert result.owner_kind == "page"
+
+
+@pytest.mark.asyncio
+async def test_a_bare_block_id_verb_refuses_a_page_block(session):
+    """The MCP shape: a block id and no owner. The verbs verify the owner the
+    caller named rather than discovering it, so a page block is refused on a
+    door that has not been given pages."""
+    llm = StubEmbedder()
+    page_id, block_id = await _page(session, content="page prose\n")
+
+    for verb in (
+        lambda: update_block(session, llm, block_id=block_id, text="x"),
+        lambda: move_block(session, llm, block_id=block_id),
+        lambda: delete_block(session, llm, block_id=block_id),
+    ):
+        with pytest.raises(BlockTargetUnresolved):
+            await verb()
+
+
+@pytest.mark.asyncio
+async def test_a_page_insert_names_the_page_in_its_parent_refusal(session):
+    from app.services.block_verbs import PAGE_OWNER
+
+    llm = StubEmbedder()
+    page_id, _ = await _page(session, content="page prose\n")
+
+    with pytest.raises(BlockTargetUnresolved) as caught:
+        await insert_block(
+            session, llm, document_id=page_id, type="paragraph", text="x",
+            parent_id="00000000-0000-0000-0000-000000000000",
+            owner=PAGE_OWNER,
+        )
     assert "document" not in str(caught.value)

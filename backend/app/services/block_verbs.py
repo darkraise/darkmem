@@ -179,12 +179,13 @@ _LOCK_PAGE = text(
     "SELECT id FROM pages WHERE id = CAST(:id AS uuid) "
     "AND deleted_at IS NULL FOR UPDATE"
 )
-# The literal NULLs skip `_mutate`'s conversion branch without a second code
-# path: a page is block-first by construction, so it has no authored source
-# the serialiser could fail to reproduce.
+# A page is block-first by construction: it has no authored source, so there
+# is nothing for the conversion pass to reproduce and the refusal it can raise
+# names a remedy (`document_put`) a page has no door for. Selecting the
+# BLOCK_FIRST literal is what keeps `_mutate` on one code path.
 _PAGE_META = text(
     "SELECT project, content, content_hash, "
-    "       NULL AS direction, NULL AS frontmatter "
+    f"       '{BLOCK_FIRST}' AS direction, NULL AS frontmatter "
     "FROM pages WHERE id = CAST(:id AS uuid) AND deleted_at IS NULL"
 )
 _LOAD_PAGE_TREE = text(
@@ -381,28 +382,39 @@ def _json(value):
     return None if value is None else json.dumps(value)
 
 
-async def _owner_of(session: AsyncSession, block_id: str) -> tuple[BlockOwner, str]:
-    """`blocks_exactly_one_owner` guarantees exactly one column is set, so the
-    two branches are the whole space."""
+async def _owner_of(
+    session: AsyncSession, block_id: str, owner: BlockOwner = DOCUMENT_OWNER,
+) -> tuple[BlockOwner, str]:
+    """The owner the caller named is verified, never discovered: a door that
+    has not been given pages must refuse a page block rather than edit it
+    because the block id happened to resolve.
+
+    `blocks_exactly_one_owner` guarantees exactly one column is set, so the
+    named owner's column being NULL means the block belongs to the other.
+    """
     row = (await session.execute(_RESOLVE_BLOCK, {"id": block_id})).mappings().first()
     if row is None:
         raise BlockTargetUnresolved(f"no block with id {block_id}")
-    if row["document_id"] is not None:
-        return DOCUMENT_OWNER, row["document_id"]
-    return PAGE_OWNER, row["page_id"]
+    owner_id = row["document_id"] if owner.kind == DOCUMENT_OWNER.kind else row["page_id"]
+    if owner_id is None:
+        raise BlockTargetUnresolved(
+            f"block {block_id} does not belong to any {owner.noun}"
+        )
+    return owner, owner_id
 
 
 async def update_block(
     session: AsyncSession, llm, *, block_id: str,
     text: str, type: str | None = None, properties: dict | None = None,
-    expected_hash: str | None = None,
+    expected_hash: str | None = None, owner: BlockOwner = DOCUMENT_OWNER,
 ) -> BlockWriteResult:
-    owner, document_id = await _owner_of(session, block_id)
+    owner, document_id = await _owner_of(session, block_id, owner)
     target = UUID(block_id)
 
     def apply(tree: list[TreeBlock]):
         if not any(b.id == target for b in tree):
-            raise BlockTargetUnresolved(f"block {block_id} is not in this document")
+            raise BlockTargetUnresolved(
+                f"block {block_id} is not in this {owner.noun}")
         out = []
         for block in tree:
             if block.id != target:
@@ -434,7 +446,8 @@ async def insert_block(
 
     def apply(tree: list[TreeBlock]):
         if parent is not None and not any(b.id == parent for b in tree):
-            raise BlockTargetUnresolved(f"no parent block {parent_id} in this document")
+            raise BlockTargetUnresolved(
+                f"no parent block {parent_id} in this {owner.noun}")
         siblings = [b for b in tree if b.parent_id == parent]
         if after is None:
             position = 0
@@ -465,16 +478,17 @@ async def insert_block(
 async def move_block(
     session: AsyncSession, llm, *, block_id: str,
     new_parent_id: str | None = None, after_block_id: str | None = None,
-    expected_hash: str | None = None,
+    expected_hash: str | None = None, owner: BlockOwner = DOCUMENT_OWNER,
 ) -> BlockWriteResult:
-    owner, document_id = await _owner_of(session, block_id)
+    owner, document_id = await _owner_of(session, block_id, owner)
     target = UUID(block_id)
     parent = None if new_parent_id is None else UUID(new_parent_id)
     after = None if after_block_id is None else UUID(after_block_id)
 
     def apply(tree: list[TreeBlock]):
         if not any(b.id == target for b in tree):
-            raise BlockTargetUnresolved(f"block {block_id} is not in this document")
+            raise BlockTargetUnresolved(
+                f"block {block_id} is not in this {owner.noun}")
         if parent is not None:
             if parent in _subtree(tree, target):
                 raise BlockCycleError(
@@ -513,14 +527,15 @@ async def move_block(
 
 async def delete_block(
     session: AsyncSession, llm, *, block_id: str,
-    expected_hash: str | None = None,
+    expected_hash: str | None = None, owner: BlockOwner = DOCUMENT_OWNER,
 ) -> BlockWriteResult:
-    owner, document_id = await _owner_of(session, block_id)
+    owner, document_id = await _owner_of(session, block_id, owner)
     target = UUID(block_id)
 
     def apply(tree: list[TreeBlock]):
         if not any(b.id == target for b in tree):
-            raise BlockTargetUnresolved(f"block {block_id} is not in this document")
+            raise BlockTargetUnresolved(
+                f"block {block_id} is not in this {owner.noun}")
         doomed = _subtree(tree, target)
         remaining = [b for b in tree if b.id not in set(doomed)]
         return remaining, None, doomed
