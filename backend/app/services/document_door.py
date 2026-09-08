@@ -114,6 +114,12 @@ class DocumentJournalWriteFailed(RuntimeError):
     unrecoverable, it cascades blocks and their vectors, and over MCP the
     event's `api_key_id` is the only thing that says who ran it. Failing
     closed costs the caller a retry; failing open loses the audit for good.
+
+    A type of its own rather than the vault's `JournalWriteFailed`, which the
+    other holders raise: that name lives on the knowledge-triple repository,
+    and this module is a block-channel one firewalled from the vault, so
+    sharing it would mean importing that module for an exception and nothing
+    else. The contract those callers hold is the shape, not the type.
     """
 
 
