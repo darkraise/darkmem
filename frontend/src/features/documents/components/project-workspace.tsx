@@ -64,6 +64,8 @@ import {
   rootFolderPaths,
 } from "@/features/documents/tree-expansion"
 import { buildUriTree, NO_PATH, type UriTreeNode } from "@/features/documents/uri-tree"
+import type { MoveTarget } from "@/features/documents/move-target"
+import { ApiError } from "@/lib/api"
 import {
   useAllDocuments,
   useDocumentCreate,
@@ -331,6 +333,37 @@ export function ProjectWorkspace({
     [patchMetadata.mutate],
   )
 
+  /** A drop, persisted. The tree resolves WHERE; this only chooses the verb,
+   *  on the same "children decide, not the row" rule the rename dispatch
+   *  uses -- a node can be both a document and a folder, and moving the
+   *  document alone would strand its descendants under the old prefix. */
+  const handleMove = useCallback(
+    (target: MoveTarget) => {
+      const destination =
+        target.kind === "document" ? target.uri : target.newUriPrefix
+      const settle = {
+        onError: (error: Error) =>
+          // A 409 is the door's own refusal rather than a failure: that uri
+          // is another document's identity, and the server's message does
+          // not name the path the reader just dropped onto.
+          toast.error(
+            error instanceof ApiError && error.status === 409
+              ? `${destination} already belongs to another document.`
+              : error.message,
+          ),
+      }
+      if (target.kind === "document") {
+        patchMetadata.mutate({ documentId: target.documentId, uri: target.uri }, settle)
+      } else {
+        renameSubtree.mutate(
+          { project, uri_prefix: target.uriPrefix, new_uri_prefix: target.newUriPrefix },
+          settle,
+        )
+      }
+    },
+    [patchMetadata.mutate, renameSubtree.mutate, project],
+  )
+
   const handleOpenRename = useCallback((node: UriTreeNode) => {
     setRenameTarget(node)
     setRenameValue(node.name)
@@ -552,6 +585,7 @@ export function ProjectWorkspace({
                   expanded={effectiveExpanded}
                   onExpandedChange={handleExpandedChange}
                   nodeActions={treeManagement ? nodeActions : undefined}
+                  onMove={treeManagement ? handleMove : undefined}
                   emptyAction={emptyAction}
                 />
               )}

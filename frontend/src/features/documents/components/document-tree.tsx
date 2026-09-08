@@ -7,6 +7,7 @@ import {
   useDroppable,
   useSensor,
   useSensors,
+  getClientRect,
   pointerWithin,
   type Collision,
   type CollisionDetection,
@@ -126,6 +127,41 @@ export const DROP_PREFIX = "drop:"
 /** The pane itself, so a row can be moved back to the top level. */
 export const ROOT_DROP_ID = DROP_PREFIX
 
+/** Kept as constants because `measureDropRow` and the drag suite both select
+ *  on them; the JSX writes the literal so a row reads as marked-up markup. */
+export const DROP_ROW_ATTR = "data-drop-row"
+export const DROP_ROOT_ATTR = "data-drop-root"
+
+/** A droppable's hit area is the ROW, not the element the listeners hang off.
+ *
+ *  The row droppable's own element is the inner handle span, which starts
+ *  past the chevron and the indent and stops short of the actions slot: on a
+ *  nested row that leaves roughly a third of the width and a third of the
+ *  height outside it. A release there matched no row at all and fell through
+ *  to the enclosing pane, which resolves as an ACCEPTED move to the top
+ *  level -- a uri rewrite from the likeliest sloppy release position.
+ *
+ *  Widened here rather than by moving the ref, because the row is
+ *  darkraise-ui's own element and the library exposes no ref for it; the
+ *  attribute rides the same `...props` spread that already carries
+ *  `className`.
+ *
+ *  Deliberately the control/item and NOT the enclosing `[role="treeitem"]`
+ *  branch `<li>`: that element encloses the whole subtree, so a folder's hit
+ *  area would swallow every descendant row. The `?? node` fallback is the
+ *  pane's, which sits under no row and must keep measuring itself.
+ *
+ *  `getClientRect` rather than dnd-kit's transform-agnostic default (which
+ *  it does not export): no row here is ever transformed -- the dragged row
+ *  is only dimmed -- so the two agree. */
+export function measureDropRow(node: HTMLElement) {
+  return getClientRect(node.closest<HTMLElement>(`[${DROP_ROW_ATTR}]`) ?? node)
+}
+
+/** Hoisted: `DndContext` memoises its measuring configuration on this
+ *  object's identity. */
+const MEASURING = { droppable: { measure: measureDropRow } }
+
 export function buildPathMap(roots: UriTreeNode[]): Map<string, UriTreeNode> {
   const map = new Map<string, UriTreeNode>()
   const walk = (nodes: UriTreeNode[]) => {
@@ -192,7 +228,7 @@ export function preferInnermost(hits: Collision[]): Collision[] {
   return inner.length > 0 ? inner : hits
 }
 
-const collisionDetection: CollisionDetection = (args) =>
+export const dropCollisionDetection: CollisionDetection = (args) =>
   preferInnermost(pointerWithin(args))
 
 /** Mouse and touch are separate sensors on purpose. A single `PointerSensor`
@@ -206,7 +242,12 @@ const TOUCH_ACTIVATION = {
 } as const
 
 /** Drop-to-root. Rendered only inside the context, so the hook it calls can
- *  never run on the drag-free path. */
+ *  never run on the drag-free path.
+ *
+ *  `pb-8` is the affordance itself, not spacing: every row now fills its own
+ *  box, so without a strip of bare pane below the last one the only place
+ *  left to release for a move to the top level is the tree's 4px left
+ *  gutter. */
 function RootDroppable({
   activeNode,
   children,
@@ -219,8 +260,9 @@ function RootDroppable({
   return (
     <div
       ref={setNodeRef}
+      data-drop-root=""
       data-drop-over={(isOver && !refused) || undefined}
-      className="outline-primary/70 rounded-md data-[drop-over]:outline-1 data-[drop-over]:outline-dashed"
+      className="outline-primary/70 rounded-md pb-8 data-[drop-over]:outline-1 data-[drop-over]:outline-dashed"
     >
       {children}
     </div>
@@ -408,7 +450,10 @@ export const DocumentTree = memo(function DocumentTree({
     if (node.children.length > 0) {
       return (
         <TreeViewBranch key={node.path} value={node.path}>
-          <TreeViewBranchControl className={`group relative ${ROW_GAP} ${ROW}`}>
+          <TreeViewBranchControl
+            data-drop-row=""
+            className={`group relative ${ROW_GAP} ${ROW}`}
+          >
             <IndentGuides depth={depth} />
             {/* The library's indicator renders only what it is given and
                 rotates it on `data-state=open`; with no child it was an
@@ -450,6 +495,7 @@ export const DocumentTree = memo(function DocumentTree({
     return (
       <TreeViewItem
         key={node.path}
+        data-drop-row=""
         value={node.document?.id ?? node.path}
         className={`group relative ${ROW_GAP} ${ROW}`}
       >
@@ -480,7 +526,8 @@ export const DocumentTree = memo(function DocumentTree({
         enabled={onMove !== undefined}
         activeNode={activeNode}
         sensors={sensors}
-        collisionDetection={collisionDetection}
+        measuring={MEASURING}
+        collisionDetection={dropCollisionDetection}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
         onDragCancel={onDragCancel}
