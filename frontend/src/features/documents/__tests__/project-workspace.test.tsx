@@ -825,6 +825,30 @@ describe("project workspace — the tree-management capability", () => {
     ).not.toHaveLength(0)
   })
 
+  it("offers a folder create inside the empty tree, not only in the header", async () => {
+    // The empty tree is the state `/notes` opens in, and the tree's own empty
+    // state returns before `nodeActions` renders -- so a folder is reachable
+    // from here or from nowhere. Waiting on the empty state before querying
+    // is load-bearing: the pane header's own button satisfies a
+    // `findAllByRole` on the first tick, so a query that does not wait passes
+    // whether or not the empty state ever renders its action.
+    mockDocuments({ items: [] })
+    renderWorkspace({ treeManagement: true })
+    await screen.findByText(/no documents filed/i)
+
+    // The header's, then the empty state's, in DOM order.
+    const buttons = screen.getAllByRole("button", { name: /new folder/i })
+    expect(buttons).toHaveLength(2)
+    await userEvent.click(buttons[1]!)
+    const input = await screen.findByRole("textbox", { name: /folder name/i })
+    await userEvent.type(input, "journal{Enter}")
+
+    await waitFor(() => expect(bodiesFor((p) => p === "/documents")).toHaveLength(1))
+    expect(bodiesFor((p) => p === "/documents")[0]).toMatchObject({
+      uri: "journal/untitled.md",
+    })
+  })
+
   it("offers no create affordance in an empty tree while management is off", async () => {
     // The corpus browser has no create verb at all.
     mockDocuments({ items: [] })

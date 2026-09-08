@@ -1090,8 +1090,16 @@ survive a journal failure; a *verification transition* must not, since doc 17
 §5.1's metrics are SQL over this table alone, so a status change whose row never
 landed is not a lost log line but a row that silently leaves the measurement's
 **denominator** — and under-power announces itself where that does not. **Five**
-callers refuse on a `False`, making the write and its row atomic, and they do
-**not** all raise the same exception (corrected 2026-09-08 — this said "**Four**
+callers **read `record_event`'s own boolean return and raise on a `False`**,
+making the write and its row atomic — that is the criterion this count keys
+on, and it is narrower than "refuses to let an unjournalled write stand".
+Callers holding the latter posture by another mechanism are deliberately
+outside the five and must not be added to it: `contradiction_scan._journal`
+reads its row back with its own SQL and lets the runner decline the commit,
+and `dream_undo` counts its `undone` rows back and raises when short (that
+one is described below; the scan's is not, and lives only in its own
+docstring). The five do **not** all
+raise the same exception either (corrected 2026-09-08 — this said "**Four**
 … raise `JournalWriteFailed`", which both undercounted and named a type the
 fifth caller cannot use; it had itself been corrected 2026-08-09 from "the two
 callers", so this sentence has now gone stale twice). Four raise the vault's
@@ -1743,9 +1751,9 @@ than the `uri_conflict`-style envelope its other refusals use.
 **The subtree delete is a seventh verb, on both doors, and it is the one
 whose two doors are not authorized alike.** `POST /api/v1/documents/delete`
 and MCP `document_delete_subtree` erase every document under a `uri_prefix`
-and answer the count; an empty prefix is refused rather than matching
-everything, and each removed document journals a `documents_deleted` row
-(see the Delete paragraph below, and the strict-caller paragraph of the
+and answer the count; an empty prefix is refused, and each removed document
+journals a `documents_deleted` row (see the Delete paragraph below, and the
+strict-caller paragraph of the
 Events journal section — this verb holds that contract). On MCP it is a
 separate tool at `admin` scope rather than a mode on `document_delete`,
 because scopes are per tool and a mode would have inherited `capture` and let
@@ -1755,10 +1763,24 @@ for a mode to inherit. That asymmetry is real, deliberate and recorded on
 `docs/two-door-parity.md`'s `documents.write` row — do not "fix" it by
 widening the REST door's story or by folding the tool back into
 `document_delete`. Both doors share the same prefix predicate as the subtree
-rename, and share its blind spot: the match is `uri = prefix OR left(uri,
-len+1) = prefix || '/'` with no normalisation, so a uri carrying a leading,
-doubled or trailing slash, or a scheme, is not reachable by the prefix a
-reader would derive from it.
+rename, and share its blind spot. The match is `uri = prefix OR left(uri,
+len+1) = prefix || '/'` with no normalisation on either side, so **it diverges
+from the path a tree derives from a uri exactly where the uri's spelling
+differs from that path at or above the prefix** — below the prefix the
+predicate never looks. A leading slash is the total case: `/notes/a.md`
+matches at no level, since every prefix a reader could derive from it omits
+that slash. A doubled slash, and a scheme's `//`, are partial — `notes//a.md`
+and `file:///tmp/a.md` still match at every folder *above* the anomaly
+(`notes`, `file:`) and stop only at or below it (`notes/sub`, `file:/tmp`). A
+**trailing** slash always matches, because `left(uri, len+1) = prefix || '/'`
+is that shape exactly. Note the empty prefix refused above is not the
+corpus-wide erase it reads as: it matches `uri = ''` or `left(uri, 1) = '/'`,
+so it would sweep leading-slash uris and *nothing else* and report a
+misleading zero on an ordinary corpus, which is what the refusal is for.
+Measured on Postgres, not derived — this paragraph said "a leading, doubled
+or trailing slash, or a scheme, is not reachable" on the day it was written
+(2026-09-08) and was wrong about three of those four within hours: only the
+leading slash is unreachable as stated.
 
 **Bounds, refused at the door.** `MAX_CONTENT_CHARS` (1,000,000
 characters) and `MAX_BLOCKS` (5,000) are both checked in `put_document`.

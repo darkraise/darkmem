@@ -115,10 +115,13 @@ const TOP_LEVEL_VALUE = "/"
  *
  *  The tree derives a folder's path from the uri's "/" segments with the
  *  empty ones dropped, while both subtree routes match the raw uri against
- *  `uri = prefix OR uri LIKE prefix/%`. A document filed at `/notes/a.md` or
- *  `file:///tmp/a.md` therefore renders under a folder path that matches
- *  none of its own rows. Unreported, the list simply refetches unchanged --
- *  which is indistinguishable from a completed edit. */
+ *  `uri = prefix OR left(uri, len+1) = prefix || '/'` -- never LIKE, whose
+ *  `_` and `%` would be metacharacters. The two diverge wherever a uri's
+ *  spelling differs from that derived path at or above the prefix: anything
+ *  under a leading slash matches at no level, and `file:///tmp/a.md` stops
+ *  matching at `file:/tmp` though it still matches at `file:`. Unreported,
+ *  the list simply refetches unchanged -- which is indistinguishable from a
+ *  completed edit. */
 function reportNothingMatched(prefix: string, verb: string) {
   toast.error(`No note under "${prefix}" matched, so nothing was ${verb}.`)
 }
@@ -129,7 +132,8 @@ function parentPath(path: string) {
 }
 
 /** True for the node itself and for anything filed beneath it. Matches the
- *  subtree routes' own SQL predicate (`uri = prefix OR uri LIKE prefix/%`). */
+ *  subtree routes' own SQL predicate, `uri = prefix OR left(uri, len+1) =
+ *  prefix || '/'`, which is a prefix test and deliberately not a LIKE. */
 function underPrefix(uri: string | null | undefined, prefix: string) {
   return Boolean(uri) && (uri === prefix || uri!.startsWith(`${prefix}/`))
 }
@@ -481,8 +485,9 @@ export function ProjectWorkspace({
     // A node can be BOTH a document and a folder -- `a/b.md` and
     // `a/b.md/c.md` coexist. Renaming the document alone would strand every
     // descendant under the old prefix, and the subtree route's predicate
-    // matches `uri = prefix` as well as `uri LIKE prefix/%`, so it moves the
-    // document with its children in one call. Children decide, not the row.
+    // matches `uri = prefix` as well as everything under `prefix/`, so it
+    // moves the document with its children in one call. Children decide, not
+    // the row.
     if (node.children.length > 0) {
       renameSubtree.mutate(
         { project, uri_prefix: node.path, new_uri_prefix: next },

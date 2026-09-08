@@ -85,13 +85,15 @@ write goes through the doors above; the UI gained no verb of its own.
 ### Fixed
 
 - **A subtree move or delete that matched nothing now says so.** Both routes
-  answer a count, and `/notes` was discarding it — so a folder whose documents
-  are filed under a uri the folder's own path does not match (a leading,
-  doubled or trailing slash, or a scheme) showed the confirm, took the 200,
-  refetched an unchanged tree and reported nothing at all. Zero rows is a
-  refusal now, on all three dispatch paths, and a successful folder delete
-  names how many notes it removed — which is the only evidence left once the
-  rows are gone.
+  answer a count, and `/notes` was discarding it. The tree builds a folder's
+  path out of a uri's segments and the routes match the raw uri, so a folder
+  whose documents are spelled differently at or above that path — anything
+  under a leading slash, or a doubled slash or a scheme's `//` sitting inside
+  the folder path itself — matches none of its own rows. The confirm ran, the
+  200 came back, the tree refetched unchanged and nothing was said. Zero rows
+  is a refusal now, on all three dispatch paths, and a successful folder
+  delete names how many notes it removed — which is the only evidence left
+  once the rows are gone.
 
 - **A tree row is a drop target across its whole box.** The droppable was the
   row's inner label span, so a release on a folder's chevron, the indent
