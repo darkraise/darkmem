@@ -33,10 +33,16 @@ const API_KEY_SCOPES: { label: string; inert?: boolean; never?: boolean }[] = [
   // code graph is a decision about what a leaked key can exfiltrate, and it is
   // demand-gated rather than taken because the word fits. The routes each one
   // covers: capture -> POST /memories and /memories/batch; read -> POST
-  // /memories/search/paginated; admin -> the push webhook.
+  // /memories/search/paginated; admin -> the push webhook, the file-scoped
+  // reindex door, and on /mcp both `code_reindex` and
+  // `document_delete_subtree`. That last one erases every document under a uri
+  // prefix and cannot be undone short of a whole-database restore, so the
+  // label names all three: the webhook alone understates what a leak costs,
+  // and the erase alone sends a webhook operator looking for a narrower
+  // scope that does not exist.
   { label: "Save new memories" },
   { label: "Search and read memories" },
-  { label: "Receive push updates" },
+  { label: "Receive push updates, reindex repositories, delete document subtrees" },
   { label: "Confirming a fact is never allowed — only you can do that", never: true },
 ]
 
@@ -47,7 +53,7 @@ const API_KEY_SCOPES: { label: string; inert?: boolean; never?: boolean }[] = [
 const SCOPE_WORDS: Record<string, string> = {
   capture: "Save new memories",
   read: "Search and read memories",
-  admin: "Receive push updates",
+  admin: "Receive push updates, reindex repositories, delete document subtrees",
 }
 
 function Row({ k, children }: { k: string; children: React.ReactNode }) {

@@ -1089,12 +1089,36 @@ that contract is right for most callers and wrong for a few. A capture must
 survive a journal failure; a *verification transition* must not, since doc 17
 §5.1's metrics are SQL over this table alone, so a status change whose row never
 landed is not a lost log line but a row that silently leaves the measurement's
-**denominator** — and under-power announces itself where that does not. **Four**
-callers raise `JournalWriteFailed` on a `False`, making the write and its row
-atomic (corrected 2026-08-09 — this said "the two callers", which undercounted
-from the day T2.113 landed): `set_verification_status` and `ratify` for the
-machine's and the human's rungs, and `record_human_verdict` and
-`dismiss_contradiction_suspicion` for the adjudication stream. **The human
+**denominator** — and under-power announces itself where that does not. **Five**
+callers **read `record_event`'s own boolean return and raise on a `False`**,
+making the write and its row atomic — that is the criterion this count keys
+on, and it is narrower than "refuses to let an unjournalled write stand".
+Callers holding the latter posture by another mechanism are deliberately
+outside the five and must not be added to it: `contradiction_scan._journal`
+reads its row back with its own SQL and lets the runner decline the commit,
+and `dream_undo` counts its `undone` rows back and raises when short (that
+one is described below; the scan's is not, and lives only in its own
+docstring). The five do **not** all
+raise the same exception either (corrected 2026-09-08 — this said "**Four**
+… raise `JournalWriteFailed`", which both undercounted and named a type the
+fifth caller cannot use; it had itself been corrected 2026-08-09 from "the two
+callers", so this sentence has now gone stale twice). Four raise the vault's
+`JournalWriteFailed`: `set_verification_status` and `ratify` for the machine's
+and the human's rungs, and `record_human_verdict` and
+`dismiss_contradiction_suspicion` for the adjudication stream. The fifth is
+`delete_documents` (`app/services/document_door.py`), which raises its own
+`DocumentJournalWriteFailed`. **The strict contract is a shape, not a shared
+type**, and a new holder of it may well have to mint its own: the vault's
+`JournalWriteFailed` lives on `app/repositories/knowledge_triples.py`, and
+the document door is a block-channel module firewalled from the vault, so
+sharing the name would give it an import on that module for no other reason
+than an exception. Note the firewall's scans would not have caught it — they
+police method names and vault-writer closures, not this import — so the local
+type is a choice, not something a red test forced. The document door's
+reason is not a denominator either: a subtree delete is unrecoverable, cascades
+blocks and their vectors, and over MCP the event's `api_key_id` is the only
+record of who ran it, so failing closed costs a retry where failing open loses
+the audit for good. **The human
 verdict is the one with no second trace at all.** No column records that a human
 rejected a fact, so that event row *is* the audit's `rejected_after` arm — and
 since T2.109 moved the LLM scan off the veto, that arm is the scan's only route
@@ -1382,16 +1406,24 @@ Authorization is per tool, not per door: `capture` covers the 13 writers
 increment 8's four block verbs `block_update`, `block_insert`, `block_move`,
 `block_delete` — a key that can edit a document's blocks can rewrite its
 content, which is `document_put`'s own power);
-`read` covers 25; `admin` covers the 1 repository-control tool
+`read` covers 25; `admin` covers the 2 repository-scale control tools
 (`code_reindex`, the first MCP write door into the code subsystem —
-`docs/superpowers/specs/2026-08-28-file-scoped-reindex-design.md` §6.1).
-Scopes do not imply one another. `admin` reaches exactly one
-tool, `code_reindex` — repository control, not memory writing — so a key
-holding only `admin` reaches nothing else, and a `capture` key cannot
-trigger an index. `ratify` stays outside the scope vocabulary, unchanged by
+`docs/superpowers/specs/2026-08-28-file-scoped-reindex-design.md` §6.1 — and
+increment 2's `document_delete_subtree`).
+Scopes do not imply one another. `admin` reaches exactly those two
+tools — a repository index and a whole-subtree erase, neither of them memory
+writing — so a key holding only `admin` reaches nothing else, and a `capture`
+key can trigger no index and delete no subtree. **The subtree delete is a
+separate tool rather than a mode on `document_delete` precisely because
+scopes are per tool**: a mode would have inherited `capture` and let any
+capture key erase a project's whole corpus. Its REST twin,
+`POST /api/v1/documents/delete`, sits behind ordinary auth with every other
+document route — the scope asymmetry is real and is recorded on
+`docs/two-door-parity.md`'s `documents.write` row, because the REST door has
+no per-verb grant for a mode to inherit. `ratify` stays outside the scope vocabulary, unchanged by
 this activation: no MCP tool can reach `confirmed` power no matter what a
 key holds. `tools/list` is deliberately **not** scope-filtered — any
-authenticated key sees the full 39-tool catalogue, including writers it
+authenticated key sees the full 40-tool catalogue, including writers it
 cannot invoke; that is intended, not an oversight. A keyed capture call
 stamps `events.api_key_id` (the key's row UUID) and `events.actor` (the
 key's name) on the journaled row.
@@ -1716,6 +1748,40 @@ that one refusal is the tool's exception to its envelope shape: the validator
 raises `ValueError`, which escapes `document_update` as a tool error rather
 than the `uri_conflict`-style envelope its other refusals use.
 
+**The subtree delete is a seventh verb, on both doors, and it is the one
+whose two doors are not authorized alike.** `POST /api/v1/documents/delete`
+and MCP `document_delete_subtree` erase every document under a `uri_prefix`
+and answer the count; an empty prefix is refused, and each removed document
+journals a `documents_deleted` row (see the Delete paragraph below, and the
+strict-caller paragraph of the
+Events journal section — this verb holds that contract). On MCP it is a
+separate tool at `admin` scope rather than a mode on `document_delete`,
+because scopes are per tool and a mode would have inherited `capture` and let
+any capture key erase a project's whole corpus; on REST it sits behind
+ordinary auth with every other document route, which has no per-verb grant
+for a mode to inherit. That asymmetry is real, deliberate and recorded on
+`docs/two-door-parity.md`'s `documents.write` row — do not "fix" it by
+widening the REST door's story or by folding the tool back into
+`document_delete`. Both doors share the same prefix predicate as the subtree
+rename, and share its blind spot. The match is `uri = prefix OR left(uri,
+len+1) = prefix || '/'` with no normalisation on either side, so **it diverges
+from the path a tree derives from a uri exactly where the uri's spelling
+differs from that path at or above the prefix** — below the prefix the
+predicate never looks. A leading slash is the total case: `/notes/a.md`
+matches at no level, since every prefix a reader could derive from it omits
+that slash. A doubled slash, and a scheme's `//`, are partial — `notes//a.md`
+and `file:///tmp/a.md` still match at every folder *above* the anomaly
+(`notes`, `file:`) and stop only at or below it (`notes/sub`, `file:/tmp`). A
+**trailing** slash always matches, because `left(uri, len+1) = prefix || '/'`
+is that shape exactly. Note the empty prefix refused above is not the
+corpus-wide erase it reads as: it matches `uri = ''` or `left(uri, 1) = '/'`,
+so it would sweep leading-slash uris and *nothing else* and report a
+misleading zero on an ordinary corpus, which is what the refusal is for.
+Measured on Postgres, not derived — this paragraph said "a leading, doubled
+or trailing slash, or a scheme, is not reachable" on the day it was written
+(2026-09-08) and was wrong about three of those four within hours: only the
+leading slash is unreachable as stated.
+
 **Bounds, refused at the door.** `MAX_CONTENT_CHARS` (1,000,000
 characters) and `MAX_BLOCKS` (5,000) are both checked in `put_document`.
 The character bound is checked first, before any parse or write starts.
@@ -1790,8 +1856,18 @@ unsourced, until the proposition lift and the block-to-fact bridge that
 would have written those sources were retired (2026-09-05). Nothing
 mints a `fact_sources` row from a block, so a document's blocks
 corroborate no fact: `delete_document` removes the document row, which
-cascades its blocks and their vectors, withdraws no provenance, expires
-no fact, and journals nothing at all — there is no delete event type.
+cascades its blocks and their vectors, withdraws no provenance and expires
+no fact. **The single delete still journals nothing; the subtree delete
+journals per row**, and this paragraph said "journals nothing at all — there
+is no delete event type" until 2026-09-08, which stopped being true the day
+`documents_deleted` entered `EVENT_TYPES`. The asymmetry is deliberate rather
+than an omission: one note is a small, obvious act by whoever was looking at
+it, while `delete_documents` erases a whole subtree irrecoverably, so it
+writes one `documents_deleted` row per document — naming the uri and the
+prefix, and over MCP the actor and `api_key_id` — *before* the `DELETE`, and
+refuses the delete outright when a row will not land (the strict-caller
+paragraph above). One row per subtree would need an object type no vocabulary
+has, which is why the journal counts documents.
 The withdraw-then-expire
 pass it used to run was the withdrawal half of a bridge whose attaching
 half never had a caller, which made it a permanent no-op; it went with

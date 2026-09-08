@@ -73,3 +73,19 @@ export function buildUriTree(items: DocumentListItem[]): UriTreeNode[] {
   }
   return roots
 }
+
+/** Every node keyed by its path, in the pre-order the tree renders. Lives
+ *  here rather than beside the drag layer because it is a function of the
+ *  tree alone: the drop resolver and the move picker both need it, and only
+ *  one of them has a DOM. */
+export function buildPathMap(roots: UriTreeNode[]): Map<string, UriTreeNode> {
+  const map = new Map<string, UriTreeNode>()
+  const walk = (nodes: UriTreeNode[]) => {
+    for (const node of nodes) {
+      map.set(node.path, node)
+      walk(node.children)
+    }
+  }
+  walk(roots)
+  return map
+}

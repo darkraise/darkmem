@@ -39,6 +39,7 @@ from app.services.embedder_registry import child_table
 from app.services.events import record_event
 
 __all__ = [
+    "DOCUMENTS_DELETED_EVENT",
     "DOCUMENT_UPDATED_EVENT",
     "MAX_BLOCKS",
     "MAX_CONTENT_CHARS",
@@ -46,6 +47,7 @@ __all__ = [
     "SEARCH_MAX_LIMIT",
     "BlockRow",
     "DocumentIsBlockFirst",
+    "DocumentJournalWriteFailed",
     "DocumentNothingToChange",
     "DocumentTargetUnresolved",
     "DocumentTooLarge",
@@ -54,6 +56,7 @@ __all__ = [
     "PutResult",
     "SectionHit",
     "delete_document",
+    "delete_documents",
     "document_blocks",
     "document_content",
     "document_hash",
@@ -74,6 +77,7 @@ MAX_CONTENT_CHARS = 1_000_000
 MAX_BLOCKS = 5_000
 
 DOCUMENT_UPDATED_EVENT = "document_updated"
+DOCUMENTS_DELETED_EVENT = "documents_deleted"
 
 # Only the two constants below are ever interpolated into the UPDATE; every
 # caller-supplied value is bound.
@@ -93,6 +97,30 @@ class DocumentTooLarge(ValueError):
 
 class DocumentTargetUnresolved(ValueError):
     """Nothing a caller named resolves to a document that exists."""
+
+
+class DocumentJournalWriteFailed(RuntimeError):
+    """A bulk delete could not be journalled, so it must not happen.
+
+    `record_event` degrades loudly and never raises, which is right for a
+    capture: a lost log line must not fail an ingest that can simply be
+    repeated. It returns whether the row landed so that a caller for whom the
+    row is not a log line but *is* the record can take the opposite contract
+    and make the write and its row atomic -- see the strict-caller paragraph
+    of CLAUDE.md's "Events journal" section for that contract and who holds
+    it.
+
+    A subtree delete is that case with more force than a capture. It is
+    unrecoverable, it cascades blocks and their vectors, and over MCP the
+    event's `api_key_id` is the only thing that says who ran it. Failing
+    closed costs the caller a retry; failing open loses the audit for good.
+
+    A type of its own rather than the vault's `JournalWriteFailed`, which the
+    other holders raise: that name lives on the knowledge-triple repository,
+    and this module is a block-channel one firewalled from the vault, so
+    sharing it would mean importing that module for an exception and nothing
+    else. The contract those callers hold is the shape, not the type.
+    """
 
 
 class DocumentNothingToChange(ValueError):
@@ -866,6 +894,95 @@ async def rename_documents(
             {"ids": moved},
         )
 
+    return len(rows)
+
+
+async def delete_documents(
+    session: AsyncSession,
+    *,
+    project: str,
+    uri_prefix: str,
+    actor: str | None = None,
+    api_key_id: UUID | None = None,
+) -> int:
+    """Delete a whole uri subtree in one transaction, journaling each row.
+
+    Shaped after `rename_documents` on purpose: the same prefix match, which
+    avoids LIKE because `_` and `%` are metacharacters there and a prefix of
+    `notes/a_b` would over-match `notes/axb`, and the same `ORDER BY id FOR
+    UPDATE` lock order, so a subtree delete and a concurrent subtree rename
+    take the rows in one order and cannot deadlock against each other.
+
+    Unlike the rename this needs no depth ordering: deletes cannot collide
+    through `ux_documents_project_uri`, so the order rows leave in is free.
+    The lock is still taken in id order for the cross-verb reason above.
+
+    Journals one `documents_deleted` row per deleted document rather than one
+    row for "a subtree", which would need an object type no vocabulary has.
+    `delete_document` journals nothing and that is right for a single note;
+    a bulk delete is unrecoverable, cascades blocks and their vectors, and
+    over MCP the event's `api_key_id` is the only record of who ran it.
+
+    `actor` and `api_key_id` are what make that last clause true rather than
+    aspirational, so they are threaded here rather than left to the doors:
+    a door cannot supply an identity this signature does not take, and a
+    later task widening it is how the journal-before-delete ordering gets
+    re-derived by someone who did not write it. Both are optional because
+    REST does not have them to give -- it authenticates its own way and its
+    sibling journal writers pass neither -- while MCP fills both from
+    `current_key_name()` / `current_api_key_id()`.
+    """
+    if not uri_prefix:
+        # `left(uri, 0 + 1) = '/'` matches nothing, so an unrefused empty
+        # prefix reports a successful delete of zero rows.
+        raise DocumentNothingToChange("uri_prefix must not be empty")
+
+    rows = (await session.execute(
+        text(
+            "SELECT CAST(id AS text) AS id, uri, project FROM documents "
+            "WHERE project = CAST(:p AS text) "
+            "  AND (uri = CAST(:u AS text) "
+            "       OR left(uri, length(CAST(:u AS text)) + 1) "
+            "          = CAST(:u AS text) || '/') "
+            "ORDER BY id FOR UPDATE"
+        ),
+        {"p": project, "u": uri_prefix},
+    )).mappings().all()
+
+    if not rows:
+        return 0
+
+    # Journal BEFORE the delete: `record_event` takes the document id as its
+    # object id, and writing after the row is gone would journal against an
+    # id nothing resolves. The events table holds no foreign key to
+    # `documents`, so the rows outlive their subject by design -- that is
+    # what makes this an audit trail rather than a cache.
+    for row in rows:
+        landed = await record_event(
+            session,
+            event_type=DOCUMENTS_DELETED_EVENT,
+            object_type="document",
+            object_id=UUID(row["id"]),
+            project=row["project"],
+            actor=actor,
+            api_key_id=api_key_id,
+            payload={"uri": row["uri"], "uri_prefix": uri_prefix},
+        )
+        if not landed:
+            # Raising here rather than after the loop is what makes the
+            # refusal free: the `DELETE` below never runs, so the caller is
+            # left with a transaction to roll back rather than an unaudited
+            # delete to explain. Same posture `update_document_metadata`
+            # takes on its own refusals.
+            raise DocumentJournalWriteFailed(
+                f"documents_deleted did not land for {row['uri']!r}; "
+                "refusing to delete unaudited"
+            )
+
+    await session.execute(
+        text("DELETE FROM documents WHERE id = ANY(CAST(:ids AS uuid[]))"),
+        {"ids": [row["id"] for row in rows]},
+    )
     return len(rows)
 
 

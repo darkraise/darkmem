@@ -29,6 +29,7 @@ const DEMO_ROUTES = [
   "/code/graph",
   "/knowledge/facts",
   "/documents",
+  "/notes",
 ]
 
 for (const route of DEMO_ROUTES) {

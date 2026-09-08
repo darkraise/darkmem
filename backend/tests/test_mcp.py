@@ -39,6 +39,8 @@ EXPECTED_TOOLS: frozenset[str] = frozenset({
     "code_search",
     "code_symbol",
     "document_delete",
+    # Increment 2's subtree delete, the second tool ever held at admin.
+    "document_delete_subtree",
     "document_get",
     "document_outline",
     "document_put",
@@ -852,3 +854,150 @@ async def test_document_update_refuses_a_field_from_the_other_mode(session, monk
     ))
     assert other_way["status"] == "invalid_mode"
     assert "pinned" in other_way["reason"]
+
+
+def test_document_delete_subtree_is_admin_scoped():
+    """A capture key can delete one note it can name. Erasing a subtree is
+    repository-scale control, so it sits with code_reindex."""
+    from app.api.mcp.scopes import ADMIN_TOOLS, CAPTURE_TOOLS, READ_TOOLS
+
+    assert "document_delete_subtree" in ADMIN_TOOLS
+    assert "document_delete_subtree" not in CAPTURE_TOOLS
+    assert "document_delete_subtree" not in READ_TOOLS
+    # The single-document verb keeps the scope it has.
+    assert "document_delete" in CAPTURE_TOOLS
+
+
+@pytest.mark.asyncio
+async def test_document_delete_subtree_removes_the_tree(session, monkeypatch):
+    """The tree goes, the sibling prefix stays, and the journal names the key.
+
+    The identity half is asserted here rather than left to the service test:
+    that test proves `delete_documents` forwards what it is handed, not that
+    this door hands it anything. The event row is the only record of who
+    erased a subtree, so a door that passed neither would leave an audit
+    trail with no actor and every service-level test still green.
+    """
+    import json
+    import uuid as uuid_mod
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    from sqlalchemy import text
+
+    from app.api.mcp import server as mcp_server
+    from app.services.document_door import DOCUMENTS_DELETED_EVENT, put_document
+
+    class Stub:
+        def __init__(self):
+            self.fingerprint = "test-fp-mcp-subtree|3"
+
+        async def embed_batch_chunked(self, texts, chunk_size, concurrency):
+            return ([[1.0, 0.0, 0.0] for _ in texts], self.fingerprint)
+
+        async def embed(self, value):
+            return [1.0, 0.0, 0.0], self.fingerprint
+
+        def llm_fingerprint(self):
+            return self.fingerprint
+
+    embedder_registry.forget("test-fp-mcp-subtree|3")
+    llm = Stub()
+
+    @asynccontextmanager
+    async def _ctx():
+        yield session
+
+    key_id = uuid_mod.uuid4()
+    monkeypatch.setattr(mcp_server, "async_session_factory", lambda: _ctx())
+    monkeypatch.setattr(mcp_server, "_pipeline", SimpleNamespace(llm=llm))
+    monkeypatch.setattr(mcp_server, "current_key_name", lambda: "subtree-key")
+    monkeypatch.setattr(mcp_server, "current_api_key_id", lambda: key_id)
+
+    # Every write before the first refusal -- see the fixture note.
+    gone = await put_document(session, llm, project="mcp-subtree",
+                              uri="mcpgone/a.md", content="# A\n")
+    await put_document(session, llm, project="mcp-subtree",
+                       uri="mcpgone/deep/b.md", content="# B\n")
+    await put_document(session, llm, project="mcp-subtree",
+                       uri="mcpkept/c.md", content="# C\n")
+    await session.commit()
+
+    result = json.loads(await mcp_server.document_delete_subtree(
+        project="mcp-subtree", uri_prefix="mcpgone",
+    ))
+    assert result["status"] == "ok"
+    assert result["project"] == "mcp-subtree"
+    assert result["deleted"] == 2
+
+    survivors = set((await session.execute(
+        text("SELECT uri FROM documents WHERE project = 'mcp-subtree'")
+    )).scalars().all())
+    assert survivors == {"mcpkept/c.md"}
+
+    row = (await session.execute(
+        text(
+            "SELECT event_type, actor, CAST(api_key_id AS text) AS api_key_id "
+            "FROM events WHERE object_id = CAST(:id AS uuid) "
+            "ORDER BY created_at DESC, id DESC LIMIT 1"
+        ),
+        {"id": str(gone.document_id)},
+    )).mappings().one()
+    assert row["event_type"] == DOCUMENTS_DELETED_EVENT
+    assert row["actor"] == "subtree-key"
+    assert row["api_key_id"] == str(key_id)
+
+    embedder_registry.forget("test-fp-mcp-subtree|3")
+
+
+@pytest.mark.asyncio
+async def test_document_delete_subtree_refuses_an_empty_prefix(session, monkeypatch):
+    """Two refusals, and they are deliberately different shapes.
+
+    An unnamed project is a mode error -- the call addresses nothing. An
+    empty `uri_prefix` is the service's own `DocumentNothingToChange`, the
+    same refusal the REST twin answers 422 for, so it reaches the service
+    rather than being second-guessed at the door.
+    """
+    import json
+    from contextlib import asynccontextmanager
+
+    from app.api.mcp import server as mcp_server
+
+    @asynccontextmanager
+    async def _ctx():
+        yield session
+
+    monkeypatch.setattr(mcp_server, "async_session_factory", lambda: _ctx())
+
+    refused = json.loads(await mcp_server.document_delete_subtree(
+        project="mcp-subtree", uri_prefix="",
+    ))
+    assert refused["status"] == "no_change"
+
+    unaddressed = json.loads(await mcp_server.document_delete_subtree(
+        uri_prefix="mcpgone",
+    ))
+    assert unaddressed["status"] == "invalid_mode"
+
+
+@pytest.mark.asyncio
+async def test_document_delete_answers_an_envelope_for_a_missing_target(
+    session, monkeypatch,
+):
+    """Its sibling document_update answers an envelope; these two disagreed."""
+    import json
+    from contextlib import asynccontextmanager
+
+    from app.api.mcp import server as mcp_server
+
+    @asynccontextmanager
+    async def _ctx():
+        yield session
+
+    monkeypatch.setattr(mcp_server, "async_session_factory", lambda: _ctx())
+
+    missing = json.loads(await mcp_server.document_delete(
+        document_id="00000000-0000-0000-0000-000000000000",
+    ))
+    assert missing["status"] == "unresolved"

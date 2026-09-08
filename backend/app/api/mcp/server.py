@@ -850,23 +850,89 @@ async def document_delete(
 
     async with async_session_factory() as session:
         # Resolved outside the rollback guard: naming no document writes
-        # nothing, so there is nothing for a rollback to undo and the raise
-        # leaves the session as it found it.
-        target = await resolve_document_target(
-            session, document_id=document_id, project=project, uri=uri,
-        )
+        # nothing, so there is nothing for a rollback to undo and the
+        # refusal leaves the session as it found it.
+        try:
+            target = await resolve_document_target(
+                session, document_id=document_id, project=project, uri=uri,
+            )
+        except DocumentTargetUnresolved as exc:
+            # An envelope, matching document_update: two sibling document
+            # writers must not disagree on the same exception, and an agent
+            # can machine-read an envelope where it cannot machine-read a
+            # traceback.
+            return json.dumps({"status": "unresolved", "reason": str(exc)})
         try:
             # Never a raw DELETE: the shared service is where a delete's
             # shape is decided, so both doors remove the same rows rather
             # than one door growing its own. It relies on this caller to
             # commit.
             if not await delete_document(session, document_id=target):
-                raise DocumentTargetUnresolved("document not found")
+                return json.dumps({
+                    "status": "unresolved", "reason": "document not found",
+                })
             await session.commit()
         except Exception:
             await session.rollback()
             raise
     return json.dumps({"document_id": target, "deleted": True})
+
+
+@mcp.tool(
+    description=(
+        "Delete every document under a uri prefix, in one transaction. "
+        "Names a project and a uri_prefix; answers the count removed. This "
+        "is repository-scale control and requires an admin-scoped key -- a "
+        "capture key can delete one document it names, not a whole subtree."
+    )
+)
+async def document_delete_subtree(
+    project: str | None = None,
+    uri_prefix: str | None = None,
+) -> str:
+    """
+    Args:
+        project: Scope. Required.
+        uri_prefix: The subtree to remove. Required; an empty prefix refuses.
+    """
+    from app.services.document_door import (
+        DocumentNothingToChange, delete_documents,
+    )
+
+    if not project:
+        # A call naming no scope addresses nothing at all. An empty
+        # `uri_prefix` is left to the service, whose own
+        # DocumentNothingToChange is what the REST twin answers 422 for --
+        # second-guessing it here would put the rule in two places.
+        return json.dumps({
+            "status": "invalid_mode", "reason": "name a project",
+        })
+
+    async with async_session_factory() as session:
+        try:
+            # The journal row is the only record of who erased a subtree, so
+            # this door hands the service the identity its REST twin has no
+            # way to supply.
+            deleted = await delete_documents(
+                session, project=project, uri_prefix=uri_prefix or "",
+                actor=current_key_name(), api_key_id=current_api_key_id(),
+            )
+            await session.commit()
+        except DocumentNothingToChange as exc:
+            # The REST twin answers 422 for the same shape.
+            await session.rollback()
+            return json.dumps({"status": "no_change", "reason": str(exc)})
+        except Exception:
+            # Includes DocumentJournalWriteFailed, which leaves partially
+            # written journal rows in this session. Rolling back and
+            # re-raising is what keeps "refused unaudited" true; committing
+            # past it would journal a delete that never happened.
+            await session.rollback()
+            raise
+
+    return json.dumps({
+        "status": "ok", "project": project, "deleted": deleted,
+    })
 
 
 @mcp.tool(

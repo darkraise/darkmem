@@ -673,6 +673,8 @@ async def test_naming_no_document_is_404_on_rest_and_an_error_on_the_tool(
     """Never a silent empty result. An outline of nothing and an outline with
     no headings are different answers, and the door that returned `[]` for
     both would report a document that does not exist as an empty one."""
+    import json
+
     from app.api.mcp import server as mcp_server
     from app.services.document_door import DocumentTargetUnresolved
 
@@ -695,8 +697,12 @@ async def test_naming_no_document_is_404_on_rest_and_an_error_on_the_tool(
         await mcp_server.document_outline(project="p", uri="docs/never-filed.md")
     with pytest.raises(DocumentTargetUnresolved):
         await mcp_server.document_get(project="p", uri="docs/never-filed.md")
-    with pytest.raises(DocumentTargetUnresolved):
+    # The delete answers an envelope where the two reads raise: it is a
+    # writer, and its sibling writer document_update already answers one.
+    unresolved = json.loads(
         await mcp_server.document_delete(project="p", uri="docs/never-filed.md")
+    )
+    assert unresolved["status"] == "unresolved"
 
 
 @pytest.mark.asyncio
@@ -1457,6 +1463,31 @@ async def test_patch_updates_one_document(client, auth_headers, filed, session):
     assert row["pinned_at"] is not None
 
 
+async def test_the_list_serves_pinned_at(client, auth_headers, filed):
+    """The tree reads pin state from the list; a pin control with no readable
+    state is not shippable."""
+    from app.services.document_door import update_document_metadata
+
+    doc = await filed("notes/pinme.md", "body")
+
+    before = await client.get(
+        f"{V1}/documents", params={"project": "p"}, headers=auth_headers
+    )
+    assert before.status_code == 200
+    row = next(r for r in before.json()["items"] if r["id"] == doc)
+    assert row["pinned_at"] is None
+
+    await client.patch(
+        f"{V1}/documents/{doc}", json={"pinned": True}, headers=auth_headers
+    )
+
+    after = await client.get(
+        f"{V1}/documents", params={"project": "p"}, headers=auth_headers
+    )
+    pinned = next(r for r in after.json()["items"] if r["id"] == doc)
+    assert pinned["pinned_at"] is not None
+
+
 async def test_patch_refuses_a_project_field(client, auth_headers, filed):
     """Moving a document between spaces is not a rename. The field is absent
     from the model and extra keys are forbidden, so this is 422 rather than a
@@ -1643,4 +1674,55 @@ async def test_rename_requires_auth(client):
         json={"project": "p", "uri_prefix": "old", "new_uri_prefix": "new"},
     )
 
+    assert response.status_code == 401
+
+
+async def test_subtree_delete_removes_the_tree_and_reports_the_count(
+    client, auth_headers, filed,
+):
+    await filed("gone/a.md", "one")
+    await filed("gone/nested/b.md", "two")
+    await filed("kept/c.md", "three")
+
+    response = await client.post(
+        f"{V1}/documents/delete",
+        json={"project": "p", "uri_prefix": "gone"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["deleted"] == 2
+
+    kept = await client.get(
+        f"{V1}/documents/by-uri", params={"project": "p", "uri": "kept/c.md"},
+        headers=auth_headers,
+    )
+    assert kept.status_code == 200
+
+
+async def test_subtree_delete_of_nothing_reports_zero(client, auth_headers, filed):
+    await filed("kept/c.md", "three")
+    response = await client.post(
+        f"{V1}/documents/delete",
+        json={"project": "p", "uri_prefix": "absent"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["deleted"] == 0
+
+
+async def test_subtree_delete_refuses_an_empty_prefix(client, auth_headers):
+    response = await client.post(
+        f"{V1}/documents/delete",
+        json={"project": "p", "uri_prefix": ""},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
+
+
+async def test_subtree_delete_requires_auth(client):
+    response = await client.post(
+        f"{V1}/documents/delete",
+        json={"project": "p", "uri_prefix": "gone"},
+    )
     assert response.status_code == 401

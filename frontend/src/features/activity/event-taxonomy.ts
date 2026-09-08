@@ -36,6 +36,9 @@ const EVENT_TYPE_CATEGORY: Record<string, FeedCategory> = {
   // is a capture-side write to a filed document, the same tab the other two
   // document writes land on.
   document_updated: "capture",
+  // The subtree delete (increment 2). Capture, the same tab its three
+  // document siblings land on: it is a write to filed documents.
+  documents_deleted: "capture",
   extracted: "pipeline",
   sources_changed: "pipeline",
   verified: "verification",

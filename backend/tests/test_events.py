@@ -352,3 +352,11 @@ def test_document_updated_is_in_the_vocabulary():
     """Widening is taxonomy-first: the value lands before its emitter ships,
     or the first emission logs an unknown-type warning and misfiles the row."""
     assert "document_updated" in EVENT_TYPES
+
+
+def test_documents_deleted_is_in_the_vocabulary():
+    """Taxonomy-first: the value lands before its emitter, so the subtree
+    delete cannot ship as the one document mutation with no journal row."""
+    from app.services.events import EVENT_TYPES
+
+    assert "documents_deleted" in EVENT_TYPES

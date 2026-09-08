@@ -18,6 +18,7 @@ import {
   LayoutDashboard,
   MessageSquare,
   Network,
+  NotebookPen,
   ScrollText,
   Settings,
   Tags,
@@ -66,6 +67,7 @@ const nav: NavGroup[] = [
       // /documents shipped with TH1.16 and had no nav entry at all, so the
       // surface existed and was unreachable. This closes that for both.
       { label: "Documents", href: "/documents", icon: FileText },
+      { label: "Notes", href: "/notes", icon: NotebookPen },
     ],
   },
   {
@@ -148,17 +150,19 @@ const FULL_BLEED_ROUTES = ["/memory-graph", "/code/graph"] as const
  *  and the observer never fires — so the graph renders nothing, with no error
  *  and an empty-looking page. That stayed invisible while those pages had no
  *  data to draw, because the empty state carries its own height. */
-const FULL_HEIGHT_ROUTES = ["/chat", "/projects/"] as const
+export const FULL_HEIGHT_ROUTES = ["/chat", "/projects/", "/notes"] as const
 
 /** Routes that drop the reading-width cap without being a pan/zoom canvas.
  *  Chat is one: its three panes are resizable, so every capped pixel is width
  *  the reader cannot give to the conversation or the retrieval context. A
  *  project workspace (`/projects/<name>`, trailing slash so the `/projects`
  *  index card grid stays capped) is the other: its tree/reader split is
- *  resizable the same way. Kept separate from FULL_BLEED_ROUTES because that
+ *  resizable the same way -- and `/notes` renders that same workspace over the
+ *  personal space, so it is here for exactly that argument and no other.
+ *  Kept separate from FULL_BLEED_ROUTES because that
  *  list also means "measures its own container", which is a claim about the
  *  canvas pages and not about either of these. */
-const FULL_WIDTH_ROUTES = ["/chat", "/projects/"] as const
+export const FULL_WIDTH_ROUTES = ["/chat", "/projects/", "/notes"] as const
 
 function AuthenticatedLayout() {
   const layout = useLayoutStore((s) => s.layout)

@@ -1,4 +1,19 @@
-import { memo, useMemo, type CSSProperties, type ReactNode } from "react"
+import { memo, useCallback, useMemo, useState, type CSSProperties, type ReactNode } from "react"
+import {
+  DndContext,
+  MouseSensor,
+  TouchSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  getClientRect,
+  pointerWithin,
+  type Collision,
+  type CollisionDetection,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core"
 import { ChevronRight, FileText, Folder, FolderOpen } from "lucide-react"
 import {
   TreeView,
@@ -12,7 +27,8 @@ import {
 } from "darkraise-ui/components/tree-view"
 import { EmptyState } from "@/components/darkmem"
 import type { DocumentListItem } from "@/hooks/api"
-import { buildUriTree, type UriTreeNode } from "../uri-tree"
+import { buildPathMap, buildUriTree, type UriTreeNode } from "../uri-tree"
+import { moveTarget, type MoveTarget } from "../move-target"
 import { fileIcon } from "../file-icons"
 
 /** Explorer rows.
@@ -90,6 +106,200 @@ function IndentGuides({ depth }: { depth: number }) {
   )
 }
 
+/** The drag layer.
+ *
+ * darkraise-ui's TreeView ships no drag support -- checked in its `.d.ts`:
+ * no drag props on any part, and the package holds no drag or sortable
+ * component at all. This local layer exists for that gap and should be
+ * retired if a later version closes it.
+ *
+ * The listeners hang off an inner span rather than the library's own row.
+ * `TreeViewItem` and `TreeViewBranchControl` spread `...props` onto their
+ * elements, but that spread lands after `ref`, `role="treeitem"`, the roving
+ * `tabIndex` and the `aria-*` attributes -- so `useDraggable().attributes`
+ * (`role="button"`, `tabIndex=0`) would replace the accessible tree and the
+ * arrow-key traversal `TreeViewTree` handles by bubbling. `attributes` is
+ * therefore never spread anywhere.
+ */
+export const DRAG_PREFIX = "drag:"
+export const DROP_PREFIX = "drop:"
+
+/** The pane itself, so a row can be moved back to the top level. */
+export const ROOT_DROP_ID = DROP_PREFIX
+
+/** Kept as constants because `measureDropRow` and the drag suite both select
+ *  on them; the JSX writes the literal so a row reads as marked-up markup. */
+export const DROP_ROW_ATTR = "data-drop-row"
+export const DROP_ROOT_ATTR = "data-drop-root"
+
+/** A droppable's hit area is the ROW, not the element the listeners hang off.
+ *
+ *  The row droppable's own element is the inner handle span, which starts
+ *  past the chevron and the indent and stops short of the actions slot: on a
+ *  nested row that leaves roughly a third of the width and a third of the
+ *  height outside it. A release there matched no row at all and fell through
+ *  to the enclosing pane, which resolves as an ACCEPTED move to the top
+ *  level -- a uri rewrite from the likeliest sloppy release position.
+ *
+ *  Widened here rather than by moving the ref, because the row is
+ *  darkraise-ui's own element and the library exposes no ref for it; the
+ *  attribute rides the same `...props` spread that already carries
+ *  `className`.
+ *
+ *  Deliberately the control/item and NOT the enclosing `[role="treeitem"]`
+ *  branch `<li>`: that element encloses the whole subtree, so a folder's hit
+ *  area would swallow every descendant row. The `?? node` fallback is the
+ *  pane's, which sits under no row and must keep measuring itself.
+ *
+ *  `getClientRect` rather than dnd-kit's transform-agnostic default (which
+ *  it does not export): no row here is ever transformed -- the dragged row
+ *  is only dimmed -- so the two agree. */
+export function measureDropRow(node: HTMLElement) {
+  return getClientRect(node.closest<HTMLElement>(`[${DROP_ROW_ATTR}]`) ?? node)
+}
+
+/** Hoisted: `DndContext` memoises its measuring configuration on this
+ *  object's identity. */
+const MEASURING = { droppable: { measure: measureDropRow } }
+
+/** Which node a release over `node` actually means.
+ *
+ *  A leaf resolves to its PARENT rather than being an inert droppable. Left
+ *  disabled, a release over a sibling row fell through to the pane droppable
+ *  underneath and resolved to "move to the top level" -- an accepted uri
+ *  rewrite from the likeliest accidental release position there is. Resolved
+ *  to the parent it lands on `moveTarget`'s own "already there" refusal.
+ */
+export function dropTargetFor(
+  byPath: Map<string, UriTreeNode>,
+  node: UriTreeNode,
+): UriTreeNode | null {
+  if (node.children.length > 0) return node
+  const leaf = node.path.split("/").pop()!
+  // `Math.max(0, ...)` rather than a bare `lastIndexOf`: a root-level leaf
+  // has no slash, and `"docs2".slice(0, -1)` is the truthy `"docs"` -- which
+  // resolved a root leaf into whatever folder its own name shadows.
+  const parent = node.path.slice(0, Math.max(0, node.path.length - leaf.length - 1))
+  return parent ? (byPath.get(parent) ?? null) : null
+}
+
+/** Row droppables are NEVER disabled, and that is the fix rather than an
+ *  omission. `DndContext` filters droppables through `getEnabled()` BEFORE
+ *  it calls the collision detector, so a row disabled because `moveTarget`
+ *  refuses it is not a candidate at all: the pointer falls through to the
+ *  pane droppable that encloses it and the release resolves as a move to the
+ *  top level -- an accepted uri rewrite from a position the UI had just
+ *  declared refused. Every row stays a candidate and `resolveDrop` is the
+ *  one place a drop is refused; the hover ring is gated on `moveTarget`
+ *  separately, so a refused row still looks refused. */
+export const ROW_DROP_DISABLED = false
+
+/** The whole drop decision, as a pure function of the tree and the two ids. */
+export function resolveDrop(
+  byPath: Map<string, UriTreeNode>,
+  activeId: string,
+  overId: string | null,
+): MoveTarget | null {
+  const dragged = byPath.get(activeId.slice(DRAG_PREFIX.length))
+  if (!dragged || overId === null) return null
+  const overPath = overId.slice(DROP_PREFIX.length)
+  const over = overPath ? byPath.get(overPath) : undefined
+  if (overPath && !over) return null
+  return moveTarget(dragged, over ? dropTargetFor(byPath, over) : null)
+}
+
+/** The pane droppable encloses every other one, so an area-ranking detector
+ *  (dnd-kit's default) would let it win every hover. A row underneath the
+ *  pointer therefore always outranks it. */
+export function preferInnermost(hits: Collision[]): Collision[] {
+  const inner = hits.filter((c) => c.id !== ROOT_DROP_ID)
+  return inner.length > 0 ? inner : hits
+}
+
+export const dropCollisionDetection: CollisionDetection = (args) =>
+  preferInnermost(pointerWithin(args))
+
+/** Mouse and touch are separate sensors on purpose. A single `PointerSensor`
+ *  needs `touch-action: none` on the handle, which covers most of every row
+ *  and would disable native panning of the tree outright -- a touch scroll
+ *  started on any row would never scroll. A long-press delay separates a
+ *  touch drag from a pan without taking the gesture away. */
+const MOUSE_ACTIVATION = { activationConstraint: { distance: 6 } } as const
+const TOUCH_ACTIVATION = {
+  activationConstraint: { delay: 220, tolerance: 6 },
+} as const
+
+/** Drop-to-root. Rendered only inside the context, so the hook it calls can
+ *  never run on the drag-free path.
+ *
+ *  `pb-8` is the affordance itself, not spacing: every row now fills its own
+ *  box, so without a strip of bare pane below the last one the only place
+ *  left to release for a move to the top level is the tree's 4px left
+ *  gutter. */
+function RootDroppable({
+  activeNode,
+  children,
+}: {
+  activeNode: UriTreeNode | null
+  children: ReactNode
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: ROOT_DROP_ID })
+  const refused = activeNode !== null && moveTarget(activeNode, null) === null
+  return (
+    <div
+      ref={setNodeRef}
+      data-drop-root=""
+      data-drop-over={(isOver && !refused) || undefined}
+      className="outline-primary/70 rounded-md pb-8 data-[drop-over]:outline-1 data-[drop-over]:outline-dashed"
+    >
+      {children}
+    </div>
+  )
+}
+
+function RowHandle({
+  node,
+  dropTarget,
+  activeNode,
+  children,
+}: {
+  node: UriTreeNode
+  dropTarget: UriTreeNode | null
+  activeNode: UriTreeNode | null
+  children: ReactNode
+}) {
+  const { setNodeRef: setDragRef, listeners, isDragging } = useDraggable({
+    id: `${DRAG_PREFIX}${node.path}`,
+  })
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `${DROP_PREFIX}${node.path}`,
+    disabled: ROW_DROP_DISABLED,
+  })
+  // The ring, not the candidacy, is what a refused target loses.
+  const refused = activeNode !== null && moveTarget(activeNode, dropTarget) === null
+  // Stable across renders: an inline arrow re-registers the droppable and
+  // re-runs its ResizeObserver on every one.
+  const setRef = useCallback(
+    (el: HTMLElement | null) => {
+      setDragRef(el)
+      setDropRef(el)
+    },
+    [setDragRef, setDropRef],
+  )
+  return (
+    <span
+      data-drag-handle
+      data-drop-over={(isOver && !refused) || undefined}
+      data-dragging={isDragging || undefined}
+      ref={setRef}
+      {...listeners}
+      className="ring-primary flex min-w-0 flex-1 items-center gap-1.5 rounded-sm data-[dragging]:opacity-50 data-[drop-over]:ring-1"
+    >
+      {children}
+    </span>
+  )
+}
+
 /** The one hierarchy implementation both document surfaces render.
  *
  * Selection is keyed on the *document id* and folders carry their path, so
@@ -109,8 +319,10 @@ export const DocumentTree = memo(function DocumentTree({
   onSelect,
   truncated,
   nodeActions,
+  emptyAction,
   expanded,
   onExpandedChange,
+  onMove,
 }: {
   items: DocumentListItem[]
   selectedId: string | null
@@ -120,16 +332,52 @@ export const DocumentTree = memo(function DocumentTree({
    *  affordance here; this surface passes nothing. Declared now so the
    *  editor extends this component rather than rewriting it. */
   nodeActions?: (node: UriTreeNode) => ReactNode
+  /** Rendered inside the empty state. Without it an empty space has no
+   *  affordance at all: this branch returns before any row, and `nodeActions`
+   *  only ever hangs off a row. */
+  emptyAction?: ReactNode
   /** Controlled expansion. Omitted keeps the legacy expand-everything
    *  behaviour, so increment 8's call site is unaffected. */
   expanded?: string[]
   onExpandedChange?: (paths: string[]) => void
+  /** Drop resolution. Omitted mounts no drag layer at all, which is what
+   *  every caller that does not persist a move wants. */
+  onMove?: (target: MoveTarget) => void
 }) {
   // Rebuilt per document list, not per render: the artifacts workspace holds
   // the reader's reported heading as its own state, so a scroll through a
   // long document re-renders this pane once per heading crossed.
   const roots = useMemo(() => buildUriTree(items), [items])
   const byId = useMemo(() => new Map(items.map((d) => [d.id, d])), [items])
+  const byPath = useMemo(() => buildPathMap(roots), [roots])
+
+  const [activeNode, setActiveNode] = useState<UriTreeNode | null>(null)
+  const sensors = useSensors(
+    // Without a distance every click is a zero-length drag and the row never
+    // selects.
+    useSensor(MouseSensor, MOUSE_ACTIVATION),
+    useSensor(TouchSensor, TOUCH_ACTIVATION),
+  )
+  const onDragStart = useCallback(
+    (event: DragStartEvent) => {
+      const path = String(event.active.id).slice(DRAG_PREFIX.length)
+      setActiveNode(byPath.get(path) ?? null)
+    },
+    [byPath],
+  )
+  const onDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      setActiveNode(null)
+      const target = resolveDrop(
+        byPath,
+        String(event.active.id),
+        event.over ? String(event.over.id) : null,
+      )
+      if (target) onMove?.(target)
+    },
+    [byPath, onMove],
+  )
+  const onDragCancel = useCallback(() => setActiveNode(null), [])
 
   const controlled = expanded !== undefined
   const treeExpansionProps = controlled
@@ -167,17 +415,33 @@ export const DocumentTree = memo(function DocumentTree({
         icon={FileText}
         title="No documents filed in this project"
         description="A document appears here the moment it is filed — over REST or over MCP."
+        action={emptyAction}
       />
     )
   }
 
   const renderNode = (node: UriTreeNode, depth = 0): ReactNode => {
     const actions = nodeActions?.(node)
+    const handle = (children: ReactNode): ReactNode =>
+      onMove ? (
+        <RowHandle
+          node={node}
+          dropTarget={dropTargetFor(byPath, node)}
+          activeNode={activeNode}
+        >
+          {children}
+        </RowHandle>
+      ) : (
+        children
+      )
 
     if (node.children.length > 0) {
       return (
         <TreeViewBranch key={node.path} value={node.path}>
-          <TreeViewBranchControl className={`group relative ${ROW_GAP} ${ROW}`}>
+          <TreeViewBranchControl
+            data-drop-row=""
+            className={`group relative ${ROW_GAP} ${ROW}`}
+          >
             <IndentGuides depth={depth} />
             {/* The library's indicator renders only what it is given and
                 rotates it on `data-state=open`; with no child it was an
@@ -188,17 +452,21 @@ export const DocumentTree = memo(function DocumentTree({
             {/* Both icons render and CSS picks one off the control's own
                 `data-state`. Deriving it in JS would need the live open set,
                 which the uncontrolled caller does not have. */}
-            <Folder
-              aria-hidden
-              className="size-[var(--icon-size)] shrink-0 text-sky-700/80 group-data-[state=open]:hidden dark:text-sky-300/80"
-            />
-            <FolderOpen
-              aria-hidden
-              className="hidden size-[var(--icon-size)] shrink-0 text-sky-700/80 group-data-[state=open]:block dark:text-sky-300/80"
-            />
-            <TreeViewBranchText className="truncate">
-              {node.name}
-            </TreeViewBranchText>
+            {handle(
+              <>
+                <Folder
+                  aria-hidden
+                  className="size-[var(--icon-size)] shrink-0 text-sky-700/80 group-data-[state=open]:hidden dark:text-sky-300/80"
+                />
+                <FolderOpen
+                  aria-hidden
+                  className="hidden size-[var(--icon-size)] shrink-0 text-sky-700/80 group-data-[state=open]:block dark:text-sky-300/80"
+                />
+                <TreeViewBranchText className="truncate">
+                  {node.name}
+                </TreeViewBranchText>
+              </>,
+            )}
             {actions}
           </TreeViewBranchControl>
           {/* No indent of its own: the nesting is drawn inside each child
@@ -215,6 +483,7 @@ export const DocumentTree = memo(function DocumentTree({
     return (
       <TreeViewItem
         key={node.path}
+        data-drop-row=""
         value={node.document?.id ?? node.path}
         className={`group relative ${ROW_GAP} ${ROW}`}
       >
@@ -222,8 +491,12 @@ export const DocumentTree = memo(function DocumentTree({
         {/* Aligns leaf text with a sibling folder's, whose row spends this
             width on the chevron. */}
         <span aria-hidden className="w-[var(--icon-size)] shrink-0" />
-        <Icon aria-hidden className={`size-[var(--icon-size)] shrink-0 ${iconTone}`} />
-        <span className="truncate">{node.name}</span>
+        {handle(
+          <>
+            <Icon aria-hidden className={`size-[var(--icon-size)] shrink-0 ${iconTone}`} />
+            <span className="truncate">{node.name}</span>
+          </>,
+        )}
         {actions}
       </TreeViewItem>
     )
@@ -237,6 +510,16 @@ export const DocumentTree = memo(function DocumentTree({
           pagination guard, so this tree is incomplete.
         </p>
       ) : null}
+      <MaybeDnd
+        enabled={onMove !== undefined}
+        activeNode={activeNode}
+        sensors={sensors}
+        measuring={MEASURING}
+        collisionDetection={dropCollisionDetection}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        onDragCancel={onDragCancel}
+      >
       <TreeView
         {...treeExpansionProps}
         selectionMode="single"
@@ -253,6 +536,25 @@ export const DocumentTree = memo(function DocumentTree({
           {roots.map((root) => renderNode(root, 0))}
         </TreeViewTree>
       </TreeView>
+      </MaybeDnd>
     </div>
   )
 })
+
+function MaybeDnd({
+  enabled,
+  activeNode,
+  children,
+  ...context
+}: {
+  enabled: boolean
+  activeNode: UriTreeNode | null
+  children: ReactNode
+} & Omit<Parameters<typeof DndContext>[0], "children">) {
+  if (!enabled) return <>{children}</>
+  return (
+    <DndContext {...context}>
+      <RootDroppable activeNode={activeNode}>{children}</RootDroppable>
+    </DndContext>
+  )
+}

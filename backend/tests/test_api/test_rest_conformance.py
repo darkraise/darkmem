@@ -67,6 +67,7 @@ EXPECTED_STATUS = {
     ("POST", "/api/v1/documents"): 201,
     ("PATCH", "/api/v1/documents/{document_id}"): 200,
     ("POST", "/api/v1/documents/rename"): 200,
+    ("POST", "/api/v1/documents/delete"): 200,
     ("DELETE", "/api/v1/documents/{document_id}"): 204,
     ("POST", "/api/v1/documents/search"): 200,
     # The by-uri half of the three document-keyed verbs: one handler each,

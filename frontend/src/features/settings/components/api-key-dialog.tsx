@@ -28,7 +28,14 @@ import { useCreateApiKey, type ApiKeyCreated } from "@/hooks/api"
 const SCOPE_ITEMS = [
   { value: "capture", label: "Save new memories" },
   { value: "read", label: "Search and read memories" },
-  { value: "admin", label: "Receive push updates" },
+  // `admin` covers three unrelated powers and the label has to carry all of
+  // them: the push webhook, which is the ordinary reason to mint one of
+  // these keys, the file-scoped reindex, and on /mcp `document_delete_subtree`
+  // -- which erases every document under a uri prefix with no undo. Naming
+  // only the erase leaves a webhook operator hunting for a narrower scope
+  // that does not exist; naming only the webhook understates what a leak
+  // costs.
+  { value: "admin", label: "Receive push updates, reindex repositories, delete document subtrees" },
 ]
 
 /**
