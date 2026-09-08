@@ -19,7 +19,7 @@
 ## Global Constraints
 
 - **Greenfield until the freeze.** No backward compatibility, no migration, no compatibility shim, no import path for existing rows. The schema is ONE revision, `0001_baseline.py`, **regenerated in place** — never a `0002`. After regenerating, drop and recreate every database yourself.
-- **`documents` must not change in behaviour.** This is the owner's stated requirement. The only permitted edit to an existing document-owned structure is `blocks.document_id` losing `NOT NULL`. No document SQL statement changes, and no document code path may get slower.
+- **`documents` must not change in behaviour.** This is the owner's stated requirement. Two edits to existing document-owned structures are permitted and no others: `blocks.document_id` losing `NOT NULL`, and `ix_blocks_document_order` gaining `WHERE document_id IS NOT NULL`. The second is safe because every document predicate is an equality on `document_id`, which the planner proves implies `IS NOT NULL`, so no document query loses its index. No document SQL statement changes, and no document code path may get slower.
 - **Taxonomy is closed and taxonomy-first.** A value lands in `EVENT_TYPES` / `OBJECT_TYPES` before its emitter ships.
 - **Single worker (invariant 13).** Exactly one uvicorn worker. Nothing may assume otherwise; in-process locks do not serialise across requests that interleave at an `await`.
 - **asyncpg needs explicit CAST** on any raw-SQL param whose type Postgres cannot infer: `CAST(:id AS uuid)`, `CAST(:vec AS vector)`, `CAST(:props AS jsonb)`.
