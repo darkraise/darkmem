@@ -97,7 +97,7 @@ async def test_the_stored_content_is_the_serialiser_output(session, llm):
     page = await create_page(session, llm, project="p", title="n",
                              content="#   Title\n")
     row = await _page_row(session, page.id)
-    assert row["content"] == "# Title\n"
+    assert row["content"] == "# Title"
 
 
 @pytest.mark.asyncio
@@ -140,7 +140,7 @@ async def test_the_keyed_read_serves_blocks_and_withholds_content(session, llm):
     assert bare.content is None
     assert [b["type"] for b in bare.blocks] == ["heading", "paragraph"]
     full = await get_page(session, str(page.id), include_content=True)
-    assert full.content == "# T\n\nbody\n"
+    assert full.content == "# T\n\nbody"
 
 
 @pytest.mark.asyncio
@@ -197,3 +197,33 @@ async def test_after_id_inserts_between_its_siblings(session, llm):
     assert b.order_index == 1
     assert [r["order_index"] for r in rows] == [0, 1, 2]
     assert str(c.id) == str(rows[2]["id"])
+
+
+@pytest.mark.asyncio
+async def test_a_child_is_ordered_within_its_own_parent(session, llm):
+    """`order_index` is dense per `(project, parent_id)`, not per project, so
+    a first child sits at 0 beside roots that already reach 1."""
+    first = await create_page(session, llm, project="p", title="first")
+    second = await create_page(session, llm, project="p", title="second")
+    child = await create_page(session, llm, project="p", title="child",
+                              parent_id=str(first.id))
+    assert [first.order_index, second.order_index] == [0, 1]
+    assert child.order_index == 0
+    assert str(child.parent_id) == str(first.id)
+
+    row = await _page_row(session, child.id)
+    assert str(row["parent_id"]) == str(first.id)
+    assert row["order_index"] == 0
+
+    rows = await list_pages(session, "p")
+    by_title = {r["title"]: r for r in rows}
+    assert by_title["child"]["order_index"] == 0
+    assert str(by_title["child"]["parent_id"]) == str(first.id)
+    assert by_title["first"]["parent_id"] is None
+    # NULLs sort last under Postgres' default ASC ordering, so the two roots
+    # follow the child rather than leading it.
+    assert [r["title"] for r in rows] == ["child", "first", "second"]
+
+    sibling = await create_page(session, llm, project="p", title="sibling",
+                                parent_id=str(first.id))
+    assert sibling.order_index == 1

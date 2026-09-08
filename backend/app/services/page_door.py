@@ -38,6 +38,7 @@ __all__ = [
     "create_page",
     "get_page",
     "list_pages",
+    "root_lock_key",
 ]
 
 MAX_CONTENT_CHARS = 1_000_000
@@ -161,6 +162,14 @@ _LIST_PAGES = text(
 )
 
 
+def root_lock_key(project: str) -> str:
+    """The advisory-lock key standing in for the row a root page has no parent
+    to lock. Every writer that reorders a project's roots must take this exact
+    key, or two of them serialise against nothing.
+    """
+    return f"pages:{project}:root"
+
+
 def _json(value) -> str | None:
     return None if value is None else json.dumps(value)
 
@@ -200,7 +209,7 @@ async def _claim_order_index(
     because the requests interleave rather than run concurrently.
     """
     if parent_id is None:
-        await session.execute(_LOCK_ROOT, {"key": f"pages:{project}:root"})
+        await session.execute(_LOCK_ROOT, {"key": root_lock_key(project)})
     else:
         locked = (
             await session.execute(
@@ -259,10 +268,7 @@ async def create_page(
     page_id = uuid4()
     tree = _parse(content) if content else []
     serialized = serialize_tree(tree)
-    # The serialiser emits no terminating newline; a stored source is a text
-    # file and gets one. Every `char_span` indexes below it, so appending it
-    # leaves the spans the serialiser computed untouched.
-    stored_content = serialized.content + "\n" if tree else ""
+    stored_content = serialized.content
     content_hash = compute_content_hash(stored_content)
     placed = {p.block_id: p for p in serialized.placed}
 
