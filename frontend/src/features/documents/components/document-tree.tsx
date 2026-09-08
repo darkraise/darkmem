@@ -27,7 +27,7 @@ import {
 } from "darkraise-ui/components/tree-view"
 import { EmptyState } from "@/components/darkmem"
 import type { DocumentListItem } from "@/hooks/api"
-import { buildUriTree, type UriTreeNode } from "../uri-tree"
+import { buildPathMap, buildUriTree, type UriTreeNode } from "../uri-tree"
 import { moveTarget, type MoveTarget } from "../move-target"
 import { fileIcon } from "../file-icons"
 
@@ -161,18 +161,6 @@ export function measureDropRow(node: HTMLElement) {
 /** Hoisted: `DndContext` memoises its measuring configuration on this
  *  object's identity. */
 const MEASURING = { droppable: { measure: measureDropRow } }
-
-export function buildPathMap(roots: UriTreeNode[]): Map<string, UriTreeNode> {
-  const map = new Map<string, UriTreeNode>()
-  const walk = (nodes: UriTreeNode[]) => {
-    for (const node of nodes) {
-      map.set(node.path, node)
-      walk(node.children)
-    }
-  }
-  walk(roots)
-  return map
-}
 
 /** Which node a release over `node` actually means.
  *

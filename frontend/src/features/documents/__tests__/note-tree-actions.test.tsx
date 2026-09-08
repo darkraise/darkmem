@@ -35,7 +35,9 @@ describe("NoteTreeActions", () => {
       <NoteTreeActions
         node={folder}
         onNewNote={noop}
+        onNewFolder={noop}
         onRename={noop}
+        onMoveTo={noop}
         onTogglePin={noop}
         onDelete={noop}
       />,
@@ -49,7 +51,9 @@ describe("NoteTreeActions", () => {
       <NoteTreeActions
         node={leaf}
         onNewNote={noop}
+        onNewFolder={noop}
         onRename={noop}
+        onMoveTo={noop}
         onTogglePin={noop}
         onDelete={noop}
       />,
@@ -68,7 +72,9 @@ describe("NoteTreeActions", () => {
       <NoteTreeActions
         node={pinned}
         onNewNote={noop}
+        onNewFolder={noop}
         onRename={noop}
+        onMoveTo={noop}
         onTogglePin={noop}
         onDelete={noop}
       />,
@@ -84,7 +90,9 @@ describe("NoteTreeActions", () => {
       <NoteTreeActions
         node={folder}
         onNewNote={onNewNote}
+        onNewFolder={noop}
         onRename={noop}
+        onMoveTo={noop}
         onTogglePin={noop}
         onDelete={onDelete}
       />,
@@ -105,7 +113,9 @@ describe("NoteTreeActions", () => {
       <NoteTreeActions
         node={leaf}
         onNewNote={noop}
+        onNewFolder={noop}
         onRename={onRename}
+        onMoveTo={noop}
         onTogglePin={onTogglePin}
         onDelete={noop}
       />,
@@ -117,6 +127,106 @@ describe("NoteTreeActions", () => {
     await userEvent.click(screen.getByRole("button", { name: /actions/i }))
     await userEvent.click(screen.getByText("Pin"))
     expect(onTogglePin).toHaveBeenCalledWith(leaf)
+  })
+
+  it("offers both creates on a folder and neither on a note", async () => {
+    // A folder is not an object -- there is no row to carry an empty one --
+    // so "New folder" is a create like "New note" and rides the same
+    // condition: filing under a note would mint a path below a file.
+    const { rerender } = render(
+      <NoteTreeActions
+        node={folder}
+        onNewNote={noop}
+        onNewFolder={noop}
+        onRename={noop}
+        onMoveTo={noop}
+        onTogglePin={noop}
+        onDelete={noop}
+      />,
+    )
+    await userEvent.click(screen.getByRole("button", { name: /actions/i }))
+    expect(screen.getByText("New folder")).toBeInTheDocument()
+
+    rerender(
+      <NoteTreeActions
+        node={leaf}
+        onNewNote={noop}
+        onNewFolder={noop}
+        onRename={noop}
+        onMoveTo={noop}
+        onTogglePin={noop}
+        onDelete={noop}
+      />,
+    )
+    await userEvent.click(screen.getByRole("button", { name: /actions/i }))
+    expect(screen.queryByText("New folder")).toBeNull()
+  })
+
+  it("reports the new folder's parent and the move's node", async () => {
+    const onNewFolder = vi.fn()
+    const onMoveTo = vi.fn()
+    render(
+      <NoteTreeActions
+        node={folder}
+        onNewNote={noop}
+        onNewFolder={onNewFolder}
+        onRename={noop}
+        onMoveTo={onMoveTo}
+        onTogglePin={noop}
+        onDelete={noop}
+      />,
+    )
+    await userEvent.click(screen.getByRole("button", { name: /actions/i }))
+    await userEvent.click(screen.getByText("New folder"))
+    expect(onNewFolder).toHaveBeenCalledWith("notes/a")
+
+    await userEvent.click(screen.getByRole("button", { name: /actions/i }))
+    await userEvent.click(screen.getByText("Move to…"))
+    expect(onMoveTo).toHaveBeenCalledWith(folder)
+  })
+
+  it("lists the actions in the order the spec names them", async () => {
+    render(
+      <NoteTreeActions
+        node={folder}
+        onNewNote={noop}
+        onNewFolder={noop}
+        onRename={noop}
+        onMoveTo={noop}
+        onTogglePin={noop}
+        onDelete={noop}
+      />,
+    )
+    await userEvent.click(screen.getByRole("button", { name: /actions/i }))
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual(["New note", "New folder", "Rename", "Move to…", "Delete"])
+  })
+
+  it("offers no move on a document that has no uri to move", async () => {
+    // A `(no path)` child's path is synthesised from its own uuid, so a move
+    // would mint a real uri out of it. Same reason rename is withheld.
+    const orphanChild: UriTreeNode = {
+      name: "No uri note",
+      path: `${NO_PATH}/d9`,
+      document: { ...leaf.document!, id: "d9", uri: null },
+      children: [],
+    }
+    render(
+      <NoteTreeActions
+        node={orphanChild}
+        onNewNote={noop}
+        onNewFolder={noop}
+        onRename={noop}
+        onMoveTo={noop}
+        onTogglePin={noop}
+        onDelete={noop}
+      />,
+    )
+    await userEvent.click(screen.getByRole("button", { name: /actions/i }))
+    expect(screen.queryByText("Move to…")).toBeNull()
+    expect(screen.queryByText("Rename")).toBeNull()
+    expect(screen.getByText("Delete")).toBeInTheDocument()
   })
 
   it("offers no folder actions on the orphan bucket", () => {
@@ -132,7 +242,9 @@ describe("NoteTreeActions", () => {
       <NoteTreeActions
         node={orphans}
         onNewNote={noop}
+        onNewFolder={noop}
         onRename={noop}
+        onMoveTo={noop}
         onTogglePin={noop}
         onDelete={noop}
       />,
@@ -155,7 +267,9 @@ describe("NoteTreeActions", () => {
           <NoteTreeActions
             node={node}
             onNewNote={noop}
+            onNewFolder={noop}
             onRename={noop}
+            onMoveTo={noop}
             onTogglePin={noop}
             onDelete={noop}
           />

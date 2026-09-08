@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { FolderTree, Plus, Search } from "lucide-react"
+import { FolderPlus, FolderTree, Plus, Search } from "lucide-react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,6 +42,13 @@ import {
   ResizablePanelGroup,
 } from "darkraise-ui/components/resizable"
 import { ScrollArea } from "darkraise-ui/components/scroll-area"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "darkraise-ui/components/select"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "darkraise-ui/components/tabs"
 import { EmptyState } from "@/components/darkmem"
@@ -63,8 +70,13 @@ import {
   pathsToDocument,
   rootFolderPaths,
 } from "@/features/documents/tree-expansion"
-import { buildUriTree, NO_PATH, type UriTreeNode } from "@/features/documents/uri-tree"
-import type { MoveTarget } from "@/features/documents/move-target"
+import {
+  buildPathMap,
+  buildUriTree,
+  NO_PATH,
+  type UriTreeNode,
+} from "@/features/documents/uri-tree"
+import { moveTarget, type MoveTarget } from "@/features/documents/move-target"
 import {
   useAllDocuments,
   useDocumentCreate,
@@ -91,6 +103,12 @@ function freeUri(items: DocumentListItem[], folder: string, base = "untitled") {
   while (taken.has(at(n))) n += 1
   return at(n)
 }
+
+/** The Move dialog's stand-in for "no folder at all". No tree path can
+ *  collide with it: `buildUriTree` joins non-empty segments, so a path never
+ *  starts with a separator and is never one. A plain `""` is unavailable
+ *  because `SelectValue` reads the empty string as "nothing chosen". */
+const TOP_LEVEL_VALUE = "/"
 
 /** A subtree verb answers how many rows it touched, and a zero is a refusal
  *  wearing a 200.
@@ -294,6 +312,11 @@ export function ProjectWorkspace({
   const [renameTarget, setRenameTarget] = useState<UriTreeNode | null>(null)
   const [renameValue, setRenameValue] = useState("")
   const [deleteTarget, setDeleteTarget] = useState<UriTreeNode | null>(null)
+  // Null closes the dialog; "" is the top level, which is a real answer.
+  const [newFolderParent, setNewFolderParent] = useState<string | null>(null)
+  const [newFolderValue, setNewFolderValue] = useState("")
+  const [moveSource, setMoveSource] = useState<UriTreeNode | null>(null)
+  const [moveValue, setMoveValue] = useState("")
 
   const clearSelection = useCallback(() => {
     setSelectedId(null)
@@ -371,6 +394,64 @@ export function ProjectWorkspace({
     },
     [patchMetadata.mutate, renameSubtree.mutate, project],
   )
+
+  const handleOpenNewFolder = useCallback((parent: string) => {
+    setNewFolderParent(parent === NO_PATH ? "" : parent)
+    setNewFolderValue("")
+  }, [])
+
+  const handleOpenMove = useCallback((node: UriTreeNode) => {
+    setMoveSource(node)
+    setMoveValue("")
+  }, [])
+
+  const byPath = useMemo(() => buildPathMap(roots), [roots])
+
+  /** Where this node may go, decided by the same `moveTarget` the drag path
+   *  uses rather than by a second copy of its rules -- a move onto itself,
+   *  into its own descendant, or against the synthesised `(no path)` bucket
+   *  is simply not offered. The one refusal it cannot see is the server's:
+   *  a destination another document already holds answers 409, which
+   *  `handleMove` surfaces in the server's own words. */
+  const moveOptions = useMemo(() => {
+    if (!moveSource) return []
+    const options: { value: string; label: string; target: MoveTarget }[] = []
+    const top = moveTarget(moveSource, null)
+    if (top) options.push({ value: TOP_LEVEL_VALUE, label: "Top level", target: top })
+    for (const node of byPath.values()) {
+      // Folders only. A release over a leaf resolves to that leaf's parent
+      // (`dropTargetFor`), so listing leaves would offer one destination
+      // twice under two names.
+      if (node.children.length === 0) continue
+      const target = moveTarget(moveSource, node)
+      if (target) options.push({ value: node.path, label: node.path, target })
+    }
+    return options
+  }, [moveSource, byPath])
+
+  const commitNewFolder = () => {
+    const parent = newFolderParent
+    const name = newFolderValue.trim()
+    if (parent === null) return
+    if (name.includes("/")) {
+      // One folder at a time: a nested path would mint every level at once
+      // and the seeded note would land somewhere the reader did not name.
+      toast.error("Enter a name, not a path — one folder at a time.")
+      setNewFolderParent(null)
+      return
+    }
+    setNewFolderParent(null)
+    if (!name) return
+    // A folder is not an object -- there is no row to carry an empty one --
+    // so the folder appears by filing the seeded note that makes it exist.
+    handleNewNote(parent ? `${parent}/${name}` : name)
+  }
+
+  const commitMove = () => {
+    const option = moveOptions.find((o) => o.value === moveValue)
+    setMoveSource(null)
+    if (option) handleMove(option.target)
+  }
 
   const handleOpenRename = useCallback((node: UriTreeNode) => {
     setRenameTarget(node)
@@ -460,12 +541,22 @@ export function ProjectWorkspace({
   const emptyAction = useMemo(
     () =>
       treeManagement ? (
-        <Button type="button" onClick={() => handleNewNote("")}>
-          <Plus className="mr-1 size-3.5" />
-          New note
-        </Button>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <Button type="button" onClick={() => handleNewNote("")}>
+            <Plus className="mr-1 size-3.5" />
+            New note
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => handleOpenNewFolder("")}
+          >
+            <FolderPlus className="mr-1 size-3.5" />
+            New folder
+          </Button>
+        </div>
       ) : undefined,
-    [treeManagement, handleNewNote],
+    [treeManagement, handleNewNote, handleOpenNewFolder],
   )
 
   const nodeActions = useCallback(
@@ -473,12 +564,20 @@ export function ProjectWorkspace({
       <NoteTreeActions
         node={node}
         onNewNote={handleNewNote}
+        onNewFolder={handleOpenNewFolder}
         onRename={handleOpenRename}
+        onMoveTo={handleOpenMove}
         onTogglePin={handleTogglePin}
         onDelete={setDeleteTarget}
       />
     ),
-    [handleNewNote, handleOpenRename, handleTogglePin],
+    [
+      handleNewNote,
+      handleOpenNewFolder,
+      handleOpenRename,
+      handleOpenMove,
+      handleTogglePin,
+    ],
   )
 
   const hits = search.data?.items ?? []
@@ -580,18 +679,31 @@ export function ProjectWorkspace({
                 a full-width selected fill makes visible. */}
             <ScrollArea className="h-full pr-3">
               {treeManagement ? (
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-x-2">
                   <RegionLabel>notes</RegionLabel>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="mb-1.5"
-                    onClick={() => handleNewNote("")}
-                  >
-                    <Plus className="mr-1 size-3.5" />
-                    New note
-                  </Button>
+                  <div className="mb-1.5 flex items-center gap-0.5">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleNewNote("")}
+                    >
+                      <Plus className="mr-1 size-3.5" />
+                      New note
+                    </Button>
+                    {/* The top level is reachable from no row's menu -- a
+                        row's "New folder" nests under that row -- so without
+                        this a space holding only leaves can never gain one. */}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleOpenNewFolder("")}
+                    >
+                      <FolderPlus className="mr-1 size-3.5" />
+                      New folder
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <RegionLabel>documents</RegionLabel>
@@ -753,6 +865,88 @@ export function ProjectWorkspace({
               <Button type="submit">Rename</Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={newFolderParent !== null}
+        onOpenChange={(open) => {
+          if (!open) setNewFolderParent(null)
+        }}
+      >
+        <DialogContent>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              commitNewFolder()
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>
+                {newFolderParent ? `New folder in ${newFolderParent}` : "New folder"}
+              </DialogTitle>
+            </DialogHeader>
+            <Label htmlFor="note-new-folder" className="sr-only">
+              Folder name
+            </Label>
+            <Input
+              id="note-new-folder"
+              autoFocus
+              aria-label="Folder name"
+              value={newFolderValue}
+              onChange={(e) => setNewFolderValue(e.target.value)}
+            />
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setNewFolderParent(null)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit">Create</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={moveSource !== null}
+        onOpenChange={(open) => {
+          if (!open) setMoveSource(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Move {moveSource?.name}</DialogTitle>
+          </DialogHeader>
+          {moveOptions.length === 0 ? (
+            <p className="text-muted-foreground text-sm">
+              There is nowhere to move this — every folder here is either where
+              it already sits or inside it.
+            </p>
+          ) : (
+            <Select value={moveValue} onValueChange={setMoveValue}>
+              <SelectTrigger aria-label="Destination folder">
+                <SelectValue placeholder="Choose a folder" />
+              </SelectTrigger>
+              <SelectContent>
+                {moveOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setMoveSource(null)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={commitMove} disabled={!moveValue}>
+              Move
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

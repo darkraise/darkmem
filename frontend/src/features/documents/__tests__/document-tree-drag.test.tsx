@@ -7,7 +7,6 @@ import {
   DRAG_PREFIX,
   DROP_PREFIX,
   ROOT_DROP_ID,
-  buildPathMap,
   dropTargetFor,
   preferInnermost,
   resolveDrop,
@@ -17,7 +16,7 @@ import {
   measureDropRow,
   dropCollisionDetection,
 } from "../components/document-tree"
-import { buildUriTree } from "../uri-tree"
+import { buildPathMap, buildUriTree } from "../uri-tree"
 import type { DocumentListItem } from "@/hooks/api"
 import type { MoveTarget } from "../move-target"
 

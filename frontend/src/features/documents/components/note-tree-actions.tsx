@@ -11,7 +11,9 @@ import { NO_PATH, type UriTreeNode } from "../uri-tree"
 export interface NoteTreeActionsProps {
   node: UriTreeNode
   onNewNote: (folderPath: string) => void
+  onNewFolder: (parentPath: string) => void
   onRename: (node: UriTreeNode) => void
+  onMoveTo: (node: UriTreeNode) => void
   onTogglePin: (node: UriTreeNode) => void
   onDelete: (node: UriTreeNode) => void
 }
@@ -23,17 +25,19 @@ export interface NoteTreeActionsProps {
 export function NoteTreeActions({
   node,
   onNewNote,
+  onNewFolder,
   onRename,
+  onMoveTo,
   onTogglePin,
   onDelete,
 }: NoteTreeActionsProps) {
   if (node.path === NO_PATH) return null
 
   const document = node.document
-  // A `(no path)` child is a document with a NULL uri. Rename rewrites a
-  // uri, so it has nothing to act on here -- and the subtree verbs would
-  // carry a prefix matching no row at all.
-  const renamable = !node.path.startsWith(`${NO_PATH}/`)
+  // A `(no path)` child is a document with a NULL uri. Rename and move both
+  // rewrite a uri, so they have nothing to act on here -- and the subtree
+  // verbs would carry a prefix matching no row at all.
+  const relocatable = !node.path.startsWith(`${NO_PATH}/`)
 
   return (
     <DropdownMenu>
@@ -53,15 +57,29 @@ export function NoteTreeActions({
         // reaches the row's select/expand handler without this.
         onClick={(event) => event.stopPropagation()}
       >
+        {/* Creates ride the same condition: a node carrying a document is a
+            note, and filing under it would mint a path below a file. A node
+            that is both -- `a/b.md` above `a/b.md/c.md` -- reads as the note
+            it names, so it offers neither. */}
         {document ? null : (
-          <DropdownMenuItem onSelect={() => onNewNote(node.path)}>
-            New note
-          </DropdownMenuItem>
+          <>
+            <DropdownMenuItem onSelect={() => onNewNote(node.path)}>
+              New note
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onNewFolder(node.path)}>
+              New folder
+            </DropdownMenuItem>
+          </>
         )}
-        {renamable ? (
-          <DropdownMenuItem onSelect={() => onRename(node)}>
-            Rename
-          </DropdownMenuItem>
+        {relocatable ? (
+          <>
+            <DropdownMenuItem onSelect={() => onRename(node)}>
+              Rename
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onMoveTo(node)}>
+              Move to…
+            </DropdownMenuItem>
+          </>
         ) : null}
         {document ? (
           <DropdownMenuItem onSelect={() => onTogglePin(node)}>

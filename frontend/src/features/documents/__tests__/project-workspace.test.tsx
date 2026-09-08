@@ -1118,6 +1118,148 @@ describe("project workspace — the note actions", () => {
     )
   })
 
+  it("files the seeded note that makes a new folder exist", async () => {
+    // A folder is not an object: it is derived from the uri path, so an
+    // empty one cannot exist and the command has to file something.
+    mockDocuments({ items: [DOC] })
+    renderWorkspace({ treeManagement: true })
+    await screen.findByText("design.md")
+
+    await openMenu(/actions for notes/i)
+    await userEvent.click(
+      await screen.findByRole("menuitem", { name: "New folder" }),
+    )
+    const input = await screen.findByRole("textbox", { name: /folder name/i })
+    await userEvent.type(input, "journal{Enter}")
+
+    await waitFor(() => expect(bodiesFor((p) => p === "/documents")).toHaveLength(1))
+    expect(bodiesFor((p) => p === "/documents")[0]).toMatchObject({
+      project: "darkmem",
+      uri: "notes/journal/untitled.md",
+    })
+  })
+
+  it("creates a top-level folder from the header, which no row's menu can", async () => {
+    mockDocuments({ items: [DOC] })
+    renderWorkspace({ treeManagement: true })
+    await screen.findByText("design.md")
+
+    await userEvent.click(screen.getByRole("button", { name: /new folder/i }))
+    const input = await screen.findByRole("textbox", { name: /folder name/i })
+    await userEvent.type(input, "journal{Enter}")
+
+    await waitFor(() => expect(bodiesFor((p) => p === "/documents")).toHaveLength(1))
+    expect(bodiesFor((p) => p === "/documents")[0]).toMatchObject({
+      uri: "journal/untitled.md",
+    })
+  })
+
+  it("says so when a new folder is given a path rather than a name", async () => {
+    mockDocuments({ items: [DOC] })
+    renderWorkspace({ treeManagement: true })
+    await screen.findByText("design.md")
+
+    await userEvent.click(screen.getByRole("button", { name: /new folder/i }))
+    const input = await screen.findByRole("textbox", { name: /folder name/i })
+    await userEvent.type(input, "a/b{Enter}")
+
+    expect(bodiesFor((p) => p === "/documents")).toHaveLength(0)
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+      expect.stringMatching(/name, not a path/i),
+    )
+  })
+
+  it("refuses to mint a folder's note against a truncated list", async () => {
+    // The same guard the note mint holds, because it is the same mint: the
+    // door is a content-replacing upsert, so a blind mint above the page cap
+    // would overwrite an unloaded document.
+    mockDocuments({ items: [DOC] })
+    renderWorkspace({ treeManagement: true })
+    await screen.findByText("design.md")
+    lastQueryClient?.setQueryData(["documentsAll", "darkmem"], {
+      items: [DOC],
+      truncated: true,
+    })
+    expect(await screen.findByText(/first 1 documents/i)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole("button", { name: /new folder/i }))
+    const input = await screen.findByRole("textbox", { name: /folder name/i })
+    await userEvent.type(input, "journal{Enter}")
+
+    expect(bodiesFor((p) => p === "/documents")).toHaveLength(0)
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+      expect.stringMatching(/truncated|too many|cut/i),
+    )
+  })
+
+  it("moves a note through the picker, with no pointer drag involved", async () => {
+    // "Move to…" is the only non-pointer move there is; a keyboard-only
+    // reader reaches the tree by no other route.
+    mockDocuments({ items: [DOC, { ...DOC, id: "d2", uri: "archive/keep.md" }] })
+    renderWorkspace({ treeManagement: true })
+    await screen.findByText("design.md")
+
+    await openMenu(/actions for design\.md/i)
+    await userEvent.click(await screen.findByText("Move to…"))
+    await userEvent.click(await screen.findByRole("combobox", { name: /destination/i }))
+    await userEvent.click(await screen.findByRole("option", { name: "archive" }))
+    await userEvent.click(screen.getByRole("button", { name: /^move$/i }))
+
+    await waitFor(() =>
+      expect(bodiesFor((p) => p === `/documents/${DOC.id}`)).toHaveLength(1),
+    )
+    expect(bodiesFor((p) => p === `/documents/${DOC.id}`)[0]).toEqual({
+      uri: "archive/design.md",
+    })
+  })
+
+  it("moves a folder through the picker with the subtree rename", async () => {
+    mockDocuments({ items: [DOC, { ...DOC, id: "d2", uri: "archive/keep.md" }] })
+    renderWorkspace({ treeManagement: true })
+    await screen.findByText("design.md")
+
+    await openMenu(/actions for notes/i)
+    await userEvent.click(await screen.findByText("Move to…"))
+    await userEvent.click(await screen.findByRole("combobox", { name: /destination/i }))
+    await userEvent.click(await screen.findByRole("option", { name: "archive" }))
+    await userEvent.click(screen.getByRole("button", { name: /^move$/i }))
+
+    await waitFor(() =>
+      expect(bodiesFor((p) => p === "/documents/rename")).toHaveLength(1),
+    )
+    expect(bodiesFor((p) => p === "/documents/rename")[0]).toEqual({
+      project: "darkmem",
+      uri_prefix: "notes",
+      new_uri_prefix: "archive/notes",
+    })
+  })
+
+  it("offers only the destinations moveTarget accepts", async () => {
+    // The picker calls `moveTarget` per candidate rather than restating its
+    // rules, so its own location, its parent and everything inside it are
+    // absent for the same reason a drop on them is refused.
+    window.localStorage.setItem(
+      expansionStorageKey("darkmem"),
+      JSON.stringify(["x", "x/a", "x/a/b", "y"]),
+    )
+    mockDocuments({
+      items: [
+        { ...DOC, id: "d1", uri: "x/a/b/c.md" },
+        { ...DOC, id: "d2", uri: "y/d.md" },
+      ],
+    })
+    renderWorkspace({ treeManagement: true })
+    await screen.findByText("c.md")
+
+    await openMenu(/actions for a$/i)
+    await userEvent.click(await screen.findByText("Move to…"))
+    await userEvent.click(await screen.findByRole("combobox", { name: /destination/i }))
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Top level",
+      "y",
+    ])
+  })
+
   it("reveals the new folder after a document's uri changes under it", async () => {
     // `revealedFor` used to be keyed on the id alone, which is a second
     // snapshot: after a move the effect returned early and the new folder
