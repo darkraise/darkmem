@@ -13,6 +13,7 @@ serialiser is the only thing that knows where each block landed, so
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import text
@@ -69,6 +70,26 @@ class BlockWriteResult:
     content_hash: str
     blocks_total: int
     blocks_embedded: int
+
+
+@dataclass(frozen=True)
+class BlockOwner:
+    """What `_mutate` needs to know about the thing a block belongs to.
+
+    The six statements below are the complete set that names `documents`;
+    `_PLACE`, `_UPDATE_BLOCK` and `_DELETE_BLOCK` key on `blocks.id` and are
+    owner-agnostic already. `object_type` is here because it was a hardcoded
+    literal at the journal call, which would have filed a page edit as a
+    document.
+    """
+    kind: str
+    object_type: str
+    lock: Any
+    meta: Any
+    load_tree: Any
+    insert_block: Any
+    write_owner: Any
+    resolve_block_column: str
 
 
 _LOCK_DOCUMENT = text(
@@ -134,6 +155,18 @@ _WRITE_DOC = text(
 )
 
 
+DOCUMENT_OWNER = BlockOwner(
+    kind="document",
+    object_type="document",
+    lock=_LOCK_DOCUMENT,
+    meta=_DOC_META,
+    load_tree=_LOAD_TREE,
+    insert_block=_INSERT_BLOCK,
+    write_owner=_WRITE_DOC,
+    resolve_block_column="document_id",
+)
+
+
 def _subtree(tree: list[TreeBlock], root: UUID) -> list[UUID]:
     """`root` and every descendant, root first."""
     children: dict[UUID | None, list[TreeBlock]] = {}
@@ -149,7 +182,7 @@ def _subtree(tree: list[TreeBlock], root: UUID) -> list[UUID]:
 
 
 async def _mutate(session, llm, *, document_id, apply, touched_embed, verb,
-                  block_id, expected_hash=None):
+                  block_id, expected_hash=None, owner: BlockOwner = DOCUMENT_OWNER):
     """Lock, load, mutate in memory, serialise, write, journal, embed.
 
     Review M-3: the lock is the first statement, before anything is read off
@@ -158,9 +191,9 @@ async def _mutate(session, llm, *, document_id, apply, touched_embed, verb,
     instead of interleaving into a tree whose blocks were stripped underneath
     it.
     """
-    await session.execute(_LOCK_DOCUMENT, {"id": document_id})
+    await session.execute(owner.lock, {"id": document_id})
 
-    meta = (await session.execute(_DOC_META, {"id": document_id})).mappings().first()
+    meta = (await session.execute(owner.meta, {"id": document_id})).mappings().first()
     if meta is None:
         raise BlockTargetUnresolved(f"no document with id {document_id}")
     # After the lock, which is what makes this a compare-and-set rather than a
@@ -172,7 +205,7 @@ async def _mutate(session, llm, *, document_id, apply, touched_embed, verb,
             expected_hash=expected_hash,
             current_hash=meta["content_hash"],
         )
-    rows = (await session.execute(_LOAD_TREE, {"id": document_id})).mappings().all()
+    rows = (await session.execute(owner.load_tree, {"id": document_id})).mappings().all()
     tree = [
         TreeBlock(r["id"], r["parent_id"], r["order_index"], r["type"],
                   r["text"] or "", r["properties"])
@@ -227,7 +260,7 @@ async def _mutate(session, llm, *, document_id, apply, touched_embed, verb,
                 _DELETE_BLOCK, {"id": str(deleted_subtree[0])}
             )
         if inserted is not None:
-            await session.execute(_INSERT_BLOCK, {
+            await session.execute(owner.insert_block, {
                 "id": str(inserted.id),
                 "doc": document_id,
                 "parent": None if inserted.parent_id is None else str(inserted.parent_id),
@@ -260,7 +293,7 @@ async def _mutate(session, llm, *, document_id, apply, touched_embed, verb,
                 "props": props_out, "parents": parents,
             })
 
-        await session.execute(_WRITE_DOC, {
+        await session.execute(owner.write_owner, {
             "id": document_id, "content": result.content, "hash": content_hash,
         })
         # No block text in the payload: write-time minimization, and a journal
@@ -268,7 +301,7 @@ async def _mutate(session, llm, *, document_id, apply, touched_embed, verb,
         await record_event(
             session,
             event_type=BLOCKS_EDITED_EVENT,
-            object_type="document",
+            object_type=owner.object_type,
             object_id=UUID(document_id),
             project=meta["project"],
             payload={"verb": verb, "block_id": block_id,

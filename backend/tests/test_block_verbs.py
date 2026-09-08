@@ -245,6 +245,25 @@ async def test_each_verb_journals_blocks_edited_without_text(session):
 
 
 @pytest.mark.asyncio
+async def test_a_document_edit_journals_object_type_document(session):
+    """The journal's `object_type` rides the owner descriptor, so an edit to
+    the wrong owner's rows would file under the wrong object and misplace the
+    row on `GET /events/timeline`."""
+    llm, doc_id = await _file(session, "# T\n\nalpha\n", "v/objtype.md")
+    rows = await _blocks(session, doc_id)
+    await update_block(session, llm, block_id=rows[-1]["id"], text="beta")
+
+    object_type = (await session.execute(
+        text(
+            "SELECT object_type FROM events WHERE event_type = 'blocks_edited' "
+            "AND object_id = CAST(:id AS uuid) ORDER BY created_at DESC LIMIT 1"
+        ),
+        {"id": doc_id},
+    )).scalar_one()
+    assert object_type == "document"
+
+
+@pytest.mark.asyncio
 async def test_a_verb_on_a_missing_block_refuses(session):
     llm = StubEmbedder()
     with pytest.raises(BlockTargetUnresolved):
