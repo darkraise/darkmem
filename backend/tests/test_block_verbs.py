@@ -381,10 +381,19 @@ def test_the_row_lock_precedes_the_hash_comparison():
         textwrap.dedent(inspect.getsource(block_verbs._mutate))
     ).body[0]
 
+    # The `session.execute` call that takes the lock, not a mention of the
+    # statement: the owner descriptor carries it as `owner.lock`, so a bare
+    # attribute match would also count the descriptor's own construction or a
+    # docstring reference, neither of which acquires anything.
     locks = [
         node.lineno
         for node in ast.walk(body)
-        if isinstance(node, ast.Name) and node.id == "_LOCK_DOCUMENT"
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "execute"
+        and node.args
+        and isinstance(node.args[0], ast.Attribute)
+        and node.args[0].attr == "lock"
     ]
     # The comparison itself, not a mention of the parameter: the signature and
     # the docstring name it too, and neither decides the ordering.
