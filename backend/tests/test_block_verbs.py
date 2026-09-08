@@ -418,3 +418,145 @@ def test_the_row_lock_precedes_the_hash_comparison():
         "it, a concurrent writer can move content_hash between the check and "
         "the write and both lanes win"
     )
+
+
+async def _page(session, *, project="p", content="", title="P"):
+    """A page with one paragraph block, written directly: no page door exists
+    yet."""
+    from app.utils.ids import new_id
+
+    page_id, block_id = new_id(), new_id()
+    await session.execute(
+        text(
+            "INSERT INTO pages (id, project, order_index, title, content, "
+            "content_hash) VALUES (CAST(:id AS uuid), :project, 0, :title, "
+            "CAST(:content AS text), :hash)"
+        ),
+        {"id": str(page_id), "project": project, "title": title,
+         "content": content, "hash": compute_content_hash(content)},
+    )
+    await session.execute(
+        text(
+            "INSERT INTO blocks (id, page_id, order_index, type, text) "
+            "VALUES (CAST(:id AS uuid), CAST(:page AS uuid), 0, 'paragraph', "
+            "CAST(:text AS text))"
+        ),
+        {"id": str(block_id), "page": str(page_id), "text": "page prose"},
+    )
+    return str(page_id), str(block_id)
+
+
+@pytest.mark.asyncio
+async def test_a_page_block_resolves_to_the_page_owner(session):
+    """`_document_of` read one column, so a page block resolved to None and
+    every verb built on it silently targeted nothing."""
+    from app.services.block_verbs import _owner_of
+
+    page_id, block_id = await _page(session, content="page prose\n")
+
+    owner, owner_id = await _owner_of(session, block_id)
+    assert owner.kind == "page"
+    assert owner_id == page_id
+
+
+@pytest.mark.asyncio
+async def test_a_document_block_still_resolves_to_the_document_owner(session):
+    from app.services.block_verbs import _owner_of
+
+    _, doc_id = await _file(session, "# T\n\nalpha\n", "v/owner.md")
+    rows = await _blocks(session, doc_id)
+
+    owner, owner_id = await _owner_of(session, rows[-1]["id"])
+    assert owner.kind == "document"
+    assert owner_id == doc_id
+
+
+@pytest.mark.asyncio
+async def test_a_page_edit_journals_object_type_page(session):
+    """The journal's `object_type` rides the owner descriptor; filing a page
+    edit as a document would misplace it on `GET /events/timeline`."""
+    llm = StubEmbedder()
+    page_id, block_id = await _page(session, content="page prose\n")
+
+    result = await update_block(session, llm, block_id=block_id,
+                                text="page prose edited")
+
+    assert result.owner_kind == "page"
+    assert result.owner_id == page_id
+    assert result.document_id is None
+    object_type = (await session.execute(
+        text(
+            "SELECT object_type FROM events WHERE event_type = 'blocks_edited' "
+            "AND object_id = CAST(:id AS uuid) ORDER BY created_at DESC LIMIT 1"
+        ),
+        {"id": page_id},
+    )).scalar_one()
+    assert object_type == "page"
+
+
+@pytest.mark.asyncio
+async def test_a_page_edit_rewrites_the_page_content(session):
+    llm = StubEmbedder()
+    page_id, block_id = await _page(session, content="page prose\n")
+
+    await update_block(session, llm, block_id=block_id, text="rewritten")
+
+    row = (await session.execute(
+        text(
+            "SELECT content, content_hash FROM pages "
+            "WHERE id = CAST(:id AS uuid)"
+        ),
+        {"id": page_id},
+    )).mappings().one()
+    assert "rewritten" in row["content"]
+    assert row["content_hash"] == compute_content_hash(row["content"])
+
+
+@pytest.mark.asyncio
+async def test_a_verb_against_a_trashed_page_refuses(session):
+    llm = StubEmbedder()
+    page_id, block_id = await _page(session, content="page prose\n")
+    await session.execute(
+        text("UPDATE pages SET deleted_at = now() WHERE id = CAST(:id AS uuid)"),
+        {"id": page_id},
+    )
+
+    with pytest.raises(BlockTargetUnresolved):
+        await update_block(session, llm, block_id=block_id, text="nope")
+
+
+@pytest.mark.asyncio
+async def test_inserting_into_a_page_names_the_page_owner(session):
+    from app.services.block_verbs import PAGE_OWNER
+
+    llm = StubEmbedder()
+    page_id, _ = await _page(session, content="page prose\n")
+
+    result = await insert_block(session, llm, document_id=page_id,
+                                type="paragraph", text="added",
+                                owner=PAGE_OWNER)
+
+    assert result.owner_kind == "page"
+    texts = [r["text"] for r in (await session.execute(
+        text(
+            "SELECT text FROM blocks WHERE page_id = CAST(:id AS uuid) "
+            "ORDER BY order_index"
+        ),
+        {"id": page_id},
+    )).mappings().all()]
+    assert "added" in texts
+
+
+@pytest.mark.asyncio
+async def test_a_missing_page_is_refused_by_its_own_noun(session):
+    """The unresolved message rides the descriptor: a page id in a sentence
+    saying "document" sends the reader to the wrong table."""
+    from app.services.block_verbs import PAGE_OWNER
+
+    llm = StubEmbedder()
+    with pytest.raises(BlockTargetUnresolved) as caught:
+        await insert_block(session, llm,
+                           document_id="00000000-0000-0000-0000-000000000000",
+                           type="paragraph", text="x", owner=PAGE_OWNER)
+    assert "page" in str(caught.value)
+    assert "document" not in str(caught.value)

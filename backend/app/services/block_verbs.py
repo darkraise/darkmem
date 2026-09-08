@@ -40,6 +40,9 @@ from app.utils.ids import new_id
 
 __all__ = [
     "BLOCKS_EDITED_EVENT",
+    "DOCUMENT_OWNER",
+    "PAGE_OWNER",
+    "BlockOwner",
     "BlockCycleError",
     "BlockTargetUnresolved",
     "BlockWriteResult",
@@ -64,7 +67,9 @@ class BlockCycleError(ValueError):
 
 @dataclass(frozen=True)
 class BlockWriteResult:
-    document_id: str
+    document_id: str | None
+    owner_kind: str
+    owner_id: str
     block_id: str | None
     outcome: str            # updated | inserted | moved | deleted
     content_hash: str
@@ -76,28 +81,32 @@ class BlockWriteResult:
 class BlockOwner:
     """What `_mutate` needs to know about the thing a block belongs to.
 
-    The six statements below are the complete set that names `documents`;
+    The five statements below are the complete set that names `documents`;
     `_PLACE`, `_UPDATE_BLOCK` and `_DELETE_BLOCK` key on `blocks.id` and are
     owner-agnostic already. `object_type` is here because it was a hardcoded
     literal at the journal call, which would have filed a page edit as a
-    document.
+    document. `noun` is separate from it rather than reused: `object_type` is
+    a member of the closed `OBJECT_TYPES` vocabulary and answers to the events
+    journal, while `noun` is prose in a refusal a human reads, and the two are
+    free to diverge.
     """
     kind: str
     object_type: str
+    noun: str
     lock: Any
     meta: Any
     load_tree: Any
     insert_block: Any
     write_owner: Any
-    resolve_block_column: str
 
 
 _LOCK_DOCUMENT = text(
     "SELECT id FROM documents WHERE id = CAST(:id AS uuid) FOR UPDATE"
 )
 _RESOLVE_BLOCK = text(
-    "SELECT CAST(document_id AS text) AS document_id FROM blocks "
-    "WHERE id = CAST(:id AS uuid)"
+    "SELECT CAST(document_id AS text) AS document_id, "
+    "       CAST(page_id AS text) AS page_id "
+    "FROM blocks WHERE id = CAST(:id AS uuid)"
 )
 _DOC_META = text(
     "SELECT project, content, content_hash, "
@@ -158,12 +167,51 @@ _WRITE_DOC = text(
 DOCUMENT_OWNER = BlockOwner(
     kind="document",
     object_type="document",
+    noun="document",
     lock=_LOCK_DOCUMENT,
     meta=_DOC_META,
     load_tree=_LOAD_TREE,
     insert_block=_INSERT_BLOCK,
     write_owner=_WRITE_DOC,
-    resolve_block_column="document_id",
+)
+
+_LOCK_PAGE = text(
+    "SELECT id FROM pages WHERE id = CAST(:id AS uuid) "
+    "AND deleted_at IS NULL FOR UPDATE"
+)
+# The literal NULLs skip `_mutate`'s conversion branch without a second code
+# path: a page is block-first by construction, so it has no authored source
+# the serialiser could fail to reproduce.
+_PAGE_META = text(
+    "SELECT project, content, content_hash, "
+    "       NULL AS direction, NULL AS frontmatter "
+    "FROM pages WHERE id = CAST(:id AS uuid) AND deleted_at IS NULL"
+)
+_LOAD_PAGE_TREE = text(
+    "SELECT id, parent_id, order_index, type, text, properties, "
+    "       lower(char_span) AS lo, upper(char_span) AS hi "
+    "FROM blocks WHERE page_id = CAST(:id AS uuid) ORDER BY order_index"
+)
+_INSERT_PAGE_BLOCK = text(
+    "INSERT INTO blocks (id, page_id, parent_id, order_index, type, text, properties) "
+    "VALUES (CAST(:id AS uuid), CAST(:doc AS uuid), CAST(:parent AS uuid), "
+    "        :ord, CAST(:type AS text), CAST(:text AS text), CAST(:props AS jsonb))"
+)
+_WRITE_PAGE = text(
+    "UPDATE pages SET content = CAST(:content AS text), "
+    "content_hash = CAST(:hash AS text) WHERE id = CAST(:id AS uuid)"
+)
+
+
+PAGE_OWNER = BlockOwner(
+    kind="page",
+    object_type="page",
+    noun="page",
+    lock=_LOCK_PAGE,
+    meta=_PAGE_META,
+    load_tree=_LOAD_PAGE_TREE,
+    insert_block=_INSERT_PAGE_BLOCK,
+    write_owner=_WRITE_PAGE,
 )
 
 
@@ -195,7 +243,7 @@ async def _mutate(session, llm, *, document_id, apply, touched_embed, verb,
 
     meta = (await session.execute(owner.meta, {"id": document_id})).mappings().first()
     if meta is None:
-        raise BlockTargetUnresolved(f"no document with id {document_id}")
+        raise BlockTargetUnresolved(f"no {owner.noun} with id {document_id}")
     # After the lock, which is what makes this a compare-and-set rather than a
     # check-then-act: no writer can move content_hash between this read and
     # the write below, because both are inside one held row lock.
@@ -315,8 +363,16 @@ async def _mutate(session, llm, *, document_id, apply, touched_embed, verb,
         written = embed.written if embed else 0
         await session.commit()
 
-    return BlockWriteResult(document_id, block_id, verb, content_hash,
-                            len(tree), written)
+    return BlockWriteResult(
+        document_id=document_id if owner.kind == "document" else None,
+        owner_kind=owner.kind,
+        owner_id=document_id,
+        block_id=block_id,
+        outcome=verb,
+        content_hash=content_hash,
+        blocks_total=len(tree),
+        blocks_embedded=written,
+    )
 
 
 def _json(value):
@@ -325,11 +381,15 @@ def _json(value):
     return None if value is None else json.dumps(value)
 
 
-async def _document_of(session: AsyncSession, block_id: str) -> str:
+async def _owner_of(session: AsyncSession, block_id: str) -> tuple[BlockOwner, str]:
+    """`blocks_exactly_one_owner` guarantees exactly one column is set, so the
+    two branches are the whole space."""
     row = (await session.execute(_RESOLVE_BLOCK, {"id": block_id})).mappings().first()
     if row is None:
         raise BlockTargetUnresolved(f"no block with id {block_id}")
-    return row["document_id"]
+    if row["document_id"] is not None:
+        return DOCUMENT_OWNER, row["document_id"]
+    return PAGE_OWNER, row["page_id"]
 
 
 async def update_block(
@@ -337,7 +397,7 @@ async def update_block(
     text: str, type: str | None = None, properties: dict | None = None,
     expected_hash: str | None = None,
 ) -> BlockWriteResult:
-    document_id = await _document_of(session, block_id)
+    owner, document_id = await _owner_of(session, block_id)
     target = UUID(block_id)
 
     def apply(tree: list[TreeBlock]):
@@ -358,13 +418,15 @@ async def update_block(
 
     return await _mutate(session, llm, document_id=document_id, apply=apply,
                          touched_embed=block_id, verb="updated",
-                         block_id=block_id, expected_hash=expected_hash)
+                         block_id=block_id, expected_hash=expected_hash,
+                         owner=owner)
 
 
 async def insert_block(
     session: AsyncSession, llm, *, document_id: str, type: str, text: str,
     parent_id: str | None = None, after_block_id: str | None = None,
     properties: dict | None = None, expected_hash: str | None = None,
+    owner: BlockOwner = DOCUMENT_OWNER,
 ) -> BlockWriteResult:
     minted = new_id()
     parent = None if parent_id is None else UUID(parent_id)
@@ -396,7 +458,8 @@ async def insert_block(
 
     return await _mutate(session, llm, document_id=document_id, apply=apply,
                          touched_embed=str(minted), verb="inserted",
-                         block_id=str(minted), expected_hash=expected_hash)
+                         block_id=str(minted), expected_hash=expected_hash,
+                         owner=owner)
 
 
 async def move_block(
@@ -404,7 +467,7 @@ async def move_block(
     new_parent_id: str | None = None, after_block_id: str | None = None,
     expected_hash: str | None = None,
 ) -> BlockWriteResult:
-    document_id = await _document_of(session, block_id)
+    owner, document_id = await _owner_of(session, block_id)
     target = UUID(block_id)
     parent = None if new_parent_id is None else UUID(new_parent_id)
     after = None if after_block_id is None else UUID(after_block_id)
@@ -445,14 +508,14 @@ async def move_block(
     # No embed: a move changes position, never text.
     return await _mutate(session, llm, document_id=document_id, apply=apply,
                          touched_embed=None, verb="moved", block_id=block_id,
-                         expected_hash=expected_hash)
+                         expected_hash=expected_hash, owner=owner)
 
 
 async def delete_block(
     session: AsyncSession, llm, *, block_id: str,
     expected_hash: str | None = None,
 ) -> BlockWriteResult:
-    document_id = await _document_of(session, block_id)
+    owner, document_id = await _owner_of(session, block_id)
     target = UUID(block_id)
 
     def apply(tree: list[TreeBlock]):
@@ -465,4 +528,4 @@ async def delete_block(
     # No embed: the rows and their vectors go with the cascade.
     return await _mutate(session, llm, document_id=document_id, apply=apply,
                          touched_embed=None, verb="deleted", block_id=block_id,
-                         expected_hash=expected_hash)
+                         expected_hash=expected_hash, owner=owner)
