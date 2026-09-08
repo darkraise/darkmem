@@ -47,7 +47,7 @@ Taxonomy-first: these values must exist before any emitter ships. Nothing emits 
 **Files:**
 - Modify: `backend/app/services/events.py` (`EVENT_TYPES` list, `OBJECT_TYPES` list)
 - Test: `backend/tests/test_events.py`
-- Modify: `frontend/src/features/activity/lib/event-taxonomy.ts` (the frontend classification map, whose completeness `backend/tests/test_event_taxonomy_map.py` asserts against `EVENT_TYPES`)
+- Modify: `frontend/src/features/activity/event-taxonomy.ts` (the frontend classification map, whose completeness `backend/tests/test_event_taxonomy_map.py` asserts against `EVENT_TYPES`)
 
 **Interfaces:**
 - Consumes: nothing.
@@ -132,7 +132,7 @@ Expected: PASS.
 
 ```bash
 git add backend/app/services/events.py backend/tests/test_events.py \
-        frontend/src/features/activity/lib/event-taxonomy.ts
+        frontend/src/features/activity/event-taxonomy.ts
 git commit -m "feat(events): admit the page vocabulary"
 ```
 
@@ -1099,7 +1099,7 @@ git commit -m "docs(pages): classify the page routes as REST-only"
 **Files:**
 - Modify: `backend/app/api/routes/projects.py:42-58`
 - Modify: `frontend/src/hooks/api/use-projects-api.ts` (the `ProjectSummary` interface)
-- Test: `backend/tests/test_projects.py`
+- Test: `backend/tests/test_projects_endpoint.py`
 
 **Interfaces:**
 - Consumes: the `pages` table (Task 2).
@@ -1130,12 +1130,12 @@ Add `pages` to the union and `page_count` to the summary, mirroring `document_co
 - [ ] **Step 5: Run and commit**
 
 ```
-cd backend && TEST_DATABASE_URL="postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test_3" timeout 600 .venv/bin/python -m pytest -q tests/test_projects.py
+cd backend && TEST_DATABASE_URL="postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test_3" timeout 600 .venv/bin/python -m pytest -q tests/test_projects_endpoint.py
 cd frontend && timeout 900 npm run typecheck
 ```
 
 ```bash
-git add backend/app/api/routes/projects.py backend/tests/test_projects.py \
+git add backend/app/api/routes/projects.py backend/tests/test_projects_endpoint.py \
         frontend/src/hooks/api/use-projects-api.ts
 git commit -m "feat(projects): count pages in the catalogue"
 ```
