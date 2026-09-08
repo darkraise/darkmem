@@ -420,11 +420,15 @@ structure, so no pre-count round trip is needed.
   and `LAYER_BY_ID_KIND` gains no `page` kind.
 - **Version history / undo.** See §9.
 
-**One catalogue gap to close or state:** `GET /api/v1/projects` unions
-`memories`, `documents` and `session_checkpoints` (`routes/projects.py:42-58`),
-so a project holding only pages is invisible to it. Either add `pages` to the
-union or state that pages live only in the personal project, which the registry
-already guarantees is a singleton.
+**One catalogue gap, closed by adding `pages` to the union.**
+`GET /api/v1/projects` unions `memories`, `documents` and `session_checkpoints`
+(`routes/projects.py:42-58`), so a project holding only pages would be invisible
+to it. The alternative — declaring pages personal-only — was rejected because
+`pages.project` is already a general column that nothing constrains to the
+personal space, so that reading would be a rule enforced nowhere, and a project
+that vanishes from its own catalogue is a bug under either reading.
+`ProjectSummary` gains `page_count` beside `document_count`, which the
+`/notes` project picker in Increment B then has a real field to sort on.
 
 ## 11. Increments
 
