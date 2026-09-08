@@ -388,6 +388,9 @@ BLOCK_CHANNEL_MODULES = frozenset({
     # reach -- an unclassified module is a hole in the scan.
     "app.services.document_related",
     "app.services.document_connections",
+    # The page door reads block rows to serve a page's tree, so it is
+    # classified in the change that gives it that reach.
+    "app.services.page_door",
 })
 
 _VAULT_RULES = ReachabilityRules(
