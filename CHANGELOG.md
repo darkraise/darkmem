@@ -4,13 +4,18 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
-## v1.8.0 — 2026-09-07
+## v1.8.0 — 2026-09-08
 
 **A document's metadata is editable, on both doors, and a serialised block
 tree re-parses to itself.** Retitle, move, pin and re-tag one document or
 rewrite a whole `uri` subtree; precondition a block edit on the document's
 content hash the way `put` already allows; and three serialiser defects that
 made 29 of the corpus's documents fail their own round trip.
+
+**And there is now a place to do it from.** `/notes` is a notes workspace over
+the same corpus: create a note or a folder, rename, pin, move — by dragging a
+row or by picking a destination from a list — and delete a whole subtree. Every
+write goes through the doors above; the UI gained no verb of its own.
 
 ### Added
 
@@ -37,8 +42,63 @@ made 29 of the corpus's documents fail their own round trip.
 - **`document_updated` joins the events vocabulary.** One journal row per
   edited document, naming which fields moved and carrying none of their
   values.
+- **A subtree delete, on both doors.** `POST /api/v1/documents/delete` and MCP
+  `document_delete_subtree` erase every document under a `uri_prefix` and
+  answer the count. It is a separate tool rather than a mode on
+  `document_delete` because MCP scopes are per tool: a mode would have
+  inherited `capture` and let any capture key erase a project's whole corpus.
+  It is `admin`-scoped instead, which is the first time that scope reaches
+  something irrecoverable — so the settings picker that grants it now names
+  all three of that scope's powers, where it used to read "Receive push
+  updates" and nothing else. An empty prefix is refused.
+  Each deleted document journals a `documents_deleted` row naming the key and
+  the actor that ran it, and the delete fails closed when that row cannot be
+  written: an erase with no audit trail is worse than a refused one.
+- **A notes workspace at `/notes`.** The document browser gains an editing
+  mode — per-row actions (new note, new folder, rename, move to…, pin,
+  delete), New note and New folder in the pane header and in the empty tree,
+  and a project picker that defaults to the project holding the most
+  documents. "New folder" files a seeded note inside the folder it names,
+  because a folder is derived from the uri path and an empty one has no row
+  to exist as. "Move to…" is the only move that needs no pointer: it offers
+  the destinations the drag path would accept and dispatches the same verb.
+  The reading surface at `/projects/<name>` is unchanged; the mode is a prop,
+  so nothing the browser did before gained a write button.
+- **Drag a row to move it.** A leaf goes through the metadata PATCH, a folder
+  through the subtree rename, and releasing on the pane below the tree moves
+  to the top level. A drop that would strand a document under its own
+  descendant, or land it where another document already sits, is refused —
+  and the refusal is the server's own sentence, which names the colliding
+  `uri` rather than the folder you aimed at.
+- **`documents_deleted` joins the events vocabulary**, and the list item now
+  serves `pinned_at`, which is what makes a pin control renderable at all.
+
+### Changed
+
+- **MCP `document_delete` answers an envelope where it used to raise.** A call
+  naming nothing that resolves now returns `{"status": "unresolved"}` with
+  `isError: false`, matching `document_update` beside it: two sibling document
+  writers must not disagree on the same condition, and an agent can machine-read
+  an envelope where it cannot machine-read a traceback. A caller that was
+  branching on the tool erroring will now see a success it has to inspect.
 
 ### Fixed
+
+- **A subtree move or delete that matched nothing now says so.** Both routes
+  answer a count, and `/notes` was discarding it — so a folder whose documents
+  are filed under a uri the folder's own path does not match (a leading,
+  doubled or trailing slash, or a scheme) showed the confirm, took the 200,
+  refetched an unchanged tree and reported nothing at all. Zero rows is a
+  refusal now, on all three dispatch paths, and a successful folder delete
+  names how many notes it removed — which is the only evidence left once the
+  rows are gone.
+
+- **A tree row is a drop target across its whole box.** The droppable was the
+  row's inner label span, so a release on a folder's chevron, the indent
+  gutter or the actions slot — roughly a third of a nested row's width and a
+  third of its height — fell through to the pane behind it and resolved as an
+  accepted move to the top level. Caught before the move verbs were wired to
+  it, so no uri was ever rewritten this way.
 
 - **A tag shared between a memory and a document is no longer dropped from
   the tag list, and its count is no longer multiplied.** The counts query
