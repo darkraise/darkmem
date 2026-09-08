@@ -360,3 +360,21 @@ def test_documents_deleted_is_in_the_vocabulary():
     from app.services.events import EVENT_TYPES
 
     assert "documents_deleted" in EVENT_TYPES
+
+
+def test_the_page_vocabulary_is_admitted_before_its_emitters():
+    """Taxonomy-first: an emitter shipping ahead of its vocabulary logs a
+    warning and writes an unclassified row, which is the failure this
+    ordering exists to prevent."""
+    from app.services.events import EVENT_TYPES, OBJECT_TYPES
+
+    assert "page" in OBJECT_TYPES
+    for event in (
+        "page_created",
+        "page_updated",
+        "page_moved",
+        "page_deleted",
+        "page_restored",
+        "page_purged",
+    ):
+        assert event in EVENT_TYPES, f"{event} is not admitted"

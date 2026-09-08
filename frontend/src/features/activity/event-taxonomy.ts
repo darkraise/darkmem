@@ -39,6 +39,14 @@ const EVENT_TYPE_CATEGORY: Record<string, FeedCategory> = {
   // The subtree delete (increment 2). Capture, the same tab its three
   // document siblings land on: it is a write to filed documents.
   documents_deleted: "capture",
+  // The page tree's lifecycle (increment A). Capture, the same tab the
+  // document lifecycle events land on.
+  page_created: "capture",
+  page_updated: "capture",
+  page_moved: "capture",
+  page_deleted: "capture",
+  page_restored: "capture",
+  page_purged: "capture",
   extracted: "pipeline",
   sources_changed: "pipeline",
   verified: "verification",

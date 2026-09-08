@@ -182,6 +182,17 @@ EVENT_TYPES: list[str] = [
     # bulk delete is unrecoverable and, over MCP, the event's `api_key_id` is
     # the only record of who ran it. Carries ids and the prefix, no content.
     "documents_deleted",
+    # The page tree's lifecycle. `page_updated` is a title or property edit;
+    # a block edit journals `blocks_edited` like a document's does. Deletion
+    # is a `deleted_at` stamp, so `page_deleted` and `page_purged` are
+    # different events: the first is reversible by `page_restored` and the
+    # second is not.
+    "page_created",
+    "page_updated",
+    "page_moved",
+    "page_deleted",
+    "page_restored",
+    "page_purged",
     # The block-embedding backstop job's run summary (T-doc-door.6). Landed
     # ahead of its emitter, taxonomy-first, same as every other value here.
     "block_embeddings_refreshed",
@@ -251,6 +262,7 @@ OBJECT_TYPES: list[str] = [
     "article",
     "topic",
     "document",
+    "page",
     "repository",
     "checkpoint",
     "system",
