@@ -94,6 +94,22 @@ _TABLE_TEMPLATES: dict[str, str] = {
         " PRIMARY KEY (block_id, fingerprint)"
         ")"
     ),
+    # Pages do NOT share the block partition. That family carries one HNSW
+    # index per child and every document ANN read filters the owner *after*
+    # the index scan, so a growing notes corpus would starve document
+    # connections and search of candidates — the failure
+    # `document_connections`' own docstring records. Same key, same cascade,
+    # separate index.
+    "page_embeddings": (
+        "CREATE TABLE IF NOT EXISTS {name} ("
+        " block_id UUID NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,"
+        " fingerprint TEXT NOT NULL REFERENCES embedders(fingerprint),"
+        " embedding vector({dims}) NOT NULL,"
+        " payload JSONB NOT NULL DEFAULT '{{}}'::jsonb,"
+        " created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
+        " PRIMARY KEY (block_id, fingerprint)"
+        ")"
+    ),
     # Keys on the REAL entity_relations.id — no synthetic ids — so
     # strip-before-rewrite and the self-healing delete kill the vector with
     # the relation instead of orphaning it. Carries no project predicate of
@@ -149,6 +165,9 @@ _AUX_INDEXES: dict[str, list[str]] = {
         "CREATE INDEX IF NOT EXISTS ix_{name}_last_used ON {name} (last_used_at)",
     ],
     "block_embeddings": [
+        "CREATE INDEX IF NOT EXISTS ix_{name}_block_id ON {name} (block_id)",
+    ],
+    "page_embeddings": [
         "CREATE INDEX IF NOT EXISTS ix_{name}_block_id ON {name} (block_id)",
     ],
     "relation_embeddings": [

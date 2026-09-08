@@ -1,4 +1,4 @@
-"""The eight per-fingerprint parents exist as registry entries, not as DDL.
+"""The nine per-fingerprint parents exist as registry entries, not as DDL.
 
 Inventory §6: doc 19 §2 rejects expressing child tables as static migrations
 because their shape is parameterised by fingerprint. The four target-new
@@ -19,13 +19,14 @@ EXPECTED_PARENTS = {
     "code_chunk_embeddings",
     "entity_embedding_cache",
     "block_embeddings",
+    "page_embeddings",
     "relation_embeddings",
     "article_embeddings",
     "triple_embeddings",
 }
 
 
-def test_all_eight_parents_have_templates():
+def test_all_nine_parents_have_templates():
     assert set(_TABLE_TEMPLATES) == EXPECTED_PARENTS
 
 

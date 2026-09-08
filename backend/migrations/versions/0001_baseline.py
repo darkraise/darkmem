@@ -1325,6 +1325,46 @@ def _pass_two() -> None:
         "ON documents FOR EACH ROW EXECUTE FUNCTION touch_updated_at()"
     )
 
+    # A page is the human-authored note tree, beside `documents` rather than
+    # inside it. A document is addressed by its `uri` path and files at any
+    # depth unconditionally; a page is addressed by `parent_id` and refuses a
+    # child whose parent row does not exist. One model serving both would have
+    # to mint ancestor rows nobody authored.
+    op.execute(
+        """
+        CREATE TABLE pages (
+            id           UUID NOT NULL,
+            project      TEXT NOT NULL,
+            parent_id    UUID,
+            order_index  INTEGER NOT NULL,
+            title        TEXT,
+            content      TEXT NOT NULL DEFAULT '',
+            content_hash TEXT NOT NULL,
+            properties   JSONB,
+            deleted_at   TIMESTAMPTZ,
+            created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+            CONSTRAINT pages_pkey PRIMARY KEY (id),
+            -- Composite rather than a plain self-FK, so a cross-project
+            -- reparent is impossible in the schema and not merely refused at
+            -- the door. MATCH SIMPLE skips the check when parent_id is NULL,
+            -- which is what makes a root page legal. The CASCADE is the purge
+            -- path only -- an ordinary delete stamps `deleted_at`.
+            CONSTRAINT ux_pages_id_project UNIQUE (id, project),
+            CONSTRAINT fk_pages_parent FOREIGN KEY (parent_id, project)
+                REFERENCES pages (id, project) ON DELETE CASCADE
+        )
+        """
+    )
+    op.execute(
+        "CREATE INDEX ix_pages_project_parent_order "
+        "ON pages (project, parent_id, order_index)"
+    )
+    op.execute(
+        "CREATE TRIGGER pages_touch_updated_at BEFORE UPDATE "
+        "ON pages FOR EACH ROW EXECUTE FUNCTION touch_updated_at()"
+    )
+
     # A block is simultaneously the chunk unit, the citation anchor, the link
     # endpoint and the transclusion target. parent_id CASCADE makes the tree
     # delete take its subtree; re-ingest strips blocks by document_id before
@@ -1333,7 +1373,8 @@ def _pass_two() -> None:
         """
         CREATE TABLE blocks (
             id          UUID NOT NULL,
-            document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+            document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
+            page_id     UUID REFERENCES pages(id) ON DELETE CASCADE,
             parent_id   UUID REFERENCES blocks(id) ON DELETE CASCADE,
             order_index INTEGER,
             type        TEXT,
@@ -1346,11 +1387,27 @@ def _pass_two() -> None:
                     CASE WHEN type IN ('code', 'html') THEN '' ELSE coalesce(text, '') END
                 )
             ) STORED,
-            CONSTRAINT blocks_pkey PRIMARY KEY (id)
+            CONSTRAINT blocks_pkey PRIMARY KEY (id),
+            -- Dropping NOT NULL from document_id does not weaken documents:
+            -- a block with no owner at all is still refused, just by this
+            -- rather than by the column. The only new permitted state is a
+            -- block owned by a page.
+            CONSTRAINT blocks_exactly_one_owner
+                CHECK (num_nonnulls(document_id, page_id) = 1)
         )
         """
     )
-    op.execute("CREATE INDEX ix_blocks_document_order ON blocks (document_id, order_index)")
+    # Partial rather than plain: the page half of the table will be denser and
+    # more update-heavy than the document half, and each index stays out of
+    # the other owner's pages entirely.
+    op.execute(
+        "CREATE INDEX ix_blocks_document_order ON blocks (document_id, order_index) "
+        "WHERE document_id IS NOT NULL"
+    )
+    op.execute(
+        "CREATE INDEX ix_blocks_page_order ON blocks (page_id, order_index) "
+        "WHERE page_id IS NOT NULL"
+    )
     op.execute("CREATE INDEX ix_blocks_parent ON blocks (parent_id)")
     op.execute("CREATE INDEX ix_blocks_search_vector ON blocks USING GIN (search_vector)")
 
@@ -1572,10 +1629,10 @@ def _pass_two() -> None:
 
 def downgrade() -> None:
     # Drop every per-fingerprint child table the registry created. The set is
-    # not known at migration time, so walk pg_tables for all EIGHT parent
-    # patterns — the four that exist today plus the four target-new families
+    # not known at migration time, so walk pg_tables for all NINE parent
+    # patterns — the four that exist today, the four target-new families
     # (inventory F-17: the pre-baseline sweep covered only four and would
-    # strand the rest).
+    # strand the rest) and the page family.
     op.execute(
         """
         DO $$
@@ -1590,6 +1647,7 @@ def downgrade() -> None:
                        OR tablename LIKE 'code_chunk_embeddings\\_\\_%'
                        OR tablename LIKE 'entity_embedding_cache\\_\\_%'
                        OR tablename LIKE 'block_embeddings\\_\\_%'
+                       OR tablename LIKE 'page_embeddings\\_\\_%'
                        OR tablename LIKE 'relation_embeddings\\_\\_%'
                        OR tablename LIKE 'article_embeddings\\_\\_%'
                        OR tablename LIKE 'triple_embeddings\\_\\_%')
@@ -1629,6 +1687,7 @@ def downgrade() -> None:
         "document_links",
         "blocks",
         "documents",
+        "pages",
         "memory_buffer",
         "memory_community_members",
         "memory_communities",
