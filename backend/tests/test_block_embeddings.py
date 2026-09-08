@@ -216,7 +216,7 @@ async def test_skipping_registration_breaks_the_insert(session, monkeypatch):
     _doc_id, block_ids = await _file_blocks(session, "guarded content")
     embedder = FakeEmbedder()
 
-    async def _noop_ensure_partition(_session, _fingerprint):
+    async def _noop_ensure_partition(_session, _fingerprint, *, parent=None):
         return None
 
     monkeypatch.setattr(be_mod, "ensure_partition", _noop_ensure_partition)
@@ -255,9 +255,31 @@ def test_every_child_table_is_reached_through_the_parent_constant():
         if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                 and node.func.id == "child_table"):
             first = node.args[0]
-            parents.add(first.value if isinstance(first, ast.Constant) else first.id)
-    assert parents == {"PARENT_TABLE"}
+            assert not isinstance(first, ast.Constant), (
+                "a child table named by an inline literal bypasses the family "
+                "constants entirely"
+            )
+            parents.add(first.id)
+    # `parent` is the family the writer was asked for; every parameter
+    # carrying that name defaults to one of the two constants below, asserted
+    # next, so no third name can reach `child_table` without being declared.
+    assert parents == {"PARENT_TABLE", "parent"}
     assert be_mod.PARENT_TABLE == "block_embeddings"
+    assert be_mod.PAGE_PARENT_TABLE == "page_embeddings"
+
+    declared = {"PARENT_TABLE", "PAGE_PARENT_TABLE"}
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        args = node.args
+        for arg, default in zip(
+            args.args[len(args.args) - len(args.defaults):], args.defaults,
+        ):
+            if arg.arg == "parent":
+                assert isinstance(default, ast.Name) and default.id in declared
+        for arg, default in zip(args.kwonlyargs, args.kw_defaults):
+            if arg.arg == "parent":
+                assert isinstance(default, ast.Name) and default.id in declared
 
 
 def test_the_module_never_calls_llm_fingerprint():

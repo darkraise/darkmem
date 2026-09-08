@@ -16,10 +16,19 @@ it. What must never be "simplified" away is the ordering: the register call
 has to complete (and commit — see below) before any ``INSERT`` reaches the
 table it creates.
 
-**Naming goes through ``child_table(PARENT_TABLE, fingerprint)`` only**
-(invariant 2). ``PARENT_TABLE`` is the one string literal naming this family;
-every table reference in this module resolves through it, never through an
-inline f-string of the parent name.
+**Naming goes through ``child_table(parent, fingerprint)`` only**
+(invariant 2). ``PARENT_TABLE`` and ``PAGE_PARENT_TABLE`` are the only string
+literals naming these families; every table reference in this module resolves
+through one of them, never through an inline f-string of the parent name.
+
+**Two families, one writer.** A block belongs to a document or to a page, and
+the two own separate partition families: the document family carries one HNSW
+index per child that every document ANN read filters the owner *after*, so a
+growing notes corpus sharing it would starve document search of candidates.
+``embed_blocks`` and ``ensure_partition`` therefore take the family to write
+as ``parent``, defaulting to the document one. The read side
+(``search_blocks``, ``block_vectors``) is document-only and takes no
+``parent``: both join ``documents``, and page retrieval has no door yet.
 
 **No cross-fingerprint comparison.** Every statement here scopes to one
 resolved fingerprint's own child table — a different fingerprint is a
@@ -59,6 +68,7 @@ from app.services.embedder_registry import child_table
 logger = logging.getLogger(__name__)
 
 PARENT_TABLE = "block_embeddings"
+PAGE_PARENT_TABLE = "page_embeddings"
 
 DEFAULT_EMBED_CHUNK = 32
 DEFAULT_EMBED_CONCURRENCY = 2
@@ -83,6 +93,7 @@ async def embed_blocks(
     llm,
     *,
     block_ids: Sequence[str],
+    parent: str = PARENT_TABLE,
     chunk_size: int = DEFAULT_EMBED_CHUNK,
     concurrency: int = DEFAULT_EMBED_CONCURRENCY,
 ) -> WriteResult | None:
@@ -120,8 +131,8 @@ async def embed_blocks(
             "they may not belong to"
         )
 
-    await ensure_partition(session, fingerprint)
-    table = child_table(PARENT_TABLE, fingerprint)
+    await ensure_partition(session, fingerprint, parent=parent)
+    table = child_table(parent, fingerprint)
     for row, vector in zip(rows, vectors):
         await session.execute(
             text(f"""
@@ -140,9 +151,16 @@ async def embed_blocks(
     return WriteResult(fingerprint=fingerprint, written=len(rows))
 
 
-async def ensure_partition(session: AsyncSession, fingerprint: str) -> None:
+async def ensure_partition(
+    session: AsyncSession, fingerprint: str, *, parent: str = PARENT_TABLE,
+) -> None:
     """Idempotently register `fingerprint` and create its per-family child
     tables if they do not already exist.
+
+    ``parent`` names the family the caller is about to write. Registration
+    creates every family's children in one pass, so it selects nothing here;
+    it is taken so a call site reads as scoped to the family it writes,
+    matching `embed_blocks`.
 
     **Exported (no leading underscore) because it is part of this family's
     contract, not merely an internal implementation detail** (T-doc-door.6

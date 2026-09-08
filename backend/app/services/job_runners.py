@@ -958,7 +958,10 @@ def make_block_embedding_runner(
     app,
     session_factory: async_sessionmaker[AsyncSession],
 ):
-    """Keep document blocks embedded under the active fingerprint (spec 2026-08-23).
+    """Keep blocks embedded under the active fingerprint (spec 2026-08-23).
+
+    Documents and pages sweep on separate budgets so neither owner's
+    backlog delays the other's.
 
     Tier C, and deliberately not a dreaming-family member: contract 6 fixes
     that family at six, and this is an artefact refresh in the same class as
@@ -1000,7 +1003,9 @@ def make_block_embedding_runner(
         # under a fingerprint this run never verified.
         async with session_factory() as session:
             outcome = await refresh_block_embeddings(
-                session, llm, batch=int(knobs["batch"]),
+                session, llm,
+                batch=int(knobs["batch"]),
+                page_batch=int(knobs["page_batch"]),
             )
             if outcome.embedded:
                 journalled = await record_event(
