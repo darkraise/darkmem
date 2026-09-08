@@ -165,6 +165,43 @@ describe("project workspace — a drop is a real uri rewrite", () => {
     )
   })
 
+  it("reports a folder move that matched no row instead of falling silent", async () => {
+    // The tree drops empty uri segments when it builds a folder path, and
+    // the door's prefix predicate does not normalise at all -- so a folder
+    // holding only `/notes/a.md` renders as `notes` and matches none of its
+    // own rows. The 200 that comes back is indistinguishable from a move.
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path === "/documents/rename") return Promise.resolve({ renamed: 0 })
+      if (path.startsWith("/documents/search")) return Promise.resolve({ items: [] })
+      if (path.startsWith("/documents")) return Promise.resolve({ items: [ONE, TWO] })
+      return Promise.resolve({})
+    })
+    await renderWorkspace()
+    lastOnMove!({ kind: "subtree", uriPrefix: "notes", newUriPrefix: "b/notes" })
+    await waitFor(() =>
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+        expect.stringMatching(/nothing was moved/i),
+      ),
+    )
+  })
+
+  it("reports no refusal when the move did rewrite rows", async () => {
+    // The other half of the pair: a handler that toasted unconditionally
+    // would satisfy the test above and be wrong on every real move.
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path === "/documents/rename") return Promise.resolve({ renamed: 2 })
+      if (path.startsWith("/documents/search")) return Promise.resolve({ items: [] })
+      if (path.startsWith("/documents")) return Promise.resolve({ items: [ONE, TWO] })
+      return Promise.resolve({})
+    })
+    await renderWorkspace()
+    lastOnMove!({ kind: "subtree", uriPrefix: "a", newUriPrefix: "b/a" })
+    await waitFor(() =>
+      expect(calls().some((c) => c.path === "/documents/rename")).toBe(true),
+    )
+    expect(vi.mocked(toast.error)).not.toHaveBeenCalled()
+  })
+
   it("mounts no drag layer where tree management is off", async () => {
     mockList()
     await renderWorkspace(false)

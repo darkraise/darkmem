@@ -852,6 +852,16 @@ const ORPHAN = {
   block_count: 1,
 }
 
+/** `mockDocuments` answers every `/documents*` path with the list payload,
+ *  so a subtree verb's own count never arrives. This layers the count the
+ *  server would really answer over it. */
+function answerVerb(route: string, payload: unknown) {
+  const list = vi.mocked(apiFetch).getMockImplementation()!
+  vi.mocked(apiFetch).mockImplementation((path, init) =>
+    path === route ? Promise.resolve(payload) : list(path, init),
+  )
+}
+
 async function openMenu(name: RegExp) {
   await userEvent.click(screen.getByLabelText(name))
 }
@@ -1040,6 +1050,72 @@ describe("project workspace — the note actions", () => {
     await openMenu(/actions for No uri note/i)
     expect(await screen.findByText("Delete")).toBeInTheDocument()
     expect(screen.queryByText("Rename")).toBeNull()
+  })
+
+  it("reports a folder delete that matched no row rather than reporting nothing", async () => {
+    // The tree drops empty uri segments when it builds a folder path; the
+    // subtree routes match the raw uri and normalise nothing. A folder whose
+    // documents are filed at `/notes/...` matches none of its own rows, and
+    // the `{"deleted": 0}` that comes back is a 200 the list refetch cannot
+    // distinguish from a completed erase.
+    mockDocuments({ items: [DOC] })
+    answerVerb("/documents/delete", { deleted: 0 })
+    renderWorkspace({ treeManagement: true })
+    await screen.findByText("design.md")
+
+    await openMenu(/actions for notes/i)
+    await userEvent.click(await screen.findByText("Delete"))
+    const dialog = await screen.findByRole("alertdialog")
+    await userEvent.click(within(dialog).getByRole("button", { name: /^delete$/i }))
+
+    await waitFor(() =>
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+        expect.stringMatching(/nothing was deleted/i),
+      ),
+    )
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalled()
+  })
+
+  it("names how many notes a folder delete actually removed", async () => {
+    // The rows are gone, so the count is the only evidence of what the
+    // confirm removed -- and it is the other half of the pair above: a
+    // handler that refused unconditionally would pass that test and be
+    // wrong on every real delete.
+    mockDocuments({ items: [DOC] })
+    answerVerb("/documents/delete", { deleted: 3 })
+    renderWorkspace({ treeManagement: true })
+    await screen.findByText("design.md")
+
+    await openMenu(/actions for notes/i)
+    await userEvent.click(await screen.findByText("Delete"))
+    const dialog = await screen.findByRole("alertdialog")
+    await userEvent.click(within(dialog).getByRole("button", { name: /^delete$/i }))
+
+    await waitFor(() =>
+      expect(vi.mocked(toast.success)).toHaveBeenCalledWith(
+        expect.stringMatching(/deleted 3 notes/i),
+      ),
+    )
+    expect(vi.mocked(toast.error)).not.toHaveBeenCalled()
+  })
+
+  it("reports a folder rename that matched no row", async () => {
+    mockDocuments({ items: [DOC] })
+    answerVerb("/documents/rename", { renamed: 0 })
+    renderWorkspace({ treeManagement: true })
+    await screen.findByText("design.md")
+
+    await openMenu(/actions for notes/i)
+    await userEvent.click(await screen.findByText("Rename"))
+    const input = screen.getByRole("textbox", { name: /new name/i })
+    await userEvent.clear(input)
+    await userEvent.type(input, "journal{Enter}")
+
+    await waitFor(() =>
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+        expect.stringMatching(/nothing was renamed/i),
+      ),
+    )
   })
 
   it("reveals the new folder after a document's uri changes under it", async () => {

@@ -92,6 +92,19 @@ function freeUri(items: DocumentListItem[], folder: string, base = "untitled") {
   return at(n)
 }
 
+/** A subtree verb answers how many rows it touched, and a zero is a refusal
+ *  wearing a 200.
+ *
+ *  The tree derives a folder's path from the uri's "/" segments with the
+ *  empty ones dropped, while both subtree routes match the raw uri against
+ *  `uri = prefix OR uri LIKE prefix/%`. A document filed at `/notes/a.md` or
+ *  `file:///tmp/a.md` therefore renders under a folder path that matches
+ *  none of its own rows. Unreported, the list simply refetches unchanged --
+ *  which is indistinguishable from a completed edit. */
+function reportNothingMatched(prefix: string, verb: string) {
+  toast.error(`No note under "${prefix}" matched, so nothing was ${verb}.`)
+}
+
 function parentPath(path: string) {
   const cut = path.lastIndexOf("/")
   return cut === -1 ? "" : path.slice(0, cut)
@@ -347,7 +360,12 @@ export function ProjectWorkspace({
       } else {
         renameSubtree.mutate(
           { project, uri_prefix: target.uriPrefix, new_uri_prefix: target.newUriPrefix },
-          settle,
+          {
+            ...settle,
+            onSuccess: ({ renamed }) => {
+              if (renamed === 0) reportNothingMatched(target.uriPrefix, "moved")
+            },
+          },
         )
       }
     },
@@ -387,7 +405,13 @@ export function ProjectWorkspace({
     if (node.children.length > 0) {
       renameSubtree.mutate(
         { project, uri_prefix: node.path, new_uri_prefix: next },
-        settle,
+        {
+          ...settle,
+          onSuccess: ({ renamed }) => {
+            setRenameTarget(null)
+            if (renamed === 0) reportNothingMatched(node.path, "renamed")
+          },
+        },
       )
     } else if (node.document) {
       patchMetadata.mutate({ documentId: node.document.id, uri: next }, settle)
@@ -405,7 +429,24 @@ export function ProjectWorkspace({
     }
     if (node.children.length > 0) {
       if (selected && underPrefix(selected.uri, node.path)) clearSelection()
-      deleteSubtree.mutate({ project, uri_prefix: node.path }, settle)
+      deleteSubtree.mutate(
+        { project, uri_prefix: node.path },
+        {
+          ...settle,
+          onSuccess: ({ deleted }) => {
+            setDeleteTarget(null)
+            if (deleted === 0) {
+              reportNothingMatched(node.path, "deleted")
+            } else {
+              // The rows are gone, so the count is the only evidence of what
+              // the confirm actually removed.
+              toast.success(
+                `Deleted ${deleted} note${deleted === 1 ? "" : "s"} under "${node.path}".`,
+              )
+            }
+          },
+        },
+      )
     } else if (node.document) {
       if (selected?.id === node.document.id) clearSelection()
       deleteDocument.mutate(node.document.id, settle)
