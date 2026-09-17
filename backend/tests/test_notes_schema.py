@@ -166,6 +166,7 @@ indexing them makes every note mentioning a function name a hit for it."""
 
 PROSE_BLOCK_TYPES = frozenset({
     "paragraph", "heading", "list", "quote", "table", "table_row", "divider",
+    "todo", "toggle", "callout",
 })
 """Types whose text is prose. Indexed."""
 
@@ -190,12 +191,12 @@ def _blanked_types_in_the_generation_expression(expression: str) -> frozenset[st
 
 def test_the_block_type_vocabulary_is_partitioned_into_prose_and_source():
     """Every block type is classified, so adding one cannot skip the decision."""
-    from app.taxonomy import BLOCK_TYPES
+    from app.taxonomy import BLOCK_TYPES, PAGE_BLOCK_TYPES
 
     assert not (SOURCE_BLOCK_TYPES & PROSE_BLOCK_TYPES), (
         "a block type cannot be both prose and source"
     )
-    assert SOURCE_BLOCK_TYPES | PROSE_BLOCK_TYPES == set(BLOCK_TYPES), (
+    assert SOURCE_BLOCK_TYPES | PROSE_BLOCK_TYPES == set(BLOCK_TYPES) | set(PAGE_BLOCK_TYPES), (
         "the block-type vocabulary moved without the search-vector partition "
         "moving with it. Put each new or renamed type in SOURCE_BLOCK_TYPES "
         "or PROSE_BLOCK_TYPES, and if it lands in the source bucket, change "

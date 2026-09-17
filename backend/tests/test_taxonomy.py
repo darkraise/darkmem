@@ -33,6 +33,7 @@ from app.taxonomy import (
     LEGACY_RELATION_TYPE_MAP,
     MEMORY_RELATION_TYPES,
     MEMORY_TYPES,
+    PAGE_BLOCK_TYPES,
     PROJECTED_MEMORY_RELATION_TYPES,
     RELATIONSHIP_TYPES,
     is_projected_memory_relation_type,
@@ -40,6 +41,7 @@ from app.taxonomy import (
     normalize_entity_type,
     normalize_memory_relation_type,
     normalize_memory_type,
+    normalize_page_block_type,
     normalize_relation_type,
     refine_entity_type,
 )
@@ -88,7 +90,8 @@ def test_insight_and_profile_are_not_memory_types():
 
 @pytest.mark.parametrize(
     "vocab",
-    [ENTITY_TYPES, RELATIONSHIP_TYPES, MEMORY_TYPES, MEMORY_RELATION_TYPES, BLOCK_TYPES],
+    [ENTITY_TYPES, RELATIONSHIP_TYPES, MEMORY_TYPES, MEMORY_RELATION_TYPES, BLOCK_TYPES,
+     PAGE_BLOCK_TYPES],
 )
 def test_vocabularies_have_no_duplicates(vocab):
     assert len(vocab) == len(set(vocab))
@@ -100,6 +103,7 @@ def test_case_conventions_hold():
     assert all(t == t.lower() for t in ENTITY_TYPES)
     assert all(t == t.lower() for t in MEMORY_TYPES)
     assert all(t == t.lower() for t in BLOCK_TYPES)
+    assert all(t == t.lower() for t in PAGE_BLOCK_TYPES)
     assert all(t == t.upper() for t in RELATIONSHIP_TYPES)
     assert all(t == t.upper() for t in MEMORY_RELATION_TYPES)
 
@@ -200,6 +204,7 @@ def test_new_memory_kinds_absorb_their_aliases():
         (normalize_memory_type, "quasar-drive", "fact"),
         (normalize_memory_relation_type, "QUASAR_DRIVES", "RELATES_TO"),
         (normalize_block_type, "quasar-block", "paragraph"),
+        (normalize_page_block_type, "quasar-block", "paragraph"),
     ],
 )
 def test_unknown_values_fall_to_the_safe_default(fn, unknown, default):
@@ -214,6 +219,7 @@ def test_unknown_values_fall_to_the_safe_default(fn, unknown, default):
         (normalize_memory_type, "fact"),
         (normalize_memory_relation_type, "RELATES_TO"),
         (normalize_block_type, "paragraph"),
+        (normalize_page_block_type, "paragraph"),
     ],
 )
 def test_empty_and_none_fall_to_the_safe_default(fn, default):
@@ -230,6 +236,7 @@ def test_empty_and_none_fall_to_the_safe_default(fn, default):
         (normalize_memory_type, "  Decision ", "decision"),
         (normalize_memory_relation_type, "  follows ", "FOLLOWS"),
         (normalize_block_type, "  Heading ", "heading"),
+        (normalize_page_block_type, "  Todo ", "todo"),
     ],
 )
 def test_normalisers_strip_and_case_fold(fn, raw, expected):
@@ -244,6 +251,7 @@ def test_normalisers_strip_and_case_fold(fn, raw, expected):
         normalize_memory_type,
         normalize_memory_relation_type,
         normalize_block_type,
+        normalize_page_block_type,
     ],
 )
 def test_normalisers_take_exactly_one_argument(fn):
@@ -262,6 +270,7 @@ def test_normalisers_take_exactly_one_argument(fn):
         (normalize_memory_type, "workflow"),
         (normalize_memory_relation_type, "SUPPORTS"),
         (normalize_block_type, "fence"),
+        (normalize_page_block_type, "callout"),
     ],
 )
 def test_normalisers_are_deterministic_across_calls(fn, raw):
@@ -535,3 +544,31 @@ def test_html_is_a_stored_block_type():
     assert normalize_block_type("html") == "html"
     # markdown-it's own token name maps onto it rather than falling back.
     assert normalize_block_type("html_block") == "html"
+
+
+def test_page_block_types_are_separate_from_document_block_types():
+    """Separate sets are why a document never stores a to-do: the document
+    normaliser does not know these values and folds them to `paragraph`."""
+    assert PAGE_BLOCK_TYPES == ["todo", "toggle", "callout"]
+    assert not set(PAGE_BLOCK_TYPES) & set(BLOCK_TYPES)
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("todo", "todo"),
+        ("TOGGLE", "toggle"),
+        (" callout ", "callout"),
+        ("heading", "heading"),
+        ("h2", "heading"),
+        ("quasar-block", "paragraph"),
+        (None, "paragraph"),
+    ],
+)
+def test_the_page_normaliser_accepts_both_sets(raw, expected):
+    assert normalize_page_block_type(raw) == expected
+
+
+@pytest.mark.parametrize("raw", ["todo", "toggle", "callout"])
+def test_the_document_normaliser_still_folds_page_types(raw):
+    assert normalize_block_type(raw) == "paragraph"

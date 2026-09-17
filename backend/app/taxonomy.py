@@ -1,10 +1,10 @@
 """The closed vocabularies and their pure normalisers (doc 06 §3).
 
-Six vocabularies govern the model. Five live here — ``ENTITY_TYPES``,
+Seven vocabularies govern the model. Six live here — ``ENTITY_TYPES``,
 ``RELATIONSHIP_TYPES``, ``MEMORY_TYPES``, ``MEMORY_RELATION_TYPES``,
-``BLOCK_TYPES`` — and ``TECH_TYPES`` (the ``ENTITY_TYPES`` subset feeding the
-``memories.technologies`` denorm) lives in ``app.services.relations`` beside the
-graph code that reads it.
+``BLOCK_TYPES``, ``PAGE_BLOCK_TYPES`` — and ``TECH_TYPES`` (the
+``ENTITY_TYPES`` subset feeding the ``memories.technologies`` denorm) lives in
+``app.services.relations`` beside the graph code that reads it.
 
 Every value the LLM, a parser or a caller emits passes through a normaliser
 before it is stored. Each normaliser is a **three-step fallthrough**: exact match
@@ -458,3 +458,27 @@ def normalize_block_type(raw_type: str | None) -> str:
     if mapped:
         return mapped
     return "paragraph"
+
+
+# Block types only a page stores. Kept out of BLOCK_TYPES because the document
+# parser never mints them: a filed document carrying `- [ ]`, `> [!NOTE]` or
+# `<details>` must parse exactly as it did, and only the page editor sets these.
+PAGE_BLOCK_TYPES: list[str] = [
+    "todo",
+    "toggle",
+    "callout",
+]
+
+_PAGE_BLOCK_TYPE_SET: frozenset[str] = frozenset(PAGE_BLOCK_TYPES)
+
+
+def normalize_page_block_type(raw_type: str | None) -> str:
+    """Return one of ``BLOCK_TYPES`` or ``PAGE_BLOCK_TYPES``.
+
+    A page-only type passes through; anything else takes
+    ``normalize_block_type``'s fallthrough, so a legacy alias still maps and an
+    unknown value still folds to ``paragraph``.
+    """
+    if raw_type and raw_type.strip().lower() in _PAGE_BLOCK_TYPE_SET:
+        return raw_type.strip().lower()
+    return normalize_block_type(raw_type)
