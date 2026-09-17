@@ -310,6 +310,9 @@ async def test_two_concurrent_moves_cannot_orphan_a_subtree(monkeypatch, llm):
                 return_exceptions=True,
             )
 
+        # Without this the barrier can stop matching unnoticed, and the
+        # timing-only version passes with the tree lock removed.
+        assert any(e.is_set() for e in arrived.values()), "barrier never fired"
         refused = [r for r in results if isinstance(r, PageCycleError)]
         others = [r for r in results if not isinstance(r, PageCycleError)]
         assert len(refused) == 1, results
