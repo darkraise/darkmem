@@ -72,9 +72,36 @@ write goes through the doors above; the UI gained no verb of its own.
   `uri` rather than the folder you aimed at.
 - **`documents_deleted` joins the events vocabulary**, and the list item now
   serves `pinned_at`, which is what makes a pin control renderable at all.
+- **Pages: a notes tree of your own, beside documents rather than inside
+  them.** `/api/v1/pages` creates, lists, reads, moves, renames, trashes,
+  restores and purges pages, and edits a page's blocks with the same four
+  verbs documents use. A page must be filed under a parent that exists in the
+  same project; a move names the sibling to land after, never an index, and a
+  move into a page's own subtree is refused. Creating a page with content
+  parses it into blocks and keeps the regenerated source, so a page never
+  needs converting — and content the block tree cannot hold, a frontmatter
+  fence or a link-reference definition, is refused with a 422 rather than
+  dropped behind a 201. Deleting a page moves it and everything under it to
+  the trash; only emptying the trash erases rows, and each page a trash,
+  restore or purge touches journals its own row before the write or the write
+  does not happen. REST-only: no MCP tool reaches a page.
+- **Six `page_*` event types and the `page` object type** join the events
+  vocabulary, and the project catalogue serves `page_count` and ranks projects
+  by it alongside memories, documents and checkpoints.
 
 ### Changed
 
+- **Page blocks share the `blocks` table but not the document vectors.** A
+  block is owned by exactly one document or one page, and page vectors live in
+  their own `page_embeddings__<slug>` family, so a page never enters document
+  search, connections or the document embedding sweep. No document query
+  changed. The schema baseline was regenerated, so a deploy is a
+  drop-and-recreate.
+- **`block_embedding_refresh` sweeps page blocks on a second budget,
+  `page_batch`, and `batch=0` no longer silences the job.** It now skips a run
+  only when both budgets are 0. A stored `batch=0` alone costs one embedder
+  probe per tick; `docs/runbook-deployment.md` says what to check before
+  redeploying.
 - **MCP `document_delete` answers an envelope where it used to raise.** A call
   naming nothing that resolves now returns `{"status": "unresolved"}` with
   `isError: false`, matching `document_update` beside it: two sibling document
