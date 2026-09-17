@@ -11,8 +11,10 @@ from sqlalchemy import text
 
 from app.services.block_serializer import TreeBlock
 from app.services.block_verbs import (
+    PAGE_OWNER,
     BlockCycleError,
     BlockTargetUnresolved,
+    PageBlockInvalid,
     delete_block,
     insert_block,
     move_block,
@@ -660,3 +662,173 @@ def test_the_document_write_statement_renders_unchanged():
                      || jsonb_build_object('ingest_direction', 'blocks')
     WHERE id = CAST(:id AS uuid)
     """
+
+
+async def _page_rows(session, page_id):
+    return (await session.execute(
+        text(
+            "SELECT CAST(id AS text) AS id, CAST(parent_id AS text) AS parent_id, "
+            "type, text, properties FROM blocks "
+            "WHERE page_id = CAST(:id AS uuid) ORDER BY order_index"
+        ),
+        {"id": page_id},
+    )).mappings().all()
+
+
+def test_every_block_type_declares_its_page_properties():
+    """A type missing here would have every property dropped on a type change."""
+    from app.services.block_verbs import _PAGE_TYPE_PROPERTIES
+    from app.taxonomy import BLOCK_TYPES, PAGE_BLOCK_TYPES
+
+    assert set(_PAGE_TYPE_PROPERTIES) == set(BLOCK_TYPES) | set(PAGE_BLOCK_TYPES)
+
+
+@pytest.mark.parametrize(
+    "type_, properties",
+    [("todo", {"checked": False}), ("toggle", None), ("callout", {"variant": "success"})],
+)
+@pytest.mark.asyncio
+async def test_a_page_stores_each_page_only_type(session, type_, properties):
+    page_id, _ = await _page(session, content="page prose\n")
+
+    result = await insert_block(session, StubEmbedder(), document_id=page_id,
+                                type=type_, text="x", properties=properties,
+                                owner=PAGE_OWNER)
+
+    row = next(r for r in await _page_rows(session, page_id) if r["id"] == result.block_id)
+    assert row["type"] == type_
+    assert row["properties"] == properties
+
+
+@pytest.mark.parametrize(
+    "type_, properties",
+    [
+        ("todo", None),
+        ("todo", {"checked": "yes"}),
+        ("callout", None),
+        ("callout", {"variant": "loud"}),
+        ("callout", {"variant": ["info"]}),
+    ],
+)
+@pytest.mark.asyncio
+async def test_a_page_refuses_a_page_only_type_without_its_property(
+    session, type_, properties,
+):
+    page_id, _ = await _page(session, content="page prose\n")
+
+    with pytest.raises(PageBlockInvalid):
+        await insert_block(session, StubEmbedder(), document_id=page_id,
+                           type=type_, text="x", properties=properties,
+                           owner=PAGE_OWNER)
+
+    assert len(await _page_rows(session, page_id)) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_type_change_is_validated_on_the_merged_block(session):
+    """The request names a type and no properties; the stored paragraph has
+    none either, so the resulting to-do lacks `checked`."""
+    page_id, block_id = await _page(session, content="page prose\n")
+
+    with pytest.raises(PageBlockInvalid):
+        await update_block(session, StubEmbedder(), block_id=block_id,
+                           text="page prose", type="todo", owner=PAGE_OWNER)
+
+
+@pytest.mark.asyncio
+async def test_a_type_change_drops_properties_the_new_type_does_not_define(session):
+    llm = StubEmbedder()
+    page_id, _ = await _page(session, content="page prose\n")
+    todo = await insert_block(session, llm, document_id=page_id, type="todo",
+                              text="task", properties={"checked": True},
+                              owner=PAGE_OWNER)
+
+    await update_block(session, llm, block_id=todo.block_id, text="task",
+                       type="paragraph", owner=PAGE_OWNER)
+
+    row = next(r for r in await _page_rows(session, page_id) if r["id"] == todo.block_id)
+    assert row["type"] == "paragraph"
+    assert row["properties"] is None
+
+
+@pytest.mark.asyncio
+async def test_a_same_type_update_merges_properties(session):
+    llm = StubEmbedder()
+    page_id, _ = await _page(session, content="page prose\n")
+    todo = await insert_block(session, llm, document_id=page_id, type="todo",
+                              text="task", properties={"checked": False},
+                              owner=PAGE_OWNER)
+
+    await update_block(session, llm, block_id=todo.block_id, text="task",
+                       properties={"checked": True}, owner=PAGE_OWNER)
+
+    row = next(r for r in await _page_rows(session, page_id) if r["id"] == todo.block_id)
+    assert row["properties"] == {"checked": True}
+
+
+@pytest.mark.asyncio
+async def test_a_page_refuses_nesting_under_a_block_that_holds_no_children(session):
+    llm = StubEmbedder()
+    page_id, paragraph_id = await _page(session, content="page prose\n")
+    heading = await insert_block(session, llm, document_id=page_id, type="heading",
+                                 text="H", properties={"level": 2}, owner=PAGE_OWNER)
+    table = await insert_block(session, llm, document_id=page_id, type="table",
+                               text="a", properties={"header": ["a"], "alignments": [None]},
+                               owner=PAGE_OWNER)
+
+    for parent in (paragraph_id, heading.block_id, table.block_id):
+        with pytest.raises(PageBlockInvalid):
+            await insert_block(session, llm, document_id=page_id, type="paragraph",
+                               text="child", parent_id=parent, owner=PAGE_OWNER)
+
+    loose = await insert_block(session, llm, document_id=page_id, type="paragraph",
+                               text="loose", owner=PAGE_OWNER)
+    with pytest.raises(PageBlockInvalid):
+        await move_block(session, llm, block_id=loose.block_id,
+                         new_parent_id=paragraph_id, owner=PAGE_OWNER)
+
+
+@pytest.mark.parametrize(
+    "parent_type, parent_properties, child_type, child_properties",
+    [
+        ("list", {"ordered": False, "marker": "-"}, "paragraph", None),
+        ("todo", {"checked": False}, "todo", {"checked": True}),
+        ("toggle", None, "code", {"language": "py"}),
+        ("table", {"header": ["a"], "alignments": [None]}, "table_row", {"cells": ["1"]}),
+    ],
+)
+@pytest.mark.asyncio
+async def test_a_page_accepts_its_container_parents(
+    session, parent_type, parent_properties, child_type, child_properties,
+):
+    llm = StubEmbedder()
+    page_id, _ = await _page(session, content="page prose\n")
+    parent = await insert_block(session, llm, document_id=page_id, type=parent_type,
+                                text="parent", properties=parent_properties,
+                                owner=PAGE_OWNER)
+
+    child = await insert_block(session, llm, document_id=page_id, type=child_type,
+                               text="child", properties=child_properties,
+                               parent_id=parent.block_id, owner=PAGE_OWNER)
+    moved = await insert_block(session, llm, document_id=page_id, type=child_type,
+                               text="moved", properties=child_properties,
+                               owner=PAGE_OWNER)
+    await move_block(session, llm, block_id=moved.block_id,
+                     new_parent_id=parent.block_id, owner=PAGE_OWNER)
+
+    rows = {r["id"]: r for r in await _page_rows(session, page_id)}
+    assert rows[child.block_id]["parent_id"] == parent.block_id
+    assert rows[moved.block_id]["parent_id"] == parent.block_id
+
+
+@pytest.mark.asyncio
+async def test_a_document_block_still_nests_under_a_paragraph(session):
+    """The page rule must not reach documents."""
+    llm, doc_id = await _file(session, "# T\n\nalpha\n", "v/nest.md")
+    alpha = next(r for r in await _blocks(session, doc_id) if r["text"] == "alpha")
+
+    result = await insert_block(session, llm, document_id=doc_id, type="paragraph",
+                                text="under", parent_id=alpha["id"])
+
+    row = next(r for r in await _blocks(session, doc_id) if r["id"] == result.block_id)
+    assert row["parent_id"] == alpha["id"]

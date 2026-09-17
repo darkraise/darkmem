@@ -12,7 +12,8 @@ serialiser is the only thing that knows where each block landed, so
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 from typing import Any
 from uuid import UUID
 
@@ -35,7 +36,7 @@ from app.services.document_door import (
 )
 from app.services.document_ingest import DocumentHashConflict, compute_content_hash
 from app.services.events import record_event
-from app.taxonomy import normalize_block_type
+from app.taxonomy import normalize_block_type, normalize_page_block_type
 from app.utils.ids import new_id
 
 __all__ = [
@@ -46,6 +47,7 @@ __all__ = [
     "BlockCycleError",
     "BlockTargetUnresolved",
     "BlockWriteResult",
+    "PageBlockInvalid",
     "delete_block",
     "insert_block",
     "move_block",
@@ -63,6 +65,11 @@ class BlockTargetUnresolved(ValueError):
 
 class BlockCycleError(ValueError):
     """A move would put a block inside its own subtree."""
+
+
+class PageBlockInvalid(ValueError):
+    """A page block the page rules refuse: a missing or malformed required
+    property, or a parent that holds no children on a page."""
 
 
 @dataclass(frozen=True)
@@ -89,6 +96,11 @@ class BlockOwner:
     a member of the closed `OBJECT_TYPES` vocabulary and answers to the events
     journal, while `noun` is prose in a refusal a human reads, and the two are
     free to diverge.
+
+    `normalize_type`, `validate` and `check_nesting` are where the two owners'
+    block rules differ. The document instance carries today's behaviour -- the
+    document normaliser, no property rules, any parent -- so a document verb
+    naming a page-only type still stores `paragraph`.
     """
     kind: str
     object_type: str
@@ -99,6 +111,9 @@ class BlockOwner:
     insert_block: Any
     write_owner: Any
     embed_parent: str
+    normalize_type: Callable[[str | None], str]
+    validate: Callable[[TreeBlock, str | None], TreeBlock]
+    check_nesting: Callable[[TreeBlock | None, TreeBlock], None]
 
 
 _LOCK_DOCUMENT = text(
@@ -165,6 +180,14 @@ _WRITE_DOC = text(
 )
 
 
+def _keep_block(block: TreeBlock, previous_type: str | None) -> TreeBlock:
+    return block
+
+
+def _any_parent(parent: TreeBlock | None, child: TreeBlock) -> None:
+    return None
+
+
 DOCUMENT_OWNER = BlockOwner(
     kind="document",
     object_type="document",
@@ -175,6 +198,9 @@ DOCUMENT_OWNER = BlockOwner(
     insert_block=_INSERT_BLOCK,
     write_owner=_WRITE_DOC,
     embed_parent=PARENT_TABLE,
+    normalize_type=normalize_block_type,
+    validate=_keep_block,
+    check_nesting=_any_parent,
 )
 
 _LOCK_PAGE = text(
@@ -206,6 +232,64 @@ _WRITE_PAGE = text(
 )
 
 
+# The keys each type defines. A page type change drops every other key, so
+# `checked` never rides onto a paragraph and a list's `marker` never rides onto
+# a to-do.
+_PAGE_TYPE_PROPERTIES: dict[str, frozenset[str]] = {
+    "paragraph": frozenset(),
+    "heading": frozenset({"level"}),
+    "list": frozenset({"ordered", "marker", "number"}),
+    "code": frozenset({"language"}),
+    "quote": frozenset(),
+    "table": frozenset({"header", "alignments"}),
+    "table_row": frozenset({"cells"}),
+    "divider": frozenset(),
+    "html": frozenset(),
+    "todo": frozenset({"checked"}),
+    "toggle": frozenset(),
+    "callout": frozenset({"variant"}),
+}
+_CALLOUT_VARIANTS = frozenset({"info", "warning", "error", "success"})
+# Headings are absent on purpose: an editor renders a heading's children as
+# indentation, which is not what a heading means.
+_PAGE_CONTAINERS = frozenset({"list", "todo", "toggle"})
+
+
+def _validate_page_block(block: TreeBlock, previous_type: str | None) -> TreeBlock:
+    if (
+        previous_type is not None
+        and previous_type != block.type
+        and block.properties
+    ):
+        defined = _PAGE_TYPE_PROPERTIES.get(block.type, frozenset())
+        kept = {k: v for k, v in block.properties.items() if k in defined}
+        block = replace(block, properties=kept or None)
+    properties = block.properties or {}
+    if block.type == "todo" and not isinstance(properties.get("checked"), bool):
+        raise PageBlockInvalid("a todo block needs a boolean `checked` property")
+    variant = properties.get("variant")
+    if block.type == "callout" and (
+        not isinstance(variant, str) or variant not in _CALLOUT_VARIANTS
+    ):
+        raise PageBlockInvalid(
+            "a callout block needs `variant` set to one of "
+            f"{', '.join(sorted(_CALLOUT_VARIANTS))}"
+        )
+    return block
+
+
+def _check_page_nesting(parent: TreeBlock | None, child: TreeBlock) -> None:
+    if parent is None or parent.type in _PAGE_CONTAINERS:
+        return
+    if parent.type == "table" and child.type == "table_row":
+        return
+    raise PageBlockInvalid(
+        f"a {parent.type} block cannot hold a {child.type} block on a page: "
+        "only list, todo and toggle blocks hold children, and a table holds "
+        "its table_row blocks"
+    )
+
+
 PAGE_OWNER = BlockOwner(
     kind="page",
     object_type="page",
@@ -216,6 +300,9 @@ PAGE_OWNER = BlockOwner(
     insert_block=_INSERT_PAGE_BLOCK,
     write_owner=_WRITE_PAGE,
     embed_parent=PAGE_PARENT_TABLE,
+    normalize_type=normalize_page_block_type,
+    validate=_validate_page_block,
+    check_nesting=_check_page_nesting,
 )
 
 
@@ -407,6 +494,47 @@ async def _owner_of(
     return owner, owner_id
 
 
+def _insert_into(
+    tree: list[TreeBlock], owner: BlockOwner, *, block_id: UUID, type: str,
+    text: str, properties: dict | None, parent_id: str | None,
+    after_block_id: str | None,
+) -> tuple[list[TreeBlock], TreeBlock]:
+    """Place one new block in the in-memory tree; returns the tree and the
+    placed block."""
+    parent = None if parent_id is None else UUID(parent_id)
+    after = None if after_block_id is None else UUID(after_block_id)
+    parent_block = None
+    if parent is not None:
+        parent_block = next((b for b in tree if b.id == parent), None)
+        if parent_block is None:
+            raise BlockTargetUnresolved(
+                f"no parent block {parent_id} in this {owner.noun}")
+    siblings = [b for b in tree if b.parent_id == parent]
+    if after is None:
+        position = 0
+    else:
+        index = next((i for i, b in enumerate(siblings) if b.id == after), None)
+        if index is None:
+            raise BlockTargetUnresolved(
+                f"after_block_id {after_block_id} is not a child of the "
+                "target parent"
+            )
+        position = index + 1
+    block = owner.validate(
+        TreeBlock(block_id, parent, 0, owner.normalize_type(type), text,
+                  properties or None),
+        None,
+    )
+    owner.check_nesting(parent_block, block)
+    reordered = siblings[:position] + [block] + siblings[position:]
+    others = [b for b in tree if b.parent_id != parent]
+    renumbered = [
+        TreeBlock(b.id, b.parent_id, i, b.type, b.text, b.properties)
+        for i, b in enumerate(reordered)
+    ]
+    return others + renumbered, next(b for b in renumbered if b.id == block_id)
+
+
 async def update_block(
     session: AsyncSession, llm, *, block_id: str,
     text: str, type: str | None = None, properties: dict | None = None,
@@ -425,10 +553,13 @@ async def update_block(
                 out.append(block)
                 continue
             merged = {**(block.properties or {}), **(properties or {})} or None
-            out.append(TreeBlock(
-                block.id, block.parent_id, block.order_index,
-                normalize_block_type(type) if type else block.type,
-                text, merged,
+            out.append(owner.validate(
+                TreeBlock(
+                    block.id, block.parent_id, block.order_index,
+                    owner.normalize_type(type) if type else block.type,
+                    text, merged,
+                ),
+                block.type,
             ))
         return out, None, []
 
@@ -445,33 +576,14 @@ async def insert_block(
     owner: BlockOwner = DOCUMENT_OWNER,
 ) -> BlockWriteResult:
     minted = new_id()
-    parent = None if parent_id is None else UUID(parent_id)
-    after = None if after_block_id is None else UUID(after_block_id)
 
     def apply(tree: list[TreeBlock]):
-        if parent is not None and not any(b.id == parent for b in tree):
-            raise BlockTargetUnresolved(
-                f"no parent block {parent_id} in this {owner.noun}")
-        siblings = [b for b in tree if b.parent_id == parent]
-        if after is None:
-            position = 0
-        else:
-            index = next((i for i, b in enumerate(siblings) if b.id == after), None)
-            if index is None:
-                raise BlockTargetUnresolved(
-                    f"after_block_id {after_block_id} is not a child of the "
-                    "target parent"
-                )
-            position = index + 1
-        block = TreeBlock(minted, parent, 0, normalize_block_type(type), text,
-                          properties or None)
-        reordered = siblings[:position] + [block] + siblings[position:]
-        others = [b for b in tree if b.parent_id != parent]
-        renumbered = [
-            TreeBlock(b.id, b.parent_id, i, b.type, b.text, b.properties)
-            for i, b in enumerate(reordered)
-        ]
-        return others + renumbered, next(b for b in renumbered if b.id == minted), []
+        tree, placed = _insert_into(
+            tree, owner, block_id=minted, type=type, text=text,
+            properties=properties, parent_id=parent_id,
+            after_block_id=after_block_id,
+        )
+        return tree, placed, []
 
     return await _mutate(session, llm, document_id=document_id, apply=apply,
                          touched_embed=str(minted), verb="inserted",
@@ -493,14 +605,17 @@ async def move_block(
         if not any(b.id == target for b in tree):
             raise BlockTargetUnresolved(
                 f"block {block_id} is not in this {owner.noun}")
+        parent_block = None
         if parent is not None:
             if parent in _subtree(tree, target):
                 raise BlockCycleError(
                     "a block cannot be moved inside its own subtree"
                 )
-            if not any(b.id == parent for b in tree):
+            parent_block = next((b for b in tree if b.id == parent), None)
+            if parent_block is None:
                 raise BlockTargetUnresolved(f"no parent block {new_parent_id}")
         moved = next(b for b in tree if b.id == target)
+        owner.check_nesting(parent_block, moved)
         rest = [b for b in tree if b.id != target]
         siblings = [b for b in rest if b.parent_id == parent]
         if after is None:
