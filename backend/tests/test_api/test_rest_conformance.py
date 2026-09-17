@@ -194,6 +194,21 @@ EXPECTED_STATUS = {
     ("GET", "/api/v1/memory-buffer/stats"): 200,
     ("DELETE", "/api/v1/memory-buffer/{buffer_id}"): 204,
     ("POST", "/api/v1/memory-buffer/{buffer_id}/requeue"): 200,
+    # The pages epic (increment A), REST-only (docs/two-door-parity.md's
+    # pages.reads / pages.write rows). Same status shape as the documents
+    # write and block-verb doors above: both creates are 201 (a page, and a
+    # block inserted into one), both deletes are 204, everything else is 200.
+    ("POST", "/api/v1/pages"): 201,
+    ("GET", "/api/v1/pages"): 200,
+    ("GET", "/api/v1/pages/{page_id}"): 200,
+    ("PATCH", "/api/v1/pages/{page_id}"): 200,
+    ("DELETE", "/api/v1/pages/{page_id}"): 204,
+    ("POST", "/api/v1/pages/{page_id}/restore"): 200,
+    ("POST", "/api/v1/pages/trash/empty"): 200,
+    ("POST", "/api/v1/pages/{page_id}/blocks"): 201,
+    ("PATCH", "/api/v1/pages/{page_id}/blocks/{block_id}"): 200,
+    ("POST", "/api/v1/pages/{page_id}/blocks/{block_id}/move"): 200,
+    ("DELETE", "/api/v1/pages/{page_id}/blocks/{block_id}"): 204,
     ("GET", "/api/v1/pipeline"): 200,
     ("GET", "/api/v1/pipeline-failures"): 200,
     ("GET", "/api/v1/pipeline-failures/counts"): 200,

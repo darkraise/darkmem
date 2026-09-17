@@ -408,7 +408,14 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "hash to precondition on comes from the blocks read, which serves "
             "`content_hash` unconditionally on the route's envelope and under "
             "document_get's `include_hash`, or from the previous write, which "
-            "answers the hash it produced on both doors."
+            "answers the hash it produced on both doors. A second wire "
+            "asymmetry the pages epic surfaced: the MCP block tools now "
+            "answer `owner_kind` and `owner_id` through "
+            "`json.dumps(vars(result))` while the REST route's "
+            "`BlockWriteResponse` drops both fields -- a stated wire "
+            "asymmetry, not a capability, since a capture key still cannot "
+            "reach a page block (`_owner_of` verifies the document owner the "
+            "tool names)."
         ),
     ),
     Surface(
@@ -1503,6 +1510,56 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "/code or /repos today. It has none, and unlike its five "
             "siblings the underlying state is not REST-reachable either. "
             "Escalated by T1.42d, not resolved."
+        ),
+    ),
+    Surface(
+        name="pages.reads",
+        status=REST_ONLY,
+        rest=(
+            ("GET", f"{V1}/pages"),
+            ("GET", f"{V1}/pages/{{page_id}}"),
+        ),
+        mcp=(),
+        reason=(
+            "Pages are a human authoring surface -- the operator's own notes "
+            "tree, browsed and edited the way a document editor is browsed and "
+            "edited -- not a corpus an agent queries for context. An agent "
+            "reaches context through memories (the extracted graph) and "
+            "documents (the filed, retrievable corpus); a page tree listing "
+            "and a single page's content read add nothing to that path today. "
+            "Widening later is additive, since neither read generates or "
+            "labels anything that would need a gate first -- but it is a "
+            "decision to make when an agent consumer actually needs it, not a "
+            "default to ship alongside the human-facing REST route."
+        ),
+    ),
+    Surface(
+        name="pages.write",
+        status=REST_ONLY,
+        rest=(
+            ("POST", f"{V1}/pages"),
+            ("PATCH", f"{V1}/pages/{{page_id}}"),
+            ("DELETE", f"{V1}/pages/{{page_id}}"),
+            ("POST", f"{V1}/pages/{{page_id}}/restore"),
+            ("POST", f"{V1}/pages/trash/empty"),
+            ("POST", f"{V1}/pages/{{page_id}}/blocks"),
+            ("PATCH", f"{V1}/pages/{{page_id}}/blocks/{{block_id}}"),
+            ("POST", f"{V1}/pages/{{page_id}}/blocks/{{block_id}}/move"),
+            ("DELETE", f"{V1}/pages/{{page_id}}/blocks/{{block_id}}"),
+        ),
+        mcp=(),
+        reason=(
+            "Single-door for the same reason pages.reads is: pages are a "
+            "human authoring surface, not an agent's context path, and an "
+            "agent that could create, rename, trash or edit the blocks of the "
+            "operator's own notes is a capability nobody asked for. This is "
+            "true of the four block verbs too, even though their sibling "
+            "documents.block_write is two-door -- a document's blocks are "
+            "candidate signal an agent already files and edits over MCP, "
+            "while a page's blocks are the operator's authored tree. Nothing "
+            "here generates or labels content, so no eval gate is in play; "
+            "widening to an MCP twin later is additive and stays an owner "
+            "decision, not a default."
         ),
     ),
 )

@@ -705,6 +705,23 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # write door above -- it removes documents and answers a count, and no
     # `memories` row crosses it.
     "POST /api/v1/documents/delete",
+    # The pages epic (increment A). **Page** content crosses these -- a
+    # page's title, its block tree and their text -- but no `memories` row
+    # does: pages are a human authoring surface, not derived from or lifted
+    # into the memory graph, and REST-only (`docs/two-door-parity.md`'s
+    # `pages.reads` / `pages.write` rows). Same reasoning as the documents
+    # entries above, on the pages table and its own `blocks` rows instead.
+    "GET /api/v1/pages",
+    "GET /api/v1/pages/{page_id}",
+    "POST /api/v1/pages",
+    "PATCH /api/v1/pages/{page_id}",
+    "DELETE /api/v1/pages/{page_id}",
+    "POST /api/v1/pages/{page_id}/restore",
+    "POST /api/v1/pages/trash/empty",
+    "POST /api/v1/pages/{page_id}/blocks",
+    "PATCH /api/v1/pages/{page_id}/blocks/{block_id}",
+    "POST /api/v1/pages/{page_id}/blocks/{block_id}/move",
+    "DELETE /api/v1/pages/{page_id}/blocks/{block_id}",
     # Session checkpoints (T3.16). No memory content crosses: a checkpoint is
     # the agent's own note about its run, written by the agent and never
     # derived from a `memories` row — this surface reads that table and no
