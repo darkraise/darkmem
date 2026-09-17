@@ -12,7 +12,7 @@ predicate its own channel relies on and confirms the result changes.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 import pytest_asyncio
@@ -21,10 +21,13 @@ from sqlalchemy import text
 
 from app.services.block_embedding_refresh import refresh_block_embeddings
 from app.services.block_embeddings import PAGE_PARENT_TABLE, PARENT_TABLE, ensure_partition
+from app.services.block_verbs import insert_block, update_block
 from app.services.document_connections import connections_for_document
 from app.services.document_door import document_outline, put_document, search_sections
+from app.services.document_parsers import parse_markdown
 from app.services.embedder_registry import child_table
 from app.services.page_door import create_page
+from app.taxonomy import BLOCK_TYPES, PAGE_BLOCK_TYPES
 
 V1 = "/api/v1"
 
@@ -274,3 +277,75 @@ async def test_page_vectors_live_in_their_own_partition(session, llm, isolation)
 
     assert set(isolation.page_block_ids) <= in_page_partition
     assert set(isolation.page_block_ids).isdisjoint(in_document_partition)
+
+
+PAGE_ONLY_MARKDOWN = (
+    "- [ ] open task\n- [x] done task\n\n"
+    "> [!NOTE]\n> a callout\n\n"
+    "<details>\n<summary>A toggle</summary>\n\nbody\n\n</details>\n"
+)
+
+
+def test_the_document_parser_mints_no_page_only_type():
+    """The page-only types are the page editor's; a filed document carrying
+    their markdown spellings parses exactly as it did before they existed."""
+    drafts = parse_markdown(PAGE_ONLY_MARKDOWN)
+    types = {draft.type for draft in drafts}
+
+    assert types <= set(BLOCK_TYPES)
+    assert not types & set(PAGE_BLOCK_TYPES)
+    assert {"list", "quote", "html"} <= types
+    assert any(draft.text.startswith("[ ] ") for draft in drafts)
+
+
+@pytest.mark.asyncio
+async def test_a_document_block_verb_folds_a_page_only_type_to_paragraph(
+    session, llm, isolation,
+):
+    inserted = await insert_block(
+        session, llm, document_id=isolation.document_id, type="todo",
+        text="not a task here", properties={"checked": True},
+    )
+    blocks = await _owned_blocks(session, document_id=isolation.document_id)
+    assert next(b for b in blocks if b["id"] == inserted.block_id)["type"] == "paragraph"
+
+    await update_block(session, llm, block_id=inserted.block_id,
+                       text="still prose", type="callout")
+    blocks = await _owned_blocks(session, document_id=isolation.document_id)
+    assert next(b for b in blocks if b["id"] == inserted.block_id)["type"] == "paragraph"
+
+
+@pytest.mark.asyncio
+async def test_the_document_insert_route_does_not_read_a_block_id(
+    session, isolation, client, auth_headers,
+):
+    """Only the page request model carries `block_id`; the shared document
+    model ignores the key, so the server still mints the id."""
+    supplied = str(uuid4())
+
+    response = await client.post(
+        f"{V1}/documents/{isolation.document_id}/blocks",
+        json={"type": "paragraph", "text": "routed", "block_id": supplied},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["block_id"] != supplied
+    stored = (await session.execute(
+        text("SELECT count(*) FROM blocks WHERE id = CAST(:id AS uuid)"),
+        {"id": supplied},
+    )).scalar_one()
+    assert stored == 0
+
+
+@pytest.mark.asyncio
+async def test_the_document_block_delete_carries_no_content_hash_header(
+    isolation, client, auth_headers,
+):
+    response = await client.delete(
+        f"{V1}/documents/{isolation.document_id}/blocks/{isolation.document_block_ids[-1]}",
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 204
+    assert "x-content-hash" not in response.headers
