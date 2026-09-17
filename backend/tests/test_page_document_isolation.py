@@ -134,7 +134,8 @@ async def _leak_page_block_into_document_partition(session, llm, block_id: str) 
 @pytest_asyncio.fixture
 async def isolation(session, llm, stub_llm) -> Isolation:
     """One project holding one document with blocks and one page with
-    blocks, both filed and embedded through the doors that ship."""
+    blocks, filed through the doors that ship. The document embeds inline; the
+    page's blocks are left for the sweep, as a page create leaves them."""
     project = "page-doc-isolation"
     filed = await put_document(
         session, llm, project=project, uri="docs/isolation-a.md", content=DOC_TEXT,
@@ -146,7 +147,6 @@ async def isolation(session, llm, stub_llm) -> Isolation:
     page = await create_page(session, llm, project=project, title="Notes", content=PAGE_TEXT)
     page_blocks = await _owned_blocks(session, page_id=str(page.id))
     assert page_blocks, "fixture precondition: the page must parse to blocks"
-    assert page.blocks_embedded == len(page_blocks)
 
     return Isolation(
         project=project,
@@ -260,6 +260,7 @@ async def test_page_vectors_live_in_their_own_partition(session, llm, isolation)
     """The one that matters most: sharing block_embeddings would put page
     vectors in an HNSW index whose owner filter runs after the scan, starving
     document connections of candidates as the notes corpus grows."""
+    await refresh_block_embeddings(session, llm, batch=0, page_batch=100)
     fingerprint = llm.llm_fingerprint()
     page_table = child_table(PAGE_PARENT_TABLE, fingerprint)
     document_table = child_table(PARENT_TABLE, fingerprint)

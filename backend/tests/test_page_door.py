@@ -7,6 +7,8 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import text
 
+from app.services.block_embedding_refresh import refresh_block_embeddings
+from app.services.block_serializer import serialize_tree
 from app.services.document_ingest import compute_content_hash
 from app.services.page_door import (
     PageCycleError,
@@ -14,6 +16,8 @@ from app.services.page_door import (
     PageNotRepresentable,
     PageParentTrashed,
     PageTargetUnresolved,
+    _flatten_headings,
+    _parse,
     create_page,
     delete_page,
     get_page,
@@ -191,6 +195,8 @@ async def test_a_page_embeds_into_the_page_partition(session, llm):
 
     page = await create_page(session, llm, project="p", title="n",
                              content="# T\n\nbody\n")
+    outcome = await refresh_block_embeddings(session, llm, batch=0, page_batch=100)
+    assert outcome.embedded == 2
     table = child_table("page_embeddings", FINGERPRINT)
     count = (
         await session.execute(
@@ -711,6 +717,7 @@ async def test_purge_removes_rows_blocks_and_vectors(session, llm):
         ).all()
     ]
     assert len(block_ids) == 3
+    await refresh_block_embeddings(session, llm, batch=0, page_batch=100)
     table = child_table("page_embeddings", FINGERPRINT)
     vectors = text(
         f"SELECT count(*) FROM {table} WHERE block_id = ANY(CAST(:ids AS uuid[]))"
@@ -753,3 +760,56 @@ async def test_purge_leaves_live_pages_alone(session, llm):
     assert stamps.keys() == {str(root.id), str(sibling.id), str(elsewhere.id)}
     assert stamps[str(root.id)] is None and stamps[str(sibling.id)] is None
     assert stamps[str(elsewhere.id)] is not None
+
+
+NESTED_HEADINGS = (
+    "# A\n\npara\n\n## B\n\n- x\n- y\n\n1. o\n2. p\n\n"
+    "### C\n\n```py\ncode\n```\n\n# D\n\n> q\n\n---\n"
+)
+
+
+def _heading_parented(tree):
+    by_id = {block.id: block for block in tree}
+    return [
+        block for block in tree
+        if block.parent_id is not None and by_id[block.parent_id].type == "heading"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_create_flattens_heading_nesting_losslessly(session, llm):
+    """On a page only list, todo and toggle blocks hold children, so a
+    heading-nested tree could not be extended by the editor. Flattening must
+    not change a byte of the stored content."""
+    unflattened = _parse(NESTED_HEADINGS)
+    assert _heading_parented(unflattened), "fixture precondition: nested headings"
+
+    page = await create_page(session, llm, project="p", title="n",
+                             content=NESTED_HEADINGS)
+
+    nested = (await session.execute(
+        text(
+            "SELECT count(*) FROM blocks b JOIN blocks parent ON parent.id = b.parent_id "
+            "WHERE b.page_id = CAST(:id AS uuid) AND parent.type = 'heading'"
+        ),
+        {"id": str(page.id)},
+    )).scalar_one()
+    assert nested == 0
+    row = await _page_row(session, page.id)
+    assert row["content"] == serialize_tree(unflattened).content
+
+
+def test_flattening_a_heading_inside_a_quote_keeps_the_quote_as_parent():
+    tree = _parse("> # H\n\n- a\n- b\n")
+    flat = _flatten_headings(tree)
+
+    assert not _heading_parented(flat)
+    quote = next(block for block in flat if block.type == "quote")
+    assert {b.parent_id for b in flat if b.type == "list"} == {quote.id}
+    assert serialize_tree(flat).content == serialize_tree(tree).content
+
+
+@pytest.mark.asyncio
+async def test_creating_a_page_embeds_nothing_inline(session, llm):
+    await create_page(session, llm, project="p", title="n", content="# T\n\nbody\n")
+    assert llm.batches == []

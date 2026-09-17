@@ -7,20 +7,19 @@ content, writes the blocks, and stores the *serialiser's* output as
 that carried an authored source would never be reconciled with its blocks
 and could never be refused either.
 
-Embedding runs after the filing commits, as on the document door: first
-contact with an unknown fingerprint runs child-table DDL through
-`embedder_registry.register`, which commits on this session.
+Nothing here embeds. A new page block has no vector, and the hourly
+`block_embedding_refresh` sweep's page arm fills it, so a create costs no
+embedder call.
 """
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from uuid import UUID, uuid4
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.block_embeddings import PAGE_PARENT_TABLE, embed_blocks
 from app.services.block_serializer import TreeBlock, reproduces_source, serialize_tree
 from app.services.document_ingest import compute_content_hash
 from app.services.document_parsers import parse_markdown, split_frontmatter
@@ -113,7 +112,6 @@ class PageResult:
     title: str | None
     content_hash: str
     blocks_written: int
-    blocks_embedded: int
 
 
 @dataclass(frozen=True)
@@ -342,6 +340,39 @@ def _parse(content: str) -> list[TreeBlock]:
     return tree
 
 
+def _flatten_headings(tree: list[TreeBlock]) -> list[TreeBlock]:
+    """Re-parent each heading's children onto its nearest non-heading
+    ancestor, keeping reading order.
+
+    The parser nests everything under the nearest open heading, but a page
+    holds children only under list, todo and toggle blocks. A heading adds no
+    child prefix, so the serialisation is unchanged for headings at the root
+    or inside a quote -- except where a heading inside a list item adopts a
+    later sibling item, which flattening turns into a tight nested item.
+    """
+    by_id = {block.id: block for block in tree}
+    children: dict[UUID | None, list[TreeBlock]] = {}
+    for block in tree:
+        children.setdefault(block.parent_id, []).append(block)
+    for siblings in children.values():
+        siblings.sort(key=lambda b: (b.order_index, str(b.id)))
+
+    reading_order: list[TreeBlock] = []
+    stack = list(reversed(children.get(None, [])))
+    while stack:
+        block = stack.pop()
+        reading_order.append(block)
+        stack.extend(reversed(children.get(block.id, [])))
+
+    flat: list[TreeBlock] = []
+    for position, block in enumerate(reading_order):
+        parent = block.parent_id
+        while parent is not None and by_id[parent].type == "heading":
+            parent = by_id[parent].parent_id
+        flat.append(replace(block, parent_id=parent, order_index=position))
+    return flat
+
+
 async def _claim_order_index(
     session: AsyncSession, *, project: str, parent_id: str | None,
     after_id: str | None,
@@ -409,7 +440,7 @@ async def create_page(
         )
 
     page_id = uuid4()
-    tree = _parse(content) if content else []
+    tree = _flatten_headings(_parse(content)) if content else []
     if content and (
         split_frontmatter(content)[0] is not None
         or not reproduces_source(tree, content, {})
@@ -473,16 +504,6 @@ async def create_page(
         )
     await session.commit()
 
-    written = 0
-    if tree:
-        result = await embed_blocks(
-            session, llm,
-            block_ids=[str(block.id) for block in tree],
-            parent=PAGE_PARENT_TABLE,
-        )
-        written = result.written if result else 0
-        await session.commit()
-
     return PageResult(
         id=page_id,
         project=project,
@@ -491,7 +512,6 @@ async def create_page(
         title=title,
         content_hash=content_hash,
         blocks_written=len(tree),
-        blocks_embedded=written,
     )
 
 

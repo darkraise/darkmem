@@ -33,7 +33,6 @@ class PageCreateResponse(BaseModel):
     title: str | None
     content_hash: str
     blocks_written: int
-    blocks_embedded: int
 
 
 class PageBlock(BaseModel):
