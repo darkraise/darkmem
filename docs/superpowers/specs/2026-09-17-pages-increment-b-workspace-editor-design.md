@@ -110,7 +110,13 @@ heading is re-parented to that heading's nearest non-heading ancestor (or the
 root), keeping reading order. This is lossless: headings do not change the child
 prefix, the separator between a heading and its first child is the same blank
 line as between root siblings, and list ordinals reset on a non-list predecessor
-either way, so `serialize_tree` emits byte-identical content. A test pins that.
+either way, so `serialize_tree` emits byte-identical content for headings at
+the root or inside a quote, and a test pins that. The exception is a heading
+inside a list item (`- item\n  # H\n- b\n`): the parser parents the following
+item under that heading, and once flattened `_separator`'s nested-item rule
+drops the blank line before it. The flattened tree is what is stored; the
+content differs only in that whitespace, and the exception is recorded rather
+than special-cased.
 
 Other parser shapes (a quote or list item holding code or paragraph children)
 are kept; the editor renders them, and only new inserts or moves under a
@@ -206,8 +212,8 @@ call.
 ### 3.8 The page read serves `source`
 
 `GET /pages/{id}` blocks gain `source`: `content[char_start:char_end]`, derived
-the way `document_blocks_route` derives it for documents
-(`routes/documents.py:427-429`), read from `pages.content` without requiring
+the way the document blocks read derives it (the `substring` join at
+`document_door.py:1101-1111`), read from `pages.content` without requiring
 `include_content`. B2's editor edits `source`, as the document editor does.
 
 ### 3.9 Trash listing
@@ -485,7 +491,8 @@ empty pane (§4.2).
   `blocks_edited` payload shape are unchanged (pinned); a batch journals
   `block_ids`; duplicate ids within a batch are refused; a non-`blocks_pkey`
   integrity failure is not mapped to 409.
-- **Existing tests that change with §3.6**, each now running
+- **Existing tests that change with §3.6** (five): `test_block_verbs.py:624-649`,
+  which asserts inline embedding of page blocks and is rewritten; and the rest, each now running
   `refresh_block_embeddings(..., page_batch=N)` before asserting page vectors:
   `test_page_door.py:187-204` and `:714-718`; `test_page_document_isolation.py`'s
   shared fixture at `:149` (which asserts `blocks_embedded`, now removed) and the
