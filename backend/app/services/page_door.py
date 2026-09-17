@@ -1,4 +1,4 @@
-"""The page door's create and read halves (spec 2026-09-08, §7).
+"""The page door: create, read, move and rename (spec 2026-09-08, §7).
 
 A page is block-first by construction: `create_page` parses the caller's
 content, writes the blocks, and stores the *serialiser's* output as
@@ -31,6 +31,9 @@ __all__ = [
     "MAX_BLOCKS",
     "MAX_CONTENT_CHARS",
     "PAGE_CREATED_EVENT",
+    "PAGE_MOVED_EVENT",
+    "PAGE_UPDATED_EVENT",
+    "PageCycleError",
     "PageResult",
     "PageTargetUnresolved",
     "PageTooLarge",
@@ -38,6 +41,8 @@ __all__ = [
     "create_page",
     "get_page",
     "list_pages",
+    "move_page",
+    "rename_page",
     "root_lock_key",
 ]
 
@@ -45,6 +50,8 @@ MAX_CONTENT_CHARS = 1_000_000
 MAX_BLOCKS = 5_000
 
 PAGE_CREATED_EVENT = "page_created"
+PAGE_MOVED_EVENT = "page_moved"
+PAGE_UPDATED_EVENT = "page_updated"
 
 
 class PageTooLarge(ValueError):
@@ -58,6 +65,10 @@ class PageTargetUnresolved(ValueError):
     separate objects, and a caller catching one must not silently absorb a
     refusal about the other.
     """
+
+
+class PageCycleError(ValueError):
+    """The named parent is the moved page or lies inside its subtree."""
 
 
 @dataclass(frozen=True)
@@ -89,9 +100,11 @@ _LOCK_PARENT = text(
     "SELECT id FROM pages WHERE id = CAST(:id AS uuid) "
     "AND project = :project AND deleted_at IS NULL FOR UPDATE"
 )
-# A root page has no parent row to lock, so the sibling set is guarded by a
-# transaction-scoped advisory lock on the same key the row lock would have
-# stood for.
+# Row locks cannot guard a tree walk: a locking clause is illegal inside a
+# recursive CTE, and per-row locks taken in walk order deadlock against a
+# create holding a parent while it shifts siblings. One transaction-scoped
+# advisory lock per project tree, taken before any row lock, serialises every
+# sibling-set write instead.
 _LOCK_ROOT = text("SELECT pg_advisory_xact_lock(hashtext(:key))")
 _NEXT_ORDER = text(
     """
@@ -138,6 +151,51 @@ _INSERT_BLOCK = text(
             CAST(CAST(:char_span AS text) AS int4range))
     """
 )
+_MOVED_PAGE = text(
+    "SELECT project FROM pages WHERE id = CAST(:id AS uuid) "
+    "AND deleted_at IS NULL"
+)
+# `parent_id` is re-read under the lock: the unlocked read above only finds
+# which project's tree to lock, and a concurrent move may since have changed it.
+_LOCK_MOVED_PAGE = text(
+    "SELECT parent_id FROM pages WHERE id = CAST(:id AS uuid) "
+    "AND deleted_at IS NULL FOR UPDATE"
+)
+_ANCESTORS = text(
+    """
+    WITH RECURSIVE chain(id, parent_id) AS (
+        SELECT id, parent_id FROM pages WHERE id = CAST(:parent AS uuid)
+        UNION
+        SELECT p.id, p.parent_id FROM pages p JOIN chain c ON p.id = c.parent_id
+    )
+    SELECT EXISTS (SELECT 1 FROM chain WHERE id = CAST(:page AS uuid))
+    """
+)
+# Trashed rows are included: `_NEXT_ORDER` counts them, and a restore lands
+# the page back on its own index, which a live sibling must not have taken.
+_SIBLING_SET = text(
+    """
+    SELECT id, order_index, deleted_at IS NULL AS live FROM pages
+    WHERE project = :project
+      AND parent_id IS NOT DISTINCT FROM CAST(:parent AS uuid)
+    ORDER BY order_index, id
+    """
+)
+_RENUMBER = text(
+    """
+    UPDATE pages p
+    SET order_index = v.order_index,
+        parent_id = CASE WHEN p.id = CAST(:mover AS uuid)
+                         THEN CAST(:parent AS uuid) ELSE p.parent_id END
+    FROM unnest(CAST(:ids AS uuid[]), CAST(:orders AS integer[]))
+         AS v(id, order_index)
+    WHERE p.id = v.id
+    """
+)
+_RENAME = text(
+    "UPDATE pages SET title = CAST(:title AS text) "
+    "WHERE id = CAST(:id AS uuid) AND deleted_at IS NULL RETURNING project"
+)
 _GET_PAGE = text(
     """
     SELECT id, project, parent_id, order_index, title, content, content_hash,
@@ -163,9 +221,12 @@ _LIST_PAGES = text(
 
 
 def root_lock_key(project: str) -> str:
-    """The advisory-lock key standing in for the row a root page has no parent
-    to lock. Every writer that reorders a project's roots must take this exact
-    key, or two of them serialise against nothing.
+    """The advisory-lock key guarding every sibling-set write in `project`.
+
+    Every writer of a page's `parent_id` or `order_index` -- a create at any
+    depth, a move -- must take this exact key before any row lock, or two of
+    them serialise against nothing and a move's cycle check becomes
+    check-then-act.
     """
     return f"pages:{project}:root"
 
@@ -208,9 +269,8 @@ async def _claim_order_index(
     and mint the same index; invariant 13's single worker does not help,
     because the requests interleave rather than run concurrently.
     """
-    if parent_id is None:
-        await session.execute(_LOCK_ROOT, {"key": root_lock_key(project)})
-    else:
+    await session.execute(_LOCK_ROOT, {"key": root_lock_key(project)})
+    if parent_id is not None:
         locked = (
             await session.execute(
                 _LOCK_PARENT, {"id": parent_id, "project": project}
@@ -382,3 +442,143 @@ async def list_pages(session: AsyncSession, project: str) -> list[dict]:
         await session.execute(_LIST_PAGES, {"project": project})
     ).mappings().all()
     return [dict(row) for row in rows]
+
+
+async def move_page(
+    session: AsyncSession,
+    page_id: str,
+    *,
+    parent_id: str | None,
+    after_id: str | None = None,
+    actor: str | None = None,
+) -> None:
+    """Reparent and place a page after `after_id`, or first when it is None.
+
+    Takes a sibling rather than an index so a reorder never has to know the
+    indices a concurrent writer is about to shift.
+    """
+    # Membership below is decided by comparing id strings.
+    page_id = str(UUID(page_id))
+    parent_id = None if parent_id is None else str(UUID(parent_id))
+    after_id = None if after_id is None else str(UUID(after_id))
+    project = (
+        await session.execute(_MOVED_PAGE, {"id": page_id})
+    ).scalar_one_or_none()
+    if project is None:
+        raise PageTargetUnresolved(f"no live page with id {page_id}")
+
+    async with session.begin_nested():
+        await session.execute(_LOCK_ROOT, {"key": root_lock_key(project)})
+        locked = (
+            await session.execute(_LOCK_MOVED_PAGE, {"id": page_id})
+        ).first()
+        if locked is None:
+            raise PageTargetUnresolved(f"no live page with id {page_id}")
+        from_parent = None if locked.parent_id is None else str(locked.parent_id)
+
+        if parent_id is not None:
+            found = (
+                await session.execute(
+                    _LOCK_PARENT, {"id": parent_id, "project": project}
+                )
+            ).first()
+            if found is None:
+                raise PageTargetUnresolved(
+                    f"no page with id {parent_id} in project {project!r} to "
+                    "move this page under"
+                )
+            cycle = (
+                await session.execute(
+                    _ANCESTORS, {"parent": parent_id, "page": page_id}
+                )
+            ).scalar_one()
+            if cycle:
+                raise PageCycleError(
+                    f"page {parent_id} is page {page_id} or lies inside its "
+                    "subtree"
+                )
+
+        new_set = [
+            row for row in (
+                await session.execute(
+                    _SIBLING_SET, {"project": project, "parent": parent_id}
+                )
+            ).all()
+            if str(row.id) != page_id
+        ]
+        if after_id is None:
+            slot = 0
+        else:
+            slot = next(
+                (i + 1 for i, row in enumerate(new_set)
+                 if str(row.id) == after_id and row.live),
+                None,
+            )
+            if slot is None:
+                raise PageTargetUnresolved(
+                    f"no live page with id {after_id} among the siblings this "
+                    "page would move beside"
+                )
+        ordered = [str(row.id) for row in new_set]
+        ordered.insert(slot, page_id)
+        placement = {pid: index for index, pid in enumerate(ordered)}
+
+        if from_parent != parent_id:
+            old_set = (
+                await session.execute(
+                    _SIBLING_SET, {"project": project, "parent": from_parent}
+                )
+            ).all()
+            survivors = [str(row.id) for row in old_set if str(row.id) != page_id]
+            placement.update({pid: index for index, pid in enumerate(survivors)})
+
+        await session.execute(_RENUMBER, {
+            "mover": page_id,
+            "parent": parent_id,
+            "ids": list(placement),
+            "orders": list(placement.values()),
+        })
+        await record_event(
+            session,
+            event_type=PAGE_MOVED_EVENT,
+            object_type="page",
+            object_id=UUID(page_id),
+            project=project,
+            actor=actor,
+            payload={
+                "from_parent_id": from_parent,
+                "to_parent_id": parent_id,
+                "order_index": slot,
+            },
+        )
+    await session.commit()
+
+
+async def rename_page(
+    session: AsyncSession,
+    page_id: str,
+    *,
+    title: str | None,
+    actor: str | None = None,
+) -> None:
+    """Set a live page's title.
+
+    Last-writer-wins and deliberately without `expected_hash`: the hash covers
+    `content`, which a title does not change, so a precondition on it would
+    refuse nothing a concurrent rename could lose.
+    """
+    project = (
+        await session.execute(_RENAME, {"id": page_id, "title": title})
+    ).scalar_one_or_none()
+    if project is None:
+        raise PageTargetUnresolved(f"no live page with id {page_id}")
+    await record_event(
+        session,
+        event_type=PAGE_UPDATED_EVENT,
+        object_type="page",
+        object_id=UUID(page_id),
+        project=project,
+        actor=actor,
+        payload={"fields": ["title"]},
+    )
+    await session.commit()
