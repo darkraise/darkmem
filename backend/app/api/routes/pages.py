@@ -8,6 +8,10 @@ Provides:
   - PATCH  /api/v1/pages/{page_id}
   - DELETE /api/v1/pages/{page_id}
   - POST   /api/v1/pages/{page_id}/restore
+  - POST   /api/v1/pages/{page_id}/blocks
+  - PATCH  /api/v1/pages/{page_id}/blocks/{block_id}
+  - POST   /api/v1/pages/{page_id}/blocks/{block_id}/move
+  - DELETE /api/v1/pages/{page_id}/blocks/{block_id}
 
 REST-only: no MCP tool serves pages. Every `page_door` writer commits itself,
 and a refusal leaves the request's transaction for the session dependency to
@@ -18,10 +22,17 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
 from app.api.deps import get_llm
+from app.api.routes.documents import (
+    BlockInsertRequest,
+    BlockMoveRequest,
+    BlockUpdateRequest,
+)
 from app.database import get_session
 from app.schemas.page import (
     PageCreateRequest,
@@ -33,6 +44,17 @@ from app.schemas.page import (
     PageRestoreResponse,
     PageTrashEmptyResponse,
 )
+from app.services.block_verbs import (
+    PAGE_OWNER,
+    BlockCycleError,
+    BlockTargetUnresolved,
+    delete_block,
+    insert_block,
+    move_block,
+    update_block,
+)
+from app.services.document_door import DocumentTooLarge
+from app.services.document_ingest import DocumentHashConflict
 from app.services.page_door import (
     PageCycleError,
     PageParentTrashed,
@@ -188,3 +210,144 @@ async def restore_page_route(
     except _REFUSALS as exc:
         raise _page_write_error(exc) from exc
     return PageRestoreResponse(restored=restored)
+
+
+class PageBlockWriteResponse(BaseModel):
+    page_id: str
+    block_id: str | None
+    outcome: str
+    content_hash: str
+    blocks_total: int
+    blocks_embedded: int
+
+
+def _response(result) -> PageBlockWriteResponse:
+    return PageBlockWriteResponse(
+        page_id=result.owner_id, block_id=result.block_id, outcome=result.outcome,
+        content_hash=result.content_hash, blocks_total=result.blocks_total,
+        blocks_embedded=result.blocks_embedded,
+    )
+
+
+def _block_write_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, BlockTargetUnresolved):
+        return HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
+    if isinstance(exc, (BlockCycleError, DocumentTooLarge)):
+        return HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    if isinstance(exc, DocumentHashConflict):
+        return HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"expected_hash {exc.expected_hash} does not match the "
+            f"page's current content_hash {exc.current_hash}",
+        )
+    raise exc
+
+
+_BLOCK_REFUSALS = (BlockTargetUnresolved, BlockCycleError, DocumentTooLarge,
+                   DocumentHashConflict)
+
+
+async def _assert_block_is_in(session, page_id: UUID, block_id: UUID) -> None:
+    """The verbs prove a block is some page's; this proves it is the page the
+    path names."""
+    owner = (await session.execute(
+        text("SELECT CAST(page_id AS text) FROM blocks WHERE id = CAST(:id AS uuid)"),
+        {"id": str(block_id)},
+    )).scalar_one_or_none()
+    if owner is None or owner != str(page_id):
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, f"no block {block_id} in page {page_id}",
+        )
+
+
+@router.post(
+    "/{page_id}/blocks",
+    response_model=PageBlockWriteResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def insert_page_block_route(
+    page_id: UUID,
+    body: BlockInsertRequest,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+    llm=Depends(get_llm),
+) -> PageBlockWriteResponse:
+    """First child of `parent_id` by default, or after `after_block_id` among
+    that parent's children."""
+    try:
+        result = await insert_block(
+            session, llm, document_id=str(page_id), type=body.type,
+            text=body.text, parent_id=body.parent_id,
+            after_block_id=body.after_block_id, properties=body.properties,
+            expected_hash=body.expected_hash, owner=PAGE_OWNER,
+        )
+    except _BLOCK_REFUSALS as exc:
+        raise _block_write_error(exc) from exc
+    return _response(result)
+
+
+@router.patch("/{page_id}/blocks/{block_id}", response_model=PageBlockWriteResponse)
+async def update_page_block_route(
+    page_id: UUID,
+    block_id: UUID,
+    body: BlockUpdateRequest,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+    llm=Depends(get_llm),
+) -> PageBlockWriteResponse:
+    await _assert_block_is_in(session, page_id, block_id)
+    try:
+        result = await update_block(
+            session, llm, block_id=str(block_id), text=body.text,
+            type=body.type, properties=body.properties,
+            expected_hash=body.expected_hash, owner=PAGE_OWNER,
+        )
+    except _BLOCK_REFUSALS as exc:
+        raise _block_write_error(exc) from exc
+    return _response(result)
+
+
+@router.post(
+    "/{page_id}/blocks/{block_id}/move", response_model=PageBlockWriteResponse,
+)
+async def move_page_block_route(
+    page_id: UUID,
+    block_id: UUID,
+    body: BlockMoveRequest,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+    llm=Depends(get_llm),
+) -> PageBlockWriteResponse:
+    await _assert_block_is_in(session, page_id, block_id)
+    try:
+        result = await move_block(
+            session, llm, block_id=str(block_id),
+            new_parent_id=body.new_parent_id, after_block_id=body.after_block_id,
+            expected_hash=body.expected_hash, owner=PAGE_OWNER,
+        )
+    except _BLOCK_REFUSALS as exc:
+        raise _block_write_error(exc) from exc
+    return _response(result)
+
+
+@router.delete("/{page_id}/blocks/{block_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_page_block_route(
+    page_id: UUID,
+    block_id: UUID,
+    expected_hash: str | None = Query(
+        None, description="Refuse unless the page's content_hash matches."
+    ),
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+    llm=Depends(get_llm),
+) -> None:
+    """The subtree goes with it. `expected_hash` rides the query string because
+    a DELETE carries no body here."""
+    await _assert_block_is_in(session, page_id, block_id)
+    try:
+        await delete_block(
+            session, llm, block_id=str(block_id), expected_hash=expected_hash,
+            owner=PAGE_OWNER,
+        )
+    except _BLOCK_REFUSALS as exc:
+        raise _block_write_error(exc) from exc

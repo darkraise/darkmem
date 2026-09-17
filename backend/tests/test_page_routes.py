@@ -188,3 +188,118 @@ async def test_empty_trash_answers_the_purged_count(client, auth_headers, create
     )
     assert response.status_code == 200
     assert response.json() == {"purged": 2}
+
+
+async def _blocks_of(client, auth_headers, page):
+    got = await client.get(f"{V1}/pages/{page}", headers=auth_headers)
+    assert got.status_code == 200
+    return got.json()["blocks"]
+
+
+@pytest.mark.asyncio
+async def test_block_verbs_round_trip_on_a_page(client, auth_headers, create):
+    page = await create(content="# T\n\nalpha\n")
+    blocks = await _blocks_of(client, auth_headers, page)
+    alpha = next(b for b in blocks if b["text"] == "alpha")
+
+    inserted = await client.post(
+        f"{V1}/pages/{page}/blocks",
+        json={"type": "paragraph", "text": "beta"}, headers=auth_headers,
+    )
+    assert inserted.status_code == 201, inserted.text
+    assert inserted.json()["page_id"] == page
+
+    updated = await client.patch(
+        f"{V1}/pages/{page}/blocks/{alpha['id']}",
+        json={"text": "alpha edited"}, headers=auth_headers,
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["content_hash"] != inserted.json()["content_hash"]
+
+    moved = await client.post(
+        f"{V1}/pages/{page}/blocks/{alpha['id']}/move",
+        json={"new_parent_id": None}, headers=auth_headers,
+    )
+    assert moved.status_code == 200, moved.text
+
+    deleted = await client.delete(
+        f"{V1}/pages/{page}/blocks/{alpha['id']}", headers=auth_headers,
+    )
+    assert deleted.status_code == 204
+    after = await _blocks_of(client, auth_headers, page)
+    assert alpha["id"] not in [b["id"] for b in after]
+    assert "beta" in [b["text"] for b in after]
+
+
+@pytest.mark.asyncio
+async def test_a_block_of_another_page_is_refused(client, auth_headers, create):
+    """The page-flavoured `_assert_block_is_in`. Without it, a block id from
+    any page could be edited through any page's route."""
+    first = await create(content="mine\n")
+    other = await create(content="theirs\n")
+    theirs = (await _blocks_of(client, auth_headers, other))[0]
+
+    resp = await client.patch(
+        f"{V1}/pages/{first}/blocks/{theirs['id']}",
+        json={"text": "nope"}, headers=auth_headers,
+    )
+    assert resp.status_code == 404
+    assert (await _blocks_of(client, auth_headers, other))[0]["text"] == "theirs"
+
+
+@pytest.mark.asyncio
+async def test_the_hash_precondition_holds_on_a_page(client, auth_headers, create):
+    """`expected_hash` compares against `pages.content_hash`, which is why
+    that column is NOT NULL with the create route seeding it."""
+    page = await create(content="para\n")
+    block = (await _blocks_of(client, auth_headers, page))[0]
+
+    stale = await client.patch(
+        f"{V1}/pages/{page}/blocks/{block['id']}",
+        json={"text": "x", "expected_hash": "0" * 64}, headers=auth_headers,
+    )
+    assert stale.status_code == 409
+    assert "0" * 64 in stale.json()["detail"]
+
+    current = (await client.get(f"{V1}/pages/{page}", headers=auth_headers)).json()
+    fresh = await client.patch(
+        f"{V1}/pages/{page}/blocks/{block['id']}",
+        json={"text": "x", "expected_hash": current["content_hash"]},
+        headers=auth_headers,
+    )
+    assert fresh.status_code == 200, fresh.text
+
+
+@pytest.mark.asyncio
+async def test_delete_block_takes_the_hash_as_a_query_parameter(
+    client, auth_headers, create,
+):
+    page = await create(content="para\n")
+    block = (await _blocks_of(client, auth_headers, page))[0]
+
+    response = await client.delete(
+        f"{V1}/pages/{page}/blocks/{block['id']}",
+        params={"expected_hash": "0" * 64}, headers=auth_headers,
+    )
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_a_document_block_is_refused_on_a_page_route(
+    client, auth_headers, create,
+):
+    page = await create(content="para\n")
+    filed = await client.post(
+        f"{V1}/documents",
+        json={"project": "p", "uri": "docs/x.md", "content": "# T\n\npara\n"},
+        headers=auth_headers,
+    )
+    doc_block = (await client.get(
+        f"{V1}/documents/{filed.json()['document_id']}", headers=auth_headers,
+    )).json()["blocks"][0]["block_id"]
+
+    resp = await client.patch(
+        f"{V1}/pages/{page}/blocks/{doc_block}",
+        json={"text": "nope"}, headers=auth_headers,
+    )
+    assert resp.status_code == 404
