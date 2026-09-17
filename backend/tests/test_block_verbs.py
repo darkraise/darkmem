@@ -14,14 +14,18 @@ from app.services.block_verbs import (
     PAGE_OWNER,
     BlockCycleError,
     BlockTargetUnresolved,
+    NewBlock,
+    PageBlockIdTaken,
     PageBlockInvalid,
     delete_block,
     insert_block,
+    insert_blocks,
     move_block,
     update_block,
 )
 from app.services.document_door import DocumentNotConvertible, put_document
 from app.services.document_ingest import DocumentHashConflict, compute_content_hash
+from app.utils.ids import new_id
 
 
 FINGERPRINT = "test-fp-verbs|3"
@@ -905,3 +909,194 @@ async def test_a_document_still_retypes_a_block_that_holds_children(session):
     after = {r["id"]: r for r in await _blocks(session, doc_id)}
     assert after[heading["id"]]["type"] == "paragraph"
     assert after[alpha["id"]]["parent_id"] == heading["id"]
+
+
+_WRITE_RESULT_FIELDS = [
+    "document_id", "owner_kind", "owner_id", "block_id", "outcome",
+    "content_hash", "blocks_total", "blocks_embedded",
+]
+
+
+@pytest.mark.asyncio
+async def test_the_document_verbs_keep_their_result_and_journal_shape(session):
+    """MCP answers `vars(result)` and the journal is read by id, so a
+    list-valued pass must not leak into either on the document path."""
+    llm, doc_id = await _file(session, "# T\n\nalpha\n", "v/shape.md")
+    rows = await _blocks(session, doc_id)
+
+    updated = await update_block(session, llm, block_id=rows[-1]["id"], text="beta")
+    inserted = await insert_block(session, llm, document_id=doc_id,
+                                  type="paragraph", text="gamma")
+
+    for result in (updated, inserted):
+        assert list(vars(result)) == _WRITE_RESULT_FIELDS
+    assert updated.block_id == rows[-1]["id"]
+    payloads = (await session.execute(
+        text(
+            "SELECT payload FROM events WHERE event_type = 'blocks_edited' "
+            "AND object_id = CAST(:id AS uuid)"
+        ),
+        {"id": doc_id},
+    )).scalars().all()
+    assert len(payloads) == 2
+    for payload in payloads:
+        assert set(payload) == {"verb", "block_id", "blocks_total", "content_hash"}
+    assert {p["block_id"] for p in payloads} == {updated.block_id, inserted.block_id}
+
+
+@pytest.mark.asyncio
+async def test_a_client_block_id_becomes_the_row_id(session):
+    page_id, _ = await _page(session, content="page prose\n")
+    chosen = str(new_id())
+
+    result = await insert_block(session, StubEmbedder(), document_id=page_id,
+                                type="paragraph", text="x", block_id=chosen,
+                                owner=PAGE_OWNER)
+
+    assert result.block_id == chosen
+    assert chosen in {r["id"] for r in await _page_rows(session, page_id)}
+
+
+@pytest.mark.asyncio
+async def test_a_taken_block_id_is_refused(session):
+    page_id, existing = await _page(session, content="page prose\n")
+
+    with pytest.raises(PageBlockIdTaken) as caught:
+        await insert_block(session, StubEmbedder(), document_id=page_id,
+                           type="paragraph", text="x", block_id=existing,
+                           owner=PAGE_OWNER)
+
+    assert str(caught.value) == f"block id {existing} already exists"
+
+
+@pytest.mark.asyncio
+async def test_a_primary_key_race_past_the_check_is_the_same_refusal(
+    session, monkeypatch,
+):
+    """Two different pages' inserts are not serialised by either page's row
+    lock, so the primary key is the real guard; blinding the pre-check is how
+    a single connection reaches it.
+
+    The taken id must belong to ANOTHER page. A same-page id would enter the
+    in-memory tree twice, and `serialize_tree`'s reachability guard raises
+    ValueError before any INSERT runs, so the primary key would never fire.
+    """
+    from app.services import block_verbs
+
+    monkeypatch.setattr(block_verbs, "_TAKEN_IDS", text(
+        "SELECT CAST(id AS text) AS id FROM blocks "
+        "WHERE false AND id = ANY(CAST(:ids AS uuid[]))"
+    ))
+    page_id, _ = await _page(session, content="page prose\n", title="A")
+    _, existing = await _page(session, content="other prose\n", title="B")
+
+    with pytest.raises(PageBlockIdTaken) as caught:
+        await insert_block(session, StubEmbedder(), document_id=page_id,
+                           type="paragraph", text="x", block_id=existing,
+                           owner=PAGE_OWNER)
+
+    assert existing in str(caught.value)
+
+
+@pytest.mark.asyncio
+async def test_a_non_primary_key_integrity_failure_is_not_mapped(session):
+    import dataclasses
+
+    from sqlalchemy.exc import IntegrityError
+
+    orphaning = dataclasses.replace(PAGE_OWNER, insert_block=text(
+        "INSERT INTO blocks (id, page_id, parent_id, order_index, type, text, properties) "
+        "VALUES (CAST(:id AS uuid), CAST(:doc AS uuid), "
+        "        COALESCE(CAST(:parent AS uuid), gen_random_uuid()), "
+        "        :ord, CAST(:type AS text), CAST(:text AS text), CAST(:props AS jsonb))"
+    ))
+    page_id, _ = await _page(session, content="page prose\n")
+
+    with pytest.raises(IntegrityError):
+        await insert_block(session, StubEmbedder(), document_id=page_id,
+                           type="paragraph", text="x", block_id=str(new_id()),
+                           owner=orphaning)
+
+
+@pytest.mark.asyncio
+async def test_a_batch_applies_in_order_and_resolves_earlier_items(session):
+    page_id, prose = await _page(session, content="page prose\n")
+    toggle, inside, after = (str(new_id()) for _ in range(3))
+
+    result = await insert_blocks(session, StubEmbedder(), document_id=page_id,
+                                 owner=PAGE_OWNER, blocks=[
+        NewBlock(block_id=toggle, type="toggle", text="T", after_block_id=prose),
+        NewBlock(block_id=inside, type="paragraph", text="inside", parent_id=toggle),
+        NewBlock(block_id=after, type="todo", text="task",
+                 properties={"checked": False}, after_block_id=toggle),
+    ])
+
+    assert result.block_ids == (toggle, inside, after)
+    assert result.outcome == "inserted"
+    rows = await _page_rows(session, page_id)
+    assert [r["id"] for r in rows] == [prose, toggle, inside, after]
+    assert next(r for r in rows if r["id"] == inside)["parent_id"] == toggle
+
+
+@pytest.mark.asyncio
+async def test_a_multi_block_batch_journals_block_ids(session):
+    page_id, _ = await _page(session, content="page prose\n")
+    first, second = str(new_id()), str(new_id())
+
+    await insert_blocks(session, StubEmbedder(), document_id=page_id,
+                        owner=PAGE_OWNER, blocks=[
+        NewBlock(block_id=first, type="paragraph", text="a"),
+        NewBlock(block_id=second, type="paragraph", text="b", after_block_id=first),
+    ])
+
+    payload = (await session.execute(
+        text(
+            "SELECT payload FROM events WHERE event_type = 'blocks_edited' "
+            "AND object_id = CAST(:id AS uuid)"
+        ),
+        {"id": page_id},
+    )).scalar_one()
+    assert payload["block_ids"] == [first, second]
+    assert "block_id" not in payload
+
+
+async def _page_hash(session, page_id):
+    return (await session.execute(
+        text("SELECT content_hash FROM pages WHERE id = CAST(:id AS uuid)"),
+        {"id": page_id},
+    )).scalar_one()
+
+
+@pytest.mark.asyncio
+async def test_a_batch_refuses_whole_on_its_first_invalid_item(session):
+    page_id, existing = await _page(session, content="page prose\n")
+    before = await _page_hash(session, page_id)
+
+    with pytest.raises(PageBlockInvalid):
+        await insert_blocks(session, StubEmbedder(), document_id=page_id,
+                            owner=PAGE_OWNER, blocks=[
+            NewBlock(block_id=str(new_id()), type="paragraph", text="fine"),
+            NewBlock(block_id=str(new_id()), type="todo", text="no checked"),
+        ])
+    with pytest.raises(PageBlockIdTaken):
+        await insert_blocks(session, StubEmbedder(), document_id=page_id,
+                            owner=PAGE_OWNER, blocks=[
+            NewBlock(block_id=str(new_id()), type="paragraph", text="fine"),
+            NewBlock(block_id=existing, type="paragraph", text="taken"),
+        ])
+
+    assert len(await _page_rows(session, page_id)) == 1
+    assert await _page_hash(session, page_id) == before
+
+
+@pytest.mark.asyncio
+async def test_a_batch_refuses_a_repeated_block_id(session):
+    page_id, _ = await _page(session, content="page prose\n")
+    repeated = str(new_id())
+
+    with pytest.raises(PageBlockInvalid):
+        await insert_blocks(session, StubEmbedder(), document_id=page_id,
+                            owner=PAGE_OWNER, blocks=[
+            NewBlock(block_id=repeated, type="paragraph", text="a"),
+            NewBlock(block_id=repeated, type="paragraph", text="b"),
+        ])

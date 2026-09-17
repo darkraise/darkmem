@@ -12,12 +12,14 @@ serialiser is the only thing that knows where each block landed, so
 """
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections import Counter
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.block_embeddings import PAGE_PARENT_TABLE, PARENT_TABLE, embed_blocks
@@ -45,11 +47,15 @@ __all__ = [
     "PAGE_OWNER",
     "BlockOwner",
     "BlockCycleError",
+    "BlockBatchWriteResult",
     "BlockTargetUnresolved",
     "BlockWriteResult",
+    "NewBlock",
+    "PageBlockIdTaken",
     "PageBlockInvalid",
     "delete_block",
     "insert_block",
+    "insert_blocks",
     "move_block",
     "update_block",
 ]
@@ -72,6 +78,10 @@ class PageBlockInvalid(ValueError):
     property, or a parent that holds no children on a page."""
 
 
+class PageBlockIdTaken(ValueError):
+    """A client-chosen block id already names a row."""
+
+
 @dataclass(frozen=True)
 class BlockWriteResult:
     document_id: str | None
@@ -82,6 +92,27 @@ class BlockWriteResult:
     content_hash: str
     blocks_total: int
     blocks_embedded: int
+
+
+@dataclass(frozen=True)
+class BlockBatchWriteResult:
+    owner_kind: str
+    owner_id: str
+    block_ids: tuple[str, ...]
+    outcome: str
+    content_hash: str
+    blocks_total: int
+    blocks_embedded: int
+
+
+@dataclass(frozen=True)
+class NewBlock:
+    block_id: str
+    type: str
+    text: str
+    properties: dict | None = None
+    parent_id: str | None = None
+    after_block_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -166,6 +197,10 @@ _UPDATE_BLOCK = text(
     "parent_id = CAST(:parent AS uuid) WHERE id = CAST(:id AS uuid)"
 )
 _DELETE_BLOCK = text("DELETE FROM blocks WHERE id = CAST(:id AS uuid)")
+_TAKEN_IDS = text(
+    "SELECT CAST(id AS text) AS id FROM blocks "
+    "WHERE id = ANY(CAST(:ids AS uuid[])) ORDER BY id"
+)
 # `properties` is merged with `||`, never written wholesale: the direction flag
 # is server-owned and a wholesale write would erase a document's frontmatter.
 _WRITE_DOC = text(
@@ -320,8 +355,19 @@ def _subtree(tree: list[TreeBlock], root: UUID) -> list[UUID]:
     return out
 
 
+async def _first_taken(session, ids: Sequence[str]) -> str | None:
+    return (
+        await session.execute(_TAKEN_IDS, {"ids": list(ids)})
+    ).scalars().first()
+
+
+def _violated_constraint(exc: IntegrityError) -> str | None:
+    return getattr(getattr(exc.orig, "__cause__", None), "constraint_name", None)
+
+
 async def _mutate(session, llm, *, document_id, apply, touched_embed, verb,
-                  block_id, expected_hash=None, owner: BlockOwner = DOCUMENT_OWNER):
+                  block_ids, expected_hash=None, claimed_ids=(),
+                  owner: BlockOwner = DOCUMENT_OWNER):
     """Lock, load, mutate in memory, serialise, write, journal, embed.
 
     Review M-3: the lock is the first statement, before anything is read off
@@ -344,6 +390,10 @@ async def _mutate(session, llm, *, document_id, apply, touched_embed, verb,
             expected_hash=expected_hash,
             current_hash=meta["content_hash"],
         )
+    if claimed_ids:
+        taken = await _first_taken(session, claimed_ids)
+        if taken is not None:
+            raise PageBlockIdTaken(f"block id {taken} already exists")
     rows = (await session.execute(owner.load_tree, {"id": document_id})).mappings().all()
     tree = [
         TreeBlock(r["id"], r["parent_id"], r["order_index"], r["type"],
@@ -391,61 +441,79 @@ async def _mutate(session, llm, *, document_id, apply, touched_embed, verb,
     content_hash = compute_content_hash(result.content)
     by_id = {b.id: b for b in tree}
 
-    async with session.begin_nested():
-        if deleted_subtree:
-            # The subtree's root only: parent_id ON DELETE CASCADE takes the
-            # rest, and block_embeddings__<slug> cascades in every partition.
-            await session.execute(
-                _DELETE_BLOCK, {"id": str(deleted_subtree[0])}
+    try:
+        async with session.begin_nested():
+            if deleted_subtree:
+                # The subtree's root only: parent_id ON DELETE CASCADE takes the
+                # rest, and block_embeddings__<slug> cascades in every partition.
+                await session.execute(
+                    _DELETE_BLOCK, {"id": str(deleted_subtree[0])}
+                )
+            for block in inserted:
+                await session.execute(owner.insert_block, {
+                    "id": str(block.id),
+                    "doc": document_id,
+                    "parent": None if block.parent_id is None else str(block.parent_id),
+                    "ord": block.order_index,
+                    "type": block.type,
+                    "text": block.text,
+                    "props": _json(block.properties),
+                })
+            if verb == "updated":
+                target = by_id[UUID(block_ids[0])]
+                await session.execute(_UPDATE_BLOCK, {
+                    "id": block_ids[0],
+                    "type": target.type,
+                    "text": target.text,
+                    "parent": None if target.parent_id is None else str(target.parent_id),
+                })
+
+            placed = {p.block_id: p for p in result.placed}
+            ids, ords, spans_out, props_out, parents = [], [], [], [], []
+            for block in tree:
+                p = placed[block.id]
+                ids.append(str(block.id))
+                ords.append(p.order_index)
+                spans_out.append(f"[{p.char_span[0]},{p.char_span[1]})")
+                props_out.append(_json(block.properties))
+                parents.append(None if block.parent_id is None else str(block.parent_id))
+            if ids:
+                await session.execute(_PLACE, {
+                    "ids": ids, "ords": ords, "spans": spans_out,
+                    "props": props_out, "parents": parents,
+                })
+
+            await session.execute(owner.write_owner, {
+                "id": document_id, "content": result.content, "hash": content_hash,
+            })
+            # No block text in the payload: write-time minimization, and a
+            # journal row outlives the document it describes. One id keeps the
+            # `block_id` key every existing reader of this stream expects.
+            payload: dict[str, Any] = {"verb": verb}
+            if len(block_ids) == 1:
+                payload["block_id"] = block_ids[0]
+            else:
+                payload["block_ids"] = list(block_ids)
+            payload["blocks_total"] = len(tree)
+            payload["content_hash"] = content_hash
+            await record_event(
+                session,
+                event_type=BLOCKS_EDITED_EVENT,
+                object_type=owner.object_type,
+                object_id=UUID(document_id),
+                project=meta["project"],
+                payload=payload,
             )
-        if inserted is not None:
-            await session.execute(owner.insert_block, {
-                "id": str(inserted.id),
-                "doc": document_id,
-                "parent": None if inserted.parent_id is None else str(inserted.parent_id),
-                "ord": inserted.order_index,
-                "type": inserted.type,
-                "text": inserted.text,
-                "props": _json(inserted.properties),
-            })
-        if verb == "updated":
-            target = by_id[UUID(block_id)]
-            await session.execute(_UPDATE_BLOCK, {
-                "id": block_id,
-                "type": target.type,
-                "text": target.text,
-                "parent": None if target.parent_id is None else str(target.parent_id),
-            })
-
-        placed = {p.block_id: p for p in result.placed}
-        ids, ords, spans_out, props_out, parents = [], [], [], [], []
-        for block in tree:
-            p = placed[block.id]
-            ids.append(str(block.id))
-            ords.append(p.order_index)
-            spans_out.append(f"[{p.char_span[0]},{p.char_span[1]})")
-            props_out.append(_json(block.properties))
-            parents.append(None if block.parent_id is None else str(block.parent_id))
-        if ids:
-            await session.execute(_PLACE, {
-                "ids": ids, "ords": ords, "spans": spans_out,
-                "props": props_out, "parents": parents,
-            })
-
-        await session.execute(owner.write_owner, {
-            "id": document_id, "content": result.content, "hash": content_hash,
-        })
-        # No block text in the payload: write-time minimization, and a journal
-        # row outlives the document it describes.
-        await record_event(
-            session,
-            event_type=BLOCKS_EDITED_EVENT,
-            object_type=owner.object_type,
-            object_id=UUID(document_id),
-            project=meta["project"],
-            payload={"verb": verb, "block_id": block_id,
-                     "blocks_total": len(tree), "content_hash": content_hash},
-        )
+    except IntegrityError as exc:
+        # The check above sees only committed rows under this owner's lock; an
+        # insert of the same id into another owner is not serialised by it, so
+        # the primary key is the guard of last resort.
+        if not claimed_ids or _violated_constraint(exc) != "blocks_pkey":
+            raise
+        taken = await _first_taken(session, claimed_ids)
+        raise PageBlockIdTaken(
+            f"block id {taken or claimed_ids[0]} already exists"
+        ) from exc
     await session.commit()
 
     written = 0
@@ -459,7 +527,7 @@ async def _mutate(session, llm, *, document_id, apply, touched_embed, verb,
         document_id=document_id if owner.kind == "document" else None,
         owner_kind=owner.kind,
         owner_id=document_id,
-        block_id=block_id,
+        block_id=block_ids[0] if len(block_ids) == 1 else None,
         outcome=verb,
         content_hash=content_hash,
         blocks_total=len(tree),
@@ -569,11 +637,11 @@ async def update_block(
             for child in tree:
                 if child.parent_id == target:
                     owner.check_nesting(retyped, child)
-        return out, None, []
+        return out, [], []
 
     return await _mutate(session, llm, document_id=document_id, apply=apply,
                          touched_embed=block_id, verb="updated",
-                         block_id=block_id, expected_hash=expected_hash,
+                         block_ids=[block_id], expected_hash=expected_hash,
                          owner=owner)
 
 
@@ -581,9 +649,9 @@ async def insert_block(
     session: AsyncSession, llm, *, document_id: str, type: str, text: str,
     parent_id: str | None = None, after_block_id: str | None = None,
     properties: dict | None = None, expected_hash: str | None = None,
-    owner: BlockOwner = DOCUMENT_OWNER,
+    block_id: str | None = None, owner: BlockOwner = DOCUMENT_OWNER,
 ) -> BlockWriteResult:
-    minted = new_id()
+    minted = new_id() if block_id is None else UUID(block_id)
 
     def apply(tree: list[TreeBlock]):
         tree, placed = _insert_into(
@@ -591,12 +659,55 @@ async def insert_block(
             properties=properties, parent_id=parent_id,
             after_block_id=after_block_id,
         )
-        return tree, placed, []
+        return tree, [placed], []
 
     return await _mutate(session, llm, document_id=document_id, apply=apply,
                          touched_embed=str(minted), verb="inserted",
-                         block_id=str(minted), expected_hash=expected_hash,
+                         block_ids=[str(minted)], expected_hash=expected_hash,
+                         claimed_ids=() if block_id is None else (str(minted),),
                          owner=owner)
+
+
+async def insert_blocks(
+    session: AsyncSession, llm, *, document_id: str, blocks: Sequence[NewBlock],
+    owner: BlockOwner, expected_hash: str | None = None,
+) -> BlockBatchWriteResult:
+    """Every block in one pass, in order: a later block may name an earlier
+    one as its parent or `after_block_id`, and the first refusal writes
+    nothing."""
+    ids = [str(UUID(block.block_id)) for block in blocks]
+    if not ids:
+        raise PageBlockInvalid("a batch insert needs at least one block")
+    repeated = sorted(i for i, n in Counter(ids).items() if n > 1)
+    if repeated:
+        raise PageBlockInvalid(
+            f"block id {repeated[0]} appears more than once in this batch"
+        )
+
+    def apply(tree: list[TreeBlock]):
+        inserted = []
+        for block in blocks:
+            tree, placed = _insert_into(
+                tree, owner, block_id=UUID(block.block_id), type=block.type,
+                text=block.text, properties=block.properties,
+                parent_id=block.parent_id, after_block_id=block.after_block_id,
+            )
+            inserted.append(placed)
+        return tree, inserted, []
+
+    result = await _mutate(session, llm, document_id=document_id, apply=apply,
+                           touched_embed=None, verb="inserted", block_ids=ids,
+                           expected_hash=expected_hash, claimed_ids=tuple(ids),
+                           owner=owner)
+    return BlockBatchWriteResult(
+        owner_kind=result.owner_kind,
+        owner_id=result.owner_id,
+        block_ids=tuple(ids),
+        outcome=result.outcome,
+        content_hash=result.content_hash,
+        blocks_total=result.blocks_total,
+        blocks_embedded=result.blocks_embedded,
+    )
 
 
 async def move_block(
@@ -644,11 +755,11 @@ async def move_block(
             TreeBlock(b.id, b.parent_id, i, b.type, b.text, b.properties)
             for i, b in enumerate(reordered)
         ]
-        return others + renumbered, None, []
+        return others + renumbered, [], []
 
     # No embed: a move changes position, never text.
     return await _mutate(session, llm, document_id=document_id, apply=apply,
-                         touched_embed=None, verb="moved", block_id=block_id,
+                         touched_embed=None, verb="moved", block_ids=[block_id],
                          expected_hash=expected_hash, owner=owner)
 
 
@@ -665,9 +776,9 @@ async def delete_block(
                 f"block {block_id} is not in this {owner.noun}")
         doomed = _subtree(tree, target)
         remaining = [b for b in tree if b.id not in set(doomed)]
-        return remaining, None, doomed
+        return remaining, [], doomed
 
     # No embed: the rows and their vectors go with the cascade.
     return await _mutate(session, llm, document_id=document_id, apply=apply,
-                         touched_embed=None, verb="deleted", block_id=block_id,
+                         touched_embed=None, verb="deleted", block_ids=[block_id],
                          expected_hash=expected_hash, owner=owner)
