@@ -28,6 +28,12 @@ __all__ = [
 ]
 
 DEFAULT_LIST_MARKER = "-"
+# A to-do is a bullet item with a checkbox, so every list predicate treats it
+# as one: without that a to-do beside a bullet item splits the list in two.
+_LIST_KINDS = frozenset({"list", "todo"})
+_CALLOUT_LABELS = {
+    "info": "NOTE", "warning": "WARNING", "error": "CAUTION", "success": "TIP",
+}
 _ORDERED_RE = re.compile(r"^\d+([.)])$")
 _MARKER_RE = re.compile(r"^[ \t]*([-*+]|\d+[.)])[ \t]+")
 
@@ -79,6 +85,8 @@ def _children_map(blocks: Sequence[TreeBlock]):
 
 
 def _is_ordered(block: TreeBlock) -> bool:
+    if block.type == "todo":
+        return False
     raw = (block.properties or {}).get("marker") or DEFAULT_LIST_MARKER
     return _ORDERED_RE.match(raw) is not None
 
@@ -92,7 +100,11 @@ def _same_list_run(previous: TreeBlock | None, current: TreeBlock) -> bool:
     renumbers the second wrongly (it continues the first's count) and emits
     them without the blank line that keeps them apart.
     """
-    if previous is None or previous.type != "list" or current.type != "list":
+    if (
+        previous is None
+        or previous.type not in _LIST_KINDS
+        or current.type not in _LIST_KINDS
+    ):
         return False
     return _is_ordered(previous) == _is_ordered(current)
 
@@ -129,11 +141,15 @@ def _separator(
     current = siblings[index]
     if current.type == "table_row":
         return "\n"                    # rows are lines of their table
-    if current.type == "list" and index > 0 and _same_list_run(
+    if current.type in _LIST_KINDS and index > 0 and _same_list_run(
         siblings[index - 1], current
     ):
         return "\n"                    # tight list, same run
-    if current.type == "list" and parent is not None and parent.type == "list":
+    if (
+        current.type in _LIST_KINDS
+        and parent is not None
+        and parent.type in _LIST_KINDS
+    ):
         return "\n"                    # nested item under its parent item
     # The blank line carries the caller's prefix. Unprefixed it terminates an
     # enclosing blockquote, and the child re-parses as a quote of its own.
@@ -208,6 +224,30 @@ def serialize_tree(
                 prefix,
             )
             child_prefix = prefix + indent
+        elif block.type == "todo":
+            box = "[x]" if props.get("checked") else "[ ]"
+            lines = block.text.split("\n") if block.text else [""]
+            indent = " " * (len(DEFAULT_LIST_MARKER) + 1)
+            span = emit_lines(
+                [f"{DEFAULT_LIST_MARKER} {box} {lines[0]}",
+                 *(indent + line for line in lines[1:])],
+                prefix,
+            )
+            child_prefix = prefix + indent
+        elif block.type == "toggle":
+            # The span covers the opening lines only; the closing line is
+            # written after the children, so one contiguous range cannot
+            # include it without swallowing theirs.
+            span = emit_lines(
+                ["<details>", *f"<summary>{block.text}</summary>".split("\n")],
+                prefix,
+            )
+        elif block.type == "callout":
+            label = _CALLOUT_LABELS.get(props.get("variant"), "NOTE")
+            lines = block.text.split("\n") if block.text else []
+            span = emit_lines(
+                [f"> [!{label}]", *(f"> {line}" for line in lines)], prefix,
+            )
         elif block.type == "table":
             header = props.get("header") or [c.strip() for c in block.text.split("|")]
             aligns = props.get("alignments") or [None] * len(header)
@@ -245,6 +285,10 @@ def serialize_tree(
                 list_ordinal = 1        # a new list starts its own count
             write(_separator(block, kids, i, child_prefix))
             emit(kid, child_prefix, list_ordinal)
+
+        if block.type == "toggle":
+            write("\n" + prefix.rstrip() + "\n")
+            write(prefix + "</details>")
 
     roots = children[None]
     list_ordinal = 0

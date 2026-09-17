@@ -310,3 +310,78 @@ def test_a_stale_tree_missing_its_html_block_still_refuses():
                   type="paragraph", text="After", properties=None),
     ]
     assert reproduces_source(stale, content, {}) is False
+
+
+def _page_block(type_, text="", properties=None, parent=None, order=0):
+    return TreeBlock(uuid4(), parent, order, type_, text, properties)
+
+
+def test_todos_emit_as_a_tight_task_list():
+    first = _page_block("todo", "open", {"checked": False})
+    second = _page_block("todo", "done", {"checked": True}, order=1)
+    assert serialize_tree([first, second]).content == "- [ ] open\n- [x] done"
+
+
+def test_a_todo_joins_a_bullet_run_and_resets_an_ordered_count():
+    bullet = _page_block("list", "bullet", {"ordered": False, "marker": "-"})
+    task = _page_block("todo", "task", {"checked": False}, order=1)
+    one = _page_block("list", "one", {"ordered": True, "marker": "1."}, order=2)
+    two = _page_block("list", "two", {"ordered": True, "marker": "1."}, order=3)
+    assert serialize_tree([bullet, task, one, two]).content == (
+        "- bullet\n- [ ] task\n\n1. one\n2. two"
+    )
+
+    zero = _page_block("list", "zero", {"ordered": True, "marker": "1."})
+    mid = _page_block("todo", "mid", {"checked": True}, order=1)
+    after = _page_block("list", "after", {"ordered": True, "marker": "1."}, order=2)
+    assert serialize_tree([zero, mid, after]).content == (
+        "1. zero\n\n- [x] mid\n\n1. after"
+    )
+
+
+def test_todos_nest_tightly_under_list_and_todo_parents():
+    item = _page_block("list", "parent", {"ordered": False, "marker": "-"})
+    child = _page_block("todo", "child", {"checked": False}, parent=item.id)
+    task = _page_block("todo", "tparent", {"checked": True}, order=1)
+    grandchild = _page_block(
+        "list", "lchild", {"ordered": False, "marker": "-"}, parent=task.id,
+    )
+    assert serialize_tree([item, child, task, grandchild]).content == (
+        "- parent\n  - [ ] child\n- [x] tparent\n  - lchild"
+    )
+
+
+def test_a_multi_line_todo_indents_its_continuation():
+    task = _page_block("todo", "line one\nline two", {"checked": False})
+    assert serialize_tree([task]).content == "- [ ] line one\n  line two"
+
+
+def test_a_toggle_wraps_its_children_and_spans_only_its_opening_lines():
+    toggle = _page_block("toggle", "Summary")
+    inside = _page_block("paragraph", "inside", parent=toggle.id)
+    nested = _page_block("todo", "nested", {"checked": False}, parent=toggle.id, order=1)
+    after = _page_block("paragraph", "after", order=1)
+
+    result = serialize_tree([toggle, inside, nested, after])
+
+    assert result.content == (
+        "<details>\n<summary>Summary</summary>\n\ninside\n\n- [ ] nested\n\n"
+        "</details>\n\nafter"
+    )
+    start, end = next(p.char_span for p in result.placed if p.block_id == toggle.id)
+    assert result.content[start:end] == "<details>\n<summary>Summary</summary>"
+
+
+def test_an_empty_toggle_still_closes():
+    assert serialize_tree([_page_block("toggle", "Empty")]).content == (
+        "<details>\n<summary>Empty</summary>\n\n</details>"
+    )
+
+
+@pytest.mark.parametrize(
+    "variant, label",
+    [("info", "NOTE"), ("warning", "WARNING"), ("error", "CAUTION"), ("success", "TIP")],
+)
+def test_a_callout_emits_a_github_alert(variant, label):
+    callout = _page_block("callout", "line1\nline2", {"variant": variant})
+    assert serialize_tree([callout]).content == f"> [!{label}]\n> line1\n> line2"
