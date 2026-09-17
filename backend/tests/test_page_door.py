@@ -1,4 +1,4 @@
-"""The page door's create, get and list halves (spec 2026-09-08, §7)."""
+"""The page door: create, read, move, rename and trash (spec 2026-09-08, §7)."""
 from __future__ import annotations
 
 import asyncio
@@ -400,9 +400,10 @@ async def test_a_move_within_one_parent_reorders_one_set(session, llm):
 
 
 @pytest.mark.asyncio
-async def test_a_trashed_sibling_keeps_its_slot_in_the_renumber(session, llm):
-    """A restore puts a trashed page back at its own index, so dropping it from
-    the renumber would let a live sibling take that index first."""
+async def test_a_trashed_sibling_stays_in_the_renumber(session, llm):
+    """A trashed page is renumbered with its live siblings rather than skipped,
+    so no live sibling can be handed the index it will reclaim on restore. Its
+    index may move -- here 1 to 2 -- but never collides."""
     a = await create_page(session, llm, project="p", title="a")
     trashed = await create_page(session, llm, project="p", title="t")
     c = await create_page(session, llm, project="p", title="c")
@@ -638,6 +639,35 @@ async def test_a_delete_refuses_when_a_journal_row_does_not_land(session, llm, m
         await delete_page(session, str(root.id))
 
     assert len(calls) == 3
+    stamps = await _stamps(session, [root.id, child.id, grandchild.id])
+    assert set(stamps.values()) == {None}
+
+
+@pytest.mark.asyncio
+async def test_a_refused_delete_rolls_back_the_rows_already_journalled(
+    session, llm, monkeypatch,
+):
+    """The first two rows land for real; the third refuses. Rows that landed
+    must go with the savepoint, or the journal records a trash that never
+    happened."""
+    from app.services import events
+
+    root, child, grandchild, _ = await _tree(session, llm)
+    real = events.record_event
+    calls = []
+
+    async def _journal(session_, **kwargs):
+        calls.append(kwargs["object_id"])
+        if len(calls) < 3:
+            return await real(session_, **kwargs)
+        return False
+
+    monkeypatch.setattr("app.services.page_door.record_event", _journal)
+    with pytest.raises(PageJournalWriteFailed):
+        await delete_page(session, str(root.id))
+
+    assert len(calls) == 3
+    assert await _journalled(session, "page_deleted") == []
     stamps = await _stamps(session, [root.id, child.id, grandchild.id])
     assert set(stamps.values()) == {None}
 

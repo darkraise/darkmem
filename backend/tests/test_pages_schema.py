@@ -70,3 +70,18 @@ async def test_the_document_block_indexes_survive(session):
         "ix_blocks_search_vector",
     ):
         assert name in rows, f"{name} is missing"
+
+
+async def test_the_two_owner_order_indexes_are_partial(session):
+    """Each owner's order index covers only its own rows; a full index would
+    carry every other owner's NULL keys through each document write."""
+    defs = dict((await session.execute(text(
+        "SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'blocks' "
+        "AND indexname IN ('ix_blocks_document_order', 'ix_blocks_page_order')"
+    ))).all())
+    assert defs["ix_blocks_document_order"].endswith(
+        "(document_id, order_index) WHERE (document_id IS NOT NULL)"
+    )
+    assert defs["ix_blocks_page_order"].endswith(
+        "(page_id, order_index) WHERE (page_id IS NOT NULL)"
+    )

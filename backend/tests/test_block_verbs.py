@@ -381,10 +381,9 @@ def test_the_row_lock_precedes_the_hash_comparison():
         textwrap.dedent(inspect.getsource(block_verbs._mutate))
     ).body[0]
 
-    # The `session.execute` call that takes the lock, not a mention of the
-    # statement: the owner descriptor carries it as `owner.lock`, so a bare
-    # attribute match would also count the descriptor's own construction or a
-    # docstring reference, neither of which acquires anything.
+    # The `session.execute` call that takes the lock, not a read of
+    # `owner.lock`: an alias such as `stmt = owner.lock` is an attribute read
+    # that acquires nothing, and a bare attribute match would count it.
     locks = [
         node.lineno
         for node in ast.walk(body)
@@ -653,4 +652,11 @@ async def test_a_page_block_edit_embeds_into_the_page_family(session):
 def test_the_document_write_statement_renders_unchanged():
     from app.services.block_verbs import _WRITE_DOC
 
-    assert "'ingest_direction', 'blocks'" in str(_WRITE_DOC)
+    assert str(_WRITE_DOC) == """
+    UPDATE documents
+    SET content = CAST(:content AS text),
+        content_hash = CAST(:hash AS text),
+        properties = COALESCE(properties, '{}'::jsonb)
+                     || jsonb_build_object('ingest_direction', 'blocks')
+    WHERE id = CAST(:id AS uuid)
+    """

@@ -354,8 +354,8 @@ PAGE_ID = "00000000-0000-0000-0000-0000000000ff"
 
 
 async def _page_block(session, *, block_id: str = PAGE_BLOCK_ID) -> str:
-    """One page owning one block, written in raw SQL: nothing in the tree
-    files a page block yet, so there is no door to go through."""
+    """One page owning one block, written in raw SQL so the id sorts ahead of
+    every uuid4 a door would mint."""
     await session.execute(
         text(
             "INSERT INTO pages (id, project, order_index, content_hash) "
