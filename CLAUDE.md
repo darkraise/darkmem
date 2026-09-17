@@ -244,7 +244,8 @@ migration discipline begins; nothing before it is grandfathered.
 `/mcp`), `services` (pipeline.py, extraction_clean.py,
 code_pipeline.py, job_registry.py, ...), `repositories`
 (graph/relational/vector), `models`, `schemas`; entry point
-`app/main.py`. `backend/migrations/versions` is Alembic;
+`app/main.py`. The page tree is `services/page_door.py` behind
+`api/routes/pages.py` (see Documents below). `backend/migrations/versions` is Alembic;
 `backend/scripts` holds the eval harnesses: `extraction_bench/` (the F1
 bench and its gold files) and `benchlib/` (corpus loader, offline ingest
 driver, run ledger, retrieval gold + scorer, latency/token twin,
@@ -941,7 +942,8 @@ family members** (T2.32, T2.49, T2.97, T2.101, T2.96, T2.48,
 T-doc-door.6): contract 6 fixes that family as
 the consolidation passes, while doc 07 §4 and doc 10 §6 own their
 artefact refreshes separately (`block_embedding_refresh` is the document
-door's own artefact refresh, doc 16 §3). Invariant 15 is unaffected either
+door's own artefact refresh, doc 16 §3, and sweeps page blocks too, on its own
+`page_batch` budget). Invariant 15 is unaffected either
 way — retrieval reads the cached snapshot and Phase 4 reads the entity
 partition, never the job.
 
@@ -1089,25 +1091,28 @@ that contract is right for most callers and wrong for a few. A capture must
 survive a journal failure; a *verification transition* must not, since doc 17
 §5.1's metrics are SQL over this table alone, so a status change whose row never
 landed is not a lost log line but a row that silently leaves the measurement's
-**denominator** — and under-power announces itself where that does not. **Five**
+**denominator** — and under-power announces itself where that does not. **Six**
 callers **read `record_event`'s own boolean return and raise on a `False`**,
 making the write and its row atomic — that is the criterion this count keys
 on, and it is narrower than "refuses to let an unjournalled write stand".
 Callers holding the latter posture by another mechanism are deliberately
-outside the five and must not be added to it: `contradiction_scan._journal`
+outside the six and must not be added to it: `contradiction_scan._journal`
 reads its row back with its own SQL and lets the runner decline the commit,
 and `dream_undo` counts its `undone` rows back and raises when short (that
 one is described below; the scan's is not, and lives only in its own
-docstring). The five do **not** all
+docstring). The six do **not** all
 raise the same exception either (corrected 2026-09-08 — this said "**Four**
 … raise `JournalWriteFailed`", which both undercounted and named a type the
 fifth caller cannot use; it had itself been corrected 2026-08-09 from "the two
-callers", so this sentence has now gone stale twice). Four raise the vault's
+callers", and the page tree moved it from five to six the same month, so this
+sentence has now gone stale three times). Four raise the vault's
 `JournalWriteFailed`: `set_verification_status` and `ratify` for the machine's
 and the human's rungs, and `record_human_verdict` and
 `dismiss_contradiction_suspicion` for the adjudication stream. The fifth is
 `delete_documents` (`app/services/document_door.py`), which raises its own
-`DocumentJournalWriteFailed`. **The strict contract is a shape, not a shared
+`DocumentJournalWriteFailed`. The sixth is `page_door._journal_each`, the one
+helper behind the page trash, restore and purge, which raises its own
+`PageJournalWriteFailed` for the same firewall reason. **The strict contract is a shape, not a shared
 type**, and a new holder of it may well have to mint its own: the vault's
 `JournalWriteFailed` lives on `app/repositories/knowledge_triples.py`, and
 the document door is a block-channel module firewalled from the vault, so
@@ -1693,7 +1698,9 @@ round trip moves them ahead of it. Fixing it changes how documents parse, which
 obliges a re-import rather than a redeploy.
 
 **Four block verbs, both doors** — `block_update`, `block_insert`,
-`block_move`, `block_delete` over `app/services/block_verbs.py`. Every verb
+`block_move`, `block_delete` over `app/services/block_verbs.py`. Both doors
+for a *document*: the same four verbs also edit a page's blocks, through a
+`BlockOwner` descriptor, but only over REST (pages paragraph below). Every verb
 runs one pass: lock, load the tree, apply one mutation in memory, serialise,
 write placement and document row in a SAVEPOINT, journal `blocks_edited`
 (carrying no block text), commit, then embed **only** the touched block.
@@ -1884,9 +1891,43 @@ no bar**; it is a parity decision, not a capability one. `documents.reads`
 (the list/summary/connections browsing routes) stays REST-only for its
 own, unrelated reasons.
 
+**Pages are a second owner of `blocks`, not a kind of document**
+(`docs/superpowers/specs/2026-09-08-pages-notion-model-design.md`). A page is
+the operator's own note in a per-project tree — `pages` rows with a composite
+`(parent_id, project)` FK, so a parent must exist first and in the same project
+— where a document is a file some agent filed at a path and can file again.
+`blocks.document_id` dropped `NOT NULL`, `blocks.page_id` joined it, and
+`blocks_exactly_one_owner` (`num_nonnulls(document_id, page_id) = 1`) still
+refuses an ownerless block exactly as the dropped constraint did. **No document
+statement changed**: every one filters `document_id = :id` or joins
+`documents`, so a page block's NULL `document_id` excludes it by NULL semantics
+rather than by a written filter — which is why
+`tests/test_page_document_isolation.py` asserts the exclusion from document
+search, connections, the outline, the document block routes and the embedding
+sweep instead of trusting the argument. Page vectors live in their **own
+`page_embeddings__<slug>` family**, not in `block_embeddings__<slug>`: every
+document ANN read filters the owner *after* the HNSW scan, so a shared partition
+would let page rows crowd document hits out of the candidate stream. **REST-only**,
+because pages are the operator's authoring surface rather than an agent's
+context path: eleven routes under `/api/v1/pages` (`api/routes/pages.py`), no
+MCP tool and no scope, recorded as the `pages.reads` / `pages.write`
+single-door rows on `docs/two-door-parity.md`. A page is **block-first by
+construction** — create parses `content` and stores the serialiser's output, so
+no conversion is ever owed, and a create whose content carries source the tree
+cannot hold (a frontmatter fence, a link-reference definition) is refused 422
+rather than filed with it dropped. Delete is a **soft delete** of the whole
+subtree (`deleted_at`), restore clears it, and only emptying the trash runs the
+real `DELETE` whose cascade takes blocks and vectors; all three journal one row
+per page before they write and refuse when one does not land (the strict-caller
+paragraph of the Events journal section), under `object_type='page'` and six
+`page_*` event types. The accepted cost is the shared heap: a heavily edited
+page rewrites its rows in the same table, indexes and autovacuum-less host as
+document blocks, and each `page_embeddings__<slug>` child adds a cascade trigger
+to every `DELETE FROM blocks`.
+
 **The block channel is firewalled from memory composition, and the
 firewall is now absolute.** A block row is retrievable only through the
-verbs above; it is never fused into `HybridSearchService` or
+verbs above and, for a page's blocks, the page routes; it is never fused into `HybridSearchService` or
 `LayerCompositionService`'s ranking, and it is never lifted into the L1
 graph — the on-demand proposition lift (doc 16 §5) and the
 block-to-fact bridge (`block_fact_sources`) that would have carried a

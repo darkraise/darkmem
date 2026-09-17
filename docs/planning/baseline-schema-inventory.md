@@ -166,6 +166,7 @@ they are in §8, with their own vocabulary.
 | `memory_community_members` | 04 §8.4 | — | `target-new` | Join table, PK `(community_id, memory_id)`, plus `project TEXT NOT NULL` and two composite endpoint FKs (F-02, T2.18). |
 | `documents` | 04 §8.5 | T0.12c | `target-new, inert` | Horizon; lands empty and inert. Landed with the DDL, not T0.13 (F-26). |
 | `blocks` | 04 §8.5 | T0.12c | `target-new, inert` | Horizon; lands empty and inert. Landed with the DDL, not T0.13 (F-26). |
+| `pages` | spec 2026-09-08 §2 | — | `target-new` | The operator's page tree, a second owner of `blocks` beside `documents` (pages spec, 2026-09-08). Minted after the original baseline design — doc 04 names no such table. `blocks.document_id` dropped `NOT NULL` and `blocks.page_id` joined it, with `blocks_exactly_one_owner` requiring exactly one of the two; no document statement changed. |
 | `memory_buffer` | 04 §8.6 | — | `target-new` | Tier-B durable buffer, `FOR UPDATE SKIP LOCKED` (F-02). |
 | `project_repositories` | 04 §8.7 | — | `target-new` | M2M over one shared `Repository` (F-02). |
 | `knowledge_articles` | 04 §8.8 | T0.12b | `target-new` | T0.12b's "articles and citations". |
@@ -346,10 +347,12 @@ redundant under the unique, and doc 04 §7 specifies only `jti UNIQUE` (F-12).
 | claim scan | `memory_buffer` | partial `(created_at) WHERE status='pending'` — the `SKIP LOCKED` claim only ever reads pending rows | `target-new` | 04 §8.6, §10 | — (F-02) |
 | topic membership | `memory_community_members` | btree `(memory_id)` | `target-new` | 04 §8.4 | — (F-02) |
 | document identity | `documents` | partial **UNIQUE** `(project, uri) WHERE uri IS NOT NULL` | `target-new, inert` | 04 §8.5, §10 | T0.13 |
-| block order | `blocks` | `(document_id, order_index)` | `target-new, inert` | 04 §8.5, §10 | T0.13 |
+| block order | `blocks` | **partial** `(document_id, order_index) WHERE document_id IS NOT NULL` — partial since pages became a second owner, so page rows carry no NULL keys through it | `target-new, inert` | 04 §8.5, §10 | T0.13 |
+| page block order | `blocks` | **partial** `(page_id, order_index) WHERE page_id IS NOT NULL` (`ix_blocks_page_order`) | `target-new` | pages spec §3 | — |
+| page tree order | `pages` | `(project, parent_id, order_index)` (`ix_pages_project_parent_order`) | `target-new` | pages spec §2 | — |
 | block tree | `blocks` | `(parent_id)` | `target-new, inert` | 04 §8.5, §10 | T0.13 |
 
-**The HNSW and aux indexes on the eight per-fingerprint parents are deliberately not
+**The HNSW and aux indexes on the nine per-fingerprint parents are deliberately not
 here** — they are created at runtime by the registry, per fingerprint, and are inventoried
 in §6.
 
@@ -506,6 +509,9 @@ behaviour change, not a tidy-up.
 | `project_repositories` PK + FK | PK, FK | `project_repositories` | `PRIMARY KEY (project, repo_id)`; `repo_id → repositories(id)` | `target-new` | 04 §8.7, §10 | — (F-02) |
 | `projects` PK | PK | `projects` | `PRIMARY KEY (name)` — lazy `INSERT … ON CONFLICT (name) DO NOTHING`; **no FK enforcement yet**, every scoped table keeps its bare `project text` | `target-new` | 04 §7, §10 | T0.12b |
 | `documents` / `blocks` FKs | FK | `documents`, `blocks` | `blocks.document_id → documents ON DELETE CASCADE`; `blocks.parent_id → blocks ON DELETE CASCADE` (deleting a block takes its subtree) | `target-new, inert` | 04 §8.5 | T0.13 |
+| `blocks.page_id` FK | FK | `blocks` | `blocks.page_id → pages(id) ON DELETE CASCADE` — nullable, as `blocks.document_id` now is | `target-new` | pages spec §3 | — |
+| `blocks_exactly_one_owner` | CHECK | `blocks` | `CHECK (num_nonnulls(document_id, page_id) = 1)` — rejects an ownerless block exactly as the dropped `NOT NULL` did; evaluated on every row a block write places | `target-new` | pages spec §3, §5 | — |
+| `pages` PK + parent FK | PK, UNIQUE, FK | `pages` | `PRIMARY KEY (id)`; `UNIQUE (id, project)`; `(parent_id, project) → pages(id, project) ON DELETE CASCADE` — **composite**, so a cross-project reparent is impossible in the schema; the cascade runs only on purge, since an ordinary delete stamps `deleted_at` | `target-new` | pages spec §2, §9 | — |
 
 **Whether the baseline creates `events`' first monthly child partition is unresolved by
 both docs.** Doc 04 §8.1 fixes monthly `RANGE(created_at)` from day one and doc 19 §9
@@ -585,6 +591,7 @@ fingerprints could collide. The `Aux indexes` column below lists what each paren
 | `block_embeddings` | `block_embeddings__<slug>` | `block_id uuid → blocks(id) CASCADE`, `fingerprint`, `embedding vector(N)`, `payload jsonb DEFAULT '{}'`, `created_at`; **PK `(block_id, fingerprint)`** | mirrors `memory_embeddings` | ~~`target-new, inert`~~ **written 2026-08-16** | 04 §5.3; 19 §3 | **T0.12c** (inert labelling **T0.13**) | **TH1.05** (§7), landed `42069371` |
 | `relation_embeddings` | `relation_embeddings__<slug>` | `relation_id uuid → entity_relations(id) CASCADE`, `fingerprint`, `embedding vector(N)`, `created_at`; **PK `(relation_id, fingerprint)`** | HNSW only | `target-new, inert` | 04 §5.3 | **T0.12c** (inert labelling **T0.13**) | **T2.49** (§7) |
 | `article_embeddings` | `article_embeddings__<slug>` | `article_id uuid → knowledge_articles(id) CASCADE`, `fingerprint`, `embedding vector(N)`, `payload jsonb DEFAULT '{}'`, `created_at`; **PK `(article_id, fingerprint)`** | mirrors `memory_embeddings` | `target-new, inert` | 04 §5.3 | **T0.12c** (inert labelling **T0.13**) | **T3.23** (§7) |
+| `page_embeddings` | `page_embeddings__<slug>` | `block_id uuid → blocks(id) CASCADE`, `fingerprint`, `embedding vector(N)`, `payload jsonb DEFAULT '{}'`, `created_at`; **PK `(block_id, fingerprint)`** — the `block_embeddings` shape, a separate family so page vectors never enter a document ANN scan's candidate stream | `(block_id)` | `target-new` — written from its first commit | pages spec §4 | pages spec §4 (2026-09-08) | `page_door.create_page` and the page block verbs |
 | `triple_embeddings` | `triple_embeddings__<slug>` | `fact_id uuid → knowledge_triples(id)` — **no cascade** — `fingerprint`, `embedding vector(N)`, `created_at`; **PK `(fact_id, fingerprint)`** | HNSW only | `target-new` — **writer landed 2026-08-05, no production path writes it yet**; was `inert, template only` | 04 §5.3, §13; 19 §3 | **T0.12c** (inert labelling **T0.13**) | **T2.33** — landed, condition met (§7); its caller is **T2.11** |
 
 **Three rules in that table are load-bearing and silent when broken.**
