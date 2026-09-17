@@ -514,3 +514,30 @@ async def test_an_empty_batch_is_422(client, auth_headers, create):
         f"{V1}/pages/{page}/blocks/batch", json={"blocks": []}, headers=auth_headers,
     )
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_the_trash_route_resolves_before_the_page_id_route(
+    client, auth_headers, create,
+):
+    """Registered below `/{page_id}`, `trash` would fail UUID parsing as 422."""
+    root = await create(title="gone")
+    await create(parent_id=root)
+    await client.delete(f"{V1}/pages/{root}", headers=auth_headers)
+
+    response = await client.get(
+        f"{V1}/pages/trash", params={"project": "p"}, headers=auth_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert [row["id"] for row in body] == [root]
+    assert set(body[0]) == {"id", "title", "parent_id", "deleted_at"}
+
+
+@pytest.mark.asyncio
+async def test_the_page_read_serves_block_source(client, auth_headers, create):
+    """Regression pin: passes on arrival once Task 10 lands `PageBlock.source`."""
+    page = await create(content="## Sub\n\n- item\n")
+    blocks = await _blocks_of(client, auth_headers, page)
+    assert [b["source"] for b in blocks] == ["## Sub", "- item"]

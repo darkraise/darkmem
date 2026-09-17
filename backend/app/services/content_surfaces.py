@@ -713,6 +713,7 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # entries above, on the pages table and its own `blocks` rows instead.
     "GET /api/v1/pages",
     "GET /api/v1/pages/{page_id}",
+    "GET /api/v1/pages/trash",
     "POST /api/v1/pages",
     "PATCH /api/v1/pages/{page_id}",
     "DELETE /api/v1/pages/{page_id}",

@@ -3,6 +3,7 @@
 Provides:
   - POST   /api/v1/pages
   - GET    /api/v1/pages
+  - GET    /api/v1/pages/trash
   - POST   /api/v1/pages/trash/empty
   - GET    /api/v1/pages/{page_id}
   - PATCH  /api/v1/pages/{page_id}
@@ -43,6 +44,7 @@ from app.schemas.page import (
     PageResponse,
     PageRestoreResponse,
     PageTrashEmptyResponse,
+    PageTrashItem,
 )
 from app.services.block_verbs import (
     PAGE_OWNER,
@@ -69,6 +71,7 @@ from app.services.page_door import (
     delete_page,
     get_page,
     list_pages,
+    list_trash,
     move_page,
     purge_trash,
     rename_page,
@@ -133,6 +136,17 @@ async def list_pages_route(
     different parents interleave; the client nests by `parent_id`.
     """
     return [PageListItem(**row) for row in await list_pages(session, project)]
+
+
+@router.get("/trash", response_model=list[PageTrashItem])
+async def list_trash_route(
+    project: str = Query(..., min_length=1),
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+) -> list[PageTrashItem]:
+    """The roots of the project's trashed subtrees, newest first. Declared
+    above `/{page_id}` so `trash` is never parsed as a page id."""
+    return [PageTrashItem(**row) for row in await list_trash(session, project)]
 
 
 @router.post("/trash/empty", response_model=PageTrashEmptyResponse)

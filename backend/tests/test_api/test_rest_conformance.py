@@ -202,6 +202,7 @@ EXPECTED_STATUS = {
     ("POST", "/api/v1/pages"): 201,
     ("GET", "/api/v1/pages"): 200,
     ("GET", "/api/v1/pages/{page_id}"): 200,
+    ("GET", "/api/v1/pages/trash"): 200,
     ("PATCH", "/api/v1/pages/{page_id}"): 200,
     ("DELETE", "/api/v1/pages/{page_id}"): 204,
     ("POST", "/api/v1/pages/{page_id}/restore"): 200,

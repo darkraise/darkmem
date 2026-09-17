@@ -1517,6 +1517,7 @@ PARITY_TABLE: tuple[Surface, ...] = (
         status=REST_ONLY,
         rest=(
             ("GET", f"{V1}/pages"),
+            ("GET", f"{V1}/pages/trash"),
             ("GET", f"{V1}/pages/{{page_id}}"),
         ),
         mcp=(),
