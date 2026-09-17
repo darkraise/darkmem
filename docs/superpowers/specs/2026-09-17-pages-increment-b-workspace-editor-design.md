@@ -125,11 +125,18 @@ move. The shared models in `routes/documents.py` are not touched, so the
 document insert route cannot silently accept `block_id`.
 
 A supplied `block_id` becomes the new row's id. Inside the verb, under the page
-row lock, `SELECT 1 FROM blocks WHERE id = CAST(:id AS uuid)` precedes the
-insert; a hit raises `PageBlockIdTaken` → **409** with detail
-`block id <uuid> already exists`. A primary-key violation from a race past that
-check surfaces from the savepoint as the same refusal. The client never needs to
-tell this 409 from a hash conflict (§5.4 re-reads on every 409).
+row lock, `SELECT id FROM blocks WHERE id = ANY(CAST(:ids AS uuid[]))` precedes
+the insert (one id for a single insert, every id for a batch); a hit raises
+`PageBlockIdTaken` → **409** with detail `block id <uuid> already exists`. A
+race past that check surfaces from the savepoint as an `IntegrityError`, which
+maps to the same refusal **only when the violated constraint is `blocks_pkey`**;
+any other constraint failure re-raises.
+
+The client does not need to tell this 409 from a hash conflict to recover a
+landed write (§5.4 re-reads on every 409). An id collision on a genuinely fresh
+insert is unreachable with UUID v4 ids; if it ever happens, the queue shows the
+server's detail in the banner rather than the "changed elsewhere" text, because
+the landed check finds the id present with different content.
 
 ### 3.5 Batch insert
 
@@ -138,9 +145,22 @@ tell this 409 from a hash conflict (§5.4 re-reads on every 409).
 at most `MAX_BLOCKS` items. One `_mutate` pass: the whole list is applied in
 order to the in-memory tree (a later item may name an earlier item's `block_id`
 as parent or `after_block_id`), then one serialise, one placement write, one
-journal row, one `content_hash`. Every item carries a client `block_id`. The
-first invalid item refuses the whole batch (422 or 409, nothing written). The
-response is the single-insert response with `block_ids` in place of `block_id`.
+journal row, one `content_hash`. Every item carries a client `block_id`; two
+items with the same `block_id` are refused (422) before the pass. The first
+invalid item refuses the whole batch (422 or 409, nothing written). The response
+is the single-insert response with `block_ids` in place of `block_id` and
+`outcome` = `inserted`.
+
+`_mutate` is single-valued today: `apply` yields one inserted block, the insert
+statement runs once, the journal payload names one `block_id`, and the result
+carries one `block_id`. It becomes list-valued internally: `apply` returns a
+list of inserted blocks (the four existing verbs return a one-element list or an
+empty one), the insert statement runs per element, and the result carries the
+list. **The document path stays identical on the wire and in the journal**: the
+document verbs' `BlockWriteResult.block_id` is the single element, and the
+`blocks_edited` payload keeps `block_id` for a one-element list; only a
+multi-element page batch writes `block_ids`. A test pins the document payload
+shape.
 
 ### 3.6 Page block edits drop vectors instead of embedding
 
@@ -155,11 +175,17 @@ inline embedding off alone would leave edited blocks stale forever.
 - **Insert / batch insert:** nothing embedded inline; the new block has no
   vector, so the sweep finds it.
 - **Update whose `text` or `type` changed:** inside the write savepoint, delete
-  that block's rows from `page_embeddings__<slug>` for **every non-retired
-  fingerprint** in `embedders`, each named through `child_table`. The sweep then
-  re-finds it. A properties-only update (ticking a to-do) keeps its vector.
+  that block's rows from `page_embeddings__<slug>` for every fingerprint with
+  `retired_at IS NULL` in `embedders`, each named through `child_table` and
+  bound with `CAST(:id AS uuid)`. The child tables exist because
+  `embedder_registry.reconcile` creates every template's child for each such
+  fingerprint at boot; each delete is still guarded by `to_regclass(...) IS NOT
+  NULL`, so a hand-dropped child cannot abort the savepoint. The sweep then
+  re-finds the block. A properties-only update (ticking a to-do) keeps its
+  vector.
 - **`create_page` with content** also stops embedding inline, for the same
-  consistency.
+  consistency. `PageCreateResponse.blocks_embedded` is removed rather than left
+  as a constant 0.
 
 Worst-case page vector staleness is one sweep interval (hourly, `35 * * * *`).
 Nothing reads page vectors yet. Trashed pages' new blocks still spend sweep
@@ -171,7 +197,11 @@ parked it.
 `DELETE /pages/{id}/blocks/{block_id}` stays **204** (REST conventions,
 `EXPECTED_STATUS`) and adds an `X-Content-Hash` response header carrying the
 page's new `content_hash`, so the client's hash chain needs no re-read. The
-header is page-only; the document delete route is unchanged.
+route takes an injected `response: Response` to set it. The header is
+page-only; the document delete route is unchanged. The SPA is same-origin, so no
+CORS exposure is needed; `apiFetch` returns nothing on a 204 and exposes no
+headers, so `use-pages-api` uses an `apiFetchWithHeaders` variant for this
+call.
 
 ### 3.8 The page read serves `source`
 
@@ -369,14 +399,22 @@ A pure module, `lib/page-sync-queue.ts`, with no editor dependency; an adapter,
   in `children` (a child's own change is reported separately).
 - **Placement is resolved at send time.** An operation carries only its block
   id and kind. When it is sent, `parent_id` and `after_block_id` are read from
-  the editor's **current** document (its parent and previous-sibling lookups),
-  and `text`/`type`/`properties` from the block's current state. So cancelled
-  or reordered siblings can never leave a reference to a block the server never
-  had.
+  the editor's **current** document, and `text`/`type`/`properties` from the
+  block's current state. `after_block_id` is the **nearest previous sibling
+  that exists on the server**, skipping siblings whose inserts are still unsent
+  (null if none); once a skipped sibling is inserted after the same anchor, the
+  order converges. A parent whose insert is unsent never occurs, because inserts
+  go out first (next bullet). So cancelled or reordered blocks can never leave a
+  reference to a block the server never had. The placement actually sent is
+  captured on the operation for the landed check.
 - **Coalescing before send.** Updates to one block collapse into one; an unsent
   insert absorbs later updates to that block; an unsent insert whose block is
-  deleted before send cancels both; consecutive unsent inserts become one
-  **batch insert** (§3.5), ordered so parents precede children.
+  deleted before send cancels both. At each flush, **all** pending inserts form
+  one **batch insert** (§3.5), in the editor document's pre-order (parents
+  before children, siblings in document order), sent ahead of the pending
+  updates, moves and deletes regardless of how they interleaved: an update,
+  move or delete of an already-saved block commutes with inserting new blocks,
+  and send-time placement reads the current document either way.
 - **One write in flight.** Each write sends the last known `content_hash` as
   `expected_hash` and takes the new one from the response body, or from
   `X-Content-Hash` on a delete (§3.7). The first hash comes from
@@ -388,10 +426,16 @@ A pure module, `lib/page-sync-queue.ts`, with no editor dependency; an adapter,
   warning.
 - **Save state** in the pane header: `Saving…`, `Saved`, `Unsaved — retrying`.
 - **Deciding whether a write landed** — used after a network error, a 5xx, or
-  any 409. Re-read `GET /pages/{id}` and check the operation itself: an insert
-  landed iff its `block_id` is present; a delete iff its block is absent; an
-  update iff the block's `text`, `type` and `properties` equal what was sent; a
-  move iff its `parent_id` and previous sibling match. Landed → take the
+  any 409. Re-read `GET /pages/{id}` and check the operation itself against
+  what was **sent** (captured at send time), never against the editor's current
+  document: an insert landed iff its `block_id` is present (for a batch, every
+  id); a delete iff its block is absent; an update iff the stored `text` and
+  `type` equal what was sent and the stored `properties` equal what was sent
+  **after applying the server's own rules** — merge over the prior properties,
+  drop keys the type does not define (§3.2), and treat `null` and `{}` as equal.
+  Those rules live once, in `lib/block-properties.ts`, pinned by a test against
+  the server's behaviour. A move landed iff the stored `parent_id` and previous
+  sibling equal the sent `parent_id` and `after_block_id`. Landed → take the
   re-read's hash and advance. Not landed after a network error or 5xx → resend
   with backoff (1 s, 2 s, 4 s, capped at 30 s). Not landed after a 409 → the
   page changed elsewhere: stop the queue and show the conflict banner.
@@ -434,9 +478,18 @@ empty pane (§4.2).
   references, all-or-nothing refusal; the delete header; `source` on the read;
   trash roots only.
 - Vectors: an update changing `text` removes the block's page vectors in every
-  registered fingerprint and the sweep restores them; a properties-only update
-  keeps them; a document update still embeds inline. Each with a discrimination
-  proof.
+  fingerprint with `retired_at IS NULL` and the sweep restores them; a
+  properties-only update keeps them; a document update still embeds inline. Each
+  with a discrimination proof.
+- `_mutate` becoming list-valued: the document verbs' result and
+  `blocks_edited` payload shape are unchanged (pinned); a batch journals
+  `block_ids`; duplicate ids within a batch are refused; a non-`blocks_pkey`
+  integrity failure is not mapped to 409.
+- **Existing tests that change with §3.6**, each now running
+  `refresh_block_embeddings(..., page_batch=N)` before asserting page vectors:
+  `test_page_door.py:187-204` and `:714-718`; `test_page_document_isolation.py`'s
+  shared fixture at `:149` (which asserts `blocks_embedded`, now removed) and the
+  partition assertion at `:274`.
 - CLAUDE.md's guards leg plus `tests/test_read_only_role.py`.
 
 ### B2 and B3 (frontend vitest)
@@ -452,9 +505,13 @@ empty pane (§4.2).
 - `editor-changes.ts`: children-only updates ignored; placement read at send
   time.
 - `page-sync-queue.ts`: coalescing (including insert-then-delete of a middle
-  sibling), batch formation, single in-flight write, delete hash from the
-  header, the landed check per operation kind for network error and 409, 404
-  and 422 stops, flush on hide with `keepalive`.
+  sibling), batch formation in pre-order with an update interleaved between two
+  inserts, `after_block_id` skipping unsent siblings, single in-flight write,
+  delete hash from the header, the landed check per operation kind (including a
+  type change that drops properties, and `null` vs `{}`) for network error and
+  409, 404 and 422 stops, flush on hide with `keepalive`.
+- `block-properties.ts` against fixtures that mirror `update_block`'s merge and
+  §3.2's drop rule.
 - `npm run typecheck` and `npm run build` (the editor chunk outside the main
   bundle).
 
