@@ -9,6 +9,7 @@ Provides:
   - DELETE /api/v1/pages/{page_id}
   - POST   /api/v1/pages/{page_id}/restore
   - POST   /api/v1/pages/{page_id}/blocks
+  - POST   /api/v1/pages/{page_id}/blocks/batch
   - PATCH  /api/v1/pages/{page_id}/blocks/{block_id}
   - POST   /api/v1/pages/{page_id}/blocks/{block_id}/move
   - DELETE /api/v1/pages/{page_id}/blocks/{block_id}
@@ -30,6 +31,7 @@ from app.api.auth import require_auth
 from app.api.deps import get_llm
 from app.database import get_session
 from app.schemas.page import (
+    PageBlockBatchInsertRequest,
     PageBlockInsertRequest,
     PageBlockMoveRequest,
     PageBlockUpdateRequest,
@@ -46,10 +48,12 @@ from app.services.block_verbs import (
     PAGE_OWNER,
     BlockCycleError,
     BlockTargetUnresolved,
+    NewBlock,
     PageBlockIdTaken,
     PageBlockInvalid,
     delete_block,
     insert_block,
+    insert_blocks,
     move_block,
     update_block,
 )
@@ -291,6 +295,52 @@ async def insert_page_block_route(
     except _BLOCK_REFUSALS as exc:
         raise _block_write_error(exc) from exc
     return _response(result)
+
+
+class PageBlockBatchWriteResponse(BaseModel):
+    page_id: str
+    block_ids: list[str]
+    outcome: str
+    content_hash: str
+    blocks_total: int
+    blocks_embedded: int
+
+
+@router.post(
+    "/{page_id}/blocks/batch",
+    response_model=PageBlockBatchWriteResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def insert_page_blocks_route(
+    page_id: UUID,
+    body: PageBlockBatchInsertRequest,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+    llm=Depends(get_llm),
+) -> PageBlockBatchWriteResponse:
+    """Every item in one pass, applied in order: an item may name an earlier
+    item's `block_id` as its parent or `after_block_id`, and the first refusal
+    writes nothing. A paste of N blocks is one page rewrite, not N."""
+    try:
+        result = await insert_blocks(
+            session, llm, document_id=str(page_id), owner=PAGE_OWNER,
+            expected_hash=body.expected_hash,
+            blocks=[
+                NewBlock(
+                    block_id=str(item.block_id), type=item.type, text=item.text,
+                    properties=item.properties, parent_id=_str(item.parent_id),
+                    after_block_id=_str(item.after_block_id),
+                )
+                for item in body.blocks
+            ],
+        )
+    except _BLOCK_REFUSALS as exc:
+        raise _block_write_error(exc) from exc
+    return PageBlockBatchWriteResponse(
+        page_id=result.owner_id, block_ids=list(result.block_ids),
+        outcome=result.outcome, content_hash=result.content_hash,
+        blocks_total=result.blocks_total, blocks_embedded=result.blocks_embedded,
+    )
 
 
 @router.patch("/{page_id}/blocks/{block_id}", response_model=PageBlockWriteResponse)

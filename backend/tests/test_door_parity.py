@@ -1543,6 +1543,7 @@ PARITY_TABLE: tuple[Surface, ...] = (
             ("POST", f"{V1}/pages/{{page_id}}/restore"),
             ("POST", f"{V1}/pages/trash/empty"),
             ("POST", f"{V1}/pages/{{page_id}}/blocks"),
+            ("POST", f"{V1}/pages/{{page_id}}/blocks/batch"),
             ("PATCH", f"{V1}/pages/{{page_id}}/blocks/{{block_id}}"),
             ("POST", f"{V1}/pages/{{page_id}}/blocks/{{block_id}}/move"),
             ("DELETE", f"{V1}/pages/{{page_id}}/blocks/{{block_id}}"),

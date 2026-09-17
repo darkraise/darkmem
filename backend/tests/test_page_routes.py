@@ -428,3 +428,89 @@ async def test_a_page_block_delete_answers_the_new_hash_in_a_header(
     assert response.status_code == 204
     current = (await client.get(f"{V1}/pages/{page}", headers=auth_headers)).json()
     assert response.headers["x-content-hash"] == current["content_hash"]
+
+
+@pytest.mark.asyncio
+async def test_a_batch_inserts_in_order_with_intra_batch_references(
+    client, auth_headers, create,
+):
+    page = await create(content="para\n")
+    prose = (await _blocks_of(client, auth_headers, page))[0]["id"]
+    toggle, inside, task = (str(uuid4()) for _ in range(3))
+
+    response = await client.post(
+        f"{V1}/pages/{page}/blocks/batch",
+        json={"blocks": [
+            {"block_id": toggle, "type": "toggle", "text": "T", "after_block_id": prose},
+            {"block_id": inside, "type": "paragraph", "text": "inside", "parent_id": toggle},
+            {"block_id": task, "type": "todo", "text": "task",
+             "properties": {"checked": False}, "after_block_id": toggle},
+        ]},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["block_ids"] == [toggle, inside, task]
+    assert body["outcome"] == "inserted"
+    assert set(body) == {"page_id", "block_ids", "outcome", "content_hash",
+                         "blocks_total", "blocks_embedded"}
+    blocks = await _blocks_of(client, auth_headers, page)
+    assert [b["id"] for b in blocks] == [prose, toggle, inside, task]
+    assert next(b for b in blocks if b["id"] == inside)["parent_id"] == toggle
+
+
+@pytest.mark.asyncio
+async def test_a_batch_with_an_invalid_item_writes_nothing(client, auth_headers, create):
+    page = await create(content="para\n")
+    before = (await client.get(f"{V1}/pages/{page}", headers=auth_headers)).json()
+
+    response = await client.post(
+        f"{V1}/pages/{page}/blocks/batch",
+        json={"blocks": [
+            {"block_id": str(uuid4()), "type": "paragraph", "text": "fine"},
+            {"block_id": str(uuid4()), "type": "todo", "text": "no checked"},
+        ]},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422
+    after = (await client.get(f"{V1}/pages/{page}", headers=auth_headers)).json()
+    assert after["content_hash"] == before["content_hash"]
+    assert len(after["blocks"]) == len(before["blocks"])
+
+
+@pytest.mark.asyncio
+async def test_a_batch_repeating_a_block_id_is_422(client, auth_headers, create):
+    page = await create(content="para\n")
+    repeated = str(uuid4())
+    response = await client.post(
+        f"{V1}/pages/{page}/blocks/batch",
+        json={"blocks": [
+            {"block_id": repeated, "type": "paragraph", "text": "a"},
+            {"block_id": repeated, "type": "paragraph", "text": "b"},
+        ]},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_a_batch_naming_a_taken_block_id_is_409(client, auth_headers, create):
+    page = await create(content="para\n")
+    existing = (await _blocks_of(client, auth_headers, page))[0]["id"]
+    response = await client.post(
+        f"{V1}/pages/{page}/blocks/batch",
+        json={"blocks": [{"block_id": existing, "type": "paragraph", "text": "a"}]},
+        headers=auth_headers,
+    )
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_an_empty_batch_is_422(client, auth_headers, create):
+    page = await create(content="para\n")
+    response = await client.post(
+        f"{V1}/pages/{page}/blocks/batch", json={"blocks": []}, headers=auth_headers,
+    )
+    assert response.status_code == 422

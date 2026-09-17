@@ -719,6 +719,7 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "POST /api/v1/pages/{page_id}/restore",
     "POST /api/v1/pages/trash/empty",
     "POST /api/v1/pages/{page_id}/blocks",
+    "POST /api/v1/pages/{page_id}/blocks/batch",
     "PATCH /api/v1/pages/{page_id}/blocks/{block_id}",
     "POST /api/v1/pages/{page_id}/blocks/{block_id}/move",
     "DELETE /api/v1/pages/{page_id}/blocks/{block_id}",
