@@ -85,6 +85,33 @@ async def test_patch_renames(client, auth_headers, create):
 
 
 @pytest.mark.asyncio
+async def test_a_refused_move_leaves_the_title_unrenamed(
+    client, auth_headers, create, session
+):
+    from sqlalchemy import text
+
+    page = await create(title="old")
+    response = await client.patch(
+        f"{V1}/pages/{page}",
+        json={"title": "new", "parent_id": str(uuid4())},
+        headers=auth_headers,
+    )
+    assert response.status_code == 404
+    got = await client.get(f"{V1}/pages/{page}", headers=auth_headers)
+    assert got.json()["title"] == "old"
+    count = (
+        await session.execute(
+            text(
+                "SELECT count(*) FROM events WHERE event_type = 'page_updated' "
+                "AND object_id = CAST(:id AS uuid)"
+            ),
+            {"id": page},
+        )
+    ).scalar_one()
+    assert count == 0
+
+
+@pytest.mark.asyncio
 async def test_move_into_own_subtree_is_422(client, auth_headers, create):
     root = await create()
     child = await create(parent_id=root)

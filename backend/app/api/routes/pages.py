@@ -135,7 +135,7 @@ async def patch_page_route(
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ) -> PagePatchResponse:
-    """Rename when `title` is present, move when `parent_id` is present.
+    """Move when `parent_id` is present, then rename when `title` is present.
 
     Presence is read from `model_fields_set`: a null `parent_id` is a move to
     the root, not an absent field.
@@ -152,14 +152,14 @@ async def patch_page_route(
             "name at least one of title or parent_id",
         )
     try:
-        if "title" in named:
-            await rename_page(session, str(page_id), title=body.title)
         if "parent_id" in named:
             await move_page(
                 session, str(page_id),
                 parent_id=_str(body.parent_id),
                 after_id=_str(body.after_id),
             )
+        if "title" in named:
+            await rename_page(session, str(page_id), title=body.title)
     except _REFUSALS as exc:
         raise _page_write_error(exc) from exc
     return PagePatchResponse(id=page_id)
