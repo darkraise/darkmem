@@ -659,6 +659,7 @@ async def rename_page(
     `content`, which a title does not change, so a precondition on it would
     refuse nothing a concurrent rename could lose.
     """
+    page_id = str(UUID(page_id))
     project = (
         await session.execute(_RENAME, {"id": page_id, "title": title})
     ).scalar_one_or_none()
@@ -688,7 +689,7 @@ async def _journal_each(
             object_id=UUID(page_id),
             project=project,
             actor=actor,
-            payload=payload,
+            payload=dict(payload),
         )
         if not landed:
             raise PageJournalWriteFailed(

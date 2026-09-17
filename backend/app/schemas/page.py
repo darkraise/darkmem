@@ -3,10 +3,12 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class PageCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     project: str = Field(..., min_length=1)
     title: str | None = None
     parent_id: UUID | None = Field(
@@ -70,6 +72,8 @@ class PageListItem(BaseModel):
 
 
 class PagePatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     title: str | None = Field(None, description="Present renames the page.")
     parent_id: UUID | None = Field(
         None,
