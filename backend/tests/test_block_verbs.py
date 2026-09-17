@@ -619,3 +619,38 @@ async def test_a_page_insert_names_the_page_in_its_parent_refusal(session):
             owner=PAGE_OWNER,
         )
     assert "document" not in str(caught.value)
+
+
+@pytest.mark.asyncio
+async def test_a_page_block_edit_embeds_into_the_page_family(session):
+    """A page vector in `block_embeddings` would surface in document search."""
+    from app.services.block_embeddings import PAGE_PARENT_TABLE, PARENT_TABLE
+    from app.services.block_verbs import PAGE_OWNER
+    from app.services.embedder_registry import child_table
+
+    llm = StubEmbedder()
+    _, block_id = await _page(session, content="page prose\n")
+
+    await update_block(session, llm, block_id=block_id, text="edited",
+                       owner=PAGE_OWNER)
+
+    async def count(parent):
+        exists = (await session.execute(
+            text("SELECT to_regclass(:t)"), {"t": child_table(parent, FINGERPRINT)},
+        )).scalar_one()
+        if exists is None:
+            return 0
+        return (await session.execute(
+            text(f"SELECT count(*) FROM {child_table(parent, FINGERPRINT)} "
+                 "WHERE block_id = CAST(:id AS uuid)"),
+            {"id": block_id},
+        )).scalar_one()
+
+    assert await count(PAGE_PARENT_TABLE) == 1
+    assert await count(PARENT_TABLE) == 0
+
+
+def test_the_document_write_statement_renders_unchanged():
+    from app.services.block_verbs import _WRITE_DOC
+
+    assert "'ingest_direction', 'blocks'" in str(_WRITE_DOC)

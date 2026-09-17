@@ -19,7 +19,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.block_embeddings import embed_blocks
+from app.services.block_embeddings import PAGE_PARENT_TABLE, PARENT_TABLE, embed_blocks
 from app.services.block_serializer import (
     TreeBlock,
     derive_markers,
@@ -98,6 +98,7 @@ class BlockOwner:
     load_tree: Any
     insert_block: Any
     write_owner: Any
+    embed_parent: str
 
 
 _LOCK_DOCUMENT = text(
@@ -153,12 +154,12 @@ _DELETE_BLOCK = text("DELETE FROM blocks WHERE id = CAST(:id AS uuid)")
 # `properties` is merged with `||`, never written wholesale: the direction flag
 # is server-owned and a wholesale write would erase a document's frontmatter.
 _WRITE_DOC = text(
-    """
+    f"""
     UPDATE documents
     SET content = CAST(:content AS text),
         content_hash = CAST(:hash AS text),
-        properties = COALESCE(properties, '{}'::jsonb)
-                     || jsonb_build_object('ingest_direction', 'blocks')
+        properties = COALESCE(properties, '{{}}'::jsonb)
+                     || jsonb_build_object('ingest_direction', '{BLOCK_FIRST}')
     WHERE id = CAST(:id AS uuid)
     """
 )
@@ -173,6 +174,7 @@ DOCUMENT_OWNER = BlockOwner(
     load_tree=_LOAD_TREE,
     insert_block=_INSERT_BLOCK,
     write_owner=_WRITE_DOC,
+    embed_parent=PARENT_TABLE,
 )
 
 _LOCK_PAGE = text(
@@ -213,6 +215,7 @@ PAGE_OWNER = BlockOwner(
     load_tree=_LOAD_PAGE_TREE,
     insert_block=_INSERT_PAGE_BLOCK,
     write_owner=_WRITE_PAGE,
+    embed_parent=PAGE_PARENT_TABLE,
 )
 
 
@@ -360,7 +363,8 @@ async def _mutate(session, llm, *, document_id, apply, touched_embed, verb,
 
     written = 0
     if touched_embed is not None:
-        embed = await embed_blocks(session, llm, block_ids=[touched_embed])
+        embed = await embed_blocks(session, llm, block_ids=[touched_embed],
+                                   parent=owner.embed_parent)
         written = embed.written if embed else 0
         await session.commit()
 
