@@ -21,9 +21,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.block_embeddings import PAGE_PARENT_TABLE, embed_blocks
-from app.services.block_serializer import TreeBlock, serialize_tree
+from app.services.block_serializer import TreeBlock, reproduces_source, serialize_tree
 from app.services.document_ingest import compute_content_hash
-from app.services.document_parsers import parse_markdown
+from app.services.document_parsers import parse_markdown, split_frontmatter
 from app.services.events import record_event
 from app.taxonomy import normalize_block_type
 
@@ -38,6 +38,7 @@ __all__ = [
     "PAGE_UPDATED_EVENT",
     "PageCycleError",
     "PageJournalWriteFailed",
+    "PageNotRepresentable",
     "PageParentTrashed",
     "PageResult",
     "PageTargetUnresolved",
@@ -80,6 +81,14 @@ class PageTargetUnresolved(ValueError):
 
 class PageCycleError(ValueError):
     """The named parent is the moved page or lies inside its subtree."""
+
+
+class PageNotRepresentable(ValueError):
+    """The content carries source the block tree cannot hold.
+
+    A page stores the serialiser's regeneration, so accepting a frontmatter
+    fence or a link-reference definition would drop it with a success.
+    """
 
 
 class PageParentTrashed(ValueError):
@@ -401,6 +410,15 @@ async def create_page(
 
     page_id = uuid4()
     tree = _parse(content) if content else []
+    if content and (
+        split_frontmatter(content)[0] is not None
+        or not reproduces_source(tree, content, {})
+    ):
+        raise PageNotRepresentable(
+            "this content carries source a page cannot represent (a leading "
+            "frontmatter fence or a link-reference definition); a page stores "
+            "its blocks' serialisation, so filing it would drop that source"
+        )
     serialized = serialize_tree(tree)
     stored_content = serialized.content
     content_hash = compute_content_hash(stored_content)

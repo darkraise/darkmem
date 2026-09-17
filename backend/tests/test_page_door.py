@@ -11,6 +11,7 @@ from app.services.document_ingest import compute_content_hash
 from app.services.page_door import (
     PageCycleError,
     PageJournalWriteFailed,
+    PageNotRepresentable,
     PageParentTrashed,
     PageTargetUnresolved,
     create_page,
@@ -107,6 +108,25 @@ async def test_the_stored_content_is_the_serialiser_output(session, llm):
                              content="#   Title\n")
     row = await _page_row(session, page.id)
     assert row["content"] == "# Title"
+
+
+@pytest.mark.parametrize("content", [
+    "See [the spec][ref].\n\n[ref]: https://example.com/spec\n",
+    "---\ntitle: x\n---\n\nbody\n",
+])
+@pytest.mark.asyncio
+async def test_content_the_tree_cannot_hold_is_refused(session, llm, content):
+    """The stored content is the tree's regeneration, so a link-reference
+    definition or a frontmatter fence would vanish behind a success."""
+    with pytest.raises(PageNotRepresentable):
+        await create_page(session, llm, project="p-unrep", title="n",
+                          content=content)
+    count = (
+        await session.execute(
+            text("SELECT count(*) FROM pages WHERE project = 'p-unrep'")
+        )
+    ).scalar_one()
+    assert count == 0
 
 
 @pytest.mark.asyncio

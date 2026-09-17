@@ -68,6 +68,19 @@ async def test_create_under_a_missing_parent_is_404(client, auth_headers, stub_l
 
 
 @pytest.mark.asyncio
+async def test_create_with_unrepresentable_content_is_422(
+    client, auth_headers, stub_llm,
+):
+    response = await client.post(
+        f"{V1}/pages",
+        json={"project": "p", "title": "t",
+              "content": "[ref]: https://example.com/spec\n"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_get_missing_is_404(client, auth_headers):
     response = await client.get(f"{V1}/pages/{uuid4()}", headers=auth_headers)
     assert response.status_code == 404

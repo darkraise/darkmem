@@ -57,6 +57,7 @@ from app.services.document_door import DocumentTooLarge
 from app.services.document_ingest import DocumentHashConflict
 from app.services.page_door import (
     PageCycleError,
+    PageNotRepresentable,
     PageParentTrashed,
     PageTargetUnresolved,
     PageTooLarge,
@@ -76,14 +77,17 @@ router = APIRouter(prefix="/api/v1/pages", tags=["pages"])
 def _page_write_error(exc: Exception) -> HTTPException:
     if isinstance(exc, PageTargetUnresolved):
         return HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
-    if isinstance(exc, (PageCycleError, PageTooLarge)):
+    if isinstance(exc, (PageCycleError, PageNotRepresentable, PageTooLarge)):
         return HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
     if isinstance(exc, PageParentTrashed):
         return HTTPException(status.HTTP_409_CONFLICT, str(exc))
     raise exc
 
 
-_REFUSALS = (PageTargetUnresolved, PageCycleError, PageTooLarge, PageParentTrashed)
+_REFUSALS = (
+    PageTargetUnresolved, PageCycleError, PageNotRepresentable, PageTooLarge,
+    PageParentTrashed,
+)
 
 
 def _str(value: UUID | None) -> str | None:
