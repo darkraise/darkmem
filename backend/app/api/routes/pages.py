@@ -301,8 +301,8 @@ async def insert_page_block_route(
     try:
         result = await insert_block(
             session, llm, document_id=str(page_id), type=body.type,
-            text=body.text, parent_id=body.parent_id,
-            after_block_id=body.after_block_id, properties=body.properties,
+            text=body.text, parent_id=_str(body.parent_id),
+            after_block_id=_str(body.after_block_id), properties=body.properties,
             expected_hash=body.expected_hash, block_id=_str(body.block_id),
             owner=PAGE_OWNER,
         )
@@ -393,7 +393,8 @@ async def move_page_block_route(
     try:
         result = await move_block(
             session, llm, block_id=str(block_id),
-            new_parent_id=body.new_parent_id, after_block_id=body.after_block_id,
+            new_parent_id=_str(body.new_parent_id),
+            after_block_id=_str(body.after_block_id),
             expected_hash=body.expected_hash, owner=PAGE_OWNER,
         )
     except _BLOCK_REFUSALS as exc:

@@ -705,7 +705,8 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # write door above -- it removes documents and answers a count, and no
     # `memories` row crosses it.
     "POST /api/v1/documents/delete",
-    # The pages epic (increment A). **Page** content crosses these -- a
+    # The pages epic (increment A, plus B1's trash listing and batch
+    # insert). **Page** content crosses these -- a
     # page's title, its block tree and their text -- but no `memories` row
     # does: pages are a human authoring surface, not derived from or lifted
     # into the memory graph, and REST-only (`docs/two-door-parity.md`'s

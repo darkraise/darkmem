@@ -541,3 +541,22 @@ async def test_the_page_read_serves_block_source(client, auth_headers, create):
     page = await create(content="## Sub\n\n- item\n")
     blocks = await _blocks_of(client, auth_headers, page)
     assert [b["source"] for b in blocks] == ["## Sub", "- item"]
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_parent_id_is_422_not_500(client, auth_headers, create):
+    page = await create(content="para\n")
+    response = await _insert(client, auth_headers, page,
+                             type="paragraph", text="x", parent_id="nope")
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_move_target_is_422_not_500(client, auth_headers, create):
+    page = await create(content="para\n")
+    block = (await _blocks_of(client, auth_headers, page))[0]
+    response = await client.post(
+        f"{V1}/pages/{page}/blocks/{block['id']}/move",
+        json={"new_parent_id": "nope"}, headers=auth_headers,
+    )
+    assert response.status_code == 422

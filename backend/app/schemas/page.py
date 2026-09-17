@@ -47,7 +47,9 @@ class PageBlock(BaseModel):
     char_start: int | None
     char_end: int | None
     # The block's own markdown, sliced from the page's content. `text` is
-    # marker-stripped, so the two differ: "Sub" against "## Sub".
+    # marker-stripped, so the two differ: "Sub" against "## Sub". For a
+    # container (`toggle`, `table`) the span covers only its opening lines,
+    # not its children.
     source: str | None = None
 
 
@@ -120,8 +122,8 @@ class PageBlockInsertRequest(BaseModel):
 
     type: str = Field(min_length=1)
     text: str
-    parent_id: str | None = None
-    after_block_id: str | None = None
+    parent_id: UUID | None = None
+    after_block_id: UUID | None = None
     properties: dict | None = None
     expected_hash: str | None = None
     block_id: UUID | None = Field(
@@ -145,8 +147,8 @@ class PageBlockUpdateRequest(BaseModel):
 class PageBlockMoveRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    new_parent_id: str | None = None
-    after_block_id: str | None = None
+    new_parent_id: UUID | None = None
+    after_block_id: UUID | None = None
     expected_hash: str | None = None
 
 

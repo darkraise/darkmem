@@ -869,6 +869,30 @@ async def test_a_page_refuses_retyping_a_container_that_holds_children(session):
 
 
 @pytest.mark.asyncio
+async def test_a_page_refuses_retyping_a_table_row_out_from_under_a_table(session):
+    """`_check_page_nesting` also has to be re-asked about the retyped
+    block's own parent, not only its children: a table only holds
+    table_row children, so a table_row retyped away from that type would
+    otherwise leave a table holding a paragraph."""
+    llm = StubEmbedder()
+    page_id, _ = await _page(session, content="page prose\n")
+    table = await insert_block(session, llm, document_id=page_id, type="table",
+                               text="a", properties={"header": ["a"], "alignments": [None]},
+                               owner=PAGE_OWNER)
+    row = await insert_block(session, llm, document_id=page_id, type="table_row",
+                             text="1", properties={"cells": ["1"]},
+                             parent_id=table.block_id, owner=PAGE_OWNER)
+
+    with pytest.raises(PageBlockInvalid):
+        await update_block(session, llm, block_id=row.block_id,
+                           text="1", type="paragraph", owner=PAGE_OWNER)
+
+    rows = {r["id"]: r for r in await _page_rows(session, page_id)}
+    assert rows[row.block_id]["type"] == "table_row"
+    assert rows[row.block_id]["parent_id"] == table.block_id
+
+
+@pytest.mark.asyncio
 async def test_a_page_retypes_one_container_to_another_that_holds_children(session):
     llm = StubEmbedder()
     page_id, _ = await _page(session, content="page prose\n")

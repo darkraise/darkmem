@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.block_embeddings import PAGE_PARENT_TABLE, PARENT_TABLE, embed_blocks
 from app.services.block_serializer import (
+    _CALLOUT_LABELS,
     TreeBlock,
     derive_markers,
     reproduces_source,
@@ -296,7 +297,9 @@ _PAGE_TYPE_PROPERTIES: dict[str, frozenset[str]] = {
     "toggle": frozenset(),
     "callout": frozenset({"variant"}),
 }
-_CALLOUT_VARIANTS = frozenset({"info", "warning", "error", "success"})
+# Sourced from the serialiser's own label map so the validator can never
+# accept a variant the emitter would silently fall back to "NOTE" for.
+_CALLOUT_VARIANTS = frozenset(_CALLOUT_LABELS)
 # Headings are absent on purpose: an editor renders a heading's children as
 # indentation, which is not what a heading means.
 _PAGE_CONTAINERS = frozenset({"list", "todo", "toggle"})
@@ -666,9 +669,13 @@ async def update_block(
             ))
         # `validate` is handed one block and cannot see the tree, so a retype
         # is where the nesting rule has to be re-applied: the same hook, asked
-        # whether the new type may hold each child it already has.
+        # whether the new type may hold each child it already has, and
+        # whether its existing parent may still hold the new type.
         retyped = next(b for b in out if b.id == target)
         if retyped.type != next(b for b in tree if b.id == target).type:
+            parent_block = next(
+                (b for b in tree if b.id == retyped.parent_id), None)
+            owner.check_nesting(parent_block, retyped)
             for child in tree:
                 if child.parent_id == target:
                     owner.check_nesting(retyped, child)
@@ -710,6 +717,10 @@ async def insert_blocks(
     """Every block in one pass, in order: a later block may name an earlier
     one as its parent or `after_block_id`, and the first refusal writes
     nothing."""
+    # `touched_embed=None` below embeds nothing; only a page (embed_inline
+    # False) owner may call this until a caller needs an embedded document
+    # batch too.
+    assert not owner.embed_inline, "insert_blocks does not embed inserted blocks"
     ids = [str(UUID(block.block_id)) for block in blocks]
     if not ids:
         raise PageBlockInvalid("a batch insert needs at least one block")
