@@ -23,12 +23,14 @@ from app.services.block_verbs import (
     move_block,
     update_block,
 )
+from app.services.block_embedding_refresh import refresh_block_embeddings
 from app.services.document_door import DocumentNotConvertible, put_document
 from app.services.document_ingest import DocumentHashConflict, compute_content_hash
 from app.utils.ids import new_id
 
 
 FINGERPRINT = "test-fp-verbs|3"
+SECOND_FINGERPRINT = "test-fp-verbs-second|3"
 
 
 @pytest.fixture(autouse=True)
@@ -41,8 +43,10 @@ def _forget_probe_fingerprint():
     from app.services.embedder_registry import embedder_registry
 
     embedder_registry.forget(FINGERPRINT)
+    embedder_registry.forget(SECOND_FINGERPRINT)
     yield
     embedder_registry.forget(FINGERPRINT)
+    embedder_registry.forget(SECOND_FINGERPRINT)
 
 
 class StubEmbedder:
@@ -627,10 +631,11 @@ async def test_a_page_insert_names_the_page_in_its_parent_refusal(session):
 
 
 @pytest.mark.asyncio
-async def test_a_page_block_edit_embeds_into_the_page_family(session):
-    """A page vector in `block_embeddings` would surface in document search."""
+async def test_a_page_block_edit_embeds_nothing_inline(session):
+    """Page vectors are the sweep's to write: an embed call behind every
+    typing pause is the cost this avoids. The sweep still writes the page
+    family, never the document one."""
     from app.services.block_embeddings import PAGE_PARENT_TABLE, PARENT_TABLE
-    from app.services.block_verbs import PAGE_OWNER
     from app.services.embedder_registry import child_table
 
     llm = StubEmbedder()
@@ -638,6 +643,9 @@ async def test_a_page_block_edit_embeds_into_the_page_family(session):
 
     await update_block(session, llm, block_id=block_id, text="edited",
                        owner=PAGE_OWNER)
+    assert llm.batches == []
+
+    await refresh_block_embeddings(session, llm, batch=0, page_batch=100)
 
     async def count(parent):
         exists = (await session.execute(
@@ -1100,3 +1108,83 @@ async def test_a_batch_refuses_a_repeated_block_id(session):
             NewBlock(block_id=repeated, type="paragraph", text="a"),
             NewBlock(block_id=repeated, type="paragraph", text="b"),
         ])
+
+
+async def _page_vectors(session, block_id, fingerprint):
+    from app.services.block_embeddings import PAGE_PARENT_TABLE
+    from app.services.embedder_registry import child_table
+
+    table = child_table(PAGE_PARENT_TABLE, fingerprint)
+    exists = (await session.execute(
+        text("SELECT to_regclass(CAST(:t AS text)) IS NOT NULL"), {"t": table},
+    )).scalar_one()
+    if not exists:
+        return 0
+    return (await session.execute(
+        text(f"SELECT count(*) FROM {table} WHERE block_id = CAST(:id AS uuid)"),
+        {"id": block_id},
+    )).scalar_one()
+
+
+@pytest.mark.parametrize(
+    "change", [{"text": "rewritten"}, {"text": "page prose", "type": "quote"}],
+)
+@pytest.mark.asyncio
+async def test_a_page_text_or_type_edit_drops_its_vectors_in_every_live_fingerprint(
+    session, change,
+):
+    """The sweep fills only blocks with no vector, so an edit that kept its
+    old vector would stay stale forever."""
+    llm, second = StubEmbedder(), StubEmbedder(SECOND_FINGERPRINT)
+    _, block_id = await _page(session, content="page prose\n")
+    await refresh_block_embeddings(session, llm, batch=0, page_batch=100)
+    await refresh_block_embeddings(session, second, batch=0, page_batch=100)
+    assert await _page_vectors(session, block_id, FINGERPRINT) == 1
+    assert await _page_vectors(session, block_id, SECOND_FINGERPRINT) == 1
+    llm.batches.clear()
+
+    await update_block(session, llm, block_id=block_id, owner=PAGE_OWNER, **change)
+
+    assert llm.batches == []
+    assert await _page_vectors(session, block_id, FINGERPRINT) == 0
+    assert await _page_vectors(session, block_id, SECOND_FINGERPRINT) == 0
+    outcome = await refresh_block_embeddings(session, llm, batch=0, page_batch=100)
+    assert outcome.embedded == 1
+    assert await _page_vectors(session, block_id, FINGERPRINT) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_properties_only_page_edit_keeps_its_vector(session):
+    """Ticking a to-do changes nothing the embedder reads."""
+    llm = StubEmbedder()
+    page_id, _ = await _page(session, content="page prose\n")
+    todo = await insert_block(session, llm, document_id=page_id, type="todo",
+                              text="task", properties={"checked": False},
+                              owner=PAGE_OWNER)
+    await refresh_block_embeddings(session, llm, batch=0, page_batch=100)
+    assert await _page_vectors(session, todo.block_id, FINGERPRINT) == 1
+
+    await update_block(session, llm, block_id=todo.block_id, text="task",
+                       properties={"checked": True}, owner=PAGE_OWNER)
+
+    assert await _page_vectors(session, todo.block_id, FINGERPRINT) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_missing_child_table_does_not_abort_the_edit(session):
+    from app.services.block_embeddings import PAGE_PARENT_TABLE
+    from app.services.embedder_registry import child_table
+
+    llm, second = StubEmbedder(), StubEmbedder(SECOND_FINGERPRINT)
+    _, block_id = await _page(session, content="page prose\n")
+    await refresh_block_embeddings(session, llm, batch=0, page_batch=100)
+    await refresh_block_embeddings(session, second, batch=0, page_batch=100)
+    await session.execute(
+        text(f"DROP TABLE {child_table(PAGE_PARENT_TABLE, SECOND_FINGERPRINT)}")
+    )
+
+    result = await update_block(session, llm, block_id=block_id, text="rewritten",
+                                owner=PAGE_OWNER)
+
+    assert result.outcome == "updated"
+    assert await _page_vectors(session, block_id, FINGERPRINT) == 0

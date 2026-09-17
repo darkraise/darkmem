@@ -6,7 +6,9 @@ there is no diffing and no matching heuristic anywhere in this module.
 
 Every verb runs the same pass: lock the document, load its tree, apply one
 mutation in memory, serialise, write the placement and the document row in a
-SAVEPOINT, journal, commit, then embed only the block that changed. The
+SAVEPOINT, journal, commit, then embed only the block that changed -- for a
+document. A page edit embeds nothing: it drops the changed block's vectors and
+the hourly sweep refills them. The
 serialiser is the only thing that knows where each block landed, so
 ``char_span`` is recomputed on every mutation rather than drifting.
 """
@@ -37,6 +39,7 @@ from app.services.document_door import (
     DocumentTooLarge,
 )
 from app.services.document_ingest import DocumentHashConflict, compute_content_hash
+from app.services.embedder_registry import child_table
 from app.services.events import record_event
 from app.taxonomy import normalize_block_type, normalize_page_block_type
 from app.utils.ids import new_id
@@ -145,6 +148,10 @@ class BlockOwner:
     normalize_type: Callable[[str | None], str]
     validate: Callable[[TreeBlock, str | None], TreeBlock]
     check_nesting: Callable[[TreeBlock | None, TreeBlock], None]
+    # False means the sweep is this owner's only embedder, so an edit that
+    # changes what the embedder reads must delete the stale vector: the sweep
+    # fills only blocks that have none.
+    embed_inline: bool
 
 
 _LOCK_DOCUMENT = text(
@@ -201,6 +208,10 @@ _TAKEN_IDS = text(
     "SELECT CAST(id AS text) AS id FROM blocks "
     "WHERE id = ANY(CAST(:ids AS uuid[])) ORDER BY id"
 )
+_LIVE_FINGERPRINTS = text(
+    "SELECT fingerprint FROM embedders WHERE retired_at IS NULL ORDER BY fingerprint"
+)
+_RELATION_EXISTS = text("SELECT to_regclass(CAST(:name AS text)) IS NOT NULL")
 # `properties` is merged with `||`, never written wholesale: the direction flag
 # is server-owned and a wholesale write would erase a document's frontmatter.
 _WRITE_DOC = text(
@@ -236,6 +247,7 @@ DOCUMENT_OWNER = BlockOwner(
     normalize_type=normalize_block_type,
     validate=_keep_block,
     check_nesting=_any_parent,
+    embed_inline=True,
 )
 
 _LOCK_PAGE = text(
@@ -338,6 +350,7 @@ PAGE_OWNER = BlockOwner(
     normalize_type=normalize_page_block_type,
     validate=_validate_page_block,
     check_nesting=_check_page_nesting,
+    embed_inline=False,
 )
 
 
@@ -363,6 +376,22 @@ async def _first_taken(session, ids: Sequence[str]) -> str | None:
 
 def _violated_constraint(exc: IntegrityError) -> str | None:
     return getattr(getattr(exc.orig, "__cause__", None), "constraint_name", None)
+
+
+async def _drop_vectors(session, owner: BlockOwner, block_id: str) -> None:
+    fingerprints = (await session.execute(_LIVE_FINGERPRINTS)).scalars().all()
+    for fingerprint in fingerprints:
+        table = child_table(owner.embed_parent, fingerprint)
+        # Boot reconciliation creates every live fingerprint's children, but a
+        # hand-dropped one would otherwise abort the whole savepoint.
+        exists = (
+            await session.execute(_RELATION_EXISTS, {"name": table})
+        ).scalar_one()
+        if exists:
+            await session.execute(
+                text(f"DELETE FROM {table} WHERE block_id = CAST(:id AS uuid)"),
+                {"id": block_id},
+            )
 
 
 async def _mutate(session, llm, *, document_id, apply, touched_embed, verb,
@@ -422,6 +451,7 @@ async def _mutate(session, llm, *, document_id, apply, touched_embed, verb,
             )
         tree = derive_markers(tree, meta["content"], spans)
 
+    before = {block.id: block for block in tree}
     tree, inserted, deleted_subtree = apply(tree)
 
     # Frontmatter rides every serialisation, not only the conversion: an
@@ -467,6 +497,11 @@ async def _mutate(session, llm, *, document_id, apply, touched_embed, verb,
                     "text": target.text,
                     "parent": None if target.parent_id is None else str(target.parent_id),
                 })
+                previous = before[target.id]
+                if not owner.embed_inline and (
+                    previous.text != target.text or previous.type != target.type
+                ):
+                    await _drop_vectors(session, owner, block_ids[0])
 
             placed = {p.block_id: p for p in result.placed}
             ids, ords, spans_out, props_out, parents = [], [], [], [], []
@@ -517,7 +552,7 @@ async def _mutate(session, llm, *, document_id, apply, touched_embed, verb,
     await session.commit()
 
     written = 0
-    if touched_embed is not None:
+    if owner.embed_inline and touched_embed is not None:
         embed = await embed_blocks(session, llm, block_ids=[touched_embed],
                                    parent=owner.embed_parent)
         written = embed.written if embed else 0
