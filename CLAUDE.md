@@ -1703,11 +1703,19 @@ for a *document*: the same four verbs also edit a page's blocks, through a
 `BlockOwner` descriptor, but only over REST (pages paragraph below). Every verb
 runs one pass: lock, load the tree, apply one mutation in memory, serialise,
 write placement and document row in a SAVEPOINT, journal `blocks_edited`
-(carrying no block text), commit, then embed **only** the touched block.
-`char_span` is recomputed in that same pass — the serialiser is the only thing
-that knows where each block landed — so spans never drift and are never NULL.
-The cost model: one edit is one bulk placement UPDATE over the document's
-blocks, one document write, and one single-block embed.
+(carrying no block text), commit, then embed **only** the touched block — on a
+document. **A page block write embeds nothing** (`BlockOwner.embed_inline`): an
+update that changes a block's text or type deletes that block's
+`page_embeddings__<slug>` rows for every fingerprint with `retired_at IS NULL`
+inside the same savepoint, because the hourly `block_embedding_refresh` page arm
+fills only blocks with no vector and would otherwise leave the edit stale
+forever. `char_span` is recomputed in that same pass — the serialiser is the
+only thing that knows where each block landed — so spans never drift and are
+never NULL. The cost model: one edit is one bulk placement UPDATE over the
+owner's blocks, one owner-row write, and one single-block embed for a document
+or none for a page. The pass is list-valued internally so a page's batch insert
+is one pass too; a one-id pass still journals `block_id` and answers the same
+eight-field result, which MCP serialises through `vars()`.
 
 **All four verbs take an optional `expected_hash`.** The comparison happens
 after that pass's row lock, never before it — above the lock it would be
@@ -1909,13 +1917,29 @@ sweep instead of trusting the argument. Page vectors live in their **own
 document ANN read filters the owner *after* the HNSW scan, so a shared partition
 would let page rows crowd document hits out of the candidate stream. **REST-only**,
 because pages are the operator's authoring surface rather than an agent's
-context path: eleven routes under `/api/v1/pages` (`api/routes/pages.py`), no
+context path: thirteen routes under `/api/v1/pages` (`api/routes/pages.py`), no
 MCP tool and no scope, recorded as the `pages.reads` / `pages.write`
 single-door rows on `docs/two-door-parity.md`. A page is **block-first by
 construction** — create parses `content` and stores the serialiser's output, so
 no conversion is ever owed, and a create whose content carries source the tree
 cannot hold (a frontmatter fence, a link-reference definition) is refused 422
-rather than filed with it dropped. Delete is a **soft delete** of the whole
+rather than filed with it dropped. Create also **flattens heading nesting** —
+a block the parser parented under a heading moves to that heading's nearest
+non-heading ancestor — because on a page only `list`, `todo` and `toggle`
+blocks hold children (a `table` holds its `table_row`s), and the block verbs
+refuse any other parent with `PageBlockInvalid` → 422. Flattening is
+byte-identical for headings at the root or in a quote, but not for a heading
+inside a list item that adopted a later sibling item, which comes out as a
+tight nested item. Pages carry **three block types documents never do** —
+`todo`, `toggle`, `callout`, in `PAGE_BLOCK_TYPES` beside `BLOCK_TYPES` and
+normalised by `normalize_page_block_type` — with their required properties
+(`checked`, `variant`) checked inside the verb on the merged block, keys the
+new type does not define dropped on a type change, and markdown emit forms
+(`- [ ]`, `<details>`, `> [!NOTE]`) that nothing re-parses. A block insert may
+name its own `block_id` (409 when taken), `POST .../blocks/batch` inserts many
+in one pass, the block delete answers the new hash in `X-Content-Hash`, and
+`GET /pages/trash` lists the roots of trashed subtrees. Nothing embeds a page
+inline: create and every block write leave vectors to the sweep. Delete is a **soft delete** of the whole
 subtree (`deleted_at`), restore clears it, and only emptying the trash runs the
 real `DELETE` whose cascade takes blocks and vectors; all three journal one row
 per page before they write and refuse when one does not land (the strict-caller
