@@ -21,20 +21,18 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
 from app.api.deps import get_llm
-from app.api.routes.documents import (
-    BlockInsertRequest,
-    BlockMoveRequest,
-    BlockUpdateRequest,
-)
 from app.database import get_session
 from app.schemas.page import (
+    PageBlockInsertRequest,
+    PageBlockMoveRequest,
+    PageBlockUpdateRequest,
     PageCreateRequest,
     PageCreateResponse,
     PageListItem,
@@ -48,6 +46,8 @@ from app.services.block_verbs import (
     PAGE_OWNER,
     BlockCycleError,
     BlockTargetUnresolved,
+    PageBlockIdTaken,
+    PageBlockInvalid,
     delete_block,
     insert_block,
     move_block,
@@ -236,8 +236,10 @@ def _response(result) -> PageBlockWriteResponse:
 def _block_write_error(exc: Exception) -> HTTPException:
     if isinstance(exc, BlockTargetUnresolved):
         return HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
-    if isinstance(exc, (BlockCycleError, DocumentTooLarge)):
+    if isinstance(exc, (BlockCycleError, DocumentTooLarge, PageBlockInvalid)):
         return HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    if isinstance(exc, PageBlockIdTaken):
+        return HTTPException(status.HTTP_409_CONFLICT, str(exc))
     if isinstance(exc, DocumentHashConflict):
         return HTTPException(
             status.HTTP_409_CONFLICT,
@@ -248,7 +250,7 @@ def _block_write_error(exc: Exception) -> HTTPException:
 
 
 _BLOCK_REFUSALS = (BlockTargetUnresolved, BlockCycleError, DocumentTooLarge,
-                   DocumentHashConflict)
+                   DocumentHashConflict, PageBlockInvalid, PageBlockIdTaken)
 
 
 async def _assert_block_is_in(session, page_id: UUID, block_id: UUID) -> None:
@@ -271,7 +273,7 @@ async def _assert_block_is_in(session, page_id: UUID, block_id: UUID) -> None:
 )
 async def insert_page_block_route(
     page_id: UUID,
-    body: BlockInsertRequest,
+    body: PageBlockInsertRequest,
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
     llm=Depends(get_llm),
@@ -283,7 +285,8 @@ async def insert_page_block_route(
             session, llm, document_id=str(page_id), type=body.type,
             text=body.text, parent_id=body.parent_id,
             after_block_id=body.after_block_id, properties=body.properties,
-            expected_hash=body.expected_hash, owner=PAGE_OWNER,
+            expected_hash=body.expected_hash, block_id=_str(body.block_id),
+            owner=PAGE_OWNER,
         )
     except _BLOCK_REFUSALS as exc:
         raise _block_write_error(exc) from exc
@@ -294,7 +297,7 @@ async def insert_page_block_route(
 async def update_page_block_route(
     page_id: UUID,
     block_id: UUID,
-    body: BlockUpdateRequest,
+    body: PageBlockUpdateRequest,
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
     llm=Depends(get_llm),
@@ -317,7 +320,7 @@ async def update_page_block_route(
 async def move_page_block_route(
     page_id: UUID,
     block_id: UUID,
-    body: BlockMoveRequest,
+    body: PageBlockMoveRequest,
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
     llm=Depends(get_llm),
@@ -338,6 +341,7 @@ async def move_page_block_route(
 async def delete_page_block_route(
     page_id: UUID,
     block_id: UUID,
+    response: Response,
     expected_hash: str | None = Query(
         None, description="Refuse unless the page's content_hash matches."
     ),
@@ -346,12 +350,15 @@ async def delete_page_block_route(
     llm=Depends(get_llm),
 ) -> None:
     """The subtree goes with it. `expected_hash` rides the query string because
-    a DELETE carries no body here."""
+    a DELETE carries no body here, and the page's new hash rides the
+    `X-Content-Hash` header because a 204 carries none either -- without it a
+    client chaining preconditions would need a re-read after every delete."""
     await _assert_block_is_in(session, page_id, block_id)
     try:
-        await delete_block(
+        result = await delete_block(
             session, llm, block_id=str(block_id), expected_hash=expected_hash,
             owner=PAGE_OWNER,
         )
     except _BLOCK_REFUSALS as exc:
         raise _block_write_error(exc) from exc
+    response.headers["X-Content-Hash"] = result.content_hash

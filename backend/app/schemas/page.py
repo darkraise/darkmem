@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.services.page_door import MAX_BLOCKS
+
 
 class PageCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -101,3 +103,56 @@ class PageRestoreResponse(BaseModel):
 
 class PageTrashEmptyResponse(BaseModel):
     purged: int
+
+
+class PageBlockInsertRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: str = Field(min_length=1)
+    text: str
+    parent_id: str | None = None
+    after_block_id: str | None = None
+    properties: dict | None = None
+    expected_hash: str | None = None
+    block_id: UUID | None = Field(
+        None,
+        description=(
+            "The new block's id, chosen by the client so it can address the "
+            "block before the response arrives. Absent mints one."
+        ),
+    )
+
+
+class PageBlockUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str
+    type: str | None = None
+    properties: dict | None = None
+    expected_hash: str | None = None
+
+
+class PageBlockMoveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    new_parent_id: str | None = None
+    after_block_id: str | None = None
+    expected_hash: str | None = None
+
+
+class PageBlockBatchItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    block_id: UUID
+    type: str = Field(min_length=1)
+    text: str
+    properties: dict | None = None
+    parent_id: UUID | None = None
+    after_block_id: UUID | None = None
+
+
+class PageBlockBatchInsertRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    blocks: list[PageBlockBatchItem] = Field(min_length=1, max_length=MAX_BLOCKS)
+    expected_hash: str | None = None

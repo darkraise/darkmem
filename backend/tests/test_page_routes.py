@@ -316,3 +316,115 @@ async def test_a_document_block_is_refused_on_a_page_route(
         json={"text": "nope"}, headers=auth_headers,
     )
     assert resp.status_code == 404
+
+
+async def _insert(client, auth_headers, page, **body):
+    return await client.post(
+        f"{V1}/pages/{page}/blocks", json=body, headers=auth_headers,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_page_block_insert_refuses_an_unknown_field(client, auth_headers, create):
+    page = await create(content="para\n")
+    response = await _insert(client, auth_headers, page,
+                             type="paragraph", text="x", bogus=1)
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "type_, properties",
+    [("todo", {"checked": False}), ("toggle", None), ("callout", {"variant": "warning"})],
+)
+@pytest.mark.asyncio
+async def test_each_page_only_type_is_accepted(
+    client, auth_headers, create, type_, properties,
+):
+    page = await create(content="para\n")
+    response = await _insert(client, auth_headers, page,
+                             type=type_, text="x", properties=properties)
+    assert response.status_code == 201, response.text
+    block = next(b for b in await _blocks_of(client, auth_headers, page)
+                 if b["id"] == response.json()["block_id"])
+    assert block["type"] == type_
+
+
+@pytest.mark.parametrize(
+    "type_, properties",
+    [("todo", None), ("todo", {"checked": "yes"}), ("callout", {"variant": "loud"})],
+)
+@pytest.mark.asyncio
+async def test_a_page_only_type_with_invalid_properties_is_422(
+    client, auth_headers, create, type_, properties,
+):
+    page = await create(content="para\n")
+    response = await _insert(client, auth_headers, page,
+                             type=type_, text="x", properties=properties)
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_a_type_change_leaving_a_required_property_missing_is_422(
+    client, auth_headers, create,
+):
+    page = await create(content="para\n")
+    block = (await _blocks_of(client, auth_headers, page))[0]
+    response = await client.patch(
+        f"{V1}/pages/{page}/blocks/{block['id']}",
+        json={"text": "para", "type": "todo"}, headers=auth_headers,
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_nesting_under_a_paragraph_is_422_on_insert_and_move(
+    client, auth_headers, create,
+):
+    page = await create(content="alpha\n\nbeta\n")
+    alpha, beta = await _blocks_of(client, auth_headers, page)
+
+    inserted = await _insert(client, auth_headers, page, type="paragraph",
+                             text="child", parent_id=alpha["id"])
+    moved = await client.post(
+        f"{V1}/pages/{page}/blocks/{beta['id']}/move",
+        json={"new_parent_id": alpha["id"]}, headers=auth_headers,
+    )
+
+    assert inserted.status_code == 422
+    assert moved.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_a_client_block_id_becomes_the_block_id(client, auth_headers, create):
+    page = await create(content="para\n")
+    chosen = str(uuid4())
+    response = await _insert(client, auth_headers, page,
+                             type="paragraph", text="x", block_id=chosen)
+    assert response.status_code == 201, response.text
+    assert response.json()["block_id"] == chosen
+
+
+@pytest.mark.asyncio
+async def test_a_taken_block_id_is_409(client, auth_headers, create):
+    page = await create(content="para\n")
+    existing = (await _blocks_of(client, auth_headers, page))[0]["id"]
+    response = await _insert(client, auth_headers, page,
+                             type="paragraph", text="x", block_id=existing)
+    assert response.status_code == 409
+    assert response.json()["detail"] == f"block id {existing} already exists"
+
+
+@pytest.mark.asyncio
+async def test_a_page_block_delete_answers_the_new_hash_in_a_header(
+    client, auth_headers, create,
+):
+    page = await create(content="alpha\n\nbeta\n")
+    alpha = (await _blocks_of(client, auth_headers, page))[0]
+
+    response = await client.delete(
+        f"{V1}/pages/{page}/blocks/{alpha['id']}", headers=auth_headers,
+    )
+
+    assert response.status_code == 204
+    current = (await client.get(f"{V1}/pages/{page}", headers=auth_headers)).json()
+    assert response.headers["x-content-hash"] == current["content_hash"]
