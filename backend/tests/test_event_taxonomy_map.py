@@ -97,6 +97,11 @@ _EXPECTED_UNRESOLVED = {
     # `event_type` parameter unresolved; the literals ("superseded",
     # "deprecated") are captured at `_journal`'s two call sites instead.
     ("app/services/supersede.py", "record_event"),
+    # `_journal_each(..., *, event_type, ...)` forwards its keyword-only
+    # `event_type`; the literals ("page_deleted", "page_restored",
+    # "page_purged") live at its three call sites, resolved via the wrapper
+    # trace instead.
+    ("app/services/page_door.py", "record_event"),
 }
 
 
