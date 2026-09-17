@@ -1,4 +1,4 @@
-"""The page door: create, read, move and rename (spec 2026-09-08, §7).
+"""The page door: create, read, move, rename and trash (spec 2026-09-08, §7).
 
 A page is block-first by construction: `create_page` parses the caller's
 content, writes the blocks, and stores the *serialiser's* output as
@@ -31,18 +31,26 @@ __all__ = [
     "MAX_BLOCKS",
     "MAX_CONTENT_CHARS",
     "PAGE_CREATED_EVENT",
+    "PAGE_DELETED_EVENT",
     "PAGE_MOVED_EVENT",
+    "PAGE_PURGED_EVENT",
+    "PAGE_RESTORED_EVENT",
     "PAGE_UPDATED_EVENT",
     "PageCycleError",
+    "PageJournalWriteFailed",
+    "PageParentTrashed",
     "PageResult",
     "PageTargetUnresolved",
     "PageTooLarge",
     "PageView",
     "create_page",
+    "delete_page",
     "get_page",
     "list_pages",
     "move_page",
+    "purge_trash",
     "rename_page",
+    "restore_page",
     "root_lock_key",
 ]
 
@@ -52,6 +60,9 @@ MAX_BLOCKS = 5_000
 PAGE_CREATED_EVENT = "page_created"
 PAGE_MOVED_EVENT = "page_moved"
 PAGE_UPDATED_EVENT = "page_updated"
+PAGE_DELETED_EVENT = "page_deleted"
+PAGE_RESTORED_EVENT = "page_restored"
+PAGE_PURGED_EVENT = "page_purged"
 
 
 class PageTooLarge(ValueError):
@@ -69,6 +80,19 @@ class PageTargetUnresolved(ValueError):
 
 class PageCycleError(ValueError):
     """The named parent is the moved page or lies inside its subtree."""
+
+
+class PageParentTrashed(ValueError):
+    """A restore named a page whose parent is still in the trash."""
+
+
+class PageJournalWriteFailed(RuntimeError):
+    """A trash or purge journal row did not land, so nothing was written.
+
+    Local rather than the vault repository's `JournalWriteFailed`: the page
+    door reads block rows, and the block channel stays off the vault's
+    modules.
+    """
 
 
 @dataclass(frozen=True)
@@ -217,6 +241,56 @@ _LIST_PAGES = text(
     FROM pages WHERE project = :project AND deleted_at IS NULL
     ORDER BY parent_id, order_index
     """
+)
+
+
+_TRASH_TARGET = text(
+    "SELECT project FROM pages WHERE id = CAST(:id AS uuid) "
+    "AND (deleted_at IS NULL) = CAST(:live AS boolean)"
+)
+_LOCK_TRASH_TARGET = text(
+    "SELECT parent_id, deleted_at FROM pages WHERE id = CAST(:id AS uuid) "
+    "AND (deleted_at IS NULL) = CAST(:live AS boolean) FOR UPDATE"
+)
+_LIVE_SUBTREE = text(
+    """
+    WITH RECURSIVE subtree(id) AS (
+        SELECT id FROM pages WHERE id = CAST(:id AS uuid)
+        UNION
+        SELECT p.id FROM pages p JOIN subtree s ON p.parent_id = s.id
+        WHERE p.deleted_at IS NULL
+    )
+    SELECT CAST(id AS text) AS id FROM subtree ORDER BY id
+    """
+)
+# Only rows carrying the restored page's own stamp: a descendant trashed on
+# its own earlier, and everything under it, stays in the trash.
+_STAMPED_SUBTREE = text(
+    """
+    WITH RECURSIVE subtree(id) AS (
+        SELECT id FROM pages WHERE id = CAST(:id AS uuid)
+        UNION
+        SELECT p.id FROM pages p JOIN subtree s ON p.parent_id = s.id
+        WHERE p.deleted_at = CAST(:stamp AS timestamptz)
+    )
+    SELECT CAST(id AS text) AS id FROM subtree ORDER BY id
+    """
+)
+_PARENT_TRASHED = text(
+    "SELECT deleted_at IS NOT NULL FROM pages WHERE id = CAST(:id AS uuid)"
+)
+_STAMP = text(
+    "UPDATE pages SET deleted_at = now() WHERE id = ANY(CAST(:ids AS uuid[]))"
+)
+_UNSTAMP = text(
+    "UPDATE pages SET deleted_at = NULL WHERE id = ANY(CAST(:ids AS uuid[]))"
+)
+_TRASHED_IN_PROJECT = text(
+    "SELECT CAST(id AS text) AS id FROM pages "
+    "WHERE project = :project AND deleted_at IS NOT NULL ORDER BY id FOR UPDATE"
+)
+_PURGE = text(
+    "DELETE FROM pages WHERE project = :project AND deleted_at IS NOT NULL"
 )
 
 
@@ -582,3 +656,140 @@ async def rename_page(
         payload={"fields": ["title"]},
     )
     await session.commit()
+
+
+async def _journal_each(
+    session: AsyncSession, ids: list[str], *, event_type: str, project: str,
+    actor: str | None, payload: dict,
+) -> None:
+    for page_id in ids:
+        landed = await record_event(
+            session,
+            event_type=event_type,
+            object_type="page",
+            object_id=UUID(page_id),
+            project=project,
+            actor=actor,
+            payload=payload,
+        )
+        if not landed:
+            raise PageJournalWriteFailed(
+                f"{event_type} did not land for page {page_id}; refusing to "
+                "write unaudited"
+            )
+
+
+async def _lock_trash_target(
+    session: AsyncSession, page_id: str, *, live: bool,
+):
+    """The target's project tree lock, then the target row under it.
+
+    The tree lock comes first so a move cannot add a page to the subtree
+    between its enumeration and its write, which would leave a page stamped
+    or restored with no journal row.
+    """
+    missing = PageTargetUnresolved(
+        f"no {'live' if live else 'trashed'} page with id {page_id}"
+    )
+    project = (
+        await session.execute(_TRASH_TARGET, {"id": page_id, "live": live})
+    ).scalar_one_or_none()
+    if project is None:
+        raise missing
+    await session.execute(_LOCK_ROOT, {"key": root_lock_key(project)})
+    locked = (
+        await session.execute(_LOCK_TRASH_TARGET, {"id": page_id, "live": live})
+    ).first()
+    if locked is None:
+        raise missing
+    return project, locked
+
+
+async def delete_page(
+    session: AsyncSession, page_id: str, *, actor: str | None = None,
+) -> int:
+    """Move a live page and its live subtree to the trash; returns the count.
+
+    A stamp rather than a `DELETE`: a page's row is its only copy, where a
+    document can be re-filed by the agent that filed it.
+    """
+    page_id = str(UUID(page_id))
+    async with session.begin_nested():
+        project, _ = await _lock_trash_target(session, page_id, live=True)
+        ids = [
+            row.id for row in
+            (await session.execute(_LIVE_SUBTREE, {"id": page_id})).all()
+        ]
+        await _journal_each(
+            session, ids, event_type=PAGE_DELETED_EVENT, project=project,
+            actor=actor, payload={"root_id": page_id},
+        )
+        # One statement, so every row of the subtree carries one stamp value;
+        # the restore matches on that value.
+        await session.execute(_STAMP, {"ids": ids})
+    await session.commit()
+    return len(ids)
+
+
+async def restore_page(
+    session: AsyncSession, page_id: str, *, actor: str | None = None,
+) -> int:
+    """Take a trashed page, and what was trashed with it, out of the trash.
+
+    Refused while the parent is trashed: the restored page would be live but
+    unreachable from `list_pages`, and the next purge's cascade would erase it.
+    """
+    page_id = str(UUID(page_id))
+    async with session.begin_nested():
+        project, locked = await _lock_trash_target(session, page_id, live=False)
+        if locked.parent_id is not None:
+            trashed = (
+                await session.execute(
+                    _PARENT_TRASHED, {"id": str(locked.parent_id)}
+                )
+            ).scalar_one()
+            if trashed:
+                raise PageParentTrashed(
+                    f"page {page_id} sits under trashed page "
+                    f"{locked.parent_id}; restore that page first"
+                )
+        ids = [
+            row.id for row in (
+                await session.execute(
+                    _STAMPED_SUBTREE,
+                    {"id": page_id, "stamp": locked.deleted_at},
+                )
+            ).all()
+        ]
+        await _journal_each(
+            session, ids, event_type=PAGE_RESTORED_EVENT, project=project,
+            actor=actor, payload={"root_id": page_id},
+        )
+        await session.execute(_UNSTAMP, {"ids": ids})
+    await session.commit()
+    return len(ids)
+
+
+async def purge_trash(
+    session: AsyncSession, project: str, *, actor: str | None = None,
+) -> int:
+    """Erase every trashed page in `project`; returns the rows deleted.
+
+    Blocks and their vectors go with the rows through `blocks.page_id`'s
+    cascade. Irrecoverable, so a journal row that does not land refuses the
+    whole purge before the `DELETE` runs.
+    """
+    async with session.begin_nested():
+        await session.execute(_LOCK_ROOT, {"key": root_lock_key(project)})
+        ids = [
+            row.id for row in (
+                await session.execute(_TRASHED_IN_PROJECT, {"project": project})
+            ).all()
+        ]
+        await _journal_each(
+            session, ids, event_type=PAGE_PURGED_EVENT, project=project,
+            actor=actor, payload={},
+        )
+        deleted = (await session.execute(_PURGE, {"project": project})).rowcount
+    await session.commit()
+    return deleted

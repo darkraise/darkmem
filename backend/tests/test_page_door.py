@@ -10,12 +10,17 @@ from sqlalchemy import text
 from app.services.document_ingest import compute_content_hash
 from app.services.page_door import (
     PageCycleError,
+    PageJournalWriteFailed,
+    PageParentTrashed,
     PageTargetUnresolved,
     create_page,
+    delete_page,
     get_page,
     list_pages,
     move_page,
+    purge_trash,
     rename_page,
+    restore_page,
 )
 
 
@@ -482,3 +487,219 @@ async def test_rename_refuses_a_trashed_page(session, llm):
     )
     with pytest.raises(PageTargetUnresolved):
         await rename_page(session, str(page.id), title="new")
+
+
+async def _stamps(session, page_ids):
+    rows = await session.execute(
+        text(
+            "SELECT CAST(id AS text) AS id, deleted_at FROM pages "
+            "WHERE id = ANY(CAST(:ids AS uuid[]))"
+        ),
+        {"ids": [str(i) for i in page_ids]},
+    )
+    return {r["id"]: r["deleted_at"] for r in rows.mappings().all()}
+
+
+async def _journalled(session, event_type):
+    rows = await session.execute(
+        text(
+            "SELECT CAST(object_id AS text) AS id FROM events "
+            "WHERE event_type = :t AND object_type = 'page'"
+        ),
+        {"t": event_type},
+    )
+    return sorted(r["id"] for r in rows.mappings().all())
+
+
+async def _tree(session, llm, project="p"):
+    root = await create_page(session, llm, project=project, title="root")
+    child = await create_page(session, llm, project=project, title="child",
+                              parent_id=str(root.id))
+    grandchild = await create_page(session, llm, project=project, title="gc",
+                                   parent_id=str(child.id))
+    sibling = await create_page(session, llm, project=project, title="sibling")
+    return root, child, grandchild, sibling
+
+
+@pytest.mark.asyncio
+async def test_deleting_a_page_stamps_its_whole_subtree(session, llm):
+    """A page's only copy is the row -- unlike a document, which the agent
+    that filed it can re-file. That asymmetry is why this is a stamp."""
+    root, child, grandchild, sibling = await _tree(session, llm)
+    await delete_page(session, str(root.id))
+
+    stamps = await _stamps(session, [root.id, child.id, grandchild.id, sibling.id])
+    assert stamps[str(sibling.id)] is None
+    subtree = {stamps[str(p.id)] for p in (root, child, grandchild)}
+    assert None not in subtree and len(subtree) == 1
+    assert [r["title"] for r in await list_pages(session, "p")] == ["sibling"]
+    with pytest.raises(PageTargetUnresolved):
+        await delete_page(session, str(root.id))
+    with pytest.raises(PageTargetUnresolved):
+        await delete_page(session, str(uuid4()))
+
+
+@pytest.mark.asyncio
+async def test_a_trashed_subtree_restores_whole(session, llm):
+    root, child, grandchild, _ = await _tree(session, llm)
+    solo = await create_page(session, llm, project="p", title="solo",
+                             parent_id=str(child.id))
+    # Every statement in a test shares one transaction and therefore one
+    # now(), so an earlier, separate trashing is stamped by hand.
+    await session.execute(
+        text(
+            "UPDATE pages SET deleted_at = now() - interval '1 hour' "
+            "WHERE id = CAST(:id AS uuid)"
+        ),
+        {"id": str(solo.id)},
+    )
+    await delete_page(session, str(root.id))
+    await restore_page(session, str(root.id))
+
+    stamps = await _stamps(session, [root.id, child.id, grandchild.id, solo.id])
+    assert [stamps[str(p.id)] for p in (root, child, grandchild)] == [None] * 3
+    assert stamps[str(solo.id)] is not None
+    assert sorted(await _journalled(session, "page_restored")) == sorted(
+        str(p.id) for p in (root, child, grandchild)
+    )
+    with pytest.raises(PageTargetUnresolved):
+        await restore_page(session, str(root.id))
+
+
+@pytest.mark.asyncio
+async def test_a_restore_refuses_while_the_parent_is_trashed(session, llm):
+    """Restoring a child under a trashed parent would make a live page the
+    purge cascade destroys; the parent is restored first, or not at all."""
+    root, child, grandchild, _ = await _tree(session, llm)
+    await delete_page(session, str(root.id))
+
+    with pytest.raises(PageParentTrashed):
+        await restore_page(session, str(child.id))
+    stamps = await _stamps(session, [root.id, child.id, grandchild.id])
+    assert None not in stamps.values()
+    assert await _journalled(session, "page_restored") == []
+
+
+@pytest.mark.asyncio
+async def test_a_delete_journals_one_row_per_page_before_it_writes(session, llm, monkeypatch):
+    """The strict journal contract `delete_documents` already holds: an erase
+    with no audit trail is worse than a refused one."""
+    from app.services import page_door
+
+    root, child, grandchild, _ = await _tree(session, llm)
+    real = page_door.record_event
+    stamped_at_journal = []
+
+    async def _journal(session_, **kwargs):
+        stamp = (await _stamps(session_, [kwargs["object_id"]]))[str(kwargs["object_id"])]
+        stamped_at_journal.append(stamp)
+        return await real(session_, **kwargs)
+
+    monkeypatch.setattr("app.services.page_door.record_event", _journal)
+    await delete_page(session, str(root.id))
+
+    assert stamped_at_journal == [None, None, None]
+    assert await _journalled(session, "page_deleted") == sorted(
+        str(p.id) for p in (root, child, grandchild)
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_delete_refuses_when_a_journal_row_does_not_land(session, llm, monkeypatch):
+    root, child, grandchild, _ = await _tree(session, llm)
+    calls = []
+
+    async def _journal(session_, **kwargs):
+        calls.append(kwargs["object_id"])
+        return len(calls) < 3
+
+    monkeypatch.setattr("app.services.page_door.record_event", _journal)
+    with pytest.raises(PageJournalWriteFailed):
+        await delete_page(session, str(root.id))
+
+    assert len(calls) == 3
+    stamps = await _stamps(session, [root.id, child.id, grandchild.id])
+    assert set(stamps.values()) == {None}
+
+
+@pytest.mark.asyncio
+async def test_purge_journals_every_page_before_it_deletes(session, llm, monkeypatch):
+    root, child, grandchild, _ = await _tree(session, llm)
+    await delete_page(session, str(root.id))
+    calls = []
+
+    async def _journal(session_, **kwargs):
+        calls.append(kwargs["object_id"])
+        return len(calls) < 3
+
+    monkeypatch.setattr("app.services.page_door.record_event", _journal)
+    with pytest.raises(PageJournalWriteFailed):
+        await purge_trash(session, "p")
+
+    assert len(calls) == 3
+    stamps = await _stamps(session, [root.id, child.id, grandchild.id])
+    assert len(stamps) == 3 and None not in stamps.values()
+
+
+@pytest.mark.asyncio
+async def test_purge_removes_rows_blocks_and_vectors(session, llm):
+    from app.services.embedder_registry import child_table
+
+    root = await create_page(session, llm, project="p", title="root",
+                             content="# T\n\nbody\n")
+    child = await create_page(session, llm, project="p", title="child",
+                              parent_id=str(root.id), content="child body\n")
+    block_ids = [
+        str(r[0]) for r in (
+            await session.execute(
+                text(
+                    "SELECT id FROM blocks "
+                    "WHERE page_id = ANY(CAST(:ids AS uuid[]))"
+                ),
+                {"ids": [str(root.id), str(child.id)]},
+            )
+        ).all()
+    ]
+    assert len(block_ids) == 3
+    table = child_table("page_embeddings", FINGERPRINT)
+    vectors = text(
+        f"SELECT count(*) FROM {table} WHERE block_id = ANY(CAST(:ids AS uuid[]))"
+    )
+    assert (await session.execute(vectors, {"ids": block_ids})).scalar_one() == 3
+
+    await delete_page(session, str(root.id))
+    assert await purge_trash(session, "p") == 2
+
+    assert await _stamps(session, [root.id, child.id]) == {}
+    remaining = (
+        await session.execute(
+            text("SELECT count(*) FROM blocks WHERE id = ANY(CAST(:ids AS uuid[]))"),
+            {"ids": block_ids},
+        )
+    ).scalar_one()
+    assert remaining == 0
+    assert (await session.execute(vectors, {"ids": block_ids})).scalar_one() == 0
+    assert await _journalled(session, "page_purged") == sorted(
+        [str(root.id), str(child.id)]
+    )
+
+
+@pytest.mark.asyncio
+async def test_purge_leaves_live_pages_alone(session, llm):
+    """The positive control. A purge that deleted everything would pass the
+    test above."""
+    root, child, grandchild, sibling = await _tree(session, llm)
+    elsewhere = await create_page(session, llm, project="other", title="x")
+    await session.execute(
+        text("UPDATE pages SET deleted_at = now() WHERE id = CAST(:id AS uuid)"),
+        {"id": str(elsewhere.id)},
+    )
+    await delete_page(session, str(child.id))
+
+    assert await purge_trash(session, "p") == 2
+    stamps = await _stamps(
+        session, [root.id, child.id, grandchild.id, sibling.id, elsewhere.id]
+    )
+    assert stamps.keys() == {str(root.id), str(sibling.id), str(elsewhere.id)}
+    assert stamps[str(root.id)] is None and stamps[str(sibling.id)] is None
+    assert stamps[str(elsewhere.id)] is not None

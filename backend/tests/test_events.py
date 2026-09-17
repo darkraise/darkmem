@@ -301,6 +301,11 @@ _EXPECTED_UNRESOLVED: set[tuple[str, str]] = {
     # "deprecated") live at `_journal`'s two call sites, resolved via the
     # wrapper trace instead.
     ("app/services/supersede.py", "record_event"),
+    # `_journal_each(..., *, event_type, ...)` forwards its keyword-only
+    # `event_type`; the literals ("page_deleted", "page_restored",
+    # "page_purged") live at its three call sites, resolved via the wrapper
+    # trace instead.
+    ("app/services/page_door.py", "record_event"),
 }
 
 
