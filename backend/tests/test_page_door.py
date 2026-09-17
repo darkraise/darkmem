@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
@@ -22,6 +23,7 @@ from app.services.page_door import (
     delete_page,
     get_page,
     list_pages,
+    list_trash,
     move_page,
     purge_trash,
     rename_page,
@@ -813,3 +815,53 @@ def test_flattening_a_heading_inside_a_quote_keeps_the_quote_as_parent():
 async def test_creating_a_page_embeds_nothing_inline(session, llm):
     await create_page(session, llm, project="p", title="n", content="# T\n\nbody\n")
     assert llm.batches == []
+
+
+@pytest.mark.asyncio
+async def test_the_keyed_read_serves_each_blocks_source(session, llm):
+    """`text` is marker-stripped; an editor edits the block's own markdown."""
+    page = await create_page(session, llm, project="p", title="n",
+                             content="## Sub\n\n- item\n")
+
+    view = await get_page(session, str(page.id))
+
+    assert [block["source"] for block in view.blocks] == ["## Sub", "- item"]
+    assert view.content is None
+
+
+async def _stamp(session, page_id, at: datetime):
+    # A datetime, not an ISO string: asyncpg refuses a str bound to
+    # CAST(:at AS timestamptz) with "invalid input for query argument".
+    await session.execute(
+        text(
+            "UPDATE pages SET deleted_at = CAST(:at AS timestamptz) "
+            "WHERE id = CAST(:id AS uuid)"
+        ),
+        {"id": str(page_id), "at": at},
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_trash_lists_only_the_roots_of_trashed_subtrees(session, llm):
+    root = await create_page(session, llm, project="p", title="root")
+    child = await create_page(session, llm, project="p", title="child",
+                              parent_id=str(root.id))
+    lone = await create_page(session, llm, project="p", title="lone")
+    live = await create_page(session, llm, project="p", title="live")
+    kid = await create_page(session, llm, project="p", title="kid",
+                            parent_id=str(live.id))
+    elsewhere = await create_page(session, llm, project="q", title="other")
+    for page in (root, lone, kid, elsewhere):
+        await delete_page(session, str(page.id))
+    # One transaction means one `now()`; distinct stamps make the order real.
+    await _stamp(session, root.id, datetime(2026, 9, 1, tzinfo=timezone.utc))
+    await _stamp(session, child.id, datetime(2026, 9, 1, tzinfo=timezone.utc))
+    await _stamp(session, lone.id, datetime(2026, 9, 2, tzinfo=timezone.utc))
+    await _stamp(session, kid.id, datetime(2026, 9, 3, tzinfo=timezone.utc))
+
+    rows = await list_trash(session, "p")
+
+    assert [str(row["id"]) for row in rows] == [str(kid.id), str(lone.id), str(root.id)]
+    assert set(rows[0]) == {"id", "title", "parent_id", "deleted_at"}
+    assert str(rows[0]["parent_id"]) == str(live.id)
+    assert rows[2]["title"] == "root"

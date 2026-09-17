@@ -46,6 +46,9 @@ class PageBlock(BaseModel):
     properties: dict | None
     char_start: int | None
     char_end: int | None
+    # The block's own markdown, sliced from the page's content. `text` is
+    # marker-stripped, so the two differ: "Sub" against "## Sub".
+    source: str | None = None
 
 
 class PageResponse(BaseModel):
@@ -70,6 +73,13 @@ class PageListItem(BaseModel):
     properties: dict | None
     created_at: datetime
     updated_at: datetime
+
+
+class PageTrashItem(BaseModel):
+    id: UUID
+    title: str | None
+    parent_id: UUID | None
+    deleted_at: datetime
 
 
 class PagePatchRequest(BaseModel):

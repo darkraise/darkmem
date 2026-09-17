@@ -47,6 +47,7 @@ __all__ = [
     "delete_page",
     "get_page",
     "list_pages",
+    "list_trash",
     "move_page",
     "purge_trash",
     "rename_page",
@@ -234,11 +235,19 @@ _GET_PAGE = text(
     FROM pages WHERE id = CAST(:id AS uuid) AND deleted_at IS NULL
     """
 )
+# `source` is sliced server-side the way `document_door._BLOCKS` slices it, so
+# an editor reading one page does not also fetch and slice `content` itself.
 _GET_BLOCKS = text(
     """
-    SELECT id, parent_id, order_index, type, text, properties,
-           lower(char_span) AS char_start, upper(char_span) AS char_end
-    FROM blocks WHERE page_id = CAST(:id AS uuid) ORDER BY order_index
+    SELECT b.id, b.parent_id, b.order_index, b.type, b.text, b.properties,
+           lower(b.char_span) AS char_start, upper(b.char_span) AS char_end,
+           substring(p.content
+                     FROM lower(b.char_span) + 1
+                     FOR upper(b.char_span) - lower(b.char_span)) AS source
+    FROM blocks b
+    JOIN pages p ON p.id = b.page_id
+    WHERE b.page_id = CAST(:id AS uuid)
+    ORDER BY b.order_index
     """
 )
 _LIST_PAGES = text(
@@ -247,6 +256,20 @@ _LIST_PAGES = text(
            properties, created_at, updated_at
     FROM pages WHERE project = :project AND deleted_at IS NULL
     ORDER BY parent_id, order_index
+    """
+)
+
+# A trashed page whose parent is also trashed is shown through that parent:
+# restoring it alone is refused while the parent stays in the trash.
+_TRASH_ROOTS = text(
+    """
+    SELECT p.id, p.title, p.parent_id, p.deleted_at
+    FROM pages p
+    LEFT JOIN pages parent ON parent.id = p.parent_id
+    WHERE p.project = :project
+      AND p.deleted_at IS NOT NULL
+      AND (p.parent_id IS NULL OR parent.deleted_at IS NULL)
+    ORDER BY p.deleted_at DESC, p.id
     """
 )
 
@@ -552,6 +575,17 @@ async def list_pages(session: AsyncSession, project: str) -> list[dict]:
     """
     rows = (
         await session.execute(_LIST_PAGES, {"project": project})
+    ).mappings().all()
+    return [dict(row) for row in rows]
+
+
+async def list_trash(session: AsyncSession, project: str) -> list[dict]:
+    """The roots of `project`'s trashed subtrees, most recently trashed first.
+
+    A read: it takes no lock, so the read-only worker can serve it.
+    """
+    rows = (
+        await session.execute(_TRASH_ROOTS, {"project": project})
     ).mappings().all()
     return [dict(row) for row in rows]
 
