@@ -446,3 +446,21 @@ they reach production:
 Neither is minted by hand and neither is a config toggle. **Deploying an image
 that carries one is a capability change**, not a version bump, and is worth
 stating in the deploy's own record.
+
+## Config rows a deploy can change the meaning of
+
+A stored `config` row outlives the code that interpreted it, so a change in what
+a value *means* reaches production silently. Read these rows before redeploying
+across the change named.
+
+- **`job:block_embedding_refresh` with `batch=0`** (the pages change,
+  2026-09-08). `batch` used to be the job's only budget, and 0 short-circuited
+  the run before the fingerprint probe, so storing 0 was a way to silence a
+  down or expensive embedder. The job now sweeps page blocks on a second budget,
+  `page_batch` (default 500), and short-circuits only when **both** are 0. A row
+  storing `batch=0` alone therefore spends one probe embed call per tick, sweeps
+  pages, and lands a failing probe in `job_runs.last_error` where it used to be
+  quiet. Check it with
+  `select value from config where key = 'job:block_embedding_refresh';` and, if
+  0 was set to silence the embedder, set `page_batch` to 0 as well or disable
+  the job.
