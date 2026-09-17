@@ -15,8 +15,8 @@ class ProjectSummary(BaseModel):
     """A project any corpus actually contains.
 
     Derived for every ordinary project -- one exists here because a memory, a
-    document or a checkpoint carries it, and stops existing when the last of
-    them is deleted. Widened 2026-08-31 (spec §2.1, review M2): grouping
+    document, a checkpoint or a page carries it, and stops existing when the
+    last of them is deleted. Widened 2026-08-31 (spec §2.1, review M2): grouping
     ``memories.project`` alone made a document-only project -- exactly what
     the corpus import creates -- invisible to its own scope picker.
 
@@ -32,6 +32,7 @@ class ProjectSummary(BaseModel):
     memory_count: int
     document_count: int
     checkpoint_count: int
+    page_count: int
     last_checkpoint_at: datetime | None
     # Day granularity on purpose: `ix_events_day` indexes the UTC-day
     # expression and nothing indexes (project, created_at); a timestamp here
@@ -48,6 +49,8 @@ _UNION_SQL = text(
         UNION
         SELECT project FROM session_checkpoints
         UNION
+        SELECT project FROM pages WHERE deleted_at IS NULL
+        UNION
         -- A registered personal space appears even holding nothing: it is the
         -- notes workspace's own scope, not a project that happens to exist.
         SELECT name FROM projects WHERE kind = 'personal'
@@ -56,6 +59,8 @@ _UNION_SQL = text(
     d AS (SELECT project, count(*) AS n FROM documents GROUP BY project),
     c AS (SELECT project, count(*) AS n, max(created_at) AS latest
           FROM session_checkpoints GROUP BY project),
+    pg AS (SELECT project, count(*) AS n FROM pages
+           WHERE deleted_at IS NULL GROUP BY project),
     e AS (SELECT project,
                  max((created_at AT TIME ZONE 'UTC')::date) AS latest_day
           FROM events GROUP BY project)
@@ -64,16 +69,19 @@ _UNION_SQL = text(
            COALESCE(m.n, 0) AS memory_count,
            COALESCE(d.n, 0) AS document_count,
            COALESCE(c.n, 0) AS checkpoint_count,
+           COALESCE(pg.n, 0) AS page_count,
            c.latest AS last_checkpoint_at,
            e.latest_day AS last_event_day
     FROM names
     LEFT JOIN m ON m.project = names.project
     LEFT JOIN d ON d.project = names.project
     LEFT JOIN c ON c.project = names.project
+    LEFT JOIN pg ON pg.project = names.project
     LEFT JOIN e ON e.project = names.project
     LEFT JOIN projects p ON p.name = names.project
     WHERE names.project IS NOT NULL AND names.project <> ''
-    ORDER BY COALESCE(m.n, 0) + COALESCE(d.n, 0) + COALESCE(c.n, 0) DESC,
+    ORDER BY COALESCE(m.n, 0) + COALESCE(d.n, 0) + COALESCE(c.n, 0)
+             + COALESCE(pg.n, 0) DESC,
              names.project ASC
     """
 )
@@ -84,8 +92,8 @@ async def list_projects(
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
-    """Every distinct project across memories, documents and checkpoints,
-    busiest first.
+    """Every distinct project across memories, documents, checkpoints and
+    pages, busiest first.
 
     Counts every row rather than only the active ones: this drives a *scope*
     picker, and a project holding nothing but superseded rows is still a

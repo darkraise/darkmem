@@ -10,10 +10,25 @@ asserting something about that module rather than about this endpoint.
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import text
 
 from app.models.checkpoint import SessionCheckpoint
 from app.models.memory import Memory
 from app.repositories.documents import upsert_by_uri
+
+
+async def _seed_page(
+    session, project: str, *, deleted: bool = False
+) -> None:
+    deleted_at_sql = "now()" if deleted else "NULL"
+    await session.execute(
+        text(
+            "INSERT INTO pages (id, project, order_index, content_hash, "
+            f"deleted_at) VALUES (gen_random_uuid(), :project, 0, 'h', "
+            f"{deleted_at_sql})"
+        ),
+        {"project": project},
+    )
 
 
 async def _seed_document(session, project: str, uri: str) -> None:
@@ -113,6 +128,7 @@ async def test_counts_every_status_not_only_active(
         "memory_count": 2,
         "document_count": 0,
         "checkpoint_count": 0,
+        "page_count": 0,
         "last_checkpoint_at": None,
         "last_event_day": None,
     }
@@ -144,6 +160,31 @@ async def test_a_checkpoint_only_project_is_visible(client, auth_headers, sessio
     assert "ckpt-only" in body
     assert body["ckpt-only"]["checkpoint_count"] == 1
     assert body["ckpt-only"]["last_checkpoint_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_a_project_holding_only_pages_is_listed(client, auth_headers, session):
+    """The catalogue is a union, and a project absent from it cannot be
+    selected in any UI that reads it."""
+    await _seed_page(session, "pages-only")
+    await session.flush()
+
+    resp = await client.get("/api/v1/projects", headers=auth_headers)
+    body = {p["name"]: p for p in resp.json()}
+    assert "pages-only" in body
+    assert body["pages-only"]["page_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_trashed_pages_do_not_count(client, auth_headers, session):
+    await _seed_page(session, "pages-trashed", deleted=True)
+    await session.flush()
+
+    resp = await client.get("/api/v1/projects", headers=auth_headers)
+    names = {p["name"] for p in resp.json()}
+    # A project whose only pages are in the trash reads as empty, which is
+    # what it is -- so it is absent from the derived catalogue entirely.
+    assert "pages-trashed" not in names
 
 
 @pytest.mark.asyncio

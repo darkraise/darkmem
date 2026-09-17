@@ -101,11 +101,13 @@ describe("ProjectSwitcher", () => {
       data: [
         {
           name: "darkmem", memory_count: 18, document_count: 2,
-          checkpoint_count: 0, last_checkpoint_at: null, last_event_day: null,
+          checkpoint_count: 0, page_count: 0, last_checkpoint_at: null,
+          last_event_day: null,
         },
         {
           name: "acme", memory_count: 1, document_count: 0,
-          checkpoint_count: 0, last_checkpoint_at: null, last_event_day: null,
+          checkpoint_count: 0, page_count: 0, last_checkpoint_at: null,
+          last_event_day: null,
         },
       ],
       isLoading: false,
@@ -132,7 +134,8 @@ describe("ProjectSwitcher", () => {
       data: [
         {
           name: "docs-only", memory_count: 0, document_count: 42,
-          checkpoint_count: 0, last_checkpoint_at: null, last_event_day: null,
+          checkpoint_count: 0, page_count: 0, last_checkpoint_at: null,
+          last_event_day: null,
         },
       ],
       isLoading: false,
@@ -199,10 +202,10 @@ describe("ProjectSwitcher", () => {
     mockUseProjects.mockReturnValue({
       data: [
         { name: "darkmem", kind: "project", memory_count: 3,
-          document_count: 0, checkpoint_count: 0,
+          document_count: 0, checkpoint_count: 0, page_count: 0,
           last_checkpoint_at: null, last_event_day: null },
         { name: "notes", kind: "personal", memory_count: 0,
-          document_count: 12, checkpoint_count: 0,
+          document_count: 12, checkpoint_count: 0, page_count: 0,
           last_checkpoint_at: null, last_event_day: null },
       ],
       isLoading: false,
