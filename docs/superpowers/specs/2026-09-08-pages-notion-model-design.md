@@ -218,7 +218,7 @@ from hits already scoped elsewhere and are harmless (`document_door.py:280-294`
 `_ANCESTORS`; `block_embeddings.py:73-78` `_BLOCK_TEXTS`). The third —
 `block_embedding_refresh._MISSING_SQL` — is not, and §4 scopes it.
 
-**Two costs that remain, stated rather than closed:**
+**Costs that remain, stated rather than closed:**
 
 - **Shared heap and shared `ix_blocks_parent` / GIN index.** A heavily edited
   page rewrites every one of its rows per edit through `_PLACE`, in the same
@@ -226,9 +226,16 @@ from hits already scoped elsewhere and are harmless (`document_door.py:280-294`
   owner indexes isolate one index; they do not isolate the table. Accepted:
   the alternative is a separate `page_blocks` table, which duplicates the
   parser, the four verbs and the serialiser round-trip guard.
+- **Per-row constraint and cascade work on document writes.**
+  `blocks_exactly_one_owner` is evaluated on every row `_PLACE` rewrites, and
+  every `page_embeddings__<slug>` child adds one referential-integrity cascade
+  trigger that fires on every `DELETE FROM blocks`, document deletes included.
+  Both are constant per row and neither is avoidable while the two owners share
+  one table.
 - **`block_verbs.py` forks** (§6). It is shared code documents use. The fork is
-  additive — the document path stays byte-identical — but it is not zero, and
-  this spec does not claim otherwise.
+  additive — the document path's statements are unchanged except
+  `_RESOLVE_BLOCK`, which selects one extra column as §6 sanctions — but it is
+  not zero, and this spec does not claim otherwise.
 
 **There is no ORM model for `blocks` or `documents`** — both surfaces are raw
 SQL throughout, so there is no model layer to change.
@@ -314,6 +321,11 @@ the serialiser's own output and no conversion is ever owed. This is what keeps
 without it, the first implementer writes `content` straight onto the row and
 recreates content-first state on an object with no conversion path.
 `MAX_BLOCKS` applies, checked inside the same savepoint as `put_document` does.
+Because the stored source is the regeneration, a create whose `content` carries
+source the tree cannot hold — a leading frontmatter fence, or a link-reference
+definition, which the parser consumes without minting a block — is **refused**
+with `PageNotRepresentable` (422) rather than filed with that source dropped
+behind a 201: the create-time twin of `reproduces_source`'s conversion refusal.
 
 **Moves take `after_id`, never a raw index.** `PATCH` accepts `parent_id` plus
 `after_id` (null = first), mirroring `move_block`'s existing `after_block_id`.
@@ -325,7 +337,11 @@ Increment B has to break the moment it implements drag-to-reorder.
 server-assigned, **no UNIQUE constraint** — renumbering under one would need a
 two-pass. `POST` appends at `max+1` under a row lock on the parent (or an
 advisory lock on `(project, parent_id)` for roots), or two browser tabs mint the
-same index. Sibling counts for personal notes are small enough that dense
+same index. **Dense holds for moves and creates, not after a purge**: emptying
+the trash deletes rows without renumbering the survivors, so a sibling set can
+carry gaps until its next move rewrites it. Nothing reads density — a create
+appends at `max+1` and `after_id` shifts from the named sibling — so the gaps are
+accepted rather than renumbered. Sibling counts for personal notes are small enough that dense
 renumbering costs nothing; fractional indexes are a later optimisation, as the
 epic already says of blocks.
 
