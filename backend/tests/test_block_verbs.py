@@ -832,3 +832,76 @@ async def test_a_document_block_still_nests_under_a_paragraph(session):
 
     row = next(r for r in await _blocks(session, doc_id) if r["id"] == result.block_id)
     assert row["parent_id"] == alpha["id"]
+
+
+@pytest.mark.asyncio
+async def test_a_page_refuses_retyping_a_container_that_holds_children(session):
+    """`validate` is handed one block and cannot see the tree, so the rule
+    `_check_page_nesting` enforces on insert and move has to be re-applied
+    here or a retype leaves children under a type that holds none."""
+    llm = StubEmbedder()
+    page_id, _ = await _page(session, content="page prose\n")
+    toggle = await insert_block(session, llm, document_id=page_id, type="toggle",
+                                text="parent", owner=PAGE_OWNER)
+    child = await insert_block(session, llm, document_id=page_id, type="paragraph",
+                               text="child", parent_id=toggle.block_id,
+                               owner=PAGE_OWNER)
+
+    with pytest.raises(PageBlockInvalid):
+        await update_block(session, llm, block_id=toggle.block_id,
+                           text="parent", type="paragraph", owner=PAGE_OWNER)
+
+    rows = {r["id"]: r for r in await _page_rows(session, page_id)}
+    assert rows[toggle.block_id]["type"] == "toggle"
+    assert rows[child.block_id]["parent_id"] == toggle.block_id
+
+
+@pytest.mark.asyncio
+async def test_a_page_retypes_one_container_to_another_that_holds_children(session):
+    llm = StubEmbedder()
+    page_id, _ = await _page(session, content="page prose\n")
+    listing = await insert_block(session, llm, document_id=page_id, type="list",
+                                 text="parent", properties={"ordered": False, "marker": "-"},
+                                 owner=PAGE_OWNER)
+    child = await insert_block(session, llm, document_id=page_id, type="paragraph",
+                               text="child", parent_id=listing.block_id,
+                               owner=PAGE_OWNER)
+
+    await update_block(session, llm, block_id=listing.block_id, text="parent",
+                       type="toggle", owner=PAGE_OWNER)
+
+    rows = {r["id"]: r for r in await _page_rows(session, page_id)}
+    assert rows[listing.block_id]["type"] == "toggle"
+    assert rows[child.block_id]["parent_id"] == listing.block_id
+
+
+@pytest.mark.asyncio
+async def test_a_page_retypes_a_childless_container(session):
+    llm = StubEmbedder()
+    page_id, _ = await _page(session, content="page prose\n")
+    toggle = await insert_block(session, llm, document_id=page_id, type="toggle",
+                                text="alone", owner=PAGE_OWNER)
+
+    await update_block(session, llm, block_id=toggle.block_id, text="alone",
+                       type="paragraph", owner=PAGE_OWNER)
+
+    rows = {r["id"]: r for r in await _page_rows(session, page_id)}
+    assert rows[toggle.block_id]["type"] == "paragraph"
+
+
+@pytest.mark.asyncio
+async def test_a_document_still_retypes_a_block_that_holds_children(session):
+    """The page rule must not reach documents: the parser nests a document's
+    body under its heading, so this is an ordinary edit there."""
+    llm, doc_id = await _file(session, "# T\n\nalpha\n", "v/retype.md")
+    rows = await _blocks(session, doc_id)
+    heading = rows[0]
+    alpha = next(r for r in rows if r["text"] == "alpha")
+    assert alpha["parent_id"] == heading["id"]
+
+    await update_block(session, llm, block_id=heading["id"], text="T",
+                       type="paragraph")
+
+    after = {r["id"]: r for r in await _blocks(session, doc_id)}
+    assert after[heading["id"]]["type"] == "paragraph"
+    assert after[alpha["id"]]["parent_id"] == heading["id"]

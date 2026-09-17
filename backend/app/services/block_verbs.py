@@ -561,6 +561,14 @@ async def update_block(
                 ),
                 block.type,
             ))
+        # `validate` is handed one block and cannot see the tree, so a retype
+        # is where the nesting rule has to be re-applied: the same hook, asked
+        # whether the new type may hold each child it already has.
+        retyped = next(b for b in out if b.id == target)
+        if retyped.type != next(b for b in tree if b.id == target).type:
+            for child in tree:
+                if child.parent_id == target:
+                    owner.check_nesting(retyped, child)
         return out, None, []
 
     return await _mutate(session, llm, document_id=document_id, apply=apply,
