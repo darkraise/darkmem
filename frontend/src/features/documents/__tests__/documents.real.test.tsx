@@ -1,7 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
-import type { ComponentType, ReactNode } from "react"
+import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/demo-flag", () => ({ DEMO: false }))
@@ -15,11 +14,27 @@ vi.mock("@/lib/api", () => {
   }
   return { apiFetch: vi.fn(), ApiError }
 })
+vi.mock("@/features/documents/components/document-reader", () => ({
+  DocumentReader: ({
+    documentId,
+    focusBlockId,
+  }: {
+    documentId: string
+    focusBlockId?: string | null
+  }) => (
+    <div>
+      reader:{documentId}:focus={focusBlockId ?? "none"}
+    </div>
+  ),
+}))
+vi.mock("darkraise-ui/components/sonner", () => ({
+  toast: { error: vi.fn(), success: vi.fn() },
+  Toaster: () => null,
+}))
 
 import { apiFetch, ApiError } from "@/lib/api"
-import type { ProjectSummary } from "@/hooks/api"
-import { DocumentsView } from "../components/documents-view"
-import { Route as DocumentsRoute } from "../../../routes/_authenticated/documents"
+import { DocumentDetail } from "../components/document-actions"
+import { ProjectWorkspace } from "../components/project-workspace"
 
 /**
  * TH1.16's four done-when clauses, each tested for the reason it exists.
@@ -33,7 +48,7 @@ import { Route as DocumentsRoute } from "../../../routes/_authenticated/document
 const DOCUMENT = {
   id: "11111111-1111-1111-1111-111111111111",
   title: "Design notes",
-  uri: "file:///notes.md",
+  uri: "notes/sky.md",
   source_type: "note",
   project: "default",
   block_count: 3,
@@ -49,7 +64,9 @@ function wrapper({ children }: { children: ReactNode }) {
 function mockApi(overrides: Record<string, unknown> = {}) {
   vi.mocked(apiFetch).mockImplementation((path: string) => {
     if (path.startsWith("/documents?") || path === "/documents") {
-      return Promise.resolve(overrides.list ?? { items: [DOCUMENT], horizon: true })
+      return Promise.resolve(
+        overrides.list ?? { items: [DOCUMENT], horizon: true },
+      )
     }
     if (path.endsWith("/summary")) {
       if (overrides.summary === "missing") {
@@ -66,14 +83,26 @@ function mockApi(overrides: Record<string, unknown> = {}) {
       )
     }
     if (path.endsWith("/connections")) {
-      return Promise.resolve(overrides.connections ?? {
-        items: [],
-        embedded: true,
-        comparable_documents: 0,
-      })
+      return Promise.resolve(
+        overrides.connections ?? {
+          items: [],
+          embedded: true,
+          comparable_documents: 0,
+        },
+      )
     }
     if (path === "/documents/qa") {
       return Promise.resolve(overrides.qa ?? WITHHELD)
+    }
+    if (path.endsWith("/outline")) {
+      return Promise.resolve({ document_id: DOCUMENT.id, items: [] })
+    }
+    if (path.endsWith("/related-memories")) {
+      return Promise.resolve({
+        items: [],
+        embedded: true,
+        comparable_memories: 0,
+      })
     }
     return Promise.reject(new Error(`unexpected apiFetch(${path})`))
   })
@@ -116,88 +145,129 @@ const SERVED = {
 }
 
 async function ask() {
+  fireEvent.click(await screen.findByRole("radio", { name: "Ask" }))
   fireEvent.change(screen.getByLabelText("Question"), {
     target: { value: "what colour is the sky" },
   })
-  fireEvent.click(screen.getByRole("button", { name: /Ask/ }))
+  fireEvent.click(screen.getByRole("button", { name: /^ask$/i }))
 }
 
-function renderRoute(_path: string) {
-  const Component = DocumentsRoute.options.component as ComponentType
-  render(<Component />, { wrapper })
+function renderWorkspace() {
+  render(<ProjectWorkspace project="default" />, { wrapper })
 }
 
-function mockProjects(
-  rows: Array<
-    Pick<ProjectSummary, "name" | "kind" | "document_count">
-  >,
-) {
-  const full: ProjectSummary[] = rows.map((row) => ({
-    memory_count: 0,
-    checkpoint_count: 0,
-    page_count: 0,
-    last_checkpoint_at: null,
-    last_event_day: null,
-    ...row,
-  }))
-  vi.mocked(apiFetch).mockImplementation((path: string) => {
-    if (path === "/projects") return Promise.resolve(full)
-    if (path.startsWith("/documents")) {
-      return Promise.resolve({ items: [], horizon: true })
-    }
-    return Promise.reject(new Error(`unexpected apiFetch(${path})`))
-  })
+function qaBody() {
+  const call = vi
+    .mocked(apiFetch)
+    .mock.calls.find(([path]) => path === "/documents/qa")
+  return JSON.parse(String(call?.[1]?.body))
 }
 
 afterEach(() => vi.clearAllMocks())
 
-// The list became a uri-segment tree (increment 4): leaves render the path's
-// last segment, so a document titled "Design notes" filed at
-// file:///notes.md is selected by "notes.md". The title still renders in the
-// detail panel below -- the tree is a path view, deliberately.
-
-describe("DocumentsView — the horizon surface", () => {
-  it("labels itself horizon in the IA", async () => {
-    mockApi()
-    render(<DocumentsView />, { wrapper })
-    expect(screen.getByText("horizon")).toBeInTheDocument()
-    await waitFor(() => expect(screen.getByText("notes.md")).toBeInTheDocument())
-  })
-
+describe("ProjectWorkspace — the horizon surface", () => {
   it("renders an empty corpus honestly rather than as a failure", async () => {
     mockApi({ list: { items: [], horizon: true } })
-    render(<DocumentsView />, { wrapper })
+    renderWorkspace()
     await waitFor(() =>
       expect(screen.getByText(/No documents filed/)).toBeInTheDocument(),
     )
   })
+
+  it("renders without the project tabs when none are asked for", async () => {
+    mockApi()
+    renderWorkspace()
+    await screen.findByText("sky.md")
+    expect(screen.queryByRole("tab", { name: "Progress" })).toBeNull()
+  })
 })
 
-describe("DocumentsView — grounded Q&A", () => {
+describe("ProjectWorkspace — grounded Q&A", () => {
   it("a withheld answer says so plainly and carries no prose", async () => {
     mockApi({ qa: WITHHELD })
-    render(<DocumentsView />, { wrapper })
+    renderWorkspace()
     await ask()
 
     await waitFor(() =>
-      expect(screen.getByText(/Answer withheld — not grounded/)).toBeInTheDocument(),
+      expect(
+        screen.getByText(/Answer withheld — not grounded/),
+      ).toBeInTheDocument(),
     )
     expect(
       screen.getByText(/faithfulness judge is not qualified/),
     ).toBeInTheDocument()
+    expect(screen.getByText("horizon")).toBeInTheDocument()
     // The point of the clause: nothing answer-shaped is on the page.
     expect(screen.queryByText(/The sky is blue\./)).not.toBeInTheDocument()
   })
 
-  it("a served answer shows every sentence with its block span", async () => {
+  it("asks across the project when no document is open", async () => {
+    mockApi()
+    renderWorkspace()
+    await screen.findByText("sky.md")
+    await ask()
+
+    await waitFor(() => expect(qaBody()).toBeDefined())
+    expect(qaBody()).toEqual({
+      question: "what colour is the sky",
+      project: "default",
+      document_id: null,
+    })
+    expect(screen.getByText(/every document in default/)).toBeInTheDocument()
+  })
+
+  it("scopes the question to the open document", async () => {
+    mockApi()
+    renderWorkspace()
+    fireEvent.click(await screen.findByText("sky.md"))
+    await ask()
+
+    await waitFor(() => expect(qaBody().document_id).toBe(DOCUMENT.id))
+    expect(
+      screen.getByText(/Answering from notes\/sky\.md only/),
+    ).toBeInTheDocument()
+  })
+
+  it("a served answer cites each sentence and a citation opens its passage", async () => {
     mockApi({ qa: SERVED })
-    render(<DocumentsView />, { wrapper })
+    renderWorkspace()
+    await screen.findByText("sky.md")
     await ask()
 
     await waitFor(() =>
       expect(screen.getByText("The sky is blue.")).toBeInTheDocument(),
     )
-    expect(screen.getByText(/block 22222222 · 4–19/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /sky\.md · 4–19/ }))
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          `reader:${DOCUMENT.id}:focus=22222222-2222-2222-2222-222222222222`,
+        ),
+      ).toBeInTheDocument(),
+    )
+  })
+
+  it("a citation outside the loaded list stays an inert raw block id", async () => {
+    mockApi({
+      qa: {
+        ...SERVED,
+        sentences: [
+          {
+            text: "The sky is blue.",
+            citation: {
+              ...SERVED.sentences[0]!.citation,
+              document_id: "elsewhere",
+            },
+          },
+        ],
+      },
+    })
+    renderWorkspace()
+    await screen.findByText("sky.md")
+    await ask()
+
+    expect(await screen.findByText(/block 22222222 · 4–19/)).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /4–19/ })).toBeNull()
   })
 
   it("a labelled answer names how far short it fell and marks the uncited sentence", async () => {
@@ -215,7 +285,7 @@ describe("DocumentsView — grounded Q&A", () => {
         ],
       },
     })
-    render(<DocumentsView />, { wrapper })
+    renderWorkspace()
     await ask()
 
     await waitFor(() =>
@@ -223,32 +293,36 @@ describe("DocumentsView — grounded Q&A", () => {
         screen.getByText(/Could not fully ground this answer/),
       ).toBeInTheDocument(),
     )
-    expect(screen.getByText(/1 of 2 sentences are supported/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/1 of 2 sentences are supported/),
+    ).toBeInTheDocument()
     expect(
       screen.getByText(/no citation — this sentence is not grounded/),
     ).toBeInTheDocument()
   })
 })
 
-describe("DocumentsView — summary and connections", () => {
+describe("DocumentDetail — summary and connections", () => {
   it("a summary renders visibly unbadged", async () => {
     mockApi()
-    render(<DocumentsView />, { wrapper })
-    fireEvent.click(await screen.findByText("notes.md"))
+    render(<DocumentDetail documentId={DOCUMENT.id} />, { wrapper })
 
     await waitFor(() =>
-      expect(screen.getByText("A report over one document.")).toBeInTheDocument(),
+      expect(
+        screen.getByText("A report over one document."),
+      ).toBeInTheDocument(),
     )
     expect(
       screen.getByText(/not a verified claim, and never/),
     ).toBeInTheDocument()
-    expect(screen.queryByText(/corroborated|confirmed|verified claim badge/)).toBeNull()
+    expect(
+      screen.queryByText(/corroborated|confirmed|verified claim badge/),
+    ).toBeNull()
   })
 
   it("a document with no summary says one has not been generated", async () => {
     mockApi({ summary: "missing" })
-    render(<DocumentsView />, { wrapper })
-    fireEvent.click(await screen.findByText("notes.md"))
+    render(<DocumentDetail documentId={DOCUMENT.id} />, { wrapper })
 
     await waitFor(() =>
       expect(
@@ -265,12 +339,13 @@ describe("DocumentsView — summary and connections", () => {
     mockApi({
       connections: { items: [], embedded: false, comparable_documents: 0 },
     })
-    render(<DocumentsView />, { wrapper })
-    fireEvent.click(await screen.findByText("notes.md"))
+    render(<DocumentDetail documentId={DOCUMENT.id} />, { wrapper })
 
     await waitFor(() =>
       expect(
-        screen.getByText(/no other documents in this project to compare against/),
+        screen.getByText(
+          /no other documents in this project to compare against/,
+        ),
       ).toBeInTheDocument(),
     )
     expect(screen.queryByText(/still being embedded/)).not.toBeInTheDocument()
@@ -280,8 +355,7 @@ describe("DocumentsView — summary and connections", () => {
     mockApi({
       connections: { items: [], embedded: false, comparable_documents: 2 },
     })
-    render(<DocumentsView />, { wrapper })
-    fireEvent.click(await screen.findByText("notes.md"))
+    render(<DocumentDetail documentId={DOCUMENT.id} />, { wrapper })
 
     await waitFor(() =>
       expect(screen.getByText(/still being embedded/)).toBeInTheDocument(),
@@ -306,53 +380,13 @@ describe("DocumentsView — summary and connections", () => {
         comparable_documents: 4,
       },
     })
-    render(<DocumentsView />, { wrapper })
-    fireEvent.click(await screen.findByText("notes.md"))
+    render(<DocumentDetail documentId={DOCUMENT.id} />, { wrapper })
 
-    await waitFor(() => expect(screen.getByText("Other notes")).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getByText("Other notes")).toBeInTheDocument(),
+    )
     expect(screen.getByText("0.612")).toBeInTheDocument()
     expect(screen.getByText("postgres tuning notes")).toBeInTheDocument()
     expect(screen.getByText("linux kernel parameters")).toBeInTheDocument()
-  })
-})
-
-describe("/documents route — project picker", () => {
-  it("defaults to a project that actually holds documents", async () => {
-    mockProjects([
-      { name: "empty", kind: "project", document_count: 0 },
-      { name: "darkmem", kind: "project", document_count: 475 },
-      { name: "notes", kind: "personal", document_count: 3 },
-    ])
-    renderRoute("/documents")
-    // `useProjects` orders busiest-first by a different measure, so the
-    // default needs its own document_count filter.
-    expect(await screen.findByRole("combobox")).toHaveTextContent("darkmem")
-  })
-
-  it("keeps the personal space out of the picker", async () => {
-    mockProjects([
-      { name: "darkmem", kind: "project", document_count: 475 },
-      { name: "notes", kind: "personal", document_count: 3 },
-    ])
-    renderRoute("/documents")
-    await userEvent.click(await screen.findByRole("combobox"))
-    // A positive assertion too: the dropdown genuinely opened and listed the
-    // eligible project, rather than this test passing because it never did.
-    expect(await screen.findByRole("option", { name: "darkmem" })).toBeInTheDocument()
-    expect(screen.queryByText("notes")).toBeNull()
-  })
-
-  it("reports a failed project read instead of an empty corpus", async () => {
-    vi.mocked(apiFetch).mockRejectedValue(new Error("boom"))
-    renderRoute("/documents")
-    expect(await screen.findByText(/could not be loaded/i)).toBeInTheDocument()
-    expect(screen.queryByRole("combobox")).not.toBeInTheDocument()
-  })
-
-  it("says so when the corpus holds no non-personal project", async () => {
-    mockProjects([{ name: "notes", kind: "personal", document_count: 3 }])
-    renderRoute("/documents")
-    expect(await screen.findByText(/no project holds/i)).toBeInTheDocument()
-    expect(screen.queryByRole("combobox")).not.toBeInTheDocument()
   })
 })

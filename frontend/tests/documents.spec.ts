@@ -6,8 +6,8 @@ import { seedAdminPassword } from "./helpers/seed-admin"
  *
  * Deliberately narrow. The unit suite drives every Q&A outcome against mocked
  * payloads; what only a real run can show is that the page mounts against the
- * live door, that the horizon label is on it, and that an empty corpus reads
- * as empty rather than as a failure — the three things a mocked test cannot
+ * live door, that the Ask mode states its grounding rule, and that an empty
+ * corpus reads as empty rather than as a failure — the three things a mocked test cannot
  * distinguish from a page that never rendered.
  *
  * **These tests never signed in until 2026-08-17, and every one of them
@@ -53,11 +53,15 @@ test.beforeAll(() => {
   }
 })
 
-test("the documents surface is labelled horizon", async ({ page }) => {
+test("the Ask mode states its grounding rule before anything is asked", async ({
+  page,
+}) => {
   await signIn(page)
   await page.goto("/documents")
-  await expect(page.getByText("horizon").first()).toBeVisible()
-  await expect(page.getByText(/ships behind its own eval gate/i)).toBeVisible()
+  await page.getByRole("radio", { name: "Ask" }).click()
+  await expect(
+    page.getByText(/an answer that cannot be grounded is withheld/i),
+  ).toBeVisible()
 })
 
 test("an empty corpus reads as empty rather than as a failure", async ({
@@ -67,9 +71,7 @@ test("an empty corpus reads as empty rather than as a failure", async ({
   await page.goto("/documents")
   // Either state is honest; what must never appear is the failed-read copy on
   // a healthy install.
-  await expect(
-    page.getByText(/the document list could not be read/i),
-  ).toHaveCount(0)
+  await expect(page.getByText(/could not be loaded/i)).toHaveCount(0)
   await expect(page.getByText(/Documents/i).first()).toBeVisible()
 })
 
@@ -78,7 +80,8 @@ test("the grounded-answer control refuses an empty question", async ({
 }) => {
   await signIn(page)
   await page.goto("/documents")
-  await expect(page.getByRole("button", { name: /^Ask$/ })).toBeDisabled()
+  await page.getByRole("radio", { name: "Ask" }).click()
+  await expect(page.getByRole("button", { name: /^Ask$/i })).toBeDisabled()
 })
 
 test("an unauthenticated visit bounces to /login rather than rendering", async ({

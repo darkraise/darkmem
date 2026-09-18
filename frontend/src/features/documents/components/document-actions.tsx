@@ -137,8 +137,8 @@ export function DocumentDetail({
   documentId: string
   /** Open a connected document in the same reader, focused on the passage
    *  that made it a connection. Omitted where the surface has no reader to
-   *  steer (the legacy documents page), and the rows stay inert there rather
-   *  than offering a navigation that would go nowhere. */
+   *  steer, and the rows stay inert there rather than offering a navigation
+   *  that would go nowhere. */
   onOpenDocument?: (documentId: string, blockId: string) => void
 }) {
   const summary = useDocumentSummary(documentId)

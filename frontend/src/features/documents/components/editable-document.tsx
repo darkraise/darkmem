@@ -5,9 +5,6 @@ import { BlockEditor } from "./block-editor"
 /** The editor needs the blocks the reader fetches, so it fetches them itself
  *  rather than lifting the query into its parent -- a surface mounts at most
  *  one of reader and editor, and TanStack dedupes the shared key anyway.
- *
- *  Extracted from `documents-view` so the artifacts workspace and the legacy
- *  documents page mount the same editor rather than two copies that drift.
  */
 export function EditableDocument({ documentId }: { documentId: string }) {
   const blocks = useDocumentBlocks(documentId)

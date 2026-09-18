@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { FolderTree, Search } from "lucide-react"
+import { FolderTree, Search, Sparkles } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { Card } from "darkraise-ui/components/card"
 import { Input } from "darkraise-ui/components/input"
@@ -23,8 +23,18 @@ import {
   ResizablePanelGroup,
 } from "darkraise-ui/components/resizable"
 import { ScrollArea } from "darkraise-ui/components/scroll-area"
+import {
+  SegmentGroup,
+  SegmentGroupIndicator,
+  SegmentGroupItem,
+} from "darkraise-ui/components/segment-group"
 import { Skeleton } from "darkraise-ui/components/skeleton"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "darkraise-ui/components/tabs"
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "darkraise-ui/components/tabs"
 import { EmptyState } from "@/components/darkmem"
 import { CheckpointsTab } from "@/features/activity/components/checkpoints-tab"
 import {
@@ -35,6 +45,7 @@ import {
 import { DocumentOutline } from "@/features/documents/components/document-outline"
 import { DocumentReader } from "@/features/documents/components/document-reader"
 import { EditableDocument } from "@/features/documents/components/editable-document"
+import { GroundedAnswer } from "@/features/documents/components/grounded-answer"
 import { ProgressBoard } from "@/features/progress/components/progress-board"
 import { useProgressCorpus } from "@/features/progress/use-progress-corpus"
 import { DocumentTree } from "@/features/documents/components/document-tree"
@@ -47,7 +58,9 @@ import { buildUriTree } from "@/features/documents/uri-tree"
 import {
   useAllDocuments,
   useDocumentSearch,
+  useGroundedQa,
   type DocumentListItem,
+  type QaCitation,
 } from "@/hooks/api"
 
 export const TAB_VALUES = ["artifacts", "progress"] as const
@@ -87,21 +100,26 @@ function DocumentCrumbs({ uri }: { uri: string | null }) {
   )
 }
 
+type QueryMode = "search" | "ask"
+
 /** The project workspace view, deliberately free of routing.
  *
  * The route file owns params and navigation and hands them in, which is the
  * split `routes/memory-graph.tsx` already uses. It is also what lets this be
  * tested without standing up a router.
+ *
+ * Without `tab`, only the artifacts view renders: `/documents` is a document
+ * browser, and the Progress tab is about the project rather than its files.
  */
 export function ProjectWorkspace({
   project,
-  tab,
-  onTabChange,
+  ...tabs
 }: {
   project: string
-  tab: WorkspaceTab
-  onTabChange: (tab: WorkspaceTab) => void
-}) {
+} & (
+  | { tab: WorkspaceTab; onTabChange: (tab: WorkspaceTab) => void }
+  | { tab?: undefined; onTabChange?: undefined }
+)) {
   const documents = useAllDocuments(project)
   const items = documents.data?.items ?? []
   const truncated = documents.data?.truncated ?? false
@@ -124,10 +142,12 @@ export function ProjectWorkspace({
    *  every time the document re-rendered. */
   const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null)
   const [query, setQuery] = useState("")
+  const [queryMode, setQueryMode] = useState<QueryMode>("search")
   // Reading is the default for every selection: the block editor commits on
   // blur, so landing in it makes a stray keystroke a real edit.
   const [mode, setMode] = useState<ReaderMode>("read")
   const search = useDocumentSearch()
+  const qa = useGroundedQa()
   const corpus = useProgressCorpus(items)
 
   const roots = useMemo(() => buildUriTree(items), [items])
@@ -210,8 +230,274 @@ export function ProjectWorkspace({
     setMode("read")
   }, [])
 
-  const hits = search.data?.items ?? []
+  const openCitation = useCallback((citation: QaCitation) => {
+    setSelectedId(citation.document_id)
+    setFocusBlockId(citation.block_id)
+    setMode("read")
+  }, [])
 
+  const hits = search.data?.items ?? []
+  const asking = queryMode === "ask"
+
+  const artifacts = (
+    <>
+      <form
+        className="border-border bg-muted/20 flex flex-wrap items-center gap-2 rounded-md border p-2"
+        onSubmit={(e) => {
+          e.preventDefault()
+          const text = query.trim()
+          if (!text) return
+          if (asking) {
+            qa.mutate({
+              question: text,
+              project,
+              document_id: selected?.id ?? null,
+            })
+          } else {
+            search.mutate({ query, project, limit: 20 })
+          }
+        }}
+      >
+        <SegmentGroup
+          value={queryMode}
+          onValueChange={(next) => {
+            if (next) setQueryMode(next as QueryMode)
+          }}
+          variant="default"
+          aria-label="query mode"
+        >
+          <SegmentGroupIndicator />
+          <SegmentGroupItem value="search">Search</SegmentGroupItem>
+          <SegmentGroupItem value="ask">Ask</SegmentGroupItem>
+        </SegmentGroup>
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={
+            asking
+              ? "Ask a question answered from these documents…"
+              : "Search this project's documents by meaning…"
+          }
+          aria-label={asking ? "Question" : "search documents"}
+          className="min-w-52 flex-1"
+        />
+        {asking ? (
+          <Button
+            type="submit"
+            variant="outline"
+            disabled={!query.trim() || qa.isPending}
+          >
+            <Sparkles className="mr-1.5 size-3.5" />
+            {qa.isPending ? "asking…" : "ask"}
+          </Button>
+        ) : (
+          <Button type="submit" variant="outline" disabled={search.isPending}>
+            <Search className="mr-1.5 size-3.5" />
+            {search.isPending ? "searching…" : "search"}
+          </Button>
+        )}
+        {asking ? (
+          // The door scopes to one document when it is given one, so the
+          // same question can answer differently depending on what is open.
+          <p className="text-muted-foreground w-full px-1 text-xs">
+            {selected
+              ? `Answering from ${selected.uri ?? selected.title ?? "the open document"} only. Every sentence cites a passage; an answer that cannot be grounded is withheld.`
+              : `Answering from every document in ${project}. Every sentence cites a passage; an answer that cannot be grounded is withheld.`}
+          </p>
+        ) : null}
+      </form>
+
+      {asking && qa.isError ? (
+        <p className="text-destructive text-sm">
+          The question could not be answered — {qa.error.message}
+        </p>
+      ) : null}
+
+      {asking && qa.data ? (
+        <GroundedAnswer
+          answer={qa.data}
+          documents={items}
+          onOpenCitation={openCitation}
+        />
+      ) : null}
+
+      {!asking && search.isError ? (
+        <p className="text-destructive text-sm">
+          Search failed — a failed search, not an empty result.
+        </p>
+      ) : null}
+
+      {!asking && search.isSuccess && hits.length === 0 ? (
+        <p className="text-muted-foreground text-sm">
+          No sections matched. The search reads meaning, not exact words, so a
+          rephrasing may still find it.
+        </p>
+      ) : null}
+
+      {!asking && hits.length > 0 ? (
+        <div className="border-border space-y-1.5 rounded-md border border-dashed p-3">
+          <RegionLabel>sections</RegionLabel>
+          {hits.map((hit) => (
+            <button
+              key={hit.block_id}
+              type="button"
+              className="hover:bg-muted/40 focus-visible:ring-primary/40 block w-full cursor-pointer rounded p-1.5 text-left text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none"
+              onClick={() => {
+                const doc = items.find((d) => d.id === hit.document_id)
+                if (doc) {
+                  setSelectedId(doc.id)
+                  setFocusBlockId(hit.block_id)
+                }
+              }}
+            >
+              <span className="text-muted-foreground font-mono text-xs">
+                {hit.heading_path.join(" › ")}
+                {hit.path_truncated ? " › …" : ""}
+              </span>
+              <span className="block truncate">{hit.text}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      <ResizablePanelGroup
+        orientation="horizontal"
+        // The floor for a broken or absent height chain (small screens,
+        // where the ancestors above deliberately carry no height): without
+        // it the panes collapse to zero. Once the chain above is real (at
+        // `lg`), the library's own `h-full` fills the real flexed height
+        // instead, so the floor stands down rather than driving the layout.
+        className="min-h-[60vh] lg:min-h-0 lg:flex-1"
+      >
+        <ResizablePanel defaultSize={26} minSize={15} maxSize={45} id="tree">
+          {/* Same gutter as the reader's, and for the same reason: the
+                bar is 10px and an 8px pad left it 2px over the rows -- which
+                a full-width selected fill makes visible. */}
+          <ScrollArea className="h-full pr-3">
+            <RegionLabel>documents</RegionLabel>
+            {documents.isError ? (
+              <p className="text-destructive text-sm">
+                This project's documents could not be loaded — a failed read,
+                not an empty project.
+              </p>
+            ) : documents.isLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="h-4 w-1/2" />
+                <Skeleton className="h-4 w-3/4" />
+              </div>
+            ) : (
+              <DocumentTree
+                items={items}
+                selectedId={selected?.id ?? null}
+                onSelect={handleSelectDocument}
+                truncated={truncated}
+                expanded={effectiveExpanded}
+                onExpandedChange={handleExpandedChange}
+              />
+            )}
+          </ScrollArea>
+        </ResizablePanel>
+        <ResizableHandle withHandle />
+        <ResizablePanel defaultSize={74} id="reader">
+          {/* `pr-3` is the scrollbar's gutter, not decoration. The bar is
+                `absolute right-0 w-2.5` on the ScrollArea ROOT while the
+                viewport is inset by this padding, so the padding is what
+                moves the bar off the content instead of over it. Without it
+                the document's scrollbar sat on top of the outline rail. */}
+          <ScrollArea className="h-full pr-3 pl-2">
+            {selected ? (
+              <div>
+                {/* The path and the toolbar ride the scroll: a long
+                      document otherwise scrolls its own identity and every
+                      action off the top, and the reader has to come back up
+                      to answer "which file is this" or to press Edit.
+                      `sticky` resolves against the ScrollArea's own viewport,
+                      which is the element that scrolls here. */}
+                <div className="bg-background border-border/60 sticky top-0 z-20 mb-3.5 flex h-12 items-center gap-2 border-b">
+                  <DocumentCrumbs uri={selected.uri ?? null} />
+                  <div className="flex-1" />
+                  <DocumentActions
+                    document={selected}
+                    mode={mode}
+                    onModeChange={setMode}
+                    onDeleted={() => {
+                      setSelectedId(null)
+                      setFocusBlockId(null)
+                      setMode("read")
+                    }}
+                  />
+                </div>
+
+                <div className="flex gap-5">
+                  <div className="min-w-0 flex-1">
+                    <Card className="p-4">
+                      {mode === "read" ? (
+                        <DocumentReader
+                          documentId={selected.id}
+                          focusBlockId={focusBlockId}
+                          onActiveHeadingChange={handleActiveHeading}
+                          // The outline is mounted beside the reader, in
+                          // the sticky rail below, so the reader's own rail
+                          // would be a second jump list for one document.
+                          showOutline={false}
+                        />
+                      ) : (
+                        <EditableDocument documentId={selected.id} />
+                      )}
+                    </Card>
+                  </div>
+
+                  {/* `self-start` is what makes this sticky at all: a
+                        stretched flex item is already as tall as the row, so
+                        it has nothing to stick within. `top-12` clears the
+                        header bar above rather than sliding under it. */}
+                  <aside className="sticky top-12 hidden max-h-[calc(100vh-16rem)] w-56 shrink-0 flex-col self-start pt-1 xl:flex">
+                    <DocumentOutline
+                      documentId={selected.id}
+                      activeBlockId={activeHeadingId}
+                      onNavigate={setFocusBlockId}
+                    />
+                  </aside>
+                </div>
+
+                {/* Below the split, not inside the body column: these three
+                      cards want the reader pane's full width, and the outline
+                      rail's stick range ends where the document does. */}
+                <DocumentDetail
+                  documentId={selected.id}
+                  onOpenDocument={(documentId, blockId) => {
+                    const doc = items.find((d) => d.id === documentId)
+                    if (!doc) return
+                    setSelectedId(doc.id)
+                    setFocusBlockId(blockId)
+                    setMode("read")
+                  }}
+                />
+              </div>
+            ) : (
+              <EmptyState
+                kind="empty"
+                icon={FolderTree}
+                title="Nothing selected"
+                description="Pick a document from the tree to read it."
+              />
+            )}
+          </ScrollArea>
+        </ResizablePanel>
+      </ResizablePanelGroup>
+    </>
+  )
+
+  if (tabs.tab === undefined) {
+    return (
+      <div className="flex flex-col space-y-3.5 lg:min-h-0 lg:flex-1">
+        {artifacts}
+      </div>
+    )
+  }
+
+  const { tab, onTabChange } = tabs
   return (
     <Tabs
       value={tab}
@@ -231,190 +517,7 @@ export function ProjectWorkspace({
         value="artifacts"
         className="flex flex-col space-y-3.5 lg:min-h-0 lg:flex-1"
       >
-        <form
-          className="border-border bg-muted/20 flex gap-2 rounded-md border p-2"
-          onSubmit={(e) => {
-            e.preventDefault()
-            if (query.trim()) search.mutate({ query, project, limit: 20 })
-          }}
-        >
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search this project's documents by meaning…"
-            aria-label="search documents"
-          />
-          <Button type="submit" variant="outline" disabled={search.isPending}>
-            <Search className="mr-1.5 size-3.5" />
-            {search.isPending ? "searching…" : "search"}
-          </Button>
-        </form>
-
-        {search.isError ? (
-          <p className="text-destructive text-sm">
-            Search failed — a failed search, not an empty result.
-          </p>
-        ) : null}
-
-        {search.isSuccess && hits.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
-            No sections matched. The search reads meaning, not exact words, so a
-            rephrasing may still find it.
-          </p>
-        ) : null}
-
-        {hits.length > 0 ? (
-          <div className="border-border space-y-1.5 rounded-md border border-dashed p-3">
-            <RegionLabel>sections</RegionLabel>
-            {hits.map((hit) => (
-              <button
-                key={hit.block_id}
-                type="button"
-                className="hover:bg-muted/40 focus-visible:ring-primary/40 block w-full cursor-pointer rounded p-1.5 text-left text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none"
-                onClick={() => {
-                  const doc = items.find((d) => d.id === hit.document_id)
-                  if (doc) {
-                    setSelectedId(doc.id)
-                    setFocusBlockId(hit.block_id)
-                  }
-                }}
-              >
-                <span className="text-muted-foreground font-mono text-xs">
-                  {hit.heading_path.join(" › ")}
-                  {hit.path_truncated ? " › …" : ""}
-                </span>
-                <span className="block truncate">{hit.text}</span>
-              </button>
-            ))}
-          </div>
-        ) : null}
-
-        <ResizablePanelGroup
-          orientation="horizontal"
-          // The floor for a broken or absent height chain (small screens,
-          // where the ancestors above deliberately carry no height): without
-          // it the panes collapse to zero. Once the chain above is real (at
-          // `lg`), the library's own `h-full` fills the real flexed height
-          // instead, so the floor stands down rather than driving the layout.
-          className="min-h-[60vh] lg:min-h-0 lg:flex-1"
-        >
-          <ResizablePanel defaultSize={26} minSize={15} maxSize={45} id="tree">
-            {/* Same gutter as the reader's, and for the same reason: the
-                bar is 10px and an 8px pad left it 2px over the rows -- which
-                a full-width selected fill makes visible. */}
-            <ScrollArea className="h-full pr-3">
-              <RegionLabel>documents</RegionLabel>
-              {documents.isError ? (
-                <p className="text-destructive text-sm">
-                  This project's documents could not be loaded — a failed
-                  read, not an empty project.
-                </p>
-              ) : documents.isLoading ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-2/3" />
-                  <Skeleton className="h-4 w-1/2" />
-                  <Skeleton className="h-4 w-3/4" />
-                </div>
-              ) : (
-                <DocumentTree
-                  items={items}
-                  selectedId={selected?.id ?? null}
-                  onSelect={handleSelectDocument}
-                  truncated={truncated}
-                  expanded={effectiveExpanded}
-                  onExpandedChange={handleExpandedChange}
-                />
-              )}
-            </ScrollArea>
-          </ResizablePanel>
-          <ResizableHandle withHandle />
-          <ResizablePanel defaultSize={74} id="reader">
-            {/* `pr-3` is the scrollbar's gutter, not decoration. The bar is
-                `absolute right-0 w-2.5` on the ScrollArea ROOT while the
-                viewport is inset by this padding, so the padding is what
-                moves the bar off the content instead of over it. Without it
-                the document's scrollbar sat on top of the outline rail. */}
-            <ScrollArea className="h-full pl-2 pr-3">
-              {selected ? (
-                <div>
-                  {/* The path and the toolbar ride the scroll: a long
-                      document otherwise scrolls its own identity and every
-                      action off the top, and the reader has to come back up
-                      to answer "which file is this" or to press Edit.
-                      `sticky` resolves against the ScrollArea's own viewport,
-                      which is the element that scrolls here. */}
-                  <div className="bg-background border-border/60 sticky top-0 z-20 mb-3.5 flex h-12 items-center gap-2 border-b">
-                    <DocumentCrumbs uri={selected.uri ?? null} />
-                    <div className="flex-1" />
-                    <DocumentActions
-                      document={selected}
-                      mode={mode}
-                      onModeChange={setMode}
-                      onDeleted={() => {
-                        setSelectedId(null)
-                        setFocusBlockId(null)
-                        setMode("read")
-                      }}
-                    />
-                  </div>
-
-                  <div className="flex gap-5">
-                    <div className="min-w-0 flex-1">
-                      <Card className="p-4">
-                        {mode === "read" ? (
-                          <DocumentReader
-                            documentId={selected.id}
-                            focusBlockId={focusBlockId}
-                            onActiveHeadingChange={handleActiveHeading}
-                            // The outline is mounted beside the reader, in
-                            // the sticky rail below, so the reader's own rail
-                            // would be a second jump list for one document.
-                            showOutline={false}
-                          />
-                        ) : (
-                          <EditableDocument documentId={selected.id} />
-                        )}
-                      </Card>
-                    </div>
-
-                    {/* `self-start` is what makes this sticky at all: a
-                        stretched flex item is already as tall as the row, so
-                        it has nothing to stick within. `top-12` clears the
-                        header bar above rather than sliding under it. */}
-                    <aside className="sticky top-12 hidden max-h-[calc(100vh-16rem)] w-56 shrink-0 flex-col self-start pt-1 xl:flex">
-                      <DocumentOutline
-                        documentId={selected.id}
-                        activeBlockId={activeHeadingId}
-                        onNavigate={setFocusBlockId}
-                      />
-                    </aside>
-                  </div>
-
-                  {/* Below the split, not inside the body column: these three
-                      cards want the reader pane's full width, and the outline
-                      rail's stick range ends where the document does. */}
-                  <DocumentDetail
-                    documentId={selected.id}
-                    onOpenDocument={(documentId, blockId) => {
-                      const doc = items.find((d) => d.id === documentId)
-                      if (!doc) return
-                      setSelectedId(doc.id)
-                      setFocusBlockId(blockId)
-                      setMode("read")
-                    }}
-                  />
-                </div>
-              ) : (
-                <EmptyState
-                  kind="empty"
-                  icon={FolderTree}
-                  title="Nothing selected"
-                  description="Pick a document from the tree to read it."
-                />
-              )}
-            </ScrollArea>
-          </ResizablePanel>
-        </ResizablePanelGroup>
+        {artifacts}
       </TabsContent>
 
       <TabsContent value="progress" className="space-y-5">
