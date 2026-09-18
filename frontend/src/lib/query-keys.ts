@@ -126,6 +126,21 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
     reason:
       "Addressed by document id, and the passage-similarity query scopes itself to that document's project and to a fingerprint both sides hold vectors under — picked from the data, never the active embedder, which the read is forbidden to resolve. Deliberate on both counts: a cross-project suggestion surface is the worst place to leak an isolation boundary, and a cross-fingerprint cosine has no defined meaning",
   },
+  pages: {
+    kind: "manual",
+    reason:
+      "GET /pages takes an explicit `project` the notes workspace supplies (resolved from the catalogue by kind, not from the global switcher), the same posture `documents` carries",
+  },
+  page: {
+    kind: "global",
+    reason:
+      "Addressed by page id and carrying no project param, the same shape as documentBlocks: the page's own project scopes the read server-side, so a project-keyed cache entry would key on something the request never sends",
+  },
+  pagesTrash: {
+    kind: "manual",
+    reason:
+      "GET /pages/trash takes an explicit `project`, the same posture `pages` carries; the notes workspace is the only caller and it is pinned to the personal project",
+  },
 
   backupDestinations: {
     kind: "global",
