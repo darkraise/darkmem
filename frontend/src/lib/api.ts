@@ -59,10 +59,13 @@ export interface ApiFetchOptions extends RequestInit {
   on401?: "redirect" | "surface"
 }
 
-export async function apiFetch<T>(
+/** The one request implementation. `apiFetch` is the body-only view of it;
+ *  a caller that needs a response header — today only the page block delete,
+ *  whose 204 carries the page's new `content_hash` — takes this one. */
+export async function apiFetchWithHeaders<T>(
   path: string,
   options: ApiFetchOptions = {},
-): Promise<T> {
+): Promise<{ data: T; headers: Headers }> {
   const { on401 = "redirect", ...init } = options
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -89,8 +92,17 @@ export async function apiFetch<T>(
       body.error?.details,
     )
   }
-  if (response.status === 204) return undefined as T
-  return response.json() as Promise<T>
+  if (response.status === 204) {
+    return { data: undefined as T, headers: response.headers }
+  }
+  return { data: (await response.json()) as T, headers: response.headers }
+}
+
+export async function apiFetch<T>(
+  path: string,
+  options: ApiFetchOptions = {},
+): Promise<T> {
+  return (await apiFetchWithHeaders<T>(path, options)).data
 }
 
 export async function checkSetupStatus(): Promise<{ initialized: boolean }> {

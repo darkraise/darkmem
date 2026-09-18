@@ -24,13 +24,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const SRC = join(__dirname, "..", "..")
 const API_BASE = "/api/v1"
 
-// `apiFetch("/x")`, `apiFetch<T>(`/x`)`, and the same with the path on the
-// following line — the shapes a formatter produces from one call.
+// `apiFetch("/x")`, `apiFetch<T>(`/x`)`, the same with the path on the
+// following line, and the header-reading variant beside it — the shapes a
+// formatter produces from one call.
 const PREFIXED_CALL = new RegExp(
-  `apiFetch(?:<[^>]*>)?\\(\\s*\\n?\\s*['"\`]${API_BASE}`,
+  `apiFetch(?:WithHeaders)?(?:<[^>]*>)?\\(\\s*\\n?\\s*['"\`]${API_BASE}`,
   "g",
 )
-const ANY_CALL = /apiFetch(?:<[^>]*>)?\(/g
+const ANY_CALL = /apiFetch(?:WithHeaders)?(?:<[^>]*>)?\(/g
 
 function sourceFiles(path: string): string[] {
   const found: string[] = []
@@ -51,6 +52,7 @@ describe("apiFetch call sites never spell the API base", () => {
       `apiFetch("${API_BASE}/knowledge/facts")`,
       "apiFetch<FactListResponse>(\n  `" + API_BASE + "/knowledge/facts`,\n)",
       `apiFetch<T>('${API_BASE}/x')`,
+      `apiFetchWithHeaders<void>("${API_BASE}/pages/p/blocks/b")`,
     ]
     for (const call of doubled) {
       expect(new RegExp(PREFIXED_CALL.source).test(call), call).toBe(true)
@@ -58,6 +60,9 @@ describe("apiFetch call sites never spell the API base", () => {
     expect(new RegExp(PREFIXED_CALL.source).test('apiFetch("/knowledge/facts")')).toBe(
       false,
     )
+    expect(
+      new RegExp(PREFIXED_CALL.source).test('apiFetchWithHeaders<void>("/pages/p")'),
+    ).toBe(false)
   })
 
   it("finds no call site under src that carries the base", () => {
