@@ -27,20 +27,17 @@ changes one fails loudly.
 | Nesting | Tab (`nestBlock`), `moveBlocksUp` / `Down` and drag can place a block under any block, including a paragraph. `onBeforeChange` returning `false` cancels the transaction; a nest under a paragraph was refused that way |
 | Tables | One block, `content.type = "tableContent"`, `headerRows`, rows of cells; each cell carries its own `textAlignment`, `colspan`/`rowspan` and colours. `tables: { splitCells, cellBackgroundColor, cellTextColor, headers }` all default off |
 | Markdown | `tryParseMarkdownToBlocks` / `blocksToMarkdownLossy` are lossy: `<kbd>` and `![img](u)` vanish, `\*lit\*` becomes `*lit*` (real emphasis on the next parse). They are not used for page content |
-| Theme | `@blocknote/shadcn` takes a `shadCNComponents` override for 13 slots (Avatar, Badge, Button, Card, DropdownMenu, Input, Label, Popover, Select, Skeleton, Tabs, Toggle, Tooltip). darkraise-ui ships each; prop compatibility is checked per slot in the plan |
+| Theme | `@blocknote/shadcn` takes a `shadCNComponents` override for 13 slots (Avatar, Badge, Button, Card, DropdownMenu, Input, Label, Popover, Select, Skeleton, Tabs, Toggle, Tooltip). BlockNote requires the menu, popover and select slots **not** to render into a portal; darkraise-ui's DropdownMenu, Popover and Select do. darkraise-ui defines the shadcn colour tokens Tailwind v4 exposes (`--color-popover` and the rest), so the package's own primitives already render on theme |
+| Code language | `codeBlock` keeps an arbitrary `language` (`weirdlang` survived a load) |
+| Table header | `headerRows: 1` is kept with `tables.headers: false` |
+| Heading props | With `allowToggleHeadings: false` the heading has no `isToggleable` prop at all |
+| Slash menu keys | `heading`, `heading_2`, `heading_3`, `quote`, `toggle_list`, `numbered_list`, `bullet_list`, `check_list`, `paragraph`, `code_block`, `divider`, `table`, `heading_4`–`heading_6`, `emoji` |
+| DOM | Each block's outer element is `.bn-block-outer[data-id="<id>"]` |
+| jsdom | The editor and `BlockNoteView` from `@blocknote/shadcn` render under the repo's vitest/jsdom setup; only paste needs `ClipboardEvent`, which jsdom lacks |
 
-**Not settled by the probe; plan task 1 settles them before anything builds on
-them:**
-
-- Whether an `insert` in `onBeforeChange` can be judged by its resulting parent.
-  The probe refused a `move` through `currentParent`; an insert's parent must be
-  read from the transaction's resulting document (`tr.doc`), not from the editor,
-  which has not applied it yet.
-- Whether `codeBlock` keeps an arbitrary `language` string (`py`, `tsx`) or
-  coerces it to a supported one; if it coerces, the schema configures
-  `supportedLanguages` so every stored value survives.
-- Whether a table renders `headerRows: 1` with `tables.headers: false`. The
-  mapping treats row 0 as the header either way; this decides only styling.
+The three items this section first left open were settled by the plan's
+prototype on 2026-09-18: code language and table header above, and the nesting
+guard in §4.4.
 
 ## 2. Changes from the program spec
 
@@ -55,16 +52,39 @@ them:**
 4. **No keepalive flush chain on hide** (§5.6): only the write in flight
    survives a tab close; queued writes are protected by the leave warning.
 
+The plan's prototype (2026-09-18, every pure module and the React glue built
+and tested in a scratch copy of `frontend/`) changed five further things,
+recorded here and in the sections they touch:
+
+5. **The markdown packages** are `mdast-util-from-markdown`,
+   `mdast-util-to-markdown` and the GFM strikethrough pair, not `remark-parse`
+   (§3).
+6. **The emitter verifies and degrades** (§4.2): markdown cannot express every
+   placement of emphasis, so an emission that does not read back as its content
+   drops marks until it does.
+7. **The nesting guard compares documents** (§4.4), and the server does check
+   nesting on a retype — the earlier "neither side checks" was wrong.
+8. **No darkraise-ui component overrides** in the editor (§4.5).
+9. **The diff sends the first write the server would accept** (§5.2), judged by
+   a local mirror of the server's checks.
+
 ## 3. Packaging and files
 
 - `@blocknote/core`, `@blocknote/react`, `@blocknote/shadcn` pinned exactly at
   `0.54.2`. No `@blocknote/xl-*` package (AGPL-3.0 or commercial), no Yjs.
-- `remark-parse` becomes a direct dependency (it is present today only through
-  `react-markdown`).
-- Tailwind v4 gets a `@source` for the shadcn package's classes in
-  `styles/globals.css`.
+- `mdast-util-from-markdown` 2.0.3, `mdast-util-to-markdown` 2.1.2,
+  `micromark-extension-gfm-strikethrough` 2.1.0 and
+  `mdast-util-gfm-strikethrough` 2.0.0 become direct dependencies, and
+  `@types/mdast` 4.0.4 a dev dependency — all already installed through
+  `react-markdown`, pinned at the installed versions.
+- `styles/globals.css` gets `@source "../../node_modules/@blocknote/shadcn";`
+  so Tailwind generates the classes the package's components use, and
+  `page-editor.tsx` imports `@blocknote/shadcn/style.css` (the package's JS does
+  not).
 - `PageEditor` is loaded with `React.lazy` together with BlockNote's CSS;
-  `npm run build` shows it outside the main chunk.
+  `npm run build` shows it outside the main chunk (measured in the prototype:
+  a 952 kB `page-editor` chunk and its own CSS file, nothing of BlockNote in
+  `index-*.js`).
 
 New, under `frontend/src/features/notes/`:
 
@@ -73,11 +93,17 @@ New, under `frontend/src/features/notes/`:
 | `page-editor.tsx` | Builds the editor, mounts `BlockNoteView`, installs the nesting guard, wires sync and the outline |
 | `page-outline.tsx` | Heading rail over the live document |
 | `use-page-sync.ts` | Binds the sync engine to the editor, timers, visibility, the leave warning and the save state |
-| `lib/editor-schema.ts` | The BlockNote schema and editor options (§4.1) |
-| `lib/block-mapping.ts` | Pure: server block tree ↔ BlockNote blocks (§4.3) |
+| `use-document-mode.ts` | The resolved colour mode from `<html data-mode>` |
+| `demo-notes.tsx` | Demo mode's read-only sample page |
+| `lib/editor-schema.tsx` | The BlockNote schema: custom callout, `raw` block, `rawInline` atom (§4.1) |
+| `lib/block-mapping.ts` | Pure: server block tree ↔ BlockNote blocks, and canonicalisation (§4.3) |
 | `lib/inline-markdown.ts` | Pure: block `text` ↔ inline content (§4.2) |
-| `lib/block-properties.ts` | Pure: the server's property rules (merge, drop, `null` ≡ `{}`) |
-| `lib/page-sync.ts` | Pure: the diff, the send loop and the landed check (§5); transport injected |
+| `lib/block-properties.ts` | Pure: the server's property and nesting rules (merge, drop, `null` ≡ `{}`) |
+| `lib/sync-tree.ts` | Pure: the diff, the server-rule mirror and applying a write to a tree (§5.2) |
+| `lib/page-sync.ts` | Pure: the send loop, the landed check, backoff and stops (§5.3–§5.4); transport injected |
+| `lib/page-transport.ts` | The page block routes as the engine's transport |
+| `lib/nesting-guard.ts` | The editor-side nesting rule (§4.4) |
+| `lib/demo-page.ts` | The demo sample page |
 
 Deleted: `page-block-editor.tsx` and its test (with `promote`); B2's
 `usePageBlockUpdate`, `usePageBlockInsert`, `usePageBlockMove`,
@@ -111,23 +137,43 @@ functions the transport calls. `features/documents/lib/mutation-queue.ts` stays;
 
 A block's stored `text` is inline markdown with the block marker stripped (the
 parser stores `inline.content`). `inline-markdown.ts` parses it with
-`remark-parse` (plus GFM strikethrough), using node source positions:
+`mdast-util-from-markdown` plus GFM strikethrough, with every block construct
+disabled so `# x` or `- x` inside text stays text, using node source positions:
 
 - `text`, `strong`, `emphasis`, `inlineCode`, `delete` and an inline link
   written exactly as `[label](url)` with no title and whose label holds only
   those styles map to BlockNote text, styles and `link`.
 - **Everything else becomes a `rawInline` atom whose value is the exact source
   slice**: inline HTML, images, reference links, footnote references, autolinks
-  and GFM autolink literals, links with a title or a non-style child, hard
-  breaks (`break` nodes), and anything else remark yields. The editor renders it as a monospace chip; it
+  (`<https://…>`), links with a title or a non-style child, hard breaks
+  (`break` nodes), and anything else the parser yields. GFM autolink literals
+  are not parsed (the extension is not loaded), so `www.x.com` stays text. A
+  reference link or footnote reference is plain text on a page — a page holds
+  no definitions (B1 refuses them at create) — and stays text. The editor renders it as a monospace chip; it
   can be deleted or moved with the surrounding text but not edited in place.
 - A newline inside text maps to a newline in BlockNote text and back.
 - The emitter writes styles as `**`, `*`, `` ` `` (fence length chosen to
   exceed any backtick run), `~~`; links as `[label](url)`; escapes markdown
-  specials in plain text — including `<` and `&`, because remark decodes
+  specials in plain text — including `<` and `&`, because the parser decodes
   `&lt;kbd&gt;` to text that would otherwise re-emit as live HTML — and writes
-  atoms verbatim. The escape set is whatever makes the acceptance property hold:
-  for every generated inline content `c`, `parse(emit(c))` equals `c`.
+  atoms verbatim.
+- **The emitter verifies and degrades.** Markdown cannot express every
+  placement of emphasis (a delimiter between punctuation and a letter neither
+  opens nor closes), and the writer rewrites a few spellings on purpose (a line
+  ending before `<` becomes a space). So `emitInline` emits, re-parses and
+  compares normalised content; on a mismatch it retries with fewer marks — first
+  dropping marks on runs holding no letter or digit, then all marks but code,
+  then all — and, if nothing verifies, repeats once from what the last attempt
+  actually reads back as. The guaranteed property is **idempotence**:
+  `emit(parse(emit(c))) === emit(c)` for every content, which is what the diff
+  needs (a non-settling string would be rewritten on every flush). Fidelity is
+  tested separately: typed content keeps every character, mark and link, and
+  arbitrary content keeps every visible character. When marks had to be
+  dropped, the saved text carries fewer marks than the editor showed until the
+  next reload.
+- **Whitespace the markdown cannot hold is normalised away**: leading and
+  trailing whitespace of the whole text, spaces before or after a line ending,
+  and blank lines (two Shift+Enters) collapse to one line ending.
 
 Spelling normalises (`__b__` → `**b**`, `_i_` → `*i*`, `&amp;` → `\&`) only on a
 block the user edits, because the snapshot is canonicalised through the same
@@ -163,20 +209,21 @@ As program spec §5.2, with these specifics:
 
 ### 4.4 Nesting guard
 
-One `onBeforeChange` handler cancels any transaction containing an `insert` or
-`move` whose resulting parent is not a `bulletListItem`, `numberedListItem`,
-`checkListItem` or `toggleListItem` (program spec §3.3), reading that parent
-from the transaction's resulting document (§1's open item). It covers Tab, the
-side menu, drag, `moveBlocksUp`/`Down` and paste. Shapes already on the server
-that the rule would refuse (a quote holding a code block) load and render; only
-new placements are refused.
+One `onBeforeChange` handler compares the transaction's documents: it collects
+every `parent>child` pair whose parent is not a `bulletListItem`,
+`numberedListItem`, `checkListItem` or `toggleListItem` in `tr.before` and in
+`tr.doc`, and cancels the transaction when the second set holds a pair the first
+did not (program spec §3.3). One rule covers Tab, the side menu, drag,
+`moveBlocksUp`/`Down`, paste, and a retype of a list item that has children
+into a paragraph. Shapes already on the server that the rule would refuse (a
+quote holding a code block) load, render and take edits, because they are in
+both sets; no edit can create a new one. Verified in the prototype against the
+real editor.
 
-Two consequences, accepted and recorded rather than special-cased: children of
-such a legacy container cannot be reordered within it (the editor and the
-server both refuse the move), and a type change that turns a container with
-children into a non-container (a list item with children into a paragraph)
-keeps its children, since neither side checks nesting on update — after which
-the same reorder limit applies.
+The server checks the same rule on a retype (`update_block` re-runs
+`check_nesting` for the new type's parent and children), so the two sides agree.
+The one accepted consequence: children of such a legacy container cannot be
+reordered within it, since both sides refuse the move.
 
 ### 4.5 Surface
 
@@ -191,10 +238,14 @@ As program spec §5.3:
   the schema and the nesting guard and reaches the server as one batch insert.
 - Outline rail: headings of the live document; a click scrolls to the block.
 - No read/edit toggle.
-- **Theme:** darkraise-ui components are passed through `shadCNComponents`
-  wherever their props fit the slot; a slot that does not fit keeps the package
-  default with CSS overrides, and `page-editor.tsx` records that darkraise-ui
-  gap in a comment (CLAUDE.md's UI rule).
+- **Theme:** no `shadCNComponents` overrides. BlockNote requires its menu,
+  popover and select slots not to portal, and darkraise-ui's DropdownMenu,
+  Popover and Select do; the package's own shadcn primitives read the same
+  Tailwind colour tokens darkraise-ui defines, so they render on theme.
+  `page-editor.tsx` records that darkraise-ui gap in a comment (CLAUDE.md's UI
+  rule). The editor's light or dark theme follows `<html data-mode>`, which
+  darkraise-ui's ThemeProvider writes, rather than `useTheme()`, which throws
+  outside a provider.
 - **Demo mode:** a fixed sample page in a non-editable editor, with no sync
   engine and no API call.
 
@@ -207,6 +258,10 @@ As program spec §5.3:
 - The **desired** tree is the editor's document through the block mapping.
 - Both are the same shape: per block `id`, `parent_id`, sibling order, `type`,
   `text` (emitted markdown), `properties`.
+- **An update sends every key its type models, with an explicit value**
+  (`language: "text"`, not an absent key): the server merges properties and
+  never deletes a key on an update, so an omitted key could never be cleared
+  and the diff would resend it forever.
 - **Every server tree is canonicalised before it is compared**: the seed read
   and every landed-check re-read pass through the mapping to the editor and back
   (`toServer(toEditor(tree))`). Without this, stored spellings the emitter
@@ -221,8 +276,18 @@ As program spec §5.3:
 
 ### 5.2 The diff
 
-Each flush diffs desired against snapshot and sends **one** write, in this
-order:
+Each flush diffs desired against snapshot and sends **one** write: the first
+of the candidates below, in order, that the server would accept against the
+snapshot, judged by `refusalOf` — a local mirror of `block_verbs.py`'s checks
+(parent exists, anchor is a child of the parent, nesting, no move into its own
+subtree, required properties, a retype's parent and children) with the route's
+statuses (a bad parent or anchor is **404**, a nesting or cycle refusal
+**422**). A batch is cut to its longest acceptable prefix. Choosing the first
+acceptable write is what orders the cases a fixed order misses: retyping a
+paragraph into a list before inserting its first child, or moving a child out
+before deleting its old parent. If no candidate is acceptable while the trees
+differ, the desired tree breaks the server's rules — a bug — and the queue
+stops with the banner. The candidates:
 
 1. **Inserts, as one batch** (`POST .../blocks/batch`). Every id absent from
    the snapshot, in the desired tree's pre-order. `parent_id` is the desired
@@ -277,7 +342,9 @@ the server's tree with the snapshot:
 
 **404** (page trashed or purged, or a referenced block gone) and **422** (the
 editor let through a shape the server refuses — a bug) stop the queue and show
-the banner with the server's message.
+the banner: a 404 as "This page is no longer available." (the server's
+`no block … in page …` names ids a reader cannot use), a 422 with the server's
+own message.
 
 ### 5.5 Timing
 
@@ -294,8 +361,11 @@ the banner with the server's message.
   engine's desired tree, not the server read.
 - An engine that stops (conflict, 404, 422) while its page is not the one shown
   raises a toast naming the page, so the unsent work is not lost silently;
-  selecting the page shows the banner. An engine is discarded once it is
-  drained and its page is not mounted.
+  selecting the page shows the banner.
+- An engine is discarded once it is drained and its page is not mounted, and
+  **the page's cached read goes with it**. That read predates every edit the
+  engine sent; a page reopened from it would show old content and meet its own
+  writes as a change made elsewhere. The next open fetches fresh.
 - Every write whose body is 60 KB or less is sent with `fetch(..., { keepalive:
   true })`, so the write in flight at a tab close completes. Writes queued
   behind it cannot follow — each needs the previous write's hash — so the
@@ -303,7 +373,8 @@ the banner with the server's message.
 
 ### 5.7 Save state and banner
 
-Pane header: `Saving…`, `Saved`, `Unsaved — retrying`. The banner above the
+Pane header: nothing until the first flush, then `Saving…`, `Saved`,
+`Unsaved — retrying`. The banner above the
 editor carries conflicts, 404 and 422 with **Reload page**, which discards the
 engine (and its unsent work) and remounts from the server. Single operator, no
 merge. Undo and redo are BlockNote's local history; their results are edits the
@@ -314,19 +385,23 @@ diff picks up.
 Vitest, from `frontend/`:
 
 - **Probe cases** (plan task 1): every row of §1 as an assertion against 0.54.2.
-- **`inline-markdown`:** round-trip property over generated inline content
-  including markdown specials in plain text; each raw-atom kind (HTML, image,
-  reference link, footnote reference, autolink, GFM literal, titled link)
-  preserved byte for byte through parse → edit elsewhere → emit; newline
-  handling; backtick fence length.
+- **`inline-markdown`:** idempotence over generated adversarial content;
+  every character, mark and link kept for typed content; every visible
+  character kept for arbitrary content; each atom kind (inline HTML, image,
+  autolink, titled link, styled construct holding an atom, hard break)
+  preserved byte for byte through an edit elsewhere; reference links and
+  footnotes read as text; block markers inside text stay text; escapes and
+  entities; soft line breaks.
 - **`block-mapping`:** both directions for every row of §4.3, including table
   rows by position, new-row id stability across conversions, alignment padding,
   and list marker keep/reset.
 - **`block-properties`:** fixtures mirroring `update_block`'s merge and the
   type-change drop rule; `null` vs `{}`.
-- **`page-sync`:** the convergence property, with a fake server that enforces
-  the real refusals (`after_block_id` not a child of the parent, a move into
-  the block's own subtree); batch in pre-order with intra-batch references; a
+- **`sync-tree` and `page-sync`:** the convergence property, with a fake
+  server ported independently from `block_verbs.py` that enforces the real
+  refusals (`after_block_id` not a child of the parent, a move into the
+  block's own subtree, nesting, a retype's children); a retype of a paragraph
+  into a list before its first child is inserted; batch in pre-order with intra-batch references; a
   block moved under a new parent plus a new sibling after it in one flush;
   an ancestor/descendant swap; minimal moves (an insert before siblings moves
   nothing); a child moved out of a deleted parent is moved before the delete;
@@ -335,10 +410,16 @@ Vitest, from `frontend/`:
   landed-check outcomes and the repeated-409 stop; backoff; 404 and 422 stops;
   delete hash from the header; the keepalive size cutoff; the toast from an
   engine stopping off-screen.
-- **Nesting guard:** Tab, move and a pasted nested list under a paragraph are
-  refused; under a list, to-do and toggle item they are allowed.
-- **Pane:** editor mounted from the engine's desired tree when draining; a page
-  query refetch does not reset the editor; demo mode makes no request.
+- **Nesting guard:** an indent, a child and a retype that would put children
+  under a non-container are refused; nesting under a list item is allowed; a
+  legacy quote-with-code keeps taking edits.
+- **`use-page-sync`:** the 800 ms text pause, an immediate structural flush,
+  flush on hide, the leave warning, draining after unmount and remounting from
+  the desired tree, the cached read removed on release, the off-screen toast,
+  a fresh engine after a discard.
+- **Pane:** save labels per state, the banner with Reload page, the editor
+  locked while stopped. **Demo:** the sample page renders read-only with no
+  request.
 - `npm run typecheck`, `npm test`, `npm run build` (editor chunk outside the
   main bundle).
 
