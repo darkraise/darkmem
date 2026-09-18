@@ -6,27 +6,8 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { FolderPlus, FolderTree, Plus, Search } from "lucide-react"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "darkraise-ui/components/alert-dialog"
+import { FolderTree, Search } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "darkraise-ui/components/dialog"
-import { Label } from "darkraise-ui/components/label"
-import { toast } from "darkraise-ui/components/sonner"
 import { Card } from "darkraise-ui/components/card"
 import { Input } from "darkraise-ui/components/input"
 import {
@@ -42,13 +23,6 @@ import {
   ResizablePanelGroup,
 } from "darkraise-ui/components/resizable"
 import { ScrollArea } from "darkraise-ui/components/scroll-area"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "darkraise-ui/components/select"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "darkraise-ui/components/tabs"
 import { EmptyState } from "@/components/darkmem"
@@ -64,79 +38,17 @@ import { EditableDocument } from "@/features/documents/components/editable-docum
 import { ProgressBoard } from "@/features/progress/components/progress-board"
 import { useProgressCorpus } from "@/features/progress/use-progress-corpus"
 import { DocumentTree } from "@/features/documents/components/document-tree"
-import { NoteTreeActions } from "@/features/documents/components/note-tree-actions"
 import {
   expansionStorageKey,
   pathsToDocument,
   rootFolderPaths,
 } from "@/features/documents/tree-expansion"
-import {
-  buildPathMap,
-  buildUriTree,
-  NO_PATH,
-  type UriTreeNode,
-} from "@/features/documents/uri-tree"
-import { moveTarget, type MoveTarget } from "@/features/documents/move-target"
+import { buildUriTree } from "@/features/documents/uri-tree"
 import {
   useAllDocuments,
-  useDocumentCreate,
-  useDocumentDelete,
-  useDocumentMetadataUpdate,
   useDocumentSearch,
-  useDocumentSubtreeDelete,
-  useDocumentSubtreeRename,
   type DocumentListItem,
 } from "@/hooks/api"
-
-/** Hoisted rather than a `[]` literal per render: a fresh array defeats the
- *  `useMemo`s inside `useProgressCorpus`. */
-const NO_DOCUMENTS: DocumentListItem[] = []
-
-/** `document_put` upserts on `(project, uri)`, so a create at a uri that
- *  already exists returns that document's id and files nothing. Mint a free
- *  one against the tree we already hold. */
-function freeUri(items: DocumentListItem[], folder: string, base = "untitled") {
-  const taken = new Set(items.map((d) => d.uri).filter(Boolean) as string[])
-  const at = (n: number) =>
-    `${folder ? `${folder}/` : ""}${base}${n === 1 ? "" : `-${n}`}.md`
-  let n = 1
-  while (taken.has(at(n))) n += 1
-  return at(n)
-}
-
-/** The Move dialog's stand-in for "no folder at all". No tree path can
- *  collide with it: `buildUriTree` joins non-empty segments, so a path never
- *  starts with a separator and is never one. A plain `""` is unavailable
- *  because `SelectValue` reads the empty string as "nothing chosen". */
-const TOP_LEVEL_VALUE = "/"
-
-/** A subtree verb answers how many rows it touched, and a zero is a refusal
- *  wearing a 200.
- *
- *  The tree derives a folder's path from the uri's "/" segments with the
- *  empty ones dropped, while both subtree routes match the raw uri against
- *  `uri = prefix OR left(uri, len+1) = prefix || '/'` -- never LIKE, whose
- *  `_` and `%` would be metacharacters. The two diverge wherever a uri's
- *  spelling differs from that derived path at or above the prefix: anything
- *  under a leading slash matches at no level, and `file:///tmp/a.md` stops
- *  matching at `file:/tmp` though it still matches at `file:`. Unreported,
- *  the list simply refetches unchanged -- which is indistinguishable from a
- *  completed edit. */
-function reportNothingMatched(prefix: string, verb: string) {
-  toast.error(`No note under "${prefix}" matched, so nothing was ${verb}.`)
-}
-
-function parentPath(path: string) {
-  const cut = path.lastIndexOf("/")
-  return cut === -1 ? "" : path.slice(0, cut)
-}
-
-/** True for the node itself and for anything filed beneath it. Matches the
- *  subtree routes' own SQL predicate, `uri = prefix OR left(uri, len+1) =
- *  prefix || '/'`, which is a prefix test and deliberately not a LIKE. */
-function underPrefix(uri: string | null | undefined, prefix: string) {
-  return Boolean(uri) && (uri === prefix || uri!.startsWith(`${prefix}/`))
-}
 
 export const TAB_VALUES = ["artifacts", "progress"] as const
 export type WorkspaceTab = (typeof TAB_VALUES)[number]
@@ -185,16 +97,10 @@ export function ProjectWorkspace({
   project,
   tab,
   onTabChange,
-  treeManagement = false,
 }: {
   project: string
   tab: WorkspaceTab
   onTabChange: (tab: WorkspaceTab) => void
-  /** Tree management: create, rename, move, pin, delete. Off is the corpus
-   *  browser at `/projects/$project`, which is unchanged. Named for what it
-   *  gates rather than `editable`, because that surface is already editable
-   *  -- it has the block editor and a delete. */
-  treeManagement?: boolean
 }) {
   const documents = useAllDocuments(project)
   const items = documents.data?.items ?? []
@@ -222,10 +128,7 @@ export function ProjectWorkspace({
   // blur, so landing in it makes a stray keystroke a real edit.
   const [mode, setMode] = useState<ReaderMode>("read")
   const search = useDocumentSearch()
-  // Fed an empty list under tree management, which is what makes the hook
-  // inert: its content read is `enabled` on a non-empty id list, so the
-  // ledger scan the Progress tab needs costs nothing where there is no tab.
-  const corpus = useProgressCorpus(treeManagement ? NO_DOCUMENTS : items)
+  const corpus = useProgressCorpus(items)
 
   const roots = useMemo(() => buildUriTree(items), [items])
   // Lazy initialiser rather than an effect: the route mounts a fresh
@@ -307,284 +210,6 @@ export function ProjectWorkspace({
     setMode("read")
   }, [])
 
-  const createNote = useDocumentCreate()
-  const patchMetadata = useDocumentMetadataUpdate()
-  const renameSubtree = useDocumentSubtreeRename()
-  const deleteSubtree = useDocumentSubtreeDelete()
-  const deleteDocument = useDocumentDelete()
-
-  const [renameTarget, setRenameTarget] = useState<UriTreeNode | null>(null)
-  const [renameValue, setRenameValue] = useState("")
-  const [deleteTarget, setDeleteTarget] = useState<UriTreeNode | null>(null)
-  // Null closes the dialog; "" is the top level, which is a real answer.
-  const [newFolderParent, setNewFolderParent] = useState<string | null>(null)
-  const [newFolderValue, setNewFolderValue] = useState("")
-  const [moveSource, setMoveSource] = useState<UriTreeNode | null>(null)
-  const [moveValue, setMoveValue] = useState("")
-
-  const clearSelection = useCallback(() => {
-    setSelectedId(null)
-    setFocusBlockId(null)
-    setMode("read")
-  }, [])
-
-  const handleNewNote = useCallback(
-    (folderPath: string) => {
-      // The mint is only as good as the list it reads. Above the page cap
-      // `items` is a partial view, and a collision is NOT a no-op: the door
-      // is a content-replacing upsert on `(project, uri)`, so a blind mint
-      // would overwrite an unloaded document's blocks with the seed body.
-      if (truncated) {
-        toast.error(
-          "This project's document list was cut at the pagination guard, so a new note's path cannot be checked against it.",
-        )
-        return
-      }
-      const folder = folderPath === NO_PATH ? "" : folderPath
-      createNote.mutate(
-        { project, uri: freeUri(items, folder) },
-        {
-          onSuccess: ({ document_id }) => setSelectedId(document_id),
-          onError: (error) => toast.error(error.message),
-        },
-      )
-    },
-    // `.mutate` rather than the mutation object: `useMutation` returns a new
-    // result every render, so depending on it would change `nodeActions`'
-    // identity on every frame. `DocumentTree` is `memo`'d with the default
-    // shallow compare, which reads EVERY prop the call site passes -- so no
-    // count belongs in this sentence and no list here stays true. What holds
-    // the property is `project-workspace-render.test.tsx`, which counts that
-    // component's own renders across a heading crossing and fails on any
-    // fresh object added to the call site, this one included.
-    [createNote.mutate, items, project, truncated],
-  )
-
-  const handleTogglePin = useCallback(
-    (node: UriTreeNode) => {
-      const document = node.document
-      if (!document) return
-      patchMetadata.mutate(
-        { documentId: document.id, pinned: !document.pinned_at },
-        { onError: (error) => toast.error(error.message) },
-      )
-    },
-    [patchMetadata.mutate],
-  )
-
-  /** A drop, persisted. The tree resolves WHERE a release lands; this maps
-   *  the resolved kind onto its verb and reports a refusal.
-   *
-   *  A 409 is the door's own refusal rather than a failure -- the
-   *  destination is another document's identity -- and it is surfaced in the
-   *  server's own words: on a subtree move the server names the ONE colliding
-   *  document, which a client-side message built from the prefix cannot. */
-  const handleMove = useCallback(
-    (target: MoveTarget) => {
-      const settle = { onError: (error: Error) => toast.error(error.message) }
-      if (target.kind === "document") {
-        patchMetadata.mutate({ documentId: target.documentId, uri: target.uri }, settle)
-      } else {
-        renameSubtree.mutate(
-          { project, uri_prefix: target.uriPrefix, new_uri_prefix: target.newUriPrefix },
-          {
-            ...settle,
-            onSuccess: ({ renamed }) => {
-              if (renamed === 0) reportNothingMatched(target.uriPrefix, "moved")
-            },
-          },
-        )
-      }
-    },
-    [patchMetadata.mutate, renameSubtree.mutate, project],
-  )
-
-  const handleOpenNewFolder = useCallback((parent: string) => {
-    setNewFolderParent(parent === NO_PATH ? "" : parent)
-    setNewFolderValue("")
-  }, [])
-
-  const handleOpenMove = useCallback((node: UriTreeNode) => {
-    setMoveSource(node)
-    setMoveValue("")
-  }, [])
-
-  const byPath = useMemo(() => buildPathMap(roots), [roots])
-
-  /** Where this node may go, decided by the same `moveTarget` the drag path
-   *  uses rather than by a second copy of its rules -- a move onto itself,
-   *  into its own descendant, or against the synthesised `(no path)` bucket
-   *  is simply not offered. The one refusal it cannot see is the server's:
-   *  a destination another document already holds answers 409, which
-   *  `handleMove` surfaces in the server's own words. */
-  const moveOptions = useMemo(() => {
-    if (!moveSource) return []
-    const options: { value: string; label: string; target: MoveTarget }[] = []
-    const top = moveTarget(moveSource, null)
-    if (top) options.push({ value: TOP_LEVEL_VALUE, label: "Top level", target: top })
-    for (const node of byPath.values()) {
-      // Folders only. A release over a leaf resolves to that leaf's parent
-      // (`dropTargetFor`), so listing leaves would offer one destination
-      // twice under two names.
-      if (node.children.length === 0) continue
-      const target = moveTarget(moveSource, node)
-      if (target) options.push({ value: node.path, label: node.path, target })
-    }
-    return options
-  }, [moveSource, byPath])
-
-  const commitNewFolder = () => {
-    const parent = newFolderParent
-    const name = newFolderValue.trim()
-    if (parent === null) return
-    if (name.includes("/")) {
-      // One folder at a time: a nested path would mint every level at once
-      // and the seeded note would land somewhere the reader did not name.
-      toast.error("Enter a name, not a path — one folder at a time.")
-      setNewFolderParent(null)
-      return
-    }
-    setNewFolderParent(null)
-    if (!name) return
-    // A folder is not an object -- there is no row to carry an empty one --
-    // so the folder appears by filing the seeded note that makes it exist.
-    handleNewNote(parent ? `${parent}/${name}` : name)
-  }
-
-  const commitMove = () => {
-    const option = moveOptions.find((o) => o.value === moveValue)
-    setMoveSource(null)
-    if (option) handleMove(option.target)
-  }
-
-  const handleOpenRename = useCallback((node: UriTreeNode) => {
-    setRenameTarget(node)
-    setRenameValue(node.name)
-  }, [])
-
-  const commitRename = () => {
-    const node = renameTarget
-    const name = renameValue.trim()
-    if (!node) return
-    if (name.includes("/")) {
-      // A separator is an attempted move, which this surface has no verb for.
-      toast.error("Enter a name, not a path — a note cannot be moved here.")
-      setRenameTarget(null)
-      return
-    }
-    if (!name || name === node.name) {
-      setRenameTarget(null)
-      return
-    }
-    const parent = parentPath(node.path)
-    const next = parent ? `${parent}/${name}` : name
-    const settle = {
-      onSuccess: () => setRenameTarget(null),
-      onError: (error: Error) => toast.error(error.message),
-    }
-    // A node can be BOTH a document and a folder -- `a/b.md` and
-    // `a/b.md/c.md` coexist. Renaming the document alone would strand every
-    // descendant under the old prefix, and the subtree route's predicate
-    // matches `uri = prefix` as well as everything under `prefix/`, so it
-    // moves the document with its children in one call. Children decide, not
-    // the row.
-    if (node.children.length > 0) {
-      renameSubtree.mutate(
-        { project, uri_prefix: node.path, new_uri_prefix: next },
-        {
-          ...settle,
-          onSuccess: ({ renamed }) => {
-            setRenameTarget(null)
-            if (renamed === 0) reportNothingMatched(node.path, "renamed")
-          },
-        },
-      )
-    } else if (node.document) {
-      patchMetadata.mutate({ documentId: node.document.id, uri: next }, settle)
-    } else {
-      setRenameTarget(null)
-    }
-  }
-
-  const commitDelete = () => {
-    const node = deleteTarget
-    if (!node) return
-    const settle = {
-      onSuccess: () => setDeleteTarget(null),
-      onError: (error: Error) => toast.error(error.message),
-    }
-    if (node.children.length > 0) {
-      if (selected && underPrefix(selected.uri, node.path)) clearSelection()
-      deleteSubtree.mutate(
-        { project, uri_prefix: node.path },
-        {
-          ...settle,
-          onSuccess: ({ deleted }) => {
-            setDeleteTarget(null)
-            if (deleted === 0) {
-              reportNothingMatched(node.path, "deleted")
-            } else {
-              // The rows are gone, so the count is the only evidence of what
-              // the confirm actually removed.
-              toast.success(
-                `Deleted ${deleted} note${deleted === 1 ? "" : "s"} under "${node.path}".`,
-              )
-            }
-          },
-        },
-      )
-    } else if (node.document) {
-      if (selected?.id === node.document.id) clearSelection()
-      deleteDocument.mutate(node.document.id, settle)
-    } else {
-      setDeleteTarget(null)
-    }
-  }
-
-  // Memoised for the same reason as `nodeActions`: inline JSX is a fresh
-  // object every render, and one is enough to defeat the shallow compare.
-  const emptyAction = useMemo(
-    () =>
-      treeManagement ? (
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          <Button type="button" onClick={() => handleNewNote("")}>
-            <Plus className="mr-1 size-3.5" />
-            New note
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => handleOpenNewFolder("")}
-          >
-            <FolderPlus className="mr-1 size-3.5" />
-            New folder
-          </Button>
-        </div>
-      ) : undefined,
-    [treeManagement, handleNewNote, handleOpenNewFolder],
-  )
-
-  const nodeActions = useCallback(
-    (node: UriTreeNode) => (
-      <NoteTreeActions
-        node={node}
-        onNewNote={handleNewNote}
-        onNewFolder={handleOpenNewFolder}
-        onRename={handleOpenRename}
-        onMoveTo={handleOpenMove}
-        onTogglePin={handleTogglePin}
-        onDelete={setDeleteTarget}
-      />
-    ),
-    [
-      handleNewNote,
-      handleOpenNewFolder,
-      handleOpenRename,
-      handleOpenMove,
-      handleTogglePin,
-    ],
-  )
-
   const hits = search.data?.items ?? []
 
   return (
@@ -597,15 +222,10 @@ export function ProjectWorkspace({
       // `lg:`-only prefixing chat.tsx's height chain uses.
       className="flex flex-col lg:min-h-0 lg:flex-1"
     >
-      {/* A progress ledger is a project artifact recorded by sessions. The
-          personal space has neither, so the tab would be permanently empty
-          -- and with one tab left the strip is not a choice. */}
-      {treeManagement ? null : (
-        <TabsList>
-          <TabsTrigger value="artifacts">Artifacts</TabsTrigger>
-          <TabsTrigger value="progress">Progress</TabsTrigger>
-        </TabsList>
-      )}
+      <TabsList>
+        <TabsTrigger value="artifacts">Artifacts</TabsTrigger>
+        <TabsTrigger value="progress">Progress</TabsTrigger>
+      </TabsList>
 
       <TabsContent
         value="artifacts"
@@ -683,36 +303,7 @@ export function ProjectWorkspace({
                 bar is 10px and an 8px pad left it 2px over the rows -- which
                 a full-width selected fill makes visible. */}
             <ScrollArea className="h-full pr-3">
-              {treeManagement ? (
-                <div className="flex flex-wrap items-center justify-between gap-x-2">
-                  <RegionLabel>notes</RegionLabel>
-                  <div className="mb-1.5 flex items-center gap-0.5">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleNewNote("")}
-                    >
-                      <Plus className="mr-1 size-3.5" />
-                      New note
-                    </Button>
-                    {/* The top level is reachable from no row's menu -- a
-                        row's "New folder" nests under that row -- so without
-                        this a space holding only leaves can never gain one. */}
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleOpenNewFolder("")}
-                    >
-                      <FolderPlus className="mr-1 size-3.5" />
-                      New folder
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <RegionLabel>documents</RegionLabel>
-              )}
+              <RegionLabel>documents</RegionLabel>
               {documents.isError ? (
                 <p className="text-destructive text-sm">
                   This project's documents could not be loaded — a failed
@@ -732,9 +323,6 @@ export function ProjectWorkspace({
                   truncated={truncated}
                   expanded={effectiveExpanded}
                   onExpandedChange={handleExpandedChange}
-                  nodeActions={treeManagement ? nodeActions : undefined}
-                  onMove={treeManagement ? handleMove : undefined}
-                  emptyAction={emptyAction}
                 />
               )}
             </ScrollArea>
@@ -821,11 +409,7 @@ export function ProjectWorkspace({
                   kind="empty"
                   icon={FolderTree}
                   title="Nothing selected"
-                  description={
-                    treeManagement
-                      ? "Pick a note from the tree to read it."
-                      : "Pick a document from the tree to read it."
-                  }
+                  description="Pick a document from the tree to read it."
                 />
               )}
             </ScrollArea>
@@ -833,173 +417,27 @@ export function ProjectWorkspace({
         </ResizablePanelGroup>
       </TabsContent>
 
-      <Dialog
-        open={renameTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setRenameTarget(null)
-        }}
-      >
-        <DialogContent>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              commitRename()
-            }}
-          >
-            <DialogHeader>
-              <DialogTitle>Rename {renameTarget?.name}</DialogTitle>
-            </DialogHeader>
-            <Label htmlFor="note-rename" className="sr-only">
-              New name
-            </Label>
-            <Input
-              id="note-rename"
-              autoFocus
-              aria-label="New name"
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-            />
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setRenameTarget(null)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit">Rename</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={newFolderParent !== null}
-        onOpenChange={(open) => {
-          if (!open) setNewFolderParent(null)
-        }}
-      >
-        <DialogContent>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              commitNewFolder()
-            }}
-          >
-            <DialogHeader>
-              <DialogTitle>
-                {newFolderParent ? `New folder in ${newFolderParent}` : "New folder"}
-              </DialogTitle>
-            </DialogHeader>
-            <Label htmlFor="note-new-folder" className="sr-only">
-              Folder name
-            </Label>
-            <Input
-              id="note-new-folder"
-              autoFocus
-              aria-label="Folder name"
-              value={newFolderValue}
-              onChange={(e) => setNewFolderValue(e.target.value)}
-            />
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setNewFolderParent(null)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit">Create</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={moveSource !== null}
-        onOpenChange={(open) => {
-          if (!open) setMoveSource(null)
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Move {moveSource?.name}</DialogTitle>
-          </DialogHeader>
-          {moveOptions.length === 0 ? (
-            <p className="text-muted-foreground text-sm">
-              There is nowhere to move this — every folder here is either where
-              it already sits or inside it.
-            </p>
+      <TabsContent value="progress" className="space-y-5">
+        <div>
+          <RegionLabel>project board</RegionLabel>
+          {/* A projection of the ledger and the epic files, never a second
+              store: the board writes nothing, so `progress.md` stays the one
+              place task state lives. That is what keeps it cheap, and it is
+              also why the board fills only for a project whose corpus holds
+              those files. */}
+          {corpus.present ? (
+            <ProgressBoard corpus={corpus} />
           ) : (
-            <Select value={moveValue} onValueChange={setMoveValue}>
-              <SelectTrigger aria-label="Destination folder">
-                <SelectValue placeholder="Choose a folder" />
-              </SelectTrigger>
-              <SelectContent>
-                {moveOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <EmptyState
+              kind="empty"
+              icon={FolderTree}
+              title="No ledger pinned"
+              description={`File a document whose path ends in ${LEDGER_SUFFIX} to pin this project's ledger here.`}
+            />
           )}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setMoveSource(null)}>
-              Cancel
-            </Button>
-            <Button type="button" onClick={commitMove} disabled={!moveValue}>
-              Move
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <AlertDialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null)
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete {deleteTarget?.name}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {deleteTarget && deleteTarget.children.length > 0
-                ? "This removes every note filed under this path, with their blocks and embeddings. This cannot be undone."
-                : "This removes the note and all of its blocks, including their embeddings. This cannot be undone."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={commitDelete}>Delete</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {treeManagement ? null : (
-        <TabsContent value="progress" className="space-y-5">
-          <div>
-            <RegionLabel>project board</RegionLabel>
-            {/* A projection of the ledger and the epic files, never a second
-                store: the board writes nothing, so `progress.md` stays the one
-                place task state lives. That is what keeps it cheap, and it is
-                also why the board fills only for a project whose corpus holds
-                those files. */}
-            {corpus.present ? (
-              <ProgressBoard corpus={corpus} />
-            ) : (
-              <EmptyState
-                kind="empty"
-                icon={FolderTree}
-                title="No ledger pinned"
-                description={`File a document whose path ends in ${LEDGER_SUFFIX} to pin this project's ledger here.`}
-              />
-            )}
-          </div>
-          <CheckpointsTab project={project} />
-        </TabsContent>
-      )}
+        </div>
+        <CheckpointsTab project={project} />
+      </TabsContent>
     </Tabs>
   )
 }

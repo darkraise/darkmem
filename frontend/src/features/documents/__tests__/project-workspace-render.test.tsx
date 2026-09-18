@@ -79,7 +79,7 @@ function wrapper({ children }: { children: ReactNode }) {
  * -- was the render skipped -- and it is the only test that can fail when a
  * new inline prop is added to the call site.
  */
-async function countTreeRenders(treeManagement: boolean) {
+async function countTreeRenders() {
   let renders = 0
   vi.mocked(apiFetch).mockImplementation((path: string) => {
     if (String(path).startsWith("/documents?")) {
@@ -93,7 +93,6 @@ async function countTreeRenders(treeManagement: boolean) {
         project="darkmem"
         tab="artifacts"
         onTabChange={vi.fn()}
-        treeManagement={treeManagement}
       />
     </Profiler>,
     { wrapper },
@@ -131,20 +130,14 @@ describe("project workspace — the memoised tree is really skipped", () => {
     rowRenders.mockClear()
   })
 
-  it("does not re-render the tree on a heading crossing under tree management", async () => {
-    const { perCrossing, second, workspaceRenders } = await countTreeRenders(true)
-    // The workspace itself DOES re-render on each of the two crossings -- it
-    // holds `activeHeadingId` -- which is what makes a zero row count mean
-    // "the memo skipped it" rather than "nothing happened".
-    expect(workspaceRenders).toBeGreaterThanOrEqual(2)
-    expect(perCrossing).toBe(0)
-    expect(second).toBe(0)
-  })
-
   it("does not re-render the tree on a heading crossing on the corpus browser", async () => {
     // `onExpandedChange` was a plain declaration, so this surface -- which
     // predates every note action -- was paying the same cost.
-    const { perCrossing, second, workspaceRenders } = await countTreeRenders(false)
+    //
+    // The workspace itself DOES re-render on each of the two crossings -- it
+    // holds `activeHeadingId` -- which is what makes a zero row count mean
+    // "the memo skipped it" rather than "nothing happened".
+    const { perCrossing, second, workspaceRenders } = await countTreeRenders()
     expect(workspaceRenders).toBeGreaterThanOrEqual(2)
     expect(perCrossing).toBe(0)
     expect(second).toBe(0)

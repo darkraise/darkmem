@@ -40,8 +40,6 @@ vi.mock("@/features/documents/components/document-reader", () => ({
     </div>
   ),
 }))
-// The workspace's refusals speak through a toast and nothing else, so the
-// toast is the only observable they have.
 vi.mock("darkraise-ui/components/sonner", () => ({
   toast: { error: vi.fn(), success: vi.fn() },
   Toaster: () => null,
@@ -50,7 +48,6 @@ vi.mock("@/features/activity/components/checkpoints-tab", () => ({
   CheckpointsTab: () => <div>checkpoints-tab</div>,
 }))
 
-import { toast } from "darkraise-ui/components/sonner"
 import { apiFetch } from "@/lib/api"
 import { ProjectWorkspace } from "../components/project-workspace"
 import { expansionStorageKey } from "../tree-expansion"
@@ -745,54 +742,21 @@ function contentReads() {
     .mock.calls.filter(([path]) => String(path).includes("include_content=true"))
 }
 
-describe("project workspace — the tree-management capability", () => {
-  it("renders the workspace unchanged when tree management is off", async () => {
+describe("project workspace — the corpus browser's own surface", () => {
+  it("runs the progress corpus scan the Progress tab reads", async () => {
     mockDocuments({ items: [DOC, LEDGER] })
     renderWorkspace()
     await screen.findByText("design.md")
 
     expect(screen.getByRole("tab", { name: /progress/i })).toBeInTheDocument()
-    // The corpus scan is the Progress tab's data layer; off by default means
-    // it still runs, which is what makes the `on` case a real difference.
+    // The corpus scan is the Progress tab's data layer.
     await waitFor(() => expect(contentReads().length).toBeGreaterThan(0))
   })
 
-  it("exposes no tree-management affordances by default", async () => {
-    mockDocuments({ items: [DOC] })
-    renderWorkspace()
-    await screen.findByText("design.md")
-
-    expect(screen.queryByLabelText(/^Actions for /)).toBeNull()
-    expect(screen.queryByRole("button", { name: /new note/i })).toBeNull()
-  })
-
-  it("hides the tab strip and the progress scan when tree management is on", async () => {
-    // A progress ledger is a project artifact recorded by sessions; the
-    // personal space has none, so the tab would be permanently empty and the
-    // ledger scan a fetch on every mount for nothing.
-    mockDocuments({ items: [DOC, LEDGER] })
-    renderWorkspace({ treeManagement: true })
-    await screen.findByText("design.md")
-
-    expect(screen.queryByRole("tab", { name: /progress/i })).toBeNull()
-    expect(screen.queryByRole("tab", { name: /artifacts/i })).toBeNull()
-    expect(contentReads()).toHaveLength(0)
-  })
-
-  it("shows a notes empty state rather than the progress-ledger one", async () => {
-    mockDocuments({ items: [] })
-    renderWorkspace({ treeManagement: true })
-
-    expect(await screen.findByText(/nothing selected/i)).toBeInTheDocument()
-    expect(screen.queryByText(/pick a document/i)).toBeNull()
-  })
-
-  // Rendered at `tab="progress"` on purpose. darkraise-ui's TabsContent wraps
-  // its panel in `Presence` with `present: isSelected`, and an unselected panel
-  // renders null on the first pass -- so at `tab="artifacts"` the progress
-  // panel is absent whether or not the gate exists, and asserting its absence
-  // there proves nothing. The OFF half is what makes the ON half mean anything.
-  it("renders the progress panel when tree management is off", async () => {
+  // Rendered at `tab="progress"` on purpose: darkraise-ui's TabsContent wraps
+  // its panel in `Presence` with `present: isSelected`, so an unselected panel
+  // renders null on the first pass.
+  it("renders the progress panel", async () => {
     mockDocuments({ items: [DOC] })
     renderWorkspace({ tab: "progress" })
 
@@ -800,56 +764,7 @@ describe("project workspace — the tree-management capability", () => {
     expect(screen.getByText(/planning\/progress\.md/)).toBeInTheDocument()
   })
 
-  it("renders no progress panel when tree management is on", async () => {
-    mockDocuments({ items: [DOC] })
-    renderWorkspace({ tab: "progress", treeManagement: true })
-    // Nothing else is on screen to wait for: with no progress panel and the
-    // artifacts panel unselected, this state renders empty. `/notes` never
-    // enters it -- it passes `tab="artifacts"` -- so waiting on the document
-    // read is what lets the render settle before the absence is asserted.
-    await waitFor(() => expect(apiFetch).toHaveBeenCalled())
-
-    expect(screen.queryByText("checkpoints-tab")).toBeNull()
-    expect(screen.queryByText(/planning\/progress\.md/)).toBeNull()
-  })
-
-  it("offers a create affordance inside the empty tree", async () => {
-    // The workspace builds the button itself rather than taking it as a
-    // prop: an empty tree renders before any row, so `nodeActions` -- which
-    // only ever hangs off a row -- reaches nothing here.
-    mockDocuments({ items: [] })
-    renderWorkspace({ treeManagement: true })
-
-    expect(
-      await screen.findAllByRole("button", { name: /new note/i }),
-    ).not.toHaveLength(0)
-  })
-
-  it("offers a folder create inside the empty tree, not only in the header", async () => {
-    // The empty tree is the state `/notes` opens in, and the tree's own empty
-    // state returns before `nodeActions` renders -- so a folder is reachable
-    // from here or from nowhere. Waiting on the empty state before querying
-    // is load-bearing: the pane header's own button satisfies a
-    // `findAllByRole` on the first tick, so a query that does not wait passes
-    // whether or not the empty state ever renders its action.
-    mockDocuments({ items: [] })
-    renderWorkspace({ treeManagement: true })
-    await screen.findByText(/no documents filed/i)
-
-    // The header's, then the empty state's, in DOM order.
-    const buttons = screen.getAllByRole("button", { name: /new folder/i })
-    expect(buttons).toHaveLength(2)
-    await userEvent.click(buttons[1]!)
-    const input = await screen.findByRole("textbox", { name: /folder name/i })
-    await userEvent.type(input, "journal{Enter}")
-
-    await waitFor(() => expect(bodiesFor((p) => p === "/documents")).toHaveLength(1))
-    expect(bodiesFor((p) => p === "/documents")[0]).toMatchObject({
-      uri: "journal/untitled.md",
-    })
-  })
-
-  it("offers no create affordance in an empty tree while management is off", async () => {
+  it("offers no create affordance in an empty tree", async () => {
     // The corpus browser has no create verb at all.
     mockDocuments({ items: [] })
     renderWorkspace()
@@ -859,429 +774,9 @@ describe("project workspace — the tree-management capability", () => {
   })
 })
 
-/** The bodies the workspace sent, by route. */
-function bodiesFor(match: (path: string) => boolean) {
-  return vi
-    .mocked(apiFetch)
-    .mock.calls.filter(([path]) => match(String(path)))
-    .map(([, init]) => JSON.parse(String((init as RequestInit | undefined)?.body ?? "{}")))
-}
-
-const ORPHAN = {
-  id: "33333333-3333-3333-3333-333333333333",
-  title: "No uri note",
-  uri: null,
-  source_type: "note",
-  project: "darkmem",
-  block_count: 1,
-}
-
-/** `mockDocuments` answers every `/documents*` path with the list payload,
- *  so a subtree verb's own count never arrives. This layers the count the
- *  server would really answer over it. */
-function answerVerb(route: string, payload: unknown) {
-  const list = vi.mocked(apiFetch).getMockImplementation()!
-  vi.mocked(apiFetch).mockImplementation((path, init) =>
-    path === route ? Promise.resolve(payload) : list(path, init),
-  )
-}
-
-async function openMenu(name: RegExp) {
-  await userEvent.click(screen.getByLabelText(name))
-}
-
-describe("project workspace — the note actions", () => {
+describe("project workspace — the reveal after a uri change", () => {
   afterEach(() => {
     vi.mocked(apiFetch).mockReset()
-    vi.mocked(toast.error).mockClear()
-  })
-
-  it("says so when a rename is given a path rather than a name", async () => {
-    // A name carrying a separator is an attempted MOVE, which this surface
-    // has no verb for. Closing the dialog with nothing changed is the
-    // "silent renders like clean" failure; the refusal has to be audible.
-    mockDocuments({ items: [DOC] })
-    renderWorkspace({ treeManagement: true })
-    await screen.findByText("design.md")
-
-    await openMenu(/actions for design\.md/i)
-    await userEvent.click(await screen.findByText("Rename"))
-    const input = screen.getByRole("textbox", { name: /new name/i })
-    await userEvent.clear(input)
-    await userEvent.type(input, "moved/design.md{Enter}")
-
-    expect(bodiesFor((p) => p === `/documents/${DOC.id}`)).toHaveLength(0)
-    expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
-      expect.stringMatching(/name, not a path|cannot contain/i),
-    )
-  })
-
-  it("refuses to mint a uri against a truncated list", async () => {
-    // `put_document` is a content-replacing upsert, so a blind mint above the
-    // page cap does not "file nothing" -- it would overwrite an unloaded
-    // document's blocks with the seed body.
-    mockDocuments({ items: [DOC] })
-    renderWorkspace({ treeManagement: true })
-    await screen.findByText("design.md")
-    lastQueryClient?.setQueryData(["documentsAll", "darkmem"], {
-      items: [DOC],
-      truncated: true,
-    })
-    expect(await screen.findByText(/first 1 documents/i)).toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole("button", { name: /new note/i }))
-
-    expect(bodiesFor((p) => p === "/documents")).toHaveLength(0)
-    expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
-      expect.stringMatching(/truncated|too many|cut/i),
-    )
-  })
-
-  it("mints a uri no document holds when creating a note", async () => {
-    // `document_put` upserts on `(project, uri)`: re-using `untitled.md`
-    // would return the existing document's id and file nothing at all.
-    mockDocuments({
-      items: [{ ...DOC, uri: "untitled.md" }, { ...DOC, id: "d2", uri: "untitled-2.md" }],
-    })
-    renderWorkspace({ treeManagement: true })
-    await screen.findByText("untitled.md")
-
-    await userEvent.click(screen.getByRole("button", { name: /new note/i }))
-
-    await waitFor(() =>
-      expect(bodiesFor((p) => p === "/documents")).toHaveLength(1),
-    )
-    expect(bodiesFor((p) => p === "/documents")[0]).toMatchObject({
-      project: "darkmem",
-      uri: "untitled-3.md",
-    })
-  })
-
-  it("renames a note by its uri, never its title", async () => {
-    // The tree renders the uri's last segment, so a title PATCH changes
-    // nothing the user can see and reads as a broken rename.
-    mockDocuments({ items: [DOC] })
-    renderWorkspace({ treeManagement: true })
-    await screen.findByText("design.md")
-
-    await openMenu(/actions for design\.md/i)
-    await userEvent.click(await screen.findByText("Rename"))
-    const input = screen.getByRole("textbox", { name: /new name/i })
-    await userEvent.clear(input)
-    await userEvent.type(input, "renamed.md{Enter}")
-
-    await waitFor(() =>
-      expect(bodiesFor((p) => p === `/documents/${DOC.id}`)).toHaveLength(1),
-    )
-    const body = bodiesFor((p) => p === `/documents/${DOC.id}`)[0]
-    expect(body).toEqual({ uri: "notes/renamed.md" })
-  })
-
-  it("renames a folder through the subtree route", async () => {
-    mockDocuments({ items: [DOC] })
-    renderWorkspace({ treeManagement: true })
-    await screen.findByText("design.md")
-
-    await openMenu(/actions for notes/i)
-    await userEvent.click(await screen.findByText("Rename"))
-    const input = screen.getByRole("textbox", { name: /new name/i })
-    await userEvent.clear(input)
-    await userEvent.type(input, "journal{Enter}")
-
-    await waitFor(() =>
-      expect(bodiesFor((p) => p === "/documents/rename")).toHaveLength(1),
-    )
-    expect(bodiesFor((p) => p === "/documents/rename")[0]).toEqual({
-      project: "darkmem",
-      uri_prefix: "notes",
-      new_uri_prefix: "journal",
-    })
-  })
-
-  it("renames a document that also has descendants as a subtree", async () => {
-    // `a/b.md` and `a/b.md/c.md` coexist: renaming the document alone would
-    // strand every descendant under the old prefix. The subtree route matches
-    // `uri = prefix` too, so it moves the document AND its children.
-    mockDocuments({
-      items: [
-        { ...DOC, uri: "notes/design.md" },
-        { ...DOC, id: "d2", uri: "notes/design.md/appendix.md" },
-      ],
-    })
-    renderWorkspace({ treeManagement: true })
-    await screen.findByText("design.md")
-
-    await openMenu(/actions for design\.md/i)
-    await userEvent.click(await screen.findByText("Rename"))
-    const input = screen.getByRole("textbox", { name: /new name/i })
-    await userEvent.clear(input)
-    await userEvent.type(input, "spec.md{Enter}")
-
-    await waitFor(() =>
-      expect(bodiesFor((p) => p === "/documents/rename")).toHaveLength(1),
-    )
-    expect(bodiesFor((p) => p === "/documents/rename")[0]).toEqual({
-      project: "darkmem",
-      uri_prefix: "notes/design.md",
-      new_uri_prefix: "notes/spec.md",
-    })
-    expect(bodiesFor((p) => p.startsWith(`/documents/${DOC.id}`))).toHaveLength(0)
-  })
-
-  it("confirms before deleting a folder, then uses the subtree route", async () => {
-    mockDocuments({ items: [DOC] })
-    renderWorkspace({ treeManagement: true })
-    await screen.findByText("design.md")
-
-    await openMenu(/actions for notes/i)
-    await userEvent.click(await screen.findByText("Delete"))
-    // Nothing is sent until the confirm is answered.
-    expect(bodiesFor((p) => p === "/documents/delete")).toHaveLength(0)
-
-    const dialog = await screen.findByRole("alertdialog")
-    await userEvent.click(within(dialog).getByRole("button", { name: /^delete$/i }))
-
-    await waitFor(() =>
-      expect(bodiesFor((p) => p === "/documents/delete")).toHaveLength(1),
-    )
-    expect(bodiesFor((p) => p === "/documents/delete")[0]).toEqual({
-      project: "darkmem",
-      uri_prefix: "notes",
-    })
-  })
-
-  it("clears the selection when a delete removes the selected document", async () => {
-    mockDocuments({ items: [DOC] })
-    renderWorkspace({ treeManagement: true })
-    await userEvent.click(await screen.findByText("design.md"))
-    expect(await screen.findByText(/reader:/)).toBeInTheDocument()
-
-    await openMenu(/actions for design\.md/i)
-    await userEvent.click(await screen.findByText("Delete"))
-    const dialog = await screen.findByRole("alertdialog")
-    await userEvent.click(within(dialog).getByRole("button", { name: /^delete$/i }))
-
-    expect(await screen.findByText(/nothing selected/i)).toBeInTheDocument()
-  })
-
-  it("offers no rename on a document that has no uri to rename", async () => {
-    // The `(no path)` bucket's children are documents with a NULL uri, so
-    // every uri-shaped operation on them would carry a path matching nothing.
-    mockDocuments({ items: [DOC, ORPHAN] })
-    renderWorkspace({ treeManagement: true })
-    await screen.findByText("No uri note")
-
-    await openMenu(/actions for No uri note/i)
-    expect(await screen.findByText("Delete")).toBeInTheDocument()
-    expect(screen.queryByText("Rename")).toBeNull()
-  })
-
-  it("reports a folder delete that matched no row rather than reporting nothing", async () => {
-    // The tree drops empty uri segments when it builds a folder path; the
-    // subtree routes match the raw uri and normalise nothing. A folder whose
-    // documents are filed at `/notes/...` matches none of its own rows, and
-    // the `{"deleted": 0}` that comes back is a 200 the list refetch cannot
-    // distinguish from a completed erase.
-    mockDocuments({ items: [DOC] })
-    answerVerb("/documents/delete", { deleted: 0 })
-    renderWorkspace({ treeManagement: true })
-    await screen.findByText("design.md")
-
-    await openMenu(/actions for notes/i)
-    await userEvent.click(await screen.findByText("Delete"))
-    const dialog = await screen.findByRole("alertdialog")
-    await userEvent.click(within(dialog).getByRole("button", { name: /^delete$/i }))
-
-    await waitFor(() =>
-      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
-        expect.stringMatching(/nothing was deleted/i),
-      ),
-    )
-    expect(vi.mocked(toast.success)).not.toHaveBeenCalled()
-  })
-
-  it("names how many notes a folder delete actually removed", async () => {
-    // The rows are gone, so the count is the only evidence of what the
-    // confirm removed -- and it is the other half of the pair above: a
-    // handler that refused unconditionally would pass that test and be
-    // wrong on every real delete.
-    mockDocuments({ items: [DOC] })
-    answerVerb("/documents/delete", { deleted: 3 })
-    renderWorkspace({ treeManagement: true })
-    await screen.findByText("design.md")
-
-    await openMenu(/actions for notes/i)
-    await userEvent.click(await screen.findByText("Delete"))
-    const dialog = await screen.findByRole("alertdialog")
-    await userEvent.click(within(dialog).getByRole("button", { name: /^delete$/i }))
-
-    await waitFor(() =>
-      expect(vi.mocked(toast.success)).toHaveBeenCalledWith(
-        expect.stringMatching(/deleted 3 notes/i),
-      ),
-    )
-    expect(vi.mocked(toast.error)).not.toHaveBeenCalled()
-  })
-
-  it("reports a folder rename that matched no row", async () => {
-    mockDocuments({ items: [DOC] })
-    answerVerb("/documents/rename", { renamed: 0 })
-    renderWorkspace({ treeManagement: true })
-    await screen.findByText("design.md")
-
-    await openMenu(/actions for notes/i)
-    await userEvent.click(await screen.findByText("Rename"))
-    const input = screen.getByRole("textbox", { name: /new name/i })
-    await userEvent.clear(input)
-    await userEvent.type(input, "journal{Enter}")
-
-    await waitFor(() =>
-      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
-        expect.stringMatching(/nothing was renamed/i),
-      ),
-    )
-  })
-
-  it("files the seeded note that makes a new folder exist", async () => {
-    // A folder is not an object: it is derived from the uri path, so an
-    // empty one cannot exist and the command has to file something.
-    mockDocuments({ items: [DOC] })
-    renderWorkspace({ treeManagement: true })
-    await screen.findByText("design.md")
-
-    await openMenu(/actions for notes/i)
-    await userEvent.click(
-      await screen.findByRole("menuitem", { name: "New folder" }),
-    )
-    const input = await screen.findByRole("textbox", { name: /folder name/i })
-    await userEvent.type(input, "journal{Enter}")
-
-    await waitFor(() => expect(bodiesFor((p) => p === "/documents")).toHaveLength(1))
-    expect(bodiesFor((p) => p === "/documents")[0]).toMatchObject({
-      project: "darkmem",
-      uri: "notes/journal/untitled.md",
-    })
-  })
-
-  it("creates a top-level folder from the header, which no row's menu can", async () => {
-    mockDocuments({ items: [DOC] })
-    renderWorkspace({ treeManagement: true })
-    await screen.findByText("design.md")
-
-    await userEvent.click(screen.getByRole("button", { name: /new folder/i }))
-    const input = await screen.findByRole("textbox", { name: /folder name/i })
-    await userEvent.type(input, "journal{Enter}")
-
-    await waitFor(() => expect(bodiesFor((p) => p === "/documents")).toHaveLength(1))
-    expect(bodiesFor((p) => p === "/documents")[0]).toMatchObject({
-      uri: "journal/untitled.md",
-    })
-  })
-
-  it("says so when a new folder is given a path rather than a name", async () => {
-    mockDocuments({ items: [DOC] })
-    renderWorkspace({ treeManagement: true })
-    await screen.findByText("design.md")
-
-    await userEvent.click(screen.getByRole("button", { name: /new folder/i }))
-    const input = await screen.findByRole("textbox", { name: /folder name/i })
-    await userEvent.type(input, "a/b{Enter}")
-
-    expect(bodiesFor((p) => p === "/documents")).toHaveLength(0)
-    expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
-      expect.stringMatching(/name, not a path/i),
-    )
-  })
-
-  it("refuses to mint a folder's note against a truncated list", async () => {
-    // The same guard the note mint holds, because it is the same mint: the
-    // door is a content-replacing upsert, so a blind mint above the page cap
-    // would overwrite an unloaded document.
-    mockDocuments({ items: [DOC] })
-    renderWorkspace({ treeManagement: true })
-    await screen.findByText("design.md")
-    lastQueryClient?.setQueryData(["documentsAll", "darkmem"], {
-      items: [DOC],
-      truncated: true,
-    })
-    expect(await screen.findByText(/first 1 documents/i)).toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole("button", { name: /new folder/i }))
-    const input = await screen.findByRole("textbox", { name: /folder name/i })
-    await userEvent.type(input, "journal{Enter}")
-
-    expect(bodiesFor((p) => p === "/documents")).toHaveLength(0)
-    expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
-      expect.stringMatching(/truncated|too many|cut/i),
-    )
-  })
-
-  it("moves a note through the picker, with no pointer drag involved", async () => {
-    // "Move to…" is the only non-pointer move there is; a keyboard-only
-    // reader reaches the tree by no other route.
-    mockDocuments({ items: [DOC, { ...DOC, id: "d2", uri: "archive/keep.md" }] })
-    renderWorkspace({ treeManagement: true })
-    await screen.findByText("design.md")
-
-    await openMenu(/actions for design\.md/i)
-    await userEvent.click(await screen.findByText("Move to…"))
-    await userEvent.click(await screen.findByRole("combobox", { name: /destination/i }))
-    await userEvent.click(await screen.findByRole("option", { name: "archive" }))
-    await userEvent.click(screen.getByRole("button", { name: /^move$/i }))
-
-    await waitFor(() =>
-      expect(bodiesFor((p) => p === `/documents/${DOC.id}`)).toHaveLength(1),
-    )
-    expect(bodiesFor((p) => p === `/documents/${DOC.id}`)[0]).toEqual({
-      uri: "archive/design.md",
-    })
-  })
-
-  it("moves a folder through the picker with the subtree rename", async () => {
-    mockDocuments({ items: [DOC, { ...DOC, id: "d2", uri: "archive/keep.md" }] })
-    renderWorkspace({ treeManagement: true })
-    await screen.findByText("design.md")
-
-    await openMenu(/actions for notes/i)
-    await userEvent.click(await screen.findByText("Move to…"))
-    await userEvent.click(await screen.findByRole("combobox", { name: /destination/i }))
-    await userEvent.click(await screen.findByRole("option", { name: "archive" }))
-    await userEvent.click(screen.getByRole("button", { name: /^move$/i }))
-
-    await waitFor(() =>
-      expect(bodiesFor((p) => p === "/documents/rename")).toHaveLength(1),
-    )
-    expect(bodiesFor((p) => p === "/documents/rename")[0]).toEqual({
-      project: "darkmem",
-      uri_prefix: "notes",
-      new_uri_prefix: "archive/notes",
-    })
-  })
-
-  it("offers only the destinations moveTarget accepts", async () => {
-    // The picker calls `moveTarget` per candidate rather than restating its
-    // rules, so its own location, its parent and everything inside it are
-    // absent for the same reason a drop on them is refused.
-    window.localStorage.setItem(
-      expansionStorageKey("darkmem"),
-      JSON.stringify(["x", "x/a", "x/a/b", "y"]),
-    )
-    mockDocuments({
-      items: [
-        { ...DOC, id: "d1", uri: "x/a/b/c.md" },
-        { ...DOC, id: "d2", uri: "y/d.md" },
-      ],
-    })
-    renderWorkspace({ treeManagement: true })
-    await screen.findByText("c.md")
-
-    await openMenu(/actions for a$/i)
-    await userEvent.click(await screen.findByText("Move to…"))
-    await userEvent.click(await screen.findByRole("combobox", { name: /destination/i }))
-    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
-      "Top level",
-      "y",
-    ])
   })
 
   it("reveals the new folder after a document's uri changes under it", async () => {
@@ -1294,7 +789,7 @@ describe("project workspace — the note actions", () => {
     )
     const OTHER = { ...DOC, id: "d2", uri: "archive/keep.md" }
     mockDocuments({ items: [DOC, OTHER] })
-    renderWorkspace({ treeManagement: true })
+    renderWorkspace()
     await userEvent.click(await screen.findByText("design.md"))
 
     mockDocuments({ items: [{ ...DOC, uri: "archive/design.md" }, OTHER] })
@@ -1306,5 +801,30 @@ describe("project workspace — the note actions", () => {
     expect(
       await screen.findByRole("treeitem", { name: "design.md" }),
     ).toBeInTheDocument()
+  })
+})
+
+describe("the corpus browser carries no tree management", () => {
+  // `Function.length` cannot see this: the prop is a default inside one
+  // destructured parameter, so it is 1 either way. The source is the only
+  // observable that distinguishes a removed prop from a defaulted one.
+  it("names treeManagement nowhere in its body", () => {
+    expect(ProjectWorkspace.toString()).not.toContain("treeManagement")
+  })
+
+  it("renders the tab strip and the documents label", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ items: [], total: 0 })
+    renderWorkspace()
+    expect(await screen.findByRole("tab", { name: /Artifacts/i })).toBeInTheDocument()
+    expect(screen.getByText("documents")).toBeInTheDocument()
+  })
+
+  it("offers no per-row actions and no create buttons", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ items: [], total: 0 })
+    renderWorkspace()
+    await screen.findByRole("tab", { name: /Artifacts/i })
+    expect(screen.queryByText("New note")).toBeNull()
+    expect(screen.queryByText("New folder")).toBeNull()
+    expect(screen.queryByRole("button", { name: /^Actions for/ })).toBeNull()
   })
 })
