@@ -19,7 +19,9 @@ function toTransportError(error: unknown): SyncTransportError {
 export function createPageTransport(pageId: string): PageTransport {
   const send = async (path: string, method: string, body?: object) => {
     const json = body === undefined ? undefined : JSON.stringify(body)
-    const keepalive = (json?.length ?? 0) <= KEEPALIVE_MAX_BODY
+    // The keepalive cap is bytes; `json.length` counts UTF-16 code units,
+    // which undercounts anything outside the Basic Latin range.
+    const keepalive = json === undefined || new Blob([json]).size <= KEEPALIVE_MAX_BODY
     return apiFetchWithHeaders<{ content_hash?: string } | undefined>(path, { method, body: json, keepalive })
   }
   return {

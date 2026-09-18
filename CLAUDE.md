@@ -1961,9 +1961,13 @@ last tree the server acknowledged** and sends one page block write at a time,
 the first one a local mirror of `block_verbs.py`'s refusals says the server
 would accept (`lib/sync-tree.ts`). **Every tree it compares is canonicalised**
 through the editor mapping first, so a stored spelling the editor writes
-differently is never read as an edit, and **an update sends every property
-key its type models** because the server merges properties and never clears an
-omitted key. Change a page rule in `block_verbs.py` and the mirror in
+differently is never read as an edit, and **an update sends a fixed property
+key set per type, never one key set for one instance of a type and another
+for a second** — the server merges properties and never clears an omitted
+key, so a conditional key set would make some values unclearable. (The set a
+type sends is not always every key `PAGE_TYPE_PROPERTIES` lists for it — a
+list sends `ordered`/`marker` but never the stored `number` — only fixed
+regardless of value.) Change a page rule in `block_verbs.py` and the mirror in
 `lib/block-properties.ts` / `lib/sync-tree.ts` changes with it, or the editor
 starts sending writes the server refuses. Inline markdown the editor cannot
 show (inline HTML, images, autolinks, titled links, hard breaks) rides as a

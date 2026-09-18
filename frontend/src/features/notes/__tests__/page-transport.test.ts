@@ -53,6 +53,16 @@ describe("page transport", () => {
     expect(vi.mocked(apiFetchWithHeaders).mock.calls[0]![1]).toMatchObject({ keepalive: false })
   })
 
+  it("measures the budget in bytes, not UTF-16 code units", async () => {
+    vi.mocked(apiFetchWithHeaders).mockResolvedValue(answer({ content_hash: "h2" }) as never)
+    // Each CJK character is one UTF-16 unit but three UTF-8 bytes: this text
+    // stays under KEEPALIVE_MAX_BODY in .length while its encoded body does not.
+    const cjk = "考".repeat(21_000)
+    await createPageTransport("p1").send({ kind: "update", id: "b", type: "paragraph", text: cjk, properties: null }, "h1")
+    expect(cjk.length).toBeLessThan(KEEPALIVE_MAX_BODY)
+    expect(vi.mocked(apiFetchWithHeaders).mock.calls[0]![1]).toMatchObject({ keepalive: false })
+  })
+
   it("carries the HTTP status of a refusal, and none for a network failure", async () => {
     vi.mocked(apiFetchWithHeaders).mockRejectedValueOnce(new ApiError("stale", 409))
     const refused = await createPageTransport("p1")

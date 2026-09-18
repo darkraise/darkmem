@@ -46,4 +46,9 @@ it("refuses a new child under a non-container and allows it under a list item", 
 
   editor.updateBlock("l", { type: "checkListItem", props: { checked: true } })
   expect(editor.getBlock("l")!.type).toBe("checkListItem")
+
+  // Retyping the grandfathered quote to a non-container while it still
+  // holds "qc" keeps both ids, so an id-only key would see no new pair.
+  editor.updateBlock("quote", { type: "paragraph" })
+  expect(editor.getBlock("quote")!.type).toBe("quote")
 })

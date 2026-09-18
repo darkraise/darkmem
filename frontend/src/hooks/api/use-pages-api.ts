@@ -50,9 +50,8 @@ interface PageWire {
 }
 
 /** A page and its blocks in the shape the editor already renders. Normalised
- *  here rather than at the view so the block editor and `BlockView` need no
- *  page-specific row type, and so the mutation queue's hash re-read and the
- *  pane read the one cache entry. */
+ *  here rather than at the view so callers need no page-specific row type,
+ *  and so a re-read after a write and the pane read the one cache entry. */
 export interface PageView {
   id: string
   project: string

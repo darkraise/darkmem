@@ -28,7 +28,11 @@ export function nestingViolations(doc: DocNode): Set<string> {
     const content = node.firstChild
     const group = node.childCount > 1 ? node.child(1) : null
     if (content && group && !EDITOR_CONTAINERS.has(content.type.name)) {
-      group.forEach((child) => out.add(`${node.attrs.id}>${child.attrs.id}`))
+      // The parent's content type rides in the key: retyping an already-
+      // grandfathered parent (a quote holding a code block, retyped to a
+      // paragraph) keeps both ids but changes what it may hold, and that
+      // must read as a new violation, not the old one continuing.
+      group.forEach((child) => out.add(`${node.attrs.id}:${content.type.name}>${child.attrs.id}`))
     }
     return true
   })

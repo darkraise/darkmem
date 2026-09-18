@@ -124,6 +124,54 @@ describe("block mapping", () => {
     expect(treesEqual(canonicalTree(once).tree, once)).toBe(true)
   })
 
+  it("emits a fixed property key set per type, whatever the values are", () => {
+    // nextOp/canonicalTree assume no two blocks of one type can ever emit
+    // different key sets. Each pair below shares a type but differs in
+    // every value it carries; the two must still land on the same keys.
+    const keysOf = (block: EditorBlockLike, previous: SyncBlock[] = []) =>
+      Object.keys(toSyncTree([block], previous, new Map(), noMint).tree[0]!.properties ?? {}).sort()
+    const editorBlock = (type: string, props: Record<string, unknown>, content: unknown = []): EditorBlockLike => ({
+      id: "z",
+      type,
+      props,
+      content,
+      children: [],
+    })
+    const cases: [string, EditorBlockLike, EditorBlockLike, string[], SyncBlock[]?][] = [
+      ["heading", editorBlock("heading", { level: 1 }), editorBlock("heading", { level: 6 }), ["level"]],
+      [
+        "bulletListItem",
+        editorBlock("bulletListItem", {}),
+        editorBlock("bulletListItem", {}),
+        ["marker", "ordered"],
+        [b("z", null, "list", "z", { ordered: false, marker: "*" })],
+      ],
+      ["numberedListItem", editorBlock("numberedListItem", {}), editorBlock("numberedListItem", {}), ["marker", "ordered"]],
+      ["checkListItem", editorBlock("checkListItem", { checked: true }), editorBlock("checkListItem", { checked: false }), ["checked"]],
+      ["toggleListItem", editorBlock("toggleListItem", {}), editorBlock("toggleListItem", {}), []],
+      ["quote", editorBlock("quote", {}), editorBlock("quote", {}), []],
+      ["callout", editorBlock("callout", { variant: "info" }), editorBlock("callout", { variant: "warning" }), ["variant"]],
+      [
+        "codeBlock",
+        editorBlock("codeBlock", { language: "py" }, "a"),
+        editorBlock("codeBlock", { language: "text" }, "b"),
+        ["language"],
+      ],
+      ["divider", editorBlock("divider", {}, undefined), editorBlock("divider", {}, undefined), []],
+      ["raw", editorBlock("raw", { source: "<a>" }), editorBlock("raw", { source: "<b>" }), []],
+      [
+        "table",
+        editorBlock("table", {}, { type: "tableContent", rows: [{ cells: [[]] }] }),
+        editorBlock("table", {}, { type: "tableContent", rows: [{ cells: [[], []] }] }),
+        ["alignments", "header"],
+      ],
+    ]
+    for (const [type, a, bBlock, expected, previous] of cases) {
+      expect(keysOf(a, previous), type).toEqual(expected)
+      expect(keysOf(bBlock, previous), type).toEqual(expected)
+    }
+  })
+
   it("asks for no write when a stored page is loaded into the editor", async () => {
     const { tree: canonical, rowIds } = canonicalTree(STORED)
     let editor!: PageEditorInstance
