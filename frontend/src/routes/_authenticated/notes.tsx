@@ -3,7 +3,9 @@ import { NotebookPen } from "lucide-react"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { PageChrome } from "@/components/app-chrome"
 import { EmptyState } from "@/components/darkmem"
+import { DemoNotes } from "@/features/notes/demo-notes"
 import { NotesWorkspace } from "@/features/notes/notes-workspace"
+import { DEMO } from "@/lib/demo-flag"
 import { useProjects } from "@/hooks/api"
 
 export const Route = createFileRoute("/_authenticated/notes")({
@@ -36,7 +38,9 @@ function NotesPage() {
         description="Your personal workspace. Nothing here is a project artifact."
       />
 
-      {isError ? (
+      {DEMO ? (
+        <DemoNotes />
+      ) : isError ? (
         // Never the empty state: "there is no personal space" is a claim
         // about the catalogue, and on a failed read it is an unfounded one.
         <p className="text-destructive text-sm">
