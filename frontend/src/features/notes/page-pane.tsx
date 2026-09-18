@@ -1,41 +1,44 @@
-import { useEffect, useRef, useState } from "react"
+import { lazy, Suspense, useEffect, useRef, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
 import { Label } from "darkraise-ui/components/label"
 import { ScrollArea } from "darkraise-ui/components/scroll-area"
-import { usePageRename, type PageView } from "@/hooks/api"
+import { Skeleton } from "darkraise-ui/components/skeleton"
+import { pageQuery, usePageRename, type PageView } from "@/hooks/api"
 import { PAGE_TITLE_FALLBACK } from "./lib/build-page-tree"
-import { PageBlockEditor, type PageSaveStatus } from "./page-block-editor"
+import type { SyncStatus } from "./lib/page-sync"
+import { usePageSync } from "./use-page-sync"
 
-const SAVE_LABEL: Record<string, string> = {
+const PageEditor = lazy(() => import("./page-editor").then((m) => ({ default: m.PageEditor })))
+
+const SAVE_LABEL: Partial<Record<SyncStatus["kind"], string>> = {
   saving: "Saving…",
   saved: "Saved",
+  retrying: "Unsaved — retrying",
+}
+
+function bannerText(status: Extract<SyncStatus, { kind: "stopped" }>): string {
+  return status.reason === "refused" ? `This edit was refused — ${status.message}` : status.message
 }
 
 /** The title field and the body.
  *
  *  The title is `pages.title` over `PATCH /pages/{id}`, never a block, so it
- *  is the one edit here that does not go through the block queue.
+ *  is the one edit here that does not go through the save engine.
  */
-export function PagePane({
-  page,
-  autoFocusTitle,
-}: {
-  page: PageView
-  autoFocusTitle: boolean
-}) {
+export function PagePane({ page, autoFocusTitle }: { page: PageView; autoFocusTitle: boolean }) {
   const qc = useQueryClient()
   const rename = usePageRename()
   const [title, setTitle] = useState(page.title ?? "")
-  const [status, setStatus] = useState<PageSaveStatus>({ kind: "idle" })
+  const [generation, setGeneration] = useState(0)
   const field = useRef<HTMLInputElement | null>(null)
+  const sync = usePageSync(page, generation)
 
   // Remount-free page switch: the pane is keyed on nothing, so the draft has
   // to follow the page it is showing.
   useEffect(() => {
     setTitle(page.title ?? "")
-    setStatus({ kind: "idle" })
   }, [page.id, page.title])
 
   useEffect(() => {
@@ -47,6 +50,14 @@ export function PagePane({
     if (next === (page.title ?? "")) return
     rename.mutate({ pageId: page.id, title: next === "" ? null : next })
   }
+
+  const reload = async () => {
+    sync.discard()
+    await qc.invalidateQueries({ queryKey: pageQuery(page.id).queryKey, exact: true })
+    setGeneration((g) => g + 1)
+  }
+
+  const label = SAVE_LABEL[sync.status.kind]
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
@@ -70,34 +81,28 @@ export function PagePane({
             }
           }}
         />
-        {SAVE_LABEL[status.kind] ? (
-          <span className="text-muted-foreground shrink-0 text-xs">
-            {SAVE_LABEL[status.kind]}
-          </span>
-        ) : null}
+        {label ? <span className="text-muted-foreground shrink-0 text-xs">{label}</span> : null}
       </div>
 
-      {status.kind === "blocked" ? (
+      {sync.status.kind === "stopped" ? (
         <div className="border-destructive/50 flex items-center justify-between gap-3 rounded-md border border-dashed px-3 py-2">
-          <p className="text-destructive text-sm">
-            This edit was refused — {status.message}
-          </p>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              setStatus({ kind: "idle" })
-              void qc.invalidateQueries({ queryKey: ["page", page.id] })
-            }}
-          >
+          <p className="text-destructive text-sm">{bannerText(sync.status)}</p>
+          <Button type="button" size="sm" variant="outline" onClick={() => void reload()}>
             Reload page
           </Button>
         </div>
       ) : null}
 
       <ScrollArea className="min-h-0 flex-1 pr-3">
-        <PageBlockEditor pageId={page.id} blocks={page.blocks} onStatus={setStatus} />
+        <Suspense fallback={<Skeleton className="h-40 w-full" />}>
+          <PageEditor
+            key={`${page.id}:${generation}`}
+            initialBlocks={sync.initialBlocks}
+            editable={sync.status.kind !== "stopped"}
+            onDocumentChange={sync.onDocumentChange}
+            onBlur={sync.flushNow}
+          />
+        </Suspense>
       </ScrollArea>
     </div>
   )

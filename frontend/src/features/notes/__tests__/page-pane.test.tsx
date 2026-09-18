@@ -1,31 +1,32 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { useState, type ReactNode } from "react"
-import { describe, expect, it, vi, beforeEach } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/demo-flag", () => ({ DEMO: false }))
 vi.mock("@/lib/api", () => ({ apiFetch: vi.fn(), apiFetchWithHeaders: vi.fn() }))
-vi.mock("../page-block-editor", () => ({
-  PageBlockEditor: ({
-    pageId,
-    onStatus,
-  }: {
-    pageId: string
-    onStatus: (s: { kind: string; message?: string }) => void
-  }) => (
-    <div>
-      editor:{pageId}
-      <button type="button" onClick={() => onStatus({ kind: "saving" })}>
-        report saving
-      </button>
-      <button
-        type="button"
-        onClick={() => onStatus({ kind: "blocked", message: "the page moved" })}
-      >
-        report blocked
-      </button>
-    </div>
-  ),
+
+const binding = vi.hoisted(() => ({
+  status: { kind: "idle" } as { kind: string; reason?: string; message?: string },
+  discard: vi.fn(),
+  generations: [] as number[],
+}))
+
+vi.mock("../use-page-sync", () => ({
+  usePageSync: (_page: unknown, generation: number) => {
+    binding.generations.push(generation)
+    return {
+      initialBlocks: [],
+      status: binding.status,
+      onDocumentChange: () => {},
+      flushNow: () => {},
+      discard: binding.discard,
+    }
+  },
+}))
+
+vi.mock("../page-editor", () => ({
+  PageEditor: ({ editable }: { editable: boolean }) => <div>editor {editable ? "editable" : "read-only"}</div>,
 }))
 
 import { apiFetch } from "@/lib/api"
@@ -34,10 +35,7 @@ import { PagePane } from "../page-pane"
 
 function wrapper({ children }: { children: ReactNode }) {
   const [qc] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-      }),
+    () => new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }),
   )
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
 }
@@ -55,19 +53,20 @@ const PAGE: PageView = {
 beforeEach(() => {
   vi.mocked(apiFetch).mockReset()
   vi.mocked(apiFetch).mockResolvedValue({ id: "p1" })
+  binding.status = { kind: "idle" }
+  binding.discard.mockReset()
+  binding.generations.length = 0
 })
 
 describe("PagePane", () => {
-  it("renders the title in an editable field and the editor below it", () => {
+  it("renders the title in an editable field and the editor below it", async () => {
     render(<PagePane page={PAGE} autoFocusTitle={false} />, { wrapper })
     expect(screen.getByLabelText("Page title")).toHaveValue("Notes")
-    expect(screen.getByText("editor:p1")).toBeInTheDocument()
+    expect(await screen.findByText("editor editable")).toBeInTheDocument()
   })
 
   it("shows the fallback for an untitled page without sending it as a title", () => {
-    render(<PagePane page={{ ...PAGE, title: null }} autoFocusTitle={false} />, {
-      wrapper,
-    })
+    render(<PagePane page={{ ...PAGE, title: null }} autoFocusTitle={false} />, { wrapper })
     const field = screen.getByLabelText("Page title")
     expect(field).toHaveValue("")
     expect(field).toHaveAttribute("placeholder", "Untitled")
@@ -93,12 +92,34 @@ describe("PagePane", () => {
     expect(screen.getByLabelText("Page title")).toHaveFocus()
   })
 
-  it("shows the save state and the blocked banner the editor reports", async () => {
+  it.each([
+    ["idle", null],
+    ["saving", "Saving…"],
+    ["saved", "Saved"],
+    ["retrying", "Unsaved — retrying"],
+  ])("labels the %s state", (kind, label) => {
+    binding.status = { kind }
     render(<PagePane page={PAGE} autoFocusTitle={false} />, { wrapper })
-    fireEvent.click(screen.getByText("report saving"))
-    expect(await screen.findByText("Saving…")).toBeInTheDocument()
-    fireEvent.click(screen.getByText("report blocked"))
-    expect(await screen.findByText(/the page moved/)).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Reload page" })).toBeInTheDocument()
+    for (const text of ["Saving…", "Saved", "Unsaved — retrying"]) {
+      if (text === label) expect(screen.getByText(text)).toBeInTheDocument()
+      else expect(screen.queryByText(text)).not.toBeInTheDocument()
+    }
+  })
+
+  it("shows a stopped engine as a banner, locks the editor, and reloads", async () => {
+    binding.status = { kind: "stopped", reason: "refused", message: "a paragraph block cannot hold a list block" }
+    vi.mocked(apiFetch).mockResolvedValue({ ...PAGE, properties: null, content: null, blocks: [] })
+    render(<PagePane page={PAGE} autoFocusTitle={false} />, { wrapper })
+    expect(screen.getByText("This edit was refused — a paragraph block cannot hold a list block")).toBeInTheDocument()
+    expect(await screen.findByText("editor read-only")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Reload page" }))
+    expect(binding.discard).toHaveBeenCalledOnce()
+    await waitFor(() => expect(binding.generations).toContain(1))
+  })
+
+  it("shows a conflict in the engine's own words", () => {
+    binding.status = { kind: "stopped", reason: "conflict", message: "This page was changed somewhere else." }
+    render(<PagePane page={PAGE} autoFocusTitle={false} />, { wrapper })
+    expect(screen.getByText("This page was changed somewhere else.")).toBeInTheDocument()
   })
 })
