@@ -19,6 +19,9 @@
     "build:storybook": "storybook build"
   },
   "dependencies": {
+    "@blocknote/core": "0.54.2",
+    "@blocknote/react": "0.54.2",
+    "@blocknote/shadcn": "0.54.2",
     "@dnd-kit/core": "^6.3.1",
     "@sigma/edge-curve": "^3.1.0",
     "@sigma/node-square": "^3.0.0",
@@ -32,6 +35,10 @@
     "graphology-layout-forceatlas2": "^0.10.1",
     "graphology-layout-noverlap": "^0.4.2",
     "graphology-types": "^0.24.8",
+    "mdast-util-from-markdown": "2.0.3",
+    "mdast-util-gfm-strikethrough": "2.0.0",
+    "mdast-util-to-markdown": "2.1.2",
+    "micromark-extension-gfm-strikethrough": "2.1.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-force-graph-3d": "^1.29.1",
@@ -61,6 +68,7 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
+    "@types/mdast": "4.0.4",
     "@types/node": "^25.5.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
