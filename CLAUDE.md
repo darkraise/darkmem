@@ -1953,10 +1953,24 @@ to every `DELETE FROM blocks`.
 document one on 2026-09-18** (increment B2). `features/notes/` renders it:
 a sidebar tree with drag-to-reorder over `PATCH /pages/{id}`, per-row create,
 rename and soft delete, a trash sheet over `GET /pages/trash`, and a page pane
-whose block editor is a **deliberate copy** of the document block editor over
-the page verbs, recorded as a duplicate that increment B3's BlockNote editor
-deletes. `ProjectWorkspace` lost `treeManagement` in the same change and is the
-corpus browser again. The cost is stated rather than discovered: **the personal
+whose body is a **BlockNote 0.54.2 editor** (increment B3,
+`docs/superpowers/specs/2026-09-18-pages-increment-b3-blocknote-editor-design.md`),
+lazy-loaded so none of it reaches the main chunk. Its save engine
+(`features/notes/lib/page-sync.ts`) **diffs the editor's document against the
+last tree the server acknowledged** and sends one page block write at a time,
+the first one a local mirror of `block_verbs.py`'s refusals says the server
+would accept (`lib/sync-tree.ts`). **Every tree it compares is canonicalised**
+through the editor mapping first, so a stored spelling the editor writes
+differently is never read as an edit, and **an update sends every property
+key its type models** because the server merges properties and never clears an
+omitted key. Change a page rule in `block_verbs.py` and the mirror in
+`lib/block-properties.ts` / `lib/sync-tree.ts` changes with it, or the editor
+starts sending writes the server refuses. Inline markdown the editor cannot
+show (inline HTML, images, autolinks, titled links, hard breaks) rides as a
+`rawInline` atom written back byte for byte, and `emitInline` is idempotent by
+construction — it drops marks until its output reads back as its input.
+`ProjectWorkspace` lost `treeManagement` in B2 and is the corpus browser
+again. The cost is stated rather than discovered: **the personal
 project's documents are now visible nowhere in the SPA** — `/documents` and the
 project switcher both filter that project out — and the rows stay in the
 database and reachable over REST and MCP. That is the owner's ruling (spec §2),
