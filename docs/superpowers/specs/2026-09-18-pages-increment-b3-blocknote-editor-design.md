@@ -29,6 +29,19 @@ changes one fails loudly.
 | Markdown | `tryParseMarkdownToBlocks` / `blocksToMarkdownLossy` are lossy: `<kbd>` and `![img](u)` vanish, `\*lit\*` becomes `*lit*` (real emphasis on the next parse). They are not used for page content |
 | Theme | `@blocknote/shadcn` takes a `shadCNComponents` override for 13 slots (Avatar, Badge, Button, Card, DropdownMenu, Input, Label, Popover, Select, Skeleton, Tabs, Toggle, Tooltip). darkraise-ui ships each; prop compatibility is checked per slot in the plan |
 
+**Not settled by the probe; plan task 1 settles them before anything builds on
+them:**
+
+- Whether an `insert` in `onBeforeChange` can be judged by its resulting parent.
+  The probe refused a `move` through `currentParent`; an insert's parent must be
+  read from the transaction's resulting document (`tr.doc`), not from the editor,
+  which has not applied it yet.
+- Whether `codeBlock` keeps an arbitrary `language` string (`py`, `tsx`) or
+  coerces it to a supported one; if it coerces, the schema configures
+  `supportedLanguages` so every stored value survives.
+- Whether a table renders `headerRows: 1` with `tables.headers: false`. The
+  mapping treats row 0 as the header either way; this decides only styling.
+
 ## 2. Changes from the program spec
 
 1. **The save queue diffs snapshots instead of consuming the change log.**
@@ -81,8 +94,9 @@ functions the transport calls. `features/documents/lib/mutation-queue.ts` stays;
   [1,2,3,4,5,6], allowToggleHeadings: false })`; `bulletListItem`,
   `numberedListItem`, `checkListItem`, `toggleListItem`; `quote`; `codeBlock`;
   `table`; `divider`; custom `callout` (prop `variant`: `info | warning | error
-  | success`, inline content); custom `raw` (read-only, plain content, maps
-  `html`). No image, video, audio or file block.
+  | success`, inline content); custom `raw` (`content: "none"`, the stored
+  text in a `source` prop, rendered as monospace, maps `html`). No image, video,
+  audio or file block.
 - **Inline content:** `text`, `link`, custom `rawInline` (an atom holding a
   source string).
 - **Styles:** `bold`, `italic`, `code`, `strike`. No underline, text colour or
@@ -100,21 +114,25 @@ parser stores `inline.content`). `inline-markdown.ts` parses it with
 `remark-parse` (plus GFM strikethrough), using node source positions:
 
 - `text`, `strong`, `emphasis`, `inlineCode`, `delete` and an inline link
-  written exactly as `[label](url)` with no title map to BlockNote text, styles
-  and `link`.
+  written exactly as `[label](url)` with no title and whose label holds only
+  those styles map to BlockNote text, styles and `link`.
 - **Everything else becomes a `rawInline` atom whose value is the exact source
-  slice**: inline HTML, images, reference links,
-  footnote references, autolinks and GFM autolink literals, links with a title,
-  and anything else remark yields. The editor renders it as a monospace chip; it
+  slice**: inline HTML, images, reference links, footnote references, autolinks
+  and GFM autolink literals, links with a title or a non-style child, hard
+  breaks (`break` nodes), and anything else remark yields. The editor renders it as a monospace chip; it
   can be deleted or moved with the surrounding text but not edited in place.
 - A newline inside text maps to a newline in BlockNote text and back.
 - The emitter writes styles as `**`, `*`, `` ` `` (fence length chosen to
   exceed any backtick run), `~~`; links as `[label](url)`; escapes markdown
-  specials in plain text; and writes atoms verbatim.
+  specials in plain text — including `<` and `&`, because remark decodes
+  `&lt;kbd&gt;` to text that would otherwise re-emit as live HTML — and writes
+  atoms verbatim. The escape set is whatever makes the acceptance property hold:
+  for every generated inline content `c`, `parse(emit(c))` equals `c`.
 
-Spelling normalises (`__b__` → `**b**`, `_i_` → `*i*`) only on a block the user
-edits: an untouched block converts to the same emitted text on both sides of
-the diff, so it is never written. Atoms survive every edit byte for byte.
+Spelling normalises (`__b__` → `**b**`, `_i_` → `*i*`, `&amp;` → `\&`) only on a
+block the user edits, because the snapshot is canonicalised through the same
+converter (§5.1), so an untouched block never differs from it. Atoms survive
+every edit byte for byte.
 
 Table cells use the same converter.
 
@@ -134,9 +152,10 @@ As program spec §5.2, with these specifics:
 - **Headings** keep levels 1–6.
 - **Tables.** One BlockNote table ↔ a `table` block (`header` from row 0,
   `alignments`) plus `table_row` children (`cells`) matched **by position**.
-  Existing row ids come from the snapshot; a new row gets a fresh UUID, and the
-  mapping keeps a per-table row-id list so repeated conversions reuse the same
-  new ids. The stored `alignments` are written back unchanged, padded with
+  Existing row ids come from the snapshot; a new row gets a fresh UUID. The
+  mapping stays pure: it takes a per-table row-id registry as input and returns
+  the updated registry, which the sync engine owns, so repeated conversions
+  reuse the same new ids. The stored `alignments` are written back unchanged, padded with
   `null` for a new column; the editor offers no alignment control. A row
   reorder in the editor is therefore row-text updates, not moves.
 - **Title** stays `pages.title` over `PATCH /pages/{id}` in the pane's title
@@ -146,10 +165,18 @@ As program spec §5.2, with these specifics:
 
 One `onBeforeChange` handler cancels any transaction containing an `insert` or
 `move` whose resulting parent is not a `bulletListItem`, `numberedListItem`,
-`checkListItem` or `toggleListItem` (program spec §3.3). It covers Tab, the
+`checkListItem` or `toggleListItem` (program spec §3.3), reading that parent
+from the transaction's resulting document (§1's open item). It covers Tab, the
 side menu, drag, `moveBlocksUp`/`Down` and paste. Shapes already on the server
 that the rule would refuse (a quote holding a code block) load and render; only
 new placements are refused.
+
+Two consequences, accepted and recorded rather than special-cased: children of
+such a legacy container cannot be reordered within it (the editor and the
+server both refuse the move), and a type change that turns a container with
+children into a non-container (a list item with children into a paragraph)
+keeps its children, since neither side checks nesting on update — after which
+the same reorder limit applies.
 
 ### 4.5 Surface
 
@@ -180,6 +207,14 @@ As program spec §5.3:
 - The **desired** tree is the editor's document through the block mapping.
 - Both are the same shape: per block `id`, `parent_id`, sibling order, `type`,
   `text` (emitted markdown), `properties`.
+- **Every server tree is canonicalised before it is compared**: the seed read
+  and every landed-check re-read pass through the mapping to the editor and back
+  (`toServer(toEditor(tree))`). Without this, stored spellings the emitter
+  writes differently (`__b__`) and stored properties the editor does not model
+  (a list item's `number`) would make every such block differ from the desired
+  tree, and the first flush would rewrite the whole page. The server still holds
+  its own spelling until a block is edited; an update's properties merge over
+  the stored ones, so unmodelled keys survive it.
 - **The editor owns its content after mount.** A refetch of the page query
   (after a rename, a tree move, a window refocus) never resets a mounted
   editor. Only **Reload page** remounts it from the server.
@@ -190,15 +225,23 @@ Each flush diffs desired against snapshot and sends **one** write, in this
 order:
 
 1. **Inserts, as one batch** (`POST .../blocks/batch`). Every id absent from
-   the snapshot, in the desired tree's pre-order, each with `parent_id` and
-   `after_block_id` read from the desired tree. A parent or previous sibling is
-   either on the server or earlier in the same batch, which the batch route
-   accepts.
-2. **Moves.** A block present on both sides whose parent differs, or whose
-   position among the siblings present on both sides differs. Per parent, a
-   longest-increasing-subsequence pass keeps the most siblings in place, so an
-   insert never moves its later siblings. `after_block_id` is the nearest
-   previous sibling that exists on the server.
+   the snapshot, in the desired tree's pre-order. `parent_id` is the desired
+   parent, which is on the server or earlier in the batch. `after_block_id` is
+   the nearest previous desired sibling that is **already a child of that parent
+   on the server** (in the snapshot) or earlier in the batch under the same
+   parent; `null` if none. The server refuses an `after_block_id` that is not a
+   child of the named parent (`block_verbs.py`, "is not a child of the"), so
+   naming a sibling that only a later move will bring under the parent would
+   stop the queue with a 422.
+2. **Moves**, in the desired tree's **pre-order**. A block present on both
+   sides whose parent differs, or whose position among the siblings present on
+   both sides differs. Per parent, a longest-increasing-subsequence pass keeps
+   the most siblings in place, so an insert never moves its later siblings.
+   `after_block_id` follows the same rule as for inserts: the nearest previous
+   desired sibling that is a child of the target parent in the snapshot. The
+   pre-order matters: when an edit swaps an ancestor and a descendant, the
+   block that becomes the ancestor is moved first, so no move asks the server
+   to put a block inside its own subtree (which it refuses with 422).
 3. **Updates.** `type`, `text` or `properties` differ, properties compared under
    `block-properties.ts` (`null` ≡ `{}`).
 4. **Deletes.** Only the topmost absent block of a removed subtree, since the
@@ -225,7 +268,10 @@ the server's tree with the snapshot:
 - equal to **snapshot with the write applied** → landed: take the re-read's
   hash and continue;
 - equal to **the snapshot** → not landed: resend with backoff (1 s, 2 s, 4 s,
-  capped at 30 s), using the re-read's hash;
+  capped at 30 s), using the re-read's hash. `content_hash` hashes only the
+  stored content (`page_door.py`, `compute_content_hash(stored_content)`), not
+  the title, so a 409 whose re-read equals the snapshot has no benign cause; a
+  second consecutive one stops the queue with the banner instead of looping;
 - **anything else** → the page changed elsewhere: stop the queue and show the
   conflict banner.
 
@@ -246,6 +292,10 @@ the banner with the server's message.
   blocks and loses nothing.
 - Selecting a page whose engine is still draining mounts the editor from the
   engine's desired tree, not the server read.
+- An engine that stops (conflict, 404, 422) while its page is not the one shown
+  raises a toast naming the page, so the unsent work is not lost silently;
+  selecting the page shows the banner. An engine is discarded once it is
+  drained and its page is not mounted.
 - Every write whose body is 60 KB or less is sent with `fetch(..., { keepalive:
   true })`, so the write in flight at a tab close completes. Writes queued
   behind it cannot follow — each needs the previous write's hash — so the
@@ -274,11 +324,17 @@ Vitest, from `frontend/`:
   and list marker keep/reset.
 - **`block-properties`:** fixtures mirroring `update_block`'s merge and the
   type-change drop rule; `null` vs `{}`.
-- **`page-sync`:** the convergence property; batch in pre-order with
-  intra-batch references; minimal moves (an insert before siblings moves
+- **`page-sync`:** the convergence property, with a fake server that enforces
+  the real refusals (`after_block_id` not a child of the parent, a move into
+  the block's own subtree); batch in pre-order with intra-batch references; a
+  block moved under a new parent plus a new sibling after it in one flush;
+  an ancestor/descendant swap; minimal moves (an insert before siblings moves
   nothing); a child moved out of a deleted parent is moved before the delete;
-  untouched blocks never written; the three landed-check outcomes; backoff;
-  404 and 422 stops; delete hash from the header; the keepalive size cutoff.
+  **zero writes on mount** for a page whose stored text and properties use
+  non-canonical spellings (`__b__`, `&amp;`, list `number`); the three
+  landed-check outcomes and the repeated-409 stop; backoff; 404 and 422 stops;
+  delete hash from the header; the keepalive size cutoff; the toast from an
+  engine stopping off-screen.
 - **Nesting guard:** Tab, move and a pasted nested list under a paragraph are
   refused; under a list, to-do and toggle item they are allowed.
 - **Pane:** editor mounted from the engine's desired tree when draining; a page
