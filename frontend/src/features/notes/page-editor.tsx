@@ -1,4 +1,5 @@
 import "@blocknote/shadcn/style.css"
+import "./page-editor.css"
 import {
   BasicTextStyleButton,
   CreateLinkButton,
@@ -34,32 +35,39 @@ export function PageEditor({ initialBlocks, editable, onDocumentChange, onBlur }
   return (
     <div className="flex min-h-0 gap-6">
       <div className="min-w-0 flex-1">
-        <BlockNoteView
-          editor={editor}
-          editable={editable}
-          theme={mode}
-          slashMenu={false}
-          formattingToolbar={false}
-          emojiPicker={false}
-          onChange={() => onDocumentChange?.(editor.document as unknown as EditorBlockLike[])}
-          onBlur={onBlur}
-        >
-          <SuggestionMenuController triggerCharacter="/" getItems={async (query) => pageSlashItems(editor, query)} />
-          <FormattingToolbarController
-            formattingToolbar={() => (
-              <FormattingToolbar>
-                <BasicTextStyleButton basicTextStyle="bold" />
-                <BasicTextStyleButton basicTextStyle="italic" />
-                <BasicTextStyleButton basicTextStyle="code" />
-                <BasicTextStyleButton basicTextStyle="strike" />
-                <CreateLinkButton />
-              </FormattingToolbar>
-            )}
-          />
-        </BlockNoteView>
+        <div className="mx-auto max-w-3xl">
+          <BlockNoteView
+            editor={editor}
+            editable={editable}
+            theme={mode}
+            slashMenu={false}
+            formattingToolbar={false}
+            emojiPicker={false}
+            onChange={() => onDocumentChange?.(editor.document as unknown as EditorBlockLike[])}
+            onBlur={onBlur}
+          >
+            <SuggestionMenuController
+              triggerCharacter="/"
+              getItems={async (query) => pageSlashItems(editor, query)}
+            />
+            <FormattingToolbarController
+              formattingToolbar={() => (
+                <FormattingToolbar>
+                  <BasicTextStyleButton basicTextStyle="bold" />
+                  <BasicTextStyleButton basicTextStyle="italic" />
+                  <BasicTextStyleButton basicTextStyle="code" />
+                  <BasicTextStyleButton basicTextStyle="strike" />
+                  <CreateLinkButton />
+                </FormattingToolbar>
+              )}
+            />
+          </BlockNoteView>
+        </div>
       </div>
-      <aside className="hidden w-48 shrink-0 lg:block">
-        <PageOutline editor={editor} />
+      <aside className="hidden w-48 shrink-0 border-l border-border/40 pl-4 lg:block">
+        <div className="sticky top-0">
+          <PageOutline editor={editor} />
+        </div>
       </aside>
     </div>
   )

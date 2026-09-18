@@ -33,6 +33,7 @@ export function PageOutline({ editor }: { editor: PageEditorInstance }) {
   if (headings.length === 0) return null
   return (
     <nav aria-label="Page outline" className="text-sm">
+      <p className="text-muted-foreground mb-2 text-xs font-medium tracking-wide uppercase">Outline</p>
       <ul className="space-y-1">
         {headings.map((heading) => (
           <li key={heading.id} style={{ paddingLeft: `${(heading.level - 1) * 0.75}rem` }}>

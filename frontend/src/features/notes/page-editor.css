@@ -1,0 +1,28 @@
+/* BlockNote's shadcn theme ships a fixed hex palette via --bn-colors-*
+ * custom properties (e.g. #1f1f1f editor background), unrelated to
+ * darkraise-ui's actual tokens. Left alone, the editor renders as a
+ * mismatched gray box regardless of the app's light/dark mode. The
+ * selector's specificity (class+class+attribute) beats BlockNote's own
+ * `.bn-root` / `.bn-root[data-color-scheme=dark]` rules unconditionally,
+ * so this wins independent of CSS source order. */
+.bn-container.bn-shadcn[data-color-scheme] {
+  --bn-colors-editor-background: transparent;
+  --bn-colors-editor-text: hsl(var(--foreground));
+  --bn-colors-menu-background: hsl(var(--popover));
+  --bn-colors-menu-text: hsl(var(--popover-foreground));
+  --bn-colors-tooltip-background: hsl(var(--popover));
+  --bn-colors-tooltip-text: hsl(var(--popover-foreground));
+  --bn-colors-hovered-background: hsl(var(--accent));
+  --bn-colors-hovered-text: hsl(var(--accent-foreground));
+  --bn-colors-selected-background: hsl(var(--accent));
+  --bn-colors-selected-text: hsl(var(--accent-foreground));
+  --bn-colors-disabled-background: hsl(var(--muted));
+  --bn-colors-disabled-text: hsl(var(--muted-foreground));
+  --bn-colors-border: hsl(var(--border));
+  --bn-colors-side-menu: hsl(var(--muted-foreground));
+  --bn-colors-shadow: hsl(var(--background) / 0.5);
+}
+
+.bn-shadcn input[type="checkbox"] {
+  accent-color: hsl(var(--primary));
+}

@@ -7,14 +7,22 @@ import {
   defaultStyleSpecs,
 } from "@blocknote/core"
 import { createReactBlockSpec, createReactInlineContentSpec } from "@blocknote/react"
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react"
 import { cn } from "darkraise-ui/lib"
 import { CALLOUT_VARIANTS, type CalloutVariant } from "./block-properties"
 
 const CALLOUT_TONE: Record<CalloutVariant, string> = {
-  info: "border-sky-500/40 bg-sky-500/10",
-  warning: "border-amber-500/40 bg-amber-500/10",
-  error: "border-red-500/40 bg-red-500/10",
-  success: "border-emerald-500/40 bg-emerald-500/10",
+  info: "border-sky-500/50 bg-sky-500/15 text-sky-200",
+  warning: "border-amber-500/50 bg-amber-500/15 text-amber-200",
+  error: "border-red-500/50 bg-red-500/15 text-red-200",
+  success: "border-emerald-500/50 bg-emerald-500/15 text-emerald-200",
+}
+
+const CALLOUT_ICON: Record<CalloutVariant, typeof Info> = {
+  info: Info,
+  warning: TriangleAlert,
+  error: CircleAlert,
+  success: CircleCheck,
 }
 
 export const createCallout = createReactBlockSpec(
@@ -24,14 +32,21 @@ export const createCallout = createReactBlockSpec(
     content: "inline",
   },
   {
-    render: ({ block, contentRef }) => (
-      <div
-        className={cn("w-full rounded-md border px-3 py-2", CALLOUT_TONE[block.props.variant])}
-        data-variant={block.props.variant}
-      >
-        <div ref={contentRef} />
-      </div>
-    ),
+    render: ({ block, contentRef }) => {
+      const Icon = CALLOUT_ICON[block.props.variant]
+      return (
+        <div
+          className={cn(
+            "flex w-full items-start gap-2 rounded-md border px-3 py-2",
+            CALLOUT_TONE[block.props.variant],
+          )}
+          data-variant={block.props.variant}
+        >
+          <Icon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          <div ref={contentRef} className="text-foreground min-w-0 flex-1" />
+        </div>
+      )
+    },
   },
 )
 
