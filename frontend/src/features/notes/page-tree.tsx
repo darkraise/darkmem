@@ -18,6 +18,7 @@ import {
   useSensors,
   type CollisionDetection,
   type DragEndEvent,
+  type DragMoveEvent,
   type DragOverEvent,
 } from "@dnd-kit/core"
 import { ChevronRight, FileText, MoreHorizontal, Plus } from "lucide-react"
@@ -302,6 +303,14 @@ export function PageTree({
 
   useEffect(() => cancelHover, [cancelHover])
 
+  // `onDragOver` fires only when the droppable itself changes, so the zone is
+  // tracked here instead: moving within one row is what picks between its
+  // three thirds, and the indicator has to agree with the drop the release
+  // will resolve.
+  const handleDragMove = useCallback((event: DragMoveEvent) => {
+    setZone(pointerZone(event.over?.rect ?? null, pointerY.current))
+  }, [])
+
   const handleDragOver = useCallback(
     (event: DragOverEvent) => {
       const overId = event.over ? String(event.over.id) : null
@@ -415,6 +424,7 @@ export function PageTree({
       measuring={MEASURING}
       collisionDetection={collisionDetection}
       onDragStart={(event) => setActiveId(String(event.active.id))}
+      onDragMove={handleDragMove}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
