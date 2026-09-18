@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "darkraise-ui/styles.css";
+@source "../../node_modules/@blocknote/shadcn";
 @plugin "@tailwindcss/typography";
 
 /* App-wide type scale: every text-* size token bumped by 1px over the
