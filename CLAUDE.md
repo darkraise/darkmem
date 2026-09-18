@@ -1949,6 +1949,19 @@ page rewrites its rows in the same table, indexes and autovacuum-less host as
 document blocks, and each `page_embeddings__<slug>` child adds a cascade trigger
 to every `DELETE FROM blocks`.
 
+**The SPA's `/notes` is the page tree's only surface, and it replaced the
+document one on 2026-09-18** (increment B2). `features/notes/` renders it:
+a sidebar tree with drag-to-reorder over `PATCH /pages/{id}`, per-row create,
+rename and soft delete, a trash sheet over `GET /pages/trash`, and a page pane
+whose block editor is a **deliberate copy** of the document block editor over
+the page verbs, recorded as a duplicate that increment B3's BlockNote editor
+deletes. `ProjectWorkspace` lost `treeManagement` in the same change and is the
+corpus browser again. The cost is stated rather than discovered: **the personal
+project's documents are now visible nowhere in the SPA** — `/documents` and the
+project switcher both filter that project out — and the rows stay in the
+database and reachable over REST and MCP. That is the owner's ruling (spec §2),
+not an oversight, and no conversion is owed.
+
 **The block channel is firewalled from memory composition, and the
 firewall is now absolute.** A block row is retrievable only through the
 verbs above and, for a page's blocks, the page routes; it is never fused into `HybridSearchService` or

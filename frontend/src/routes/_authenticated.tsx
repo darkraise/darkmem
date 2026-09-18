@@ -157,8 +157,9 @@ export const FULL_HEIGHT_ROUTES = ["/chat", "/projects/", "/notes"] as const
  *  the reader cannot give to the conversation or the retrieval context. A
  *  project workspace (`/projects/<name>`, trailing slash so the `/projects`
  *  index card grid stays capped) is the other: its tree/reader split is
- *  resizable the same way -- and `/notes` renders that same workspace over the
- *  personal space, so it is here for exactly that argument and no other.
+ *  resizable the same way -- and `/notes` is its own tree/pane split over the
+ *  personal space's pages, so it is here for exactly that argument and no
+ *  other.
  *  Kept separate from FULL_BLEED_ROUTES because that
  *  list also means "measures its own container", which is a claim about the
  *  canvas pages and not about either of these. */

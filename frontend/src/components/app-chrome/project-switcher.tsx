@@ -31,11 +31,12 @@ import {
  * would switch every project-scoped view to a scope guaranteed to be empty,
  * which reads as a broken filter rather than as a new project.
  */
-/** Items across all three corpora. A document-only project -- which the
+/** Items across all four corpora. A document-only project -- which the
  *  corpus import creates -- would read as broken under a memories-only
  *  count, showing "0 memories" for a scope that holds a hundred files. */
 function itemHint(row: ProjectSummary): string {
-  const total = row.memory_count + row.document_count + row.checkpoint_count
+  const total =
+    row.memory_count + row.document_count + row.checkpoint_count + row.page_count
   return `${total} ${total === 1 ? "item" : "items"}`
 }
 

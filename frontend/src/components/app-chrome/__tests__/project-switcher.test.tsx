@@ -150,6 +150,33 @@ describe("ProjectSwitcher", () => {
     ).toBeInTheDocument()
   })
 
+  it("counts pages in a project's item total", async () => {
+    mockUseProjects.mockReturnValue({
+      data: [
+        {
+          name: "darkmem",
+          kind: "project" as const,
+          memory_count: 1,
+          document_count: 2,
+          checkpoint_count: 3,
+          page_count: 4,
+          last_checkpoint_at: null,
+          last_event_day: null,
+        },
+      ],
+      isLoading: false,
+    })
+    const user = userEvent.setup()
+    renderSwitcher()
+
+    await user.click(screen.getByRole("button", { name: /project scope/i }))
+
+    // 1 + 2 + 3 + 4. Under the three-corpus total it read "6 items".
+    expect(
+      await screen.findByRole("button", { name: /darkmem.*10 items/ }),
+    ).toBeInTheDocument()
+  })
+
   it("switches to a server-listed project the browser has never visited", async () => {
     mockUseProjects.mockReturnValue({
       data: [{ name: "darkmem", memory_count: 20 }],
