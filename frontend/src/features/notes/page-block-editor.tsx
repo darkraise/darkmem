@@ -141,12 +141,7 @@ export function PageBlockEditor({
                   commit(block)
                   report({ kind: "saving" })
                   insert.mutate(
-                    {
-                      type: "paragraph",
-                      text: "",
-                      afterBlockId: block.block_id,
-                      blockId: crypto.randomUUID(),
-                    },
+                    { type: "paragraph", text: "", afterBlockId: block.block_id },
                     settle(block.block_id),
                   )
                 } else if (e.key === "Backspace" && draft === "") {

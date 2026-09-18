@@ -183,7 +183,7 @@ export function NotesWorkspace({
                 space.
               </p>
             ) : null}
-            {list.isSuccess ? (
+            {list.data ? (
               <PageTree
                 roots={roots}
                 index={index}

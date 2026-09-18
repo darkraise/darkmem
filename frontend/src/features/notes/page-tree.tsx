@@ -228,7 +228,7 @@ function RowHandle({
       data-dragging={isDragging || undefined}
       ref={setRef}
       {...listeners}
-      className="ring-primary border-primary flex min-w-0 flex-1 items-center gap-1.5 rounded-sm border-y border-transparent data-[dragging]:opacity-50 data-[drop-zone=after]:border-b-current data-[drop-zone=before]:border-t-current data-[drop-zone=inside]:ring-1"
+      className="ring-primary flex min-w-0 flex-1 items-center gap-1.5 rounded-sm border-y border-transparent data-[dragging]:opacity-50 data-[drop-zone=after]:border-b-primary data-[drop-zone=before]:border-t-primary data-[drop-zone=inside]:ring-1"
     >
       {children}
     </span>

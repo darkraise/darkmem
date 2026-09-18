@@ -80,7 +80,7 @@ export function PagePane({
       {status.kind === "blocked" ? (
         <div className="border-destructive/50 flex items-center justify-between gap-3 rounded-md border border-dashed px-3 py-2">
           <p className="text-destructive text-sm">
-            This page changed elsewhere — {status.message}
+            This edit was refused — {status.message}
           </p>
           <Button
             type="button"
