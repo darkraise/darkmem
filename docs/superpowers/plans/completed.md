@@ -1,2 +1,3 @@
 - 2026-09-17 `docs/superpowers/plans/2026-09-08-pages-increment-a-backend.md` — merged into `master` at e56fe03c
 - 2026-09-18 `docs/superpowers/plans/2026-09-17-pages-increment-b1-backend.md` — merged into `master` at 48cd59f5
+- 2026-09-18 `docs/superpowers/plans/2026-09-18-pages-increment-b2-workspace.md` — merged into `master` at e62533eb
