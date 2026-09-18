@@ -5,6 +5,10 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/demo-flag", () => ({ DEMO: false }))
 vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
+const routerMocks = vi.hoisted(() => ({
+  useSearch: vi.fn((): { page?: string } => ({})),
+  navigate: vi.fn(),
+}))
 vi.mock("@tanstack/react-router", async () => {
   const actual = await vi.importActual<Record<string, unknown>>(
     "@tanstack/react-router",
@@ -12,18 +16,20 @@ vi.mock("@tanstack/react-router", async () => {
   return {
     ...actual,
     createFileRoute: () => (opts: Record<string, unknown>) => opts,
+    useSearch: () => routerMocks.useSearch(),
+    useNavigate: () => routerMocks.navigate,
     Link: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   }
 })
-vi.mock("@/features/documents/components/project-workspace", () => ({
-  ProjectWorkspace: ({
+vi.mock("@/features/notes/notes-workspace", () => ({
+  NotesWorkspace: ({
     project,
-    treeManagement,
+    selectedId,
   }: {
     project: string
-    treeManagement?: boolean
+    selectedId: string | null
   }) => (
-    <div data-testid="workspace-project" data-tree-management={!!treeManagement}>
+    <div data-testid="notes-project" data-selected={selectedId ?? ""}>
       {project}
     </div>
   ),
@@ -41,8 +47,9 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
 }
 
-function renderRoute() {
+function renderRoute(search: { page?: string } = {}) {
   const Component = (Route.options ?? Route).component as ComponentType
+  routerMocks.useSearch.mockReturnValue(search)
   render(<Component />, { wrapper })
 }
 
@@ -69,7 +76,7 @@ describe("notes route", () => {
 
     // The singleton index guarantees at most one personal row; the route must
     // follow `kind`, not the seeded name.
-    expect(await screen.findByTestId("workspace-project")).toHaveTextContent(
+    expect(await screen.findByTestId("notes-project")).toHaveTextContent(
       "my-notes",
     )
   })
@@ -80,9 +87,30 @@ describe("notes route", () => {
     vi.mocked(apiFetch).mockResolvedValue([row("notes", "personal")])
     renderRoute()
 
-    const workspace = await screen.findByTestId("workspace-project")
+    const workspace = await screen.findByTestId("notes-project")
     expect(workspace).toHaveTextContent("notes")
-    expect(workspace).toHaveAttribute("data-tree-management", "true")
+  })
+
+  // `await findByTestId`, as every other case in this file does: `NotesPage`
+  // renders a Skeleton while `useProjects()` is pending, so nothing with this
+  // id exists on the synchronous first render.
+  it("passes the page id from the search param through to the workspace", async () => {
+    vi.mocked(apiFetch).mockResolvedValue([row("personal-space", "personal")])
+    renderRoute({ page: "p7" })
+    expect(await screen.findByTestId("notes-project")).toHaveAttribute(
+      "data-selected",
+      "p7",
+    )
+  })
+
+  it("keeps only a non-empty string page param", () => {
+    const validate = (Route.options ?? Route).validateSearch as (
+      s: Record<string, unknown>,
+    ) => { page?: string }
+    expect(validate({ page: "p7" })).toEqual({ page: "p7" })
+    expect(validate({ page: "" })).toEqual({ page: undefined })
+    expect(validate({ page: 7 })).toEqual({ page: undefined })
+    expect(validate({})).toEqual({ page: undefined })
   })
 
   it("reports a failed catalogue read instead of a blank page", async () => {
@@ -93,7 +121,7 @@ describe("notes route", () => {
     renderRoute()
 
     expect(await screen.findByText(/could not be loaded/i)).toBeInTheDocument()
-    expect(screen.queryByTestId("workspace-project")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("notes-project")).not.toBeInTheDocument()
     expect(screen.queryByText(/no personal space/i)).not.toBeInTheDocument()
   })
 
@@ -102,7 +130,7 @@ describe("notes route", () => {
     renderRoute()
 
     expect(await screen.findByText(/no personal space/i)).toBeInTheDocument()
-    expect(screen.queryByTestId("workspace-project")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("notes-project")).not.toBeInTheDocument()
   })
 
   it("publishes the page chrome on every branch, not only the resolved one", async () => {

@@ -1,17 +1,28 @@
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router"
 import { NotebookPen } from "lucide-react"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { PageChrome } from "@/components/app-chrome"
 import { EmptyState } from "@/components/darkmem"
-import { ProjectWorkspace } from "@/features/documents/components/project-workspace"
+import { NotesWorkspace } from "@/features/notes/notes-workspace"
 import { useProjects } from "@/hooks/api"
 
 export const Route = createFileRoute("/_authenticated/notes")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    page:
+      typeof search.page === "string" && search.page.length > 0
+        ? search.page
+        : undefined,
+  }),
   component: NotesPage,
 })
 
 function NotesPage() {
   const { data, isLoading, isError } = useProjects()
+  // The standalone hook rather than `Route.useSearch()`: the route test
+  // replaces `createFileRoute` with a passthrough, so the route object it gets
+  // back carries no methods.
+  const { page } = useSearch({ from: "/_authenticated/notes" })
+  const navigate = useNavigate()
   // Resolved from the catalogue, never hardcoded: `ux_projects_one_personal`
   // guarantees at most one row of this kind, so following `kind` keeps this
   // route correct if the seeded name ever changes.
@@ -41,14 +52,18 @@ function NotesPage() {
           description="The notes workspace appears here once the personal project exists."
         />
       ) : (
-        <ProjectWorkspace
+        <NotesWorkspace
           key={personal.name}
           project={personal.name}
-          // Inert under `treeManagement`, which hides the tab strip entirely,
-          // but both props are still required by the corpus browser's signature.
-          tab="artifacts"
-          onTabChange={() => {}}
-          treeManagement
+          selectedId={page ?? null}
+          onSelect={(id) =>
+            // Merged rather than replaced, so a later param on this route is
+            // not cleared by a selection.
+            navigate({
+              to: ".",
+              search: (prev) => ({ ...prev, page: id ?? undefined }),
+            })
+          }
         />
       )}
     </div>
