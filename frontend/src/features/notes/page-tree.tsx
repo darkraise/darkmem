@@ -1,4 +1,25 @@
-import { useCallback, useState, type CSSProperties, type ReactNode } from "react"
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react"
+import {
+  DndContext,
+  MouseSensor,
+  TouchSensor,
+  getClientRect,
+  pointerWithin,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type CollisionDetection,
+  type DragEndEvent,
+  type DragOverEvent,
+} from "@dnd-kit/core"
 import { ChevronRight, FileText, MoreHorizontal, Plus } from "lucide-react"
 import {
   DropdownMenu,
@@ -19,7 +40,12 @@ import {
 } from "darkraise-ui/components/tree-view"
 import { EmptyState } from "@/components/darkmem"
 import { PAGE_TITLE_FALLBACK, type PageNode } from "./lib/build-page-tree"
-import type { DropPlacement } from "./lib/drop-target"
+import {
+  dropZoneFor,
+  resolvePageDrop,
+  type DropPlacement,
+  type DropZone,
+} from "./lib/drop-target"
 
 const ROW = "w-full min-w-0 text-base"
 const ROW_GAP = "gap-1.5"
@@ -103,6 +129,111 @@ function RowActions({
   )
 }
 
+export const DRAG_PREFIX = "drag:"
+export const DROP_PREFIX = "drop:"
+
+/** A droppable's hit area is the ROW, not the span the listeners hang off: a
+ *  branch's element encloses its whole subtree, so its hit area would swallow
+ *  every descendant row. */
+const DROP_ROW_ATTR = "data-drop-row"
+
+function measureDropRow(node: HTMLElement) {
+  return getClientRect(node.closest<HTMLElement>(`[${DROP_ROW_ATTR}]`) ?? node)
+}
+
+const MEASURING = { droppable: { measure: measureDropRow } }
+
+/** Mouse and touch are separate sensors. One `PointerSensor` needs
+ *  `touch-action: none` on the handle, which covers most of every row and
+ *  would disable native panning of the tree outright. */
+const MOUSE_ACTIVATION = { activationConstraint: { distance: 6 } } as const
+const TOUCH_ACTIVATION = {
+  activationConstraint: { delay: 220, tolerance: 6 },
+} as const
+
+/** How long a collapsed row is hovered before it opens under the pointer. */
+const HOVER_EXPAND_MS = 600
+
+/** Whether hovering `pageId` should arm the expand timer. Separated from the
+ *  timer because dnd-kit's pointer pipeline does not run under jsdom, so this
+ *  is the half a unit test can reach; the timer itself is untested. */
+export function shouldHoverExpand(
+  index: Map<string, PageNode>,
+  expanded: string[],
+  pageId: string,
+): boolean {
+  const node = index.get(pageId)
+  return Boolean(node) && node!.children.length > 0 && !expanded.includes(pageId)
+}
+
+export function pointerZone(
+  rect: { top: number; height: number } | null,
+  pointerY: number,
+): DropZone {
+  if (!rect) return "inside"
+  return dropZoneFor(pointerY - rect.top, rect.height)
+}
+
+/** The whole drop decision, as a pure function of the tree, the two ids and
+ *  the zone. Prefixed ids keep the drag and drop key spaces apart, which is
+ *  what lets one element be both. */
+export function resolveDrop(
+  roots: PageNode[],
+  index: Map<string, PageNode>,
+  activeId: string,
+  overId: string | null,
+  zone: DropZone,
+): DropPlacement | null {
+  return resolvePageDrop(
+    roots,
+    index,
+    activeId.slice(DRAG_PREFIX.length),
+    overId === null ? null : overId.slice(DROP_PREFIX.length),
+    zone,
+  )
+}
+
+function RowHandle({
+  node,
+  zone,
+  activeId,
+  children,
+}: {
+  node: PageNode
+  zone: DropZone | null
+  activeId: string | null
+  children: ReactNode
+}) {
+  const { setNodeRef: setDragRef, listeners, isDragging } = useDraggable({
+    id: `${DRAG_PREFIX}${node.id}`,
+  })
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `${DROP_PREFIX}${node.id}`,
+  })
+  // Stable across renders: an inline arrow re-registers the droppable and
+  // re-runs its ResizeObserver on every one.
+  const setRef = useCallback(
+    (el: HTMLElement | null) => {
+      setDragRef(el)
+      setDropRef(el)
+    },
+    [setDragRef, setDropRef],
+  )
+  const showing = isOver && activeId !== null ? zone : null
+  return (
+    <span
+      data-drag-handle
+      data-drop-zone={showing ?? undefined}
+      data-dragging={isDragging || undefined}
+      ref={setRef}
+      {...listeners}
+      className="ring-primary border-primary flex min-w-0 flex-1 items-center gap-1.5 rounded-sm border-y border-transparent data-[dragging]:opacity-50 data-[drop-zone=after]:border-b-current data-[drop-zone=before]:border-t-current data-[drop-zone=inside]:ring-1"
+    >
+      {children}
+    </span>
+  )
+}
+
 /** The page hierarchy.
  *
  *  darkraise-ui's TreeView ships the behaviour (roving focus, selection,
@@ -143,8 +274,79 @@ export function PageTree({
     [project],
   )
 
-  void index
-  void onMove
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [zone, setZone] = useState<DropZone | null>(null)
+  const pointerY = useRef(0)
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hoveredId = useRef<string | null>(null)
+
+  const sensors = useSensors(
+    // Without a distance every click is a zero-length drag and the row never
+    // selects.
+    useSensor(MouseSensor, MOUSE_ACTIVATION),
+    useSensor(TouchSensor, TOUCH_ACTIVATION),
+  )
+
+  // The pointer's own position is what picks the zone, and the collision pass
+  // is the only place dnd-kit hands it over.
+  const collisionDetection = useCallback<CollisionDetection>((args) => {
+    if (args.pointerCoordinates) pointerY.current = args.pointerCoordinates.y
+    return pointerWithin(args)
+  }, [])
+
+  const cancelHover = useCallback(() => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    hoverTimer.current = null
+    hoveredId.current = null
+  }, [])
+
+  useEffect(() => cancelHover, [cancelHover])
+
+  const handleDragOver = useCallback(
+    (event: DragOverEvent) => {
+      const overId = event.over ? String(event.over.id) : null
+      const next = pointerZone(event.over?.rect ?? null, pointerY.current)
+      setZone(next)
+      if (overId === null) {
+        cancelHover()
+        return
+      }
+      const pageId = overId.slice(DROP_PREFIX.length)
+      if (hoveredId.current === pageId) return
+      cancelHover()
+      hoveredId.current = pageId
+      if (!shouldHoverExpand(index, expanded, pageId)) return
+      hoverTimer.current = setTimeout(
+        () => handleExpandedChange([...expanded, pageId]),
+        HOVER_EXPAND_MS,
+      )
+    },
+    [cancelHover, expanded, handleExpandedChange, index],
+  )
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      cancelHover()
+      const activeKey = String(event.active.id)
+      const placement = resolveDrop(
+        roots,
+        index,
+        activeKey,
+        event.over ? String(event.over.id) : null,
+        pointerZone(event.over?.rect ?? null, pointerY.current),
+      )
+      setActiveId(null)
+      setZone(null)
+      if (placement) onMove(activeKey.slice(DRAG_PREFIX.length), placement)
+    },
+    [cancelHover, index, onMove, roots],
+  )
+
+  const handleDragCancel = useCallback(() => {
+    cancelHover()
+    setActiveId(null)
+    setZone(null)
+  }, [cancelHover])
 
   if (roots.length === 0) {
     return (
@@ -169,13 +371,18 @@ export function PageTree({
     if (node.children.length > 0) {
       return (
         <TreeViewBranch key={node.id} value={node.id}>
-          <TreeViewBranchControl className={`group relative ${ROW_GAP} ${ROW}`}>
+          <TreeViewBranchControl
+            data-drop-row=""
+            className={`group relative ${ROW_GAP} ${ROW}`}
+          >
             <TreeViewBranchIndicator className="text-muted-foreground shrink-0">
               <ChevronRight aria-hidden className="size-3.5" />
             </TreeViewBranchIndicator>
-            <TreeViewBranchText className="truncate">
-              {titleOf(node)}
-            </TreeViewBranchText>
+            <RowHandle node={node} zone={zone} activeId={activeId}>
+              <TreeViewBranchText className="truncate">
+                {titleOf(node)}
+              </TreeViewBranchText>
+            </RowHandle>
             {actions}
           </TreeViewBranchControl>
           <TreeViewBranchContent className="gap-0">
@@ -187,35 +394,48 @@ export function PageTree({
     return (
       <TreeViewItem
         key={node.id}
+        data-drop-row=""
         value={node.id}
         className={`group relative ${ROW_GAP} ${ROW}`}
       >
         {/* Aligns a leaf's text with a sibling branch's, whose row spends this
             width on the chevron. */}
         <span aria-hidden className="w-[var(--icon-size)] shrink-0" />
-        <span className="truncate">{titleOf(node)}</span>
+        <RowHandle node={node} zone={zone} activeId={activeId}>
+          <span className="truncate">{titleOf(node)}</span>
+        </RowHandle>
         {actions}
       </TreeViewItem>
     )
   }
 
   return (
-    <TreeView
-      expanded={expanded}
-      onExpandedChange={(d: { value: string[] }) => handleExpandedChange(d.value)}
-      selectionMode="single"
-      selected={selectedId ? [selectedId] : []}
-      onSelectedChange={({ value }: { value: string[] }) => {
-        const id = value.find((v) => index.has(v))
-        if (id) onSelect(id)
-      }}
+    <DndContext
+      sensors={sensors}
+      measuring={MEASURING}
+      collisionDetection={collisionDetection}
+      onDragStart={(event) => setActiveId(String(event.active.id))}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
     >
-      <TreeViewTree
-        className="gap-0 pl-1"
-        style={{ "--tree-view-indent": INDENT } as CSSProperties}
+      <TreeView
+        expanded={expanded}
+        onExpandedChange={(d: { value: string[] }) => handleExpandedChange(d.value)}
+        selectionMode="single"
+        selected={selectedId ? [selectedId] : []}
+        onSelectedChange={({ value }: { value: string[] }) => {
+          const id = value.find((v) => index.has(v))
+          if (id) onSelect(id)
+        }}
       >
-        {roots.map(renderNode)}
-      </TreeViewTree>
-    </TreeView>
+        <TreeViewTree
+          className="gap-0 pl-1"
+          style={{ "--tree-view-indent": INDENT } as CSSProperties}
+        >
+          {roots.map(renderNode)}
+        </TreeViewTree>
+      </TreeView>
+    </DndContext>
   )
 }
