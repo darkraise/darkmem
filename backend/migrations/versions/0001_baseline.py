@@ -1365,6 +1365,31 @@ def _pass_two() -> None:
         "ON pages FOR EACH ROW EXECUTE FUNCTION touch_updated_at()"
     )
 
+    # Attachment metadata; the bytes live on disk, named by `id` alone. The
+    # project owns an attachment, not a page: a block copied to another page
+    # keeps its image, so the page link is provenance and SET NULL on purge.
+    # No FK on `project`, like every scoped table (projects register lazily).
+    op.execute(
+        """
+        CREATE TABLE page_attachments (
+            id                   UUID NOT NULL,
+            project              TEXT NOT NULL,
+            uploaded_for_page_id UUID REFERENCES pages(id) ON DELETE SET NULL,
+            filename             TEXT NOT NULL,
+            content_type         TEXT NOT NULL,
+            size_bytes           BIGINT NOT NULL,
+            sha256               TEXT NOT NULL,
+            created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+            CONSTRAINT page_attachments_pkey PRIMARY KEY (id),
+            CONSTRAINT chk_page_attachments_filename
+                CHECK (char_length(filename) BETWEEN 1 AND 255),
+            CONSTRAINT chk_page_attachments_size CHECK (size_bytes >= 0)
+        )
+        """
+    )
+    op.execute("CREATE INDEX ix_page_attachments_project ON page_attachments (project)")
+    op.execute("CREATE INDEX ix_page_attachments_created ON page_attachments (created_at)")
+
     # A block is simultaneously the chunk unit, the citation anchor, the link
     # endpoint and the transclusion target. parent_id CASCADE makes the tree
     # delete take its subtree; re-ingest strips blocks by document_id before
@@ -1687,6 +1712,7 @@ def downgrade() -> None:
         "document_links",
         "blocks",
         "documents",
+        "page_attachments",
         "pages",
         "memory_buffer",
         "memory_community_members",
