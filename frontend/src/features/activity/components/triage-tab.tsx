@@ -33,11 +33,11 @@ function FailureRow({
         <span className="min-w-0 flex-1 text-sm font-semibold">
           {failure.target_label}
         </span>
-        <span className="border-border bg-muted/40 text-muted-foreground rounded-sm border px-2 py-0.5 font-mono text-[10px]">
+        <span className="border-border bg-muted/40 text-muted-foreground rounded-sm border px-2 py-0.5 font-mono text-xs">
           {failure.pipeline}
         </span>
         {poison && (
-          <span className="border-warning/65 bg-warning/10 text-warning-text inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 font-mono text-[10px] uppercase">
+          <span className="border-warning/65 bg-warning/10 text-warning-text inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 font-mono text-xs uppercase">
             poison
           </span>
         )}
@@ -46,19 +46,19 @@ function FailureRow({
         </span>
       </div>
       <div className="flex items-start gap-2 text-sm">
-        <span className="text-muted-foreground w-20 shrink-0 pt-0.5 font-mono text-[10px] tracking-wide uppercase">
+        <span className="text-muted-foreground w-20 shrink-0 pt-0.5 font-mono text-xs tracking-wide uppercase">
           failed step
         </span>
         <span className="font-mono font-semibold">{failure.failed_step}</span>
       </div>
       <div className="flex items-start gap-2 text-sm">
-        <span className="text-muted-foreground w-20 shrink-0 pt-0.5 font-mono text-[10px] tracking-wide uppercase">
+        <span className="text-muted-foreground w-20 shrink-0 pt-0.5 font-mono text-xs tracking-wide uppercase">
           reason
         </span>
         {/* The raw error_message, verbatim — never summarised to "failed". */}
         <span className="font-mono text-sm">{failure.reason}</span>
       </div>
-      <div className="border-border text-muted-foreground flex flex-wrap gap-4 border-t border-dashed pt-2 font-mono text-[10px]">
+      <div className="border-border text-muted-foreground flex flex-wrap gap-4 border-t border-dashed pt-2 font-mono text-xs">
         <span>first failed {failure.first_failed}</span>
         <span>last attempt {failure.last_attempt}</span>
       </div>

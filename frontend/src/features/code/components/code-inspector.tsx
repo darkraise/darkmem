@@ -139,13 +139,13 @@ function PanelChrome({
         <span className="min-w-0 flex-1 truncate font-mono text-sm">
           {name}
           {dir && (
-            <span className="text-muted-foreground ml-1.5 text-[10px]">
+            <span className="text-muted-foreground ml-1.5 text-xs">
               {dir}
             </span>
           )}
         </span>
       </button>
-      <span className="text-muted-foreground shrink-0 font-mono text-[10px]">
+      <span className="text-muted-foreground shrink-0 font-mono text-xs">
         {source.symbols.length} sym
       </span>
       <Button
@@ -314,7 +314,7 @@ export function CodeInspector({
           <PanelLeftOpen aria-hidden className="h-3.5 w-3.5" />
         </Button>
         <span
-          className="text-muted-foreground font-mono text-[10px] tracking-widest uppercase"
+          className="text-muted-foreground font-mono text-xs tracking-widest uppercase"
           style={{ writingMode: "vertical-rl" }}
         >
           inspector · {files.length}
@@ -332,7 +332,7 @@ export function CodeInspector({
         </span>
         <Button
           variant="ghost"
-          className="text-muted-foreground shrink-0 text-[10px]"
+          className="text-muted-foreground shrink-0 text-xs"
           onClick={onCloseAll}
         >
           close all

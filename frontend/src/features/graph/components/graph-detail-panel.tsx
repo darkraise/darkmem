@@ -277,7 +277,7 @@ function MemoryStatus({ status }: { status: string }) {
       <span
         data-testid="memory-status"
         className={cn(
-          "inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wide uppercase",
+          "inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-xs tracking-wide uppercase",
           STATUS_STYLES[status] ??
             "border-border bg-muted/40 text-muted-foreground",
         )}

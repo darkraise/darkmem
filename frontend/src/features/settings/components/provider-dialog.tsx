@@ -36,7 +36,7 @@ function Field({
 }) {
   return (
     <div className={cn("flex flex-col gap-1", span2 && "col-span-2")}>
-      <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+      <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
         {label}
       </span>
       {children}

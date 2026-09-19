@@ -125,7 +125,7 @@ export function CodeBlock({
   return (
     <div className="border-border relative overflow-hidden rounded-md border">
       {info && (
-        <span className="text-muted-foreground bg-muted/60 absolute top-0 right-0 rounded-bl px-2 py-0.5 font-mono text-[10px] tracking-wide lowercase">
+        <span className="text-muted-foreground bg-muted/60 absolute top-0 right-0 rounded-bl px-2 py-0.5 font-mono text-xs tracking-wide lowercase">
           {info}
         </span>
       )}

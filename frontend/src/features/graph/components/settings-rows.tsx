@@ -29,7 +29,7 @@ export function SectionLabel({
   return (
     <div
       className={cn(
-        "text-muted-foreground mb-2 font-mono text-[10px] font-semibold tracking-[0.14em] uppercase",
+        "text-muted-foreground mb-2 font-mono text-xs font-semibold tracking-[0.14em] uppercase",
         className,
       )}
     >

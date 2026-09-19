@@ -80,7 +80,7 @@ function CommunityCard({
       </div>
       <div className="border-border border-l-2 border-dashed pl-2.5">
         <p className="text-muted-foreground text-sm">
-          <span className="mr-1.5 font-mono text-[10px] tracking-wide uppercase not-italic">
+          <span className="mr-1.5 font-mono text-xs tracking-wide uppercase not-italic">
             report
           </span>
           {topic.reportStatus === "ready" && topic.report ? (

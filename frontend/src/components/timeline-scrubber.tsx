@@ -121,7 +121,7 @@ export function TimelineScrubber({
           />
           <span
             className={cn(
-              "absolute right-6 -translate-y-1/2 font-mono text-[10px]",
+              "absolute right-6 -translate-y-1/2 font-mono text-xs",
               m.isYear
                 ? "text-foreground/80 font-semibold"
                 : "text-muted-foreground",
@@ -176,7 +176,7 @@ export function TimelineScrubber({
       {/* date bubble while dragging or hovering */}
       {bubbleFraction != null && bubbleLabel && (
         <span
-          className="border-border bg-popover text-popover-foreground absolute left-full z-10 ml-2 -translate-y-1/2 rounded border px-2 py-0.5 font-mono text-[10px] whitespace-nowrap shadow-md"
+          className="border-border bg-popover text-popover-foreground absolute left-full z-10 ml-2 -translate-y-1/2 rounded border px-2 py-0.5 font-mono text-xs whitespace-nowrap shadow-md"
           style={{ top: `${bubbleFraction * 100}%` }}
         >
           {bubbleLabel}

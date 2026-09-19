@@ -27,7 +27,7 @@ function FeedRow({ event }: { event: FeedRowData }) {
         ),
       })}
     >
-      <span className="border-border bg-muted text-muted-foreground rounded-sm border px-1.5 py-0.5 font-mono text-[10px] tracking-wide whitespace-nowrap">
+      <span className="border-border bg-muted text-muted-foreground rounded-sm border px-1.5 py-0.5 font-mono text-xs tracking-wide whitespace-nowrap">
         {event.type}
       </span>
       {event.layer !== undefined && <LayerChip layer={event.layer} />}
@@ -41,7 +41,7 @@ function FeedRow({ event }: { event: FeedRowData }) {
       {event.badge && <VerificationBadge status={event.badge} />}
       <span className="min-w-0 flex-1 basis-64 text-sm">{event.text}</span>
       {event.toast && (
-        <span className="border-destructive/55 bg-destructive/10 text-destructive inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 font-mono text-[10px] whitespace-nowrap">
+        <span className="border-destructive/55 bg-destructive/10 text-destructive inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 font-mono text-xs whitespace-nowrap">
           <Bell aria-hidden className="h-3 w-3" />
           toast shown
         </span>

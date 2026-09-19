@@ -103,7 +103,7 @@ function InjectDetail({ inject }: { inject: InjectRecordData }) {
             ).map(([label, ids]) =>
               ids.length === 0 ? null : (
                 <div key={label} className="space-y-0.5">
-                  <p className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+                  <p className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
                     {label}
                   </p>
                   <ul className="space-y-0.5">

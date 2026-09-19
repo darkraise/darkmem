@@ -76,7 +76,7 @@ const LEDGER_SUFFIX = "planning/progress.md"
  *  in this file before it was named. */
 function RegionLabel({ children }: { children: ReactNode }) {
   return (
-    <p className="text-muted-foreground pb-1.5 font-mono text-[10px] tracking-wide uppercase">
+    <p className="text-muted-foreground pb-1.5 font-mono text-xs tracking-wide uppercase">
       {children}
     </p>
   )

@@ -92,14 +92,14 @@ function ProvenanceStat({
 }) {
   return (
     <div className="bg-card px-3.5 py-2.5">
-      <p className="text-muted-foreground font-mono text-[10px] tracking-[0.18em] uppercase">
+      <p className="text-muted-foreground font-mono text-xs tracking-[0.18em] uppercase">
         {label}
       </p>
       <p className="mt-1 font-mono text-sm font-semibold">{value}</p>
       {note && (
         <p
           className={cn(
-            "mt-0.5 text-[11px]",
+            "mt-0.5 text-xs",
             tone === "warn" ? "text-warning-text" : "text-muted-foreground",
           )}
         >
@@ -181,7 +181,7 @@ export function WikiTab({
               <SelectValue>
                 <span className="flex items-center gap-2">
                   <FolderGit2 aria-hidden className="h-3.5 w-3.5" />
-                  <span className="text-muted-foreground font-mono text-[10px] uppercase">
+                  <span className="text-muted-foreground font-mono text-xs uppercase">
                     repo
                   </span>
                   {repo.name}
@@ -237,7 +237,7 @@ export function WikiTab({
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[13rem_minmax(0,1fr)]">
           {/* contents — a spine, so position in the document is legible */}
           <nav className="top-2 h-fit lg:sticky" aria-label="Wiki contents">
-            <p className="text-muted-foreground mb-2 font-mono text-[10px] tracking-[0.18em] uppercase">
+            <p className="text-muted-foreground mb-2 font-mono text-xs tracking-[0.18em] uppercase">
               Contents
             </p>
             <ol className="border-border ml-[3px] border-l">
@@ -276,7 +276,7 @@ export function WikiTab({
           </nav>
 
           <article className="min-w-0">
-            <p className="text-muted-foreground font-mono text-[10px] tracking-[0.18em] uppercase">
+            <p className="text-muted-foreground font-mono text-xs tracking-[0.18em] uppercase">
               Generated documentation · section {index + 1} of {sections.length}
             </p>
             <h2 className="mt-1.5 text-2xl font-semibold tracking-tight">
@@ -323,7 +323,7 @@ export function WikiTab({
 
             {referenced.length > 0 && (
               <section className="border-border bg-muted/20 mt-6 max-w-[70ch] rounded-md border p-3">
-                <p className="text-muted-foreground font-mono text-[10px] tracking-[0.18em] uppercase">
+                <p className="text-muted-foreground font-mono text-xs tracking-[0.18em] uppercase">
                   Code this section describes
                 </p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
@@ -336,7 +336,7 @@ export function WikiTab({
                     />
                   ))}
                 </div>
-                <p className="text-muted-foreground mt-2 text-[11px]">
+                <p className="text-muted-foreground mt-2 text-xs">
                   Each opens the symbol in the code graph, where its source and
                   callers live.
                 </p>

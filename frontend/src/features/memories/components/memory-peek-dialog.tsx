@@ -78,7 +78,7 @@ export function MemoryPeekDialog({
 
               {memory.data.summary ? (
                 <div>
-                  <p className="text-muted-foreground pb-1 font-mono text-[10px] tracking-wide uppercase">
+                  <p className="text-muted-foreground pb-1 font-mono text-xs tracking-wide uppercase">
                     summary
                   </p>
                   <p className="text-muted-foreground text-sm">

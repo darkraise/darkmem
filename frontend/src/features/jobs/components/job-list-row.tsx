@@ -38,7 +38,7 @@ export function JobListRow({
 
       <div className="min-w-0 flex-1 basis-56">
         <p className="truncate font-medium">{job.name}</p>
-        <p className="text-muted-foreground truncate font-mono text-[11px]">
+        <p className="text-muted-foreground truncate font-mono text-xs">
           {job.key}
         </p>
       </div>

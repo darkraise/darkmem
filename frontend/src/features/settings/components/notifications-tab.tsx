@@ -18,7 +18,7 @@ const MASK = "***"
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+      <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
         {label}
       </span>
       {children}

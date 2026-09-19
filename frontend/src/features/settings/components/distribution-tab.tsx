@@ -387,7 +387,7 @@ function LiveDistribution() {
                   human curbs, not a technical aside. */}
               <span
                 className={cn(
-                  "rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide",
+                  "rounded-full border px-2 py-0.5 font-mono text-xs uppercase tracking-wide",
                   target.watched
                     ? "border-info/55 text-info-text"
                     : "border-border text-muted-foreground",
@@ -645,7 +645,7 @@ export function DistributionTab() {
                 <div className="flex flex-wrap items-center gap-2">
                   <LayerChip layer={item.layer} />
                   <VerificationBadge status={item.badge} />
-                  <span className="text-muted-foreground ml-auto font-mono text-[10px] tracking-wide uppercase">
+                  <span className="text-muted-foreground ml-auto font-mono text-xs tracking-wide uppercase">
                     injected as:{" "}
                     <b className="text-foreground">{item.as_label}</b>
                   </span>

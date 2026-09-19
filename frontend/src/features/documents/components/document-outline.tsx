@@ -177,7 +177,7 @@ export function DocumentOutline({
       // ResizeObserver is missing.
       style={railHeight !== null ? { maxHeight: `${railHeight}px` } : undefined}
     >
-      <p className="text-muted-foreground flex shrink-0 items-center gap-1.5 pb-2 font-mono text-[10px] tracking-wide uppercase">
+      <p className="text-muted-foreground flex shrink-0 items-center gap-1.5 pb-2 font-mono text-xs tracking-wide uppercase">
         <ListTree aria-hidden className="size-3.5" />
         outline
       </p>

@@ -133,7 +133,7 @@ function CardShell({
         {chip}
         <span className="flex-1" />
         {tag && (
-          <span className="text-muted-foreground border-muted-foreground/60 shrink-0 rounded-full border border-dashed px-2.5 py-0.5 font-mono text-[10px] tracking-wide uppercase whitespace-nowrap">
+          <span className="text-muted-foreground border-muted-foreground/60 shrink-0 rounded-full border border-dashed px-2.5 py-0.5 font-mono text-xs tracking-wide uppercase whitespace-nowrap">
             {tag}
           </span>
         )}
@@ -203,7 +203,7 @@ function AuthCard({ binding }: { binding: SecurityTabBinding }) {
       </Row>
 
       <div className="border-inset flex flex-col gap-1.5 border-t border-dashed pt-2">
-        <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+        <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
           login rate limiting — per-IP with lockout
         </span>
         <Row k="IP source">
@@ -264,7 +264,7 @@ function TokensCard({ binding }: { binding: SecurityTabBinding }) {
       <PillFlow steps={["active", "expired (exp elapses)"]} />
       <div className="border-border flex flex-col gap-1.5 border-t border-dashed pt-2">
         <div className="flex items-center gap-1.5">
-          <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+          <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
             cookie_secure — tri-state
           </span>
           <HelpTip label="About cookie_secure">
@@ -282,7 +282,7 @@ function TokensCard({ binding }: { binding: SecurityTabBinding }) {
       </div>
       <div className="border-border flex flex-col gap-1.5 border-t border-dashed pt-2">
         <div className="flex items-center gap-1.5">
-          <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+          <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
             read_only — backup worker posture
           </span>
           <HelpTip label="About read_only">
@@ -377,7 +377,7 @@ function LanTrustCard({ binding }: { binding: SecurityTabBinding }) {
             keyed request that also fails the Host check gets 421, fixed by
             extending the allowlist — never by disabling either guard.
           </HelpTip>
-          <span className="text-muted-foreground ml-auto font-mono text-[10px]">
+          <span className="text-muted-foreground ml-auto font-mono text-xs">
             Bearer key required — scoped per tool
           </span>
         </div>
@@ -410,12 +410,12 @@ function LanTrustCard({ binding }: { binding: SecurityTabBinding }) {
             missing/invalid/revoked token with close code 1008 before joining
             the broadcast set.
           </HelpTip>
-          <span className="text-muted-foreground ml-auto font-mono text-[10px]">
+          <span className="text-muted-foreground ml-auto font-mono text-xs">
             cookie JWT — the human door
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-muted-foreground font-mono text-[10px] uppercase">
+          <span className="text-muted-foreground font-mono text-xs uppercase">
             active IP strategy
           </span>
           {binding.trustProxyHeaders !== null ? (
@@ -439,7 +439,7 @@ function LanTrustCard({ binding }: { binding: SecurityTabBinding }) {
             See the Setup card above — closes itself permanently the moment
             the first wizard run completes.
           </HelpTip>
-          <span className="text-muted-foreground ml-auto font-mono text-[10px]">
+          <span className="text-muted-foreground ml-auto font-mono text-xs">
             trust-on-first-use, open only until claimed
           </span>
         </div>

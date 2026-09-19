@@ -109,7 +109,7 @@ function UndoControl({ action }: { action: DemoDreamAction }) {
   // reason printed inline — never hidden, never a broken button.
   if (action.undo_blocked) {
     return (
-      <span className="border-border bg-muted/35 text-muted-foreground ml-auto flex max-w-xs items-start gap-1.5 rounded-md border border-dashed px-2.5 py-1.5 text-[10px] leading-snug">
+      <span className="border-border bg-muted/35 text-muted-foreground ml-auto flex max-w-xs items-start gap-1.5 rounded-md border border-dashed px-2.5 py-1.5 text-xs leading-snug">
         <Lock aria-hidden className="mt-0.5 h-3 w-3 shrink-0" />
         <span>
           Undo unavailable —{" "}
@@ -334,7 +334,7 @@ function DemoDreamDigest() {
             </span>
             <span className="text-muted-foreground text-sm">{stat.label}</span>
             {stat.split && (
-              <span className="text-muted-foreground font-mono text-[10px]">
+              <span className="text-muted-foreground font-mono text-xs">
                 {stat.split}
               </span>
             )}
@@ -558,7 +558,7 @@ function LiveActionRow({
       </div>
 
       {detailLevel === "advanced" && Object.keys(action.detail).length > 0 && (
-        <p className="text-muted-foreground font-mono text-[10px]">
+        <p className="text-muted-foreground font-mono text-xs">
           event #{action.event_id} · {JSON.stringify(action.detail)}
         </p>
       )}
@@ -578,7 +578,7 @@ function LiveActionRow({
                 one-shot undo toast — this is what makes the round trip
                 (undo, then leave and come back) still answer "what came
                 back". */}
-            <span className="text-muted-foreground font-mono text-[10px]">
+            <span className="text-muted-foreground font-mono text-xs">
               restored: {action.restored.join(", ") || "—"}
               {action.not_restored.length
                 ? ` · not restored: ${action.not_restored.join(", ")}`
@@ -595,7 +595,7 @@ function LiveActionRow({
             Undo
           </Button>
         ) : (
-          <span className="border-border bg-muted/35 text-muted-foreground ml-auto flex max-w-xs items-start gap-1.5 rounded-md border border-dashed px-2.5 py-1.5 text-[10px] leading-snug">
+          <span className="border-border bg-muted/35 text-muted-foreground ml-auto flex max-w-xs items-start gap-1.5 rounded-md border border-dashed px-2.5 py-1.5 text-xs leading-snug">
             <Lock aria-hidden className="mt-0.5 h-3 w-3 shrink-0" />
             <span>
               Undo unavailable —{" "}

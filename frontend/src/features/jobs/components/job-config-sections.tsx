@@ -26,10 +26,10 @@ function SectionHead({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="font-mono text-[10px] font-semibold tracking-wide uppercase">
+      <span className="font-mono text-xs font-semibold tracking-wide uppercase">
         {label}
       </span>
-      <span className="text-muted-foreground font-mono text-[10px]">
+      <span className="text-muted-foreground font-mono text-xs">
         {role}
       </span>
       {help && <HelpTip label={`About ${label}`}>{help}</HelpTip>}
@@ -153,7 +153,7 @@ export function ConfigSchemaSection({
                 className={cn("w-28", error && "border-destructive")}
               />
               {(field.min !== undefined || field.max !== undefined) && (
-                <span className="text-muted-foreground font-mono text-[10px]">
+                <span className="text-muted-foreground font-mono text-xs">
                   {field.min !== undefined && `min ${field.min}`}
                   {field.min !== undefined && field.max !== undefined && " · "}
                   {field.max !== undefined && `max ${field.max}`}

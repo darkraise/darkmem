@@ -65,7 +65,7 @@ function SubstepPill({
   return (
     <span
       className={cn(
-        "rounded-full border px-1.5 font-mono text-[10px]",
+        "rounded-full border px-1.5 font-mono text-xs",
         state === "ok" && "border-success/60 text-success-text",
         state === "error" && "border-destructive/60 text-destructive",
         state === "skipped" && "border-border text-muted-foreground",

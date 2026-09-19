@@ -237,7 +237,7 @@ export function OutliersPanel({
               type="button"
               onClick={() => onTypeFilterChange(null)}
               className={cn(
-                "border-border rounded-full border px-2 py-0.5 font-mono text-[11px] transition-colors",
+                "border-border rounded-full border px-2 py-0.5 font-mono text-xs transition-colors",
                 typeFilter === null
                   ? "border-primary/50 bg-primary/10 text-foreground"
                   : "text-muted-foreground hover:bg-muted/50",
@@ -251,7 +251,7 @@ export function OutliersPanel({
                 type="button"
                 onClick={() => onTypeFilterChange(t)}
                 className={cn(
-                  "border-border rounded-full border px-2 py-0.5 font-mono text-[11px] transition-colors",
+                  "border-border rounded-full border px-2 py-0.5 font-mono text-xs transition-colors",
                   typeFilter === t
                     ? "border-primary/50 bg-primary/10 text-foreground"
                     : "text-muted-foreground hover:bg-muted/50",

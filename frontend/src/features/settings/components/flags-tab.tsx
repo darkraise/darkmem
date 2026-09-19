@@ -110,11 +110,11 @@ function SectionDialog({
         <div className="flex flex-col gap-2">{children}</div>
         <div className="border-border flex flex-wrap items-center gap-2 border-t pt-3">
           {dirty.length > 0 ? (
-            <span className="text-muted-foreground font-mono text-[10px]">
+            <span className="text-muted-foreground font-mono text-xs">
               one request will write: {dirty.join(", ")}
             </span>
           ) : (
-            <span className="text-muted-foreground font-mono text-[10px] italic">
+            <span className="text-muted-foreground font-mono text-xs italic">
               nothing edited
             </span>
           )}
@@ -147,7 +147,7 @@ function BoolTag({ on }: { on: boolean }) {
   return (
     <span
       className={cn(
-        "rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wide whitespace-nowrap uppercase",
+        "rounded-full border px-2 py-0.5 font-mono text-xs tracking-wide whitespace-nowrap uppercase",
         on
           ? "border-primary/55 bg-primary/10 text-primary-text"
           : "border-border text-muted-foreground bg-muted/40 border-dashed",
@@ -164,7 +164,7 @@ function ValueTag({ value, unit }: { value: number; unit?: string }) {
     <span className="text-foreground font-mono text-sm font-semibold whitespace-nowrap tabular-nums">
       {value}
       {unit && (
-        <span className="text-muted-foreground ml-1 text-[10px] font-normal">
+        <span className="text-muted-foreground ml-1 text-xs font-normal">
           {unit}
         </span>
       )}
@@ -176,7 +176,7 @@ function SourceTag({ source }: { source: DemoRankArm["source"] }) {
   return (
     <span
       className={cn(
-        "font-mono text-[10px] whitespace-nowrap",
+        "font-mono text-xs whitespace-nowrap",
         source === "default"
           ? "text-muted-foreground italic"
           : "text-primary-text/80",
@@ -200,7 +200,7 @@ function UnmeasuredTag() {
       <Tooltip>
         <TooltipTrigger
           aria-label="About the unmeasured badge"
-          className="border-warning/50 text-warning-text cursor-help rounded-full border border-dashed px-2 py-0.5 font-mono text-[10px] tracking-wide whitespace-nowrap uppercase"
+          className="border-warning/50 text-warning-text cursor-help rounded-full border border-dashed px-2 py-0.5 font-mono text-xs tracking-wide whitespace-nowrap uppercase"
         >
           unmeasured
         </TooltipTrigger>
@@ -236,7 +236,7 @@ function LadderStatePill({ param }: { param: DemoLadderParam }) {
         <TooltipTrigger
           aria-label={`About the ${param.state} state`}
           className={cn(
-            "inline-flex cursor-help items-center rounded-full border px-2.5 py-0.5 font-mono text-[10px] tracking-wide whitespace-nowrap uppercase",
+            "inline-flex cursor-help items-center rounded-full border px-2.5 py-0.5 font-mono text-xs tracking-wide whitespace-nowrap uppercase",
             clamped
               ? "border-warning/60 bg-warning/10 text-warning-text"
               : param.state === "honoured"
@@ -328,7 +328,7 @@ function ArmRow({
         {arm.key}
       </span>
       {arm.alias && (
-        <span className="text-muted-foreground font-mono text-[10px] whitespace-nowrap">
+        <span className="text-muted-foreground font-mono text-xs whitespace-nowrap">
           {arm.alias}
         </span>
       )}
@@ -392,7 +392,7 @@ function Section({
             colour the library's own comment calls the accent source. An icon
             on `text-accent` would be all but invisible on the header. */}
         <Icon aria-hidden className="text-primary-text h-4 w-4 shrink-0" />
-        <h3 className="text-foreground min-w-0 truncate font-mono text-[11px] font-semibold tracking-[0.14em] uppercase">
+        <h3 className="text-foreground min-w-0 truncate font-mono text-xs font-semibold tracking-[0.14em] uppercase">
           {name}
         </h3>
         {help && (
@@ -402,7 +402,7 @@ function Section({
         )}
         <span className="flex-1" />
         {meta && (
-          <span className="text-muted-foreground shrink-0 font-mono text-[10px] whitespace-nowrap">
+          <span className="text-muted-foreground shrink-0 font-mono text-xs whitespace-nowrap">
             {meta}
           </span>
         )}
@@ -528,7 +528,7 @@ function TunableInput({
         className="w-24"
       />
       {tunable.unit && (
-        <span className="text-muted-foreground font-mono text-[10px] whitespace-nowrap">
+        <span className="text-muted-foreground font-mono text-xs whitespace-nowrap">
           {tunable.unit}
         </span>
       )}
@@ -543,7 +543,7 @@ function TunableInput({
 function NotYetImplemented({ label, note }: { label: string; note: string }) {
   return (
     <div className="border-inset text-muted-foreground flex flex-col gap-1 rounded-md border border-dashed px-3 py-2.5 text-sm">
-      <span className="font-mono text-[10px] tracking-wide uppercase">
+      <span className="font-mono text-xs tracking-wide uppercase">
         {label}
       </span>
       <span>{note}</span>
@@ -580,7 +580,7 @@ function RepoAllowlistSection({ binding }: { binding: FlagsTabBinding }) {
             {patterns.map((pattern) => (
               <code
                 key={pattern}
-                className="border-inset bg-muted/40 rounded-md border px-2 py-0.5 font-mono text-[11px]"
+                className="border-inset bg-muted/40 rounded-md border px-2 py-0.5 font-mono text-xs"
               >
                 {pattern}
               </code>
@@ -701,11 +701,11 @@ function CorroborationSection({ binding }: { binding: FlagsTabBinding }) {
                   <span className="flex-1" />
                   {param.committed !== null &&
                     param.committed !== param.effective && (
-                      <span className="text-muted-foreground font-mono text-[10px] whitespace-nowrap">
+                      <span className="text-muted-foreground font-mono text-xs whitespace-nowrap">
                         asked for {param.committed}
                       </span>
                     )}
-                  <span className="text-muted-foreground font-mono text-[10px] whitespace-nowrap">
+                  <span className="text-muted-foreground font-mono text-xs whitespace-nowrap">
                     running at
                   </span>
                   <ValueTag value={param.effective} />
@@ -790,7 +790,7 @@ function LadderDialog({
             {param.floor}.
           </HelpTip>
           <span className="flex-1" />
-          <span className="text-muted-foreground font-mono text-[10px] whitespace-nowrap">
+          <span className="text-muted-foreground font-mono text-xs whitespace-nowrap">
             floor {param.floor}
           </span>
           <ArmInput
@@ -808,7 +808,7 @@ function LadderDialog({
           />
           <Button
             variant="ghost"
-            className="text-muted-foreground font-mono text-[10px]"
+            className="text-muted-foreground font-mono text-xs"
             disabled={draft[param.name] === null}
             onClick={() => setDraft((d) => ({ ...d, [param.name]: null }))}
           >
@@ -834,7 +834,7 @@ function LabelChip({
         <TooltipTrigger
           aria-label={`About the ${label.name} label`}
           className={cn(
-            "cursor-help rounded-full border px-2 py-0.5 font-mono text-[11px] whitespace-nowrap",
+            "cursor-help rounded-full border px-2 py-0.5 font-mono text-xs whitespace-nowrap",
             muted
               ? "border-border/60 text-muted-foreground border-dashed"
               : "border-border bg-muted/40 text-foreground/90",
@@ -892,7 +892,7 @@ function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
             content under a different mode is not bit-identical.
           </HelpTip>
           <span className="flex-1" />
-          <span className="border-primary/55 bg-primary/10 text-primary-text rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wide uppercase">
+          <span className="border-primary/55 bg-primary/10 text-primary-text rounded-full border px-2 py-0.5 font-mono text-xs tracking-wide uppercase">
             {binding.classificationMode}
           </span>
         </div>
@@ -931,7 +931,7 @@ function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
               view.
             </HelpTip>
             <span className="flex-1" />
-            <span className="text-muted-foreground font-mono text-[10px] whitespace-nowrap">
+            <span className="text-muted-foreground font-mono text-xs whitespace-nowrap">
               {binding.classificationLabels.length} label
               {binding.classificationLabels.length === 1 ? "" : "s"}
               {!simple && (
@@ -946,7 +946,7 @@ function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
 
           {unowned.length > 0 && (
             <div className="flex flex-wrap items-baseline gap-2">
-              <span className="text-muted-foreground w-32 shrink-0 font-mono text-[10px] tracking-wide uppercase">
+              <span className="text-muted-foreground w-32 shrink-0 font-mono text-xs tracking-wide uppercase">
                 {simple ? "fixed vocabulary" : "always"}
               </span>
               <div className="flex flex-1 flex-wrap gap-1.5">
@@ -982,7 +982,7 @@ function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
                         </span>
                       )}
                     </div>
-                    <span className="text-muted-foreground w-10 shrink-0 text-right font-mono text-[10px]">
+                    <span className="text-muted-foreground w-10 shrink-0 text-right font-mono text-xs">
                       +{contributed.length}
                     </span>
                   </div>

@@ -90,7 +90,7 @@ export function CodeFilters({
               >
                 {kind}
               </label>
-              <span className="shrink-0 font-mono text-[10px]">
+              <span className="shrink-0 font-mono text-xs">
                 {counts.get(kind)}
               </span>
             </div>

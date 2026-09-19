@@ -27,7 +27,7 @@ export function GroundedAnswer({
   return (
     <div className="border-border space-y-2 rounded-md border border-dashed p-3">
       <div className="flex items-center gap-2">
-        <p className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+        <p className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
           answer
         </p>
         <Badge variant="outline" size="sm" className="border-dashed font-mono">

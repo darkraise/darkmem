@@ -209,7 +209,7 @@ function InventorySection({ inventory }: { inventory: DestinationInventory[] }) 
   if (inventory.length === 0) return null
   return (
     <div className="border-border flex flex-col gap-2.5 border-t border-dashed pt-3">
-      <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+      <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
         what each destination holds
       </span>
       {inventory.map((row) => (

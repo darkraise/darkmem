@@ -122,7 +122,7 @@ export function GraphFilterPanel({
                       {selectedTags.size > 0 ? "Tags selected" : "Any tag"}
                     </span>
                     {selectedTags.size > 0 && (
-                      <span className="bg-primary/20 text-primary-text rounded-full px-1.5 py-0.5 font-mono text-[10px] tabular-nums">
+                      <span className="bg-primary/20 text-primary-text rounded-full px-1.5 py-0.5 font-mono text-xs tabular-nums">
                         {selectedTags.size}
                       </span>
                     )}

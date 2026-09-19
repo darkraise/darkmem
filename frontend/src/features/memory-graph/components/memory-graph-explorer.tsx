@@ -343,7 +343,7 @@ export function MemoryGraphExplorer() {
                   {scoped.topics.find((t) => t.id === selected.topic)?.label ??
                     selected.topic}
                 </p>
-                <p className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+                <p className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
                   relations ({selectedRelations.length})
                 </p>
                 <div className="space-y-1">
@@ -354,7 +354,7 @@ export function MemoryGraphExplorer() {
                       className="hover:bg-muted/50 flex w-full items-center gap-1.5 rounded-sm px-1 py-0.5 text-left text-sm"
                       onClick={() => setSelectedId(rel.other.id)}
                     >
-                      <span className="text-muted-foreground font-mono text-[10px]">
+                      <span className="text-muted-foreground font-mono text-xs">
                         {rel.direction} {rel.rel_type}
                       </span>
                       <span className="min-w-0 flex-1 truncate font-mono">
@@ -419,14 +419,14 @@ export function MemoryGraphExplorer() {
                         <span className="block text-sm font-semibold">
                           {topic.label}
                         </span>
-                        <span className="text-muted-foreground block font-mono text-[10px]">
+                        <span className="text-muted-foreground block font-mono text-xs">
                           {members} entities · detected {topic.detected}
                         </span>
                       </span>
                       <button
                         type="button"
                         className={cn(
-                          "inline-flex shrink-0 items-center gap-1 font-mono text-[10px]",
+                          "inline-flex shrink-0 items-center gap-1 font-mono text-xs",
                           focusTopic === topic.id
                             ? "text-primary-text"
                             : "text-muted-foreground hover:text-foreground",

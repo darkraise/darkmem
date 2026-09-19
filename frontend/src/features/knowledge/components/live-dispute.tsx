@@ -39,7 +39,7 @@ export function LiveDisputePanel({ dispute }: { dispute: FactDispute }) {
         <VerificationBadge status="disputed" label="counterpart" />
         <TripleOrUnrecorded triple={dispute.counterpart} />
         {!dispute.counterpart && dispute.counterpart_absent && (
-          <p className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+          <p className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
             {dispute.counterpart_absent}
           </p>
         )}
@@ -54,7 +54,7 @@ export function LiveDisputePanel({ dispute }: { dispute: FactDispute }) {
         )}
       </div>
       {advanced && (dispute.rule || dispute.witness_origin || dispute.enumeration) && (
-        <dl className="text-muted-foreground col-span-full grid grid-cols-[8rem_minmax(0,1fr)] gap-x-3 gap-y-1 font-mono text-[10px] tracking-wide uppercase">
+        <dl className="text-muted-foreground col-span-full grid grid-cols-[8rem_minmax(0,1fr)] gap-x-3 gap-y-1 font-mono text-xs tracking-wide uppercase">
           {dispute.rule && (
             <>
               <dt>rule</dt>

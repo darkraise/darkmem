@@ -76,7 +76,7 @@ export function DemoContextPanel({
                   />
                 )}
                 {row.channel && (
-                  <span className="text-muted-foreground ml-auto font-mono text-[10px]">
+                  <span className="text-muted-foreground ml-auto font-mono text-xs">
                     channel: {row.channel}
                   </span>
                 )}

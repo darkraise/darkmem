@@ -18,7 +18,7 @@ export function AppearanceTab() {
     <Card className="gap-0 py-0">
       <CardHeader className="border-border bg-muted/30 flex flex-row flex-nowrap items-center gap-2 space-y-0 overflow-hidden border-b px-4 py-2.5">
         <Palette aria-hidden className="text-primary-text h-4 w-4 shrink-0" />
-        <h3 className="text-foreground min-w-0 truncate font-mono text-[11px] font-semibold tracking-[0.14em] uppercase">
+        <h3 className="text-foreground min-w-0 truncate font-mono text-xs font-semibold tracking-[0.14em] uppercase">
           Theme axes
         </h3>
         <span className="shrink-0">
@@ -53,7 +53,7 @@ export function GraphAppearanceCard() {
     <Card className="gap-0 py-0">
       <CardHeader className="border-border bg-muted/30 flex flex-row flex-nowrap items-center gap-2 space-y-0 overflow-hidden border-b px-4 py-2.5">
         <Waypoints aria-hidden className="text-primary-text h-4 w-4 shrink-0" />
-        <h3 className="text-foreground min-w-0 truncate font-mono text-[11px] font-semibold tracking-[0.14em] uppercase">
+        <h3 className="text-foreground min-w-0 truncate font-mono text-xs font-semibold tracking-[0.14em] uppercase">
           Graph
         </h3>
         <span className="shrink-0">

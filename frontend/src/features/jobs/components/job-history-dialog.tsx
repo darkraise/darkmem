@@ -31,7 +31,7 @@ function RunRow({ run }: { run: JobRun }) {
           {run.outcome}
         </Badge>
         <span className="text-muted-foreground">{relativeTime(run.started_at)}</span>
-        <span className="text-muted-foreground font-mono text-[11px]">
+        <span className="text-muted-foreground font-mono text-xs">
           {formatDuration(run.duration_seconds)}
         </span>
         {/* A manual run and a scheduled tick are different facts when you are
@@ -41,13 +41,13 @@ function RunRow({ run }: { run: JobRun }) {
             manual
           </Badge>
         )}
-        <span className="text-muted-foreground ml-auto font-mono text-[11px]">
+        <span className="text-muted-foreground ml-auto font-mono text-xs">
           {new Date(run.started_at).toLocaleString()}
         </span>
       </div>
 
       {detail.length > 0 && (
-        <div className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[11px]">
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-xs">
           {detail.map(([k, v]) => (
             <span key={k} className="text-muted-foreground">
               {k}=<span className="text-foreground">{String(v)}</span>
@@ -57,7 +57,7 @@ function RunRow({ run }: { run: JobRun }) {
       )}
 
       {run.error && (
-        <p className="text-destructive font-mono text-[11px] break-words">
+        <p className="text-destructive font-mono text-xs break-words">
           {run.error}
         </p>
       )}

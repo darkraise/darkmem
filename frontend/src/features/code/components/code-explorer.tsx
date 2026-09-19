@@ -248,7 +248,7 @@ function ExplorerRow({
           />
           <span className="min-w-0 flex-1 truncate font-mono">{row.name}</span>
           {row.symbolCount > 0 && (
-            <span className="text-muted-foreground shrink-0 font-mono text-[10px]">
+            <span className="text-muted-foreground shrink-0 font-mono text-xs">
               {row.symbolCount}
             </span>
           )}
@@ -262,7 +262,7 @@ function ExplorerRow({
             style={{ background: chartVar(KIND_CHART[row.symbolKind]) }}
           />
           <span className="min-w-0 flex-1 truncate font-mono">{row.name}</span>
-          <span className="text-muted-foreground shrink-0 font-mono text-[10px] uppercase">
+          <span className="text-muted-foreground shrink-0 font-mono text-xs uppercase">
             {row.symbolKind}
           </span>
         </>

@@ -49,7 +49,7 @@ function CellPopover({ day }: { day: ContributionDay }) {
         </p>
       )}
       {day.count > 0 && (
-        <p className="text-muted-foreground text-[10px]">
+        <p className="text-muted-foreground text-xs">
           click to open this day on the Memories timeline
         </p>
       )}
@@ -76,7 +76,7 @@ export function YearHeatmap({ days }: { days: ContributionDay[] }) {
           className="text-muted-foreground flex shrink-0 flex-col gap-1 pt-5"
         >
           {WEEKDAY_LABELS.map((label, i) => (
-            <span key={i} className="flex h-3 items-center text-[10px]">
+            <span key={i} className="flex h-3 items-center text-xs">
               {label}
             </span>
           ))}
@@ -87,7 +87,7 @@ export function YearHeatmap({ days }: { days: ContributionDay[] }) {
               {weeks.map((week, i) => (
                 <div key={i} className="relative h-4 w-3">
                   {week.monthLabel && (
-                    <span className="text-muted-foreground absolute left-0 text-[10px] whitespace-nowrap">
+                    <span className="text-muted-foreground absolute left-0 text-xs whitespace-nowrap">
                       {week.monthLabel}
                     </span>
                   )}

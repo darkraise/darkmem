@@ -64,7 +64,7 @@ function FactLadderRow({ event }: { event: FactLadderEvent }) {
           </p>
         )}
         {advanced && (
-          <p className="text-muted-foreground font-mono text-[10px] break-all">
+          <p className="text-muted-foreground font-mono text-xs break-all">
             {JSON.stringify(event.payload)}
           </p>
         )}

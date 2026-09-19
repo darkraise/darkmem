@@ -79,7 +79,7 @@ function ReadOnlyField({
     <div className="border-border flex flex-col gap-1.5 border-b border-dashed px-1 py-2.5 last:border-b-0">
       <div className="flex items-baseline gap-2">
         <span className="font-mono text-sm font-semibold">{label}</span>
-        <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+        <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
           {role}
         </span>
       </div>
@@ -136,7 +136,7 @@ function JobConfigDialog({
               desc="A run still executing past this ceiling is treated as overrun. Also a registration-time constant, not editable via config."
             />
           )}
-          <p className="text-muted-foreground pt-2 font-mono text-[10px] tracking-wide uppercase">
+          <p className="text-muted-foreground pt-2 font-mono text-xs tracking-wide uppercase">
             config_schema — job-specific, editable fields
           </p>
           {job.config_schema.length === 0 ? (
@@ -161,7 +161,7 @@ function JobConfigDialog({
                     >
                       {field.label}
                     </Label>
-                    <span className="text-muted-foreground font-mono text-[10px] uppercase">
+                    <span className="text-muted-foreground font-mono text-xs uppercase">
                       {field.type}
                     </span>
                   </div>

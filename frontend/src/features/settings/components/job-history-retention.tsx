@@ -48,7 +48,7 @@ export function JobHistoryRetention() {
           Job history retention
         </h3>
         <span className="flex-1" />
-        <span className="text-muted-foreground shrink-0 font-mono text-[10px] whitespace-nowrap">
+        <span className="text-muted-foreground shrink-0 font-mono text-xs whitespace-nowrap">
           {job ? `keeps newest ${committed}` : "job not registered"}
         </span>
       </CardHeader>
@@ -59,7 +59,7 @@ export function JobHistoryRetention() {
         </p>
 
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+          <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
             max rows
           </span>
           <NumberField

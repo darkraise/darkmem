@@ -23,7 +23,7 @@ export function JobGridCard({
         <div className="flex items-start gap-2">
           <div className="min-w-0 flex-1">
             <p className="truncate font-medium">{job.name}</p>
-            <p className="text-muted-foreground truncate font-mono text-[11px]">
+            <p className="text-muted-foreground truncate font-mono text-xs">
               {job.key}
             </p>
           </div>

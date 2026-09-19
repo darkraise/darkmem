@@ -138,7 +138,7 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
           darkmem
         </span>
         <span className="text-muted-foreground text-sm">Initial setup</span>
-        <span className="border-border text-muted-foreground inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-1 font-mono text-[10px]">
+        <span className="border-border text-muted-foreground inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-1 font-mono text-xs">
           <Lock aria-hidden className="h-3 w-3" />
           gated by require_uninitialized — no pre-shared secret
         </span>
@@ -384,7 +384,7 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
                     />
                     {dir.name}
                     {dir.git && (
-                      <span className="border-success/60 text-success-text ml-auto inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-mono text-[10px]">
+                      <span className="border-success/60 text-success-text ml-auto inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-mono text-xs">
                         <GitBranch aria-hidden className="h-2.5 w-2.5" />
                         git
                       </span>
@@ -515,7 +515,7 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
           )}
         </div>
       </div>
-      <span className="text-muted-foreground text-center text-[10px]">
+      <span className="text-muted-foreground text-center text-xs">
         Demo mode — no real setup call is made; Finish opens the app.
       </span>
     </GlassPanel>

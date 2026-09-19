@@ -334,7 +334,7 @@ export function FactsTab() {
             sort its position would not track the scroll. */}
         {scale && (
           <div className="sticky top-2 hidden self-start lg:block">
-            <p className="text-muted-foreground mb-1 text-center font-mono text-[10px] leading-tight">
+            <p className="text-muted-foreground mb-1 text-center font-mono text-xs leading-tight">
               axis: {rows.length} loaded
             </p>
             <div className="h-[calc(100vh-15rem)]">

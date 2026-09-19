@@ -129,7 +129,7 @@ export function SystemPromptDialog({
           <>
             <div className="flex flex-wrap items-center gap-2">
               <PromptViewToggle value={view} onChange={setView} />
-              <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+              <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
                 {promptKey}
               </span>
               <span className="flex-1" />

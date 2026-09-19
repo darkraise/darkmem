@@ -32,7 +32,7 @@ export function DetailSection({
         <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2.5 gap-y-0.5 text-left">
           <span>{title}</span>
           {meta && (
-            <span className="text-muted-foreground font-mono text-[10px] font-normal tracking-wide">
+            <span className="text-muted-foreground font-mono text-xs font-normal tracking-wide">
               {meta}
             </span>
           )}

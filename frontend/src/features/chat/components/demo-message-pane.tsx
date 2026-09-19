@@ -51,7 +51,7 @@ export function DemoMessagePane({
                 key={message.id}
                 className="flex max-w-[86%] flex-col items-end gap-1 self-end"
               >
-                <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+                <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
                   you
                 </span>
                 <div className="bg-primary text-primary-foreground rounded-md px-3 py-2 text-sm leading-relaxed">
@@ -63,7 +63,7 @@ export function DemoMessagePane({
                 key={message.id}
                 className="flex max-w-[86%] flex-col items-start gap-1 self-start"
               >
-                <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+                <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
                   assistant
                 </span>
                 <div

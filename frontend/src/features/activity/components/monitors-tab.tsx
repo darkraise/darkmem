@@ -77,7 +77,7 @@ function FlowNode({
       >
         {label}
       </span>
-      <span className="text-muted-foreground text-[10px] leading-snug">
+      <span className="text-muted-foreground text-xs leading-snug">
         {caption}
       </span>
     </div>
@@ -138,7 +138,7 @@ function StaleClaimRow({ row }: { row: DemoBufferRow }) {
         project: {row.project} · claimed {row.attempts}/{row.maxAttempts}{" "}
         times · claimed at {row.claimedAt ?? "unknown"}
       </span>
-      <span className="text-muted-foreground ml-auto font-mono text-[10px]">
+      <span className="text-muted-foreground ml-auto font-mono text-xs">
         reclaim pending — buffer_flush resolves this automatically
       </span>
     </div>
@@ -219,7 +219,7 @@ function BufferTargetBoard() {
               <span aria-hidden className={cn("h-2 w-2 rounded-full", t.dot)} />
               <span
                 className={cn(
-                  "font-mono text-[10px] uppercase tracking-wide",
+                  "font-mono text-xs uppercase tracking-wide",
                   t.caution ? "text-warning-text" : "text-muted-foreground",
                 )}
               >
@@ -234,7 +234,7 @@ function BufferTargetBoard() {
             >
               {t.value}
             </span>
-            <span className="text-muted-foreground text-[10px] leading-snug">
+            <span className="text-muted-foreground text-xs leading-snug">
               {t.desc}
             </span>
           </div>
@@ -242,7 +242,7 @@ function BufferTargetBoard() {
       </div>
       {staleClaims.length > 0 && (
         <div className="flex flex-col gap-2">
-          <span className="text-muted-foreground font-mono text-[10px] uppercase tracking-wide">
+          <span className="text-muted-foreground font-mono text-xs uppercase tracking-wide">
             stale claims ({staleClaims.length})
           </span>
           {staleClaims.map((row) => (
@@ -252,7 +252,7 @@ function BufferTargetBoard() {
       )}
       {poisonRows.length > 0 && (
         <div className="flex flex-col gap-2">
-          <span className="text-warning-text font-mono text-[10px] uppercase tracking-wide">
+          <span className="text-warning-text font-mono text-xs uppercase tracking-wide">
             poison rows ({poisonRows.length})
           </span>
           {poisonRows.map((row) => (
@@ -291,7 +291,7 @@ function DreamTargetBoard({ onOpenDigest }: { onOpenDigest: () => void }) {
           <Play className="mr-1.5 size-3.5" />
           Dream now
         </Button>
-        <span className="text-muted-foreground text-[10px] italic">
+        <span className="text-muted-foreground text-xs italic">
           disabled — ships with the consolidation job family; nothing here can
           honestly trigger a cycle yet
         </span>

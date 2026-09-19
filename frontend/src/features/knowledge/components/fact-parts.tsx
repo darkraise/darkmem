@@ -62,7 +62,7 @@ export function AppliesWhenChips({
           className="gap-1.5 border-dashed"
         >
           {item.key}={item.value}
-          <span className="text-muted-foreground font-mono text-[10px]">
+          <span className="text-muted-foreground font-mono text-xs">
             {item.tag}
           </span>
         </Badge>
@@ -155,7 +155,7 @@ export function BeliefStateBadge({
       <Icon aria-hidden className="h-3 w-3" />
       {expired ? "belief withdrawn" : "window closed"}
       {invalidAt && (
-        <span className="text-muted-foreground font-mono text-[10px]">
+        <span className="text-muted-foreground font-mono text-xs">
           {invalidAt}
         </span>
       )}

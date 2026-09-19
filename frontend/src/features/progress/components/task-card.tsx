@@ -34,7 +34,7 @@ export function TaskCard({
           {task.id}
         </span>
         {verdict.startable && (
-          <Badge variant="outline" className="h-5 px-1.5 text-[11px]">
+          <Badge variant="outline" className="h-5 px-1.5 text-xs">
             startable
           </Badge>
         )}

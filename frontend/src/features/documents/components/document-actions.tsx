@@ -359,7 +359,7 @@ function RelatedMemoriesCard({ documentId }: { documentId: string }) {
                 <div className="flex items-start gap-1.5">
                   <span className="line-clamp-2">{memory.content}</span>
                   {memory.status !== "active" && (
-                    <Badge variant="outline" className="shrink-0 text-[10px]">
+                    <Badge variant="outline" className="shrink-0 text-xs">
                       {memory.status}
                     </Badge>
                   )}

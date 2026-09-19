@@ -48,7 +48,7 @@ export function RealCodeInspector({
         <span className="min-w-0 flex-1 truncate font-mono text-sm">
           {selectedNode.name}
         </span>
-        <span className="text-muted-foreground shrink-0 font-mono text-[10px] uppercase">
+        <span className="text-muted-foreground shrink-0 font-mono text-xs uppercase">
           {selectedNode.kind}
         </span>
       </div>

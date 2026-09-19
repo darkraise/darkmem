@@ -262,7 +262,7 @@ function FactRow({
             Edit
           </Link>
         </Button>
-        <span className="text-muted-foreground ml-auto font-mono text-[10px]">
+        <span className="text-muted-foreground ml-auto font-mono text-xs">
           queued since {fact.created_at} · ratify/reject are REST/UI,
           authenticated — never exposed over MCP
         </span>
@@ -324,7 +324,7 @@ function ArticleRow({ article }: { article: ReviewArticleRowData }) {
             Edit
           </Link>
         </Button>
-        <span className="text-muted-foreground ml-auto font-mono text-[10px]">
+        <span className="text-muted-foreground ml-auto font-mono text-xs">
           articles have no ratify/reject door yet — read-only here
         </span>
       </div>

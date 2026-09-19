@@ -17,7 +17,7 @@ function DisputeSideCard({ side }: { side: DisputeSide }) {
         {side.origin_kinds.length === 1 ? "kind" : "kinds"} [
         {side.origin_kinds.join(", ")}]
       </p>
-      <p className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+      <p className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
         sources — grouped by origin_key
       </p>
       <div>
@@ -25,7 +25,7 @@ function DisputeSideCard({ side }: { side: DisputeSide }) {
           <SourceRow key={i} source={source} />
         ))}
       </div>
-      <p className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+      <p className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
         belief window
       </p>
       <BeliefWindowRow window={side.window} />

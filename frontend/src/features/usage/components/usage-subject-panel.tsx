@@ -50,7 +50,7 @@ export function UsageSubjectPanel({ data }: { data: UsageSubject }) {
           ) : null}
         </CardTitle>
         {label.raw ? (
-          <p className="text-muted-foreground truncate font-mono text-[11px]">
+          <p className="text-muted-foreground truncate font-mono text-xs">
             {label.raw}
           </p>
         ) : null}
@@ -80,7 +80,7 @@ export function UsageSubjectPanel({ data }: { data: UsageSubject }) {
             {purposes.map(([purpose, at]) => (
               <span
                 key={purpose}
-                className="border-border text-muted-foreground rounded-full border px-2 py-0.5 font-mono text-[11px]"
+                className="border-border text-muted-foreground rounded-full border px-2 py-0.5 font-mono text-xs"
               >
                 {purpose} · {at.calls} · {formatUsd(at.cost)}
               </span>

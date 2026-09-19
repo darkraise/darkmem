@@ -34,7 +34,7 @@ const TIER_C_PURPOSE_ICONS: Record<TierCLLMPurpose["purpose"], LucideIcon> = {
 
 function TierBadge({ children }: { children: React.ReactNode }) {
   return (
-    <span className="border-inset bg-muted text-muted-foreground ml-auto rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wide whitespace-nowrap uppercase">
+    <span className="border-inset bg-muted text-muted-foreground ml-auto rounded-full border px-2 py-0.5 font-mono text-xs tracking-wide whitespace-nowrap uppercase">
       {children}
     </span>
   )

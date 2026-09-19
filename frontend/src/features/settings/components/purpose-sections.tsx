@@ -28,7 +28,7 @@ export function Field({
 }) {
   return (
     <div className={cn("flex flex-col gap-1", span2 && "col-span-2")}>
-      <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+      <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
         {label}
       </span>
       {children}
@@ -71,7 +71,7 @@ export function CodeBuckets({
   return (
     <div className="border-border flex flex-col gap-2 border-t border-dashed pt-2.5">
       <div className="flex items-center gap-1.5">
-        <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+        <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
           code-summarization buckets
         </span>
         <HelpTip label="About code-summarization buckets">
@@ -109,7 +109,7 @@ export function CodeBuckets({
 export function CodeBucketsUnavailable() {
   return (
     <div className="border-border text-muted-foreground flex flex-col gap-1 border-t border-dashed pt-2.5 text-sm">
-      <span className="font-mono text-[10px] tracking-wide uppercase">
+      <span className="font-mono text-xs tracking-wide uppercase">
         code-summarization buckets
       </span>
       <span>

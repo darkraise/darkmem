@@ -32,7 +32,7 @@ const ALL_PROJECTS = ""
 
 function KindPill() {
   return (
-    <span className="border-border bg-muted/40 text-muted-foreground rounded-full border border-dashed px-2 py-0.5 font-mono text-[10px] tracking-wide whitespace-nowrap uppercase">
+    <span className="border-border bg-muted/40 text-muted-foreground rounded-full border border-dashed px-2 py-0.5 font-mono text-xs tracking-wide whitespace-nowrap uppercase">
       {KIND_LABEL}
     </span>
   )
@@ -109,7 +109,7 @@ function DetailList({ title, items }: { title: string; items: string[] }) {
   if (items.length === 0) return null
   return (
     <div className="space-y-1.5">
-      <p className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+      <p className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
         {title}
       </p>
       <ul className="space-y-1">
@@ -173,7 +173,7 @@ function RunDetail({
         <p className="text-sm leading-relaxed">{digest.summary}</p>
         <div className="grid grid-cols-1 gap-3.5 md:grid-cols-3">
           <div className="space-y-1.5">
-            <p className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+            <p className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
               next steps
             </p>
             <ul className="space-y-1">
@@ -194,7 +194,7 @@ function RunDetail({
       </div>
 
       <div>
-        <p className="text-muted-foreground pb-1.5 font-mono text-[10px] tracking-wide uppercase">
+        <p className="text-muted-foreground pb-1.5 font-mono text-xs tracking-wide uppercase">
           this run's checkpoint history
         </p>
         {run.history.length === 0 ? (
@@ -238,7 +238,7 @@ function RunDetail({
 
       {advanced ? (
         <div className="space-y-2">
-          <p className="text-muted-foreground pb-0.5 font-mono text-[10px] tracking-wide uppercase">
+          <p className="text-muted-foreground pb-0.5 font-mono text-xs tracking-wide uppercase">
             what resume writes into the managed block
           </p>
           <pre className="border-border bg-muted/40 overflow-x-auto rounded-md border p-3.5 font-mono text-sm leading-relaxed whitespace-pre-wrap">

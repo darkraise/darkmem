@@ -396,7 +396,7 @@ export function CodeGraphTab({
           aria-label="Filter the explorer by file or symbol name"
         />
         <div className="flex flex-col gap-0.5">
-          <span className="text-muted-foreground font-mono text-[10px] uppercase">
+          <span className="text-muted-foreground font-mono text-xs uppercase">
             layout
           </span>
           <ToggleGroup
@@ -421,7 +421,7 @@ export function CodeGraphTab({
           </ToggleGroup>
         </div>
         <div className="flex flex-col gap-0.5">
-          <span className="text-muted-foreground font-mono text-[10px] uppercase">
+          <span className="text-muted-foreground font-mono text-xs uppercase">
             colour by
           </span>
           <ToggleGroup
@@ -442,7 +442,7 @@ export function CodeGraphTab({
           </ToggleGroup>
         </div>
         <div className="flex flex-col gap-0.5">
-          <span className="text-muted-foreground font-mono text-[10px] uppercase">
+          <span className="text-muted-foreground font-mono text-xs uppercase">
             camera
           </span>
           <div className="flex items-center gap-1">
@@ -516,7 +516,7 @@ export function CodeGraphTab({
           </div>
         </div>
         <div className="flex flex-col gap-0.5">
-          <span className="text-muted-foreground font-mono text-[10px] uppercase">
+          <span className="text-muted-foreground font-mono text-xs uppercase">
             depth
           </span>
           <ToggleGroup
@@ -754,7 +754,7 @@ export function CodeGraphTab({
                       <span
                         key={bucket}
                         className={cn(
-                          "border-border bg-muted text-muted-foreground flex-1 rounded-sm border px-0.5 py-0.5 text-center font-mono text-[10px] uppercase",
+                          "border-border bg-muted text-muted-foreground flex-1 rounded-sm border px-0.5 py-0.5 text-center font-mono text-xs uppercase",
                           blast.risk === bucket &&
                             "border-destructive/55 bg-destructive/12 text-destructive font-semibold",
                         )}
@@ -789,7 +789,7 @@ export function CodeGraphTab({
                 {blast.affected.slice(0, 3).map((a) => (
                   <p key={a.id} className="flex items-center gap-1.5 text-sm">
                     {a.name}
-                    <span className="text-muted-foreground ml-auto font-mono text-[10px]">
+                    <span className="text-muted-foreground ml-auto font-mono text-xs">
                       {a.file.split("/").pop()} · d{a.depth}
                     </span>
                   </p>
@@ -837,13 +837,13 @@ export function CodeGraphTab({
                   <span className="min-w-0 flex-1 truncate">
                     {process.label}
                   </span>
-                  <span className="text-muted-foreground shrink-0 font-mono text-[10px]">
+                  <span className="text-muted-foreground shrink-0 font-mono text-xs">
                     {process.steps.length} steps
                   </span>
                 </button>
                 <button
                   type="button"
-                  className="text-muted-foreground hover:text-foreground shrink-0 font-mono text-[10px]"
+                  className="text-muted-foreground hover:text-foreground shrink-0 font-mono text-xs"
                   onClick={() => setMermaidProcess(process.id)}
                 >
                   mermaid
@@ -877,7 +877,7 @@ export function CodeGraphTab({
                 <span className="min-w-0 flex-1 truncate">
                   {community.label}
                 </span>
-                <span className="text-muted-foreground shrink-0 font-mono text-[10px]">
+                <span className="text-muted-foreground shrink-0 font-mono text-xs">
                   {communityCounts.get(community.id) ?? 0}
                 </span>
               </button>

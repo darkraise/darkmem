@@ -39,7 +39,7 @@ function CitePill({
       href={`#cite-${citeKey}`}
       title={`grounded by citation ${citeKey}`}
       onClick={() => onNavigate(citeKey)}
-      className="border-primary/40 bg-primary/10 text-primary-text ml-1 inline-flex h-4 min-w-5 items-center justify-center rounded-full border px-1 align-super font-mono text-[10px] font-semibold no-underline"
+      className="border-primary/40 bg-primary/10 text-primary-text ml-1 inline-flex h-4 min-w-5 items-center justify-center rounded-full border px-1 align-super font-mono text-xs font-semibold no-underline"
     >
       {citeKey}
     </a>
@@ -55,7 +55,7 @@ function SectionBlock({
 }) {
   return (
     <div className="space-y-1.5">
-      <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+      <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
         {section.label}
       </span>
       <p className="max-w-[70ch] text-base leading-relaxed">
@@ -95,7 +95,7 @@ function CitationRow({
         fact {citation.fact_id.slice(0, 8)}
       </Link>
       {level === "advanced" && (
-        <span className="text-muted-foreground font-mono text-[10px] whitespace-nowrap">
+        <span className="text-muted-foreground font-mono text-xs whitespace-nowrap">
           claim_span {citation.claim_span}
         </span>
       )}

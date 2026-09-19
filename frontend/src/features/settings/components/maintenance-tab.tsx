@@ -33,7 +33,7 @@ function OpCard({
         <h3 className="min-w-0 truncate text-sm font-semibold">{title}</h3>
         <span className="flex-1" />
         {count && (
-          <span className="text-muted-foreground shrink-0 font-mono text-[10px] whitespace-nowrap">
+          <span className="text-muted-foreground shrink-0 font-mono text-xs whitespace-nowrap">
             {count}
           </span>
         )}
@@ -94,7 +94,7 @@ function Op({
 
 function IllustrativeTag({ label }: { label: string }) {
   return (
-    <span className="border-inset text-muted-foreground inline-flex items-center rounded-full border border-dashed px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase">
+    <span className="border-inset text-muted-foreground inline-flex items-center rounded-full border border-dashed px-2 py-0.5 text-xs font-semibold tracking-wide uppercase">
       {label}
     </span>
   )

@@ -28,7 +28,7 @@ function Stat({ value, label }: { value: number; label: string }) {
   return (
     <span className="flex flex-col">
       <span className="text-lg font-semibold tabular-nums">{value}</span>
-      <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+      <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
         {label}
       </span>
     </span>

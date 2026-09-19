@@ -50,7 +50,7 @@ function Figure({
 }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="text-muted-foreground font-mono text-[10px] font-semibold tracking-[0.14em] uppercase">
+      <span className="text-muted-foreground font-mono text-xs font-semibold tracking-[0.14em] uppercase">
         {label}
       </span>
       <span
@@ -74,7 +74,7 @@ function Figure({
 function CacheMeter({ ratio }: { ratio: number | null }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="text-muted-foreground font-mono text-[10px] font-semibold tracking-[0.14em] uppercase">
+      <span className="text-muted-foreground font-mono text-xs font-semibold tracking-[0.14em] uppercase">
         Cache hit
       </span>
       <span className="text-xl leading-none font-medium tabular-nums">

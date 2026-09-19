@@ -255,7 +255,7 @@ export const DocumentReader = memo(function DocumentReader({
     <div className="flex gap-5">
       {showOutline && (outline.data?.items.length ?? 0) > 0 ? (
         <nav className="hidden w-52 shrink-0 lg:block">
-          <p className="text-muted-foreground pb-1.5 font-mono text-[10px] tracking-wide uppercase">
+          <p className="text-muted-foreground pb-1.5 font-mono text-xs tracking-wide uppercase">
             outline
           </p>
           <ul className="space-y-0.5">

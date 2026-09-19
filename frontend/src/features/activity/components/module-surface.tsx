@@ -44,7 +44,7 @@ export function SurfaceStateChip({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide",
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-xs uppercase tracking-wide",
         stateClass,
         className,
       )}
