@@ -28,6 +28,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
 
 import { apiFetch } from "@/lib/api"
 import { AppPageHeader } from "@/components/app-chrome"
+import { ALL_PROJECTS, useProjectStore } from "@/stores/project-store"
 import { RealMemoriesView } from "../components/real-memories-view"
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -43,7 +44,10 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 describe("RealMemoriesView", () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useProjectStore.setState({ activeProject: ALL_PROJECTS, missingProject: null })
+  })
 
   it("renders the exclusion caveat and strip even when every match was excluded (honesty/exclusions-on-empty)", async () => {
     vi.mocked(apiFetch).mockResolvedValue({
@@ -226,5 +230,30 @@ describe("RealMemoriesView", () => {
     expect(captured.call?.body.content).toBe(
       "captured from the real create dialog",
     )
+  })
+
+  it("scopes by the header switcher and offers no project field of its own", async () => {
+    useProjectStore.setState({ activeProject: "acme", missingProject: null })
+    vi.mocked(apiFetch).mockResolvedValue({
+      items: [],
+      total: 0,
+      limit: 50,
+      offset: 0,
+      envelope: {
+        query: "",
+        channels: { semantic: { ran: false }, keyword: { ran: false } },
+        reranked: false,
+        weights: { semantic_weight: 0.7 },
+        excluded: {},
+      },
+    })
+    render(<RealMemoriesView />, { wrapper })
+
+    expect(await screen.findByText("Results — project: acme")).toBeInTheDocument()
+    expect(screen.queryByRole("textbox", { name: "Project scope" })).toBeNull()
+    const bodies = vi
+      .mocked(apiFetch)
+      .mock.calls.map((call) => JSON.parse(String((call[1] as RequestInit | undefined)?.body ?? "{}")))
+    expect(bodies.some((body) => body.project === "acme")).toBe(true)
   })
 })

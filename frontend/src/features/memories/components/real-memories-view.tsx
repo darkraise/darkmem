@@ -8,6 +8,11 @@ import { cn } from "darkraise-ui/lib"
 import { PageChrome } from "@/components/app-chrome"
 import { ExclusionStrip } from "@/components/darkmem"
 import { useMainVirtualizer } from "@/lib/use-main-virtualizer"
+import {
+  ALL_PROJECTS,
+  projectLabel,
+  useProjectStore,
+} from "@/stores/project-store"
 import { EXCLUSION_CAVEAT, useMemorySearchPage } from "../use-memory-search"
 import { CreateMemoryDialog } from "./create-memory-dialog"
 import { MemoryRow, type MemoryRowData } from "./memory-row"
@@ -27,7 +32,8 @@ const ROW_ESTIMATE = 84
  */
 export function RealMemoriesView() {
   const [query, setQuery] = useState("")
-  const [project, setProject] = useState("")
+  const activeProject = useProjectStore((s) => s.activeProject)
+  const setScope = useProjectStore((s) => s.setProject)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [limit, setLimit] = useState(PAGE)
   const [createOpen, setCreateOpen] = useState(false)
@@ -36,7 +42,7 @@ export function RealMemoriesView() {
   const { rows, total, exclusions, isLoading, isError, isFetching } =
     useMemorySearchPage({
       query,
-      project: project.trim() || "all",
+      project: activeProject ?? "all",
       status: ["active", "superseded"],
       limit,
     })
@@ -68,8 +74,12 @@ export function RealMemoriesView() {
     loadingRef.current = false
   }, [rows.length])
 
+  useEffect(() => {
+    setLimit(PAGE)
+  }, [activeProject])
+
   const searching = query.trim().length > 0
-  const scopeLabel = project.trim() || "all projects"
+  const scopeLabel = projectLabel(activeProject)
 
   const clearSearch = () => {
     setQuery("")
@@ -128,16 +138,6 @@ export function RealMemoriesView() {
           }
           groupClassName="min-w-64 flex-1"
           aria-label="Search memories"
-        />
-        <Input
-          placeholder="project (blank = all)"
-          value={project}
-          onChange={(e) => {
-            setProject(e.target.value)
-            setLimit(PAGE)
-          }}
-          groupClassName="w-56"
-          aria-label="Project scope"
         />
       </div>
 
@@ -244,7 +244,7 @@ export function RealMemoriesView() {
               scope="page"
               title="No matches"
               description={`No memories match "${query.trim()}"${
-                project.trim() ? ` in project ${project.trim()}` : ""
+                activeProject ? ` in project ${activeProject}` : ""
               } — clear the search or widen the scope.`}
               action={
                 <Button variant="outline" onClick={clearSearch}>
@@ -252,15 +252,15 @@ export function RealMemoriesView() {
                 </Button>
               }
             />
-          ) : project.trim() ? (
+          ) : activeProject ? (
             <EmptyState
               kind="empty"
               icon={Brain}
               scope="page"
-              title={`No memories in project ${project.trim()}`}
+              title={`No memories in project ${activeProject}`}
               description="This project has no memories yet — other projects might."
               action={
-                <Button variant="outline" onClick={() => setProject("")}>
+                <Button variant="outline" onClick={() => setScope(ALL_PROJECTS)}>
                   Show all projects
                 </Button>
               }

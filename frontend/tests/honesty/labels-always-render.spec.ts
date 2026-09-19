@@ -1,5 +1,14 @@
 import { test, expect, type Page } from "@playwright/test"
 
+/** The header switcher is the one project scope; its rows are named
+ *  "<project><N> items". */
+async function selectProject(page: Page, name: string) {
+  await page.getByRole("button", { name: "Project scope" }).click()
+  await page
+    .getByRole("button", { name: new RegExp(`^${name}\\s*\\d+ items?$`) })
+    .click()
+}
+
 // honesty/labels-always-render (T1.48). Simple/Advanced ships with the
 // first advanced surface, and simple never hides an honesty signal
 // (invariant 14): verification badges, layer labels, superseded/stale
@@ -32,12 +41,7 @@ test.describe("honesty/labels-always-render", () => {
 
     await expect(page.getByText(/results — project/i)).toBeVisible()
 
-    // getByLabel("Project scope") is ambiguous: the app-chrome
-    // ProjectSwitcher (a popover trigger) shares the same aria-label with
-    // this page's own filter (a Select combobox) — scope to the combobox.
-    const scopeTrigger = page.getByRole("combobox", { name: "Project scope" })
-    await scopeTrigger.click()
-    await page.getByRole("option", { name: "darkmem" }).click()
+    await selectProject(page, "darkmem")
 
     const contextTrigger = page.getByRole("combobox", { name: "Session context" })
     await contextTrigger.click()
@@ -61,9 +65,7 @@ test.describe("honesty/labels-always-render", () => {
 
     await expect(page.getByText(/results — project/i)).toBeVisible()
 
-    const scopeTrigger = page.getByRole("combobox", { name: "Project scope" })
-    await scopeTrigger.click()
-    await page.getByRole("option", { name: "darkmem" }).click()
+    await selectProject(page, "darkmem")
     // "introduced" appears in exactly one curated memory — the superseded
     // reranker row — so this isolates it without relying on ranking order.
     await page.getByLabel("Search memories").fill("introduced")

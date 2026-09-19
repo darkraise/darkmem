@@ -1,4 +1,13 @@
-import { test, expect } from "@playwright/test"
+import { test, expect, type Page } from "@playwright/test"
+
+/** The header switcher is the one project scope; its rows are named
+ *  "<project><N> items". */
+async function selectProject(page: Page, name: string) {
+  await page.getByRole("button", { name: "Project scope" }).click()
+  await page
+    .getByRole("button", { name: new RegExp(`^${name}\\s*\\d+ items?$`) })
+    .click()
+}
 
 // honesty/exclusions-on-empty (docs/planning/e2e-test-plan.md, "The honesty
 // suite"; owned by T1.44). Asserts: exclusion counts render even when the
@@ -32,15 +41,8 @@ test.describe("honesty/exclusions-on-empty", () => {
 
     await expect(page.getByText(/results — project/i)).toBeVisible()
 
-    // getByLabel("Project scope") is ambiguous: the app-chrome
-    // ProjectSwitcher (a popover trigger) shares the same aria-label with
-    // this page's own filter (a Select combobox) — scope to the combobox.
-    const scopeTrigger = page.getByRole("combobox", { name: "Project scope" })
-    await expect(scopeTrigger).toBeVisible()
-
     await page.getByLabel("Search memories").fill("cookie-secure")
-    await scopeTrigger.click()
-    await page.getByRole("option", { name: "default" }).click()
+    await selectProject(page, "default")
 
     // Zero rows survive: both matches for this token live in project
     // "darkmem", so scoping to "default" excludes all of them — the demo

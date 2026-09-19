@@ -28,6 +28,7 @@ import { MemoryEditorDialog } from "@/features/memories/components/memory-editor
 import { RealMemoriesView } from "@/features/memories/components/real-memories-view"
 import { TimelineScrubber } from "@/components/timeline-scrubber"
 import { buildTimelineScale, dateToFraction } from "@/lib/timeline"
+import { ALL_PROJECTS, useProjectStore } from "@/stores/project-store"
 
 export const Route = createFileRoute("/_authenticated/memories")({
   // The click-to-date contract: /memories?date=YYYY-MM-DD positions the
@@ -60,7 +61,11 @@ function DemoMemoriesPage() {
   const { date: dateParam } = Route.useSearch()
 
   const [query, setQuery] = useState("")
-  const [scope, setScope] = useState("all")
+  const activeProject = useProjectStore((s) => s.activeProject)
+  const setProject = useProjectStore((s) => s.setProject)
+  const scope = activeProject ?? "all"
+  const setScope = (next: string) =>
+    setProject(next === "all" ? ALL_PROJECTS : next)
   const [context, setContext] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [browseLimit, setBrowseLimit] = useState(BROWSE_PAGE)
@@ -236,9 +241,9 @@ function DemoMemoriesPage() {
         }
       />
 
-      {/* Search bar: query + the two distinct scope controls. The project
-          pill is the isolation scope; the context chip declares the session
-          applies_when — conflating them would silently exclude rows. */}
+      {/* Search bar: the query and the session context. The project scope is
+          the header switcher; the context declares the session applies_when —
+          conflating them would silently exclude rows. */}
       <div className="flex flex-wrap items-center gap-2.5">
         <Input
           prefix={<Search aria-hidden className="h-4 w-4" />}
@@ -263,22 +268,6 @@ function DemoMemoriesPage() {
           groupClassName="min-w-64 flex-1"
           aria-label="Search memories"
         />
-        <Select value={scope} onValueChange={setScope}>
-          <SelectTrigger
-            className="w-44 rounded-full"
-            aria-label="Project scope"
-          >
-            <SelectValue>project: {scopeLabel}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All projects</SelectItem>
-            {projects.map((p) => (
-              <SelectItem key={p} value={p}>
-                {p}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
         <Select
           value={context ?? CONTEXT_NONE}
           onValueChange={(v) => setContext(v === CONTEXT_NONE ? null : v)}
