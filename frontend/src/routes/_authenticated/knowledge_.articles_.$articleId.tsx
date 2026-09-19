@@ -143,8 +143,7 @@ function ArticleDetailPage() {
   useSetPageChrome({
     icon: Library,
     title: "Article detail",
-    description:
-      "One L3 article — synthesised, grounded prose whose every claim links to the verified fact that entails it.",
+    description: "One synthesised article, every claim linked to its fact.",
     parent: { label: "Articles", href: "/knowledge/articles" },
   })
 

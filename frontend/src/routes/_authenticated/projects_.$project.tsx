@@ -31,7 +31,7 @@ function ProjectWorkspacePage() {
         icon={FolderTree}
         title={project}
         parent={{ label: "Projects", href: "/projects" }}
-        description="Everything this project holds: its filed artifacts, and the progress its sessions recorded."
+        description="Everything this project holds, and its recorded progress."
       />
 
       <ProjectWorkspace

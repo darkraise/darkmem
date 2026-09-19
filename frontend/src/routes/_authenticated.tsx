@@ -40,14 +40,11 @@ import { useQueryClient } from "@tanstack/react-query"
 import { useAuthStore } from "@/features/auth"
 import { useWebSocket } from "@/lib/websocket"
 import { DEMO } from "@/lib/demo-flag"
-import { DetailLevelToggle } from "@/components/darkmem"
 import {
   AppPageHeader,
   BackToTop,
-  ContextChip,
-  MinimalThemeSwitcher,
+  HeaderControls,
   ProjectScopeReconciler,
-  ProjectSwitcher,
 } from "@/components/app-chrome"
 import { projectScopeDisabledReason } from "@/components/app-chrome/project-switcher"
 
@@ -237,12 +234,9 @@ function AuthenticatedLayout() {
         headerSlot={
           <>
             <AppPageHeader />
-            <ProjectSwitcher
-              disabledReason={projectScopeDisabledReason(pathname)}
+            <HeaderControls
+              projectDisabledReason={projectScopeDisabledReason(pathname)}
             />
-            <ContextChip />
-            <DetailLevelToggle />
-            <MinimalThemeSwitcher />
           </>
         }
         user={{ name: DEMO ? "Demo" : "Admin", email: "" }}

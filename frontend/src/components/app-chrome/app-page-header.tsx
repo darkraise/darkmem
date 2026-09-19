@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react"
 import { Link } from "@tanstack/react-router"
 import { ArrowLeft } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
@@ -59,17 +60,63 @@ export function AppPageHeader() {
           <Icon aria-hidden className="h-4 w-4" />
         </span>
       )}
-      <h1 className="shrink-0 text-sm font-semibold">{title}</h1>
-      {description && (
-        <p className="dm-chrome-desc text-muted-foreground border-border hidden min-w-0 truncate border-l pl-2.5 text-sm lg:block">
-          {description}
-        </p>
-      )}
+      <h1 className="min-w-0 truncate text-sm font-semibold md:shrink-0">
+        {title}
+      </h1>
+      {description && <HeaderDescription text={description} />}
       {actions && (
-        <div className="ml-auto flex shrink-0 items-center gap-2 pl-2">
+        <div className="dm-header-actions ml-auto flex shrink-0 items-center gap-2 pl-2">
           {actions}
         </div>
       )}
+    </div>
+  )
+}
+
+/** One line, truncated; when it does not fit, the full text is a tooltip
+ *  away. Measured on the box rather than assumed from the string length,
+ *  because what fits depends on the header's other contents. */
+function HeaderDescription({ text }: { text: string }) {
+  const boxRef = useRef<HTMLDivElement>(null)
+  const [truncated, setTruncated] = useState(false)
+  const [hovered, setHovered] = useState(false)
+
+  useEffect(() => {
+    const line = boxRef.current?.querySelector("p")
+    if (!line) return
+    const measure = () => setTruncated(line.scrollWidth > line.clientWidth)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(line)
+    return () => observer.disconnect()
+  }, [text])
+
+  return (
+    <div
+      ref={boxRef}
+      className="dm-chrome-desc border-border hidden min-w-0 border-l pl-2.5 lg:block"
+    >
+      <TooltipProvider delayDuration={300}>
+        <Tooltip open={truncated && hovered} onOpenChange={setHovered}>
+          <TooltipTrigger asChild>
+            <p
+              tabIndex={truncated ? 0 : undefined}
+              // Radix opens on its own pointer/focus handling, but this
+              // tooltip is controlled so that it opens only when the line
+              // actually overflows; the trigger therefore reports hover and
+              // focus itself.
+              onPointerEnter={() => setHovered(true)}
+              onPointerLeave={() => setHovered(false)}
+              onFocus={() => setHovered(true)}
+              onBlur={() => setHovered(false)}
+              className="text-muted-foreground truncate text-sm"
+            >
+              {text}
+            </p>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-md">{text}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     </div>
   )
 }

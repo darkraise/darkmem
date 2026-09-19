@@ -13,7 +13,7 @@ function KnowledgeArticlesPage() {
       <PageChrome
         icon={FileText}
         title="Articles"
-        description="L3 synthesised articles — grounded prose whose every claim links to a verified fact."
+        description="Synthesised articles whose every claim links to a fact."
       />
       <ArticlesTab />
     </div>

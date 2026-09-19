@@ -106,6 +106,60 @@ describe("PageChrome / AppPageHeader", () => {
     unmount()
     expect(usePageChrome.getState().title).toBe("")
   })
+
+  it("marks page actions so they render icon-only below md", () => {
+    render(
+      <>
+        <PageChrome
+          title="Memories"
+          actions={<button type="button">Create memory</button>}
+        />
+        <AppPageHeader />
+      </>,
+    )
+    const action = screen.getByRole("button", { name: "Create memory" })
+    expect(action.parentElement).toHaveClass("dm-header-actions")
+  })
+
+  it("shows a truncated description in full on hover", async () => {
+    const width = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollWidth",
+    )
+    const client = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "clientWidth",
+    )
+    Object.defineProperty(HTMLElement.prototype, "scrollWidth", {
+      configurable: true,
+      get: () => 800,
+    })
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get: () => 200,
+    })
+    try {
+      const description =
+        "A description far too long for the header bar at this width"
+      render(
+        <>
+          <PageChrome title="Settings" description={description} />
+          <AppPageHeader />
+        </>,
+      )
+      const line = screen.getByText(description)
+      fireEvent.pointerEnter(line)
+      fireEvent.focus(line)
+      expect((await screen.findAllByText(description)).length).toBeGreaterThan(
+        1,
+      )
+    } finally {
+      if (width)
+        Object.defineProperty(HTMLElement.prototype, "scrollWidth", width)
+      if (client)
+        Object.defineProperty(HTMLElement.prototype, "clientWidth", client)
+    }
+  })
 })
 
 describe("BackToTop", () => {

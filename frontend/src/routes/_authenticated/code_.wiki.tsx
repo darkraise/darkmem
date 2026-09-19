@@ -21,7 +21,7 @@ function CodeWikiPage() {
       <PageChrome
         icon={BookOpen}
         title="Code Wiki"
-        description="The generated wiki for an indexed repository — read-only; generation runs from the reindex dialog."
+        description="A repository's generated wiki; generate it from a reindex."
       />
       {DEMO ? (
         <WikiTab

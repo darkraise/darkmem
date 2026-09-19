@@ -85,7 +85,7 @@ export function RealChatPage({ initialId }: { initialId?: string }) {
       <PageChrome
         icon={MessageSquare}
         title="Chat"
-        description="Conversation over memory — every turn's retrieval context stays visible, labelled with the same vocabulary Memories uses."
+        description="Chat over your memory, with each answer's sources beside it."
       />
       {/* The three panes are one surface, so they share a height rather than
           each ending where its own content does — and above `lg` the reader

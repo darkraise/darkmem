@@ -51,8 +51,7 @@ export function RealMemoryGraphPage() {
   useSetPageChrome({
     icon: Waypoints,
     title: "Memory Graph",
-    description:
-      "The L1 candidate entity graph and its detected topics — a browsing surface; retrieval does not consult it.",
+    description: "Entities and topics from your memories, for browsing only.",
   })
   const { tokens, palette } = useMemoryGraphTheme()
   const [viewMode, setViewMode] = useState<ViewMode>("2d")

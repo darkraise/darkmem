@@ -438,6 +438,20 @@
   display: none;
 }
 
+/* Page actions go icon-only below md. The label stays in the DOM, so it is
+   still the button's accessible name; only its glyphs collapse. A button with
+   no icon keeps its text, because it would otherwise render empty. */
+@media (width < 48rem) {
+  .dm-header-actions :is(button, a):has(> svg) {
+    font-size: 0;
+    gap: 0;
+    padding-inline: 0.5rem;
+  }
+  .dm-header-actions :is(button, a):has(> svg) > svg {
+    margin: 0;
+  }
+}
+
 /* Tighter content margins: the shell shipped p-6 (24px) and most screens
    stacked their own p-6 on top. Route-level padding was removed; the shell
    padding is reduced here. The full-bleed rule below still wins (higher

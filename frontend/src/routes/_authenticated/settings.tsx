@@ -65,7 +65,7 @@ function SettingsPage() {
       <PageChrome
         icon={Settings}
         title="Settings"
-        description="Configuration: tunables, LLM purposes, security posture, maintenance, integration, and appearance."
+        description="Tunables, LLM purposes, security, maintenance and appearance."
       />
       <Tabs
         border="accent"
@@ -134,7 +134,10 @@ function SettingsPage() {
                 Research
               </TabsTrigger>
               <TabsTrigger className="flex-1 gap-2" value="backups">
-                <HardDriveDownload aria-hidden className="size-[var(--icon-size)]" />
+                <HardDriveDownload
+                  aria-hidden
+                  className="size-[var(--icon-size)]"
+                />
                 Backups
               </TabsTrigger>
               <TabsTrigger className="flex-1 gap-2" value="appearance">
