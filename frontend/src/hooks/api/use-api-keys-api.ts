@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { apiFetch } from "@/lib/api"
+import { DEMO } from "@/lib/demo-flag"
 
 /** One row of `GET /api-keys`. No secret is ever on this shape — the
  *  plaintext exists once, on the create response, and nowhere afterwards. */
@@ -34,7 +35,7 @@ export function useApiKeys(options?: { enabled?: boolean }) {
   return useQuery<ApiKeySummary[]>({
     queryKey: ["api-keys"],
     queryFn: () => apiFetch<ApiKeySummary[]>("/api-keys"),
-    enabled: options?.enabled ?? true,
+    enabled: !DEMO && (options?.enabled ?? true),
   })
 }
 

@@ -16,9 +16,23 @@ import { test, expect } from "@playwright/test"
 // the demo fixture claims to render must issue no `/api/v1/` request at all.
 // A new hook without its `enabled: !DEMO` fails here, on the route that mounts
 // it, naming the URL it tried to fetch.
+const SETTINGS_TABS = [
+  "flags",
+  "llm",
+  "security",
+  "maintenance",
+  "integration",
+  "git-accounts",
+  "notifications",
+  "research",
+  "backups",
+  "appearance",
+] as const
+
 const DEMO_ROUTES = [
   "/",
   "/memories",
+  "/memory-graph",
   "/activity?tab=feed",
   "/activity?tab=day",
   "/activity?tab=jobs",
@@ -27,9 +41,17 @@ const DEMO_ROUTES = [
   "/activity?tab=triage",
   "/code/repositories",
   "/code/graph",
+  "/code/wiki",
   "/knowledge/facts",
+  "/knowledge/review",
+  "/knowledge/topics",
   "/documents",
   "/notes",
+  "/projects",
+  "/chat",
+  "/jobs",
+  "/usage",
+  ...SETTINGS_TABS.map((tab) => `/settings?tab=${tab}`),
 ]
 
 for (const route of DEMO_ROUTES) {

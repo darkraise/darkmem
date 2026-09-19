@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { apiFetch } from "@/lib/api"
+import { DEMO } from "@/lib/demo-flag"
 
 /** The budget as the *reader* resolves it — the clamps and the fail-closed
  *  parse live on the read path, so this is what a run will actually do rather
@@ -22,6 +23,7 @@ export function useAutoResearch() {
   return useQuery<AutoResearchConfig>({
     queryKey: ["autoResearch"],
     queryFn: () => apiFetch<AutoResearchConfig>("/config/auto-research"),
+    enabled: !DEMO,
   })
 }
 
@@ -76,6 +78,7 @@ export function useResearchRuns() {
   return useQuery<ResearchRunList>({
     queryKey: ["autoResearch", "runs"],
     queryFn: () => apiFetch<ResearchRunList>("/config/auto-research/runs"),
+    enabled: !DEMO,
   })
 }
 

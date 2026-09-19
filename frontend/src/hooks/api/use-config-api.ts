@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
+import { DEMO } from "@/lib/demo-flag"
 
 export interface LlmPurposeConfig {
   // Which `llm_providers` row this purpose resolves through. Served on the
@@ -278,6 +279,7 @@ export function useClassificationAreas() {
     queryFn: () =>
       apiFetch<ClassificationAreaInfo[]>("/config/classification-areas"),
     staleTime: 300_000,
+    enabled: !DEMO,
   })
 }
 

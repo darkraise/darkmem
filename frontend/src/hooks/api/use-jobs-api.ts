@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
+import { DEMO } from "@/lib/demo-flag"
 
 export interface FieldDescriptor {
   key: string
@@ -50,7 +51,7 @@ export function useJobs(enabled: boolean = true) {
     queryFn: () => apiFetch<JobsResponse>("/jobs"),
     refetchInterval: 5000,
     refetchIntervalInBackground: false,
-    enabled,
+    enabled: !DEMO && enabled,
   })
 }
 
