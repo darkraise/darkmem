@@ -120,7 +120,7 @@ describe("triage", () => {
 })
 
 describe("jobs", () => {
-  it("ships the seven registered jobs — the list can never be empty", () => {
+  it("ships every registered job — the list can never be empty", () => {
     const jobs = useDemoStore.getState().jobs
     expect(jobs.map((j) => j.key)).toEqual([
       "repo_sync",
@@ -130,6 +130,23 @@ describe("jobs", () => {
       "graph_orphan_cleanup",
       "tag_orphan_cleanup",
       "expired_memory_cleanup",
+      "buffer_flush",
+      "job_run_cleanup",
+      "llm_usage_cleanup",
+      "backup_ship",
+      "code_deriver",
+      "ppr_snapshot",
+      "relation_embedding_refresh",
+      "block_embedding_refresh",
+      "repo_entity_anchoring",
+      "repo_entity_merge",
+      "citation_reverify",
+      "fact_lift",
+      "verification_recompute",
+      "contradiction_scan",
+      "memory_dream",
+      "topic_detection",
+      "article_synthesis",
     ])
   })
 

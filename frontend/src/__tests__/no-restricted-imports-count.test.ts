@@ -104,7 +104,9 @@ describe("no-restricted-imports: src/demo/*", () => {
     // (`use-git-accounts-binding.ts`) reaches `useDemoGitAccounts` for its
     // `if (DEMO)` branch, the same shape as the other settings-tab bindings —
     // the fixture itself stays inside src/demo/, which is what the
-    // error-level rule above governs.
-    expect(countByRule(results, "no-restricted-imports")).toBe(115)
+    // error-level rule above governs. Re-measured when the project and usage
+    // demo fixtures landed: 117 — `use-projects-api.ts` and `use-usage-api.ts`
+    // import them for their `initialData` in demo mode, the same shape.
+    expect(countByRule(results, "no-restricted-imports")).toBe(117)
   })
 })

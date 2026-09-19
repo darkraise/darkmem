@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
 import { DEMO } from "@/lib/demo-flag"
+import { DEMO_PROJECTS } from "@/demo/projects"
 
 export interface ProjectSummary {
   name: string
@@ -32,5 +33,6 @@ export function useProjects() {
     // and `handleUnauthorized` turns its 401 into a hard redirect to /login,
     // which made the whole demo unreachable rather than merely unscoped.
     enabled: !DEMO,
+    initialData: DEMO ? DEMO_PROJECTS : undefined,
   })
 }

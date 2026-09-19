@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { apiFetch } from "@/lib/api"
 import { DEMO } from "@/lib/demo-flag"
+import { DEMO_USAGE_OVERVIEW, DEMO_USAGE_SERIES } from "@/demo/usage"
 
 export interface UsageBreakdownRow {
   key: string
@@ -150,6 +151,7 @@ export function useUsageOverview(window: UsageWindow = "30d", project?: string) 
     queryKey: ["usage", "overview", window, project ?? null],
     queryFn: () => apiFetch(`/usage/overview?${qs.toString()}`),
     enabled: LIVE,
+    initialData: LIVE ? undefined : DEMO_USAGE_OVERVIEW,
   })
 }
 
@@ -161,6 +163,7 @@ export function useUsageSeries(
     queryKey: ["usage", "series", window, bucket],
     queryFn: () => apiFetch(`/usage/series?window=${window}&bucket=${bucket}`),
     enabled: LIVE,
+    initialData: LIVE ? undefined : DEMO_USAGE_SERIES,
   })
 }
 
