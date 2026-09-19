@@ -1,7 +1,7 @@
 # Notion import and page attachments — design
 
-Date: 2026-09-19. Status: revision 2, after the first independent review
-(32 findings, all addressed below); awaiting re-review and owner approval.
+Date: 2026-09-19. Status: revision 3, after two independent reviews (32 findings, then 13 on
+revision 2, all addressed); awaiting owner approval.
 
 ## 1. Goal
 
@@ -45,7 +45,7 @@ New table `page_attachments`, added by regenerating `0001_baseline.py`
 | Column | Type | Notes |
 |---|---|---|
 | `id` | uuid PK | Also the on-disk file name |
-| `project` | text NOT NULL | The owner. FK to `projects(name)` if that table's key allows, else unconstrained like `pages.project` |
+| `project` | text NOT NULL | The owner. **No FK**, like every scoped table's `project` (the baseline's own rule: projects register lazily) |
 | `uploaded_for_page_id` | uuid NULL | FK `pages(id)` ON DELETE SET NULL. Provenance only; never decides lifetime |
 | `filename` | text NOT NULL | Display only; control characters stripped, at most 255 characters |
 | `content_type` | text NOT NULL | One of the four sniffed image types, else `application/octet-stream` (§3.4) |
@@ -81,13 +81,16 @@ last, `test_spa_edge.py`). Both paths are two-segment under `/pages`, so they
 cannot collide with `/{page_id}`.
 
 - `POST /api/v1/pages/{page_id}/attachments` — the **raw body** is the file
-  (`Content-Type: application/octet-stream`, the name percent-encoded in
-  `X-Filename`). Multipart is not used: FastAPI's `UploadFile` spools the whole
+  (the request's `Content-Type` is ignored entirely — never checked, never
+  persisted — because `fetch(url, {body: file})` sends the file's own MIME
+  type; the name is percent-encoded in `X-Filename`, defaulting to `file` when
+  absent). Multipart is not used: FastAPI's `UploadFile` spools the whole
   body before the handler runs, so a size cap could only ever be checked after
   the fact. The handler refuses on `Content-Length` above
   `attachment_max_bytes` (config, default 50 MB) before reading, then consumes
   `request.stream()` with a running counter and refuses 413 the moment the
-  counter passes the cap, removing the `.part`. The page must be live
+  counter passes the cap. The `.part` is removed on a 413 and on a client
+  disconnect. The page must be live
   (404 otherwise). 201 with `{id, url, filename, content_type, size_bytes}`.
   Order: `.part` → `os.replace` → row insert → commit.
 - `GET /api/v1/pages/attachments/{attachment_id}` — serves the bytes
@@ -137,12 +140,16 @@ New hourly job **`page_attachment_cleanup`** (constant
 `PAGE_ATTACHMENT_CLEANUP_JOB_KEY`; `config_schema`: `grace_hours` default 168,
 `staging_max_age_hours` default 6). One run:
 
-1. **Unreferenced rows.** Collects the referenced ids per project with one
-   `regexp_matches(text, '/api/v1/pages/attachments/([0-9a-f-]{36})', 'g')`
-   pass over `blocks WHERE page_id IS NOT NULL`, then deletes rows older than
-   `grace_hours` whose id is not in that set, committing, then unlinks their
-   files. The grace period covers an upload whose block the editor has not
-   saved yet.
+1. **Unreferenced rows.** Runs only when a row older than `grace_hours`
+   exists. One statement,
+   `DELETE FROM page_attachments WHERE created_at < now() - grace AND id NOT IN
+   (SELECT … regexp_matches(text, '/api/v1/pages/attachments/([0-9a-f-]{36})',
+   'g') FROM blocks WHERE page_id IS NOT NULL) RETURNING id`, so there is no
+   window between scan and delete; then commit, then unlink those files. The
+   scan is **global**, not per project: a URL pasted into another project's page
+   keeps its file alive. It sees every URL because `table_row` and `html` block
+   text carry the source verbatim. The grace period covers an upload whose block
+   the editor has not saved yet.
 2. **Row-less files.** Files older than one hour with no row (a crash between
    `os.replace` and commit). Stale `*.part` files older than one hour.
 3. **Stale staging.** `.staging/<uuid>/` directories older than
@@ -160,8 +167,8 @@ set changed**, so an unchanged multi-GB set is not copied nightly.
 
 **Manifest.** The sorted `id:sha256` list over `page_attachments`, hashed. A
 tarball is written only when this hash differs from the newest existing
-tarball's (kept in a sidecar `.manifest` file beside it, or in the job's state
-row for `backup_ship`). Restore pairs a dump with the **newest tarball whose
+tarball's (for `backup.sh`, a sidecar `.manifest` file beside the tarball,
+pruned with it; for `backup_ship`, see below). Restore pairs a dump with the **newest tarball whose
 stamp is ≤ the dump's stamp**, which is correct precisely because an unchanged
 set writes none.
 
@@ -173,9 +180,13 @@ a row without a file is permanent.
   through `docker run --rm --entrypoint tar -v <attachment volume>:/src:ro`
   on the darkmem image. That works while the app container is down, which the
   floor exists for; `docker compose exec` into the app would not. Flags:
-  `--exclude='*.part' --exclude='./.staging' --warning=no-file-changed`, and an
-  exit status of 1 ("file changed as we read it") is accepted explicitly, since
-  `set -euo pipefail` would otherwise fail the backup. Written as `.part` then
+  `-C /src --exclude='*.part' --exclude='./.staging' --ignore-failed-read
+  --warning=no-file-changed .` (the exclude spelling matches `-C /src .`;
+  `--ignore-failed-read` covers a file the cleanup job unlinks mid-read), and
+  an exit status of 1 ("file changed as we read it") is accepted explicitly,
+  since `set -euo pipefail` would otherwise fail the backup. The volume name is
+  a variable defaulting to the committed compose project's
+  (`darkmem-prod_attachment_data`). Written as `.part` then
   `mv`, like the dump. Named `darkmem-attachments-<stamp>.tar.gz`, pruned by its
   own glob to `BACKUP_ATTACHMENTS_KEEP` (default 3). The dump prune glob
   `darkmem-*.sql.gz` cannot match it.
@@ -185,23 +196,41 @@ a row without a file is permanent.
   matching dumps only), its own per-destination `attachments_retention_keep`
   (default 3), and a prune that lists and sorts each family separately. Widening
   `_is_snapshot` instead would let tarballs, which sort after dumps by name,
-  take every "newest" slot and prune the dumps. Encrypted, read back and hashed
+  take every "newest" slot and prune the dumps. **The skip is decided per
+  destination**: the job keeps `{stamp, manifest_hash}` of the newest tarball it
+  produced in its own `config` row `backup_ship_attachments_state` (never
+  `job:backup_ship`, which is the `config_schema`-validated row), and ships to a
+  destination whenever the manifest changed **or** that destination's listing
+  lacks a tarball with the recorded stamp. A destination that was down one
+  night therefore catches up the next, instead of waiting for the set to
+  change. `attachments_retention_keep` is a new `DestinationConfig` field with a
+  control on the Backups tab. Encrypted, read back and hashed
   like the dump. `worker_receiver.py`'s `SNAPSHOT_NAME` pattern is widened to
   accept the second family. Any pull path that would materialise a whole object
   in memory (the S3 `stream()`) must stream the tarball in chunks; the container
   has a 1 GB memory limit.
 - **Backup worker.** `docker-compose.worker.yml` mounts a volume at
   `/app/data/attachment-store` and sets
-  `ATTACHMENTS_DIR=/app/data/attachment-store/current`, a symlink.
+  `ATTACHMENTS_DIR=/app/data/attachment-store/current`, a **relative** symlink
+  (`current -> gen-<stamp>`, since host and container paths differ). Before the
+  first restore there is no `current`, so the worker's boot check warns rather
+  than refuses.
   `restore-cycle.sh` picks the matching tarball (rule above), unpacks it into
   `attachment-store/gen-<stamp>` **while the viewer still serves the previous
   generation**, and re-points `current` with an atomic symlink swap in the same
-  step as the database rename, removing the old generation afterwards. A cycle
+  step as the database rename (`ln -s gen-X current.tmp && mv -T current.tmp
+  current`, which is atomic), removing the old generation afterwards. When the
+  paired stamp equals the serving generation the unpack is skipped. A cycle
   that aborts before the swap leaves both halves on the previous generation. A
   missing tarball is a warning and keeps the current generation.
 
 `docs/runbook-deployment.md`: restore the dump, then the tarball paired by the
-rule above.
+rule above. It also states two limits. Dumps keep 14 and tarballs 3 versions,
+so an old dump may pair with no surviving tarball; restoring it serves rows
+whose files are gone (and, on the worker, files newer than the rows). And a
+cleanup that deletes a row between the dump and the tar leaves that dump one
+row without a file. `scripts/verify_attachments.py` lists rows without files
+(and files without rows) after any restore.
 
 ## 4. Notion import
 
@@ -212,7 +241,11 @@ rule above.
 (`application/zip`), streamed to `<attachments_dir>/.staging/<uuid>/upload.zip`
 with the §3.3 counter against `notion_import_max_bytes` (config, default
 1 GB). Behind `refuse_when_read_only`. The SPA passes the project whose `kind`
-is `personal`; the route accepts any existing project.
+is `personal`; the route accepts any existing project, checked **before** the
+upload is read, so a 1 GB body is never accepted for an unknown name. Before
+phase 2 it refuses 507 when the attachments filesystem has less free space
+than three times the upload's size (`shutil.disk_usage`): staging may hold the
+zip, extracted parts and extracted attachments at once.
 
 Three phases:
 
@@ -223,7 +256,12 @@ Three phases:
    block tree (§4.4), and returns an `ImportPlan`: the page hierarchy with
    pre-assigned UUIDs, titles, trees and properties, plus the staged
    attachments. Refuses 422 before any write when the export has more than
-   `notion_import_max_pages` pages (default 10 000).
+   `notion_import_max_pages` pages (default 10 000) or more than
+   `notion_import_max_blocks` blocks in total (default 250 000), counted while
+   building so the plan's memory is bounded inside the 1 GB container.
+   Runs on a **dedicated single-thread executor**, not the default one, which
+   also serves bcrypt MCP auth, git and code parsing; one import at a time
+   follows (a second waits).
 3. **Write** — one transaction under `root_lock_key(project)`. Inserts the
    attachment rows, the root page, then every page through the insert helper
    (§4.6), moves each staged attachment to its final path with `os.replace`
@@ -324,7 +362,8 @@ Per page, inside the plan phase:
 3. **Post-parse transforms.** The parser never mints page-only types (by
    design; `taxonomy.py` keeps them out of `BLOCK_TYPES`), so the importer
    converts:
-   - a `quote` whose text starts `[!LABEL]\n` → `callout`, with `variant` from
+   - a `quote` whose text is `[!LABEL]`, alone or followed by `\n` (an aside
+     whose body starts with a list has no text after the label) → `callout`, with `variant` from
      the inverse of `block_serializer._CALLOUT_LABELS` (`NOTE`→`info`,
      `WARNING`→`warning`, `CAUTION`→`error`, `TIP`→`success`; an unknown label
      → `info`) and the label line removed. Callouts hold no children, so a
@@ -388,10 +427,14 @@ async def _insert_page(
 It claims the order index (`_claim_order_index`, whose advisory lock is
 transaction-scoped and re-entrant, so repeated calls are fine), serialises,
 inserts the page and its blocks, and journals `page_created`. It **never
-commits**. Block rows are inserted with one multi-row statement per page (an
-`unnest` over arrays) rather than one `INSERT` per block. `create_page` becomes
-parse + representability refusal + `_insert_page` + commit, with unchanged
-behaviour.
+commits**, and the `MAX_BLOCKS` refusal moves into it, so both callers keep it
+(the import truncates first, §4.5, so it never fires there). Block rows are
+inserted with one multi-row statement per page (an `unnest` over arrays) rather
+than one `INSERT` per block. The per-page parent lock and next-index queries
+stay: at the 10 000-page cap they cost two round trips per page, which fits the
+time budget, and removing them would need a second code path. `create_page`
+becomes parse + representability refusal + `_insert_page` + commit, with
+unchanged behaviour.
 
 The import module journals one `pages_imported` event on the root page — a new
 `EVENT_TYPES` value, landed taxonomy-first, with the event type passed as a
@@ -479,17 +522,19 @@ toast and inserts nothing.
   URLs; callouts (multi-paragraph, nested list) and to-dos (nested); an
   attachment shared by two pages stored once; a missing file; zip slip; a
   symlink; an encrypted entry; a cp437 name; entry-count and uncompressed caps,
-  including a lying central directory; an HTML export refused; a flat export;
+  including a lying central directory; the total-block cap; an unknown project
+  refused before the body is read; the free-space refusal; an HTML export refused; a flat export;
   id-less wrapper folders; truncation; the page-count cap; and a failure
   injected in phase 3 leaving no rows, no final files and no staging directory.
 - Backups: `backup.sh` writes a tarball after the dump, skips when the manifest
   is unchanged, and prunes the two families separately; `backup_ship` keeps
-  dumps under the tarball family's pressure; the receiver accepts the new name.
+  dumps under the tarball family's pressure, ships a skipped tarball to a
+  destination that missed it, and the receiver accepts the new name.
 
 **Guards leg** (the CLAUDE.md list), plus the specific edits it will demand:
 - `content_surfaces.py` classifies both new routes.
-- `test_rest_conformance.py` `_EXPECTED`: upload 201, import 201, GET's 404 in
-  the error envelope.
+- `test_rest_conformance.py` `_EXPECTED`: upload 201, import 201 (and its 507),
+  GET's 404 in the error envelope.
 - The `test_door_parity.py` table gets `pages.attachments` and `pages.import`
   single-door rows, regenerating the doc block.
 - `frontend/src/features/activity/event-taxonomy.ts` maps `pages_imported`.
