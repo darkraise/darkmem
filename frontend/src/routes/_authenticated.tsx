@@ -49,6 +49,7 @@ import {
   ProjectScopeReconciler,
   ProjectSwitcher,
 } from "@/components/app-chrome"
+import { projectScopeDisabledReason } from "@/components/app-chrome/project-switcher"
 
 const nav: NavGroup[] = [
   {
@@ -236,7 +237,9 @@ function AuthenticatedLayout() {
         headerSlot={
           <>
             <AppPageHeader />
-            <ProjectSwitcher />
+            <ProjectSwitcher
+              disabledReason={projectScopeDisabledReason(pathname)}
+            />
             <ContextChip />
             <DetailLevelToggle />
             <MinimalThemeSwitcher />

@@ -17,7 +17,7 @@ function CodeRepositoriesPage() {
       <PageChrome
         icon={FolderGit2}
         title="Repositories"
-        description="Indexed repositories and their pipelines — gated by repository, not project."
+        description="Indexed repositories and their indexing pipelines."
       />
       {DEMO ? (
         <RepositoriesTab

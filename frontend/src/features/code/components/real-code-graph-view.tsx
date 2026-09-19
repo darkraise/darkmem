@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import {
   Boxes,
-  ChevronsLeftRight,
   Copy,
   FolderGit2,
   ListTree,
@@ -208,10 +207,6 @@ export function RealCodeGraphView({
           ))}
         </SelectContent>
       </Select>
-      <span className="border-border text-muted-foreground inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-0.5 font-mono text-sm uppercase">
-        <ChevronsLeftRight aria-hidden className="h-3 w-3" />
-        scope: repository, not project
-      </span>
       {repo.status === "stale" && (
         <span className="border-warning/60 bg-warning/10 text-warning inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-0.5 text-sm">
           serving last-good graph ({repo.last_indexed_commit ?? "unknown"}) —

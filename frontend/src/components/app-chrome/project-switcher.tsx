@@ -6,6 +6,12 @@ import {
   PopoverTrigger,
   PopoverContent,
 } from "darkraise-ui/components/popover"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "darkraise-ui/components/tooltip"
 import { cn } from "darkraise-ui/lib"
 import { useProjects, type ProjectSummary } from "@/hooks/api"
 import {
@@ -15,6 +21,19 @@ import {
   useProjectStore,
   type ProjectScope,
 } from "@/stores/project-store"
+
+export const CODE_SCOPE_REASON = "Code is scoped by repository, not by project"
+
+/** Code routes browse one repository at a time; a project scope would read
+ *  as a filter that silently does nothing there. */
+export function projectScopeDisabledReason(pathname: string): string | undefined {
+  return pathname === "/code" || pathname.startsWith("/code/")
+    ? CODE_SCOPE_REASON
+    : undefined
+}
+
+const TRIGGER_CLASS =
+  "border-border bg-muted hover:bg-muted/70 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm transition-colors"
 
 /**
  * The global isolation scope (doc 13 §3). Lives in the app chrome, writes
@@ -56,7 +75,11 @@ export function ProjectScopeReconciler() {
   return null
 }
 
-export function ProjectSwitcher() {
+export function ProjectSwitcher({
+  disabledReason,
+}: {
+  disabledReason?: string
+}) {
   const activeProject = useProjectStore((s) => s.activeProject)
   const setProject = useProjectStore((s) => s.setProject)
   const missingProject = useProjectStore((s) => s.missingProject)
@@ -71,6 +94,35 @@ export function ProjectSwitcher() {
   const rows = (projects ?? []).filter((p) => p.kind !== "personal")
   const isAll = activeProject === ALL_PROJECTS
 
+  if (disabledReason) {
+    return (
+      <TooltipProvider delayDuration={150}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {/* A disabled button receives no pointer events, so the wrapper
+                carries the hover and the focus that open the tooltip. */}
+            <span
+              tabIndex={0}
+              aria-label={`Project scope — ${disabledReason}`}
+              className="inline-flex rounded-full"
+            >
+              <button
+                type="button"
+                disabled
+                aria-label="Project scope"
+                className={cn(TRIGGER_CLASS, "pointer-events-none opacity-60")}
+              >
+                <Globe aria-hidden className="text-muted-foreground h-3.5 w-3.5" />
+                project: {projectLabel(activeProject)}
+              </button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{disabledReason}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+  }
+
   return (
     <span className="inline-flex items-center gap-2">
       <Popover open={open} onOpenChange={setOpen}>
@@ -78,7 +130,7 @@ export function ProjectSwitcher() {
           <button
             type="button"
             aria-label="Project scope"
-            className="border-border bg-muted hover:bg-muted/70 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm transition-colors"
+            className={TRIGGER_CLASS}
           >
             <Globe aria-hidden className="text-muted-foreground h-3.5 w-3.5" />
             project: {projectLabel(activeProject)}

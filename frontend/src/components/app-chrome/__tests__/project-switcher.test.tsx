@@ -3,7 +3,12 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
-import { ProjectScopeReconciler, ProjectSwitcher } from "../project-switcher"
+import {
+  CODE_SCOPE_REASON,
+  ProjectScopeReconciler,
+  ProjectSwitcher,
+  projectScopeDisabledReason,
+} from "../project-switcher"
 import {
   useProjectStore,
   DEFAULT_PROJECT,
@@ -307,5 +312,29 @@ describe("ProjectScopeReconciler", () => {
     })
     render(<ProjectScopeReconciler />)
     expect(useProjectStore.getState().activeProject).toBe(ALL_PROJECTS)
+  })
+})
+
+describe("project scope on code pages", () => {
+  it("names the code routes and nothing else", () => {
+    expect(projectScopeDisabledReason("/code/graph")).toBe(CODE_SCOPE_REASON)
+    expect(projectScopeDisabledReason("/code/repositories")).toBe(CODE_SCOPE_REASON)
+    expect(projectScopeDisabledReason("/code")).toBe(CODE_SCOPE_REASON)
+    expect(projectScopeDisabledReason("/codex")).toBeUndefined()
+    expect(projectScopeDisabledReason("/memories")).toBeUndefined()
+  })
+
+  it("renders the switcher disabled, explaining why", async () => {
+    mockUseProjects.mockReturnValue({ data: [], isLoading: false })
+    const user = userEvent.setup()
+    const qc = new QueryClient()
+    render(
+      <QueryClientProvider client={qc}>
+        <ProjectSwitcher disabledReason={CODE_SCOPE_REASON} />
+      </QueryClientProvider>,
+    )
+    expect(screen.getByRole("button", { name: /project scope/i })).toBeDisabled()
+    await user.hover(screen.getByLabelText(`Project scope — ${CODE_SCOPE_REASON}`))
+    expect(await screen.findAllByText(CODE_SCOPE_REASON)).not.toHaveLength(0)
   })
 })

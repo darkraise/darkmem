@@ -29,7 +29,7 @@ function CodeGraphPage() {
       <PageChrome
         icon={Network}
         title="Code Graph"
-        description="The symbol graph of an indexed repository — gated by repository, not project."
+        description="The symbol graph of an indexed repository."
       />
       {DEMO ? (
         <CodeGraphTab

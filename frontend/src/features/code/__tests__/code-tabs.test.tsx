@@ -21,11 +21,8 @@ import { WikiTab } from "../components/wiki-tab"
 describe("RepositoriesTab", () => {
   it("renders every repo state honestly", () => {
     render(<RepositoriesTab onOpenGraph={vi.fn()} />)
-    // scope: gated by repository, project switcher inert
-    expect(
-      screen.getByText("gated by repository, not project"),
-    ).toBeInTheDocument()
-    expect(screen.getByText("not applied here")).toBeInTheDocument()
+    expect(screen.queryByText("gated by repository, not project")).toBeNull()
+    expect(screen.queryByText("not applied here")).toBeNull()
     // T1 fail-stale banner — last-good graph served, never wiped
     expect(
       screen.getByText(
@@ -67,9 +64,7 @@ describe("CodeGraphTab", () => {
         onOpenRepositories={vi.fn()}
       />,
     )
-    expect(
-      screen.getByText("scope: repository, not project"),
-    ).toBeInTheDocument()
+    expect(screen.queryByText("scope: repository, not project")).toBeNull()
     expect(screen.getByRole("tab", { name: "Explorer" })).toBeInTheDocument()
     expect(screen.getByRole("tab", { name: "Filters" })).toBeInTheDocument()
     // The explorer opens on the repo's tracked tree, not a flat symbol list.
@@ -137,8 +132,8 @@ describe("WikiTab", () => {
     ).toBeGreaterThan(0)
     expect(screen.getByText("2026-07-20 04:12")).toBeInTheDocument()
     expect(
-      screen.getByText("repo-scoped — not the project switcher"),
-    ).toBeInTheDocument()
+      screen.queryByText("repo-scoped — not the project switcher"),
+    ).toBeNull()
   })
 
   it("empty state points at the reindex dialog, never implicitly generates", () => {

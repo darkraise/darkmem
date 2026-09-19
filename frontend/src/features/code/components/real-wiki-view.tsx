@@ -114,9 +114,6 @@ export function RealWikiView({
             ))}
           </SelectContent>
         </Select>
-        <span className="text-muted-foreground text-sm italic">
-          repo-scoped — not the project switcher
-        </span>
       </div>
 
       {isLoading && (

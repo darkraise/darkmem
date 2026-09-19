@@ -85,4 +85,15 @@ describe("ContextChip", () => {
     expect(screen.queryByRole("button", { name: /project scope/i })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: /session context/i })).toBeInTheDocument()
   })
+
+  it("explains what a session context does, without changing the chip", () => {
+    render(<ContextChip />)
+    expect(
+      screen.getByRole("button", { name: "About context hints" }),
+    ).toBeInTheDocument()
+    const chip = screen.getByRole("button", { name: "Session context" })
+    expect(chip).toHaveTextContent("context: not declared")
+    expect(chip.className).toMatch(/border-dashed/)
+    expect(chip.className).toMatch(/italic/)
+  })
 })

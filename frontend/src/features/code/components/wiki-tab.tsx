@@ -175,7 +175,6 @@ export function WikiTab({
   return (
     <div className="space-y-4">
       <header className="border-border bg-card overflow-hidden rounded-lg border">
-        {/* repo picker — deliberately NOT the project switcher */}
         <div className="border-border flex flex-wrap items-center gap-2.5 border-b px-3 py-2.5">
           <Select value={repo.id} onValueChange={onRepoChange}>
             <SelectTrigger className="w-56" aria-label="Repository">
@@ -206,9 +205,6 @@ export function WikiTab({
                 · HEAD <span className="font-mono">{repo.head}</span>
               </>
             )}
-          </span>
-          <span className="text-muted-foreground ml-auto text-sm italic">
-            repo-scoped — not the project switcher
           </span>
         </div>
 

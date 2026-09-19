@@ -8,6 +8,7 @@ import {
   PopoverContent,
 } from "darkraise-ui/components/popover"
 import { cn } from "darkraise-ui/lib"
+import { HelpTip } from "@/components/darkmem"
 import { CONTEXT_AXES, useContextStore, type ContextAxis } from "@/stores/context-store"
 
 function summarize(axes: Partial<Record<ContextAxis, string>>): string {
@@ -37,82 +38,90 @@ export function ContextChip() {
   const label = declared ? `context: ${summarize(declared.axes)}` : "context: not declared"
 
   return (
-    <Popover
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next)
-        if (next) setDraft(declared?.axes ?? {})
-      }}
-    >
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label="Session context"
-          className={cn(
-            "border-border inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm transition-colors",
-            declared
-              ? "bg-muted hover:bg-muted/70"
-              : "text-muted-foreground hover:bg-muted/40 border-dashed italic",
-          )}
-        >
-          {label}
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        side="bottom"
-        align="end"
-        className="bg-card border-border w-72 space-y-3 rounded-lg border p-3 shadow-xl"
+    <span className="inline-flex items-center gap-1">
+      <Popover
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next)
+          if (next) setDraft(declared?.axes ?? {})
+        }}
       >
-        <div className="space-y-1.5">
-          <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-            Declare session context
-          </p>
-          <p className="text-muted-foreground text-xs">
-            A retrieval hint (boosts or excludes rows by env / situation /
-            version) — not the project scope. Leave every field blank to stay
-            undeclared.
-          </p>
-        </div>
-        <div className="space-y-2">
-          {CONTEXT_AXES.map((axis) => (
-            <div key={axis} className="space-y-1">
-              <Label htmlFor={`context-axis-${axis}`} className="text-xs capitalize">
-                {axis}
-              </Label>
-              <Input
-                id={`context-axis-${axis}`}
-                aria-label={axis}
-                value={draft[axis] ?? ""}
-                onChange={(e) => setDraft((prev) => ({ ...prev, [axis]: e.target.value }))}
-                placeholder={axis === "env" ? "prod" : axis === "situation" ? "incident" : "15.3"}
-              />
-            </div>
-          ))}
-        </div>
-        <div className="flex justify-end gap-1.5">
-          <Button
+        <PopoverTrigger asChild>
+          <button
             type="button"
-            variant="ghost"
-            onClick={() => {
-              clearContext()
-              setDraft({})
-              setOpen(false)
-            }}
-            disabled={!declared}
+            aria-label="Session context"
+            className={cn(
+              "border-border inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm transition-colors",
+              declared
+                ? "bg-muted hover:bg-muted/70"
+                : "text-muted-foreground hover:bg-muted/40 border-dashed italic",
+            )}
           >
-            Clear
-          </Button>
-          <Button
-            type="button"
-            onClick={() => {
-              declareContext(draft)
-              setOpen(false)
-            }}
-          >
-            Declare
-          </Button>
-        </div>
-      </PopoverContent>
-    </Popover>
+            {label}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          side="bottom"
+          align="end"
+          className="bg-card border-border w-72 space-y-3 rounded-lg border p-3 shadow-xl"
+        >
+          <div className="space-y-1.5">
+            <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+              Declare session context
+            </p>
+            <p className="text-muted-foreground text-xs">
+              A retrieval hint (boosts or excludes rows by env / situation /
+              version) — not the project scope. Leave every field blank to stay
+              undeclared.
+            </p>
+          </div>
+          <div className="space-y-2">
+            {CONTEXT_AXES.map((axis) => (
+              <div key={axis} className="space-y-1">
+                <Label htmlFor={`context-axis-${axis}`} className="text-xs capitalize">
+                  {axis}
+                </Label>
+                <Input
+                  id={`context-axis-${axis}`}
+                  aria-label={axis}
+                  value={draft[axis] ?? ""}
+                  onChange={(e) => setDraft((prev) => ({ ...prev, [axis]: e.target.value }))}
+                  placeholder={axis === "env" ? "prod" : axis === "situation" ? "incident" : "15.3"}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-end gap-1.5">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                clearContext()
+                setDraft({})
+                setOpen(false)
+              }}
+              disabled={!declared}
+            >
+              Clear
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                declareContext(draft)
+                setOpen(false)
+              }}
+            >
+              Declare
+            </Button>
+          </div>
+        </PopoverContent>
+      </Popover>
+      <HelpTip label="About context hints" side="bottom">
+        A session context is a retrieval hint, not a filter. Declaring an
+        environment, situation or version ranks memories recorded under a
+        matching context higher and sets aside ones that conflict with it. The
+        project switcher is what limits the data you see.
+      </HelpTip>
+    </span>
   )
 }

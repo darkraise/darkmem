@@ -1,6 +1,5 @@
 import { useState } from "react"
 import {
-  ChevronsLeftRight,
   Clock,
   FolderGit2,
   Layers,
@@ -202,21 +201,6 @@ export function RepositoriesTab({
 
   return (
     <div className="space-y-4">
-      {/* The global project switcher is shown inert here rather than
-          silently doing nothing — this section is gated by repository. */}
-      <div className="border-border flex flex-wrap items-center gap-2.5 border-b border-dashed pb-3">
-        <span className="border-border bg-muted/40 text-muted-foreground inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm opacity-65">
-          project: darkmem
-          <span className="border-border rounded-full border border-dashed px-1.5 font-mono text-sm uppercase">
-            not applied here
-          </span>
-        </span>
-        <span className="border-primary/45 bg-primary/8 text-primary inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm font-medium">
-          <ChevronsLeftRight aria-hidden className="h-3.5 w-3.5" />
-          gated by repository, not project
-        </span>
-      </div>
-
       <ListSurface
         title="Repositories"
         populated={repos.length > 0}
