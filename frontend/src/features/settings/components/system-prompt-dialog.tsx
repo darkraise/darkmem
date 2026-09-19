@@ -213,7 +213,7 @@ export function SystemPromptDialog({
                 </Button>
                 <Button
                   variant="outline"
-                  className="border-primary/60 text-primary"
+                  className="border-primary/60 text-primary-text"
                   disabled={!dirty || tooLong || update.isPending}
                   onClick={save}
                 >

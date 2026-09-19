@@ -294,7 +294,7 @@ function ArticleRow({ article }: { article: ReviewArticleRowData }) {
            sees the finding rather than only its name — and says plainly that
            the article is still being served, because a queue entry that looks
            like a suppression is the confusion this marker exists to avoid. */
-        <p className="text-warning text-sm">
+        <p className="text-warning-text text-sm">
           re-synthesis attempted and held
           {article.resynthesis_held_coverage !== null &&
             ` at claim-support coverage ${article.resynthesis_held_coverage.toFixed(2)}`}
@@ -646,7 +646,7 @@ export function ReviewQueue({ project }: { project?: string }) {
             <AlertDialogDescription className="flex items-start gap-2">
               <AlertTriangle
                 aria-hidden
-                className="text-warning mt-0.5 h-4 w-4 shrink-0"
+                className="text-warning-text mt-0.5 h-4 w-4 shrink-0"
               />
               <span>
                 Withdraws belief in this fact (the same primitive a source

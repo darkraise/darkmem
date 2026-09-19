@@ -30,7 +30,7 @@ export function TaskCard({
       className="border-border bg-card hover:border-primary/50 focus-visible:ring-ring w-full rounded-md border p-3 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none"
     >
       <div className="flex items-baseline gap-1.5">
-        <span className="text-primary font-mono text-xs font-semibold">
+        <span className="text-primary-text font-mono text-xs font-semibold">
           {task.id}
         </span>
         {verdict.startable && (

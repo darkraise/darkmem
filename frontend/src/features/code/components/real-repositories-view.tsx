@@ -67,7 +67,7 @@ function StaleBanner({ repo }: { repo: Repo }) {
   if (repo.status !== "stale") return null
   return (
     <div className="border-warning/50 bg-warning/8 flex gap-2.5 rounded-md border p-3">
-      <Clock aria-hidden className="text-warning h-4.5 w-4.5 shrink-0" />
+      <Clock aria-hidden className="text-warning-text h-4.5 w-4.5 shrink-0" />
       <div className="space-y-1 text-sm">
         <p className="font-semibold">
           Last index failed — serving the last-good graph, marked stale
@@ -102,7 +102,7 @@ function IndexDebtIndicator({ repo }: { repo: Repo }) {
 
   return (
     <div className="space-y-1">
-      <span className="border-warning/55 bg-warning/8 text-warning inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-0.5 text-sm">
+      <span className="border-warning/55 bg-warning/8 text-warning-text inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-0.5 text-sm">
         <Layers aria-hidden className="h-3.5 w-3.5" />
         {debt.queued} dependent {debt.queued === 1 ? "file" : "files"} queued
         for re-trace
@@ -134,7 +134,7 @@ function IndexDebtIndicator({ repo }: { repo: Repo }) {
 function LivePhaseLabel({ repo }: { repo: Repo }) {
   if (repo.status !== "indexing") return null
   return (
-    <p className="text-info flex items-center gap-1.5 text-sm">
+    <p className="text-info-text flex items-center gap-1.5 text-sm">
       <RefreshCw aria-hidden className="h-3.5 w-3.5 shrink-0 animate-spin" />
       indexing — {repo.status_message ?? "starting…"}
     </p>
@@ -432,7 +432,7 @@ function RepoRow({
           className={cn(
             "gap-1 font-mono uppercase",
             repo.status === "stale" &&
-              "border-warning/60 bg-warning/10 text-warning border-dashed",
+              "border-warning/60 bg-warning/10 text-warning-text border-dashed",
             repo.status === "error" &&
               "border-destructive/50 bg-destructive/10 text-destructive",
           )}

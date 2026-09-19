@@ -321,7 +321,7 @@ function DemoMemoriesPage() {
             <span
               className={cn(
                 "font-mono text-sm",
-                shownCount > 0 ? "text-success" : "text-muted-foreground",
+                shownCount > 0 ? "text-success-text" : "text-muted-foreground",
               )}
             >
               {shownCount > 0 ? "populated" : "empty"}

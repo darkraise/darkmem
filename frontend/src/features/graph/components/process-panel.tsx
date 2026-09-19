@@ -37,12 +37,12 @@ export function ProcessPanel({
             onClick={() => onSelect(p)}
             className={`flex h-auto w-full items-start gap-2 rounded-sm px-2 py-2 text-left transition-colors ${
               active
-                ? "bg-primary/15 text-primary"
+                ? "bg-primary/15 text-primary-text"
                 : "text-foreground hover:bg-accent"
             }`}
           >
             <Workflow
-              className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${active ? "text-primary" : "text-muted-foreground"}`}
+              className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${active ? "text-primary-text" : "text-muted-foreground"}`}
             />
             <span className="min-w-0 flex-1">
               <span className="flex items-center gap-2">

@@ -113,7 +113,7 @@ export function BlockView({
             {checked ? (
               <SquareCheck
                 aria-hidden
-                className="text-primary mt-[3px] size-3.5 shrink-0"
+                className="text-primary-text mt-[3px] size-3.5 shrink-0"
               />
             ) : (
               <Square

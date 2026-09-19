@@ -56,7 +56,7 @@ export function AppPageHeader() {
         </TooltipProvider>
       )}
       {Icon && (
-        <span className="bg-primary/10 text-primary flex h-7 w-7 shrink-0 items-center justify-center rounded-md">
+        <span className="bg-primary/10 text-primary-text flex h-7 w-7 shrink-0 items-center justify-center rounded-md">
           <Icon aria-hidden className="h-4 w-4" />
         </span>
       )}

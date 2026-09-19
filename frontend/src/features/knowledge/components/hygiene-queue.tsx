@@ -165,7 +165,7 @@ function ActionNotice({
   return (
     <div className="border-success/40 bg-success/5 flex flex-col gap-1.5 rounded-md border border-dashed p-2 text-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <Check aria-hidden className="text-success h-3.5 w-3.5 shrink-0" />
+        <Check aria-hidden className="text-success-text h-3.5 w-3.5 shrink-0" />
         <span>
           {applied} applied
           {refused.length > 0 ? `, ${refused.length} refused` : ""} — cycle{" "}
@@ -264,7 +264,7 @@ function CategoryShell({
           </p>
         ) : isEmpty ? (
           <p className="text-muted-foreground flex items-center gap-2 text-sm">
-            <Check aria-hidden className="text-success h-3.5 w-3.5 shrink-0" />
+            <Check aria-hidden className="text-success-text h-3.5 w-3.5 shrink-0" />
             {emptyLine}
           </p>
         ) : isStranded ? (
@@ -331,7 +331,7 @@ function DuplicateRow({
         <Link
           to="/memories/$memoryId"
           params={{ memoryId: row.source_memory_id }}
-          className="hover:text-primary font-mono text-sm transition-colors"
+          className="hover:text-primary-text font-mono text-sm transition-colors"
         >
           {shortId(row.source_memory_id)}
         </Link>
@@ -339,7 +339,7 @@ function DuplicateRow({
         <Link
           to="/memories/$memoryId"
           params={{ memoryId: row.target_memory_id }}
-          className="hover:text-primary font-mono text-sm transition-colors"
+          className="hover:text-primary-text font-mono text-sm transition-colors"
         >
           {shortId(row.target_memory_id)}
         </Link>
@@ -413,7 +413,7 @@ function MemoryRow({
       <Link
         to="/memories/$memoryId"
         params={{ memoryId: row.id }}
-        className="text-muted-foreground hover:text-primary ml-auto shrink-0 font-mono text-sm transition-colors"
+        className="text-muted-foreground hover:text-primary-text ml-auto shrink-0 font-mono text-sm transition-colors"
       >
         {shortId(row.id)}
       </Link>

@@ -74,7 +74,7 @@ export function ScheduleSection({
         </div>
         <Button
           variant="outline"
-          className="border-primary/60 text-primary"
+          className="border-primary/60 text-primary-text"
           disabled={!info.ok || draft === job.cron}
           onClick={() => {
             saveCron(job.key, draft)
@@ -84,7 +84,7 @@ export function ScheduleSection({
           Save schedule
         </Button>
         {saved && (
-          <span className="text-success font-mono text-sm">
+          <span className="text-success-text font-mono text-sm">
             saved — takes effect on the next scheduled tick
           </span>
         )}
@@ -167,7 +167,7 @@ export function ConfigSchemaSection({
         })}
         <Button
           variant="outline"
-          className="border-primary/60 text-primary"
+          className="border-primary/60 text-primary-text"
           disabled={!validation.ok}
           onClick={() => {
             if (validation.ok) {
@@ -178,7 +178,7 @@ export function ConfigSchemaSection({
         >
           Save config
         </Button>
-        {saved && <span className="text-success font-mono text-sm">saved</span>}
+        {saved && <span className="text-success-text font-mono text-sm">saved</span>}
       </div>
     </div>
   )

@@ -29,9 +29,9 @@ function StagedCard({
 }) {
   return (
     <div className="border-warning/40 bg-warning/5 flex gap-3 rounded-md border border-dashed p-4">
-      <Clock aria-hidden className="text-warning h-5 w-5 shrink-0" />
+      <Clock aria-hidden className="text-warning-text h-5 w-5 shrink-0" />
       <div className="flex flex-col gap-1.5">
-        <span className="text-warning font-mono text-sm">{phase}</span>
+        <span className="text-warning-text font-mono text-sm">{phase}</span>
         <span className="text-sm font-semibold">{headline}</span>
         <span className="text-muted-foreground max-w-3xl text-sm">{reason}</span>
       </div>
@@ -53,8 +53,8 @@ function FlowNode({
       <span
         className={cn(
           "bg-card flex h-7 w-7 items-center justify-center rounded-full border-2",
-          state === "ok" && "border-success text-success",
-          state === "active" && "border-info bg-info/10 text-info",
+          state === "ok" && "border-success text-success-text",
+          state === "active" && "border-info bg-info/10 text-info-text",
           state === "pending" &&
             "border-border text-muted-foreground/70 border-dashed",
         )}
@@ -72,7 +72,7 @@ function FlowNode({
       <span
         className={cn(
           "font-mono text-sm font-semibold leading-tight",
-          state === "active" ? "text-info" : "text-foreground",
+          state === "active" ? "text-info-text" : "text-foreground",
         )}
       >
         {label}
@@ -107,7 +107,7 @@ function PoisonRow({
 }) {
   return (
     <div className="border-warning/55 bg-warning/5 flex flex-wrap items-start gap-2.5 rounded-md border border-dashed p-3">
-      <TriangleAlert aria-hidden className="text-warning mt-0.5 h-4 w-4 shrink-0" />
+      <TriangleAlert aria-hidden className="text-warning-text mt-0.5 h-4 w-4 shrink-0" />
       <div className="flex min-w-0 flex-1 basis-64 flex-col gap-1">
         <span className="text-sm font-semibold">
           project: {row.project} · claimed {row.attempts}/{row.maxAttempts}{" "}
@@ -191,7 +191,7 @@ function BufferTargetBoard() {
         <FlowConnector done />
         <FlowNode label="done" caption="flushed, swept on a delay" state="ok" />
       </div>
-      <p className="text-warning flex items-center gap-1.5 text-sm">
+      <p className="text-warning-text flex items-center gap-1.5 text-sm">
         <CornerDownRight aria-hidden className="h-3.5 w-3.5 shrink-0" />
         <span>
           <code className="font-mono">claimed → error</code> once a row has
@@ -220,7 +220,7 @@ function BufferTargetBoard() {
               <span
                 className={cn(
                   "font-mono text-[10px] uppercase tracking-wide",
-                  t.caution ? "text-warning" : "text-muted-foreground",
+                  t.caution ? "text-warning-text" : "text-muted-foreground",
                 )}
               >
                 {t.key}
@@ -229,7 +229,7 @@ function BufferTargetBoard() {
             <span
               className={cn(
                 "text-xl font-semibold",
-                t.caution && "text-warning",
+                t.caution && "text-warning-text",
               )}
             >
               {t.value}
@@ -252,7 +252,7 @@ function BufferTargetBoard() {
       )}
       {poisonRows.length > 0 && (
         <div className="flex flex-col gap-2">
-          <span className="text-warning font-mono text-[10px] uppercase tracking-wide">
+          <span className="text-warning-text font-mono text-[10px] uppercase tracking-wide">
             poison rows ({poisonRows.length})
           </span>
           {poisonRows.map((row) => (

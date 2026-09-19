@@ -34,7 +34,7 @@ export function ArmPill({ value }: { value: number }) {
           className={cn(
             "inline-flex cursor-help items-center gap-1 rounded-full border px-2.5 py-0.5 font-mono text-[10px] tracking-wide uppercase whitespace-nowrap",
             active
-              ? "border-primary/55 bg-primary/10 text-primary"
+              ? "border-primary/55 bg-primary/10 text-primary-text"
               : "border-border text-muted-foreground bg-muted/40 border-dashed",
           )}
         >

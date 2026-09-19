@@ -90,7 +90,7 @@ function RungLabel({ value }: { value: string | null }) {
     <Badge
       variant="outline"
       size="sm"
-      className="border-warning/50 bg-warning/10 text-warning"
+      className="border-warning/50 bg-warning/10 text-warning-text"
     >
       {value}
     </Badge>
@@ -137,7 +137,7 @@ function MemoryLink({
     <Link
       to="/memories/$memoryId"
       params={{ memoryId }}
-      className="hover:text-primary flex min-w-0 items-center gap-1.5 text-sm transition-colors"
+      className="hover:text-primary-text flex min-w-0 items-center gap-1.5 text-sm transition-colors"
     >
       <Link2
         aria-hidden
@@ -386,7 +386,7 @@ function MemoryDetailPage() {
                         key={flag}
                         variant="outline"
                         size="sm"
-                        className="border-warning/40 text-warning"
+                        className="border-warning/40 text-warning-text"
                       >
                         {flag}
                       </Badge>

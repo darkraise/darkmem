@@ -265,8 +265,8 @@ interface MemoryDetailProps {
  *  what `superseded` actually means, which a dashed ring never could.
  */
 const STATUS_STYLES: Record<string, string> = {
-  active: "border-success/50 bg-success/10 text-success",
-  superseded: "border-warning/60 border-dashed bg-warning/5 text-warning",
+  active: "border-success/50 bg-success/10 text-success-text",
+  superseded: "border-warning/60 border-dashed bg-warning/5 text-warning-text",
   deprecated: "border-border border-dashed bg-muted/40 text-muted-foreground",
 }
 
@@ -308,7 +308,7 @@ function MemoryDetail({
           {memory.tags.map((t) => (
             <span
               key={t}
-              className="bg-accent text-primary rounded px-1.5 py-0.5 text-sm"
+              className="bg-accent text-primary-text rounded px-1.5 py-0.5 text-sm"
             >
               {t}
             </span>

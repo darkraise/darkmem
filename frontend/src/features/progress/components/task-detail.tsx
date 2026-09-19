@@ -35,7 +35,7 @@ export function TaskDetail({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-baseline gap-2">
-            <span className="text-primary font-mono text-base">{task.id}</span>
+            <span className="text-primary-text font-mono text-base">{task.id}</span>
             <span>{plainText(task.title)}</span>
           </DialogTitle>
           <DialogDescription>
@@ -85,7 +85,7 @@ export function TaskDetail({
                   {task.doneWhen.map((item, i) => (
                     <li key={i} className="flex items-start gap-1.5 text-sm">
                       {item.checked ? (
-                        <SquareCheck aria-hidden className="text-primary mt-0.5 size-3.5 shrink-0" />
+                        <SquareCheck aria-hidden className="text-primary-text mt-0.5 size-3.5 shrink-0" />
                       ) : (
                         <Square aria-hidden className="text-muted-foreground mt-0.5 size-3.5 shrink-0" />
                       )}

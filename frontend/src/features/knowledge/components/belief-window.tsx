@@ -45,7 +45,7 @@ export function BeliefWindowRow({
         className={cn(
           "shrink-0 font-mono tracking-wide uppercase",
           open
-            ? "border-primary/50 bg-primary/10 text-primary"
+            ? "border-primary/50 bg-primary/10 text-primary-text"
             : "text-muted-foreground border-dashed",
         )}
       >

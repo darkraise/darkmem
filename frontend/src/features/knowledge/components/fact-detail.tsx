@@ -154,12 +154,12 @@ function DemoFactDetail({ factId }: { factId: string }) {
           <div className="border-warning/55 bg-warning/8 flex max-w-[70ch] items-start gap-2 rounded-sm border border-dashed px-2.5 py-1.5 text-sm">
             <CircleAlert
               aria-hidden
-              className="text-warning mt-0.5 h-4 w-4 shrink-0"
+              className="text-warning-text mt-0.5 h-4 w-4 shrink-0"
             />
             <span>
               Dispute open — both sides on record below at strictly equal
               weight. Resolution happens only in the{" "}
-              <Link to="/knowledge/review" className="text-primary">
+              <Link to="/knowledge/review" className="text-primary-text">
                 Review queue →
               </Link>
             </span>
@@ -217,7 +217,7 @@ function DemoFactDetail({ factId }: { factId: string }) {
               <p className="text-muted-foreground text-sm">
                 Origin counts are shown on both sides without a comparative
                 treatment — corroboration count does not adjudicate a dispute.{" "}
-                <Link to="/knowledge/review" className="text-primary">
+                <Link to="/knowledge/review" className="text-primary-text">
                   Adjudicate in Review →
                 </Link>
               </p>
@@ -378,12 +378,12 @@ function LiveFactDetailBody({ fact }: { fact: LiveFactDetailData }) {
           <div className="border-warning/55 bg-warning/8 flex max-w-[70ch] items-start gap-2 rounded-sm border border-dashed px-2.5 py-1.5 text-sm">
             <CircleAlert
               aria-hidden
-              className="text-warning mt-0.5 h-4 w-4 shrink-0"
+              className="text-warning-text mt-0.5 h-4 w-4 shrink-0"
             />
             <span>
               Dispute open — both sides on record below at strictly equal
               weight. Resolution happens only in the{" "}
-              <Link to="/knowledge/review" className="text-primary">
+              <Link to="/knowledge/review" className="text-primary-text">
                 Review queue →
               </Link>
             </span>
@@ -418,7 +418,7 @@ function LiveFactDetailBody({ fact }: { fact: LiveFactDetailData }) {
             <LiveDisputePanel dispute={fact.dispute} />
             <p className="text-muted-foreground text-sm">
               Corroboration count does not adjudicate a dispute.{" "}
-              <Link to="/knowledge/review" className="text-primary">
+              <Link to="/knowledge/review" className="text-primary-text">
                 Adjudicate in Review →
               </Link>
             </p>

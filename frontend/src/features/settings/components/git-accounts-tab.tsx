@@ -76,7 +76,7 @@ export function GitAccountsTab() {
             </div>
             <Button
               variant="outline"
-              className="border-primary/60 text-primary ml-auto"
+              className="border-primary/60 text-primary-text ml-auto"
               onClick={() => {
                 setEditing(null)
                 setDialogOpen(true)

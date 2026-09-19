@@ -36,10 +36,10 @@ export type EmptyStateKind =
  *  same four the app already uses for status elsewhere. */
 const MARK: Record<EmptyStateKind, { icon: LucideIcon; tone: string }> = {
   empty: { icon: Inbox, tone: "text-muted-foreground" },
-  filtered: { icon: SearchX, tone: "text-info" },
-  missing: { icon: FileQuestion, tone: "text-warning" },
+  filtered: { icon: SearchX, tone: "text-info-text" },
+  missing: { icon: FileQuestion, tone: "text-warning-text" },
   failed: { icon: CircleAlert, tone: "text-destructive" },
-  resolved: { icon: CircleCheck, tone: "text-success" },
+  resolved: { icon: CircleCheck, tone: "text-success-text" },
 }
 
 interface EmptyStateBase {

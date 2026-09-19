@@ -246,7 +246,7 @@ export function DocumentDetail({
                       <span
                         className={
                           open
-                            ? "text-primary font-medium underline-offset-2 group-hover:underline"
+                            ? "text-primary-text font-medium underline-offset-2 group-hover:underline"
                             : "font-medium"
                         }
                       >

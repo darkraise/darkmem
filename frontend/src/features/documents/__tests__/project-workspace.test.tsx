@@ -622,7 +622,7 @@ describe("project workspace — the two scrollbars that used to overlap", () => 
     )
     expect(
       container.querySelector('[data-outline-block="block-h2"]'),
-    ).toHaveClass("text-primary")
+    ).toHaveClass("text-primary-text")
   })
 
   it("marks nothing when the reader reports no heading", async () => {

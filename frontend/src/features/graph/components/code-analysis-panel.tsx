@@ -415,12 +415,12 @@ export function CodeAnalysisPanel({
                     onClick={() => onCommunitySelect(c)}
                     className={`flex h-auto w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left transition-colors ${
                       active
-                        ? "bg-primary/15 text-primary"
+                        ? "bg-primary/15 text-primary-text"
                         : "text-foreground hover:bg-accent"
                     }`}
                   >
                     <Boxes
-                      className={`h-3.5 w-3.5 shrink-0 ${active ? "text-primary" : "text-muted-foreground"}`}
+                      className={`h-3.5 w-3.5 shrink-0 ${active ? "text-primary-text" : "text-muted-foreground"}`}
                     />
                     <span
                       className="h-2 w-2 shrink-0 rounded-full"

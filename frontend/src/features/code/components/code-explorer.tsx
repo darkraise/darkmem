@@ -223,7 +223,7 @@ function ExplorerRow({
             )}
           />
           {open ? (
-            <FolderOpen aria-hidden className="text-primary/70 h-3.5 w-3.5 shrink-0" />
+            <FolderOpen aria-hidden className="text-primary-text/70 h-3.5 w-3.5 shrink-0" />
           ) : (
             <FolderClosed
               aria-hidden

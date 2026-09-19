@@ -68,7 +68,7 @@ export function MemoryRow({
         <Link
           to="/memories/$memoryId"
           params={{ memoryId: memory.id }}
-          className="hover:text-primary min-w-0 flex-1 text-sm break-words transition-colors"
+          className="hover:text-primary-text min-w-0 flex-1 text-sm break-words transition-colors"
         >
           <span className="line-clamp-2">{memory.content}</span>
           <span className="text-muted-foreground mt-1 flex flex-wrap items-center gap-1.5">
@@ -77,7 +77,7 @@ export function MemoryRow({
                 key={flag}
                 variant="outline"
                 size="sm"
-                className="border-warning/40 text-warning"
+                className="border-warning/40 text-warning-text"
               >
                 {flag}
               </Badge>

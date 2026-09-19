@@ -103,7 +103,7 @@ function ClientRow({ client }: { client: DemoDistClient }) {
         </div>
       ) : (
         <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-sm">
-          <Button variant="outline" className="border-primary/60 text-primary w-fit font-mono">
+          <Button variant="outline" className="border-primary/60 text-primary-text w-fit font-mono">
             darkmem connect {client.id}
           </Button>
           {client.connect_hint && (
@@ -115,7 +115,7 @@ function ClientRow({ client }: { client: DemoDistClient }) {
       )}
       {curbed && client.curbed_note && (
         <div className="border-warning/55 bg-warning/10 flex items-center gap-2 rounded-md border border-dashed px-2.5 py-1.5 text-sm">
-          <CircleOff aria-hidden className="text-warning h-3.5 w-3.5 shrink-0" />
+          <CircleOff aria-hidden className="text-warning-text h-3.5 w-3.5 shrink-0" />
           {client.curbed_note}
         </div>
       )}
@@ -261,7 +261,7 @@ function RecentInjects() {
                     }`}
               </span>
               {trigger && (
-                <span className="text-info">re-injected: {trigger} changed</span>
+                <span className="text-info-text">re-injected: {trigger} changed</span>
               )}
               <span className="text-muted-foreground ml-auto font-mono text-sm">
                 {relativeTime(row.created_at)}
@@ -389,7 +389,7 @@ function LiveDistribution() {
                 className={cn(
                   "rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide",
                   target.watched
-                    ? "border-info/55 text-info"
+                    ? "border-info/55 text-info-text"
                     : "border-border text-muted-foreground",
                 )}
               >
@@ -581,7 +581,7 @@ export function DistributionTab() {
                   {row.key}
                   <HelpTip label={`About ${row.key}`}>{row.desc}</HelpTip>
                 </span>
-                <span className="text-primary font-mono text-sm">
+                <span className="text-primary-text font-mono text-sm">
                   {row.value}
                 </span>
               </div>
@@ -606,7 +606,7 @@ export function DistributionTab() {
               )}
             >
               {row.event_type === "inject_curbed" ? (
-                <CircleOff aria-hidden className="text-warning h-3.5 w-3.5" />
+                <CircleOff aria-hidden className="text-warning-text h-3.5 w-3.5" />
               ) : (
                 <Zap aria-hidden className="text-muted-foreground h-3.5 w-3.5" />
               )}

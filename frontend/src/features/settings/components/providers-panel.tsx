@@ -43,7 +43,7 @@ export function ProvidersPanel() {
       />
       <Button
         variant="outline"
-        className="border-primary/60 text-primary ml-auto"
+        className="border-primary/60 text-primary-text ml-auto"
         onClick={openAdd}
       >
         <Plus aria-hidden className="mr-1 h-4 w-4" />

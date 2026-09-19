@@ -18,7 +18,7 @@ export function LifecycleBadge({
       variant="outline"
       size="sm"
       className={cn(
-        "border-warning/50 bg-warning/10 text-warning gap-1",
+        "border-warning/50 bg-warning/10 text-warning-text gap-1",
         className,
       )}
     >

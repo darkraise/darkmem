@@ -112,7 +112,7 @@ export function MemoryPeekDialog({
           to="/memories/$memoryId"
           params={{ memoryId }}
           onClick={onClose}
-          className="text-primary hover:text-primary/80 inline-flex items-center gap-1.5 text-sm"
+          className="text-primary-text hover:text-primary-text/80 inline-flex items-center gap-1.5 text-sm"
         >
           <ExternalLink aria-hidden className="size-3.5" />
           Open the full memory

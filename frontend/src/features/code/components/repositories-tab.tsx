@@ -19,7 +19,7 @@ function StaleBanner({ repo }: { repo: DemoRepo }) {
   if (!repo.stale) return null
   return (
     <div className="border-warning/50 bg-warning/8 flex gap-2.5 rounded-md border p-3">
-      <Clock aria-hidden className="text-warning h-4.5 w-4.5 shrink-0" />
+      <Clock aria-hidden className="text-warning-text h-4.5 w-4.5 shrink-0" />
       <div className="space-y-1 text-sm">
         <p className="font-semibold">
           Last index failed — serving the last-good graph, marked stale
@@ -108,7 +108,7 @@ function RepoRow({
       )}
 
       {repo.debt && (
-        <span className="border-warning/55 bg-warning/8 text-warning inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-0.5 text-sm">
+        <span className="border-warning/55 bg-warning/8 text-warning-text inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-0.5 text-sm">
           <Layers aria-hidden className="h-3.5 w-3.5" />
           {repo.debt.queued_files} {repo.debt.note}
         </span>
@@ -116,13 +116,13 @@ function RepoRow({
 
       {repo.auto_provisioned && (
         <div className="space-y-1">
-          <span className="border-info/50 bg-info/10 text-info inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-sm">
+          <span className="border-info/50 bg-info/10 text-info-text inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-sm">
             <Zap aria-hidden className="h-3 w-3" />
             auto-provisioned {repo.auto_provisioned.on}
           </span>
           <p className="text-muted-foreground text-sm">
             registered from memory:{" "}
-            <span className="text-primary">
+            <span className="text-primary-text">
               {repo.auto_provisioned.from_memory}
             </span>
           </p>
@@ -166,8 +166,8 @@ function RepoRow({
             className={cn(
               "rounded-full",
               repo.stale || repo.error
-                ? "border-warning/60 text-warning bg-warning/8"
-                : "border-primary/60 text-primary bg-primary/8",
+                ? "border-warning/60 text-warning-text bg-warning/8"
+                : "border-primary/60 text-primary-text bg-primary/8",
             )}
             onClick={() => onReindex(repo.id)}
           >

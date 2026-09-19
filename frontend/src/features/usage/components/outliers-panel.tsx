@@ -119,7 +119,7 @@ function OutlierRow({
             ) : null}
             {row.unmeasured_calls > 0 ? (
               <span
-                className="text-warning inline-flex items-center gap-1 text-xs"
+                className="text-warning-text inline-flex items-center gap-1 text-xs"
                 title={`${row.unmeasured_calls} of ${row.calls} calls sent no token envelope, so this is a floor`}
               >
                 <AlertTriangle aria-hidden className="h-3 w-3" />

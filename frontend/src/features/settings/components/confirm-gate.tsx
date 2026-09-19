@@ -50,7 +50,7 @@ export function ConfirmGate({
             aria-hidden
             className={cn(
               "h-4 w-4 shrink-0",
-              danger ? "text-destructive" : "text-warning",
+              danger ? "text-destructive" : "text-warning-text",
             )}
           />
           <div className="flex flex-col gap-1.5">
@@ -66,8 +66,8 @@ export function ConfirmGate({
                   danger
                     ? "border-destructive/60 text-destructive"
                     : tone === "caution"
-                      ? "border-warning/60 text-warning"
-                      : "border-primary/60 text-primary",
+                      ? "border-warning/60 text-warning-text"
+                      : "border-primary/60 text-primary-text",
                 )}
                 onClick={() => {
                   onConfirm()

@@ -31,10 +31,10 @@ function StepIcon({ state }: { state: PipelineStepState }) {
 }
 
 const DOT_STYLES: Record<PipelineStepState, string> = {
-  ok: "border-success text-success",
+  ok: "border-success text-success-text",
   pending: "border-border text-muted-foreground/60",
   error: "border-destructive text-destructive bg-destructive/10",
-  degraded: "border-warning border-dashed text-warning bg-warning/10",
+  degraded: "border-warning border-dashed text-warning-text bg-warning/10",
   skipped: "border-border border-dashed text-muted-foreground/50 opacity-60",
 }
 
@@ -42,7 +42,7 @@ const LABEL_STYLES: Record<PipelineStepState, string> = {
   ok: "text-foreground",
   pending: "text-muted-foreground",
   error: "text-destructive font-semibold",
-  degraded: "text-warning font-semibold",
+  degraded: "text-warning-text font-semibold",
   skipped: "text-muted-foreground opacity-60",
 }
 
@@ -66,7 +66,7 @@ function SubstepPill({
     <span
       className={cn(
         "rounded-full border px-1.5 font-mono text-[10px]",
-        state === "ok" && "border-success/60 text-success",
+        state === "ok" && "border-success/60 text-success-text",
         state === "error" && "border-destructive/60 text-destructive",
         state === "skipped" && "border-border text-muted-foreground",
       )}

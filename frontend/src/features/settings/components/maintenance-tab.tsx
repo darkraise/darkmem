@@ -29,7 +29,7 @@ function OpCard({
   return (
     <Card className="gap-0 py-0">
       <CardHeader className="border-border bg-muted/30 flex flex-row flex-nowrap items-center gap-2 space-y-0 overflow-hidden border-b px-4 py-2.5">
-        <Icon aria-hidden className="text-primary h-4 w-4 shrink-0" />
+        <Icon aria-hidden className="text-primary-text h-4 w-4 shrink-0" />
         <h3 className="min-w-0 truncate text-sm font-semibold">{title}</h3>
         <span className="flex-1" />
         {count && (
@@ -143,7 +143,7 @@ export function MaintenanceTab() {
         // Kept always-visible, never tooltip-only (matches the dormant
         // ApiKey card's own rule) — a journaling gap is exactly the kind
         // of silent degradation this corpus exists to surface.
-        <div className="border-warning/50 bg-warning/8 text-warning rounded-md border p-3 text-sm">
+        <div className="border-warning/50 bg-warning/8 text-warning-text rounded-md border p-3 text-sm">
           None of these triggers are journaled to the events timeline today — an
           operator watching Activity → Timeline will not see them recorded
           there. Backend gap, tracked separately from this surface.
@@ -189,7 +189,7 @@ export function MaintenanceTab() {
               trigger={
                 <Button
                   variant="outline"
-                  className="border-primary/60 text-primary"
+                  className="border-primary/60 text-primary-text"
                   disabled={m.reembed.memories === 0}
                   tabIndex={-1}
                 >
@@ -327,7 +327,7 @@ export function MaintenanceTab() {
               trigger={
                 <Button
                   variant="outline"
-                  className="border-warning/60 text-warning"
+                  className="border-warning/60 text-warning-text"
                   tabIndex={-1}
                 >
                   Run now
@@ -349,7 +349,7 @@ export function MaintenanceTab() {
               trigger={
                 <Button
                   variant="outline"
-                  className="border-warning/60 text-warning"
+                  className="border-warning/60 text-warning-text"
                   tabIndex={-1}
                 >
                   Run now

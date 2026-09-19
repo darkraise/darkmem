@@ -42,7 +42,7 @@ function highlight(line: string, language: FileSource["language"]) {
     const start = match.index ?? 0
     if (start > last) parts.push(line.slice(last, start))
     parts.push(
-      <span key={`${start}-${match[0]}`} className="text-primary">
+      <span key={`${start}-${match[0]}`} className="text-primary-text">
         {match[0]}
       </span>,
     )
@@ -135,7 +135,7 @@ function PanelChrome({
         ) : (
           <ChevronDown aria-hidden className="h-3.5 w-3.5 shrink-0" />
         )}
-        <Code2 aria-hidden className="text-primary h-3.5 w-3.5 shrink-0" />
+        <Code2 aria-hidden className="text-primary-text h-3.5 w-3.5 shrink-0" />
         <span className="min-w-0 flex-1 truncate font-mono text-sm">
           {name}
           {dir && (
@@ -157,7 +157,7 @@ function PanelChrome({
         onClick={onTogglePinned}
       >
         {file.pinned ? (
-          <Pin aria-hidden className="text-primary h-3 w-3" />
+          <Pin aria-hidden className="text-primary-text h-3 w-3" />
         ) : (
           <PinOff aria-hidden className="h-3 w-3" />
         )}

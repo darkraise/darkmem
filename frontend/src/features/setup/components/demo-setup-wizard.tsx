@@ -65,8 +65,8 @@ function StepPill({
     <span
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm whitespace-nowrap",
-        state === "active" && "border-primary/55 text-primary bg-primary/10",
-        state === "done" && "border-success/50 text-success bg-success/8",
+        state === "active" && "border-primary/55 text-primary-text bg-primary/10",
+        state === "done" && "border-success/50 text-success-text bg-success/8",
         state === "upcoming" && "border-border text-muted-foreground",
       )}
     >
@@ -384,7 +384,7 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
                     />
                     {dir.name}
                     {dir.git && (
-                      <span className="border-success/60 text-success ml-auto inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-mono text-[10px]">
+                      <span className="border-success/60 text-success-text ml-auto inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-mono text-[10px]">
                         <GitBranch aria-hidden className="h-2.5 w-2.5" />
                         git
                       </span>

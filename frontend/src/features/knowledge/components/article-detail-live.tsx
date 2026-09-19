@@ -125,7 +125,7 @@ function CitationRow({
       <Link
         to="/knowledge/facts/$factId"
         params={{ factId: citation.fact_id }}
-        className="text-primary font-mono text-sm hover:underline"
+        className="text-primary-text font-mono text-sm hover:underline"
       >
         fact {citation.fact_id.slice(0, 8)}
       </Link>
@@ -134,7 +134,7 @@ function CitationRow({
       </span>
       <span className="min-w-52 flex-1 text-sm">“{citation.fact}”</span>
       {!citation.believed && (
-        <span className="text-warning font-mono text-sm">
+        <span className="text-warning-text font-mono text-sm">
           belief window closed — retained, no longer believed
         </span>
       )}
@@ -185,7 +185,7 @@ function Detail({ article }: { article: ArticleDetail }) {
               §4.4 amendment names. Rendered in both detail levels: it is an
               honesty signal about what the system tried, not a fingerprint. */}
           {article.resynthesis_held_at && (
-            <span className="text-warning text-sm">
+            <span className="text-warning-text text-sm">
               a re-synthesis was attempted and held
               {article.resynthesis_held_coverage !== null &&
                 ` at coverage ${article.resynthesis_held_coverage.toFixed(2)}`}
@@ -207,7 +207,7 @@ function Detail({ article }: { article: ArticleDetail }) {
           <Link
             to="/knowledge/articles/$articleId"
             params={{ articleId: article.superseded_by }}
-            className="hover:text-primary flex w-fit items-center gap-1.5 text-sm transition-colors"
+            className="hover:text-primary-text flex w-fit items-center gap-1.5 text-sm transition-colors"
           >
             <GitBranch
               aria-hidden
@@ -221,7 +221,7 @@ function Detail({ article }: { article: ArticleDetail }) {
           <Link
             to="/knowledge/articles/$articleId"
             params={{ articleId: article.supersedes }}
-            className="text-muted-foreground hover:text-primary flex w-fit items-center gap-1.5 text-sm transition-colors"
+            className="text-muted-foreground hover:text-primary-text flex w-fit items-center gap-1.5 text-sm transition-colors"
           >
             <GitBranch aria-hidden className="h-3.5 w-3.5" />
             supersedes article {article.supersedes.slice(0, 8)} — view history
@@ -239,7 +239,7 @@ function Detail({ article }: { article: ArticleDetail }) {
                 className="decoration-primary/50 hover:decoration-primary underline decoration-dotted underline-offset-4"
               >
                 {segment.text}
-                <sup className="text-primary ml-0.5 font-mono text-xs">
+                <sup className="text-primary-text ml-0.5 font-mono text-xs">
                   {segment.index + 1}
                 </sup>
               </a>

@@ -37,7 +37,7 @@ function FailureRow({
           {failure.pipeline}
         </span>
         {poison && (
-          <span className="border-warning/65 bg-warning/10 text-warning inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 font-mono text-[10px] uppercase">
+          <span className="border-warning/65 bg-warning/10 text-warning-text inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 font-mono text-[10px] uppercase">
             poison
           </span>
         )}
@@ -73,7 +73,7 @@ function FailureRow({
       <div className="flex flex-wrap items-center gap-2">
         <Button
           variant={poison ? "outline" : "default"}
-          className={cn(poison && "border-warning/60 text-warning")}
+          className={cn(poison && "border-warning/60 text-warning-text")}
           disabled={failure.retry_queued}
           onClick={() => retry(failure.id)}
         >

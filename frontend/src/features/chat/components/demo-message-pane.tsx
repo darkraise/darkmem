@@ -88,12 +88,12 @@ export function DemoMessagePane({
                     className={cn(
                       "inline-flex items-center gap-1.5 text-sm",
                       message.id === selectedTurnId
-                        ? "text-primary"
+                        ? "text-primary-text"
                         : "text-muted-foreground hover:text-foreground",
                     )}
                   >
                     {message.context.degraded ? (
-                      <TriangleAlert aria-hidden className="text-warning h-3 w-3" />
+                      <TriangleAlert aria-hidden className="text-warning-text h-3 w-3" />
                     ) : (
                       <CircleCheck aria-hidden className="h-3 w-3" />
                     )}

@@ -208,7 +208,7 @@ export function RealCodeGraphView({
         </SelectContent>
       </Select>
       {repo.status === "stale" && (
-        <span className="border-warning/60 bg-warning/10 text-warning inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-0.5 text-sm">
+        <span className="border-warning/60 bg-warning/10 text-warning-text inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-0.5 text-sm">
           serving last-good graph ({repo.last_indexed_commit ?? "unknown"}) —
           stale
         </span>
@@ -429,7 +429,7 @@ export function RealCodeGraphView({
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
-                className="border-primary/50 text-primary bg-primary/8 rounded-full"
+                className="border-primary/50 text-primary-text bg-primary/8 rounded-full"
                 disabled={!selectedId || blastRadius.isPending}
                 onClick={runBlastRadius}
               >

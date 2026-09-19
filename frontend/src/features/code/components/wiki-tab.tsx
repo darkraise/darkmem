@@ -47,7 +47,7 @@ function CodeRef({
         ...(target.file ? { file: target.file } : {}),
       }}
       className={cn(
-        "border-border bg-muted/40 hover:border-primary/50 hover:text-primary rounded border px-1 py-px font-mono text-[0.85em] transition-colors",
+        "border-border bg-muted/40 hover:border-primary/50 hover:text-primary-text rounded border px-1 py-px font-mono text-[0.85em] transition-colors",
         className,
       )}
       title={`Open ${target.text} in the code graph`}
@@ -100,7 +100,7 @@ function ProvenanceStat({
         <p
           className={cn(
             "mt-0.5 text-[11px]",
-            tone === "warn" ? "text-warning" : "text-muted-foreground",
+            tone === "warn" ? "text-warning-text" : "text-muted-foreground",
           )}
         >
           {note}

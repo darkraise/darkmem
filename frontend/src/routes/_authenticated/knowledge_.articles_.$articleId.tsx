@@ -39,7 +39,7 @@ function CitePill({
       href={`#cite-${citeKey}`}
       title={`grounded by citation ${citeKey}`}
       onClick={() => onNavigate(citeKey)}
-      className="border-primary/40 bg-primary/10 text-primary ml-1 inline-flex h-4 min-w-5 items-center justify-center rounded-full border px-1 align-super font-mono text-[10px] font-semibold no-underline"
+      className="border-primary/40 bg-primary/10 text-primary-text ml-1 inline-flex h-4 min-w-5 items-center justify-center rounded-full border px-1 align-super font-mono text-[10px] font-semibold no-underline"
     >
       {citeKey}
     </a>
@@ -90,7 +90,7 @@ function CitationRow({
       <Link
         to="/knowledge/facts/$factId"
         params={{ factId: citation.fact_id }}
-        className="hover:text-primary font-mono text-sm transition-colors"
+        className="hover:text-primary-text font-mono text-sm transition-colors"
       >
         fact {citation.fact_id.slice(0, 8)}
       </Link>
@@ -228,7 +228,7 @@ function ArticleDetailPage() {
           <Link
             to="/knowledge/articles/$articleId"
             params={{ articleId: successor }}
-            className="hover:text-primary flex w-fit items-center gap-1.5 text-sm transition-colors"
+            className="hover:text-primary-text flex w-fit items-center gap-1.5 text-sm transition-colors"
           >
             <GitBranch
               aria-hidden
@@ -242,11 +242,11 @@ function ArticleDetailPage() {
           <div className="border-warning/55 bg-warning/8 flex max-w-[70ch] items-start gap-2 rounded-sm border border-dashed px-2.5 py-1.5 text-sm">
             <TriangleAlert
               aria-hidden
-              className="text-warning mt-0.5 h-4 w-4 shrink-0"
+              className="text-warning-text mt-0.5 h-4 w-4 shrink-0"
             />
             <span>
               {article.ungrounded_note}{" "}
-              <Link to="/knowledge/review" className="text-primary">
+              <Link to="/knowledge/review" className="text-primary-text">
                 Open the Review queue →
               </Link>
             </span>
@@ -342,7 +342,7 @@ function ArticleDetailPage() {
                 fingerprint, which simple mode hides (invariant 14 only
                 protects the label, never the technical proof behind it). */}
             {level === "advanced" && (
-              <p className="text-warning font-mono text-sm">
+              <p className="text-warning-text font-mono text-sm">
                 fact_set_hash at synthesis {article.fact_set_hash} → current{" "}
                 {article.current_fact_set_hash} (changed → stale)
               </p>
@@ -364,7 +364,7 @@ function ArticleDetailPage() {
             {level === "advanced" && (
               <MetaRow label="fact_set_hash">
                 {article.stale ? (
-                  <span className="text-warning">
+                  <span className="text-warning-text">
                     at synthesis {article.fact_set_hash} → current{" "}
                     {article.current_fact_set_hash} (changed → stale)
                   </span>

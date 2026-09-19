@@ -6,7 +6,7 @@ export type KnowledgeLayer = 0 | 1 | 2 | 3
 const LAYERS: Record<KnowledgeLayer, { name: string; className: string }> = {
   0: { name: "memory", className: "text-muted-foreground" },
   1: { name: "graph", className: "border-chart-3/40 text-chart-3" },
-  2: { name: "fact", className: "border-primary/40 text-primary" },
+  2: { name: "fact", className: "border-primary/40 text-primary-text" },
   3: { name: "article", className: "border-chart-2/40 text-chart-2" },
 }
 

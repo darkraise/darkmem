@@ -84,7 +84,7 @@ function RunCard({
         ),
       })}
     >
-      <Bookmark aria-hidden className="text-primary h-4 w-4 shrink-0" />
+      <Bookmark aria-hidden className="text-primary-text h-4 w-4 shrink-0" />
       <span className="flex min-w-0 flex-1 basis-56 flex-col gap-0.5">
         <span className="text-sm font-semibold">{run.title}</span>
         <span className="text-muted-foreground text-sm">
@@ -181,7 +181,7 @@ function RunDetail({
                 <li key={step} className="flex items-start gap-1.5 text-sm">
                   <ChevronRight
                     aria-hidden
-                    className="text-primary mt-0.5 h-3.5 w-3.5 shrink-0"
+                    className="text-primary-text mt-0.5 h-3.5 w-3.5 shrink-0"
                   />
                   {step}
                 </li>

@@ -149,7 +149,7 @@ function BoolTag({ on }: { on: boolean }) {
       className={cn(
         "rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wide whitespace-nowrap uppercase",
         on
-          ? "border-primary/55 bg-primary/10 text-primary"
+          ? "border-primary/55 bg-primary/10 text-primary-text"
           : "border-border text-muted-foreground bg-muted/40 border-dashed",
       )}
     >
@@ -179,7 +179,7 @@ function SourceTag({ source }: { source: DemoRankArm["source"] }) {
         "font-mono text-[10px] whitespace-nowrap",
         source === "default"
           ? "text-muted-foreground italic"
-          : "text-primary/80",
+          : "text-primary-text/80",
       )}
     >
       ({sourceLabel(source)})
@@ -200,7 +200,7 @@ function UnmeasuredTag() {
       <Tooltip>
         <TooltipTrigger
           aria-label="About the unmeasured badge"
-          className="border-warning/50 text-warning cursor-help rounded-full border border-dashed px-2 py-0.5 font-mono text-[10px] tracking-wide whitespace-nowrap uppercase"
+          className="border-warning/50 text-warning-text cursor-help rounded-full border border-dashed px-2 py-0.5 font-mono text-[10px] tracking-wide whitespace-nowrap uppercase"
         >
           unmeasured
         </TooltipTrigger>
@@ -238,9 +238,9 @@ function LadderStatePill({ param }: { param: DemoLadderParam }) {
           className={cn(
             "inline-flex cursor-help items-center rounded-full border px-2.5 py-0.5 font-mono text-[10px] tracking-wide whitespace-nowrap uppercase",
             clamped
-              ? "border-warning/60 bg-warning/10 text-warning"
+              ? "border-warning/60 bg-warning/10 text-warning-text"
               : param.state === "honoured"
-                ? "border-primary/55 bg-primary/10 text-primary"
+                ? "border-primary/55 bg-primary/10 text-primary-text"
                 : "border-border text-muted-foreground bg-muted/40 border-dashed",
           )}
         >
@@ -387,11 +387,11 @@ function Section({
           children stacked in a column — a header three lines tall that still
           reported `display: flex` and `flex-wrap: nowrap`. */}
       <CardHeader className="border-border bg-muted/30 flex flex-row flex-nowrap items-center gap-2 space-y-0 overflow-hidden border-b px-4 py-2.5">
-        {/* `text-primary`, not `text-accent`: in this theme `--accent` is the
+        {/* `text-primary-text`, not `text-accent`: in this theme `--accent` is the
             near-white hover surface (210 40% 96%) and `--primary` is the brand
             colour the library's own comment calls the accent source. An icon
             on `text-accent` would be all but invisible on the header. */}
-        <Icon aria-hidden className="text-primary h-4 w-4 shrink-0" />
+        <Icon aria-hidden className="text-primary-text h-4 w-4 shrink-0" />
         <h3 className="text-foreground min-w-0 truncate font-mono text-[11px] font-semibold tracking-[0.14em] uppercase">
           {name}
         </h3>
@@ -712,7 +712,7 @@ function CorroborationSection({ binding }: { binding: FlagsTabBinding }) {
                   <LadderStatePill param={param} />
                 </div>
                 {param.state === "clamped" && param.note && (
-                  <p className="text-warning pl-0.5 text-sm">{param.note}</p>
+                  <p className="text-warning-text pl-0.5 text-sm">{param.note}</p>
                 )}
               </div>
             ))}
@@ -892,7 +892,7 @@ function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
             content under a different mode is not bit-identical.
           </HelpTip>
           <span className="flex-1" />
-          <span className="border-primary/55 bg-primary/10 text-primary rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wide uppercase">
+          <span className="border-primary/55 bg-primary/10 text-primary-text rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wide uppercase">
             {binding.classificationMode}
           </span>
         </div>
@@ -903,7 +903,7 @@ function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
               In <span className="font-mono">simple</span> mode the label space
               is <b className="text-foreground font-semibold">fixed</b>: the
               classification areas are{" "}
-              <b className="text-warning font-semibold">not read at all</b>, so
+              <b className="text-warning-text font-semibold">not read at all</b>, so
               they are hidden here rather than shown as settings that do
               nothing. Edit and switch to{" "}
               <span className="font-mono">expanded</span> to configure them.
@@ -1075,7 +1075,7 @@ function ClassificationDialog({
             <span className="font-mono">simple</span> uses a{" "}
             <b className="text-foreground font-semibold">fixed</b> nine-label
             vocabulary and{" "}
-            <b className="text-warning font-semibold">does not read</b> the
+            <b className="text-warning-text font-semibold">does not read</b> the
             classification areas, so there is nothing to choose here. Pick{" "}
             <span className="font-mono">expanded</span> to bring them back —
             whatever was enabled before is preserved and will be saved with the

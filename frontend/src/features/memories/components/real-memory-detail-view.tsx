@@ -29,7 +29,7 @@ function LineageLink({ id, content }: { id: string; content: string }) {
     <Link
       to="/memories/$memoryId"
       params={{ memoryId: id }}
-      className="hover:text-primary flex min-w-0 items-center gap-1.5 text-sm transition-colors"
+      className="hover:text-primary-text flex min-w-0 items-center gap-1.5 text-sm transition-colors"
     >
       <Link2
         aria-hidden

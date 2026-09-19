@@ -149,7 +149,7 @@ export function RealMemoriesView() {
           <span
             className={cn(
               "font-mono text-sm",
-              rows.length > 0 ? "text-success" : "text-muted-foreground",
+              rows.length > 0 ? "text-success-text" : "text-muted-foreground",
             )}
           >
             {rows.length > 0 ? "populated" : "empty"}

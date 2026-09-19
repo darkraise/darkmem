@@ -26,8 +26,8 @@ export function DemoContextPanel({
             "ml-auto font-mono text-sm",
             context
               ? context.degraded
-                ? "text-warning"
-                : "text-success"
+                ? "text-warning-text"
+                : "text-success-text"
               : "text-muted-foreground",
           )}
         >
@@ -53,7 +53,7 @@ export function DemoContextPanel({
             <div className="border-warning/55 bg-warning/12 flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm">
               <TriangleAlert
                 aria-hidden
-                className="text-warning h-3.5 w-3.5 shrink-0"
+                className="text-warning-text h-3.5 w-3.5 shrink-0"
               />
               <b className="font-semibold">{context.degraded}</b>
             </div>

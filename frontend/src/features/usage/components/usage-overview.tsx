@@ -139,7 +139,7 @@ function BreakdownTable({
                       {row.unmeasured_calls > 0 || row.unpriced_calls > 0 ? (
                         <AlertTriangle
                           aria-label={`${row.key} has calls that are not fully costed`}
-                          className="text-warning ml-1 inline h-3 w-3"
+                          className="text-warning-text ml-1 inline h-3 w-3"
                         />
                       ) : null}
                     </TableCell>

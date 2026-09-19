@@ -30,7 +30,7 @@ export function ListSurface({
         <span
           className={cn(
             "font-mono text-sm",
-            populated ? "text-success" : "text-muted-foreground",
+            populated ? "text-success-text" : "text-muted-foreground",
           )}
         >
           {populated ? "populated" : "empty"}

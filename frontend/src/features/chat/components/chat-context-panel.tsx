@@ -37,8 +37,8 @@ interface ChatContextPanelProps {
 }
 
 const STATE_STYLE: Record<string, string> = {
-  ok: "text-success",
-  failed: "text-warning",
+  ok: "text-success-text",
+  failed: "text-warning-text",
   "not asked": "text-muted-foreground",
 }
 
@@ -79,8 +79,8 @@ export function ChatContextPanel({
             !populated
               ? "text-muted-foreground"
               : degraded
-                ? "text-warning"
-                : "text-success",
+                ? "text-warning-text"
+                : "text-success-text",
           )}
         >
           {!populated ? "empty" : degraded ? "degraded" : "populated"}
@@ -100,7 +100,7 @@ export function ChatContextPanel({
             <div className="border-warning/55 bg-warning/12 flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm">
               <TriangleAlert
                 aria-hidden
-                className="text-warning h-3.5 w-3.5 shrink-0"
+                className="text-warning-text h-3.5 w-3.5 shrink-0"
               />
               <b className="font-semibold">
                 A retrieval channel failed — this answer was built on what

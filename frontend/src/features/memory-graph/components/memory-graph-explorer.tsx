@@ -428,7 +428,7 @@ export function MemoryGraphExplorer() {
                         className={cn(
                           "inline-flex shrink-0 items-center gap-1 font-mono text-[10px]",
                           focusTopic === topic.id
-                            ? "text-primary"
+                            ? "text-primary-text"
                             : "text-muted-foreground hover:text-foreground",
                         )}
                         onClick={() =>

@@ -21,8 +21,8 @@ export function PhaseTicker({ phases }: { phases: DemoIndexPhase[] }) {
           <span
             className={cn(
               "w-5 shrink-0 font-mono text-sm",
-              phase.state === "done" && "text-primary",
-              phase.state === "current" && "text-info",
+              phase.state === "done" && "text-primary-text",
+              phase.state === "current" && "text-info-text",
             )}
           >
             {String(phase.n).padStart(2, "0")}

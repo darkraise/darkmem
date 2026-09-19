@@ -109,7 +109,7 @@ export function GraphToolbar({
         <PopoverTrigger asChild>
           <Toggle
             aria-label="Toggle graph settings"
-            className="bg-card/80 border-border data-[pressed]:bg-primary/20 data-[pressed]:text-primary pointer-events-auto h-8 w-8 rounded-md border p-0 shadow-lg backdrop-blur-sm"
+            className="bg-card/80 border-border data-[pressed]:bg-primary/20 data-[pressed]:text-primary-text pointer-events-auto h-8 w-8 rounded-md border p-0 shadow-lg backdrop-blur-sm"
           >
             <Settings className="h-3.5 w-3.5" />
           </Toggle>

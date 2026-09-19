@@ -23,19 +23,19 @@ const STYLES: Record<VerificationStatus, { icon: LucideIcon; className: string }
   },
   corroborated: {
     icon: Waypoints,
-    className: "border-primary/50 bg-primary/10 text-primary",
+    className: "border-primary/50 bg-primary/10 text-primary-text",
   },
   confirmed: {
     icon: CircleCheck,
-    className: "border-success/50 bg-success/10 text-success",
+    className: "border-success/50 bg-success/10 text-success-text",
   },
   disputed: {
     icon: CircleAlert,
-    className: "border-warning/50 bg-warning/10 text-warning",
+    className: "border-warning/50 bg-warning/10 text-warning-text",
   },
   superseded: {
     icon: History,
-    className: "border-warning/50 bg-warning/10 text-warning",
+    className: "border-warning/50 bg-warning/10 text-warning-text",
   },
 }
 

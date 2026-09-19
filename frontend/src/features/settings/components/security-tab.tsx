@@ -116,7 +116,7 @@ function CardShell({
   return (
     <Card className={cn("gap-0 py-0", dormant && "border-dashed", className)}>
       <CardHeader className="border-border bg-muted/30 flex flex-row flex-nowrap items-center gap-2 space-y-0 overflow-hidden border-b px-4 py-2.5">
-        <Icon aria-hidden className="text-primary h-4 w-4 shrink-0" />
+        <Icon aria-hidden className="text-primary-text h-4 w-4 shrink-0" />
         <h3
           className={cn(
             "min-w-0 truncate text-sm font-semibold",
@@ -158,7 +158,7 @@ function PillFlow({ steps }: { steps: string[] }) {
           <span
             className={cn(
               "border-inset bg-muted/40 rounded-full border px-2.5 py-0.5 font-mono text-sm whitespace-nowrap",
-              i === 0 && "border-primary/55 text-primary bg-primary/8",
+              i === 0 && "border-primary/55 text-primary-text bg-primary/8",
             )}
           >
             {step}
@@ -388,7 +388,7 @@ function LanTrustCard({ binding }: { binding: SecurityTabBinding }) {
                 key={h.host}
                 className={cn(
                   "border-inset bg-background rounded-full border px-2 py-0.5 font-mono text-sm",
-                  h.wild && "text-warning border-warning/55 border-dashed",
+                  h.wild && "text-warning-text border-warning/55 border-dashed",
                 )}
               >
                 {h.host}

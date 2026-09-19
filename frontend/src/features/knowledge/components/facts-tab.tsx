@@ -113,7 +113,7 @@ export function FactRow({
       <Link
         to="/knowledge/facts/$factId"
         params={{ factId: fact.id }}
-        className="hover:text-primary text-muted-foreground block font-mono text-sm transition-colors"
+        className="hover:text-primary-text text-muted-foreground block font-mono text-sm transition-colors"
       >
         sources, ladder and windows →
       </Link>

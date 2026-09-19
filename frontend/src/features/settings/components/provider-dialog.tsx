@@ -277,7 +277,7 @@ export function ProviderDialog({
 
         {error && <p className="text-destructive text-sm">{error.message}</p>}
         {update.data && update.data.no_embedding_purposes.length > 0 && (
-          <p className="text-warning text-sm">
+          <p className="text-warning-text text-sm">
             {update.data.no_embedding_purposes.join(", ")} lost their embeddings
             endpoint with this api_kind change.
           </p>
@@ -289,7 +289,7 @@ export function ProviderDialog({
           </Button>
           <Button
             variant="outline"
-            className="border-primary/60 text-primary"
+            className="border-primary/60 text-primary-text"
             disabled={!canSubmit}
             onClick={submit}
           >

@@ -308,7 +308,7 @@ export function RealMemoryGraphPage() {
                 size="icon"
                 aria-label="Filters"
                 title="Filters"
-                className={`h-8 w-8 rounded-md shadow-lg ${filters.showFilters ? "bg-primary/20 border-primary text-primary hover:bg-primary/30 hover:text-primary" : "bg-card/80 backdrop-blur-sm"}`}
+                className={`h-8 w-8 rounded-md shadow-lg ${filters.showFilters ? "bg-primary/20 border-primary text-primary-text hover:bg-primary/30 hover:text-primary-text" : "bg-card/80 backdrop-blur-sm"}`}
                 onClick={() => filters.setShowFilters((v) => !v)}
               >
                 <Filter className="h-4 w-4" />
@@ -365,7 +365,7 @@ export function RealMemoryGraphPage() {
                     below is a different thing and stays: it reports that this
                     view is missing data, which nothing else on the page says. */}
                 {data?.entities_truncated && (
-                  <p className="bg-warning/12 border-warning/55 text-warning rounded-md border px-2.5 py-1 text-sm shadow-lg backdrop-blur-sm">
+                  <p className="bg-warning/12 border-warning/55 text-warning-text rounded-md border px-2.5 py-1 text-sm shadow-lg backdrop-blur-sm">
                     Entity overlay truncated — showing a partial view.
                   </p>
                 )}

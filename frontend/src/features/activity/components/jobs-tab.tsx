@@ -45,12 +45,12 @@ const STATUS_STYLES: Record<
   idle: {
     icon: null,
     label: "idle",
-    className: "border-success/40 bg-success/10 text-success",
+    className: "border-success/40 bg-success/10 text-success-text",
   },
   running: {
     icon: RefreshCw,
     label: "running",
-    className: "border-info/50 bg-info/10 text-info",
+    className: "border-info/50 bg-info/10 text-info-text",
   },
   "last-run-failed": {
     icon: TriangleAlert,
@@ -302,7 +302,7 @@ function JobRow({
         <Button
           variant="outline"
           className={cn(
-            job.last_status === "error" && "border-warning/60 text-warning",
+            job.last_status === "error" && "border-warning/60 text-warning-text",
           )}
           onClick={() => {
             // The success message only fires once the request actually
@@ -322,14 +322,14 @@ function JobRow({
             : "Trigger now"}
         </Button>
         {triggered && (
-          <span className="text-success font-mono text-sm">
+          <span className="text-success-text font-mono text-sm">
             triggered — ran to completion
           </span>
         )}
       </div>
       {busy?.key === job.key && (
         <div className="border-warning/55 bg-warning/10 flex gap-2.5 rounded-md border p-3">
-          <Lock aria-hidden className="text-warning h-4 w-4 shrink-0" />
+          <Lock aria-hidden className="text-warning-text h-4 w-4 shrink-0" />
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <span className="text-sm font-semibold">
               busy — {job.key} is already running
@@ -341,7 +341,7 @@ function JobRow({
               This trigger request was not queued; try again once the current
               run finishes.
             </span>
-            <span className="text-warning font-mono text-sm">
+            <span className="text-warning-text font-mono text-sm">
               HTTP 409 · POST /api/v1/jobs/{job.key}/trigger
             </span>
           </div>

@@ -226,7 +226,7 @@ function ScopeRow({
       {Icon && <Icon aria-hidden className="h-3.5 w-3.5 shrink-0" />}
       <span className="min-w-0 flex-1 truncate">{label}</span>
       <span className="text-muted-foreground/70 shrink-0 text-xs">{hint}</span>
-      {active && <Check aria-hidden className="text-primary h-3.5 w-3.5 shrink-0" />}
+      {active && <Check aria-hidden className="text-primary-text h-3.5 w-3.5 shrink-0" />}
     </button>
   )
 }

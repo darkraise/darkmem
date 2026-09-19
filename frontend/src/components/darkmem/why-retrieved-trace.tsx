@@ -47,7 +47,7 @@ export function WhyRetrievedTrace({
           className,
         )}
       >
-        <Lightbulb aria-hidden className="text-primary h-4 w-4 shrink-0" />
+        <Lightbulb aria-hidden className="text-primary-text h-4 w-4 shrink-0" />
         <span>
           <b className="text-foreground font-semibold">Why it ranked:</b>{" "}
           {summary}
@@ -89,7 +89,7 @@ export function WhyRetrievedTrace({
         )
       })}
       <div className="bg-primary/10 border-primary/35 mt-0.5 flex items-center gap-2.5 rounded-md border px-2.5 py-1.5">
-        <span className="text-primary font-mono text-sm tracking-wide uppercase">
+        <span className="text-primary-text font-mono text-sm tracking-wide uppercase">
           rrf_score
         </span>
         <span className="font-mono text-sm font-semibold">

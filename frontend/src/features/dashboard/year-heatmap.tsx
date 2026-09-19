@@ -40,10 +40,10 @@ function CellPopover({ day }: { day: ContributionDay }) {
         </ul>
       )}
       {day.verified > 0 && (
-        <p className="text-success text-sm">{day.verified} verified</p>
+        <p className="text-success-text text-sm">{day.verified} verified</p>
       )}
       {day.injects > 0 && (
-        <p className="text-info text-sm">
+        <p className="text-info-text text-sm">
           {day.injects} inject{day.injects === 1 ? "" : "s"} — see the day
           timeline for what was pushed
         </p>

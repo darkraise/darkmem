@@ -276,9 +276,9 @@ export function PurposeDialog({
 
           {/* Derived warnings stay visible — a 404-on-every-request footgun is
               never demoted to a hover. */}
-          {warning && <p className="text-warning text-sm">{warning}</p>}
+          {warning && <p className="text-warning-text text-sm">{warning}</p>}
           {!warning && purpose.hint?.tone === "caution" && (
-            <p className="text-warning text-sm">{purpose.hint.text}</p>
+            <p className="text-warning-text text-sm">{purpose.hint.text}</p>
           )}
 
           {isSummarization &&
@@ -307,7 +307,7 @@ export function PurposeDialog({
           </Button>
           <Button
             variant="outline"
-            className="border-primary/60 text-primary"
+            className="border-primary/60 text-primary-text"
             disabled={dirty.length === 0 || !paramsCheck.ok}
             onClick={save}
           >

@@ -62,7 +62,7 @@ export function ProviderItem({
 
   const identity = (
     <div className="flex min-w-0 flex-wrap items-center gap-2">
-      <Plug aria-hidden className="text-primary h-4 w-4 shrink-0" />
+      <Plug aria-hidden className="text-primary-text h-4 w-4 shrink-0" />
       <span className="font-mono text-sm font-semibold">{provider.name}</span>
       {frozen && (
         <>
@@ -123,7 +123,7 @@ export function ProviderItem({
         icon={Pencil}
         label={`Edit ${provider.name}`}
         variant="outline"
-        className="border-primary/60 text-primary ml-auto"
+        className="border-primary/60 text-primary-text ml-auto"
         onClick={onEdit}
       />
       <Tooltip>

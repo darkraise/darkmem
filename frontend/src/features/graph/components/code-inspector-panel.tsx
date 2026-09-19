@@ -404,7 +404,7 @@ export function CodeInspectorPanel({
               {symbolDetail ? (
                 <div className="space-y-3">
                   <div className="border-border bg-card flex items-center gap-2 rounded-md border px-3 py-1.5">
-                    <span className="text-primary font-mono text-sm">◈</span>
+                    <span className="text-primary-text font-mono text-sm">◈</span>
                     <span className="text-foreground flex-1 truncate font-mono text-sm">
                       {symbolDetail.file_path ?? symbolDetail.name}
                     </span>
@@ -519,7 +519,7 @@ export function CodeInspectorPanel({
                       {r.file_path}
                     </div>
                     {r.symbol_name && (
-                      <div className="text-primary mt-0.5 font-mono text-sm">
+                      <div className="text-primary-text mt-0.5 font-mono text-sm">
                         {r.symbol_name}
                       </div>
                     )}

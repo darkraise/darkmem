@@ -17,19 +17,19 @@ const STYLES: Record<
   ready: {
     icon: CircleCheck,
     label: "ready",
-    className: "border-success/50 bg-success/10 text-success",
+    className: "border-success/50 bg-success/10 text-success-text",
   },
   indexing: {
     icon: RefreshCw,
     label: "indexing",
-    className: "border-info/50 bg-info/10 text-info",
+    className: "border-info/50 bg-info/10 text-info-text",
   },
   // stale is a per-repo status (T1), not a whole-screen render state: the
   // last-good graph is still served, only labelled.
   stale: {
     icon: Clock,
     label: "stale",
-    className: "border-warning/60 border-dashed bg-warning/10 text-warning",
+    className: "border-warning/60 border-dashed bg-warning/10 text-warning-text",
   },
   error: {
     icon: TriangleAlert,

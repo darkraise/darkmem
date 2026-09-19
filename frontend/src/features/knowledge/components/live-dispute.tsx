@@ -47,7 +47,7 @@ export function LiveDisputePanel({ dispute }: { dispute: FactDispute }) {
           <Link
             to="/knowledge/facts/$factId"
             params={{ factId: dispute.counterpart.id }}
-            className="text-primary text-sm"
+            className="text-primary-text text-sm"
           >
             view the counterpart fact →
           </Link>

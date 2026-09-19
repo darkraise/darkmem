@@ -247,7 +247,7 @@ export function DocumentOutline({
                     style={{ paddingLeft: `${style.indent}px` }}
                     className={`hover:bg-muted/60 focus-visible:ring-primary/40 block w-full cursor-pointer truncate rounded-sm py-0.5 pr-1.5 text-left leading-5 transition-colors focus-visible:ring-2 focus-visible:outline-none ${
                       active
-                        ? "text-primary text-sm font-semibold"
+                        ? "text-primary-text text-sm font-semibold"
                         : `${style.text} hover:text-foreground`
                     }`}
                     title={node.text}

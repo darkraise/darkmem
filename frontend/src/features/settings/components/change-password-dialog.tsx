@@ -110,7 +110,7 @@ export function ChangePasswordDialog({
 
         {/* The revocation consequence stays visible next to the trigger — a
             destructive side effect is never demoted to a hover. */}
-        <p className="text-warning text-sm">
+        <p className="text-warning-text text-sm">
           <b className="font-semibold">
             Changing your password revokes every token minted before this moment
           </b>{" "}
@@ -128,7 +128,7 @@ export function ChangePasswordDialog({
           <p className="text-destructive text-sm">{password.error}</p>
         )}
         {password.success && (
-          <p className="text-success text-sm">
+          <p className="text-success-text text-sm">
             Password changed — all pre-change tokens are now dead by iat.
           </p>
         )}
@@ -139,7 +139,7 @@ export function ChangePasswordDialog({
           trigger={
             <Button
               variant="outline"
-              className="border-primary/60 text-primary"
+              className="border-primary/60 text-primary-text"
               disabled={!filled || password.pending}
               tabIndex={-1}
             >

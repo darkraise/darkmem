@@ -161,7 +161,7 @@ function DreamEntry({ action }: { action: DemoDreamAction }) {
         <Badge
           variant="outline"
           size="sm"
-          className="border-warning/55 bg-warning/10 text-warning"
+          className="border-warning/55 bg-warning/10 text-warning-text"
         >
           {action.caution_tag}
         </Badge>
@@ -327,7 +327,7 @@ function DemoDreamDigest() {
             <span
               className={cn(
                 "font-mono text-xl font-semibold",
-                stat.caution && "text-warning",
+                stat.caution && "text-warning-text",
               )}
             >
               {stat.value}
@@ -351,7 +351,7 @@ function DemoDreamDigest() {
       {cycle.disputed && (
         <div className="border-destructive/45 bg-destructive/5 space-y-2.5 rounded-md border border-dashed p-3">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="border-warning/55 bg-warning/10 text-warning inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm font-semibold">
+            <span className="border-warning/55 bg-warning/10 text-warning-text inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm font-semibold">
               <Scale aria-hidden className="h-3.5 w-3.5" />
               Disputed (surfaced this cycle)
             </span>

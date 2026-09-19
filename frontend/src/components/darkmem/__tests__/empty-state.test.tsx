@@ -20,10 +20,10 @@ describe("EmptyState", () => {
   // so a caller cannot give two surfaces different marks for the same event.
   it.each([
     ["empty", "text-muted-foreground"],
-    ["filtered", "text-info"],
-    ["missing", "text-warning"],
+    ["filtered", "text-info-text"],
+    ["missing", "text-warning-text"],
     ["failed", "text-destructive"],
-    ["resolved", "text-success"],
+    ["resolved", "text-success-text"],
   ] as const)("paints %s with the %s token", (kind, token) => {
     const { container } = render(<EmptyState kind={kind} title="t" />)
     const tone = container.querySelector(".dr-empty-state-icon > span")

@@ -284,7 +284,7 @@ export function CodeGraphTab({
         </SelectContent>
       </Select>
       {repo.status === "stale" && repo.stale && (
-        <span className="border-warning/60 bg-warning/10 text-warning inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-0.5 text-sm">
+        <span className="border-warning/60 bg-warning/10 text-warning-text inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-0.5 text-sm">
           serving last-good graph ({repo.stale.last_good_head}) — stale
         </span>
       )}
@@ -302,7 +302,7 @@ export function CodeGraphTab({
           <p className="text-sm font-semibold">
             Building the code graph for {repo.name}
           </p>
-          <div className="text-info flex items-center gap-2.5 font-mono text-sm">
+          <div className="text-info-text flex items-center gap-2.5 font-mono text-sm">
             {currentPhase
               ? `phase ${String(currentPhase.n).padStart(2, "0")} — ${donePhases + 1} of ${activePhases} phases`
               : "starting…"}
@@ -501,7 +501,7 @@ export function CodeGraphTab({
               size="icon"
               className={cn(
                 "h-7 w-7",
-                playing && "border-primary/50 text-primary bg-primary/10",
+                playing && "border-primary/50 text-primary-text bg-primary/10",
               )}
               aria-label={playing ? "Pause layout" : "Play layout"}
               aria-pressed={playing}
@@ -537,8 +537,8 @@ export function CodeGraphTab({
           </ToggleGroup>
         </div>
         <span className="text-muted-foreground ml-auto font-mono text-sm whitespace-nowrap">
-          <b className="text-primary font-semibold">{graph.nodes.length}</b> n{" "}
-          <b className="text-primary font-semibold">{graph.edges.length}</b> e
+          <b className="text-primary-text font-semibold">{graph.nodes.length}</b> n{" "}
+          <b className="text-primary-text font-semibold">{graph.edges.length}</b> e
         </span>
       </div>
 
@@ -727,7 +727,7 @@ export function CodeGraphTab({
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
-                className="border-primary/50 text-primary bg-primary/8 rounded-full"
+                className="border-primary/50 text-primary-text bg-primary/8 rounded-full"
                 disabled={!selectedId}
                 onClick={() => {
                   if (selectedId)

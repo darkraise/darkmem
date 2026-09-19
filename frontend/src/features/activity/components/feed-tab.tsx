@@ -77,7 +77,7 @@ export function FeedTab() {
         }
         meta="/activity"
         actions={
-          <span className="text-success inline-flex items-center gap-1.5 font-mono text-sm">
+          <span className="text-success-text inline-flex items-center gap-1.5 font-mono text-sm">
             <span aria-hidden className="bg-success h-1.5 w-1.5 rounded-full" />
             {DEMO ? "connected" : "polling every 5s"}
           </span>

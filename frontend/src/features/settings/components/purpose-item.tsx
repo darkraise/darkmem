@@ -65,7 +65,7 @@ export function PurposeItem({
 
   const identity = (
     <div className="flex min-w-0 flex-wrap items-center gap-2">
-      <Icon aria-hidden className="text-primary h-4 w-4 shrink-0" />
+      <Icon aria-hidden className="text-primary-text h-4 w-4 shrink-0" />
       <span className="font-mono text-sm font-semibold">{purpose.purpose}</span>
       <HelpTip label={`About the ${purpose.purpose} purpose`}>
         {purpose.role}
@@ -105,7 +105,7 @@ export function PurposeItem({
         icon={Pencil}
         label={`Edit ${purpose.purpose}`}
         variant="outline"
-        className="border-primary/60 text-primary"
+        className="border-primary/60 text-primary-text"
         onClick={onEdit}
       />
     </div>

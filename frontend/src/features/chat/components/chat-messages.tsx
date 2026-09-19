@@ -62,7 +62,7 @@ function truncateContent(content: string, maxLen = 40): string {
 function AssistantAvatar() {
   return (
     <Avatar className="mt-0.5 h-7 w-7 shrink-0 rounded-lg">
-      <AvatarFallback className="bg-primary/10 text-primary rounded-lg">
+      <AvatarFallback className="bg-primary/10 text-primary-text rounded-lg">
         <Bot className="h-4 w-4" />
       </AvatarFallback>
     </Avatar>
@@ -72,7 +72,7 @@ function AssistantAvatar() {
 function UserAvatar() {
   return (
     <Avatar className="mt-0.5 h-7 w-7 shrink-0">
-      <AvatarFallback className="bg-primary/10 text-primary">
+      <AvatarFallback className="bg-primary/10 text-primary-text">
         <User className="h-4 w-4" />
       </AvatarFallback>
     </Avatar>

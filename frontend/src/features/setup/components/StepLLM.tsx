@@ -335,7 +335,7 @@ function PurposeRow({ purpose }: { purpose: Purpose }) {
         {probe.data?.error && (
           <span className="text-destructive text-sm">{probe.data.error}</span>
         )}
-        {warning && <span className="text-warning text-sm">{warning}</span>}
+        {warning && <span className="text-warning-text text-sm">{warning}</span>}
       </div>
       {!isEmbedding && purpose !== "reranker" ? (
         <Label className="flex items-center gap-2">

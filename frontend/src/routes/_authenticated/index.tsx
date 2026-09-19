@@ -60,7 +60,7 @@ function StatTile({
           {change && (
             <StatChange direction={change.direction}>{change.text}</StatChange>
           )}
-          {caption && <p className="text-warning text-sm">{caption}</p>}
+          {caption && <p className="text-warning-text text-sm">{caption}</p>}
         </Stat>
       </CardContent>
     </Card>

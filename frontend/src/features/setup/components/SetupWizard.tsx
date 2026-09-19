@@ -136,7 +136,7 @@ export function SetupWizard() {
               key={s}
               className={`rounded-md border px-3 py-1 transition-colors ${
                 s === step
-                  ? "border-primary bg-primary/10 text-primary"
+                  ? "border-primary bg-primary/10 text-primary-text"
                   : s < step
                     ? "border-muted bg-muted/30 text-muted-foreground"
                     : "border-muted/50 text-muted-foreground"

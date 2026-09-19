@@ -129,7 +129,7 @@ function ArticleRow({ article }: { article: ArticleView }) {
         <Link
           to="/knowledge/articles/$articleId"
           params={{ articleId: article.id }}
-          className="hover:text-primary block text-sm font-semibold transition-colors"
+          className="hover:text-primary-text block text-sm font-semibold transition-colors"
         >
           {article.title}
         </Link>
@@ -145,11 +145,11 @@ function ArticleRow({ article }: { article: ArticleView }) {
           <Link
             to="/knowledge/articles/$articleId"
             params={{ articleId: article.supersedes }}
-            className="text-muted-foreground hover:text-primary flex w-fit items-center gap-1.5 text-sm transition-colors"
+            className="text-muted-foreground hover:text-primary-text flex w-fit items-center gap-1.5 text-sm transition-colors"
           >
             <GitBranch aria-hidden className="h-3.5 w-3.5" />
             supersedes 1 prior article —{" "}
-            <span className="text-primary">view history →</span>
+            <span className="text-primary-text">view history →</span>
           </Link>
         )}
       </div>
