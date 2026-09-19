@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import { Brain, Loader2, Plus, Search, X } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
-import { EmptyState, useDetailLevel } from "@/components/darkmem"
+import { EmptyState } from "@/components/darkmem"
 import { Input } from "darkraise-ui/components/input"
 import {
   Select,
@@ -23,6 +23,7 @@ import type { DemoMemory } from "@/features/memories/types"
 import type { MemoryTrace } from "@/demo/types"
 import { ExclusionStrip } from "@/components/darkmem"
 import { demoTraceToView } from "@/features/memories/use-memory-search"
+import { MemoryResultsHeader } from "@/features/memories/components/memory-results-header"
 import { MemoryRow } from "@/features/memories/components/memory-row"
 import { MemoryEditorDialog } from "@/features/memories/components/memory-editor-dialog"
 import { RealMemoriesView } from "@/features/memories/components/real-memories-view"
@@ -57,7 +58,6 @@ interface MemoryListRow {
 }
 
 function DemoMemoriesPage() {
-  const advanced = useDetailLevel((s) => s.level) === "advanced"
   const memories = useDemoMemories()
   const { date: dateParam } = Route.useSearch()
 
@@ -315,26 +315,13 @@ function DemoMemoriesPage() {
         )}
 
         <div className="border-border bg-card min-w-0 overflow-hidden rounded-lg border">
-          <div className="border-border bg-muted/30 flex flex-wrap items-center gap-2.5 border-b px-4 py-2.5">
-            <span className="text-sm font-semibold">
-              Results — project: {scopeLabel}
-            </span>
-            {(shownCount === 0 || advanced) && (
-              <span
-                className={cn(
-                  "font-mono text-sm",
-                  shownCount > 0 ? "text-success-text" : "text-muted-foreground",
-                )}
-              >
-                {shownCount > 0 ? "populated" : "empty"}
-              </span>
-            )}
-            <span className="text-muted-foreground ml-auto font-mono text-sm">
-              {shownCount} of {matchCount} shown
-            </span>
-          </div>
+          <MemoryResultsHeader
+            scopeLabel={scopeLabel}
+            shown={shownCount}
+            total={matchCount}
+          />
 
-          <div className="p-4">
+          <div className="space-y-3 p-4">
             {/* Exclusion counts render even when the result list is empty —
                 a silent drop is the failure the design fears most. */}
             {searching && <ExclusionStrip items={outcome!.exclusions} />}

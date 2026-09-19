@@ -12,6 +12,7 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from "darkraise-ui/components/toggle-group"
+import { useSetPageChrome } from "@/components/app-chrome"
 import { EmptyState, listItemClass } from "@/components/darkmem"
 import { cn } from "darkraise-ui/lib"
 import { useDemoMemoryGraph } from "@/demo/hooks"
@@ -50,6 +51,11 @@ const chartVar = (n: number) => `var(--chart-${n})`
  * inspector + community navigator as a full-height side column.
  */
 export function MemoryGraphExplorer() {
+  useSetPageChrome({
+    icon: Waypoints,
+    title: "Memory Graph",
+    description: "Entities and topics from your memories, for browsing only.",
+  })
   const graph = useDemoMemoryGraph()
   const project = useProjectStore((s) => s.activeProject)
   const [layout, setLayout] = useState<GraphLayoutMode>("force")

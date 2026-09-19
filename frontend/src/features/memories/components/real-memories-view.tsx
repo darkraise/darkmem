@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react"
 import { Brain, Loader2, Plus, Search, X } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
-import { EmptyState, useDetailLevel } from "@/components/darkmem"
+import { EmptyState } from "@/components/darkmem"
 import { Input } from "darkraise-ui/components/input"
 import { Skeleton } from "darkraise-ui/components/skeleton"
-import { cn } from "darkraise-ui/lib"
 import { PageChrome } from "@/components/app-chrome"
 import { ExclusionStrip } from "@/components/darkmem"
 import { useMainVirtualizer } from "@/lib/use-main-virtualizer"
@@ -15,6 +14,7 @@ import {
 } from "@/stores/project-store"
 import { EXCLUSION_CAVEAT, useMemorySearchPage } from "../use-memory-search"
 import { CreateMemoryDialog } from "./create-memory-dialog"
+import { MemoryResultsHeader } from "./memory-results-header"
 import { MemoryRow, type MemoryRowData } from "./memory-row"
 
 const PAGE = 50
@@ -31,7 +31,6 @@ const ROW_ESTIMATE = 84
  * — that ladder belongs to Facts, not raw memories, until T2.x.
  */
 export function RealMemoriesView() {
-  const advanced = useDetailLevel((s) => s.level) === "advanced"
   const [query, setQuery] = useState("")
   const activeProject = useProjectStore((s) => s.activeProject)
   const setScope = useProjectStore((s) => s.setProject)
@@ -143,24 +142,7 @@ export function RealMemoriesView() {
       </div>
 
       <div className="border-border bg-card min-w-0 overflow-hidden rounded-lg border">
-        <div className="border-border bg-muted/30 flex flex-wrap items-center gap-2.5 border-b px-4 py-2.5">
-          <span className="text-sm font-semibold">
-            Results — project: {scopeLabel}
-          </span>
-          {(rows.length === 0 || advanced) && (
-            <span
-              className={cn(
-                "font-mono text-sm",
-                rows.length > 0 ? "text-success-text" : "text-muted-foreground",
-              )}
-            >
-              {rows.length > 0 ? "populated" : "empty"}
-            </span>
-          )}
-          <span className="text-muted-foreground ml-auto font-mono text-sm">
-            {rows.length} of {total} shown
-          </span>
-        </div>
+        <MemoryResultsHeader scopeLabel={scopeLabel} shown={rows.length} total={total} />
 
         <div className="space-y-3 p-4">
           {/* Ruling 1: this caveat and the strip below it render

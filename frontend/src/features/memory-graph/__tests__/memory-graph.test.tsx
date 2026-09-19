@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react"
 import { beforeEach, describe, it, expect } from "vitest"
+import { AppPageHeader } from "@/components/app-chrome"
 import { useProjectStore } from "@/stores/project-store"
 import { MemoryGraphExplorer } from "../components/memory-graph-explorer"
 
@@ -67,5 +68,15 @@ describe("MemoryGraphExplorer", () => {
     const ring = node.querySelector('[data-focus-ring]')!
     expect(ring.getAttribute("class")).toMatch(/stroke-ring/)
     expect(ring.getAttribute("class")).toMatch(/group-focus-visible:opacity-100/)
+  })
+
+  it("publishes the page chrome the real page does", () => {
+    render(
+      <>
+        <MemoryGraphExplorer />
+        <AppPageHeader />
+      </>,
+    )
+    expect(screen.getByRole("heading", { name: "Memory Graph" })).toBeInTheDocument()
   })
 })
