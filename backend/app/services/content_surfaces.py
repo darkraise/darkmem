@@ -725,6 +725,10 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "PATCH /api/v1/pages/{page_id}/blocks/{block_id}",
     "POST /api/v1/pages/{page_id}/blocks/{block_id}/move",
     "DELETE /api/v1/pages/{page_id}/blocks/{block_id}",
+    # Page attachments: a page's file bytes and their metadata. No
+    # `memories` row crosses; REST-only for the pages.attachments row.
+    "POST /api/v1/pages/{page_id}/attachments",
+    "GET /api/v1/pages/attachments/{attachment_id}",
     # Session checkpoints (T3.16). No memory content crosses: a checkpoint is
     # the agent's own note about its run, written by the agent and never
     # derived from a `memories` row — this surface reads that table and no

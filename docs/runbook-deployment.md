@@ -25,6 +25,13 @@ DARKMEM_VERSION=<version> docker compose up -d
 `.env` must carry `DB_PASSWORD` and a `JWT_SECRET` of 32+ characters, plus
 `COOKIE_SECURE=false` for a plain-HTTP LAN.
 
+Two named volumes ride with the stack: `repo_data` at `/app/data/repositories`
+(the indexed clones) and `attachment_data` at `/app/data/attachments` (page
+attachment files; the app reads `ATTACHMENTS_DIR`). **`pg_dump` carries
+neither.** Until the attachment tarball family ships, a dump is a complete
+backup of the rows and no backup at all of the files, so a restored dump can
+serve `page_attachments` rows whose bytes are gone.
+
 **Publishing is a master push's consequence** (changed 2026-08-29; this said
 "a tag's consequence, and nothing else's", which described the flow before CI
 took over versioning). Nothing local pushes: `build-push.sh` honours
@@ -272,6 +279,12 @@ docker exec -i darkmem-prod-postgres-1 psql -U darkmem -d darkmem < /tmp/admin.s
 docker exec -i darkmem-prod-postgres-1 psql -U darkmem -d darkmem < /tmp/providers.sql
 docker exec -i darkmem-prod-postgres-1 psql -U darkmem -d darkmem < /tmp/purposes.sql
 ```
+
+The drop does not touch `attachment_data`, so the files outlive the rows.
+Nothing has to be cleared by hand: with every row gone, the hourly
+`page_attachment_cleanup` job removes files that have no row. Deleting the
+volume to "match" the fresh database is the one step here that no later
+procedure can undo.
 
 ### Three rows a re-seed does not reproduce — and one whole column
 

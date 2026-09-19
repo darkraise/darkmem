@@ -90,7 +90,7 @@ async def get_tag_repository(session: AsyncSession = Depends(get_session)) -> Po
 
 
 def refuse_when_read_only() -> None:
-    """Refuse a door that needs an external service (owner ruling 2026-09-03).
+    """Refuse a door that needs an external service or writes a file (owner ruling 2026-09-03).
 
     A backup worker is for viewing and backup/restore only, so nothing on it
     may depend on a third machine being reachable -- a host whose job is
@@ -101,20 +101,22 @@ def refuse_when_read_only() -> None:
     and placed BEFORE the service dependencies that build an orchestrator, so
     the refusal lands before anything is constructed or called. That ordering
     is the point on every door this guards: each one dispatches an LLM, an
-    embedder or a git fetch *first* and writes *second*, so the SELECT-only
-    viewer role would stop them only after the spend or the connection had
-    already happened.
+    embedder or a git fetch, or writes a file, *first* and writes a row
+    *second*, so the SELECT-only viewer role would stop them only after the
+    spend, the connection or the file had already happened.
 
     This is deliberately NOT the per-route allowlist review B1 rejected for
     *writes* -- those are caught generically by the SQLSTATE 42501 handler,
     which needs no list. This list exists because an external call is not a
-    write and the database never sees it.
+    write the database sees, and neither is a file written to disk before any
+    row: a page attachment upload lands its bytes first, so the viewer role
+    would refuse it only after the file existed.
     """
     if settings.read_only:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=(
-                "read-only instance: this needs an external service, and a "
-                "backup worker is for viewing and backup/restore only"
+                "read-only instance: this needs an external service or writes "
+                "a file, and a backup worker is for viewing and backup/restore only"
             ),
         )

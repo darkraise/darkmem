@@ -212,6 +212,8 @@ EXPECTED_STATUS = {
     ("PATCH", "/api/v1/pages/{page_id}/blocks/{block_id}"): 200,
     ("POST", "/api/v1/pages/{page_id}/blocks/{block_id}/move"): 200,
     ("DELETE", "/api/v1/pages/{page_id}/blocks/{block_id}"): 204,
+    ("POST", "/api/v1/pages/{page_id}/attachments"): 201,
+    ("GET", "/api/v1/pages/attachments/{attachment_id}"): 200,
     ("GET", "/api/v1/pipeline"): 200,
     ("GET", "/api/v1/pipeline-failures"): 200,
     ("GET", "/api/v1/pipeline-failures/counts"): 200,
@@ -423,6 +425,7 @@ async def test_error_shape_is_uniform_across_the_surface(
         ("PUT", "/api/v1/jobs/no-such-job", {}, 404),
         ("POST", "/api/v1/jobs/no-such-job/trigger", None, 404),
         ("GET", f"/api/v1/graph/entities/{missing}/neighbors", None, 404),
+        ("GET", f"/api/v1/pages/attachments/{missing}", None, 404),
     ]
 
     for method, path, json_body, expected_status in cases:

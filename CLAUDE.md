@@ -1917,7 +1917,9 @@ sweep instead of trusting the argument. Page vectors live in their **own
 document ANN read filters the owner *after* the HNSW scan, so a shared partition
 would let page rows crowd document hits out of the candidate stream. **REST-only**,
 because pages are the operator's authoring surface rather than an agent's
-context path: thirteen routes under `/api/v1/pages` (`api/routes/pages.py`), no
+context path: thirteen routes under `/api/v1/pages` (`api/routes/pages.py`) plus
+the two attachment routes in `api/routes/page_attachments.py` (upload and serve,
+files on the `attachment_data` volume at `ATTACHMENTS_DIR`), no
 MCP tool and no scope, recorded as the `pages.reads` / `pages.write`
 single-door rows on `docs/two-door-parity.md`. A page is **block-first by
 construction** — create parses `content` and stores the serialiser's output, so
@@ -2095,11 +2097,12 @@ SQL text, which a call through the repository does not produce.
   answer on their keyword/`ILIKE` arms; the articles channel reports
   `semantic_ran=False`. **Document search is refused rather than emptied** —
   its ranking is cosine-only with no keyword arm, so an empty result would be
-  indistinguishable from "no matches". And the doors that would spend or dial
-  out before they write are refused at a shared `refuse_when_read_only`
-  dependency (`api/deps.py`): `memories/reason`, `documents/qa`, every
-  `reembed` POST, repo create/reindex/reindex-files/webhook, chat, job
-  triggers. That list is not the per-route allowlist review B1 rejected — that
+  indistinguishable from "no matches". And the doors that would spend, dial
+  out or write a file before they write a row are refused at a shared
+  `refuse_when_read_only` dependency (`api/deps.py`): `memories/reason`,
+  `documents/qa`, every `reembed` POST, repo create/reindex/reindex-files/webhook,
+  chat, job triggers, page attachment upload. That list is not the per-route
+  allowlist review B1 rejected — that
   argument is about *writes*, which the SQLSTATE 42501 handler catches
   generically; an external call is not a write and the database never sees it.
   The **receiver** (`app/worker_receiver.py`, its own uvicorn process) is the

@@ -1564,6 +1564,21 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "decision, not a default."
         ),
     ),
+    Surface(
+        name="pages.attachments",
+        status=REST_ONLY,
+        rest=(
+            ("POST", f"{V1}/pages/{{page_id}}/attachments"),
+            ("GET", f"{V1}/pages/attachments/{{attachment_id}}"),
+        ),
+        mcp=(),
+        reason=(
+            "The files a page's blocks embed. Single-door for the same reason "
+            "pages.write is: they belong to the operator's authored tree, not "
+            "to an agent's context path, and nothing here generates or labels "
+            "content. An MCP twin later is additive and an owner decision."
+        ),
+    ),
 )
 
 

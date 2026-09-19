@@ -167,6 +167,7 @@ they are in §8, with their own vocabulary.
 | `documents` | 04 §8.5 | T0.12c | `target-new, inert` | Horizon; lands empty and inert. Landed with the DDL, not T0.13 (F-26). |
 | `blocks` | 04 §8.5 | T0.12c | `target-new, inert` | Horizon; lands empty and inert. Landed with the DDL, not T0.13 (F-26). |
 | `pages` | spec 2026-09-08 §2 | — | `target-new` | The operator's page tree, a second owner of `blocks` beside `documents` (pages spec, 2026-09-08). Minted after the original baseline design — doc 04 names no such table. `blocks.document_id` dropped `NOT NULL` and `blocks.page_id` joined it, with `blocks_exactly_one_owner` requiring exactly one of the two; no document statement changed. |
+| `page_attachments` | spec 2026-09-19 §3.1 | — | `target-new` | Metadata for a page's uploaded files; the bytes live on disk under `ATTACHMENTS_DIR`, named by `id` alone. Owned by `project`, not by a page — `uploaded_for_page_id` is provenance and SET NULL on purge. No FK on `project`, like every scoped table. Minted after the original baseline design — doc 04 names no such table. |
 | `memory_buffer` | 04 §8.6 | — | `target-new` | Tier-B durable buffer, `FOR UPDATE SKIP LOCKED` (F-02). |
 | `project_repositories` | 04 §8.7 | — | `target-new` | M2M over one shared `Repository` (F-02). |
 | `knowledge_articles` | 04 §8.8 | T0.12b | `target-new` | T0.12b's "articles and citations". |
@@ -350,6 +351,8 @@ redundant under the unique, and doc 04 §7 specifies only `jti UNIQUE` (F-12).
 | block order | `blocks` | **partial** `(document_id, order_index) WHERE document_id IS NOT NULL` — partial since pages became a second owner, so page rows carry no NULL keys through it | `target-new, inert` | 04 §8.5, §10 | T0.13 |
 | page block order | `blocks` | **partial** `(page_id, order_index) WHERE page_id IS NOT NULL` (`ix_blocks_page_order`) | `target-new` | pages spec §3 | — |
 | page tree order | `pages` | `(project, parent_id, order_index)` (`ix_pages_project_parent_order`) | `target-new` | pages spec §2 | — |
+| attachment scope | `page_attachments` | `(project)` (`ix_page_attachments_project`) | `target-new` | spec 2026-09-19 §3.1 | — |
+| attachment age sweep | `page_attachments` | `(created_at)` (`ix_page_attachments_created`) — the cleanup job's `created_at <` grace predicate; a deliberate extra over the spec's one index, recorded in the storage plan's Contracts | `target-new` | spec 2026-09-19 §3.1 | — |
 | block tree | `blocks` | `(parent_id)` | `target-new, inert` | 04 §8.5, §10 | T0.13 |
 
 **The HNSW and aux indexes on the nine per-fingerprint parents are deliberately not
@@ -512,6 +515,9 @@ behaviour change, not a tidy-up.
 | `blocks.page_id` FK | FK | `blocks` | `blocks.page_id → pages(id) ON DELETE CASCADE` — nullable, as `blocks.document_id` now is | `target-new` | pages spec §3 | — |
 | `blocks_exactly_one_owner` | CHECK | `blocks` | `CHECK (num_nonnulls(document_id, page_id) = 1)` — rejects an ownerless block exactly as the dropped `NOT NULL` did; evaluated on every row a block write places | `target-new` | pages spec §3, §5 | — |
 | `pages` PK + parent FK | PK, UNIQUE, FK | `pages` | `PRIMARY KEY (id)`; `UNIQUE (id, project)`; `(parent_id, project) → pages(id, project) ON DELETE CASCADE` — **composite**, so a cross-project reparent is impossible in the schema; the cascade runs only on purge, since an ordinary delete stamps `deleted_at` | `target-new` | pages spec §2, §9 | — |
+| `page_attachments` PK + page FK | PK, FK | `page_attachments` | `PRIMARY KEY (id)`; `uploaded_for_page_id → pages(id) ON DELETE SET NULL` — nullable and provenance only: a page purge clears it and the row survives, because lifetime is the project's | `target-new` | spec 2026-09-19 §3.1 | — |
+| `chk_page_attachments_filename` | CHECK | `page_attachments` | `char_length(filename) BETWEEN 1 AND 255` | `target-new` | spec 2026-09-19 §3.1 | — |
+| `chk_page_attachments_size` | CHECK | `page_attachments` | `size_bytes >= 0` | `target-new` | spec 2026-09-19 §3.1 | — |
 
 **Whether the baseline creates `events`' first monthly child partition is unresolved by
 both docs.** Doc 04 §8.1 fixes monthly `RANGE(created_at)` from day one and doc 19 §9
