@@ -67,4 +67,14 @@ describe("PageEditor", () => {
     expect(screen.getByRole("checkbox", { name: "Mark as done" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Expand" })).toBeInTheDocument()
   })
+
+  it("paints callouts with theme tokens and shares the title's left edge", async () => {
+    const blocks = toEditorBlocks([b("c1", "callout", "heads up", { variant: "info" })]).blocks
+    const { container } = render(<PageEditor initialBlocks={blocks} editable />)
+    await act(async () => {})
+    const callout = container.querySelector('[data-variant="info"]')!
+    expect(callout.className).toMatch(/bg-info\/10/)
+    expect(callout.className).not.toMatch(/sky-/)
+    expect(container.querySelector(".max-w-3xl")).not.toHaveClass("mx-auto")
+  })
 })

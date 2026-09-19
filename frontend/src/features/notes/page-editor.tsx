@@ -39,7 +39,7 @@ export function PageEditor({ initialBlocks, editable, onDocumentChange, onBlur }
   return (
     <div className="flex min-h-0 gap-6">
       <div className="min-w-0 flex-1">
-        <div ref={editorRoot} className="mx-auto max-w-3xl">
+        <div ref={editorRoot} className="max-w-3xl">
           <BlockNoteView
             editor={editor}
             editable={editable}

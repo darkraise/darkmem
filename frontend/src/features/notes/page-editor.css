@@ -26,3 +26,28 @@
 .bn-shadcn input[type="checkbox"] {
   accent-color: hsl(var(--primary));
 }
+
+/* The editor writes in the app's font at the app's size, not BlockNote's
+   Inter at 16px. */
+.bn-container.bn-shadcn .bn-default-styles {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+/* BlockNote insets the document 54px for its side menu; the pane supplies
+   that gutter instead, so the title and the first block share one edge. */
+.bn-container.bn-shadcn .bn-editor {
+  padding-inline: 0;
+}
+
+.bn-container.bn-shadcn .bn-toggle-button {
+  color: hsl(var(--muted-foreground));
+}
+
+.bn-container.bn-shadcn [data-content-type="codeBlock"] {
+  background-color: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+.bn-container.bn-shadcn [data-content-type="codeBlock"] > div > select {
+  color: hsl(var(--muted-foreground));
+}

@@ -61,7 +61,7 @@ export function PagePane({ page, autoFocusTitle }: { page: PageView; autoFocusTi
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 pl-12">
         <Label htmlFor="page-title" className="sr-only">
           Page title
         </Label>
@@ -93,7 +93,7 @@ export function PagePane({ page, autoFocusTitle }: { page: PageView; autoFocusTi
         </div>
       ) : null}
 
-      <ScrollArea className="min-h-0 flex-1 pr-3">
+      <ScrollArea className="min-h-0 flex-1 pr-3 pl-12">
         <Suspense fallback={<Skeleton className="h-40 w-full" />}>
           <PageEditor
             key={`${page.id}:${generation}`}
