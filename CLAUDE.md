@@ -1925,8 +1925,8 @@ because pages are the operator's authoring surface rather than an agent's
 context path: thirteen routes under `/api/v1/pages` (`api/routes/pages.py`) plus
 the two attachment routes in `api/routes/page_attachments.py` (upload and serve,
 files on the `attachment_data` volume at `ATTACHMENTS_DIR`), no
-MCP tool and no scope, recorded as the `pages.reads` / `pages.write`
-single-door rows on `docs/two-door-parity.md`. A page is **block-first by
+MCP tool and no scope, recorded as the `pages.reads` / `pages.write` /
+`pages.attachments` single-door rows on `docs/two-door-parity.md`. A page is **block-first by
 construction** — create parses `content` and stores the serialiser's output, so
 no conversion is ever owed, and a create whose content carries source the tree
 cannot hold (a frontmatter fence, a link-reference definition) is refused 422

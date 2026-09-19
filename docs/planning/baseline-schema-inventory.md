@@ -177,12 +177,18 @@ they are in §8, with their own vocabulary.
 | `session_checkpoints` | spec §Feature-2 | — | `target-new` | One agent run's note to its successor (T3.16, 2026-08-09), keyed on the doc 05 §2.1 `origin_key` both capture doors resolve. Minted after the original baseline design — doc 04 names no such table; the spec's Feature-2 does, and doc 20 records the store half as Phase-1-capable. **Operational, not vault knowledge**: no verification column and no route into the vault, which is T3.18's rule and is asserted in `tests/test_checkpoints.py`. Two CHECKs bound the payload (`summary` characters, `next_steps` bytes) and `ix_session_checkpoints_latest` serves latest-per-origin as a one-row index scan. |
 | `alembic_version` | — | n/a (Alembic) | `carries-over` | Alembic's own bookkeeping; doc 04 never names it (F-01). |
 
-**35 rows.** Twenty-one are tables the as-is manifest (A.1) already holds; fourteen are
-target-new — thirteen from the original baseline design plus `fact_access_stats`, minted
-by T2.84 (2026-08-05) after this inventory was first written. The remaining five of A.1's
-twenty-six are dropped and live in §8, so `21 + 5 = 26` reconciles the roll-call against
-the manifest exactly; `fact_access_stats` is outside that reconciliation because it was
-never part of A.1 in the first place.
+**39 rows** (recounted 2026-09-19; this read **35** through four later additions —
+`fact_access_stats`, `session_checkpoints`, `pages` and `page_attachments` — each minted
+after the original baseline design and each carrying its own "doc 04 names no such table"
+note in the row above). **Twenty** are tables the as-is manifest (A.1) already holds;
+**nineteen** are `target-new`, thirteen of them from the original baseline design and the
+other six minted since.
+
+The A.1 reconciliation this paragraph used to state — twenty-one roll-call rows plus the
+five tables §8 drops against A.1's twenty-six — no longer closes: the roll-call holds
+twenty A.1 tables today, so `20 + 5 = 25`. Re-deriving which A.1 table is unaccounted for
+means re-reading A.1 itself and is not done here. **The roll-call above is the authority;
+this arithmetic is not.**
 
 **Three classes of name doc 04 backticks are deliberately not roll-call rows.** The eight
 per-fingerprint **partition parents** (`memory_embeddings`, `entity_embeddings`,
