@@ -75,9 +75,13 @@ services:
       # so agents can connect, or "*" to disable the host check. NOTE this host
       # is 192.168.0.250; 192.168.0.195 is a different darkmem instance.
       - MCP_ALLOWED_HOSTS=${MCP_ALLOWED_HOSTS:-}
+      - ATTACHMENTS_DIR=/app/data/attachments
     volumes:
       # Persist cloned repositories across container restarts.
       - repo_data:/app/data/repositories
+      # Page attachments. Named, not bound: Docker copies the image's
+      # ownership of /app/data/attachments into a fresh named volume.
+      - attachment_data:/app/data/attachments
       # Where backup_ship writes its dumps. A host bind mount rather than a
       # named volume, so the host-side restore path and the operator can read
       # what the job produced. Distinct from the systemd producer's
@@ -155,3 +159,4 @@ networks:
 volumes:
   postgres_data:
   repo_data:
+  attachment_data:

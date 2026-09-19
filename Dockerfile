@@ -91,7 +91,10 @@ EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=5 \
     CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=5).status==200 else 1)"
 
-RUN addgroup --system app && adduser --system --ingroup app app && chown -R app:app /app
+# The attachments volume mounts here; the directory must exist before the
+# chown, or Docker creates the named volume root-owned and `app` cannot write.
+RUN mkdir -p /app/data/attachments \
+    && addgroup --system app && adduser --system --ingroup app app && chown -R app:app /app
 USER app
 
 CMD ["./entrypoint.sh"]

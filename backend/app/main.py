@@ -60,6 +60,12 @@ async def lifespan(app: FastAPI):
     pipeline = None
     llm = None
 
+    # Outside every degrading try below: an unwritable attachments volume
+    # must refuse boot, not start an app whose uploads all fail.
+    from app.services.page_attachments import assert_attachments_dir_usable
+
+    assert_attachments_dir_usable(read_only=settings.read_only)
+
     # Load UI-editable system prompts from the DB before anything else needs
     # them (extraction and classification call `prompt.get()` synchronously).
     try:

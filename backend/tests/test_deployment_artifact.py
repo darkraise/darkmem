@@ -975,3 +975,33 @@ def test_the_receiver_healthcheck_asserts_the_bearer_guard_is_armed():
         "an unauthenticated 200 means the bearer guard is not armed; the "
         "healthcheck must not accept it"
     )
+
+
+def test_the_image_creates_the_attachments_dir_before_chowning_app():
+    """A named volume mounted on a path the image lacks is created root-owned,
+    and the unprivileged `app` user then cannot write a single attachment."""
+    dockerfile = _unwrapped(DOCKERFILE)
+    mkdir = dockerfile.find("/app/data/attachments")
+    chown = dockerfile.find("chown -R app:app /app")
+    assert mkdir != -1, "the Dockerfile never creates /app/data/attachments"
+    assert chown != -1 and mkdir < chown, (
+        "/app/data/attachments must exist before `chown -R app:app /app`"
+    )
+
+
+def test_prod_app_service_mounts_the_attachment_volume():
+    service = _compose(PROD_COMPOSE)["services"][APP_SERVICE]
+    assert "attachment_data:/app/data/attachments" in service["volumes"], service["volumes"]
+    assert "attachment_data" in _compose(PROD_COMPOSE)["volumes"]
+    env = _service_env(PROD_COMPOSE, APP_SERVICE)
+    assert env["ATTACHMENTS_DIR"] == "/app/data/attachments"
+
+
+def test_boot_checks_the_attachments_dir_outside_any_degrading_try():
+    """The lifespan's LLM and registry setup sits in a broad try that logs and
+    continues; a check inside it would let an unwritable volume boot green."""
+    source = (REPO_ROOT / "backend" / "app" / "main.py").read_text()
+    check = source.find("assert_attachments_dir_usable(read_only=settings.read_only)")
+    first_try = source.find("from app.services.config import get_llm_config")
+    assert check != -1, "lifespan never checks the attachments dir"
+    assert check < first_try, "the attachments dir check must precede the lifespan's first try"
