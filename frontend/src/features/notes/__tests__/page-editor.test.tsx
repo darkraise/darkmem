@@ -55,4 +55,16 @@ describe("PageEditor", () => {
     await act(async () => {})
     expect(container.querySelector('[data-color-scheme="dark"]')).not.toBeNull()
   })
+
+  it("labels the editor, its checklist boxes and its toggles", async () => {
+    const blocks = toEditorBlocks([
+      b("t1", "todo", "buy milk", { checked: false }),
+      b("g1", "toggle", "more"),
+    ]).blocks
+    const { container } = render(<PageEditor initialBlocks={blocks} editable />)
+    await act(async () => {})
+    expect(container.querySelector('[aria-label="Page content"]')).not.toBeNull()
+    expect(screen.getByRole("checkbox", { name: "Mark as done" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Expand" })).toBeInTheDocument()
+  })
 })

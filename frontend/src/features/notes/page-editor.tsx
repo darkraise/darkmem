@@ -8,7 +8,9 @@ import {
   SuggestionMenuController,
 } from "@blocknote/react"
 import { BlockNoteView } from "@blocknote/shadcn"
+import { useRef } from "react"
 import type { EditorBlockLike } from "./lib/block-mapping"
+import { useEditorControlLabels } from "./lib/editor-a11y"
 import { PageOutline } from "./page-outline"
 import { useDocumentMode } from "./use-document-mode"
 import { pageSlashItems, usePageEditor } from "./use-page-editor"
@@ -31,11 +33,13 @@ export interface PageEditorProps {
 export function PageEditor({ initialBlocks, editable, onDocumentChange, onBlur }: PageEditorProps) {
   const mode = useDocumentMode()
   const editor = usePageEditor(initialBlocks)
+  const editorRoot = useRef<HTMLDivElement>(null)
+  useEditorControlLabels(editorRoot, editor)
 
   return (
     <div className="flex min-h-0 gap-6">
       <div className="min-w-0 flex-1">
-        <div className="mx-auto max-w-3xl">
+        <div ref={editorRoot} className="mx-auto max-w-3xl">
           <BlockNoteView
             editor={editor}
             editable={editable}

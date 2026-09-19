@@ -57,6 +57,7 @@ export function usePageEditor(initialBlocks: EditorBlockLike[]): PageEditorInsta
   const editor = useCreateBlockNote({
     schema: pageSchema,
     trailingBlock: false,
+    domAttributes: { editor: { "aria-label": "Page content" } },
     tables: { headers: false, splitCells: false, cellBackgroundColor: false, cellTextColor: false },
     initialContent: initialBlocks.length > 0 ? (initialBlocks as never) : undefined,
   })
