@@ -2,6 +2,7 @@ import { createFileRoute, Outlet, redirect } from "@tanstack/react-router"
 import { useAuthStore } from "@/features/auth"
 import { DEMO } from "@/lib/demo-flag"
 import { ParticleBackground } from "@/components/particle-background"
+import { readPrimaryParticleColors } from "@/lib/primary-palette"
 
 export const Route = createFileRoute("/_guest")({
   beforeLoad: async ({ location }) => {
@@ -22,7 +23,7 @@ export const Route = createFileRoute("/_guest")({
   },
   component: () => (
     <div className="bg-background relative isolate flex min-h-screen items-center justify-center px-4">
-      <ParticleBackground />
+      <ParticleBackground gradient={false} colors={readPrimaryParticleColors()} />
       <Outlet />
     </div>
   ),

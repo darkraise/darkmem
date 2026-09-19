@@ -538,14 +538,21 @@ body.content-full-bleed .dr-split-panel-layout-content {
 .dr-brand-logo-mark {
   display: none;
 }
+.dr-brand-logo::before,
+.dm-brand-mark {
+  background-color: hsl(var(--primary));
+  -webkit-mask: url("/logo.svg") center / contain no-repeat;
+  mask: url("/logo.svg") center / contain no-repeat;
+}
 .dr-brand-logo::before {
   content: "";
   flex: none;
   height: 2rem;
   width: 2rem;
-  background-color: hsl(var(--primary));
-  -webkit-mask: url("/logo.svg") center / contain no-repeat;
-  mask: url("/logo.svg") center / contain no-repeat;
+}
+.dm-brand-mark {
+  display: inline-block;
+  flex: none;
 }
 /* The collapsed rail sizes the mark to the density cell, as the library does
    for the image it replaces. */
