@@ -68,6 +68,7 @@ export function JobLastRun({ job }: { job: DemoJob }) {
       }`}
     >
       <Icon aria-hidden className="size-[var(--icon-size-sm)] shrink-0" />
+      {!ok && <span className="font-medium">failed</span>}
       <span className="text-muted-foreground truncate">{when ?? job.last_status}</span>
     </span>
   )

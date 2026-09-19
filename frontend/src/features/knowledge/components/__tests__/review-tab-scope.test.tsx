@@ -40,4 +40,11 @@ describe("ReviewTab scope", () => {
     )
     expect(screen.queryByRole("textbox", { name: "Project filter" })).toBeNull()
   })
+
+  it("switches modes with a segmented control and drops the path label", () => {
+    useProjectStore.setState({ activeProject: null, missingProject: null })
+    render(<ReviewTab />, { wrapper })
+    expect(screen.getByRole("radiogroup", { name: "Triage mode" })).toBeInTheDocument()
+    expect(screen.queryByText(/\/knowledge ·/)).toBeNull()
+  })
 })

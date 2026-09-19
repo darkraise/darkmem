@@ -1,8 +1,9 @@
 import { useState } from "react"
 import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from "darkraise-ui/components/toggle-group"
+  SegmentGroup,
+  SegmentGroupIndicator,
+  SegmentGroupItem,
+} from "darkraise-ui/components/segment-group"
 import { useProjectStore } from "@/stores/project-store"
 import { ReviewQueue } from "./review-queue"
 import { HygieneQueue } from "./hygiene-queue"
@@ -22,21 +23,17 @@ export function ReviewTab() {
   return (
     <div className="space-y-4">
       <div className="border-border flex flex-wrap items-center gap-2.5 border-b border-dashed pb-3">
-        <ToggleGroup
-          type="single"
-          size="sm"
+        <SegmentGroup
+          aria-label="Triage mode"
           value={mode}
           onValueChange={(value) => {
             if (value === "review" || value === "hygiene") setMode(value)
           }}
-          aria-label="Triage mode"
         >
-          <ToggleGroupItem value="review">Review — truth</ToggleGroupItem>
-          <ToggleGroupItem value="hygiene">Hygiene — housekeeping</ToggleGroupItem>
-        </ToggleGroup>
-        <span className="text-muted-foreground font-mono text-sm">
-          /knowledge · {mode}
-        </span>
+          <SegmentGroupIndicator />
+          <SegmentGroupItem value="review">Review — truth</SegmentGroupItem>
+          <SegmentGroupItem value="hygiene">Hygiene — housekeeping</SegmentGroupItem>
+        </SegmentGroup>
       </div>
       {mode === "review" ? (
         <ReviewQueue project={project} />

@@ -13,11 +13,10 @@ import type { DemoJob } from "@/features/activity/types"
  *
  * Variant grades weight rather than decorating:
  *
- * - `default` (filled) for **Trigger now** — the only one that acts on the
- *   system the moment it is pressed, and the reason most people open this
- *   page. It is disabled while a run holds the lock.
- * - `outline` for **Configure** — changes what the job will do, but through a
- *   dialog with its own save, so pressing it commits nothing.
+ * - `outline` for **Trigger now** and **Configure** — Trigger acts on the
+ *   system the moment it is pressed (and is disabled while a run holds the
+ *   lock); Configure changes what the job will do through a dialog with its
+ *   own save. The label tooltip says which is which.
  * - `ghost` for **Run history** — read-only. Nothing it opens can change a
  *   thing, so it should not compete with the two that can.
  *
@@ -73,7 +72,7 @@ export function JobActions({
       <Action
         label={job.running ? "Running — trigger unavailable" : "Trigger now"}
         icon={Play}
-        variant="default"
+        variant="outline"
         onClick={onTrigger}
         // A trigger landing on a held lock returns busy and is discarded, not
         // queued; disabling says so before the click rather than after.

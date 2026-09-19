@@ -109,6 +109,8 @@ describe("no-restricted-imports: src/demo/*", () => {
     // import them for their `initialData` in demo mode, the same shape.
     // Re-measured when the pipeline stepper test landed: 118 — it reads a
     // curated run out of `useDemoStore`, one more `@/demo/store` import.
-    expect(countByRule(results, "no-restricted-imports")).toBe(118)
+    // Re-measured when the job card test landed: 119 — it reads a fixture job
+    // out of `useDemoStore` the same way.
+    expect(countByRule(results, "no-restricted-imports")).toBe(119)
   })
 })

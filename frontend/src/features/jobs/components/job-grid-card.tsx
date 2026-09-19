@@ -1,5 +1,7 @@
+import { useState } from "react"
 import { Card, CardContent } from "darkraise-ui/components/card"
 import { Switch } from "darkraise-ui/components/switch"
+import { cn } from "darkraise-ui/lib"
 import type { DemoJob } from "@/features/activity/types"
 import { JobActions } from "./job-actions"
 import { JobLastRun, JobSchedule } from "./job-schedule-state"
@@ -17,6 +19,7 @@ export function JobGridCard({
   onHistory: () => void
   onToggleEnabled: (enabled: boolean) => void
 }) {
+  const [expanded, setExpanded] = useState(false)
   return (
     <Card>
       <CardContent className="flex h-full flex-col gap-2.5 pt-4">
@@ -34,9 +37,17 @@ export function JobGridCard({
           />
         </div>
 
-        <p className="text-muted-foreground line-clamp-2 text-sm">
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((open) => !open)}
+          className={cn(
+            "text-muted-foreground text-left text-sm",
+            !expanded && "line-clamp-2",
+          )}
+        >
           {job.description}
-        </p>
+        </button>
 
         <div className="flex flex-col gap-1">
           <JobSchedule cron={job.cron} />
