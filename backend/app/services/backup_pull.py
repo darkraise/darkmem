@@ -24,7 +24,7 @@ import os
 import sys
 from pathlib import Path
 
-from app.services.backup_ship import build_destination, sha256_file
+from app.services.backup_ship import build_destination
 
 _CHUNK = 1 << 16
 
