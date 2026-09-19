@@ -244,3 +244,16 @@ async def test_non_mcp_body_is_capped_through_the_same_predicate():
     )
     start = next(m for m in messages if m["type"] == "http.response.start")
     assert start["status"] == 413
+
+
+async def test_attachment_upload_is_capped_by_its_own_setting_not_the_edge():
+    """The upload route checks Content-Length and counts the stream against
+    `attachment_max_bytes` itself; under the edge cap that setting could never
+    admit more than 25 MB."""
+    messages = await _asgi_call(
+        RequestBodyLimitMiddleware(None),
+        "/api/v1/pages/22222222-2222-2222-2222-222222222222/attachments",
+        headers=[("content-length", str(MAX_REQUEST_BODY_BYTES + 1))],
+    )
+    start = next(m for m in messages if m["type"] == "http.response.start")
+    assert start["status"] != 413

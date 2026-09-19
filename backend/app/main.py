@@ -18,7 +18,7 @@ from sqlalchemy import text
 
 from app.api.mcp.server import mcp as mcp_server, mcp_streamable_http_kwargs, set_pipeline
 from app.api.spa import mount_spa
-from app.api.routes import analytics, backups, api_keys as api_key_routes, git_accounts as git_account_routes, articles as articles_routes, auth, buffer as buffer_routes, chat, checkpoints as checkpoint_routes, code, config, distribution as distribution_routes, documents as documents_routes, dream_digest as dream_digest_routes, events as events_routes, facts as facts_routes, graph, hygiene_queue, jobs, knowledge_search as knowledge_search_routes, llm_providers, memories, overview as overview_routes, pages as pages_routes, pipeline as pipeline_routes, pipeline_failures, projects as projects_routes, ratification as ratification_routes, reembed, repos, review_queue, setup, system, tags, topics as topics_routes, usage as usage_routes, vectors
+from app.api.routes import analytics, backups, api_keys as api_key_routes, git_accounts as git_account_routes, articles as articles_routes, auth, buffer as buffer_routes, chat, checkpoints as checkpoint_routes, code, config, distribution as distribution_routes, documents as documents_routes, dream_digest as dream_digest_routes, events as events_routes, facts as facts_routes, graph, hygiene_queue, jobs, knowledge_search as knowledge_search_routes, llm_providers, memories, overview as overview_routes, pages as pages_routes, page_attachments as page_attachments_routes, pipeline as pipeline_routes, pipeline_failures, projects as projects_routes, ratification as ratification_routes, reembed, repos, review_queue, setup, system, tags, topics as topics_routes, usage as usage_routes, vectors
 from app.api.websocket import websocket_endpoint
 from sqlalchemy.exc import DBAPIError
 
@@ -695,6 +695,17 @@ def is_mcp_path(path: str) -> bool:
     return path == "/mcp" or path.startswith("/mcp/")
 
 
+def is_attachment_upload_path(path: str) -> bool:
+    """`POST /api/v1/pages/{page_id}/attachments` bounds its own body against
+    `attachment_max_bytes`, on the declared length and on the stream; the edge
+    cap would pin that setting at 25 MB."""
+    return (
+        path.startswith("/api/v1/pages/")
+        and path.endswith("/attachments")
+        and path.count("/") == 5
+    )
+
+
 class SecurityHeadersMiddleware:
     def __init__(self, app):
         self.app = app
@@ -740,7 +751,8 @@ class RequestBodyLimitMiddleware:
         self.max_bytes = max_bytes
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] == "http" and not is_mcp_path(scope.get("path", "")):
+        path = scope.get("path", "")
+        if scope["type"] == "http" and not is_mcp_path(path) and not is_attachment_upload_path(path):
             declared = Headers(scope=scope).get("content-length")
             if declared and declared.isdigit() and int(declared) > self.max_bytes:
                 response = _error_response(
@@ -1001,6 +1013,7 @@ app.include_router(events_routes.router)
 app.include_router(buffer_routes.router)
 app.include_router(documents_routes.router)
 app.include_router(pages_routes.router)
+app.include_router(page_attachments_routes.router)
 app.include_router(reembed.router)
 app.include_router(usage_routes.router)
 app.include_router(api_key_routes.router)
