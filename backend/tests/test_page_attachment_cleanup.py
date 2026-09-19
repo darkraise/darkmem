@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import pathlib
 import time
 from uuid import uuid4
 
@@ -150,6 +151,38 @@ async def test_stale_staging_dirs_go(session_factory, root):
     _age(old, 7 * 3600)
     report = await run_cleanup(session_factory, grace_hours=168, staging_max_age_hours=6)
     assert not old.exists() and young.exists()
+    assert report.staging_dirs_removed == 1
+
+
+async def test_a_file_that_cannot_be_removed_does_not_stop_the_sweep(
+    session_factory, root, monkeypatch,
+):
+    rowless = attachment_path(uuid4())
+    part = attachment_path(uuid4()).with_suffix(".part")
+    for path in (rowless, part):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x")
+        _age(path, 7200)
+    stale = root / ".staging" / "old"
+    stale.mkdir(parents=True)
+    (stale / "upload.zip").write_bytes(b"x")
+    _age(stale, 7 * 3600)
+
+    real_unlink = pathlib.Path.unlink
+
+    # Refused by a patch rather than by a mode bit: the suite runs as root, so a
+    # chmod-based version of this test would pass whatever the code did.
+    def refusing_unlink(self, *args, **kwargs):
+        if self == rowless:
+            raise PermissionError(13, "Permission denied", str(self))
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(pathlib.Path, "unlink", refusing_unlink)
+
+    report = await run_cleanup(session_factory, grace_hours=168, staging_max_age_hours=6)
+    assert report.files_failed == 1
+    assert report.rowless_files_removed == 0
+    assert report.part_files_removed == 1
     assert report.staging_dirs_removed == 1
 
 

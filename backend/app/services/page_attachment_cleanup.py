@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 import shutil
 import time
@@ -91,20 +92,29 @@ class CleanupReport:
     rowless_files_removed: int = 0
     part_files_removed: int = 0
     staging_dirs_removed: int = 0
+    # Inside total() on purpose: a run that removed nothing but failed on
+    # something still owes a job_runs row carrying the count.
+    files_failed: int = 0
 
     def total(self) -> int:
         return sum(asdict(self).values())
 
 
-def _unlink(paths: list[Path]) -> int:
+def _unlink(paths: list[Path]) -> tuple[int, int]:
     removed = 0
+    failed = 0
     for path in paths:
         try:
             path.unlink()
             removed += 1
         except FileNotFoundError:
             pass
-    return removed
+        except OSError as exc:
+            logger.warning(
+                "page_attachment_cleanup: could not remove %s: %s", path, exc
+            )
+            failed += 1
+    return removed, failed
 
 
 def _scan(root: Path, now: float) -> tuple[list[tuple[UUID, Path]], list[Path]]:
@@ -115,10 +125,24 @@ def _scan(root: Path, now: float) -> tuple[list[tuple[UUID, Path]], list[Path]]:
     for shard in root.iterdir():
         if not (shard.is_dir() and _SHARD.fullmatch(shard.name)):
             continue
-        for entry in shard.iterdir():
+        try:
+            # Materialised inside the guard: iterdir() is lazy, so an
+            # unreadable shard raises during iteration, not at the call.
+            entries = list(shard.iterdir())
+        except OSError as exc:
+            logger.warning(
+                "page_attachment_cleanup: could not scan %s: %s", shard, exc
+            )
+            continue
+        for entry in entries:
             try:
                 stat = entry.stat()
             except FileNotFoundError:
+                continue
+            except OSError as exc:
+                logger.warning(
+                    "page_attachment_cleanup: could not stat %s: %s", entry, exc
+                )
                 continue
             if not entry.is_file() or now - stat.st_mtime < ROWLESS_MIN_AGE_SECONDS:
                 continue
@@ -134,20 +158,35 @@ def _scan(root: Path, now: float) -> tuple[list[tuple[UUID, Path]], list[Path]]:
     return files, parts
 
 
-def _remove_stale_staging(root: Path, max_age_seconds: float, now: float) -> int:
+def _remove_stale_staging(
+    root: Path, max_age_seconds: float, now: float
+) -> tuple[int, int]:
     staging = root / STAGING_DIRNAME
     if not staging.is_dir():
-        return 0
+        return 0, 0
     removed = 0
+    failed = 0
     for entry in staging.iterdir():
         try:
             stale = entry.is_dir() and now - entry.stat().st_mtime > max_age_seconds
         except FileNotFoundError:
             continue
+        except OSError as exc:
+            logger.warning(
+                "page_attachment_cleanup: could not stat %s: %s", entry, exc
+            )
+            continue
         if stale:
             shutil.rmtree(entry, ignore_errors=True)
-            removed += 1
-    return removed
+            # rmtree swallows its own errors, so the tree itself is the verdict.
+            if not os.path.lexists(entry):
+                removed += 1
+            else:
+                logger.warning(
+                    "page_attachment_cleanup: could not remove staging dir %s", entry
+                )
+                failed += 1
+    return removed, failed
 
 
 async def run_cleanup(
@@ -168,9 +207,10 @@ async def run_cleanup(
             ]
             await session.commit()
             report.rows_deleted = len(ids)
-            report.files_unlinked = await asyncio.to_thread(
+            report.files_unlinked, failed = await asyncio.to_thread(
                 _unlink, [attachment_path(i) for i in ids]
             )
+            report.files_failed += failed
 
     root = attachments_root()
     files, parts = await asyncio.to_thread(_scan, root, now)
@@ -183,11 +223,14 @@ async def run_cleanup(
                     row[0] for row in (await session.execute(_KNOWN_IDS, {"ids": batch})).all()
                 )
         rowless = [path for attachment_id, path in files if attachment_id not in known]
-        report.rowless_files_removed = await asyncio.to_thread(_unlink, rowless)
-    report.part_files_removed = await asyncio.to_thread(_unlink, parts)
-    report.staging_dirs_removed = await asyncio.to_thread(
+        report.rowless_files_removed, failed = await asyncio.to_thread(_unlink, rowless)
+        report.files_failed += failed
+    report.part_files_removed, failed = await asyncio.to_thread(_unlink, parts)
+    report.files_failed += failed
+    report.staging_dirs_removed, failed = await asyncio.to_thread(
         _remove_stale_staging, root, staging_max_age_hours * 3600, now
     )
+    report.files_failed += failed
     return report
 
 
