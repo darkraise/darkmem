@@ -102,6 +102,7 @@ export function ProjectSwitcher({
             {/* A disabled button receives no pointer events, so the wrapper
                 carries the hover and the focus that open the tooltip. */}
             <span
+              role="group"
               tabIndex={0}
               aria-label={`Project scope — ${disabledReason}`}
               className="inline-flex rounded-full"

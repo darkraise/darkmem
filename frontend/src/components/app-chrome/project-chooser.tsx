@@ -1,3 +1,4 @@
+import { useId } from "react"
 import type { LucideIcon } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { EmptyState } from "@/components/darkmem"
@@ -30,6 +31,7 @@ export function ProjectChooser({
   emptyDescription: string
   onChoose: (project: string) => void
 }) {
+  const titleId = useId()
   if (projects.length === 0) {
     return (
       <EmptyState
@@ -42,10 +44,10 @@ export function ProjectChooser({
   }
   return (
     <section
-      aria-labelledby="project-chooser-title"
+      aria-labelledby={titleId}
       className="border-border bg-card mx-auto w-full max-w-xl space-y-3 rounded-lg border p-5"
     >
-      <h2 id="project-chooser-title" className="text-sm font-semibold">
+      <h2 id={titleId} className="text-sm font-semibold">
         {heading}
       </h2>
       <p className="text-muted-foreground text-sm">{description}</p>
