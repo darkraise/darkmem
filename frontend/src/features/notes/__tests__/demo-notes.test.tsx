@@ -9,7 +9,8 @@ it("shows the sample page read-only and makes no request", async () => {
   vi.stubGlobal("fetch", fetchSpy)
   const { container } = render(<DemoNotes />)
   expect(screen.getByRole("heading", { name: "Welcome to notes" })).toBeInTheDocument()
-  expect((await screen.findAllByText("Draft the release notes")).length).toBeGreaterThan(0)
+  // The editor is lazy-loaded; a cold import outlasts the 1s default wait.
+  expect((await screen.findAllByText("Draft the release notes", {}, { timeout: 10_000 })).length).toBeGreaterThan(0)
   expect(container.querySelector('[contenteditable="true"]')).toBeNull()
   expect(fetchSpy).not.toHaveBeenCalled()
 })

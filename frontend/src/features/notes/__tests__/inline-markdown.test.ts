@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest"
 import { emitInline, parseInline, type InlineNode, type InlineStyles } from "../lib/inline-markdown"
 import { pick, rng } from "./seeded"
 
+// 5000 cases take ~1s locally and exceed the 5s default on a loaded CI runner.
+const PROPERTY_TIMEOUT_MS = 30_000
+
 const ALPHABET = ["a", "b", "Z", "1", " ", "  ", "\n", "*", "_", "`", "~", "[", "]", "(", ")", "<", ">", "&", "#", "\\", "!", "|", "-", "+", ".", "é", "&amp;", "http://x.y", "1.", "# "]
 
 function genText(r: () => number): string {
@@ -74,7 +77,7 @@ describe("inline markdown", () => {
       const twice = emitInline(parseInline(once))
       if (twice !== once) throw new Error(`case ${i}: ${JSON.stringify(c)}\nonce=${JSON.stringify(once)}\ntwice=${JSON.stringify(twice)}`)
     }
-  })
+  }, PROPERTY_TIMEOUT_MS)
 
   it("keeps every character, mark and link of typed content", () => {
     const r = rng(11)
@@ -84,7 +87,7 @@ describe("inline markdown", () => {
       if (JSON.stringify(cells(back)) !== JSON.stringify(cells(c)))
         throw new Error(`case ${i}: ${JSON.stringify(c)} -> ${JSON.stringify(emitInline(c))} -> ${JSON.stringify(back)}`)
     }
-  })
+  }, PROPERTY_TIMEOUT_MS)
 
   it("keeps every visible character of arbitrary content", () => {
     const r = rng(13)
@@ -94,7 +97,7 @@ describe("inline markdown", () => {
       const back = parseInline(emitInline(c))
       if (text(back) !== text(c)) throw new Error(`case ${i}: ${JSON.stringify(c)} -> ${JSON.stringify(emitInline(c))}`)
     }
-  })
+  }, PROPERTY_TIMEOUT_MS)
 
   it.each([
     ["<kbd>k</kbd> tail", "<kbd>"],
