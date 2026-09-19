@@ -2,6 +2,7 @@ import {
   BadgeCheck,
   MapPin,
   Sparkles,
+  Tags,
   TrendingUp,
   Users,
   Waypoints,
@@ -9,8 +10,11 @@ import {
 } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
+import { ProjectChooser } from "@/components/app-chrome"
 import { EmptyState, listItemClass, useDetailLevel } from "@/components/darkmem"
 import { PRIOR_DISMISSED_NOTE } from "@/demo/data-exports"
+import { useProjects } from "@/hooks/api"
+import { ALL_PROJECTS, useProjectStore } from "@/stores/project-store"
 import {
   useTopics,
   type PinSuggestionRowData,
@@ -187,7 +191,45 @@ function PinSuggestionCard({
   )
 }
 
-export function TopicsTab({ project = "default" }: { project?: string }) {
+/** Topic detection runs per project, so the all-projects scope has no topic
+ *  set to show; it offers the projects instead. */
+export function TopicsTab() {
+  const project = useProjectStore((s) => s.activeProject)
+  return project === ALL_PROJECTS ? (
+    <TopicsProjectChooser />
+  ) : (
+    <TopicsForProject key={project} project={project} />
+  )
+}
+
+function TopicsProjectChooser() {
+  const setProject = useProjectStore((s) => s.setProject)
+  const { data, isLoading, isError } = useProjects()
+  if (isError) {
+    return (
+      <p className="text-destructive text-sm">
+        Projects could not be loaded — a failed read, not an empty corpus.
+      </p>
+    )
+  }
+  if (isLoading) return null
+  return (
+    <ProjectChooser
+      icon={Tags}
+      heading="Topics open one project at a time"
+      description="Topics are detected per project. Pick one to see its communities; the project switcher in the header changes it later."
+      projects={(data ?? [])
+        .filter((p) => p.kind !== "personal" && p.memory_count > 0)
+        .map((p) => ({ name: p.name, count: p.memory_count }))}
+      noun={{ one: "memory", many: "memories" }}
+      emptyTitle="No project holds memories yet"
+      emptyDescription="Topics are detected from memories; capture some and a project appears here."
+      onChoose={setProject}
+    />
+  )
+}
+
+export function TopicsForProject({ project }: { project: string }) {
   const { topics, suggestions, diff, lastRun, loading, error, decide } =
     useTopics(project)
 

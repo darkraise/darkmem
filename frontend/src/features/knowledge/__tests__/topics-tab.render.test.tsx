@@ -13,7 +13,7 @@ vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
 
 import { apiFetch } from "@/lib/api"
 import { useDetailLevel } from "@/components/darkmem"
-import { TopicsTab } from "../components/topics-tab"
+import { TopicsForProject } from "../components/topics-tab"
 
 function topic(overrides: Record<string, unknown> = {}) {
   return {
@@ -62,7 +62,7 @@ function renderTab() {
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   }
-  return render(<TopicsTab project="darkmem" />, { wrapper: Wrapper })
+  return render(<TopicsForProject project="darkmem" />, { wrapper: Wrapper })
 }
 
 describe("TopicsTab (live doors)", () => {
