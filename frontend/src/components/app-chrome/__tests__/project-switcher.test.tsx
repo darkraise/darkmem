@@ -3,11 +3,12 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
-import { ProjectSwitcher } from "../project-switcher"
+import { ProjectScopeReconciler, ProjectSwitcher } from "../project-switcher"
 import {
   useProjectStore,
   DEFAULT_PROJECT,
   ALL_PROJECTS,
+  STALE_SCOPE_NOTICE,
 } from "@/stores/project-store"
 import { useContextStore } from "@/stores/context-store"
 
@@ -28,6 +29,7 @@ describe("ProjectSwitcher", () => {
   beforeEach(() => {
     useProjectStore.setState({
       activeProject: DEFAULT_PROJECT,
+      missingProject: null,
     })
     useContextStore.setState({ declared: null })
     mockUseProjects.mockReturnValue({ data: [], isLoading: false })
@@ -241,5 +243,69 @@ describe("ProjectSwitcher", () => {
     await userEvent.click(screen.getByRole("button", { name: /project scope/i }))
     expect(screen.getByText("darkmem")).toBeInTheDocument()
     expect(screen.queryByText("notes")).toBeNull()
+  })
+
+  it("offers All projects first", async () => {
+    mockUseProjects.mockReturnValue({
+      data: [{ name: "acme", kind: "project", memory_count: 3, document_count: 0, checkpoint_count: 0, page_count: 0 }],
+      isLoading: false,
+    })
+    const user = userEvent.setup()
+    renderSwitcher()
+    await user.click(screen.getByRole("button", { name: /project scope/i }))
+    const labels = screen
+      .getAllByRole("button")
+      .filter((b) => b.hasAttribute("aria-pressed"))
+      .map((row) => row.textContent ?? "")
+    expect(labels[0]).toMatch(/^All projects/)
+    expect(labels.findIndex((l) => l.startsWith("All projects"))).toBeLessThan(
+      labels.findIndex((l) => l.startsWith("acme")),
+    )
+  })
+
+  it("says so when a saved project was not found", () => {
+    useProjectStore.setState({ activeProject: ALL_PROJECTS, missingProject: "gone" })
+    renderSwitcher()
+    expect(screen.getByText(STALE_SCOPE_NOTICE)).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: /project scope/i }),
+    ).toHaveTextContent("project: all projects")
+  })
+})
+
+describe("ProjectScopeReconciler", () => {
+  beforeEach(() => {
+    useProjectStore.setState({ activeProject: "gone", missingProject: null })
+  })
+
+  it("widens a saved scope the server list does not hold", () => {
+    mockUseProjects.mockReturnValue({
+      data: [
+        { name: "acme", kind: "project" },
+        { name: "notes", kind: "personal" },
+      ],
+      isLoading: false,
+      isSuccess: true,
+    })
+    render(<ProjectScopeReconciler />)
+    expect(useProjectStore.getState().activeProject).toBe(ALL_PROJECTS)
+    expect(useProjectStore.getState().missingProject).toBe("gone")
+  })
+
+  it("does nothing until the list has loaded", () => {
+    mockUseProjects.mockReturnValue({ data: undefined, isLoading: true, isSuccess: false })
+    render(<ProjectScopeReconciler />)
+    expect(useProjectStore.getState().activeProject).toBe("gone")
+  })
+
+  it("treats the personal space as no project scope", () => {
+    useProjectStore.setState({ activeProject: "notes", missingProject: null })
+    mockUseProjects.mockReturnValue({
+      data: [{ name: "notes", kind: "personal" }],
+      isLoading: false,
+      isSuccess: true,
+    })
+    render(<ProjectScopeReconciler />)
+    expect(useProjectStore.getState().activeProject).toBe(ALL_PROJECTS)
   })
 })

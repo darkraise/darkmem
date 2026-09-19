@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Globe, Globe2, Check } from "lucide-react"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import {
@@ -10,6 +10,7 @@ import { cn } from "darkraise-ui/lib"
 import { useProjects, type ProjectSummary } from "@/hooks/api"
 import {
   ALL_PROJECTS,
+  STALE_SCOPE_NOTICE,
   projectLabel,
   useProjectStore,
   type ProjectScope,
@@ -40,9 +41,25 @@ function itemHint(row: ProjectSummary): string {
   return `${total} ${total === 1 ? "item" : "items"}`
 }
 
+/** Widens a persisted scope the corpus no longer holds. Mounted once in the
+ *  authenticated layout rather than inside the switcher, because below `md`
+ *  the switcher lives in a popover that is not mounted until opened. */
+export function ProjectScopeReconciler() {
+  const { data, isSuccess } = useProjects()
+  const reconcile = useProjectStore((s) => s.reconcile)
+
+  useEffect(() => {
+    if (!isSuccess || !data) return
+    reconcile(data.filter((p) => p.kind !== "personal").map((p) => p.name))
+  }, [data, isSuccess, reconcile])
+
+  return null
+}
+
 export function ProjectSwitcher() {
   const activeProject = useProjectStore((s) => s.activeProject)
   const setProject = useProjectStore((s) => s.setProject)
+  const missingProject = useProjectStore((s) => s.missingProject)
   const { data: projects, isLoading } = useProjects()
   const [open, setOpen] = useState(false)
 
@@ -55,67 +72,77 @@ export function ProjectSwitcher() {
   const isAll = activeProject === ALL_PROJECTS
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label="Project scope"
-          className="border-border bg-muted hover:bg-muted/70 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm transition-colors"
+    <span className="inline-flex items-center gap-2">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            aria-label="Project scope"
+            className="border-border bg-muted hover:bg-muted/70 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm transition-colors"
+          >
+            <Globe aria-hidden className="text-muted-foreground h-3.5 w-3.5" />
+            project: {projectLabel(activeProject)}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          side="bottom"
+          align="end"
+          className="bg-card border-border w-72 space-y-3 rounded-lg border p-3 shadow-xl"
         >
-          <Globe aria-hidden className="text-muted-foreground h-3.5 w-3.5" />
-          project: {projectLabel(activeProject)}
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        side="bottom"
-        align="end"
-        className="bg-card border-border w-72 space-y-3 rounded-lg border p-3 shadow-xl"
-      >
-        <div className="space-y-1.5">
-          <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-            Switch project
-          </p>
-          <p className="text-muted-foreground text-xs">
-            The isolation scope — every project-scoped view refetches against
-            it. This is not a context declaration.
-          </p>
-        </div>
-
-        <div className="max-h-64 space-y-0.5 overflow-y-auto">
-          <ScopeRow
-            label="All projects"
-            hint="every scope at once"
-            icon={Globe2}
-            active={isAll}
-            onSelect={() => switchTo(ALL_PROJECTS)}
-          />
-
-          {isLoading && (
-            <div className="space-y-1 py-1">
-              <Skeleton className="h-8 w-full rounded-md" />
-              <Skeleton className="h-8 w-full rounded-md" />
-            </div>
-          )}
-
-          {!isLoading &&
-            rows.map((row) => (
-              <ScopeRow
-                key={row.name}
-                label={row.name}
-                hint={itemHint(row)}
-                active={activeProject === row.name}
-                onSelect={() => switchTo(row.name)}
-              />
-            ))}
-
-          {!isLoading && rows.length === 0 && (
-            <p className="text-muted-foreground px-2 py-3 text-center text-xs">
-              No project holds anything yet.
+          <div className="space-y-1.5">
+            <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+              Switch project
             </p>
-          )}
-        </div>
-      </PopoverContent>
-    </Popover>
+            <p className="text-muted-foreground text-xs">
+              The isolation scope — every project-scoped view refetches against
+              it. This is not a context declaration.
+            </p>
+          </div>
+
+          <div className="max-h-64 space-y-0.5 overflow-y-auto">
+            <ScopeRow
+              label="All projects"
+              hint="every scope at once"
+              icon={Globe2}
+              active={isAll}
+              onSelect={() => switchTo(ALL_PROJECTS)}
+            />
+
+            {isLoading && (
+              <div className="space-y-1 py-1">
+                <Skeleton className="h-8 w-full rounded-md" />
+                <Skeleton className="h-8 w-full rounded-md" />
+              </div>
+            )}
+
+            {!isLoading &&
+              rows.map((row) => (
+                <ScopeRow
+                  key={row.name}
+                  label={row.name}
+                  hint={itemHint(row)}
+                  active={activeProject === row.name}
+                  onSelect={() => switchTo(row.name)}
+                />
+              ))}
+
+            {!isLoading && rows.length === 0 && (
+              <p className="text-muted-foreground px-2 py-3 text-center text-xs">
+                No project holds anything yet.
+              </p>
+            )}
+          </div>
+        </PopoverContent>
+      </Popover>
+      {missingProject && (
+        <span
+          role="status"
+          className="text-muted-foreground text-xs whitespace-nowrap"
+        >
+          {STALE_SCOPE_NOTICE}
+        </span>
+      )}
+    </span>
   )
 }
 

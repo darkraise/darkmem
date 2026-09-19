@@ -46,6 +46,7 @@ import {
   BackToTop,
   ContextChip,
   MinimalThemeSwitcher,
+  ProjectScopeReconciler,
   ProjectSwitcher,
 } from "@/components/app-chrome"
 
@@ -251,6 +252,7 @@ function AuthenticatedLayout() {
         onLogout={handleLogout}
       >
         {!DEMO && <LiveUpdates />}
+        <ProjectScopeReconciler />
         <main
           className={cn(
             "w-full",
