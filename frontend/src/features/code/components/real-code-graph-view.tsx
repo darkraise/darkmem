@@ -62,7 +62,7 @@ function SectionTitle({
   children: React.ReactNode
 }) {
   return (
-    <span className="text-muted-foreground flex items-center gap-1.5 font-mono text-sm tracking-wide uppercase">
+    <span className="text-foreground flex items-center gap-1.5 text-sm font-semibold">
       {icon}
       {children}
     </span>
@@ -267,9 +267,7 @@ export function RealCodeGraphView({
           aria-label="Filter the explorer by file or symbol name"
         />
         <div className="flex flex-col gap-0.5">
-          <span className="text-muted-foreground font-mono text-[10px] uppercase">
-            layout
-          </span>
+          <span className="text-muted-foreground text-xs">Layout</span>
           <ToggleGroup
             type="single"
             size="sm"
@@ -292,9 +290,7 @@ export function RealCodeGraphView({
           </ToggleGroup>
         </div>
         <div className="flex flex-col gap-0.5">
-          <span className="text-muted-foreground font-mono text-[10px] uppercase">
-            colour by
-          </span>
+          <span className="text-muted-foreground text-xs">Colour by</span>
           <ToggleGroup
             type="single"
             size="sm"
@@ -312,18 +308,18 @@ export function RealCodeGraphView({
             </ToggleGroupItem>
           </ToggleGroup>
         </div>
-        <span className="text-muted-foreground ml-auto font-mono text-sm whitespace-nowrap">
-          <b className="text-primary font-semibold">{graph.nodes.length}</b> n{" "}
-          <b className="text-primary font-semibold">{graph.edges.length}</b> e
+        <span className="text-muted-foreground ml-auto shrink-0 text-sm whitespace-nowrap">
+          {graph.nodes.length} {graph.nodes.length === 1 ? "node" : "nodes"} ·{" "}
+          {graph.edges.length} {graph.edges.length === 1 ? "edge" : "edges"}
         </span>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         <Tabs
           variant="underline"
           value={leftTab}
           onValueChange={setLeftTab}
-          className="border-border bg-card flex min-h-0 w-full min-w-0 flex-col border-b md:w-56 md:shrink-0 md:border-r md:border-b-0"
+          className="border-border bg-card flex min-h-0 w-full min-w-0 flex-col border-b lg:w-56 lg:shrink-0 lg:border-r lg:border-b-0"
         >
           <TabsList className="border-border shrink-0 border-b px-1">
             <TabsTrigger value="explorer">Explorer</TabsTrigger>
@@ -407,7 +403,7 @@ export function RealCodeGraphView({
           </div>
         </div>
 
-        <div className="border-border bg-card flex min-h-0 w-full min-w-0 flex-col overflow-y-auto border-t md:w-60 md:shrink-0 md:border-t-0 md:border-l">
+        <div className="border-border bg-card flex min-h-0 w-full min-w-0 flex-col overflow-y-auto border-t lg:w-60 lg:shrink-0 lg:border-t-0 lg:border-l">
           <div className="border-border space-y-1.5 border-b p-2.5">
             <SectionTitle icon={<Search aria-hidden className="h-3 w-3" />}>
               Selected symbol
@@ -457,7 +453,7 @@ export function RealCodeGraphView({
                       <span
                         key={bucket}
                         className={cn(
-                          "border-border bg-muted text-muted-foreground flex-1 rounded-sm border px-0.5 py-0.5 text-center font-mono text-[10px] uppercase",
+                          "border-border bg-muted text-muted-foreground flex-1 rounded-sm border px-0.5 py-0.5 text-center font-mono text-xs uppercase",
                           blast.risk === bucket &&
                             "border-destructive/55 bg-destructive/12 text-destructive font-semibold",
                         )}
@@ -513,13 +509,13 @@ export function RealCodeGraphView({
                   <span className="min-w-0 flex-1 truncate">
                     {process.label}
                   </span>
-                  <span className="text-muted-foreground shrink-0 font-mono text-[10px]">
+                  <span className="text-muted-foreground shrink-0 font-mono text-xs">
                     {process.steps.length} steps
                   </span>
                 </button>
                 <button
                   type="button"
-                  className="text-muted-foreground hover:text-foreground shrink-0 font-mono text-[10px]"
+                  className="text-muted-foreground hover:text-foreground shrink-0 font-mono text-xs"
                   onClick={() => setMermaidProcess(process.id)}
                 >
                   mermaid
@@ -561,7 +557,7 @@ export function RealCodeGraphView({
                 <span className="min-w-0 flex-1 truncate">
                   {community.label}
                 </span>
-                <span className="text-muted-foreground shrink-0 font-mono text-[10px]">
+                <span className="text-muted-foreground shrink-0 font-mono text-xs">
                   {communityCounts.get(community.id) ?? 0}
                 </span>
               </button>

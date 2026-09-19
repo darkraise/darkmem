@@ -20,7 +20,7 @@ export function RealCodeInspector({
 
   if (!selectedNode) {
     return (
-      <div className="border-border bg-muted/20 flex w-[24rem] min-w-0 shrink-0 flex-col border-r p-3">
+      <div className="border-border bg-muted/20 flex w-full min-w-0 flex-col border-b lg:w-[24rem] lg:shrink-0 lg:border-r lg:border-b-0 p-3">
         <p className="text-muted-foreground text-sm">
           Select a symbol in the graph or explorer to read its source here.
         </p>
@@ -30,7 +30,7 @@ export function RealCodeInspector({
 
   if (!isSymbol) {
     return (
-      <div className="border-border bg-muted/20 flex w-[24rem] min-w-0 shrink-0 flex-col border-r p-3">
+      <div className="border-border bg-muted/20 flex w-full min-w-0 flex-col border-b lg:w-[24rem] lg:shrink-0 lg:border-r lg:border-b-0 p-3">
         <p className="text-muted-foreground text-sm">
           {selectedNode.name} is a file, not a symbol — select a symbol
           within it to view its real source. This inspector shows one
@@ -42,7 +42,7 @@ export function RealCodeInspector({
   }
 
   return (
-    <div className="border-border bg-muted/20 flex w-[24rem] min-w-0 shrink-0 flex-col border-r">
+    <div className="border-border bg-muted/20 flex w-full min-w-0 flex-col border-b lg:w-[24rem] lg:shrink-0 lg:border-r lg:border-b-0">
       <div className="border-border bg-card flex items-center gap-1.5 border-b px-2 py-1.5">
         <Code2 aria-hidden className="text-primary h-3.5 w-3.5 shrink-0" />
         <span className="min-w-0 flex-1 truncate font-mono text-sm">

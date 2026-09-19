@@ -236,4 +236,24 @@ describe("RealCodeGraphView", () => {
       .click()
     expect(onOpenRepositories).toHaveBeenCalled()
   })
+
+  it("spells out the counter and stacks its panes below lg", async () => {
+    mockApi()
+    const { container } = render(
+      <RealCodeGraphView
+        repoId="r1"
+        onRepoChange={vi.fn()}
+        onOpenRepositories={vi.fn()}
+      />,
+      { wrapper },
+    )
+    await screen.findByText("ingestion")
+    expect(screen.getByText(/^\d+ nodes · \d+ edges$/)).toBeInTheDocument()
+    expect(screen.getByText("Layout")).toBeInTheDocument()
+    expect(screen.getByText("Colour by")).toBeInTheDocument()
+    const heading = screen.getByText("Selected symbol")
+    expect(heading.closest("span")).not.toHaveClass("uppercase")
+    expect(container.querySelector(".lg\\:flex-row")).not.toBeNull()
+    expect(container.querySelector(".md\\:flex-row")).toBeNull()
+  })
 })
