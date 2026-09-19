@@ -9,13 +9,6 @@ import {
 } from "lucide-react"
 import { Input } from "darkraise-ui/components/input"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "darkraise-ui/components/select"
-import {
   ToggleGroup,
   ToggleGroupItem,
 } from "darkraise-ui/components/toggle-group"
@@ -23,7 +16,11 @@ import { EmptyState, listItemClass } from "@/components/darkmem"
 import { cn } from "darkraise-ui/lib"
 import { useDemoMemoryGraph } from "@/demo/hooks"
 import {
-  distinctGraphProjects,
+  ALL_PROJECTS,
+  projectLabel,
+  useProjectStore,
+} from "@/stores/project-store"
+import {
   layoutGraph,
   matchEntities,
   scopeMemoryGraph,
@@ -53,8 +50,7 @@ const chartVar = (n: number) => `var(--chart-${n})`
  */
 export function MemoryGraphExplorer() {
   const graph = useDemoMemoryGraph()
-  const projects = useMemo(() => distinctGraphProjects(graph), [graph])
-  const [project, setProject] = useState(projects[0] ?? "darkmem")
+  const project = useProjectStore((s) => s.activeProject)
   const [layout, setLayout] = useState<GraphLayoutMode>("force")
   const [query, setQuery] = useState("")
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -66,7 +62,7 @@ export function MemoryGraphExplorer() {
   }, [project])
 
   const scoped = useMemo(
-    () => scopeMemoryGraph(graph, project),
+    () => (project === ALL_PROJECTS ? graph : scopeMemoryGraph(graph, project)),
     [graph, project],
   )
   const matched = useMemo(() => matchEntities(scoped, query), [scoped, query])
@@ -168,21 +164,6 @@ export function MemoryGraphExplorer() {
             Community
           </ToggleGroupItem>
         </ToggleGroup>
-        <Select value={project} onValueChange={setProject}>
-          <SelectTrigger
-            className="w-48 rounded-full"
-            aria-label="Project scope"
-          >
-            <SelectValue>project: {project}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {projects.map((p) => (
-              <SelectItem key={p} value={p}>
-                {p}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
         <span className="text-muted-foreground ml-auto font-mono text-sm whitespace-nowrap">
           {scoped.entities.length} entities · {scoped.relations.length}{" "}
           relations · {scoped.topics.length} topics
@@ -198,7 +179,7 @@ export function MemoryGraphExplorer() {
                 kind="empty"
                 icon={Waypoints}
                 title="No entity graph yet"
-                description={`Project ${project} has no memories yet, so nothing has been extracted into entities or relations. The graph populates automatically as memories are captured; topic communities appear after the next clustering pass runs over it.`}
+                description={`${project === ALL_PROJECTS ? "No project" : `Project ${project}`} has no memories yet, so nothing has been extracted into entities or relations. The graph populates automatically as memories are captured; topic communities appear after the next clustering pass runs over it.`}
               />
             </div>
           ) : (
@@ -207,7 +188,7 @@ export function MemoryGraphExplorer() {
                 viewBox={`0 0 ${W} ${H}`}
                 className="h-full w-full"
                 role="img"
-                aria-label={`Entity graph for project ${project}: ${scoped.entities.length} entities in ${scoped.topics.length} topic clusters, ${layout} layout`}
+                aria-label={`Entity graph for ${project === ALL_PROJECTS ? projectLabel(project) : `project ${project}`}: ${scoped.entities.length} entities in ${scoped.topics.length} topic clusters, ${layout} layout`}
                 onClick={() => setSelectedId(null)}
               >
                 {halos.map(({ topic, cx, cy, rx, ry }) => (

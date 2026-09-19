@@ -81,6 +81,7 @@ describe("DemoMessagePane", () => {
     expect(
       screen.getByText("3 sources used this turn — see context panel"),
     ).toBeInTheDocument()
+    expect(screen.queryByText("project: darkmem")).toBeNull()
   })
 })
 

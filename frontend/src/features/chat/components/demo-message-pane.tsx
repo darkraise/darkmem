@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { CircleCheck, Globe, MessageCircle, Send, TriangleAlert } from "lucide-react"
+import { CircleCheck, MessageCircle, Send, TriangleAlert } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
 import { cn } from "darkraise-ui/lib"
@@ -37,12 +37,6 @@ export function DemoMessagePane({
       <div className="border-border flex flex-wrap items-center gap-2 border-b px-3.5 py-2.5">
         <span className="mr-auto text-sm font-semibold">
           {thread?.title ?? "New conversation"}
-        </span>
-        {/* Two distinct chips, never conflated: the solid project pill sets
-            query scope; the dashed context chip declares session applies_when. */}
-        <span className="border-border bg-muted inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-sm">
-          <Globe aria-hidden className="text-muted-foreground h-3 w-3" />
-          project: darkmem
         </span>
         <span className="border-border text-muted-foreground inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-0.5 text-sm italic">
           context: not declared

@@ -28,6 +28,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
 
 import { apiFetch } from "@/lib/api"
 import { useDetailLevel } from "@/components/darkmem"
+import { useProjectStore } from "@/stores/project-store"
 import { FactsTab } from "../components/facts-tab"
 
 const CORROBORATED_CLAIM =
@@ -105,6 +106,7 @@ describe("FactsTab — the project scope reaches the route as the route defines 
   beforeEach(() => {
     vi.clearAllMocks()
     useDetailLevel.setState({ level: "advanced" })
+    useProjectStore.setState({ activeProject: null, missingProject: null })
   })
 
   it("opens on every project and sends no project predicate", async () => {
@@ -119,6 +121,17 @@ describe("FactsTab — the project scope reaches the route as the route defines 
     await screen.findByText("darkmem uses postgres")
     expect(urls()[0]).not.toContain("project=")
     expect(screen.getByText(/Facts — project: all projects/)).toBeInTheDocument()
+  })
+
+  it("scopes by the header switcher and offers no project select", async () => {
+    useProjectStore.setState({ activeProject: "acme", missingProject: null })
+    vi.mocked(apiFetch).mockResolvedValue(page([item()], 1))
+    render(<FactsTab />, { wrapper })
+
+    await screen.findByText("darkmem uses postgres")
+    expect(urls()[0]).toContain("project=acme")
+    expect(screen.getByText(/Facts — project: acme/)).toBeInTheDocument()
+    expect(screen.queryByRole("combobox", { name: "Project scope" })).toBeNull()
   })
 })
 

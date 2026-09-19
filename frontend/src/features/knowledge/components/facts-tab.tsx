@@ -23,6 +23,7 @@ import { TimelineScrubber } from "@/components/timeline-scrubber"
 import { dayKeyToMs, localDayKey } from "@/lib/format"
 import { buildTimelineScale, dateToFraction } from "@/lib/timeline"
 import { useMainVirtualizer } from "@/lib/use-main-virtualizer"
+import { useProjectStore } from "@/stores/project-store"
 import { ALL_PROJECTS, ANY, useFactRows, type FactRowData } from "../use-facts"
 import { ListSurface } from "./list-surface"
 import {
@@ -124,7 +125,9 @@ export function FactsTab() {
   const [subject, setSubject] = useState("")
   const [relation, setRelation] = useState(ANY)
   const [status, setStatus] = useState(ANY)
-  const [project, setProject] = useState(ALL_PROJECTS)
+  const activeProject = useProjectStore((s) => s.activeProject)
+  const setScope = useProjectStore((s) => s.setProject)
+  const project = activeProject ?? ALL_PROJECTS
   const [sort, setSort] = useState<SortKey>("newest")
   const [focusedId, setFocusedId] = useState<string | null>(null)
   const [scrubFraction, setScrubFraction] = useState(0)
@@ -146,7 +149,6 @@ export function FactsTab() {
     hasMore,
     fetchingMore,
     fetchMore,
-    projects,
     relations,
     optionsComplete,
   } = useFactRows({ project, relation, status, subject })
@@ -256,9 +258,9 @@ export function FactsTab() {
 
   return (
     <div className="space-y-4">
-      {/* Four distinct controls, never one ambiguous "filters" blob:
-          subject free-texts, relation and status constrain their columns,
-          project mirrors the global switcher (the isolation boundary). */}
+      {/* Distinct controls, never one ambiguous "filters" blob: subject
+          free-texts, relation and status constrain their columns. The project
+          scope is the header switcher (the isolation boundary). */}
       <div className="border-border flex flex-wrap items-center gap-2.5 border-b border-dashed pb-3">
         <Input
           prefix={<Search aria-hidden className="h-4 w-4" />}
@@ -296,22 +298,6 @@ export function FactsTab() {
             {STATUS_OPTIONS.map((s) => (
               <SelectItem key={s} value={s}>
                 {s}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={project} onValueChange={setProject}>
-          <SelectTrigger
-            className="w-44 rounded-full"
-            aria-label="Project scope"
-          >
-            <SelectValue>project: {projectLabel}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_PROJECTS}>All projects</SelectItem>
-            {projects.map((p) => (
-              <SelectItem key={p} value={p}>
-                {p}
               </SelectItem>
             ))}
           </SelectContent>
@@ -454,7 +440,7 @@ export function FactsTab() {
                     onClick={() => {
                       setRelation(ANY)
                       setStatus(ANY)
-                      setProject(ALL_PROJECTS)
+                      setScope(null)
                     }}
                   >
                     Clear filters

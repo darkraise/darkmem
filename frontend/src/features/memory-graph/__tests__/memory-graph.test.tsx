@@ -1,8 +1,13 @@
 import { fireEvent, render, screen } from "@testing-library/react"
-import { describe, it, expect } from "vitest"
+import { beforeEach, describe, it, expect } from "vitest"
+import { useProjectStore } from "@/stores/project-store"
 import { MemoryGraphExplorer } from "../components/memory-graph-explorer"
 
 describe("MemoryGraphExplorer", () => {
+  beforeEach(() => {
+    useProjectStore.setState({ activeProject: "darkmem", missingProject: null })
+  })
+
   it("renders the project-scoped entity graph with topics", () => {
     render(<MemoryGraphExplorer />)
     expect(
@@ -28,5 +33,10 @@ describe("MemoryGraphExplorer", () => {
       screen.getByText(/L1 carries no verification rung/),
     ).toBeInTheDocument()
     expect(screen.getByText(/relations \(2\)/)).toBeInTheDocument()
+  })
+
+  it("reads the header scope and offers no project select", () => {
+    render(<MemoryGraphExplorer />)
+    expect(screen.queryByRole("combobox", { name: "Project scope" })).toBeNull()
   })
 })

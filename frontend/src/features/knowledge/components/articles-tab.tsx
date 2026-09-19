@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
 import { Link } from "@tanstack/react-router"
 import { GitBranch, FileText } from "lucide-react"
 import {
@@ -9,14 +9,8 @@ import {
   VerificationBadge,
   type VerificationStatus,
 } from "@/components/darkmem"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "darkraise-ui/components/select"
 import { DEMO } from "@/lib/demo-flag"
+import { useProjectStore } from "@/stores/project-store"
 import { useDemoArticles } from "@/demo/hooks"
 import { liveArticles, withheldArticles } from "@/demo/knowledge"
 import type { DemoArticle } from "@/demo/types"
@@ -171,12 +165,7 @@ function ArticleRow({ article }: { article: ArticleView }) {
 
 export function ArticlesTab() {
   const demoArticles = useDemoArticles()
-  // "darkmem" is the *demo* fixture's project. Defaulting a real install to it
-  // showed an empty tab to anyone whose articles live in `default` — the
-  // library reading as empty when it is not, which is the one thing a browsing
-  // surface must never do. Real mode starts unscoped and lets the caller
-  // narrow; demo keeps its own project so its fixture still lands.
-  const [project, setProject] = useState(DEMO ? "darkmem" : "all")
+  const project = useProjectStore((s) => s.activeProject) ?? "all"
 
   const live = useArticles(
     { project: project === "all" ? undefined : project },
@@ -204,35 +193,11 @@ export function ArticlesTab() {
     [articles],
   )
 
-  const projects = useMemo(
-    () =>
-      DEMO
-        ? [...new Set(demoArticles.map((a) => a.project))].sort()
-        : [...new Set((live.data?.items ?? []).map((a) => a.project))].sort(),
-    [demoArticles, live.data],
-  )
-
   const projectLabel = project === "all" ? "all projects" : project
 
   return (
     <div className="space-y-4">
       <div className="border-border flex flex-wrap items-center gap-2.5 border-b border-dashed pb-3">
-        <Select value={project} onValueChange={setProject}>
-          <SelectTrigger
-            className="w-44 rounded-full"
-            aria-label="Project scope"
-          >
-            <SelectValue>project: {projectLabel}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All projects</SelectItem>
-            {projects.map((p) => (
-              <SelectItem key={p} value={p}>
-                {p}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
         <span className="text-muted-foreground ml-auto font-mono text-sm">
           sorted by priority — verified-fact count · read-heat · centrality
         </span>
