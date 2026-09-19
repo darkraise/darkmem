@@ -1,6 +1,6 @@
 import { Badge } from "darkraise-ui/components/badge"
 import { cn } from "darkraise-ui/lib"
-import { useDetailLevel } from "@/components/darkmem"
+import { Timestamp, useDetailLevel } from "@/components/darkmem"
 import type { FactSource, OriginKind } from "@/demo/types"
 import {
   distinctOriginCount,
@@ -49,7 +49,7 @@ export function SourceRow({ source }: { source: FactSource }) {
       </span>
       <span className="min-w-52 flex-1 text-sm">{source.detail}</span>
       <span className="text-muted-foreground ml-auto shrink-0 font-mono text-sm">
-        {source.at}
+        <Timestamp iso={source.at} />
       </span>
     </div>
   )

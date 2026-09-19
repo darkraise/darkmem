@@ -28,6 +28,7 @@ import {
   EmptyState,
   LayerChip,
   listItemClass,
+  Timestamp,
   useDetailLevel,
   VerificationBadge,
 } from "@/components/darkmem"
@@ -176,14 +177,14 @@ function SuspicionBlock({ fact }: { fact: ReviewFactRowData }) {
           <b className="text-foreground font-semibold">
             suspected contradiction
           </b>{" "}
-          · since {s.suspected_at}
+          · since <Timestamp iso={s.suspected_at} />
         </span>
       </p>
       <p>counterpart: {triple ?? "no triple recorded for the counterpart"}</p>
       {s.counterpart_expired_at != null && (
         <p>
-          counterpart withdrawn {s.counterpart_expired_at} — belief expired,
-          flag stands
+          counterpart withdrawn <Timestamp iso={s.counterpart_expired_at} /> —
+          belief expired, flag stands
         </p>
       )}
     </div>
@@ -262,9 +263,8 @@ function FactRow({
             Edit
           </Link>
         </Button>
-        <span className="text-muted-foreground ml-auto font-mono text-xs">
-          queued since {fact.created_at} · ratify/reject are REST/UI,
-          authenticated — never exposed over MCP
+        <span className="text-muted-foreground ml-auto text-xs">
+          queued <Timestamp iso={fact.created_at} />
         </span>
       </div>
     </div>
@@ -308,11 +308,16 @@ function ArticleRow({ article }: { article: ReviewArticleRowData }) {
           {article.content_preview}
         </p>
       )}
-      <p className="text-muted-foreground font-mono text-sm">
-        {article.synthesized_at
-          ? `synthesized ${article.synthesized_at}`
-          : "not yet synthesized — article_synthesis is still a placeholder job"}
-        {" · "}created {article.created_at}
+      <p className="text-muted-foreground text-sm">
+        {article.synthesized_at ? (
+          <>
+            synthesised <Timestamp iso={article.synthesized_at} />
+          </>
+        ) : (
+          "not synthesised yet"
+        )}
+        {" · created "}
+        <Timestamp iso={article.created_at} />
       </p>
       <div className="border-border flex flex-wrap items-center gap-2 border-t border-dashed pt-2">
         <Button variant="outline" asChild>

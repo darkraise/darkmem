@@ -26,7 +26,13 @@ import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { Checkbox } from "darkraise-ui/components/checkbox"
 import { toast } from "darkraise-ui/components/sonner"
-import { LayerChip, listItemClass, useDetailLevel } from "@/components/darkmem"
+import {
+  LayerChip,
+  listItemClass,
+  Timestamp,
+  useDetailLevel,
+} from "@/components/darkmem"
+import { formatWhen } from "@/lib/format"
 import { ApiError } from "@/lib/api"
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoStore } from "@/demo/store"
@@ -350,8 +356,8 @@ function DuplicateRow({
       {level === "advanced" && (
         <p className="text-muted-foreground pl-6 font-mono text-sm">
           project {row.project}
-          {row.detected_at && ` · detected_at ${row.detected_at}`} · created_at{" "}
-          {row.created_at}
+          {row.detected_at && ` · detected_at ${formatWhen(row.detected_at)}`} ·
+          created_at <Timestamp iso={row.created_at} />
         </p>
       )}
     </div>
@@ -378,11 +384,11 @@ function MemoryRowLine({
       {level === "advanced" && (
         <span className="text-muted-foreground block font-mono text-sm">
           project {row.project} · confidence {row.confidence ?? "—"}
-          {row.expires_at && ` · expires_at ${row.expires_at}`}
+          {row.expires_at && ` · expires_at ${formatWhen(row.expires_at)}`}
           {row.superseded_by &&
             ` · superseded_by ${shortId(row.superseded_by)}`}
           {" · created_at "}
-          {row.created_at}
+          <Timestamp iso={row.created_at} />
         </span>
       )}
     </span>

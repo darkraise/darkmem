@@ -3,7 +3,8 @@ import { createFileRoute, Link } from "@tanstack/react-router"
 import { ArrowLeft, GitBranch, Library, TriangleAlert } from "lucide-react"
 import { Accordion } from "darkraise-ui/components/accordion"
 import { Button } from "darkraise-ui/components/button"
-import { EmptyState } from "@/components/darkmem"
+import { EmptyState, Timestamp } from "@/components/darkmem"
+import { formatWhen } from "@/lib/format"
 import { Progress } from "darkraise-ui/components/progress"
 import { Separator } from "darkraise-ui/components/separator"
 import { useSetPageChrome } from "@/components/app-chrome"
@@ -331,7 +332,7 @@ function ArticleDetailPage() {
           <DetailSection
             value="changed"
             title="What changed"
-            meta={`stale since ${article.stale.since}`}
+            meta={`stale since ${formatWhen(article.stale.since)}`}
           >
             <p className="border-border bg-muted/25 rounded-md border border-dashed p-2.5 text-sm">
               {article.stale.reason} The stale overlay is surfaced wherever this
@@ -357,7 +358,9 @@ function ArticleDetailPage() {
               {article.subject_key} · {article.subject_kind}
             </MetaRow>
             <MetaRow label="project">{article.project}</MetaRow>
-            <MetaRow label="synthesised">{article.synthesized_at}</MetaRow>
+            <MetaRow label="synthesised">
+              <Timestamp iso={article.synthesized_at} />
+            </MetaRow>
             {/* fact_set_hash is a fingerprint, not an honesty label — the
                 stale overlay above already carries that signal in every
                 mode, so the raw hash itself is advanced-only detail. */}

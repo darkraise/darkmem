@@ -1,11 +1,12 @@
 import { Badge } from "darkraise-ui/components/badge"
 import { cn } from "darkraise-ui/lib"
+import { Timestamp } from "@/components/darkmem"
 
 function DateField({ label, value }: { label: string; value: string | null }) {
   return (
     <span className="flex flex-col font-mono text-sm">
       <span className="text-muted-foreground">{label}</span>
-      <span>{value ?? "—"}</span>
+      <Timestamp iso={value} />
     </span>
   )
 }

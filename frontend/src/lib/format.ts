@@ -31,3 +31,16 @@ export function relativeTime(iso: string): string {
   const days = Math.floor(hours / 24)
   return `${days}d ago`
 }
+
+/** "code and memory", "code, human and memory" — a list as a sentence
+ *  rather than `[code, memory]`. */
+export function formatList(items: readonly string[]): string {
+  if (items.length <= 1) return items[0] ?? ""
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`
+}
+
+/** `relativeTime` for a value that must stay a plain string (a `meta` prop);
+ *  a value that is not a date passes through as written. */
+export function formatWhen(iso: string): string {
+  return Number.isNaN(new Date(iso).getTime()) ? iso : relativeTime(iso)
+}

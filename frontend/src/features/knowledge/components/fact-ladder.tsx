@@ -1,6 +1,6 @@
 import { ScrollText } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
-import { useDetailLevel, EmptyState} from "@/components/darkmem"
+import { useDetailLevel, EmptyState, Timestamp } from "@/components/darkmem"
 import type { FactLadderEvent } from "@/hooks/api"
 import { RungTransition } from "./fact-parts"
 
@@ -40,7 +40,7 @@ function FactLadderRow({ event }: { event: FactLadderEvent }) {
   return (
     <div className="border-border flex flex-wrap items-start gap-2.5 border-t border-dashed py-2.5 first:border-t-0 first:pt-0">
       <span className="text-muted-foreground w-40 shrink-0 pt-0.5 font-mono text-sm">
-        {event.created_at}
+        <Timestamp iso={event.created_at} />
       </span>
       <div className="min-w-52 flex-1 space-y-1">
         <div className="flex flex-wrap items-center gap-2">

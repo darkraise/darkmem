@@ -1,4 +1,5 @@
 import { VerificationBadge } from "@/components/darkmem"
+import { formatList } from "@/lib/format"
 import type { DisputeSide, FactDispute } from "@/demo/types"
 import { AppliesWhenChips } from "./fact-parts"
 import { SourceRow } from "./fact-sources"
@@ -13,9 +14,8 @@ function DisputeSideCard({ side }: { side: DisputeSide }) {
       </p>
       <p className="text-sm">{side.assertion}</p>
       <p className="text-muted-foreground text-sm">
-        {side.origin_count} {side.origin_count === 1 ? "origin" : "origins"} ·{" "}
-        {side.origin_kinds.length === 1 ? "kind" : "kinds"} [
-        {side.origin_kinds.join(", ")}]
+        {side.origin_count} {side.origin_count === 1 ? "origin" : "origins"},
+        of kind {formatList(side.origin_kinds)}
       </p>
       <p className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
         sources — grouped by origin_key

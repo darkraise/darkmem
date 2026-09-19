@@ -1152,3 +1152,20 @@ describe("ReviewTab: the model scan's flag reaches the reviewer (D-1)", () => {
     expect(screen.queryByText("Dismiss suspicion")).not.toBeInTheDocument()
   })
 })
+
+describe("ReviewTab: plain-language row chrome", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useDetailLevel.setState({ level: "advanced" })
+  })
+
+  it("renders the queued time through the shared timestamp, and the MCP note once", async () => {
+    mockApi()
+    const { container } = render(withQuery(<ReviewTab />))
+    await screen.findByText(/why ranked here:/)
+    expect(container.querySelector('time[datetime="2026-08-01T00:00:00Z"]')).not.toBeNull()
+    expect(screen.queryByText(/2026-08-01T00:00:00Z/)).toBeNull()
+    expect(screen.queryByText(/never exposed over MCP/)).toBeNull()
+    expect(screen.getByRole("button", { name: "About review actions" })).toBeInTheDocument()
+  })
+})

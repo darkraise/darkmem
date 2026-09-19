@@ -20,7 +20,7 @@ import {
 import { Button } from "darkraise-ui/components/button"
 import { cn } from "darkraise-ui/lib"
 import { TimelineScrubber } from "@/components/timeline-scrubber"
-import { dayKeyToMs, localDayKey } from "@/lib/format"
+import { dayKeyToMs, formatList, localDayKey } from "@/lib/format"
 import { buildTimelineScale, dateToFraction } from "@/lib/timeline"
 import { useMainVirtualizer } from "@/lib/use-main-virtualizer"
 import { useProjectStore } from "@/stores/project-store"
@@ -89,7 +89,7 @@ export function FactRow({
           <span className="text-muted-foreground ml-auto font-mono text-sm">
             {fact.origin_count} {fact.origin_count === 1 ? "origin" : "origins"}
             {fact.origin_kinds.length > 0 &&
-              ` · ${fact.origin_kinds.join(", ")}`}
+              ` · ${formatList(fact.origin_kinds)}`}
           </span>
         )}
       </div>

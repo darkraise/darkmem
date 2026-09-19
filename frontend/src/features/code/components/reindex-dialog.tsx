@@ -11,6 +11,7 @@ import { Button } from "darkraise-ui/components/button"
 import { Switch } from "darkraise-ui/components/switch"
 import { cn } from "darkraise-ui/lib"
 import { useDemoStore } from "@/demo/store"
+import { formatWhen } from "@/lib/format"
 import type { DemoRepo, ReindexOptions } from "@/demo/types"
 
 const TOGGLES: {
@@ -78,7 +79,7 @@ export function ReindexDialog({
           <p className="text-muted-foreground font-mono text-sm">
             {repo.head ? `current HEAD ${repo.head}` : "never indexed"}
             {repo.last_indexed_at
-              ? ` · last indexed ${repo.last_indexed_at}`
+              ? ` · last indexed ${formatWhen(repo.last_indexed_at)}`
               : ""}
           </p>
         </DialogHeader>

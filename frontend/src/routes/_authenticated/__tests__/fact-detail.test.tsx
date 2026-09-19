@@ -237,7 +237,7 @@ describe("FactDetail (DEMO off — GET /knowledge/facts/{id})", () => {
     // Collapsed by default (the sources section opens first) — open it.
     fireEvent.click(screen.getByText("Verification ladder"))
     expect(screen.getByText("verified")).toBeInTheDocument()
-    expect(screen.getByText("2026-06-02T00:00:00Z")).toBeInTheDocument()
+    expect(document.querySelector('time[datetime="2026-06-02T00:00:00Z"]')).not.toBeNull()
   })
 
   // T2.86 fix round (F1): a ladder truncated by the backend's LADDER_LIMIT
@@ -325,13 +325,13 @@ describe("FactDetail (DEMO off — GET /knowledge/facts/{id})", () => {
     fireEvent.click(screen.getByText("Verification ladder"))
 
     // No before/after at all: the badge and nothing else — no stray arrow.
-    const noTransitionRow = screen.getByText("2026-06-01T00:00:00Z").parentElement
+    const noTransitionRow = document.querySelector('time[datetime="2026-06-01T00:00:00Z"]')!.closest("div")
     expect(noTransitionRow).not.toBeNull()
     expect(within(noTransitionRow!).getByText("sources_changed")).toBeInTheDocument()
     expect(within(noTransitionRow!).queryByText(/→/)).not.toBeInTheDocument()
 
     // A non-rung field: the generic "field: from → to" line.
-    const genericRow = screen.getByText("2026-06-03T00:00:00Z").parentElement
+    const genericRow = document.querySelector('time[datetime="2026-06-03T00:00:00Z"]')!.closest("div")
     expect(genericRow).not.toBeNull()
     expect(
       within(genericRow!).getByText(/invalid_at: — → 2026-06-03T00:00:00Z/),
@@ -339,7 +339,7 @@ describe("FactDetail (DEMO off — GET /knowledge/facts/{id})", () => {
 
     // `after.verification_status: null` — a blocked promotion — falls back
     // to the weakest rung, never a blank pill.
-    const fallbackRow = screen.getByText("2026-06-04T00:00:00Z").parentElement
+    const fallbackRow = document.querySelector('time[datetime="2026-06-04T00:00:00Z"]')!.closest("div")
     expect(fallbackRow).not.toBeNull()
     expect(within(fallbackRow!).getByText("corroborated")).toBeInTheDocument()
     expect(within(fallbackRow!).getByText("candidate")).toBeInTheDocument()

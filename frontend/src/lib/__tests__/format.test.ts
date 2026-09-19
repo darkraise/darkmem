@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest"
-import { relativeTime } from "../format"
+import { formatList, formatWhen, relativeTime } from "../format"
 
 const NOW = new Date("2025-01-15T12:00:00Z").getTime()
 
@@ -39,5 +39,20 @@ describe("relativeTime", () => {
     setNow(NOW)
     const iso = new Date(NOW - 2 * 86400_000).toISOString()
     expect(relativeTime(iso)).toBe("2d ago")
+  })
+})
+
+describe("formatList", () => {
+  it("reads as prose", () => {
+    expect(formatList([])).toBe("")
+    expect(formatList(["memory"])).toBe("memory")
+    expect(formatList(["code", "memory"])).toBe("code and memory")
+    expect(formatList(["code", "human", "memory"])).toBe("code, human and memory")
+  })
+})
+
+describe("formatWhen", () => {
+  it("passes a value that is not a date through unchanged", () => {
+    expect(formatWhen("14:10 UTC")).toBe("14:10 UTC")
   })
 })

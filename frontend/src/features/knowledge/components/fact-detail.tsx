@@ -3,7 +3,7 @@ import { ArrowLeft, CircleAlert, Library, Loader2 } from "lucide-react"
 import { Accordion } from "darkraise-ui/components/accordion"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
-import { EmptyState } from "@/components/darkmem"
+import { EmptyState, Timestamp } from "@/components/darkmem"
 import { Separator } from "darkraise-ui/components/separator"
 import { useSetPageChrome } from "@/components/app-chrome"
 import {
@@ -47,7 +47,7 @@ function LadderRow({ event }: { event: DemoLadderEvent }) {
   return (
     <div className="border-border flex flex-wrap items-start gap-2.5 border-t border-dashed py-2.5 first:border-t-0 first:pt-0">
       <span className="text-muted-foreground w-40 shrink-0 pt-0.5 font-mono text-sm">
-        {event.at}
+        <Timestamp iso={event.at} />
       </span>
       <div className="min-w-52 flex-1 space-y-1">
         <p className="text-sm">{event.description}</p>
@@ -450,7 +450,7 @@ function LiveFactDetailBody({ fact }: { fact: LiveFactDetailData }) {
           <BeliefWindowRow window={fact.belief_window} />
           {fact.demotion_pending_since && (
             <p className="text-muted-foreground text-sm">
-              under-sourced since {fact.demotion_pending_since}
+              under-sourced since <Timestamp iso={fact.demotion_pending_since} />
             </p>
           )}
         </DetailSection>
