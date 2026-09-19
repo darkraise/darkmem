@@ -184,7 +184,7 @@ function SourceTag({ source }: { source: DemoRankArm["source"] }) {
         "font-mono text-xs whitespace-nowrap",
         source === "default"
           ? "text-muted-foreground italic"
-          : "text-primary-text/80",
+          : "text-primary-text",
       )}
     >
       ({sourceLabel(source)})
