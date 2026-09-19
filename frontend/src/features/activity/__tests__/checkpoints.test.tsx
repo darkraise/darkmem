@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, waitFor } from "@testing-library/react"
+import { act, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
@@ -23,6 +23,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 
 import { apiFetch, ApiError } from "@/lib/api"
 import { useDetailLevel } from "@/components/darkmem"
+import { ALL_PROJECTS, useProjectStore } from "@/stores/project-store"
 import { CheckpointsTab } from "../components/checkpoints-tab"
 import { LIVE_POLL_MS } from "../use-checkpoint-runs"
 
@@ -92,6 +93,7 @@ function route(handlers: Record<string, unknown>, missing: string[] = []) {
 beforeEach(() => {
   vi.clearAllMocks()
   useDetailLevel.setState({ level: "advanced" })
+  useProjectStore.setState({ activeProject: ALL_PROJECTS, missingProject: null })
 })
 
 describe("CheckpointsTab — runs come from the journal", () => {
@@ -269,7 +271,7 @@ describe("CheckpointsTab — detail level (invariant 14)", () => {
 })
 
 describe("CheckpointsTab — the live watch surface (increment 1)", () => {
-  it("filters runs through the server-side project predicate, not client slicing", async () => {
+  it("follows the header scope through the server-side project predicate, not client slicing", async () => {
     // The distinction matters: a client-side filter would still show every
     // run the unfiltered page happened to carry, and would silently disagree
     // with `total`. The assertion is that the *request* narrowed.
@@ -287,11 +289,11 @@ describe("CheckpointsTab — the live watch surface (increment 1)", () => {
 
     await screen.findByText("cc-run-8f3a2c")
     expect(screen.getByText("cc-run-other")).toBeInTheDocument()
+    expect(
+      screen.queryByRole("combobox", { name: /project/i }),
+    ).not.toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole("combobox", { name: /project/i }))
-    // Scoped to the option, not the text: RunCard also renders the project
-    // name, so a bare findByText matches two nodes.
-    await userEvent.click(await screen.findByRole("option", { name: "other-proj" }))
+    act(() => useProjectStore.getState().setProject("other-proj"))
 
     await waitFor(() =>
       expect(
@@ -305,35 +307,6 @@ describe("CheckpointsTab — the live watch surface (increment 1)", () => {
     await waitFor(() =>
       expect(screen.queryByText("cc-run-8f3a2c")).not.toBeInTheDocument(),
     )
-  })
-
-  it("keeps every project ever seen as an option after filtering to one", async () => {
-    // The filtered page contains only the filtered project, so options
-    // derived from the current page alone would collapse to the selection
-    // and strand the viewer there with no way back.
-    vi.mocked(apiFetch).mockImplementation(async (path: string) => {
-      if (path.includes("/events")) {
-        return (
-          path.includes("project=other-proj")
-            ? { items: JOURNAL.items.filter((e) => e.project === "other-proj"), total: 1 }
-            : JOURNAL
-        ) as never
-      }
-      return CHECKPOINT as never
-    })
-    render(<CheckpointsTab />, { wrapper })
-    await screen.findByText("cc-run-8f3a2c")
-
-    await userEvent.click(screen.getByRole("combobox", { name: /project/i }))
-    await userEvent.click(await screen.findByRole("option", { name: "other-proj" }))
-    await waitFor(() =>
-      expect(screen.queryByText("cc-run-8f3a2c")).not.toBeInTheDocument(),
-    )
-
-    await userEvent.click(screen.getByRole("combobox", { name: /project/i }))
-    expect(
-      await screen.findByRole("option", { name: "darkmem" }),
-    ).toBeInTheDocument()
   })
 
   it("polls the journal on the live interval", async () => {

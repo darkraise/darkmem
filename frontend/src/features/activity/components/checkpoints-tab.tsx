@@ -1,15 +1,9 @@
 import { useEffect, useRef, useState } from "react"
 import { Bookmark, ChevronRight, Copy } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "darkraise-ui/components/select"
 import { EmptyState, listItemClass, useDetailLevel } from "@/components/darkmem"
 import { cn } from "darkraise-ui/lib"
+import { useProjectStore } from "@/stores/project-store"
 import {
   useCheckpointDigest,
   useCheckpointRuns,
@@ -24,11 +18,6 @@ import { ModuleSurface, SurfaceStateChip } from "./module-surface"
 // which is why it renders at BOTH detail levels: `simple` collapses
 // technical detail and never hides an honesty signal.
 const KIND_LABEL = "session digest · not verified knowledge"
-
-// Select carries string values, so the unfiltered state needs a sentinel that
-// cannot collide with a real project name. `project` is NOT NULL server-side
-// and empty names never reach the journal, so "" is unreachable as data.
-const ALL_PROJECTS = ""
 
 function KindPill() {
   return (
@@ -261,30 +250,18 @@ function RunDetail({
   )
 }
 
-/** `project` pins the tab to one scope and hides the filter: the project
- *  workspace's scope is its route param, and a second filter inside it would
- *  offer escapes from the page you are on. Absent, this is the standalone
- *  Activity tab with its own filter. */
+/** `project` pins the tab to one scope: the project workspace's scope is its
+ *  route param. Absent, this is the standalone Activity tab and it follows the
+ *  header's project scope. */
 export function CheckpointsTab({ project }: { project?: string } = {}) {
-  const [projectFilter, setProjectFilter] = useState<string | null>(null)
-  const pinned = project !== undefined
+  const activeProject = useProjectStore((s) => s.activeProject)
   const { runs, isLoading, isError } = useCheckpointRuns(
-    pinned ? project : projectFilter,
+    project ?? activeProject,
   )
   const advanced = useDetailLevel((s) => s.level) === "advanced"
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selected = runs.find((r) => r.id === selectedId) ?? runs[0] ?? null
   const { digest, isLoading: digestLoading } = useCheckpointDigest(selected)
-
-  // Options accumulate across the mount rather than deriving from the current
-  // page: the filtered page contains only the filtered project, so a derived
-  // list would collapse to the selection and strand the viewer with no way
-  // back to the others. Not `/api/v1/projects` -- that route derives from
-  // `memories` alone, so a checkpoint-only project would be missing from its
-  // own filter (review finding M2).
-  const seenProjects = useRef(new Set<string>())
-  for (const run of runs) seenProjects.current.add(run.project)
-  const projectOptions = [...seenProjects.current].sort()
 
   return (
     <div className="space-y-4">
@@ -300,31 +277,6 @@ export function CheckpointsTab({ project }: { project?: string } = {}) {
         event payloads deliberately carry no step content, and no endpoint
         serves a run's past summaries.
       </p>
-      {pinned ? null : (
-      <div className="flex items-center gap-2">
-        <Select
-          value={projectFilter ?? ALL_PROJECTS}
-          onValueChange={(value) =>
-            setProjectFilter(value === ALL_PROJECTS ? null : value)
-          }
-        >
-          <SelectTrigger
-            className="w-auto min-w-52 rounded-full"
-            aria-label="project"
-          >
-            <SelectValue>{projectFilter ?? "all projects"}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_PROJECTS}>all projects</SelectItem>
-            {projectOptions.map((name) => (
-              <SelectItem key={name} value={name}>
-                {name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      )}
       <ModuleSurface
         title="Checkpointed runs"
         state={isLoading ? "empty" : runs.length > 0 ? "populated" : "empty"}
