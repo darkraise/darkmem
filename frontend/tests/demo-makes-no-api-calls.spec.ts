@@ -69,16 +69,9 @@ for (const route of DEMO_ROUTES) {
     // mount, so this is a settle window, not a race the assertion depends on.
     await page.waitForTimeout(1500)
 
-    // The login form is the *symptom* of the 401 redirect, and asserting it
-    // separately is what keeps a failure legible: a bare request-list
-    // assertion would say "one stray GET" where the real damage is that the
-    // page the user asked for is gone.
-    await expect(
-      page.getByText(/sign in to continue/i),
-      `demo route ${route} was redirected to /login — an unguarded ` +
-        `authenticated read 401'd and handleUnauthorized navigated away`,
-    ).toBeHidden()
-
+    // Requests are asserted first: when the page was redirected to /login,
+    // the list names the read that caused it, or is empty when the demo flag
+    // was not on at all.
     expect(
       attempted,
       `demo mode must issue no /api/v1 request; ${route} attempted:\n` +
@@ -86,5 +79,11 @@ for (const route of DEMO_ROUTES) {
         `\nGive the hook behind it \`enabled: !DEMO\`, the way ` +
         `useProjects and the usage reads do.`,
     ).toEqual([])
+
+    await expect(
+      page.getByText(/sign in to continue/i),
+      `demo route ${route} was redirected to /login with no /api/v1 ` +
+        `request attempted — the page was served without the demo flag`,
+    ).toBeHidden()
   })
 }
