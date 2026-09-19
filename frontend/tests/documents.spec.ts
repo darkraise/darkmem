@@ -36,6 +36,33 @@ async function signIn(page: Page) {
   await expect(page).toHaveURL("/")
 }
 
+/**
+ * Since the global-scope change, a fresh browser context opens on ALL_PROJECTS
+ * and `/documents` then renders the project chooser rather than the workspace,
+ * so the Ask surface never mounts. Picking through the header switcher rather
+ * than through the chooser is deliberate: the chooser lists only projects that
+ * already hold documents, and the disposable stack seeds a memory-only project,
+ * while the workspace itself renders for any project and states its own empty
+ * corpus. The scope this sets is the same global one the chooser writes, so
+ * `ProjectScopeReconciler` has nothing to widen — the name comes from the
+ * server's own list.
+ */
+async function chooseAnyProject(page: Page) {
+  await page.getByRole("button", { name: "Project scope" }).click()
+  // "All projects" carries the hint "every scope at once"; every real project
+  // row carries an item count, which is what this matches.
+  const rows = page.getByRole("button", { name: /\d+ items?$/ })
+  const count = await rows.count()
+  if (count === 0) {
+    throw new Error(
+      "No project exists on this stack, so the documents workspace cannot be " +
+        "reached — this spec never soft-skips: a stack with no project is a " +
+        "broken fixture, not a passing run.",
+    )
+  }
+  await rows.first().click()
+}
+
 test.beforeAll(() => {
   if (!PASSWORD) {
     throw new Error(
@@ -58,6 +85,7 @@ test("the Ask mode states its grounding rule before anything is asked", async ({
 }) => {
   await signIn(page)
   await page.goto("/documents")
+  await chooseAnyProject(page)
   await page.getByRole("radio", { name: "Ask" }).click()
   await expect(
     page.getByText(/an answer that cannot be grounded is withheld/i),
@@ -80,6 +108,7 @@ test("the grounded-answer control refuses an empty question", async ({
 }) => {
   await signIn(page)
   await page.goto("/documents")
+  await chooseAnyProject(page)
   await page.getByRole("radio", { name: "Ask" }).click()
   await expect(page.getByRole("button", { name: /^Ask$/i })).toBeDisabled()
 })
