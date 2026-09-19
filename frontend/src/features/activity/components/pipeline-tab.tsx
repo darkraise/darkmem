@@ -63,12 +63,12 @@ function PipelineRow({
   const failedStep = deriveRunFailedStep(run)
   return (
     <div className={listItemClass({ className: "flex flex-col gap-2.5 p-3" })}>
-      <div className="flex flex-wrap items-baseline gap-2.5">
+      <div className="flex flex-col gap-1 md:flex-row md:flex-wrap md:items-baseline md:gap-2.5">
         <span className="text-muted-foreground font-mono text-sm">
           {run.id}
         </span>
-        <span className="min-w-0 flex-1 text-sm">{run.content}</span>
-        <span className="text-muted-foreground ml-auto font-mono text-sm whitespace-nowrap">
+        <span className="min-w-0 text-sm md:flex-1">{run.content}</span>
+        <span className="text-muted-foreground font-mono text-sm whitespace-nowrap md:ml-auto">
           {run.time_label}
         </span>
       </div>

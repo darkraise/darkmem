@@ -22,7 +22,10 @@ import { useMediaQuery } from "@/hooks/use-media-query"
  */
 
 const STORAGE_KEY = "darkmem.chat.panel-sizes"
-const DEFAULT_SIZES = [16, 60, 24]
+/** The thread pane's floor, in percent (the group takes no pixel sizes). At
+ *  the narrowest wide layout it still fits the pane's header and search box. */
+export const THREADS_MIN_SIZE = 18
+const DEFAULT_SIZES = [20, 56, 24]
 
 function readStoredSizes(): number[] {
   if (typeof window === "undefined") return DEFAULT_SIZES
@@ -33,7 +36,8 @@ function readStoredSizes(): number[] {
     if (
       Array.isArray(parsed) &&
       parsed.length === DEFAULT_SIZES.length &&
-      parsed.every((n) => typeof n === "number" && Number.isFinite(n) && n > 0)
+      parsed.every((n) => typeof n === "number" && Number.isFinite(n) && n > 0) &&
+      (parsed[0] as number) >= THREADS_MIN_SIZE
     ) {
       return parsed as number[]
     }
@@ -102,7 +106,7 @@ export function ChatPanels({
       <ResizablePanel
         id="chat-threads"
         defaultSize={initial[0]}
-        minSize={10}
+        minSize={THREADS_MIN_SIZE}
         maxSize={32}
         className="grid min-h-0 pr-3"
       >

@@ -107,6 +107,8 @@ describe("no-restricted-imports: src/demo/*", () => {
     // error-level rule above governs. Re-measured when the project and usage
     // demo fixtures landed: 117 — `use-projects-api.ts` and `use-usage-api.ts`
     // import them for their `initialData` in demo mode, the same shape.
-    expect(countByRule(results, "no-restricted-imports")).toBe(117)
+    // Re-measured when the pipeline stepper test landed: 118 — it reads a
+    // curated run out of `useDemoStore`, one more `@/demo/store` import.
+    expect(countByRule(results, "no-restricted-imports")).toBe(118)
   })
 })

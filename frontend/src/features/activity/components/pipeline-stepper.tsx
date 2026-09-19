@@ -115,19 +115,31 @@ function WriteDot({
 
 export function PipelineStepper({ run }: { run: DemoPipelineRun }) {
   return (
-    <div className="flex items-start overflow-x-auto pb-1">
+    <ol
+      aria-label="Pipeline steps"
+      className="flex flex-col md:flex-row md:items-start md:overflow-x-auto md:pb-1"
+    >
       {run.steps.map((state, i) => (
-        <div key={PHASE_LABELS[i]} className="flex flex-1 items-start">
+        <li
+          key={PHASE_LABELS[i]}
+          className="flex flex-col md:flex-1 md:flex-row md:items-start"
+        >
           {i > 0 && (
-            <span
-              aria-hidden
-              className={cn(
-                "mt-3.5 h-0.5 min-w-3 flex-1",
-                connectorClass(state),
-              )}
-            />
+            <>
+              <span
+                aria-hidden
+                className={cn("ml-[13px] h-3 w-0.5 md:hidden", connectorClass(state))}
+              />
+              <span
+                aria-hidden
+                className={cn(
+                  "mt-3.5 hidden h-0.5 min-w-3 flex-1 md:block",
+                  connectorClass(state),
+                )}
+              />
+            </>
           )}
-          <div className="flex w-24 flex-none flex-col items-center gap-1">
+          <div className="flex items-center gap-2 md:w-24 md:flex-none md:flex-col md:gap-1">
             {i === 4 ? (
               <WriteDot state={state} substeps={run.substeps} />
             ) : (
@@ -140,12 +152,12 @@ export function PipelineStepper({ run }: { run: DemoPipelineRun }) {
                 <StepIcon state={state} />
               </span>
             )}
-            <span className="text-muted-foreground font-mono text-[10px]">
+            <span className="text-muted-foreground font-mono text-xs">
               {i + 1}
             </span>
             <span
               className={cn(
-                "text-center text-sm leading-tight",
+                "text-sm leading-tight md:text-center",
                 LABEL_STYLES[state],
               )}
             >
@@ -158,8 +170,8 @@ export function PipelineStepper({ run }: { run: DemoPipelineRun }) {
               </span>
             )}
           </div>
-        </div>
+        </li>
       ))}
-    </div>
+    </ol>
   )
 }

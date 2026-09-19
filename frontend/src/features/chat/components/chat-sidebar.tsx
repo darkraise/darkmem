@@ -51,8 +51,8 @@ export function ChatSidebar({
        like a desktop rail inside a single-column stack. */
     <div className="border-border bg-card flex max-h-56 w-full flex-col overflow-hidden rounded-md border lg:max-h-none lg:rounded-none lg:border-0 lg:bg-transparent">
       <div className="border-border space-y-2 border-b p-3">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold">Conversations</span>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="min-w-0 truncate text-sm font-semibold">Conversations</span>
           <Button className="gap-1" onClick={onCreate}>
             <Plus className="h-3.5 w-3.5" /> New
           </Button>

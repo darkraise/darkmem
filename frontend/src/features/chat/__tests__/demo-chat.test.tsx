@@ -100,4 +100,16 @@ describe("DemoThreadList", () => {
     ).toBeInTheDocument()
     expect(screen.getByText("4 msgs")).toBeInTheDocument()
   })
+
+  it("lets its header wrap rather than clip the New button", () => {
+    render(
+      <DemoThreadList
+        threads={CURATED_CHAT_THREADS}
+        activeId="thread-ranking"
+        onSelect={vi.fn()}
+        onNew={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole("button", { name: /new/i }).parentElement).toHaveClass("flex-wrap")
+  })
 })
