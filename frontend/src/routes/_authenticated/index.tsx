@@ -53,7 +53,7 @@ function StatTile({
 }) {
   return (
     <Card>
-      <CardContent className="pt-5">
+      <CardContent className="px-4 py-3">
         <Stat>
           <StatLabel>{label}</StatLabel>
           <StatValue>{value}</StatValue>
@@ -123,7 +123,7 @@ function DashboardPage() {
         description="What the vault knows and what changed recently."
       />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {/* No "+N today" delta: the only per-day series available is
             /events/calendar, which counts every event type — cron ticks and
             logins included — so on this vault it read "+20 today" beside a

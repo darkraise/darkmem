@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { Fragment, useMemo } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import {
   HoverCard,
@@ -70,76 +70,83 @@ export function YearHeatmap({ days }: { days: ContributionDay[] }) {
 
   return (
     <div className="space-y-2">
-      <div className="flex gap-2">
+      <div className="overflow-x-auto pb-1">
+        {/* One grid: a label column, then one fluid column per week, so the
+            cells take the card's width instead of a fixed 12px. */}
         <div
-          aria-hidden
-          className="text-muted-foreground flex shrink-0 flex-col gap-1 pt-5"
+          data-testid="heatmap-grid"
+          className="grid min-w-max gap-1 sm:min-w-0"
+          style={{
+            gridTemplateColumns: `auto repeat(${weeks.length}, minmax(10px, 1fr))`,
+          }}
         >
-          {WEEKDAY_LABELS.map((label, i) => (
-            <span key={i} className="flex h-3 items-center text-xs">
-              {label}
+          <span aria-hidden />
+          {weeks.map((week, i) => (
+            <span
+              key={`month-${i}`}
+              aria-hidden
+              className="text-muted-foreground relative h-4 text-xs whitespace-nowrap"
+            >
+              {week.monthLabel && (
+                <span className="absolute left-0">{week.monthLabel}</span>
+              )}
             </span>
           ))}
-        </div>
-        <div className="min-w-0 overflow-x-auto pb-1">
-          <div className="w-max">
-            <div aria-hidden className="mb-1 flex gap-1">
-              {weeks.map((week, i) => (
-                <div key={i} className="relative h-4 w-3">
-                  {week.monthLabel && (
-                    <span className="text-muted-foreground absolute left-0 text-xs whitespace-nowrap">
-                      {week.monthLabel}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-1">
-              {weeks.map((week, wi) => (
-                <div key={wi} className="flex flex-col gap-1">
-                  {week.days.map((day, di) =>
-                    day ? (
-                      <HoverCard key={day.date} openDelay={120} closeDelay={40}>
-                        <HoverCardTrigger asChild>
-                          <button
-                            type="button"
-                            // The inject count rides the label rather than a
-                            // colour alone: a coloured dot nobody can read out
-                            // is not a surface a human can check push against.
-                            aria-label={`${formatDayKey(day.date)} — ${day.count} memor${day.count === 1 ? "y" : "ies"}${day.injects > 0 ? `, ${day.injects} inject${day.injects === 1 ? "" : "s"}` : ""}`}
-                            onClick={() =>
-                              navigate({
-                                to: "/memories",
-                                search: { date: day.date },
-                              })
-                            }
-                            className={cn(
-                              CELL,
-                              intensityClass(day.count, thresholds),
-                              "hover:ring-ring focus-visible:ring-ring outline-none hover:ring-1 focus-visible:ring-1",
-                              day.date === todayKey &&
-                                "ring-primary/60 ring-1",
-                              day.injects > 0 &&
-                                "ring-info/70 ring-1 ring-offset-0",
-                            )}
-                          />
-                        </HoverCardTrigger>
-                        <HoverCardContent
-                          side="top"
-                          className="w-60 p-3"
-                          collisionPadding={12}
-                        >
-                          <CellPopover day={day} />
-                        </HoverCardContent>
-                      </HoverCard>
-                    ) : (
-                      <span key={di} aria-hidden className={cn(CELL, "invisible")} />
-                    ),
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+          {WEEKDAY_LABELS.map((label, di) => (
+            <Fragment key={`row-${di}`}>
+              <span
+                aria-hidden
+                className="text-muted-foreground flex items-center pr-1 text-xs"
+              >
+                {label}
+              </span>
+              {weeks.map((week, wi) => {
+                const day = week.days[di]
+                if (!day) {
+                  return (
+                    <span
+                      key={`empty-${wi}`}
+                      aria-hidden
+                      className="aspect-square w-full"
+                    />
+                  )
+                }
+                return (
+                  <HoverCard key={day.date} openDelay={120} closeDelay={40}>
+                    <HoverCardTrigger asChild>
+                      <button
+                        type="button"
+                        // The inject count rides the label rather than a
+                        // colour alone: a coloured dot nobody can read out
+                        // is not a surface a human can check push against.
+                        aria-label={`${formatDayKey(day.date)} — ${day.count} memor${day.count === 1 ? "y" : "ies"}${day.injects > 0 ? `, ${day.injects} inject${day.injects === 1 ? "" : "s"}` : ""}`}
+                        onClick={() =>
+                          navigate({
+                            to: "/memories",
+                            search: { date: day.date },
+                          })
+                        }
+                        className={cn(
+                          "aspect-square w-full rounded-sm",
+                          intensityClass(day.count, thresholds),
+                          "hover:ring-ring focus-visible:ring-ring outline-none hover:ring-1 focus-visible:ring-1",
+                          day.date === todayKey && "ring-primary/60 ring-1",
+                          day.injects > 0 && "ring-info/70 ring-1 ring-offset-0",
+                        )}
+                      />
+                    </HoverCardTrigger>
+                    <HoverCardContent
+                      side="top"
+                      className="w-60 p-3"
+                      collisionPadding={12}
+                    >
+                      <CellPopover day={day} />
+                    </HoverCardContent>
+                  </HoverCard>
+                )
+              })}
+            </Fragment>
+          ))}
         </div>
       </div>
       <div className="text-muted-foreground flex items-center gap-1.5 text-sm">

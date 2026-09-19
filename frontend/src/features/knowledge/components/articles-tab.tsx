@@ -117,7 +117,10 @@ function ArticleRow({ article }: { article: ArticleView }) {
         className: "flex flex-wrap items-start gap-3 p-2.5",
       })}
     >
-      <div className="flex shrink-0 flex-col items-start gap-1.5">
+      <div
+        data-testid="article-badges"
+        className="flex w-40 shrink-0 flex-col items-start gap-1.5"
+      >
         <LayerChip layer={3} />
         <VerificationBadge
           status={article.status}

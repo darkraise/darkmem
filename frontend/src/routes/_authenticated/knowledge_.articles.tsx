@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router"
-import { FileText } from "lucide-react"
+import { Newspaper } from "lucide-react"
 import { PageChrome } from "@/components/app-chrome"
 import { ArticlesTab } from "@/features/knowledge/components/articles-tab"
 
@@ -11,7 +11,7 @@ function KnowledgeArticlesPage() {
   return (
     <div className="space-y-4">
       <PageChrome
-        icon={FileText}
+        icon={Newspaper}
         title="Articles"
         description="Synthesised articles whose every claim links to a fact."
       />

@@ -18,6 +18,7 @@ import {
   LayoutDashboard,
   MessageSquare,
   Network,
+  Newspaper,
   NotebookPen,
   ScrollText,
   Settings,
@@ -76,7 +77,7 @@ const nav: NavGroup[] = [
       // L3 has no live channel until article synthesis ships behind G-D; the
       // route stays reachable and honest, but nothing advertises an empty layer.
       ...(DEMO
-        ? [{ label: "Articles", href: "/knowledge/articles", icon: FileText }]
+        ? [{ label: "Articles", href: "/knowledge/articles", icon: Newspaper }]
         : []),
       { label: "Topics", href: "/knowledge/topics", icon: Tags },
       { label: "Review", href: "/knowledge/review", icon: ClipboardCheck },
