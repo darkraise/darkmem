@@ -126,6 +126,16 @@ async def test_get_with_row_but_no_file_is_404(client, auth_headers, root, page)
     assert response.status_code == 404
 
 
+async def test_an_unauthenticated_upload_is_401_even_read_only(
+    client, root, page, monkeypatch,
+):
+    """Auth first: the posture of an instance is not an anonymous caller's
+    to learn."""
+    monkeypatch.setattr(settings, "read_only", True)
+    response = await client.post(f"{V1}/pages/{page}/attachments", content=b"a")
+    assert response.status_code == 401
+
+
 async def test_both_routes_need_auth(client, root, page):
     assert (await client.post(f"{V1}/pages/{page}/attachments", content=b"a")).status_code == 401
     assert (await client.get(f"{V1}/pages/attachments/{uuid4()}")).status_code == 401

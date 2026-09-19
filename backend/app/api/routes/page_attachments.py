@@ -59,13 +59,13 @@ def _too_large() -> HTTPException:
     "/{page_id}/attachments",
     response_model=AttachmentResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(refuse_when_read_only)],
 )
 async def upload_attachment_route(
     page_id: UUID,
     request: Request,
     x_filename: str | None = Header(default=None),
     _user=Depends(require_auth),
+    _read_only=Depends(refuse_when_read_only),
     session: AsyncSession = Depends(get_session),
 ) -> AttachmentResponse:
     declared = request.headers.get("content-length")
