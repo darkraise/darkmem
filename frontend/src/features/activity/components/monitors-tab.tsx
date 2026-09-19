@@ -12,6 +12,7 @@ import {
 } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { cn } from "darkraise-ui/lib"
+import { useDetailLevel } from "@/components/darkmem"
 import { useDemoDreamMonitor } from "@/demo/hooks"
 import { useDemoStore } from "@/demo/store"
 import type { DemoBufferRow, DemoDreamChainJob } from "@/demo/types"
@@ -146,6 +147,7 @@ function StaleClaimRow({ row }: { row: DemoBufferRow }) {
 }
 
 function BufferTargetBoard() {
+  const advanced = useDetailLevel((s) => s.level) === "advanced"
   const state = useBufferMonitor()
   const retryBufferRow = useDemoStore((s) => s.retryBufferRow)
   const forgetBufferRow = useDemoStore((s) => s.forgetBufferRow)
@@ -160,7 +162,7 @@ function BufferTargetBoard() {
         <StagedCard
           phase="memory_buffer and buffer_flush are live; nothing reads them over the API"
           headline="Buffer monitor cannot bind to real data"
-          reason="T1.61 could not add the missing memory_buffer read/action route from this frontend-only lane — see the epic amendment log. This is an honest gap, not a broken panel."
+          reason={`No API route reads or acts on the capture buffer yet, so this panel has nothing live to bind — an honest gap, not a broken panel.${advanced ? " (T1.61 recorded it in the epic amendment log.)" : ""}`}
         />
       </ModuleSurface>
     )

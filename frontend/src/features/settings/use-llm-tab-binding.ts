@@ -45,13 +45,9 @@ const LIVE_PURPOSE_META: Record<LLMPurposeName, { tier: string; role: string }> 
     tier: "tier A",
     role: "retrieval rerank scoring, top-40 RRF rows, flag-gated",
   },
-  // T2.106: promoted out of the Tier-C read-only list. Seeded inert (no
-  // consumer until T3.02, doc 11 §6) but writable — a mis-set connection
-  // here fails the day article synthesis finally dispatches on it, not
-  // before, and nothing today reads this row.
   synthesis: {
     tier: "tier C",
-    role: "Layer-3 article write-ups, auto-research write-ups — no consumer yet (T3.02)",
+    role: "Layer-3 article write-ups and auto-research write-ups",
   },
 }
 

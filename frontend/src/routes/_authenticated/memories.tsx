@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import { Brain, Loader2, Plus, Search, X } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
-import { EmptyState } from "@/components/darkmem"
+import { EmptyState, useDetailLevel } from "@/components/darkmem"
 import { Input } from "darkraise-ui/components/input"
 import {
   Select,
@@ -57,6 +57,7 @@ interface MemoryListRow {
 }
 
 function DemoMemoriesPage() {
+  const advanced = useDetailLevel((s) => s.level) === "advanced"
   const memories = useDemoMemories()
   const { date: dateParam } = Route.useSearch()
 
@@ -318,14 +319,16 @@ function DemoMemoriesPage() {
             <span className="text-sm font-semibold">
               Results — project: {scopeLabel}
             </span>
-            <span
-              className={cn(
-                "font-mono text-sm",
-                shownCount > 0 ? "text-success-text" : "text-muted-foreground",
-              )}
-            >
-              {shownCount > 0 ? "populated" : "empty"}
-            </span>
+            {(shownCount === 0 || advanced) && (
+              <span
+                className={cn(
+                  "font-mono text-sm",
+                  shownCount > 0 ? "text-success-text" : "text-muted-foreground",
+                )}
+              >
+                {shownCount > 0 ? "populated" : "empty"}
+              </span>
+            )}
             <span className="text-muted-foreground ml-auto font-mono text-sm">
               {shownCount} of {matchCount} shown
             </span>

@@ -36,7 +36,12 @@ import {
   TooltipTrigger,
 } from "darkraise-ui/components/tooltip"
 import { cn } from "darkraise-ui/lib"
-import { HelpTip, IconButton, NumberField } from "@/components/darkmem"
+import {
+  HelpTip,
+  IconButton,
+  NumberField,
+  useDetailLevel,
+} from "@/components/darkmem"
 import { SurfaceStateChip } from "@/features/activity/components/module-surface"
 import { armStatus, sourceLabel } from "@/demo/settings"
 import type {
@@ -255,7 +260,8 @@ function LadderStatePill({ param }: { param: DemoLadderParam }) {
 }
 
 function ActivationNote({ taskId }: { taskId?: string }) {
-  if (!taskId) return null
+  const advanced = useDetailLevel((s) => s.level) === "advanced"
+  if (!taskId || !advanced) return null
   return (
     <span className="text-muted-foreground font-mono text-sm whitespace-nowrap">
       activated by <span className="font-semibold">{taskId}</span>
@@ -320,6 +326,7 @@ function ArmRow({
   draft?: number
   onChange?: (value: number) => void
 }) {
+  const advanced = useDetailLevel((s) => s.level) === "advanced"
   const editing = draft !== undefined && onChange !== undefined
   const shown = editing ? draft : arm.value
   return (
@@ -327,7 +334,7 @@ function ArmRow({
       <span className="font-mono text-sm font-semibold whitespace-nowrap">
         {arm.key}
       </span>
-      {arm.alias && (
+      {arm.alias && advanced && (
         <span className="text-muted-foreground font-mono text-xs whitespace-nowrap">
           {arm.alias}
         </span>
@@ -1308,14 +1315,12 @@ export function FlagsTab() {
   return (
     <div className="space-y-4">
       <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
-        <span>
+        <span>Retrieval weights, feature flags and pipeline tunables.</span>
+        <HelpTip label="About the Flags tab">
           Ranking-arm weights, behavioral feature flags, graph augmentation, the
           pipeline and embedding tunables, classification, the corroboration
-          promotion gate, and the repo auto-provision allowlist — config rows
-          read through merge-over-coded-defaults.
-        </span>
-        <HelpTip label="About the Flags tab">
-          The tunables tab. Every value here is a row in the `feature_flags`,
+          promotion gate and the repo auto-provision allowlist. The tunables
+          tab. Every value here is a row in the `feature_flags`,
           `verification_ladder` or `repo_allowlist` config row, read through
           merge-over-coded-defaults; nothing on this tab is computed, only read
           and written. Each card is read-only until you press Edit, and each

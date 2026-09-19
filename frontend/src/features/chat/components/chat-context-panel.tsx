@@ -4,6 +4,7 @@ import { cn } from "darkraise-ui/lib"
 import {
   ExclusionStrip,
   LayerChip,
+  useDetailLevel,
   VerificationBadge,
   WhyRetrievedTrace,
 } from "@/components/darkmem"
@@ -60,6 +61,7 @@ export function ChatContextPanel({
 }: ChatContextPanelProps) {
   const populated = rows !== null
   const degraded = populated && envelope?.partial === true
+  const advanced = useDetailLevel((s) => s.level) === "advanced"
   const channels = channelStates(envelope)
   const exclusions = exclusionItems(envelope)
   const factNumber = factNumbers(facts)
@@ -73,18 +75,20 @@ export function ChatContextPanel({
         <span className="text-sm font-semibold">
           Context used for this turn
         </span>
-        <span
-          className={cn(
-            "ml-auto font-mono text-sm",
-            !populated
-              ? "text-muted-foreground"
-              : degraded
-                ? "text-warning-text"
-                : "text-success-text",
-          )}
-        >
-          {!populated ? "empty" : degraded ? "degraded" : "populated"}
-        </span>
+        {(!populated || degraded || advanced) && (
+          <span
+            className={cn(
+              "ml-auto font-mono text-sm",
+              !populated
+                ? "text-muted-foreground"
+                : degraded
+                  ? "text-warning-text"
+                  : "text-success-text",
+            )}
+          >
+            {!populated ? "empty" : degraded ? "degraded" : "populated"}
+          </span>
+        )}
       </div>
 
       {!populated ? (

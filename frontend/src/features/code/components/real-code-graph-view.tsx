@@ -533,7 +533,7 @@ export function RealCodeGraphView({
                 kind="empty"
                 icon={Network}
                 title="No communities detected"
-                description="Leiden clustering found no group above the size threshold in this repository."
+                description="Community detection found no group above the size threshold in this repository."
               />
             )}
             {graph.communities.map((community) => (

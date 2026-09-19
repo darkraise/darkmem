@@ -129,23 +129,37 @@ function EvidenceBlock({ fact }: { fact: ReviewFactRowData }) {
       </p>
     )
   }
+  const advanced = useDetailLevel((s) => s.level) === "advanced"
   const c = payload.contradiction
   return (
-    <div className="border-border bg-muted/10 space-y-1 rounded-md border border-dashed p-2 font-mono text-sm">
-      <p>
-        outcome {payload.outcome ?? "—"} · origin_count{" "}
-        {payload.origin_count ?? "—"} · required_n {payload.required_n ?? "—"} ·
-        gate_fired {payload.gate_fired ?? "—"}
-      </p>
-      {payload.source_kinds && payload.source_kinds.length > 0 && (
-        <p>source_kinds [{payload.source_kinds.join(", ")}]</p>
-      )}
-      {c && (
-        <p>
-          counterpart: {c.counterpart_subject} → {c.counterpart_rel_type} →{" "}
-          {c.counterpart_object} · rule {c.rule} · witness_origin{" "}
-          {c.witness_origin}
+    <div className="border-border bg-muted/10 space-y-1 rounded-md border border-dashed p-2 text-sm">
+      {advanced && (
+        <p className="font-mono">
+          outcome {payload.outcome ?? "—"} · origin_count{" "}
+          {payload.origin_count ?? "—"} · required_n {payload.required_n ?? "—"} ·
+          gate_fired {payload.gate_fired ?? "—"}
         </p>
+      )}
+      {advanced && payload.source_kinds && payload.source_kinds.length > 0 && (
+        <p className="font-mono">source_kinds [{payload.source_kinds.join(", ")}]</p>
+      )}
+      {c ? (
+        <p>
+          Contradicted by: {c.counterpart_subject} {c.counterpart_rel_type}{" "}
+          {c.counterpart_object}
+          {advanced && (
+            <span className="font-mono">
+              {" "}
+              · rule {c.rule} · witness_origin {c.witness_origin}
+            </span>
+          )}
+        </p>
+      ) : (
+        !advanced && (
+          <p className="text-muted-foreground">
+            The dispute&apos;s evidence is recorded; Advanced shows the ladder&apos;s raw decision.
+          </p>
+        )
       )}
     </div>
   )
@@ -575,7 +589,7 @@ export function ReviewQueue({ project }: { project?: string }) {
             kind="empty"
             icon={ClipboardCheck}
             title="No ungrounded articles"
-            description="The article half of the review queue is caught up. article_synthesis is still a placeholder job, so this arm has no live producer yet."
+            description="The article half of the review queue is caught up. Articles are queued here when synthesis cannot ground one."
           />
         ) : articles.rows.length === 0 ? (
           <EmptyState

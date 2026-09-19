@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Brain, Loader2, Plus, Search, X } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
-import { EmptyState } from "@/components/darkmem"
+import { EmptyState, useDetailLevel } from "@/components/darkmem"
 import { Input } from "darkraise-ui/components/input"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { cn } from "darkraise-ui/lib"
@@ -31,6 +31,7 @@ const ROW_ESTIMATE = 84
  * — that ladder belongs to Facts, not raw memories, until T2.x.
  */
 export function RealMemoriesView() {
+  const advanced = useDetailLevel((s) => s.level) === "advanced"
   const [query, setQuery] = useState("")
   const activeProject = useProjectStore((s) => s.activeProject)
   const setScope = useProjectStore((s) => s.setProject)
@@ -146,14 +147,16 @@ export function RealMemoriesView() {
           <span className="text-sm font-semibold">
             Results — project: {scopeLabel}
           </span>
-          <span
-            className={cn(
-              "font-mono text-sm",
-              rows.length > 0 ? "text-success-text" : "text-muted-foreground",
-            )}
-          >
-            {rows.length > 0 ? "populated" : "empty"}
-          </span>
+          {(rows.length === 0 || advanced) && (
+            <span
+              className={cn(
+                "font-mono text-sm",
+                rows.length > 0 ? "text-success-text" : "text-muted-foreground",
+              )}
+            >
+              {rows.length > 0 ? "populated" : "empty"}
+            </span>
+          )}
           <span className="text-muted-foreground ml-auto font-mono text-sm">
             {rows.length} of {total} shown
           </span>

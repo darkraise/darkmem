@@ -230,6 +230,7 @@ function TopicsProjectChooser() {
 }
 
 export function TopicsForProject({ project }: { project: string }) {
+  const advanced = useDetailLevel((s) => s.level) === "advanced"
   const { topics, suggestions, diff, lastRun, loading, error, decide } =
     useTopics(project)
 
@@ -239,7 +240,10 @@ export function TopicsForProject({ project }: { project: string }) {
   return (
     <div className="space-y-4">
       <div className="border-border flex flex-wrap items-center gap-2.5 border-b border-dashed pb-3">
-        <span className="text-sm font-semibold">Leiden communities</span>
+        <span className="text-sm font-semibold">
+          Topic communities
+          {advanced && <span className="text-muted-foreground font-normal"> (Leiden)</span>}
+        </span>
         <span className="text-muted-foreground ml-auto font-mono text-sm">
           last detection run: {lastRun ?? "not reported"}
         </span>

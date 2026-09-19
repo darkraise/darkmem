@@ -1,6 +1,6 @@
 import { Check, RefreshCw, TriangleAlert, type LucideIcon } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
-import { EmptyState, listItemClass } from "@/components/darkmem"
+import { EmptyState, HelpTip, listItemClass } from "@/components/darkmem"
 import { cn } from "darkraise-ui/lib"
 import { deriveRunFailedStep, failedStepSeverity } from "@/demo/activity"
 import type {
@@ -125,16 +125,16 @@ export function PipelineTab() {
 
   return (
     <div className="space-y-4">
-      <p className="text-muted-foreground max-w-4xl text-sm">
-        Each captured memory's progress through{" "}
-        <code className="bg-muted rounded-sm px-1 font-mono text-sm">
-          content embed → extract &amp; classify → entity embed → dedup → write
-        </code>
-        , ending in one honest terminal state — completed, partial, or failed. A
-        partial memory always names exactly which step broke; there is no
-        per-phase progress event, so a running row shows the decomposition the
-        one eventual terminal broadcast resolves into.
-      </p>
+      <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
+        <span>Each captured memory&apos;s progress through the pipeline.</span>
+        <HelpTip label="About the pipeline">
+          A memory moves through content embed, extract and classify, entity
+          embed, dedup and write, and ends in one terminal state — completed,
+          partial or failed. A partial memory always names the step that
+          broke. There is no per-phase progress event, so a running row shows
+          the steps its one eventual terminal broadcast resolves into.
+        </HelpTip>
+      </div>
       <ModuleSurface
         title="Pipeline — in flight"
         state={inFlight.length > 0 ? "populated" : "empty"}

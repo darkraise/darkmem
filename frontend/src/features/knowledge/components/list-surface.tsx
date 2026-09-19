@@ -1,5 +1,6 @@
 import type { ReactNode } from "react"
 import { cn } from "darkraise-ui/lib"
+import { useDetailLevel } from "@/components/darkmem"
 
 export function ListSurface({
   title,
@@ -18,6 +19,7 @@ export function ListSurface({
    *  own rows and cannot sit in a flex column with a gap. */
   bodyClassName?: string
 }) {
+  const advanced = useDetailLevel((s) => s.level) === "advanced"
   return (
     <div
       className={cn(
@@ -27,14 +29,16 @@ export function ListSurface({
     >
       <div className="border-border bg-muted/30 flex flex-wrap items-center gap-2.5 border-b px-4 py-2.5">
         <span className="text-sm font-semibold">{title}</span>
-        <span
-          className={cn(
-            "font-mono text-sm",
-            populated ? "text-success-text" : "text-muted-foreground",
-          )}
-        >
-          {populated ? "populated" : "empty"}
-        </span>
+        {(!populated || advanced) && (
+          <span
+            className={cn(
+              "font-mono text-sm",
+              populated ? "text-success-text" : "text-muted-foreground",
+            )}
+          >
+            {populated ? "populated" : "empty"}
+          </span>
+        )}
         {meta && (
           <span className="text-muted-foreground ml-auto font-mono text-sm">
             {meta}

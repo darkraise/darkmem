@@ -221,7 +221,7 @@ export function ArticlesTab() {
                 count: withheld,
                 unit: withheld === 1 ? "article" : "articles",
                 reason:
-                  "review_state=open — withheld from the corroborated view and routed to Knowledge → Review; nothing was deleted.",
+                  "Awaiting review — withheld from this view and routed to Knowledge → Review; nothing was deleted.",
                 tag: "by_review_state",
               },
             ]}

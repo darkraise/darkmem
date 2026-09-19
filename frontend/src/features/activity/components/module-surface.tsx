@@ -7,6 +7,7 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import { cn } from "darkraise-ui/lib"
+import { useDetailLevel } from "@/components/darkmem"
 
 export type SurfaceState = "populated" | "empty" | "staged" | "error"
 
@@ -40,6 +41,8 @@ export function SurfaceStateChip({
   label?: string
   className?: string
 }) {
+  const advanced = useDetailLevel((s) => s.level) === "advanced"
+  if (state === "populated" && !advanced) return null
   const { icon: Icon, className: stateClass } = STATE_STYLES[state]
   return (
     <span
