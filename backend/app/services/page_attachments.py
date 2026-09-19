@@ -186,7 +186,11 @@ async def store_upload(
             "sha256": written.sha256,
         })
         await session.commit()
-    except BaseException:
+    except Exception:
+        # Exception, not BaseException: a cancellation may arrive after the
+        # server acknowledged the COMMIT, and a row whose only bytes were
+        # unlinked is a 404 no arm of the cleanup job can repair -- where the
+        # file this keeps is row-less at worst, which arm 2 sweeps.
         attachment_path(written.id).unlink(missing_ok=True)
         raise
     return StoredAttachment(

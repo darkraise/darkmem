@@ -1,12 +1,14 @@
 """Attachment bytes on disk and their row."""
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import os
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from app.config import settings
 from app.services import page_attachments as pa
@@ -129,6 +131,37 @@ async def test_a_failing_stream_leaves_no_part_file(session, root, page):
             chunks=broken(), max_bytes=1000,
         )
     assert [p for p in root.rglob("*") if p.is_file()] == []
+
+
+async def test_a_failing_insert_unlinks_the_file(session, root, page):
+    with pytest.raises(IntegrityError):
+        async with session.begin_nested():
+            await pa.store_upload(
+                session, page_id=uuid4(), project="p", filename="a.png",
+                chunks=_chunks(PNG), max_bytes=1024,
+            )
+    assert [p for p in root.rglob("*") if p.is_file()] == []
+
+
+class _CancelledCommit:
+    """A commit the server may already have made durable."""
+
+    async def execute(self, *args, **kwargs):
+        return None
+
+    async def commit(self):
+        raise asyncio.CancelledError()
+
+
+async def test_a_cancelled_commit_keeps_the_file(root):
+    """A row-less file is what the cleanup job sweeps; a file-less row is
+    forever, so cancellation must not take the bytes with it."""
+    with pytest.raises(asyncio.CancelledError):
+        await pa.store_upload(
+            _CancelledCommit(), page_id=PAGE, project="p", filename="a.png",
+            chunks=_chunks(PNG), max_bytes=1024,
+        )
+    assert [p.name for p in root.rglob("*") if p.is_file()] != []
 
 
 async def test_get_attachment_missing_is_none(session):
