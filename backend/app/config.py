@@ -110,6 +110,10 @@ class Settings(BaseSettings):
     # (``web/`` beside the app package, i.e. /app/web in the image); set it to
     # frontend/dist to serve a host-side build.
     spa_dir: str | None = None
+    # Page attachments on disk. Relative for host-side dev; the image mounts a
+    # named volume at /app/data/attachments and sets ATTACHMENTS_DIR to it.
+    attachments_dir: str = "./data/attachments"
+    attachment_max_bytes: int = 52_428_800
 
     @model_validator(mode="after")
     def _check_jwt_secret(self):
