@@ -119,6 +119,7 @@ function ConsequenceBreakdown({ fact }: { fact: ReviewFactRowData }) {
 }
 
 function EvidenceBlock({ fact }: { fact: ReviewFactRowData }) {
+  const advanced = useDetailLevel((s) => s.level) === "advanced"
   if (fact.verification_status !== "disputed") return null
   const payload = fact.evidence?.payload
   if (!payload) {
@@ -129,7 +130,6 @@ function EvidenceBlock({ fact }: { fact: ReviewFactRowData }) {
       </p>
     )
   }
-  const advanced = useDetailLevel((s) => s.level) === "advanced"
   const c = payload.contradiction
   return (
     <div className="border-border bg-muted/10 space-y-1 rounded-md border border-dashed p-2 text-sm">
