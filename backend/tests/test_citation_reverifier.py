@@ -1112,7 +1112,7 @@ _NUMBER_WORDS = {
     for value, word in enumerate(
         "zero one two three four five six seven eight nine ten eleven twelve "
         "thirteen fourteen fifteen sixteen seventeen eighteen nineteen "
-        "twenty twenty-one twenty-two twenty-three twenty-four".split()
+        "twenty twenty-one twenty-two twenty-three twenty-four twenty-five".split()
     )
 }
 

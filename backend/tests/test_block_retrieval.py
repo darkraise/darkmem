@@ -391,6 +391,8 @@ BLOCK_CHANNEL_MODULES = frozenset({
     # The page door reads block rows to serve a page's tree, so it is
     # classified in the change that gives it that reach.
     "app.services.page_door",
+    # Reads page block text to find which attachments are still referenced.
+    "app.services.page_attachment_cleanup",
 })
 
 _VAULT_RULES = ReachabilityRules(

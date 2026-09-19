@@ -366,6 +366,27 @@ async def lifespan(app: FastAPI):
         config_schema=LLM_USAGE_CONFIG_SCHEMA,
     ))
 
+    from app.services.page_attachment_cleanup import (
+        PAGE_ATTACHMENT_CLEANUP_CONFIG_SCHEMA,
+        PAGE_ATTACHMENT_CLEANUP_JOB_KEY,
+        make_page_attachment_cleanup_runner,
+    )
+
+    job_registry.register(Job(
+        key=PAGE_ATTACHMENT_CLEANUP_JOB_KEY,
+        display_name="Page Attachment Cleanup",
+        description=(
+            "Deletes page attachments no page block references once they are "
+            "past the grace period, files left with no row by a crash, and "
+            "stale import staging directories. Trashed pages still count as "
+            "references, so emptying the trash is what releases a file."
+        ),
+        default_cron="20 * * * *",
+        min_interval_seconds=600,
+        runner=make_page_attachment_cleanup_runner(app, async_session_factory),
+        config_schema=PAGE_ATTACHMENT_CLEANUP_CONFIG_SCHEMA,
+    ))
+
     job_registry.register(Job(
         key=BACKUP_SHIP_JOB_KEY,
         display_name="Backup Ship",

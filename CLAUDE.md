@@ -857,8 +857,10 @@ flaky.
 ## Jobs (`JobRegistry`)
 
 Periodic work is unified under `JobRegistry` and dispatched by cron
-expressions. **Twenty-four** registered jobs (`app/main.py`) in two groups
-(count corrected 2026-09-02: increment 6's `backup_ship` moved the prior
+expressions. **Twenty-five** registered jobs (`app/main.py`) in two groups
+(count corrected 2026-09-19: `page_attachment_cleanup` moved the prior
+**Twenty-four** up by one; count corrected 2026-09-02: increment 6's
+`backup_ship` moved the prior
 **Twenty-three** up by one; that count had itself been corrected
 2026-08-29, when the per-repo indexing modes epic retired the
 standalone `code_reconcile` job and dropped a **Twenty-four** by one.
@@ -869,14 +871,15 @@ independently — a stale count on a "here is the full list" sentence is
 exactly invariant 23's concern. `tests/test_code_deriver.py` now derives the
 roster from `app/main.py`'s AST, so the next job added cannot silently
 desynchronise this list).
-The eighteen live ones: `repo_sync`,
+The nineteen live ones: `repo_sync`,
 `buffer_flush`, `code_enrichment`, `code_deriver`,
 `token_blocklist_cleanup`, `pipeline_failure_cleanup`,
 `graph_orphan_cleanup`, `tag_orphan_cleanup`,
 `expired_memory_cleanup`, `ppr_snapshot`,
 `relation_embedding_refresh`, `repo_entity_anchoring`,
 `repo_entity_merge`, `citation_reverify`, `job_run_cleanup`,
-`block_embedding_refresh`, `llm_usage_cleanup`, `backup_ship`. **`code_reconcile`'s
+`block_embedding_refresh`, `llm_usage_cleanup`, `backup_ship`,
+`page_attachment_cleanup`. **`code_reconcile`'s
 standalone working-tree drift scan is retired; the same scan now runs
 inside `repo_sync`, per repo, gated on that repo's own
 `index_on_commit_enabled` switch and its `index_uncommitted` switch
@@ -886,13 +889,15 @@ indexing below. Note
 `buffer_flush`, `code_deriver`, `ppr_snapshot`,
 `relation_embedding_refresh`, `repo_entity_anchoring`,
 `repo_entity_merge`, `citation_reverify`, `job_run_cleanup`,
-`block_embedding_refresh`, `llm_usage_cleanup` and `backup_ship`
+`block_embedding_refresh`, `llm_usage_cleanup`, `backup_ship` and
+`page_attachment_cleanup`
 register via the constants `BUFFER_FLUSH_JOB_KEY`,
 `CODE_DERIVER_JOB_KEY`, `PPR_SNAPSHOT_JOB_KEY`,
 `RELATION_EMBEDDING_JOB_KEY`, `REPO_ENTITY_ANCHORING_JOB_KEY`,
 `REPO_ENTITY_MERGE_JOB_KEY`, `CITATION_REVERIFY_JOB_KEY`,
 `JOB_RUN_CLEANUP_JOB_KEY`, `BLOCK_EMBEDDING_JOB_KEY`,
-`LLM_USAGE_CLEANUP_JOB_KEY` and `BACKUP_SHIP_JOB_KEY` rather
+`LLM_USAGE_CLEANUP_JOB_KEY`, `BACKUP_SHIP_JOB_KEY` and
+`PAGE_ATTACHMENT_CLEANUP_JOB_KEY` rather
 than string literals, so a grep for quoted keys undercounts the list —
 which is precisely how this sentence went stale for four landings.
 **`llm_usage_cleanup` prunes by age where `job_run_cleanup` beside it
@@ -2121,7 +2126,7 @@ SQL text, which a call through the repository does not produce.
   in-process assumptions; 17 BREAKS at N = 2), not the inert PPR
   snapshot the design docs lead with: the WebSocket fan-out, the job
   scheduler (no lease — every registered job fires N times per tick; 21
-  when T4.09 counted, 24 today, and the number is not what the finding
+  when T4.09 counted, 25 today, and the number is not what the finding
   rests on), the per-IP
   login limiter, the live orchestrator swap and seven unlocked job
   cursors all break first, and `backend/app` holds no cross-process
