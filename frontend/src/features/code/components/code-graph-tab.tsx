@@ -543,13 +543,13 @@ export function CodeGraphTab({
       </div>
 
       {/* body — explorer/filters rail, code inspector, canvas, analysis */}
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* explorer / filters */}
         <Tabs
           variant="underline"
           value={leftTab}
           onValueChange={setLeftTab}
-          className="border-border bg-card flex min-h-0 w-full min-w-0 flex-col border-b md:w-56 md:shrink-0 md:border-r md:border-b-0"
+          className="border-border bg-card flex min-h-0 w-full min-w-0 flex-col border-b lg:w-56 lg:shrink-0 lg:border-r lg:border-b-0"
         >
           <TabsList className="border-border shrink-0 border-b px-1">
             <TabsTrigger value="explorer">Explorer</TabsTrigger>
@@ -701,7 +701,7 @@ export function CodeGraphTab({
         </div>
 
         {/* analysis panel */}
-        <div className="border-border bg-card flex min-h-0 w-full min-w-0 flex-col overflow-y-auto border-t md:w-60 md:shrink-0 md:border-t-0 md:border-l">
+        <div className="border-border bg-card flex min-h-0 w-full min-w-0 flex-col overflow-y-auto border-t lg:w-60 lg:shrink-0 lg:border-t-0 lg:border-l">
           <div className="border-border space-y-1.5 border-b p-2.5">
             <SectionTitle icon={<Crosshair aria-hidden className="h-3 w-3" />}>
               Selected symbol

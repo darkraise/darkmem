@@ -324,7 +324,7 @@ export function CodeInspector({
   }
 
   return (
-    <div className="border-border bg-muted/20 flex w-[24rem] min-w-0 shrink-0 flex-col border-r">
+    <div className="border-border bg-muted/20 flex w-full min-w-0 flex-col border-b lg:w-[24rem] lg:shrink-0 lg:border-r lg:border-b-0">
       <div className="border-border bg-card flex items-center gap-1 border-b px-2 py-1.5">
         <span className="text-muted-foreground flex min-w-0 flex-1 items-center gap-1.5 font-mono text-sm tracking-wide uppercase">
           <Code2 aria-hidden className="h-3 w-3" />
