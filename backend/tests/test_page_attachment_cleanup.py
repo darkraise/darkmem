@@ -1,15 +1,19 @@
 """The attachment cleanup job's three arms."""
 from __future__ import annotations
 
+import logging
 import os
 import pathlib
 import time
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.services import page_attachment_cleanup as pac
 from app.services.page_attachment_cleanup import run_cleanup
 from app.services.page_attachments import attachment_path, attachment_url
 
@@ -51,11 +55,11 @@ async def _attachment(session, *, age_hours: float, project: str = "p"):
     return attachment_id
 
 
-async def _block(session, page_id: str, body: str) -> None:
+async def _block(session, page_id: str, body: str, block_type: str = "paragraph") -> None:
     await session.execute(text(
         "INSERT INTO blocks (id, page_id, order_index, type, text) "
-        "VALUES (gen_random_uuid(), CAST(:page AS uuid), 0, 'paragraph', :text)"
-    ), {"page": page_id, "text": body})
+        "VALUES (gen_random_uuid(), CAST(:page AS uuid), 0, :type, :text)"
+    ), {"page": page_id, "type": block_type, "text": body})
 
 
 async def _row_exists(session, attachment_id) -> bool:
@@ -89,9 +93,12 @@ async def test_referenced_rows_stay_including_from_trash_and_other_projects(
     in_table = await _attachment(session, age_hours=200)
     await _block(session, PAGE, f"![a]({attachment_url(in_trash)})")
     await _block(session, OTHER_PAGE, f"see [f]({attachment_url(pasted)}) here")
+    # A real table_row, not a paragraph carrying a pipe: a row's own text is
+    # what the scan has to see, and uppercase because a URL is pasted as typed.
     await _block(
         session, OTHER_PAGE,
         f"cell | ![x](/api/v1/pages/attachments/{str(in_table).upper()})",
+        block_type="table_row",
     )
     report = await run_cleanup(session_factory, grace_hours=168, staging_max_age_hours=6)
     assert report.rows_deleted == 0
@@ -186,6 +193,104 @@ async def test_a_file_that_cannot_be_removed_does_not_stop_the_sweep(
     assert report.staging_dirs_removed == 1
 
 
+async def test_an_unreadable_staging_dir_does_not_abort_the_run(
+    session_factory, root, monkeypatch,
+):
+    part = attachment_path(uuid4()).with_suffix(".part")
+    part.parent.mkdir(parents=True, exist_ok=True)
+    part.write_bytes(b"x")
+    _age(part, 7200)
+    staging = root / ".staging"
+    staging.mkdir()
+
+    real_iterdir = pathlib.Path.iterdir
+
+    def refusing_iterdir(self):
+        if self == staging:
+            raise PermissionError(13, "Permission denied", str(self))
+        return real_iterdir(self)
+
+    monkeypatch.setattr(pathlib.Path, "iterdir", refusing_iterdir)
+
+    report = await run_cleanup(session_factory, grace_hours=168, staging_max_age_hours=6)
+    assert report.part_files_removed == 1
+    assert report.staging_dirs_removed == 0
+    assert report.files_failed == 1
+
+
 async def test_a_clean_tree_reports_nothing(session_factory, root):
     report = await run_cleanup(session_factory, grace_hours=168, staging_max_age_hours=6)
     assert report.total() == 0
+
+
+async def test_the_sweep_names_what_it_removed(session, session_factory, root, caplog):
+    """Counts alone leave an irreversible sweep unaccounted for."""
+    await _pages(session)
+    old = await _attachment(session, age_hours=200)
+    rowless = attachment_path(uuid4())
+    rowless.parent.mkdir(parents=True, exist_ok=True)
+    rowless.write_bytes(b"x")
+    _age(rowless, 7200)
+
+    with caplog.at_level(logging.INFO, logger="app.services.page_attachment_cleanup"):
+        await run_cleanup(session_factory, grace_hours=168, staging_max_age_hours=6)
+
+    assert str(old) in caplog.text
+    assert str(rowless) in caplog.text
+
+
+async def test_rows_are_committed_before_their_files_are_unlinked(
+    session, session_factory, root, monkeypatch,
+):
+    """A file unlinked under an uncommitted delete is gone for a row that
+    survives -- the one failure no arm of this job can repair."""
+    await _pages(session)
+    await _attachment(session, age_hours=200)
+    order: list[str] = []
+
+    real_commit = AsyncSession.commit
+    real_unlink = pac._unlink
+
+    async def recording_commit(self):
+        order.append("commit")
+        await real_commit(self)
+
+    def recording_unlink(paths):
+        order.append("unlink")
+        return real_unlink(paths)
+
+    monkeypatch.setattr(AsyncSession, "commit", recording_commit)
+    monkeypatch.setattr(pac, "_unlink", recording_unlink)
+
+    await run_cleanup(session_factory, grace_hours=168, staging_max_age_hours=6)
+
+    assert order[:2] == ["commit", "unlink"]
+
+
+class _Registry:
+    def __init__(self, **config):
+        self.config = config
+
+    async def load_config(self, key):
+        assert key == pac.PAGE_ATTACHMENT_CLEANUP_JOB_KEY
+        return SimpleNamespace(config=self.config)
+
+
+async def test_the_runner_writes_no_job_run_for_a_no_op(session_factory, root):
+    app = SimpleNamespace(state=SimpleNamespace())
+    assert await pac.make_page_attachment_cleanup_runner(app, session_factory)() == 0
+
+
+async def test_the_runner_sweeps_at_the_configured_grace(session, session_factory, root):
+    """The default grace would keep this row; the job's config is what moves it."""
+    await _pages(session)
+    old = await _attachment(session, age_hours=2)
+    app = SimpleNamespace(state=SimpleNamespace(
+        job_registry=_Registry(grace_hours=1, staging_max_age_hours=1),
+    ))
+
+    result = await pac.make_page_attachment_cleanup_runner(app, session_factory)()
+
+    assert result["rows_deleted"] == 1
+    assert not await _row_exists(session, old)
+    assert not attachment_path(old).exists()

@@ -35,6 +35,7 @@ GRACE_HOURS_DEFAULT = 168
 STAGING_MAX_AGE_HOURS_DEFAULT = 6
 ROWLESS_MIN_AGE_SECONDS = 3600
 _ID_BATCH = 500
+_LOG_SAMPLE = 50
 _SHARD = re.compile(r"[0-9a-f]{2}")
 
 PAGE_ATTACHMENT_CLEANUP_CONFIG_SCHEMA = [
@@ -98,6 +99,23 @@ class CleanupReport:
 
     def total(self) -> int:
         return sum(asdict(self).values())
+
+
+def _log_removed(what: str, items: list) -> None:
+    """The sweep is irreversible, so what it took is worth more than a count.
+
+    Bounded rather than complete: a run that collects a backlog must not write
+    a log line proportional to it.
+    """
+    if not items:
+        return
+    sample = ", ".join(str(item) for item in items[:_LOG_SAMPLE])
+    overflow = len(items) - _LOG_SAMPLE
+    logger.info(
+        "page_attachment_cleanup: %s (%d): %s%s",
+        what, len(items), sample,
+        f", and {overflow} more" if overflow > 0 else "",
+    )
 
 
 def _unlink(paths: list[Path]) -> tuple[int, int]:
@@ -166,7 +184,16 @@ def _remove_stale_staging(
         return 0, 0
     removed = 0
     failed = 0
-    for entry in staging.iterdir():
+    try:
+        # Materialised inside the guard for the reason the shard scan is, and
+        # counted as a failure so the run still owes a job_runs row.
+        entries = list(staging.iterdir())
+    except OSError as exc:
+        logger.warning(
+            "page_attachment_cleanup: could not scan %s: %s", staging, exc
+        )
+        return 0, 1
+    for entry in entries:
         try:
             stale = entry.is_dir() and now - entry.stat().st_mtime > max_age_seconds
         except FileNotFoundError:
@@ -207,6 +234,7 @@ async def run_cleanup(
             ]
             await session.commit()
             report.rows_deleted = len(ids)
+            _log_removed("deleted unreferenced rows", ids)
             report.files_unlinked, failed = await asyncio.to_thread(
                 _unlink, [attachment_path(i) for i in ids]
             )
@@ -223,6 +251,7 @@ async def run_cleanup(
                     row[0] for row in (await session.execute(_KNOWN_IDS, {"ids": batch})).all()
                 )
         rowless = [path for attachment_id, path in files if attachment_id not in known]
+        _log_removed("removing row-less files", rowless)
         report.rowless_files_removed, failed = await asyncio.to_thread(_unlink, rowless)
         report.files_failed += failed
     report.part_files_removed, failed = await asyncio.to_thread(_unlink, parts)
