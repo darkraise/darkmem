@@ -530,3 +530,25 @@ body.content-full-bleed .dr-split-panel-layout-content {
   height: var(--density-cell);
   width: var(--density-cell);
 }
+
+/* Horizontally scrolling tab strip (ScrollTabsList). The fade marks the edge
+   that still has tabs past it. */
+.dm-tab-scroll {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.dm-tab-scroll[data-fade-start] {
+  mask-image: linear-gradient(to right, transparent, black 2rem);
+}
+.dm-tab-scroll[data-fade-end] {
+  mask-image: linear-gradient(to right, black calc(100% - 2rem), transparent);
+}
+.dm-tab-scroll[data-fade-start][data-fade-end] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 2rem,
+    black calc(100% - 2rem),
+    transparent
+  );
+}

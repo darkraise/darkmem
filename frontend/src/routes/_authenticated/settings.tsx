@@ -1,10 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router"
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "darkraise-ui/components/tabs"
+import { Tabs, TabsContent, TabsTrigger } from "darkraise-ui/components/tabs"
 import {
   Bot,
   Flag,
@@ -19,6 +14,7 @@ import {
   Wrench,
 } from "lucide-react"
 import { PageChrome } from "@/components/app-chrome"
+import { ScrollTabsList } from "@/components/darkmem"
 import {
   AppearanceTab,
   GraphAppearanceCard,
@@ -80,8 +76,8 @@ function SettingsPage() {
       >
         {/* The strip stays put while the tab body scrolls.
 
-            `sticky` is on this wrapper and `overflow-x-auto` on the one
-            inside, because they cannot be the same element: a scroll
+            `sticky` is on this wrapper and the scroller (`ScrollTabsList`)
+            inside it, because they cannot be the same element: a scroll
             container clips its own overflow, which would cut off the
             background extension below, and a sticky element *inside* a scroll
             container pins to that container rather than to the page.
@@ -99,53 +95,51 @@ function SettingsPage() {
             into the side gutters, so a strip spanning the content width
             already covers everything that passes under it. */}
         <div className="bg-background before:bg-background sticky top-0 z-20 pb-2 before:absolute before:inset-x-0 before:bottom-full before:h-8 before:content-['']">
-          <div className="overflow-x-auto">
-            <TabsList className="w-full">
-              <TabsTrigger className="flex-1 gap-2" value="flags">
-                <Flag aria-hidden className="size-[var(--icon-size)]" />
-                Flags
-              </TabsTrigger>
-              <TabsTrigger className="flex-1 gap-2" value="llm">
-                <Bot aria-hidden className="size-[var(--icon-size)]" />
-                LLM
-              </TabsTrigger>
-              <TabsTrigger className="flex-1 gap-2" value="security">
-                <ShieldCheck aria-hidden className="size-[var(--icon-size)]" />
-                Security
-              </TabsTrigger>
-              <TabsTrigger className="flex-1 gap-2" value="maintenance">
-                <Wrench aria-hidden className="size-[var(--icon-size)]" />
-                Maintenance
-              </TabsTrigger>
-              <TabsTrigger className="flex-1 gap-2" value="integration">
-                <Plug aria-hidden className="size-[var(--icon-size)]" />
-                Integration
-              </TabsTrigger>
-              <TabsTrigger className="flex-1 gap-2" value="git-accounts">
-                <KeyRound aria-hidden className="size-[var(--icon-size)]" />
-                Git accounts
-              </TabsTrigger>
-              <TabsTrigger className="flex-1 gap-2" value="notifications">
-                <Bell aria-hidden className="size-[var(--icon-size)]" />
-                Notifications
-              </TabsTrigger>
-              <TabsTrigger className="flex-1 gap-2" value="research">
-                <Search aria-hidden className="size-[var(--icon-size)]" />
-                Research
-              </TabsTrigger>
-              <TabsTrigger className="flex-1 gap-2" value="backups">
-                <HardDriveDownload
-                  aria-hidden
-                  className="size-[var(--icon-size)]"
-                />
-                Backups
-              </TabsTrigger>
-              <TabsTrigger className="flex-1 gap-2" value="appearance">
-                <Palette aria-hidden className="size-[var(--icon-size)]" />
-                Appearance
-              </TabsTrigger>
-            </TabsList>
-          </div>
+          <ScrollTabsList activeValue={tab ?? "flags"}>
+            <TabsTrigger className="flex-1 gap-2" value="flags">
+              <Flag aria-hidden className="size-[var(--icon-size)]" />
+              Flags
+            </TabsTrigger>
+            <TabsTrigger className="flex-1 gap-2" value="llm">
+              <Bot aria-hidden className="size-[var(--icon-size)]" />
+              LLM
+            </TabsTrigger>
+            <TabsTrigger className="flex-1 gap-2" value="security">
+              <ShieldCheck aria-hidden className="size-[var(--icon-size)]" />
+              Security
+            </TabsTrigger>
+            <TabsTrigger className="flex-1 gap-2" value="maintenance">
+              <Wrench aria-hidden className="size-[var(--icon-size)]" />
+              Maintenance
+            </TabsTrigger>
+            <TabsTrigger className="flex-1 gap-2" value="integration">
+              <Plug aria-hidden className="size-[var(--icon-size)]" />
+              Integration
+            </TabsTrigger>
+            <TabsTrigger className="flex-1 gap-2" value="git-accounts">
+              <KeyRound aria-hidden className="size-[var(--icon-size)]" />
+              Git accounts
+            </TabsTrigger>
+            <TabsTrigger className="flex-1 gap-2" value="notifications">
+              <Bell aria-hidden className="size-[var(--icon-size)]" />
+              Notifications
+            </TabsTrigger>
+            <TabsTrigger className="flex-1 gap-2" value="research">
+              <Search aria-hidden className="size-[var(--icon-size)]" />
+              Research
+            </TabsTrigger>
+            <TabsTrigger className="flex-1 gap-2" value="backups">
+              <HardDriveDownload
+                aria-hidden
+                className="size-[var(--icon-size)]"
+              />
+              Backups
+            </TabsTrigger>
+            <TabsTrigger className="flex-1 gap-2" value="appearance">
+              <Palette aria-hidden className="size-[var(--icon-size)]" />
+              Appearance
+            </TabsTrigger>
+          </ScrollTabsList>
         </div>
         <TabsContent value="git-accounts" className="pt-4">
           <GitAccountsTab />
