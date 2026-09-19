@@ -15,7 +15,7 @@ export const SWITCHER_AXES = ["mode", "accentColor", "surfaceColor"] as const
 export const themeConfig: ThemeConfig = {
   defaults: {
     accentColor: "green",
-    surfaceColor: "indigo",
+    surfaceColor: "neutral",
     preset: "default",
     backgroundStyle: "solid",
     backgroundIntensity: "neutral",

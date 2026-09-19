@@ -53,7 +53,7 @@ describe("theme.config", () => {
       backgroundStyle: "solid",
       backgroundIntensity: "neutral",
       accentColor: "green",
-      surfaceColor: "indigo",
+      surfaceColor: "neutral",
       density: "cozy",
       fontSize: "medium",
       accentIntensity: "vivid",

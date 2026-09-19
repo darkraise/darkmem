@@ -475,6 +475,27 @@
   }
 }
 
+/* Active sidebar item: a tint and the accent text colour, nothing on the
+   edges. darkraise-ui's `activeBar` only offers a rail, a ring or both, so the
+   borderless state is this override; it is unlayered and so beats the
+   library's @layer components rules at any specificity. */
+.dr-sidebar-nav .dr-sidebar-nav-item:is(.active, [data-status="active"]) {
+  background-color: hsl(var(--primary) / 0.1);
+  box-shadow: none;
+  color: var(--primary-text);
+}
+.dr-sidebar-nav
+  .dr-sidebar-nav-item:is(.active, [data-status="active"])
+  .dr-sidebar-nav-icon-svg {
+  color: var(--primary-text);
+}
+
+/* The sidebar search box carried the accent border at rest; it keeps the
+   ordinary border until it is focused. */
+.dr-sidebar-layout-search .dr-search-command-trigger:not(:focus-visible) {
+  border-color: hsl(var(--border));
+}
+
 /* Tighter content margins: the shell shipped p-6 (24px) and most screens
    stacked their own p-6 on top. Route-level padding was removed; the shell
    padding is reduced here. The full-bleed rule below still wins (higher
