@@ -347,30 +347,6 @@
   }
 }
 
-/* Distinct from the existing chat `pulse-glow` (which scales/fades). Box-shadow only. */
-@keyframes dm-btn-glow {
-  0%,
-  100% {
-    box-shadow:
-      0 0 15px rgba(56, 189, 248, 0.18),
-      0 4px 16px rgba(99, 102, 241, 0.32);
-  }
-  50% {
-    box-shadow:
-      0 0 28px rgba(56, 189, 248, 0.42),
-      0 4px 18px rgba(99, 102, 241, 0.5);
-  }
-}
-.dm-btn-pulse {
-  animation: dm-btn-glow 2.8s ease-in-out infinite;
-}
-/* No glow while the submit button is disabled/pending — the disabled state
-   swaps the gradient for a solid grey, and a pulsing grey button looks wrong.
-   Unlayered + :disabled specificity beats the base .dm-btn-pulse rule. */
-.dm-btn-pulse:disabled {
-  animation: none;
-}
-
 /* Frosted surface base + opaque fallback. The app's "default" preset leaves
    darkraise-ui's --backdrop-filter: none, so the glass relies entirely on the
    utility classes below; without this fallback the card is illegible where
@@ -388,8 +364,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dm-blob,
-  .dm-btn-pulse {
+  .dm-blob {
     animation: none !important;
     will-change: auto; /* release the compositing layer when nothing animates */
   }
