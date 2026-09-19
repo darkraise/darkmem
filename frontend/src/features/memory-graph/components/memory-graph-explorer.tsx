@@ -27,6 +27,7 @@ import {
   type GraphLayoutMode,
 } from "@/demo/explore"
 import type { MemoryEntityType } from "@/demo/types"
+import { visibleLabelIds } from "../lib/label-placement"
 
 const W = 680
 const H = 400
@@ -55,6 +56,7 @@ export function MemoryGraphExplorer() {
   const [query, setQuery] = useState("")
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [focusTopic, setFocusTopic] = useState<string | null>(null)
+  const [revealedId, setRevealedId] = useState<string | null>(null)
 
   useEffect(() => {
     setSelectedId(null)
@@ -76,6 +78,16 @@ export function MemoryGraphExplorer() {
         H,
       ),
     [scoped, layout],
+  )
+  const labelled = useMemo(
+    () =>
+      visibleLabelIds(
+        scoped.entities.flatMap((e) => {
+          const pos = positions[e.id]
+          return pos ? [{ id: e.id, x: pos.x, y: pos.y, text: e.name }] : []
+        }),
+      ),
+    [scoped, positions],
   )
 
   // Topic halos: centroid + spread of each topic's members. Communities
@@ -187,7 +199,7 @@ export function MemoryGraphExplorer() {
               <svg
                 viewBox={`0 0 ${W} ${H}`}
                 className="h-full w-full"
-                role="img"
+                role="group"
                 aria-label={`Entity graph for ${project === ALL_PROJECTS ? projectLabel(project) : `project ${project}`}: ${scoped.entities.length} entities in ${scoped.topics.length} topic clusters, ${layout} layout`}
                 onClick={() => setSelectedId(null)}
               >
@@ -250,7 +262,7 @@ export function MemoryGraphExplorer() {
                       role="button"
                       tabIndex={0}
                       aria-label={`${entity.name} (${entity.entity_type})`}
-                      className="cursor-pointer outline-none"
+                      className="group cursor-pointer focus-visible:outline-none"
                       style={{
                         transform: `translate(${pos.x}px, ${pos.y}px)`,
                         transition: "transform 400ms ease, opacity 300ms",
@@ -266,8 +278,18 @@ export function MemoryGraphExplorer() {
                           setSelectedId(entity.id)
                         }
                       }}
+                      onMouseEnter={() => setRevealedId(entity.id)}
+                      onMouseLeave={() => setRevealedId(null)}
+                      onFocus={() => setRevealedId(entity.id)}
+                      onBlur={() => setRevealedId(null)}
                     >
                       <title>{`${entity.name} · ${entity.entity_type}`}</title>
+                      <circle
+                        data-focus-ring
+                        r={16}
+                        strokeWidth={2}
+                        className="stroke-ring fill-none opacity-0 group-focus-visible:opacity-100"
+                      />
                       {isSelected && (
                         <circle
                           r={14}
@@ -284,15 +306,19 @@ export function MemoryGraphExplorer() {
                         }
                         strokeWidth={isMatch ? 3 : 2}
                       />
-                      <text
-                        x={12}
-                        y={4}
-                        fontSize={10.5}
-                        className="font-mono"
-                        fill="hsl(var(--foreground))"
-                      >
-                        {entity.name}
-                      </text>
+                      {(labelled.has(entity.id) ||
+                        revealedId === entity.id ||
+                        isSelected) && (
+                        <text
+                          x={12}
+                          y={4}
+                          fontSize={10.5}
+                          className="font-mono"
+                          fill="hsl(var(--foreground))"
+                        >
+                          {entity.name}
+                        </text>
+                      )}
                     </g>
                   )
                 })}

@@ -11,7 +11,7 @@ describe("MemoryGraphExplorer", () => {
   it("renders the project-scoped entity graph with topics", () => {
     render(<MemoryGraphExplorer />)
     expect(
-      screen.getByRole("img", { name: /Entity graph for project darkmem/ }),
+      screen.getByRole("group", { name: /Entity graph for project darkmem/ }),
     ).toBeInTheDocument()
     expect(
       screen.getByText(/12 entities · 14 relations · 3 topics/),
@@ -38,5 +38,34 @@ describe("MemoryGraphExplorer", () => {
   it("reads the header scope and offers no project select", () => {
     render(<MemoryGraphExplorer />)
     expect(screen.queryByRole("combobox", { name: "Project scope" })).toBeNull()
+  })
+
+  it("shows a hidden label while its node has focus", () => {
+    // Every project at once, in the Community layout: the fixture overlaps
+    // labels in that layout only (Force and Tree place all sixteen clear).
+    useProjectStore.setState({ activeProject: null, missingProject: null })
+    render(<MemoryGraphExplorer />)
+    fireEvent.click(screen.getByRole("radio", { name: /Community/ }))
+    const nodes = screen.getAllByRole("button").filter((b) => b.tagName.toLowerCase() === "g")
+    const hidden = nodes.find((n) => n.querySelector("text") === null)
+    expect(hidden, "the fixture places at least one overlapping label").toBeDefined()
+    fireEvent.focus(hidden!)
+    expect(hidden!.querySelector("text")).not.toBeNull()
+    fireEvent.blur(hidden!)
+    expect(hidden!.querySelector("text")).toBeNull()
+  })
+
+  it("is not an image around its node buttons", () => {
+    render(<MemoryGraphExplorer />)
+    expect(screen.queryByRole("img")).toBeNull()
+  })
+
+  it("shows a theme-coloured ring on the node that has keyboard focus", () => {
+    render(<MemoryGraphExplorer />)
+    const node = screen.getByRole("button", { name: "postgres (database)" })
+    expect(node.getAttribute("class")).not.toMatch(/(^|\s)outline-none(\s|$)/)
+    const ring = node.querySelector('[data-focus-ring]')!
+    expect(ring.getAttribute("class")).toMatch(/stroke-ring/)
+    expect(ring.getAttribute("class")).toMatch(/group-focus-visible:opacity-100/)
   })
 })

@@ -111,8 +111,8 @@ export function CodeCanvas({
     <svg
       viewBox={viewBox}
       className="bg-background block h-full w-full"
-      role="img"
-      aria-label={`Demo code graph — ${graph.nodes.length} nodes, ${graph.edges.length} edges, ${layout} layout`}
+      role="group"
+      aria-label={`Code graph — ${graph.nodes.length} nodes, ${graph.edges.length} edges, ${layout} layout`}
       onClick={() => onSelect(null)}
     >
       {graph.edges.map((edge, i) => {
@@ -161,7 +161,7 @@ export function CodeCanvas({
             tabIndex={0}
             aria-label={`${node.name} (${node.kind})`}
             className={cn(
-              "cursor-pointer outline-none",
+              "group cursor-pointer focus-visible:outline-none",
               playing && "dm-graph-drift",
             )}
             style={{
@@ -184,6 +184,12 @@ export function CodeCanvas({
             }}
           >
             <title>{`${node.name} · ${node.kind} · ${node.file}`}</title>
+            <circle
+              data-focus-ring
+              r={15}
+              strokeWidth={2}
+              className="stroke-ring fill-none opacity-0 group-focus-visible:opacity-100"
+            />
             {isSelected && (
               <circle
                 r={13}
