@@ -57,7 +57,7 @@ be.
 | `POST /jobs/{key}/trigger` | 403 — a disarmed scheduler does not disarm the manual door |
 | Change password | 403 — the next restore overwrites it anyway |
 | Repository *file* browsing | Degrades: the worker's `repo_data` volume holds no clones. DB-backed code-graph reads work. |
-| Attachment *file* serving | Degrades: the worker mounts no attachments volume, so `GET /api/v1/pages/attachments/{id}` 404s for every row a snapshot restored. The boot check warns rather than refusing. |
+| Attachment *file* serving | Degrades: the worker mounts no attachments volume, so `GET /api/v1/pages/attachments/{id}` 404s for every row a snapshot restored. The boot check does not refuse; it warns only when ATTACHMENTS_DIR names an absent or unreadable path, which the image's baked-in empty /app/data/attachments means it does not on the default worker config. |
 | Document search, `memories/reason`, `documents/qa`, reembed, repo reindex | 403 — each needs an external service, and a backup worker has none |
 | Page attachment upload | 403 — it writes the file before any row, so the viewer role alone would refuse it only after the file existed |
 | Semantic ranking in memory and code search | Silently absent; the keyword arm answers alone |
