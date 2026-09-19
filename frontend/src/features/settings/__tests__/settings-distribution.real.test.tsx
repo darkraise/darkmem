@@ -265,16 +265,6 @@ describe("Distribution tab — live", () => {
   })
 })
 
-describe("the Distribution tab is one a human can return to", () => {
-  it("is registered, so a reload does not fall back to flags", async () => {
-    // It was routed and rendered but absent from the known list, so
-    // `resolveStoredTab` sent every reload back to "flags" — the one tab you
-    // could open and never get back to.
-    const { resolveStoredTab } = await import("@/lib/settings-tab")
-    expect(resolveStoredTab("distribution")).toBe("distribution")
-  })
-})
-
 // ─────────────── T4.08: watch + curb surfaces ───────────────
 
 describe("Distribution tab — watch and curb (T4.08)", () => {

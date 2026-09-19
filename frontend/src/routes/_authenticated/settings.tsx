@@ -33,7 +33,7 @@ import { ResearchTab } from "@/features/settings/components/research-tab"
 import { BackupsTab } from "@/features/settings/components/backups-tab"
 import { NotificationsTab } from "@/features/settings/components/notifications-tab"
 
-const TAB_VALUES = [
+export const TAB_VALUES = [
   "flags",
   "llm",
   "security",
@@ -42,6 +42,7 @@ const TAB_VALUES = [
   "git-accounts",
   "research",
   "notifications",
+  "backups",
   "appearance",
 ] as const
 export type SettingsTab = (typeof TAB_VALUES)[number]
