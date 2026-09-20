@@ -20,10 +20,13 @@ function open(onImported = vi.fn()) {
   return onImported
 }
 
-function pick(name = "export.zip") {
+function pick(
+  name = "export.zip",
+  { type = "application/zip", bytes = 3 } = {},
+) {
   const input = document.querySelector('input[type="file"]') as HTMLInputElement
-  const file = new File([new Uint8Array([1, 2, 3])], name, { type: "application/zip" })
-  Object.defineProperty(input, "files", { value: [file] })
+  const file = new File([new Uint8Array(bytes)], name, { type })
+  Object.defineProperty(input, "files", { value: [file], configurable: true })
   fireEvent.change(input)
   return file
 }
@@ -199,6 +202,31 @@ describe("NotionImportDialog", () => {
       ).not.toBeInTheDocument(),
     )
     expect(screen.getByRole("button", { name: /^import$/i })).toBeDisabled()
+  })
+
+  it("says why a dropped non-zip was refused", async () => {
+    open()
+    pick("notes.txt", { type: "text/plain" })
+    expect(await screen.findByText(/notes\.txt is not a \.zip file/i)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /^import$/i })).toBeDisabled()
+  })
+
+  it("says why an oversize zip was refused", async () => {
+    open()
+    pick("huge.zip", { bytes: 1_073_741_825 })
+    expect(
+      await screen.findByText(/huge\.zip is over the import size ceiling/i),
+    ).toBeInTheDocument()
+  })
+
+  it("keeps the picker open after a refusal", async () => {
+    open()
+    pick("notes.txt", { type: "text/plain" })
+    await screen.findByText(/not a \.zip file/i)
+    pick()
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /^import$/i })).toBeEnabled(),
+    )
   })
 
   it("disables the import button with no file chosen", () => {

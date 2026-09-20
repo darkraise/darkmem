@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from "darkraise-ui/components/dialog"
 import {
+  type FileRejection,
   FileUpload,
   FileUploadDropzone,
   FileUploadHiddenInput,
@@ -24,6 +25,16 @@ import { type ImportReport, importNotionExport } from "./lib/notion-import"
 // Mirrors the backend's `notion_import_max_bytes` so the picker refuses an
 // oversized zip before it is uploaded rather than after.
 const MAX_IMPORT_BYTES = 1_073_741_824
+
+function rejectionMessage({ file, reason }: FileRejection): string {
+  if (reason === "TOO_LARGE") {
+    return `${file.name} is over the import size ceiling.`
+  }
+  if (reason === "TOO_MANY_FILES") {
+    return "Choose one zip file."
+  }
+  return `${file.name} is not a .zip file.`
+}
 
 type Phase =
   | { kind: "idle" }
@@ -102,7 +113,18 @@ export function NotionImportDialog({
             accept=".zip"
             maxFiles={1}
             maxFileSize={MAX_IMPORT_BYTES}
-            onFileAccept={({ files }) => setFile(files[0] ?? null)}
+            onFileAccept={({ files }) => {
+              setFile(files[0] ?? null)
+              setPhase({ kind: "idle" })
+            }}
+            onFileReject={({ files }) => {
+              // The picker drops a refused file without a word of its own, so
+              // the dialog says which file and why, where a failed import does.
+              const rejection = files[0]
+              if (!rejection) return
+              setFile(null)
+              setPhase({ kind: "failed", message: rejectionMessage(rejection) })
+            }}
           >
             <FileUploadHiddenInput />
             <FileUploadDropzone>
