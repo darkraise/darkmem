@@ -216,6 +216,41 @@ sudo systemctl enable --now darkmem-restore.timer
 sudo systemctl start darkmem-restore.service   # run one by hand first
 ```
 
+## Attachments
+
+Create the store before first boot, owned by the image's uid, beside the dump
+directory:
+
+```bash
+APP_UID=$(docker run --rm darkraise/darkmem:latest id -u)
+sudo install -d -o "$APP_UID" -g "$APP_UID" -m 0750 /srv/darkmem-attachments
+```
+
+`restore-cycle.sh` unpacks each restored set into `gen-<stamp>/` and points the
+relative `current` symlink at it in the same step as the database rename. The
+app mounts the store read-only and reads `ATTACHMENTS_DIR=.../current`; the
+host-side loop is the only writer, which is why this is a bind mount and not a
+named volume.
+
+- Before the first restore there is no `current`. The boot check warns and the
+  viewer starts.
+- A dump with no tarball at or before its stamp restores the database and keeps
+  the current generation, with a warning.
+- A paired tarball that fails to decrypt or unpack takes the same path. The
+  line `Could not unpack <name>; keeping the current attachment generation.`
+  means the database still swapped and the viewer is serving the restored rows
+  against the previous generation's files. Every later cycle retries the unpack
+  on the attachments-only path and exits 0 either way, so the unit does not go
+  red — watch for that line, run `python -m app.services.attachment_verify` to
+  list the rows without files, and re-ship the tarball; the retry picks up a
+  re-shipped or newer tarball without another dump.
+- When only the attachment half is behind — the ship order is dump then
+  tarball, so this happens whenever a cycle fires between the two uploads — the
+  script takes the attachments-only path: unpack, swap, prune, no side database
+  and no downtime.
+- `RECEIVER_MAX_BYTES` (10 GB) now bounds the attachment tarball as well as the
+  dump. Raise it before the set approaches it.
+
 ---
 
 ## What the cycle does, and what it refuses

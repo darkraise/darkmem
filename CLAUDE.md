@@ -233,6 +233,25 @@ migration discipline begins; nothing before it is grandfathered.
   on the host that also runs the database is a slow disk-fill that takes
   production down with it. Dumps are local only: copying them off-host is still
   a manual step and nothing enforces it.
+  **Attachments are a second artefact family on both producers.** A manifest
+  hash over `(id, sha256)`, computed by Postgres so the shell and the app
+  cannot drift, decides whether the set changed; when it did, each producer
+  writes one whole-set tarball beside its dump under the same stamp —
+  `darkmem-attachments-<stamp>.tar.gz` with a `.manifest` sidecar for
+  `backup.sh` (`BACKUP_ATTACHMENTS_KEEP`, default 3), and
+  `darkmem-app-attachments-<stamp>.tar.gz[.age]` for `backup_ship` (per
+  destination `attachments_retention_keep`, default 3). **`_is_snapshot` is
+  never widened** — the families are separated by `Family.matches` and every
+  prune takes one, because tarballs sort after dumps by name and a shared
+  predicate would let a retention pass delete the dumps. A restore pairs a
+  dump with the newest tarball whose stamp is ≤ its own, which is correct
+  because an unchanged set writes no tarball. On the backup worker the
+  tarball unpacks into `gen-<stamp>/` under a read-only bind mount and a
+  relative `current` symlink swaps beside the database rename;
+  `restore-cycle.sh`'s no-op predicate covers **both** halves, so a tarball
+  that arrives after its dump is not stranded.
+  `python -m app.services.attachment_verify` reports rows without files after
+  any restore.
 - Backend lock: regenerate only with
   `uv pip compile --universal pyproject.toml -o requirements.lock` —
   a non-universal Windows resolve leaks pywin32 and drops uvloop.

@@ -237,6 +237,44 @@ about. Then compare row counts table by table against the pre-cutover database
 before declaring the cutover done — the failure mode here is a clean exit code
 over a partial restore.
 
+### Attachments
+
+A dump carries no attachment bytes. Restore the paired tarball too:
+
+1. Find the newest `darkmem-attachments-<stamp>.tar.gz` whose `<stamp>` is at
+   or before the dump's. That is the set that was live when the dump was
+   taken — correct precisely because an unchanged set writes no tarball.
+   Off-host, `python -m app.services.backup_pull --destination <name>
+   --paired-with <dump name> --out /dumps` applies the same rule.
+2. Unpack it over the attachment volume. That volume is a named Docker volume,
+   so the unpack goes through the image rather than a host path — the same
+   shape `backup.sh` uses to write it:
+
+   ```bash
+   docker run --rm --entrypoint tar \
+     -v darkmem-prod_attachment_data:/dst \
+     -v /root/darkmem-backups:/src:ro \
+     darkraise/darkmem:latest -xzf /src/darkmem-attachments-<stamp>.tar.gz -C /dst
+   ```
+
+3. Then `docker compose exec darkmem python -m app.services.attachment_verify`.
+   It exits non-zero when any row's file is missing.
+
+Three limits, none of them repairable after the fact:
+
+- The host floor keeps 14 dumps and 3 tarballs, so an old dump may pair with
+  no surviving tarball. Restoring it serves rows whose files are gone.
+- A cleanup that deletes a row between the dump and the tar leaves that dump
+  one row without a file.
+- A night whose tarball failed on every destination does not advance the
+  ship job's state, so the next night rebuilds under a newer stamp and the
+  failed night's dump pairs with an older set than it should.
+
+`page_attachment_cleanup` refuses to collect row-less files when
+`page_attachments` is empty or when there are more than `rowless_bulk_limit`
+(100) of them, so an app booted against a recreated database will not wipe a
+restored volume. It logs an error rather than a warning when it refuses.
+
 ## Recovering from schema drift
 
 Pre-freeze this is the policy's own remedy and the data is disposable by the
