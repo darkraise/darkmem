@@ -92,6 +92,6 @@ describe("the page schema's file blocks", () => {
 
   it("takes a page id without changing anything else", async () => {
     const { editor } = await mountEditor("11111111-2222-3333-4444-555555555555")
-    expect(editor.document.length).toBeGreaterThanOrEqual(0)
+    expect(editor.document.map((x) => x.id)).toEqual(["h1", "p1", "h2", "p2"])
   })
 })
