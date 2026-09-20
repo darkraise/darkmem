@@ -151,6 +151,8 @@ describe("BlockNote 0.54.2", () => {
       "code_block",
       "divider",
       "table",
+      "image",
+      "file",
       "heading_4",
       "heading_5",
       "heading_6",
@@ -161,5 +163,70 @@ describe("BlockNote 0.54.2", () => {
   it("marks each block's outer element with its id", async () => {
     const { container } = await mount([{ id: "p", type: "paragraph", content: "p" }])
     expect(container.querySelector('.bn-block-outer[data-id="p"]')).not.toBeNull()
+  })
+})
+
+describe("file blocks", () => {
+  // What each spec says it accepts. This pins the schema's own metadata, not
+  // BlockNote's matcher: the handler reads `fileBlockAccept` by exactly this
+  // path, so a spec that stopped declaring it would route drops elsewhere.
+  it("declares the accept lists the drop handler reads", () => {
+    const specs = pageSchema.blockSpecs as unknown as Record<
+      string,
+      { implementation: { meta?: { fileBlockAccept?: string[] } } }
+    >
+    const meta = (type: string) => specs[type]?.implementation.meta?.fileBlockAccept
+    expect(meta("image")).toEqual(["image/*"])
+    expect(meta("file")).toEqual(["*/*"])
+  })
+
+  // The block wrapper swaps its add-file button for a "Loading..." element
+  // when an upload starts and resets it only when the node view is rebuilt.
+  // Setting `url` to the "" it already holds is not a change, so the failure
+  // path retypes the block instead. This pins that the retype is a change.
+  it("retypes a placeholder even though setting its url again is not a change", async () => {
+    const { editor } = await mount([{ type: "image", props: { url: "", name: "x.png" } }])
+    await act(async () => {
+      editor.updateBlock(editor.document[0]!, { props: { url: "" } } as never)
+    })
+    expect(editor.document[0]!.type).toBe("image")
+    await act(async () => {
+      editor.updateBlock(editor.document[0]!, { type: "paragraph", content: [] } as never)
+    })
+    expect(editor.document[0]!.type).toBe("paragraph")
+  })
+
+  // The one fact the plan's Assumptions record as unverified. After an upload
+  // whose block the nesting rule refused to convert, BlockNote updates the
+  // original id with the url anyway -- on a block that has no `url` prop. This
+  // records whether that is inert or throws; either way the recovery insert in
+  // `use-page-editor.ts` has already placed the attachment, so the answer
+  // changes no code. It is written down so the next reader does not have to
+  // re-derive it, and so an upgrade that changes it is visible.
+  //
+  // It reaches the paragraph by retyping rather than by a refused conversion,
+  // which is a proxy: the question is what a write of an undeclared prop does,
+  // and how the block came to lack that prop does not change the answer.
+  it("records what setting a foreign prop on a paragraph does", async () => {
+    const { editor } = await mount([{ type: "image", props: { url: "", name: "x.png" } }])
+    const id = editor.document[0]!.id
+    await act(async () => {
+      editor.updateBlock(id, { type: "paragraph", content: [] } as never)
+    })
+    let thrown: unknown = null
+    await act(async () => {
+      try {
+        editor.updateBlock(id, { props: { url: "https://example.org/x.png" } } as never)
+      } catch (error) {
+        thrown = error
+      }
+    })
+    // Whichever branch holds, the block must still be a paragraph and the page
+    // must still be intact.
+    expect(editor.document[0]!.type).toBe("paragraph")
+    expect(editor.document).toHaveLength(1)
+    // Record the observed behaviour. If this assertion fails, flip it and note
+    // the flip in the ledger -- it is a recording, not a requirement.
+    expect(thrown).toBeNull()
   })
 })

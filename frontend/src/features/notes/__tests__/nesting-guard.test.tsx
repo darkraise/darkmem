@@ -52,3 +52,34 @@ it("refuses a new child under a non-container and allows it under a list item", 
   editor.updateBlock("quote", { type: "paragraph" })
   expect(editor.getBlock("quote")!.type).toBe("quote")
 })
+
+it("refuses a child under an image or a file block", async () => {
+  let editor!: PageEditorInstance
+  function Probe() {
+    editor = useCreateBlockNote({
+      schema: pageSchema,
+      trailingBlock: false,
+      initialContent: [
+        { id: "i", type: "image", props: { url: "https://example.org/x.png", name: "x.png" } },
+        {
+          id: "f",
+          type: "file",
+          props: { url: "/api/v1/pages/attachments/0123abcd-4567-89ef-0123-456789abcdef", name: "n.pdf" },
+        },
+        { id: "p", type: "paragraph", content: "p" },
+      ],
+    })
+    return <BlockNoteView editor={editor} />
+  }
+  render(<Probe />)
+  await act(async () => {})
+  editor.onBeforeChange(({ tr }) => (addsNestingViolation(tr.before, tr.doc) ? false : undefined))
+  const shape = () => JSON.stringify(editor.document.map((x) => [x.id, x.type, x.children.map((c) => c.id)]))
+  const start = shape()
+
+  editor.updateBlock("i", { children: [{ id: "ic", type: "paragraph", content: "x" }] })
+  expect(shape()).toBe(start)
+
+  editor.updateBlock("f", { children: [{ id: "fc", type: "paragraph", content: "x" }] })
+  expect(shape()).toBe(start)
+})
