@@ -189,3 +189,76 @@ describe("block mapping", () => {
     expect(nextOp(canonical, desired)).toBeNull()
   })
 })
+
+const URL_A = "/api/v1/pages/attachments/0123abcd-4567-89ef-0123-456789abcdef"
+
+describe("image and file blocks", () => {
+  it("reads an image paragraph as an image block and writes it back", () => {
+    const stored: SyncBlock[] = [b("p", null, "paragraph", `![shot](${URL_A})`)]
+    const { blocks } = toEditorBlocks(stored)
+    expect(blocks).toEqual([
+      { id: "p", type: "image", props: { url: URL_A, name: "shot" }, content: undefined, children: [] },
+    ])
+    expect(canonicalTree(stored).tree).toEqual(stored)
+  })
+
+  it("reads an attachment link as a file block and writes it back", () => {
+    const stored: SyncBlock[] = [b("p", null, "paragraph", `[notes.pdf](${URL_A})`)]
+    const { blocks } = toEditorBlocks(stored)
+    expect(blocks[0]!.type).toBe("file")
+    expect(blocks[0]!.props).toEqual({ url: URL_A, name: "notes.pdf" })
+    expect(canonicalTree(stored).tree).toEqual(stored)
+  })
+
+  it("leaves an external link and an image inside text as paragraphs", () => {
+    const stored: SyncBlock[] = [
+      b("a", null, "paragraph", "[docs](https://example.org/)"),
+      b("c", null, "paragraph", `see ![shot](${URL_A})`),
+    ]
+    expect(toEditorBlocks(stored).blocks.every((x) => x.type === "paragraph")).toBe(true)
+    expect(canonicalTree(stored).tree).toEqual(stored)
+  })
+
+  // The detector refuses an empty destination for exactly this reason: the
+  // write side drops a block with no url, so accepting one here would make
+  // reading the page delete the paragraph.
+  it("keeps a paragraph whose image has no destination", () => {
+    const stored: SyncBlock[] = [b("p", null, "paragraph", "![draft]()")]
+    expect(toEditorBlocks(stored).blocks[0]!.type).toBe("paragraph")
+    expect(canonicalTree(stored).tree).toEqual(stored)
+  })
+
+  it("omits an image or file block that has no url", () => {
+    const blocks: EditorBlockLike[] = [
+      { id: "a", type: "image", props: { url: "", name: "x.png" }, content: undefined, children: [] },
+      { id: "b", type: "file", props: { url: "", name: "x.pdf" }, content: undefined, children: [] },
+      { id: "c", type: "paragraph", props: {}, content: [{ type: "text", text: "kept", styles: {} }], children: [] },
+    ]
+    const { tree } = toSyncTree(blocks, [], new Map(), () => "never")
+    expect(tree.map((x) => x.id)).toEqual(["c"])
+  })
+
+  // The cleanup job finds a referenced attachment by scanning `blocks.text`,
+  // so what this mapping writes has to be what that scan matches.
+  it("writes a url the cleanup job's scan finds", () => {
+    const blocks: EditorBlockLike[] = [
+      { id: "a", type: "image", props: { url: URL_A, name: "shot" }, content: undefined, children: [] },
+    ]
+    const { tree } = toSyncTree(blocks, [], new Map(), () => "never")
+    expect(tree[0]!.type).toBe("paragraph")
+    expect(
+      /\/api\/v1\/pages\/attachments\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/.test(
+        tree[0]!.text,
+      ),
+    ).toBe(true)
+  })
+
+  it("is a fixed point over a page holding both", () => {
+    const stored: SyncBlock[] = [
+      b("i", null, "paragraph", `![shot](${URL_A})`),
+      b("f", null, "paragraph", `[notes.pdf](${URL_A})`),
+    ]
+    const once = canonicalTree(stored).tree
+    expect(canonicalTree(once).tree).toEqual(once)
+  })
+})

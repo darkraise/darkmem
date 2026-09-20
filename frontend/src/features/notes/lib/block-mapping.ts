@@ -1,5 +1,5 @@
 import { isCalloutVariant } from "./block-properties"
-import { emitInline, parseInline, type InlineNode } from "./inline-markdown"
+import { asStandaloneFile, emitInline, fileMarkdown, parseInline, type InlineNode } from "./inline-markdown"
 import type { BlockRow } from "@/hooks/api"
 import type { SyncBlock, SyncTree } from "./sync-tree"
 
@@ -71,6 +71,21 @@ export function toEditorBlocks(tree: SyncTree): { blocks: EditorBlockLike[]; row
     const kids = (byParent.get(block.id) ?? []).filter((k) => k.type !== "table_row")
     const children = kids.map(build)
     const base = { id: block.id, children }
+    // A paragraph that is exactly one image, or one link to an attachment,
+    // is shown as a block rather than as the markdown that spells it. The
+    // detector refuses an empty destination, so no block built here can
+    // carry the empty url `toSyncTree` drops.
+    if (block.type === "paragraph") {
+      const file = asStandaloneFile(block.text)
+      if (file) {
+        return {
+          ...base,
+          type: file.kind === "image" ? "image" : "file",
+          props: { url: file.url, name: file.name },
+          content: undefined,
+        }
+      }
+    }
     switch (block.type) {
       case "heading": {
         const level = Number(props.level)
@@ -195,6 +210,22 @@ export function toSyncTree(
           out.push({ id, parentId: block.id, type: "table_row", text: cells.join(" | "), properties: { cells } })
         })
         nextRowIds.set(block.id, ids)
+        break
+      }
+      case "image":
+      case "file": {
+        const url = String(block.props.url ?? "")
+        // A block with no url is the placeholder the editor shows before a
+        // file is chosen, or what a failed upload left behind. Neither is
+        // content, so neither is stored -- and returning here skips the
+        // children walk, which is right because the nesting rule gives these
+        // blocks none.
+        if (url === "") return
+        push(
+          "paragraph",
+          fileMarkdown(block.type === "image" ? "image" : "link", url, String(block.props.name ?? "")),
+          null,
+        )
         break
       }
       default:
