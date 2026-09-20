@@ -345,6 +345,14 @@ real instance, and the answer belongs in a test there, not in a comment.
   download, and a test covers it.
 - A background colour set through the side menu is dropped on reload, as it
   already is for every paragraph (§5).
+- An upload that resolves after its pane has unmounted is not recorded. The
+  page pane keys the editor on the page id, so switching pages mid-upload tears
+  the editor down; the resolved URL then lands on a detached editor whose change
+  subscription is gone, and no sync tree ever sees it. The file is stored,
+  referenced by nothing, and collected by `page_attachment_cleanup` after its
+  grace period. §7.3's guard covers closing the tab, not navigating within the
+  app. Fixing it means routing the resolved URL into the page's engine rather
+  than the editor, which is a design change of its own.
 
 ## 9. Rejected: the inline thumbnail
 

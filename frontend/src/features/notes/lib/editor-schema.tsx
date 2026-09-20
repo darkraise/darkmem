@@ -92,8 +92,9 @@ export const pageSchema = BlockNoteSchema.create({
     // `file` must be spelled exactly this: it is the literal type BlockNote's
     // drop handler falls back to when no spec accepts a dropped file's type.
     // Their order does not matter -- the installed matcher's wildcard branch
-    // compares the two type halves, so the file spec's `*/*` matches nothing
-    // but an exactly equal type, and a PNG can only match `image/*`.
+    // (`@blocknote/core/dist/src-Buuo5l7X.js:1342` at 0.54.2) compares the two
+    // type halves, so the file spec's `*/*` matches nothing but an exactly
+    // equal type, and a PNG can only match `image/*`. Re-read it on an upgrade.
     file: defaultBlockSpecs.file,
     image: defaultBlockSpecs.image,
     divider: defaultBlockSpecs.divider,

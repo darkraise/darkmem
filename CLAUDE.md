@@ -2013,7 +2013,10 @@ block's own text — which is what the `page_attachment_cleanup` reference scan
 reads, so the mapping and that job's pattern move together. Upload runs through
 `POST /api/v1/pages/{id}/attachments` from paste, drag-drop and the slash menu;
 an upload in flight is counted outside the sync tree, because a block with no
-url yet is in no tree and the unload warning would otherwise stay silent. The
+url yet is in no tree and the unload warning would otherwise stay silent; the
+count is module-wide, shared by every mounted editor, since that guard asks
+whether any work is outstanding. An upload that resolves after its pane
+unmounted is lost (spec §8). The
 CSP's `img-src` carries `https:` for external images, deliberately not `http:`.
 `ProjectWorkspace` lost `treeManagement` in B2 and is the corpus browser
 again. The cost is stated rather than discovered: **the personal
