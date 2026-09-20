@@ -156,29 +156,31 @@ def build_tree(archive: NotionArchive, *, max_pages: int, warn: Warn) -> NotionT
             f"the export holds {len(pages_entries)} pages; the bound is {max_pages}"
         )
 
-    sources = {e.name: archive.read_text(e) for e in pages_entries}
     uuids = {e.name: uuid4() for e in pages_entries}
     titles: dict[str, str] = {}
     keys: dict[str, list[str]] = {}
-    for entry in pages_entries:
-        titles[entry.name], keys[entry.name] = _title_and_properties(
-            sources[entry.name], entry.name
-        )
-
-    by_id = {
-        _notion_id(e.name): e.name for e in pages_entries if _notion_id(e.name)
-    }
-
     # Standalone links, resolved once: they are both the subpage signal and,
     # for a CSV target, how a database with a differently-named view stub is
     # found. The measured export has one -- `Untitled 1507-2c1e_all.csv`, whose
     # stub page is titled "Sprint 47".
     standalone: dict[str, list[str]] = {}
+    # One pass per page, and nothing below reads a source again: what the tree
+    # keeps is a title, a key list and a link target per page, never the text.
+    # Holding every source at once is the bound the process hits first, well
+    # inside `notion_import_max_uncompressed_bytes`.
     for entry in pages_entries:
-        for target in _standalone_targets(sources[entry.name]):
+        source = archive.read_text(entry)
+        titles[entry.name], keys[entry.name] = _title_and_properties(
+            source, entry.name
+        )
+        for target in _standalone_targets(source):
             resolved = resolve_target(target, entry.name)
             if resolved != entry.name:
                 standalone.setdefault(resolved, []).append(entry.name)
+
+    by_id = {
+        _notion_id(e.name): e.name for e in pages_entries if _notion_id(e.name)
+    }
 
     databases: dict[str, DatabaseInfo] = {}
     minted: dict[str, tuple[UUID, str]] = {}

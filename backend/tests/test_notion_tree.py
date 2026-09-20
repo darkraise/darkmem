@@ -218,6 +218,40 @@ def test_assets_are_indexed_and_not_pages(tmp_path):
     assert not any(n.title == "image.png" for n in tree.pages)
 
 
+def test_no_page_text_outlives_its_own_pass(tmp_path):
+    # The ceiling that bites first is the process, not the archive's byte
+    # counter: holding every page's source at once is what a 5 GB export would
+    # do to a 1 GB container.
+    import gc
+    import weakref
+
+    class Text(str):
+        pass
+
+    path = build_fixture(FLAT_EXPORT, tmp_path / "hold.zip")
+    archive = open_archive(
+        path, tmp_path / "staging", max_entries=50_000,
+        max_uncompressed_bytes=5_368_709_120, warn=lambda p, k, d: None,
+    )
+    real = archive.read_text
+    refs: list[weakref.ref] = []
+    live_peak = 0
+
+    def tracked(entry):
+        nonlocal live_peak
+        gc.collect()
+        live_peak = max(live_peak, len([r for r in refs if r() is not None]))
+        value = Text(real(entry))
+        refs.append(weakref.ref(value))
+        return value
+
+    archive.read_text = tracked
+    build_tree(archive, max_pages=10_000, warn=lambda p, k, d: None)
+
+    assert len(refs) >= 6, "the pages were not read through the tracker"
+    assert live_peak <= 1
+
+
 def test_the_page_cap_refuses(tmp_path):
     with pytest.raises(NotionExportInvalid):
         _tree(FLAT_EXPORT, tmp_path, max_pages=2)
