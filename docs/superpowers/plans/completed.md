@@ -5,3 +5,4 @@
 - 2026-09-19 `docs/superpowers/plans/2026-09-18-ui-review-remediation.md` — merged into `master` at c3ff4524
 - 2026-09-20 `docs/superpowers/plans/2026-09-19-page-attachment-storage.md` — merged into `master` at 391e2832
 - 2026-09-20 `docs/superpowers/plans/2026-09-20-attachment-backups.md` — merged into `master` at e63f1467
+- 2026-09-20 `docs/superpowers/plans/2026-09-20-page-editor-attachments.md` — merged into `master` at 0904e9d0
