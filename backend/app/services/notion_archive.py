@@ -12,7 +12,8 @@ import hashlib
 import logging
 import re
 import zipfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import IO
@@ -23,6 +24,12 @@ from app.services.page_attachments import sniff_content_type
 logger = logging.getLogger(__name__)
 
 CHUNK = 1 << 16
+# A ceiling on what `read_text` will hold in memory for one member. A page's
+# stored text is bounded by MAX_CONTENT_CHARS (1M) and the later stages
+# truncate to it, so no source a page can use comes near this -- the largest
+# page in the measured export is 182 KB. A literal rather than an import
+# because this module knows nothing about pages.
+MAX_TEXT_BYTES = 16 << 20
 _SNIFF_BYTES = 16
 _ID_SUFFIX = re.compile(r" [0-9a-f]{32}$")
 _PART_SUFFIX = re.compile(r"[-_ ]?Part[-_ ]?(\d+)\.zip$", re.IGNORECASE)
@@ -37,6 +44,32 @@ class NotionArchiveInvalid(ValueError):
 
 class NotionArchiveTooLarge(ValueError):
     """The archive passed an entry-count or uncompressed-bytes ceiling."""
+
+
+_ZIP_FAILURES = (zipfile.BadZipFile, OSError, EOFError)
+
+
+@contextmanager
+def _folding(what: str) -> Iterator[None]:
+    """The module's one definition of "a zipfile failure is our 422".
+
+    It belongs around the SOURCE side only -- opening or reading a member, or
+    opening a staged part. A failure writing to a destination is the disk, not
+    the export, and must reach the caller as itself.
+    """
+    try:
+        yield
+    except _ZIP_FAILURES as exc:
+        raise NotionArchiveInvalid(f"{what}: {exc}") from exc
+
+
+def _read_chunks(handle: IO[bytes], what: str) -> Iterator[bytes]:
+    while True:
+        with _folding(what):
+            chunk = handle.read(CHUNK)
+        if not chunk:
+            return
+        yield chunk
 
 
 @dataclass(frozen=True)
@@ -122,7 +155,8 @@ class NotionArchive:
         # By ZipInfo, never by name: zipfile's NameToInfo keeps the LAST entry
         # of a duplicated name, so opening by name would hand back the entry
         # `_collect` deliberately skipped.
-        return self._sources[entry.part].zip.open(entry.info)
+        with _folding(f"{entry.name} could not be read"):
+            return self._sources[entry.part].zip.open(entry.info)
 
     def _consume(self, n: int) -> None:
         self._read += n
@@ -133,20 +167,14 @@ class NotionArchive:
 
     def read_text(self, entry: ArchiveEntry) -> str:
         buffer = bytearray()
-        # A tampered or truncated member surfaces as this module's own refusal,
-        # so the route answers 422 rather than leaking a zipfile internal as a
-        # 500. NotionArchiveTooLarge is ours already and must pass through.
-        try:
-            with self.open(entry) as handle:
-                while chunk := handle.read(CHUNK):
-                    self._consume(len(chunk))
-                    buffer += chunk
-        except NotionArchiveTooLarge:
-            raise
-        except (zipfile.BadZipFile, OSError, EOFError) as exc:
-            raise NotionArchiveInvalid(
-                f"{entry.name} could not be read: {exc}"
-            ) from exc
+        with self.open(entry) as handle:
+            for chunk in _read_chunks(handle, f"{entry.name} could not be read"):
+                self._consume(len(chunk))
+                if len(buffer) + len(chunk) > MAX_TEXT_BYTES:
+                    raise NotionArchiveTooLarge(
+                        f"{entry.name} expands past {MAX_TEXT_BYTES} bytes of text"
+                    )
+                buffer += chunk
         return buffer.decode("utf-8-sig", errors="replace")
 
     def extract(self, entry: ArchiveEntry, dest: Path) -> tuple[int, str, str]:
@@ -156,21 +184,16 @@ class NotionArchive:
         head = b""
         try:
             with self.open(entry) as handle, open(dest, "wb") as out:
-                while chunk := handle.read(CHUNK):
+                for chunk in _read_chunks(handle, f"{entry.name} could not be read"):
                     self._consume(len(chunk))
                     size += len(chunk)
                     if len(head) < _SNIFF_BYTES:
                         head += chunk[: _SNIFF_BYTES - len(head)]
                     digest.update(chunk)
                     out.write(chunk)
-        except NotionArchiveTooLarge:
+        except BaseException:
             dest.unlink(missing_ok=True)
             raise
-        except (zipfile.BadZipFile, OSError, EOFError) as exc:
-            dest.unlink(missing_ok=True)
-            raise NotionArchiveInvalid(
-                f"{entry.name} could not be read: {exc}"
-            ) from exc
         return size, digest.hexdigest(), sniff_content_type(head)
 
     def close(self) -> None:
@@ -240,13 +263,24 @@ def open_archive(
         # disk: zipfile seeks backwards per entry, and a compressed stream read
         # through the outer archive re-decompresses from the start every time.
         staging.mkdir(parents=True, exist_ok=True)
-        for info in sorted(parts, key=lambda i: _decode_name(i)):
-            number = int(_PART_SUFFIX.search(_decode_name(info)).group(1))
-            target = staging / f"part-{number}.zip"
-            with outer.open(info) as src, open(target, "wb") as out:
-                while chunk := src.read(CHUNK):
-                    out.write(chunk)
-            sources.append(_Source(target, number))
+        try:
+            for info in sorted(parts, key=lambda i: _decode_name(i)):
+                decoded = _decode_name(info)
+                number = int(_PART_SUFFIX.search(decoded).group(1))
+                target = staging / f"part-{number}.zip"
+                what = f"{decoded} could not be read as a Part archive"
+                with _folding(what):
+                    src = outer.open(info)
+                with src, open(target, "wb") as out:
+                    for chunk in _read_chunks(src, what):
+                        out.write(chunk)
+                with _folding(what):
+                    sources.append(_Source(target, number))
+        except BaseException:
+            outer.close()
+            for source in sources:
+                source.zip.close()
+            raise
         outer.close()
     else:
         sources.append(_Source(zip_path, 0))

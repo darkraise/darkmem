@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import builtins
 import hashlib
 import zipfile
+from pathlib import Path
 
 import pytest
 
 from app.services.notion_archive import (
+    MAX_TEXT_BYTES,
     NotionArchiveInvalid,
     NotionArchiveTooLarge,
     _decode_name,
@@ -15,6 +18,7 @@ from tests.fixtures.notion.builder import (
     FLAT_EXPORT,
     HOSTILE_EXPORT,
     PART_EXPORT,
+    WRAPPER,
     Entry,
     build_fixture,
 )
@@ -120,6 +124,19 @@ def test_the_running_counter_bounds_the_total_across_reads(tmp_path):
                 archive.read_text(entry)
 
 
+def test_read_text_refuses_a_member_past_the_text_ceiling(tmp_path):
+    # Clears both caller-supplied bounds: the ceiling read_text keeps for its
+    # own in-memory buffer is the only thing that can stop this.
+    entries = [
+        Entry("Big 00000000000000000000000000000001.md",
+              b"x" * (MAX_TEXT_BYTES + 1)),
+    ]
+    path = build_fixture(entries, tmp_path / "huge.zip")
+    archive, _ = _open(path, tmp_path / "staging")
+    with pytest.raises(NotionArchiveTooLarge):
+        archive.read_text(archive.entries[0])
+
+
 def test_a_tampered_size_is_refused_rather_than_raising_BadZipFile(tmp_path):
     # Understating the central directory's uncompressed size does not let more
     # bytes through -- zipfile stops at the declared length and the CRC check
@@ -162,12 +179,41 @@ def test_extract_returns_size_hash_and_sniffed_type(tmp_path):
     assert content_type == "image/png"
 
 
+def test_a_failing_destination_is_not_blamed_on_the_export(tmp_path, monkeypatch):
+    # A full or unwritable disk is not a malformed export, so it must not reach
+    # the caller as this module's 422.
+    path = build_fixture(FLAT_EXPORT, tmp_path / "flat.zip")
+    archive, _ = _open(path, tmp_path / "staging")
+    png = next(e for e in archive.entries if e.name == "image.png")
+    dest = tmp_path / "out" / "image.png"
+    real_open = builtins.open
+
+    def refuse(file, *args, **kwargs):
+        if Path(file) == dest:
+            raise OSError(28, "No space left on device")
+        return real_open(file, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", refuse)
+    with pytest.raises(OSError):
+        archive.extract(png, dest)
+    monkeypatch.undo()
+    assert not dest.exists()
+
+
 def test_a_part_export_reads_as_one_tree(tmp_path):
     path = build_fixture(PART_EXPORT, tmp_path / "parts.zip")
     archive, _ = _open(path, tmp_path / "staging")
     names = sorted(e.name for e in archive.entries)
     assert [n.split(" ")[0] for n in names] == ["One", "Two"]
     assert sorted(e.part for e in archive.entries) == [1, 2]
+
+
+def test_an_unreadable_part_member_is_refused(tmp_path):
+    path = build_fixture(
+        [Entry(f"{WRAPPER}-Part-1.zip", b"not a zip")], tmp_path / "parts.zip"
+    )
+    with pytest.raises(NotionArchiveInvalid):
+        _open(path, tmp_path / "staging")
 
 
 def test_a_zip_attachment_is_not_opened_as_a_part(tmp_path):
