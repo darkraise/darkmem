@@ -377,9 +377,9 @@ paragraph). It can be added later without touching anything in this design.
 - `use-page-sync`: the unload guard fires on an in-flight upload with a
   settled tree.
 - `nesting-guard`: an `image` and a `file` block may not hold children.
-- `blocknote-probe`: against a real editor — a dropped PNG becomes `image` and
-  a dropped PDF `file` (§3); the §7.4 conversion-refusal path end to end,
-  including what the follow-up `updateBlock` does.
+- `blocknote-probe`: against a real editor — what the follow-up `updateBlock`
+  does when its block is no longer a file block. Two probes this bullet
+  originally asked for are **not** written; §13 says which, and why.
 - `page-editor`: the resize handle is hidden; the download button renders for
   a file block and not for a paragraph.
 
@@ -425,3 +425,13 @@ as much as the library. What is pinned instead is each spec's declared
 is narrow and named: a BlockNote release that changed the matcher so `*/*`
 began matching everything would make schema order load-bearing again, and
 nothing in this tree would go red. Re-read §3 on an upgrade.
+
+The second is §7.4's conversion-refusal path end to end: a paste into an empty
+list item holding a child, the nesting guard refusing the in-place conversion,
+and the recovery insert placing the attachment beside it. The probe reaches the
+same question — what a write of an undeclared prop does to a block that is no
+longer a file block — by retyping the block instead, because the end-to-end
+path needs a synthetic paste event carrying a file. The recovery branch itself
+*is* covered, by `use-page-editor`'s own test (§10), driving `uploadFile`
+directly against a list item with a child. What is untested is BlockNote's
+follow-up write landing on it.

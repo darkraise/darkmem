@@ -16,6 +16,8 @@
 
 **Program:** `docs/superpowers/specs/2026-09-19-notion-import-design.md` — sub-project 3 of 4 — next: The Notion import route and its dialog (§4, §5.1)
 
+**Plan review:** 2026-09-20 — dr-superpowers:judge-opus — executability 18 / coherence 17 / coverage 16 / assumptions 18 (round 3)
+
 ## Global Constraints
 
 - **English only** in code, comments, docs, commits, configs, errors and tests.
@@ -82,7 +84,7 @@ Names one task produces and another consumes. Use them exactly as written.
 - BlockNote's default slash-menu item keys for these two blocks are `"image"` and `"file"`, and the default item list is filtered by the schema, which is why neither appears today — `frontend/node_modules/@blocknote/core/dist/blocks-Dol85hpH.js:3341,3362`, read 2026-09-20.
 - A block spec's accept list is reachable as `pageSchema.blockSpecs[type].implementation.meta.fileBlockAccept` — `frontend/node_modules/@blocknote/core/dist/src-Buuo5l7X.js:1370` reads it by that path, read 2026-09-20.
 - **Two existing assertions go red on the schema change** and are corrected by name rather than discovered: `use-page-editor.test.tsx:49`'s `hidden` list contains `"Image"` and `"File"` (corrected in Task 4, same file), and `blocknote-probe.test.tsx:141-158` pins the exact default slash key array (corrected in Task 5). Read 2026-09-20. `blocknote-probe.test.tsx` is therefore red between Task 4's commit and Task 5's, which Task 4's Step 4 states.
-- **Not pinned, deliberately:** that a dropped PNG becomes an `image` and a dropped PDF a `file`. Task 5 asserts each spec's declared `fileBlockAccept` instead, which would stay green if BlockNote changed its matcher so `*/*` began matching everything. The matcher is not exported, and driving a synthetic drop event through jsdom pins the test harness more than the library. Recorded in the spec's §12 rather than left as a silent gap.
+- **Not pinned, deliberately:** that a dropped PNG becomes an `image` and a dropped PDF a `file`. Task 5 asserts each spec's declared `fileBlockAccept` instead, which would stay green if BlockNote changed its matcher so `*/*` began matching everything. The matcher is not exported, and driving a synthetic drop event through jsdom pins the test harness more than the library. Recorded in the spec's §13 rather than left as a silent gap.
 - **unverified — Task 5 verifies it:** what BlockNote's follow-up `updateBlock(blockId, {props: {url}})` does when `blockId` is no longer a file block. Task 8's code is correct either way (the recovery insert has already placed the attachment), and spec §8 records a throw as a console-only limit.
 
 ## Task index
@@ -1535,8 +1537,8 @@ git commit -m "feat(notes): add a download control, hide resize"
 - [ ] **Step 1: Run the existing test to see it green before the change**
 
 The backend suite needs the dev-compose Postgres, which is often down on this
-host. Start only that service — the dev `app` service collides with the live
-instance on `:8000`:
+host. Start only that service — the dev compose's own `darkmem` service
+collides with the live instance on `:8000`:
 
 Run: `cd /root/repositories/darkmem && docker compose -f docker-compose.dev.yml up -d postgres`
 
@@ -1633,8 +1635,8 @@ and `frontend/`, so the redeploy rule applies.
 - [ ] **Step 1: Run the gate legs this change touches**
 
 The backend leg needs the dev-compose Postgres, which is often down on this
-host. Start only that service — the dev `app` service collides with the live
-instance on `:8000`:
+host. Start only that service — the dev compose's own `darkmem` service
+collides with the live instance on `:8000`:
 
 Run: `cd /root/repositories/darkmem && docker compose -f docker-compose.dev.yml up -d postgres`
 
@@ -1654,16 +1656,26 @@ Run: `cd /root/repositories/darkmem && DARKMEM_PUSH=0 ./scripts/build-push.sh`
 Expected: the build succeeds. `DARKMEM_PUSH=0` is not optional — the script's
 default pushes, and publishing an image from this machine is forbidden.
 
-- [ ] **Step 3: Confirm the image is the tree you just built**
+- [ ] **Step 3: Confirm the build ran on this commit, and that it is what compose will deploy**
 
 The image carries no revision label — the `Dockerfile` declares none and
 `build-push.sh` passes no `--label`. What it does write is a tag named for the
-short git sha, so that tag existing is the evidence:
+short git sha, in the same `docker build` as `:latest`, so that tag is the
+evidence the build ran here:
 
 Run: `docker image inspect "darkraise/darkmem:$(git rev-parse --short HEAD)" > /dev/null && echo present`
-Expected: `present`. If the inspect fails with "No such image", the build did
-not run on this commit — a failed commit does not stop a build, so the tagged
-image may predate the work. Rebuild before deploying, and do not skip ahead.
+Expected: `present`. "No such image" means the build did not run on this
+commit — a failed commit does not stop a build, so the tagged image may
+predate the work. Rebuild before deploying, and do not skip ahead.
+
+That alone does not prove compose will deploy *that* image: `docker-compose.yml`
+resolves `darkraise/darkmem:${DARKMEM_VERSION:-latest}`, so a pinned
+`DARKMEM_VERSION` in `.env`, or a `:latest` moved by a build of another tree,
+would satisfy the check above and still ship other bits. Compare the two ids:
+
+Run: `docker image inspect -f '{{.Id}}' "darkraise/darkmem:$(git rev-parse --short HEAD)"; docker image inspect -f '{{.Id}}' "darkraise/darkmem:${DARKMEM_VERSION:-latest}"`
+Expected: the two ids are identical. If they differ, find out why before
+deploying — an unexpected `DARKMEM_VERSION` in `.env` is the usual cause.
 
 - [ ] **Step 4: Deploy and wait for health**
 
