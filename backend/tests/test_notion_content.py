@@ -173,6 +173,25 @@ def test_a_page_over_the_character_bound_is_truncated(tmp_path):
     assert any(w[1] == "truncated" for w in warnings)
 
 
+def test_a_quote_holding_a_list_and_a_heading_lifts_them_out(tmp_path):
+    from app.services.block_verbs import _check_page_nesting
+
+    entries = [
+        Entry("Q 00000000000000000000000000000001.md",
+              b"# Q\n\n> Lead line.\n>\n> ## Inside\n>\n> - one\n> - two\n>\n"
+              b"> ```\n> sample\n> ```\n>\n> ---\n"),
+    ]
+    blocks, _, _, _, _ = _render("Q", entries, tmp_path)
+    quote = next(b for b in blocks if b.type == "quote")
+    assert [b.type for b in blocks if b.parent_id == quote.id] == []
+    assert {"heading", "list", "code", "divider"} <= {b.type for b in blocks}
+    by_id = {b.id: b for b in blocks}
+    for block in blocks:
+        _check_page_nesting(
+            by_id.get(block.parent_id) if block.parent_id else None, block
+        )
+
+
 def test_every_block_respects_the_page_parent_rule(tmp_path):
     from app.services.block_verbs import _check_page_nesting
 

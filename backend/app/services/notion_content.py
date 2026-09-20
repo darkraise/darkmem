@@ -9,7 +9,7 @@ from urllib.parse import unquote
 from uuid import UUID
 
 from app.services.block_serializer import TreeBlock, serialize_tree
-from app.services.block_verbs import _check_page_nesting
+from app.services.block_verbs import _PAGE_CONTAINERS, _check_page_nesting
 from app.services.document_parsers import split_frontmatter
 from app.services.notion_archive import NotionArchive
 from app.services.page_attachments import attachment_url
@@ -190,6 +190,9 @@ _CALLOUT_LABEL = re.compile(r"^\[!([A-Za-z]+)\]")
 _CHECKBOX_MARKER = re.compile(r"^\[([ xX])\]\s+")
 _VARIANTS = {"NOTE": "info", "WARNING": "warning", "CAUTION": "error", "TIP": "success"}
 _EXTERNAL = ("http://", "https://", "mailto:", "tel:", "data:")
+# `block_verbs._PAGE_CONTAINERS` plus `table`, which holds its own rows. Read
+# from there so a page rule loosened in one place is not two rules here.
+_PAGE_PARENTS = frozenset(_PAGE_CONTAINERS | {"table"})
 
 
 @dataclass(frozen=True)
@@ -337,23 +340,22 @@ def _post_parse(blocks: list[TreeBlock], warn: Warn) -> list[TreeBlock]:
             if label:
                 variant = _VARIANTS.get(label.group(1).upper(), "info")
                 rest = (block.text or "")[label.end():].lstrip("\n")
-                out.append(replace(
+                block = replace(
                     block, type="callout", text=rest, properties={"variant": variant},
-                ))
-                # A callout holds no children on a page, so its children become
-                # its following siblings rather than being dropped.
-                recast[block.id] = block.parent_id
-                continue
-
-        if block.type == "list":
+                )
+        elif block.type == "list":
             marker = _CHECKBOX_MARKER.match(block.text or "")
             if marker:
-                out.append(replace(
+                block = replace(
                     block, type="todo", text=(block.text or "")[marker.end():],
                     properties={"checked": marker.group(1).lower() == "x"},
-                ))
-                continue
+                )
 
+        if block.type not in _PAGE_PARENTS:
+            # The parser nests under a quote, and a callout came from one; on a
+            # page neither holds children, so a child becomes a following
+            # sibling rather than being dropped or failing the parent rule.
+            recast[block.id] = block.parent_id
         out.append(block)
     # Reading order is unchanged, so renumbering is enough to keep it stable.
     return [replace(b, order_index=i) for i, b in enumerate(out)]
