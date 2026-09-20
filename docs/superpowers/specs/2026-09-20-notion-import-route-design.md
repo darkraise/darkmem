@@ -52,13 +52,15 @@ the fixtures this spec's plan commits are derived from it.
   wrapper folder, `Export-<dashed-uuid>/`. "Create folders for subpages" was
   off. §4.3 step 3 unwraps a chain of id-less folders that each hold *exactly
   one* child; this wrapper holds 2260, so that rule does not fire.
-- **A flat export is not flat.** 2168 of 2193 pages are parentable from two
-  signals in the export itself (§7), leaving 25 roots that read as genuine
+- **A flat export is not flat.** 2171 of 2193 pages are parentable from two
+  signals in the export itself (§7), leaving 22 roots that read as genuine
   top-level pages. Importing flat would place 2193 pages at the notes root.
 - **A database is a page, not a CSV.** `Windows Keys <id>.md` holds `# Windows
   Keys`, a link to `Windows Keys <id>_all.csv`, and trailing `filters:` /
-  `sort:` lines. It is a view stub. Four of the six CSVs have such a stub; two
-  do not.
+  `sort:` lines. It is a view stub. Four of the six CSVs have a stub whose stem
+  matches; the other two are stubbed by a page under a different name —
+  `Untitled 1507-2c1e_all.csv` by a page titled "Sprint 47" — which is why stub
+  detection needs the link arm in §7.2 and not the stem alone.
 - **Only `_all.csv` exists.** No bare `Name <32-hex>.csv` appears. And one CSV
   is `Untitled 1507-2c1e_all.csv` — its id is not 32-hex, so database detection
   cannot key on the id.
@@ -290,10 +292,18 @@ both directions. Each page stores `properties.notion_id` where it has one.
 
 ### 7.2 Databases
 
-A CSV whose name ends `_all.csv` is a database. Its **page** is the `.md` whose
-stem matches the CSV's stem with `_all` removed, where one exists — four of six
-in the real export. Where none exists, the importer mints a grouping page named
-after the CSV.
+A CSV whose name ends `_all.csv` is a database. Its **page** is found in two
+steps, because the stem alone is not enough:
+
+1. The `.md` whose stem matches the CSV's stem with `_all` removed. Four of the
+   six databases in the real export resolve here.
+2. Failing that, the one page that links to the CSV on a line of its own. The
+   other two resolve here, and one of them is the export's own
+   `Untitled 1507-2c1e_all.csv`, whose stub page is titled "Sprint 47" — the
+   stem rule alone would have minted a grouping page beside a real one.
+
+Where neither resolves, the importer mints a grouping page named after the CSV.
+On the real export that never happens; the fixtures cover it.
 
 ### 7.3 Parent signals, in precedence
 
@@ -316,7 +326,13 @@ The first signal that yields a parent wins.
    in the export on its own line, zero inline.
 4. Otherwise a root of the import.
 
-Measured coverage on the real export: 2168 parented, 25 roots, 0 ambiguous.
+Measured coverage on the real export, by the rules exactly as stated above:
+2171 of 2193 pages parented — 1882 by database membership, 289 by a standalone
+link — leaving 22 roots, and no warning of any kind. No target carries two
+inbound standalone links, so nothing was left unplaced for ambiguity, and no
+cycle arose. All six databases resolve a stub page, so no grouping page is
+minted: the import writes 2193 pages under its root, 22 of them directly
+beneath it.
 
 The report carries one `derived_hierarchy` warning with the counts per signal,
 so the operator can see what was inferred rather than read.
