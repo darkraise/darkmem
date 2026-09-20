@@ -6,8 +6,9 @@ measured export is -- states nothing, so the hierarchy is derived from two
 signals the export carries anyway: a row page's property block names its
 database's columns, and a subpage is linked from its parent on a line of its
 own. On the measured export those two parent 2171 of 2193 pages with none
-ambiguous. Inference is reported, never silent: every page carries which
-signal placed it, and the caller turns that into one warning.
+ambiguous. Inference is reported, never silent -- but in aggregate: which
+signal placed one page does not leave `build_tree`, and what the caller turns
+into a warning is `signal_counts`, the population each signal placed.
 """
 from __future__ import annotations
 

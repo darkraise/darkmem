@@ -23,9 +23,9 @@ and 61 attachments on the export this was measured against.
   folders for subpages" is flat and states none, so a page is parented by
   folder nesting, then database membership (a row page's property block names
   its database's columns), then a link on a line of its own. On the measured
-  export that places 2171 of 2193 pages with none ambiguous; every page reports
-  which signal placed it, and a cycle is broken with a warning rather than
-  dropping pages.
+  export that places 2171 of 2193 pages with none ambiguous; the report carries
+  how many pages each signal placed, and a cycle is broken with a warning
+  rather than dropping pages.
 - **The dialog.** Upload progress, an indeterminate bar once the body is sent,
   the counts, and the import's warnings. It refuses closing mid-import and
   says that closing does not cancel an import already at the server.
