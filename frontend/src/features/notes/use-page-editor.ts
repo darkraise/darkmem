@@ -11,7 +11,8 @@ import { pageSchema, type PageEditorInstance } from "./lib/editor-schema"
 import { addsNestingViolation } from "./lib/nesting-guard"
 
 /** The built-in slash menu entries a page offers. Headings 4-6 stay
- *  loadable but are not offered; emoji and every file block are out. */
+ *  loadable but are not offered; emoji is out; the image and file blocks are
+ *  offered. */
 const SLASH_KEYS: ReadonlySet<string> = new Set([
   "paragraph",
   "heading",
@@ -24,6 +25,8 @@ const SLASH_KEYS: ReadonlySet<string> = new Set([
   "quote",
   "code_block",
   "table",
+  "image",
+  "file",
   "divider",
 ])
 
@@ -52,8 +55,14 @@ export function pageSlashItems(editor: PageEditorInstance, query: string): Defau
 }
 
 /** A page editor instance: the page schema and options, with the nesting
- *  rule installed as a transaction filter. */
-export function usePageEditor(initialBlocks: EditorBlockLike[]): PageEditorInstance {
+ *  rule installed as a transaction filter. `pageId` is the page attachments
+ *  are uploaded for; without one the editor has no upload path at all, which
+ *  is what keeps demo mode from making a request. */
+export function usePageEditor(
+  initialBlocks: EditorBlockLike[],
+  pageId?: string,
+): PageEditorInstance {
+  void pageId
   const editor = useCreateBlockNote({
     schema: pageSchema,
     trailingBlock: false,

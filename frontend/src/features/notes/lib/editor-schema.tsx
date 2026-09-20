@@ -89,6 +89,13 @@ export const pageSchema = BlockNoteSchema.create({
     quote: defaultBlockSpecs.quote,
     codeBlock: defaultBlockSpecs.codeBlock,
     table: defaultBlockSpecs.table,
+    // `file` must be spelled exactly this: it is the literal type BlockNote's
+    // drop handler falls back to when no spec accepts a dropped file's type.
+    // Their order does not matter -- the installed matcher's wildcard branch
+    // compares the two type halves, so the file spec's `*/*` matches nothing
+    // but an exactly equal type, and a PNG can only match `image/*`.
+    file: defaultBlockSpecs.file,
+    image: defaultBlockSpecs.image,
     divider: defaultBlockSpecs.divider,
     callout: createCallout(),
     raw: createRaw(),
