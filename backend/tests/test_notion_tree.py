@@ -184,6 +184,34 @@ def test_row_pages_take_csv_row_order(tmp_path):
     assert [n.title for n in rows] == ["Ship"]
 
 
+def test_rows_sharing_a_title_take_the_csv_rows_in_entry_order(tmp_path):
+    # Two "Ada" pages against two "Ada" rows: which page takes which rank is
+    # entry order, and nothing else in the export distinguishes them.
+    tree, _ = _tree(FLAT_EXPORT, tmp_path)
+    people = _by_title(tree)["People"]
+    rows = sorted((n for n in tree.pages if n.row_of == people.uuid),
+                  key=lambda n: n.order)
+    assert [n.entry.name for n in rows] == [
+        "Ada 00000000000000000000000000000005.md",
+        "Ada 00000000000000000000000000000006.md",
+    ]
+
+
+def test_a_csv_row_with_no_page_of_that_title_ranks_nothing(tmp_path):
+    entries = [
+        Entry("Board 00000000000000000000000000000021.md",
+              b"# Board\n\n[Tasks](Tasks%201507-2c1e_all.csv)\n"),
+        Entry("Tasks 1507-2c1e_all.csv",
+              "﻿Name,Status\nGhost,Open\nShip,Open\n".encode("utf-8")),
+        Entry("Ship 00000000000000000000000000000023.md",
+              b"# Ship\n\nStatus: Open\n\nBody.\n"),
+    ]
+    tree, _ = _tree(entries, tmp_path)
+    board = _by_title(tree)["Board"]
+    rows = [n for n in tree.pages if n.row_of == board.uuid]
+    assert [(n.title, n.order) for n in rows] == [("Ship", 0)]
+
+
 def test_assets_are_indexed_and_not_pages(tmp_path):
     tree, _ = _tree(FLAT_EXPORT, tmp_path)
     assert "image.png" in tree.assets

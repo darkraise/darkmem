@@ -303,17 +303,24 @@ def build_tree(archive: NotionArchive, *, max_pages: int, warn: Warn) -> NotionT
 
     # Order: siblings alphabetically, except a database's rows, which follow
     # the CSV. The export carries no sidebar order, so this is a choice.
+    by_row_title: dict[tuple[UUID, str], list[UUID]] = {}
+    for node in nodes.values():
+        if node.row_of is not None:
+            by_row_title.setdefault((node.row_of, node.title), []).append(node.uuid)
+
     row_rank: dict[UUID, int] = {}
     for info in databases.values():
-        titles_in_order = [r[0] for r in info.rows if r]
-        taken: set[UUID] = set()
-        for rank, row_title in enumerate(titles_in_order):
-            for node in nodes.values():
-                if (node.row_of == info.page_uuid and node.title == row_title
-                        and node.uuid not in taken):
-                    row_rank[node.uuid] = rank
-                    taken.add(node.uuid)
-                    break
+        # A cursor per database, so a title repeated down the CSV takes the next
+        # page of that name in entry order. A scan over every node per row did
+        # the same and cost 24M comparisons on the measured export.
+        taken: dict[tuple[UUID, str], int] = {}
+        for rank, row in enumerate(r for r in info.rows if r):
+            key = (info.page_uuid, row[0])
+            candidates = by_row_title.get(key, ())
+            index = taken.get(key, 0)
+            if index < len(candidates):
+                row_rank[candidates[index]] = rank
+                taken[key] = index + 1
 
     children: dict[UUID | None, list[PageNode]] = {}
     for node in nodes.values():
