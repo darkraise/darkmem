@@ -1,10 +1,19 @@
 import { act, render } from "@testing-library/react"
-import { describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { BlockNoteView } from "@blocknote/shadcn"
+import { toast } from "darkraise-ui/components/sonner"
+import { uploadAttachment } from "../lib/attachments"
 import { toEditorBlocks, type EditorBlockLike } from "../lib/block-mapping"
 import { pageSchema, type PageEditorInstance } from "../lib/editor-schema"
 import type { SyncBlock } from "../lib/sync-tree"
 import { pageSlashItems, usePageEditor } from "../use-page-editor"
+
+vi.mock("darkraise-ui/components/sonner", () => ({ toast: { error: vi.fn() } }))
+
+vi.mock("../lib/attachments", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/attachments")>()),
+  uploadAttachment: vi.fn(),
+}))
 
 const b = (id: string, type: string, text: string, properties: SyncBlock["properties"] = null): SyncBlock => ({
   id,
@@ -93,5 +102,72 @@ describe("the page schema's file blocks", () => {
   it("takes a page id without changing anything else", async () => {
     const { editor } = await mountEditor("11111111-2222-3333-4444-555555555555")
     expect(editor.document.map((x) => x.id)).toEqual(["h1", "p1", "h2", "p2"])
+  })
+})
+
+const PAGE = "11111111-2222-3333-4444-555555555555"
+const URL_A = "/api/v1/pages/attachments/0123abcd-4567-89ef-0123-456789abcdef"
+
+describe("uploadFile", () => {
+  // The braces matter: vitest calls a value a hook returns as the test's
+  // teardown, and `mockReset` returns the mock itself -- so an expression body
+  // invokes the rejecting mock with nothing to catch it.
+  beforeEach(() => {
+    vi.mocked(uploadAttachment).mockReset()
+  })
+
+  it("is absent without a page id, so demo mode makes no request", async () => {
+    const { editor } = await mountEditor()
+    expect(editor.uploadFile).toBeUndefined()
+  })
+
+  it("returns the url and keeps an image block an image", async () => {
+    vi.mocked(uploadAttachment).mockResolvedValue({ url: URL_A, contentType: "image/png" })
+    const { editor } = await mountEditor(PAGE, [{ type: "image", props: { url: "", name: "a.png" } }])
+    const id = editor.document[0]!.id
+    await act(async () => {
+      await expect(editor.uploadFile!(new File(["a"], "a.png"), id)).resolves.toBe(URL_A)
+    })
+    expect(editor.getBlock(id)!.type).toBe("image")
+  })
+
+  // The route sniffs the bytes and serves anything but the four image types
+  // as a download, so an image block pointing at one would render nothing.
+  it("retypes to a file block when the stored type is not an inline image", async () => {
+    vi.mocked(uploadAttachment).mockResolvedValue({ url: URL_A, contentType: "application/octet-stream" })
+    const { editor } = await mountEditor(PAGE, [{ type: "image", props: { url: "", name: "a.svg" } }])
+    const id = editor.document[0]!.id
+    await act(async () => {
+      await editor.uploadFile!(new File(["a"], "a.svg"), id)
+    })
+    expect(editor.getBlock(id)!.type).toBe("file")
+  })
+
+  it("toasts and retypes the block to a paragraph when the upload is refused", async () => {
+    vi.mocked(uploadAttachment).mockRejectedValue(new Error("attachment exceeds 52428800 bytes"))
+    const { editor } = await mountEditor(PAGE, [{ type: "image", props: { url: "", name: "a.png" } }])
+    const id = editor.document[0]!.id
+    await act(async () => {
+      await expect(editor.uploadFile!(new File(["a"], "a.png"), id)).resolves.toBe("")
+    })
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith("attachment exceeds 52428800 bytes")
+    expect(editor.getBlock(id)!.type).toBe("paragraph")
+  })
+
+  // The editor replaces any block whose content is an empty array, not only
+  // an empty paragraph, so a paste into an empty list item holding a child
+  // retypes that item -- which the nesting rule refuses, leaving a block that
+  // never became the attachment.
+  it("inserts the attachment beside a block the nesting rule kept as it was", async () => {
+    vi.mocked(uploadAttachment).mockResolvedValue({ url: URL_A, contentType: "image/png" })
+    const { editor } = await mountEditor(PAGE, [
+      { type: "bulletListItem", content: [], children: [{ type: "paragraph", content: "kid" }] },
+    ])
+    const id = editor.document[0]!.id
+    await act(async () => {
+      await expect(editor.uploadFile!(new File(["a"], "a.png"), id)).resolves.toBe("")
+    })
+    expect(editor.document.map((b) => b.type)).toEqual(["bulletListItem", "image"])
+    expect((editor.document[1]! as { props: { url: string } }).props.url).toBe(URL_A)
   })
 })

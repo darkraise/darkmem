@@ -5,6 +5,8 @@ import {
   useCreateBlockNote,
   type DefaultReactSuggestionItem,
 } from "@blocknote/react"
+import { toast } from "darkraise-ui/components/sonner"
+import { isImageType, uploadAttachment } from "./lib/attachments"
 import type { EditorBlockLike } from "./lib/block-mapping"
 import type { CalloutVariant } from "./lib/block-properties"
 import { pageSchema, type PageEditorInstance } from "./lib/editor-schema"
@@ -62,13 +64,56 @@ export function usePageEditor(
   initialBlocks: EditorBlockLike[],
   pageId?: string,
 ): PageEditorInstance {
-  void pageId
   const editor = useCreateBlockNote({
     schema: pageSchema,
     trailingBlock: false,
     domAttributes: { editor: { "aria-label": "Page content" } },
     tables: { headers: false, splitCells: false, cellBackgroundColor: false, cellTextColor: false },
     initialContent: initialBlocks.length > 0 ? (initialBlocks as never) : undefined,
+    uploadFile:
+      pageId === undefined
+        ? undefined
+        : async (file: File, blockId?: string) => {
+            let uploaded
+            try {
+              uploaded = await uploadAttachment(pageId, file)
+            } catch (error) {
+              toast.error(error instanceof Error ? error.message : "The upload failed.")
+              // The editor swapped its add-file button for a loader when the
+              // upload started and resets it only when the node view is
+              // rebuilt, which resolving the url it already has ("") does not
+              // do. Retyping the block is a real change, so the operator is
+              // left with an empty paragraph to retry in rather than a loader
+              // that never finishes.
+              if (blockId !== undefined && editor.getBlock(blockId)) {
+                editor.updateBlock(blockId, { type: "paragraph", content: [] } as never)
+              }
+              return ""
+            }
+            const type = isImageType(uploaded.contentType) ? "image" : "file"
+            const placed = blockId === undefined ? undefined : editor.getBlock(blockId)
+            if (placed && (placed.type === "image" || placed.type === "file")) {
+              if (placed.type !== type) editor.updateBlock(placed, { type } as never)
+              return uploaded.url
+            }
+            // The block the editor meant to fill is not a file block: either
+            // the nesting rule refused a conversion it attempted in place, or
+            // the block was removed while the upload was in flight. Either
+            // way the file is already stored, so it is placed rather than
+            // dropped, and the empty return leaves the editor's own follow-up
+            // with nothing to change.
+            const anchor = placed ?? editor.document[editor.document.length - 1]
+            if (!anchor) {
+              toast.error("The file was uploaded but there was nowhere to put it.")
+              return ""
+            }
+            editor.insertBlocks(
+              [{ type, props: { url: uploaded.url, name: file.name } } as never],
+              anchor,
+              "after",
+            )
+            return ""
+          },
   })
   useEffect(
     () => editor.onBeforeChange(({ tr }) => (addsNestingViolation(tr.before, tr.doc) ? false : undefined)),
