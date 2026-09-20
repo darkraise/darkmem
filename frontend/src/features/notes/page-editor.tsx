@@ -18,6 +18,9 @@ import { pageSlashItems, usePageEditor } from "./use-page-editor"
 export interface PageEditorProps {
   initialBlocks: EditorBlockLike[]
   editable: boolean
+  /** The page attachments are uploaded for. Omitted in demo mode, which must
+   *  make no request, so the editor then has no upload path at all. */
+  pageId?: string
   onDocumentChange?: (blocks: EditorBlockLike[]) => void
   onBlur?: () => void
 }
@@ -30,16 +33,16 @@ export interface PageEditorProps {
  *  Select do, so the package's own shadcn primitives render here. They read
  *  the same Tailwind colour tokens darkraise-ui defines, which is what keeps
  *  them on theme. */
-export function PageEditor({ initialBlocks, editable, onDocumentChange, onBlur }: PageEditorProps) {
+export function PageEditor({ initialBlocks, editable, pageId, onDocumentChange, onBlur }: PageEditorProps) {
   const mode = useDocumentMode()
-  const editor = usePageEditor(initialBlocks)
+  const editor = usePageEditor(initialBlocks, pageId)
   const editorRoot = useRef<HTMLDivElement>(null)
   useEditorControlLabels(editorRoot, editor)
 
   return (
     <div className="flex min-h-0 gap-6">
       <div className="min-w-0 flex-1">
-        <div ref={editorRoot} className="max-w-3xl">
+        <div ref={editorRoot} className="max-w-3xl" data-page-id={pageId}>
           <BlockNoteView
             editor={editor}
             editable={editable}

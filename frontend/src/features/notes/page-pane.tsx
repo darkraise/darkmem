@@ -97,6 +97,7 @@ export function PagePane({ page, autoFocusTitle }: { page: PageView; autoFocusTi
         <Suspense fallback={<Skeleton className="h-40 w-full" />}>
           <PageEditor
             key={`${page.id}:${generation}`}
+            pageId={page.id}
             initialBlocks={sync.initialBlocks}
             editable={sync.status.kind !== "stopped"}
             onDocumentChange={sync.onDocumentChange}

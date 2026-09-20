@@ -26,7 +26,9 @@ vi.mock("../use-page-sync", () => ({
 }))
 
 vi.mock("../page-editor", () => ({
-  PageEditor: ({ editable }: { editable: boolean }) => <div>editor {editable ? "editable" : "read-only"}</div>,
+  PageEditor: ({ editable, pageId }: { editable: boolean; pageId?: string }) => (
+    <div data-page-id={pageId}>editor {editable ? "editable" : "read-only"}</div>
+  ),
 }))
 
 import { apiFetch } from "@/lib/api"
@@ -121,5 +123,13 @@ describe("PagePane", () => {
     binding.status = { kind: "stopped", reason: "conflict", message: "This page was changed somewhere else." }
     render(<PagePane page={PAGE} autoFocusTitle={false} />, { wrapper })
     expect(screen.getByText("This page was changed somewhere else.")).toBeInTheDocument()
+  })
+
+  it("gives the editor the page it is showing", async () => {
+    const { container } = render(<PagePane page={PAGE} autoFocusTitle={false} />, { wrapper })
+    // The pane loads the editor through `lazy()`, so the first paint is the
+    // Suspense fallback and the mock's element exists only after it resolves.
+    await screen.findByText("editor editable")
+    expect(container.querySelector(`[data-page-id="${PAGE.id}"]`)).not.toBeNull()
   })
 })

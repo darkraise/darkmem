@@ -77,4 +77,14 @@ describe("PageEditor", () => {
     expect(callout.className).not.toMatch(/sky-/)
     expect(container.querySelector(".max-w-3xl")).not.toHaveClass("mx-auto")
   })
+
+  it("carries its page id on the editor root", () => {
+    const { container } = render(<PageEditor initialBlocks={BLOCKS} editable pageId="page-7" />)
+    expect(container.querySelector('[data-page-id="page-7"]')).not.toBeNull()
+  })
+
+  it("renders without one, which is what demo mode passes", () => {
+    const { container } = render(<PageEditor initialBlocks={BLOCKS} editable={false} />)
+    expect(container.querySelector("[data-page-id]")).toBeNull()
+  })
 })
