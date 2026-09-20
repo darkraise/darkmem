@@ -195,6 +195,34 @@ def test_the_page_cap_refuses(tmp_path):
         _tree(FLAT_EXPORT, tmp_path, max_pages=2)
 
 
-def test_signal_counts_add_up(tmp_path):
-    tree, _ = _tree(FLAT_EXPORT, tmp_path)
-    assert sum(tree.signal_counts.values()) == len(tree.pages)
+def test_a_folder_cycle_is_broken_with_a_warning(tmp_path):
+    a = f"A {'0' * 31}1"
+    b = f"B {'0' * 31}2"
+    entries = [Entry(f"{b}/{a}.md", b"# A\n"), Entry(f"{a}/{b}.md", b"# B\n")]
+    tree, warnings = _tree(entries, tmp_path)
+    assert {n.title for n in tree.pages} == {"A", "B"}
+    assert any(w[1] == "hierarchy_cycle" for w in warnings)
+
+
+def test_a_database_membership_cycle_is_broken_with_a_warning(tmp_path):
+    r = f"R {'0' * 31}1"
+    p = f"P {'0' * 31}2"
+    entries = [
+        Entry(f"{r}.md", b"# R\n\nStatus: Open\n\nBody.\n"),
+        Entry(f"{r}/{p}.md", b"# P\n"),
+        Entry(f"{r}/{p}_all.csv", "﻿Name,Status\nShip,Open\n".encode("utf-8")),
+    ]
+    tree, warnings = _tree(entries, tmp_path)
+    assert {n.title for n in tree.pages} == {"R", "P"}
+    assert any(w[1] == "hierarchy_cycle" for w in warnings)
+
+
+def test_no_page_is_lost_between_the_entries_and_the_tree(tmp_path):
+    a = f"A {'0' * 31}1"
+    b = f"B {'0' * 31}2"
+    cyclic = [Entry(f"{b}/{a}.md", b"# A\n"), Entry(f"{a}/{b}.md", b"# B\n")]
+    for index, entries in enumerate((FLAT_EXPORT, DATABASE_EXPORT, cyclic)):
+        tree, _ = _tree(entries, tmp_path, name=f"count{index}.zip")
+        filed = [n for n in tree.pages if n.entry is not None]
+        assert len(filed) == len([e for e in entries if e.name.endswith(".md")])
+        assert sum(tree.signal_counts.values()) == len(tree.pages)

@@ -216,8 +216,15 @@ def build_tree(archive: NotionArchive, *, max_pages: int, warn: Warn) -> NotionT
             continue
         parent_name = by_id.get(match.group(1))
         if parent_name and parent_name != entry.name:
-            parents[uuids[entry.name]] = uuids[parent_name]
-            signal[uuids[entry.name]] = "folder"
+            node_uuid = uuids[entry.name]
+            parent_uuid = uuids[parent_name]
+            if _creates_cycle(parents, node_uuid, parent_uuid):
+                warn("", "hierarchy_cycle",
+                     f"{entry.name} and {parent_name} are nested inside each "
+                     f"other; {entry.name} stays at the root")
+                continue
+            parents[node_uuid] = parent_uuid
+            signal[node_uuid] = "folder"
 
     # Signal 2: database membership, via the property block.
     for entry in pages_entries:
@@ -235,6 +242,11 @@ def build_tree(archive: NotionArchive, *, max_pages: int, warn: Warn) -> NotionT
             continue
         info = hits[0]
         if info.page_uuid is None or info.page_uuid == node_uuid:
+            continue
+        if _creates_cycle(parents, node_uuid, info.page_uuid):
+            warn("", "hierarchy_cycle",
+                 f"{entry.name} and {info.csv_name} are each other's parent; "
+                 f"{entry.name} stays at the root")
             continue
         parents[node_uuid] = info.page_uuid
         row_of[entry.name] = info.page_uuid
