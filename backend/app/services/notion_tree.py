@@ -147,7 +147,12 @@ def _creates_cycle(parents: dict[UUID, UUID], child: UUID, parent: UUID) -> bool
 
 def build_tree(archive: NotionArchive, *, max_pages: int, warn: Warn) -> NotionTree:
     pages_entries = [e for e in archive.entries if e.name.endswith(".md")]
-    csv_entries = [e for e in archive.entries if e.name.endswith(_ALL_CSV)]
+    # By name, not by archive order: where two CSVs could only claim the same
+    # view stub, the first one processed takes it.
+    csv_entries = sorted(
+        (e for e in archive.entries if e.name.endswith(_ALL_CSV)),
+        key=lambda e: e.name,
+    )
     asset_entries = [
         e for e in archive.entries
         if not e.name.endswith(".md") and not e.name.endswith(_ALL_CSV)

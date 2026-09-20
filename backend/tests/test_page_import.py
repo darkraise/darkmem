@@ -273,6 +273,58 @@ async def test_a_body_over_the_ceiling_is_refused(
 
 
 @pytest.mark.asyncio
+async def test_a_declared_length_over_the_ceiling_is_refused_before_the_body(
+    session, attachments_dir, tmp_path, monkeypatch
+):
+    # The free-space stub would answer first if the order were the other way
+    # round, so this pins which refusal a caller gets as well as that the body
+    # is never read.
+    from app.services import page_import
+
+    monkeypatch.setattr(settings, "notion_import_max_bytes", 64)
+    monkeypatch.setattr(
+        page_import.shutil, "disk_usage",
+        lambda _: type("U", (), {"total": 1, "used": 1, "free": 1})(),
+    )
+    read: list[int] = []
+
+    async def body():
+        read.append(1)
+        yield b"x"
+
+    with pytest.raises(ImportTooLarge):
+        await import_notion_export(
+            session, project="notes", body=body(),
+            declared_length=10_000, actor="tester",
+        )
+    assert read == []
+
+
+@pytest.mark.asyncio
+async def test_placed_files_are_unlinked_even_when_the_rollback_fails(
+    session, attachments_dir, tmp_path, monkeypatch
+):
+    from app.services import page_import
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError("injected")
+
+    async def broken_connection():
+        raise RuntimeError("the connection is gone")
+
+    monkeypatch.setattr(page_import, "_insert_page", boom)
+    monkeypatch.setattr(session, "rollback", broken_connection)
+    with pytest.raises(RuntimeError):
+        await _run(session, tmp_path)
+
+    survivors = [
+        p for p in attachments_dir.rglob("*")
+        if p.is_file() and ".staging" not in p.parts
+    ]
+    assert survivors == [], "a placed attachment file survived the failure"
+
+
+@pytest.mark.asyncio
 async def test_insufficient_space_is_refused_before_the_upload(
     session, attachments_dir, tmp_path, monkeypatch
 ):

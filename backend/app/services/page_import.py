@@ -281,6 +281,12 @@ async def _run_import(
     # imports -- the lock above does.
     executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="notion-import")
     try:
+        if declared_length and declared_length > settings.notion_import_max_bytes:
+            # Ahead of the free-space check and of the first chunk: a caller who
+            # has already said how much is coming should not have to send it.
+            raise ImportTooLarge(
+                f"the export exceeds {settings.notion_import_max_bytes} bytes"
+            )
         staging.mkdir(parents=True, exist_ok=True)
         if declared_length:
             _require_space(declared_length)
@@ -362,11 +368,15 @@ async def _run_import(
             warnings_omitted=warnings.omitted,
         )
     except BaseException as exc:
-        await session.rollback()
-        for attachment_id in placed:
-            await asyncio.to_thread(
-                attachment_path(attachment_id).unlink, True
-            )
+        # The unlinks are owed whatever the rollback does: a file with no row is
+        # exactly what a broken connection would otherwise leave behind.
+        try:
+            await session.rollback()
+        finally:
+            for attachment_id in placed:
+                await asyncio.to_thread(
+                    attachment_path(attachment_id).unlink, True
+                )
         # Staging and extraction are the only phases that write bytes the disk
         # can refuse; past them a full disk is not the explanation and saying so
         # would be a guess.

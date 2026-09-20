@@ -1055,8 +1055,10 @@ app.include_router(dream_digest_routes.router)
 app.include_router(events_routes.router)
 app.include_router(buffer_routes.router)
 app.include_router(documents_routes.router)
-app.include_router(pages_routes.router)
+# Before `pages_routes`: FastAPI matches in registration order, so a later
+# two-segment `POST /pages/{page_id}/x` would shadow `/pages/import/notion`.
 app.include_router(page_import_routes.router)
+app.include_router(pages_routes.router)
 app.include_router(page_attachments_routes.router)
 app.include_router(reembed.router)
 app.include_router(usage_routes.router)

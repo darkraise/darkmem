@@ -133,6 +133,23 @@ def test_a_database_without_a_stub_page_gets_a_grouping_page(tmp_path):
     assert "Orphans" in _by_title(tree)
 
 
+def test_a_shared_stub_page_goes_to_the_first_csv_by_name(tmp_path):
+    # Two CSVs whose stub could only be the one page linking to both: which one
+    # claims it must not depend on the archive's own entry order.
+    stub = "Sprint 47 00000000000000000000000000000001.md"
+    entries = [
+        Entry(stub,
+              b"# Sprint 47\n\n[Z](Z%201507-2c1e_all.csv)\n\n"
+              b"[A](A%201507-2c1f_all.csv)\n"),
+        Entry("Z 1507-2c1e_all.csv", "﻿Name,S\nx,1\n".encode("utf-8")),
+        Entry("A 1507-2c1f_all.csv", "﻿Name,T\ny,2\n".encode("utf-8")),
+    ]
+    tree, _ = _tree(entries, tmp_path)
+    claimed = _by_title(tree)["Sprint 47"]
+    assert tree.databases["A 1507-2c1f_all.csv"].page_uuid == claimed.uuid
+    assert tree.databases["Z 1507-2c1e_all.csv"].page_uuid != claimed.uuid
+
+
 def test_a_database_id_need_not_be_32_hex(tmp_path):
     tree, _ = _tree(DATABASE_EXPORT, tmp_path)
     info = tree.databases["Tasks 1507-2c1e_all.csv"]

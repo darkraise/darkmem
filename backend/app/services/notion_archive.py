@@ -9,7 +9,6 @@ chunked reads -- `read()` of a whole entry is never called.
 from __future__ import annotations
 
 import hashlib
-import logging
 import re
 import zipfile
 from collections.abc import Callable, Iterator
@@ -20,8 +19,6 @@ from typing import IO
 from zipfile import ZipInfo
 
 from app.services.page_attachments import sniff_content_type
-
-logger = logging.getLogger(__name__)
 
 CHUNK = 1 << 16
 # A ceiling on what `read_text` will hold in memory for one member. A page's

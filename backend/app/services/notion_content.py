@@ -185,7 +185,11 @@ Warn = Callable[[str, str, str], None]
 
 _ASIDE = re.compile(r"<aside>(.*?)</aside>", re.S)
 _LINK_DEF = re.compile(r"^\[([^\]]+)\]:[ \t]*(\S+).*$", re.M)
-_VIEW_TAIL = re.compile(r"\n(?:filters|sort):[ \t]*\n.*\Z", re.S)
+# The header line alone, not the tail it opens: an expression running to the
+# end of the source matches once, so a first match inside code hid every real
+# tail after it. Matching from the line start also reaches a tail written
+# directly under a closing fence, whose preceding newline the fence masks.
+_VIEW_TAIL = re.compile(r"^(?:filters|sort):[ \t]*$", re.M)
 _CALLOUT_LABEL = re.compile(r"^\[!([A-Za-z]+)\]")
 _CHECKBOX_MARKER = re.compile(r"^\[([ xX])\]\s+")
 _VARIANTS = {"NOTE": "info", "WARNING": "warning", "CAUTION": "error", "TIP": "success"}

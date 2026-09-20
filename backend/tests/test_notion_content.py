@@ -294,6 +294,36 @@ def test_a_fenced_aside_is_left_alone(tmp_path):
     assert code[0].text == "<aside>x</aside>"
 
 
+def test_a_fenced_sort_line_does_not_hide_a_real_view_tail(tmp_path):
+    entries = [
+        Entry("Board 00000000000000000000000000000021.md",
+              b"# Board\n\n[Tasks](Tasks%201507-2c1e_all.csv)\n\n"
+              b"```\nsort:\nname\n```\n\nKept text.\n\nsort: \nName: ascending\n"),
+        Entry("Tasks 1507-2c1e_all.csv",
+              "﻿Name,Status\nShip,Open\n".encode("utf-8")),
+    ]
+    blocks, content, warnings, _, _ = _render("Board", entries, tmp_path)
+    assert "Kept text." in content
+    assert "Name: ascending" not in content
+    code = [b for b in blocks if b.type == "code"]
+    assert len(code) == 1 and code[0].text == "sort:\nname"
+    assert any(w[1] == "stripped_source" for w in warnings)
+
+
+def test_a_view_tail_right_after_a_closing_fence_is_dropped(tmp_path):
+    entries = [
+        Entry("Board 00000000000000000000000000000021.md",
+              b"# Board\n\n[Tasks](Tasks%201507-2c1e_all.csv)\n\n"
+              b"```\nkeep me\n```\nsort: \nName: ascending\n"),
+        Entry("Tasks 1507-2c1e_all.csv",
+              "﻿Name,Status\nShip,Open\n".encode("utf-8")),
+    ]
+    blocks, content, _, _, _ = _render("Board", entries, tmp_path)
+    code = [b for b in blocks if b.type == "code"]
+    assert len(code) == 1 and code[0].text == "keep me"
+    assert "Name: ascending" not in content
+
+
 def test_a_fenced_sort_line_does_not_truncate_a_database_page(tmp_path):
     entries = [
         Entry("Board 00000000000000000000000000000021.md",

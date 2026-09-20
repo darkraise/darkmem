@@ -171,15 +171,16 @@ _INSERT_PAGE = text(
             CAST(:properties AS jsonb))
     """
 )
-# The `char_span` bind is cast twice for the reason `documents._INSERT_BLOCK`
-# records: a single cast makes asyncpg infer int4range and refuse the string.
+# Spans ride as a text array and are parsed per row, which keeps the bound
+# convention (`[lo,hi)`) stated here rather than delegated to a driver default
+# -- the reason `documents._INSERT_BLOCK` records for its own scalar bind.
 _INSERT_BLOCKS = text(
     """
     INSERT INTO blocks (id, page_id, parent_id, order_index, type, text,
                         properties, char_span)
     SELECT CAST(u.id AS uuid), CAST(:page AS uuid), CAST(u.parent AS uuid),
            u.ord, u.kind, u.body, CAST(u.props AS jsonb),
-           CAST(CAST(u.span AS text) AS int4range)
+           CAST(u.span AS int4range)
     FROM (SELECT unnest(CAST(:ids AS text[])) AS id,
                  unnest(CAST(:parents AS text[])) AS parent,
                  unnest(CAST(:ords AS integer[])) AS ord,
