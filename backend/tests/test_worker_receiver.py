@@ -219,3 +219,38 @@ def test_the_receiver_imports_nothing_from_the_app():
         f"separate process precisely so the worker's one write door holds no "
         f"database connection"
     )
+
+
+# ── Attachment tarballs are a second family, not a looser pattern ────
+
+ATTACHMENT_NAMES = [
+    "darkmem-app-attachments-20260101-000000.tar.gz",
+    "darkmem-app-attachments-20260101-000000.tar.gz.age",
+]
+
+# `darkmem-app-attachments-<stamp>.sql.gz` is deliberately NOT here: the dump
+# alternative's `[A-Za-z0-9._-]+` matches `attachments-<stamp>`, so the receiver
+# accepts it. Nothing produces that name, and accepting it costs nothing --
+# tightening the stamp shape to refuse it would also refuse a dump an operator
+# renamed by hand, which is the case this pattern is lenient for.
+REFUSED_NAMES = [
+    "darkmem-app-attachments-20260101-000000.tar.gz.part",
+    "darkmem-app-20260101-000000.tar.gz",
+    "../etc/passwd",
+    "sub/dir.tar.gz",
+    "darkmem-attachments-20260101-000000.tar.gz",
+]
+
+
+@pytest.mark.parametrize("name", ATTACHMENT_NAMES)
+def test_the_receiver_accepts_an_attachment_tarball(name):
+    assert wr.SNAPSHOT_NAME.match(name)
+
+
+@pytest.mark.parametrize("name", REFUSED_NAMES)
+def test_the_receiver_still_refuses_everything_else(name):
+    assert not wr.SNAPSHOT_NAME.match(name)
+
+
+def test_the_receiver_still_accepts_a_dump():
+    assert wr.SNAPSHOT_NAME.match("darkmem-app-20260101-000000.sql.gz.age")

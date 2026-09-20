@@ -58,6 +58,9 @@ services:
       # Empty = localhost only. A worker has no reason to serve /mcp at all;
       # leave this unset unless an agent genuinely needs to read the snapshot.
       - MCP_ALLOWED_HOSTS=${MCP_ALLOWED_HOSTS:-}
+      # The generation the restore loop last swapped in. A relative symlink,
+      # because the host and container paths differ.
+      - ATTACHMENTS_DIR=/app/data/attachment-store/current
     # Published ports are variables, not literals: a worker validated beside an
     # existing darkmem on one host -- which is how the bring-up is rehearsed --
     # collides on every one of them otherwise. The defaults are what a
@@ -70,6 +73,11 @@ services:
     # than a convention.
     volumes:
       - repo_data:/app/data/repositories
+      # Read-only: the app serves attachments and never writes one here. The
+      # host-side restore loop is the writer, which is why this is a bind mount
+      # rather than a named volume. Create it before first boot:
+      #   sudo install -d -o "$APP_UID" -g "$APP_UID" -m 0750 /srv/darkmem-attachments
+      - ${DARKMEM_ATTACHMENT_DIR:-/srv/darkmem-attachments}:/app/data/attachment-store:ro
     networks:
       - darkmem
     depends_on:

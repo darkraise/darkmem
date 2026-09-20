@@ -33,9 +33,14 @@ from starlette.routing import Route
 
 logger = logging.getLogger(__name__)
 
-#: Exactly increment 6's own artefact names, anchored. A path separator, a
-#: `..`, and a foreign prefix all fail here rather than at the filesystem.
-SNAPSHOT_NAME = re.compile(r"^darkmem-app-[A-Za-z0-9._-]+\.sql\.gz(\.age)?$")
+#: Exactly the two artefact families increment 6 produces, each anchored. Two
+#: alternatives rather than one loosened pattern: a name that cannot contain a
+#: separator cannot traverse whatever else it contains, and refusing every
+#: other shape is what keeps this from becoming a general-purpose file drop.
+SNAPSHOT_NAME = re.compile(
+    r"^darkmem-app-[A-Za-z0-9._-]+\.sql\.gz(\.age)?$"
+    r"|^darkmem-app-attachments-[A-Za-z0-9._-]+\.tar\.gz(\.age)?$"
+)
 
 #: Below this a token is not a secret. Refused at start rather than accepted
 #: and quietly weak.

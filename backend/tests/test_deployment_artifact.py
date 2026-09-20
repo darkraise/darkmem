@@ -1005,3 +1005,20 @@ def test_boot_checks_the_attachments_dir_outside_any_degrading_try():
     first_try = source.find("from app.services.config import get_llm_config")
     assert check != -1, "lifespan never checks the attachments dir"
     assert check < first_try, "the attachments dir check must precede the lifespan's first try"
+
+
+# ── The worker serves attachments from a restored generation ─────────
+
+
+def test_the_worker_mounts_an_attachment_store_read_only():
+    service = _compose(WORKER_COMPOSE)["services"]["darkmem"]
+    mounts = [v for v in service["volumes"] if "attachment-store" in v]
+    assert len(mounts) == 1, service["volumes"]
+    assert mounts[0].endswith(":/app/data/attachment-store:ro"), mounts[0]
+
+
+def test_the_worker_points_attachments_dir_at_the_current_generation():
+    service = _compose(WORKER_COMPOSE)["services"]["darkmem"]
+    assert (
+        "ATTACHMENTS_DIR=/app/data/attachment-store/current" in service["environment"]
+    )
