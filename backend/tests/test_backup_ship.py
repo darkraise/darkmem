@@ -1074,3 +1074,79 @@ async def test_pull_refuses_an_empty_destination(tmp_path):
 
     with pytest.raises(backup_pull.SnapshotNotFound):
         await backup_pull.pull(_PullSource({}), name=None, out_dir=tmp_path)
+
+
+# ── Task 3: the two families never see each other ────────────────────
+
+from app.services.attachment_archive import ATTACHMENTS, DUMPS  # noqa: E402
+
+DUMP_OLD = "darkmem-app-20260101-000000.sql.gz"
+DUMP_NEW = "darkmem-app-20260102-000000.sql.gz"
+TAR_OLD = "darkmem-app-attachments-20260101-000000.tar.gz"
+TAR_NEW = "darkmem-app-attachments-20260102-000000.tar.gz"
+
+
+def _seed_both_families(directory) -> None:
+    """Explicit mtimes: LocalDestination.prune orders on (mtime, name), and
+    two files written inside one second would leave the order to the tie-break
+    rather than to the property under test."""
+    for index, name in enumerate((DUMP_OLD, DUMP_NEW, TAR_OLD, TAR_NEW)):
+        path = directory / name
+        path.write_bytes(b"x")
+        os.utime(path, (1_700_000_000 + index, 1_700_000_000 + index))
+    os.utime(directory / TAR_OLD, (1_700_000_000, 1_700_000_000))
+    os.utime(directory / TAR_NEW, (1_700_000_001, 1_700_000_001))
+
+
+async def test_local_listing_is_family_scoped(tmp_path):
+    _seed_both_families(tmp_path)
+    dest = backup_ship.LocalDestination(name="disk", directory=tmp_path)
+
+    assert {s.name for s in await dest.list_snapshots()} == {DUMP_OLD, DUMP_NEW}
+    assert {s.name for s in await dest.list_snapshots(DUMPS)} == {DUMP_OLD, DUMP_NEW}
+    assert {s.name for s in await dest.list_snapshots(ATTACHMENTS)} == {TAR_OLD, TAR_NEW}
+
+
+async def test_pruning_one_family_leaves_the_other_whole(tmp_path):
+    _seed_both_families(tmp_path)
+    dest = backup_ship.LocalDestination(name="disk", directory=tmp_path)
+
+    assert await dest.prune(1, ATTACHMENTS) == [TAR_OLD]
+    assert {p.name for p in tmp_path.iterdir()} == {DUMP_OLD, DUMP_NEW, TAR_NEW}
+
+    assert await dest.prune(1) == [DUMP_OLD]
+    assert {p.name for p in tmp_path.iterdir()} == {DUMP_NEW, TAR_NEW}
+
+
+async def test_local_dates_from_mtime_and_the_helper_from_the_name(tmp_path):
+    """Local is the one kind that can see a real mtime, and keeps using it.
+    The remote kinds have no mtime to trust, so they date from the stamp --
+    asserting both here keeps the difference deliberate rather than accidental."""
+    _seed_both_families(tmp_path)
+    dest = backup_ship.LocalDestination(name="disk", directory=tmp_path)
+
+    tarballs = {s.name: s for s in await dest.list_snapshots(ATTACHMENTS)}
+    assert tarballs[TAR_NEW].modified_at.year == 2023
+    assert ATTACHMENTS.stamp_datetime(TAR_NEW).year == 2026
+
+
+async def test_a_transfer_bound_is_overridable_per_call(monkeypatch):
+    """The attachment tarball needs a larger bound than a dump; the protocol
+    carries it rather than each destination guessing from the name."""
+    seen: list[float] = []
+    ssh = backup_ship.SshDestination(SSH_CFG)
+
+    async def _run(argv, *, timeout, on_chunk=None):
+        seen.append(timeout)
+        return b""
+
+    monkeypatch.setattr(ssh, "_run", _run)
+    async with ssh._scratch() as (_, base):
+        await ssh._remote_names(base, DUMPS, timeout=4242)
+    assert 4242 in seen
+
+
+def test_the_dump_helpers_survive_as_aliases():
+    assert backup_ship._is_snapshot(DUMP_NEW)
+    assert not backup_ship._is_snapshot(TAR_NEW)
+    assert backup_ship._stamp_of(DUMP_NEW).year == 2026

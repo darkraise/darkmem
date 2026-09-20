@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Protocol
 
 from app.config import settings
+from app.services.attachment_archive import DUMPS, Family
 from app.services.backup_config import DestinationConfig, load_destinations
 from app.services.events import BACKUP_SHIPPED, BACKUP_VERIFY_FAILED, record_event
 
@@ -269,15 +270,17 @@ class Destination(Protocol):
     name: str
     retention_keep: int
 
-    async def ship(self, local_path: Path) -> None: ...
+    async def ship(self, local_path: Path, *, timeout: float | None = None) -> None: ...
 
     async def stream(self, name: str): ...
 
-    async def read_back_sha256(self, name: str) -> str: ...
+    async def read_back_sha256(
+        self, name: str, *, timeout: float | None = None
+    ) -> str: ...
 
-    async def list_snapshots(self) -> list[SnapshotInfo]: ...
+    async def list_snapshots(self, family: Family = DUMPS) -> list[SnapshotInfo]: ...
 
-    async def prune(self, keep: int) -> list[str]: ...
+    async def prune(self, keep: int, family: Family = DUMPS) -> list[str]: ...
 
 
 async def _hash_stream(destination, name: str) -> str:
@@ -290,15 +293,14 @@ async def _hash_stream(destination, name: str) -> str:
 
 
 def _is_snapshot(name: str) -> bool:
-    """This producer's artefacts, and only them.
+    """This producer's dumps, and only them.
 
-    A `.part` is an in-flight write and never a snapshot; the systemd
-    producer's ``darkmem-<stamp>.sql.gz`` fails the prefix. Both exclusions
-    are the difference between a retention pass and data loss.
+    Kept as a module function because it reads at every call site as "is this
+    ours". The classification itself lives on `Family`, where the attachments
+    family shares it -- and where the two prefixes, one a strict extension of
+    the other, are separated in one place instead of at every listing.
     """
-    return name.startswith(JOB_PREFIX) and (
-        name.endswith(".sql.gz") or name.endswith(".sql.gz.age")
-    )
+    return DUMPS.matches(name)
 
 
 def _survivors_and_deletions(
@@ -328,7 +330,8 @@ class LocalDestination:
         self.directory = Path(directory)
         self.retention_keep = retention_keep
 
-    async def ship(self, local_path: Path) -> None:
+    async def ship(self, local_path: Path, *, timeout: float | None = None) -> None:
+        # `timeout` is accepted and ignored: a local copy has no transfer to bound.
         target = self.directory / local_path.name
         if local_path.resolve() == target.resolve():
             return
@@ -343,13 +346,16 @@ class LocalDestination:
                     return
                 yield chunk
 
-    async def read_back_sha256(self, name: str) -> str:
+    async def read_back_sha256(
+        self, name: str, *, timeout: float | None = None
+    ) -> str:
+        # Ignored for the same reason as `ship`: there is no transfer here.
         return await sha256_file(self.directory / name)
 
-    async def list_snapshots(self) -> list[SnapshotInfo]:
+    async def list_snapshots(self, family: Family = DUMPS) -> list[SnapshotInfo]:
         out = []
         for path in self.directory.iterdir():
-            if not path.is_file() or not _is_snapshot(path.name):
+            if not path.is_file() or not family.matches(path.name):
                 continue
             stat = path.stat()
             out.append(
@@ -361,11 +367,11 @@ class LocalDestination:
             )
         return sorted(out, key=lambda s: s.name)
 
-    async def prune(self, keep: int) -> list[str]:
+    async def prune(self, keep: int, family: Family = DUMPS) -> list[str]:
         entries = [
             (p.name, p.stat().st_mtime)
             for p in self.directory.iterdir()
-            if p.is_file() and _is_snapshot(p.name)
+            if p.is_file() and family.matches(p.name)
         ]
         deleted = _survivors_and_deletions(entries, keep)
         for name in deleted:
@@ -374,17 +380,9 @@ class LocalDestination:
 
 
 def _stamp_of(name: str) -> datetime:
-    """The stamp the producer wrote into the filename.
-
-    Used where the destination cannot tell us an mtime. An unparseable name
-    falls back to the epoch rather than raising: it is a display field, and a
-    listing that 500s because one foreign file crept in is a worse surface.
-    """
-    core = name[len(JOB_PREFIX):].split(".")[0]
-    try:
-        return datetime.strptime(core, "%Y%m%d-%H%M%S").replace(tzinfo=timezone.utc)
-    except ValueError:
-        return datetime.fromtimestamp(0, timezone.utc)
+    """The stamp a dump's name carries. `tests/test_backups_inventory.py`
+    imports this, so it stays put rather than moving onto `Family`."""
+    return DUMPS.stamp_datetime(name)
 
 
 def build_destination(cfg: DestinationConfig) -> Destination:
@@ -693,21 +691,21 @@ class SshDestination:
 
     # -- the protocol ----------------------------------------------------
 
-    async def ship(self, local_path: Path) -> None:
+    async def ship(self, local_path: Path, *, timeout: float | None = None) -> None:
         remote_dir = self._remote_dir()
         remote = f"{remote_dir}/{local_path.name}"
         async with self._scratch() as (_, base):
             await self._run(
                 ["scp", "-P", str(self.ssh.port), *base, str(local_path),
                  f"{self._target()}:{remote}.part"],
-                timeout=SHIP_TIMEOUT_SECONDS,
+                timeout=timeout or SHIP_TIMEOUT_SECONDS,
             )
             # Rename only once the bytes are all there, so a torn upload is
             # never listed as a snapshot a restore could select.
             await self._run(
                 ["ssh", "-p", str(self.ssh.port), *base, self._target(), "--",
                  f"mv -- {shlex.quote(remote + '.part')} {shlex.quote(remote)}"],
-                timeout=READ_BACK_TIMEOUT_SECONDS,
+                timeout=timeout or READ_BACK_TIMEOUT_SECONDS,
             )
 
     async def stream(self, name: str):
@@ -745,47 +743,51 @@ class SshDestination:
                     proc.kill()
                     await proc.wait()
 
-    async def read_back_sha256(self, name: str) -> str:
+    async def read_back_sha256(
+        self, name: str, *, timeout: float | None = None
+    ) -> str:
         remote = f"{self._remote_dir()}/{name}"
         digest = hashlib.sha256()
         async with self._scratch() as (_, base):
             buffered = await self._run(
                 ["ssh", "-p", str(self.ssh.port), *base, self._target(), "--",
                  f"cat -- {shlex.quote(remote)}"],
-                timeout=READ_BACK_TIMEOUT_SECONDS,
+                timeout=timeout or READ_BACK_TIMEOUT_SECONDS,
                 on_chunk=digest.update,
             )
         if buffered:
             digest.update(buffered)
         return digest.hexdigest()
 
-    async def _remote_names(self, base: list[str]) -> list[str]:
+    async def _remote_names(
+        self, base: list[str], family: Family, *, timeout: float | None = None
+    ) -> list[str]:
         out = await self._run(
             ["ssh", "-p", str(self.ssh.port), *base, self._target(), "--",
              f"ls -1 -- {shlex.quote(self._remote_dir())}"],
-            timeout=READ_BACK_TIMEOUT_SECONDS,
+            timeout=timeout or READ_BACK_TIMEOUT_SECONDS,
         )
         return [
             line
             for line in out.decode("utf-8", "replace").splitlines()
-            if _is_snapshot(line.strip())
+            if family.matches(line.strip())
         ]
 
-    async def list_snapshots(self) -> list[SnapshotInfo]:
+    async def list_snapshots(self, family: Family = DUMPS) -> list[SnapshotInfo]:
         """Names only. `ls -1` carries no size and no mtime, and parsing
         `ls -l` across remote locales is a worse answer than reporting what
         is actually known -- the stamp in the name is the ordering key."""
         async with self._scratch() as (_, base):
-            names = await self._remote_names(base)
+            names = await self._remote_names(base, family)
         return [
-            SnapshotInfo(name=n, size=0, modified_at=_stamp_of(n))
+            SnapshotInfo(name=n, size=0, modified_at=family.stamp_datetime(n))
             for n in sorted(names)
         ]
 
-    async def prune(self, keep: int) -> list[str]:
+    async def prune(self, keep: int, family: Family = DUMPS) -> list[str]:
         remote_dir = self._remote_dir()
         async with self._scratch() as (_, base):
-            names = await self._remote_names(base)
+            names = await self._remote_names(base, family)
             # Ordered by the stamp in the name, which sorts lexically because
             # it is zero-padded and big-endian. A remote mtime would need an
             # `ls -l` parse across an unknown locale.
@@ -836,7 +838,8 @@ class S3Destination:
     def _key(self, name: str) -> str:
         return f"{self.s3.prefix}{name}"
 
-    async def ship(self, local_path: Path) -> None:
+    async def ship(self, local_path: Path, *, timeout: float | None = None) -> None:
+        # Accepted and ignored: boto3 carries its own client timeouts.
         client = self._factory()
         await asyncio.to_thread(
             client.upload_file,
@@ -867,16 +870,19 @@ class S3Destination:
         client = self._factory()
         yield await asyncio.to_thread(self._read_object, client, self._key(name))
 
-    async def read_back_sha256(self, name: str) -> str:
+    async def read_back_sha256(
+        self, name: str, *, timeout: float | None = None
+    ) -> str:
         """Hash the object's own bytes, never its ETag.
 
         An ETag is a multipart-dependent digest of what the *service* thinks it
-        stored; rule 2 asks what we can read back.
+        stored; rule 2 asks what we can read back. `timeout` is accepted and
+        ignored, as on `ship`.
         """
         client = self._factory()
         return await asyncio.to_thread(self._hash_object, client, self._key(name))
 
-    def _list_all(self, client) -> list[tuple[str, int]]:
+    def _list_all(self, client, family: Family) -> list[tuple[str, int]]:
         """Every page. Pruning off a truncated first page would compute the
         newest `keep` from an arbitrary slice and delete everything real."""
         out: list[tuple[str, int]] = []
@@ -888,23 +894,23 @@ class S3Destination:
             page = client.list_objects_v2(**kwargs)
             for obj in page.get("Contents", []):
                 name = obj["Key"][len(self.s3.prefix):]
-                if _is_snapshot(name):
+                if family.matches(name):
                     out.append((name, obj.get("Size", 0)))
             if not page.get("IsTruncated"):
                 return out
             token = page["NextContinuationToken"]
 
-    async def list_snapshots(self) -> list[SnapshotInfo]:
+    async def list_snapshots(self, family: Family = DUMPS) -> list[SnapshotInfo]:
         client = self._factory()
-        entries = await asyncio.to_thread(self._list_all, client)
+        entries = await asyncio.to_thread(self._list_all, client, family)
         return [
-            SnapshotInfo(name=n, size=size, modified_at=_stamp_of(n))
+            SnapshotInfo(name=n, size=size, modified_at=family.stamp_datetime(n))
             for n, size in sorted(entries)
         ]
 
-    async def prune(self, keep: int) -> list[str]:
+    async def prune(self, keep: int, family: Family = DUMPS) -> list[str]:
         client = self._factory()
-        entries = await asyncio.to_thread(self._list_all, client)
+        entries = await asyncio.to_thread(self._list_all, client, family)
         # The stamp sorts lexically, so key order is snapshot order -- no
         # LastModified parse, and no dependence on what the service reports.
         doomed = sorted((n for n, _ in entries), reverse=True)[keep:]
@@ -960,7 +966,9 @@ class WorkerDestination:
                 f"{response.text[:300]}"
             )
 
-    async def ship(self, local_path: Path) -> None:
+    async def ship(self, local_path: Path, *, timeout: float | None = None) -> None:
+        # Accepted and ignored: httpx bounds each read, write and connect, never
+        # the transfer as a whole, so a larger bound would buy nothing here.
         async def _body():
             # Async, and each read offloaded: httpx refuses a sync iterator on
             # an AsyncClient, and a multi-hundred-megabyte file read in the
@@ -989,10 +997,14 @@ class WorkerDestination:
                 async for chunk in response.aiter_bytes():
                     yield chunk
 
-    async def read_back_sha256(self, name: str) -> str:
+    async def read_back_sha256(
+        self, name: str, *, timeout: float | None = None
+    ) -> str:
+        # Ignored for the same reason as `ship`: an httpx bound is per
+        # operation, not per transfer.
         return await _hash_stream(self, name)
 
-    async def _listing(self) -> list[dict]:
+    async def _listing(self, family: Family) -> list[dict]:
         async with self._factory() as client:
             response = await client.get("/snapshots", headers=self._headers())
         self._raise_for(response, "listing")
@@ -1002,21 +1014,21 @@ class WorkerDestination:
         return [
             item
             for item in response.json().get("snapshots", [])
-            if _is_snapshot(item["name"])
+            if family.matches(item["name"])
         ]
 
-    async def list_snapshots(self) -> list[SnapshotInfo]:
+    async def list_snapshots(self, family: Family = DUMPS) -> list[SnapshotInfo]:
         return [
             SnapshotInfo(
                 name=item["name"],
                 size=item.get("size", 0),
-                modified_at=_stamp_of(item["name"]),
+                modified_at=family.stamp_datetime(item["name"]),
             )
-            for item in sorted(await self._listing(), key=lambda i: i["name"])
+            for item in sorted(await self._listing(family), key=lambda i: i["name"])
         ]
 
-    async def prune(self, keep: int) -> list[str]:
-        names = [item["name"] for item in await self._listing()]
+    async def prune(self, keep: int, family: Family = DUMPS) -> list[str]:
+        names = [item["name"] for item in await self._listing(family)]
         doomed = sorted(names, reverse=True)[keep:]
         async with self._factory() as client:
             for name in doomed:
