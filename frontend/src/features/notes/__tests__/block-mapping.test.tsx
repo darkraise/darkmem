@@ -27,6 +27,9 @@ const STORED: SyncBlock[] = [
   b("k", null, "code", "print(1)\n  x", { language: "py" }),
   b("k2", null, "code", "plain"),
   b("d", null, "divider", ""),
+  b("im", null, "paragraph", "![shot](/api/v1/pages/attachments/0123abcd-4567-89ef-0123-456789abcdef)"),
+  b("fl", null, "paragraph", "[notes.pdf](/api/v1/pages/attachments/0123abcd-4567-89ef-0123-456789abcdef)"),
+  b("ex", null, "paragraph", "![d](https://example.org/d.png)"),
   b("x", null, "html", "<div>raw</div>"),
   b("q", null, "quote", "legacy"),
   b("q1", "q", "code", "inner", { language: "sh" }),
@@ -185,6 +188,7 @@ describe("block mapping", () => {
     }
     render(<Probe />)
     await act(async () => {})
+    expect(editor.document.map((x) => x.type)).toEqual(expect.arrayContaining(["image", "file"]))
     const { tree: desired } = toSyncTree(editor.document as unknown as EditorBlockLike[], canonical, rowIds, noMint)
     expect(nextOp(canonical, desired)).toBeNull()
   })
@@ -199,6 +203,15 @@ describe("image and file blocks", () => {
     expect(blocks).toEqual([
       { id: "p", type: "image", props: { url: URL_A, name: "shot" }, content: undefined, children: [] },
     ])
+    expect(canonicalTree(stored).tree).toEqual(stored)
+  })
+
+  it("reads an image at an external url as an image block too", () => {
+    const stored: SyncBlock[] = [b("p", null, "paragraph", "![d](https://example.org/d.png)")]
+    expect(toEditorBlocks(stored).blocks[0]).toMatchObject({
+      type: "image",
+      props: { url: "https://example.org/d.png", name: "d" },
+    })
     expect(canonicalTree(stored).tree).toEqual(stored)
   })
 
