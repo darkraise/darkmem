@@ -131,18 +131,26 @@ async def save_state(session: AsyncSession, state: ArchiveState) -> None:
     await session.commit()
 
 
-def _count_members(listing: str) -> int:
-    """Regular files in tar's own `-v` output.
+def _count_members(index_path: Path) -> int:
+    """Regular files in tar's own `-v` listing, read from `--index-file`.
 
     Counted from the listing tar already produces rather than by reading the
     archive back: a second pass over a multi-gigabyte artefact costs the whole
-    decompression for a number tar just told us.
+    decompression for a number tar just told us. The listing gets a file of its
+    own -- a GNU extension, as `--warning=` already is -- because stderr also
+    carries tar's *diagnostics*, and `--ignore-failed-read` turns every
+    unreadable file into one. Counting that stream would add one "archived"
+    member per file that failed to be archived, which is exactly inverse to the
+    signal `ArchiveIncomplete` exists for. Read a line at a time: this listing
+    is one line per attachment, so the store's size is its size.
     """
-    return sum(
-        1
-        for line in listing.splitlines()
-        if line.strip() and not line.rstrip().endswith("/")
-    )
+    count = 0
+    with open(index_path, "r", encoding="utf-8", errors="replace") as listing:
+        for line in listing:
+            stripped = line.rstrip("\n")
+            if stripped.strip() and not stripped.rstrip().endswith("/"):
+                count += 1
+    return count
 
 
 async def build_archive(dest_dir: Path, stamp: str, *, expect_rows: int) -> Path:
@@ -154,6 +162,9 @@ async def build_archive(dest_dir: Path, stamp: str, *, expect_rows: int) -> Path
     dest_dir = Path(dest_dir)
     out = dest_dir / f"{ATTACHMENTS_PREFIX}{stamp}.tar.gz"
     part = out.with_name(out.name + ".part")
+    # Neither family's suffixes match `.index`, so no prune can see it; it is
+    # removed on every path regardless.
+    index = out.with_name(out.name + ".index")
     root = attachments_root()
 
     argv = [
@@ -166,6 +177,7 @@ async def build_archive(dest_dir: Path, stamp: str, *, expect_rows: int) -> Path
         f"--exclude=./{STAGING_DIRNAME}",
         "--ignore-failed-read",
         "--warning=no-file-changed",
+        f"--index-file={index}",
         ".",
     ]
     try:
@@ -173,30 +185,31 @@ async def build_archive(dest_dir: Path, stamp: str, *, expect_rows: int) -> Path
             proc = await asyncio.create_subprocess_exec(
                 *argv, stdout=sink, stderr=asyncio.subprocess.PIPE
             )
-            listing = (await proc.stderr.read()) if proc.stderr else b""
+            diagnostics = (await proc.stderr.read()) if proc.stderr else b""
             code = await proc.wait()
+        detail = diagnostics.decode("utf-8", "replace")[-500:]
         if code not in (0, _TAR_FILE_CHANGED):
-            raise ArchiveIncomplete(
-                f"tar exited {code}: "
-                f"{listing.decode('utf-8', 'replace')[-500:]}"
-            )
-        members = _count_members(listing.decode("utf-8", "replace"))
+            raise ArchiveIncomplete(f"tar exited {code}: {detail}")
+        members = await asyncio.to_thread(_count_members, index)
         if expect_rows > 0 and members == 0:
             raise ArchiveIncomplete(
                 f"{root} archived no files while page_attachments holds "
-                f"{expect_rows} rows -- the attachment store is empty or not "
-                f"mounted. Nothing renamed."
+                f"{expect_rows} rows -- the attachment store is empty, not "
+                f"mounted, or unreadable. Nothing renamed. tar said: {detail}"
             )
         if members < expect_rows:
             logger.warning(
                 "attachment archive holds %s files against %s rows; the "
-                "cleanup job may have unlinked one mid-run",
+                "cleanup job may have unlinked one mid-run. tar said: %s",
                 members,
                 expect_rows,
+                detail,
             )
     except BaseException:
         part.unlink(missing_ok=True)
         raise
+    finally:
+        index.unlink(missing_ok=True)
 
     os.replace(part, out)
     return out

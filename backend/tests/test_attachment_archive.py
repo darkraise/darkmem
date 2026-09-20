@@ -7,6 +7,7 @@ both directions rather than by checking one example of each.
 """
 from __future__ import annotations
 
+import socket
 import tarfile
 from datetime import timezone
 from pathlib import Path
@@ -87,7 +88,10 @@ async def test_build_archive_writes_a_tarball_of_the_store(tmp_path, monkeypatch
     with tarfile.open(out) as archive:
         members = {m.name.lstrip("./") for m in archive.getmembers() if m.isfile()}
     assert members == {"ab/abcd"}
-    assert not list(tmp_path.glob("*.part"))
+    # Neither the `.part` nor the listing file survives: the listing has a file
+    # of its own so stderr can stay diagnostics-only, and a dump directory an
+    # operator reads is the wrong place to leave it.
+    assert {p.name for p in tmp_path.iterdir()} == {"attachments", out.name}
 
 
 async def test_build_archive_refuses_an_empty_store_when_rows_exist(tmp_path, monkeypatch):
@@ -107,6 +111,33 @@ async def test_build_archive_allows_an_empty_store_when_no_rows(tmp_path, monkey
 
     out = await build_archive(tmp_path, "20260920-043000", expect_rows=0)
     assert out.is_file()
+
+
+async def test_a_tar_diagnostic_is_not_counted_as_a_member(tmp_path, monkeypatch):
+    """stderr carries tar's diagnostics; the member listing has its own file.
+
+    A unix socket is the one entry tar refuses deterministically for every
+    user, root included -- these tests run as root, where a `chmod 000` file is
+    still readable, so it cannot stand in for the unreadable-store case this
+    guard exists for. tar writes `socket ignored` to stderr, mints no member
+    and exits 0. Counting stderr reads that line as one archived file, so a
+    store whose files are ALL unreadable would pass the completeness check and
+    an empty tarball would land under the canonical name -- the inflation is
+    exactly inverse to the signal.
+    """
+    store = tmp_path / "attachments"
+    store.mkdir()
+    # sun_path caps near 108 bytes; keep this name and the test's own short.
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        sock.bind(str(store / "s"))
+    finally:
+        sock.close()
+    monkeypatch.setattr("app.services.attachment_archive.attachments_root", lambda: store)
+
+    with pytest.raises(ArchiveIncomplete):
+        await build_archive(tmp_path, "20260920-043000", expect_rows=1)
+    assert list(tmp_path.iterdir()) == [store]
 
 
 async def test_state_round_trips_and_starts_absent(session):
