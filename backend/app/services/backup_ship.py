@@ -35,8 +35,20 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Protocol
 
+from sqlalchemy import text
+
 from app.config import settings
-from app.services.attachment_archive import DUMPS, Family
+from app.services.attachment_archive import (
+    ATTACHMENTS,
+    DUMPS,
+    ArchiveIncomplete,
+    ArchiveState,
+    Family,
+    build_archive,
+    load_state,
+    save_state,
+)
+from app.services.attachment_manifest import attachment_count, manifest_hash
 from app.services.backup_config import DestinationConfig, load_destinations
 from app.services.events import BACKUP_SHIPPED, BACKUP_VERIFY_FAILED, record_event
 
@@ -475,22 +487,78 @@ async def _journal_verify_failed(session_factory, payload: dict) -> None:
         await session.commit()
 
 
+#: The newest attachments-family outcome per destination. Read rather than
+#: assumed: a copy that failed its read-back is still *listed*, and the dump
+#: family only self-heals because a fresh dump arrives nightly -- a gate on
+#: the manifest removes exactly that property.
+_NEWEST_ATTACHMENT_OUTCOME = text(
+    """
+    SELECT DISTINCT ON (payload->>'destination')
+           payload->>'destination' AS destination,
+           event_type,
+           payload
+      FROM events
+     WHERE event_type IN (:shipped, :failed)
+       AND object_type = 'system'
+       AND payload->>'family' = 'attachments'
+     ORDER BY payload->>'destination', created_at DESC, id DESC
+    """
+)
+
+
+async def _attachment_outcomes(session_factory) -> dict[str, tuple[str, str]]:
+    async with session_factory() as session:
+        rows = (
+            await session.execute(
+                _NEWEST_ATTACHMENT_OUTCOME,
+                {"shipped": BACKUP_SHIPPED, "failed": BACKUP_VERIFY_FAILED},
+            )
+        ).mappings().all()
+    return {
+        row["destination"]: (row["event_type"], (row["payload"] or {}).get("stamp", ""))
+        for row in rows
+    }
+
+
+async def _destination_holds(destination, stamp: str, outcome) -> bool:
+    """Listed AND journalled as verified, both at this stamp."""
+    listed = await destination.list_snapshots(ATTACHMENTS)
+    if not any(ATTACHMENTS.stamp_of(s.name) == stamp for s in listed):
+        return False
+    if outcome is None:
+        return False
+    event_type, journalled = outcome
+    return event_type == BACKUP_SHIPPED and journalled == stamp
+
+
 async def ship_all(session_factory) -> dict:
-    """Dump once, then ship to every enabled destination in sequence.
+    """Dump once, tar the attachment set when it changed, then ship both to
+    every enabled destination in sequence.
 
     A destination's failure is caught, journalled and folded into the summary;
     it never skips the destinations behind it. One unplugged NAS must not mean
-    a night with no off-host copy anywhere.
+    a night with no off-host copy anywhere. The two artefacts fail
+    independently for the same reason: a tarball that could not be built must
+    not retract a dump that landed.
     """
     async with session_factory() as session:
         configured = await load_destinations(session, masked=False)
     enabled = [c for c in configured if c.enabled]
 
+    attachments: dict = {
+        "stamp": None,
+        "built": False,
+        "shipped": 0,
+        "skipped": [],
+        "verify_failed": [],
+        "pruned": {},
+    }
     summary: dict = {
         "dump": None,
         "shipped": 0,
         "verify_failed": [],
         "pruned": {},
+        "attachments": attachments,
     }
     if not enabled:
         # No dump at all: reading the whole database to produce a file nobody
@@ -498,11 +566,29 @@ async def ship_all(session_factory) -> dict:
         logger.info("backup_ship: no enabled destinations, nothing dumped")
         return summary
 
-    dump = await run_dump()
+    async with session_factory() as session:
+        manifest = await manifest_hash(session)
+        expect_rows = await attachment_count(session)
+        state = await load_state(session)
+    changed = state is None or state.manifest_hash != manifest
+    run_stamp = _stamp()
+    # A catch-up reuses the recorded stamp. Minting a fresh one would leave
+    # every *other* destination lacking it, so the next run would ship again,
+    # and so on forever -- and the stamp is also the pairing key a restore
+    # reads, so it must name when the content was captured.
+    archive_stamp = run_stamp if changed else state.stamp
+    attachments["stamp"] = archive_stamp
+    outcomes = await _attachment_outcomes(session_factory)
+
+    dump = await run_dump(stamp=run_stamp)
     artifacts = await _artifacts_for(dump, [c.age_recipient for c in enabled])
     keep_plaintext = any(c.age_recipient is None for c in enabled)
-
     summary["dump"] = dump.name
+
+    archive: Path | None = None
+    archive_artifacts: dict[str | None, Path] = {}
+    archive_shipped = False
+
     try:
         for cfg in enabled:
             artifact = artifacts[cfg.age_recipient]
@@ -521,6 +607,7 @@ async def ship_all(session_factory) -> dict:
                     session_factory,
                     {
                         "destination": cfg.name,
+                        "family": "dump",
                         "file": artifact.name,
                         "expected": mismatch.expected,
                         "got": mismatch.got,
@@ -533,6 +620,7 @@ async def ship_all(session_factory) -> dict:
                     session_factory,
                     {
                         "destination": cfg.name,
+                        "family": "dump",
                         "file": artifact.name,
                         "error": str(exc),
                     },
@@ -543,6 +631,7 @@ async def ship_all(session_factory) -> dict:
                     session_factory,
                     {
                         "destination": cfg.name,
+                        "family": "dump",
                         "file": artifact.name,
                         "bytes": artifact.stat().st_size,
                         "sha256": expected,
@@ -554,14 +643,105 @@ async def ship_all(session_factory) -> dict:
             # tonight's upload, not about the copies already on the destination.
             # A destination that could not be built at all has nothing to prune.
             if destination is None:
+                attachments["verify_failed"].append(cfg.name)
                 continue
             try:
                 summary["pruned"][cfg.name] = await destination.prune(
-                    cfg.retention_keep
+                    cfg.retention_keep, DUMPS
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("backup_ship: %s prune failed: %s", cfg.name, exc)
                 summary["pruned"][cfg.name] = {"error": str(exc)}
+
+            try:
+                needs = changed or not await _destination_holds(
+                    destination, archive_stamp, outcomes.get(cfg.name)
+                )
+            except Exception as exc:  # noqa: BLE001 - an unlistable destination
+                logger.warning(
+                    "backup_ship: %s attachment listing failed: %s", cfg.name, exc
+                )
+                needs = True
+
+            if needs:
+                tarball: Path | None = None
+                attachment_started = time.monotonic()
+                try:
+                    if archive is None:
+                        archive = await build_archive(
+                            dump.parent, archive_stamp, expect_rows=expect_rows
+                        )
+                        attachments["built"] = True
+                        archive_artifacts = await _artifacts_for(
+                            archive, [c.age_recipient for c in enabled]
+                        )
+                    tarball = archive_artifacts[cfg.age_recipient]
+                    await destination.ship(
+                        tarball, timeout=ATTACHMENTS_SHIP_TIMEOUT_SECONDS
+                    )
+                    expected = await sha256_file(tarball)
+                    got = await destination.read_back_sha256(
+                        tarball.name, timeout=ATTACHMENTS_READ_BACK_TIMEOUT_SECONDS
+                    )
+                    if got != expected:
+                        raise VerifyMismatch(expected=expected, got=got)
+                except VerifyMismatch as mismatch:
+                    attachments["verify_failed"].append(cfg.name)
+                    await _journal_verify_failed(
+                        session_factory,
+                        {
+                            "destination": cfg.name,
+                            "family": "attachments",
+                            "stamp": archive_stamp,
+                            "file": tarball.name if tarball else None,
+                            "expected": mismatch.expected,
+                            "got": mismatch.got,
+                        },
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "backup_ship: %s attachments failed: %s", cfg.name, exc
+                    )
+                    attachments["verify_failed"].append(cfg.name)
+                    await _journal_verify_failed(
+                        session_factory,
+                        {
+                            "destination": cfg.name,
+                            "family": "attachments",
+                            "stamp": archive_stamp,
+                            "file": tarball.name if tarball else None,
+                            "error": str(exc),
+                        },
+                    )
+                else:
+                    archive_shipped = True
+                    attachments["shipped"] += 1
+                    await _journal_shipped(
+                        session_factory,
+                        {
+                            "destination": cfg.name,
+                            "family": "attachments",
+                            "stamp": archive_stamp,
+                            "file": tarball.name,
+                            "bytes": tarball.stat().st_size,
+                            "sha256": expected,
+                            "elapsed_seconds": round(
+                                time.monotonic() - attachment_started, 3
+                            ),
+                        },
+                    )
+            else:
+                attachments["skipped"].append(cfg.name)
+
+            try:
+                attachments["pruned"][cfg.name] = await destination.prune(
+                    cfg.attachments_retention_keep, ATTACHMENTS
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "backup_ship: %s attachment prune failed: %s", cfg.name, exc
+                )
+                attachments["pruned"][cfg.name] = {"error": str(exc)}
     finally:
         scratch = dump.parent / _SCRATCH
         if scratch.exists():
@@ -570,6 +750,14 @@ async def ship_all(session_factory) -> dict:
             # Every destination demanded encryption; an unencrypted twin must
             # not outlive the run on local disk.
             dump.unlink(missing_ok=True)
+            if archive is not None:
+                archive.unlink(missing_ok=True)
+
+    if archive_shipped:
+        async with session_factory() as session:
+            await save_state(
+                session, ArchiveState(stamp=archive_stamp, manifest_hash=manifest)
+            )
 
     return summary
 

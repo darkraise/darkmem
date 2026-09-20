@@ -16,6 +16,7 @@ image: `tests/test_deployment_artifact.py` asserts the package is there.
 from __future__ import annotations
 
 import gzip
+import json
 import shutil
 import subprocess
 
@@ -223,31 +224,53 @@ async def test_local_read_back_hashes_what_actually_landed(tmp_path):
 
 
 class _FakeDestination:
-    """A destination whose every call is observable and whose read-back can lie."""
+    """A destination whose every call is observable and whose read-back can lie.
 
-    def __init__(self, name, *, sha=None, fail_ship=False, retention_keep=14):
+    `ship` remembers each artefact by name so `read_back_sha256` can hash the
+    one it is asked about: a run now ships a dump and a tarball, and one stored
+    path would make the second read-back hash the first artefact.
+    """
+
+    def __init__(self, name, *, sha=None, fail_ship=False, retention_keep=14,
+                 attachments_retention_keep=3, holds=()):
         self.name = name
         self.retention_keep = retention_keep
+        self.attachments_retention_keep = attachments_retention_keep
         self._sha = sha
         self._fail_ship = fail_ship
+        self._holds = list(holds)
+        self._paths: dict[str, object] = {}
         self.shipped: list[str] = []
         self.pruned_with: list[int] = []
+        self.pruned_families: list[tuple[int, str]] = []
+        self.timeouts: list[float | None] = []
 
-    async def ship(self, local_path):
+    async def ship(self, local_path, *, timeout=None):
         if self._fail_ship:
             raise RuntimeError("the NAS is unplugged")
+        self.timeouts.append(timeout)
+        self._paths[local_path.name] = local_path
         self.shipped.append(local_path.name)
 
-    async def read_back_sha256(self, name):
+    async def read_back_sha256(self, name, *, timeout=None):
         if self._sha is not None:
             return self._sha
-        return await backup_ship.sha256_file(self._local)
+        return await backup_ship.sha256_file(self._paths[name])
 
-    async def list_snapshots(self):
-        return []
+    async def list_snapshots(self, family=None):
+        family = family or backup_ship.DUMPS
+        return [
+            backup_ship.SnapshotInfo(
+                name=n, size=0, modified_at=family.stamp_datetime(n)
+            )
+            for n in self._holds
+            if family.matches(n)
+        ]
 
-    async def prune(self, keep):
+    async def prune(self, keep, family=None):
+        family = family or backup_ship.DUMPS
         self.pruned_with.append(keep)
+        self.pruned_families.append((keep, family.prefix))
         return []
 
 
@@ -282,6 +305,7 @@ async def test_ship_all_verifies_and_journals(
     await bc.save_destinations(
         session, {"destinations": [{**LOCAL, "name": "disk"}]}
     )
+    _fake_archive(monkeypatch)
 
     summary = await backup_ship.ship_all(session_factory)
 
@@ -294,7 +318,7 @@ async def test_ship_all_verifies_and_journals(
     assert summary["dump"].endswith(".sql.gz")
 
     rows = await _payloads(session, "backup_shipped")
-    assert len(rows) == 1
+    assert len(rows) == 2
     payload = rows[0]
     assert payload["destination"] == "disk"
     assert payload["file"] == summary["dump"]  # unencrypted: artefact is the dump
@@ -313,18 +337,19 @@ async def test_ship_all_journals_a_read_back_mismatch(
     )
     liar = _FakeDestination("disk", sha="0" * 64)
     monkeypatch.setattr(backup_ship, "build_destination", lambda cfg: liar)
+    _fake_archive(monkeypatch)
 
     summary = await backup_ship.ship_all(session_factory)
 
     assert summary["shipped"] == 0
     assert summary["verify_failed"] == ["disk"]
     rows = await _payloads(session, "backup_verify_failed")
-    assert len(rows) == 1
+    assert len(rows) == 2
     assert rows[0]["got"] == "0" * 64
     assert rows[0]["expected"] != "0" * 64
     # A destination that failed verification is still pruned to its retention:
     # the failure is about this snapshot, not about the ones already there.
-    assert liar.pruned_with == [14]
+    assert liar.pruned_with == [14, 3]
 
 
 async def test_one_failing_destination_does_not_stop_the_others(
@@ -344,11 +369,10 @@ async def test_one_failing_destination_does_not_stop_the_others(
     working = _FakeDestination("working")
 
     def _build(cfg):
-        dest = broken if cfg.name == "broken" else working
-        dest._local = backup_ship.DUMP_DIR / _the_dump(tmp_path)
-        return dest
+        return broken if cfg.name == "broken" else working
 
     monkeypatch.setattr(backup_ship, "build_destination", _build)
+    _fake_archive(monkeypatch)
 
     summary = await backup_ship.ship_all(session_factory)
 
@@ -373,6 +397,7 @@ async def test_disabled_destinations_are_skipped(
         session,
         {"destinations": [{**LOCAL, "name": "off", "enabled": False}]},
     )
+    _fake_archive(monkeypatch)
 
     summary = await backup_ship.ship_all(session_factory)
 
@@ -405,6 +430,7 @@ async def test_a_recipient_encrypts_and_leaves_no_plaintext(
             ]
         },
     )
+    _fake_archive(monkeypatch)
 
     summary = await backup_ship.ship_all(session_factory)
 
@@ -956,15 +982,16 @@ async def test_a_worker_mismatch_journals_verify_failed_through_ship_all(
     )
     liar = _worker_destination()
     monkeypatch.setattr(
-        liar, "read_back_sha256", lambda name: _resolved("f" * 64)
+        liar, "read_back_sha256", lambda name, timeout=None: _resolved("f" * 64)
     )
     monkeypatch.setattr(backup_ship, "build_destination", lambda cfg: liar)
+    _fake_archive(monkeypatch)
 
     summary = await backup_ship.ship_all(session_factory)
 
     assert summary["verify_failed"] == ["attic"]
     rows = await _payloads(session, "backup_verify_failed")
-    assert rows[-1]["got"] == "f" * 64
+    assert [r for r in rows if r["family"] == "dump"][0]["got"] == "f" * 64
 
 
 async def _resolved(value):
@@ -1256,3 +1283,276 @@ def test_main_registers_the_job_with_that_budget():
         Path(backup_ship.__file__).resolve().parents[1] / "main.py"
     ).read_text()
     assert "max_run_seconds=BACKUP_SHIP_MAX_RUN_SECONDS" in source
+
+
+# ── Task 6: the build-and-ship decision ──────────────────────────────
+
+ARCHIVE_STAMP = "20260101-000000"
+ARCHIVE_NAME = f"darkmem-app-attachments-{ARCHIVE_STAMP}.tar.gz"
+
+
+async def _journal_attachment(session, destination, stamp, event_type, payload):
+    await session.execute(
+        sa_text(
+            "INSERT INTO events (event_type, object_type, source, payload) "
+            "VALUES (:t, 'system', 'backup_ship', CAST(:p AS jsonb))"
+        ),
+        {"t": event_type, "p": json.dumps(payload)},
+    )
+
+
+async def _journal_attachment_failure(session, destination, stamp):
+    await _journal_attachment(
+        session, destination, stamp, "backup_verify_failed",
+        {"destination": destination, "family": "attachments", "stamp": stamp,
+         "error": "read-back mismatch"},
+    )
+
+
+async def _journal_attachment_success(session, destination, stamp):
+    await _journal_attachment(
+        session, destination, stamp, "backup_shipped",
+        {"destination": destination, "family": "attachments", "stamp": stamp,
+         "sha256": "ab"},
+    )
+
+
+def _fake_archive(monkeypatch) -> list[str]:
+    """Stand in for the tar subprocess and record every stamp it was asked
+    for -- the stamp is the property under test, not the bytes. It writes to
+    the `dest_dir` it is handed, so it needs no directory of its own."""
+    asked: list[str] = []
+
+    async def _build(dest_dir, stamp, *, expect_rows):
+        asked.append(stamp)
+        out = Path(dest_dir) / f"darkmem-app-attachments-{stamp}.tar.gz"
+        out.write_bytes(b"tarball")
+        return out
+
+    monkeypatch.setattr(backup_ship, "build_archive", _build)
+    return asked
+
+
+async def _one_destination(session, monkeypatch, tmp_path, fake):
+    await _dump_into(tmp_path, monkeypatch)
+    await bc.save_destinations(session, {"destinations": [{**LOCAL, "name": fake.name}]})
+    monkeypatch.setattr(backup_ship, "build_destination", lambda cfg: fake)
+
+
+async def test_a_changed_manifest_builds_ships_and_records(
+    session, session_factory, tmp_path, monkeypatch
+):
+    fake = _FakeDestination("disk")
+    await _one_destination(session, monkeypatch, tmp_path, fake)
+    asked = _fake_archive(monkeypatch)
+
+    summary = await backup_ship.ship_all(session_factory)
+
+    assert summary["attachments"]["built"] is True
+    assert summary["attachments"]["shipped"] == 1
+    assert len(asked) == 1
+    rows = await _payloads(session, "backup_shipped")
+    families = [r["family"] for r in rows]
+    assert families == ["dump", "attachments"]
+    assert rows[1]["stamp"] == asked[0]
+
+    state = await backup_ship.load_state(session)
+    assert state is not None and state.stamp == asked[0]
+
+
+async def test_an_unchanged_manifest_with_a_verified_copy_ships_nothing(
+    session, session_factory, tmp_path, monkeypatch
+):
+    fake = _FakeDestination("disk")
+    await _one_destination(session, monkeypatch, tmp_path, fake)
+    asked = _fake_archive(monkeypatch)
+    await backup_ship.ship_all(session_factory)
+    stamp = asked[0]
+
+    # The destination now holds it and the journal says it verified.
+    fake._holds = [f"darkmem-app-attachments-{stamp}.tar.gz"]
+    asked.clear()
+
+    summary = await backup_ship.ship_all(session_factory)
+
+    assert asked == []
+    assert summary["attachments"]["built"] is False
+    assert summary["attachments"]["skipped"] == ["disk"]
+
+
+async def test_a_destination_missing_the_copy_catches_up_at_the_same_stamp(
+    session, session_factory, tmp_path, monkeypatch
+):
+    fake = _FakeDestination("disk")
+    await _one_destination(session, monkeypatch, tmp_path, fake)
+    asked = _fake_archive(monkeypatch)
+    await backup_ship.ship_all(session_factory)
+    first = asked[0]
+    asked.clear()
+
+    # Listing is empty: the copy is gone. The manifest has not moved.
+    summary = await backup_ship.ship_all(session_factory)
+
+    assert asked == [first], "a catch-up must not mint a new stamp"
+    assert summary["attachments"]["shipped"] == 1
+    state = await backup_ship.load_state(session)
+    assert state.stamp == first
+
+
+async def test_a_listed_copy_that_failed_verification_is_shipped_again(
+    session, session_factory, tmp_path, monkeypatch
+):
+    """The journal half of the decision, and the only test that reaches it.
+
+    The state row must already say this manifest was handled, or `changed`
+    would be True and the rebuild would happen for the wrong reason.
+    """
+    stamp = "20260101-000000"
+    fake = _FakeDestination("disk", holds=[f"darkmem-app-attachments-{stamp}.tar.gz"])
+    await _one_destination(session, monkeypatch, tmp_path, fake)
+    asked = _fake_archive(monkeypatch)
+
+    manifest = await backup_ship.manifest_hash(session)
+    await backup_ship.save_state(
+        session, backup_ship.ArchiveState(stamp=stamp, manifest_hash=manifest)
+    )
+    await _journal_attachment_failure(session, "disk", stamp)
+    await session.commit()
+
+    summary = await backup_ship.ship_all(session_factory)
+
+    assert asked == [stamp], "a listed but unverified copy must be re-shipped"
+    assert summary["attachments"]["skipped"] == []
+
+
+async def test_a_listed_and_verified_copy_is_not_shipped_again(
+    session, session_factory, tmp_path, monkeypatch
+):
+    """The same setup with a `backup_shipped` row: the pair of tests is what
+    proves the journal, not the listing, is what decides."""
+    stamp = "20260101-000000"
+    fake = _FakeDestination("disk", holds=[f"darkmem-app-attachments-{stamp}.tar.gz"])
+    await _one_destination(session, monkeypatch, tmp_path, fake)
+    asked = _fake_archive(monkeypatch)
+
+    manifest = await backup_ship.manifest_hash(session)
+    await backup_ship.save_state(
+        session, backup_ship.ArchiveState(stamp=stamp, manifest_hash=manifest)
+    )
+    await _journal_attachment_success(session, "disk", stamp)
+    await session.commit()
+
+    summary = await backup_ship.ship_all(session_factory)
+
+    assert asked == []
+    assert summary["attachments"]["skipped"] == ["disk"]
+
+
+async def test_the_tarball_transfer_gets_the_larger_bound(
+    session, session_factory, tmp_path, monkeypatch
+):
+    """Defining the constants without passing them would cut a multi-gigabyte
+    transfer off at the dump's bound -- the failure the budget exists against."""
+    fake = _FakeDestination("disk")
+    await _one_destination(session, monkeypatch, tmp_path, fake)
+    _fake_archive(monkeypatch)
+
+    await backup_ship.ship_all(session_factory)
+
+    assert fake.timeouts == [None, backup_ship.ATTACHMENTS_SHIP_TIMEOUT_SECONDS]
+
+
+async def test_the_tarball_read_back_gets_the_larger_bound(
+    session, session_factory, tmp_path, monkeypatch
+):
+    """The upload bound is only half the pair. A read-back left at the dump's
+    900s would time out on a multi-gigabyte verify and retract, as a failure, a
+    tarball that had in fact landed."""
+    fake = _FakeDestination("disk")
+    await _one_destination(session, monkeypatch, tmp_path, fake)
+    _fake_archive(monkeypatch)
+    seen: list[float | None] = []
+    inner = fake.read_back_sha256
+
+    async def _record(name, *, timeout=None):
+        seen.append(timeout)
+        return await inner(name, timeout=timeout)
+
+    monkeypatch.setattr(fake, "read_back_sha256", _record)
+
+    await backup_ship.ship_all(session_factory)
+
+    assert seen == [None, backup_ship.ATTACHMENTS_READ_BACK_TIMEOUT_SECONDS]
+
+
+async def test_three_destinations_converge_on_one_stamp(
+    session, session_factory, tmp_path, monkeypatch
+):
+    """The catch-up must terminate. If a destination that was behind made the
+    run mint a fresh stamp, every *other* destination would then lack that one
+    and ship again the night after, forever."""
+    fakes = {n: _FakeDestination(n) for n in ("a", "b", "c")}
+    await _dump_into(tmp_path, monkeypatch)
+    await bc.save_destinations(
+        session,
+        {"destinations": [{**LOCAL, "name": n} for n in ("a", "b", "c")]},
+    )
+    monkeypatch.setattr(backup_ship, "build_destination", lambda cfg: fakes[cfg.name])
+    asked = _fake_archive(monkeypatch)
+
+    await backup_ship.ship_all(session_factory)
+    stamp = asked[0]
+    held = f"darkmem-app-attachments-{stamp}.tar.gz"
+
+    # Two destinations kept it; the third lost it.
+    fakes["a"]._holds = [held]
+    fakes["b"]._holds = [held]
+    asked.clear()
+    summary = await backup_ship.ship_all(session_factory)
+    assert asked == [stamp]
+    assert sorted(summary["attachments"]["skipped"]) == ["a", "b"]
+
+    # Now all three hold it: the third run ships nothing and builds nothing.
+    fakes["c"]._holds = [held]
+    asked.clear()
+    summary = await backup_ship.ship_all(session_factory)
+    assert asked == []
+    assert sorted(summary["attachments"]["skipped"]) == ["a", "b", "c"]
+
+
+async def test_the_attachments_prune_uses_its_own_family_and_keep(
+    session, session_factory, tmp_path, monkeypatch
+):
+    fake = _FakeDestination("disk", attachments_retention_keep=3)
+    await _dump_into(tmp_path, monkeypatch)
+    await bc.save_destinations(
+        session,
+        {"destinations": [{**LOCAL, "name": "disk", "retention_keep": 14,
+                           "attachments_retention_keep": 3}]},
+    )
+    monkeypatch.setattr(backup_ship, "build_destination", lambda cfg: fake)
+    _fake_archive(monkeypatch)
+
+    await backup_ship.ship_all(session_factory)
+
+    assert (14, backup_ship.DUMPS.prefix) in fake.pruned_families
+    assert (3, backup_ship.ATTACHMENTS.prefix) in fake.pruned_families
+
+
+async def test_a_failed_tarball_leaves_the_dump_reported_as_shipped(
+    session, session_factory, tmp_path, monkeypatch
+):
+    fake = _FakeDestination("disk")
+    await _one_destination(session, monkeypatch, tmp_path, fake)
+
+    async def _boom(dest_dir, stamp, *, expect_rows):
+        raise backup_ship.ArchiveIncomplete("the volume is not mounted")
+
+    monkeypatch.setattr(backup_ship, "build_archive", _boom)
+
+    summary = await backup_ship.ship_all(session_factory)
+
+    assert summary["shipped"] == 1
+    assert summary["verify_failed"] == []
+    assert summary["attachments"]["verify_failed"] == ["disk"]
+    assert await backup_ship.load_state(session) is None
