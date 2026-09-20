@@ -71,16 +71,17 @@ async def paired_name(destination, dump_name: str) -> str:
     if stamp is None:
         raise SnapshotNotFound(f"{dump_name!r} is not a dump this job produced")
     candidates = [
-        s.name
+        (tarball_stamp, s.name)
         for s in await destination.list_snapshots(ATTACHMENTS)
-        if (ATTACHMENTS.stamp_of(s.name) or "") <= stamp
+        if (tarball_stamp := ATTACHMENTS.stamp_of(s.name)) is not None
+        and tarball_stamp <= stamp
     ]
     if not candidates:
         raise SnapshotNotFound(
             f"{destination.name} holds no attachment tarball at or before "
             f"{stamp}; restoring this dump serves rows whose files are gone"
         )
-    return max(candidates)
+    return max(candidates)[1]
 
 
 async def pull(

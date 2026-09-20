@@ -76,3 +76,17 @@ async def test_paired_with_raises_when_nothing_pairs(tmp_path):
     destination = _holding({DUMP_0102: b"dump", TAR_0103: b"newer"})
     with pytest.raises(backup_pull.SnapshotNotFound):
         await backup_pull.paired_name(destination, DUMP_0102)
+
+
+async def test_paired_with_ignores_a_name_with_no_stamp(tmp_path):
+    """`stamp_of` is None for a name that parses to nothing; comparing that as
+    an empty string admits it, and it would sort above every real stamp."""
+    destination = _holding(
+        {
+            DUMP_0102: b"dump",
+            TAR_0101: b"older",
+            "darkmem-app-attachments-nonsense.tar.gz": b"junk",
+        }
+    )
+    assert await backup_pull.paired_name(destination, DUMP_0102) == TAR_0101
+
