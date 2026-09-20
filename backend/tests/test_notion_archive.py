@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import builtins
+import gc
 import hashlib
 import zipfile
 from pathlib import Path
@@ -206,6 +207,32 @@ def test_a_part_export_reads_as_one_tree(tmp_path):
     names = sorted(e.name for e in archive.entries)
     assert [n.split(" ")[0] for n in names] == ["One", "Two"]
     assert sorted(e.part for e in archive.entries) == [1, 2]
+
+
+def test_a_repeated_part_number_is_refused(tmp_path):
+    # Two members claiming part 1 would stage over one another, and the source
+    # registry is keyed on the number, so the first handle would be stranded.
+    from tests.fixtures.notion.builder import _inner_zip
+
+    staging = tmp_path / "staging"
+    entries = [
+        Entry("A-Part-1.zip",
+              _inner_zip([Entry("One 00000000000000000000000000000041.md",
+                                b"# One\n")], WRAPPER)),
+        Entry("B-Part-1.zip",
+              _inner_zip([Entry("Two 00000000000000000000000000000042.md",
+                                b"# Two\n")], WRAPPER)),
+    ]
+    path = build_fixture(entries, tmp_path / "parts.zip")
+    with pytest.raises(NotionArchiveInvalid) as caught:
+        _open(path, staging)
+    assert "part 1" in str(caught.value)
+    stranded = [
+        obj for obj in gc.get_objects()
+        if isinstance(obj, zipfile.ZipFile) and obj.fp is not None
+        and str(getattr(obj, "filename", "")).startswith(str(staging))
+    ]
+    assert stranded == [], "a staged part was left open"
 
 
 def test_an_unreadable_part_member_is_refused(tmp_path):

@@ -263,10 +263,19 @@ def open_archive(
         # disk: zipfile seeks backwards per entry, and a compressed stream read
         # through the outer archive re-decompresses from the start every time.
         staging.mkdir(parents=True, exist_ok=True)
+        numbers: set[int] = set()
         try:
             for info in sorted(parts, key=lambda i: _decode_name(i)):
                 decoded = _decode_name(info)
                 number = int(_PART_SUFFIX.search(decoded).group(1))
+                if number in numbers:
+                    # The staged name and the source registry are both keyed on
+                    # the number: a repeat would overwrite one part's bytes and
+                    # strand the other's open handle.
+                    raise NotionArchiveInvalid(
+                        f"{decoded}: part {number} appears twice"
+                    )
+                numbers.add(number)
                 target = staging / f"part-{number}.zip"
                 what = f"{decoded} could not be read as a Part archive"
                 with _folding(what):
