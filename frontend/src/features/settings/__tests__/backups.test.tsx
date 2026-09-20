@@ -1,5 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import {
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+  waitFor as waitForHook,
+} from "@testing-library/react"
 import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -8,6 +15,7 @@ vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
 
 import { apiFetch } from "@/lib/api"
 import { BackupsTab } from "../components/backups-tab"
+import { outcomeKey, useBackupsTabBinding } from "../use-backups-tab-binding"
 
 /**
  * Increment 6's operator surface.
@@ -339,5 +347,94 @@ describe("a failed destinations read is not an unconfigured backup system", () =
     expect(
       screen.queryByText(/no destinations configured/i),
     ).not.toBeInTheDocument()
+  })
+})
+
+const SHIPPED_DUMP = {
+  id: 2,
+  created_at: "2026-09-01T04:30:00Z",
+  event_type: "backup_shipped",
+  object_type: "system",
+  object_id: null,
+  project: null,
+  actor: null,
+  api_key_id: null,
+  source: "backup_ship",
+  payload: { destination: "disk", family: "dump", sha256: "a".repeat(64) },
+}
+
+const FAILED_TARBALL = {
+  ...SHIPPED_DUMP,
+  id: 3,
+  // One second later, in the same run: a map keyed on destination alone would
+  // let this overwrite the dump's verdict, which is the one an operator reads
+  // before restoring.
+  created_at: "2026-09-01T04:30:01Z",
+  event_type: "backup_verify_failed",
+  payload: { destination: "disk", family: "attachments", error: "truncated" },
+}
+
+describe("outcome keying", () => {
+  it("keeps the dump and attachment outcomes apart", async () => {
+    routes({
+      "/events?event_type=backup_shipped&limit=50": {
+        items: [SHIPPED_DUMP],
+        total: 1,
+      },
+      "/events?event_type=backup_verify_failed&limit=50": {
+        items: [FAILED_TARBALL],
+        total: 1,
+      },
+    })
+
+    const { result } = renderHook(() => useBackupsTabBinding(), { wrapper })
+
+    await waitForHook(() => expect(result.current.recentOutcomes.size).toBe(2))
+    expect(
+      result.current.recentOutcomes.get(outcomeKey("disk", "dump"))?.event_type,
+    ).toBe("backup_shipped")
+    expect(
+      result.current.recentOutcomes.get(outcomeKey("disk", "attachments"))
+        ?.error,
+    ).toBe("truncated")
+  })
+
+  it("reads an event with no family as a dump", async () => {
+    routes({
+      "/events?event_type=backup_shipped&limit=50": {
+        items: [{ ...SHIPPED_DUMP, payload: { destination: "disk" } }],
+        total: 1,
+      },
+    })
+
+    const { result } = renderHook(() => useBackupsTabBinding(), { wrapper })
+
+    await waitForHook(() => expect(result.current.recentOutcomes.size).toBe(1))
+    expect(
+      result.current.recentOutcomes.get(outcomeKey("disk", "dump"))?.family,
+    ).toBe("dump")
+  })
+
+  it("does not let a dump outcome overwrite a later attachment one", async () => {
+    routes({
+      "/events?event_type=backup_shipped&limit=50": {
+        items: [
+          { ...SHIPPED_DUMP, created_at: "2026-09-01T04:30:02Z" },
+        ],
+        total: 1,
+      },
+      "/events?event_type=backup_verify_failed&limit=50": {
+        items: [FAILED_TARBALL],
+        total: 1,
+      },
+    })
+
+    const { result } = renderHook(() => useBackupsTabBinding(), { wrapper })
+
+    await waitForHook(() => expect(result.current.recentOutcomes.size).toBe(2))
+    expect(
+      result.current.recentOutcomes.get(outcomeKey("disk", "attachments"))
+        ?.event_type,
+    ).toBe("backup_verify_failed")
   })
 })

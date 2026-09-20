@@ -20,6 +20,7 @@ import {
   type DestinationInventory,
 } from "@/hooks/api/use-backups-api"
 import {
+  outcomeKey,
   useBackupsTabBinding,
   type BackupOutcome,
 } from "@/features/settings/use-backups-tab-binding"
@@ -151,7 +152,10 @@ export function BackupsTab() {
               <DestinationRow
                 key={destination.name}
                 destination={destination}
-                outcome={recentOutcomes.get(destination.name) ?? null}
+                outcome={
+                  recentOutcomes.get(outcomeKey(destination.name, "dump")) ??
+                  null
+                }
                 busy={isSaving}
                 onToggle={(enabled) => toggle(destination, enabled)}
                 onEdit={() => {

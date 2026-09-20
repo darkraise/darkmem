@@ -13,14 +13,22 @@ import { DEMO } from "@/lib/demo-flag"
 
 export const BACKUP_SHIP_JOB_KEY = "backup_ship"
 
-/** The newest ship outcome for one destination. */
+/** The newest ship outcome for one destination and artefact family. */
 export interface BackupOutcome {
   destination: string
+  family: "dump" | "attachments"
   event_type: "backup_shipped" | "backup_verify_failed"
   at: string
   file: string | null
   sha256: string | null
   error: string | null
+}
+
+/** The map key. A destination now has two independent outcomes per run, and
+ *  the attachment row is journalled second -- keying on the destination alone
+ *  would let it overwrite the dump's. */
+export function outcomeKey(destination: string, family: string): string {
+  return `${destination}\u0000${family}`
 }
 
 export interface RunNowResult {
@@ -68,10 +76,13 @@ export function useBackupsTabBinding() {
       const payload = row.payload as Record<string, unknown>
       const destination = String(payload.destination ?? "")
       if (!destination) continue
-      const previous = newest.get(destination)
+      const family = payload.family === "attachments" ? "attachments" : "dump"
+      const key = outcomeKey(destination, family)
+      const previous = newest.get(key)
       if (previous && previous.at >= row.created_at) continue
-      newest.set(destination, {
+      newest.set(key, {
         destination,
+        family,
         event_type: row.event_type as BackupOutcome["event_type"],
         at: row.created_at,
         file: (payload.file as string) ?? null,

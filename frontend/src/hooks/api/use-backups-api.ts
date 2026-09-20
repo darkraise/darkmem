@@ -44,6 +44,7 @@ export interface BackupDestination {
   kind: DestinationKind
   enabled: boolean
   retention_keep: number
+  attachments_retention_keep: number
   /** The age *public* key. The identity that decrypts is the operator's and
    *  never enters the database — a snapshot carrying its own decryption key
    *  is not encrypted at rest. */
@@ -104,8 +105,13 @@ export interface DestinationInventory {
   kind: DestinationKind
   enabled: boolean
   retention_keep: number
+  attachments_retention_keep: number
   snapshots: InventorySnapshot[]
+  attachment_snapshots: InventorySnapshot[]
   last_outcome: InventoryOutcome | null
+  /** The attachment tarball's own last outcome. Separate because the two
+   *  artefacts ship and fail independently. */
+  last_attachment_outcome: InventoryOutcome | null
   /** Why this destination could not be listed. A field rather than a failed
    *  page: one unreachable NAS must not blank what the others hold. */
   error: string | null
