@@ -343,8 +343,8 @@ function DestinationRow({
           unencrypted
         </Badge>
       ) : null}
-      <OutcomeLine outcome={outcome} />
-      <OutcomeLine outcome={attachmentOutcome} />
+      <OutcomeLine outcome={outcome} label="database" />
+      <OutcomeLine outcome={attachmentOutcome} label="attachments" />
       <div className="ml-auto flex items-center gap-2">
         <Switch
           checked={destination.enabled}
@@ -360,22 +360,30 @@ function DestinationRow({
   )
 }
 
-function OutcomeLine({ outcome }: { outcome: BackupOutcome | null }) {
+function OutcomeLine({
+  outcome,
+  label,
+}: {
+  outcome: BackupOutcome | null
+  label: string
+}) {
   if (!outcome) {
-    return <span className="text-muted-foreground text-sm">no run yet</span>
+    return (
+      <span className="text-muted-foreground text-sm">{label}: no run yet</span>
+    )
   }
   if (outcome.event_type === "backup_shipped") {
     return (
       <span className="text-muted-foreground flex items-center gap-1 text-sm">
         <ShieldCheck aria-hidden className="h-3.5 w-3.5" />
-        verified {new Date(outcome.at).toLocaleString()}
+        {label}: verified {new Date(outcome.at).toLocaleString()}
       </span>
     )
   }
   return (
     <span className="text-destructive flex items-center gap-1 text-sm">
       <ShieldAlert aria-hidden className="h-3.5 w-3.5" />
-      {outcome.error ?? "not restorable"}
+      {label}: {outcome.error ?? "not restorable"}
     </span>
   )
 }

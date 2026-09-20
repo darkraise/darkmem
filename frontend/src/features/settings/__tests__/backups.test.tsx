@@ -529,4 +529,90 @@ describe("the attachment family on the tab", () => {
       expect(disk.attachments_retention_keep).toBe(5)
     })
   })
+
+  it("labels each family's badge on the inventory card", async () => {
+    routes({
+      "/backups/inventory": {
+        destinations: [
+          {
+            ...INVENTORY_ROW,
+            last_outcome: {
+              event_type: "backup_shipped",
+              at: "2026-09-01T04:30:00Z",
+              sha256: "a".repeat(64),
+              error: null,
+            },
+            last_attachment_outcome: {
+              event_type: "backup_verify_failed",
+              at: "2026-09-01T04:31:00Z",
+              sha256: null,
+              error: "the tarball is torn",
+            },
+          },
+        ],
+      },
+    })
+    render(<BackupsTab />, { wrapper })
+
+    expect(await screen.findByText(/database: verified/i)).toBeInTheDocument()
+    expect(
+      screen.getByText(/attachments: not restorable/i),
+    ).toBeInTheDocument()
+  })
+
+  it("labels each outcome line, so a never-run family is not read as the other", async () => {
+    // The dump verified on disk, the tarball failed on disk, nas ran neither.
+    // Unlabelled, the disk row reads `verified ...` then `the tarball is torn`
+    // and the nas row reads `no run yet no run yet` -- an operator cannot tell
+    // which artefact either verdict belongs to.
+    routes({
+      "/events?event_type=backup_shipped&limit=50": {
+        items: [
+          {
+            id: 4,
+            created_at: "2026-09-01T04:30:00Z",
+            event_type: "backup_shipped",
+            object_type: "system",
+            object_id: null,
+            project: null,
+            actor: null,
+            api_key_id: null,
+            source: "backup_ship",
+            payload: { destination: "disk", file: "darkmem-app-x.sql.gz" },
+          },
+        ],
+        total: 1,
+      },
+      "/events?event_type=backup_verify_failed&limit=50": {
+        items: [
+          {
+            id: 5,
+            created_at: "2026-09-01T04:31:00Z",
+            event_type: "backup_verify_failed",
+            object_type: "system",
+            object_id: null,
+            project: null,
+            actor: null,
+            api_key_id: null,
+            source: "backup_ship",
+            payload: {
+              destination: "disk",
+              family: "attachments",
+              file: "darkmem-app-attachments-x.tar.gz.age",
+              error: "the tarball is torn",
+            },
+          },
+        ],
+        total: 1,
+      },
+    })
+    render(<BackupsTab />, { wrapper })
+
+    expect(await screen.findByText(/database: verified/i)).toBeInTheDocument()
+    expect(
+      screen.getByText(/attachments: the tarball is torn/i),
+    ).toBeInTheDocument()
+    expect(screen.getByText("database: no run yet")).toBeInTheDocument()
+    expect(screen.getByText("attachments: no run yet")).toBeInTheDocument()
+  })
 })
