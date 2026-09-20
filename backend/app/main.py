@@ -687,6 +687,11 @@ async def lifespan(app: FastAPI):
 # nginx's own values, moved rather than retuned: the nginx-in-image fallback
 # (doc 03 section 3.2) must present the same policy as the app-as-edge build,
 # and a value that drifts here makes the two postures disagree.
+#
+# `img-src` is the one deliberate retune. A page block may hold an external
+# image, which the original policy blocked outright. `http:` is left out: the
+# LAN deployment serves plain HTTP, and allowing cleartext image loads would
+# let a pasted note beacon a third party in the clear.
 SECURITY_HEADERS = (
     ("x-frame-options", "DENY"),
     ("x-content-type-options", "nosniff"),
@@ -694,7 +699,7 @@ SECURITY_HEADERS = (
     (
         "content-security-policy",
         "default-src 'self'; script-src 'self'; worker-src 'self' blob:; "
-        "style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+        "style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; "
         "font-src 'self' data:; connect-src 'self' ws: wss:; object-src 'none'; "
         "frame-ancestors 'none'; base-uri 'self'",
     ),
