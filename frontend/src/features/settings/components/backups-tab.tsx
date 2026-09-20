@@ -18,6 +18,7 @@ import {
   MASKED,
   type BackupDestination,
   type DestinationInventory,
+  type InventoryOutcome,
 } from "@/hooks/api/use-backups-api"
 import {
   outcomeKey,
@@ -156,6 +157,11 @@ export function BackupsTab() {
                   recentOutcomes.get(outcomeKey(destination.name, "dump")) ??
                   null
                 }
+                attachmentOutcome={
+                  recentOutcomes.get(
+                    outcomeKey(destination.name, "attachments"),
+                  ) ?? null
+                }
                 busy={isSaving}
                 onToggle={(enabled) => toggle(destination, enabled)}
                 onEdit={() => {
@@ -223,21 +229,11 @@ function InventorySection({ inventory }: { inventory: DestinationInventory[] }) 
             <Badge variant="outline" size="sm" className="font-mono">
               {row.kind}
             </Badge>
-            {row.last_outcome ? (
-              <Badge
-                variant="outline"
-                size="sm"
-                className={
-                  row.last_outcome.event_type === "backup_shipped"
-                    ? ""
-                    : "border-dashed"
-                }
-              >
-                {row.last_outcome.event_type === "backup_shipped"
-                  ? "verified"
-                  : "not restorable"}
-              </Badge>
-            ) : null}
+            <OutcomeBadge outcome={row.last_outcome} label="database" />
+            <OutcomeBadge
+              outcome={row.last_attachment_outcome}
+              label="attachments"
+            />
           </div>
           {row.error ? (
             <p className="text-destructive text-sm">{row.error}</p>
@@ -246,6 +242,23 @@ function InventorySection({ inventory }: { inventory: DestinationInventory[] }) 
           ) : (
             <ul className="text-muted-foreground space-y-0.5 text-sm">
               {[...row.snapshots]
+                .sort((a, b) => b.name.localeCompare(a.name))
+                .map((snapshot) => (
+                  <li key={snapshot.name} className="flex flex-wrap gap-2">
+                    <span className="font-mono">{snapshot.name}</span>
+                    <span>{formatBytes(snapshot.size)}</span>
+                    <span>{new Date(snapshot.modified_at).toLocaleString()}</span>
+                  </li>
+                ))}
+            </ul>
+          )}
+          {row.error ? null : row.attachment_snapshots.length === 0 ? (
+            <p className="text-muted-foreground text-sm">
+              no attachment tarballs yet
+            </p>
+          ) : (
+            <ul className="text-muted-foreground space-y-0.5 text-sm">
+              {[...row.attachment_snapshots]
                 .sort((a, b) => b.name.localeCompare(a.name))
                 .map((snapshot) => (
                   <li key={snapshot.name} className="flex flex-wrap gap-2">
@@ -282,15 +295,36 @@ function InventorySection({ inventory }: { inventory: DestinationInventory[] }) 
   )
 }
 
+/** One family's verdict. Two badges rather than one, because the dump and the
+ *  attachment tarball ship and fail independently and an operator choosing a
+ *  snapshot needs both answers. */
+function OutcomeBadge({
+  outcome,
+  label,
+}: {
+  outcome: InventoryOutcome | null
+  label: string
+}) {
+  if (!outcome) return null
+  const verified = outcome.event_type === "backup_shipped"
+  return (
+    <Badge variant="outline" size="sm" className={verified ? "" : "border-dashed"}>
+      {label}: {verified ? "verified" : "not restorable"}
+    </Badge>
+  )
+}
+
 function DestinationRow({
   destination,
   outcome,
+  attachmentOutcome,
   busy,
   onToggle,
   onEdit,
 }: {
   destination: BackupDestination
   outcome: BackupOutcome | null
+  attachmentOutcome: BackupOutcome | null
   busy: boolean
   onToggle: (enabled: boolean) => void
   onEdit: () => void
@@ -310,6 +344,7 @@ function DestinationRow({
         </Badge>
       ) : null}
       <OutcomeLine outcome={outcome} />
+      <OutcomeLine outcome={attachmentOutcome} />
       <div className="ml-auto flex items-center gap-2">
         <Switch
           checked={destination.enabled}
@@ -380,6 +415,26 @@ function DestinationForm({
           value={String(draft.retention_keep)}
           onChange={(e) =>
             setDraft({ ...draft, retention_keep: Number(e.target.value) || 0 })
+          }
+        />
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <Label
+          htmlFor="backup-attachment-keep"
+          className="text-muted-foreground text-sm"
+        >
+          Attachment tarballs to keep
+        </Label>
+        <Input
+          id="backup-attachment-keep"
+          inputMode="numeric"
+          value={String(draft.attachments_retention_keep)}
+          onChange={(e) =>
+            setDraft({
+              ...draft,
+              attachments_retention_keep: Number(e.target.value) || 0,
+            })
           }
         />
       </div>

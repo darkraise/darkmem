@@ -40,6 +40,7 @@ const LOCAL = {
   kind: "local" as const,
   enabled: true,
   retention_keep: 14,
+  attachments_retention_keep: 3,
   age_recipient: null,
   ssh: null,
   s3: null,
@@ -50,6 +51,7 @@ const NAS = {
   kind: "ssh" as const,
   enabled: true,
   retention_keep: 30,
+  attachments_retention_keep: 3,
   age_recipient: "age1qqqqexample",
   ssh: {
     host: "192.0.2.10",
@@ -154,7 +156,7 @@ describe("BackupsTab", () => {
     render(<BackupsTab />, { wrapper })
 
     fireEvent.click(await screen.findByRole("button", { name: /edit nas/i }))
-    fireEvent.change(await screen.findByLabelText(/keep/i), {
+    fireEvent.change(await screen.findByLabelText(/snapshots to keep/i), {
       target: { value: "45" },
     })
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }))
@@ -217,6 +219,7 @@ describe("BackupsTab", () => {
             kind: "local",
             enabled: true,
             retention_keep: 14,
+            attachments_retention_keep: 3,
             snapshots: [
               {
                 name: "darkmem-app-20260101-000000.sql.gz",
@@ -224,12 +227,14 @@ describe("BackupsTab", () => {
                 modified_at: "2026-01-01T00:00:00Z",
               },
             ],
+            attachment_snapshots: [],
             last_outcome: {
               event_type: "backup_shipped",
               at: "2026-01-01T00:00:00Z",
               sha256: "a".repeat(64),
               error: null,
             },
+            last_attachment_outcome: null,
             error: null,
           },
         ],
@@ -254,6 +259,7 @@ describe("BackupsTab", () => {
             kind: "local",
             enabled: true,
             retention_keep: 14,
+            attachments_retention_keep: 3,
             snapshots: [
               {
                 name: "darkmem-app-20260101-000000.sql.gz",
@@ -261,7 +267,9 @@ describe("BackupsTab", () => {
                 modified_at: "2026-01-01T00:00:00Z",
               },
             ],
+            attachment_snapshots: [],
             last_outcome: null,
+            last_attachment_outcome: null,
             error: null,
           },
           {
@@ -269,8 +277,11 @@ describe("BackupsTab", () => {
             kind: "ssh",
             enabled: true,
             retention_keep: 30,
+            attachments_retention_keep: 3,
             snapshots: [],
+            attachment_snapshots: [],
             last_outcome: null,
+            last_attachment_outcome: null,
             error: "the NAS is unplugged",
           },
         ],
@@ -296,6 +307,7 @@ describe("BackupsTab", () => {
             kind: "local",
             enabled: true,
             retention_keep: 14,
+            attachments_retention_keep: 3,
             snapshots: [
               {
                 name: "darkmem-app-20260101-000000.sql.gz",
@@ -303,7 +315,9 @@ describe("BackupsTab", () => {
                 modified_at: "2026-01-01T00:00:00Z",
               },
             ],
+            attachment_snapshots: [],
             last_outcome: null,
+            last_attachment_outcome: null,
             error: null,
           },
         ],
@@ -436,5 +450,83 @@ describe("outcome keying", () => {
       result.current.recentOutcomes.get(outcomeKey("disk", "attachments"))
         ?.event_type,
     ).toBe("backup_verify_failed")
+  })
+})
+
+const INVENTORY_ROW = {
+  name: "disk",
+  kind: "local" as const,
+  enabled: true,
+  retention_keep: 14,
+  attachments_retention_keep: 3,
+  snapshots: [
+    {
+      name: "darkmem-app-20260101-000000.sql.gz",
+      size: 10,
+      modified_at: "2026-01-01T00:00:00Z",
+    },
+  ],
+  attachment_snapshots: [],
+  last_outcome: null,
+  last_attachment_outcome: null,
+  error: null,
+}
+
+describe("the attachment family on the tab", () => {
+  it("lists attachment tarballs beside the dumps", async () => {
+    routes({
+      "/backups/inventory": {
+        destinations: [
+          {
+            ...INVENTORY_ROW,
+            attachment_snapshots: [
+              {
+                name: "darkmem-app-attachments-20260101-000000.tar.gz",
+                size: 20,
+                modified_at: "2026-01-01T00:00:00Z",
+              },
+            ],
+          },
+        ],
+      },
+    })
+    render(<BackupsTab />, { wrapper })
+
+    expect(
+      await screen.findByText("darkmem-app-attachments-20260101-000000.tar.gz"),
+    ).toBeInTheDocument()
+  })
+
+  it("says when a destination holds dumps but no tarball", async () => {
+    routes({ "/backups/inventory": { destinations: [INVENTORY_ROW] } })
+    render(<BackupsTab />, { wrapper })
+
+    expect(
+      await screen.findByText(/no attachment tarballs yet/i),
+    ).toBeInTheDocument()
+  })
+
+  it("edits the attachment retention", async () => {
+    const fetchMock = routes()
+    render(<BackupsTab />, { wrapper })
+
+    fireEvent.click(await screen.findByRole("button", { name: /edit disk/i }))
+    fireEvent.change(
+      await screen.findByLabelText(/attachment tarballs to keep/i),
+      { target: { value: "5" } },
+    )
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }))
+
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === "PUT",
+      )
+      expect(put).toBeDefined()
+      const body = JSON.parse((put![1] as RequestInit).body as string)
+      const disk = body.destinations.find(
+        (d: { name: string }) => d.name === "disk",
+      )
+      expect(disk.attachments_retention_keep).toBe(5)
+    })
   })
 })
