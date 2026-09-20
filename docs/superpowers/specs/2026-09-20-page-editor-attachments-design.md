@@ -408,3 +408,20 @@ sub-project 4 needs for the import run anyway and can carry.
   The `"file"` fallback *name* is load-bearing and is kept.
 - **Background colour is a defect this change introduces.** It is
   pre-existing for every paragraph and is recorded rather than fixed (§5).
+
+## 13. Not pinned, deliberately
+
+§3 rests on a claim about BlockNote's MIME matcher — that the `file` spec's
+`*/*` accept matches nothing but an exactly equal type, so schema order cannot
+turn a dropped PNG into a file block. §10 asked for a test pinning the
+behaviour (a dropped PNG becomes an `image`, a dropped PDF a `file`) rather
+than the order.
+
+That test is **not written**. The matcher is not exported, so a test can only
+reach it by dispatching a synthetic drop event with a constructed
+`DataTransfer` through jsdom, which pins the harness's event plumbing at least
+as much as the library. What is pinned instead is each spec's declared
+`fileBlockAccept`, which is the input the matcher reads. The residual exposure
+is narrow and named: a BlockNote release that changed the matcher so `*/*`
+began matching everything would make schema order load-bearing again, and
+nothing in this tree would go red. Re-read §3 on an upgrade.
