@@ -3,6 +3,7 @@ import "./page-editor.css"
 import {
   BasicTextStyleButton,
   CreateLinkButton,
+  FileDownloadButton,
   FormattingToolbar,
   FormattingToolbarController,
   SuggestionMenuController,
@@ -65,6 +66,11 @@ export function PageEditor({ initialBlocks, editable, pageId, onDocumentChange, 
                   <BasicTextStyleButton basicTextStyle="code" />
                   <BasicTextStyleButton basicTextStyle="strike" />
                   <CreateLinkButton />
+                  {/* Without this an uploaded file is unreachable: the block
+                      renderer draws an inert name and icon, and the anchor
+                      that opens the url exists only in exported HTML. It
+                      renders for a file or image block and nothing else. */}
+                  <FileDownloadButton />
                 </FormattingToolbar>
               )}
             />

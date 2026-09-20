@@ -51,3 +51,10 @@
 .bn-container.bn-shadcn [data-content-type="codeBlock"] > div > select {
   color: hsl(var(--muted-foreground));
 }
+
+/* `previewWidth` has no place in the markdown a block is stored as, so a
+   resize would be silently lost on the next reload. `display: none` also
+   takes the handle out of the pointer path, so the prop can never move. */
+.bn-container.bn-shadcn .bn-resize-handle {
+  display: none;
+}
