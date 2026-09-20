@@ -135,6 +135,35 @@ def test_a_cell_holding_a_pipe_is_escaped(tmp_path):
     assert r"a\|b" in content
 
 
+def test_a_cell_holding_a_newline_stays_on_its_row(tmp_path):
+    entries = [
+        Entry("Board 00000000000000000000000000000021.md",
+              b"# Board\n\n[T](T%201507-2c1e_all.csv)\n"),
+        Entry("T 1507-2c1e_all.csv",
+              "﻿Name,Note\n\"a\nb\",two\n".encode("utf-8")),
+    ]
+    blocks, content, _, _, _ = _render("Board", entries, tmp_path)
+    rows = [b for b in blocks if b.type == "table_row"]
+    assert len(rows) == 1
+    assert (rows[0].properties or {})["cells"] == ["a b", "two"]
+    assert "| a b | two |" in content
+
+
+def test_a_callout_holding_a_list_keeps_it_as_following_siblings(tmp_path):
+    entries = [
+        Entry("A 00000000000000000000000000000001.md",
+              b"# A\n\n<aside>\nHeads up.\n\n- first\n- second\n</aside>\n\nAfter.\n"),
+    ]
+    blocks, _, _, _, _ = _render("A", entries, tmp_path)
+    callout = next(b for b in blocks if b.type == "callout")
+    assert [b.parent_id for b in blocks if b.type == "list"] == [None, None]
+    assert [b.type for b in blocks] == [
+        "callout", "list", "list", "paragraph",
+    ]
+    assert [b.text for b in blocks if b.type == "list"] == ["first", "second"]
+    assert blocks.index(callout) == 0
+
+
 def test_a_row_page_property_block_becomes_a_bullet_list(tmp_path):
     blocks, content, _, _, _ = _render("Ship", DATABASE_EXPORT, tmp_path)
     assert content.startswith("- Status: Open")

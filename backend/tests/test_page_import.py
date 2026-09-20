@@ -157,6 +157,33 @@ async def test_an_oversize_attachment_is_warned_about_once(
 
 
 @pytest.mark.asyncio
+async def test_an_attachment_two_pages_share_is_stored_once(
+    session, attachments_dir, tmp_path
+):
+    entries = [
+        Entry("A 00000000000000000000000000000001.md", b"# A\n\n![shot](image.png)\n"),
+        Entry("B 00000000000000000000000000000002.md", b"# B\n\n![shot](image.png)\n"),
+        Entry("image.png", PNG),
+    ]
+    report = await _run(session, tmp_path, entries=entries)
+    assert report.attachments_stored == 1
+    rows = (
+        await session.execute(
+            text("SELECT id FROM page_attachments WHERE project = 'notes'")
+        )
+    ).scalars().all()
+    assert len(rows) == 1
+    assert len([p for p in attachments_dir.rglob("*") if p.is_file()]) == 1
+    contents = (
+        await session.execute(
+            text("SELECT content FROM pages WHERE title IN ('A', 'B') ORDER BY title")
+        )
+    ).scalars().all()
+    url = f"/api/v1/pages/attachments/{rows[0]}"
+    assert [url in c for c in contents] == [True, True]
+
+
+@pytest.mark.asyncio
 async def test_the_journal_records_one_import(session, attachments_dir, tmp_path):
     report = await _run(session, tmp_path)
     payload = (
