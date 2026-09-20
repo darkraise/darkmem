@@ -105,6 +105,98 @@ export async function apiFetch<T>(
   return (await apiFetchWithHeaders<T>(path, options)).data
 }
 
+export interface ApiUploadOptions {
+  headers?: Record<string, string>
+  /** Fraction of the body sent, 0 to 1. Fires only while the length is known. */
+  onProgress?: (fraction: number) => void
+  signal?: AbortSignal
+}
+
+/** `apiFetch` for a request whose upload progress matters.
+ *
+ *  XHR rather than `fetch` for one reason: `fetch` reports no upload progress,
+ *  and an import body can be hundreds of megabytes. Everything else here
+ *  mirrors `apiFetchWithHeaders` deliberately — the base path, the credentials,
+ *  the 401 handling and the `ApiError` shape — so a caller cannot tell the two
+ *  transports apart from its error handling.
+ */
+export function apiUpload<T>(
+  path: string,
+  body: Blob,
+  options: ApiUploadOptions = {},
+): Promise<T> {
+  const { headers = {}, onProgress, signal } = options
+  return new Promise<T>((resolve, reject) => {
+    // An already-aborted signal fires no "abort" event, so the listener below
+    // would never run and the body would go out anyway.
+    if (signal?.aborted) {
+      reject(new ApiError("The upload was cancelled", 0))
+      return
+    }
+    const xhr = new XMLHttpRequest()
+    xhr.open("POST", `${API_BASE}${path}`)
+    xhr.withCredentials = true
+    for (const [key, value] of Object.entries(headers)) {
+      xhr.setRequestHeader(key, value)
+    }
+
+    if (onProgress) {
+      xhr.upload.onprogress = (event: ProgressEvent) => {
+        if (event.lengthComputable && event.total > 0) {
+          onProgress(event.loaded / event.total)
+        }
+      }
+    }
+
+    const onAbort = () => xhr.abort()
+    signal?.addEventListener("abort", onAbort)
+    const done = () => signal?.removeEventListener("abort", onAbort)
+
+    xhr.onload = () => {
+      done()
+      if (xhr.status === 401) {
+        handleUnauthorized()
+        reject(new ApiError("Unauthorized", 401))
+        return
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(
+            (xhr.responseText ? JSON.parse(xhr.responseText) : undefined) as T,
+          )
+        } catch {
+          reject(
+            new ApiError("The server sent a malformed response", xhr.status),
+          )
+        }
+        return
+      }
+      let message = `API error: ${xhr.status}`
+      let details: unknown[] | undefined
+      try {
+        const parsed = JSON.parse(xhr.responseText) as {
+          detail?: string
+          error?: { details?: unknown[] }
+        }
+        message = parsed.detail || message
+        details = parsed.error?.details
+      } catch {
+        // A non-JSON body (an nginx page, an empty 502) keeps the status text.
+      }
+      reject(new ApiError(message, xhr.status, details))
+    }
+    xhr.onerror = () => {
+      done()
+      reject(new ApiError("The upload could not reach the server", 0))
+    }
+    xhr.onabort = () => {
+      done()
+      reject(new ApiError("The upload was cancelled", 0))
+    }
+    xhr.send(body)
+  })
+}
+
 export async function checkSetupStatus(): Promise<{ initialized: boolean }> {
   const response = await fetch(`${API_BASE}/setup/status`, {
     credentials: "include",
