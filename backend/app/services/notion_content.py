@@ -417,9 +417,13 @@ def translate_page(
         warn(entry_name, "stripped_source",
              "link-reference definitions were inlined; a page cannot hold them")
 
-    bullets: list[str] = []
+    # Before the rewrites below, not after: a relation property holds an export
+    # link like any other line, and a bullet added past the rewrite would keep
+    # its relative target and resolve to nothing.
     if node.row_of is not None:
         bullets, source = _property_lines(source)
+        if bullets:
+            source = "\n".join(bullets) + ("\n\n" + source if source.strip() else "")
 
     if node.database_csv is not None:
         info = tree.databases[node.database_csv]
@@ -438,8 +442,6 @@ def translate_page(
 
     source = _rewrite_asides(source)
     source = _rewrite_links(source, node, tree, assets=assets, warn=warn)
-    if bullets:
-        source = "\n".join(bullets) + ("\n\n" + source if source.strip() else "")
 
     parsed = _flatten_headings(_parse(source)) if source.strip() else []
     # `_post_parse` re-parents a callout's children onto its own parent, so the

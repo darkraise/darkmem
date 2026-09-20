@@ -141,6 +141,38 @@ def test_a_row_page_property_block_becomes_a_bullet_list(tmp_path):
     assert blocks[0].type == "list"
 
 
+def test_a_property_bullet_keeps_no_raw_export_target(tmp_path):
+    entries = [
+        Entry("Board 00000000000000000000000000000021.md",
+              b"# Board\n\n[Tasks](Tasks%201507-2c1e_all.csv)\n"),
+        Entry("Tasks 1507-2c1e_all.csv",
+              "﻿Name,Project\nShip,Website\n".encode("utf-8")),
+        Entry("Ship 00000000000000000000000000000023.md",
+              b"# Ship\n\nProject: [Website]"
+              b"(Website%2000000000000000000000000000000024.md)\n\nBody.\n"),
+        Entry("Website 00000000000000000000000000000024.md", b"# Website\n\nBody.\n"),
+    ]
+    _, content, _, tree, _ = _render("Ship", entries, tmp_path)
+    website = next(n for n in tree.pages if n.title == "Website")
+    assert f"- Project: [Website](/notes?page={website.uuid})" in content
+    assert ".md)" not in content
+
+
+def test_a_property_bullet_link_to_nothing_is_warned(tmp_path):
+    entries = [
+        Entry("Board 00000000000000000000000000000021.md",
+              b"# Board\n\n[Tasks](Tasks%201507-2c1e_all.csv)\n"),
+        Entry("Tasks 1507-2c1e_all.csv",
+              "﻿Name,Project\nShip,Gone\n".encode("utf-8")),
+        Entry("Ship 00000000000000000000000000000023.md",
+              b"# Ship\n\nProject: [Gone]"
+              b"(Gone%2000000000000000000000000000000099.md)\n\nBody.\n"),
+    ]
+    _, content, warnings, _, _ = _render("Ship", entries, tmp_path)
+    assert any(w[1] == "unresolved_link" for w in warnings)
+    assert "- Project: Gone" in content
+
+
 def test_a_page_over_the_block_bound_is_truncated(tmp_path):
     body = "\n\n".join(f"para {i}" for i in range(50))
     entries = [
