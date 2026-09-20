@@ -64,6 +64,15 @@ if [ -n "$FROM" ]; then
     # /dumps is a bind mount, so the container path maps onto the host.
     BACKUP_FILE="$DUMP_DIR/$(basename "$CONTAINER_PATH")"
     echo "Pulled $BACKUP_FILE"
+    # The dump is half a backup. Naming the exact command here rather than in
+    # the runbook alone, because this is where the operator already is.
+    echo
+    echo "This restores the database only. For its attachments, run:"
+    echo "  $COMPOSE exec -T $APP_SERVICE python -m app.services.backup_pull \\"
+    echo "      --destination $FROM --paired-with $(basename "$CONTAINER_PATH") --out /dumps"
+    echo "  then unpack it (docs/runbook-deployment.md, Attachments), and run"
+    echo "  $COMPOSE exec -T $APP_SERVICE python -m app.services.attachment_verify"
+    echo
 fi
 
 [ -n "$BACKUP_FILE" ] || { echo "usage: restore.sh BACKUP_FILE.sql.gz | --from DESTINATION" >&2; exit 1; }

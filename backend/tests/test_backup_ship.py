@@ -1023,12 +1023,14 @@ class _PullSource:
         self._files = files
         self._sha = sha
 
-    async def list_snapshots(self):
+    async def list_snapshots(self, family=None):
+        family = family or backup_ship.DUMPS
         return [
             backup_ship.SnapshotInfo(
-                name=n, size=len(b), modified_at=backup_ship._stamp_of(n)
+                name=n, size=len(b), modified_at=family.stamp_datetime(n)
             )
             for n, b in sorted(self._files.items())
+            if family.matches(n)
         ]
 
     async def read_back_sha256(self, name):

@@ -24,7 +24,8 @@ import os
 import sys
 from pathlib import Path
 
-from app.services.backup_ship import build_destination
+from app.services.attachment_archive import ATTACHMENTS, DUMPS, Family
+from app.services.backup_ship import SnapshotInfo, build_destination
 
 _CHUNK = 1 << 16
 
@@ -58,16 +59,42 @@ async def _destination_for(name: str):
     return build_destination(match)
 
 
-async def pull(destination, *, name: str | None, out_dir: Path) -> Path:
+async def paired_name(destination, dump_name: str) -> str:
+    """The attachment tarball that goes with `dump_name`.
+
+    The newest set captured at or before the dump. Correct because an unchanged
+    set writes no tarball, so the newest at or before a dump is what was live
+    when it was taken. The stamp is zero-padded and big-endian, so this is a
+    lexical comparison and no mtime is trusted.
+    """
+    stamp = DUMPS.stamp_of(dump_name)
+    if stamp is None:
+        raise SnapshotNotFound(f"{dump_name!r} is not a dump this job produced")
+    candidates = [
+        s.name
+        for s in await destination.list_snapshots(ATTACHMENTS)
+        if (ATTACHMENTS.stamp_of(s.name) or "") <= stamp
+    ]
+    if not candidates:
+        raise SnapshotNotFound(
+            f"{destination.name} holds no attachment tarball at or before "
+            f"{stamp}; restoring this dump serves rows whose files are gone"
+        )
+    return max(candidates)
+
+
+async def pull(
+    destination, *, name: str | None, out_dir: Path, family: Family = DUMPS
+) -> Path:
     """Download one snapshot into `out_dir`, verified, and return its path.
 
     `name=None` means the newest, resolved by the stamp in the filename: it is
     zero-padded and big-endian, so lexical order is chronological and no
     destination's idea of an mtime is trusted (a copy resets one).
     """
-    snapshots = await destination.list_snapshots()
+    snapshots = await destination.list_snapshots(family)
     if not snapshots:
-        raise SnapshotNotFound(f"{destination.name} holds no snapshots")
+        raise SnapshotNotFound(f"{destination.name} holds no {family.prefix}* artefact")
 
     if name is None:
         chosen = max(snapshots, key=lambda s: s.name).name
@@ -116,13 +143,33 @@ async def _main(argv: list[str] | None = None) -> int:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--latest", action="store_true", help="the newest snapshot")
     group.add_argument("--name", help="one snapshot by name")
+    parser.add_argument(
+        "--family", choices=("dump", "attachments"), default="dump",
+        help="which artefact family to fetch",
+    )
+    group.add_argument(
+        "--paired-with",
+        help="the dump whose attachment tarball to fetch (implies --family attachments)",
+    )
     parser.add_argument("--out", default="/dumps", help="directory to write into")
     args = parser.parse_args(argv)
 
     destination = await _destination_for(args.destination)
-    path = await pull(
-        destination, name=None if args.latest else args.name, out_dir=Path(args.out)
-    )
+    if args.paired_with:
+        path = await pull(
+            destination,
+            name=await paired_name(destination, args.paired_with),
+            out_dir=Path(args.out),
+            family=ATTACHMENTS,
+        )
+    else:
+        family = ATTACHMENTS if args.family == "attachments" else DUMPS
+        path = await pull(
+            destination,
+            name=None if args.latest else args.name,
+            out_dir=Path(args.out),
+            family=family,
+        )
     # The shell contract: the path is the LAST line, so a caller can `tail -1`
     # it without parsing anything the client library might log above.
     print(path)
