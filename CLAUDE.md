@@ -1546,6 +1546,14 @@ the REST case alone.
   also serves git subprocesses, code parsing and local classification. There
   are no `LLM_*` env vars — all LLM config lives in the DB via the setup
   wizard.
+  `SECURITY_HEADERS`' `img-src` is `'self' data: https:` — widened from
+  `'self' data:` so a page block may render an external image, and
+  `frontend/nginx.conf` carries the same value character for character
+  (`tests/test_edge_response_policy.py` compares them). `http:` is deliberately
+  absent: the LAN deployment serves plain HTTP, so a cleartext image load would
+  let a pasted note beacon a third party in the clear. The cost is that any
+  `https:` image in a note reaches its host with the operator's IP when the page
+  opens, bounded by the existing `referrer-policy: strict-origin-when-cross-origin`.
 
 ## Live model endpoints (dev machine)
 
@@ -1999,6 +2007,14 @@ starts sending writes the server refuses. Inline markdown the editor cannot
 show (inline HTML, images, autolinks, titled links, hard breaks) rides as a
 `rawInline` atom written back byte for byte, and `emitInline` is idempotent by
 construction — it drops marks until its output reads back as its input.
+A paragraph that is exactly one image, or one link to an attachment, is shown
+as a BlockNote `image` or `file` block and stored as that same markdown in the
+block's own text — which is what the `page_attachment_cleanup` reference scan
+reads, so the mapping and that job's pattern move together. Upload runs through
+`POST /api/v1/pages/{id}/attachments` from paste, drag-drop and the slash menu;
+an upload in flight is counted outside the sync tree, because a block with no
+url yet is in no tree and the unload warning would otherwise stay silent. The
+CSP's `img-src` carries `https:` for external images, deliberately not `http:`.
 `ProjectWorkspace` lost `treeManagement` in B2 and is the corpus browser
 again. The cost is stated rather than discovered: **the personal
 project's documents are now visible nowhere in the SPA** — `/documents` and the
