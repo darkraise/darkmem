@@ -14,6 +14,7 @@ from __future__ import annotations
 import gzip
 import os
 import subprocess
+import tarfile
 import time
 from pathlib import Path
 
@@ -252,6 +253,10 @@ def test_a_changed_manifest_writes_a_tarball_and_a_sidecar(dest, tmp_path):
     assert (dest / f"{tarball.name}.manifest").read_text().strip() == MANIFEST_A
     assert len(_dumps(dest)) == 1
     assert not list(dest.glob("*.part"))
+    # The name is a promise about the content: an empty or non-gzip archive
+    # renamed into place would read as current on every later night.
+    with tarfile.open(tarball, "r:gz") as archive:
+        assert [m.name for m in archive.getmembers() if m.isfile()], "no members"
 
 
 def test_an_unchanged_manifest_writes_no_second_tarball(dest, tmp_path):
