@@ -114,6 +114,16 @@ class Settings(BaseSettings):
     # named volume at /app/data/attachments and sets ATTACHMENTS_DIR to it.
     attachments_dir: str = "./data/attachments"
     attachment_max_bytes: int = 52_428_800
+    # Notion import ceilings. Operator-level limits rather than job config:
+    # no job exists here, and FieldDescriptor.default is typed int anyway.
+    # The measured real export is 34.5 MB / 2260 entries / 2193 pages.
+    notion_import_max_bytes: int = 1_073_741_824
+    notion_import_max_entries: int = 50_000
+    notion_import_max_uncompressed_bytes: int = 5_368_709_120
+    notion_import_max_pages: int = 10_000
+    # Bounds the plan's peak memory, which is held entirely in the process.
+    notion_import_max_blocks: int = 250_000
+    notion_import_max_seconds: int = 900
 
     @model_validator(mode="after")
     def _check_jwt_secret(self):

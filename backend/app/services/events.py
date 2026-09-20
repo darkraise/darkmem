@@ -193,6 +193,9 @@ EVENT_TYPES: list[str] = [
     "page_deleted",
     "page_restored",
     "page_purged",
+    # One row per import, on its root page. Non-strict: the import is
+    # re-runnable, so a lost row costs an audit line, not a denominator.
+    "pages_imported",
     # The block-embedding backstop job's run summary (T-doc-door.6). Landed
     # ahead of its emitter, taxonomy-first, same as every other value here.
     "block_embeddings_refreshed",
