@@ -166,6 +166,9 @@ fi
 
 SERVING_GEN=""
 [ -L "$ATTACHMENT_STORE/current" ] && SERVING_GEN="$(readlink "$ATTACHMENT_STORE/current")"
+# A link whose generation was removed serves nothing; reading it as "already
+# serving" would freeze the attachment half on a directory that is not there.
+[ -n "$SERVING_GEN" ] && [ ! -d "$ATTACHMENT_STORE/$SERVING_GEN" ] && SERVING_GEN=""
 WANT_GEN=""
 [ -n "$PAIRED" ] && WANT_GEN="gen-$PAIRED_STAMP"
 
@@ -184,7 +187,7 @@ if [ "$NEWEST" = "$SERVING" ]; then
     unpack_generation
     swap_generation
     prune_generations
-    echo "Now serving $NEWEST and ${WANT_GEN:-no attachment generation}."
+    echo "Now serving $NEWEST and ${WANT_GEN:-${SERVING_GEN:-no attachment generation}}."
     exit 0
 fi
 

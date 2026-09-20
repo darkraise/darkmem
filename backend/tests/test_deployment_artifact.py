@@ -18,6 +18,7 @@ from __future__ import annotations
 import gzip
 import os
 import re
+import shutil
 import subprocess
 import tarfile
 from pathlib import Path
@@ -835,6 +836,19 @@ def test_the_attachments_only_path_leaves_the_database_alone(tmp_path):
     assert os.readlink(_store(tmp_path) / "current") == "gen-20260102-000000"
     assert not any("stop" in " ".join(fields) for fields in records)
     assert not any("ALTER" in " ".join(fields) for fields in records)
+
+
+def test_a_dangling_current_is_repaired_not_read_as_already_served(tmp_path):
+    attachments = (("20260101-000000", "first"),)
+    _run_cycle(tmp_path, snapshot=DUMP_0102, attachments=attachments)
+    served = _store(tmp_path) / "gen-20260101-000000"
+    shutil.rmtree(served)
+    assert os.readlink(_store(tmp_path) / "current") == "gen-20260101-000000"
+
+    result, _, _ = _run_cycle(tmp_path, snapshot=DUMP_0102, attachments=attachments)
+
+    assert result.returncode == 0, result.stderr
+    assert (served / "ab" / "marker").read_text() == "first"
 
 
 def test_the_cycle_removes_the_generations_it_replaced(tmp_path):
