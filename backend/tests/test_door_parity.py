@@ -1579,6 +1579,22 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "content. An MCP twin later is additive and an owner decision."
         ),
     ),
+    Surface(
+        name="pages.import",
+        status=REST_ONLY,
+        rest=(("POST", f"{V1}/pages/import/notion"),),
+        mcp=(),
+        reason=(
+            "The Notion import. Single-door for the same reason pages.write "
+            "is: the page tree is the operator's authored space, and an agent "
+            "that could import a whole workspace into it is a capability "
+            "nobody asked for. It is also not an agent shape -- the caller "
+            "supplies a zip from their own filesystem, which neither the SPA's "
+            "sibling doors nor the generated SDK model. Nothing here generates "
+            "or labels content, so no eval gate is in play; an MCP twin later "
+            "is additive and an owner decision."
+        ),
+    ),
 )
 
 
