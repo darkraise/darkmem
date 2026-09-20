@@ -159,6 +159,48 @@ describe("NotionImportDialog", () => {
     expect(screen.getByRole("button", { name: /import/i })).toBeEnabled()
   })
 
+  it("reopens onto a fresh picker after a success was dismissed", async () => {
+    importNotionExport.mockResolvedValue({
+      root_page_id: "root-123", pages_created: 1, databases: 0,
+      attachments_stored: 0, attachment_bytes: 0, warnings: [], warnings_omitted: 0,
+    })
+    const { rerender } = render(
+      <NotionImportDialog
+        project="notes"
+        open
+        onOpenChange={vi.fn()}
+        onImported={vi.fn()}
+      />,
+    )
+    pick()
+    fireEvent.click(screen.getByRole("button", { name: /^import$/i }))
+    await screen.findByRole("button", { name: /go to imported pages/i })
+
+    rerender(
+      <NotionImportDialog
+        project="notes"
+        open={false}
+        onOpenChange={vi.fn()}
+        onImported={vi.fn()}
+      />,
+    )
+    rerender(
+      <NotionImportDialog
+        project="notes"
+        open
+        onOpenChange={vi.fn()}
+        onImported={vi.fn()}
+      />,
+    )
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: /go to imported pages/i }),
+      ).not.toBeInTheDocument(),
+    )
+    expect(screen.getByRole("button", { name: /^import$/i })).toBeDisabled()
+  })
+
   it("disables the import button with no file chosen", () => {
     open()
     expect(screen.getByRole("button", { name: /import/i })).toBeDisabled()

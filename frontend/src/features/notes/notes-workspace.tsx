@@ -283,7 +283,10 @@ export function NotesWorkspace({
       <NotionImportDialog
         project={project}
         open={importing}
-        onOpenChange={setImporting}
+        onOpenChange={(next) => {
+          setImporting(next)
+          if (!next) invalidatePageLists(qc)
+        }}
         onImported={(rootPageId) => {
           setImporting(false)
           invalidatePageLists(qc)

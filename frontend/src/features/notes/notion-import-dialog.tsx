@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "darkraise-ui/components/button"
 import {
   Dialog,
@@ -46,6 +46,15 @@ export function NotionImportDialog({
   const [file, setFile] = useState<File | null>(null)
   const [phase, setPhase] = useState<Phase>({ kind: "idle" })
   const [showWarnings, setShowWarnings] = useState(false)
+  // The parent mounts this dialog persistently, so a dismissed success would
+  // otherwise reopen onto the previous run's report.
+  useEffect(() => {
+    if (!open) return
+    setFile(null)
+    setPhase({ kind: "idle" })
+    setShowWarnings(false)
+  }, [open])
+
   const busy = phase.kind === "uploading" || phase.kind === "importing"
 
   async function run() {
