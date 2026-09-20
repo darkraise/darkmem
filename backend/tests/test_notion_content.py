@@ -217,3 +217,42 @@ def test_a_frontmatter_fence_is_stripped(tmp_path):
     assert "tags: x" not in content
     assert any(w[1] == "stripped_source" for w in warnings)
     assert not any(b.type == "heading" for b in blocks)
+
+
+def test_a_fenced_link_definition_is_left_alone(tmp_path):
+    sample = "[a]: https://x.test\nsee [t][a]\n"
+    entries = [
+        Entry("A 00000000000000000000000000000001.md",
+              ("# A\n\n```\n" + sample + "```\n\nBody.\n").encode("utf-8")),
+    ]
+    blocks, _, warnings, _, _ = _render("A", entries, tmp_path)
+    code = [b for b in blocks if b.type == "code"]
+    assert len(code) == 1
+    assert code[0].text == sample.rstrip("\n")
+    assert not any(w[1] == "stripped_source" for w in warnings)
+
+
+def test_a_fenced_aside_is_left_alone(tmp_path):
+    entries = [
+        Entry("A 00000000000000000000000000000001.md",
+              b"# A\n\n```\n<aside>x</aside>\n```\n\nBody.\n"),
+    ]
+    blocks, _, _, _, _ = _render("A", entries, tmp_path)
+    code = [b for b in blocks if b.type == "code"]
+    assert len(code) == 1
+    assert code[0].text == "<aside>x</aside>"
+
+
+def test_a_fenced_sort_line_does_not_truncate_a_database_page(tmp_path):
+    entries = [
+        Entry("Board 00000000000000000000000000000021.md",
+              b"# Board\n\n[Tasks](Tasks%201507-2c1e_all.csv)\n\n"
+              b"```\nsort:\nname\n```\n\nTail text.\n"),
+        Entry("Tasks 1507-2c1e_all.csv",
+              "﻿Name,Status\nShip,Open\n".encode("utf-8")),
+    ]
+    blocks, content, _, _, _ = _render("Board", entries, tmp_path)
+    code = [b for b in blocks if b.type == "code"]
+    assert len(code) == 1
+    assert code[0].text == "sort:\nname"
+    assert "Tail text." in content

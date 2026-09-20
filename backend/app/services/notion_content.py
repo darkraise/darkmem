@@ -92,6 +92,15 @@ def _masked(source: str) -> list[bool]:
     return mask
 
 
+def _unmasked(source: str, pattern: re.Pattern[str]) -> list[re.Match[str]]:
+    """Every match of `pattern` that does not start inside code."""
+    matches = list(pattern.finditer(source))
+    if not matches:
+        return []
+    mask = _masked(source)
+    return [m for m in matches if not mask[m.start()]]
+
+
 def _read_destination(source: str, start: int) -> tuple[str, int] | None:
     """Read a link destination beginning at `start`, the index after `](`.
 
@@ -246,7 +255,10 @@ def _rewrite_asides(source: str) -> str:
         lines = [f"> {line}" if line.strip() else ">" for line in body.split("\n")]
         return "\n".join(["> [!NOTE]", *lines])
 
-    return _ASIDE.sub(one, source)
+    out = source
+    for match in reversed(_unmasked(source, _ASIDE)):
+        out = out[:match.start()] + one(match) + out[match.end():]
+    return out
 
 
 def _rewrite_links(
@@ -380,13 +392,26 @@ def translate_page(
 
     source = _strip_title(source)
 
-    if _LINK_DEF.search(source):
-        definitions = {m.group(1): m.group(2) for m in _LINK_DEF.finditer(source)}
-        source = _LINK_DEF.sub("", source)
+    defs = _unmasked(source, _LINK_DEF)
+    if defs:
+        definitions = {m.group(1): m.group(2) for m in defs}
+        for match in reversed(defs):
+            source = source[:match.start()] + source[match.end():]
+        mask = _masked(source)
+        rewrites: list[tuple[int, int, str]] = []
         for label, target in definitions.items():
-            source = source.replace(f"[{label}][]", f"[{label}]({target})")
-            source = re.sub(rf"\[([^\]]*)\]\[{re.escape(label)}\]",
-                            rf"[\1]({target})", source)
+            for match in re.finditer(re.escape(f"[{label}][]"), source):
+                rewrites.append((match.start(), match.end(), f"[{label}]({target})"))
+            for match in re.finditer(rf"\[([^\]]*)\]\[{re.escape(label)}\]", source):
+                rewrites.append(
+                    (match.start(), match.end(), f"[{match.group(1)}]({target})")
+                )
+        applied = len(source)
+        for start, end, text in sorted(rewrites, reverse=True):
+            if mask[start] or end > applied:
+                continue
+            source = source[:start] + text + source[end:]
+            applied = start
         warn(entry_name, "stripped_source",
              "link-reference definitions were inlined; a page cannot hold them")
 
@@ -396,7 +421,8 @@ def translate_page(
 
     if node.database_csv is not None:
         info = tree.databases[node.database_csv]
-        tail = _VIEW_TAIL.search(source)
+        tails = _unmasked(source, _VIEW_TAIL)
+        tail = tails[0] if tails else None
         if tail:
             source = source[:tail.start()]
             warn(entry_name, "stripped_source",
