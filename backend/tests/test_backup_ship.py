@@ -1558,3 +1558,57 @@ async def test_a_failed_tarball_leaves_the_dump_reported_as_shipped(
     assert summary["verify_failed"] == []
     assert summary["attachments"]["verify_failed"] == ["disk"]
     assert await backup_ship.load_state(session) is None
+
+
+async def test_a_failed_build_is_reported_to_every_destination_without_rebuilding(
+    session, session_factory, tmp_path, monkeypatch
+):
+    """The build is the expensive step and its failure is one fact: destination
+    two must be told the real cause, not rebuild the volume to find it out."""
+    fakes = {n: _FakeDestination(n) for n in ("a", "b")}
+    await _dump_into(tmp_path, monkeypatch)
+    await bc.save_destinations(
+        session, {"destinations": [{**LOCAL, "name": n} for n in ("a", "b")]}
+    )
+    monkeypatch.setattr(backup_ship, "build_destination", lambda cfg: fakes[cfg.name])
+    calls: list[str] = []
+
+    async def _boom(dest_dir, stamp, *, expect_rows):
+        calls.append(stamp)
+        raise backup_ship.ArchiveIncomplete("the volume is not mounted")
+
+    monkeypatch.setattr(backup_ship, "build_archive", _boom)
+
+    summary = await backup_ship.ship_all(session_factory)
+
+    assert len(calls) == 1
+    assert summary["shipped"] == 2
+    assert sorted(summary["attachments"]["verify_failed"]) == ["a", "b"]
+    failed = [
+        r
+        for r in await _payloads(session, "backup_verify_failed")
+        if r["family"] == "attachments"
+    ]
+    assert sorted(r["destination"] for r in failed) == ["a", "b"]
+    assert all("the volume is not mounted" in r["error"] for r in failed)
+
+
+async def test_an_unreadable_attachment_set_does_not_cost_the_dump(
+    session, session_factory, tmp_path, monkeypatch
+):
+    fake = _FakeDestination("disk")
+    await _one_destination(session, monkeypatch, tmp_path, fake)
+    asked = _fake_archive(monkeypatch)
+
+    async def _boom(_session):
+        raise RuntimeError('relation "page_attachments" does not exist')
+
+    monkeypatch.setattr(backup_ship, "manifest_hash", _boom)
+
+    summary = await backup_ship.ship_all(session_factory)
+
+    assert summary["shipped"] == 1
+    assert summary["verify_failed"] == []
+    assert asked == []
+    assert summary["attachments"]["shipped"] == 0
+    assert "page_attachments" in summary["attachments"]["error"]

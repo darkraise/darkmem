@@ -566,26 +566,46 @@ async def ship_all(session_factory) -> dict:
         logger.info("backup_ship: no enabled destinations, nothing dumped")
         return summary
 
-    async with session_factory() as session:
-        manifest = await manifest_hash(session)
-        expect_rows = await attachment_count(session)
-        state = await load_state(session)
-    changed = state is None or state.manifest_hash != manifest
     run_stamp = _stamp()
-    # A catch-up reuses the recorded stamp. Minting a fresh one would leave
-    # every *other* destination lacking it, so the next run would ship again,
-    # and so on forever -- and the stamp is also the pairing key a restore
-    # reads, so it must name when the content was captured.
-    archive_stamp = run_stamp if changed else state.stamp
-    attachments["stamp"] = archive_stamp
-    outcomes = await _attachment_outcomes(session_factory)
+    manifest = ""
+    expect_rows = 0
+    changed = False
+    archive_stamp: str | None = None
+    outcomes: dict = {}
+    # The attachments leg's inputs are read behind their own guard: the two
+    # artefacts fail independently, so a missing table or an unreadable state
+    # row must cost the tarball and never the dump.
+    attachments_ready = False
+    try:
+        async with session_factory() as session:
+            manifest = await manifest_hash(session)
+            expect_rows = await attachment_count(session)
+            state = await load_state(session)
+        outcomes = await _attachment_outcomes(session_factory)
+        changed = state is None or state.manifest_hash != manifest
+        # A catch-up reuses the recorded stamp. Minting a fresh one would leave
+        # every *other* destination lacking it, so the next run would ship
+        # again, and so on forever -- and the stamp is also the pairing key a
+        # restore reads, so it must name when the content was captured.
+        archive_stamp = run_stamp if changed else state.stamp
+        attachments["stamp"] = archive_stamp
+        attachments_ready = True
+    except Exception as exc:  # noqa: BLE001 - the dump must still run
+        logger.warning("backup_ship: attachments leg skipped: %s", exc)
+        attachments["error"] = str(exc)
 
     dump = await run_dump(stamp=run_stamp)
     artifacts = await _artifacts_for(dump, [c.age_recipient for c in enabled])
     keep_plaintext = any(c.age_recipient is None for c in enabled)
     summary["dump"] = dump.name
 
+    # `archive` is set only once the build AND its encryption both succeeded;
+    # `built` tracks the plaintext for cleanup either way, and `build_error`
+    # remembers the first failure so every later destination reports the real
+    # cause instead of rebuilding the volume or tripping over a half-set state.
     archive: Path | None = None
+    built: Path | None = None
+    build_error: Exception | None = None
     archive_artifacts: dict[str | None, Path] = {}
     archive_shipped = False
 
@@ -653,28 +673,37 @@ async def ship_all(session_factory) -> dict:
                 logger.warning("backup_ship: %s prune failed: %s", cfg.name, exc)
                 summary["pruned"][cfg.name] = {"error": str(exc)}
 
-            try:
-                needs = changed or not await _destination_holds(
-                    destination, archive_stamp, outcomes.get(cfg.name)
-                )
-            except Exception as exc:  # noqa: BLE001 - an unlistable destination
-                logger.warning(
-                    "backup_ship: %s attachment listing failed: %s", cfg.name, exc
-                )
-                needs = True
+            needs = False
+            if attachments_ready:
+                try:
+                    needs = changed or not await _destination_holds(
+                        destination, archive_stamp, outcomes.get(cfg.name)
+                    )
+                except Exception as exc:  # noqa: BLE001 - an unlistable destination
+                    logger.warning(
+                        "backup_ship: %s attachment listing failed: %s", cfg.name, exc
+                    )
+                    needs = True
 
             if needs:
                 tarball: Path | None = None
                 attachment_started = time.monotonic()
                 try:
+                    if build_error is not None:
+                        raise build_error
                     if archive is None:
-                        archive = await build_archive(
-                            dump.parent, archive_stamp, expect_rows=expect_rows
-                        )
-                        attachments["built"] = True
-                        archive_artifacts = await _artifacts_for(
-                            archive, [c.age_recipient for c in enabled]
-                        )
+                        try:
+                            built = await build_archive(
+                                dump.parent, archive_stamp, expect_rows=expect_rows
+                            )
+                            attachments["built"] = True
+                            archive_artifacts = await _artifacts_for(
+                                built, [c.age_recipient for c in enabled]
+                            )
+                        except Exception as exc:
+                            build_error = exc
+                            raise
+                        archive = built
                     tarball = archive_artifacts[cfg.age_recipient]
                     await destination.ship(
                         tarball, timeout=ATTACHMENTS_SHIP_TIMEOUT_SECONDS
@@ -750,8 +779,8 @@ async def ship_all(session_factory) -> dict:
             # Every destination demanded encryption; an unencrypted twin must
             # not outlive the run on local disk.
             dump.unlink(missing_ok=True)
-            if archive is not None:
-                archive.unlink(missing_ok=True)
+            if built is not None:
+                built.unlink(missing_ok=True)
 
     if archive_shipped:
         async with session_factory() as session:
