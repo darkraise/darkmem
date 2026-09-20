@@ -15,7 +15,13 @@ from app.services.page_import import (
     ImportTooLarge,
     import_notion_export,
 )
-from tests.fixtures.notion.builder import DATABASE_EXPORT, FLAT_EXPORT, Entry, build_fixture
+from tests.fixtures.notion.builder import (
+    DATABASE_EXPORT,
+    FLAT_EXPORT,
+    PNG,
+    Entry,
+    build_fixture,
+)
 
 
 @pytest.fixture
@@ -95,6 +101,59 @@ async def test_attachments_are_stored_once_with_a_row_and_a_file(
     assert rows[0].content_type == "image/png"
     shard = attachments_dir / str(rows[0].id)[:2] / str(rows[0].id)
     assert shard.is_file()
+
+
+@pytest.mark.asyncio
+async def test_a_reference_style_image_is_stored_and_linked(
+    session, attachments_dir, tmp_path
+):
+    entries = [
+        Entry("A 00000000000000000000000000000001.md",
+              b"# A\n\n![shot][pic]\n\n[pic]: image.png\n"),
+        Entry("image.png", PNG),
+    ]
+    report = await _run(session, tmp_path, entries=entries)
+    assert report.attachments_stored == 1
+    assert [w for w in report.warnings if w.kind == "missing_file"] == []
+    content = (
+        await session.execute(
+            text("SELECT content FROM pages WHERE title = 'A'")
+        )
+    ).scalar_one()
+    assert "/api/v1/pages/attachments/" in content
+
+
+@pytest.mark.asyncio
+async def test_an_unstaged_export_file_is_warned_about(
+    session, attachments_dir, tmp_path, monkeypatch
+):
+    # A link the reference scan cannot reach still points at a file the export
+    # holds; the rewrite used to assume the stager had reported it.
+    from app.services import page_import
+
+    monkeypatch.setattr(page_import, "scan_links", lambda _source: [])
+    entries = [
+        Entry("A 00000000000000000000000000000001.md",
+              b"# A\n\n![shot](image.png)\n"),
+        Entry("image.png", PNG),
+    ]
+    report = await _run(session, tmp_path, entries=entries)
+    assert report.attachments_stored == 0
+    assert [w.kind for w in report.warnings] == ["missing_file"]
+
+
+@pytest.mark.asyncio
+async def test_an_oversize_attachment_is_warned_about_once(
+    session, attachments_dir, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "attachment_max_bytes", 1)
+    entries = [
+        Entry("A 00000000000000000000000000000001.md",
+              b"# A\n\n![shot](image.png)\n"),
+        Entry("image.png", PNG),
+    ]
+    report = await _run(session, tmp_path, entries=entries)
+    assert [w.kind for w in report.warnings] == ["oversize_attachment"]
 
 
 @pytest.mark.asyncio

@@ -264,8 +264,49 @@ def _rewrite_asides(source: str) -> str:
     return out
 
 
+def preprocess(source: str, entry_name: str, warn: Warn) -> str:
+    """Everything that changes which links a page holds, before any is read.
+
+    Factored out of `translate_page` because the importer decides which export
+    files to stage by scanning a page's links, and a reference-style link is
+    only a link once its definition has been inlined here.
+    """
+    front, offset = split_frontmatter(source)
+    if front is not None:
+        warn(entry_name, "stripped_source", "a leading frontmatter fence was dropped")
+        source = source[offset:]
+
+    source = _strip_title(source)
+
+    defs = _unmasked(source, _LINK_DEF)
+    if not defs:
+        return source
+    definitions = {m.group(1): m.group(2) for m in defs}
+    for match in reversed(defs):
+        source = source[:match.start()] + source[match.end():]
+    mask = _masked(source)
+    rewrites: list[tuple[int, int, str]] = []
+    for label, target in definitions.items():
+        for match in re.finditer(re.escape(f"[{label}][]"), source):
+            rewrites.append((match.start(), match.end(), f"[{label}]({target})"))
+        for match in re.finditer(rf"\[([^\]]*)\]\[{re.escape(label)}\]", source):
+            rewrites.append(
+                (match.start(), match.end(), f"[{match.group(1)}]({target})")
+            )
+    applied = len(source)
+    for start, end, text in sorted(rewrites, reverse=True):
+        if mask[start] or end > applied:
+            continue
+        source = source[:start] + text + source[end:]
+        applied = start
+    warn(entry_name, "stripped_source",
+         "link-reference definitions were inlined; a page cannot hold them")
+    return source
+
+
 def _rewrite_links(
-    source: str, node, tree, *, assets: dict[str, StagedAsset], warn: Warn,
+    source: str, node, tree, *,
+    assets: dict[str, StagedAsset], refused: frozenset[str], warn: Warn,
 ) -> str:
     """Point every internal link at a page or an attachment.
 
@@ -308,11 +349,14 @@ def _rewrite_links(
         name = resolved.rsplit("/", 1)[-1] or destination
         in_export = resolved in tree.assets
         if span.is_image or in_export:
-            # A file that IS in the export but was not staged was refused for a
-            # reason its stager already reported (oversize today), so warning
-            # again here would count one file twice.
             if not in_export:
                 warn(entry_name, "missing_file", f"{name} is not in the export")
+            elif resolved not in refused:
+                # A file the stager refused was reported there, so warning here
+                # would count one file twice. One it never saw was not reported
+                # at all, and silence would be the only record of the loss.
+                warn(entry_name, "missing_file",
+                     f"{name} is in the export but was not stored")
             out = out[:span.start] + f"[missing file: {name}]" + out[span.end:]
         else:
             warn(entry_name, "unresolved_link", f"{name} is not in the export")
@@ -383,39 +427,11 @@ def translate_page(
     assets: dict[str, StagedAsset],
     max_blocks: int, max_content_chars: int,
     warn: Warn,
+    refused: frozenset[str] = frozenset(),
 ) -> list[TreeBlock]:
     entry_name = node.entry.name if node.entry is not None else node.database_csv or ""
     source = archive.read_text(node.entry) if node.entry is not None else ""
-
-    front, offset = split_frontmatter(source)
-    if front is not None:
-        warn(entry_name, "stripped_source", "a leading frontmatter fence was dropped")
-        source = source[offset:]
-
-    source = _strip_title(source)
-
-    defs = _unmasked(source, _LINK_DEF)
-    if defs:
-        definitions = {m.group(1): m.group(2) for m in defs}
-        for match in reversed(defs):
-            source = source[:match.start()] + source[match.end():]
-        mask = _masked(source)
-        rewrites: list[tuple[int, int, str]] = []
-        for label, target in definitions.items():
-            for match in re.finditer(re.escape(f"[{label}][]"), source):
-                rewrites.append((match.start(), match.end(), f"[{label}]({target})"))
-            for match in re.finditer(rf"\[([^\]]*)\]\[{re.escape(label)}\]", source):
-                rewrites.append(
-                    (match.start(), match.end(), f"[{match.group(1)}]({target})")
-                )
-        applied = len(source)
-        for start, end, text in sorted(rewrites, reverse=True):
-            if mask[start] or end > applied:
-                continue
-            source = source[:start] + text + source[end:]
-            applied = start
-        warn(entry_name, "stripped_source",
-             "link-reference definitions were inlined; a page cannot hold them")
+    source = preprocess(source, entry_name, warn)
 
     # Before the rewrites below, not after: a relation property holds an export
     # link like any other line, and a bullet added past the rewrite would keep
@@ -441,7 +457,9 @@ def translate_page(
         source = (source.strip() + "\n\n" + _table_source(info)).strip()
 
     source = _rewrite_asides(source)
-    source = _rewrite_links(source, node, tree, assets=assets, warn=warn)
+    source = _rewrite_links(
+        source, node, tree, assets=assets, refused=refused, warn=warn,
+    )
 
     parsed = _flatten_headings(_parse(source)) if source.strip() else []
     # `_post_parse` re-parents a callout's children onto its own parent, so the

@@ -26,6 +26,7 @@ from app.services.events import record_event
 from app.services.notion_archive import NotionArchive, open_archive
 from app.services.notion_content import (
     StagedAsset,
+    preprocess,
     resolve_target,
     scan_links,
     translate_page,
@@ -119,6 +120,11 @@ class _Plan:
     blocks: dict[UUID, list]
 
 
+def _unreported(path: str, kind: str, detail: str) -> None:
+    """The reference scan runs the text pre-pass a second time; the translation
+    is the pass that reports what it changed, once."""
+
+
 def _free_bytes() -> int:
     return shutil.disk_usage(attachments_root()).free
 
@@ -170,16 +176,22 @@ def _build_plan(
 
         # Only assets something links to. An unreferenced one would become a row
         # and a file that nothing in the corpus points at, for the cleanup job to
-        # collect a week later.
+        # collect a week later. The scan runs on the pre-processed text the
+        # translation will rewrite, not the raw source: a reference-style link
+        # is not a link until its definition has been inlined.
         referenced: set[str] = set()
         for node in tree.pages:
             if node.entry is None:
                 continue
-            for span in scan_links(archive.read_text(node.entry)):
+            source = preprocess(
+                archive.read_text(node.entry), node.entry.name, _unreported,
+            )
+            for span in scan_links(source):
                 target = unquote(span.destination.split("#")[0])
                 referenced.add(resolve_target(target, node.entry.name))
 
         assets: dict[str, StagedAsset] = {}
+        refused: set[str] = set()
         asset_dir = staging / "assets"
         for name, entry in tree.assets.items():
             if name not in referenced:
@@ -189,6 +201,7 @@ def _build_plan(
             size, digest, content_type = archive.extract(entry, destination)
             if size > settings.attachment_max_bytes:
                 destination.unlink(missing_ok=True)
+                refused.add(name)
                 warn(name, "oversize_attachment",
                      f"{size} bytes is over the {settings.attachment_max_bytes} bound")
                 continue
@@ -204,7 +217,7 @@ def _build_plan(
             if time.monotonic() > deadline:
                 raise _timed_out()
             rendered = translate_page(
-                node, tree, archive, assets=assets,
+                node, tree, archive, assets=assets, refused=frozenset(refused),
                 max_blocks=MAX_BLOCKS, max_content_chars=MAX_CONTENT_CHARS, warn=warn,
             )
             total += len(rendered)
