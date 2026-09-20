@@ -261,7 +261,7 @@ async def lifespan(app: FastAPI):
         make_block_embedding_runner,
         make_backup_ship_runner,
     )
-    from app.services.backup_ship import BACKUP_SHIP_JOB_KEY
+    from app.services.backup_ship import BACKUP_SHIP_JOB_KEY, BACKUP_SHIP_MAX_RUN_SECONDS
     from app.services.entity_anchoring import (
         REPO_ENTITY_ANCHORING_CONFIG_SCHEMA,
         REPO_ENTITY_ANCHORING_JOB_KEY,
@@ -403,7 +403,7 @@ async def lifespan(app: FastAPI):
         default_cron="30 4 * * *",
         min_interval_seconds=3600,
         runner=make_backup_ship_runner(app, async_session_factory),
-        max_run_seconds=7200,
+        max_run_seconds=BACKUP_SHIP_MAX_RUN_SECONDS,
     ))
 
     job_registry.register(Job(

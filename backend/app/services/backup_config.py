@@ -75,6 +75,11 @@ class DestinationConfig(BaseModel):
     kind: str
     enabled: bool = True
     retention_keep: int = 14
+    #: The attachment tarball family's own retention. Separate from
+    #: `retention_keep` because the artefacts are orders of magnitude apart:
+    #: fourteen whole-volume tarballs is a different disk commitment from
+    #: fourteen dumps.
+    attachments_retention_keep: int = 3
     age_recipient: str | None = None
     ssh: SshSettings | None = None
     s3: S3Settings | None = None
@@ -103,6 +108,10 @@ def _validate(items: list[DestinationConfig]) -> None:
             raise DestinationInvalid(f"{d.name}: worker settings required")
         if d.retention_keep < 1 or d.retention_keep > 3650:
             raise DestinationInvalid(f"{d.name}: retention_keep out of range")
+        if d.attachments_retention_keep < 1 or d.attachments_retention_keep > 3650:
+            raise DestinationInvalid(
+                f"{d.name}: attachments_retention_keep out of range"
+            )
 
 
 async def _load_row(session: AsyncSession) -> Config | None:

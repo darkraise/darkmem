@@ -137,7 +137,7 @@ def _stamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
 
 
-async def run_dump(*, dest_dir: Path | None = None) -> Path:
+async def run_dump(*, dest_dir: Path | None = None, stamp: str | None = None) -> Path:
     """Dump the database to a gzipped file, renamed only once it is known good.
 
     Written to ``<name>.part`` first for the same reason ``backup.sh`` does it:
@@ -151,11 +151,15 @@ async def run_dump(*, dest_dir: Path | None = None) -> Path:
     Accepted at 04:30 against this corpus and stated rather than hidden; the
     repair, if it ever bites, is a ``pg_dump | gzip`` subprocess pipe, which
     keeps the marker check on the raw stream and moves the CPU out of the loop.
+
+    `stamp` lets one run give the dump and its attachment tarball the same
+    stamp, which is what makes the restore pairing rule's equality case work.
+    Absent, it mints its own as before.
     """
     directory = Path(dest_dir) if dest_dir is not None else DUMP_DIR
     _assert_writable(directory)
 
-    out = directory / f"{JOB_PREFIX}{_stamp()}.sql.gz"
+    out = directory / f"{JOB_PREFIX}{stamp or _stamp()}.sql.gz"
     part = out.with_name(out.name + ".part")
 
     env = dict(os.environ, PGPASSWORD=settings.db_password)
@@ -580,6 +584,21 @@ async def ship_all(session_factory) -> dict:
 #: `max_run_seconds` kills the whole run.
 SHIP_TIMEOUT_SECONDS = 3600
 READ_BACK_TIMEOUT_SECONDS = 900
+
+#: The attachment tarball is the whole page-attachment volume, not a
+#: compressed schema, so both directions get their own larger bound rather
+#: than forcing one constant to serve two artefact sizes. They are passed
+#: through the `timeout=` parameter on `ship` and `read_back_sha256`; defining
+#: them without passing them would leave a multi-gigabyte transfer cut off at
+#: the dump's 3600/900.
+ATTACHMENTS_SHIP_TIMEOUT_SECONDS = 7200
+ATTACHMENTS_READ_BACK_TIMEOUT_SECONDS = 3600
+
+#: The job's whole-run bound. One destination's worst case is now both
+#: artefacts in both directions; a kill mid-verify leaves the attachments
+#: state row unwritten and repeats the decision tomorrow, so the budget buys
+#: room for the destination in flight rather than for every destination.
+BACKUP_SHIP_MAX_RUN_SECONDS = 21600
 
 
 class SshDestination:

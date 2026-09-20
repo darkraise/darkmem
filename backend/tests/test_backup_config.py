@@ -227,3 +227,32 @@ async def test_worker_settings_are_required_for_the_worker_kind(session):
         await bc.save_destinations(
             session, {"destinations": [{**WORKER, "worker": None}]}
         )
+
+
+# ── Task 5: the attachments family has its own retention ─────────────
+
+
+async def test_attachments_retention_defaults_to_three(session):
+    saved = await bc.save_destinations(session, {"destinations": [LOCAL]})
+    assert saved[0].attachments_retention_keep == 3
+
+
+async def test_attachments_retention_is_range_checked(session):
+    with pytest.raises(bc.DestinationInvalid):
+        await bc.save_destinations(
+            session,
+            {"destinations": [{**LOCAL, "attachments_retention_keep": 0}]},
+        )
+    with pytest.raises(bc.DestinationInvalid):
+        await bc.save_destinations(
+            session,
+            {"destinations": [{**LOCAL, "attachments_retention_keep": 3651}]},
+        )
+
+
+async def test_attachments_retention_round_trips(session):
+    await bc.save_destinations(
+        session, {"destinations": [{**LOCAL, "attachments_retention_keep": 7}]}
+    )
+    loaded = await bc.load_destinations(session, masked=False)
+    assert loaded[0].attachments_retention_keep == 7

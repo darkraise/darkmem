@@ -1218,3 +1218,41 @@ async def test_s3_read_back_hashes_without_buffering(tmp_path):
 
     assert digest == hashlib.sha256(payload).hexdigest()
     assert all(size == backup_ship._S3_CHUNK for size in fake.bodies[0].reads)
+
+
+# ── Task 5: one stamp for both artefacts, and the run budget ─────────
+
+
+async def test_run_dump_honours_a_caller_supplied_stamp(tmp_path, monkeypatch):
+    await _dump_into(tmp_path, monkeypatch)
+    out = await backup_ship.run_dump(stamp="20260920-043000")
+    assert out.name == "darkmem-app-20260920-043000.sql.gz"
+
+
+async def test_run_dump_still_mints_its_own_stamp(tmp_path, monkeypatch):
+    await _dump_into(tmp_path, monkeypatch)
+    out = await backup_ship.run_dump()
+    assert backup_ship.DUMPS.stamp_of(out.name) is not None
+
+
+def test_the_run_budget_covers_one_destination_end_to_end():
+    """Both artefacts, both directions, for one destination. Three unreachable
+    NASes can still exhaust the budget -- that is accepted -- but a single
+    destination must never be cut off mid-verify, because a kill there leaves
+    the state row unwritten and repeats the whole decision tomorrow."""
+    one_destination = (
+        backup_ship.SHIP_TIMEOUT_SECONDS
+        + backup_ship.READ_BACK_TIMEOUT_SECONDS
+        + backup_ship.ATTACHMENTS_SHIP_TIMEOUT_SECONDS
+        + backup_ship.ATTACHMENTS_READ_BACK_TIMEOUT_SECONDS
+    )
+    assert backup_ship.BACKUP_SHIP_MAX_RUN_SECONDS > one_destination
+
+
+def test_main_registers_the_job_with_that_budget():
+    """A text assertion on purpose: building the app to read one registration
+    field would stand a database and a scheduler up for a constant."""
+    source = (
+        Path(backup_ship.__file__).resolve().parents[1] / "main.py"
+    ).read_text()
+    assert "max_run_seconds=BACKUP_SHIP_MAX_RUN_SECONDS" in source
