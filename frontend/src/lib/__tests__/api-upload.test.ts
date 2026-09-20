@@ -10,6 +10,7 @@ type Handler = (xhr: FakeXhr) => void
 
 class FakeXhr {
   static handler: Handler = () => {}
+  static constructed = 0
   upload = { onprogress: null as ((e: ProgressEvent) => void) | null }
   onload: (() => void) | null = null
   onerror: (() => void) | null = null
@@ -21,6 +22,10 @@ class FakeXhr {
   url = ""
   headers: Record<string, string> = {}
   aborted = false
+
+  constructor() {
+    FakeXhr.constructed += 1
+  }
 
   open(method: string, url: string) {
     this.method = method
@@ -41,6 +46,7 @@ class FakeXhr {
 beforeEach(() => {
   vi.stubGlobal("XMLHttpRequest", FakeXhr)
   logout.mockClear()
+  FakeXhr.constructed = 0
   FakeXhr.handler = (xhr) => {
     xhr.status = 201
     xhr.responseText = JSON.stringify({ ok: true })
@@ -155,5 +161,17 @@ describe("apiUpload", () => {
       apiUpload("/x", new Blob(["x"]), { signal: controller.signal }),
     ).rejects.toBeInstanceOf(ApiError)
     expect(seen!.aborted).toBe(true)
+  })
+
+  it("rejects without sending when its signal is already aborted", async () => {
+    const controller = new AbortController()
+    controller.abort()
+    await expect(
+      apiUpload("/x", new Blob(["x"]), { signal: controller.signal }),
+    ).rejects.toBeInstanceOf(ApiError)
+    await expect(
+      apiUpload("/x", new Blob(["x"]), { signal: controller.signal }),
+    ).rejects.toMatchObject({ status: 0, message: "The upload was cancelled" })
+    expect(FakeXhr.constructed).toBe(0)
   })
 })
