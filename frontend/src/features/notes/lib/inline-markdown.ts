@@ -1,4 +1,14 @@
-import type { Html, InlineCode, Nodes, PhrasingContent, Root, Text } from "mdast"
+import type {
+  Html,
+  Image,
+  InlineCode,
+  Link,
+  Nodes,
+  Paragraph,
+  PhrasingContent,
+  Root,
+  Text,
+} from "mdast"
 import { fromMarkdown } from "mdast-util-from-markdown"
 import { toMarkdown } from "mdast-util-to-markdown"
 import { gfmStrikethrough } from "micromark-extension-gfm-strikethrough"
@@ -6,6 +16,7 @@ import {
   gfmStrikethroughFromMarkdown,
   gfmStrikethroughToMarkdown,
 } from "mdast-util-gfm-strikethrough"
+import { isAttachmentUrl } from "./attachments"
 
 export interface InlineStyles {
   bold?: true
@@ -396,4 +407,72 @@ export function emitInline(nodes: InlineNode[]): string {
     current = parseInline(out)
   }
   return out
+}
+
+/** A paragraph that is exactly one image, or exactly one link to an
+ *  attachment: the two shapes the editor shows as a block of its own rather
+ *  than as text. */
+export interface StandaloneFile {
+  kind: "image" | "link"
+  url: string
+  name: string
+}
+
+/** The markdown for one of those shapes, written through the same writer
+ *  `emitInline` uses so escaping is decided in one place. */
+export function fileMarkdown(kind: "image" | "link", url: string, name: string): string {
+  const node: Image | Link =
+    kind === "image"
+      ? { type: "image", url, alt: name }
+      : { type: "link", url, children: name === "" ? [] : [{ type: "text", value: name }] }
+  const paragraph: Paragraph = { type: "paragraph", children: [node] }
+  const out = toMarkdown(paragraph, {
+    emphasis: "*",
+    strong: "*",
+    extensions: [gfmStrikethroughToMarkdown()],
+  })
+  return out.endsWith("\n") ? out.slice(0, -1) : out
+}
+
+/** `text` as a standalone file, or null when it is ordinary text.
+ *
+ *  Two gates, and neither implies the other. Re-emitting must reproduce
+ *  `text` byte for byte, or reading a page would rewrite the block the save
+ *  engine had just read. And the destination must be non-empty: `![draft]()`
+ *  does reproduce itself, but a block with an empty url is dropped on the way
+ *  back out, so accepting one would lose the paragraph from the editor while
+ *  the server still holds it. Idempotence is not preservation. */
+export function asStandaloneFile(text: string): StandaloneFile | null {
+  if (text === "") return null
+  const tree: Root = fromMarkdown(text, {
+    extensions: [gfmStrikethrough(), { disable: { null: FLOW_CONSTRUCTS } }],
+    mdastExtensions: [gfmStrikethroughFromMarkdown()],
+  })
+  const paragraph = tree.children[0]
+  if (
+    tree.children.length !== 1 ||
+    paragraph?.type !== "paragraph" ||
+    paragraph.position!.start.offset !== 0 ||
+    paragraph.position!.end.offset !== text.length ||
+    paragraph.children.length !== 1
+  ) {
+    return null
+  }
+  const node = paragraph.children[0]!
+  if (node.type === "image") {
+    if (node.title) return null
+    return verified({ kind: "image", url: node.url, name: node.alt ?? "" }, text)
+  }
+  if (node.type === "link") {
+    if (node.title || !isAttachmentUrl(node.url)) return null
+    if (!node.children.every((child) => child.type === "text")) return null
+    const name = node.children.map((child) => (child as Text).value).join("")
+    return verified({ kind: "link", url: node.url, name }, text)
+  }
+  return null
+}
+
+function verified(candidate: StandaloneFile, text: string): StandaloneFile | null {
+  if (candidate.url === "") return null
+  return fileMarkdown(candidate.kind, candidate.url, candidate.name) === text ? candidate : null
 }

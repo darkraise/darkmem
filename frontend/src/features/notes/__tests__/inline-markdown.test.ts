@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest"
-import { emitInline, parseInline, type InlineNode, type InlineStyles } from "../lib/inline-markdown"
+import {
+  asStandaloneFile,
+  emitInline,
+  fileMarkdown,
+  parseInline,
+  type InlineNode,
+  type InlineStyles,
+} from "../lib/inline-markdown"
 import { pick, rng } from "./seeded"
 
 // 5000 cases take ~1s locally and exceed the 5s default on a loaded CI runner.
@@ -155,5 +162,72 @@ describe("inline markdown", () => {
   it("empty text is no content", () => {
     expect(parseInline("")).toEqual([])
     expect(emitInline([])).toBe("")
+  })
+})
+
+const ATTACHMENT = "/api/v1/pages/attachments/0123abcd-4567-89ef-0123-456789abcdef"
+
+describe("asStandaloneFile", () => {
+  it("reads a whole-paragraph image at any url", () => {
+    expect(asStandaloneFile(`![shot](${ATTACHMENT})`)).toEqual({
+      kind: "image", url: ATTACHMENT, name: "shot",
+    })
+    expect(asStandaloneFile("![d](https://example.org/d.png)")).toEqual({
+      kind: "image", url: "https://example.org/d.png", name: "d",
+    })
+  })
+
+  it("reads a whole-paragraph link only when it points at an attachment", () => {
+    expect(asStandaloneFile(`[notes.pdf](${ATTACHMENT})`)).toEqual({
+      kind: "link", url: ATTACHMENT, name: "notes.pdf",
+    })
+    expect(asStandaloneFile("[docs](https://example.org/)")).toBeNull()
+  })
+
+  // An empty destination round-trips byte for byte, so the emit-and-verify
+  // gate accepts it. A block carrying an empty url is dropped when the tree
+  // is written, so taking this one would delete the paragraph from the
+  // editor while the server still holds it.
+  it("rejects an empty destination", () => {
+    expect(asStandaloneFile("![draft]()")).toBeNull()
+    expect(asStandaloneFile("[draft]()")).toBeNull()
+  })
+
+  it("rejects anything that is not the whole paragraph", () => {
+    expect(asStandaloneFile(`see ![shot](${ATTACHMENT})`)).toBeNull()
+    expect(asStandaloneFile(`![a](${ATTACHMENT}) ![b](${ATTACHMENT})`)).toBeNull()
+    expect(asStandaloneFile(`![shot](${ATTACHMENT} "title")`)).toBeNull()
+    expect(asStandaloneFile("plain text")).toBeNull()
+    expect(asStandaloneFile("")).toBeNull()
+  })
+
+  // The writer escapes both labels and destinations, so a bracket or a
+  // parenthesis is not by itself a reason to refuse: only a spelling the
+  // writer would rewrite is.
+  it("accepts a canonical escaped spelling and refuses one the writer rewrites", () => {
+    expect(asStandaloneFile("![a\\[b\\]](https://example.org/x.png)")).toEqual({
+      kind: "image", url: "https://example.org/x.png", name: "a[b]",
+    })
+    expect(asStandaloneFile("![a](<https://example.org/x.png>)")).toBeNull()
+  })
+})
+
+describe("fileMarkdown", () => {
+  it("is the inverse of the detector for everything it accepts", () => {
+    for (const text of [
+      `![shot](${ATTACHMENT})`,
+      `[notes.pdf](${ATTACHMENT})`,
+      "![d](https://example.org/d.png)",
+      "![a\\[b\\]](https://example.org/x.png)",
+      `![](${ATTACHMENT})`,
+    ]) {
+      const read = asStandaloneFile(text)
+      expect(read, text).not.toBeNull()
+      expect(fileMarkdown(read!.kind, read!.url, read!.name)).toBe(text)
+    }
+  })
+
+  it("emits a link with no text as an empty label", () => {
+    expect(fileMarkdown("link", ATTACHMENT, "")).toBe(`[](${ATTACHMENT})`)
   })
 })
