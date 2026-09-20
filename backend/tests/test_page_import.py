@@ -11,6 +11,7 @@ from app.config import settings
 from app.services.page_import import (
     ImportBusy,
     ImportNoSpace,
+    ImportTimedOut,
     ImportTooLarge,
     import_notion_export,
 )
@@ -310,3 +311,19 @@ async def test_pages_keep_their_notion_id(session, attachments_dir, tmp_path):
         )
     ).scalar_one()
     assert found == "0" * 31 + "1"
+
+
+@pytest.mark.asyncio
+async def test_the_deadline_refuses_and_leaves_nothing_behind(
+    session, attachments_dir, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "notion_import_max_seconds", 0)
+    with pytest.raises(ImportTimedOut):
+        await _run(session, tmp_path)
+
+    assert _staging_is_clean(attachments_dir)
+    survivors = [
+        p for p in attachments_dir.rglob("*")
+        if p.is_file() and ".staging" not in p.parts
+    ]
+    assert survivors == [], "a placed attachment file survived the deadline"

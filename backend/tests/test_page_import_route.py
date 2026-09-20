@@ -124,3 +124,12 @@ async def test_the_route_is_refused_on_a_read_only_instance(
 async def test_the_route_does_not_shadow_a_page_read(client, auth_headers):
     response = await client.get(f"{V1}/pages/import", headers=auth_headers)
     assert response.status_code in (404, 422)
+
+
+async def test_the_deadline_answers_422_naming_the_bound(
+    client, auth_headers, root, project, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "notion_import_max_seconds", 0)
+    response = await _post(client, auth_headers, tmp_path)
+    assert response.status_code == 422
+    assert "notion_import_max_seconds" in response.json()["detail"]

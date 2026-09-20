@@ -25,6 +25,7 @@ from app.services.notion_tree import NotionExportInvalid
 from app.services.page_import import (
     ImportBusy,
     ImportNoSpace,
+    ImportTimedOut,
     ImportTooLarge,
     import_notion_export,
 )
@@ -90,7 +91,7 @@ async def import_notion_route(
         raise HTTPException(
             status.HTTP_507_INSUFFICIENT_STORAGE, str(exc)
         ) from exc
-    except (NotionArchiveInvalid, NotionExportInvalid) as exc:
+    except (NotionArchiveInvalid, NotionExportInvalid, ImportTimedOut) as exc:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)
         ) from exc

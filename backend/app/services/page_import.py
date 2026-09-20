@@ -71,6 +71,17 @@ class ImportNoSpace(RuntimeError):
     """The attachments filesystem cannot hold the upload and its extraction."""
 
 
+class ImportTimedOut(RuntimeError):
+    """The import passed `notion_import_max_seconds`."""
+
+
+def _timed_out() -> ImportTimedOut:
+    return ImportTimedOut(
+        f"the import passed its {settings.notion_import_max_seconds}s bound "
+        "(notion_import_max_seconds)"
+    )
+
+
 @dataclass(frozen=True)
 class ImportWarning:
     path: str | None
@@ -191,9 +202,7 @@ def _build_plan(
         total = 0
         for node in tree.pages:
             if time.monotonic() > deadline:
-                raise TimeoutError(
-                    f"the import passed {settings.notion_import_max_seconds} seconds"
-                )
+                raise _timed_out()
             rendered = translate_page(
                 node, tree, archive, assets=assets,
                 max_blocks=MAX_BLOCKS, max_content_chars=MAX_CONTENT_CHARS, warn=warn,
@@ -294,9 +303,7 @@ async def _run_import(
         ids: dict[UUID, UUID] = {}
         for node in plan.tree.pages:
             if time.monotonic() > deadline:
-                raise TimeoutError(
-                    f"the import passed {settings.notion_import_max_seconds} seconds"
-                )
+                raise _timed_out()
             parent = ids[node.parent_uuid] if node.parent_uuid else root.id
             properties = {"notion_id": node.notion_id} if node.notion_id else None
             written = await _insert_page(
