@@ -19,6 +19,7 @@ import gzip
 import os
 import re
 import subprocess
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -618,7 +619,8 @@ def test_the_worker_stack_is_healthchecked_end_to_end():
 RESTORE_CYCLE = REPO_ROOT / "scripts" / "worker" / "restore-cycle.sh"
 
 _AGE_STUB = """#!/usr/bin/env bash
-# Stand-in for `age -d -i IDENTITY -o OUT IN`: copies IN to OUT.
+# Stand-in for `age -d -i IDENTITY [-o OUT] IN`: copies IN to OUT, or to
+# stdout when no -o is given, which is how the attachment unpack reads it.
 out=""; last=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -627,7 +629,7 @@ while [ "$#" -gt 0 ]; do
     *) last="$1"; shift ;;
   esac
 done
-cp "$last" "$out"
+if [ -n "$out" ]; then cp "$last" "$out"; else cat "$last"; fi
 """
 
 
@@ -638,11 +640,25 @@ def _write_age_stub(tmp_path: Path) -> Path:
     return stub
 
 
+def _write_tarball(tmp_path: Path, dumps: Path, stamp: str, marker: str) -> None:
+    """A real gzipped tar whose one member names the generation, so a test can
+    read back *which* set was unpacked rather than only that something was."""
+    source = tmp_path / f"src-{stamp}"
+    (source / "ab").mkdir(parents=True, exist_ok=True)
+    (source / "ab" / "marker").write_text(marker)
+    target = dumps / f"darkmem-app-attachments-{stamp}.tar.gz.age"
+    with tarfile.open(target, "w:gz") as archive:
+        archive.add(source, arcname=".")
+
+
 def _run_cycle(
-    tmp_path: Path, *, snapshot: str | None, complete: bool = True, migrate_ok: bool = True,
+    tmp_path: Path, *, snapshot: str | None, complete: bool = True,
+    migrate_ok: bool = True, attachments: tuple[tuple[str, str], ...] = (),
 ) -> tuple[subprocess.CompletedProcess, list[list[str]], Path]:
     dumps = tmp_path / "dumps"
     dumps.mkdir(exist_ok=True)
+    for stamp, marker in attachments:
+        _write_tarball(tmp_path, dumps, stamp, marker)
     if snapshot:
         source = _complete_dump(tmp_path) if complete else _incomplete_dump(tmp_path)
         (dumps / snapshot).write_bytes(source.read_bytes())
@@ -682,6 +698,7 @@ def _run_cycle(
         VIEWER_PASSWORD="viewer-pw",
         DB_NAME="darkmem",
         GRANTS=str(REPO_ROOT / "scripts" / "worker" / "viewer-grants.sql"),
+        ATTACHMENT_STORE=str(tmp_path / "attachments"),
     )
     result = subprocess.run(
         ["bash", str(RESTORE_CYCLE)],
@@ -766,6 +783,122 @@ def test_a_snapshot_that_fails_the_schema_guard_never_stops_the_app(tmp_path):
         "DROP DATABASE" in " ".join(f) and "_restore_" in " ".join(f) for f in records
     )
     assert not state.exists(), "a rejected snapshot was recorded as being served"
+
+
+DUMP_0102 = "darkmem-app-20260102-000000.sql.gz.age"
+
+
+def _store(tmp_path: Path) -> Path:
+    return tmp_path / "attachments"
+
+
+def test_the_cycle_unpacks_the_tarball_paired_with_the_dump(tmp_path):
+    result, records, _ = _run_cycle(
+        tmp_path,
+        snapshot=DUMP_0102,
+        attachments=(
+            ("20260101-000000", "older-set"),
+            ("20260103-000000", "newer-than-the-dump"),
+        ),
+    )
+    assert result.returncode == 0, result.stderr
+
+    store = _store(tmp_path)
+    assert os.readlink(store / "current") == "gen-20260101-000000"
+    assert (store / "current" / "ab" / "marker").read_text() == "older-set"
+
+
+def test_a_missing_tarball_still_restores_the_database(tmp_path):
+    result, records, state = _run_cycle(tmp_path, snapshot=SNAPSHOT)
+
+    assert result.returncode == 0, result.stderr
+    assert state.read_text().strip() == SNAPSHOT
+    assert not (_store(tmp_path) / "current").exists()
+    assert _index_of(records, lambda f: "ALTER" in " ".join(f)) >= 0
+
+
+def test_the_attachments_only_path_leaves_the_database_alone(tmp_path):
+    _run_cycle(
+        tmp_path, snapshot=DUMP_0102, attachments=(("20260101-000000", "first"),)
+    )
+    # The database is current; only a newer attachment set arrived.
+    result, records, _ = _run_cycle(
+        tmp_path,
+        snapshot=DUMP_0102,
+        attachments=(
+            ("20260101-000000", "first"),
+            ("20260102-000000", "second"),
+        ),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert os.readlink(_store(tmp_path) / "current") == "gen-20260102-000000"
+    assert not any("stop" in " ".join(fields) for fields in records)
+    assert not any("ALTER" in " ".join(fields) for fields in records)
+
+
+def test_the_cycle_removes_the_generations_it_replaced(tmp_path):
+    _run_cycle(
+        tmp_path, snapshot=DUMP_0102, attachments=(("20260101-000000", "first"),)
+    )
+    _run_cycle(
+        tmp_path,
+        snapshot=DUMP_0102,
+        attachments=(
+            ("20260101-000000", "first"),
+            ("20260102-000000", "second"),
+        ),
+    )
+
+    generations = sorted(p.name for p in _store(tmp_path).glob("gen-*"))
+    assert generations == ["gen-20260102-000000"]
+
+
+def test_a_leftover_current_tmp_does_not_break_the_swap(tmp_path):
+    """A cycle killed between `ln -s` and `mv -T` leaves current.tmp behind,
+    and the next `ln -s` would fail under errexit -- inside the window where
+    the database has already been renamed."""
+    store = _store(tmp_path)
+    store.mkdir(parents=True)
+    (store / "current.tmp").symlink_to("gen-does-not-exist")
+
+    result, _, _ = _run_cycle(
+        tmp_path, snapshot=DUMP_0102, attachments=(("20260101-000000", "first"),)
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert os.readlink(store / "current") == "gen-20260101-000000"
+
+
+def test_a_torn_tarball_is_never_swapped_to(tmp_path):
+    """A half-shipped set unpacks to a partial tree. Swapping to it would point
+    the viewer's ATTACHMENTS_DIR at files that are not all there, which reads as
+    rows whose attachment is missing rather than as a failed restore."""
+    dumps = tmp_path / "dumps"
+    dumps.mkdir()
+    (dumps / "darkmem-app-attachments-20260101-000000.tar.gz.age").write_bytes(
+        b"\x1f\x8b not a tarball"
+    )
+
+    result, records, state = _run_cycle(tmp_path, snapshot=DUMP_0102)
+
+    assert result.returncode == 0, result.stderr
+    assert "Could not unpack" in result.stderr
+    assert not (_store(tmp_path) / "current").exists()
+    assert list(_store(tmp_path).glob("gen-*")) == []
+    # The database half still restored: a bad tarball is not a reason to keep
+    # serving a stale snapshot.
+    assert state.read_text().strip() == DUMP_0102
+    assert _index_of(records, lambda f: "ALTER" in " ".join(f)) >= 0
+
+
+def test_both_halves_current_is_a_no_op(tmp_path):
+    args = dict(snapshot=DUMP_0102, attachments=(("20260101-000000", "first"),))
+    _run_cycle(tmp_path, **args)
+    result, records, _ = _run_cycle(tmp_path, **args)
+
+    assert result.returncode == 0, result.stderr
+    assert records == []
 
 
 def test_the_restore_cycle_never_writes_from_the_serving_process():
