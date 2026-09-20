@@ -729,6 +729,9 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # `memories` row crosses; REST-only for the pages.attachments row.
     "POST /api/v1/pages/{page_id}/attachments",
     "GET /api/v1/pages/attachments/{attachment_id}",
+    # The Notion import writes pages and their blocks, so it is a content
+    # surface on the same footing as the page write routes above.
+    "POST /api/v1/pages/import/notion",
     # Session checkpoints (T3.16). No memory content crosses: a checkpoint is
     # the agent's own note about its run, written by the agent and never
     # derived from a `memories` row — this surface reads that table and no
