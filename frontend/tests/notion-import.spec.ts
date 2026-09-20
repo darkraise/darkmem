@@ -53,9 +53,29 @@ test("imports a Notion export and shows the tree and a rendered image", async ({
   const project = await personalProject(page)
   const listed = await page.request.get(`/api/v1/pages?project=${encodeURIComponent(project)}`)
   expect(listed.ok()).toBe(true)
-  const pages = (await listed.json()) as { id: string; title: string | null }[]
+  const pages = (await listed.json()) as {
+    id: string
+    parent_id: string | null
+    title: string | null
+  }[]
   const notes = pages.find((p) => p.title === "Notes")
   expect(notes, "the export's Notes page was imported").toBeTruthy()
+
+  // The tree is derived, not read: the fixture is flat, and Notes is a child
+  // of Home only because Home links to it on a line of its own. Walking the
+  // ancestry is what shows the derivation reached the database, where the
+  // page merely existing would pass on a flat import too.
+  const byId = new Map(pages.map((p) => [p.id, p]))
+  const ancestry: (string | null)[] = []
+  for (let node = notes!; node.parent_id !== null; ) {
+    const parent = byId.get(node.parent_id)
+    expect(parent, `page ${node.id} names a parent outside the project`).toBeTruthy()
+    node = parent!
+    ancestry.push(node.title)
+  }
+  expect(ancestry.length, "Notes is at the root, so nothing derived it").toBeGreaterThan(0)
+  expect(ancestry[0]).toBe("Home")
+  expect(ancestry[ancestry.length - 1]).toMatch(/^Notion import — /)
 
   // The tree's expansion state is not what this leg proves; a direct link
   // opens the page whose one block is the export's image.

@@ -438,6 +438,12 @@ page-only types by design (`taxonomy.PAGE_BLOCK_TYPES` is kept out of
   marker removed and list properties dropped. Its children are kept, since a
   `todo` may hold children. 16 pages in the real export exercise this.
 
+The lifting is not the callout's alone: the parser nests a blockquote's
+list, heading, code, table and divider children under the quote, so every
+block whose type cannot hold children on a page has its children lifted to
+its own parent, in order. Only `list`, `todo`, `toggle` and `table` keep
+theirs.
+
 Then `page_door._flatten_headings`, then the page-parent rule from
 `block_verbs._check_page_nesting` (children only under `list`, `todo`,
 `toggle`; `table_row` under `table`) asserted on the result. A violation is a
