@@ -12,11 +12,14 @@ which snapshot to name.
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 from sqlalchemy import text as sa_text
 
 from app.services import backup_config as bc
-from app.services.backup_ship import SnapshotInfo, _stamp_of
+from app.services.attachment_archive import ATTACHMENTS, DUMPS
+from app.services.backup_ship import SnapshotInfo
 
 LOCAL = {"name": "disk", "kind": "local", "enabled": True, "retention_keep": 14}
 NAS = {
@@ -41,9 +44,12 @@ class _Listing:
         self.name = name
         self._names = names
 
-    async def list_snapshots(self):
+    async def list_snapshots(self, family=None):
+        family = family or DUMPS
         return [
-            SnapshotInfo(name=n, size=100, modified_at=_stamp_of(n)) for n in self._names
+            SnapshotInfo(name=n, size=100, modified_at=family.stamp_datetime(n))
+            for n in self._names
+            if family.matches(n)
         ]
 
 
@@ -51,7 +57,7 @@ class _Unreachable:
     def __init__(self, name):
         self.name = name
 
-    async def list_snapshots(self):
+    async def list_snapshots(self, family=None):
         raise RuntimeError("the NAS is unplugged")
 
 
@@ -163,3 +169,82 @@ def test_the_module_serves_no_verb_that_mutates():
         for method in getattr(route, "methods", set())
     }
     assert methods <= {"GET", "HEAD"}, f"the inventory router grew {methods}"
+
+
+# ── Both families, and an outcome per family ─────────────────────────
+
+TAR = "darkmem-app-attachments-20260101-000000.tar.gz.age"
+DUMP = "darkmem-app-20260101-000000.sql.gz.age"
+
+
+async def _journal(session, event_type, payload):
+    await session.execute(
+        sa_text(
+            "INSERT INTO events (event_type, object_type, source, payload) "
+            "VALUES (:t, 'system', 'backup_ship', CAST(:p AS jsonb))"
+        ),
+        {"t": event_type, "p": json.dumps(payload)},
+    )
+
+
+async def test_the_inventory_lists_both_families(session, client, auth_headers, monkeypatch):
+    await bc.save_destinations(session, {"destinations": [LOCAL]})
+    monkeypatch.setattr(
+        "app.api.routes.backups.build_destination",
+        lambda cfg: _Listing("disk", [DUMP, TAR]),
+    )
+
+    body = (
+        await client.get("/api/v1/backups/inventory", headers=auth_headers)
+    ).json()
+    row = body["destinations"][0]
+
+    assert [s["name"] for s in row["snapshots"]] == [DUMP]
+    assert [s["name"] for s in row["attachment_snapshots"]] == [TAR]
+    assert row["attachments_retention_keep"] == 3
+
+
+async def test_a_tarball_outcome_does_not_mask_the_dump_outcome(
+    session, client, auth_headers, monkeypatch
+):
+    """One DISTINCT ON per destination would let the attachment row, written
+    second, overwrite the dump's -- and the dump's outcome is the one an
+    operator reads before restoring."""
+    await bc.save_destinations(session, {"destinations": [LOCAL]})
+    monkeypatch.setattr(
+        "app.api.routes.backups.build_destination",
+        lambda cfg: _Listing("disk", [DUMP, TAR]),
+    )
+    await _journal(session, "backup_shipped", {"destination": "disk", "family": "dump", "sha256": "ab"})
+    await _journal(
+        session,
+        "backup_verify_failed",
+        {"destination": "disk", "family": "attachments", "error": "truncated"},
+    )
+    await session.commit()
+
+    row = (
+        await client.get("/api/v1/backups/inventory", headers=auth_headers)
+    ).json()["destinations"][0]
+
+    assert row["last_outcome"]["event_type"] == "backup_shipped"
+    assert row["last_attachment_outcome"]["event_type"] == "backup_verify_failed"
+    assert row["last_attachment_outcome"]["error"] == "truncated"
+
+
+async def test_a_pre_family_row_still_reads_as_a_dump(
+    session, client, auth_headers, monkeypatch
+):
+    await bc.save_destinations(session, {"destinations": [LOCAL]})
+    monkeypatch.setattr(
+        "app.api.routes.backups.build_destination", lambda cfg: _Listing("disk", [DUMP])
+    )
+    await _journal(session, "backup_shipped", {"destination": "disk", "sha256": "ab"})
+    await session.commit()
+
+    row = (
+        await client.get("/api/v1/backups/inventory", headers=auth_headers)
+    ).json()["destinations"][0]
+
+    assert row["last_outcome"]["sha256"] == "ab"
+    assert row["last_attachment_outcome"] is None

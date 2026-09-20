@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
 from app.database import get_session
+from app.services.attachment_archive import ATTACHMENTS, DUMPS
 from app.services.backup_config import load_destinations
 from app.services.backup_ship import build_destination
 from app.services.events import BACKUP_SHIPPED, BACKUP_VERIFY_FAILED
@@ -45,8 +46,14 @@ class DestinationInventory(BaseModel):
     kind: str
     enabled: bool
     retention_keep: int
+    attachments_retention_keep: int
     snapshots: list[SnapshotRow]
+    attachment_snapshots: list[SnapshotRow]
     last_outcome: OutcomeRow | None
+    #: Its own field rather than folded into `last_outcome`: the two artefacts
+    #: fail independently, and an operator choosing a dump needs to know
+    #: whether the set that pairs with it verified.
+    last_attachment_outcome: OutcomeRow | None
     #: Why this destination could not be listed. Present rather than raising:
     #: one unreachable NAS must not blank the whole inventory, and an operator
     #: reaching for this page during an incident is exactly who needs to see
@@ -60,21 +67,25 @@ class InventoryResponse(BaseModel):
 
 _LAST_OUTCOMES = text(
     """
-    SELECT DISTINCT ON (payload->>'destination')
+    SELECT DISTINCT ON (payload->>'destination', coalesce(payload->>'family', 'dump'))
            payload->>'destination' AS destination,
+           coalesce(payload->>'family', 'dump') AS family,
            event_type,
            created_at,
            payload
       FROM events
      WHERE event_type IN (:shipped, :failed)
        AND object_type = 'system'
-     ORDER BY payload->>'destination', created_at DESC, id DESC
+     ORDER BY payload->>'destination',
+              coalesce(payload->>'family', 'dump'),
+              created_at DESC,
+              id DESC
     """
 )
 
 
-async def _last_outcomes(session: AsyncSession) -> dict[str, OutcomeRow]:
-    """The newest ship row per destination.
+async def _last_outcomes(session: AsyncSession) -> dict[tuple[str, str], OutcomeRow]:
+    """The newest ship row per destination and artefact family.
 
     Filters on a JSONB key with no index behind it, which is fine at this row
     count -- one row per destination per night -- and cheaper than an index
@@ -86,7 +97,7 @@ async def _last_outcomes(session: AsyncSession) -> dict[str, OutcomeRow]:
             _LAST_OUTCOMES, {"shipped": BACKUP_SHIPPED, "failed": BACKUP_VERIFY_FAILED}
         )
     ).mappings().all()
-    out: dict[str, OutcomeRow] = {}
+    out: dict[tuple[str, str], OutcomeRow] = {}
     for row in rows:
         payload = row["payload"] or {}
         error = payload.get("error")
@@ -99,7 +110,7 @@ async def _last_outcomes(session: AsyncSession) -> dict[str, OutcomeRow]:
         # emit-site scan in `tests/test_events.py` matches that keyword on any
         # call, and a response model carrying the field would read to it as an
         # unresolvable journal write.
-        out[row["destination"]] = OutcomeRow.model_validate(
+        out[(row["destination"], row["family"])] = OutcomeRow.model_validate(
             {
                 "event_type": row["event_type"],
                 "at": row["created_at"],
@@ -122,12 +133,17 @@ async def backup_inventory(
     rows: list[DestinationInventory] = []
     for cfg in configured:
         snapshots: list[SnapshotRow] = []
+        attachment_snapshots: list[SnapshotRow] = []
         error: str | None = None
         try:
             destination = build_destination(cfg)
             snapshots = [
                 SnapshotRow(name=s.name, size=s.size, modified_at=s.modified_at)
-                for s in await destination.list_snapshots()
+                for s in await destination.list_snapshots(DUMPS)
+            ]
+            attachment_snapshots = [
+                SnapshotRow(name=s.name, size=s.size, modified_at=s.modified_at)
+                for s in await destination.list_snapshots(ATTACHMENTS)
             ]
         except Exception as exc:  # noqa: BLE001 - one destination, not the page
             error = str(exc)
@@ -137,8 +153,11 @@ async def backup_inventory(
                 kind=cfg.kind,
                 enabled=cfg.enabled,
                 retention_keep=cfg.retention_keep,
+                attachments_retention_keep=cfg.attachments_retention_keep,
                 snapshots=snapshots,
-                last_outcome=outcomes.get(cfg.name),
+                attachment_snapshots=attachment_snapshots,
+                last_outcome=outcomes.get((cfg.name, "dump")),
+                last_attachment_outcome=outcomes.get((cfg.name, "attachments")),
                 error=error,
             )
         )
