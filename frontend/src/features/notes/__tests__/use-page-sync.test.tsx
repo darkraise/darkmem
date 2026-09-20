@@ -5,7 +5,30 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("darkraise-ui/components/sonner", () => ({ toast: { error: vi.fn() } }))
 
+// The spread keeps the module's other exports real. `isAttachmentUrl` lives
+// here too and `inline-markdown` imports it, so a factory that returned only
+// these three would make every standalone-link fixture in this file throw.
+vi.mock("../lib/attachments", async (importOriginal) => {
+  let inFlight = 0
+  const listeners = new Set<() => void>()
+  return {
+    ...(await importOriginal<typeof import("../lib/attachments")>()),
+    uploadsInFlight: () => inFlight,
+    subscribeUploads: (listener: () => void) => {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+    __setUploads: (n: number) => {
+      inFlight = n
+      for (const listener of listeners) listener()
+    },
+  }
+})
+
 import { toast } from "darkraise-ui/components/sonner"
+import * as attachments from "../lib/attachments"
 import type { PageView } from "@/hooks/api"
 import type { EditorBlockLike } from "../lib/block-mapping"
 import { SyncTransportError, type PageTransport } from "../lib/page-sync"
@@ -46,6 +69,9 @@ function transport(fail?: number, latencyMs = 0) {
   }
   return { t, sent }
 }
+
+const setUploads = (n: number) =>
+  (attachments as unknown as { __setUploads: (n: number) => void }).__setUploads(n)
 
 let qc: QueryClient
 function wrapper({ children }: { children: ReactNode }) {
@@ -165,5 +191,31 @@ describe("usePageSync", () => {
     act(() => view.result.current.discard())
     view.rerender({ gen: 1 })
     expect(view.result.current.initialBlocks[0]!.content).toEqual([{ type: "text", text: "a", styles: {} }])
+  })
+})
+
+describe("an upload in flight", () => {
+  afterEach(() => setUploads(0))
+
+  it("warns on unload even when the tree is settled", () => {
+    renderHook(() => usePageSync(PAGE, 0, () => transport().t), { wrapper })
+
+    const settled = new Event("beforeunload", { cancelable: true })
+    window.dispatchEvent(settled)
+    expect(settled.defaultPrevented).toBe(false)
+
+    setUploads(1)
+    const pending = new Event("beforeunload", { cancelable: true })
+    window.dispatchEvent(pending)
+    expect(pending.defaultPrevented).toBe(true)
+  })
+
+  it("shows the saving state while a file is going up", async () => {
+    const { result } = renderHook(() => usePageSync(PAGE, 0, () => transport().t), { wrapper })
+    expect(result.current.status.kind).not.toBe("saving")
+    await act(async () => setUploads(1))
+    expect(result.current.status.kind).toBe("saving")
+    await act(async () => setUploads(0))
+    expect(result.current.status.kind).not.toBe("saving")
   })
 })

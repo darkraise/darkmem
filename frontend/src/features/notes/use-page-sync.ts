@@ -10,6 +10,7 @@ import {
   type EditorBlockLike,
   type TableRowIds,
 } from "./lib/block-mapping"
+import { subscribeUploads, uploadsInFlight } from "./lib/attachments"
 import { PageSync, type PageTransport, type SyncStatus } from "./lib/page-sync"
 import { createPageTransport } from "./lib/page-transport"
 import type { SyncTree } from "./lib/sync-tree"
@@ -32,6 +33,9 @@ interface Entry {
 const engines = new Map<string, Entry>()
 
 function anyPending(): boolean {
+  // A block whose upload has not resolved carries no url, so it is absent
+  // from every sync tree: the engines alone cannot see that work.
+  if (uploadsInFlight() > 0) return true
   for (const entry of engines.values()) if (entry.sync.pending) return true
   return false
 }
@@ -159,6 +163,8 @@ export function usePageSync(
     () => entry.sync.status,
   )
 
+  const uploading = useSyncExternalStore(subscribeUploads, uploadsInFlight)
+
   useEffect(() => {
     mount(entry)
     return () => unmount(page.id, entry)
@@ -184,12 +190,15 @@ export function usePageSync(
   return useMemo(
     () => ({
       initialBlocks,
-      status,
+      status:
+        uploading > 0 && (status.kind === "idle" || status.kind === "saved")
+          ? ({ kind: "saving" } as SyncStatus)
+          : status,
       onDocumentChange: (blocks: EditorBlockLike[]) => acceptDocument(entry, blocks),
       flushNow: () => flushEntry(entry),
       discard: () => discard(page.id, entry),
     }),
-    [entry, initialBlocks, page.id, status],
+    [entry, initialBlocks, page.id, status, uploading],
   )
 }
 
