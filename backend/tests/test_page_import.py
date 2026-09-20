@@ -342,6 +342,28 @@ async def test_warnings_are_capped_and_counted(
 
 
 @pytest.mark.asyncio
+async def test_the_hierarchy_summary_survives_the_warning_cap(
+    session, attachments_dir, tmp_path, monkeypatch
+):
+    from app.services import page_import
+
+    monkeypatch.setattr(page_import, "MAX_WARNINGS", 1)
+    report = await _run(session, tmp_path)
+    assert [w.kind for w in report.warnings] == ["derived_hierarchy"]
+    assert report.warnings_omitted >= 1
+
+
+@pytest.mark.asyncio
+async def test_the_hierarchy_summary_names_each_signal(
+    session, attachments_dir, tmp_path
+):
+    report = await _run(session, tmp_path)
+    summary = next(w for w in report.warnings if w.kind == "derived_hierarchy")
+    assert summary.path is None
+    assert "by database membership" in summary.detail
+
+
+@pytest.mark.asyncio
 async def test_a_database_page_and_its_rows_land_under_the_root(
     session, attachments_dir, tmp_path
 ):

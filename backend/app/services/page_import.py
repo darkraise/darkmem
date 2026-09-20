@@ -174,6 +174,17 @@ def _build_plan(
     try:
         tree = build_tree(archive, max_pages=settings.notion_import_max_pages, warn=warn)
 
+        # Emitted here rather than beside the report: the counts are known the
+        # moment the tree is, and a summary of the whole import must not be the
+        # entry `MAX_WARNINGS` drops.
+        signals = tree.signal_counts
+        if signals.get("database") or signals.get("link"):
+            warn("", "derived_hierarchy",
+                 "hierarchy derived from the export: "
+                 f"{signals.get('database', 0)} by database membership, "
+                 f"{signals.get('link', 0)} by a standalone link, "
+                 f"{signals.get('root', 0)} left at the root")
+
         # Only assets something links to. An unreferenced one would become a row
         # and a file that nothing in the corpus points at, for the cleanup job to
         # collect a week later. The scan runs on the pre-processed text the
@@ -325,16 +336,6 @@ async def _run_import(
                 properties=properties, actor=actor, page_id=node.uuid,
             )
             ids[node.uuid] = written.id
-
-        signals = plan.tree.signal_counts
-        if signals.get("database") or signals.get("link"):
-            warnings.add(
-                None, "derived_hierarchy",
-                "hierarchy derived from the export: "
-                f"{signals.get('database', 0)} by database membership, "
-                f"{signals.get('link', 0)} by a standalone link, "
-                f"{signals.get('root', 0)} left at the root",
-            )
 
         await record_event(
             session,
