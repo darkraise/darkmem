@@ -15,7 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.services import page_attachment_cleanup as pac
 from app.services.page_attachment_cleanup import run_cleanup
-from app.services.page_attachments import attachment_path, attachment_url
+from app.services.page_attachments import (
+    STAGING_DIRNAME,
+    attachment_path,
+    attachment_url,
+)
 
 PAGE = "22222222-2222-2222-2222-222222222222"
 OTHER_PAGE = "44444444-4444-4444-4444-444444444444"
@@ -122,7 +126,11 @@ async def test_a_document_block_does_not_keep_an_attachment(session, session_fac
     assert not await _row_exists(session, old)
 
 
-async def test_old_rowless_files_and_parts_go_young_ones_stay(session_factory, root):
+async def test_old_rowless_files_and_parts_go_young_ones_stay(
+    session, session_factory, root
+):
+    await _attachment(session, age_hours=1)
+    await session.commit()
     old_orphan = attachment_path(uuid4())
     young_orphan = attachment_path(uuid4())
     old_part = attachment_path(uuid4()).with_suffix(".part")
@@ -162,8 +170,10 @@ async def test_stale_staging_dirs_go(session_factory, root):
 
 
 async def test_a_file_that_cannot_be_removed_does_not_stop_the_sweep(
-    session_factory, root, monkeypatch,
+    session, session_factory, root, monkeypatch,
 ):
+    await _attachment(session, age_hours=1)
+    await session.commit()
     rowless = attachment_path(uuid4())
     part = attachment_path(uuid4()).with_suffix(".part")
     for path in (rowless, part):
@@ -227,6 +237,9 @@ async def test_the_sweep_names_what_it_removed(session, session_factory, root, c
     """Counts alone leave an irreversible sweep unaccounted for."""
     await _pages(session)
     old = await _attachment(session, age_hours=200)
+    # Arm 1 takes `old`, so without this the table is empty by the time the
+    # row-less arm runs and its bulk guard refuses instead of collecting.
+    await _attachment(session, age_hours=1)
     rowless = attachment_path(uuid4())
     rowless.parent.mkdir(parents=True, exist_ok=True)
     rowless.write_bytes(b"x")
@@ -294,3 +307,91 @@ async def test_the_runner_sweeps_at_the_configured_grace(session, session_factor
     assert result["rows_deleted"] == 1
     assert not await _row_exists(session, old)
     assert not attachment_path(old).exists()
+
+
+# ── The row-less arm refuses a bulk mismatch ─────────────────────────
+
+
+def _stage_rowless(count: int) -> None:
+    """Files old enough for the arm, with no row anywhere. Written through
+    `attachment_path` so the shard layout matches what `_scan` walks."""
+    for _ in range(count):
+        path = attachment_path(uuid4())
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"orphan")
+        _age(path, 7200)
+
+
+async def test_an_empty_table_with_files_present_removes_nothing(
+    session_factory, root
+):
+    """The parked scenario: an app booted against a freshly recreated database
+    while ATTACHMENTS_DIR points at the real volume. A count threshold alone
+    would still wipe a corpus smaller than the limit."""
+    now = time.time()
+    _stage_rowless(3)
+
+    report = await run_cleanup(
+        session_factory, grace_hours=168, staging_max_age_hours=6, now=now
+    )
+
+    assert report.rowless_files_removed == 0
+    assert report.rowless_skipped == 3
+    assert len(list(root.rglob("*"))) >= 3
+
+
+async def test_a_count_past_the_limit_removes_nothing(
+    session, session_factory, root
+):
+    now = time.time()
+    await _attachment(session, age_hours=1)  # the table is not empty
+    await session.commit()
+    _stage_rowless(4)
+
+    report = await run_cleanup(
+        session_factory, grace_hours=168, staging_max_age_hours=6,
+        rowless_bulk_limit=3, now=now,
+    )
+
+    assert report.rowless_files_removed == 0
+    assert report.rowless_skipped == 4
+
+
+async def test_at_the_limit_the_arm_still_collects(
+    session, session_factory, root
+):
+    now = time.time()
+    await _attachment(session, age_hours=1)
+    await session.commit()
+    _stage_rowless(3)
+
+    report = await run_cleanup(
+        session_factory, grace_hours=168, staging_max_age_hours=6,
+        rowless_bulk_limit=3, now=now,
+    )
+
+    assert report.rowless_files_removed == 3
+    assert report.rowless_skipped == 0
+
+
+async def test_the_other_arms_run_even_when_the_rowless_arm_refuses(
+    session_factory, root
+):
+    now = time.time()
+    _stage_rowless(2)
+    stale_part = root / "ab"
+    stale_part.mkdir(parents=True, exist_ok=True)
+    part = stale_part / "deadbeef.part"
+    part.write_bytes(b"x")
+    os.utime(part, (now - 7200, now - 7200))
+    staging = root / STAGING_DIRNAME / "job"
+    staging.mkdir(parents=True)
+    os.utime(staging, (now - 10 * 3600, now - 10 * 3600))
+
+    report = await run_cleanup(
+        session_factory, grace_hours=168, staging_max_age_hours=6, now=now
+    )
+
+    assert report.rowless_skipped == 2
+    assert report.part_files_removed == 1
+    assert report.staging_dirs_removed == 1

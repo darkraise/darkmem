@@ -21,6 +21,7 @@ from uuid import UUID
 
 from sqlalchemy import text
 
+from app.services.attachment_manifest import attachment_count
 from app.services.job_registry import FieldDescriptor
 from app.services.page_attachments import (
     STAGING_DIRNAME,
@@ -34,6 +35,7 @@ PAGE_ATTACHMENT_CLEANUP_JOB_KEY = "page_attachment_cleanup"
 GRACE_HOURS_DEFAULT = 168
 STAGING_MAX_AGE_HOURS_DEFAULT = 6
 ROWLESS_MIN_AGE_SECONDS = 3600
+ROWLESS_BULK_LIMIT_DEFAULT = 100
 _ID_BATCH = 500
 _LOG_SAMPLE = 50
 _SHARD = re.compile(r"[0-9a-f]{2}")
@@ -49,6 +51,13 @@ PAGE_ATTACHMENT_CLEANUP_CONFIG_SCHEMA = [
         key="staging_max_age_hours", label="Import staging max age (hours)",
         default=STAGING_MAX_AGE_HOURS_DEFAULT, min=1, max=168,
         help="Import staging directories older than this are removed.",
+    ),
+    FieldDescriptor(
+        key="rowless_bulk_limit", label="Row-less file limit",
+        default=ROWLESS_BULK_LIMIT_DEFAULT, min=1, max=100000,
+        help="Above this many files with no row, the sweep refuses rather "
+             "than collecting -- the signature of a restored volume against "
+             "an unrestored database, not of a crash.",
     ),
 ]
 
@@ -91,6 +100,7 @@ class CleanupReport:
     rows_deleted: int = 0
     files_unlinked: int = 0
     rowless_files_removed: int = 0
+    rowless_skipped: int = 0
     part_files_removed: int = 0
     staging_dirs_removed: int = 0
     # Inside total() on purpose: a run that removed nothing but failed on
@@ -221,6 +231,7 @@ async def run_cleanup(
     *,
     grace_hours: int,
     staging_max_age_hours: int,
+    rowless_bulk_limit: int = ROWLESS_BULK_LIMIT_DEFAULT,
     now: float | None = None,
 ) -> CleanupReport:
     report = CleanupReport()
@@ -245,15 +256,40 @@ async def run_cleanup(
     if files:
         known: set[UUID] = set()
         async with session_factory() as session:
+            total_rows = await attachment_count(session)
             for start in range(0, len(files), _ID_BATCH):
                 batch = [attachment_id for attachment_id, _ in files[start:start + _ID_BATCH]]
                 known.update(
                     row[0] for row in (await session.execute(_KNOWN_IDS, {"ids": batch})).all()
                 )
         rowless = [path for attachment_id, path in files if attachment_id not in known]
-        _log_removed("removing row-less files", rowless)
-        report.rowless_files_removed, failed = await asyncio.to_thread(_unlink, rowless)
-        report.files_failed += failed
+        # Two guards, because neither closes the hazard alone. The empty-table
+        # one is the parked scenario's own signature -- an app booted against a
+        # freshly recreated database with the real volume mounted -- and a
+        # count threshold would still wipe a corpus smaller than the limit. The
+        # count one catches a wrong ATTACHMENTS_DIR on a populated instance.
+        # A large row-less set is not proof of a mistake: an import that fails
+        # between moving its staged files and committing leaves hundreds at
+        # once, which is why this routes to attachment_verify rather than
+        # telling the operator to raise the number.
+        if rowless and (total_rows == 0 or len(rowless) > rowless_bulk_limit):
+            report.rowless_skipped = len(rowless)
+            logger.error(
+                "page_attachment_cleanup: refusing to remove %s row-less files "
+                "(%s). Check whether this instance is serving a restored "
+                "attachment volume against an unrestored database, whether "
+                "ATTACHMENTS_DIR is right, or whether an import failed before "
+                "committing; `python -m app.services.attachment_verify` tells "
+                "them apart.",
+                len(rowless),
+                "page_attachments is empty"
+                if total_rows == 0
+                else f"limit {rowless_bulk_limit}",
+            )
+        else:
+            _log_removed("removing row-less files", rowless)
+            report.rowless_files_removed, failed = await asyncio.to_thread(_unlink, rowless)
+            report.files_failed += failed
     report.part_files_removed, failed = await asyncio.to_thread(_unlink, parts)
     report.files_failed += failed
     report.staging_dirs_removed, failed = await asyncio.to_thread(
@@ -267,13 +303,18 @@ def make_page_attachment_cleanup_runner(app, session_factory):
     async def run() -> dict | int:
         grace = GRACE_HOURS_DEFAULT
         staging = STAGING_MAX_AGE_HOURS_DEFAULT
+        limit = ROWLESS_BULK_LIMIT_DEFAULT
         registry = getattr(app.state, "job_registry", None)
         if registry is not None:
             cfg = await registry.load_config(PAGE_ATTACHMENT_CLEANUP_JOB_KEY)
             grace = int(cfg.config.get("grace_hours", GRACE_HOURS_DEFAULT))
             staging = int(cfg.config.get("staging_max_age_hours", STAGING_MAX_AGE_HOURS_DEFAULT))
+            limit = int(cfg.config.get("rowless_bulk_limit", ROWLESS_BULK_LIMIT_DEFAULT))
         report = await run_cleanup(
-            session_factory, grace_hours=grace, staging_max_age_hours=staging,
+            session_factory,
+            grace_hours=grace,
+            staging_max_age_hours=staging,
+            rowless_bulk_limit=limit,
         )
         if not report.total():
             # 0, not {}: a no-op run writes no job_runs row.
