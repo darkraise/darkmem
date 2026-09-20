@@ -1150,3 +1150,71 @@ def test_the_dump_helpers_survive_as_aliases():
     assert backup_ship._is_snapshot(DUMP_NEW)
     assert not backup_ship._is_snapshot(TAR_NEW)
     assert backup_ship._stamp_of(DUMP_NEW).year == 2026
+
+
+# ── Task 4: S3 never materialises an object ──────────────────────────
+
+import hashlib  # noqa: E402
+
+
+class _CountingBody:
+    """A boto3 body that records how much each `read` asked for.
+
+    The property is "no single read asks for the whole object": a destination
+    that buffers a multi-gigabyte tarball OOM-kills a container capped at 1 GB,
+    and a test that only compared the final bytes would pass either way.
+    """
+
+    def __init__(self, payload: bytes):
+        self._buffer = io.BytesIO(payload)
+        self.reads: list[int | None] = []
+        self.closed = False
+
+    def read(self, size=-1):
+        self.reads.append(size)
+        return self._buffer.read(size)
+
+    def close(self):
+        self.closed = True
+
+
+class _StreamingFakeS3(_FakeS3):
+    def __init__(self, objects=None):
+        super().__init__(objects)
+        self.bodies: list[_CountingBody] = []
+
+    def get_object(self, Bucket, Key):  # noqa: N803
+        body = _CountingBody(self.objects[Key])
+        self.bodies.append(body)
+        return {"Body": body}
+
+
+async def test_s3_streams_in_bounded_chunks(tmp_path):
+    key = "darkmem/darkmem-app-attachments-20260101-000000.tar.gz.age"
+    payload = b"z" * (3 * backup_ship._S3_CHUNK + 7)
+    fake = _StreamingFakeS3({key: payload})
+
+    chunks = [
+        chunk
+        async for chunk in _s3(fake).stream(
+            "darkmem-app-attachments-20260101-000000.tar.gz.age"
+        )
+    ]
+
+    assert b"".join(chunks) == payload
+    assert len(chunks) == 4
+    assert fake.bodies[0].reads == [backup_ship._S3_CHUNK] * 5
+    assert fake.bodies[0].closed
+
+
+async def test_s3_read_back_hashes_without_buffering(tmp_path):
+    key = "darkmem/darkmem-app-attachments-20260101-000000.tar.gz.age"
+    payload = b"y" * (2 * backup_ship._S3_CHUNK)
+    fake = _StreamingFakeS3({key: payload})
+
+    digest = await _s3(fake).read_back_sha256(
+        "darkmem-app-attachments-20260101-000000.tar.gz.age"
+    )
+
+    assert digest == hashlib.sha256(payload).hexdigest()
+    assert all(size == backup_ship._S3_CHUNK for size in fake.bodies[0].reads)

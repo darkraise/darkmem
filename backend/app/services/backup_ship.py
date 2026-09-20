@@ -60,6 +60,9 @@ JOB_PREFIX = "darkmem-app-"
 COMPLETION_MARKER = b"PostgreSQL database dump complete"
 
 _CHUNK = 1 << 16
+#: S3 reads in larger chunks than local I/O: each one crosses a thread
+#: boundary, so 64 KiB would mean sixteen thousand hops per gigabyte.
+_S3_CHUNK = 1 << 20
 #: Enough to hold the marker plus pg_dump's trailing newline across any chunk
 #: boundary, matching backup.sh's own `tail -c 512`.
 _TAIL_BYTES = 512
@@ -848,39 +851,41 @@ class S3Destination:
             self._key(local_path.name),
         )
 
-    def _hash_object(self, client, key: str) -> str:
-        digest = hashlib.sha256()
-        body = client.get_object(Bucket=self.s3.bucket, Key=key)["Body"]
-        for chunk in iter(lambda: body.read(_CHUNK), b""):
-            digest.update(chunk)
-        return digest.hexdigest()
-
-    def _read_object(self, client, key: str) -> bytes:
-        return client.get_object(Bucket=self.s3.bucket, Key=key)["Body"].read()
+    def _open_object(self, client, key: str):
+        return client.get_object(Bucket=self.s3.bucket, Key=key)["Body"]
 
     async def stream(self, name: str):
-        """One `get_object`, read in the executor.
+        """Chunked, never one `.read()`.
 
-        Chunked streaming through boto3's sync body would mean one
-        `to_thread` per chunk; at snapshot sizes the simpler shape is one
-        offloaded read. Stated rather than hidden: this materialises the
-        object, so an S3 pull is bounded by memory where the other kinds are
-        not.
+        An attachment tarball is the whole page-attachment volume, and this
+        process runs under a 1 GB memory limit: materialising the object to
+        verify or to pull it would be the largest allocation here by orders of
+        magnitude. Each chunk crosses a thread boundary because boto3's body is
+        synchronous.
         """
         client = self._factory()
-        yield await asyncio.to_thread(self._read_object, client, self._key(name))
+        body = await asyncio.to_thread(self._open_object, client, self._key(name))
+        try:
+            while True:
+                chunk = await asyncio.to_thread(body.read, _S3_CHUNK)
+                if not chunk:
+                    return
+                yield chunk
+        finally:
+            await asyncio.to_thread(body.close)
 
-    async def read_back_sha256(
-        self, name: str, *, timeout: float | None = None
-    ) -> str:
+    async def read_back_sha256(self, name: str, *, timeout: float | None = None) -> str:
         """Hash the object's own bytes, never its ETag.
 
         An ETag is a multipart-dependent digest of what the *service* thinks it
-        stored; rule 2 asks what we can read back. `timeout` is accepted and
-        ignored, as on `ship`.
+        stored; rule 2 asks what we can read back. Derived from `stream`, so a
+        verify and a restore-time pull read the destination through one path.
+
+        `timeout` is accepted and ignored, as on `ship`: boto3 carries its own
+        client timeouts, and dropping the parameter here would make an S3
+        destination raise `TypeError` the moment a caller passes a bound.
         """
-        client = self._factory()
-        return await asyncio.to_thread(self._hash_object, client, self._key(name))
+        return await _hash_stream(self, name)
 
     def _list_all(self, client, family: Family) -> list[tuple[str, int]]:
         """Every page. Pruning off a truncated first page would compute the
