@@ -732,6 +732,23 @@ def is_attachment_upload_path(path: str) -> bool:
     )
 
 
+def is_page_import_path(path: str) -> bool:
+    """`POST /api/v1/pages/import/notion` streams a whole Notion export and
+    bounds it against `notion_import_max_bytes`, which is three orders of
+    magnitude above the edge cap."""
+    return path == "/api/v1/pages/import/notion"
+
+
+def bounds_own_body(path: str) -> bool:
+    """Whether this route enforces its own body ceiling.
+
+    One predicate above both spellings rather than one predicate meaning two
+    things: each name states a fact its own tests assert, and the middleware
+    asks a single question.
+    """
+    return is_attachment_upload_path(path) or is_page_import_path(path)
+
+
 class SecurityHeadersMiddleware:
     def __init__(self, app):
         self.app = app
@@ -778,7 +795,7 @@ class RequestBodyLimitMiddleware:
 
     async def __call__(self, scope, receive, send):
         path = scope.get("path", "")
-        if scope["type"] == "http" and not is_mcp_path(path) and not is_attachment_upload_path(path):
+        if scope["type"] == "http" and not is_mcp_path(path) and not bounds_own_body(path):
             declared = Headers(scope=scope).get("content-length")
             if declared and declared.isdigit() and int(declared) > self.max_bytes:
                 response = _error_response(
