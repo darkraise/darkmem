@@ -130,7 +130,7 @@ export function usePagesTrash(project: string, open: boolean) {
   })
 }
 
-function invalidatePageLists(qc: QueryClient) {
+export function invalidatePageLists(qc: QueryClient) {
   void qc.invalidateQueries({ queryKey: ["pages"] })
   void qc.invalidateQueries({ queryKey: ["pagesTrash"] })
 }

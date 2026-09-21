@@ -171,16 +171,23 @@ _INSERT_PAGE = text(
             CAST(:properties AS jsonb))
     """
 )
-# The `char_span` bind is cast twice for the reason `documents._INSERT_BLOCK`
-# records: a single cast makes asyncpg infer int4range and refuse the string.
-_INSERT_BLOCK = text(
+# Spans ride as a text array and are parsed per row, which keeps the bound
+# convention (`[lo,hi)`) stated here rather than delegated to a driver default
+# -- the reason `documents._INSERT_BLOCK` records for its own scalar bind.
+_INSERT_BLOCKS = text(
     """
     INSERT INTO blocks (id, page_id, parent_id, order_index, type, text,
                         properties, char_span)
-    VALUES (CAST(:id AS uuid), CAST(:page_id AS uuid), CAST(:parent_id AS uuid),
-            CAST(:order_index AS integer), CAST(:type AS text),
-            CAST(:text AS text), CAST(:properties AS jsonb),
-            CAST(CAST(:char_span AS text) AS int4range))
+    SELECT CAST(u.id AS uuid), CAST(:page AS uuid), CAST(u.parent AS uuid),
+           u.ord, u.kind, u.body, CAST(u.props AS jsonb),
+           CAST(u.span AS int4range)
+    FROM (SELECT unnest(CAST(:ids AS text[])) AS id,
+                 unnest(CAST(:parents AS text[])) AS parent,
+                 unnest(CAST(:ords AS integer[])) AS ord,
+                 unnest(CAST(:kinds AS text[])) AS kind,
+                 unnest(CAST(:bodies AS text[])) AS body,
+                 unnest(CAST(:props AS text[])) AS props,
+                 unnest(CAST(:spans AS text[])) AS span) u
     """
 )
 _MOVED_PAGE = text(
@@ -444,35 +451,24 @@ async def _claim_order_index(
     return order_index
 
 
-async def create_page(
+async def _insert_page(
     session: AsyncSession,
-    llm,
     *,
     project: str,
+    parent_id: str | None,
+    after_id: str | None,
     title: str | None,
-    parent_id: str | None = None,
-    after_id: str | None = None,
-    content: str | None = None,
-    properties: dict | None = None,
-    actor: str | None = None,
+    tree: list[TreeBlock],
+    properties: dict | None,
+    actor: str | None,
+    page_id: UUID | None = None,
 ) -> PageResult:
-    if content is not None and len(content) > MAX_CONTENT_CHARS:
-        raise PageTooLarge(
-            f"content is {len(content)} characters; the bound is "
-            f"{MAX_CONTENT_CHARS}"
-        )
+    """Claim a slot, write the page and its blocks, journal -- and never commit.
 
-    page_id = uuid4()
-    tree = _flatten_headings(_parse(content)) if content else []
-    if content and (
-        split_frontmatter(content)[0] is not None
-        or not reproduces_source(tree, content, {})
-    ):
-        raise PageNotRepresentable(
-            "this content carries source a page cannot represent (a leading "
-            "frontmatter fence or a link-reference definition); a page stores "
-            "its blocks' serialisation, so filing it would drop that source"
-        )
+    The caller owns the commit, so a caller writing many pages keeps them in
+    one transaction. The MAX_BLOCKS refusal lives here so every caller keeps it.
+    """
+    page_id = page_id or uuid4()
     serialized = serialize_tree(tree)
     stored_content = serialized.content
     content_hash = compute_content_hash(stored_content)
@@ -497,17 +493,18 @@ async def create_page(
             "content_hash": content_hash,
             "properties": _json(properties),
         })
-        for block in tree:
-            spot = placed[block.id]
-            await session.execute(_INSERT_BLOCK, {
-                "id": str(block.id),
-                "page_id": str(page_id),
-                "parent_id": None if block.parent_id is None else str(block.parent_id),
-                "order_index": spot.order_index,
-                "type": block.type,
-                "text": block.text,
-                "properties": _json(block.properties),
-                "char_span": f"[{spot.char_span[0]},{spot.char_span[1]})",
+        if tree:
+            spots = [placed[block.id] for block in tree]
+            await session.execute(_INSERT_BLOCKS, {
+                "page": str(page_id),
+                "ids": [str(b.id) for b in tree],
+                "parents": [None if b.parent_id is None else str(b.parent_id)
+                            for b in tree],
+                "ords": [s.order_index for s in spots],
+                "kinds": [b.type for b in tree],
+                "bodies": [b.text for b in tree],
+                "props": [_json(b.properties) for b in tree],
+                "spans": [f"[{s.char_span[0]},{s.char_span[1]})" for s in spots],
             })
         # No block or title text in the payload: write-time minimization, and
         # a journal row outlives the page it describes.
@@ -525,7 +522,6 @@ async def create_page(
                 "content_hash": content_hash,
             },
         )
-    await session.commit()
 
     return PageResult(
         id=page_id,
@@ -536,6 +532,43 @@ async def create_page(
         content_hash=content_hash,
         blocks_written=len(tree),
     )
+
+
+async def create_page(
+    session: AsyncSession,
+    llm,
+    *,
+    project: str,
+    title: str | None,
+    parent_id: str | None = None,
+    after_id: str | None = None,
+    content: str | None = None,
+    properties: dict | None = None,
+    actor: str | None = None,
+) -> PageResult:
+    if content is not None and len(content) > MAX_CONTENT_CHARS:
+        raise PageTooLarge(
+            f"content is {len(content)} characters; the bound is "
+            f"{MAX_CONTENT_CHARS}"
+        )
+
+    tree = _flatten_headings(_parse(content)) if content else []
+    if content and (
+        split_frontmatter(content)[0] is not None
+        or not reproduces_source(tree, content, {})
+    ):
+        raise PageNotRepresentable(
+            "this content carries source a page cannot represent (a leading "
+            "frontmatter fence or a link-reference definition); a page stores "
+            "its blocks' serialisation, so filing it would drop that source"
+        )
+
+    result = await _insert_page(
+        session, project=project, parent_id=parent_id, after_id=after_id,
+        title=title, tree=tree, properties=properties, actor=actor,
+    )
+    await session.commit()
+    return result
 
 
 async def get_page(

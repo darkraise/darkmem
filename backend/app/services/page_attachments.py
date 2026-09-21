@@ -203,6 +203,47 @@ async def store_upload(
     )
 
 
+def place_staged(staged: Path, attachment_id: UUID) -> None:
+    """Move an already-written staged file onto its final sharded path.
+
+    `os.replace` rather than a copy: staging lives under the same
+    `attachments_dir`, so the rename is atomic and costs no second write of a
+    file that may be tens of megabytes.
+    """
+    final = attachment_path(attachment_id)
+    final.parent.mkdir(parents=True, exist_ok=True)
+    os.replace(staged, final)
+
+
+async def insert_attachment_row(
+    session: AsyncSession,
+    *,
+    attachment_id: UUID,
+    project: str,
+    page_id: UUID | None,
+    filename: str,
+    content_type: str,
+    size_bytes: int,
+    sha256: str,
+) -> None:
+    """Insert one row and DO NOT commit.
+
+    `store_upload` commits because its file is already on disk and its caller
+    has nothing else to write. An import writes its attachment rows, its pages
+    and its journal row in one transaction, so it needs the insert without the
+    commit.
+    """
+    await session.execute(_INSERT, {
+        "id": str(attachment_id),
+        "project": project,
+        "page": None if page_id is None else str(page_id),
+        "filename": filename,
+        "content_type": content_type,
+        "size_bytes": size_bytes,
+        "sha256": sha256,
+    })
+
+
 async def get_attachment(session: AsyncSession, attachment_id: UUID) -> AttachmentRow | None:
     row = (await session.execute(_SELECT, {"id": str(attachment_id)})).first()
     if row is None:

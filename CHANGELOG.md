@@ -4,6 +4,52 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
+## v1.9.0 — 2026-09-21
+
+**A Notion workspace can be imported into the page tree.** Export a workspace
+from Notion as Markdown & CSV, choose **Import from Notion** in the `/notes`
+tree header, and the zip is filed under one new page: 2193 pages, six databases
+and 61 attachments on the export this was measured against.
+
+### Added
+
+- **`POST /api/v1/pages/import/notion`.** One REST route, REST-only like the
+  rest of the page tree. The body is streamed to staging rather than buffered,
+  planned off the event loop, then written in one transaction: attachment files
+  land first and their rows and pages after, so a crash leaves a file no row
+  names and never a row with no file. One import runs at a time; a second gets
+  409. A bounded run answers 422 naming `notion_import_max_seconds`.
+- **Hierarchy is derived, not read.** A Notion export made without "Create
+  folders for subpages" is flat and states none, so a page is parented by
+  folder nesting, then database membership (a row page's property block names
+  its database's columns), then a link on a line of its own. On the measured
+  export that places 2171 of 2193 pages with none ambiguous; the report carries
+  how many pages each signal placed, and a cycle is broken with a warning
+  rather than dropping pages.
+- **The dialog.** Upload progress, an indeterminate bar once the body is sent,
+  the counts, and the import's warnings. It refuses closing mid-import and
+  says that closing does not cancel an import already at the server.
+- **Six ceilings** as settings (`notion_import_max_bytes`, `_max_entries`,
+  `_max_uncompressed_bytes`, `_max_pages`, `_max_blocks`, `_max_seconds`), and
+  a `pages_imported` journal event on the root page.
+
+### Changed
+
+- The request body cap exempts this route (`bounds_own_body`), as it already
+  does the attachment upload; `is_attachment_upload_path` keeps its meaning.
+- `create_page` is split so the import and the ordinary create share one
+  `_insert_page`, and a page's blocks are now written in one statement instead
+  of one per block.
+
+### Limits
+
+- `frontend/nginx.conf` still carries `client_max_body_size 25m`. The image
+  serves the SPA itself and does not use it, so it is only a limit for a
+  deployment that puts that nginx in front.
+- A page's text is read whole up to 16 MiB per member, and the held text of a
+  whole export is bounded by `notion_import_max_uncompressed_bytes`, not by the
+  1 GB process budget the design assumed.
+
 ## v1.8.0 — 2026-09-08
 
 **A document's metadata is editable, on both doors, and a serialised block

@@ -1951,9 +1951,11 @@ would let page rows crowd document hits out of the candidate stream. **REST-only
 because pages are the operator's authoring surface rather than an agent's
 context path: thirteen routes under `/api/v1/pages` (`api/routes/pages.py`) plus
 the two attachment routes in `api/routes/page_attachments.py` (upload and serve,
-files on the `attachment_data` volume at `ATTACHMENTS_DIR`), no
+files on the `attachment_data` volume at `ATTACHMENTS_DIR`) plus the Notion
+import route in `api/routes/page_import.py` (`POST /api/v1/pages/import/notion`,
+sixteen in all), no
 MCP tool and no scope, recorded as the `pages.reads` / `pages.write` /
-`pages.attachments` single-door rows on `docs/two-door-parity.md`. A page is **block-first by
+`pages.attachments` / `pages.import` single-door rows on `docs/two-door-parity.md`. A page is **block-first by
 construction** — create parses `content` and stores the serialiser's output, so
 no conversion is ever owed, and a create whose content carries source the tree
 cannot hold (a frontmatter fence, a link-reference definition) is refused 422
@@ -2018,6 +2020,10 @@ count is module-wide, shared by every mounted editor, since that guard asks
 whether any work is outstanding. An upload that resolves after its pane
 unmounted is lost (spec §8). The
 CSP's `img-src` carries `https:` for external images, deliberately not `http:`.
+The tree header carries an "Import from Notion" action that files a Markdown &
+CSV export into the tree, deriving hierarchy from database membership and
+standalone links because a Notion export made without "Create folders for
+subpages" states none.
 `ProjectWorkspace` lost `treeManagement` in B2 and is the corpus browser
 again. The cost is stated rather than discovered: **the personal
 project's documents are now visible nowhere in the SPA** — `/documents` and the

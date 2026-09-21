@@ -18,7 +18,7 @@ from sqlalchemy import text
 
 from app.api.mcp.server import mcp as mcp_server, mcp_streamable_http_kwargs, set_pipeline
 from app.api.spa import mount_spa
-from app.api.routes import analytics, backups, api_keys as api_key_routes, git_accounts as git_account_routes, articles as articles_routes, auth, buffer as buffer_routes, chat, checkpoints as checkpoint_routes, code, config, distribution as distribution_routes, documents as documents_routes, dream_digest as dream_digest_routes, events as events_routes, facts as facts_routes, graph, hygiene_queue, jobs, knowledge_search as knowledge_search_routes, llm_providers, memories, overview as overview_routes, pages as pages_routes, page_attachments as page_attachments_routes, pipeline as pipeline_routes, pipeline_failures, projects as projects_routes, ratification as ratification_routes, reembed, repos, review_queue, setup, system, tags, topics as topics_routes, usage as usage_routes, vectors
+from app.api.routes import analytics, backups, api_keys as api_key_routes, git_accounts as git_account_routes, articles as articles_routes, auth, buffer as buffer_routes, chat, checkpoints as checkpoint_routes, code, config, distribution as distribution_routes, documents as documents_routes, dream_digest as dream_digest_routes, events as events_routes, facts as facts_routes, graph, hygiene_queue, jobs, knowledge_search as knowledge_search_routes, llm_providers, memories, overview as overview_routes, pages as pages_routes, page_attachments as page_attachments_routes, page_import as page_import_routes, pipeline as pipeline_routes, pipeline_failures, projects as projects_routes, ratification as ratification_routes, reembed, repos, review_queue, setup, system, tags, topics as topics_routes, usage as usage_routes, vectors
 from app.api.websocket import websocket_endpoint
 from sqlalchemy.exc import DBAPIError
 
@@ -732,6 +732,23 @@ def is_attachment_upload_path(path: str) -> bool:
     )
 
 
+def is_page_import_path(path: str) -> bool:
+    """`POST /api/v1/pages/import/notion` streams a whole Notion export and
+    bounds it against `notion_import_max_bytes`, which is three orders of
+    magnitude above the edge cap."""
+    return path == "/api/v1/pages/import/notion"
+
+
+def bounds_own_body(path: str) -> bool:
+    """Whether this route enforces its own body ceiling.
+
+    One predicate above both spellings rather than one predicate meaning two
+    things: each name states a fact its own tests assert, and the middleware
+    asks a single question.
+    """
+    return is_attachment_upload_path(path) or is_page_import_path(path)
+
+
 class SecurityHeadersMiddleware:
     def __init__(self, app):
         self.app = app
@@ -778,7 +795,7 @@ class RequestBodyLimitMiddleware:
 
     async def __call__(self, scope, receive, send):
         path = scope.get("path", "")
-        if scope["type"] == "http" and not is_mcp_path(path) and not is_attachment_upload_path(path):
+        if scope["type"] == "http" and not is_mcp_path(path) and not bounds_own_body(path):
             declared = Headers(scope=scope).get("content-length")
             if declared and declared.isdigit() and int(declared) > self.max_bytes:
                 response = _error_response(
@@ -1038,6 +1055,9 @@ app.include_router(dream_digest_routes.router)
 app.include_router(events_routes.router)
 app.include_router(buffer_routes.router)
 app.include_router(documents_routes.router)
+# Before `pages_routes`: FastAPI matches in registration order, so a later
+# two-segment `POST /pages/{page_id}/x` would shadow `/pages/import/notion`.
+app.include_router(page_import_routes.router)
 app.include_router(pages_routes.router)
 app.include_router(page_attachments_routes.router)
 app.include_router(reembed.router)

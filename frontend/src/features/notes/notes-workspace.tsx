@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { Plus, Trash2 } from "lucide-react"
+import { MoreHorizontal, Plus, Trash2 } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "darkraise-ui/components/dropdown-menu"
 import {
   Dialog,
   DialogContent,
@@ -20,8 +26,10 @@ import { ScrollArea } from "darkraise-ui/components/scroll-area"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { toast } from "darkraise-ui/components/sonner"
 import { ApiError } from "@/lib/api"
+import { DEMO } from "@/lib/demo-flag"
 import { EmptyState } from "@/components/darkmem"
 import {
+  invalidatePageLists,
   usePage,
   usePageCreate,
   usePageDelete,
@@ -40,6 +48,7 @@ import {
 import { applyPlacement, type DropPlacement } from "./lib/drop-target"
 import { PagePane } from "./page-pane"
 import { PageTree } from "./page-tree"
+import { NotionImportDialog } from "./notion-import-dialog"
 import { PageTrashSheet } from "./page-trash-sheet"
 
 const NOT_FOUND = 404
@@ -73,6 +82,7 @@ export function NotesWorkspace({
   const [focusTitle, setFocusTitle] = useState(false)
   const [renameTarget, setRenameTarget] = useState<PageNode | null>(null)
   const [renameValue, setRenameValue] = useState("")
+  const [importing, setImporting] = useState(false)
 
   // A 404 says the selection no longer exists -- trashed or purged elsewhere,
   // which the server does not distinguish. Every other failure is a fault and
@@ -164,7 +174,7 @@ export function NotesWorkspace({
     >
       <ResizablePanel defaultSize={26} minSize={15} maxSize={45} id="page-tree">
         <div className="flex h-full min-h-0 flex-col">
-          <div className="mb-1.5 flex items-center justify-end">
+          <div className="mb-1.5 flex items-center justify-end gap-1">
             <Button
               type="button"
               size="sm"
@@ -174,6 +184,29 @@ export function NotesWorkspace({
               <Plus className="mr-1 size-3.5" />
               New page
             </Button>
+            {DEMO ? null : (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    aria-label="Page tree actions"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <MoreHorizontal aria-hidden className="size-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <DropdownMenuItem onSelect={() => setImporting(true)}>
+                    Import from Notion
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
           <ScrollArea className="min-h-0 flex-1 pr-3">
             {list.isLoading ? <Skeleton className="h-64 w-full" /> : null}
@@ -245,6 +278,20 @@ export function NotesWorkspace({
         open={trashOpen}
         onOpenChange={setTrashOpen}
         onRestored={() => setTrashOpen(false)}
+      />
+
+      <NotionImportDialog
+        project={project}
+        open={importing}
+        onOpenChange={(next) => {
+          setImporting(next)
+          if (!next) invalidatePageLists(qc)
+        }}
+        onImported={(rootPageId) => {
+          setImporting(false)
+          invalidatePageLists(qc)
+          onSelect(rootPageId)
+        }}
       />
 
       <Dialog

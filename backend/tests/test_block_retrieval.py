@@ -393,6 +393,8 @@ BLOCK_CHANNEL_MODULES = frozenset({
     "app.services.page_door",
     # Reads page block text to find which attachments are still referenced.
     "app.services.page_attachment_cleanup",
+    # Writes blocks through page_door._insert_page.
+    "app.services.page_import",
 })
 
 _VAULT_RULES = ReachabilityRules(

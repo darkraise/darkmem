@@ -214,6 +214,7 @@ EXPECTED_STATUS = {
     ("DELETE", "/api/v1/pages/{page_id}/blocks/{block_id}"): 204,
     ("POST", "/api/v1/pages/{page_id}/attachments"): 201,
     ("GET", "/api/v1/pages/attachments/{attachment_id}"): 200,
+    ("POST", "/api/v1/pages/import/notion"): 201,
     ("GET", "/api/v1/pipeline"): 200,
     ("GET", "/api/v1/pipeline-failures"): 200,
     ("GET", "/api/v1/pipeline-failures/counts"): 200,

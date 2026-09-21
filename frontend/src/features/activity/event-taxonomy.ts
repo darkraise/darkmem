@@ -47,6 +47,9 @@ const EVENT_TYPE_CATEGORY: Record<string, FeedCategory> = {
   page_deleted: "capture",
   page_restored: "capture",
   page_purged: "capture",
+  // The Notion import's own row. Capture, the same tab the page lifecycle
+  // events land on: it is a bulk write of pages into the tree.
+  pages_imported: "capture",
   extracted: "pipeline",
   sources_changed: "pipeline",
   verified: "verification",
