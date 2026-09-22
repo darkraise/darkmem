@@ -4,6 +4,17 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
+## v1.10.0 — 2026-09-22
+
+### Changed
+
+- Initial setup has a wider responsive layout, labelled provider fields, and
+  purpose help tooltips. The folder browser adds breadcrumbs, filtering, and
+  explicit selection after a successful repository scan.
+- Repository setup selects and scans `/app/data/repositories` by default,
+  preserves an existing selection, and reports inaccessible folders before
+  allowing the user to continue.
+
 ## v1.9.0 — 2026-09-21
 
 **A Notion workspace can be imported into the page tree.** Export a workspace

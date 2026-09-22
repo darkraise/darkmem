@@ -28,6 +28,7 @@ import {
   ComboboxEmpty,
 } from "darkraise-ui/components/combobox"
 import { Plus, Trash2, X } from "lucide-react"
+import { HelpTip } from "@/components/darkmem/help-tip"
 import { EmptyState } from "@/components/darkmem"
 import {
   API_KIND_OPTIONS,
@@ -84,7 +85,7 @@ function ProviderRow({ provider }: { provider: WizardProvider }) {
 
   return (
     <div className="border-border bg-card flex flex-col gap-2.5 rounded-lg border p-3">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="font-mono text-sm font-semibold">{provider.name}</span>
         <Button
           size="icon"
@@ -96,36 +97,53 @@ function ProviderRow({ provider }: { provider: WizardProvider }) {
           <Trash2 aria-hidden className="h-4 w-4" />
         </Button>
       </div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-        <Select
-          value={provider.api_kind}
-          onValueChange={(v) => update(provider.name, { api_kind: v as LlmApiKind })}
-        >
-          <SelectTrigger aria-label={`${provider.name} api_kind`}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {API_KIND_OPTIONS.map((k) => (
-              <SelectItem key={k.value} value={k.value}>
-                {k.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Input
-          value={provider.base_url}
-          aria-label={`${provider.name} base_url`}
-          onChange={(e) => update(provider.name, { base_url: e.target.value })}
-        />
-        <Input
-          type="password"
-          value={provider.api_key}
-          aria-label={`${provider.name} api_key`}
-          onChange={(e) => update(provider.name, { api_key: e.target.value })}
-          placeholder={provider.api_kind === "ollama" ? "(not required)" : "sk-..."}
-        />
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)]">
+        <div className="min-w-0 space-y-1">
+          <Label>API kind</Label>
+          <Select
+            value={provider.api_kind}
+            onValueChange={(v) =>
+              update(provider.name, { api_kind: v as LlmApiKind })
+            }
+          >
+            <SelectTrigger aria-label={`${provider.name} api_kind`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {API_KIND_OPTIONS.map((k) => (
+                <SelectItem key={k.value} value={k.value}>
+                  {k.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="min-w-0 space-y-1">
+          <Label htmlFor={`${provider.name}-url`}>Base URL</Label>
+          <Input
+            id={`${provider.name}-url`}
+            value={provider.base_url}
+            aria-label={`${provider.name} base_url`}
+            onChange={(e) =>
+              update(provider.name, { base_url: e.target.value })
+            }
+          />
+        </div>
+        <div className="min-w-0 space-y-1 sm:col-span-2 lg:col-span-1">
+          <Label htmlFor={`${provider.name}-key`}>API key</Label>
+          <Input
+            id={`${provider.name}-key`}
+            type="password"
+            value={provider.api_key}
+            aria-label={`${provider.name} api_key`}
+            onChange={(e) => update(provider.name, { api_key: e.target.value })}
+            placeholder={
+              provider.api_kind === "ollama" ? "(not required)" : "sk-..."
+            }
+          />
+        </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button
           variant="outline"
           disabled={probe.isPending}
@@ -135,7 +153,8 @@ function ProviderRow({ provider }: { provider: WizardProvider }) {
         </Button>
         {probe.data && !probe.data.error && (
           <span className="text-muted-foreground text-sm">
-            {probe.data.models.length} model{probe.data.models.length === 1 ? "" : "s"}
+            {probe.data.models.length} model
+            {probe.data.models.length === 1 ? "" : "s"}
           </span>
         )}
         {probeError && (
@@ -171,7 +190,8 @@ function NewProviderRow() {
   }
 
   const nameTaken = providers.some((p) => p.name === name.trim())
-  const canCreate = name.trim().length > 0 && baseUrl.trim().length > 0 && !nameTaken
+  const canCreate =
+    name.trim().length > 0 && baseUrl.trim().length > 0 && !nameTaken
 
   const handleApiKindChange = (kind: LlmApiKind) => {
     setApiKind(kind)
@@ -182,7 +202,12 @@ function NewProviderRow() {
 
   const submit = () => {
     if (!canCreate) return
-    addProvider({ name: name.trim(), api_kind: apiKind, base_url: baseUrl.trim(), api_key: apiKey })
+    addProvider({
+      name: name.trim(),
+      api_kind: apiKind,
+      base_url: baseUrl.trim(),
+      api_key: apiKey,
+    })
     setOpen(false)
     setName("")
     setApiKind("openai")
@@ -192,7 +217,7 @@ function NewProviderRow() {
 
   return (
     <div className="border-border bg-card flex flex-col gap-2.5 rounded-lg border border-dashed p-3">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold">New provider</span>
         <Button
           size="icon"
@@ -219,7 +244,10 @@ function NewProviderRow() {
         </div>
         <div className="space-y-1">
           <Label>API kind</Label>
-          <Select value={apiKind} onValueChange={(v) => handleApiKindChange(v as LlmApiKind)}>
+          <Select
+            value={apiKind}
+            onValueChange={(v) => handleApiKindChange(v as LlmApiKind)}
+          >
             <SelectTrigger aria-label="new provider api_kind">
               <SelectValue />
             </SelectTrigger>
@@ -283,23 +311,29 @@ function PurposeRow({ purpose }: { purpose: Purpose }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [providerName, provider?.api_kind, provider?.base_url, provider?.api_key])
 
-  const modelItems = (probe.data?.models ?? []).map((m) => ({ value: m, label: m }))
+  const modelItems = (probe.data?.models ?? []).map((m) => ({
+    value: m,
+    label: m,
+  }))
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-[140px_1fr_1fr_auto] sm:items-start">
-      <div>
+    <div className="grid min-w-0 grid-cols-1 gap-3 rounded-lg border p-3 sm:grid-cols-2 lg:grid-cols-[150px_minmax(0,1fr)_minmax(0,1.3fr)_110px] lg:items-start">
+      <div className="flex items-center gap-1.5 sm:col-span-2 lg:col-span-1 lg:pt-2">
         <div className="text-sm font-medium capitalize">
           {purpose}
           {required && <span className="text-destructive ml-1">*</span>}
         </div>
-        <div className="text-muted-foreground text-sm">{PURPOSE_HINT[purpose]}</div>
+        <HelpTip label={`About ${purpose}`}>{PURPOSE_HINT[purpose]}</HelpTip>
       </div>
       <Select
         value={draft.provider_name}
         onValueChange={(v) => setLlmPurpose(purpose, { provider_name: v })}
       >
-        <SelectTrigger aria-label={`${purpose} provider_name`}>
-          <SelectValue placeholder="no provider selected" />
+        <SelectTrigger
+          className="w-full min-w-0"
+          aria-label={`${purpose} provider_name`}
+        >
+          <SelectValue placeholder="Select provider" />
         </SelectTrigger>
         <SelectContent>
           {providers.map((p) => (
@@ -309,7 +343,7 @@ function PurposeRow({ purpose }: { purpose: Purpose }) {
           ))}
         </SelectContent>
       </Select>
-      <div className="flex flex-col gap-1">
+      <div className="flex min-w-0 flex-col gap-1">
         <Combobox
           items={modelItems}
           inputValue={draft.model}
@@ -318,7 +352,10 @@ function PurposeRow({ purpose }: { purpose: Purpose }) {
           openOnFocus
         >
           <ComboboxControl>
-            <ComboboxInput aria-label={`${purpose} model`} placeholder="model id" />
+            <ComboboxInput
+              aria-label={`${purpose} model`}
+              placeholder="model id"
+            />
             <ComboboxTrigger />
           </ComboboxControl>
           <ComboboxContent>
@@ -335,10 +372,12 @@ function PurposeRow({ purpose }: { purpose: Purpose }) {
         {probe.data?.error && (
           <span className="text-destructive text-sm">{probe.data.error}</span>
         )}
-        {warning && <span className="text-warning-text text-sm">{warning}</span>}
+        {warning && (
+          <span className="text-warning-text text-sm">{warning}</span>
+        )}
       </div>
       {!isEmbedding && purpose !== "reranker" ? (
-        <Label className="flex items-center gap-2">
+        <Label className="flex flex-wrap items-center gap-2">
           <Switch
             checked={draft.reasoning}
             onCheckedChange={(v) => setLlmPurpose(purpose, { reasoning: v })}
@@ -379,7 +418,11 @@ export function StepLLM() {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Assign purposes</CardTitle>
+          <CardTitle className="text-base">Models by purpose</CardTitle>
+          <p className="text-muted-foreground text-sm">
+            Choose a provider and model for each task. Hover or focus a help
+            icon for details. * Required
+          </p>
         </CardHeader>
         <CardContent className="space-y-3">
           {PURPOSES.map((purpose) => (

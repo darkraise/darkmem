@@ -121,8 +121,8 @@ export function SetupWizard() {
   }
 
   return (
-    <GlassPanel className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden">
-      <CardContent className="flex flex-col gap-6 overflow-hidden p-8">
+    <GlassPanel className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden">
+      <CardContent className="flex min-h-0 flex-col gap-5 overflow-hidden p-4 sm:p-8">
         <div className="shrink-0 space-y-1 text-center">
           <h1 className="font-mono text-2xl font-bold tracking-tight">
             darkmem
@@ -134,7 +134,8 @@ export function SetupWizard() {
           {[1, 2, 3, 4].map((s) => (
             <li
               key={s}
-              className={`rounded-md border px-3 py-1 transition-colors ${
+              aria-current={s === step ? "step" : undefined}
+              className={`${s === step ? "block" : "hidden sm:block"} rounded-md border px-3 py-1 transition-colors ${
                 s === step
                   ? "border-primary bg-primary/10 text-primary-text"
                   : s < step
@@ -142,12 +143,14 @@ export function SetupWizard() {
                     : "border-muted/50 text-muted-foreground"
               }`}
             >
-              {s}. {STEP_TITLES[s as 1 | 2 | 3 | 4]}
+              <span className="sm:hidden">Step {s} of 4 · </span>
+              <span className="hidden sm:inline">{s}. </span>
+              {STEP_TITLES[s as 1 | 2 | 3 | 4]}
             </li>
           ))}
         </ol>
 
-        <div className="flex-1 overflow-y-auto pr-1">
+        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
           {step === 1 && <StepPassword />}
           {step === 2 && <StepLLM />}
           {step === 3 && <StepRepoPath />}
