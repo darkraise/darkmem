@@ -101,9 +101,13 @@ def test_html_export_holds_no_markdown(tmp_path):
     assert not any(n.endswith(".md") for n in names)
 
 
-@pytest.mark.skipif(not REAL_EXPORT.is_file(), reason="the real export is not on this host")
 def test_real_export_matches_the_spec():
-    archive = zipfile.ZipFile(REAL_EXPORT)
+    # This optional local archive may live under an inaccessible /root on CI.
+    # Open it at test time: even is_file() can raise during collection.
+    try:
+        archive = zipfile.ZipFile(REAL_EXPORT)
+    except (FileNotFoundError, PermissionError):
+        pytest.skip("the real export is absent or inaccessible on this host")
     names = archive.namelist()
     tops = {n.split("/")[0] for n in names}
     assert len(tops) == 1, "spec section 3: one id-less wrapper folder"
