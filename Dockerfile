@@ -31,9 +31,11 @@ ENV PIP_DEFAULT_TIMEOUT=120 \
 
 # Install pinned dependencies from the lockfile first (reproducible images,
 # cache-friendly), then the package itself without re-resolving deps.
-COPY backend/pyproject.toml backend/requirements.lock ./
+COPY backend/requirements.lock ./
 RUN pip install --no-cache-dir -r requirements.lock
 
+# Version-only releases must not invalidate the expensive dependency layer.
+COPY backend/pyproject.toml ./
 COPY backend/app/ app/
 RUN pip install --no-cache-dir --no-deps .
 
