@@ -260,7 +260,7 @@ function FolderBrowser({
               {entry.is_git ? (
                 <FolderGit2
                   aria-hidden
-                  className="text-primary size-5 shrink-0"
+                  className="text-primary-text size-5 shrink-0"
                 />
               ) : (
                 <Folder
