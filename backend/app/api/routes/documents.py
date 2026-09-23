@@ -762,6 +762,7 @@ async def put_document_route(
             project=body.project, uri=body.uri, content=body.content,
             title=body.title, source_type=body.source_type, source="api",
             actor=principal.actor,
+            api_key_id=principal.api_key_id,
             expected_hash=body.expected_hash,
         )
     except DocumentTooLarge as exc:

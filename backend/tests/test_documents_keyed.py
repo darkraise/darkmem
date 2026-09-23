@@ -55,12 +55,18 @@ async def _document(session, *, project="proj", uri, content_hash="h1"):
 
 
 async def test_a_capture_key_files_and_a_read_key_reads_it_back(client, session, scripted_embedder):
-    capture = await _key(session, "capture")
+    capture_name = f"k-{uuid.uuid4().hex[:6]}"
+    capture_row, capture_credential = await issue_key(session, name=capture_name, scopes=["capture"])
+    capture = {"Authorization": f"Bearer {capture_credential}"}
     read = await _key(session, "read")
     body = {"project": "proj", "uri": "superpowers/specs/b.md", "content": "# B\n\nThe design.\n"}
     filed = await client.post(V1, json=body, headers=capture)
     assert filed.status_code == 201, filed.text
     assert filed.json()["outcome"] == "created"
+    stamped = (await session.execute(
+        text("SELECT actor, api_key_id FROM events WHERE event_type = 'document_filed' AND project = 'proj'")
+    )).all()
+    assert [tuple(row) for row in stamped] == [(capture_name, capture_row.id)]
     back = await client.get(
         f"{V1}/by-uri",
         params={"project": "proj", "uri": "superpowers/specs/b.md", "include_content": "true"},
