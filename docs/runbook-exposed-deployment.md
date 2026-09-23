@@ -99,23 +99,24 @@ purpose, and it is the surface the minimal client speaks:
 
 | Scope | Routes |
 |---|---|
-| `capture` | `POST /memories`, `POST /memories/batch` |
-| `read` | `POST /memories/search/paginated` |
-| `admin` | `POST /repos/{id}/webhook`, `POST /repos/{id}/reindex-files` |
+| `capture` | `POST /memories`, `POST /memories/batch`, `POST /documents`, `POST /worklog/entries`, `PATCH /worklog/workstreams/{id}` |
+| `read` | `POST /memories/search/paginated`, `GET /documents/by-uri`, `GET /documents/manifest`, `GET /worklog/resume`, `GET /worklog/workstreams`, `GET /worklog/workstreams/{id}/entries` |
+| `admin` | `POST /repos/{id}/webhook`, `POST /repos/{id}/reindex-files`, `DELETE /worklog/workstreams/{id}` |
 
 **`/mcp` is scoped far more widely, and separately** (doc 18 §5's second
-activation, 2026-08-26): of its 40 tools, 13 require `capture`, 25 require
-`read` and two require `admin`, so a `capture`-scoped key reaches all 13 MCP
+activation, 2026-08-26): of its 46 tools, 15 require `capture`, 28 require
+`read` and three require `admin`, so a `capture`-scoped key reaches all 15 MCP
 writer tools — `memory_add`, `memory_batch_add`, `memory_update`,
 `memory_delete`, `document_put`, `document_update`, `document_delete`,
 `checkpoint_save`, `research_run`, `block_update`, `block_insert`,
-`block_move`, `block_delete` — not only the two REST routes above, and a
-`read`-scoped key reaches the 25 readers. The table above is REST's reach only; do not read it
-as the whole reach of a key of any scope.
+`block_move`, `block_delete`, `worklog_append`, `worklog_update` — not only
+the REST routes above, and a `read`-scoped key reaches the 28 readers. The
+table above is REST's reach only; do not read it as the whole reach of a key
+of any scope.
 
 **A leaked `admin` key now reaches `/mcp` too, which it did not before
 2026-08-28 — and since 2026-09-07 its blast radius includes destroying your
-data.** Two tools are `admin`-scoped, and the second is the severe one:
+data.** Three tools are `admin`-scoped, and the second and third erase data:
 
 - `code_reindex` (2026-08-28) can trigger a repository index at will, which
   spends embedder budget per run, and on a *clone* repository the run's own
@@ -143,13 +144,21 @@ data.** Two tools are `admin`-scoped, and the second is the severe one:
   leaves the newest file on disk already missing the documents, and restoring
   it recovers nothing. A caller needs no id and no prior read — a project name
   and a prefix guess are the whole address.
+- `worklog_purge` (2026-09-23) **erases one workstream and every entry in it
+  — checkpoints, ledger, notes — irrecoverably**, addressed by `(project,
+  key)`; its REST twin `DELETE /worklog/workstreams/{id}` is `admin`-scoped
+  too. It journals one `workstream_purged` row naming the key and the entry
+  count *before* the delete and refuses when that row does not land, but there
+  is no undo: the only recovery is the same whole-database `scripts/restore.sh`
+  rollback described above.
 
-So the pair's radius is: spend budget, discard uncommitted work in the clone
-directory, and **erase filed documents irrecoverably**. Neither can mint a
-credential (no MCP tool can) and neither reaches `confirmed` power. **Rotate
-an exposed `admin` key immediately and treat the corpus as suspect until you
-have checked the journal** — `GET /events` filtered to `documents_deleted`
-tells you what was erased and under which key name. Do not rotate on the
+So the three's radius is: spend budget, discard uncommitted work in the clone
+directory, and **erase filed documents and work-log workstreams
+irrecoverably**. None can mint a credential (no MCP tool can) and none reaches
+`confirmed` power. **Rotate an exposed `admin` key immediately and treat the
+corpus as suspect until you have checked the journal** — `GET /events`
+filtered to `documents_deleted` and `workstream_purged` tells you what was
+erased and under which key name. Do not rotate on the
 older "its blast radius is the same as the webhook's" basis, and do not rotate
 on the older-still "admin reaches no MCP tool" one; both understate this.
 

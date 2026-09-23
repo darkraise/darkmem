@@ -16,13 +16,16 @@ Provides:
   - GET    /api/v1/documents/by-uri/outline
   - GET    /api/v1/documents/by-uri
   - DELETE /api/v1/documents/by-uri
+  - GET    /api/v1/documents/manifest
 
 **A caller that filed by path has a path, not an id.** The three verbs keyed
-on a document — outline, blocks, delete — each answer at two paths served by
-one handler: the `{document_id}` form and a `by-uri` form taking `?project=`
-and `?uri=`. One handler rather than two so the two addressing forms cannot
-answer differently, and `document_door.resolve_document_target` is the single
-producer of every refusal, shared with the MCP twins.
+on a document — outline, blocks, delete — each answer at two paths: the
+`{document_id}` form and a `by-uri` form taking `?project=` and `?uri=`.
+Outline and delete serve both from one handler; the blocks read's `by-uri`
+form has its own handler only because it admits a read key, and it delegates
+to the `{document_id}` one. Either way one body answers both forms, so they
+cannot answer differently, and `document_door.resolve_document_target` is the
+single producer of every refusal, shared with the MCP twins.
 
 **Each `by-uri` route must be registered before its `{document_id}` sibling**,
 which is why it is the lower decorator of the two: decorators apply
@@ -505,7 +508,7 @@ async def document_manifest(
     _principal: Principal = Depends(_require_read),
     session: AsyncSession = Depends(get_session),
 ) -> DocumentManifestResponse:
-    """`{uri, content_hash}` for a project's documents under a prefix, no content.
+    """`{id, uri, content_hash, updated_at}` for a project's documents under a prefix, no content.
 
     What a mirror pull diffs against its recorded hashes, so it fetches only
     the documents that changed. A trailing slash on the prefix is dropped:
@@ -1029,7 +1032,8 @@ async def document_blocks_route(
     validation `document_id: UUID` on this signature already earns.
 
     404 when the document does not exist -- see `document_outline_route`.
-    Answers at `/{document_id}` and at `/by-uri?project=&uri=`.
+    Answers at `/{document_id}`; `/by-uri?project=&uri=` has its own keyed
+    handler, `document_blocks_by_uri_route`, which delegates here.
     """
     target = await _resolve_target(
         session, document_id=document_id, project=project, uri=uri,

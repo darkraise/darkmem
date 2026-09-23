@@ -482,7 +482,14 @@ PARITY_TABLE: tuple[Surface, ...] = (
             ("GET", f"{V1}/documents/by-uri"),
         ),
         mcp=("document_search", "document_outline", "document_get"),
-        note=f"{_DOCUMENTS_RULING} {_RETRIEVAL_WIRE_SHAPE}",
+        note=(
+            f"{_DOCUMENTS_RULING} {_RETRIEVAL_WIRE_SHAPE} The two addressing "
+            "forms of the blocks read are not authorized alike: `GET "
+            "/documents/by-uri` admits a read-scoped key, because the "
+            "dr-superpowers mirror reads through it, while `GET "
+            "/documents/{document_id}`, both outline routes and search stay "
+            "login-only. The tools need a read-scoped key for all three verbs."
+        ),
     ),
     Surface(
         name="checkpoint.save",
@@ -530,6 +537,11 @@ PARITY_TABLE: tuple[Surface, ...] = (
         status=TWO_DOOR,
         rest=(("PATCH", f"{V1}/worklog/workstreams/{{workstream_id}}"),),
         mcp=("worklog_update",),
+        note=(
+            "Stated wire asymmetry: the route names the workstream by id, the "
+            "tool by (project, key), since an agent knows its key; both resolve "
+            "to one workstream and call one update_workstream."
+        ),
     ),
     Surface(
         name="worklog.purge",
@@ -540,7 +552,10 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "admin on both doors: the route declares require_scope('admin') and "
             "the tool sits in ADMIN_TOOLS. Both call one purge_workstream, which "
             "journals workstream_purged before the delete and refuses when the "
-            "row does not land."
+            "row does not land. Stated wire asymmetries: the route names the "
+            "workstream by id and the tool by (project, key), and the route "
+            "answers 204 with no body while the tool answers {purged, entries} "
+            "-- the key it erased and the count of entries that went with it."
         ),
     ),
     Surface(

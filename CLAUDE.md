@@ -1815,7 +1815,10 @@ all but the three document routes a dr-superpowers mirror syncs through. That as
 `docs/two-door-parity.md`'s `documents.write` row — do not "fix" it by
 widening the REST door's story or by folding the tool back into
 `document_delete`. Both doors share the same prefix predicate as the subtree
-rename, and share its blind spot. The match is `uri = prefix OR left(uri,
+rename, and share its blind spot, and so does the sync manifest (`GET
+/api/v1/documents/manifest`), which filters on the same predicate after
+stripping a trailing slash from the prefix and reads an empty prefix as the
+whole project rather than refusing it. The match is `uri = prefix OR left(uri,
 len+1) = prefix || '/'` with no normalisation on either side, so **it diverges
 from the path a tree derives from a uri exactly where the uri's spelling
 differs from that path at or above the prefix** — below the prefix the
