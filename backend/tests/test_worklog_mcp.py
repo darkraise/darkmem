@@ -119,3 +119,25 @@ async def test_a_rest_write_is_readable_over_mcp(client, auth_headers, mcp_on_th
     assert response.status_code == 201
     resumed = json.loads(await server.worklog_resume(project="proj", workstream="plan-a"))
     assert resumed["checkpoint"]["body"] == "from rest"
+
+
+@pytest.mark.parametrize("tool,verb,arguments", [
+    ("worklog_update", "update_workstream", {"state": "closed"}),
+    ("worklog_purge", "purge_workstream", {}),
+])
+async def test_a_workstream_purged_after_the_lookup_answers_null(
+    mcp_on_the_test_session, monkeypatch, tool, verb, arguments
+):
+    from app.api.mcp import server
+    from app.services import worklog
+
+    await server.worklog_append(
+        project="proj", workstream="plan-a", entries=[{"kind": "note", "body": "n"}], run_key="r"
+    )
+
+    async def purged_meanwhile(session, workstream_id, **_):
+        raise worklog.WorkstreamNotFound(str(workstream_id))
+
+    monkeypatch.setattr(worklog, verb, purged_meanwhile)
+    answer = await getattr(server, tool)(project="proj", workstream="plan-a", **arguments)
+    assert json.loads(answer) is None

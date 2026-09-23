@@ -770,6 +770,11 @@ async def worklog_update(
             )
             payload = worklog.serialize_workstream(updated)
             await session.commit()
+        except worklog.WorkstreamNotFound:
+            # The lookup above is unlocked; a purge committing before the
+            # service takes its row lock is the same unknown workstream.
+            await session.rollback()
+            return json.dumps(None)
         except Exception:
             await session.rollback()
             raise
@@ -795,6 +800,9 @@ async def worklog_purge(project: str, workstream: str) -> str:
                 session, found.id, actor=current_key_name(), api_key_id=current_api_key_id()
             )
             await session.commit()
+        except worklog.WorkstreamNotFound:
+            await session.rollback()
+            return json.dumps(None)
         except Exception:
             await session.rollback()
             raise
