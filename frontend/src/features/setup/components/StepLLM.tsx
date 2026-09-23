@@ -16,6 +16,7 @@ import {
   SelectContent,
   SelectItem,
 } from "darkraise-ui/components/select"
+import { useDropdownPlacement } from "@/hooks/use-dropdown-placement"
 import {
   Combobox,
   ComboboxControl,
@@ -291,6 +292,7 @@ function PurposeRow({ purpose }: { purpose: Purpose }) {
   const draft = useSetupWizardStore((s) => s.llm.perPurpose[purpose])
   const setLlmPurpose = useSetupWizardStore((s) => s.setLlmPurpose)
   const probe = useProbeModels()
+  const modelDropdown = useDropdownPlacement()
 
   const provider = providers.find((p) => p.name === draft.provider_name)
   const isEmbedding = purpose === "embedding"
@@ -344,31 +346,36 @@ function PurposeRow({ purpose }: { purpose: Purpose }) {
         </SelectContent>
       </Select>
       <div className="flex min-w-0 flex-col gap-1">
-        <Combobox
-          items={modelItems}
-          inputValue={draft.model}
-          onInputValueChange={(d) => setLlmPurpose(purpose, { model: d.value })}
-          openOnClick
-          openOnFocus
-        >
-          <ComboboxControl>
-            <ComboboxInput
-              aria-label={`${purpose} model`}
-              placeholder="model id"
-            />
-            <ComboboxTrigger />
-          </ComboboxControl>
-          <ComboboxContent>
-            <ComboboxList>
-              {modelItems.map((it) => (
-                <ComboboxItem key={it.value} item={it}>
-                  <ComboboxItemText>{it.label}</ComboboxItemText>
-                </ComboboxItem>
-              ))}
-              <ComboboxEmpty>No models</ComboboxEmpty>
-            </ComboboxList>
-          </ComboboxContent>
-        </Combobox>
+        <div ref={modelDropdown.ref}>
+          <Combobox
+            items={modelItems}
+            inputValue={draft.model}
+            onInputValueChange={(d) =>
+              setLlmPurpose(purpose, { model: d.value })
+            }
+            openOnClick
+            openOnFocus
+            onOpenChange={modelDropdown.onOpenChange}
+          >
+            <ComboboxControl>
+              <ComboboxInput
+                aria-label={`${purpose} model`}
+                placeholder="model id"
+              />
+              <ComboboxTrigger />
+            </ComboboxControl>
+            <ComboboxContent className={modelDropdown.contentClassName}>
+              <ComboboxList>
+                {modelItems.map((it) => (
+                  <ComboboxItem key={it.value} item={it}>
+                    <ComboboxItemText>{it.label}</ComboboxItemText>
+                  </ComboboxItem>
+                ))}
+                <ComboboxEmpty>No models</ComboboxEmpty>
+              </ComboboxList>
+            </ComboboxContent>
+          </Combobox>
+        </div>
         {probe.data?.error && (
           <span className="text-destructive text-sm">{probe.data.error}</span>
         )}

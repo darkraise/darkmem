@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "darkraise-ui/components/select"
+import { useDropdownPlacement } from "@/hooks/use-dropdown-placement"
 import {
   Combobox,
   ComboboxContent,
@@ -106,6 +107,7 @@ export function PurposeDialog({
     : null
 
   const probe = useProbeProviderModels()
+  const modelDropdown = useDropdownPlacement()
   const providerName = draft.provider_name
   useEffect(() => {
     if (!open || !providerName) return
@@ -168,32 +170,35 @@ export function PurposeDialog({
 
           <div className="grid grid-cols-2 gap-x-3 gap-y-2">
             <Field label="model">
-              <Combobox
-                items={modelItems}
-                inputValue={draft.model}
-                onInputValueChange={(d) => patch({ model: d.value })}
-                openOnClick
-                openOnFocus
-              >
-                <ComboboxControl>
-                  <ComboboxInput
-                    aria-label={`${purpose.purpose} model`}
-                    placeholder="model id"
-                    className="font-mono"
-                  />
-                  <ComboboxTrigger />
-                </ComboboxControl>
-                <ComboboxContent>
-                  <ComboboxList>
-                    {modelItems.map((it) => (
-                      <ComboboxItem key={it.value} item={it}>
-                        <ComboboxItemText>{it.label}</ComboboxItemText>
-                      </ComboboxItem>
-                    ))}
-                    <ComboboxEmpty>No models</ComboboxEmpty>
-                  </ComboboxList>
-                </ComboboxContent>
-              </Combobox>
+              <div ref={modelDropdown.ref}>
+                <Combobox
+                  items={modelItems}
+                  inputValue={draft.model}
+                  onInputValueChange={(d) => patch({ model: d.value })}
+                  openOnClick
+                  openOnFocus
+                  onOpenChange={modelDropdown.onOpenChange}
+                >
+                  <ComboboxControl>
+                    <ComboboxInput
+                      aria-label={`${purpose.purpose} model`}
+                      placeholder="model id"
+                      className="font-mono"
+                    />
+                    <ComboboxTrigger />
+                  </ComboboxControl>
+                  <ComboboxContent className={modelDropdown.contentClassName}>
+                    <ComboboxList>
+                      {modelItems.map((it) => (
+                        <ComboboxItem key={it.value} item={it}>
+                          <ComboboxItemText>{it.label}</ComboboxItemText>
+                        </ComboboxItem>
+                      ))}
+                      <ComboboxEmpty>No models</ComboboxEmpty>
+                    </ComboboxList>
+                  </ComboboxContent>
+                </Combobox>
+              </div>
               {/* A probe failure is a 200 carrying `error`, not a thrown
                   request — it reports and the field stays typeable, so a
                   vendor that is briefly down cannot make a purpose
