@@ -1115,7 +1115,7 @@ that contract is right for most callers and wrong for a few. A capture must
 survive a journal failure; a *verification transition* must not, since doc 17
 §5.1's metrics are SQL over this table alone, so a status change whose row never
 landed is not a lost log line but a row that silently leaves the measurement's
-**denominator** — and under-power announces itself where that does not. **Six**
+**denominator** — and under-power announces itself where that does not. **Seven**
 callers **read `record_event`'s own boolean return and raise on a `False`**,
 making the write and its row atomic — that is the criterion this count keys
 on, and it is narrower than "refuses to let an unjournalled write stand".
@@ -1124,7 +1124,7 @@ outside the six and must not be added to it: `contradiction_scan._journal`
 reads its row back with its own SQL and lets the runner decline the commit,
 and `dream_undo` counts its `undone` rows back and raises when short (that
 one is described below; the scan's is not, and lives only in its own
-docstring). The six do **not** all
+docstring). The seven do **not** all
 raise the same exception either (corrected 2026-09-08 — this said "**Four**
 … raise `JournalWriteFailed`", which both undercounted and named a type the
 fifth caller cannot use; it had itself been corrected 2026-08-09 from "the two
@@ -1136,7 +1136,9 @@ and the human's rungs, and `record_human_verdict` and
 `delete_documents` (`app/services/document_door.py`), which raises its own
 `DocumentJournalWriteFailed`. The sixth is `page_door._journal_each`, the one
 helper behind the page trash, restore and purge, which raises its own
-`PageJournalWriteFailed` for the same firewall reason. **The strict contract is a shape, not a shared
+`PageJournalWriteFailed` for the same firewall reason. The seventh is
+`worklog.purge_workstream`, which raises its own `WorklogJournalWriteFailed`
+before erasing a workstream, for the same reason. **The strict contract is a shape, not a shared
 type**, and a new holder of it may well have to mint its own: the vault's
 `JournalWriteFailed` lives on `app/repositories/knowledge_triples.py`, and
 the document door is a block-channel module firewalled from the vault, so
@@ -1428,31 +1430,34 @@ or `host:*`) adds LAN hosts; `*` disables the check entirely. Default
 by disabling either guard. Browser Origins are allowlisted to the same
 hosts. `memory_batch_add` mirrors the HTTP 1–100 batch cap.
 
-Authorization is per tool, not per door: `capture` covers the 13 writers
+Authorization is per tool, not per door: `capture` covers the 15 writers
 (`memory_add`, `memory_batch_add`, `memory_update`, `memory_delete`,
 `document_put`, `document_update`, `document_delete`, `checkpoint_save`,
-`research_run`, and
+`research_run`, the work log's `worklog_append` and `worklog_update`, and
 increment 8's four block verbs `block_update`, `block_insert`, `block_move`,
 `block_delete` — a key that can edit a document's blocks can rewrite its
 content, which is `document_put`'s own power);
-`read` covers 25; `admin` covers the 2 repository-scale control tools
+`read` covers 28; `admin` covers the 3 control tools
 (`code_reindex`, the first MCP write door into the code subsystem —
 `docs/superpowers/specs/2026-08-28-file-scoped-reindex-design.md` §6.1 — and
-increment 2's `document_delete_subtree`).
-Scopes do not imply one another. `admin` reaches exactly those two
-tools — a repository index and a whole-subtree erase, neither of them memory
-writing — so a key holding only `admin` reaches nothing else, and a `capture`
-key can trigger no index and delete no subtree. **The subtree delete is a
+increment 2's `document_delete_subtree`, and the work log's `worklog_purge`).
+Scopes do not imply one another. `admin` reaches exactly those three
+tools — a repository index, a whole-subtree erase and a workstream erase, none
+of them memory writing — so a key holding only `admin` reaches nothing else,
+and a `capture` key can trigger no index, delete no subtree and purge no
+workstream. **The subtree delete is a
 separate tool rather than a mode on `document_delete` precisely because
 scopes are per tool**: a mode would have inherited `capture` and let any
 capture key erase a project's whole corpus. Its REST twin,
-`POST /api/v1/documents/delete`, sits behind ordinary auth with every other
-document route — the scope asymmetry is real and is recorded on
+`POST /api/v1/documents/delete`, sits behind ordinary login auth like every
+document route outside the three a dr-superpowers mirror syncs through (filing,
+the by-uri read and the manifest, which admit a scoped key since the
+2026-09-23 work-log increment) — the scope asymmetry is real and is recorded on
 `docs/two-door-parity.md`'s `documents.write` row, because the REST door has
 no per-verb grant for a mode to inherit. `ratify` stays outside the scope vocabulary, unchanged by
 this activation: no MCP tool can reach `confirmed` power no matter what a
 key holds. `tools/list` is deliberately **not** scope-filtered — any
-authenticated key sees the full 40-tool catalogue, including writers it
+authenticated key sees the full 46-tool catalogue, including writers it
 cannot invoke; that is intended, not an oversight. A keyed capture call
 stamps `events.api_key_id` (the key's row UUID) and `events.actor` (the
 key's name) on the journaled row.
@@ -1805,8 +1810,8 @@ Events journal section — this verb holds that contract). On MCP it is a
 separate tool at `admin` scope rather than a mode on `document_delete`,
 because scopes are per tool and a mode would have inherited `capture` and let
 any capture key erase a project's whole corpus; on REST it sits behind
-ordinary auth with every other document route, which has no per-verb grant
-for a mode to inherit. That asymmetry is real, deliberate and recorded on
+ordinary login auth, which has no per-verb grant for a mode to inherit, as do
+all but the three document routes a dr-superpowers mirror syncs through. That asymmetry is real, deliberate and recorded on
 `docs/two-door-parity.md`'s `documents.write` row — do not "fix" it by
 widening the REST door's story or by folding the tool back into
 `document_delete`. Both doors share the same prefix predicate as the subtree
@@ -2090,6 +2095,23 @@ forbidden to this channel until someone classifies it. Without it,
 `insert_open` or `set_verification_status` inside `document_door` would
 satisfy both other scans: the coverage guard derives writers from raw
 SQL text, which a call through the repository does not produce.
+
+## Work log (`app/services/worklog.py`)
+
+A coding client's working data — checkpoints it summarised itself, ledger
+chunks, notes to its next session — lives in `workstreams` /
+`worklog_entries`, never in `memories`
+(`docs/superpowers/specs/2026-09-23-work-log-lane-design.md`). Entries are
+append-only from the API and ordered by `seq`, an identity column, never by
+`created_at`: every entry of one append shares `now()`. A `ledger` entry's body
+is the exact text the client appended, so concatenating a workstream's ledger
+entries reproduces its file. The run key resolves exactly as checkpoints
+resolve it, and an undeclared run is refused. An append locks the workstream
+row (`SELECT … FOR UPDATE`, or the insert that creates it) before it decides
+anything, which serialises it against a purge or a retention delete. `worklog_purge`
+and its REST twin are `admin`-scoped and strict-journal. Journal payloads carry
+the workstream key and counts, never entry text. Nothing in the lane is
+extracted, ranked with memories or reachable from the vault.
 
 ## Cross-cutting invariants
 

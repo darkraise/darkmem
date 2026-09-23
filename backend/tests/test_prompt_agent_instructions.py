@@ -135,3 +135,11 @@ def test_the_capture_tools_serve_the_no_log_rule():
     ]
     for name, text in served:
         assert "not a log" in text.lower(), f"{name} must state the no-log rule"
+
+
+def test_the_instructions_route_working_data_to_the_work_log():
+    """The no-log rule has to say where the log goes, or agents drop it here."""
+    text = prompt.PROMPTS["agent_instructions"]
+    assert "worklog_append" in text
+    assert "worklog_resume" in text
+    assert "goes to the work log" in text
