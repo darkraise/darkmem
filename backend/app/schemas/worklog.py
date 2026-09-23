@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.services.worklog import (
     MAX_BODY_CHARS,
@@ -24,7 +24,33 @@ def _bounded(value: dict | None) -> dict | None:
     return value
 
 
-class WorklogEntryIn(BaseModel):
+def _holds_nul(value: object) -> bool:
+    pending = [value]
+    while pending:
+        item = pending.pop()
+        if isinstance(item, str):
+            if "\x00" in item:
+                return True
+        elif isinstance(item, dict):
+            pending.extend(item.keys())
+            pending.extend(item.values())
+        elif isinstance(item, list):
+            pending.extend(item)
+    return False
+
+
+class _Storable(BaseModel):
+    # Postgres text and jsonb cannot hold U+0000 and the service maps only
+    # IntegrityError, so a NUL past this point answers 500 on either door.
+    # Refused, never stripped: a ledger body is stored exactly as written.
+    @model_validator(mode="after")
+    def _no_nul(self):
+        if _holds_nul(self.model_dump()):
+            raise ValueError("a string or properties value contains U+0000, which cannot be stored")
+        return self
+
+
+class WorklogEntryIn(_Storable):
     kind: Kind
     body: str = Field(min_length=1, max_length=MAX_BODY_CHARS)
     properties: dict = Field(default_factory=dict)
@@ -35,7 +61,7 @@ class WorklogEntryIn(BaseModel):
         return _bounded(value)
 
 
-class WorklogAppendRequest(BaseModel):
+class WorklogAppendRequest(_Storable):
     project: str = Field(min_length=1, max_length=200)
     workstream: str = Field(min_length=1, max_length=200)
     title: str | None = Field(default=None, max_length=500)
@@ -50,7 +76,7 @@ class WorklogAppendRequest(BaseModel):
         return _bounded(value)
 
 
-class WorkstreamUpdateRequest(BaseModel):
+class WorkstreamUpdateRequest(_Storable):
     state: State | None = None
     retain: bool | None = None
     title: str | None = Field(default=None, max_length=500)

@@ -117,3 +117,43 @@ async def test_keys_reach_exactly_their_scopes(client, session):
 async def test_no_credential_is_401(client):
     response = await client.get(f"{V1}/workstreams", params={"project": "proj"})
     assert response.status_code == 401
+
+
+@pytest.mark.parametrize("overrides", [
+    {"entries": [{"kind": "ledger", "body": "Task 1\x00: complete\n"}]},
+    {"entries": [{"kind": "note", "body": "n", "properties": {"p": "\x00"}}]},
+    {"entries": [{"kind": "note", "body": "n", "properties": {"k\x00": 1}}]},
+    {"entries": [{"kind": "note", "body": "n", "properties": {"p": [{"q": "\x00"}]}}]},
+    {"properties": {"p": "\x00"}},
+    {"project": "pr\x00j"},
+    {"workstream": "plan\x00a"},
+    {"title": "t\x00"},
+    {"client": "c\x00"},
+    {"run_key": "run\x00"},
+])
+async def test_a_nul_in_anything_stored_is_refused_not_stripped(client, auth_headers, overrides):
+    response = await client.post(
+        f"{V1}/entries", json=_append_body(**overrides), headers={**auth_headers, **RUN}
+    )
+    assert response.status_code == 422, response.text
+    listing = await client.get(f"{V1}/workstreams", params={"project": "proj"}, headers=auth_headers)
+    assert listing.json()["items"] == []
+
+
+@pytest.mark.parametrize("update", [{"title": "t\x00"}, {"properties": {"p": ["\x00"]}}])
+async def test_a_nul_in_an_update_is_refused(client, auth_headers, update):
+    created = await client.post(f"{V1}/entries", json=_append_body(), headers={**auth_headers, **RUN})
+    workstream_id = created.json()["workstream"]["id"]
+    response = await client.patch(f"{V1}/workstreams/{workstream_id}", json=update, headers=auth_headers)
+    assert response.status_code == 422, response.text
+
+
+def test_the_schema_both_doors_share_refuses_a_nul():
+    from pydantic import ValidationError
+
+    from app.schemas.worklog import WorklogAppendRequest, WorkstreamUpdateRequest
+
+    with pytest.raises(ValidationError):
+        WorklogAppendRequest(project="proj", workstream="plan-a", entries=[{"kind": "note", "body": "\x00"}])
+    with pytest.raises(ValidationError):
+        WorkstreamUpdateRequest(properties={"p": "\x00"})
