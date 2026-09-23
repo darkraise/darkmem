@@ -61,6 +61,13 @@ EXPECTED_TOOLS: frozenset[str] = frozenset({
     "memory_tags",
     "memory_update",
     "research_run",
+    # The work log (spec 2026-09-23).
+    "worklog_append",
+    "worklog_entries",
+    "worklog_purge",
+    "worklog_resume",
+    "worklog_update",
+    "worklog_workstreams",
 })
 
 

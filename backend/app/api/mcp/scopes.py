@@ -54,6 +54,9 @@ CAPTURE_TOOLS: frozenset[str] = frozenset({
     # which is `capture`'s scope and never `read`'s.
     "document_update",
     "checkpoint_save",
+    # The work log's writers: appending to a workstream and moving its state.
+    "worklog_append",
+    "worklog_update",
     "research_run",
     # Increment 8's block verbs. `capture` is the writer scope and these are
     # writers: a key that can edit a document's blocks can rewrite its
@@ -67,6 +70,9 @@ CAPTURE_TOOLS: frozenset[str] = frozenset({
 READ_TOOLS: frozenset[str] = frozenset({
     "article_get",
     "checkpoint_latest",
+    "worklog_resume",
+    "worklog_workstreams",
+    "worklog_entries",
     "code_blast_radius",
     "code_changes",
     "code_communities",
@@ -97,6 +103,9 @@ ADMIN_TOOLS: frozenset[str] = frozenset({
     # Erasing a whole uri subtree is repository-scale control, not memory
     # writing: a capture key deletes one document it can name.
     "document_delete_subtree",
+    # Erasing a workstream and its history is irrecoverable, which is the
+    # subtree delete's argument again: a capture key appends, it does not erase.
+    "worklog_purge",
 })
 
 _pairs = (

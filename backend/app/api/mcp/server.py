@@ -585,6 +585,223 @@ async def checkpoint_latest(
 
 
 # ---------------------------------------------------------------------------
+# Work-log tools (spec 2026-09-23 §2). Every one calls app.services.worklog,
+# the same functions app/api/routes/worklog.py serves. An unknown workstream
+# answers null, matching the REST door's 404.
+# ---------------------------------------------------------------------------
+
+
+def _worklog_limit(value: int, ceiling: int) -> int:
+    return max(1, min(value, ceiling))
+
+
+@mcp.tool(
+    description=(
+        "Append entries to a work-log workstream: where a coding session keeps "
+        "its working data. kind 'checkpoint' is your own summary of where the "
+        "work stands, 'ledger' is progress text stored exactly as written, "
+        "'note' is a constraint or gotcha for the next session. Never extracted "
+        "into memories and never returned by memory_search. Creates the "
+        "workstream on first use and reopens a closed one. entries: 1-100 of "
+        "{kind, body, properties?}. Needs a run identity: run_key or the "
+        "X-Darkmem-Origin header."
+    )
+)
+async def worklog_append(
+    project: str,
+    workstream: str,
+    entries: list[dict],
+    title: str | None = None,
+    client: str | None = None,
+    properties: dict | None = None,
+    run_key: str | None = None,
+    ctx: Context | None = None,
+) -> str:
+    from app.schemas.worklog import WorklogAppendRequest
+    from app.services import worklog
+    from app.services.checkpoints import resolve_checkpoint_origin
+
+    body = WorklogAppendRequest(
+        project=project,
+        workstream=workstream,
+        entries=entries,
+        title=title,
+        client=client,
+        properties=properties or {},
+        run_key=run_key,
+    )
+    source = resolve_client_source(None, ctx, fallback=worklog.DOOR_SOURCE)
+    resolved = resolve_checkpoint_origin(
+        body.run_key or declared_origin(ctx), source=source, project=body.project
+    )
+    async with async_session_factory() as session:
+        try:
+            result = await worklog.append(
+                session,
+                project=body.project,
+                key=body.workstream,
+                run_key=resolved,
+                entries=[entry.model_dump() for entry in body.entries],
+                title=body.title,
+                client=body.client,
+                properties=body.properties,
+                actor=current_key_name() or source,
+                api_key_id=current_api_key_id(),
+            )
+            payload = {
+                "workstream": worklog.serialize_workstream(result.workstream),
+                "entry_ids": [str(entry_id) for entry_id in result.entry_ids],
+            }
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+    return json.dumps(payload)
+
+
+@mcp.tool(
+    description=(
+        "Resume a work-log workstream at session start: its latest checkpoint "
+        "verbatim, its 50 newest notes (notes_truncated when there are more) "
+        "and its last 20 ledger entries in order, plus the workstream's "
+        "properties naming the plan and spec to read. null when it does not exist."
+    )
+)
+async def worklog_resume(project: str, workstream: str) -> str:
+    from app.services import worklog
+
+    async with async_session_factory() as session:
+        answer = await worklog.resume(session, project=project, key=workstream)
+    return json.dumps(answer)
+
+
+@mcp.tool(
+    description=(
+        "List a project's work-log workstreams, newest-created first, "
+        "optionally only 'open' or 'closed' ones. Page with limit (1-200) and "
+        "by passing the answer's next_before as before; answers items and next_before."
+    )
+)
+async def worklog_workstreams(
+    project: str, state: str | None = None, before: str | None = None, limit: int = 50
+) -> str:
+    from app.services import worklog
+
+    async with async_session_factory() as session:
+        page = await worklog.list_workstreams(
+            session,
+            project=project,
+            state=state,
+            before=before,
+            limit=_worklog_limit(limit, 200),
+        )
+    return json.dumps(page)
+
+
+@mcp.tool(
+    description=(
+        "Read one workstream's work-log entries oldest first, optionally one "
+        "kind (checkpoint, ledger, note) and only those written since an ISO "
+        "8601 time. Page forward by passing the answer's next_after as after; "
+        "limit 1-500. null when the workstream does not exist."
+    )
+)
+async def worklog_entries(
+    project: str,
+    workstream: str,
+    kind: str | None = None,
+    since: str | None = None,
+    after: int | None = None,
+    limit: int = 100,
+) -> str:
+    from datetime import datetime
+
+    from app.services import worklog
+
+    since_at = datetime.fromisoformat(since) if since else None
+    async with async_session_factory() as session:
+        found = await worklog.get_workstream(session, project=project, key=workstream)
+        if found is None:
+            return json.dumps(None)
+        page = await worklog.list_entries(
+            session,
+            workstream_id=found.id,
+            kind=kind,
+            since=since_at,
+            after=after,
+            limit=_worklog_limit(limit, 500),
+        )
+    return json.dumps(page)
+
+
+@mcp.tool(
+    description=(
+        "Update a work-log workstream: state 'closed' when the work is finished "
+        "(or 'open' to reopen), retain true to exempt it from retention, a new "
+        "title, or properties to merge in. null when it does not exist."
+    )
+)
+async def worklog_update(
+    project: str,
+    workstream: str,
+    state: str | None = None,
+    retain: bool | None = None,
+    title: str | None = None,
+    properties: dict | None = None,
+) -> str:
+    from app.schemas.worklog import WorkstreamUpdateRequest
+    from app.services import worklog
+
+    body = WorkstreamUpdateRequest(state=state, retain=retain, title=title, properties=properties)
+    async with async_session_factory() as session:
+        try:
+            found = await worklog.get_workstream(session, project=project, key=workstream)
+            if found is None:
+                return json.dumps(None)
+            updated = await worklog.update_workstream(
+                session,
+                found.id,
+                state=body.state,
+                retain=body.retain,
+                title=body.title,
+                properties=body.properties,
+                actor=current_key_name(),
+                api_key_id=current_api_key_id(),
+            )
+            payload = worklog.serialize_workstream(updated)
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+    return json.dumps(payload)
+
+
+@mcp.tool(
+    description=(
+        "Erase a work-log workstream and every entry in it, irrecoverably. The "
+        "erase is journaled before it runs and refused if the journal row does "
+        "not land. Needs an admin-scoped key. null when it does not exist."
+    )
+)
+async def worklog_purge(project: str, workstream: str) -> str:
+    from app.services import worklog
+
+    async with async_session_factory() as session:
+        try:
+            found = await worklog.get_workstream(session, project=project, key=workstream)
+            if found is None:
+                return json.dumps(None)
+            removed = await worklog.purge_workstream(
+                session, found.id, actor=current_key_name(), api_key_id=current_api_key_id()
+            )
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+    return json.dumps({"purged": workstream, "entries": removed})
+
+
+# ---------------------------------------------------------------------------
 # Document tools -- the MCP half of the document door (doc 16, spec 2026-08-23)
 #
 # Each one is a call into `app.services.document_door`, the same functions
