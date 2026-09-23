@@ -16,7 +16,11 @@ describe("YearHeatmap", () => {
       />,
     )
     const grid = screen.getByTestId("heatmap-grid")
-    expect(grid.style.gridTemplateColumns).toMatch(/^auto repeat\(\d+, minmax\(10px, 1fr\)\)$/)
+    expect(grid.style.gridTemplateColumns).toMatch(
+      /^auto repeat\(\d+, minmax\(var\(--cell-min\), 1fr\)\)$/,
+    )
+    // A 10px floor only below `sm`: above it the floor overflowed the card.
+    expect(grid).toHaveClass("[--cell-min:10px]", "sm:[--cell-min:0px]")
     const cell = screen.getByRole("button", { name: /3 memories/ })
     expect(cell).toHaveClass("aspect-square", "w-full")
   })

@@ -70,14 +70,18 @@ export function YearHeatmap({ days }: { days: ContributionDay[] }) {
 
   return (
     <div className="space-y-2">
-      <div className="overflow-x-auto pb-1">
+      <div className="overflow-x-auto p-px pb-1">
         {/* One grid: a label column, then one fluid column per week, so the
-            cells take the card's width instead of a fixed 12px. */}
+            cells take the card's width instead of a fixed 12px. From `sm` up
+            a cell may shrink below 10px: 53 columns at 10px plus gaps are
+            wider than the card at common laptop widths, and the overflow cut
+            the newest weeks off the right edge. Below `sm` the grid keeps its
+            floor and scrolls instead. */}
         <div
           data-testid="heatmap-grid"
-          className="grid min-w-max gap-1 sm:min-w-0"
+          className="grid min-w-max [--cell-min:10px] gap-[3px] sm:min-w-0 sm:[--cell-min:0px] xl:gap-1"
           style={{
-            gridTemplateColumns: `auto repeat(${weeks.length}, minmax(10px, 1fr))`,
+            gridTemplateColumns: `auto repeat(${weeks.length}, minmax(var(--cell-min), 1fr))`,
           }}
         >
           <span aria-hidden />
@@ -96,7 +100,9 @@ export function YearHeatmap({ days }: { days: ContributionDay[] }) {
             <Fragment key={`row-${di}`}>
               <span
                 aria-hidden
-                className="text-muted-foreground flex items-center pr-1 text-xs"
+                // Zero-height so a label row is exactly as tall as a cell
+                // row; the text overflows into the unlabelled rows beside it.
+                className="text-muted-foreground flex h-0 items-center self-center pr-1 text-xs"
               >
                 {label}
               </span>
