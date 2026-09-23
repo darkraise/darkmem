@@ -39,6 +39,18 @@ describe("useContributionCalendar (DEMO off — real /events/calendar)", () => {
     expect(result.current.days.some((d) => d.date === "2026-07-24")).toBe(true)
   })
 
+  it("counts memory captures only, not every journal row", async () => {
+    // Every cell reads "N memories captured"; an unscoped count took in
+    // logins and maintenance runs and showed captures on an empty install.
+    vi.mocked(apiFetch).mockResolvedValue({ buckets: [] } as never)
+    const { result } = renderHook(() => useContributionCalendar(NOW), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    const paths = vi.mocked(apiFetch).mock.calls.map(([path]) => path as string)
+    const main = paths.find((p) => !p.includes("event_type=inject"))
+    expect(main).toContain("event_type=created")
+    expect(main).toContain("object_type=memory")
+  })
+
   it("surfaces a failed load as isError, not as a zero-filled grid", async () => {
     vi.mocked(apiFetch).mockRejectedValue(new Error("boom"))
     const { result } = renderHook(() => useContributionCalendar(NOW), {

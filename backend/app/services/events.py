@@ -499,13 +499,16 @@ async def calendar_counts(
     since: datetime | None = None,
     until: datetime | None = None,
     event_type: str | None = None,
+    object_type: str | None = None,
 ) -> list[dict]:
     """Per-UTC-day event counts for the contribution heatmap.
 
     ``event_type`` narrows the same buckets to one kind, which is how a
     caller asks "which days hold an inject" (T3.20) without fetching the days'
     rows and counting them itself — a client-side count would silently
-    under-report the moment the page bound truncated.
+    under-report the moment the page bound truncated. ``object_type`` narrows
+    further, since one event type can span kinds — ``created`` is journalled
+    for memories and for synthesised articles alike.
 
     The GROUP BY expression is `(created_at AT TIME ZONE 'UTC')::date`,
     byte-for-byte the `ix_events_day` index expression — a bare
@@ -527,6 +530,9 @@ async def calendar_counts(
     if event_type:
         where_parts.append("event_type = :event_type")
         params["event_type"] = event_type
+    if object_type:
+        where_parts.append("object_type = :object_type")
+        params["object_type"] = object_type
     where_sql = " AND ".join(where_parts) if where_parts else "TRUE"
 
     sql = (

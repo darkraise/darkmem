@@ -61,11 +61,17 @@ async def get_events_calendar(
     since: datetime | None = None,
     until: datetime | None = None,
     event_type: str | None = None,
+    object_type: str | None = None,
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
     buckets = await calendar_counts(
-        session, project=project, since=since, until=until, event_type=event_type
+        session,
+        project=project,
+        since=since,
+        until=until,
+        event_type=event_type,
+        object_type=object_type,
     )
     return {"buckets": buckets}
 

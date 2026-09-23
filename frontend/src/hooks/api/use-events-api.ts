@@ -78,6 +78,9 @@ export function useEventsCalendar(
     /** Narrows the same buckets to one kind — how a caller asks which days
      *  hold an inject without fetching those days' rows and counting them. */
     event_type?: string
+    /** Narrows further, since one event type can span kinds: `created` is
+     *  journalled for memories and for synthesised articles alike. */
+    object_type?: string
   } = {},
   options?: { enabled?: boolean },
 ) {
@@ -86,6 +89,7 @@ export function useEventsCalendar(
   if (params.until) qs.set("until", params.until)
   if (params.project) qs.set("project", params.project)
   if (params.event_type) qs.set("event_type", params.event_type)
+  if (params.object_type) qs.set("object_type", params.object_type)
   const query = qs.toString()
   return useQuery<EventCalendarResponse>({
     // The event type belongs in the key: without it the filtered and
@@ -97,6 +101,7 @@ export function useEventsCalendar(
       params.until ?? null,
       params.project ?? null,
       params.event_type ?? null,
+      params.object_type ?? null,
     ],
     queryFn: () => apiFetch(`/events/calendar${query ? `?${query}` : ""}`),
     enabled: options?.enabled ?? true,

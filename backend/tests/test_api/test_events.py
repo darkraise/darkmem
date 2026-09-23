@@ -268,6 +268,34 @@ async def test_calendar_can_be_scoped_to_one_event_type(client, auth_headers, se
     ]
 
 
+async def test_calendar_can_be_scoped_to_one_object_type(client, auth_headers, session):
+    """The dashboard labels a cell "N memories captured", so it asks for
+    memory ``created`` rows only. ``created`` alone is not enough — article
+    synthesis journals the same event type — and the unscoped count also took
+    in logins and maintenance runs, which is how a fresh install showed
+    captures while the Memories page was empty."""
+    project = f"cal-{uuid.uuid4().hex[:8]}"
+    day = datetime(2030, 6, 7, tzinfo=timezone.utc)
+    await _seed_at(session, created_at=day + timedelta(hours=1), project=project)
+    await _seed_at(
+        session, created_at=day + timedelta(hours=2), project=project,
+        event_type="created", object_type="article",
+    )
+    await _seed_at(
+        session, created_at=day + timedelta(hours=3), project=project,
+        event_type="maintenance_run", object_type="system",
+    )
+
+    captures = await client.get(
+        "/api/v1/events/calendar",
+        params={"project": project, "event_type": "created", "object_type": "memory"},
+        headers=auth_headers,
+    )
+
+    assert captures.status_code == 200
+    assert captures.json()["buckets"] == [{"day": "2030-06-07", "count": 1}]
+
+
 async def test_calendar_bucket_is_utc_not_session_timezone(client, auth_headers, session):
     """Invariant-bearing (doc 04 §8.1): the bucket expression must be
     `(created_at AT TIME ZONE 'UTC')::date`, not a bare `created_at::date`.

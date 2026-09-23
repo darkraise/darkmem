@@ -6,6 +6,8 @@ import { useEventsCalendar } from "@/hooks/api"
 import { calendarWindow, fillCalendarDays } from "./calendar"
 
 const INJECT_EVENT_TYPE = "inject"
+const CAPTURE_EVENT_TYPE = "created"
+const CAPTURE_OBJECT_TYPE = "memory"
 
 export interface ContributionCalendarState {
   days: ContributionDay[]
@@ -29,8 +31,17 @@ export function useContributionCalendar(
   // every re-render.
   const [now] = useState(() => fixedNow ?? Date.now())
   const window = useMemo(() => calendarWindow(now), [now])
+  // Memory captures only: every cell is labelled "N memories captured", and
+  // the unscoped journal also counts logins, setup, maintenance runs and
+  // indexing — which is how a fresh install showed a day of captures beside
+  // an empty Memories page.
   const query = useEventsCalendar(
-    { since: window.since, until: window.until },
+    {
+      since: window.since,
+      until: window.until,
+      event_type: CAPTURE_EVENT_TYPE,
+      object_type: CAPTURE_OBJECT_TYPE,
+    },
     { enabled: !DEMO },
   )
   // A second aggregate rather than a client-side split of the first: the
