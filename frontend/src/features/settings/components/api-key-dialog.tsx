@@ -12,6 +12,7 @@ import { Label } from "darkraise-ui/components/label"
 import { MultiSelect } from "darkraise-ui/components/multi-select"
 import { KeyRound } from "lucide-react"
 import { useCreateApiKey, type ApiKeyCreated } from "@/hooks/api"
+import { McpConnectSnippets } from "./mcp-connect-snippets"
 
 /** What a key is allowed to do, in the words of someone who has to choose.
  *
@@ -73,7 +74,7 @@ export function ApiKeyDialog({
 
   return (
     <Dialog open={open} onOpenChange={close}>
-      <DialogContent className="flex max-w-lg flex-col gap-3">
+      <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col gap-3 overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{issued ? "Your new key" : "New key"}</DialogTitle>
           <DialogDescription>
@@ -88,6 +89,10 @@ export function ApiKeyDialog({
             <div className="border-inset bg-muted/20 flex flex-col gap-1 rounded-md border border-dashed p-2.5">
               <code className="font-mono text-sm break-all">{issued.token}</code>
             </div>
+            <p className="text-muted-foreground text-sm">
+              To connect an MCP client with this key:
+            </p>
+            <McpConnectSnippets apiKey={issued.token} />
             <Button className="w-fit" onClick={() => close(false)}>
               I have copied it
             </Button>
