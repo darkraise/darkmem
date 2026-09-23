@@ -450,13 +450,12 @@
   }
 }
 
-/* Active sidebar item: a tint and the accent text colour, nothing on the
-   edges. darkraise-ui's `activeBar` only offers a rail, a ring or both, so the
-   borderless state is this override; it is unlayered and so beats the
-   library's @layer components rules at any specificity. */
+/* Active sidebar item: an accent tint and text colour under the library's
+   `activeBar="both"` ring and rail. It sets no box-shadow, since that is where
+   the ring and rail are drawn; unlayered, so it beats the library's
+   @layer components background and colour at any specificity. */
 .dr-sidebar-nav .dr-sidebar-nav-item:is(.active, [data-status="active"]) {
   background-color: hsl(var(--primary) / 0.1);
-  box-shadow: none;
   color: var(--primary-text);
 }
 .dr-sidebar-nav

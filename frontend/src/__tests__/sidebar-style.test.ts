@@ -3,6 +3,10 @@ import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 
 const css = readFileSync(join(process.cwd(), "src/styles/globals.css"), "utf8")
+const shell = readFileSync(
+  join(process.cwd(), "src/routes/_authenticated.tsx"),
+  "utf8",
+)
 
 function rule(selectorStart: string): string {
   const at = css.indexOf(selectorStart)
@@ -11,11 +15,15 @@ function rule(selectorStart: string): string {
 }
 
 describe("sidebar styling", () => {
-  it("marks the active item with a tint and accent text, no rail or ring", () => {
+  it("tints the active item and leaves the library's ring and rail alone", () => {
     const active = rule(".dr-sidebar-nav .dr-sidebar-nav-item:is(.active")
-    expect(active).toContain("box-shadow: none")
+    expect(active).not.toContain("box-shadow")
     expect(active).toContain("background-color: hsl(var(--primary) / 0.1)")
     expect(active).toContain("color: var(--primary-text)")
+  })
+
+  it("pins the active indicator to both the ring and the rail", () => {
+    expect(shell).toMatch(/activeBar="both"/)
   })
 
   it("gives the search box the ordinary border until it has focus", () => {
