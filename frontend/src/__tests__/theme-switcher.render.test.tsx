@@ -35,14 +35,6 @@ function headingFor(axis: string): string {
   return heading
 }
 
-/** Axes the panel hides for a reason of its own rather than by config. */
-const CONDITIONAL_AXES = new Set([
-  // Gradient-only, and darkmem's default background style is `solid`.
-  "gradientPattern",
-  // A group of per-preset controls; the pinned `default` preset declares none.
-  "presetAxes",
-])
-
 async function openSwitcher() {
   const user = userEvent.setup()
   render(
@@ -69,10 +61,9 @@ describe("header theme switcher", () => {
     }
   })
 
-  // The other half of the claim, and the one that keeps the header minimal:
-  // every axis is enabled in the config, so nothing but this component's own
-  // section list stops the popover from growing to the full panel.
-  it("renders no control for an axis the panel owns", async () => {
+  // The other half of the claim: this component's own section list, not only
+  // the config, keeps the popover to three axes.
+  it("renders no control for any other axis", async () => {
     await openSwitcher()
     const headerAxes = new Set<string>(SWITCHER_AXES)
     for (const axis of Object.keys(AXIS_HEADINGS)) {
@@ -100,21 +91,34 @@ describe("appearance panel", () => {
     window.localStorage.clear()
   })
 
-  it("renders a control for every axis that is not conditionally hidden", () => {
+  function renderPanel() {
     render(
       <ThemeProvider config={themeConfig}>
         <ThemeSettingsPanel layout="page" />
       </ThemeProvider>,
     )
-    for (const [axis, heading] of Object.entries(AXIS_HEADINGS)) {
-      if (CONDITIONAL_AXES.has(axis)) continue
-      // `getAllByText`, not `getByText`: the page layout also prints a group
-      // heading per group, and "Background" is both a group name and the
-      // `backgroundStyle` axis label.
+  }
+
+  it("renders a control for each switcher axis", () => {
+    renderPanel()
+    for (const axis of SWITCHER_AXES) {
       expect(
-        screen.queryAllByText(heading).length,
+        screen.queryAllByText(headingFor(axis)).length,
         `axis ${axis} has no control in the appearance panel`,
       ).toBeGreaterThan(0)
+    }
+  })
+
+  // The pinned axes are gone from the tab, not merely from the header.
+  it("renders no control for a pinned axis", () => {
+    renderPanel()
+    const adjustable = new Set<string>(SWITCHER_AXES)
+    for (const axis of Object.keys(AXIS_HEADINGS)) {
+      if (adjustable.has(axis)) continue
+      expect(
+        screen.queryByText(headingFor(axis)),
+        `pinned axis ${axis} still has a control in the appearance panel`,
+      ).not.toBeInTheDocument()
     }
   })
 })

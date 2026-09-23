@@ -6,12 +6,10 @@ import { DEMO } from "@/lib/demo-flag"
 import { SelectionSettings } from "@/features/graph/components/selection-settings"
 
 /**
- * Every theme axis the library exposes, in the library's own page layout.
- *
- * The header popover deliberately shows three of them (`SWITCHER_AXES`); this
- * is where the rest live. Both surfaces drive the one `ThemeProvider`, so a
- * change here is the same change the popover would make — there is no draft to
- * apply and no Save button to look for.
+ * The adjustable theme axes (`SWITCHER_AXES`), in the library's own page
+ * layout; every other axis is pinned in `theme.config.ts`. It drives the same
+ * `ThemeProvider` as the header popover, so a change here is the same change
+ * the popover would make — there is no draft to apply and no Save button.
  */
 export function AppearanceTab() {
   return (
@@ -30,7 +28,7 @@ export function AppearanceTab() {
         </span>
         <span className="flex-1" />
         <span className="text-muted-foreground shrink-0 text-xs">
-          Header palette button: mode and the two colours
+          Also in the header palette button
         </span>
       </CardHeader>
       <CardContent className="p-4">

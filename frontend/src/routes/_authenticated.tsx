@@ -227,10 +227,8 @@ function AuthenticatedLayout() {
         // layouts. Requires darkraise-ui >= 6.2.0.
         activeBar="both"
         // Off in favour of `MinimalThemeSwitcher` below. The shell's own
-        // switcher renders every axis in `themeConfig.switcher.axes`, and all
-        // of them are on so Settings -> Appearance can offer the full panel;
-        // the header wants three. See `minimal-theme-switcher.tsx` for the
-        // library gap that forces the split.
+        // switcher renders every axis enabled in `themeConfig.switcher.axes`;
+        // see `minimal-theme-switcher.tsx` for why the header uses its own.
         showThemeSwitcher={false}
         headerSlot={
           <>

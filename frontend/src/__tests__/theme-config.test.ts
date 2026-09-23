@@ -11,17 +11,16 @@ describe("theme.config", () => {
     window.localStorage.clear()
   })
 
-  // Every axis is adjustable, because this one config gates both surfaces the
-  // library renders from it — the popover switcher and `ThemeSettingsPanel` —
-  // and turning an axis off here would remove it from Settings → Appearance
-  // too. The header's narrowing lives in `MinimalThemeSwitcher`.
-  it("leaves every library axis adjustable", async () => {
-    const { themeConfig } = await importFresh()
+  // Only the header's three stay adjustable. One config gates both the popover
+  // and `ThemeSettingsPanel`, so an axis off here is off on Settings →
+  // Appearance too — which is what pins darkmem's look.
+  it("leaves exactly the switcher axes adjustable", async () => {
+    const { themeConfig, SWITCHER_AXES } = await importFresh()
     expect(themeConfig.switcher.enabled).toBe(true)
-    const off = Object.entries(themeConfig.switcher.axes)
-      .filter(([, enabled]) => !enabled)
+    const on = Object.entries(themeConfig.switcher.axes)
+      .filter(([, enabled]) => enabled)
       .map(([axis]) => axis)
-    expect(off).toEqual([])
+    expect(on.sort()).toEqual([...SWITCHER_AXES].sort())
   })
 
   // Drift guard: an axis added by a library upgrade would otherwise stay
@@ -67,9 +66,9 @@ describe("theme.config", () => {
     })
   })
 
-  // The scrub is inert while nothing is hidden, and stays wired so that
-  // hiding an axis again cannot leave a value applying with no control.
-  it("leaves persisted values alone while every axis is adjustable", async () => {
+  // A value saved while every axis was adjustable must not keep applying
+  // once its control is gone; the three adjustable axes keep theirs.
+  it("scrubs persisted values for hidden axes only", async () => {
     window.localStorage.setItem("mode", "light")
     window.localStorage.setItem("theme-accent", "rose")
     window.localStorage.setItem("theme-surface-color", "teal")
@@ -82,8 +81,8 @@ describe("theme.config", () => {
     expect(window.localStorage.getItem("mode")).toBe("light")
     expect(window.localStorage.getItem("theme-accent")).toBe("rose")
     expect(window.localStorage.getItem("theme-surface-color")).toBe("teal")
-    expect(window.localStorage.getItem("theme-preset")).toBe("glass")
-    expect(window.localStorage.getItem("theme-density")).toBe("compact")
-    expect(window.localStorage.getItem("theme-control-depth")).toBe("flat")
+    expect(window.localStorage.getItem("theme-preset")).toBeNull()
+    expect(window.localStorage.getItem("theme-density")).toBeNull()
+    expect(window.localStorage.getItem("theme-control-depth")).toBeNull()
   })
 })

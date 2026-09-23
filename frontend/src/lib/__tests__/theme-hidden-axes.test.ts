@@ -5,17 +5,14 @@ import {
   pinHiddenAxes,
   scrubHiddenAxisStorage,
 } from "@/lib/theme-hidden-axes"
-import { themeConfig } from "@/theme.config"
+import { SWITCHER_AXES, themeConfig } from "@/theme.config"
 
-/**
- * darkmem hides no axis today — every one is reachable from Settings →
- * Appearance — so these assert the guard against a config that does, which is
- * the state it exists for. Deleting it because it is currently inert would
- * mean re-deriving the localStorage key table the next time an axis is pinned.
- */
+/** darkmem's config with every axis on except `axes`, so each test controls
+ *  exactly which axes are hidden rather than inheriting the live pin set. */
 function withHidden(...axes: string[]): ThemeConfig {
   const next = structuredClone(themeConfig) as ThemeConfig
   const table = next.switcher.axes as unknown as Record<string, boolean>
+  for (const axis of Object.keys(table)) table[axis] = true
   for (const axis of axes) table[axis] = false
   return next
 }
@@ -25,8 +22,11 @@ describe("theme-hidden-axes", () => {
     window.localStorage.clear()
   })
 
-  it("reports nothing hidden for darkmem's own config", () => {
-    expect(hiddenAxes(themeConfig)).toEqual([])
+  it("hides everything but the switcher axes in darkmem's own config", () => {
+    const hidden = new Set(hiddenAxes(themeConfig))
+    for (const axis of SWITCHER_AXES) expect(hidden.has(axis)).toBe(false)
+    expect(hidden.has("preset")).toBe(true)
+    expect(hidden.has("outerGlow")).toBe(true)
   })
 
   it("pins a hidden axis back to the configured default", () => {
