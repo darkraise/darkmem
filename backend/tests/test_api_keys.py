@@ -973,6 +973,7 @@ class TestPostureIsUnchanged:
         assert sites == [
             ("api/routes/memories.py", 2),
             ("api/routes/repos.py", 1),
+            ("api/routes/worklog.py", 3),
         ]
 
         repos_source = (APP_ROOT / "api" / "routes" / "repos.py").read_text(encoding="utf-8")
@@ -1114,6 +1115,12 @@ class TestRuntimeScopeGatedRoutes:
             ("POST", "/api/v1/memories"),
             ("POST", "/api/v1/memories/batch"),
             ("POST", "/api/v1/memories/search/paginated"),
+            ("POST", "/api/v1/worklog/entries"),
+            ("GET", "/api/v1/worklog/resume"),
+            ("GET", "/api/v1/worklog/workstreams"),
+            ("GET", "/api/v1/worklog/workstreams/{workstream_id}/entries"),
+            ("PATCH", "/api/v1/worklog/workstreams/{workstream_id}"),
+            ("DELETE", "/api/v1/worklog/workstreams/{workstream_id}"),
         }
 
     def test_no_scope_in_the_closed_set_gates_nothing(self):
@@ -1169,6 +1176,12 @@ class TestRuntimeScopeGatedRoutes:
             ("POST", "/api/v1/memories"),
             ("POST", "/api/v1/memories/batch"),
             ("POST", "/api/v1/memories/search/paginated"),
+            ("POST", "/api/v1/worklog/entries"),
+            ("GET", "/api/v1/worklog/resume"),
+            ("GET", "/api/v1/worklog/workstreams"),
+            ("GET", "/api/v1/worklog/workstreams/{workstream_id}/entries"),
+            ("PATCH", "/api/v1/worklog/workstreams/{workstream_id}"),
+            ("DELETE", "/api/v1/worklog/workstreams/{workstream_id}"),
         }
         original_dependant = target.dependant
         target.dependant = mutated_dependant
