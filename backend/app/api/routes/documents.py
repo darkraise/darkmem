@@ -67,7 +67,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import require_auth
+from app.api.auth import Principal, require_auth, require_scope
 from app.api.deps import refuse_when_read_only, get_llm
 from app.database import get_session
 from app.services.block_pipeline import UnsupportedSource
@@ -107,6 +107,13 @@ from app.services.grounded_qa import GroundedQaService
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
+
+# The routes a dr-superpowers mirror syncs through (spec 2026-09-23 §2) are the
+# only document doors a `dmk_` key reaches: filing, the by-uri read and the
+# manifest. Every other document route stays login-only; widening one is a
+# decision about what a leaked key can read or erase, made per route.
+_require_capture = require_scope("capture")
+_require_read = require_scope("read")
 
 
 async def _resolve_target(
@@ -458,6 +465,63 @@ _LIST_SQL = text(
 )
 
 
+class DocumentManifestItem(BaseModel):
+    id: str
+    uri: str
+    content_hash: str | None
+    updated_at: datetime
+
+
+class DocumentManifestResponse(BaseModel):
+    items: list[DocumentManifestItem]
+    next_after: str | None
+
+
+# The whole-segment prefix predicate the subtree rename and delete use, so
+# `superpowers` never matches `superpowersx/`. An empty prefix lists the whole
+# project. Keyset on uri, which is unique within a project.
+_MANIFEST_SQL = text(
+    """
+    SELECT CAST(id AS text) AS id, uri, content_hash, updated_at
+    FROM documents
+    WHERE project = CAST(:project AS text)
+      AND uri IS NOT NULL
+      AND (CAST(:prefix AS text) = ''
+           OR uri = CAST(:prefix AS text)
+           OR left(uri, length(CAST(:prefix AS text)) + 1) = CAST(:prefix AS text) || '/')
+      AND (CAST(:after AS text) IS NULL OR uri > CAST(:after AS text))
+    ORDER BY uri
+    LIMIT :limit
+    """
+)
+
+
+@router.get("/manifest", response_model=DocumentManifestResponse)
+async def document_manifest(
+    project: str = Query(min_length=1),
+    uri_prefix: str = Query(""),
+    after: str | None = Query(None),
+    limit: int = Query(500, ge=1, le=1000),
+    _principal: Principal = Depends(_require_read),
+    session: AsyncSession = Depends(get_session),
+) -> DocumentManifestResponse:
+    """`{uri, content_hash}` for a project's documents under a prefix, no content.
+
+    What a mirror pull diffs against its recorded hashes, so it fetches only
+    the documents that changed. A trailing slash on the prefix is dropped:
+    `superpowers/` and `superpowers` name the same subtree.
+    """
+    rows = (await session.execute(
+        _MANIFEST_SQL,
+        {"project": project, "prefix": uri_prefix.rstrip("/"), "after": after, "limit": limit},
+    )).mappings().all()
+    items = [DocumentManifestItem(**dict(row)) for row in rows]
+    return DocumentManifestResponse(
+        items=items,
+        next_after=items[-1].uri if len(items) == limit else None,
+    )
+
+
 @router.get("", response_model=DocumentListResponse)
 async def list_documents(
     project: str | None = Query(None),
@@ -682,7 +746,7 @@ async def grounded_qa(
 @router.post("", response_model=DocumentPutResponse, status_code=status.HTTP_201_CREATED)
 async def put_document_route(
     body: DocumentPutRequest,
-    _user=Depends(require_auth),
+    principal: Principal = Depends(_require_capture),
     session: AsyncSession = Depends(get_session),
     llm=Depends(get_llm),
 ) -> DocumentPutResponse:
@@ -697,6 +761,7 @@ async def put_document_route(
             session, llm,
             project=body.project, uri=body.uri, content=body.content,
             title=body.title, source_type=body.source_type, source="api",
+            actor=principal.actor,
             expected_hash=body.expected_hash,
         )
     except DocumentTooLarge as exc:
@@ -919,8 +984,31 @@ async def document_outline_route(
     )
 
 
-@router.get("/{document_id}", response_model=DocumentBlocksResponse)
 @router.get("/by-uri", response_model=DocumentBlocksResponse)
+async def document_blocks_by_uri_route(
+    block_ids: list[UUID] | None = Query(default=None),
+    project: str | None = Query(None),
+    uri: str | None = Query(None),
+    include_content: bool = Query(False),
+    _principal: Principal = Depends(_require_read),
+    session: AsyncSession = Depends(get_session),
+) -> DocumentBlocksResponse:
+    """The keyed twin of `GET /{document_id}`: same read, reachable by a read key.
+
+    Registered before `/{document_id}` so the literal path wins the match.
+    """
+    return await document_blocks_route(
+        document_id=None,
+        block_ids=block_ids,
+        project=project,
+        uri=uri,
+        include_content=include_content,
+        _user=None,
+        session=session,
+    )
+
+
+@router.get("/{document_id}", response_model=DocumentBlocksResponse)
 async def document_blocks_route(
     document_id: UUID | None = None,
     block_ids: list[UUID] | None = Query(default=None),

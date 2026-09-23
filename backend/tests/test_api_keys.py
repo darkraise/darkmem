@@ -971,6 +971,7 @@ class TestPostureIsUnchanged:
         must be a diff someone has to justify, not a line that slips in."""
         sites = _require_scope_call_sites(_routes_source_files())
         assert sites == [
+            ("api/routes/documents.py", 2),
             ("api/routes/memories.py", 2),
             ("api/routes/repos.py", 1),
             ("api/routes/worklog.py", 3),
@@ -1121,6 +1122,9 @@ class TestRuntimeScopeGatedRoutes:
             ("GET", "/api/v1/worklog/workstreams/{workstream_id}/entries"),
             ("PATCH", "/api/v1/worklog/workstreams/{workstream_id}"),
             ("DELETE", "/api/v1/worklog/workstreams/{workstream_id}"),
+            ("POST", "/api/v1/documents"),
+            ("GET", "/api/v1/documents/by-uri"),
+            ("GET", "/api/v1/documents/manifest"),
         }
 
     def test_no_scope_in_the_closed_set_gates_nothing(self):
@@ -1182,6 +1186,9 @@ class TestRuntimeScopeGatedRoutes:
             ("GET", "/api/v1/worklog/workstreams/{workstream_id}/entries"),
             ("PATCH", "/api/v1/worklog/workstreams/{workstream_id}"),
             ("DELETE", "/api/v1/worklog/workstreams/{workstream_id}"),
+            ("POST", "/api/v1/documents"),
+            ("GET", "/api/v1/documents/by-uri"),
+            ("GET", "/api/v1/documents/manifest"),
         }
         original_dependant = target.dependant
         target.dependant = mutated_dependant
