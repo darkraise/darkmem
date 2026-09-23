@@ -1120,7 +1120,7 @@ callers **read `record_event`'s own boolean return and raise on a `False`**,
 making the write and its row atomic — that is the criterion this count keys
 on, and it is narrower than "refuses to let an unjournalled write stand".
 Callers holding the latter posture by another mechanism are deliberately
-outside the six and must not be added to it: `contradiction_scan._journal`
+outside the seven and must not be added to it: `contradiction_scan._journal`
 reads its row back with its own SQL and lets the runner decline the commit,
 and `dream_undo` counts its `undone` rows back and raises when short (that
 one is described below; the scan's is not, and lives only in its own
