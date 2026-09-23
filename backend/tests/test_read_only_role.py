@@ -252,6 +252,7 @@ ROW_LOCK_WRITERS = {
     "services/supersede.py",
     "services/verification_ladder.py",
     "services/verification_recompute.py",
+    "services/worklog.py",
 }
 
 #: Modules that serve the worker's reads and must take no lock at all. Asserted
