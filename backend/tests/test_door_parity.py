@@ -135,10 +135,12 @@ _WRITE_WIRE_SHAPE = (
     "next edit on. Since the 2026-09-07 workspace-shell increment the row "
     "also carries the subtree delete, and it is the one place on this table "
     "where the two doors differ in *authority* rather than in wire shape. "
-    "POST /documents/delete sits behind the same ordinary auth every other "
-    "route on this row does; the MCP twin `document_delete_subtree` is held "
-    "at `admin`, the scope `code_reindex` has and the only other tool that "
-    "holds it. That is deliberate and not a parity gap: MCP scopes are per "
+    "POST /documents/delete sits behind ordinary login auth, while POST "
+    "/documents on the same row also admits a capture-scoped key (spec "
+    "2026-09-23, the dr-superpowers mirror); the MCP twin "
+    "`document_delete_subtree` is held at `admin`, the scope `code_reindex` "
+    "and `worklog_purge` also hold. That is deliberate and not a parity gap: "
+    "MCP scopes are per "
     "tool, so a subtree mode on `document_delete` would have inherited "
     "`capture` and let any capture key erase a project's corpus, where the "
     "REST door has no such per-verb grant to inherit. Both doors call one "
@@ -493,6 +495,66 @@ PARITY_TABLE: tuple[Surface, ...] = (
         status=TWO_DOOR,
         rest=(("GET", f"{V1}/checkpoints/latest"),),
         mcp=("checkpoint_latest",),
+    ),
+    Surface(
+        name="worklog.append",
+        status=TWO_DOOR,
+        rest=(("POST", f"{V1}/worklog/entries"),),
+        mcp=("worklog_append",),
+    ),
+    Surface(
+        name="worklog.resume",
+        status=TWO_DOOR,
+        rest=(("GET", f"{V1}/worklog/resume"),),
+        mcp=("worklog_resume",),
+    ),
+    Surface(
+        name="worklog.workstreams",
+        status=TWO_DOOR,
+        rest=(("GET", f"{V1}/worklog/workstreams"),),
+        mcp=("worklog_workstreams",),
+    ),
+    Surface(
+        name="worklog.entries",
+        status=TWO_DOOR,
+        rest=(("GET", f"{V1}/worklog/workstreams/{{workstream_id}}/entries"),),
+        mcp=("worklog_entries",),
+        note=(
+            "Stated wire asymmetry: the route names the workstream by id, the "
+            "tool by (project, key), since an agent knows its key; both resolve "
+            "to one workstream and call one list_entries."
+        ),
+    ),
+    Surface(
+        name="worklog.update",
+        status=TWO_DOOR,
+        rest=(("PATCH", f"{V1}/worklog/workstreams/{{workstream_id}}"),),
+        mcp=("worklog_update",),
+    ),
+    Surface(
+        name="worklog.purge",
+        status=TWO_DOOR,
+        rest=(("DELETE", f"{V1}/worklog/workstreams/{{workstream_id}}"),),
+        mcp=("worklog_purge",),
+        note=(
+            "admin on both doors: the route declares require_scope('admin') and "
+            "the tool sits in ADMIN_TOOLS. Both call one purge_workstream, which "
+            "journals workstream_purged before the delete and refuses when the "
+            "row does not land."
+        ),
+    ),
+    Surface(
+        name="documents.manifest",
+        status=REST_ONLY,
+        rest=(("GET", f"{V1}/documents/manifest"),),
+        mcp=(),
+        reason=(
+            "A sync read with one caller, the dr-superpowers mirror, which "
+            "speaks REST with a dmk_ key: it serves uri, content_hash and "
+            "updated_at so a pull fetches only what changed. An agent reading a "
+            "document already has document_get and document_outline; a "
+            "manifest tool would serve it nothing they do not."
+        ),
     ),
     Surface(
         name="memory.capture",

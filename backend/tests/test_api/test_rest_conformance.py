@@ -70,8 +70,9 @@ EXPECTED_STATUS = {
     ("POST", "/api/v1/documents/delete"): 200,
     ("DELETE", "/api/v1/documents/{document_id}"): 204,
     ("POST", "/api/v1/documents/search"): 200,
-    # The by-uri half of the three document-keyed verbs: one handler each,
-    # two paths, so the statuses are the id form's by construction.
+    # The by-uri half of the three document-keyed verbs. Outline and delete
+    # share one handler with their id form; the blocks read has its own keyed
+    # handler since the 2026-09-23 work-log increment. Same statuses either way.
     ("GET", "/api/v1/documents/by-uri/outline"): 200,
     ("GET", "/api/v1/documents/by-uri"): 200,
     ("DELETE", "/api/v1/documents/by-uri"): 204,
@@ -314,6 +315,13 @@ EXPECTED_STATUS = {
     ("GET", "/api/v1/tags"): 200,
     ("GET", "/api/v1/vectors/projection"): 200,
     ("GET", "/health"): 200,
+    ("POST", "/api/v1/worklog/entries"): 201,
+    ("GET", "/api/v1/worklog/resume"): 200,
+    ("GET", "/api/v1/worklog/workstreams"): 200,
+    ("GET", "/api/v1/worklog/workstreams/{workstream_id}/entries"): 200,
+    ("PATCH", "/api/v1/worklog/workstreams/{workstream_id}"): 200,
+    ("DELETE", "/api/v1/worklog/workstreams/{workstream_id}"): 204,
+    ("GET", "/api/v1/documents/manifest"): 200,
 }
 
 

@@ -640,6 +640,8 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "GET /api/v1/config/auto-research/runs",
     "POST /api/v1/config/auto-research/runs/{event_id}/rerun",
     "GET /api/v1/documents",
+    # The sync manifest: uri, hash and time per document, no content at all.
+    "GET /api/v1/documents/manifest",
     "GET /api/v1/documents/{document_id}/summary",
     # The summarize trigger. Same classification as its GET twin: the prose
     # is generated from this document's own blocks, so document content
@@ -744,6 +746,16 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "PUT /api/v1/distribution/policy",
     "POST /api/v1/checkpoints",
     "GET /api/v1/checkpoints/latest",
+    # The work-log lane (spec 2026-09-23). No memory content crosses: a
+    # workstream and its entries are a client's own notes about its work,
+    # never derived from a `memories` row, and every read is scoped by the
+    # project or the workstream id the caller names.
+    "POST /api/v1/worklog/entries",
+    "GET /api/v1/worklog/resume",
+    "GET /api/v1/worklog/workstreams",
+    "GET /api/v1/worklog/workstreams/{workstream_id}/entries",
+    "PATCH /api/v1/worklog/workstreams/{workstream_id}",
+    "DELETE /api/v1/worklog/workstreams/{workstream_id}",
     # Key management (T4.01). No memory content crosses: these read and write
     # `api_keys` and nothing else. The scoping question does not arise -- a
     # credential is box-level, not project-scoped, which is also why its
@@ -919,6 +931,13 @@ MCP_TOOLS_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # its own run is not memory content.
     "mcp:checkpoint_save",
     "mcp:checkpoint_latest",
+    # The work-log tools, for the reason their REST twins carry above.
+    "mcp:worklog_append",
+    "mcp:worklog_resume",
+    "mcp:worklog_workstreams",
+    "mcp:worklog_entries",
+    "mcp:worklog_update",
+    "mcp:worklog_purge",
     "mcp:code_blast_radius",
     "mcp:code_changes",
     "mcp:code_communities",
