@@ -324,6 +324,25 @@ async def test_validation_error_detail_is_a_string_not_a_list(client, auth_heade
     assert isinstance(body["error"]["details"], list)
 
 
+async def test_a_validation_error_echoing_a_non_finite_number_still_renders():
+    """A 422 echoes each error's `input`; JSONResponse refuses NaN and infinity,
+    so an unsanitised echo turns the refusal into a 500."""
+    from fastapi.exceptions import RequestValidationError
+
+    from app.main import _validation_exception_handler
+
+    exc = RequestValidationError([{
+        "type": "value_error",
+        "loc": ("body", "properties"),
+        "msg": "Value error, not finite",
+        "input": {"p": float("nan"), "q": [float("inf"), {"r": float("-inf")}], "s": 1.5},
+    }])
+    response = await _validation_exception_handler(None, exc)
+    assert response.status_code == 422
+    echoed = json.loads(response.body)["error"]["details"][0]["input"]
+    assert echoed == {"p": "nan", "q": ["inf", {"r": "-inf"}], "s": 1.5}
+
+
 async def test_unhandled_exception_returns_the_envelope_without_a_traceback(client, auth_headers, monkeypatch):
     from httpx import ASGITransport, AsyncClient
 

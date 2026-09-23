@@ -1,11 +1,12 @@
 """Wire shapes for the work-log lane. Both doors validate through these."""
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.services.worklog import (
     MAX_BODY_CHARS,
@@ -24,29 +25,39 @@ def _bounded(value: dict | None) -> dict | None:
     return value
 
 
-def _holds_nul(value: object) -> bool:
+def _unstorable(value: object) -> str | None:
     pending = [value]
     while pending:
         item = pending.pop()
         if isinstance(item, str):
             if "\x00" in item:
-                return True
+                return "a string or properties value contains U+0000, which cannot be stored"
+        elif isinstance(item, float):
+            if not math.isfinite(item):
+                return (
+                    f"a properties value is {item!r}; jsonb stores only finite "
+                    "numbers, not NaN or infinity"
+                )
         elif isinstance(item, dict):
             pending.extend(item.keys())
             pending.extend(item.values())
         elif isinstance(item, list):
             pending.extend(item)
-    return False
+    return None
 
 
 class _Storable(BaseModel):
-    # Postgres text and jsonb cannot hold U+0000 and the service maps only
-    # IntegrityError, so a NUL past this point answers 500 on either door.
-    # Refused, never stripped: a ledger body is stored exactly as written.
+    model_config = ConfigDict(extra="forbid")
+
+    # Postgres text and jsonb cannot hold U+0000, jsonb cannot hold NaN or
+    # infinity, and the service maps only IntegrityError, so either value past
+    # this point answers 500 on either door. Refused, never stripped or
+    # coerced: a ledger body is stored exactly as written.
     @model_validator(mode="after")
-    def _no_nul(self):
-        if _holds_nul(self.model_dump()):
-            raise ValueError("a string or properties value contains U+0000, which cannot be stored")
+    def _storable(self):
+        problem = _unstorable(self.model_dump())
+        if problem is not None:
+            raise ValueError(problem)
         return self
 
 

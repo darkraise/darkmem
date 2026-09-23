@@ -572,8 +572,8 @@ class TestBothDoors:
     ):
         """The header the refusal message names must actually work.
 
-        ``UndeclaredOrigin`` tells the caller to "send `origin_key`, or the
-        X-Darkmem-Origin header the client mints at process boot", and the
+        ``UndeclaredOrigin`` tells the caller to "send `origin_key` (checkpoint)
+        ... or the X-Darkmem-Origin header the client mints at process boot", and the
         REST route reads that header — but ``CheckpointCreate`` required
         ``origin_key``, so the header branch was unreachable on REST and the
         MCP tool required the argument outright. The documented mechanism

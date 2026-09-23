@@ -137,9 +137,10 @@ def resolve_checkpoint_origin(declared, *, source: str, project: str) -> str:
     """
     if not isinstance(declared, str) or not declared.strip():
         raise UndeclaredOrigin(
-            "a checkpoint needs a declared agent-run identity: send "
-            "`origin_key`, or the X-Darkmem-Origin header the client mints at "
-            "process boot. Undeclared checkpoints cannot be merged into one "
+            "a checkpoint or work-log entry needs a declared agent-run "
+            "identity: send `origin_key` (checkpoint) or `run_key` (work log), "
+            "or the X-Darkmem-Origin header the client mints at process boot. "
+            "Undeclared checkpoints cannot be merged into one "
             "bucket the way undeclared captures can -- two runs sharing it "
             "would each read the other's checkpoint as their own."
         )

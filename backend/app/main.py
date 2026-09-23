@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import logging
+import math
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -977,9 +978,21 @@ async def _git_account_in_use_handler(_request, exc: GitAccountInUse):
     return _error_response(409, "conflict", exc.message, exc.repos)
 
 
+def _finite_for_json(value):
+    # JSONResponse renders with allow_nan=False, so a 422 echoing a NaN or an
+    # infinity in some error's `input` would itself fail and answer 500.
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, dict):
+        return {key: _finite_for_json(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_finite_for_json(item) for item in value]
+    return value
+
+
 @app.exception_handler(RequestValidationError)
 async def _validation_exception_handler(_request, exc: RequestValidationError):
-    errors = jsonable_encoder(exc.errors())
+    errors = _finite_for_json(jsonable_encoder(exc.errors()))
     first = errors[0] if errors else {}
     location = ".".join(str(part) for part in first.get("loc", ())[1:])
     message = first.get("msg", "Request validation failed")

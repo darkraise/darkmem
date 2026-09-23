@@ -40,6 +40,7 @@ async def test_append_answers_201_with_the_workstream(client, auth_headers):
 async def test_an_undeclared_run_is_refused(client, auth_headers):
     response = await client.post(f"{V1}/entries", json=_append_body(), headers=auth_headers)
     assert response.status_code == 422
+    assert "`run_key`" in response.text
 
 
 @pytest.mark.parametrize("entries", [
@@ -146,6 +147,62 @@ async def test_a_nul_in_an_update_is_refused(client, auth_headers, update):
     workstream_id = created.json()["workstream"]["id"]
     response = await client.patch(f"{V1}/workstreams/{workstream_id}", json=update, headers=auth_headers)
     assert response.status_code == 422, response.text
+
+
+# Raw text rather than json=: the test client's encoder refuses non-finite
+# floats, and a real client's body carries the tokens verbatim.
+NON_FINITE = ["NaN", "Infinity", "-Infinity", "1e400"]
+JSON = {"content-type": "application/json"}
+
+
+@pytest.mark.parametrize("token", NON_FINITE)
+@pytest.mark.parametrize("shape", [
+    '{{"project": "proj", "workstream": "plan-a", "properties": {{"p": {token}}}, '
+    '"entries": [{{"kind": "note", "body": "n"}}]}}',
+    '{{"project": "proj", "workstream": "plan-a", '
+    '"entries": [{{"kind": "note", "body": "n", "properties": {{"p": [{token}]}}}}]}}',
+], ids=["workstream", "entry"])
+async def test_a_non_finite_number_in_an_append_is_422(client, auth_headers, token, shape):
+    response = await client.post(
+        f"{V1}/entries", content=shape.format(token=token), headers={**auth_headers, **RUN, **JSON}
+    )
+    assert response.status_code == 422, response.text
+    assert "finite" in response.json()["error"]["message"]
+    listing = await client.get(f"{V1}/workstreams", params={"project": "proj"}, headers=auth_headers)
+    assert listing.json()["items"] == []
+
+
+@pytest.mark.parametrize("token", NON_FINITE)
+async def test_a_non_finite_number_in_an_update_is_422(client, auth_headers, token):
+    created = await client.post(f"{V1}/entries", json=_append_body(), headers={**auth_headers, **RUN})
+    workstream_id = created.json()["workstream"]["id"]
+    response = await client.patch(
+        f"{V1}/workstreams/{workstream_id}",
+        content=f'{{"properties": {{"p": {{"q": {token}}}}}}}', headers={**auth_headers, **JSON},
+    )
+    assert response.status_code == 422, response.text
+    assert "finite" in response.json()["error"]["message"]
+
+
+async def test_an_unknown_key_in_an_entry_is_422(client, auth_headers):
+    entries = [{"kind": "note", "body": "n", "propertes": {"task": 1}}]
+    response = await client.post(
+        f"{V1}/entries", json=_append_body(entries=entries), headers={**auth_headers, **RUN}
+    )
+    assert response.status_code == 422, response.text
+
+
+async def test_an_unknown_key_in_an_update_is_422(client, auth_headers):
+    created = await client.post(f"{V1}/entries", json=_append_body(), headers={**auth_headers, **RUN})
+    workstream_id = created.json()["workstream"]["id"]
+    response = await client.patch(
+        f"{V1}/workstreams/{workstream_id}", json={"retained": True}, headers=auth_headers
+    )
+    assert response.status_code == 422, response.text
+    fetched = await client.get(
+        f"{V1}/resume", params={"project": "proj", "workstream": "plan-a"}, headers=auth_headers
+    )
+    assert fetched.json()["workstream"]["retain"] is False
 
 
 def test_the_schema_both_doors_share_refuses_a_nul():
