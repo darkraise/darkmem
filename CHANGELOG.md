@@ -4,6 +4,42 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
+## v1.12.0 — 2026-09-24
+
+**Working data has its own lane.** A coding client's checkpoints, progress
+ledger and notes to its next session go to a work log instead of into
+memories, so none of it is extracted, ranked with memories or verified. This is
+the lane's first increment: the store and its verbs on both doors.
+
+### Added
+
+- **Workstreams and their entries.** A workstream is one piece of a client's
+  work in a project, named by the client's own key; its entries are
+  append-only checkpoints, ledger chunks and notes. Appending creates the
+  workstream, or reopens a closed one, and journals it. Resume answers the
+  latest checkpoint, the 50 newest notes and the last 20 ledger entries in one
+  read.
+- **REST: `/api/v1/worklog`** — append, resume, list workstreams, list entries,
+  update (state, retain, title, properties) and purge. Every route admits a
+  scoped key: `capture` to write, `read` to read, `admin` to purge.
+- **MCP: six `worklog_*` tools** over the same service, addressing a workstream
+  by project and key. The catalogue is now 46 tools; `worklog_purge` is the
+  third `admin` tool, and it erases a workstream irrecoverably after
+  journaling `workstream_purged`.
+- **The document sync routes admit keys.** `POST /api/v1/documents` takes a
+  `capture` key and `GET /api/v1/documents/by-uri` a `read` key, and a new
+  `GET /api/v1/documents/manifest` lists `{id, uri, content_hash, updated_at}`
+  under a prefix so a mirror fetches only what changed. Keyed filings on both
+  doors journal the key's name and id.
+
+### Changed
+
+- The agent instructions and the capture tool descriptions route working data
+  to the work log and name what a memory must not carry: commit hashes, test
+  and commit counts, task progress, `file:line` references, stack traces, raw
+  output and session narration.
+- The schema baseline was regenerated, so a deploy is a drop-and-recreate.
+
 ## v1.11.0 — 2026-09-23
 
 ### Added
