@@ -320,3 +320,113 @@ async def test_an_append_behind_a_committed_delete_recreates_the_workstream(comm
             for workstream_id in (ws_id, result.workstream.id)
         ]
     assert counts == [0, 1]
+
+
+async def test_resume_is_none_for_an_unknown_workstream(session):
+    assert await worklog.resume(session, project="proj", key="nope") is None
+
+
+async def test_resume_answers_latest_checkpoint_notes_and_ledger_tail(session):
+    await _append(session, entries=[{"kind": "checkpoint", "body": "old"}])
+    await _append(session, entries=[{"kind": "ledger", "body": f"line {i}\n"} for i in range(25)])
+    await _append(session, entries=[
+        {"kind": "note", "body": "gotcha"},
+        {"kind": "checkpoint", "body": "new"},
+    ])
+    answer = await worklog.resume(session, project="proj", key="plan-a")
+    assert answer["workstream"]["key"] == "plan-a"
+    assert answer["checkpoint"]["body"] == "new"
+    assert [n["body"] for n in answer["notes"]] == ["gotcha"]
+    assert answer["notes_truncated"] is False
+    assert [e["body"] for e in answer["ledger"]] == [f"line {i}\n" for i in range(5, 25)]
+
+
+async def test_resume_caps_notes_at_fifty_newest(session):
+    await _append(session, entries=[{"kind": "note", "body": f"n{i}"} for i in range(51)])
+    answer = await worklog.resume(session, project="proj", key="plan-a")
+    assert len(answer["notes"]) == 50
+    assert answer["notes"][0]["body"] == "n1"
+    assert answer["notes"][-1]["body"] == "n50"
+    assert answer["notes_truncated"] is True
+
+
+async def test_ledger_chunks_concatenate_back_to_the_appended_text(session):
+    chunks = ["# Ledger\n\n", "Task 1: complete\n", "| a | b |\n|---|---|\n\n", "Task 2: complete\n"]
+    for chunk in chunks:
+        await _append(session, entries=[{"kind": "ledger", "body": chunk}])
+    ws = await worklog.get_workstream(session, project="proj", key="plan-a")
+    page = await worklog.list_entries(session, workstream_id=ws.id, kind="ledger")
+    assert "".join(e["body"] for e in page["items"]) == "".join(chunks)
+
+
+async def test_list_workstreams_pages_by_creation_and_ignores_later_appends(session):
+    for key in ("w1", "w2", "w3"):
+        await _append(session, key=key)
+    # w1 was created most recently, w3 longest ago; activity starts in the same order.
+    await session.execute(text(
+        "UPDATE workstreams SET "
+        "created_at = now() - CAST(substr(key, 2) AS int) * interval '1 hour', "
+        "last_entry_at = now() - CAST(substr(key, 2) AS int) * interval '1 hour'"
+    ))
+    session.expire_all()
+    first = await worklog.list_workstreams(session, project="proj", limit=2)
+    assert [w["key"] for w in first["items"]] == ["w1", "w2"]
+    # w3 becomes the most active; a list keyed on activity would now repeat or skip.
+    await session.execute(text(
+        "UPDATE workstreams SET last_entry_at = now() + interval '1 hour' WHERE key = 'w3'"
+    ))
+    session.expire_all()
+    rest = await worklog.list_workstreams(session, project="proj", before=first["next_before"], limit=2)
+    assert [w["key"] for w in rest["items"]] == ["w3"]
+    assert rest["next_before"] is None
+
+
+async def test_list_workstreams_filters_by_state_and_project(session):
+    await _append(session, key="open-one")
+    closing = (await _append(session, key="closed-one")).workstream
+    await worklog.update_workstream(session, closing.id, state="closed")
+    closed = await worklog.list_workstreams(session, project="proj", state="closed")
+    assert [w["key"] for w in closed["items"]] == ["closed-one"]
+    other = await worklog.list_workstreams(session, project="elsewhere")
+    assert other == {"items": [], "next_before": None}
+
+
+async def test_list_workstreams_refuses_a_malformed_cursor(session):
+    with pytest.raises(ValueError):
+        await worklog.list_workstreams(session, project="proj", before="not-a-cursor")
+
+
+async def test_list_entries_pages_forward_by_seq(session):
+    await _append(session, entries=[{"kind": "ledger", "body": f"{i}\n"} for i in range(5)])
+    ws = await worklog.get_workstream(session, project="proj", key="plan-a")
+    first = await worklog.list_entries(session, workstream_id=ws.id, limit=2)
+    assert [e["body"] for e in first["items"]] == ["0\n", "1\n"]
+    assert first["next_after"] == first["items"][-1]["seq"]
+    second = await worklog.list_entries(session, workstream_id=ws.id, after=first["next_after"], limit=2)
+    assert [e["body"] for e in second["items"]] == ["2\n", "3\n"]
+    last = await worklog.list_entries(session, workstream_id=ws.id, after=second["next_after"], limit=2)
+    assert [e["body"] for e in last["items"]] == ["4\n"]
+    assert last["next_after"] is None
+
+
+async def test_list_entries_filters_by_since(session):
+    from datetime import UTC, datetime, timedelta
+
+    await _append(session, entries=[{"kind": "note", "body": "n"}])
+    ws = await worklog.get_workstream(session, project="proj", key="plan-a")
+    past = await worklog.list_entries(session, workstream_id=ws.id, since=datetime.now(UTC) - timedelta(days=1))
+    future = await worklog.list_entries(session, workstream_id=ws.id, since=datetime.now(UTC) + timedelta(days=1))
+    assert [e["body"] for e in past["items"]] == ["n"]
+    assert future["items"] == []
+
+
+async def test_list_workstreams_refuses_an_unknown_state(session):
+    with pytest.raises(ValueError):
+        await worklog.list_workstreams(session, project="proj", state="archived")
+
+
+async def test_list_entries_refuses_an_unknown_kind(session):
+    await _append(session)
+    ws = await worklog.get_workstream(session, project="proj", key="plan-a")
+    with pytest.raises(ValueError):
+        await worklog.list_entries(session, workstream_id=ws.id, kind="memo")

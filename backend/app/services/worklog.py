@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, func, insert, select, text
+from sqlalchemy import and_, delete, func, insert, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,8 +39,11 @@ __all__ = [
     "append",
     "get_workstream",
     "get_workstream_by_id",
+    "list_entries",
+    "list_workstreams",
     "properties_size",
     "purge_workstream",
+    "resume",
     "serialize_entry",
     "serialize_workstream",
     "update_workstream",
@@ -357,4 +361,106 @@ def serialize_entry(entry: WorklogEntry) -> dict[str, Any]:
         "body": entry.body,
         "properties": entry.properties or {},
         "created_at": entry.created_at.isoformat(),
+    }
+
+
+def _cursor(workstream: Workstream) -> str:
+    return f"{workstream.created_at.isoformat()}|{workstream.id}"
+
+
+def _parse_cursor(value: str) -> tuple[datetime, UUID]:
+    stamp, _, ident = value.partition("|")
+    try:
+        return datetime.fromisoformat(stamp), UUID(ident)
+    except ValueError as error:
+        raise ValueError(f"not a workstream cursor: {value!r}") from error
+
+
+async def resume(session: AsyncSession, *, project: str, key: str) -> dict[str, Any] | None:
+    """What a new session loads: the latest checkpoint, notes, the ledger tail."""
+    workstream = await get_workstream(session, project=project, key=key)
+    if workstream is None:
+        return None
+
+    def newest(kind: str, limit: int):
+        return (
+            select(WorklogEntry)
+            .where(WorklogEntry.workstream_id == workstream.id, WorklogEntry.kind == kind)
+            .order_by(WorklogEntry.seq.desc())
+            .limit(limit)
+        )
+
+    checkpoint = (await session.execute(newest("checkpoint", 1))).scalar_one_or_none()
+    notes = (await session.execute(newest("note", RESUME_NOTES_CAP + 1))).scalars().all()
+    ledger = (await session.execute(newest("ledger", RESUME_LEDGER_TAIL))).scalars().all()
+    return {
+        "workstream": serialize_workstream(workstream),
+        "checkpoint": serialize_entry(checkpoint) if checkpoint is not None else None,
+        "notes": [serialize_entry(n) for n in reversed(notes[:RESUME_NOTES_CAP])],
+        "notes_truncated": len(notes) > RESUME_NOTES_CAP,
+        "ledger": [serialize_entry(e) for e in reversed(ledger)],
+    }
+
+
+async def list_workstreams(
+    session: AsyncSession,
+    *,
+    project: str,
+    state: str | None = None,
+    before: str | None = None,
+    limit: int = 50,
+) -> dict[str, Any]:
+    """Newest-created first, keyset-paged on the immutable (created_at, id).
+
+    Not last_entry_at: an append moves that, and a page boundary on a moving
+    key skips or repeats workstreams between pages.
+    """
+    if state is not None and state not in ("open", "closed"):
+        raise ValueError(f"state must be 'open' or 'closed', not {state!r}")
+    conditions = [Workstream.project == project]
+    if state is not None:
+        conditions.append(Workstream.state == state)
+    if before is not None:
+        stamp, ident = _parse_cursor(before)
+        conditions.append(or_(
+            Workstream.created_at < stamp,
+            and_(Workstream.created_at == stamp, Workstream.id < ident),
+        ))
+    rows = (await session.execute(
+        select(Workstream)
+        .where(*conditions)
+        .order_by(Workstream.created_at.desc(), Workstream.id.desc())
+        .limit(limit)
+    )).scalars().all()
+    return {
+        "items": [serialize_workstream(w) for w in rows],
+        "next_before": _cursor(rows[-1]) if len(rows) == limit else None,
+    }
+
+
+async def list_entries(
+    session: AsyncSession,
+    *,
+    workstream_id: UUID,
+    kind: str | None = None,
+    since: datetime | None = None,
+    after: int | None = None,
+    limit: int = 100,
+) -> dict[str, Any]:
+    """Entries oldest first, paged forward on `seq`; `since` keeps created_at >= since."""
+    if kind is not None and kind not in KINDS:
+        raise ValueError(f"kind must be one of {', '.join(KINDS)}, not {kind!r}")
+    conditions = [WorklogEntry.workstream_id == workstream_id]
+    if kind is not None:
+        conditions.append(WorklogEntry.kind == kind)
+    if since is not None:
+        conditions.append(WorklogEntry.created_at >= since)
+    if after is not None:
+        conditions.append(WorklogEntry.seq > after)
+    rows = (await session.execute(
+        select(WorklogEntry).where(*conditions).order_by(WorklogEntry.seq).limit(limit)
+    )).scalars().all()
+    return {
+        "items": [serialize_entry(e) for e in rows],
+        "next_after": rows[-1].seq if len(rows) == limit else None,
     }
