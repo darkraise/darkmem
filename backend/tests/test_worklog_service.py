@@ -7,7 +7,7 @@ import uuid
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import select, text
+from sqlalchemy import event, select, text
 
 from app.models.worklog import WorklogEntry, Workstream
 from app.services import worklog
@@ -348,6 +348,38 @@ async def test_resume_caps_notes_at_fifty_newest(session):
     assert answer["notes"][0]["body"] == "n1"
     assert answer["notes"][-1]["body"] == "n50"
     assert answer["notes_truncated"] is True
+
+
+async def test_resume_is_one_statement(session):
+    # Under READ COMMITTED each statement takes its own snapshot, so a resume
+    # spread over several could pair one commit's properties with another's
+    # checkpoint. One statement is what makes the answer a single snapshot.
+    from tests.conftest import test_engine
+
+    appended = await _append(session, entries=[
+        {"kind": "checkpoint", "body": "state", "properties": {"task": 3}},
+        {"kind": "note", "body": "gotcha"},
+        {"kind": "ledger", "body": "Task 1: complete\n"},
+    ], properties={"plan_uri": "plans/a.md"})
+    statements: list[str] = []
+
+    def count(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    target = test_engine.sync_engine
+    event.listen(target, "before_cursor_execute", count)
+    try:
+        answer = await worklog.resume(session, project="proj", key="plan-a")
+    finally:
+        event.remove(target, "before_cursor_execute", count)
+
+    assert len(statements) == 1, "\n".join(statements)
+    assert answer["workstream"] == worklog.serialize_workstream(appended.workstream)
+    assert answer["checkpoint"]["body"] == "state"
+    assert answer["checkpoint"]["properties"] == {"task": 3}
+    assert answer["checkpoint"]["id"] == str(appended.entry_ids[0])
+    assert [n["body"] for n in answer["notes"]] == ["gotcha"]
+    assert [e["body"] for e in answer["ledger"]] == ["Task 1: complete\n"]
 
 
 async def test_ledger_chunks_concatenate_back_to_the_appended_text(session):

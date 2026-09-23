@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -114,7 +115,8 @@ _INSERT_IF_ABSENT = text(
     """
 )
 # Rows journaled inside this transaction carry created_at = now(), so the
-# predicate reads back exactly this purge's row and prunes to one partition.
+# predicate reads back exactly this purge's row and prunes to the current
+# month's partition and any later ones.
 _PURGE_JOURNALED = text(
     """
     SELECT count(*) FROM events
@@ -376,29 +378,70 @@ def _parse_cursor(value: str) -> tuple[datetime, UUID]:
         raise ValueError(f"not a workstream cursor: {value!r}") from error
 
 
+_ENTRY_COLUMNS = "id, workstream_id, seq, run_key, kind, body, properties, created_at"
+# One statement on purpose: under READ COMMITTED every statement takes its own
+# snapshot, so reading the workstream and its entries separately could pair one
+# append's properties with another's checkpoint. Neither SET TRANSACTION (the
+# REST session has already queried during auth) nor FOR SHARE (refused to the
+# read-only worker's SELECT-only role) is available to widen the snapshot.
+_RESUME = text(
+    f"""
+    SELECT w.id, w.project, w.key, w.title, w.client, w.state, w.closed_at,
+           w.retain, w.properties, w.last_entry_at, w.created_at, w.updated_at,
+           e.id AS e_id, e.workstream_id AS e_workstream_id, e.seq AS e_seq,
+           e.run_key AS e_run_key, e.kind AS e_kind, e.body AS e_body,
+           e.properties AS e_properties, e.created_at AS e_created_at
+    FROM workstreams w
+    LEFT JOIN LATERAL (
+        (SELECT {_ENTRY_COLUMNS} FROM worklog_entries
+         WHERE workstream_id = w.id AND kind = 'checkpoint'
+         ORDER BY seq DESC LIMIT 1)
+        UNION ALL
+        (SELECT {_ENTRY_COLUMNS} FROM worklog_entries
+         WHERE workstream_id = w.id AND kind = 'note'
+         ORDER BY seq DESC LIMIT CAST(:notes_limit AS integer))
+        UNION ALL
+        (SELECT {_ENTRY_COLUMNS} FROM worklog_entries
+         WHERE workstream_id = w.id AND kind = 'ledger'
+         ORDER BY seq DESC LIMIT CAST(:ledger_limit AS integer))
+    ) e ON true
+    WHERE w.project = CAST(:project AS text) AND w.key = CAST(:key AS text)
+    """
+)
+
+
+def _entry_from_row(row: Any) -> SimpleNamespace:
+    return SimpleNamespace(**{
+        name: getattr(row, f"e_{name}")
+        for name in ("id", "workstream_id", "seq", "run_key", "kind", "body",
+                     "properties", "created_at")
+    })
+
+
 async def resume(session: AsyncSession, *, project: str, key: str) -> dict[str, Any] | None:
     """What a new session loads: the latest checkpoint, notes, the ledger tail."""
-    workstream = await get_workstream(session, project=project, key=key)
-    if workstream is None:
+    rows = (await session.execute(_RESUME, {
+        "project": project,
+        "key": key,
+        "notes_limit": RESUME_NOTES_CAP + 1,
+        "ledger_limit": RESUME_LEDGER_TAIL,
+    })).all()
+    if not rows:
         return None
-
-    def newest(kind: str, limit: int):
-        return (
-            select(WorklogEntry)
-            .where(WorklogEntry.workstream_id == workstream.id, WorklogEntry.kind == kind)
-            .order_by(WorklogEntry.seq.desc())
-            .limit(limit)
-        )
-
-    checkpoint = (await session.execute(newest("checkpoint", 1))).scalar_one_or_none()
-    notes = (await session.execute(newest("note", RESUME_NOTES_CAP + 1))).scalars().all()
-    ledger = (await session.execute(newest("ledger", RESUME_LEDGER_TAIL))).scalars().all()
+    # UNION ALL promises no order across its branches, so order here.
+    entries = sorted(
+        (_entry_from_row(row) for row in rows if row.e_id is not None),
+        key=lambda entry: entry.seq,
+    )
+    checkpoints = [e for e in entries if e.kind == "checkpoint"]
+    notes = [e for e in entries if e.kind == "note"]
+    ledger = [e for e in entries if e.kind == "ledger"]
     return {
-        "workstream": serialize_workstream(workstream),
-        "checkpoint": serialize_entry(checkpoint) if checkpoint is not None else None,
-        "notes": [serialize_entry(n) for n in reversed(notes[:RESUME_NOTES_CAP])],
+        "workstream": serialize_workstream(rows[0]),
+        "checkpoint": serialize_entry(checkpoints[-1]) if checkpoints else None,
+        "notes": [serialize_entry(n) for n in notes[-RESUME_NOTES_CAP:]],
         "notes_truncated": len(notes) > RESUME_NOTES_CAP,
-        "ledger": [serialize_entry(e) for e in reversed(ledger)],
+        "ledger": [serialize_entry(e) for e in ledger],
     }
 
 
