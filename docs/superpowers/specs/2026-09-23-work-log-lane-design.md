@@ -1,7 +1,10 @@
 # Work-log lane: working data separated from memories
 
 Date: 2026-09-23
-Status: design, owner-approved section by section on 2026-09-23. Not planned.
+Status: design, owner-approved section by section on 2026-09-23. Increment 1
+planned (`docs/superpowers/plans/2026-09-23-work-log-increment-1-store-and-verbs.md`);
+amended the same day with four corrections found while planning, each marked
+"Amended 2026-09-23" below.
 Register: `docs/superpowers/registers/2026-09-23-work-log-lane.md`
 Companion spec (client side): `darkraise-ai-plugins`,
 `docs/superpowers/specs/2026-09-23-darkmem-mirror-design.md`
@@ -88,10 +91,17 @@ there is no separate create verb.
 | `properties` | JSONB NOT NULL DEFAULT `'{}'` | task number, status, commit; CHECK `pg_column_size <= 16384` |
 | `search_vector` | TSVECTOR | filled by an insert trigger, `to_tsvector('english', body)` |
 | `created_at` | TIMESTAMPTZ NOT NULL DEFAULT now() | |
+| `seq` | BIGINT GENERATED ALWAYS AS IDENTITY | the order of entries |
 
-Indexes: `(workstream_id, kind, created_at DESC, id DESC)` — the newest
-checkpoint is a one-row index scan; `(workstream_id, created_at, id)` — the
-ledger in order; GIN on `search_vector`.
+**Amended 2026-09-23:** entries order by `seq`, not `(created_at, id)`: every
+entry of one append shares the transaction's `now()` and random UUIDs carry
+no order, so a ledger's chunks would not concatenate back. `search_vector` is
+a generated column (`to_tsvector('english', body)`) rather than a trigger —
+the same content with no function to maintain.
+
+Indexes: `(workstream_id, kind, seq DESC)` — the newest checkpoint is a
+one-row index scan; `(workstream_id, seq)` — the ledger in order; GIN on
+`search_vector`.
 
 Entries are append-only from the API. No verb updates or deletes a single
 entry; rows leave only through retention (§6) or a workstream purge.
@@ -126,17 +136,13 @@ whole body, and search results say which arm matched.
 
 ### `document_revisions`
 
-| Column | Type | Notes |
-|---|---|---|
-| `id` | UUID PK | |
-| `document_id` | UUID NOT NULL | FK → `documents` ON DELETE CASCADE |
-| `content` | TEXT | the prior `documents.content` (NULL when the prior filing was a bytes source) |
-| `content_hash` | TEXT NOT NULL | the prior hash |
-| `created_at` | TIMESTAMPTZ NOT NULL DEFAULT now() | when it was superseded |
-| `actor` | TEXT | key name or `admin` |
-| `api_key_id` | UUID | NULL for the SPA session |
-
-Index `(document_id, created_at DESC, id DESC)`.
+**Amended 2026-09-23:** the table already exists in the baseline as an inert
+object (`0001_baseline.py`, "Version history: a full post-image snapshot per
+commit"; `tests/test_inert_objects.py` lists it) with `id`, `document_id`
+(cascade), `content NOT NULL`, `content_hash`, `created_at`. Increment 3 keeps
+it and its post-image semantics — each revision is the content a changed put
+*wrote*, so the newest revision equals the current content — adds `actor TEXT`
+and `api_key_id UUID`, and removes it from `INERT_TABLES`.
 
 ### Dropped
 
@@ -199,9 +205,11 @@ workstream id and the entry ids in order. Appending to a closed workstream
 reopens it and journals `workstream_reopened`. Creating one journals
 `workstream_opened`.
 
-The workstream row is taken with an `INSERT … ON CONFLICT (project, key) DO
-UPDATE … RETURNING`, which locks it for the transaction and sets
-`last_entry_at`. A retention or purge `DELETE` racing an append therefore
+The workstream row is locked before anything is decided — `SELECT … FOR
+UPDATE`, or, when absent, an `INSERT … ON CONFLICT DO NOTHING` whose loser
+re-locks the winner's row — and the transition (opened, reopened, continued)
+is read from the locked row (amended 2026-09-23: a single upsert read the
+prior state from its snapshot and could miss a concurrent close). A retention or purge `DELETE` racing an append therefore
 serialises on that row: if the append commits first, the delete's re-checked
 `state = 'closed'` predicate no longer matches and the workstream survives; if
 the delete commits first, the append's upsert creates a fresh workstream.
@@ -279,11 +287,12 @@ place; as notes, every edit would duplicate it in `worklog_resume`. The
 workstream's `properties.handoff_uri` names it.
 
 **Revisions.** `put_document` gains an `api_key_id` parameter beside its
-existing `actor`, which both doors already know, and writes the prior
-`content` and `content_hash` as
-a `document_revisions` row inside the filing's savepoint, only when the update
-changes `content_hash`. A new document writes none; a byte-identical re-push
-writes none; a stale `expected_hash` writes none (nothing was filed). The
+existing `actor`, which both doors already know, and writes the filed
+`content` and `content_hash` as a `document_revisions` row inside the filing's
+savepoint whenever a put creates a document or changes its `content_hash`
+(post-image, amended 2026-09-23). A byte-identical re-push writes none; a
+stale `expected_hash` writes none (nothing was filed); a bytes source, whose
+`content` is NULL, writes none. The
 revision rolls back with the filing, so a refused or failed put never leaves a
 revision behind. Revisions live as long as their document.
 
@@ -416,8 +425,7 @@ import closure of `app.services.worklog` must not reach
 
 Six increments, each landing green and deployed on this host before the next:
 
-1. **Store and verbs.** Schema (workstreams, entries, dropped
-   `session_checkpoints`), `worklog.py`, append / resume / list / update /
+1. **Store and verbs.** Schema (workstreams, entries), `worklog.py`, append / resume / list / update /
    purge on both doors, events vocabulary, scopes, parity doc, content-surface
    inventory, instructions, `CLAUDE.md` counts; `require_scope` on the document
    routes the mirror uses, and the manifest route. The companion spec can start
@@ -427,7 +435,12 @@ Six increments, each landing green and deployed on this host before the next:
 4. **Memory-door warning.** Calibration, `capture_lint.py`, `warnings` on the
    four doors, `capture_flagged`.
 5. **Retention.** `worklog_cleanup`.
-6. **UI.** Work log tab, Activity list, Revisions sheet, demo fixtures.
+6. **UI and checkpoint removal.** Work log tab, Activity list, Revisions
+   sheet, demo fixtures; then drop `session_checkpoints`, its tools and routes,
+   and move `resolve_checkpoint_origin` into `worklog.py`. Amended 2026-09-23:
+   the removal moved here from increment 1 because the SPA's Checkpoints tab
+   reads those routes, and removing them before the Work log view exists would
+   break the live instance between increments.
 
 ## 10. Testing and acceptance
 
@@ -455,9 +468,11 @@ Six increments, each landing green and deployed on this host before the next:
 - **Wall:** the scans of §7, each with a negative control that proves it can
   fail.
 - **Content surfaces:** every new route and tool is classified in
-  `app/services/content_surfaces.py`'s inventory (the work-log and revision
-  surfaces `SCOPED` by project or `ID_ADDRESSED`), and the checkpoint rows are
-  removed; `tests/test_content_surface_scoping.py` fails on an unclassified door.
+  `app/services/content_surfaces.py`'s inventory, in
+  `ROUTES_WITHOUT_MEMORY_CONTENT` / `MCP_TOOLS_WITHOUT_MEMORY_CONTENT` as the
+  checkpoint doors are (amended 2026-09-23: they serve no memory content, so
+  the scoping classes do not apply); `tests/test_content_surface_scoping.py`
+  fails on an unclassified door.
 - **Keyed REST:** a `dmk_` key reaches exactly the routes §2 lists and is
   refused (401) on the rest of the document surface.
 - **Guards leg:** the mandatory set from `CLAUDE.md` after every increment that
