@@ -28,6 +28,7 @@ const STEP_TITLES: Record<1 | 2 | 3 | 4, string> = {
 export function SetupWizard() {
   const navigate = useNavigate()
   const step = useSetupWizardStore((s) => s.step)
+  const maxStep = useSetupWizardStore((s) => Math.max(s.step, s.maxStep))
   const setStep = useSetupWizardStore((s) => s.setStep)
   const setLlmSkipped = useSetupWizardStore((s) => s.setLlmSkipped)
   const setReposSkipped = useSetupWizardStore((s) => s.setReposSkipped)
@@ -50,11 +51,27 @@ export function SetupWizard() {
   // button can say exactly what's blocking instead of just greying out.
   const missingModels = missingRequiredModels(llm)
 
-  const goNext = () => {
-    if (step === 1 && !isStepPasswordValid(password)) return
+  const leaveForward = () => {
     if (step === 2) setLlmSkipped(false)
     if (step === 3) setReposSkipped(false)
+  }
+  const goNext = () => {
+    if (step === 1 && !isStepPasswordValid(password)) return
+    leaveForward()
     if (step < 4) setStep((step + 1) as 1 | 2 | 3 | 4)
+  }
+  // Only steps already reached are clickable. Moving forward leaves the current
+  // step exactly as Next would, so it must pass Next's own validity check; the
+  // password is not persisted, so after a reload it has to be re-entered first.
+  const canJumpTo = (target: 1 | 2 | 3 | 4) => {
+    if (target === step || target > maxStep || finalize.isPending) return false
+    if (target < step) return true
+    return stepValid && isStepPasswordValid(password)
+  }
+  const jumpTo = (target: 1 | 2 | 3 | 4) => {
+    if (!canJumpTo(target)) return
+    if (target > step) leaveForward()
+    setStep(target)
   }
   const goBack = () => {
     if (step > 1) setStep((step - 1) as 1 | 2 | 3 | 4)
@@ -131,23 +148,30 @@ export function SetupWizard() {
         </div>
 
         <ol className="flex shrink-0 flex-wrap justify-center gap-2 text-sm">
-          {[1, 2, 3, 4].map((s) => (
-            <li
-              key={s}
-              aria-current={s === step ? "step" : undefined}
-              className={`${s === step ? "block" : "hidden sm:block"} rounded-md border px-3 py-1 transition-colors ${
-                s === step
-                  ? "border-primary bg-primary/10 text-primary-text"
-                  : s < step
-                    ? "border-muted bg-muted/30 text-muted-foreground"
-                    : "border-muted/50 text-muted-foreground"
-              }`}
-            >
-              <span className="sm:hidden">Step {s} of 4 · </span>
-              <span className="hidden sm:inline">{s}. </span>
-              {STEP_TITLES[s as 1 | 2 | 3 | 4]}
-            </li>
-          ))}
+          {([1, 2, 3, 4] as const).map((s) => {
+            const clickable = canJumpTo(s)
+            return (
+              <li key={s} className={s === step ? "block" : "hidden sm:block"}>
+                <button
+                  type="button"
+                  aria-current={s === step ? "step" : undefined}
+                  disabled={!clickable}
+                  onClick={() => jumpTo(s)}
+                  className={`rounded-md border px-3 py-1 transition-colors disabled:cursor-default ${
+                    s === step
+                      ? "border-primary bg-primary/10 text-primary-text"
+                      : s <= maxStep
+                        ? "border-muted bg-muted/30 text-muted-foreground"
+                        : "border-muted/50 text-muted-foreground"
+                  } ${clickable ? "hover:border-primary/60 hover:text-foreground cursor-pointer" : ""}`}
+                >
+                  <span className="sm:hidden">Step {s} of 4 · </span>
+                  <span className="hidden sm:inline">{s}. </span>
+                  {STEP_TITLES[s]}
+                </button>
+              </li>
+            )
+          })}
         </ol>
 
         <div className="min-h-0 flex-1 overflow-y-auto pr-1">

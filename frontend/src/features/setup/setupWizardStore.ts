@@ -47,6 +47,7 @@ export type PurposeDraft = {
 
 type SetupWizardState = {
   step: 1 | 2 | 3 | 4
+  maxStep: 1 | 2 | 3 | 4
   password: { value: string; confirm: string }
   llm: {
     skipped: boolean
@@ -92,6 +93,7 @@ const emptyPurposeDraft: PurposeDraft = { provider_name: "", model: "", reasonin
 
 const initial = () => ({
   step: 1 as const,
+  maxStep: 1 as 1 | 2 | 3 | 4,
   password: { value: "", confirm: "" },
   llm: {
     skipped: false,
@@ -112,7 +114,8 @@ export const useSetupWizardStore = create<SetupWizardState>()(
   persist(
     (set) => ({
       ...initial(),
-      setStep: (step) => set({ step }),
+      setStep: (step) =>
+        set((s) => ({ step, maxStep: step > s.maxStep ? step : s.maxStep })),
       setPassword: (value, confirm) => set({ password: { value, confirm } }),
       addLlmProvider: (provider) =>
         set((s) => ({
@@ -192,6 +195,7 @@ export const useSetupWizardStore = create<SetupWizardState>()(
       version: 2,
       partialize: (s) => ({
         step: s.step,
+        maxStep: s.maxStep,
         password: { value: "", confirm: "" },
         llm: s.llm,
         repos: s.repos,
