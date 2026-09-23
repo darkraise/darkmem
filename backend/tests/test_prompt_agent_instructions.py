@@ -102,3 +102,36 @@ def test_the_capture_tools_serve_the_one_fact_rule():
         assert "one fact" in served, f"{name} must state the granularity rule"
 
     assert "never append" in (tools["memory_update"].description or "").lower()
+
+
+_LOG_NOISE = ("commit hash", "test count", "file:line", "stack trace", "progress")
+
+
+def test_the_instructions_keep_logs_out_of_memories():
+    """A one-fact row can still be a log line.
+
+    The migrated corpus showed the shape: rows under the length rule that were
+    still commit ranges, pass counts and task progress, which extraction turns
+    into entities that are stale the day after they were written.
+    """
+    text = prompt.PROMPTS["agent_instructions"]
+    assert "A memory is not a log" in text
+    missing = [term for term in _LOG_NOISE if term not in text.lower()]
+    assert missing == [], f"noise classes the instructions do not name: {missing}"
+
+
+def test_the_capture_tools_serve_the_no_log_rule():
+    import asyncio
+
+    from app.api.mcp.server import mcp
+
+    tools = {t.name: t for t in asyncio.run(mcp.list_tools())}
+
+    content = tools["memory_add"].input_schema["properties"]["content"]
+    served = [
+        ("memory_add.content", content.get("description") or ""),
+        ("memory_add", tools["memory_add"].description or ""),
+        ("memory_batch_add", tools["memory_batch_add"].description or ""),
+    ]
+    for name, text in served:
+        assert "not a log" in text.lower(), f"{name} must state the no-log rule"
