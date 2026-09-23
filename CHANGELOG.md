@@ -4,6 +4,36 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
+## v1.11.0 — 2026-09-23
+
+### Added
+
+- **MCP connection details on Settings → Integration.** The endpoint, the
+  auth header, which key scopes to choose and when `MCP_ALLOWED_HOSTS` is
+  needed, plus copyable configs for Claude Code, JSON-config clients and
+  Codex and a curl check. A key pasted there fills the snippets without being
+  sent or stored; a newly created key's dialog shows them already filled in.
+- Initial setup: steps already reached can be clicked to move between them.
+
+### Changed
+
+- The theme is pinned again: only mode, accent colour and surface colour are
+  adjustable, on the header and on Settings → Appearance alike. Values saved
+  for the other axes are cleared.
+- The active sidebar item shows the library's ring and rail again, over the
+  accent tint.
+
+### Fixed
+
+- The contribution calendar counted every journal row — logins, setup,
+  maintenance runs — as "memories captured", so a fresh install showed
+  captures beside an empty Memories page. It now counts memory captures only;
+  `GET /api/v1/events/calendar` gains an `object_type` filter for it.
+- The contribution calendar no longer overflows the card at laptop widths,
+  and its rows are evenly spaced.
+- The model dropdown in initial setup and in the LLM purpose dialog opens
+  upward instead of being cut off under the footer.
+
 ## v1.10.0 — 2026-09-22
 
 ### Changed
