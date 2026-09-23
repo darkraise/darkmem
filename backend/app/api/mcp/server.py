@@ -875,6 +875,7 @@ async def document_put(
                 project=project, uri=uri, content=content,
                 title=title, source_type=source_type, source=source,
                 expected_hash=expected_hash,
+                actor=current_key_name(), api_key_id=current_api_key_id(),
             )
         except DocumentIsBlockFirst as exc:
             # A structured refusal, not a tool error (review M-4): its REST

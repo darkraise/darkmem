@@ -76,6 +76,42 @@ async def test_a_capture_key_files_and_a_read_key_reads_it_back(client, session,
     assert back.json()["content"] == body["content"]
 
 
+async def test_a_keyed_mcp_filing_stamps_its_key(session, scripted_embedder, monkeypatch):
+    """The REST filing above stamps the key; the MCP twin must journal the same."""
+    import json
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    from mcp.server.auth.middleware.auth_context import auth_context_var
+    from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
+
+    import app.api.mcp.auth as mcp_auth
+    import app.api.mcp.server as mcp_server
+
+    @asynccontextmanager
+    async def _on_the_test_session():
+        yield session
+
+    monkeypatch.setattr(mcp_auth, "async_session_factory", lambda: _on_the_test_session())
+    monkeypatch.setattr(mcp_server, "async_session_factory", lambda: _on_the_test_session())
+    monkeypatch.setattr(mcp_server, "_pipeline", SimpleNamespace(llm=_ScriptedEmbedder()))
+    name = f"k-{uuid.uuid4().hex[:6]}"
+    row, credential = await issue_key(session, name=name, scopes=["capture"])
+    token = await mcp_auth.ApiKeyTokenVerifier().verify_token(credential)
+    reset = auth_context_var.set(AuthenticatedUser(token))
+    try:
+        filed = json.loads(await mcp_server.document_put(
+            project="proj", uri="superpowers/specs/m.md", content="# M\n\nOver MCP.\n",
+        ))
+    finally:
+        auth_context_var.reset(reset)
+    assert filed["outcome"] == "created"
+    stamped = (await session.execute(
+        text("SELECT actor, api_key_id FROM events WHERE event_type = 'document_filed' AND project = 'proj'")
+    )).all()
+    assert [tuple(stamp) for stamp in stamped] == [(name, row.id)]
+
+
 async def test_a_read_key_cannot_file(client, session):
     read = await _key(session, "read")
     body = {"project": "proj", "uri": "superpowers/specs/b.md", "content": "# B\n"}
