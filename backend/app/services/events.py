@@ -247,6 +247,13 @@ EVENT_TYPES: list[str] = [
     # is indistinguishable from one whose writer was deleted — so the value
     # lands *with* the writer, not ahead of it.
     "resumed",
+    # The work-log lane (spec 2026-09-23 §1). Lifecycle only: no entry body
+    # or properties value reaches a payload, because the entries table is
+    # the history and this journal is unpurgeable by ruling (T2.59).
+    "workstream_opened",
+    "workstream_closed",
+    "workstream_reopened",
+    "workstream_purged",
     # T3.07's research run, landed with its emitter on the same reasoning.
     # `object_type='system'`: a run is not any one memory, and the memories it
     # filed are named in the payload.
@@ -268,6 +275,7 @@ OBJECT_TYPES: list[str] = [
     "page",
     "repository",
     "checkpoint",
+    "workstream",
     "system",
 ]
 

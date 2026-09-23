@@ -120,3 +120,55 @@ async def test_the_models_map_the_tables(session):
     assert ws.state == "open" and ws.retain is False and ws.last_entry_at is not None
     found = (await session.execute(select(WorklogEntry).where(WorklogEntry.workstream_id == ws.id))).scalar_one()
     assert found.body == "remember this"
+
+
+def test_the_vocabulary_carries_the_workstream_lifecycle():
+    from app.services.events import EVENT_TYPES, OBJECT_TYPES
+
+    for event_type in (
+        "workstream_opened",
+        "workstream_closed",
+        "workstream_reopened",
+        "workstream_purged",
+    ):
+        assert event_type in EVENT_TYPES
+    assert "workstream" in OBJECT_TYPES
+
+
+def _members(source: str) -> set[str]:
+    """The string members of EVENT_TYPES_WITHOUT_TAB in `source`, comments stripped."""
+    import re
+
+    block = source.split("const EVENT_TYPES_WITHOUT_TAB = new Set<string>([", 1)[1].split("])", 1)[0]
+    code = "\n".join(line.split("//", 1)[0] for line in block.splitlines())
+    return set(re.findall(r'"([a-z_]+)"', code))
+
+
+def _without_tab_members() -> set[str]:
+    from pathlib import Path
+
+    return _members((
+        Path(__file__).resolve().parents[2]
+        / "frontend" / "src" / "features" / "activity" / "event-taxonomy.ts"
+    ).read_text(encoding="utf-8"))
+
+
+def test_the_frontend_map_classifies_the_workstream_lifecycle():
+    members = _without_tab_members()
+    for event_type in (
+        "workstream_opened",
+        "workstream_closed",
+        "workstream_reopened",
+        "workstream_purged",
+    ):
+        assert event_type in members
+
+
+def test_the_member_scan_ignores_names_that_only_appear_in_comments():
+    block = (
+        "const EVENT_TYPES_WITHOUT_TAB = new Set<string>([\n"
+        '  "kept",\n'
+        '  // "commented_out" is only mentioned\n'
+        "])"
+    )
+    assert _members(block) == {"kept"}

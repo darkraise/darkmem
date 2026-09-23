@@ -132,6 +132,14 @@ const EVENT_TYPES_WITHOUT_TAB = new Set<string>([
   // belongs on T3.21's session-checkpoints / resume view, beside the
   // checkpoint it resumed from, not scattered through the feed.
   "resumed",
+  // The work-log lane's lifecycle (spec 2026-09-23). Operational state like
+  // the checkpoint pair above: a client's own work, not a memory, fact or
+  // repo lifecycle step, so none of the five tabs models it. Its surface is
+  // the project workspace's Work log view.
+  "workstream_opened",
+  "workstream_closed",
+  "workstream_reopened",
+  "workstream_purged",
   // A research run's own row (T3.07). Excluded rather than tabbed under
   // capture: every memory the run filed journals its own `created` row, so
   // tabbing the run alongside them would show one research run twice in the
