@@ -15,6 +15,7 @@ from .pipeline_failure import PipelineFailure
 from .job_run import JobRun
 from .llm_usage import LLMUsage
 from .project import Project
+from .worklog import Workstream, WorklogEntry
 
 __all__ = [
     "Base",
@@ -27,6 +28,8 @@ __all__ = [
     "TokenBlocklist",
     "Config",
     "SessionCheckpoint",
+    "Workstream",
+    "WorklogEntry",
     "Conversation",
     "Message",
     "Repository",

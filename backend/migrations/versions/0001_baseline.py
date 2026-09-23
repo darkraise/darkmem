@@ -763,6 +763,81 @@ def _pass_two() -> None:
     )
 
     # ------------------------------------------------------------------
+    # workstreams + worklog_entries — the work-log lane
+    # (docs/superpowers/specs/2026-09-23-work-log-lane-design.md §1)
+    # ------------------------------------------------------------------
+    op.execute(
+        """
+        CREATE TABLE workstreams (
+            id            UUID NOT NULL,
+            project       TEXT NOT NULL,
+            key           TEXT NOT NULL,
+            title         TEXT,
+            client        TEXT,
+            state         TEXT NOT NULL DEFAULT 'open',
+            closed_at     TIMESTAMPTZ,
+            retain        BOOLEAN NOT NULL DEFAULT false,
+            properties    JSONB NOT NULL DEFAULT '{}'::jsonb,
+            last_entry_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+            CONSTRAINT workstreams_pkey PRIMARY KEY (id),
+            CONSTRAINT ux_workstreams_project_key UNIQUE (project, key),
+            CONSTRAINT chk_workstreams_state CHECK (state IN ('open', 'closed')),
+            CONSTRAINT chk_workstreams_closed_at
+                CHECK ((state = 'closed') = (closed_at IS NOT NULL)),
+            CONSTRAINT chk_workstreams_key_len CHECK (char_length(key) BETWEEN 1 AND 200),
+            CONSTRAINT chk_workstreams_title_len CHECK (char_length(title) <= 500),
+            CONSTRAINT chk_workstreams_properties_size
+                CHECK (pg_column_size(properties) <= 16384)
+        )
+        """
+    )
+    op.execute(
+        "CREATE TRIGGER workstreams_touch_updated_at BEFORE UPDATE "
+        "ON workstreams FOR EACH ROW EXECUTE FUNCTION touch_updated_at()"
+    )
+    op.execute(
+        "CREATE INDEX ix_workstreams_project_created "
+        "ON workstreams (project, created_at DESC, id DESC)"
+    )
+    # `seq`, not created_at, orders entries: every entry of one append shares
+    # the transaction's now(), and a ledger's chunks must concatenate back in
+    # the order they were written.
+    op.execute(
+        """
+        CREATE TABLE worklog_entries (
+            id            UUID NOT NULL,
+            seq           BIGINT GENERATED ALWAYS AS IDENTITY,
+            workstream_id UUID NOT NULL REFERENCES workstreams(id) ON DELETE CASCADE,
+            run_key       TEXT NOT NULL,
+            kind          TEXT NOT NULL,
+            body          TEXT NOT NULL,
+            properties    JSONB NOT NULL DEFAULT '{}'::jsonb,
+            search_vector TSVECTOR GENERATED ALWAYS AS (to_tsvector('english', body)) STORED,
+            created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+            CONSTRAINT worklog_entries_pkey PRIMARY KEY (id),
+            CONSTRAINT chk_worklog_entries_kind
+                CHECK (kind IN ('checkpoint', 'ledger', 'note')),
+            CONSTRAINT chk_worklog_entries_body_len
+                CHECK (char_length(body) BETWEEN 1 AND 65536),
+            CONSTRAINT chk_worklog_entries_properties_size
+                CHECK (pg_column_size(properties) <= 16384)
+        )
+        """
+    )
+    op.execute(
+        "CREATE INDEX ix_worklog_entries_kind_latest "
+        "ON worklog_entries (workstream_id, kind, seq DESC)"
+    )
+    op.execute(
+        "CREATE INDEX ix_worklog_entries_order ON worklog_entries (workstream_id, seq)"
+    )
+    op.execute(
+        "CREATE INDEX ix_worklog_entries_fts ON worklog_entries USING gin (search_vector)"
+    )
+
+    # ------------------------------------------------------------------
     # knowledge_articles + article_citations — Layer 3 (doc 04 §8.8)
     # ------------------------------------------------------------------
     op.execute(
@@ -1701,6 +1776,8 @@ def downgrade() -> None:
         "code_files",
         "repositories",
         "git_accounts",
+        "worklog_entries",
+        "workstreams",
         "session_checkpoints",
         "article_citations",
         "knowledge_articles",
