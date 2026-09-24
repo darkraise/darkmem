@@ -6,3 +6,4 @@
 - 2026-09-20 `docs/superpowers/plans/2026-09-19-page-attachment-storage.md` — merged into `master` at 391e2832
 - 2026-09-20 `docs/superpowers/plans/2026-09-20-attachment-backups.md` — merged into `master` at e63f1467
 - 2026-09-20 `docs/superpowers/plans/2026-09-20-page-editor-attachments.md` — merged into `master` at 0904e9d0
+- 2026-09-24 `docs/superpowers/plans/2026-09-23-work-log-increment-1-store-and-verbs.md` — merged into `master` at e075d645
