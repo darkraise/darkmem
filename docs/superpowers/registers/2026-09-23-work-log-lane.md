@@ -23,7 +23,7 @@
 | 16 | CLAUDE.md: the seventh strict-journal caller says 'for the same reason' instead of stating it (an unrecoverable erase; the event is the only record of who ran it) | - | - | open | increment 1 follow-up (Task 9 minor) |
 | 17 | worklog_append stamps actor as current_key_name() or source; worklog_update and worklog_purge use current_key_name() alone | - | - | open | increment 1 follow-up (final review F15) |
 | 18 | spec §7 still says the wall allows no KnowledgeTripleRepository method; the implemented scan checks only write and promote methods | - | - | open | increment 1 follow-up (final review F16; preflight-28 park) |
-| 19 | plan amendments A1-A14 live only in the untracked workspace; publish them with the plan | - | - | open | increment 1 follow-up (final review F13) |
+| 19 | plan amendments A1-A14 live only in the untracked workspace; publish them with the plan | - | - | done | published as docs/superpowers/notes/work-log-increment-1-amendments.md |
 | 20 | full final page of list_workstreams, list_entries and the manifest returns a cursor and one empty page follows (no limit+1 fetch) | - | - | deferred | harmless; plan-mandated (Task 4 and Task 7 minors) |
 | 21 | update_workstream leaves the caller's Workstream expired after a CHECK rejection | - | - | deferred | parked: no door reads it after a rejection; fix is one session.refresh in the except IntegrityError branch if a later door does |
 | 22 | list_workstreams/list_entries raise IndexError on limit=0 for an in-process caller | - | - | deferred | parked: both doors bound limit (ge=1); fix is one ValueError guard if an in-process caller appears |
