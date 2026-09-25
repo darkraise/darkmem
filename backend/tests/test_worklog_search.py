@@ -2,13 +2,15 @@
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import text
 
 from app.config import settings
 from app.services import worklog
-from app.services.embedder_registry import embedder_registry
-from app.services.worklog_embeddings import embed_entries
+from app.services.embedder_registry import EmbedderInfo, child_table, embedder_registry
+from app.services.worklog_embeddings import PARENT_TABLE, embed_entries
 
 SEARCH_FINGERPRINT = "worklog-search-test|4"
+FOREIGN_FINGERPRINT = "another-model|4"
 
 
 class TopicEmbedder:
@@ -208,6 +210,61 @@ async def test_other_projects_cannot_crowd_the_fetch_depth(session):
     await _embed(session, mine, *crowd)
     answer = await worklog.search(session, TopicEmbedder(), project="proj", query="deploy", limit=1)
     assert _ids(answer) == [mine]
+
+
+async def _plant_vector(session, entry_id, *, fingerprint, project):
+    """A vector row the writer would never produce, written straight into the table."""
+    await session.execute(
+        text(
+            f"INSERT INTO {child_table(PARENT_TABLE, SEARCH_FINGERPRINT)} "
+            "(entry_id, fingerprint, project, embedding) "
+            "VALUES (CAST(:id AS uuid), :fp, :project, CAST(:vec AS vector))"
+        ),
+        {"id": entry_id, "fp": fingerprint, "project": project, "vec": "[1,0,0,0]"},
+    )
+
+
+async def test_a_vector_under_another_fingerprint_is_not_ranked(session):
+    """Two long fingerprints can fold to one child table; each ranks only its own rows."""
+    mine = await _note(session, "Release notes drafted")
+    stranger = await _note(session, "Unrelated housekeeping")
+    await _embed(session, mine)
+    await embedder_registry.register(session, EmbedderInfo(
+        fingerprint=FOREIGN_FINGERPRINT, model_id="another-model", dims=4, source="llm",
+    ))
+    try:
+        await _plant_vector(session, stranger, fingerprint=FOREIGN_FINGERPRINT, project="proj")
+        answer = await worklog.search(session, TopicEmbedder(), project="proj", query="deploy")
+    finally:
+        embedder_registry.forget(FOREIGN_FINGERPRINT)
+    assert _ids(answer) == [mine]
+
+
+async def test_a_vector_whose_entry_left_the_project_is_not_ranked(session):
+    mine = await _note(session, "Release notes drafted")
+    theirs = await _note(session, "Unrelated housekeeping", project="other")
+    await _embed(session, mine)
+    await _plant_vector(session, theirs, fingerprint=SEARCH_FINGERPRINT, project="proj")
+    answer = await worklog.search(session, TopicEmbedder(), project="proj", query="deploy")
+    assert _ids(answer) == [mine]
+
+
+async def test_the_query_is_embedded_before_any_statement_runs(session, monkeypatch):
+    order: list[str] = []
+    execute = session.execute
+
+    async def recording_execute(*args, **kwargs):
+        order.append("execute")
+        return await execute(*args, **kwargs)
+
+    class RecordingEmbedder(TopicEmbedder):
+        async def embed(self, value):
+            order.append("embed")
+            return await super().embed(value)
+
+    monkeypatch.setattr(session, "execute", recording_execute)
+    await worklog.search(session, RecordingEmbedder(), project="proj", query="deploy")
+    assert order[0] == "embed"
 
 
 async def test_limit_caps_the_hits(session):
