@@ -18,7 +18,7 @@ at six, and this is an artefact refresh in the same class as
 reachable from capture or retrieval (invariant 15), and it never decides
 *when* inline embedding runs; it only cleans up after it.
 
-**Two arms, two budgets.** A block belongs to a document or to a page, and
+**One arm and one budget per owner.** A block belongs to a document or to a page, and
 each owner has its own partition family and its own per-tick allowance. One
 shared budget over an unscoped query would let a notes corpus consume the
 whole allowance and push document embedding behind it by one tick per 500
@@ -222,7 +222,7 @@ _WORKLOG_ARM = _Arm(
 class RefreshOutcome:
     embedded: int
     fingerprint: str | None
-    # Blocks this run tried individually and could not embed. Non-zero only
+    # Rows this run tried individually and could not embed. Non-zero only
     # on the isolation path below; they stay in the backlog and are retried
     # next tick, so a run that reports any is never `converged`.
     failed: int
@@ -247,28 +247,28 @@ _OUTAGE_PROBE = 3
 
 
 async def _embed_isolating(
-    session: AsyncSession, llm, block_ids: list[str], batch_error: Exception,
+    session: AsyncSession, llm, row_ids: list[str], batch_error: Exception,
     *, arm: _Arm,
 ) -> tuple[int, str | None, list[str]]:
-    """Re-embed `block_ids` one at a time after the batch call failed.
+    """Re-embed `row_ids` one at a time after the batch call failed.
 
-    `embed_blocks` sends its whole work set through one chunked embed, so a
-    single block the embedder rejects fails every block in the chunk. The
-    sweep's fetch is `ORDER BY b.id` and therefore deterministic, which turns
+    Each arm's writer sends its whole work set through one chunked embed, so
+    a single row the embedder rejects fails every row in the chunk. Every
+    arm's fetch is ordered by id and therefore deterministic, which turns
     that into the failure this exists to stop: the same first batch fails on
     every tick and nothing behind it is ever swept — a backlog starved by one
     row, loud in `job_runs.last_error` but never draining. Isolating settles
     the poison row alone, the same shape `memory_buffer`'s flush uses for the
     same reason.
 
-    Each attempt runs in its own SAVEPOINT, so a block that fails mid-insert
+    Each attempt runs in its own SAVEPOINT, so a row that fails mid-insert
     rolls back only itself: a failed statement aborts the transaction for
     everything after it, and the successes must not go down with it. A bare
     ``session.rollback()`` would work on a session this job owns outright but
     would discard whatever the caller had already written, which is a wider
     promise than this retry needs to make.
 
-    Re-raises `batch_error` — never a per-block one — when nothing could be
+    Re-raises `batch_error` — never a per-row one — when nothing could be
     embedded at all, so the run's `last_error` names the failure an operator
     would recognise rather than an artefact of the retry.
     """
@@ -276,12 +276,12 @@ async def _embed_isolating(
     fingerprint: str | None = None
     failed: list[str] = []
 
-    for block_id in block_ids:
+    for row_id in row_ids:
         try:
             async with session.begin_nested():
-                result = await arm.embed(session, llm, [block_id])
+                result = await arm.embed(session, llm, [row_id])
         except Exception:
-            failed.append(block_id)
+            failed.append(row_id)
             if embedded == 0 and len(failed) >= _OUTAGE_PROBE:
                 raise batch_error from None
             continue
@@ -297,7 +297,7 @@ async def _embed_isolating(
             "block_embedding_refresh: %d of %d %s row(s) could not be embedded "
             "individually and stay in the backlog; the rest of the batch was "
             "written. Ids: %s",
-            len(failed), len(block_ids), arm.parent, ", ".join(failed),
+            len(failed), len(row_ids), arm.parent, ", ".join(failed),
         )
     return embedded, fingerprint, failed
 
@@ -354,7 +354,7 @@ async def refresh_block_embeddings(
 async def _refresh_arm(
     session: AsyncSession, llm, fingerprint: str, *, arm: _Arm, batch: int,
 ) -> RefreshOutcome:
-    """Embed up to `batch` of `arm`'s blocks lacking a vector under `fingerprint`.
+    """Embed up to `batch` of `arm`'s rows lacking a vector under `fingerprint`.
 
     The fingerprint is the caller's, resolved from one real embed call
     (`block_embeddings.resolve_active_fingerprint`), the same way
@@ -382,12 +382,12 @@ async def _refresh_arm(
 
     await ensure_partition(session, fingerprint, parent=arm.parent)
     table = child_table(arm.parent, fingerprint)
-    block_ids = list((await session.execute(
+    row_ids = list((await session.execute(
         text(arm.missing_sql.format(table=table, owner=arm.owner_column)),
         {"fp": fingerprint, "limit": batch},
     )).scalars().all())
-    converged = len(block_ids) < batch
-    if not block_ids:
+    converged = len(row_ids) < batch
+    if not row_ids:
         return RefreshOutcome(
             embedded=0, fingerprint=fingerprint, failed=0, converged=True,
         )
@@ -398,10 +398,10 @@ async def _refresh_arm(
     # pass could not run a single statement in it.
     try:
         async with session.begin_nested():
-            result = await arm.embed(session, llm, block_ids)
+            result = await arm.embed(session, llm, row_ids)
     except Exception as batch_error:  # noqa: BLE001 - re-raised unless isolable
         embedded, written_fingerprint, failed = await _embed_isolating(
-            session, llm, block_ids, batch_error, arm=arm,
+            session, llm, row_ids, batch_error, arm=arm,
         )
         await session.commit()
     else:
