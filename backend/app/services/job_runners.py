@@ -1006,6 +1006,7 @@ def make_block_embedding_runner(
                 session, llm,
                 batch=int(knobs["batch"]),
                 page_batch=int(knobs["page_batch"]),
+                worklog_batch=int(knobs["worklog_batch"]),
             )
             if outcome.embedded:
                 journalled = await record_event(

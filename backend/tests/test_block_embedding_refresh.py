@@ -114,10 +114,12 @@ async def test_refresh_batch_zero_disables_the_sweep(session):
     await session.execute(text(f"DELETE FROM {child}"))
     await session.commit()
 
-    outcome = await refresh_block_embeddings(session, llm, batch=0, page_batch=0)
+    outcome = await refresh_block_embeddings(
+        session, llm, batch=0, page_batch=0, worklog_batch=0,
+    )
     assert outcome.embedded == 0
     assert outcome.fingerprint is None, (
-        "both budgets at 0 must short-circuit before spending the probe embed call"
+        "every budget at 0 must short-circuit before spending the probe embed call"
     )
 
 
@@ -467,3 +469,130 @@ async def test_the_page_arm_repairs_a_page_block(session):
     again = await refresh_block_embeddings(session, llm, batch=100, page_batch=100)
     assert again.embedded == 0
     assert again.converged is True
+
+
+async def _worklog_entry(session, body="Task 1: complete\n", *, project="p"):
+    from app.services import worklog
+
+    result = await worklog.append(
+        session, project=project, key="plan-a", run_key="claude:run-1",
+        entries=[{"kind": "ledger", "body": body}],
+    )
+    return str(result.entry_ids[0])
+
+
+def test_the_job_declares_a_work_log_budget():
+    from app.services.block_embedding_refresh import BLOCK_EMBEDDING_CONFIG_SCHEMA
+
+    assert [fd.key for fd in BLOCK_EMBEDDING_CONFIG_SCHEMA] == [
+        "batch", "page_batch", "worklog_batch",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_worklog_arm_embeds_an_entry_on_its_own_budget(session):
+    from app.services.embedder_registry import child_table
+    from app.services.worklog_embeddings import PARENT_TABLE as WORKLOG_PARENT_TABLE
+
+    llm = StubEmbedder()
+    entry_id = await _worklog_entry(session, project="p")
+    await session.commit()
+
+    outcome = await refresh_block_embeddings(
+        session, llm, batch=0, page_batch=0, worklog_batch=100,
+    )
+    assert outcome.embedded == 1
+    assert outcome.fingerprint == FINGERPRINT
+    assert outcome.converged is True
+    rows = (await session.execute(text(
+        f"SELECT CAST(entry_id AS text), project "
+        f"FROM {child_table(WORKLOG_PARENT_TABLE, FINGERPRINT)}"
+    ))).all()
+    assert [tuple(row) for row in rows] == [(entry_id, "p")]
+
+    again = await refresh_block_embeddings(
+        session, llm, batch=0, page_batch=0, worklog_batch=100,
+    )
+    assert again.embedded == 0
+    assert again.converged is True
+
+
+@pytest.mark.asyncio
+async def test_a_work_log_entry_does_not_consume_the_document_budget(session):
+    from app.services.block_embeddings import PARENT_TABLE
+    from app.services.document_door import put_document
+    from app.services.embedder_registry import child_table
+    from app.services.worklog_embeddings import PARENT_TABLE as WORKLOG_PARENT_TABLE
+
+    llm = StubEmbedder()
+    filed = await put_document(
+        session, llm, project="p", uri="docs/worklog-budget.md", content=DOC,
+    )
+    assert filed.blocks_filed > 0
+    await session.execute(text(f"DELETE FROM {child_table(PARENT_TABLE, FINGERPRINT)}"))
+    await _worklog_entry(session)
+    await session.commit()
+
+    outcome = await refresh_block_embeddings(
+        session, llm, batch=1, page_batch=0, worklog_batch=0,
+    )
+
+    assert outcome.embedded == 1
+    documents = (await session.execute(text(
+        f"SELECT COUNT(*) FROM {child_table(PARENT_TABLE, FINGERPRINT)}"
+    ))).scalar_one()
+    entries = (await session.execute(text(
+        f"SELECT COUNT(*) FROM {child_table(WORKLOG_PARENT_TABLE, FINGERPRINT)}"
+    ))).scalar_one()
+    assert documents == 1
+    assert entries == 0, "worklog_batch=0 must leave the work-log family alone"
+
+
+@pytest.mark.asyncio
+async def test_the_worklog_arm_honours_its_budget_across_runs(session):
+    llm = StubEmbedder()
+    for n in range(3):
+        await _worklog_entry(session, f"Task {n}: complete\n")
+    await session.commit()
+
+    first = await refresh_block_embeddings(
+        session, llm, batch=0, page_batch=0, worklog_batch=2,
+    )
+    assert first.embedded == 2
+    assert first.converged is False
+
+    second = await refresh_block_embeddings(
+        session, llm, batch=0, page_batch=0, worklog_batch=2,
+    )
+    assert second.embedded == 1
+    assert second.converged is True
+
+
+@pytest.mark.asyncio
+async def test_the_runner_forwards_every_configured_budget(monkeypatch):
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    import app.services.block_embedding_refresh as refresh_module
+    from app.services.job_runners import make_block_embedding_runner
+
+    seen: dict = {}
+
+    async def fake_refresh(session, llm, **budgets):
+        seen.update(budgets)
+        return refresh_module.RefreshOutcome(
+            embedded=0, fingerprint=None, failed=0, converged=True,
+        )
+
+    class _Registry:
+        async def load_config(self, key):
+            return SimpleNamespace(config={"worklog_batch": 7, "page_batch": 0})
+
+    @asynccontextmanager
+    async def _no_session():
+        yield None
+
+    monkeypatch.setattr(refresh_module, "refresh_block_embeddings", fake_refresh)
+    fake_app = SimpleNamespace(state=SimpleNamespace(llm=object(), job_registry=_Registry()))
+    await make_block_embedding_runner(fake_app, _no_session)()
+    assert seen == {"batch": 500, "page_batch": 0, "worklog_batch": 7}

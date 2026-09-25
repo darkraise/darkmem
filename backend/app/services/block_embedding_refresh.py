@@ -26,6 +26,11 @@ page blocks — a document regression caused by writing notes. Both arms run in
 one job body over one resolved fingerprint, so the probe embed call is spent
 once per run rather than once per owner.
 
+Work-log entries are a third arm on a third budget, ``worklog_batch``. Appends
+never embed inline, so this sweep is the only writer of
+``worklog_embeddings__<slug>``, and an agent's ledger cannot delay a document
+any more than a note can.
+
 **Fingerprint resolution is a real embed call, not a data probe — and that
 took two review rounds to land on** (T-doc-door.6 review, 2026-08-24).
 
@@ -81,7 +86,9 @@ for the same reason.
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -92,6 +99,11 @@ from app.services.block_embeddings import (
 )
 from app.services.embedder_registry import child_table
 from app.services.job_registry import FieldDescriptor
+from app.services.worklog_embeddings import (
+    MISSING_SQL as WORKLOG_MISSING_SQL,
+    PARENT_TABLE as WORKLOG_PARENT_TABLE,
+    embed_entries,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +124,7 @@ BLOCK_EMBEDDING_MAX_RUN_SECONDS = 900
 
 DEFAULT_BATCH = 500
 DEFAULT_PAGE_BATCH = 500
+DEFAULT_WORKLOG_BATCH = 500
 
 BLOCK_EMBEDDING_CONFIG_SCHEMA: list[FieldDescriptor] = [
     FieldDescriptor(
@@ -141,22 +154,19 @@ BLOCK_EMBEDDING_CONFIG_SCHEMA: list[FieldDescriptor] = [
             "document sweep. 0 disables the page sweep."
         ),
     ),
+    FieldDescriptor(
+        key="worklog_batch",
+        label="Work-log entries per run",
+        default=DEFAULT_WORKLOG_BATCH,
+        min=0,
+        max=5_000,
+        help=(
+            "Work-log entries embedded per run, budgeted independently of "
+            "both block sweeps. 0 disables the work-log sweep."
+        ),
+    ),
 ]
 
-
-@dataclass(frozen=True)
-class _Arm:
-    """One owner's sweep: which partition family it fills and which
-    ``blocks`` column says a row belongs to it."""
-    parent: str
-    owner_column: str
-
-
-# Two arms rather than one unscoped sweep: page blocks are repaired on their
-# own budget, because sharing the document one would let a notes corpus
-# consume the whole per-tick allowance and delay document embedding.
-_DOCUMENT_ARM = _Arm(parent=PARENT_TABLE, owner_column="document_id")
-_PAGE_ARM = _Arm(parent=PAGE_PARENT_TABLE, owner_column="page_id")
 
 _MISSING_SQL = """
     SELECT CAST(b.id AS text) AS block_id
@@ -168,6 +178,44 @@ _MISSING_SQL = """
     ORDER BY b.id
     LIMIT CAST(:limit AS int)
 """
+
+
+@dataclass(frozen=True)
+class _Arm:
+    """One owner's sweep: the partition family it fills, the anti-join that
+    lists its rows with no vector (one text column; formatted with ``table``
+    and, for blocks, ``owner``), and the writer that embeds a list of them."""
+    parent: str
+    missing_sql: str
+    embed: Callable[[AsyncSession, Any, list[str]], Awaitable[Any]]
+    owner_column: str | None = None
+
+
+def _block_writer(parent: str) -> Callable[[AsyncSession, Any, list[str]], Awaitable[Any]]:
+    async def write(session: AsyncSession, llm, ids: list[str]):
+        return await embed_blocks(session, llm, block_ids=ids, parent=parent)
+    return write
+
+
+async def _write_entries(session: AsyncSession, llm, ids: list[str]):
+    return await embed_entries(session, llm, entry_ids=ids)
+
+
+# Separate arms rather than one unscoped sweep: page blocks and work-log
+# entries are repaired on their own budgets, because sharing the document one
+# would let a notes corpus or an agent's ledger consume the whole per-tick
+# allowance and delay document embedding.
+_DOCUMENT_ARM = _Arm(
+    parent=PARENT_TABLE, missing_sql=_MISSING_SQL,
+    embed=_block_writer(PARENT_TABLE), owner_column="document_id",
+)
+_PAGE_ARM = _Arm(
+    parent=PAGE_PARENT_TABLE, missing_sql=_MISSING_SQL,
+    embed=_block_writer(PAGE_PARENT_TABLE), owner_column="page_id",
+)
+_WORKLOG_ARM = _Arm(
+    parent=WORKLOG_PARENT_TABLE, missing_sql=WORKLOG_MISSING_SQL, embed=_write_entries,
+)
 
 
 @dataclass(frozen=True)
@@ -200,7 +248,7 @@ _OUTAGE_PROBE = 3
 
 async def _embed_isolating(
     session: AsyncSession, llm, block_ids: list[str], batch_error: Exception,
-    *, parent: str,
+    *, arm: _Arm,
 ) -> tuple[int, str | None, list[str]]:
     """Re-embed `block_ids` one at a time after the batch call failed.
 
@@ -231,9 +279,7 @@ async def _embed_isolating(
     for block_id in block_ids:
         try:
             async with session.begin_nested():
-                result = await embed_blocks(
-                    session, llm, block_ids=[block_id], parent=parent,
-                )
+                result = await arm.embed(session, llm, [block_id])
         except Exception:
             failed.append(block_id)
             if embedded == 0 and len(failed) >= _OUTAGE_PROBE:
@@ -248,10 +294,10 @@ async def _embed_isolating(
 
     if failed:
         logger.warning(
-            "block_embedding_refresh: %d of %d block(s) could not be embedded "
+            "block_embedding_refresh: %d of %d %s row(s) could not be embedded "
             "individually and stay in the backlog; the rest of the batch was "
-            "written. Block ids: %s",
-            len(failed), len(block_ids), ", ".join(failed),
+            "written. Ids: %s",
+            len(failed), len(block_ids), arm.parent, ", ".join(failed),
         )
     return embedded, fingerprint, failed
 
@@ -262,21 +308,22 @@ async def refresh_block_embeddings(
     *,
     batch: int = DEFAULT_BATCH,
     page_batch: int = DEFAULT_PAGE_BATCH,
+    worklog_batch: int = DEFAULT_WORKLOG_BATCH,
 ) -> RefreshOutcome:
-    """Sweep both owners' missing vectors, each on its own budget.
+    """Sweep every owner's missing vectors, each on its own budget.
 
-    Documents first, then pages, in one run over one resolved fingerprint —
-    two arms rather than two jobs, because the fingerprint probe is an embed
-    call and a second registered job would spend a second one per tick for
-    nothing. The returned outcome sums both arms; `converged` holds only if
-    both did.
+    Documents first, then pages, then work-log entries, in one run over one
+    resolved fingerprint — arms rather than jobs, because the fingerprint
+    probe is an embed call and a second registered job would spend a second
+    one per tick for nothing. The returned outcome sums the arms; `converged`
+    holds only if every arm did.
 
     Raises out of whichever arm failed, so a document-side failure leaves the
     page arm unrun. That is the right way round: the document sweep is the
     one whose starvation this job exists to prevent, and a failure loud in
     `job_runs.last_error` is retried on the next tick.
     """
-    if batch <= 0 and page_batch <= 0:
+    if batch <= 0 and page_batch <= 0 and worklog_batch <= 0:
         return RefreshOutcome(
             embedded=0, fingerprint=None, failed=0, converged=True,
         )
@@ -286,7 +333,9 @@ async def refresh_block_embeddings(
     embedded = 0
     failed = 0
     converged = True
-    for arm, arm_batch in ((_DOCUMENT_ARM, batch), (_PAGE_ARM, page_batch)):
+    for arm, arm_batch in (
+        (_DOCUMENT_ARM, batch), (_PAGE_ARM, page_batch), (_WORKLOG_ARM, worklog_batch),
+    ):
         outcome = await _refresh_arm(
             session, llm, fingerprint, arm=arm, batch=arm_batch,
         )
@@ -333,11 +382,10 @@ async def _refresh_arm(
 
     await ensure_partition(session, fingerprint, parent=arm.parent)
     table = child_table(arm.parent, fingerprint)
-    rows = (await session.execute(
-        text(_MISSING_SQL.format(table=table, owner=arm.owner_column)),
+    block_ids = list((await session.execute(
+        text(arm.missing_sql.format(table=table, owner=arm.owner_column)),
         {"fp": fingerprint, "limit": batch},
-    )).mappings().all()
-    block_ids = [row["block_id"] for row in rows]
+    )).scalars().all())
     converged = len(block_ids) < batch
     if not block_ids:
         return RefreshOutcome(
@@ -350,12 +398,10 @@ async def _refresh_arm(
     # pass could not run a single statement in it.
     try:
         async with session.begin_nested():
-            result = await embed_blocks(
-                session, llm, block_ids=block_ids, parent=arm.parent,
-            )
+            result = await arm.embed(session, llm, block_ids)
     except Exception as batch_error:  # noqa: BLE001 - re-raised unless isolable
         embedded, written_fingerprint, failed = await _embed_isolating(
-            session, llm, block_ids, batch_error, parent=arm.parent,
+            session, llm, block_ids, batch_error, arm=arm,
         )
         await session.commit()
     else:
