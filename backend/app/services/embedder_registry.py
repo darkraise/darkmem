@@ -146,6 +146,19 @@ _TABLE_TEMPLATES: dict[str, str] = {
         " PRIMARY KEY (fact_id, fingerprint)"
         ")"
     ),
+    # Work-log entries (spec 2026-09-23 §1). `project` is copied onto the row
+    # so one project's vectors are found through a btree index and scanned
+    # exactly; `_EXACT_SCAN_PARENTS` records why there is no HNSW index.
+    "worklog_embeddings": (
+        "CREATE TABLE IF NOT EXISTS {name} ("
+        " entry_id UUID NOT NULL REFERENCES worklog_entries(id) ON DELETE CASCADE,"
+        " fingerprint TEXT NOT NULL REFERENCES embedders(fingerprint),"
+        " project TEXT NOT NULL,"
+        " embedding vector({dims}) NOT NULL,"
+        " created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
+        " PRIMARY KEY (entry_id, fingerprint)"
+        ")"
+    ),
 }
 
 
@@ -179,7 +192,16 @@ _AUX_INDEXES: dict[str, list[str]] = {
     "triple_embeddings": [
         "CREATE INDEX IF NOT EXISTS ix_{name}_fact_id ON {name} (fact_id)",
     ],
+    "worklog_embeddings": [
+        "CREATE INDEX IF NOT EXISTS ix_{name}_project ON {name} (project)",
+    ],
 }
+
+# Families read only by an exact scan over one project's rows. An HNSW probe
+# applies the project filter after the index scan, so other projects' rows
+# would crowd the candidate stream; per-project work logs are small enough to
+# scan, and an index here would only cost every write.
+_EXACT_SCAN_PARENTS: frozenset[str] = frozenset({"worklog_embeddings"})
 
 
 @dataclass(frozen=True)
@@ -331,14 +353,15 @@ async def _ensure_children(session: AsyncSession, fingerprint: str, dims: int) -
         # Postgres' 63-char NAMEDATALEN limit — the naive ``ix_{child}_hnsw``
         # would, for the longest parent plus a 48-char slug, silently truncate
         # and could collide across two partitions. The table name is unchanged.
-        hnsw_idx = _hnsw_index_name(child)
-        await session.execute(
-            text(
-                f"CREATE INDEX IF NOT EXISTS {hnsw_idx} "
-                f"ON {child} USING hnsw (embedding vector_cosine_ops) "
-                f"WITH (m = 16, ef_construction = 128)"
+        if parent not in _EXACT_SCAN_PARENTS:
+            hnsw_idx = _hnsw_index_name(child)
+            await session.execute(
+                text(
+                    f"CREATE INDEX IF NOT EXISTS {hnsw_idx} "
+                    f"ON {child} USING hnsw (embedding vector_cosine_ops) "
+                    f"WITH (m = 16, ef_construction = 128)"
+                )
             )
-        )
         for aux_template in _AUX_INDEXES.get(parent, []):
             await session.execute(text(aux_template.format(name=child)))
 

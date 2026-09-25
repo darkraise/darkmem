@@ -1,4 +1,4 @@
-"""The nine per-fingerprint parents exist as registry entries, not as DDL.
+"""The ten per-fingerprint parents exist as registry entries, not as DDL.
 
 Inventory §6: doc 19 §2 rejects expressing child tables as static migrations
 because their shape is parameterised by fingerprint. The four target-new
@@ -23,10 +23,11 @@ EXPECTED_PARENTS = {
     "relation_embeddings",
     "article_embeddings",
     "triple_embeddings",
+    "worklog_embeddings",
 }
 
 
-def test_all_nine_parents_have_templates():
+def test_every_parent_has_a_template():
     assert set(_TABLE_TEMPLATES) == EXPECTED_PARENTS
 
 
@@ -63,3 +64,11 @@ def test_no_migration_creates_a_child_table():
         for parent in EXPECTED_PARENTS:
             assert f"CREATE TABLE {parent}__" not in src
             assert f"CREATE TABLE IF NOT EXISTS {parent}__" not in src
+
+
+def test_worklog_embeddings_cascades_on_the_entry_and_carries_its_project():
+    # Purge and retention delete entries; the vectors must go with them, and
+    # search filters one project's vectors through the project column.
+    tmpl = _TABLE_TEMPLATES["worklog_embeddings"]
+    assert "worklog_entries(id) ON DELETE CASCADE" in tmpl
+    assert "project TEXT NOT NULL" in tmpl
