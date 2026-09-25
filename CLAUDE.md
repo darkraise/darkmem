@@ -1235,16 +1235,16 @@ the append a compare-and-set on the newest entry of its one kind (0 when
 there is none), checked under that lock: a mismatch raises
 `WorklogSeqConflict` inside the savepoint, so nothing is written, created or
 reopened, and answers 409 / `seq_conflict`. Every append answers `last_seq`.
+`worklog_purge` and its REST twin are `admin`-scoped and strict-journal;
+payloads carry the workstream key and counts, never entry text. Nothing in
+the lane is extracted, ranked with memories or reachable from the vault.
+
 `worklog_search` (REST `POST /api/v1/worklog/search`, `read`) takes a
 required project and fuses, by RRF at equal weights, a `ts_rank` arm over
 the whole body and an exact cosine arm over the first 8,000 characters
 (`worklog_embeddings__<slug>`, filled only by `block_embedding_refresh`).
 With no orchestrator, a read-only instance or a failed query embed the
 keyword arm answers alone and the answer says `semantic_ran: false`.
-`worklog_purge` and its REST twin are
-`admin`-scoped and strict-journal; payloads carry the workstream key and
-counts, never entry text. Nothing in the lane is extracted, ranked with
-memories or reachable from the vault.
 
 ## Cross-cutting invariants
 
