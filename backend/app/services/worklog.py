@@ -36,6 +36,7 @@ __all__ = [
     "RESUME_NOTES_CAP",
     "WorklogJournalWriteFailed",
     "WorklogRejected",
+    "WorklogSeqConflict",
     "WorkstreamNotFound",
     "append",
     "get_workstream",
@@ -71,6 +72,18 @@ class WorklogRejected(ValueError):
     """The database's CHECKs refused the write; nothing of it was kept."""
 
 
+class WorklogSeqConflict(Exception):
+    """expected_last_seq did not name the newest entry of its kind; nothing was kept."""
+
+    def __init__(self, kind: str, expected: int, current: int) -> None:
+        super().__init__(
+            f"expected the newest {kind} entry to be seq {expected}, but it is {current}"
+        )
+        self.kind = kind
+        self.expected = expected
+        self.current = current
+
+
 class WorklogJournalWriteFailed(RuntimeError):
     """The purge journal row is not there, so nothing was deleted.
 
@@ -83,6 +96,7 @@ class WorklogJournalWriteFailed(RuntimeError):
 class AppendResult:
     workstream: Workstream
     entry_ids: list[UUID]
+    last_seq: int
 
 
 def properties_size(value: dict) -> int:
@@ -176,12 +190,16 @@ async def append(
     properties: dict | None = None,
     actor: str | None = None,
     api_key_id: UUID | None = None,
+    expected_last_seq: int | None = None,
 ) -> AppendResult:
-    """Append 1-100 entries to a workstream, creating or reopening it."""
+    """Append 1-100 entries to a workstream, creating or reopening it; optionally a compare-and-set."""
     if not 1 <= len(entries) <= MAX_ENTRIES_PER_APPEND:
         raise ValueError(
             f"an append carries 1 to {MAX_ENTRIES_PER_APPEND} entries, not {len(entries)}"
         )
+    kinds = {entry["kind"] for entry in entries}
+    if expected_last_seq is not None and len(kinds) != 1:
+        raise ValueError("expected_last_seq needs every entry of the append to share one kind")
     entry_ids = [uuid4() for _ in entries]
     try:
         async with session.begin_nested():
@@ -189,9 +207,21 @@ async def append(
                 session, project=project, key=key, title=title, client=client,
                 properties=properties,
             )
+            # Checked under the row lock and inside the savepoint: a mismatch
+            # unwinds the creation or reopen above along with everything else.
+            if expected_last_seq is not None:
+                (kind,) = kinds
+                current = (await session.execute(
+                    select(func.coalesce(func.max(WorklogEntry.seq), 0)).where(
+                        WorklogEntry.workstream_id == workstream_id,
+                        WorklogEntry.kind == kind,
+                    )
+                )).scalar_one()
+                if current != expected_last_seq:
+                    raise WorklogSeqConflict(kind, expected_last_seq, current)
             # One multi-row statement, not executemany: the identity column
             # hands out `seq` in VALUES order, which keeps a ledger in order.
-            await session.execute(
+            seqs = (await session.execute(
                 insert(WorklogEntry).values([
                     {
                         "id": entry_id,
@@ -202,8 +232,8 @@ async def append(
                         "properties": entry.get("properties") or {},
                     }
                     for entry_id, entry in zip(entry_ids, entries)
-                ])
-            )
+                ]).returning(WorklogEntry.seq)
+            )).scalars().all()
     except IntegrityError as error:
         raise WorklogRejected(str(error.orig)) from error
     await project_registry.register(session, project)
@@ -222,7 +252,7 @@ async def append(
         )
 
     workstream = await session.get(Workstream, workstream_id, populate_existing=True)
-    return AppendResult(workstream=workstream, entry_ids=entry_ids)
+    return AppendResult(workstream=workstream, entry_ids=entry_ids, last_seq=max(seqs))
 
 
 async def get_workstream(

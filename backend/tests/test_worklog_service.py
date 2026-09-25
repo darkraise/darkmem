@@ -7,7 +7,7 @@ import uuid
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import event, select, text
+from sqlalchemy import event, func, select, text
 
 from app.models.worklog import WorklogEntry, Workstream
 from app.services import worklog
@@ -462,3 +462,125 @@ async def test_list_entries_refuses_an_unknown_kind(session):
     ws = await worklog.get_workstream(session, project="proj", key="plan-a")
     with pytest.raises(ValueError):
         await worklog.list_entries(session, workstream_id=ws.id, kind="memo")
+
+
+async def _ledger(session, workstream_id):
+    return (await session.execute(
+        select(WorklogEntry.id, WorklogEntry.body, WorklogEntry.seq)
+        .where(WorklogEntry.workstream_id == workstream_id, WorklogEntry.kind == "ledger")
+        .order_by(WorklogEntry.seq)
+    )).all()
+
+
+async def test_append_reports_the_last_seq_it_wrote(session):
+    result = await _append(session, entries=[
+        {"kind": "ledger", "body": "a\n"}, {"kind": "ledger", "body": "b\n"},
+    ])
+    seqs = (await session.execute(
+        select(WorklogEntry.seq).where(WorklogEntry.workstream_id == result.workstream.id)
+    )).scalars().all()
+    assert result.last_seq == max(seqs)
+
+
+async def test_expected_last_seq_zero_opens_a_new_workstream(session):
+    result = await _append(session, expected_last_seq=0)
+    assert result.workstream.key == "plan-a"
+    rows = await _ledger(session, result.workstream.id)
+    assert [(r.id, r.body, r.seq) for r in rows] == [
+        (result.entry_ids[0], "Task 1: complete\n", result.last_seq),
+    ]
+
+
+async def test_a_matching_expected_last_seq_appends(session):
+    first = await _append(session)
+    second = await _append(
+        session, entries=[{"kind": "ledger", "body": "Task 2: complete\n"}],
+        expected_last_seq=first.last_seq,
+    )
+    rows = await _ledger(session, first.workstream.id)
+    assert [(r.id, r.body, r.seq) for r in rows] == [
+        (first.entry_ids[0], "Task 1: complete\n", first.last_seq),
+        (second.entry_ids[0], "Task 2: complete\n", second.last_seq),
+    ]
+
+
+async def test_a_stale_expected_last_seq_writes_nothing(session):
+    first = await _append(session)
+    with pytest.raises(worklog.WorklogSeqConflict) as caught:
+        await _append(session, entries=[{"kind": "ledger", "body": "again\n"}], expected_last_seq=0)
+    assert (caught.value.kind, caught.value.expected, caught.value.current) == (
+        "ledger", 0, first.last_seq,
+    )
+    count = (await session.execute(
+        select(func.count()).select_from(WorklogEntry)
+        .where(WorklogEntry.workstream_id == first.workstream.id)
+    )).scalar_one()
+    assert count == 1
+
+
+async def test_a_refused_precondition_creates_no_workstream(session):
+    with pytest.raises(worklog.WorklogSeqConflict):
+        await _append(session, expected_last_seq=5)
+    assert await worklog.get_workstream(session, project="proj", key="plan-a") is None
+
+
+async def test_a_refused_precondition_leaves_a_closed_workstream_closed(session):
+    first = await _append(session)
+    await worklog.update_workstream(session, first.workstream.id, state="closed")
+    with pytest.raises(worklog.WorklogSeqConflict):
+        await _append(session, expected_last_seq=first.last_seq + 1000)
+    state = (await session.execute(
+        text("SELECT state FROM workstreams WHERE id = CAST(:id AS uuid)"),
+        {"id": str(first.workstream.id)},
+    )).scalar_one()
+    assert state == "closed"
+
+
+async def test_the_precondition_counts_only_its_own_kind(session):
+    ledger = await _append(session)
+    await _append(session, entries=[{"kind": "checkpoint", "body": "## State\nx"}])
+    result = await _append(
+        session, entries=[{"kind": "ledger", "body": "Task 2\n"}],
+        expected_last_seq=ledger.last_seq,
+    )
+    rows = await _ledger(session, ledger.workstream.id)
+    assert [(r.id, r.body, r.seq) for r in rows] == [
+        (ledger.entry_ids[0], "Task 1: complete\n", ledger.last_seq),
+        (result.entry_ids[0], "Task 2\n", result.last_seq),
+    ]
+
+
+async def test_the_precondition_refuses_a_mixed_kind_append(session):
+    with pytest.raises(ValueError, match="one kind"):
+        await _append(
+            session,
+            entries=[{"kind": "ledger", "body": "a\n"}, {"kind": "note", "body": "n"}],
+            expected_last_seq=0,
+        )
+
+
+async def test_two_appends_expecting_the_same_seq_admit_exactly_one(committed):
+    async with committed() as first, committed() as second:
+        await worklog.append(
+            first, project=RACE_PROJECT, key="cas", run_key="r",
+            entries=[{"kind": "ledger", "body": "one\n"}], expected_last_seq=0,
+        )
+        racing = asyncio.create_task(worklog.append(
+            second, project=RACE_PROJECT, key="cas", run_key="r",
+            entries=[{"kind": "ledger", "body": "two\n"}], expected_last_seq=0,
+        ))
+        await asyncio.sleep(0.3)
+        assert not racing.done(), "the second append must wait on the first's lock"
+        await first.commit()
+        with pytest.raises(worklog.WorklogSeqConflict):
+            await racing
+        await second.rollback()
+    async with committed() as check:
+        bodies = (await check.execute(
+            text(
+                "SELECT e.body FROM worklog_entries e JOIN workstreams w ON w.id = e.workstream_id "
+                "WHERE w.project = :p AND w.key = 'cas'"
+            ),
+            {"p": RACE_PROJECT},
+        )).scalars().all()
+    assert bodies == ["one\n"]
