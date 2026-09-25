@@ -1,7 +1,7 @@
 # Register — separate working data from memories
 
 **Source:** owner requests in the 2026-09-23 session (after the .195 → .199 memory migration and cleaning pass)
-**Covers:** docs/superpowers/specs/2026-09-23-work-log-lane-design.md
+**Covers:** docs/superpowers/specs/2026-09-23-work-log-lane-design.md, docs/superpowers/specs/2026-09-25-worklog-append-precondition-design.md
 
 | # | Item | Assigned | Acceptance | State | Note |
 |---|---|---|---|---|---|
@@ -30,3 +30,4 @@
 | 23 | agent instructions dropped 'If nothing durable is left once the log is removed, save nothing.' | - | - | deferred | parked: spec §5 replaces the close; restore with one sentence plus an assertion if thin memories appear (increment 4 owns the warning) |
 | 24 | test_worklog_wall.py imports are not isort-ordered | - | - | deferred | plan-mandated text; cosmetic |
 | 25 | manifest shares the subtree rename/delete prefix blind spot (a leading-slash uri never appears under a non-empty prefix) | - | - | deferred | documented in CLAUDE.md; a mirror files only superpowers/... uris |
+| 26 | worklog append: an expected-sequence precondition, so two mirrors appending the same ledger suffix at once cannot both land (plugin register 2026-09-24-darkmem-mirror.md row 14) | docs/superpowers/plans/2026-09-25-worklog-append-precondition.md | expected_last_seq on both doors: a stale expectation writes nothing and answers 409 / seq_conflict; last_seq answered; worklog and door-guard suites green | planned | - |
