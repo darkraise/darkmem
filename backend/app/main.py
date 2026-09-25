@@ -545,11 +545,12 @@ async def lifespan(app: FastAPI):
         key=BLOCK_EMBEDDING_JOB_KEY,
         display_name="Block Embedding Refresh",
         description=(
-            "Embeds document blocks that have no vector under the active "
-            "embedder: an embed that failed after its filing committed, an "
-            "embedder rotation, or documents filed before the door shipped. "
-            "Off the hot path. Each run spends embedding calls, so 0 disables "
-            "it."
+            "Embeds document blocks, page blocks and work-log entries that "
+            "have no vector under the active embedder, each on its own "
+            "budget: an embed that failed after its filing committed, an "
+            "embedder rotation, a page edit, or any work-log append (appends "
+            "never embed inline). Off the hot path. Each run spends embedding "
+            "calls, so a budget of 0 disables that sweep."
         ),
         default_cron=BLOCK_EMBEDDING_CRON,
         min_interval_seconds=BLOCK_EMBEDDING_MIN_INTERVAL_SECONDS,

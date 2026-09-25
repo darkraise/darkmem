@@ -100,17 +100,17 @@ purpose, and it is the surface the minimal client speaks:
 | Scope | Routes |
 |---|---|
 | `capture` | `POST /memories`, `POST /memories/batch`, `POST /documents`, `POST /worklog/entries`, `PATCH /worklog/workstreams/{id}` |
-| `read` | `POST /memories/search/paginated`, `GET /documents/by-uri`, `GET /documents/manifest`, `GET /worklog/resume`, `GET /worklog/workstreams`, `GET /worklog/workstreams/{id}/entries` |
+| `read` | `POST /memories/search/paginated`, `GET /documents/by-uri`, `GET /documents/manifest`, `GET /worklog/resume`, `GET /worklog/workstreams`, `GET /worklog/workstreams/{id}/entries`, `POST /worklog/search` |
 | `admin` | `POST /repos/{id}/webhook`, `POST /repos/{id}/reindex-files`, `DELETE /worklog/workstreams/{id}` |
 
 **`/mcp` is scoped far more widely, and separately** (doc 18 §5's second
-activation, 2026-08-26): of its 46 tools, 15 require `capture`, 28 require
+activation, 2026-08-26): of its 47 tools, 15 require `capture`, 29 require
 `read` and three require `admin`, so a `capture`-scoped key reaches all 15 MCP
 writer tools — `memory_add`, `memory_batch_add`, `memory_update`,
 `memory_delete`, `document_put`, `document_update`, `document_delete`,
 `checkpoint_save`, `research_run`, `block_update`, `block_insert`,
 `block_move`, `block_delete`, `worklog_append`, `worklog_update` — not only
-the REST routes above, and a `read`-scoped key reaches the 28 readers. The
+the REST routes above, and a `read`-scoped key reaches the 29 readers. The
 table above is REST's reach only; do not read it as the whole reach of a key
 of any scope.
 

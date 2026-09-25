@@ -142,4 +142,5 @@ def test_the_instructions_route_working_data_to_the_work_log():
     text = prompt.PROMPTS["agent_instructions"]
     assert "worklog_append" in text
     assert "worklog_resume" in text
+    assert "worklog_search" in text
     assert "goes to the work log" in text

@@ -702,6 +702,8 @@ PROMPTS: dict[str, str] = {
         "Append a checkpoint at every stop.\n"
         "- **worklog_workstreams** / **worklog_entries** — list a project's "
         "workstreams, or read one workstream's entries in order.\n"
+        "- **worklog_search** — find entries across a project's workstreams "
+        "by words or meaning; narrow by workstream or kind.\n"
         "- **worklog_update** — close or reopen a workstream, retain it, or "
         "change its title or properties.\n"
         "- **worklog_purge** — erase a workstream and its entries; needs an "

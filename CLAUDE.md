@@ -450,7 +450,10 @@ pgvector needs a fixed-dim `vector(N)`, so each fingerprint gets one child
 table per family in `embedder_registry._TABLE_TEMPLATES`: `memory_embeddings`,
 `entity_embeddings`, `code_chunk_embeddings`, `entity_embedding_cache`,
 `block_embeddings`, `page_embeddings`, `relation_embeddings`,
-`article_embeddings`, `triple_embeddings` (each `<family>__<slug>`). The
+`article_embeddings`, `triple_embeddings`, `worklog_embeddings` (each
+`<family>__<slug>`). `worklog_embeddings` alone gets no HNSW index
+(`_EXACT_SCAN_PARENTS`): work-log search scans one project's rows exactly,
+through a `project` column copied onto each vector row. The
 `embedders` table is the registry; `embedder_registry.register` inserts the
 row and runs every `CREATE TABLE IF NOT EXISTS` idempotently. Never name a
 child table directly; go through `child_table(parent, fingerprint)`. A
@@ -623,7 +626,8 @@ undercounts.
   `block_embedding_refresh` are Tier C but deliberately **not** dream-job
   members; they are artefact refreshes (doc 07 §4, doc 10 §6, doc 16 §3).
   `block_embedding_refresh` also sweeps page blocks on its own `page_batch`
-  budget.
+  budget and work-log entries on `worklog_batch`, the only writer of
+  `worklog_embeddings`.
 
 **Scheduling.** Five-field cron is minute-precision; six-field puts seconds
 first (Quartz-style). `min_interval_seconds` is a per-job floor the loop
@@ -870,13 +874,13 @@ mirrors the HTTP 1–100 batch cap. To exercise a local deploy, call `/mcp/`
 directly with a script (the trailing slash matters); don't repoint the
 session's MCP client config.
 
-**Scopes are per tool** (`app/api/mcp/scopes.py`, `TOOL_SCOPES`, 46 tools):
+**Scopes are per tool** (`app/api/mcp/scopes.py`, `TOOL_SCOPES`, 47 tools):
 
 - `capture` (15): `memory_add`, `memory_batch_add`, `memory_update`,
   `memory_delete`, `document_put`, `document_update`, `document_delete`,
   `checkpoint_save`, `research_run`, `worklog_append`, `worklog_update`,
   `block_update`, `block_insert`, `block_move`, `block_delete`.
-- `read` (28).
+- `read` (29).
 - `admin` (3): `code_reindex` (the only MCP write door into the code
   subsystem; `docs/superpowers/specs/2026-08-28-file-scoped-reindex-design.md`),
   `document_delete_subtree`, `worklog_purge`.
@@ -1231,6 +1235,12 @@ the append a compare-and-set on the newest entry of its one kind (0 when
 there is none), checked under that lock: a mismatch raises
 `WorklogSeqConflict` inside the savepoint, so nothing is written, created or
 reopened, and answers 409 / `seq_conflict`. Every append answers `last_seq`.
+`worklog_search` (REST `POST /api/v1/worklog/search`, `read`) takes a
+required project and fuses, by RRF at equal weights, a `ts_rank` arm over
+the whole body and an exact cosine arm over the first 8,000 characters
+(`worklog_embeddings__<slug>`, filled only by `block_embedding_refresh`).
+With no orchestrator, a read-only instance or a failed query embed the
+keyword arm answers alone and the answer says `semantic_ran: false`.
 `worklog_purge` and its REST twin are
 `admin`-scoped and strict-journal; payloads carry the workstream key and
 counts, never entry text. Nothing in the lane is extracted, ranked with
