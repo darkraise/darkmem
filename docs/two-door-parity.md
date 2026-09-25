@@ -10,7 +10,7 @@ aspirational. It is exhaustive over the Phase-1 surface — every REST route on
 `app.routes` and every tool in the live FastMCP registry appears in exactly one
 row.
 
-**89 surfaces: 31 two-door, 58 single-door with a stated reason (51 REST-only, 7 MCP-only), 0 divergent.**
+**90 surfaces: 32 two-door, 58 single-door with a stated reason (51 REST-only, 7 MCP-only), 0 divergent.**
 
 ## How to read a row, and what each status costs
 
@@ -67,6 +67,7 @@ the test rather than quietly joining the surface.
 | `worklog.resume` | `GET /api/v1/worklog/resume` | `worklog_resume` | two-door | — |
 | `worklog.workstreams` | `GET /api/v1/worklog/workstreams` | `worklog_workstreams` | two-door | — |
 | `worklog.entries` | `GET /api/v1/worklog/workstreams/{workstream_id}/entries` | `worklog_entries` | two-door | Stated wire asymmetry: the route names the workstream by id, the tool by (project, key), since an agent knows its key; both resolve to one workstream and call one list_entries. |
+| `worklog.search` | `POST /api/v1/worklog/search` | `worklog_search` | two-door | Both doors call one worklog.search, so ranking, filtering and the semantic_ran fallback cannot drift. Stated wire asymmetry: the route refuses a limit above 100 with a 422 while the tool clamps it, as the other work-log list tools clamp theirs. |
 | `worklog.update` | `PATCH /api/v1/worklog/workstreams/{workstream_id}` | `worklog_update` | two-door | Stated wire asymmetry: the route names the workstream by id, the tool by (project, key), since an agent knows its key; both resolve to one workstream and call one update_workstream. |
 | `worklog.purge` | `DELETE /api/v1/worklog/workstreams/{workstream_id}` | `worklog_purge` | two-door | admin on both doors: the route declares require_scope('admin') and the tool sits in ADMIN_TOOLS. Both call one purge_workstream, which journals workstream_purged before the delete and refuses when the row does not land. Stated wire asymmetries: the route names the workstream by id and the tool by (project, key), and the route answers 204 with no body while the tool answers {purged, entries} -- the key it erased and the count of entries that went with it. |
 | `documents.manifest` | `GET /api/v1/documents/manifest` | — | REST single-door | A sync read with one caller, the dr-superpowers mirror, which speaks REST with a dmk_ key: it serves uri, content_hash and updated_at so a pull fetches only what changed. An agent reading a document already has document_get and document_outline; a manifest tool would serve it nothing they do not. |

@@ -540,6 +540,18 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="worklog.search",
+        status=TWO_DOOR,
+        rest=(("POST", f"{V1}/worklog/search"),),
+        mcp=("worklog_search",),
+        note=(
+            "Both doors call one worklog.search, so ranking, filtering and the "
+            "semantic_ran fallback cannot drift. Stated wire asymmetry: the "
+            "route refuses a limit above 100 with a 422 while the tool clamps "
+            "it, as the other work-log list tools clamp theirs."
+        ),
+    ),
+    Surface(
         name="worklog.update",
         status=TWO_DOOR,
         rest=(("PATCH", f"{V1}/worklog/workstreams/{{workstream_id}}"),),

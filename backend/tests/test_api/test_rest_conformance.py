@@ -319,6 +319,7 @@ EXPECTED_STATUS = {
     ("GET", "/api/v1/worklog/resume"): 200,
     ("GET", "/api/v1/worklog/workstreams"): 200,
     ("GET", "/api/v1/worklog/workstreams/{workstream_id}/entries"): 200,
+    ("POST", "/api/v1/worklog/search"): 200,
     ("PATCH", "/api/v1/worklog/workstreams/{workstream_id}"): 200,
     ("DELETE", "/api/v1/worklog/workstreams/{workstream_id}"): 204,
     ("GET", "/api/v1/documents/manifest"): 200,

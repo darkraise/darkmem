@@ -754,6 +754,7 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "GET /api/v1/worklog/resume",
     "GET /api/v1/worklog/workstreams",
     "GET /api/v1/worklog/workstreams/{workstream_id}/entries",
+    "POST /api/v1/worklog/search",
     "PATCH /api/v1/worklog/workstreams/{workstream_id}",
     "DELETE /api/v1/worklog/workstreams/{workstream_id}",
     # Key management (T4.01). No memory content crosses: these read and write
@@ -936,6 +937,7 @@ MCP_TOOLS_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "mcp:worklog_resume",
     "mcp:worklog_workstreams",
     "mcp:worklog_entries",
+    "mcp:worklog_search",
     "mcp:worklog_update",
     "mcp:worklog_purge",
     "mcp:code_blast_radius",
