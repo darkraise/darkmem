@@ -1142,7 +1142,7 @@ def test_the_claude_md_job_count_matches_what_boots():
     assert total is not None, "CLAUDE.md no longer states a registered-job count"
     assert _NUMBER_WORDS[total.group(1).lower()] == registered + len(DREAM_JOB_KEYS)
 
-    live = re.search(r"The ([a-z-]+) live ones", baseline)
-    assert live is not None
-    assert _NUMBER_WORDS[live.group(1)] == registered
+    live = re.search(r"\*\*([A-Za-z-]+) live jobs:\*\*", baseline)
+    assert live is not None, "CLAUDE.md no longer states a live-job count"
+    assert _NUMBER_WORDS[live.group(1).lower()] == registered
     assert f"`{CITATION_REVERIFY_JOB_KEY}`" in baseline
