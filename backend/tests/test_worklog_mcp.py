@@ -176,22 +176,23 @@ async def test_search_over_mcp_fuses_both_arms(mcp_on_the_test_session, session,
     embedder_registry.forget(SEARCH_FINGERPRINT)
     llm = TopicEmbedder()
     monkeypatch.setattr(server, "_pipeline", SimpleNamespace(llm=llm))
-    appended = json.loads(await server.worklog_append(
-        project="proj",
-        workstream="plan-a",
-        entries=[
-            {"kind": "note", "body": "The deploy script now retries"},
-            {"kind": "note", "body": "Release notes drafted"},
-        ],
-        run_key="run-1",
-    ))
-    await embed_entries(session, llm, entry_ids=appended["entry_ids"])
-
-    answer = json.loads(await server.worklog_search(project="proj", query="deploy"))
+    try:
+        appended = json.loads(await server.worklog_append(
+            project="proj",
+            workstream="plan-a",
+            entries=[
+                {"kind": "note", "body": "The deploy script now retries"},
+                {"kind": "note", "body": "Release notes drafted"},
+            ],
+            run_key="run-1",
+        ))
+        await embed_entries(session, llm, entry_ids=appended["entry_ids"])
+        answer = json.loads(await server.worklog_search(project="proj", query="deploy"))
+    finally:
+        embedder_registry.forget(SEARCH_FINGERPRINT)
     assert answer["semantic_ran"] is True
     assert [item["entry"]["id"] for item in answer["items"]] == appended["entry_ids"]
     assert answer["items"][0]["arms"] == ["keyword", "semantic"]
-    embedder_registry.forget(SEARCH_FINGERPRINT)
 
 
 async def test_search_over_mcp_without_a_pipeline_is_keyword_only(mcp_on_the_test_session, monkeypatch):
@@ -216,3 +217,10 @@ async def test_search_over_mcp_refuses_an_unknown_kind(mcp_on_the_test_session):
 
     with pytest.raises(ValueError):
         await server.worklog_search(project="proj", query="deploy", kind="log")
+
+
+async def test_search_over_mcp_refuses_a_nul_in_the_query(mcp_on_the_test_session):
+    from app.api.mcp import server
+
+    with pytest.raises(ValueError):
+        await server.worklog_search(project="proj", query="de\x00ploy")

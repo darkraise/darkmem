@@ -146,5 +146,6 @@ async def test_the_missing_query_lists_only_unembedded_entries(session):
 async def test_purging_a_workstream_takes_its_vectors(session):
     workstream, ids = await _append(session, "note")
     await embed_entries(session, RecordingEmbedder(), entry_ids=ids)
+    assert set(await _vectors(session)) == set(ids)
     await worklog.purge_workstream(session, workstream.id)
     assert await _vectors(session) == {}

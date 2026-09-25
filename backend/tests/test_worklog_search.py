@@ -7,6 +7,7 @@ from sqlalchemy import text
 from app.config import settings
 from app.services import worklog
 from app.services.embedder_registry import EmbedderInfo, child_table, embedder_registry
+from app.services.rank_fusion import fusion_fetch_depth
 from app.services.worklog_embeddings import PARENT_TABLE, embed_entries
 
 SEARCH_FINGERPRINT = "worklog-search-test|4"
@@ -197,16 +198,20 @@ async def test_filters_bind_the_semantic_arm_too(session):
 
 
 async def test_other_projects_cannot_crowd_the_fetch_depth(session):
-    """300 newer, equally close vectors in another project fill the whole
+    """Newer, equally close vectors in another project fill the whole
     fusion_fetch_depth: a project filter applied after LIMIT would return nothing."""
     mine = await _note(session, "Release notes for this project")
     crowd: list[str] = []
-    for batch in range(3):
+    depth = fusion_fetch_depth(1)
+    for start in range(0, depth, 100):
         result = await worklog.append(
-            session, project="other", key=f"crowd-{batch}", run_key="claude:run-1",
-            entries=[{"kind": "note", "body": f"release {batch}-{n}"} for n in range(100)],
+            session, project="other", key=f"crowd-{start}", run_key="claude:run-1",
+            entries=[
+                {"kind": "note", "body": f"release {n}"} for n in range(start, min(start + 100, depth))
+            ],
         )
         crowd.extend(str(entry_id) for entry_id in result.entry_ids)
+    assert len(crowd) == depth
     await _embed(session, mine, *crowd)
     answer = await worklog.search(session, TopicEmbedder(), project="proj", query="deploy", limit=1)
     assert _ids(answer) == [mine]

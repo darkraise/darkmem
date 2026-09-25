@@ -1,12 +1,11 @@
 """Spec §7's wall, structurally: the work log and the memory side never import each other."""
 from __future__ import annotations
 
+import ast
+import re
 from pathlib import Path
 
 import pytest
-
-import ast
-import re
 
 from tests._reachability_scan import import_closure, module_path
 from tests.test_block_retrieval import VAULT_WRITERS, _attributes_named, _promoting_vault_methods
