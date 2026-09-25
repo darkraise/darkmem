@@ -573,7 +573,9 @@ _SEMANTIC_SEARCH = """
     FROM {table} v
     JOIN worklog_entries e ON e.id = v.entry_id
     JOIN workstreams w ON w.id = e.workstream_id
-    WHERE v.project = CAST(:project AS text){filters}
+    WHERE v.project = CAST(:project AS text)
+      AND w.project = CAST(:project AS text)
+      AND v.fingerprint = CAST(:fp AS text){filters}
     ORDER BY v.embedding <=> CAST(:vec AS vector), e.seq DESC
     LIMIT CAST(:depth AS integer)
 """
@@ -592,10 +594,10 @@ async def search(
     """One project's entries matching `query` by words, by meaning or both, fused by RRF.
 
     The keyword arm ranks the whole body; the semantic arm ranks the vectors
-    of each body's first 8,000 characters. It is skipped, with semantic_ran
-    false, when there is no orchestrator, the instance is read-only (a backup
-    worker makes no external call) or the query embed fails, and the keyword
-    arm answers alone. Each hit names the arms that found it.
+    of each body's first worklog_embeddings.EMBED_CHARS characters. It is
+    skipped, with semantic_ran false, when there is no orchestrator, the
+    instance is read-only (a backup worker makes no external call) or the
+    query embed fails, and the keyword arm answers alone. Each hit names the arms that found it.
     """
     if not query.strip():
         raise ValueError("query must contain a non-space character")
@@ -615,31 +617,35 @@ async def search(
         filters += " AND e.kind = CAST(:kind AS text)"
         scope["kind"] = kind
 
+    # Embed before the first query, so a session nothing has used yet holds
+    # no connection, idle in a transaction, while the embedder answers.
+    embedded = None
+    if llm is not None and not settings.read_only:
+        try:
+            embedded = await llm.embed(query)
+        except Exception as error:  # noqa: BLE001 - the keyword arm still answers
+            logger.warning("worklog.search: the query embed failed; keyword arm only: %s", error)
+
     keyword = (await session.execute(
         text(_KEYWORD_SEARCH.format(columns=_HIT_COLUMNS, filters=filters)),
         {**scope, "query": query},
     )).mappings().all()
 
     semantic: list = []
-    semantic_ran = False
-    if llm is not None and not settings.read_only:
-        try:
-            vector, fingerprint = await llm.embed(query)
-        except Exception as error:  # noqa: BLE001 - the keyword arm still answers
-            logger.warning("worklog.search: the query embed failed; keyword arm only: %s", error)
-        else:
-            semantic_ran = True
-            table = child_table(EMBEDDING_PARENT, fingerprint)
-            # No child table means nothing is embedded under this fingerprint
-            # yet: an empty arm, not a fault.
-            exists = (await session.execute(
-                text("SELECT to_regclass(:name)"), {"name": table},
-            )).scalar_one_or_none()
-            if exists is not None:
-                semantic = (await session.execute(
-                    text(_SEMANTIC_SEARCH.format(columns=_HIT_COLUMNS, table=table, filters=filters)),
-                    {**scope, "vec": str(list(vector))},
-                )).mappings().all()
+    semantic_ran = embedded is not None
+    if embedded is not None:
+        vector, fingerprint = embedded
+        table = child_table(EMBEDDING_PARENT, fingerprint)
+        # No child table means nothing is embedded under this fingerprint
+        # yet: an empty arm, not a fault.
+        exists = (await session.execute(
+            text("SELECT to_regclass(:name)"), {"name": table},
+        )).scalar_one_or_none()
+        if exists is not None:
+            semantic = (await session.execute(
+                text(_SEMANTIC_SEARCH.format(columns=_HIT_COLUMNS, table=table, filters=filters)),
+                {**scope, "vec": str(list(vector)), "fp": fingerprint},
+            )).mappings().all()
 
     rows = {str(row["id"]): row for row in (*keyword, *semantic)}
     found_by = {
