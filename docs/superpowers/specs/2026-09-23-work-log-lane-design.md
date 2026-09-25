@@ -391,7 +391,12 @@ modules as subjects:
   `LayerCompositionService` and their channel and id-kind registries) must not
   reach `app.services.worklog` or the `worklog_embeddings` family;
 - the vault-minting closure must not reach a module that reads a work-log row;
-- the work-log modules may name no `KnowledgeTripleRepository` method at all.
+- the work-log modules name neither `KnowledgeTripleRepository`, its module
+  nor the `knowledge_triples` table, and the import closure of every
+  work-log module except the route module reaches no vault writer.
+  Amended 2026-09-25: a scan for every repository method name cannot tell
+  `session.get` from a repository's `get`, and the route module reaches the
+  repository only through the auth layer every router shares.
 
 And the pipeline half, as `test_block_pipeline.py` does for documents: the
 import closure of `app.services.worklog` must not reach
