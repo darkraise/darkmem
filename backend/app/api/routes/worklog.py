@@ -22,6 +22,8 @@ from app.schemas.worklog import (
     WorklogAppendResponse,
     WorklogEntryListResponse,
     WorklogResumeResponse,
+    WorklogSearchRequest,
+    WorklogSearchResponse,
     WorkstreamListResponse,
     WorkstreamOut,
     WorkstreamUpdateRequest,
@@ -127,6 +129,30 @@ async def list_entries(
     return await worklog.list_entries(
         session, workstream_id=workstream_id, kind=kind, since=since, after=after, limit=limit
     )
+
+
+@router.post("/search", response_model=WorklogSearchResponse)
+async def search_entries(
+    body: WorklogSearchRequest,
+    request: Request,
+    _principal: Principal = Depends(_require_read),
+    session: AsyncSession = Depends(get_session),
+):
+    # Not `get_llm`: it answers 503 without an orchestrator, and search still
+    # has an answer then -- the keyword arm, with semantic_ran false.
+    llm = getattr(request.app.state, "llm", None)
+    try:
+        return await worklog.search(
+            session,
+            llm,
+            project=body.project,
+            query=body.query,
+            workstream=body.workstream,
+            kind=body.kind,
+            limit=body.limit,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
 
 
 @router.patch("/workstreams/{workstream_id}", response_model=WorkstreamOut)

@@ -12,11 +12,15 @@ from app.services.worklog import (
     MAX_BODY_CHARS,
     MAX_ENTRIES_PER_APPEND,
     MAX_PROPERTIES_BYTES,
+    MAX_QUERY_CHARS,
+    MAX_SEARCH_LIMIT,
+    SEARCH_DEFAULT_LIMIT,
     properties_size,
 )
 
 Kind = Literal["checkpoint", "ledger", "note"]
 State = Literal["open", "closed"]
+Arm = Literal["keyword", "semantic"]
 
 
 def _bounded(value: dict | None) -> dict | None:
@@ -154,3 +158,23 @@ class WorkstreamListResponse(BaseModel):
 class WorklogEntryListResponse(BaseModel):
     items: list[WorklogEntryOut]
     next_after: int | None
+
+
+class WorklogSearchRequest(_Storable):
+    project: str = Field(min_length=1, max_length=200)
+    query: str = Field(min_length=1, max_length=MAX_QUERY_CHARS)
+    workstream: str | None = Field(default=None, min_length=1, max_length=200)
+    kind: Kind | None = None
+    limit: int = Field(default=SEARCH_DEFAULT_LIMIT, ge=1, le=MAX_SEARCH_LIMIT)
+
+
+class WorklogSearchHit(BaseModel):
+    entry: WorklogEntryOut
+    workstream: str
+    rrf_score: float
+    arms: list[Arm]
+
+
+class WorklogSearchResponse(BaseModel):
+    items: list[WorklogSearchHit]
+    semantic_ran: bool

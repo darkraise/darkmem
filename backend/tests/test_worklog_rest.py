@@ -5,6 +5,8 @@ import pytest
 
 from app.api.mcp.client_identity import ORIGIN_HEADER
 from app.services.api_keys import issue_key
+from app.services.worklog_embeddings import embed_entries
+from tests.test_worklog_search import SEARCH_FINGERPRINT, TopicEmbedder
 
 V1 = "/api/v1/worklog"
 RUN = {ORIGIN_HEADER: "run-1"}
@@ -267,3 +269,70 @@ async def test_the_schema_refuses_a_mixed_kind_precondition(client, auth_headers
     )
     assert response.status_code == 422
     assert "one kind" in response.text
+
+
+@pytest.fixture
+def topic_llm():
+    from app.main import app
+    from app.services.embedder_registry import embedder_registry
+
+    embedder_registry.forget(SEARCH_FINGERPRINT)
+    previous = getattr(app.state, "llm", None)
+    app.state.llm = TopicEmbedder()
+    yield app.state.llm
+    app.state.llm = previous
+    embedder_registry.forget(SEARCH_FINGERPRINT)
+
+
+async def test_search_fuses_both_arms(client, auth_headers, session, topic_llm):
+    created = await client.post(f"{V1}/entries", json=_append_body(entries=[
+        {"kind": "note", "body": "The deploy script now retries"},
+        {"kind": "note", "body": "Release notes drafted"},
+    ]), headers={**auth_headers, **RUN})
+    ids = created.json()["entry_ids"]
+    await embed_entries(session, topic_llm, entry_ids=ids)
+
+    response = await client.post(
+        f"{V1}/search", json={"project": "proj", "query": "deploy"}, headers=auth_headers
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["semantic_ran"] is True
+    assert [item["entry"]["id"] for item in body["items"]] == ids
+    assert body["items"][0]["arms"] == ["keyword", "semantic"]
+    assert body["items"][1]["arms"] == ["semantic"]
+    assert body["items"][0]["workstream"] == "plan-a"
+
+
+async def test_search_answers_by_keyword_without_an_orchestrator(client, auth_headers, monkeypatch):
+    from app.main import app
+
+    monkeypatch.setattr(app.state, "llm", None, raising=False)
+    await client.post(f"{V1}/entries", json=_append_body(), headers={**auth_headers, **RUN})
+    response = await client.post(
+        f"{V1}/search", json={"project": "proj", "query": "saved"}, headers=auth_headers
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["semantic_ran"] is False
+    assert [item["entry"]["body"] for item in response.json()["items"]] == ["## State\nsaved"]
+
+
+@pytest.mark.parametrize("body", [
+    {"query": "deploy"},
+    {"project": "proj", "query": ""},
+    {"project": "proj", "query": "   "},
+    {"project": "proj", "query": "deploy", "kind": "log"},
+    {"project": "proj", "query": "deploy", "limit": 101},
+    {"project": "proj", "query": "de\x00ploy"},
+])
+async def test_search_refuses_bad_requests(client, auth_headers, body):
+    response = await client.post(f"{V1}/search", json=body, headers=auth_headers)
+    assert response.status_code == 422
+
+
+async def test_a_read_key_searches_and_a_capture_key_does_not(client, session):
+    read = await _key(session, "read")
+    capture = await _key(session, "capture")
+    body = {"project": "proj", "query": "deploy"}
+    assert (await client.post(f"{V1}/search", json=body, headers=read)).status_code == 200
+    assert (await client.post(f"{V1}/search", json=body, headers=capture)).status_code == 403
