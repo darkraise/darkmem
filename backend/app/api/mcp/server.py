@@ -756,6 +756,48 @@ async def worklog_entries(
 
 @mcp.tool(
     description=(
+        "Search a project's work log by words and by meaning: entries whose "
+        "text matches the query (the whole body) fused by rank with entries "
+        "whose meaning is close (the first 8,000 characters), across every "
+        "workstream unless workstream (a key) or kind narrows it; limit "
+        "1-100. Never returns a memory. Each hit carries the entry, its "
+        "workstream key, rrf_score and the arms that found it; semantic_ran "
+        "is false when only the keyword arm could run."
+    )
+)
+async def worklog_search(
+    project: str,
+    query: str,
+    workstream: str | None = None,
+    kind: str | None = None,
+    limit: int = 20,
+) -> str:
+    from app.schemas.worklog import WorklogSearchRequest
+    from app.services import worklog
+
+    body = WorklogSearchRequest(
+        project=project,
+        query=query,
+        workstream=workstream,
+        kind=kind,
+        limit=_worklog_limit(limit, worklog.MAX_SEARCH_LIMIT),
+    )
+    llm = _pipeline.llm if _pipeline is not None else None
+    async with async_session_factory() as session:
+        answer = await worklog.search(
+            session,
+            llm,
+            project=body.project,
+            query=body.query,
+            workstream=body.workstream,
+            kind=body.kind,
+            limit=body.limit,
+        )
+    return json.dumps(answer)
+
+
+@mcp.tool(
+    description=(
         "Update a work-log workstream: state 'closed' when the work is finished "
         "(or 'open' to reopen), retain true to exempt it from retention, a new "
         "title, or properties to merge in. null when it does not exist."

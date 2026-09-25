@@ -34,13 +34,14 @@ def _ctx(headers):
 def test_each_tool_has_the_scope_the_spec_names():
     assert {name: TOOL_SCOPES[name] for name in (
         "worklog_append", "worklog_update", "worklog_resume",
-        "worklog_workstreams", "worklog_entries", "worklog_purge",
+        "worklog_workstreams", "worklog_entries", "worklog_search", "worklog_purge",
     )} == {
         "worklog_append": "capture",
         "worklog_update": "capture",
         "worklog_resume": "read",
         "worklog_workstreams": "read",
         "worklog_entries": "read",
+        "worklog_search": "read",
         "worklog_purge": "admin",
     }
 
@@ -162,3 +163,56 @@ async def test_append_answers_seq_conflict_where_the_route_answers_409(mcp_on_th
         "expected_last_seq": 0,
         "current_last_seq": first["last_seq"],
     }
+
+
+async def test_search_over_mcp_fuses_both_arms(mcp_on_the_test_session, session, monkeypatch):
+    from types import SimpleNamespace
+
+    from app.api.mcp import server
+    from app.services.embedder_registry import embedder_registry
+    from app.services.worklog_embeddings import embed_entries
+    from tests.test_worklog_search import SEARCH_FINGERPRINT, TopicEmbedder
+
+    embedder_registry.forget(SEARCH_FINGERPRINT)
+    llm = TopicEmbedder()
+    monkeypatch.setattr(server, "_pipeline", SimpleNamespace(llm=llm))
+    appended = json.loads(await server.worklog_append(
+        project="proj",
+        workstream="plan-a",
+        entries=[
+            {"kind": "note", "body": "The deploy script now retries"},
+            {"kind": "note", "body": "Release notes drafted"},
+        ],
+        run_key="run-1",
+    ))
+    await embed_entries(session, llm, entry_ids=appended["entry_ids"])
+
+    answer = json.loads(await server.worklog_search(project="proj", query="deploy"))
+    assert answer["semantic_ran"] is True
+    assert [item["entry"]["id"] for item in answer["items"]] == appended["entry_ids"]
+    assert answer["items"][0]["arms"] == ["keyword", "semantic"]
+    embedder_registry.forget(SEARCH_FINGERPRINT)
+
+
+async def test_search_over_mcp_without_a_pipeline_is_keyword_only(mcp_on_the_test_session, monkeypatch):
+    from app.api.mcp import server
+
+    monkeypatch.setattr(server, "_pipeline", None)
+    await server.worklog_append(
+        project="proj",
+        workstream="plan-a",
+        entries=[{"kind": "note", "body": "Task 3 fixed the flaky migration test"}],
+        run_key="run-1",
+    )
+    answer = json.loads(await server.worklog_search(project="proj", query="migration"))
+    assert answer["semantic_ran"] is False
+    assert [item["entry"]["body"] for item in answer["items"]] == [
+        "Task 3 fixed the flaky migration test",
+    ]
+
+
+async def test_search_over_mcp_refuses_an_unknown_kind(mcp_on_the_test_session):
+    from app.api.mcp import server
+
+    with pytest.raises(ValueError):
+        await server.worklog_search(project="proj", query="deploy", kind="log")

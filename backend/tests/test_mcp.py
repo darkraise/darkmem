@@ -66,6 +66,7 @@ EXPECTED_TOOLS: frozenset[str] = frozenset({
     "worklog_entries",
     "worklog_purge",
     "worklog_resume",
+    "worklog_search",
     "worklog_update",
     "worklog_workstreams",
 })

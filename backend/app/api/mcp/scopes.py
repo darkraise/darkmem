@@ -73,6 +73,7 @@ READ_TOOLS: frozenset[str] = frozenset({
     "worklog_resume",
     "worklog_workstreams",
     "worklog_entries",
+    "worklog_search",
     "code_blast_radius",
     "code_changes",
     "code_communities",
