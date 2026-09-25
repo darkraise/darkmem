@@ -4,7 +4,8 @@ Date: 2026-09-23
 Status: design, owner-approved section by section on 2026-09-23. Increment 1
 planned (`docs/superpowers/plans/2026-09-23-work-log-increment-1-store-and-verbs.md`);
 amended the same day with four corrections found while planning, each marked
-"Amended 2026-09-23" below.
+"Amended 2026-09-23" below. Increment 1 done; increment 2 planned
+(`docs/superpowers/plans/2026-09-25-work-log-increment-2-search.md`).
 Register: `docs/superpowers/registers/2026-09-23-work-log-lane.md`
 Companion spec (client side): `darkraise-ai-plugins`,
 `docs/superpowers/specs/2026-09-23-darkmem-mirror-design.md`
