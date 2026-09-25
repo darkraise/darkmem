@@ -508,6 +508,13 @@ PARITY_TABLE: tuple[Surface, ...] = (
         status=TWO_DOOR,
         rest=(("POST", f"{V1}/worklog/entries"),),
         mcp=("worklog_append",),
+        note=(
+            "Stated wire asymmetry: the optional expected_last_seq compare-and-set "
+            "answers 409 on the route and a seq_conflict envelope from the tool -- "
+            "one refusal produced by WorklogSeqConflict on both doors, raised under "
+            "the workstream row lock so nothing of the append is kept -- and both "
+            "doors echo last_seq, the seq a caller preconditions its next append on."
+        ),
     ),
     Surface(
         name="worklog.resume",

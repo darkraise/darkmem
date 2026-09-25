@@ -79,12 +79,19 @@ class WorklogAppendRequest(_Storable):
     client: str | None = Field(default=None, max_length=200)
     properties: dict = Field(default_factory=dict)
     run_key: str | None = Field(default=None, max_length=500)
+    expected_last_seq: int | None = Field(default=None, ge=0)
     entries: list[WorklogEntryIn] = Field(min_length=1, max_length=MAX_ENTRIES_PER_APPEND)
 
     @field_validator("properties")
     @classmethod
     def _properties_fit(cls, value: dict) -> dict:
         return _bounded(value)
+
+    @model_validator(mode="after")
+    def _one_kind_under_a_precondition(self):
+        if self.expected_last_seq is not None and len({entry.kind for entry in self.entries}) != 1:
+            raise ValueError("expected_last_seq needs every entry of the append to share one kind")
+        return self
 
 
 class WorkstreamUpdateRequest(_Storable):
@@ -128,6 +135,7 @@ class WorklogEntryOut(BaseModel):
 class WorklogAppendResponse(BaseModel):
     workstream: WorkstreamOut
     entry_ids: list[UUID]
+    last_seq: int
 
 
 class WorklogResumeResponse(BaseModel):

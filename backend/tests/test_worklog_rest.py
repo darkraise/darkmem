@@ -214,3 +214,56 @@ def test_the_schema_both_doors_share_refuses_a_nul():
         WorklogAppendRequest(project="proj", workstream="plan-a", entries=[{"kind": "note", "body": "\x00"}])
     with pytest.raises(ValidationError):
         WorkstreamUpdateRequest(properties={"p": "\x00"})
+
+
+async def test_append_answers_its_last_seq(client, auth_headers):
+    response = await client.post(f"{V1}/entries", json=_append_body(), headers={**auth_headers, **RUN})
+    assert response.status_code == 201, response.text
+    body = response.json()
+    resumed = await client.get(
+        f"{V1}/resume", params={"project": "proj", "workstream": "plan-a"}, headers=auth_headers
+    )
+    # The default body's last entry is its ledger entry.
+    [last] = resumed.json()["ledger"]
+    assert last["id"] == body["entry_ids"][-1]
+    assert body["last_seq"] == last["seq"]
+
+
+async def test_a_stale_expected_last_seq_answers_409(client, auth_headers):
+    headers = {**auth_headers, **RUN}
+    ledger = [{"kind": "ledger", "body": "Task 1: complete\n"}]
+    first = await client.post(
+        f"{V1}/entries", json=_append_body(entries=ledger, expected_last_seq=0), headers=headers
+    )
+    assert first.status_code == 201, first.text
+    stale = await client.post(
+        f"{V1}/entries", json=_append_body(entries=ledger, expected_last_seq=0), headers=headers
+    )
+    assert stale.status_code == 409
+    assert f"but it is {first.json()['last_seq']}" in stale.json()["detail"]
+    fresh = await client.post(
+        f"{V1}/entries",
+        json=_append_body(entries=ledger, expected_last_seq=first.json()["last_seq"]),
+        headers=headers,
+    )
+    assert fresh.status_code == 201, fresh.text
+
+
+async def test_the_schema_refuses_a_negative_expected_last_seq(client, auth_headers):
+    response = await client.post(
+        f"{V1}/entries",
+        json=_append_body(entries=[{"kind": "ledger", "body": "x\n"}], expected_last_seq=-1),
+        headers={**auth_headers, **RUN},
+    )
+    assert response.status_code == 422
+    assert "expected_last_seq" in response.text
+    assert "one kind" not in response.text
+
+
+async def test_the_schema_refuses_a_mixed_kind_precondition(client, auth_headers):
+    # The default body mixes a checkpoint and a ledger entry.
+    response = await client.post(
+        f"{V1}/entries", json=_append_body(expected_last_seq=0), headers={**auth_headers, **RUN}
+    )
+    assert response.status_code == 422
+    assert "one kind" in response.text

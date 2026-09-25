@@ -67,12 +67,16 @@ async def append_entries(
             properties=body.properties,
             actor=principal.actor,
             api_key_id=principal.api_key_id,
+            expected_last_seq=body.expected_last_seq,
         )
+    except worklog.WorklogSeqConflict as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
     except worklog.WorklogRejected as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     payload = {
         "workstream": worklog.serialize_workstream(result.workstream),
         "entry_ids": [str(entry_id) for entry_id in result.entry_ids],
+        "last_seq": result.last_seq,
     }
     await session.commit()
     return payload

@@ -1226,7 +1226,12 @@ exact appended text, so concatenating a workstream's ledger entries
 reproduces its file. The run key resolves as checkpoints resolve it; an
 undeclared run is refused. An append locks the workstream row
 (`SELECT … FOR UPDATE`, or the creating insert) first, serialising it
-against purge and retention deletes. `worklog_purge` and its REST twin are
+against purge and retention deletes. An optional `expected_last_seq` makes
+the append a compare-and-set on the newest entry of its one kind (0 when
+there is none), checked under that lock: a mismatch raises
+`WorklogSeqConflict` inside the savepoint, so nothing is written, created or
+reopened, and answers 409 / `seq_conflict`. Every append answers `last_seq`.
+`worklog_purge` and its REST twin are
 `admin`-scoped and strict-journal; payloads carry the workstream key and
 counts, never entry text. Nothing in the lane is extracted, ranked with
 memories or reachable from the vault.

@@ -141,3 +141,24 @@ async def test_a_workstream_purged_after_the_lookup_answers_null(
     monkeypatch.setattr(worklog, verb, purged_meanwhile)
     answer = await getattr(server, tool)(project="proj", workstream="plan-a", **arguments)
     assert json.loads(answer) is None
+
+
+async def test_append_answers_seq_conflict_where_the_route_answers_409(mcp_on_the_test_session):
+    from app.api.mcp import server
+
+    ledger = [{"kind": "ledger", "body": "Task 1\n"}]
+    first = json.loads(await server.worklog_append(
+        project="proj", workstream="plan-a", entries=ledger, run_key="run-1", expected_last_seq=0,
+    ))
+    assert isinstance(first["last_seq"], int)
+    stale = json.loads(await server.worklog_append(
+        project="proj", workstream="plan-a", entries=ledger, run_key="run-1", expected_last_seq=0,
+    ))
+    assert stale == {
+        "status": "seq_conflict",
+        "project": "proj",
+        "workstream": "plan-a",
+        "kind": "ledger",
+        "expected_last_seq": 0,
+        "current_last_seq": first["last_seq"],
+    }

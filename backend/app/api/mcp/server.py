@@ -604,7 +604,11 @@ def _worklog_limit(value: int, ceiling: int) -> int:
         "into memories and never returned by memory_search. Creates the "
         "workstream on first use and reopens a closed one. entries: 1-100 of "
         "{kind, body, properties?}. Needs a run identity: run_key or the "
-        "X-Darkmem-Origin header."
+        "X-Darkmem-Origin header. expected_last_seq (optional, entries of one "
+        "kind): append only if the workstream's newest entry of that kind has "
+        "that seq, 0 when it has none; otherwise nothing is written and the "
+        "answer is a seq_conflict naming the current seq. The answer's last_seq "
+        "is the expectation for your next append."
     )
 )
 async def worklog_append(
@@ -615,6 +619,7 @@ async def worklog_append(
     client: str | None = None,
     properties: dict | None = None,
     run_key: str | None = None,
+    expected_last_seq: int | None = None,
     ctx: Context | None = None,
 ) -> str:
     from app.schemas.worklog import WorklogAppendRequest
@@ -629,6 +634,7 @@ async def worklog_append(
         client=client,
         properties=properties or {},
         run_key=run_key,
+        expected_last_seq=expected_last_seq,
     )
     source = resolve_client_source(None, ctx, fallback=worklog.DOOR_SOURCE)
     resolved = resolve_checkpoint_origin(
@@ -647,12 +653,26 @@ async def worklog_append(
                 properties=body.properties,
                 actor=current_key_name() or source,
                 api_key_id=current_api_key_id(),
+                expected_last_seq=body.expected_last_seq,
             )
             payload = {
                 "workstream": worklog.serialize_workstream(result.workstream),
                 "entry_ids": [str(entry_id) for entry_id in result.entry_ids],
+                "last_seq": result.last_seq,
             }
             await session.commit()
+        except worklog.WorklogSeqConflict as exc:
+            # A structured refusal, as document_put's hash_conflict: the caller
+            # re-reads the workstream and retries. Its REST twin is a 409.
+            await session.rollback()
+            return json.dumps({
+                "status": "seq_conflict",
+                "project": body.project,
+                "workstream": body.workstream,
+                "kind": exc.kind,
+                "expected_last_seq": exc.expected,
+                "current_last_seq": exc.current,
+            })
         except Exception:
             await session.rollback()
             raise
