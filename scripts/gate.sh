@@ -238,7 +238,7 @@ run_gate "sdk build" 300 "$SDKS" \
 #
 # benchlib/bench_db.py resolves BENCH_DATABASE_URL at import time, separately
 # from TEST_DATABASE_URL above — the harness has its own database on
-# purpose (CLAUDE.md "Three databases, three purposes"), so it needs its own
+# purpose (CLAUDE.md, "Host environment"), so it needs its own
 # env var passed through here or it silently resets the shared unnumbered
 # darkmem_bench (T2.76).
 run_gate "benchlib tests" 900 "$BACKEND" \
