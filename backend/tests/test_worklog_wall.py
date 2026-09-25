@@ -200,3 +200,46 @@ def test_the_fact_store_scan_sees_a_planted_read():
     )
     assert _FACT_STORE.search("SELECT subject FROM knowledge_triples")
     assert not _FACT_STORE.search("await session.get(Workstream, workstream_id)")
+
+
+# The SQL-literal scan above cannot see an ORM read such as select(Memory),
+# so the models behind the memory tables are refused at the import.
+_MEMORY_MODELS_MODULE = "app.models.memory"
+_MEMORY_MODEL_NAMES = frozenset({"Memory", "MemoryBuffer", "Tag", "memory_tags", "memory"})
+
+
+def _imports_a_memory_model(source: str, package: str) -> bool:
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            if any(alias.name.startswith(_MEMORY_MODELS_MODULE) for alias in node.names):
+                return True
+        elif isinstance(node, ast.ImportFrom):
+            base = package.split(".")[: len(package.split(".")) - node.level + 1] if node.level else []
+            target = ".".join([*base, *([node.module] if node.module else [])])
+            if target.startswith(_MEMORY_MODELS_MODULE):
+                return True
+            if target == "app.models" and any(a.name in _MEMORY_MODEL_NAMES for a in node.names):
+                return True
+    return False
+
+
+@pytest.mark.parametrize("module", sorted(WORKLOG_SERVICE_LAYER))
+def test_no_work_log_module_imports_a_memory_model(module):
+    for reached in sorted(import_closure(BACKEND, module) | {module}):
+        path = module_path(reached, BACKEND)
+        if path is None:
+            continue
+        package = reached if path.name == "__init__.py" else reached.rpartition(".")[0]
+        assert not _imports_a_memory_model(path.read_text(encoding="utf-8"), package), (
+            f"{reached}, reached from {module}, imports a memory model"
+        )
+
+
+def test_the_model_scan_sees_a_planted_import():
+    assert _imports_a_memory_model("from app.models import Memory", "app.services")
+    assert _imports_a_memory_model("from app.models.memory import Tag", "app.services")
+    assert _imports_a_memory_model("import app.models.memory", "app.services")
+    assert _imports_a_memory_model("from .memory import Memory", "app.models")
+    assert _imports_a_memory_model("from ..models import MemoryBuffer", "app.services")
+    assert not _imports_a_memory_model("from app.models import Workstream", "app.services")
+    assert not _imports_a_memory_model("from .worklog import WorklogEntry", "app.models")
