@@ -11,6 +11,7 @@ Nothing here commits: the caller owns the transaction.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from types import SimpleNamespace
@@ -21,9 +22,15 @@ from sqlalchemy import and_, delete, func, insert, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.worklog import WorklogEntry, Workstream
 from app.services import project_registry
+from app.services.embedder_registry import child_table
 from app.services.events import record_event
+from app.services.rank_fusion import RankedList, fusion_fetch_depth, rrf_fuse
+from app.services.worklog_embeddings import PARENT_TABLE as EMBEDDING_PARENT
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "AppendResult",
@@ -32,8 +39,12 @@ __all__ = [
     "MAX_BODY_CHARS",
     "MAX_ENTRIES_PER_APPEND",
     "MAX_PROPERTIES_BYTES",
+    "MAX_QUERY_CHARS",
+    "MAX_SEARCH_LIMIT",
     "RESUME_LEDGER_TAIL",
     "RESUME_NOTES_CAP",
+    "SEARCH_ARMS",
+    "SEARCH_DEFAULT_LIMIT",
     "WorklogJournalWriteFailed",
     "WorklogRejected",
     "WorklogSeqConflict",
@@ -46,6 +57,7 @@ __all__ = [
     "properties_size",
     "purge_workstream",
     "resume",
+    "search",
     "serialize_entry",
     "serialize_workstream",
     "update_workstream",
@@ -62,6 +74,10 @@ MAX_ENTRIES_PER_APPEND = 100
 RESUME_LEDGER_TAIL = 20
 RESUME_NOTES_CAP = 50
 DOOR_SOURCE = "worklog"
+SEARCH_ARMS = ("keyword", "semantic")
+SEARCH_DEFAULT_LIMIT = 20
+MAX_SEARCH_LIMIT = 100
+MAX_QUERY_CHARS = 2_000
 
 
 class WorkstreamNotFound(LookupError):
@@ -408,7 +424,8 @@ def _parse_cursor(value: str) -> tuple[datetime, UUID]:
         raise ValueError(f"not a workstream cursor: {value!r}") from error
 
 
-_ENTRY_COLUMNS = "id, workstream_id, seq, run_key, kind, body, properties, created_at"
+_ENTRY_FIELDS = ("id", "workstream_id", "seq", "run_key", "kind", "body", "properties", "created_at")
+_ENTRY_COLUMNS = ", ".join(_ENTRY_FIELDS)
 # One statement on purpose: under READ COMMITTED every statement takes its own
 # snapshot, so reading the workstream and its entries separately could pair one
 # append's properties with another's checkpoint. Neither SET TRANSACTION (the
@@ -443,8 +460,7 @@ _RESUME = text(
 def _entry_from_row(row: Any) -> SimpleNamespace:
     return SimpleNamespace(**{
         name: getattr(row, f"e_{name}")
-        for name in ("id", "workstream_id", "seq", "run_key", "kind", "body",
-                     "properties", "created_at")
+        for name in _ENTRY_FIELDS
     })
 
 
@@ -537,3 +553,113 @@ async def list_entries(
         "items": [serialize_entry(e) for e in rows],
         "next_after": rows[-1].seq if len(rows) == limit else None,
     }
+
+
+_HIT_COLUMNS = ", ".join([*(f"e.{name}" for name in _ENTRY_FIELDS), "w.key AS workstream_key"])
+_KEYWORD_SEARCH = """
+    SELECT {columns}
+    FROM worklog_entries e
+    JOIN workstreams w ON w.id = e.workstream_id
+    CROSS JOIN plainto_tsquery('english', CAST(:query AS text)) q
+    WHERE w.project = CAST(:project AS text) AND e.search_vector @@ q{filters}
+    ORDER BY ts_rank(e.search_vector, q) DESC, e.seq DESC
+    LIMIT CAST(:depth AS integer)
+"""
+# Exact cosine distance over one project's vectors, reached through the
+# project btree index: the family has no HNSW index
+# (embedder_registry._EXACT_SCAN_PARENTS).
+_SEMANTIC_SEARCH = """
+    SELECT {columns}
+    FROM {table} v
+    JOIN worklog_entries e ON e.id = v.entry_id
+    JOIN workstreams w ON w.id = e.workstream_id
+    WHERE v.project = CAST(:project AS text){filters}
+    ORDER BY v.embedding <=> CAST(:vec AS vector), e.seq DESC
+    LIMIT CAST(:depth AS integer)
+"""
+
+
+async def search(
+    session: AsyncSession,
+    llm,
+    *,
+    project: str,
+    query: str,
+    workstream: str | None = None,
+    kind: str | None = None,
+    limit: int = SEARCH_DEFAULT_LIMIT,
+) -> dict[str, Any]:
+    """One project's entries matching `query` by words, by meaning or both, fused by RRF.
+
+    The keyword arm ranks the whole body; the semantic arm ranks the vectors
+    of each body's first 8,000 characters. It is skipped, with semantic_ran
+    false, when there is no orchestrator, the instance is read-only (a backup
+    worker makes no external call) or the query embed fails, and the keyword
+    arm answers alone. Each hit names the arms that found it.
+    """
+    if not query.strip():
+        raise ValueError("query must contain a non-space character")
+    if len(query) > MAX_QUERY_CHARS:
+        raise ValueError(f"query is longer than {MAX_QUERY_CHARS} characters")
+    if kind is not None and kind not in KINDS:
+        raise ValueError(f"kind must be one of {', '.join(KINDS)}, not {kind!r}")
+    if not 1 <= limit <= MAX_SEARCH_LIMIT:
+        raise ValueError(f"limit must be 1 to {MAX_SEARCH_LIMIT}, not {limit}")
+
+    scope: dict[str, Any] = {"project": project, "depth": fusion_fetch_depth(limit)}
+    filters = ""
+    if workstream is not None:
+        filters += " AND w.key = CAST(:workstream AS text)"
+        scope["workstream"] = workstream
+    if kind is not None:
+        filters += " AND e.kind = CAST(:kind AS text)"
+        scope["kind"] = kind
+
+    keyword = (await session.execute(
+        text(_KEYWORD_SEARCH.format(columns=_HIT_COLUMNS, filters=filters)),
+        {**scope, "query": query},
+    )).mappings().all()
+
+    semantic: list = []
+    semantic_ran = False
+    if llm is not None and not settings.read_only:
+        try:
+            vector, fingerprint = await llm.embed(query)
+        except Exception as error:  # noqa: BLE001 - the keyword arm still answers
+            logger.warning("worklog.search: the query embed failed; keyword arm only: %s", error)
+        else:
+            semantic_ran = True
+            table = child_table(EMBEDDING_PARENT, fingerprint)
+            # No child table means nothing is embedded under this fingerprint
+            # yet: an empty arm, not a fault.
+            exists = (await session.execute(
+                text("SELECT to_regclass(:name)"), {"name": table},
+            )).scalar_one_or_none()
+            if exists is not None:
+                semantic = (await session.execute(
+                    text(_SEMANTIC_SEARCH.format(columns=_HIT_COLUMNS, table=table, filters=filters)),
+                    {**scope, "vec": str(list(vector))},
+                )).mappings().all()
+
+    rows = {str(row["id"]): row for row in (*keyword, *semantic)}
+    found_by = {
+        "keyword": {str(row["id"]) for row in keyword},
+        "semantic": {str(row["id"]) for row in semantic},
+    }
+    fused = rrf_fuse(
+        [
+            RankedList("keyword", [{"id": str(row["id"])} for row in keyword], 1.0),
+            RankedList("semantic", [{"id": str(row["id"])} for row in semantic], 1.0),
+        ],
+        limit,
+    )
+    items = []
+    for hit in fused:
+        row = rows[hit["id"]]
+        items.append({
+            "entry": serialize_entry(SimpleNamespace(**{name: row[name] for name in _ENTRY_FIELDS})),
+            "workstream": row["workstream_key"],
+            "rrf_score": hit["rrf_score"],
+            "arms": [arm for arm in SEARCH_ARMS if hit["id"] in found_by[arm]],
+        })
+    return {"items": items, "semantic_ran": semantic_ran}
