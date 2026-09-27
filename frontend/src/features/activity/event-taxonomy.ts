@@ -50,6 +50,9 @@ const EVENT_TYPE_CATEGORY: Record<string, FeedCategory> = {
   // The Notion import's own row. Capture, the same tab the page lifecycle
   // events land on: it is a bulk write of pages into the tree.
   pages_imported: "capture",
+  // The memory-door warning (work-log spec §5). Capture, beside the `created`
+  // row the same capture journals: it annotates that capture.
+  capture_flagged: "capture",
   extracted: "pipeline",
   sources_changed: "pipeline",
   verified: "verification",

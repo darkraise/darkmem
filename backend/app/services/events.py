@@ -254,6 +254,9 @@ EVENT_TYPES: list[str] = [
     "workstream_closed",
     "workstream_reopened",
     "workstream_purged",
+    # The memory-door warning (spec 2026-09-23 §5): a capture capture_lint
+    # flagged. The payload carries signal names only, never the content.
+    "capture_flagged",
     # T3.07's research run, landed with its emitter on the same reasoning.
     # `object_type='system'`: a run is not any one memory, and the memories it
     # filed are named in the payload.

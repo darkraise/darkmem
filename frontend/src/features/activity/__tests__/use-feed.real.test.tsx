@@ -48,6 +48,31 @@ describe("useFeed (DEMO off — real /events)", () => {
     expect(result.current.events[0]!.badge).toBe("superseded")
   })
 
+  it("names a capture_flagged row's signals", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({
+      items: [
+        {
+          id: 2,
+          created_at: "2026-09-27T18:55:00Z",
+          event_type: "capture_flagged",
+          object_type: "memory",
+          object_id: "11111111-2222-3333-4444-555555555555",
+          project: "darkmem",
+          actor: null,
+          api_key_id: null,
+          source: null,
+          payload: { signals: ["commit_ref", "tally"] },
+        },
+      ],
+      total: 1,
+    })
+    const { result } = renderHook(() => useFeed(), { wrapper })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.events[0]!.category).toBe("capture")
+    expect(result.current.events[0]!.text).toContain("signals: commit_ref, tally")
+  })
+
   it("surfaces a failed load as isError, not as an empty feed", async () => {
     vi.mocked(apiFetch).mockRejectedValue(new Error("boom"))
     const { result } = renderHook(() => useFeed(), { wrapper })

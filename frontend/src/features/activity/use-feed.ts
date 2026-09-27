@@ -47,7 +47,12 @@ function fromEventLog(entry: EventLogEntry): FeedRowData {
     .join(" ")
   const outcome =
     typeof entry.payload.outcome === "string" ? entry.payload.outcome : null
-  const text = [object, entry.project ? `· project ${entry.project}` : null, outcome]
+  const raw = entry.payload.signals
+  const signals =
+    Array.isArray(raw) && raw.every((s) => typeof s === "string")
+      ? `signals: ${raw.join(", ")}`
+      : null
+  const text = [object, entry.project ? `· project ${entry.project}` : null, outcome, signals]
     .filter(Boolean)
     .join(" ")
   return {
