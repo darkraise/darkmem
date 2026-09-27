@@ -642,6 +642,10 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "GET /api/v1/documents",
     # The sync manifest: uri, hash and time per document, no content at all.
     "GET /api/v1/documents/manifest",
+    # A document's revisions: the contents its filings wrote, with hash, actor
+    # and time. Document content crosses, never a `memories` row.
+    "GET /api/v1/documents/{document_id}/revisions",
+    "GET /api/v1/documents/{document_id}/revisions/{revision_id}",
     "GET /api/v1/documents/{document_id}/summary",
     # The summarize trigger. Same classification as its GET twin: the prose
     # is generated from this document's own blocks, so document content
@@ -975,6 +979,7 @@ MCP_TOOLS_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "mcp:document_search",
     "mcp:document_outline",
     "mcp:document_get",
+    "mcp:document_revisions",
     "mcp:document_delete",
     # The subtree delete's MCP half. Same reason as its REST twin: it removes
     # documents and answers a count, and no `memories` row crosses it.
