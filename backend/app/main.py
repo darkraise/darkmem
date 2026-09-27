@@ -1003,8 +1003,9 @@ async def _validation_exception_handler(_request, exc: RequestValidationError):
 
 
 @app.exception_handler(DBAPIError)
-async def _read_only_refusal(_request, exc: DBAPIError):
-    """SQLSTATE 42501 -> 403 `read_only`, everything else untouched.
+async def _database_refusal(_request, exc: DBAPIError):
+    """SQLSTATE 42501 -> 403 `read_only`, 22021 -> 422 `invalid_text`,
+    everything else untouched.
 
     The SELECT-only viewer role refusing a write is the read-only worker
     working as designed (review B1: enforcement below every code path). One
@@ -1020,12 +1021,22 @@ async def _read_only_refusal(_request, exc: DBAPIError):
     Registered on `DBAPIError` rather than `ProgrammingError` because that is
     the base every driver-level error inherits from; asyncpg's
     `InsufficientPrivilegeError.sqlstate` is where the code actually lives.
+
+    22021 is text Postgres cannot store (a NUL byte), which no request bound
+    catches: it surfaces only when the server decodes the parameter.
     """
-    if getattr(getattr(exc, "orig", None), "sqlstate", None) == "42501":
+    sqlstate = getattr(getattr(exc, "orig", None), "sqlstate", None)
+    if sqlstate == "42501":
         return _error_response(
             403,
             "read_only",
             "This instance is read-only; writes are refused at the database.",
+        )
+    if sqlstate == "22021":
+        return _error_response(
+            422,
+            "invalid_text",
+            "The request carries text the database cannot store, such as a NUL byte.",
         )
     raise exc
 

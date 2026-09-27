@@ -131,6 +131,18 @@ async def test_append_to_a_closed_workstream_reopens_it(session):
     ]
 
 
+async def test_a_refused_batch_leaves_a_closed_workstream_closed(session):
+    first = await _append(session)
+    await worklog.update_workstream(session, first.workstream.id, state="closed")
+    with pytest.raises(worklog.WorklogRejected):
+        await _append(session, entries=[{"kind": "ledger", "body": "x" * 65_537}])
+    kept = await worklog.get_workstream_by_id(session, first.workstream.id, for_update=True)
+    assert kept.state == "closed" and kept.closed_at is not None
+    assert [e for e, _ in await _events(session, first.workstream.id)] == [
+        "workstream_opened", "workstream_closed",
+    ]
+
+
 @pytest.mark.parametrize("count", [0, 101])
 async def test_append_refuses_a_batch_outside_1_to_100(session, count):
     with pytest.raises(ValueError):
@@ -230,9 +242,18 @@ def test_serializers_are_json_safe():
         id=uuid.uuid4(), seq=7, workstream_id=ws.id, run_key="r", kind="note",
         body="b", properties={}, created_at=now,
     )
-    json.dumps(worklog.serialize_workstream(ws))
-    json.dumps(worklog.serialize_entry(entry))
-    assert worklog.serialize_entry(entry)["seq"] == 7
+    served_ws = json.loads(json.dumps(worklog.serialize_workstream(ws)))
+    served_entry = json.loads(json.dumps(worklog.serialize_entry(entry)))
+    assert set(served_ws) == {
+        "id", "project", "key", "title", "client", "state", "closed_at", "retain",
+        "properties", "last_entry_at", "created_at", "updated_at",
+    }
+    assert set(served_entry) == {
+        "id", "workstream_id", "seq", "run_key", "kind", "body", "properties", "created_at",
+    }
+    assert served_entry["seq"] == 7
+    for stamp in (served_ws["last_entry_at"], served_ws["created_at"], served_entry["created_at"]):
+        assert datetime.fromisoformat(stamp) == now
 
 
 # ── Races, on independent committed connections ──────────────────────────
@@ -413,6 +434,19 @@ async def test_list_workstreams_pages_by_creation_and_ignores_later_appends(sess
     assert rest["next_before"] is None
 
 
+async def test_list_workstreams_breaks_a_created_at_tie_on_id(session):
+    for key in ("t1", "t2", "t3"):
+        await _append(session, key=key)
+    await session.execute(text("UPDATE workstreams SET created_at = '2026-09-01T00:00:00+00:00'"))
+    session.expire_all()
+    ids = (await session.execute(
+        select(Workstream.id).order_by(Workstream.id.desc())
+    )).scalars().all()
+    first = await worklog.list_workstreams(session, project="proj", limit=2)
+    rest = await worklog.list_workstreams(session, project="proj", before=first["next_before"], limit=2)
+    assert [w["id"] for w in first["items"] + rest["items"]] == [str(i) for i in ids]
+
+
 async def test_list_workstreams_filters_by_state_and_project(session):
     await _append(session, key="open-one")
     closing = (await _append(session, key="closed-one")).workstream
@@ -439,6 +473,17 @@ async def test_list_entries_pages_forward_by_seq(session):
     last = await worklog.list_entries(session, workstream_id=ws.id, after=second["next_after"], limit=2)
     assert [e["body"] for e in last["items"]] == ["4\n"]
     assert last["next_after"] is None
+
+
+async def test_list_entries_filters_by_kind(session):
+    await _append(session, entries=[
+        {"kind": "ledger", "body": "l\n"},
+        {"kind": "note", "body": "n"},
+        {"kind": "checkpoint", "body": "c"},
+    ])
+    ws = await worklog.get_workstream(session, project="proj", key="plan-a")
+    notes = await worklog.list_entries(session, workstream_id=ws.id, kind="note")
+    assert [(e["kind"], e["body"]) for e in notes["items"]] == [("note", "n")]
 
 
 async def test_list_entries_filters_by_since(session):
@@ -584,3 +629,59 @@ async def test_two_appends_expecting_the_same_seq_admit_exactly_one(committed):
             {"p": RACE_PROJECT},
         )).scalars().all()
     assert bodies == ["one\n"]
+
+
+async def _open_race_workstream(factory, key) -> tuple[uuid.UUID, int]:
+    async with factory() as setup:
+        result = await worklog.append(
+            setup, project=RACE_PROJECT, key=key, run_key="r",
+            entries=[{"kind": "ledger", "body": "zero\n"}],
+        )
+        await setup.commit()
+        return result.workstream.id, result.last_seq
+
+
+async def test_an_append_waiting_on_a_close_reads_the_closed_row(committed):
+    # The reopen UPDATE takes the same row lock, so only the transition shows
+    # the SELECT's own lock: read before the close commits, the append would
+    # see an open row, continue it, and journal no reopening.
+    ws_id, _ = await _open_race_workstream(committed, "close-race")
+    async with committed() as closer, committed() as appender:
+        await worklog.update_workstream(closer, ws_id, state="closed")
+        racing = asyncio.create_task(worklog.append(
+            appender, project=RACE_PROJECT, key="close-race", run_key="r",
+            entries=[{"kind": "note", "body": "late"}],
+        ))
+        await asyncio.sleep(0.3)
+        assert not racing.done(), "the append must wait on the close's row lock"
+        await closer.commit()
+        result = await racing
+        await appender.commit()
+    assert result.workstream.state == "open"
+    async with committed() as check:
+        journalled = [e for e, _ in await _events(check, ws_id)]
+    assert journalled[-2:] == ["workstream_closed", "workstream_reopened"]
+
+
+async def test_two_appends_to_an_existing_workstream_expecting_one_seq_admit_one(committed):
+    ws_id, seq = await _open_race_workstream(committed, "cas-existing")
+    async with committed() as first, committed() as second:
+        await worklog.append(
+            first, project=RACE_PROJECT, key="cas-existing", run_key="r",
+            entries=[{"kind": "ledger", "body": "one\n"}], expected_last_seq=seq,
+        )
+        racing = asyncio.create_task(worklog.append(
+            second, project=RACE_PROJECT, key="cas-existing", run_key="r",
+            entries=[{"kind": "ledger", "body": "two\n"}], expected_last_seq=seq,
+        ))
+        await asyncio.sleep(0.3)
+        assert not racing.done(), "the second append must wait on the first's row lock"
+        await first.commit()
+        with pytest.raises(worklog.WorklogSeqConflict):
+            await racing
+        await second.rollback()
+    async with committed() as check:
+        bodies = (await check.execute(
+            select(WorklogEntry.body).where(WorklogEntry.workstream_id == ws_id).order_by(WorklogEntry.seq)
+        )).scalars().all()
+    assert bodies == ["zero\n", "one\n"]

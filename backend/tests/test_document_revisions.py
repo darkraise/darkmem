@@ -358,6 +358,49 @@ async def test_the_tool_refuses_a_document_that_does_not_exist(session, mcp_serv
         await mcp_server.document_revisions(project="proj", uri="nowhere.md")
 
 
+@pytest.mark.parametrize("paging", [{"before": str(uuid.uuid4())}, {"limit": 5}])
+async def test_the_tool_refuses_paging_beside_a_revision_id(session, mcp_server, paging):
+    import json
+
+    filed = await _put(session, "# A\n\nOne.\n")
+    answer = json.loads(await mcp_server.document_revisions(
+        document_id=filed.document_id, revision_id=str(uuid.uuid4()), **paging,
+    ))
+    assert answer["status"] == "invalid_mode"
+
+
+@pytest.mark.parametrize("arguments,match", [
+    ({"before": "nope"}, "before is not a revision id"),
+    ({"revision_id": "nope"}, "revision_id is not a revision id"),
+])
+async def test_the_tool_refuses_a_malformed_id(session, mcp_server, arguments, match):
+    filed = await _put(session, "# A\n\nOne.\n")
+    with pytest.raises(ValueError, match=match):
+        await mcp_server.document_revisions(document_id=filed.document_id, **arguments)
+
+
+async def test_the_tool_refuses_a_cursor_from_another_document(session, mcp_server):
+    import json
+
+    a = await _put(session, "# A\n\nOne.\n")
+    b = await _put(session, "# B\n\nB.\n", uri="superpowers/specs/b.md")
+    foreign = json.loads(await mcp_server.document_revisions(document_id=b.document_id))
+    with pytest.raises(ValueError, match="names no revision of this document"):
+        await mcp_server.document_revisions(
+            document_id=a.document_id, before=foreign["items"][0]["id"],
+        )
+
+
+async def test_the_tool_clamps_a_limit_below_one_to_one(session, mcp_server):
+    import json
+
+    await _put(session, "# A\n\nOne.\n")
+    second = await _put(session, "# A\n\nTwo.\n")
+    page = json.loads(await mcp_server.document_revisions(document_id=second.document_id, limit=0))
+    assert [i["content_hash"] for i in page["items"]] == [second.content_hash]
+    assert page["next_before"] is not None
+
+
 async def test_both_doors_serve_the_same_page(client, auth_headers, session, mcp_server):
     import json
 

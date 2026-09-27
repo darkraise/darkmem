@@ -608,7 +608,8 @@ def _worklog_limit(value: int, ceiling: int) -> int:
         "kind): append only if the workstream's newest entry of that kind has "
         "that seq, 0 when it has none; otherwise nothing is written and the "
         "answer is a seq_conflict naming the current seq. The answer's last_seq "
-        "is the expectation for your next append."
+        "is the seq of the append's last entry: when every entry shared one "
+        "kind, it is the expectation for your next append of that kind."
     )
 )
 async def worklog_append(
@@ -1121,7 +1122,8 @@ async def document_get(
         "fetch one with its content by revision_id. Page back by passing the "
         "answer's next_before as before; limit 1-200. Name the document by "
         "document_id, or by the project and uri it was filed under. null when "
-        "revision_id names no revision of that document."
+        "revision_id names no revision of that document. revision_id takes "
+        "neither before nor limit."
     )
 )
 async def document_revisions(
@@ -1130,11 +1132,28 @@ async def document_revisions(
     uri: str | None = None,
     revision_id: str | None = None,
     before: str | None = None,
-    limit: int = 50,
+    limit: int | None = None,
 ) -> str:
+    """
+    Args:
+        document_id: The document's id, from document_get or document_put.
+        project: With uri, the other way to name the document.
+        uri: The path the document was filed under.
+        revision_id: Fetch this one revision, content included.
+        before: A page's next_before; lists the revisions older than it.
+        limit: Revisions per page, clamped to 1-200; default 50.
+    """
     from app.services import document_revisions as revisions
     from app.services.document_door import resolve_document_target
 
+    if revision_id is not None and (before is not None or limit is not None):
+        return json.dumps({
+            "status": "invalid_mode",
+            "reason": (
+                "revision_id fetches one revision; before and limit page the "
+                "list -- never both"
+            ),
+        })
     async with async_session_factory() as session:
         target = await resolve_document_target(
             session, document_id=document_id, project=project, uri=uri,
@@ -1148,7 +1167,9 @@ async def document_revisions(
             session,
             document_id=target,
             before=before,
-            limit=max(1, min(limit, revisions.MAX_LIMIT)),
+            limit=max(1, min(
+                revisions.DEFAULT_LIMIT if limit is None else limit, revisions.MAX_LIMIT,
+            )),
         )
     return json.dumps(page)
 

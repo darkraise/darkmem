@@ -513,7 +513,9 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "answers 409 on the route and a seq_conflict envelope from the tool -- "
             "one refusal produced by WorklogSeqConflict on both doors, raised under "
             "the workstream row lock so nothing of the append is kept -- and both "
-            "doors echo last_seq, the seq a caller preconditions its next append on."
+            "doors echo last_seq, the seq of the append's last entry, which after a "
+            "single-kind append is what a caller preconditions its next append of "
+            "that kind on."
         ),
     ),
     Surface(

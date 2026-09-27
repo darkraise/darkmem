@@ -3,11 +3,14 @@ from __future__ import annotations
 
 import json
 from contextlib import asynccontextmanager
+from uuid import UUID
 
 import pytest
+from sqlalchemy import select
 
 from app.api.mcp.client_identity import ORIGIN_HEADER
 from app.api.mcp.scopes import TOOL_SCOPES
+from app.models.worklog import WorklogEntry
 
 
 @pytest.fixture
@@ -144,14 +147,17 @@ async def test_a_workstream_purged_after_the_lookup_answers_null(
     assert json.loads(answer) is None
 
 
-async def test_append_answers_seq_conflict_where_the_route_answers_409(mcp_on_the_test_session):
+async def test_append_answers_seq_conflict_where_the_route_answers_409(mcp_on_the_test_session, session):
     from app.api.mcp import server
 
     ledger = [{"kind": "ledger", "body": "Task 1\n"}]
     first = json.loads(await server.worklog_append(
         project="proj", workstream="plan-a", entries=ledger, run_key="run-1", expected_last_seq=0,
     ))
-    assert isinstance(first["last_seq"], int)
+    ledger_seq = (await session.execute(
+        select(WorklogEntry.seq).where(WorklogEntry.id == UUID(first["entry_ids"][0]))
+    )).scalar_one()
+    assert first["last_seq"] == ledger_seq
     stale = json.loads(await server.worklog_append(
         project="proj", workstream="plan-a", entries=ledger, run_key="run-1", expected_last_seq=0,
     ))
