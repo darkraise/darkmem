@@ -608,7 +608,8 @@ def _worklog_limit(value: int, ceiling: int) -> int:
         "kind): append only if the workstream's newest entry of that kind has "
         "that seq, 0 when it has none; otherwise nothing is written and the "
         "answer is a seq_conflict naming the current seq. The answer's last_seq "
-        "is the expectation for your next append."
+        "is the seq of the append's last entry: when every entry shared one "
+        "kind, it is the expectation for your next append of that kind."
     )
 )
 async def worklog_append(
