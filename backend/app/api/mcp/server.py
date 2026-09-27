@@ -225,7 +225,7 @@ async def memory_add(
             actor=current_key_name() or resolved_source,
         )
         if result.memory is not None:
-            return json.dumps(_memory_to_dict(result.memory))
+            return json.dumps({**_memory_to_dict(result.memory), "warnings": result.ack.warnings})
         return json.dumps(_ack_to_dict(result.ack))
 
 
@@ -401,7 +401,7 @@ async def memory_batch_add(
             or resolve_client_source(None, ctx, fallback=FALLBACK_SOURCE),
         )
         return json.dumps([
-            _memory_to_dict(r.memory) if r.memory is not None
+            {**_memory_to_dict(r.memory), "warnings": r.ack.warnings} if r.memory is not None
             else _ack_to_dict(r.ack)
             for r in results
         ])

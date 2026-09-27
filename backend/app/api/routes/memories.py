@@ -15,7 +15,7 @@ from app.api.mcp.client_identity import (
     resolve_source_agent,
 )
 from app.models.memory import Memory
-from app.schemas.memory import MemoryBatchCreate, MemoryBulkDelete, MemoryBulkDeleteResponse, MemoryCreate, MemoryLineageEntry, MemoryMergeRequest, MemoryResponse, MemorySearchRequest, MemoryUpdate, PaginatedMemoryResponse
+from app.schemas.memory import CapturedMemoryResponse, MemoryBatchCreate, MemoryBulkDelete, MemoryBulkDeleteResponse, MemoryCreate, MemoryLineageEntry, MemoryMergeRequest, MemoryResponse, MemorySearchRequest, MemoryUpdate, PaginatedMemoryResponse
 from app.schemas.reason import ReasonRequest, ReasonResponse
 from app.schemas.retrieval_trace import MemoryResultTrace
 from app.services.memory import MemoryService
@@ -48,6 +48,10 @@ def _to_response(memory: Memory) -> MemoryResponse:
         technologies=list(memory.technologies or []),
         confidence=memory.confidence,
     )
+
+
+def _captured(memory: Memory, warnings: list[str]) -> CapturedMemoryResponse:
+    return CapturedMemoryResponse(**_to_response(memory).model_dump(), warnings=warnings)
 
 
 async def _json_body(request: Request):
@@ -147,7 +151,7 @@ async def create_memory(
     )
     if result.memory is not None:
         response.status_code = status.HTTP_201_CREATED
-        return _to_response(result.memory)
+        return _captured(result.memory, result.ack.warnings)
     response.status_code = status.HTTP_202_ACCEPTED
     return result.ack
 
@@ -352,7 +356,7 @@ async def batch_create(
         else status.HTTP_202_ACCEPTED
     )
     return [
-        _to_response(r.memory) if r.memory is not None else r.ack
+        _captured(r.memory, r.ack.warnings) if r.memory is not None else r.ack
         for r in results
     ]
 

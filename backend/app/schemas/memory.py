@@ -193,6 +193,16 @@ class MemoryResponse(BaseModel):
     trace: MemoryResultTrace | None = None
 
 
+class CapturedMemoryResponse(MemoryResponse):
+    """A capture door's 201 answer: the processed memory plus the capture's warnings.
+
+    Only the capture routes serve it. ``MemoryResponse`` is what every memory
+    read serves, and a ``warnings`` field there would sit empty on every read.
+    """
+
+    warnings: list[str] = Field(default_factory=list)
+
+
 class PaginatedMemoryResponse(BaseModel):
     items: list[MemoryResponse]
     total: int

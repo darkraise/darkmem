@@ -99,3 +99,54 @@ async def test_the_mcp_doors_answer_warnings_on_the_ack(session, monkeypatch):
 
     acks = json.loads(await mcp_server.memory_batch_add(entries=[{"content": FACT}, {"content": LOG}]))
     assert [a["warnings"] for a in acks] == [[], capture_lint.lint(LOG)[1]]
+
+
+async def test_the_rest_doors_answer_warnings_beside_the_processed_memory(client, auth_headers):
+    from app.main import app
+    from app.schemas.memory import CapturedMemoryResponse
+    from tests.test_buffer_flush import RecordingPipeline
+
+    app.state.pipeline = RecordingPipeline()
+    try:
+        single = await client.post(
+            "/api/v1/memories?wait_process=true", json={"content": LOG}, headers=auth_headers,
+        )
+        batch = await client.post(
+            "/api/v1/memories/batch?wait_process=true",
+            json={"entries": [{"content": FACT}, {"content": LOG}]}, headers=auth_headers,
+        )
+    finally:
+        app.state.pipeline = None
+
+    assert single.status_code == 201
+    body = single.json()
+    assert set(body) == set(CapturedMemoryResponse.model_fields)
+    assert body["content"] == LOG
+    assert body["warnings"] == capture_lint.lint(LOG)[1]
+
+    assert batch.status_code == 201
+    assert [entry["warnings"] for entry in batch.json()] == [[], capture_lint.lint(LOG)[1]]
+
+    # A read serves MemoryResponse, which has no warnings field.
+    read = await client.get(f"/api/v1/memories/{body['id']}", headers=auth_headers)
+    assert "warnings" not in read.json()
+
+
+async def test_the_mcp_doors_answer_warnings_beside_the_processed_memory(session, monkeypatch):
+    from tests.test_buffer_flush import RecordingPipeline
+
+    mcp_server = _mcp_on(session, monkeypatch)
+    mcp_server.set_pipeline(RecordingPipeline())
+    try:
+        single = json.loads(await mcp_server.memory_add(content=LOG, wait_process=True))
+        batch = json.loads(await mcp_server.memory_batch_add(
+            entries=[{"content": LOG}, {"content": FACT}], wait_process=True,
+        ))
+    finally:
+        mcp_server.set_pipeline(None)
+
+    assert single["content"] == LOG
+    assert single["warnings"] == capture_lint.lint(LOG)[1]
+    assert [(entry["content"], entry["warnings"]) for entry in batch] == [
+        (LOG, capture_lint.lint(LOG)[1]), (FACT, []),
+    ]

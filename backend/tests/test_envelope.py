@@ -910,13 +910,13 @@ async def test_the_ack_wire_shape_the_frontend_must_bind_to(client, auth_headers
     assert accepted.json()["status"] == "accepted"
 
     # `wait_process=true` still returns the settled memory, not the ack, so
-    # the frontend's union is CaptureAck | MemoryResponse keyed on the status
-    # code, never one or the other alone.
-    from app.schemas.memory import MemoryResponse
+    # the frontend's union is CaptureAck | CapturedMemoryResponse keyed on the
+    # status code, never one or the other alone.
+    from app.schemas.memory import CapturedMemoryResponse
 
     settled = await client.post(
         "/api/v1/memories?wait_process=true",
         json={"content": "ack settled shape"}, headers=auth_headers,
     )
     if settled.status_code == 201:
-        assert set(settled.json()) == set(MemoryResponse.model_fields)
+        assert set(settled.json()) == set(CapturedMemoryResponse.model_fields)
