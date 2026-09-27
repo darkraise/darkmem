@@ -193,8 +193,13 @@ async def test_a_read_key_lists_revisions_and_reads_one(client, session, scripte
     assert "content" not in page["items"][0]
     assert page["next_before"] is None
 
+    newest = (await client.get(
+        f"{V1}/{document_id}/revisions", params={"limit": 1}, headers=read,
+    )).json()
+    assert newest["next_before"] == page["items"][0]["id"]
+
     older = await client.get(
-        f"{V1}/{document_id}/revisions", params={"before": page["items"][0]["id"]}, headers=read,
+        f"{V1}/{document_id}/revisions", params={"before": newest["next_before"]}, headers=read,
     )
     assert [i["content_hash"] for i in older.json()["items"]] == [first["content_hash"]]
 
@@ -212,6 +217,7 @@ async def test_the_revision_routes_refuse_what_names_nothing(client, session, sc
     b_revision = (await client.get(f"{V1}/{b['document_id']}/revisions", headers=read)).json()["items"][0]["id"]
 
     assert (await client.get(f"{V1}/{uuid.uuid4()}/revisions", headers=read)).status_code == 404
+    assert (await client.get(f"{V1}/{uuid.uuid4()}/revisions/{b_revision}", headers=read)).status_code == 404
     assert (await client.get(f"{V1}/{a['document_id']}/revisions/{b_revision}", headers=read)).status_code == 404
     assert (await client.get(
         f"{V1}/{a['document_id']}/revisions", params={"before": b_revision}, headers=read,
