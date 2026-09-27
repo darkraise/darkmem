@@ -4,7 +4,7 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
-## v1.12.0 — 2026-09-24
+## v1.12.0 — 2026-09-27
 
 **Working data has its own lane.** A coding client's checkpoints, progress
 ledger and notes to its next session go to a work log instead of into
