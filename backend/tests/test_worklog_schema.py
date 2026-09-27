@@ -91,6 +91,59 @@ async def test_the_state_checks_refuse(session, state, closed):
             )
 
 
+async def _insert_workstream(session, *, key="k", title=None, properties="{}"):
+    await session.execute(
+        text(
+            "INSERT INTO workstreams (id, project, key, title, properties) VALUES "
+            "(gen_random_uuid(), 'proj', CAST(:k AS text), CAST(:t AS text), CAST(:p AS jsonb))"
+        ),
+        {"k": key, "t": title, "p": properties},
+    )
+
+
+async def _insert_entry(session, wid, *, properties):
+    await session.execute(
+        text(
+            "INSERT INTO worklog_entries (id, workstream_id, run_key, kind, body, properties) "
+            "VALUES (gen_random_uuid(), CAST(:w AS uuid), 'run:1', 'note', 'n', CAST(:p AS jsonb))"
+        ),
+        {"w": str(wid), "p": properties},
+    )
+
+
+def _properties(chars):
+    return '{"p": "' + "x" * chars + '"}'
+
+
+@pytest.mark.parametrize("fields,accepted", [
+    ({"key": "k" * 200}, True),
+    ({"key": "k" * 201}, False),
+    ({"key": ""}, False),
+    ({"title": "t" * 500}, True),
+    ({"title": "t" * 501}, False),
+    ({"properties": _properties(16_000)}, True),
+    ({"properties": _properties(17_000)}, False),
+])
+async def test_the_workstream_bounds(session, fields, accepted):
+    if accepted:
+        await _insert_workstream(session, **fields)
+        return
+    with pytest.raises(DBAPIError):
+        async with session.begin_nested():
+            await _insert_workstream(session, **fields)
+
+
+@pytest.mark.parametrize("chars,accepted", [(16_000, True), (17_000, False)])
+async def test_the_entry_properties_bound(session, chars, accepted):
+    wid = await _workstream(session)
+    if accepted:
+        await _insert_entry(session, wid, properties=_properties(chars))
+        return
+    with pytest.raises(DBAPIError):
+        async with session.begin_nested():
+            await _insert_entry(session, wid, properties=_properties(chars))
+
+
 async def test_one_key_per_project(session):
     await _workstream(session, key="dup")
     with pytest.raises(DBAPIError):
