@@ -752,7 +752,8 @@ previews that outlive their memory; deleting a memory is not a content
 purge, and the DELETE route says so. The residue also includes refine
 summaries in `consolidated`/`undone`, contradiction counterparts in
 `verified`, `knowledge_triples.fact`, 24h of raw content in `memory_buffer`
-done rows, and `messages.context`. Pasted secrets go through the operator
+done rows, `messages.context`, and every earlier content of a document in
+`document_revisions` until the document is deleted. Pasted secrets go through the operator
 break-glass procedure `docs/runbook-content-purge.md`, **never an in-app
 journal-rewriting path**. **Write-time minimisation is the standing rule**:
 a new payload copies content only when a feature demonstrably needs it, and
@@ -890,8 +891,8 @@ tool, not a mode on `document_delete`, because a mode would inherit
 `capture`. Its REST twin `POST /api/v1/documents/delete` sits behind
 ordinary login auth, like every document route except the five a
 dr-superpowers mirror syncs through (filing, the by-uri read, the manifest
-and the two revision reads, which admit a scoped key). That asymmetry is deliberate and
-recorded on `docs/two-door-parity.md`'s `documents.write` row. `ratify` is
+and the two revision reads, which admit a scoped key). That asymmetry is
+deliberate and recorded on `docs/two-door-parity.md`'s `documents.write` row. `ratify` is
 outside the scope vocabulary: no MCP tool reaches `confirmed`. `tools/list`
 is deliberately **not** scope-filtered. A keyed capture stamps
 `events.api_key_id` and `events.actor` on the journalled row.
@@ -1082,7 +1083,7 @@ the same `document_door` functions; targets resolve through
   the row's `content_hash` (a filing that resolved no row compares with the
   newest revision under the row lock, so two racing first filings of one
   content write one), so the newest revision equals `content` until a block
-  verb edits it. An unchanged re-push, a stale `expected_hash`, a forced reparse
+  verb edits it or a bytes filing leaves `content` NULL. An unchanged re-push, a stale `expected_hash`, a forced reparse
   of identical bytes, a bytes source and every block verb write none, and a
   refused put rolls its revision back. Reads come newest first, pages carry
   no content and page back through `before` (a revision id):

@@ -4,7 +4,8 @@ Date: 2026-09-23
 Status: design, owner-approved section by section on 2026-09-23. Increment 1
 planned (`docs/superpowers/plans/2026-09-23-work-log-increment-1-store-and-verbs.md`);
 amended the same day with four corrections found while planning, each marked
-"Amended 2026-09-23" below. Increments 1 and 2 done; increment 3 planned
+"Amended 2026-09-23" below. Increments 1 and 2 done; increment 3 implemented on
+`feat/work-log-inc-3`, not yet merged
 (`docs/superpowers/plans/2026-09-25-work-log-increment-3-revisions.md`).
 Register: `docs/superpowers/registers/2026-09-23-work-log-lane.md`
 Companion spec (client side): `darkraise-ai-plugins`,
@@ -177,11 +178,11 @@ Every verb exists on both doors and runs through one service module,
 | Document revisions | `document_revisions` | `GET /api/v1/documents/{id}/revisions`, `GET .../revisions/{rev_id}` | read |
 | Document manifest | — (REST only) | `GET /api/v1/documents/manifest?project=&uri_prefix=` | read |
 
-Scope counts after the change: capture 13 → 14 (`worklog_append`,
-`worklog_update` in; `checkpoint_save` out), read 25 → 29 (`worklog_resume`,
+Scope counts after the change: capture 13 → 15 (`worklog_append`,
+`worklog_update` in), read 25 → 30 (`worklog_resume`,
 `worklog_workstreams`, `worklog_entries`, `worklog_search`,
-`document_revisions` in; `checkpoint_latest` out), admin 2 → 3
-(`worklog_purge`).
+`document_revisions` in), admin 2 → 3 (`worklog_purge`).
+`checkpoint_save` and `checkpoint_latest` stay served as the older pair.
 
 **API keys on REST.** A REST route accepts a `dmk_` key only when it declares
 `require_scope` (`app/api/auth.py`); `require_auth` decodes a login token and
