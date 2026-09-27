@@ -8,8 +8,9 @@ better" log, not release notes for strangers. The ladder is
 
 **Working data has its own lane.** A coding client's checkpoints, progress
 ledger and notes to its next session go to a work log instead of into
-memories, so none of it is extracted, ranked with memories or verified. This is
-the lane's first increment: the store and its verbs on both doors.
+memories, so none of it is extracted, ranked with memories or verified. This
+release carries the lane's first three increments: the store and its verbs on
+both doors, search over the log, and revisions of filed documents.
 
 ### Added
 
@@ -22,10 +23,22 @@ the lane's first increment: the store and its verbs on both doors.
 - **REST: `/api/v1/worklog`** — append, resume, list workstreams, list entries,
   update (state, retain, title, properties) and purge. Every route admits a
   scoped key: `capture` to write, `read` to read, `admin` to purge.
-- **MCP: six `worklog_*` tools** over the same service, addressing a workstream
-  by project and key. The catalogue is now 46 tools; `worklog_purge` is the
-  third `admin` tool, and it erases a workstream irrecoverably after
-  journaling `workstream_purged`.
+- **MCP: seven `worklog_*` tools** over the same service, addressing a
+  workstream by project and key. With `document_revisions` the catalogue is
+  now 48 tools; `worklog_purge` is the third `admin` tool, and it erases a
+  workstream irrecoverably after journaling `workstream_purged`.
+- **Work-log search.** `worklog_search` and `POST /api/v1/worklog/search`
+  (`read`) rank one project's entries by keyword and by meaning (the first
+  8,000 characters of each entry) and answer on the keyword arm alone, with
+  `semantic_ran: false`, when no embedder is reachable.
+- **Compare-and-set appends.** An append may carry `expected_last_seq`: when
+  the workstream's newest entry of that kind has another seq, nothing is
+  written and the answer is a 409, or a `seq_conflict` from the tool. Every
+  append answers `last_seq`.
+- **Document revisions.** Every filing that creates a document or changes its
+  content keeps that content as a revision, stamped with the key that filed
+  it. `GET /api/v1/documents/{id}/revisions[/{revision_id}]` (`read`) and
+  `document_revisions` list them newest first and fetch one with its content.
 - **The document sync routes admit keys.** `POST /api/v1/documents` takes a
   `capture` key and `GET /api/v1/documents/by-uri` a `read` key, and a new
   `GET /api/v1/documents/manifest` lists `{id, uri, content_hash, updated_at}`
@@ -38,6 +51,12 @@ the lane's first increment: the store and its verbs on both doors.
   to the work log and name what a memory must not carry: commit hashes, test
   and commit counts, task progress, `file:line` references, stack traces, raw
   output and session narration.
+- **`block_embedding_refresh` gains a `worklog_batch` knob, default 500.** It
+  is the only writer of work-log vectors. An install that stopped the job by
+  setting `batch` and `page_batch` to 0 starts embedding work-log entries after
+  this upgrade until `worklog_batch` is set to 0 as well.
+- Text Postgres cannot store, such as a NUL byte in a query parameter, answers
+  422 `invalid_text` instead of 500.
 - The schema baseline was regenerated, so a deploy is a drop-and-recreate.
 
 ## v1.11.0 — 2026-09-23
