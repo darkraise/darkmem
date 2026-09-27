@@ -39,7 +39,11 @@ _PATTERNS: dict[str, re.Pattern[str]] = {
         r"|\bbranch (?:was )?deleted\b|\bdeleted (?:the )?branch\b",
         re.IGNORECASE,
     ),
-    "file_line": re.compile(r"[\w./-]+\.[A-Za-z0-9]{1,6}:\d+\b"),
+    # Anchored to a run's start: an unanchored `[\w./-]+` tries every
+    # position inside a long run of those characters, which is quadratic
+    # on content with no match. The lookbehind makes it linear without
+    # changing which content matches.
+    "file_line": re.compile(r"(?<![\w./-])[\w./-]+\.[A-Za-z0-9]{1,6}:\d+\b"),
     "trace": re.compile(r"^Traceback|\bat [\w.$]+\.[\w$<>]+\(|\b\w*Exception:", re.MULTILINE),
     "narration": re.compile(r"(?i:\bthis session\b|\bnext steps\b)|\bTODO\b"),
 }

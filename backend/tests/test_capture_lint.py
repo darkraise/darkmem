@@ -1,6 +1,8 @@
 """The memory-door detector: each signal, both thresholds, the answer."""
 from __future__ import annotations
 
+import time
+
 import pytest
 
 from app.services import capture_lint
@@ -79,3 +81,13 @@ def test_the_warning_names_the_signals_and_where_the_content_belongs():
     assert "commit_ref, vcs_event" in text
     assert "worklog_append" in text
     assert "document_put" in text
+
+
+def test_a_long_run_of_word_characters_lints_in_linear_time():
+    """file_line must not try every position inside a long unmatched run."""
+    content = "a" * 200_000
+    started = time.perf_counter()
+    found, _warnings = capture_lint.lint(content)
+    elapsed = time.perf_counter() - started
+    assert "file_line" not in found
+    assert elapsed < 1.0
