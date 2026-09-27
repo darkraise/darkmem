@@ -9,3 +9,4 @@
 - 2026-09-24 `docs/superpowers/plans/2026-09-23-work-log-increment-1-store-and-verbs.md` — merged into `master` at e075d645
 - 2026-09-25 `docs/superpowers/plans/2026-09-25-worklog-append-precondition.md` — merged into `master` at d72858a9
 - 2026-09-25 `docs/superpowers/plans/2026-09-25-work-log-increment-2-search.md` — merged into `master` at a25fba64
+- 2026-09-27 `docs/superpowers/plans/2026-09-25-work-log-increment-3-revisions.md` — merged into `master` at e449f76a
