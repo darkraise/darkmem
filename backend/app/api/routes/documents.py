@@ -567,7 +567,7 @@ async def list_document_revisions_route(
             session, document_id=target, before=before, limit=limit,
         )
     except ValueError as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     return DocumentRevisionListResponse(**page)
 
 
@@ -646,11 +646,11 @@ async def create_document_summary(
         summary = await summarise_document(session, llm, document_id=document_id)
     except EmptySummaryError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc),
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc),
         ) from exc
     if summary is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="this document has no blocks to summarise",
         )
     await session.commit()
@@ -837,11 +837,11 @@ async def put_document_route(
             expected_hash=body.expected_hash,
         )
     except DocumentTooLarge as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     except UnsupportedSource as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     except DocumentParseError as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     except DocumentIsBlockFirst as exc:
         # 409, the conventions' conflict shape and the same status the
         # content-hash CAS uses: the caller made no mistake, the document is
@@ -892,7 +892,7 @@ async def rename_documents_route(
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except DocumentNothingToChange as exc:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)
+            status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)
         ) from exc
     await session.commit()
     return DocumentRenameResponse(renamed=renamed)
@@ -916,7 +916,7 @@ async def delete_subtree_route(
         )
     except DocumentNothingToChange as exc:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)
+            status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)
         ) from exc
     await session.commit()
     return DocumentSubtreeDeleteResponse(deleted=deleted)
@@ -949,7 +949,7 @@ async def patch_document_route(
         # 422 rather than 200: the body is well formed and names nothing to
         # do, which is the same class as a body pydantic would reject.
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)
+            status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)
         ) from exc
     await session.commit()
     return DocumentPatchResponse(document_id=str(document_id))
@@ -1147,9 +1147,9 @@ def _block_write_error(exc: Exception) -> HTTPException:
     if isinstance(exc, BlockTargetUnresolved):
         return HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
     if isinstance(exc, BlockCycleError):
-        return HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+        return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc))
     if isinstance(exc, (DocumentTooLarge, DocumentNotConvertible)):
-        return HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+        return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc))
     if isinstance(exc, DocumentHashConflict):
         # 409, not 422: the caller made no mistake -- it lost a race, or the
         # document moved since it last read it. The detail names both hashes

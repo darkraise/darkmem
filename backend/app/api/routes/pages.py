@@ -85,7 +85,7 @@ def _page_write_error(exc: Exception) -> HTTPException:
     if isinstance(exc, PageTargetUnresolved):
         return HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
     if isinstance(exc, (PageCycleError, PageNotRepresentable, PageTooLarge)):
-        return HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+        return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc))
     if isinstance(exc, PageParentTrashed):
         return HTTPException(status.HTTP_409_CONFLICT, str(exc))
     raise exc
@@ -187,12 +187,12 @@ async def patch_page_route(
     named = body.model_fields_set
     if "after_id" in named and "parent_id" not in named:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             "after_id needs parent_id; a reorder is a move naming the current parent",
         )
     if "title" not in named and "parent_id" not in named:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             "name at least one of title or parent_id",
         )
     try:
@@ -255,7 +255,7 @@ def _block_write_error(exc: Exception) -> HTTPException:
     if isinstance(exc, BlockTargetUnresolved):
         return HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
     if isinstance(exc, (BlockCycleError, DocumentTooLarge, PageBlockInvalid)):
-        return HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+        return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc))
     if isinstance(exc, PageBlockIdTaken):
         return HTTPException(status.HTTP_409_CONFLICT, str(exc))
     if isinstance(exc, DocumentHashConflict):

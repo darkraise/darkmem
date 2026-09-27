@@ -70,7 +70,7 @@ async def import_notion_route(
         # Before a byte is read: a gigabyte must never be accepted for a name
         # that cannot receive it.
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             f"no project named {project!r}",
         )
 
@@ -93,7 +93,7 @@ async def import_notion_route(
         ) from exc
     except (NotionArchiveInvalid, NotionExportInvalid, ImportTimedOut) as exc:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)
+            status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)
         ) from exc
 
     return ImportReportResponse(
