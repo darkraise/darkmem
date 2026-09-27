@@ -106,6 +106,23 @@ async def test_deleting_a_document_takes_its_links_tags_and_revisions(session):
 
 
 @pytest.mark.asyncio
+async def test_document_revisions_record_who_filed_and_page_newest_first(session):
+    columns = {
+        name: (data_type, nullable)
+        for name, data_type, nullable in (await session.execute(text(
+            "SELECT column_name, data_type, is_nullable FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = 'document_revisions'"
+        ))).all()
+    }
+    assert columns["actor"] == ("text", "YES")
+    assert columns["api_key_id"] == ("uuid", "YES")
+    index = await session.scalar(text(
+        "SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_document_revisions_document'"
+    ))
+    assert index.endswith("(document_id, created_at DESC, id DESC)")
+
+
+@pytest.mark.asyncio
 async def test_blocks_carry_a_search_vector_that_blanks_source_types(session):
     """The keyword arm indexes prose. Code and html text is source, and
     indexing it makes every note that mentions a function name a hit for it."""
