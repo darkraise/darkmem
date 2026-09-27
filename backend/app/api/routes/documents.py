@@ -1069,14 +1069,9 @@ async def document_blocks_by_uri_route(
 
     Registered before `/{document_id}` so the literal path wins the match.
     """
-    return await document_blocks_route(
-        document_id=None,
-        block_ids=block_ids,
-        project=project,
-        uri=uri,
+    return await _document_blocks_response(
+        session, document_id=None, block_ids=block_ids, project=project, uri=uri,
         include_content=include_content,
-        _user=None,
-        session=session,
     )
 
 
@@ -1101,8 +1096,24 @@ async def document_blocks_route(
 
     404 when the document does not exist -- see `document_outline_route`.
     Answers at `/{document_id}`; `/by-uri?project=&uri=` has its own keyed
-    handler, `document_blocks_by_uri_route`, which delegates here.
+    handler, `document_blocks_by_uri_route`; both answer through
+    `_document_blocks_response`.
     """
+    return await _document_blocks_response(
+        session, document_id=document_id, block_ids=block_ids, project=project,
+        uri=uri, include_content=include_content,
+    )
+
+
+async def _document_blocks_response(
+    session: AsyncSession,
+    *,
+    document_id: UUID | None,
+    block_ids: list[UUID] | None,
+    project: str | None,
+    uri: str | None,
+    include_content: bool,
+) -> DocumentBlocksResponse:
     target = await _resolve_target(
         session, document_id=document_id, project=project, uri=uri,
     )
