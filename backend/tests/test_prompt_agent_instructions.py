@@ -144,3 +144,16 @@ def test_the_instructions_route_working_data_to_the_work_log():
     assert "worklog_resume" in text
     assert "worklog_search" in text
     assert "goes to the work log" in text
+
+
+def test_the_instructions_explain_capture_warnings():
+    """A flagged capture is stored, so the agent must know what the warning asks."""
+    import asyncio
+
+    from app.api.mcp.server import mcp
+
+    text = prompt.PROMPTS["agent_instructions"]
+    assert "`warnings`" in text
+    tools = {t.name: t for t in asyncio.run(mcp.list_tools())}
+    for name in ("memory_add", "memory_batch_add"):
+        assert "warnings" in (tools[name].description or ""), f"{name} must name its warnings"

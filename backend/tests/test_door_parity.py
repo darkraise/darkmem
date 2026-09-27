@@ -617,6 +617,12 @@ PARITY_TABLE: tuple[Surface, ...] = (
         status=TWO_DOOR,
         rest=(("POST", f"{V1}/memories"),),
         mcp=("memory_add",),
+        note=(
+            "Both doors answer capture_lint's warnings: on the buffered ack, and "
+            "beside the processed memory on the wait_process path "
+            "(CapturedMemoryResponse on the route, a warnings key from the "
+            "tool). A flag never refuses."
+        ),
     ),
     Surface(
         name="memory.capture_batch",
@@ -625,7 +631,8 @@ PARITY_TABLE: tuple[Surface, ...] = (
         mcp=("memory_batch_add",),
         note=(
             "Both doors resolve identity on the raw entry dicts before "
-            "MemoryCreate validation, and both mirror the 1-100 cap."
+            "MemoryCreate validation, and both mirror the 1-100 cap. Both "
+            "answer capture_lint's warnings per entry."
         ),
     ),
     Surface(
