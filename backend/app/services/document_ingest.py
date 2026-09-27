@@ -358,6 +358,29 @@ async def _file_document_without_savepoint(
     rows = _resolve_tree(parse())
     await documents_repo.insert_blocks(session, resolved_id, rows)
 
+    # A post-image: the content this filing wrote, written only when the
+    # filing changed the row's hash. A forced reparse of identical bytes
+    # changed nothing a reader can see, and a bytes source has no text to keep.
+    # A filing that resolved no row may still have updated one: losing a
+    # first-filing race folds it onto the winner's row, whose prior hash it
+    # never read. By here it holds that row's lock, so the winner's revision
+    # has committed and is the prior hash; the upsert refuses a block-first
+    # row, so no block edit sits between that revision and the row.
+    if existing is not None:
+        changed = existing.content_hash != content_hash
+    else:
+        changed = await documents_repo.latest_revision_hash(session, resolved_id) != content_hash
+    if stored_content is not None and changed:
+        await documents_repo.insert_revision(
+            session,
+            revision_id=new_id(),
+            document_id=resolved_id,
+            content=stored_content,
+            content_hash=content_hash,
+            actor=actor,
+            api_key_id=api_key_id,
+        )
+
     # Counted, never refused: 27 corpus files exceed the budget and refusing
     # would block the import. An oversized block embeds truncated while the
     # filing reports success, so the count is the loud report invariant 14
