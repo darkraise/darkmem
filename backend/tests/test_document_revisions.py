@@ -215,3 +215,69 @@ async def test_a_direct_filing_after_a_block_edit_compares_with_the_row(session)
     assert [r[0] for r in await _revisions(session, filed.document_id)] == [
         "# A\n\nFirst.\n", "# A\n\nFirst.\n",
     ]
+
+
+async def test_a_page_lists_newest_first_without_content_and_pages_back(session):
+    from app.services.document_revisions import list_revisions
+
+    hashes = [
+        (await _put(session, f"# A\n\nVersion {n}.\n", actor="k-probe")).content_hash
+        for n in range(3)
+    ]
+    document_id = (await _put(session, "# A\n\nVersion 2.\n")).document_id
+
+    first = await list_revisions(session, document_id=document_id, limit=2)
+    assert first["document_id"] == document_id
+    assert [item["content_hash"] for item in first["items"]] == [hashes[2], hashes[1]]
+    assert set(first["items"][0]) == {"id", "content_hash", "actor", "api_key_id", "created_at"}
+    assert first["items"][0]["actor"] == "k-probe"
+    assert first["next_before"] == first["items"][1]["id"]
+
+    rest = await list_revisions(
+        session, document_id=document_id, before=first["next_before"], limit=2,
+    )
+    assert [item["content_hash"] for item in rest["items"]] == [hashes[0]]
+    assert rest["next_before"] is None
+
+
+async def test_a_full_last_page_answers_no_cursor(session):
+    from app.services.document_revisions import list_revisions
+
+    filed = await _put(session, "# A\n\nOnly.\n")
+    page = await list_revisions(session, document_id=filed.document_id, limit=1)
+    assert len(page["items"]) == 1
+    assert page["next_before"] is None
+
+
+async def test_a_cursor_from_another_document_is_refused(session):
+    from app.services.document_revisions import list_revisions
+
+    a = await _put(session, "# A\n\nA.\n")
+    b = await _put(session, "# B\n\nB.\n", uri="superpowers/specs/b.md")
+    other = (await list_revisions(session, document_id=b.document_id))["items"][0]["id"]
+    with pytest.raises(ValueError, match="names no revision"):
+        await list_revisions(session, document_id=a.document_id, before=other)
+    with pytest.raises(ValueError, match="not a revision id"):
+        await list_revisions(session, document_id=a.document_id, before="nope")
+
+
+@pytest.mark.parametrize("limit", [0, 201])
+async def test_a_limit_out_of_range_is_refused(session, limit):
+    from app.services.document_revisions import list_revisions
+
+    with pytest.raises(ValueError, match="limit"):
+        await list_revisions(session, document_id=uuid.uuid4(), limit=limit)
+
+
+async def test_one_revision_carries_its_content_and_only_under_its_document(session):
+    from app.services.document_revisions import get_revision, list_revisions
+
+    a = await _put(session, "# A\n\nFirst.\n")
+    b = await _put(session, "# B\n\nB.\n", uri="superpowers/specs/b.md")
+    revision_id = (await list_revisions(session, document_id=a.document_id))["items"][0]["id"]
+
+    one = await get_revision(session, document_id=a.document_id, revision_id=revision_id)
+    assert one["content"] == "# A\n\nFirst.\n"
+    assert one["document_id"] == a.document_id
+    assert one["content_hash"] == a.content_hash
+    assert await get_revision(session, document_id=b.document_id, revision_id=revision_id) is None
