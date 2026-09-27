@@ -17,6 +17,8 @@ Provides:
   - GET    /api/v1/documents/by-uri
   - DELETE /api/v1/documents/by-uri
   - GET    /api/v1/documents/manifest
+  - GET    /api/v1/documents/{document_id}/revisions
+  - GET    /api/v1/documents/{document_id}/revisions/{revision_id}
 
 **A caller that filed by path has a path, not an id.** The three verbs keyed
 on a document — outline, blocks, delete — each answer at two paths: the
@@ -98,6 +100,7 @@ from app.services.block_verbs import (
     update_block,
 )
 from app.services.document_ingest import DocumentHashConflict
+from app.services import document_revisions
 from app.services.document_parsers import DocumentParseError
 from app.repositories.documents import resolve_by_id
 from app.services.document_summary import (
@@ -112,9 +115,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
 # The routes a dr-superpowers mirror syncs through (spec 2026-09-23 §2) are the
-# only document doors a `dmk_` key reaches: filing, the by-uri read and the
-# manifest. Every other document route stays login-only; widening one is a
-# decision about what a leaked key can read or erase, made per route.
+# only document doors a `dmk_` key reaches: filing, the by-uri read, the
+# manifest and the two revision reads. Every other document route stays
+# login-only; widening one is a decision about what a leaked key can read or
+# erase, made per route.
 _require_capture = require_scope("capture")
 _require_read = require_scope("read")
 
@@ -523,6 +527,70 @@ async def document_manifest(
         items=items,
         next_after=items[-1].uri if len(items) == limit else None,
     )
+
+
+class DocumentRevisionItem(BaseModel):
+    id: str
+    content_hash: str
+    actor: str | None
+    api_key_id: str | None
+    created_at: datetime
+
+
+class DocumentRevisionListResponse(BaseModel):
+    document_id: str
+    items: list[DocumentRevisionItem]
+    next_before: str | None
+
+
+class DocumentRevisionResponse(DocumentRevisionItem):
+    document_id: str
+    content: str
+
+
+@router.get("/{document_id}/revisions", response_model=DocumentRevisionListResponse)
+async def list_document_revisions_route(
+    document_id: UUID,
+    before: UUID | None = Query(None),
+    limit: int = Query(
+        document_revisions.DEFAULT_LIMIT, ge=1, le=document_revisions.MAX_LIMIT
+    ),
+    _principal: Principal = Depends(_require_read),
+    session: AsyncSession = Depends(get_session),
+) -> DocumentRevisionListResponse:
+    """A document's revisions newest first, without content; page back with
+    `next_before`. 404 when the document does not exist, 422 when `before`
+    names no revision of it."""
+    target = await _resolve_target(session, document_id=document_id, project=None, uri=None)
+    try:
+        page = await document_revisions.list_revisions(
+            session, document_id=target, before=before, limit=limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    return DocumentRevisionListResponse(**page)
+
+
+@router.get(
+    "/{document_id}/revisions/{revision_id}", response_model=DocumentRevisionResponse
+)
+async def get_document_revision_route(
+    document_id: UUID,
+    revision_id: UUID,
+    _principal: Principal = Depends(_require_read),
+    session: AsyncSession = Depends(get_session),
+) -> DocumentRevisionResponse:
+    """One revision with the content it filed. 404 when the document does not
+    exist or the revision is not one of its own."""
+    target = await _resolve_target(session, document_id=document_id, project=None, uri=None)
+    found = await document_revisions.get_revision(
+        session, document_id=target, revision_id=revision_id,
+    )
+    if found is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, f"no revision {revision_id} in document {target}"
+        )
+    return DocumentRevisionResponse(**found)
 
 
 @router.get("", response_model=DocumentListResponse)

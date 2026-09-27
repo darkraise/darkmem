@@ -35,6 +35,23 @@ def test_every_template_has_aux_indexes():
     assert set(_AUX_INDEXES) == EXPECTED_PARENTS
 
 
+def test_the_baseline_downgrade_drops_every_family():
+    """The downgrade names each family's children by pattern, since the set of
+    fingerprints is unknown at migration time. A family missing from the list
+    keeps its children through a downgrade, stripped of their foreign keys by
+    the parents' CASCADE."""
+    baseline = (
+        Path(__file__).resolve().parent.parent
+        / "migrations" / "versions" / "0001_baseline.py"
+    ).read_text(encoding="utf-8")
+    downgrade = baseline.split("def downgrade() -> None:", 1)[1]
+    missing = sorted(
+        parent for parent in _TABLE_TEMPLATES
+        if f"LIKE '{parent}\\\\_\\\\_%'" not in downgrade
+    )
+    assert missing == []
+
+
 def test_every_template_is_parameterised_plain_sql():
     for parent, tmpl in _TABLE_TEMPLATES.items():
         assert "{name}" in tmpl, parent

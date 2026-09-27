@@ -395,6 +395,12 @@ BLOCK_CHANNEL_MODULES = frozenset({
     "app.services.page_attachment_cleanup",
     # Writes blocks through page_door._insert_page.
     "app.services.page_import",
+    # Reads the contents a document's filings wrote, which is document content
+    # a vault writer must not reach any more than a block row.
+    "app.services.document_revisions",
+    # The document repository reads and writes block rows and revision
+    # contents directly, so a vault writer importing it would reach both.
+    "app.repositories.documents",
 })
 
 _VAULT_RULES = ReachabilityRules(

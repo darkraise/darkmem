@@ -591,6 +591,26 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="documents.revisions",
+        status=TWO_DOOR,
+        rest=(
+            ("GET", f"{V1}/documents/{{document_id}}/revisions"),
+            ("GET", f"{V1}/documents/{{document_id}}/revisions/{{revision_id}}"),
+        ),
+        mcp=("document_revisions",),
+        note=(
+            "Both doors call one document_revisions service, so paging, the "
+            "no-content page and the refusals cannot drift, and both admit a "
+            "read-scoped key: the dr-superpowers mirror reads history over REST. "
+            "Stated wire asymmetries: the routes name the document by id while "
+            "the tool also takes (project, uri); REST serves the page and the "
+            "single revision at two paths where the tool dispatches on "
+            "revision_id; a revision the document does not own is a 404 on the "
+            "route and null from the tool; and the route refuses a limit above "
+            "200 with a 422 while the tool clamps it."
+        ),
+    ),
+    Surface(
         name="memory.capture",
         status=TWO_DOOR,
         rest=(("POST", f"{V1}/memories"),),

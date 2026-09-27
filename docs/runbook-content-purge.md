@@ -35,6 +35,12 @@ contributions. These survive, by design:
 | `messages.context` | citation snippets, and cited fact rows untrimmed | Until the conversation is deleted |
 | `memory_buffer` | raw content on `done` rows | Yes — `buffer_done_retention_hours`, default 24 |
 
+Documents are outside the table above but not outside this procedure: every content a
+document was filed with stays in `document_revisions` until the document is deleted (the
+foreign key cascades), so re-filing a document without the secret does not remove it. Delete
+the document, or delete the matching revision rows in step 4; the table carries no
+append-only guard.
+
 Two remedies already exist and should be tried first: **delete the conversation** (cascades
 its snippets and its prose) and **wait out or shorten the buffer retention** (a config row).
 
@@ -58,6 +64,7 @@ Read all of it before starting. Steps 1 and 6 are the ones people skip.
    SELECT id FROM knowledge_triples WHERE fact ILIKE '%<fragment>%';
    SELECT id FROM messages WHERE context::text ILIKE '%<fragment>%' OR content ILIKE '%<fragment>%';
    SELECT id FROM memory_buffer WHERE content ILIKE '%<fragment>%';
+   SELECT id, document_id FROM document_revisions WHERE content ILIKE '%<fragment>%';
    SELECT id FROM memories WHERE content ILIKE '%<fragment>%';
    ```
 

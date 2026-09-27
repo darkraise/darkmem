@@ -4,8 +4,9 @@ Date: 2026-09-23
 Status: design, owner-approved section by section on 2026-09-23. Increment 1
 planned (`docs/superpowers/plans/2026-09-23-work-log-increment-1-store-and-verbs.md`);
 amended the same day with four corrections found while planning, each marked
-"Amended 2026-09-23" below. Increment 1 done; increment 2 planned
-(`docs/superpowers/plans/2026-09-25-work-log-increment-2-search.md`).
+"Amended 2026-09-23" below. Increments 1 and 2 done; increment 3 implemented on
+`feat/work-log-inc-3`, not yet merged
+(`docs/superpowers/plans/2026-09-25-work-log-increment-3-revisions.md`).
 Register: `docs/superpowers/registers/2026-09-23-work-log-lane.md`
 Companion spec (client side): `darkraise-ai-plugins`,
 `docs/superpowers/specs/2026-09-23-darkmem-mirror-design.md`
@@ -177,11 +178,11 @@ Every verb exists on both doors and runs through one service module,
 | Document revisions | `document_revisions` | `GET /api/v1/documents/{id}/revisions`, `GET .../revisions/{rev_id}` | read |
 | Document manifest | — (REST only) | `GET /api/v1/documents/manifest?project=&uri_prefix=` | read |
 
-Scope counts after the change: capture 13 → 14 (`worklog_append`,
-`worklog_update` in; `checkpoint_save` out), read 25 → 29 (`worklog_resume`,
+Scope counts after the change: capture 13 → 15 (`worklog_append`,
+`worklog_update` in), read 25 → 30 (`worklog_resume`,
 `worklog_workstreams`, `worklog_entries`, `worklog_search`,
-`document_revisions` in; `checkpoint_latest` out), admin 2 → 3
-(`worklog_purge`).
+`document_revisions` in), admin 2 → 3 (`worklog_purge`).
+`checkpoint_save` and `checkpoint_latest` stay served as the older pair.
 
 **API keys on REST.** A REST route accepts a `dmk_` key only when it declares
 `require_scope` (`app/api/auth.py`); `require_auth` decodes a login token and
@@ -295,7 +296,13 @@ savepoint whenever a put creates a document or changes its `content_hash`
 stale `expected_hash` writes none (nothing was filed); a bytes source, whose
 `content` is NULL, writes none. The
 revision rolls back with the filing, so a refused or failed put never leaves a
-revision behind. Revisions live as long as their document.
+revision behind. Revisions live as long as their document. Amended 2026-09-25:
+`put_document` and `file_document` already carry `api_key_id`, so the write
+lands in `file_document`'s body, inside the filing's own savepoint. "Changes
+its `content_hash`" is decided against the resolved row's hash, or, when the
+filing resolved no row, against the document's newest revision read under the
+row lock, so two racing first filings of one content write one revision; a
+forced reparse of identical bytes writes none.
 
 Block-verb edits on block-first documents write no revision in this version:
 one row per block edit would flood the table, and dr-superpowers files through
@@ -464,8 +471,10 @@ Six increments, each landing green and deployed on this host before the next:
 - **Purge and retention:** the journal row lands before the delete; a forced
   journal failure refuses the delete and leaves every row; retention skips
   open and retained workstreams and removes vectors through the cascade.
-- **Revisions:** changed put writes one revision; unchanged, new and stale-hash
-  puts write none; a put refused for `MAX_BLOCKS` leaves no revision.
+- **Revisions:** a new put and a changed put each write one revision
+  (amended 2026-09-25 to the post-image rule of §1 and §3); unchanged,
+  stale-hash, forced-reparse and bytes filings and block verbs write none; a
+  put refused for `MAX_BLOCKS` leaves no revision.
 - **Search:** each arm alone and fused; `semantic_ran=false` when the embedder
   raises; project scoping enforced in SQL.
 - **Lint:** fixtures per signal, positive and negative, and the threshold

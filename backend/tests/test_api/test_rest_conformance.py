@@ -323,6 +323,8 @@ EXPECTED_STATUS = {
     ("PATCH", "/api/v1/worklog/workstreams/{workstream_id}"): 200,
     ("DELETE", "/api/v1/worklog/workstreams/{workstream_id}"): 204,
     ("GET", "/api/v1/documents/manifest"): 200,
+    ("GET", "/api/v1/documents/{document_id}/revisions"): 200,
+    ("GET", "/api/v1/documents/{document_id}/revisions/{revision_id}"): 200,
 }
 
 

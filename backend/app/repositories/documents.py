@@ -34,6 +34,8 @@ __all__ = [
     "DocumentIsBlockFirst",
     "DocumentRow",
     "insert_blocks",
+    "insert_revision",
+    "latest_revision_hash",
     "resolve_by_id",
     "resolve_by_uri",
     "strip_blocks",
@@ -135,6 +137,23 @@ _UPDATE_DOCUMENT = text(
 )
 
 _STRIP_BLOCKS = text("DELETE FROM blocks WHERE document_id = CAST(:document_id AS uuid)")
+
+# `clock_timestamp()`, not the column's `now()` default: two puts on one
+# document serialise on its row lock, so the later writer can hold the earlier
+# transaction start, and revisions order by `created_at`.
+_INSERT_REVISION = text(
+    "INSERT INTO document_revisions "
+    "(id, document_id, content, content_hash, actor, api_key_id, created_at) "
+    "VALUES (CAST(:id AS uuid), CAST(:document_id AS uuid), CAST(:content AS text), "
+    "CAST(:content_hash AS text), CAST(:actor AS text), CAST(:api_key_id AS uuid), "
+    "clock_timestamp())"
+)
+
+_LATEST_REVISION_HASH = text(
+    "SELECT content_hash FROM document_revisions "
+    "WHERE document_id = CAST(:document_id AS uuid) "
+    "ORDER BY created_at DESC, id DESC LIMIT 1"
+)
 
 # The `char_span` bind is cast twice on purpose. A single `CAST(:char_span AS
 # int4range)` — which is the form doc 16 §2 names — makes asyncpg infer the
@@ -291,6 +310,35 @@ async def insert_blocks(
             for row in rows
         ],
     )
+
+
+async def insert_revision(
+    session: AsyncSession,
+    *,
+    revision_id: UUID,
+    document_id: UUID,
+    content: str,
+    content_hash: str,
+    actor: str | None,
+    api_key_id: UUID | None,
+) -> None:
+    await session.execute(
+        _INSERT_REVISION,
+        {
+            "id": str(revision_id),
+            "document_id": str(document_id),
+            "content": content,
+            "content_hash": content_hash,
+            "actor": actor,
+            "api_key_id": None if api_key_id is None else str(api_key_id),
+        },
+    )
+
+
+async def latest_revision_hash(session: AsyncSession, document_id: UUID) -> str | None:
+    return (await session.execute(
+        _LATEST_REVISION_HASH, {"document_id": str(document_id)}
+    )).scalar_one_or_none()
 
 
 def _span_literal(span: tuple[int, int] | None) -> str | None:

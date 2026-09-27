@@ -982,6 +982,9 @@ class TestPostureIsUnchanged:
         memories_source = (APP_ROOT / "api" / "routes" / "memories.py").read_text(encoding="utf-8")
         assert '_require_capture = require_scope("capture")' in memories_source
         assert '_require_read = require_scope("read")' in memories_source
+        documents_source = (APP_ROOT / "api" / "routes" / "documents.py").read_text(encoding="utf-8")
+        assert '_require_capture = require_scope("capture")' in documents_source
+        assert '_require_read = require_scope("read")' in documents_source
 
     def test_the_scan_flags_a_call_site_planted_in_another_route(self):
         """The fail-closed direction: a require_scope call anywhere else in
@@ -1126,6 +1129,8 @@ class TestRuntimeScopeGatedRoutes:
             ("POST", "/api/v1/documents"),
             ("GET", "/api/v1/documents/by-uri"),
             ("GET", "/api/v1/documents/manifest"),
+            ("GET", "/api/v1/documents/{document_id}/revisions"),
+            ("GET", "/api/v1/documents/{document_id}/revisions/{revision_id}"),
         }
 
     def test_no_scope_in_the_closed_set_gates_nothing(self):
@@ -1191,6 +1196,8 @@ class TestRuntimeScopeGatedRoutes:
             ("POST", "/api/v1/documents"),
             ("GET", "/api/v1/documents/by-uri"),
             ("GET", "/api/v1/documents/manifest"),
+            ("GET", "/api/v1/documents/{document_id}/revisions"),
+            ("GET", "/api/v1/documents/{document_id}/revisions/{revision_id}"),
         }
         original_dependant = target.dependant
         target.dependant = mutated_dependant

@@ -1554,6 +1554,8 @@ def _pass_two() -> None:
     # Version history: a full post-image snapshot per commit, not a delta --
     # the serialiser already produces exactly this string on every mutation,
     # and a delta format would be a second representation to keep faithful.
+    # `api_key_id` carries no foreign key for the reason `events.api_key_id`
+    # carries none: keys are revoked, never deleted.
     op.execute(
         """
         CREATE TABLE document_revisions (
@@ -1561,6 +1563,8 @@ def _pass_two() -> None:
             document_id  UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
             content      TEXT NOT NULL,
             content_hash TEXT NOT NULL,
+            actor        TEXT,
+            api_key_id   UUID,
             created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
             CONSTRAINT document_revisions_pkey PRIMARY KEY (id)
         )
@@ -1568,7 +1572,7 @@ def _pass_two() -> None:
     )
     op.execute(
         "CREATE INDEX ix_document_revisions_document "
-        "ON document_revisions (document_id, created_at DESC)"
+        "ON document_revisions (document_id, created_at DESC, id DESC)"
     )
 
     # ------------------------------------------------------------------
@@ -1729,10 +1733,10 @@ def _pass_two() -> None:
 
 def downgrade() -> None:
     # Drop every per-fingerprint child table the registry created. The set is
-    # not known at migration time, so walk pg_tables for all NINE parent
+    # not known at migration time, so walk pg_tables for all TEN parent
     # patterns — the four that exist today, the four target-new families
     # (inventory F-17: the pre-baseline sweep covered only four and would
-    # strand the rest) and the page family.
+    # strand the rest), the page family and the work-log family.
     op.execute(
         """
         DO $$
@@ -1750,7 +1754,8 @@ def downgrade() -> None:
                        OR tablename LIKE 'page_embeddings\\_\\_%'
                        OR tablename LIKE 'relation_embeddings\\_\\_%'
                        OR tablename LIKE 'article_embeddings\\_\\_%'
-                       OR tablename LIKE 'triple_embeddings\\_\\_%')
+                       OR tablename LIKE 'triple_embeddings\\_\\_%'
+                       OR tablename LIKE 'worklog_embeddings\\_\\_%')
             LOOP
                 EXECUTE format('DROP TABLE IF EXISTS %I CASCADE', t.tablename);
             END LOOP;

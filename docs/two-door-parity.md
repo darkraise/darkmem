@@ -10,7 +10,7 @@ aspirational. It is exhaustive over the Phase-1 surface — every REST route on
 `app.routes` and every tool in the live FastMCP registry appears in exactly one
 row.
 
-**90 surfaces: 32 two-door, 58 single-door with a stated reason (51 REST-only, 7 MCP-only), 0 divergent.**
+**91 surfaces: 33 two-door, 58 single-door with a stated reason (51 REST-only, 7 MCP-only), 0 divergent.**
 
 ## How to read a row, and what each status costs
 
@@ -71,6 +71,7 @@ the test rather than quietly joining the surface.
 | `worklog.update` | `PATCH /api/v1/worklog/workstreams/{workstream_id}` | `worklog_update` | two-door | Stated wire asymmetry: the route names the workstream by id, the tool by (project, key), since an agent knows its key; both resolve to one workstream and call one update_workstream. |
 | `worklog.purge` | `DELETE /api/v1/worklog/workstreams/{workstream_id}` | `worklog_purge` | two-door | admin on both doors: the route declares require_scope('admin') and the tool sits in ADMIN_TOOLS. Both call one purge_workstream, which journals workstream_purged before the delete and refuses when the row does not land. Stated wire asymmetries: the route names the workstream by id and the tool by (project, key), and the route answers 204 with no body while the tool answers {purged, entries} -- the key it erased and the count of entries that went with it. |
 | `documents.manifest` | `GET /api/v1/documents/manifest` | — | REST single-door | A sync read with one caller, the dr-superpowers mirror, which speaks REST with a dmk_ key: it serves uri, content_hash and updated_at so a pull fetches only what changed. An agent reading a document already has document_get and document_outline; a manifest tool would serve it nothing they do not. |
+| `documents.revisions` | `GET /api/v1/documents/{document_id}/revisions`<br>`GET /api/v1/documents/{document_id}/revisions/{revision_id}` | `document_revisions` | two-door | Both doors call one document_revisions service, so paging, the no-content page and the refusals cannot drift, and both admit a read-scoped key: the dr-superpowers mirror reads history over REST. Stated wire asymmetries: the routes name the document by id while the tool also takes (project, uri); REST serves the page and the single revision at two paths where the tool dispatches on revision_id; a revision the document does not own is a 404 on the route and null from the tool; and the route refuses a limit above 200 with a 422 while the tool clamps it. |
 | `memory.capture` | `POST /api/v1/memories` | `memory_add` | two-door | — |
 | `memory.capture_batch` | `POST /api/v1/memories/batch` | `memory_batch_add` | two-door | Both doors resolve identity on the raw entry dicts before MemoryCreate validation, and both mirror the 1-100 cap. |
 | `memory.search` | `POST /api/v1/memories/search`<br>`POST /api/v1/memories/search/paginated` | `memory_search` | two-door | Stated wire asymmetry, settled by T1.42a and T1.42c: the tool answers a bare JSON array, which has nowhere to carry the envelope's ContextEcho or excluded counts. Giving it one is a breaking change that doc 12 section 3 says ships as a new tool name, never as a silent mutation of this one. The ranking, the filters and the SQL pushdown are the same service call. |

@@ -44,9 +44,13 @@ BACKEND = Path(__file__).resolve().parent.parent
 # (`rename_documents`, `app/services/document_door.py`) landed as its first
 # writer, rewriting a moved document's stale `target_uri` and re-resolving a
 # stub the rename newly satisfied.
-INERT_TABLES: dict[str, str] = {
-    "document_revisions": "the version-history lane",
-}
+# `document_revisions` is no longer here: the work-log lane's increment 3
+# landed its first writer, `document_ingest`'s filing body, which writes the
+# filed content as a revision whenever a filing creates a document or changes
+# its `content_hash`.
+#
+# The set is EMPTY again, so the loops below skip rather than pass vacuously.
+INERT_TABLES: dict[str, str] = {}
 # repositories.index_debt is no longer here: T1.39, its declared first writer
 # (schema inventory §7), landed the re-trace drain that writes it.
 # entities.repo_ids and entity_relations.repo_ids are no longer here: T2.27,
