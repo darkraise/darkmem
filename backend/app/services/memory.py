@@ -18,7 +18,14 @@ from app.repositories.vector import MemoryFilter
 from app.schemas.envelope import PageInfo
 from app.schemas.memory import CaptureAck, MemoryCreate, MemorySearchRequest, MemoryUpdate
 from app.schemas.retrieval_trace import ChannelStatus, RetrievalEnvelope
-from app.services import buffer_flush, memory_buffer, project_registry, repo_provision
+from app.services import (
+    buffer_flush,
+    capture_lint,
+    memory_buffer,
+    project_registry,
+    repo_provision,
+)
+from app.services.events import record_event
 from app.services.extraction import _MAX_CONTENT_CHARS
 from app.services.feature_flags import get_feature_flags_dict
 from app.services.memory_buffer import buffered_memory_id
@@ -168,6 +175,7 @@ class MemoryService:
         for project in batch_projects:
             await project_registry.register(self.session, project)
 
+        linted = [capture_lint.lint(data.content) for data in entries]
         rows: list[MemoryBuffer] = []
         for data in entries:
             project = data.project or "default"
@@ -193,6 +201,24 @@ class MemoryService:
                 actor=actor,
             )
 
+        # A flag never refuses (spec 2026-09-23 §5); it journals which signals
+        # matched, never the content, in the capture's own transaction.
+        # `record_event` does not raise, so a journal failure costs the row,
+        # not the capture.
+        for row, data, (found, warnings) in zip(rows, entries, linted):
+            if warnings:
+                await record_event(
+                    self.session,
+                    event_type="capture_flagged",
+                    object_type="memory",
+                    object_id=buffered_memory_id(row),
+                    project=data.project or "default",
+                    actor=actor,
+                    api_key_id=api_key_id,
+                    source=data.source,
+                    payload={"signals": found},
+                )
+
         await self._handoff_repo_hints(rows, entries)
 
         # Commit before acking (invariant 11, doc 05 §2.2): a crash between
@@ -200,7 +226,10 @@ class MemoryService:
         # for a capture that turns out not to durably exist.
         await self.session.commit()
 
-        acks = [CaptureAck(id=buffered_memory_id(row)) for row in rows]
+        acks = [
+            CaptureAck(id=buffered_memory_id(row), warnings=warnings)
+            for row, (_found, warnings) in zip(rows, linted)
+        ]
         if not wait_process:
             return [CaptureResult(ack=ack) for ack in acks]
 

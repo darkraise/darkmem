@@ -74,11 +74,15 @@ class CaptureAck(BaseModel):
     resolvable once the buffer flush (T1.13) runs. It is deliberately not the
     internal `memory_buffer` row's own id, which is a tracking handle the
     caller never sees (`memory_buffer.buffered_memory_id`).
+
+    ``warnings`` is empty unless ``capture_lint`` flagged the content as
+    working data. A flag never refuses: the capture is buffered either way.
     """
 
     schema_version: int = ENVELOPE_SCHEMA_VERSION
     id: uuid.UUID
     status: Literal["accepted"] = "accepted"
+    warnings: list[str] = Field(default_factory=list)
 
 
 # The `MemoryUpdate` fields whose column is NOT NULL, so an explicit `null`

@@ -41,7 +41,7 @@ async def _stored(session, content: str) -> Memory:
 # 1. Characterisation net — the literal wire shapes
 # --------------------------------------------------------------------------
 
-CAPTURE_ACK_KEYS = {"id", "status", "schema_version"}
+CAPTURE_ACK_KEYS = {"id", "status", "schema_version", "warnings"}
 
 
 async def test_rest_capture_ack_shape(client, auth_headers):
