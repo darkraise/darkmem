@@ -161,3 +161,63 @@ async def test_a_prefix_matches_whole_segments_with_or_without_a_trailing_slash(
         f"{V1}/manifest", params={"project": "proj", "uri_prefix": prefix}, headers=auth_headers
     )
     assert [i["uri"] for i in response.json()["items"]] == ["superpowers/specs/a.md"]
+
+
+async def test_the_manifest_lists_a_document_filed_at_the_prefix_itself(client, session):
+    read = await _key(session, "read")
+    await _document(session, uri="superpowers")
+    await _document(session, uri="superpowersx/a.md")
+    listed = await client.get(
+        f"{V1}/manifest", params={"project": "proj", "uri_prefix": "superpowers"}, headers=read,
+    )
+    assert listed.status_code == 200
+    assert [i["uri"] for i in listed.json()["items"]] == ["superpowers"]
+
+
+async def test_a_read_key_lists_revisions_and_reads_one(client, session, scripted_embedder):
+    capture_name = f"k-{uuid.uuid4().hex[:6]}"
+    capture_row, capture_credential = await issue_key(session, name=capture_name, scopes=["capture"])
+    capture = {"Authorization": f"Bearer {capture_credential}"}
+    read = await _key(session, "read")
+    body = {"project": "proj", "uri": "superpowers/plans/r.md", "content": "# R\n\nOne.\n"}
+    first = (await client.post(V1, json=body, headers=capture)).json()
+    second = (await client.post(V1, json={**body, "content": "# R\n\nTwo.\n"}, headers=capture)).json()
+    document_id = first["document_id"]
+
+    listed = await client.get(f"{V1}/{document_id}/revisions", headers=read)
+    assert listed.status_code == 200, listed.text
+    page = listed.json()
+    assert [i["content_hash"] for i in page["items"]] == [second["content_hash"], first["content_hash"]]
+    assert page["items"][0]["actor"] == capture_name
+    assert page["items"][0]["api_key_id"] == str(capture_row.id)
+    assert "content" not in page["items"][0]
+    assert page["next_before"] is None
+
+    older = await client.get(
+        f"{V1}/{document_id}/revisions", params={"before": page["items"][0]["id"]}, headers=read,
+    )
+    assert [i["content_hash"] for i in older.json()["items"]] == [first["content_hash"]]
+
+    one = await client.get(f"{V1}/{document_id}/revisions/{page['items'][1]['id']}", headers=read)
+    assert one.status_code == 200
+    assert one.json()["content"] == "# R\n\nOne.\n"
+    assert one.json()["document_id"] == document_id
+
+
+async def test_the_revision_routes_refuse_what_names_nothing(client, session, scripted_embedder):
+    read = await _key(session, "read")
+    capture = await _key(session, "capture")
+    a = (await client.post(V1, json={"project": "proj", "uri": "a.md", "content": "# A\n"}, headers=capture)).json()
+    b = (await client.post(V1, json={"project": "proj", "uri": "b.md", "content": "# B\n"}, headers=capture)).json()
+    b_revision = (await client.get(f"{V1}/{b['document_id']}/revisions", headers=read)).json()["items"][0]["id"]
+
+    assert (await client.get(f"{V1}/{uuid.uuid4()}/revisions", headers=read)).status_code == 404
+    assert (await client.get(f"{V1}/{a['document_id']}/revisions/{b_revision}", headers=read)).status_code == 404
+    assert (await client.get(
+        f"{V1}/{a['document_id']}/revisions", params={"before": b_revision}, headers=read,
+    )).status_code == 422
+    assert (await client.get(
+        f"{V1}/{a['document_id']}/revisions", params={"limit": 201}, headers=read,
+    )).status_code == 422
+    assert (await client.get(f"{V1}/{a['document_id']}/revisions", headers=capture)).status_code == 403
+    assert (await client.get(f"{V1}/{a['document_id']}/revisions")).status_code == 401
