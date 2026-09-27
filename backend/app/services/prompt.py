@@ -729,6 +729,8 @@ PROMPTS: dict[str, str] = {
         "- **document_search** — search filed documents.\n"
         "- **document_outline** — the heading tree of one document.\n"
         "- **document_get** — one document by id, or by `(project, uri)`.\n"
+        "- **document_revisions** — a document's filed versions, newest first; "
+        "one with its content by `revision_id`.\n"
         "- **document_update** — rename, move, pin or re-tag a document.\n"
         "- **document_delete** — remove a filed document.\n"
         "- **document_delete_subtree** — delete every document under a uri "

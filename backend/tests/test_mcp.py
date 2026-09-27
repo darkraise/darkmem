@@ -44,6 +44,7 @@ EXPECTED_TOOLS: frozenset[str] = frozenset({
     "document_get",
     "document_outline",
     "document_put",
+    "document_revisions",
     "document_search",
     "document_update",
     "fact_get",

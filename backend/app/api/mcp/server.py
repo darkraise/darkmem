@@ -1116,6 +1116,45 @@ async def document_get(
 
 @mcp.tool(
     description=(
+        "List a document's revisions newest first -- each content a put filed, "
+        "with its content_hash, who filed it and when, but no content -- or "
+        "fetch one with its content by revision_id. Page back by passing the "
+        "answer's next_before as before; limit 1-200. Name the document by "
+        "document_id, or by the project and uri it was filed under. null when "
+        "revision_id names no revision of that document."
+    )
+)
+async def document_revisions(
+    document_id: str | None = None,
+    project: str | None = None,
+    uri: str | None = None,
+    revision_id: str | None = None,
+    before: str | None = None,
+    limit: int = 50,
+) -> str:
+    from app.services import document_revisions as revisions
+    from app.services.document_door import resolve_document_target
+
+    async with async_session_factory() as session:
+        target = await resolve_document_target(
+            session, document_id=document_id, project=project, uri=uri,
+        )
+        if revision_id is not None:
+            found = await revisions.get_revision(
+                session, document_id=target, revision_id=revision_id,
+            )
+            return json.dumps(found)
+        page = await revisions.list_revisions(
+            session,
+            document_id=target,
+            before=before,
+            limit=max(1, min(limit, revisions.MAX_LIMIT)),
+        )
+    return json.dumps(page)
+
+
+@mcp.tool(
+    description=(
         "Delete a document, its blocks and its vectors. Use when its file is "
         "gone. Name the document by document_id, or by the project and uri "
         "it was filed under."

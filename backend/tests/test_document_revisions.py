@@ -281,3 +281,63 @@ async def test_one_revision_carries_its_content_and_only_under_its_document(sess
     assert one["document_id"] == a.document_id
     assert one["content_hash"] == a.content_hash
     assert await get_revision(session, document_id=b.document_id, revision_id=revision_id) is None
+
+
+@pytest.fixture
+def mcp_server(session, monkeypatch):
+    from contextlib import asynccontextmanager
+
+    import app.api.mcp.server as server
+
+    @asynccontextmanager
+    async def _on_the_test_session():
+        yield session
+
+    monkeypatch.setattr(server, "async_session_factory", lambda: _on_the_test_session())
+    return server
+
+
+async def test_the_tool_lists_by_uri_pages_back_and_fetches_one(session, mcp_server):
+    import json
+
+    first = await _put(session, "# A\n\nOne.\n")
+    second = await _put(session, "# A\n\nTwo.\n")
+
+    page = json.loads(await mcp_server.document_revisions(
+        project="proj", uri="superpowers/specs/a.md", limit=1,
+    ))
+    assert [i["content_hash"] for i in page["items"]] == [second.content_hash]
+    older = json.loads(await mcp_server.document_revisions(
+        document_id=first.document_id, before=page["next_before"], limit=500,
+    ))
+    assert [i["content_hash"] for i in older["items"]] == [first.content_hash]
+
+    one = json.loads(await mcp_server.document_revisions(
+        document_id=first.document_id, revision_id=older["items"][0]["id"],
+    ))
+    assert one["content"] == "# A\n\nOne.\n"
+    missing = await mcp_server.document_revisions(
+        document_id=first.document_id, revision_id=str(uuid.uuid4()),
+    )
+    assert json.loads(missing) is None
+
+
+async def test_the_tool_refuses_a_document_that_does_not_exist(session, mcp_server):
+    from app.services.document_door import DocumentTargetUnresolved
+
+    with pytest.raises(DocumentTargetUnresolved):
+        await mcp_server.document_revisions(project="proj", uri="nowhere.md")
+
+
+async def test_both_doors_serve_the_same_page(client, auth_headers, session, mcp_server):
+    import json
+
+    filed = await _put(session, "# A\n\nOne.\n", actor="k-probe")
+    await _put(session, "# A\n\nTwo.\n")
+    rest = (await client.get(
+        f"/api/v1/documents/{filed.document_id}/revisions", headers=auth_headers,
+    )).json()
+    tool = json.loads(await mcp_server.document_revisions(document_id=filed.document_id))
+    assert [i["id"] for i in rest["items"]] == [i["id"] for i in tool["items"]]
+    assert [i["actor"] for i in rest["items"]] == [None, "k-probe"]
+    assert rest["next_before"] == tool["next_before"] is None
