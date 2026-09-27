@@ -4,8 +4,8 @@ Date: 2026-09-23
 Status: design, owner-approved section by section on 2026-09-23. Increment 1
 planned (`docs/superpowers/plans/2026-09-23-work-log-increment-1-store-and-verbs.md`);
 amended the same day with four corrections found while planning, each marked
-"Amended 2026-09-23" below. Increment 1 done; increment 2 planned
-(`docs/superpowers/plans/2026-09-25-work-log-increment-2-search.md`).
+"Amended 2026-09-23" below. Increments 1 and 2 done; increment 3 planned
+(`docs/superpowers/plans/2026-09-25-work-log-increment-3-revisions.md`).
 Register: `docs/superpowers/registers/2026-09-23-work-log-lane.md`
 Companion spec (client side): `darkraise-ai-plugins`,
 `docs/superpowers/specs/2026-09-23-darkmem-mirror-design.md`
@@ -295,7 +295,13 @@ savepoint whenever a put creates a document or changes its `content_hash`
 stale `expected_hash` writes none (nothing was filed); a bytes source, whose
 `content` is NULL, writes none. The
 revision rolls back with the filing, so a refused or failed put never leaves a
-revision behind. Revisions live as long as their document.
+revision behind. Revisions live as long as their document. Amended 2026-09-25:
+`put_document` and `file_document` already carry `api_key_id`, so the write
+lands in `file_document`'s body, inside the filing's own savepoint. "Changes
+its `content_hash`" is decided against the resolved row's hash, or, when the
+filing resolved no row, against the document's newest revision read under the
+row lock, so two racing first filings of one content write one revision; a
+forced reparse of identical bytes writes none.
 
 Block-verb edits on block-first documents write no revision in this version:
 one row per block edit would flood the table, and dr-superpowers files through
@@ -464,8 +470,10 @@ Six increments, each landing green and deployed on this host before the next:
 - **Purge and retention:** the journal row lands before the delete; a forced
   journal failure refuses the delete and leaves every row; retention skips
   open and retained workstreams and removes vectors through the cascade.
-- **Revisions:** changed put writes one revision; unchanged, new and stale-hash
-  puts write none; a put refused for `MAX_BLOCKS` leaves no revision.
+- **Revisions:** a new put and a changed put each write one revision
+  (amended 2026-09-25 to the post-image rule of §1 and §3); unchanged,
+  stale-hash, forced-reparse and bytes filings and block verbs write none; a
+  put refused for `MAX_BLOCKS` leaves no revision.
 - **Search:** each arm alone and fused; `semantic_ran=false` when the embedder
   raises; project scoping enforced in SQL.
 - **Lint:** fixtures per signal, positive and negative, and the threshold
