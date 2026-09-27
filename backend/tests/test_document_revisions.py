@@ -167,6 +167,35 @@ async def test_two_first_filings_of_different_content_write_two(committed):
     assert await _race_first_filings(committed, "first", "second") == ["first", "second"]
 
 
+async def test_a_filing_whose_transaction_started_first_still_orders_last(committed):
+    # The column default now() would stamp the later filing with its earlier
+    # transaction start and page it below the revision it replaced.
+    from app.services.document_ingest import BlockDraft, file_document
+
+    def filing(session, content):
+        return file_document(
+            session, project=RACE_PROJECT, uri="order.md", content=content,
+            parse=lambda: [BlockDraft(text=content)],
+        )
+
+    async with committed() as early, committed() as late:
+        await early.execute(text("SELECT 1"))
+        await asyncio.sleep(0.05)
+        filed = await filing(late, "first")
+        await late.commit()
+        await filing(early, "second")
+        await early.commit()
+    async with committed() as check:
+        rows = await check.execute(
+            text(
+                "SELECT content FROM document_revisions WHERE document_id = CAST(:d AS uuid) "
+                "ORDER BY created_at, id"
+            ),
+            {"d": str(filed.document_id)},
+        )
+        assert [row[0] for row in rows] == ["first", "second"]
+
+
 async def test_a_block_verb_edit_writes_none(session):
     from app.services.block_verbs import update_block
 
