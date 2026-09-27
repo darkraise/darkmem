@@ -135,9 +135,9 @@ def _dbapi_error(sqlstate):
 
 
 async def test_a_privilege_refusal_becomes_a_403_read_only_envelope():
-    from app.main import _read_only_refusal
+    from app.main import _database_refusal
 
-    response = await _read_only_refusal(None, _dbapi_error("42501"))
+    response = await _database_refusal(None, _dbapi_error("42501"))
 
     assert response.status_code == 403
     import json
@@ -154,20 +154,20 @@ async def test_any_other_dbapi_error_still_surfaces_as_a_500():
     a gap when it is the design."""
     from sqlalchemy.exc import ProgrammingError
 
-    from app.main import _read_only_refusal
+    from app.main import _database_refusal
 
     with pytest.raises(ProgrammingError):
-        await _read_only_refusal(None, _dbapi_error("23505"))
+        await _database_refusal(None, _dbapi_error("23505"))
 
 
 async def test_a_dbapi_error_with_no_sqlstate_still_surfaces_as_a_500():
     from sqlalchemy.exc import ProgrammingError
 
-    from app.main import _read_only_refusal
+    from app.main import _database_refusal
 
     error = ProgrammingError("INSERT ...", {}, Exception("no sqlstate here"))
     with pytest.raises(ProgrammingError):
-        await _read_only_refusal(None, error)
+        await _database_refusal(None, error)
 
 
 # ---------------------------------------------------------------------------
