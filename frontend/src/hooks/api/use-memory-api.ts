@@ -119,6 +119,9 @@ export interface CaptureAck {
   schema_version: number
   id: string
   status: "accepted"
+  // One warning line naming the signals capture_lint matched; empty for a
+  // clean capture. A flagged capture is stored all the same.
+  warnings: string[]
 }
 
 // POST /memories returns CaptureAck (202) by default, or a full Memory

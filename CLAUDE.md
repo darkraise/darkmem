@@ -330,27 +330,32 @@ silently rewritten.
 
 ## Capture is buffered (`memory_buffer`, doc 05 §2)
 
-All four capture doors (REST `POST /memories` and `/batch`, MCP
-`memory_add` / `memory_batch_add`) validate, resolve `source` and
-`origin_key`, enqueue a `memory_buffer` row and return **202** with a
-`CaptureAck`. The ack's id is the **pre-minted memory id**, carried in the
-buffer row's `metadata_`; the buffer row's own id is a separate tracking
-handle. Never conflate the two. `wait_process=true` drives that row's
-flush inline through the same `FOR UPDATE SKIP LOCKED` claim as the
-scheduled job and returns the processed memory (201), degrading to the plain
-ack after `buffer_wait_timeout_seconds`. The `buffer_flush` job drains the
-queue; its thresholds (`buffer_claim_batch`, `buffer_max_attempts`,
-`buffer_claim_visibility_seconds`, `buffer_done_retention_hours`) are its
-`config_schema`, in the `config` row `job:buffer_flush`. A failed batch
-retries row-at-a-time so the poisonous row settles alone into `error` with
-a real `last_error`; a flush overrunning its deadline returns the batch to
-`pending`, refunds the attempt and shrinks the next claim. `error` rows are
-kept until resolved (the sweep deletes only `done`) and are triaged over
-`GET /api/v1/memory-buffer` (REST only; requeue resets attempts and
-journals `buffer_requeued`, discard journals `buffer_discarded`). The claim
-SQL bounds its batch with a `WITH ... AS MATERIALIZED` CTE: a plain
-sub-select lets the planner re-execute it per row and claim the whole
-backlog. Don't "simplify" it.
+All four capture doors (REST `POST /memories` and `/batch`, MCP `memory_add`
+/ `memory_batch_add`) validate, resolve `source` and `origin_key`, enqueue a
+`memory_buffer` row and return **202** with a `CaptureAck`. The ack's id is
+the **pre-minted memory id**, carried in the buffer row's `metadata_`; the
+buffer row's own id is a separate tracking handle. Never conflate the two.
+`wait_process=true` drives that row's flush inline through the same `FOR
+UPDATE SKIP LOCKED` claim as the scheduled job and returns the processed
+memory (201), degrading to the plain ack after
+`buffer_wait_timeout_seconds`. Every capture runs through `capture_lint` (a
+pure function: named signals, two or more of them or over 1,500 characters
+flags). **A flag never refuses**: the ack carries `warnings`, the 201 path
+answers `CapturedMemoryResponse` (`MemoryResponse` plus `warnings`, served
+only by the capture routes) or a `warnings` key from the tool, and the
+capture journals `capture_flagged` with signal names only. The
+`buffer_flush` job drains the queue; its thresholds (`buffer_claim_batch`,
+`buffer_max_attempts`, `buffer_claim_visibility_seconds`,
+`buffer_done_retention_hours`) are its `config_schema`, in the `config` row
+`job:buffer_flush`. A failed batch retries row-at-a-time so the poisonous
+row settles alone into `error` with a real `last_error`; a flush overrunning
+its deadline returns the batch to `pending`, refunds the attempt and shrinks
+the next claim. `error` rows are kept until resolved (the sweep deletes only
+`done`) and are triaged over `GET /api/v1/memory-buffer` (REST only; requeue
+resets attempts and journals `buffer_requeued`, discard journals
+`buffer_discarded`). The claim SQL bounds its batch with a `WITH ... AS
+MATERIALIZED` CTE: a plain sub-select lets the planner re-execute it per row
+and claim the whole backlog. Don't "simplify" it.
 
 ## Pipeline phases (`ProcessingPipeline.process_batch`)
 

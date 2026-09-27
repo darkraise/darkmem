@@ -4,6 +4,24 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
+## v1.13.0 — unreleased
+
+**The memory door warns about working data.** A capture that looks like a
+log is still stored, but its answer now says so.
+
+### Added
+
+- **Capture warnings.** Every capture door (`POST /api/v1/memories`, its
+  batch twin, `memory_add`, `memory_batch_add`) answers `warnings`: empty for
+  a clean capture, and one line naming the matched signals (commit
+  references, tallies, task progress, VCS events, `file:line`, stack traces,
+  session narration, or over 1,500 characters) when two or more match or the
+  content is over the length limit. The line points at `worklog_append` and
+  `document_put`. Batches answer per entry, and the `wait_process` path
+  answers the processed memory plus `warnings`.
+- **`capture_flagged` events.** Each flagged capture journals the signal
+  names it matched, never its content, on the Activity feed's capture tab.
+
 ## v1.12.0 — 2026-09-27
 
 **Working data has its own lane.** A coding client's checkpoints, progress
