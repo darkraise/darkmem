@@ -426,9 +426,18 @@ import closure of `app.services.worklog` must not reach
   in the Artifacts tab; close/reopen; purge behind a confirmation dialog. A
   search box runs `worklog_search` for the project. The ledger path-suffix
   convention in `project-workspace.tsx` is removed.
+- **Amended 2026-09-28 (owner ruling):** the Progress tab keeps its project
+  board on top, and the Work log replaces the checkpoint runs beneath it; only
+  the board's empty-state text naming the ledger path goes. A checkpoint's
+  markdown opens in a detail pane beside the timeline, because
+  `virtualized-timeline` rows have a fixed height.
 - **Activity route.** `CheckpointsTab` becomes a cross-project list of open
   workstreams with their latest entry, linking into the project's Work log.
-  `use-checkpoint-runs.ts` (events-derived history) is deleted.
+  `use-checkpoint-runs.ts` (events-derived history) is deleted. Amended
+  2026-09-28: there is no cross-project list route, so `GET /projects` gains
+  `workstream_count`, `open_workstream_count` and `last_worklog_at`, and the
+  list asks each project with open workstreams for them; the latest entry is
+  read through `resume`.
 - **Documents.** A Revisions sheet (darkraise-ui `sheet`) on the document view:
   the revision list and a line diff between any two. darkraise-ui has no diff
   component, so this adds the `diff` package and a small local renderer whose
