@@ -10,8 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.embedder_registry import child_table
 from app.utils.scope_labels import SCOPE_LABEL_COLUMNS, SCOPE_LABEL_JOIN, scope_labels
 
-_COMMUNITY_SAMPLE_CAP = 10_000
-
 # An HNSW scan applies a WHERE as a post-scan filter over the candidate stream
 # it produces; it cannot seek on the predicate. Over-fetching by this factor is
 # what stops a selective scope from silently under-returning.
@@ -364,132 +362,24 @@ class PostgresVectorRepository:
         min_cluster_size: int = 3,
         limit: int = 500,
         filters: MemoryFilter | None = None,
-    ) -> list[dict]:
-        import igraph  # noqa: F401
+    ) -> tuple[list[dict], list[dict]]:
+        """Points labelled with a ``cluster``, plus the similarity edges to draw.
 
-        points = await self.get_all_vectors(fingerprint, limit=limit, filters=filters)
-        if len(points) < 2:
-            for p in points:
-                p["cluster"] = 0
-            return points
-
-        vectors_arr = np.array([p["vector"] for p in points], dtype=np.float32)
-
-        if len(points) > _COMMUNITY_SAMPLE_CAP:
-            rng = np.random.default_rng(seed=42)
-            sample_idx = rng.choice(len(points), size=_COMMUNITY_SAMPLE_CAP, replace=False)
-            remainder_mask = np.ones(len(points), dtype=bool)
-            remainder_mask[sample_idx] = False
-            remainder_idx = np.where(remainder_mask)[0]
-
-            sample_vecs = vectors_arr[sample_idx]
-            membership = self._louvain_igraph(sample_vecs, min_score)
-
-            comm_members: dict[int, list[int]] = {}
-            for local_i, comm_id in enumerate(membership):
-                comm_members.setdefault(comm_id, []).append(local_i)
-
-            valid_clusters: dict[int, int] = {}
-            next_id = 0
-            for comm_id, members in sorted(comm_members.items()):
-                if len(members) >= min_cluster_size:
-                    valid_clusters[comm_id] = next_id
-                    next_id += 1
-
-            all_clusters: list[int] = [-1] * len(points)
-            for local_i, global_i in enumerate(sample_idx.tolist()):
-                all_clusters[global_i] = valid_clusters.get(membership[local_i], -1)
-
-            if valid_clusters:
-                centroids: dict[int, np.ndarray] = {}
-                for comm_id, new_id in valid_clusters.items():
-                    centroids[new_id] = sample_vecs[comm_members[comm_id]].mean(axis=0)
-
-                centroid_ids = sorted(centroids.keys())
-                centroid_matrix = np.array([centroids[c] for c in centroid_ids], dtype=np.float32)
-                remainder_vecs = vectors_arr[remainder_idx]
-                sims = remainder_vecs @ centroid_matrix.T
-                norms_r = np.linalg.norm(remainder_vecs, axis=1, keepdims=True)
-                norms_c = np.linalg.norm(centroid_matrix, axis=1, keepdims=True).T
-                sims = sims / (norms_r * norms_c + 1e-8)
-                best_centroid = np.argmax(sims, axis=1)
-                for local_i, global_i in enumerate(remainder_idx.tolist()):
-                    all_clusters[global_i] = centroid_ids[best_centroid[local_i]]
-
-            for i, p in enumerate(points):
-                p["cluster"] = all_clusters[i]
-
-            return points
-
-        membership = self._louvain_igraph(vectors_arr, min_score)
-
-        comm_members: dict[int, list[int]] = {}
-        for i, comm_id in enumerate(membership):
-            comm_members.setdefault(comm_id, []).append(i)
-
-        valid_clusters: dict[int, int] = {}
-        next_id = 0
-        for comm_id, members in sorted(comm_members.items()):
-            if len(members) >= min_cluster_size:
-                valid_clusters[comm_id] = next_id
-                next_id += 1
-
-        for i, p in enumerate(points):
-            p["cluster"] = valid_clusters.get(membership[i], -1)
-
-        return points
-
-    @staticmethod
-    def _build_sparse_edges(
-        normalized: np.ndarray, threshold: float, chunk_size: int = 500
-    ) -> tuple[list[tuple[int, int]], list[float]]:
-        """Return upper-triangular (i, j) pairs whose cosine similarity ≥ ``threshold``.
-
-        Vectorised: for each chunk of rows compute the chunk-vs-all sim
-        matrix, mask the diagonal and lower triangle, then ``np.where`` to
-        pull qualifying column indices in one NumPy call. The original
-        Python double-loop scaled to O(n²) Python operations at the 10k
-        sample cap (~50M iterations); this version stays in NumPy.
+        One exact k-nearest-neighbour pass feeds both: Louvain clusters the
+        top-``CLUSTER_K`` graph, and the edges are the pairs in either
+        endpoint's top ``EDGE_K``. Memory stays O(chunk x N).
         """
-        n = len(normalized)
-        edges: list[tuple[int, int]] = []
-        weights: list[float] = []
-        for i in range(0, n, chunk_size):
-            chunk = normalized[i : i + chunk_size]
-            sims = chunk @ normalized.T  # shape: (chunk_len, n)
-            # Mask out everything at or below the diagonal of the full matrix.
-            # For row r in the chunk (global index i+r) we want columns
-            # strictly greater than i+r — set every column ≤ i+r to -inf.
-            chunk_len = sims.shape[0]
-            col_idx = np.arange(n)[None, :]                  # (1, n)
-            row_global = (i + np.arange(chunk_len))[:, None] # (chunk_len, 1)
-            sims = np.where(col_idx > row_global, sims, -np.inf)
-            rows_local, cols = np.where(sims >= threshold)
-            if rows_local.size == 0:
-                continue
-            global_rows = i + rows_local
-            edges.extend(zip(global_rows.tolist(), cols.tolist()))
-            weights.extend(sims[rows_local, cols].astype(float).tolist())
-        return edges, weights
+        from app.utils.graph_knn import CLUSTER_K, cluster_labels, knn_graph, similarity_edges
 
-    @staticmethod
-    def _louvain_igraph(vectors: np.ndarray, min_score: float) -> list[int]:
-        import igraph
+        points, vectors = await self.get_vector_matrix(fingerprint, limit=limit, filters=filters)
+        if not points:
+            return [], []
 
-        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
-        norms[norms == 0] = 1.0
-        normalized = vectors / norms
-
-        n = len(vectors)
-        edges, weights = PostgresVectorRepository._build_sparse_edges(normalized, threshold=min_score)
-
-        if not edges:
-            return list(range(n))
-
-        g = igraph.Graph(n=n, edges=edges, directed=False)
-        g.es["weight"] = weights
-        partition = g.community_multilevel(weights="weight")
-        return partition.membership
+        graph = knn_graph(vectors, k=CLUSTER_K, threshold=min_score)
+        for point, label in zip(points, cluster_labels(graph, len(points), min_cluster_size)):
+            point["cluster"] = label
+        ids = [str(p["memory_id"]) for p in points]
+        return points, similarity_edges(graph, ids)
 
     async def resolve_read_fingerprint(self, llm) -> str:
         """Resolve the fingerprint a bulk-partition read (projection, clustering)

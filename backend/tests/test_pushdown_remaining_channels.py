@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import uuid
 
+import numpy as np
 import pytest
 from sqlalchemy import select, text
 
@@ -336,6 +337,12 @@ async def test_clustered_reads_forward_the_scope_to_the_bulk_read(session, monke
         return []
 
     monkeypatch.setattr(PostgresVectorRepository, "get_all_vectors", spy)
+
+    async def matrix_spy(self, fingerprint, limit=500, filters=None):
+        seen.append(filters)
+        return [], np.empty((0, 0), dtype=np.float32)
+
+    monkeypatch.setattr(PostgresVectorRepository, "get_vector_matrix", matrix_spy)
     repo = PostgresVectorRepository(session)
     await repo.get_clustered_vectors(FINGERPRINT, filters=ALPHA_ACTIVE)
     await repo.get_louvain_clustered_vectors(FINGERPRINT, filters=ALPHA_ACTIVE)

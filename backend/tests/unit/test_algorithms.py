@@ -579,41 +579,6 @@ class TestVectorClustering:
         clustering = DBSCAN(eps=0.1, min_samples=2, metric="cosine").fit(vectors)
         assert all(l == -1 for l in clustering.labels_)
 
-    def test_louvain_igraph_basic(self):
-        pytest.importorskip("igraph")
-        from app.repositories.vector import PostgresVectorRepository
-
-        # 6 vectors: 3 similar pairs
-        vectors = np.array([
-            [1.0, 0.0, 0.0],
-            [0.95, 0.05, 0.0],
-            [0.9, 0.1, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.05, 0.95, 0.0],
-            [0.1, 0.9, 0.0],
-        ], dtype=np.float32)
-
-        membership = PostgresVectorRepository._louvain_igraph(vectors, min_score=0.9)
-        assert len(membership) == 6
-        assert membership[0] == membership[1] == membership[2]
-        assert membership[3] == membership[4] == membership[5]
-        assert membership[0] != membership[3]
-
-    def test_louvain_igraph_no_edges_returns_singletons(self):
-        pytest.importorskip("igraph")
-        from app.repositories.vector import PostgresVectorRepository
-
-        # Orthogonal vectors → no edges above threshold
-        vectors = np.array([
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 0.0, 1.0],
-        ], dtype=np.float32)
-
-        membership = PostgresVectorRepository._louvain_igraph(vectors, min_score=0.9)
-        assert len(membership) == 3
-        assert len(set(membership)) == 3  # each in its own community
-
 
 # =============================================================================
 # MULTI-HOP BINDING PROPAGATION

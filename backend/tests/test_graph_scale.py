@@ -144,3 +144,35 @@ async def test_scope_stamp_counts_the_readable_set(session):
 
     await _add_memory(session, vector=[0.0, 0.0, 0.0, 1.0], updated_at=BASE)
     assert (await repo.scope_stamp(FINGERPRINT, SCOPE))[0] == 3
+
+
+@pytest.mark.asyncio
+async def test_knn_clustering_labels_blobs_and_bounds_edges(session):
+    await _seed_partition(session)
+    blob_a = [await _add_memory(session, vector=[1.0, 0.01 * i, 0.0, 0.0]) for i in range(4)]
+    blob_b = [await _add_memory(session, vector=[0.0, 0.0, 1.0, 0.01 * i]) for i in range(4)]
+
+    points, edges = await PostgresVectorRepository(session).get_louvain_clustered_vectors(
+        FINGERPRINT, min_score=0.9, min_cluster_size=3, limit=100, filters=SCOPE,
+    )
+
+    cluster = {p["memory_id"]: p["cluster"] for p in points}
+    assert len({cluster[m.id] for m in blob_a}) == 1
+    assert len({cluster[m.id] for m in blob_b}) == 1
+    assert cluster[blob_a[0].id] != cluster[blob_b[0].id]
+    assert all(c >= 0 for c in cluster.values())
+
+    ids = {str(p["memory_id"]) for p in points}
+    assert edges and all(e["source"] in ids and e["target"] in ids for e in edges)
+    assert all(e["score"] >= 0.9 for e in edges)
+    assert len(edges) <= len(points) * 5
+    a_ids = {str(m.id) for m in blob_a}
+    assert all((e["source"] in a_ids) == (e["target"] in a_ids) for e in edges)
+
+
+@pytest.mark.asyncio
+async def test_knn_clustering_on_an_empty_partition(session):
+    await _seed_partition(session)
+    assert await PostgresVectorRepository(session).get_louvain_clustered_vectors(
+        FINGERPRINT, filters=SCOPE,
+    ) == ([], [])
