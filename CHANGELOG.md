@@ -4,7 +4,7 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
-## v1.13.0 — unreleased
+## v1.13.0 — 2026-09-28
 
 **The memory door warns about working data, and the work log gets its
 screens.** A capture that looks like a log is still stored, but its answer now
