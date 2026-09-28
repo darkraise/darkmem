@@ -149,3 +149,16 @@ async def test_purging_a_workstream_takes_its_vectors(session):
     assert set(await _vectors(session)) == set(ids)
     await worklog.purge_workstream(session, workstream.id)
     assert await _vectors(session) == {}
+
+
+async def test_the_retention_sweep_takes_a_workstreams_vectors(session):
+    workstream, ids = await _append(session, "note")
+    await embed_entries(session, RecordingEmbedder(), entry_ids=ids)
+    assert set(await _vectors(session)) == set(ids)
+    await worklog.update_workstream(session, workstream.id, state="closed")
+    await session.execute(
+        text("UPDATE workstreams SET closed_at = now() - interval '2 days' WHERE id = CAST(:id AS uuid)"),
+        {"id": str(workstream.id)},
+    )
+    assert await worklog.expire_next(session, retention_days=1) == 1
+    assert await _vectors(session) == {}

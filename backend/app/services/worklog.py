@@ -50,6 +50,7 @@ __all__ = [
     "WorklogSeqConflict",
     "WorkstreamNotFound",
     "append",
+    "expire_next",
     "get_workstream",
     "get_workstream_by_id",
     "list_entries",
@@ -154,6 +155,18 @@ _PURGE_JOURNALED = text(
       AND object_id = CAST(:id AS uuid) AND created_at >= now()
     """
 )
+# SKIP LOCKED: a workstream an append holds is being reopened, so the sweep
+# passes it by rather than queueing behind the append and deleting nothing.
+_NEXT_EXPIRED = text(
+    """
+    SELECT id FROM workstreams
+    WHERE state = 'closed' AND NOT retain
+      AND closed_at < now() - make_interval(days => CAST(:days AS integer))
+    ORDER BY closed_at, id
+    LIMIT 1
+    FOR UPDATE SKIP LOCKED
+    """
+)
 
 
 async def _lock_or_create(
@@ -168,11 +181,12 @@ async def _lock_or_create(
     """The workstream under its row lock, and whether it was opened, reopened or continued.
 
     Lock first, then decide: the transition is read from the row as locked, so
-    a concurrent close is seen rather than raced. The lock is what serialises
-    an append against a purge or a retention delete of the same workstream —
-    whichever commits second sees the first's result, so no entry lands in a
-    deleted parent. An insert that loses a creation race does nothing, and the
-    second pass locks the winner's row.
+    a concurrent close is seen rather than raced. The lock is what keeps an
+    entry out of a deleted parent: an append behind a purge or a retention
+    sweep waits for its commit and then recreates the workstream, a purge
+    behind an append waits for it, and the sweep skips a row an append holds
+    (FOR UPDATE SKIP LOCKED). An insert that loses a creation race does
+    nothing, and the second pass locks the winner's row.
     """
     params = {
         "project": project,
@@ -344,6 +358,37 @@ async def update_workstream(
     return workstream
 
 
+async def _journal_then_delete(
+    session: AsyncSession,
+    workstream: Workstream,
+    *,
+    actor: str | None,
+    api_key_id: UUID | None,
+    extra: dict[str, Any] | None = None,
+) -> int:
+    count = (await session.execute(
+        select(func.count()).select_from(WorklogEntry)
+        .where(WorklogEntry.workstream_id == workstream.id)
+    )).scalar_one()
+    landed = await record_event(
+        session, event_type="workstream_purged", object_type="workstream",
+        object_id=workstream.id, project=workstream.project, actor=actor,
+        api_key_id=api_key_id,
+        payload={"key": workstream.key, "entries": count, **(extra or {})},
+    )
+    journaled = (await session.execute(
+        _PURGE_JOURNALED, {"id": str(workstream.id)}
+    )).scalar_one()
+    if not landed or journaled == 0:
+        raise WorklogJournalWriteFailed(
+            f"workstream_purged is not journaled for workstream {workstream.id}; "
+            "refusing to delete unaudited"
+        )
+    await session.execute(delete(Workstream).where(Workstream.id == workstream.id))
+    session.expunge(workstream)
+    return count
+
+
 async def purge_workstream(
     session: AsyncSession,
     workstream_id: UUID,
@@ -360,26 +405,28 @@ async def purge_workstream(
     workstream = await get_workstream_by_id(session, workstream_id, for_update=True)
     if workstream is None:
         raise WorkstreamNotFound(str(workstream_id))
-    count = (await session.execute(
-        select(func.count()).select_from(WorklogEntry)
-        .where(WorklogEntry.workstream_id == workstream.id)
-    )).scalar_one()
-    landed = await record_event(
-        session, event_type="workstream_purged", object_type="workstream",
-        object_id=workstream.id, project=workstream.project, actor=actor,
-        api_key_id=api_key_id, payload={"key": workstream.key, "entries": count},
+    return await _journal_then_delete(session, workstream, actor=actor, api_key_id=api_key_id)
+
+
+async def expire_next(
+    session: AsyncSession, *, retention_days: int, actor: str | None = None
+) -> int | None:
+    """Erase the longest-closed workstream past retention; None when none is eligible.
+
+    Open and retained workstreams are never eligible, however old (spec §6).
+    The erase keeps the purge verb's journal-first contract, and the caller
+    commits one workstream at a time.
+    """
+    found = (await session.execute(
+        _NEXT_EXPIRED, {"days": retention_days}
+    )).scalar_one_or_none()
+    if found is None:
+        return None
+    workstream = await get_workstream_by_id(session, found, for_update=True)
+    return await _journal_then_delete(
+        session, workstream, actor=actor, api_key_id=None,
+        extra={"retention_days": retention_days},
     )
-    journaled = (await session.execute(
-        _PURGE_JOURNALED, {"id": str(workstream.id)}
-    )).scalar_one()
-    if not landed or journaled == 0:
-        raise WorklogJournalWriteFailed(
-            f"workstream_purged is not journaled for workstream {workstream.id}; "
-            "refusing to delete unaudited"
-        )
-    await session.execute(delete(Workstream).where(Workstream.id == workstream.id))
-    session.expunge(workstream)
-    return count
 
 
 def serialize_workstream(workstream: Workstream) -> dict[str, Any]:

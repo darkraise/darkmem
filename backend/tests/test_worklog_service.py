@@ -228,6 +228,85 @@ async def test_no_entry_text_reaches_the_journal(session):
         assert secret not in str(payload)
 
 
+async def _close(session, workstream_id, *, days_ago, retain=False):
+    await worklog.update_workstream(session, workstream_id, state="closed", retain=retain)
+    await session.execute(
+        text(
+            "UPDATE workstreams SET closed_at = now() - make_interval(days => CAST(:d AS integer)) "
+            "WHERE id = CAST(:id AS uuid)"
+        ),
+        {"d": days_ago, "id": str(workstream_id)},
+    )
+
+
+async def test_expire_next_erases_the_longest_closed_first_and_journals_it(session):
+    older_id = (await _append(session, key="older", entries=[
+        {"kind": "note", "body": "a"}, {"kind": "note", "body": "b"},
+    ])).workstream.id
+    newer_id = (await _append(session, key="newer")).workstream.id
+    await _close(session, newer_id, days_ago=5)
+    await _close(session, older_id, days_ago=10)
+
+    assert await worklog.expire_next(session, retention_days=1, actor="worklog_cleanup") == 2
+    assert (await session.execute(text("SELECT key FROM workstreams"))).scalars().all() == ["newer"]
+    assert (await session.execute(
+        text("SELECT count(*) FROM worklog_entries WHERE workstream_id = CAST(:w AS uuid)"),
+        {"w": str(older_id)},
+    )).scalar_one() == 0
+    row = (await session.execute(
+        text(
+            "SELECT actor, payload FROM events WHERE event_type = 'workstream_purged' "
+            "AND object_type = 'workstream' AND object_id = CAST(:w AS uuid)"
+        ),
+        {"w": str(older_id)},
+    )).one()
+    assert row.actor == "worklog_cleanup"
+    assert row.payload == {"key": "older", "entries": 2, "retention_days": 1}
+
+    assert await worklog.expire_next(session, retention_days=1) == 1
+    assert await worklog.expire_next(session, retention_days=1) is None
+
+
+async def test_expire_next_keeps_open_retained_and_recent_workstreams(session):
+    open_id = (await _append(session, key="open")).workstream.id
+    retained_id = (await _append(session, key="retained")).workstream.id
+    recent_id = (await _append(session, key="recent")).workstream.id
+    await session.execute(
+        text(
+            "UPDATE workstreams SET created_at = now() - interval '400 days', "
+            "last_entry_at = now() - interval '400 days' WHERE id = CAST(:id AS uuid)"
+        ),
+        {"id": str(open_id)},
+    )
+    await _close(session, retained_id, days_ago=400, retain=True)
+    await _close(session, recent_id, days_ago=1)
+
+    assert await worklog.expire_next(session, retention_days=2) is None
+    assert sorted((await session.execute(text("SELECT key FROM workstreams"))).scalars().all()) == [
+        "open", "recent", "retained",
+    ]
+
+
+@pytest.mark.parametrize("reported", [False, True])
+async def test_expire_next_refuses_unless_the_journal_row_is_really_there(session, monkeypatch, reported):
+    ws_id = (await _append(session)).workstream.id
+    await _close(session, ws_id, days_ago=10)
+
+    async def writes_nothing(*args, **kwargs):
+        return reported
+
+    monkeypatch.setattr(worklog, "record_event", writes_nothing)
+    with pytest.raises(worklog.WorklogJournalWriteFailed):
+        await worklog.expire_next(session, retention_days=1)
+    still = (await session.execute(select(Workstream).where(Workstream.id == ws_id))).scalar_one_or_none()
+    assert still is not None
+    entries = (await session.execute(
+        text("SELECT count(*) FROM worklog_entries WHERE workstream_id = CAST(:w AS uuid)"),
+        {"w": str(ws_id)},
+    )).scalar_one()
+    assert entries == 1
+
+
 def test_serializers_are_json_safe():
     import json
     from datetime import UTC, datetime
@@ -265,10 +344,6 @@ def test_serializers_are_json_safe():
 # the `worklog-race` project.
 
 RACE_PROJECT = "worklog-race"
-_RETENTION_DELETE = text(
-    "DELETE FROM workstreams WHERE id = CAST(:id AS uuid) "
-    "AND state = 'closed' AND NOT retain RETURNING id"
-)
 
 
 @pytest_asyncio.fixture
@@ -292,24 +367,25 @@ async def _closed_race_workstream(factory) -> uuid.UUID:
             entries=[{"kind": "note", "body": "n"}],
         )
         await worklog.update_workstream(setup, result.workstream.id, state="closed")
+        await setup.execute(
+            text("UPDATE workstreams SET closed_at = now() - interval '2 days' WHERE id = CAST(:id AS uuid)"),
+            {"id": str(result.workstream.id)},
+        )
         await setup.commit()
         return result.workstream.id
 
 
-async def test_an_append_holding_the_lock_survives_a_retention_delete(committed):
+async def test_the_sweep_passes_over_a_workstream_an_append_holds(committed):
     ws_id = await _closed_race_workstream(committed)
-    async with committed() as appender, committed() as deleter:
+    async with committed() as appender, committed() as sweeper:
         await worklog.append(
             appender, project=RACE_PROJECT, key="race", run_key="r",
             entries=[{"kind": "note", "body": "late"}],
         )
-        delete_task = asyncio.create_task(deleter.execute(_RETENTION_DELETE, {"id": str(ws_id)}))
-        await asyncio.sleep(0.3)
-        assert not delete_task.done(), "the delete must wait on the append's row lock"
+        swept = await asyncio.wait_for(worklog.expire_next(sweeper, retention_days=1), timeout=5)
+        assert swept is None, "the sweep must skip a row an append holds, neither waiting nor deleting"
+        await sweeper.rollback()
         await appender.commit()
-        deleted = (await delete_task).fetchall()
-        await deleter.commit()
-    assert deleted == []
     async with committed() as check:
         state = (await check.execute(
             text("SELECT state FROM workstreams WHERE id = CAST(:id AS uuid)"), {"id": str(ws_id)}
@@ -317,18 +393,17 @@ async def test_an_append_holding_the_lock_survives_a_retention_delete(committed)
     assert state == "open"
 
 
-async def test_an_append_behind_a_committed_delete_recreates_the_workstream(committed):
+async def test_an_append_behind_a_committed_sweep_recreates_the_workstream(committed):
     ws_id = await _closed_race_workstream(committed)
-    async with committed() as deleter, committed() as appender:
-        removed = (await deleter.execute(_RETENTION_DELETE, {"id": str(ws_id)})).fetchall()
-        assert len(removed) == 1
+    async with committed() as sweeper, committed() as appender:
+        assert await worklog.expire_next(sweeper, retention_days=1) == 1
         append_task = asyncio.create_task(worklog.append(
             appender, project=RACE_PROJECT, key="race", run_key="r",
             entries=[{"kind": "note", "body": "late"}],
         ))
         await asyncio.sleep(0.3)
-        assert not append_task.done(), "the append must wait on the delete's row lock"
-        await deleter.commit()
+        assert not append_task.done(), "the append must wait on the sweep's row lock"
+        await sweeper.commit()
         result = await append_task
         await appender.commit()
     assert result.workstream.id != ws_id
