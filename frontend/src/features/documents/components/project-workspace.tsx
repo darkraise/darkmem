@@ -234,13 +234,20 @@ export function ProjectWorkspace({
   }, [])
 
   const switchTab = tabs.onTabChange
+  const documentsLoading = documents.isLoading
   // A workstream names its plan, spec and handoff by uri; the workspace owns
   // the selection, so opening one is a selection plus a tab switch.
   const openDocumentByUri = useCallback(
     (uri: string) => {
       const doc = items.find((d) => d.uri === uri)
       if (!doc) {
-        toast.error(`${uri} is not filed in this project`)
+        // isLoading, not isPending: demo mode disables the read, which leaves
+        // it pending forever with nothing filed.
+        toast.error(
+          documentsLoading
+            ? "The document list is still loading; try again in a moment"
+            : `${uri} is not filed in this project`,
+        )
         return
       }
       setSelectedId(doc.id)
@@ -248,7 +255,7 @@ export function ProjectWorkspace({
       setMode("read")
       switchTab?.("artifacts")
     },
-    [items, switchTab],
+    [items, documentsLoading, switchTab],
   )
 
   const hits = search.data?.items ?? []

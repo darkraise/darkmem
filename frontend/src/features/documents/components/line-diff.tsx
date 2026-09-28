@@ -6,6 +6,12 @@ import { cn } from "darkraise-ui/lib"
 // dist/components). This renderer exists only for that gap; a library diff
 // view retires it.
 
+// Bounds the main-thread work: a document may hold 1,000,000 characters, and
+// the diff is O(N·D) in its edit distance. `diffLines` answers undefined past
+// either bound.
+const MAX_EDITS = 2_000
+const DIFF_TIMEOUT_MS = 1_000
+
 function splitLines(value: string): string[] {
   const lines = value.split("\n")
   if (lines[lines.length - 1] === "") lines.pop()
@@ -13,8 +19,18 @@ function splitLines(value: string): string[] {
 }
 
 export function LineDiff({ before, after }: { before: string; after: string }) {
-  const parts = useMemo(() => diffLines(before, after), [before, after])
+  const parts = useMemo(
+    () => diffLines(before, after, { maxEditLength: MAX_EDITS, timeout: DIFF_TIMEOUT_MS }),
+    [before, after],
+  )
 
+  if (parts === undefined) {
+    return (
+      <p className="text-muted-foreground text-sm">
+        These revisions differ in too many lines to compare here.
+      </p>
+    )
+  }
   if (!parts.some((part) => part.added || part.removed)) {
     return (
       <p className="text-muted-foreground text-sm">The two revisions are identical.</p>

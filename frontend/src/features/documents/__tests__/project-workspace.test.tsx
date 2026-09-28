@@ -796,6 +796,20 @@ describe("project workspace — the corpus browser's own surface", () => {
     })
   })
 
+  it("says the document list is loading rather than calling a link unfiled", async () => {
+    vi.mocked(apiFetch).mockImplementation(() => new Promise(() => {}))
+    const onTabChange = vi.fn()
+    vi.mocked(toast.error).mockClear()
+    renderWorkspace({ tab: "progress", onTabChange })
+    await screen.findByText("work-log-panel:none")
+
+    fireEvent.click(screen.getByRole("button", { name: "open design" }))
+    expect(onTabChange).not.toHaveBeenCalled()
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+      "The document list is still loading; try again in a moment",
+    )
+  })
+
   it("names a linked document that is not filed instead of switching tabs", async () => {
     mockDocuments({ items: [DOC] })
     const onTabChange = vi.fn()
@@ -803,11 +817,14 @@ describe("project workspace — the corpus browser's own surface", () => {
     renderWorkspace({ tab: "progress", onTabChange })
     await screen.findByText("work-log-panel:none")
 
-    fireEvent.click(screen.getByRole("button", { name: "open missing" }))
+    // Clicked until the list lands; before that the answer is "still loading".
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole("button", { name: "open missing" }))
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+        "notes/missing.md is not filed in this project",
+      )
+    })
     expect(onTabChange).not.toHaveBeenCalled()
-    expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
-      "notes/missing.md is not filed in this project",
-    )
   })
 
   it("offers no create affordance in an empty tree", async () => {

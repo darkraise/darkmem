@@ -21,6 +21,16 @@ describe("LineDiff", () => {
     expect(lines(container, "removed")).toEqual([""])
   })
 
+  it("declines a comparison past its edit bound instead of freezing", () => {
+    const before = Array.from({ length: 2_100 }, (_, i) => `a${i}`).join("\n")
+    const after = Array.from({ length: 2_100 }, (_, i) => `b${i}`).join("\n")
+    const { container } = render(<LineDiff before={before} after={after} />)
+    expect(
+      screen.getByText("These revisions differ in too many lines to compare here."),
+    ).toBeInTheDocument()
+    expect(container.querySelector("[data-change]")).toBeNull()
+  })
+
   it("says so when the two sides are identical", () => {
     render(<LineDiff before={"same\n"} after={"same\n"} />)
     expect(screen.getByText("The two revisions are identical.")).toBeInTheDocument()
