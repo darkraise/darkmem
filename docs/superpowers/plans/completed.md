@@ -13,3 +13,4 @@
 - 2026-09-28 `docs/superpowers/plans/2026-09-27-work-log-increment-4-capture-warning.md` — merged into `master` at 74adccb0
 - 2026-09-28 `docs/superpowers/plans/2026-09-28-work-log-increment-5-retention.md` — merged into `master` at 200b67e1
 - 2026-09-28 `docs/superpowers/plans/2026-09-28-work-log-increment-6-ui-and-checkpoint-removal.md` — merged into `master` at 3e51fd1c
+- 2026-09-28 `docs/superpowers/plans/2026-09-28-keyed-document-patch.md` — merged into `master` at 25ea1247
