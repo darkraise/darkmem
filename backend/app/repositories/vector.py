@@ -1,5 +1,6 @@
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 import numpy as np
@@ -229,10 +230,16 @@ class PostgresVectorRepository:
             return [float(x) for x in raw.strip("[]").split(",")]
         return [float(x) for x in raw]
 
-    async def get_all_vectors(
-        self, fingerprint: str, limit: int = 500, filters: MemoryFilter | None = None,
-    ) -> list[dict]:
-        """Bulk read of one partition, for the projection and clustering views.
+    def _bulk_read(
+        self, fingerprint: str, limit: int, filters: MemoryFilter | None,
+    ) -> tuple[str, dict]:
+        """The bulk partition read, newest first.
+
+        A limit keeps the most recent memories rather than an arbitrary slice.
+        The embedding is cast to ``real[]`` so asyncpg decodes it natively;
+        parsing the text form costs seconds at tens of thousands of rows.
+        ``importance`` rides the same row because a lookup by id would pass one
+        bind parameter per memory, past asyncpg's limit.
 
         The join to ``memories`` is unconditional even when nothing is being
         scoped: the FK makes it lossless, and it is what puts ``project`` and
@@ -245,29 +252,86 @@ class PostgresVectorRepository:
         if filters is not None:
             params.update(filters.params())
             where_sql = f"WHERE {filters.where_sql('m')}"
+        sql = f"""
+            SELECT e.memory_id,
+                   e.embedding::real[] AS embedding,
+                   e.payload,
+                   m.importance AS importance,
+                   {SCOPE_LABEL_COLUMNS}
+            FROM {table} e
+            {SCOPE_LABEL_JOIN}
+            {where_sql}
+            ORDER BY m.created_at DESC, e.memory_id DESC
+            LIMIT :limit
+        """
+        return sql, params
 
-        result = await self.session.execute(
-            text(f"""
-                SELECT e.memory_id,
-                       e.embedding::text AS embedding_text,
-                       e.payload,
-                       {SCOPE_LABEL_COLUMNS}
-                FROM {table} e
-                {SCOPE_LABEL_JOIN}
-                {where_sql}
-                LIMIT :limit
-            """),
-            params,
-        )
-        return [
-            {
-                "memory_id": UUID(str(row.memory_id)),
-                "vector": self._parse_vector(row.embedding_text),
-                "payload": row.payload,
-                **scope_labels(row),
-            }
-            for row in result
-        ]
+    @staticmethod
+    def _bulk_point(row) -> dict:
+        return {
+            "memory_id": UUID(str(row.memory_id)),
+            "payload": row.payload,
+            "importance": row.importance,
+            **scope_labels(row),
+        }
+
+    async def get_all_vectors(
+        self, fingerprint: str, limit: int = 500, filters: MemoryFilter | None = None,
+    ) -> list[dict]:
+        """Bulk read of one partition, for the projection and clustering views."""
+        sql, params = self._bulk_read(fingerprint, limit, filters)
+        result = await self.session.execute(text(sql), params)
+        return [{**self._bulk_point(row), "vector": row.embedding} for row in result]
+
+    async def get_vector_matrix(
+        self, fingerprint: str, limit: int = 500, filters: MemoryFilter | None = None,
+    ) -> tuple[list[dict], np.ndarray]:
+        """``get_all_vectors`` without a Python list per vector.
+
+        Rows stream in batches of 1,000 and each batch's embeddings are packed
+        into float32 before the next arrives, so a 20,000 x 1024 read peaks
+        near its 80 MB matrix rather than the ~0.65 GB its lists would hold.
+        """
+        sql, params = self._bulk_read(fingerprint, limit, filters)
+        points: list[dict] = []
+        blocks: list[np.ndarray] = []
+        result = await self.session.stream(text(sql), params)
+        async for batch in result.partitions(1000):
+            points.extend(self._bulk_point(row) for row in batch)
+            blocks.append(np.asarray([row.embedding for row in batch], dtype=np.float32))
+        if not blocks:
+            return [], np.empty((0, 0), dtype=np.float32)
+        return points, np.vstack(blocks)
+
+    async def scope_stamp(
+        self, fingerprint: str, filters: MemoryFilter | None = None,
+    ) -> tuple[int, datetime | None]:
+        """How many rows ``get_all_vectors`` could return under ``filters``,
+        and the newest ``memories.updated_at`` among them.
+
+        Together they move whenever the readable set does: a capture or
+        re-extraction bumps ``updated_at`` through the ``touch_updated_at``
+        trigger, and a delete moves the count.
+        """
+        table = child_table("memory_embeddings", fingerprint)
+        params: dict = {}
+        where_sql = ""
+        if filters is not None:
+            params.update(filters.params())
+            where_sql = f"WHERE {filters.where_sql('m')}"
+
+        row = (
+            await self.session.execute(
+                text(f"""
+                    SELECT count(*) AS n, max(m.updated_at) AS last_updated
+                    FROM {table} e
+                    {SCOPE_LABEL_JOIN}
+                    {where_sql}
+                """),
+                params,
+            )
+        ).one()
+        return int(row.n), row.last_updated
 
     async def get_clustered_vectors(
         self,
