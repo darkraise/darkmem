@@ -207,7 +207,7 @@ scope problem, not a retry.
 | Code | `code_search`, `code_symbol`, `code_file_symbols`, `code_blast_radius`, `code_dependencies`, `code_context`, `code_changes`, `code_communities`, `code_processes`, `code_rename`, `list_repos` |
 | Knowledge | `knowledge_search`, `fact_get`, `article_get` |
 | Documents | `document_put`, `document_search`, `document_outline`, `document_get`, `document_delete` |
-| Session | `checkpoint_save`, `checkpoint_latest` |
+| Work log | `worklog_append`, `worklog_resume`, `worklog_workstreams`, `worklog_entries`, `worklog_search`, `worklog_update`, `worklog_purge` |
 | Research | `research_run` |
 
 ### Patterns that work
@@ -218,8 +218,7 @@ darkmem at the start of a task, before it re-derives something already settled.
 **Write when something is decided, not continuously.** Capture the conclusion
 and its reasoning, not a running commentary.
 
-**Checkpoint long sessions.** `checkpoint_save` stores a summary and next
-steps; `checkpoint_latest` picks it back up in the next session.
+**Keep working data in the work log.** `worklog_append` files a checkpoint, ledger text or a note under a workstream; `worklog_resume` picks the work back up in the next session.
 
 **Search a document before reading it off disk.** `document_put` files a
 markdown or plain-text file under its repo-relative path, and `document_search`

@@ -46,7 +46,7 @@ const TRIGGER_CLASS =
  * one (Ruling 3): this control sets *scope*, never a session context hint.
  *
  * The list is exactly the corpus's own (`GET /api/v1/projects`) — a scope is
- * offered once a memory, document or checkpoint carries it. There is no free-text field: a
+ * offered once a memory, document, workstream or page carries it. There is no free-text field: a
  * project comes into existence by being captured into, so a name typed here
  * would switch every project-scoped view to a scope guaranteed to be empty,
  * which reads as a broken filter rather than as a new project.
@@ -56,7 +56,7 @@ const TRIGGER_CLASS =
  *  count, showing "0 memories" for a scope that holds a hundred files. */
 function itemHint(row: ProjectSummary): string {
   const total =
-    row.memory_count + row.document_count + row.checkpoint_count + row.page_count
+    row.memory_count + row.document_count + row.workstream_count + row.page_count
   return `${total} ${total === 1 ? "item" : "items"}`
 }
 

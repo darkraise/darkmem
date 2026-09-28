@@ -6,7 +6,6 @@ import { useDemoStore } from "@/demo/store"
 import { PipelineTab } from "../components/pipeline-tab"
 import { TriageTab } from "../components/triage-tab"
 import { DreamTab } from "../components/dream-tab"
-import { CheckpointsTab } from "../components/checkpoints-tab"
 
 // This file pins the fixture-backed rendering deliberately (T1.45 is
 // done), so it is frozen at DEMO: true rather than relying on the
@@ -78,26 +77,3 @@ describe("DreamTab undo honesty", () => {
   })
 })
 
-describe("CheckpointsTab is operational — no verification badge", () => {
-  it("labels every run 'session digest · not verified knowledge'", () => {
-    render(withQuery(<CheckpointsTab />))
-    expect(
-      screen.getAllByText("session digest · not verified knowledge").length,
-    ).toBeGreaterThan(0)
-  })
-
-  it("never renders the vault's rung vocabulary", () => {
-    render(withQuery(<CheckpointsTab />))
-    expect(screen.queryByText("corroborated")).not.toBeInTheDocument()
-    expect(screen.queryByText("candidate")).not.toBeInTheDocument()
-  })
-
-  it("shows the marker-bounded CLAUDE.md resume block", () => {
-    // The writer's own sentinels (`inject_block.MARKER_BEGIN` / `MARKER_END`).
-    // This asserted a `darkmem:resume:begin` pair until 2026-08-11 — markers
-    // no shipped code writes, so the demo taught a block the real writer
-    // would not have recognised.
-    render(withQuery(<CheckpointsTab />))
-    expect(screen.getByText(/<!-- darkmem:begin -->/)).toBeInTheDocument()
-  })
-})

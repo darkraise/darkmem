@@ -125,54 +125,31 @@ def _carries_marker(text: str) -> bool:
     return MARKER_BEGIN in text or MARKER_END in text
 
 
-def fill(
-    result: ComposedResult, *, token_budget: int, lead: str | None = None
-) -> FillResult:
+def fill(result: ComposedResult, *, token_budget: int) -> FillResult:
     """Budget-bounded, truth-first items for the managed block.
 
     Cold start (doc 15 §3.4): the primary pass admits an L2 row only when its
     served labels say verified. If nothing verified lands, the pass runs once
     more with candidates admitted — under the *same* budget, so a cold-start
     block is never an over-budget block.
-
-    ``lead`` is T3.17's resume digest: an item admitted **first and charged
-    against this same budget**. It is a parameter here rather than a second
-    module composing two blocks because resume's own done-when is "reuses the
-    T3.10 budget path, not a parallel one" — a resume that computed its own
-    budget would exceed the operator's by exactly the checkpoint's size, and
-    only on sessions that had one. ``None`` is the ordinary inject, byte for
-    byte.
     """
     budget = max(0, token_budget - HEADER_RESERVE)
 
-    landed = _pass(result.rows, budget, verified_only=True, lead=lead)
+    landed = _pass(result.rows, budget, verified_only=True)
     if not any(count for layer, count in landed.per_layer.items() if layer == "L2"):
-        cold = _pass(result.rows, budget, verified_only=False, lead=lead)
+        cold = _pass(result.rows, budget, verified_only=False)
         if cold.items:
             return cold
     return landed
 
 
 def _pass(
-    rows: list[ComposedRow], budget: int, *, verified_only: bool, lead: str | None = None
+    rows: list[ComposedRow], budget: int, *, verified_only: bool
 ) -> FillResult:
     items: list[str] = []
     per_layer = {layer: 0 for layer in LAYER_ORDER}
     spent = 0
     dropped = 0
-
-    if lead is not None:
-        # The lead runs the same three gates every other item does — marker
-        # safety, budget, stop-don't-skip — because a checkpoint is agent-
-        # authored prose and has no claim to gentler handling than a fact.
-        if _carries_marker(lead):
-            dropped += 1
-        else:
-            cost = estimate_tokens(lead) + 1
-            if spent + cost > budget:
-                return FillResult(items, spent, per_layer, dropped)
-            items.append(lead)
-            spent += cost
 
     for layer in LAYER_ORDER:
         for row in rows:

@@ -53,7 +53,6 @@ CAPTURE_TOOLS: frozenset[str] = frozenset({
     # A key that can rename or re-tag a document holds writer power over it,
     # which is `capture`'s scope and never `read`'s.
     "document_update",
-    "checkpoint_save",
     # The work log's writers: appending to a workstream and moving its state.
     "worklog_append",
     "worklog_update",
@@ -69,7 +68,6 @@ CAPTURE_TOOLS: frozenset[str] = frozenset({
 
 READ_TOOLS: frozenset[str] = frozenset({
     "article_get",
-    "checkpoint_latest",
     "worklog_resume",
     "worklog_workstreams",
     "worklog_entries",

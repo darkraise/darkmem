@@ -8,17 +8,23 @@ import {
 } from "@/features/documents/components/project-workspace"
 
 export const Route = createFileRoute("/_authenticated/projects_/$project")({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { tab?: WorkspaceTab; workstream?: string } => ({
     tab: TAB_VALUES.includes(search.tab as WorkspaceTab)
       ? (search.tab as WorkspaceTab)
       : undefined,
+    workstream:
+      typeof search.workstream === "string" && search.workstream
+        ? search.workstream
+        : undefined,
   }),
   component: ProjectWorkspacePage,
 })
 
 function ProjectWorkspacePage() {
   const { project } = Route.useParams()
-  const { tab } = Route.useSearch()
+  const { tab, workstream } = Route.useSearch()
   const navigate = useNavigate()
 
   return (
@@ -41,6 +47,7 @@ function ProjectWorkspacePage() {
         // racing the render to correct it after the fact.
         key={project}
         project={project}
+        workstream={workstream}
         tab={tab ?? "artifacts"}
         onTabChange={(next) =>
           // Merge rather than replace: `search: { tab }` dropped every other

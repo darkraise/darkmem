@@ -61,9 +61,11 @@ describe("projects index — the personal notes space is not a project card", ()
     // here would open it in a surface built for project artifacts.
     vi.mocked(apiFetch).mockResolvedValue([
       { name: "darkmem", kind: "project", memory_count: 3, document_count: 0,
-        checkpoint_count: 0, page_count: 0, last_checkpoint_at: null, last_event_day: null },
+        page_count: 0,
+        workstream_count: 0, open_workstream_count: 0, last_worklog_at: null, last_event_day: null },
       { name: "notes", kind: "personal", memory_count: 0, document_count: 12,
-        checkpoint_count: 0, page_count: 0, last_checkpoint_at: null, last_event_day: null },
+        page_count: 0,
+        workstream_count: 0, open_workstream_count: 0, last_worklog_at: null, last_event_day: null },
     ])
     const Component = (Route.options ?? Route).component as ComponentType
     render(<Component />, { wrapper })
@@ -78,7 +80,8 @@ describe("projects index — the personal notes space is not a project card", ()
     // nor the empty state.
     vi.mocked(apiFetch).mockResolvedValue([
       { name: "notes", kind: "personal", memory_count: 0, document_count: 12,
-        checkpoint_count: 0, page_count: 0, last_checkpoint_at: null, last_event_day: null },
+        page_count: 0,
+        workstream_count: 0, open_workstream_count: 0, last_worklog_at: null, last_event_day: null },
     ])
     const Component = (Route.options ?? Route).component as ComponentType
     render(<Component />, { wrapper })

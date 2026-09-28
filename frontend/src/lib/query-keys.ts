@@ -96,6 +96,21 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
     reason:
       "The workspace's stitched full list takes the project as an explicit argument (the route param, not the global switcher), the same posture `documents` carries; it pages the same route until a short page and dedupes by id (review m1)",
   },
+  worklogWorkstreams: {
+    kind: "manual",
+    reason:
+      "GET /worklog/workstreams requires an explicit `project`; the Work log passes the workspace's route param and the Activity list passes each project it enumerates, never the global switcher",
+  },
+  worklogEntries: {
+    kind: "global",
+    reason:
+      "Addressed by workstream id and carrying no project param, the same shape as documentBlocks",
+  },
+  worklogResume: {
+    kind: "manual",
+    reason:
+      "GET /worklog/resume takes an explicit `project` and workstream key, supplied per row by the Activity list",
+  },
   documentOutline: {
     kind: "global",
     reason:
@@ -105,6 +120,16 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
     kind: "global",
     reason:
       "Addressed by document id and carrying no project param — the same shape as documentOutline, and the read the block reader and increment 8's editor both share",
+  },
+  documentRevisions: {
+    kind: "global",
+    reason:
+      "Addressed by document id and carrying no project param, the same shape as documentBlocks",
+  },
+  documentRevision: {
+    kind: "global",
+    reason:
+      "Addressed by document id and revision id; the same shape as documentRevisions",
   },
   documentContents: {
     kind: "global",

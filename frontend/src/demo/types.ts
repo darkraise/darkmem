@@ -638,36 +638,6 @@ export interface DemoDayBucket {
   events: DemoDayEvent[]
 }
 
-export interface DemoCheckpointEvent {
-  time_label: string
-  event: "checkpoint_saved" | "resumed"
-  detail: string
-  tokens_label: string
-}
-
-export interface DemoSessionRun {
-  id: string
-  title: string
-  origin_key: string
-  project: string
-  meta_label: string
-  /** null = the run has written no checkpoint yet (honest empty state). */
-  latest: {
-    saved_label: string
-    summary: string
-    next_steps: string[]
-    key_decisions: string[]
-    touched_files: string[]
-    resume_block: string
-    /** What the resume digest costs against `inject_token_budget`, measured
-     *  the way the budget measures (`inject_fill.estimate_tokens`). The real
-     *  branch reads the server's `token_estimate`; the fixture carries one so
-     *  the mockup shows the same field rather than a blank. */
-    token_estimate: number
-  } | null
-  history: DemoCheckpointEvent[]
-}
-
 // ---------------------------------------------------------------------------
 // Wave 5 — Settings (S25–S30) + Auth (S31/S32).
 // ---------------------------------------------------------------------------
@@ -823,7 +793,6 @@ export interface DemoStoreState {
   /** Earlier cycles, past their undo window — every entry undo-blocked. */
   dreamPastActions: DemoDreamAction[]
   dayBuckets: DemoDayBucket[]
-  sessionRuns: DemoSessionRun[]
   flags: DemoFlagsState
   gitAccounts: DemoGitAccountsState
   llm: DemoLLMState

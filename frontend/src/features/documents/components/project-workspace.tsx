@@ -29,6 +29,7 @@ import {
   SegmentGroupItem,
 } from "darkraise-ui/components/segment-group"
 import { Skeleton } from "darkraise-ui/components/skeleton"
+import { toast } from "darkraise-ui/components/sonner"
 import {
   Tabs,
   TabsContent,
@@ -36,7 +37,7 @@ import {
   TabsTrigger,
 } from "darkraise-ui/components/tabs"
 import { EmptyState } from "@/components/darkmem"
-import { CheckpointsTab } from "@/features/activity/components/checkpoints-tab"
+import { WorkLogPanel } from "@/features/worklog/components/work-log-panel"
 import {
   DocumentActions,
   DocumentDetail,
@@ -65,12 +66,6 @@ import {
 
 export const TAB_VALUES = ["artifacts", "progress"] as const
 export type WorkspaceTab = (typeof TAB_VALUES)[number]
-
-/** The ledger's path convention. A SUFFIX match, not equality: the corpus
- *  import files repo-relative paths, so this project's own ledger lands at
- *  `docs/planning/progress.md` while the convention names
- *  `planning/progress.md`. The suffix resolves both spellings. */
-const LEDGER_SUFFIX = "planning/progress.md"
 
 /** The mono micro-label this app uses to head a region. Inlined three times
  *  in this file before it was named. */
@@ -113,9 +108,11 @@ type QueryMode = "search" | "ask"
  */
 export function ProjectWorkspace({
   project,
+  workstream,
   ...tabs
 }: {
   project: string
+  workstream?: string
 } & (
   | { tab: WorkspaceTab; onTabChange: (tab: WorkspaceTab) => void }
   | { tab?: undefined; onTabChange?: undefined }
@@ -235,6 +232,31 @@ export function ProjectWorkspace({
     setFocusBlockId(citation.block_id)
     setMode("read")
   }, [])
+
+  const switchTab = tabs.onTabChange
+  const documentsLoading = documents.isLoading
+  // A workstream names its plan, spec and handoff by uri; the workspace owns
+  // the selection, so opening one is a selection plus a tab switch.
+  const openDocumentByUri = useCallback(
+    (uri: string) => {
+      const doc = items.find((d) => d.uri === uri)
+      if (!doc) {
+        // isLoading, not isPending: demo mode disables the read, which leaves
+        // it pending forever with nothing filed.
+        toast.error(
+          documentsLoading
+            ? "The document list is still loading; try again in a moment"
+            : `${uri} is not filed in this project`,
+        )
+        return
+      }
+      setSelectedId(doc.id)
+      setFocusBlockId(null)
+      setMode("read")
+      switchTab?.("artifacts")
+    },
+    [items, documentsLoading, switchTab],
+  )
 
   const hits = search.data?.items ?? []
   const asking = queryMode === "ask"
@@ -535,11 +557,21 @@ export function ProjectWorkspace({
               kind="empty"
               icon={FolderTree}
               title="No ledger pinned"
-              description={`File a document whose path ends in ${LEDGER_SUFFIX} to pin this project's ledger here.`}
+              description="This project's corpus holds no progress ledger, so the board has nothing to project. Coding clients record their progress in the work log below."
             />
           )}
         </div>
-        <CheckpointsTab project={project} />
+        <div>
+          <RegionLabel>work log</RegionLabel>
+          <WorkLogPanel
+            // Keyed on the requested workstream: the panel seeds its selection
+            // from it once, so a link to another workstream must remount it.
+            key={workstream ?? ""}
+            project={project}
+            initialWorkstream={workstream}
+            onOpenDocument={openDocumentByUri}
+          />
+        </div>
       </TabsContent>
     </Tabs>
   )

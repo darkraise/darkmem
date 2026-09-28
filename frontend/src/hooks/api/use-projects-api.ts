@@ -10,9 +10,12 @@ export interface ProjectSummary {
   kind: "project" | "personal"
   memory_count: number
   document_count: number
-  checkpoint_count: number
   page_count: number
-  last_checkpoint_at: string | null
+  /** Every workstream the project holds, open or closed. */
+  workstream_count: number
+  open_workstream_count: number
+  /** The newest entry across the project's workstreams. */
+  last_worklog_at: string | null
   /** UTC day (YYYY-MM-DD), not a timestamp -- see the backend's own comment. */
   last_event_day: string | null
 }

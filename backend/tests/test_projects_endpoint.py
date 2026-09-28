@@ -1,10 +1,10 @@
 """The scope catalogue.
 
 These tests scope every assertion to the projects they seed. Since the
-endpoint was widened to union documents and checkpoints (2026-08-31, review
-M2), a global assertion here would also be asserting the state of every other
-test module that commits a checkpoint or a document -- `test_checkpoints.py`
-commits rows that outlive it, and asserting "the corpus is empty" would be
+endpoint was widened to union documents, workstreams and pages (2026-08-31,
+review M2), a global assertion here would also be asserting the state of every
+other test module that commits a workstream or a document -- suites that commit
+rows outlive their own test, and asserting "the corpus is empty" would be
 asserting something about that module rather than about this endpoint.
 """
 from uuid import uuid4
@@ -12,7 +12,6 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import text
 
-from app.models.checkpoint import SessionCheckpoint
 from app.models.memory import Memory
 from app.repositories.documents import upsert_by_uri
 
@@ -89,7 +88,7 @@ async def test_a_project_nothing_carries_is_absent(client, auth_headers):
     Formerly `test_empty_corpus_lists_no_projects`, which asserted the whole
     response was empty. That asserted the state of the shared test database
     rather than of this endpoint, and stopped holding the moment the union
-    could see another module's committed checkpoints.
+    could see another module's committed rows.
     """
     resp = await client.get("/api/v1/projects", headers=auth_headers)
     assert resp.status_code == 200
@@ -119,7 +118,7 @@ async def test_counts_every_status_not_only_active(
 
     resp = await client.get("/api/v1/projects", headers=auth_headers)
     # Exact equality on the seeded row, so an accidental extra FIELD still
-    # fails; scoped to that row, so another module's committed checkpoints
+    # fails; scoped to that row, so another module's committed rows
     # do not.
     mixed = next(p for p in resp.json() if p["name"] == "mixed")
     assert mixed == {
@@ -127,9 +126,10 @@ async def test_counts_every_status_not_only_active(
         "kind": "project",
         "memory_count": 2,
         "document_count": 0,
-        "checkpoint_count": 0,
         "page_count": 0,
-        "last_checkpoint_at": None,
+        "workstream_count": 0,
+        "open_workstream_count": 0,
+        "last_worklog_at": None,
         "last_event_day": None,
     }
 
@@ -149,17 +149,29 @@ async def test_a_document_only_project_is_visible(client, auth_headers, session)
 
 
 @pytest.mark.asyncio
-async def test_a_checkpoint_only_project_is_visible(client, auth_headers, session):
-    session.add(SessionCheckpoint(
-        origin_key="cc-run-1", project="ckpt-only", summary="s", next_steps=[],
-    ))
+async def test_a_worklog_only_project_is_visible(client, auth_headers, session):
+    """The Activity route's open-workstream list finds its projects here."""
+    from app.services import worklog
+
+    first = await worklog.append(
+        session, project="worklog-only", key="plan-a", run_key="r",
+        entries=[{"kind": "note", "body": "a"}],
+    )
+    await worklog.append(
+        session, project="worklog-only", key="plan-b", run_key="r",
+        entries=[{"kind": "note", "body": "b"}],
+    )
+    await worklog.update_workstream(session, first.workstream.id, state="closed")
     await session.flush()
 
     resp = await client.get("/api/v1/projects", headers=auth_headers)
     body = {p["name"]: p for p in resp.json()}
-    assert "ckpt-only" in body
-    assert body["ckpt-only"]["checkpoint_count"] == 1
-    assert body["ckpt-only"]["last_checkpoint_at"] is not None
+    assert "worklog-only" in body
+    row = body["worklog-only"]
+    assert row["workstream_count"] == 2
+    assert row["open_workstream_count"] == 1
+    assert row["last_worklog_at"] is not None
+    assert row["memory_count"] == 0
 
 
 @pytest.mark.asyncio

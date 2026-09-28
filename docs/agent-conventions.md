@@ -1,9 +1,9 @@
 # Agent conventions for the project artifact store
 
-How an agent session should file artifacts, checkpoint its progress and keep a
-project's ledger. Every constraint below is a shipped behaviour or a stated
-design decision, not a preference — the citations are so you can check rather
-than trust.
+How an agent session should file artifacts, record its progress in the work
+log and keep a project's ledger. Every constraint below is a shipped behaviour
+or a stated design decision, not a preference — the citations are so you can
+check rather than trust.
 
 This document is itself filed into the store it describes, at uri
 `docs/agent-conventions.md` in project `darkmem`.
@@ -13,7 +13,7 @@ This document is itself filed into the store it describes, at uri
 `project = <repo-name>` for a repository's artifacts — this repo files under
 `darkmem`. It matches the `project/<repo-name>` tag convention agent sessions
 already use for memories, so one scope name means one thing across memories,
-documents and checkpoints.
+documents and the work log.
 
 Personal notes with no repository stay in `default`. That is the boundary: the
 project field is the separation, not a label inside the payload.
@@ -36,41 +36,37 @@ Two consequences worth internalising:
 - There is no "file this again as a new copy". If you want a second document,
   give it a second uri.
 
-## 3. Checkpoint discipline
+## 3. Work-log discipline
 
-**Mint one `origin_key` per run at process boot, and declare it on every
-`checkpoint_save`.** Correlation is a property of client discipline, not a
-system guarantee (`backend/app/services/checkpoints.py`, module docstring). An
-undeclared origin is *refused*, never merged into a shared bucket — the door
-would rather fail your call than silently blend two runs into one history.
+Working data — checkpoints, ledger text, notes to the next session — goes to
+the work log, never to `memory_add` (`backend/app/services/worklog.py`, module
+docstring). One workstream per piece of work, keyed by a name the client
+chooses; dr-superpowers uses the plan or design slug.
 
-Checkpoint at each meaningful step, within these bounds (verified against
-`checkpoints.py:106-117`):
+**Mint one run identity per process at boot, and declare it on every
+`worklog_append`**, as `run_key` or the `X-Darkmem-Origin` header. An
+undeclared run is *refused*, never merged into a shared bucket: two runs
+sharing one key would each resume the other's work as their own
+(`worklog.resolve_run_key`).
+
+Bounds, enforced at the door and again by CHECK constraints (the constants at
+the top of `worklog.py`):
 
 | Bound | Value |
 |---|---|
-| `summary` | ≤ 4,000 characters |
-| `next_steps` count | ≤ 50 |
-| each next step | ≤ 500 characters |
-| `next_steps` total | ≤ 16,384 **bytes** |
+| entry `body` | 1–65,536 characters, stored verbatim |
+| entries per append | 1–100, in one transaction |
+| `properties` | ≤ 12,288 bytes of encoded JSON at the door |
 
-That last row is a different unit from the one above it, deliberately and with
-a scar behind it: 50 × 500 *characters* of CJK text passes the per-step check
-and still exceeds the byte budget.
+**Resume at session start, checkpoint at every stop.** `worklog_resume`
+answers the latest checkpoint, the newest 50 notes and the last 20 ledger
+entries. Every entry stays readable through `worklog_entries` and
+`worklog_search` until the workstream is purged or, closed and not retained,
+ages past the `worklog_cleanup` window (90 days by default).
 
-### What the store gives back — read this before relying on it
-
-**Only the latest checkpoint is readable.** `GET /api/v1/checkpoints/latest`
-and MCP `checkpoint_latest` serve the newest digest for a run, and **no verb
-anywhere serves a run's past summaries.** The `checkpoint_saved` journal event
-deliberately carries no step content at all (write-time minimization), so the
-history you can see is *when* saves and resumes happened — never what they
-said.
-
-So: **a checkpoint is a live watch signal, not a record.** Anything worth
-keeping past the run belongs in the ledger document. If you checkpoint a
-decision and never write it down anywhere else, it is gone the moment the next
-checkpoint lands.
+After a checkpoint, file the durable facts the run established with
+`memory_add`, one per memory: the work log keeps how the work went, memories
+keep what is now true.
 
 ## 4. Ledger shape
 

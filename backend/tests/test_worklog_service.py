@@ -774,3 +774,23 @@ async def test_two_appends_to_an_existing_workstream_expecting_one_seq_admit_one
             select(WorklogEntry.body).where(WorklogEntry.workstream_id == ws_id).order_by(WorklogEntry.seq)
         )).scalars().all()
     assert bodies == ["zero\n", "one\n"]
+
+
+@pytest.mark.parametrize("declared", [None, "", "   ", ":::", "::", "\u200b", " : "])
+def test_an_undeclared_or_unsanitisable_run_is_refused(declared):
+    """Two runs sharing one key would each resume the other's work, so a run
+    that declares nothing, or nothing that survives sanitising, is refused
+    rather than merged into capture's `unknown:` bucket."""
+    with pytest.raises(worklog.UndeclaredRun):
+        worklog.resolve_run_key(declared, source="codex", project="p")
+
+
+def test_a_declared_run_resolves_through_the_capture_derivation():
+    # "boot:1" sanitises to "boot1": the refusal keys on the sanitised result
+    # being empty, not on the raw string losing a character.
+    assert worklog.resolve_run_key("boot:1", source="codex", project="p") == "codex:boot1"
+
+
+def test_the_refusal_names_what_to_send():
+    with pytest.raises(worklog.UndeclaredRun, match="`run_key`"):
+        worklog.resolve_run_key(None, source="codex", project="p")

@@ -123,22 +123,10 @@ const EVENT_TYPES_WITHOUT_TAB = new Set<string>([
   // live", which was never true of `inject`.
   "inject",
   "inject_curbed",
-  // A session checkpoint is operational, not vault knowledge (T3.16): it is
-  // an agent's note about its own run, so it is not a memory, fact or repo
-  // lifecycle step and none of the five tabs models it. Its own surface --
-  // the session-checkpoints / resume view in the Activity shell -- is
-  // T3.21's, which is where this will be rendered rather than in the feed.
-  "checkpoint_saved",
-  // T3.17's resume. Same reasoning as its sibling above and the same
-  // destination: a resume is one agent run reading another's note, which is
-  // operational state rather than a memory, fact or repo lifecycle step. It
-  // belongs on T3.21's session-checkpoints / resume view, beside the
-  // checkpoint it resumed from, not scattered through the feed.
-  "resumed",
-  // The work-log lane's lifecycle (spec 2026-09-23). Operational state like
-  // the checkpoint pair above: a client's own work, not a memory, fact or
-  // repo lifecycle step, so none of the five tabs models it. Its surface is
-  // the project workspace's Work log view.
+  // The work-log lane's lifecycle (spec 2026-09-23). Operational state: a
+  // client's own work, not a memory, fact or repo lifecycle step, so none of
+  // the five tabs models it. Its surface is the project workspace's Work log
+  // view.
   "workstream_opened",
   "workstream_closed",
   "workstream_reopened",

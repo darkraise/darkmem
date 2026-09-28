@@ -492,18 +492,6 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
-        name="checkpoint.save",
-        status=TWO_DOOR,
-        rest=(("POST", f"{V1}/checkpoints"),),
-        mcp=("checkpoint_save",),
-    ),
-    Surface(
-        name="checkpoint.latest",
-        status=TWO_DOOR,
-        rest=(("GET", f"{V1}/checkpoints/latest"),),
-        mcp=("checkpoint_latest",),
-    ),
-    Surface(
         name="worklog.append",
         status=TWO_DOOR,
         rest=(("POST", f"{V1}/worklog/entries"),),

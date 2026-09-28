@@ -50,12 +50,12 @@ function ProjectCard({ row }: { row: ProjectSummary }) {
         <div className="flex gap-5">
           <Stat value={row.memory_count} label="memories" />
           <Stat value={row.document_count} label="documents" />
-          <Stat value={row.checkpoint_count} label="runs" />
+          <Stat value={row.workstream_count} label="workstreams" />
         </div>
         <p className="text-muted-foreground text-sm">
-          {row.last_checkpoint_at
-            ? `last checkpoint ${relativeTime(row.last_checkpoint_at)}`
-            : "no checkpoint yet"}
+          {row.last_worklog_at
+            ? `last work-log entry ${relativeTime(row.last_worklog_at)}`
+            : "no work log yet"}
           {activity ? ` · ${activity}` : ""}
         </p>
       </Card>
@@ -74,7 +74,7 @@ function ProjectsIndexPage() {
       <PageChrome
         icon={FolderKanban}
         title="Projects"
-        description="Every project the corpus holds — memories, documents and checkpoint runs."
+        description="Every project the corpus holds — memories, documents and work logs."
       />
       {isError ? (
         // Not the empty state: "no project holds anything yet" is a claim
@@ -93,7 +93,7 @@ function ProjectsIndexPage() {
           kind="empty"
           icon={FolderKanban}
           title="No project holds anything yet"
-          description="A project appears here as soon as a memory, document or checkpoint carries its name."
+          description="A project appears here as soon as a memory, document or workstream carries its name."
         />
       ) : (
         <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2 xl:grid-cols-3">

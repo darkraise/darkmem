@@ -160,11 +160,6 @@ EXPECTED_STATUS = {
     ("GET", "/api/v1/graph/entities/{entity_id}/neighbors"): 200,
     ("GET", "/api/v1/graph/full"): 200,
     ("GET", "/api/v1/graph/memory-context/{memory_id}"): 200,
-    # T3.16. 201 rather than the capture doors' 202: the checkpoint write is
-    # synchronous and complete when the response is written, so there is no
-    # queued work an ack would describe.
-    ("POST", "/api/v1/checkpoints"): 201,
-    ("GET", "/api/v1/checkpoints/latest"): 200,
     ("GET", "/api/v1/distribution"): 200,
     # 200 rather than 204: the curb is here, and a human turning push off
     # needs to see the state now in force.

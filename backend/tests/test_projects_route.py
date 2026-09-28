@@ -1,6 +1,6 @@
 """`kind` on the derived scope catalogue.
 
-The catalogue is a union over memories, documents and checkpoints, so a
+The catalogue is a union over memories, documents, workstreams and pages, so a
 personal space holding nothing would be invisible to its own picker -- which
 is what made `projects.kind` inert.
 """

@@ -738,18 +738,11 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # The Notion import writes pages and their blocks, so it is a content
     # surface on the same footing as the page write routes above.
     "POST /api/v1/pages/import/notion",
-    # Session checkpoints (T3.16). No memory content crosses: a checkpoint is
-    # the agent's own note about its run, written by the agent and never
-    # derived from a `memories` row — this surface reads that table and no
-    # other. It is project-scoped in its own right, so the scoping question
-    # these surfaces exist to answer does not arise here.
     # Distribution config (T3.19): adapter paths and a token budget. No
     # memory content crosses -- it configures what *would* be injected, and
     # the injected rows themselves are T3.10's surface.
     "GET /api/v1/distribution",
     "PUT /api/v1/distribution/policy",
-    "POST /api/v1/checkpoints",
-    "GET /api/v1/checkpoints/latest",
     # The work-log lane (spec 2026-09-23). No memory content crosses: a
     # workstream and its entries are a client's own notes about its work,
     # never derived from a `memories` row, and every read is scoped by the
@@ -932,11 +925,7 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
 
 
 MCP_TOOLS_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
-    # T3.16, for the reason its REST twins carry above: an agent's note about
-    # its own run is not memory content.
-    "mcp:checkpoint_save",
-    "mcp:checkpoint_latest",
-    # The work-log tools, for the reason their REST twins carry above.
+    # The work-log tools: a client's note about its own work is not memory content.
     "mcp:worklog_append",
     "mcp:worklog_resume",
     "mcp:worklog_workstreams",

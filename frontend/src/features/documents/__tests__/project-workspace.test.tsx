@@ -44,10 +44,27 @@ vi.mock("darkraise-ui/components/sonner", () => ({
   toast: { error: vi.fn(), success: vi.fn() },
   Toaster: () => null,
 }))
-vi.mock("@/features/activity/components/checkpoints-tab", () => ({
-  CheckpointsTab: () => <div>checkpoints-tab</div>,
+vi.mock("@/features/worklog/components/work-log-panel", () => ({
+  WorkLogPanel: ({
+    initialWorkstream,
+    onOpenDocument,
+  }: {
+    initialWorkstream?: string
+    onOpenDocument?: (uri: string) => void
+  }) => (
+    <div>
+      work-log-panel:{initialWorkstream ?? "none"}
+      <button type="button" onClick={() => onOpenDocument?.("notes/design.md")}>
+        open design
+      </button>
+      <button type="button" onClick={() => onOpenDocument?.("notes/missing.md")}>
+        open missing
+      </button>
+    </div>
+  ),
 }))
 
+import { toast } from "darkraise-ui/components/sonner"
 import { apiFetch } from "@/lib/api"
 import { ProjectWorkspace } from "../components/project-workspace"
 import { expansionStorageKey } from "../tree-expansion"
@@ -758,10 +775,56 @@ describe("project workspace — the corpus browser's own surface", () => {
   // renders null on the first pass.
   it("renders the progress panel", async () => {
     mockDocuments({ items: [DOC] })
-    renderWorkspace({ tab: "progress" })
+    renderWorkspace({ tab: "progress", workstream: "plan-a" })
 
-    expect(await screen.findByText("checkpoints-tab")).toBeInTheDocument()
-    expect(screen.getByText(/planning\/progress\.md/)).toBeInTheDocument()
+    expect(await screen.findByText("work-log-panel:plan-a")).toBeInTheDocument()
+    // The ledger path convention no longer appears in the board's empty state.
+    expect(screen.queryByText(/planning\/progress\.md/)).toBeNull()
+  })
+
+  it("opens a document a workstream links to in the Artifacts tab", async () => {
+    mockDocuments({ items: [DOC] })
+    const onTabChange = vi.fn()
+    renderWorkspace({ tab: "progress", onTabChange })
+    await screen.findByText("work-log-panel:none")
+
+    // The document list loads asynchronously; a click before it lands is the
+    // not-filed branch, so retry the click until the list is there.
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole("button", { name: "open design" }))
+      expect(onTabChange).toHaveBeenCalledWith("artifacts")
+    })
+  })
+
+  it("says the document list is loading rather than calling a link unfiled", async () => {
+    vi.mocked(apiFetch).mockImplementation(() => new Promise(() => {}))
+    const onTabChange = vi.fn()
+    vi.mocked(toast.error).mockClear()
+    renderWorkspace({ tab: "progress", onTabChange })
+    await screen.findByText("work-log-panel:none")
+
+    fireEvent.click(screen.getByRole("button", { name: "open design" }))
+    expect(onTabChange).not.toHaveBeenCalled()
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+      "The document list is still loading; try again in a moment",
+    )
+  })
+
+  it("names a linked document that is not filed instead of switching tabs", async () => {
+    mockDocuments({ items: [DOC] })
+    const onTabChange = vi.fn()
+    vi.mocked(toast.error).mockClear()
+    renderWorkspace({ tab: "progress", onTabChange })
+    await screen.findByText("work-log-panel:none")
+
+    // Clicked until the list lands; before that the answer is "still loading".
+    await waitFor(() => {
+      fireEvent.click(screen.getByRole("button", { name: "open missing" }))
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+        "notes/missing.md is not filed in this project",
+      )
+    })
+    expect(onTabChange).not.toHaveBeenCalled()
   })
 
   it("offers no create affordance in an empty tree", async () => {

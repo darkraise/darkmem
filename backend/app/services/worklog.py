@@ -22,6 +22,7 @@ from sqlalchemy import and_, delete, func, insert, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.mcp.client_identity import UNKNOWN_ORIGIN_PREFIX, resolve_origin_key
 from app.config import settings
 from app.models.worklog import WorklogEntry, Workstream
 from app.services import project_registry
@@ -45,6 +46,7 @@ __all__ = [
     "RESUME_NOTES_CAP",
     "SEARCH_ARMS",
     "SEARCH_DEFAULT_LIMIT",
+    "UndeclaredRun",
     "WorklogJournalWriteFailed",
     "WorklogRejected",
     "WorklogSeqConflict",
@@ -57,6 +59,7 @@ __all__ = [
     "list_workstreams",
     "properties_size",
     "purge_workstream",
+    "resolve_run_key",
     "resume",
     "search",
     "serialize_entry",
@@ -79,6 +82,48 @@ SEARCH_ARMS = ("keyword", "semantic")
 SEARCH_DEFAULT_LIMIT = 20
 MAX_SEARCH_LIMIT = 100
 MAX_QUERY_CHARS = 2_000
+
+
+class UndeclaredRun(ValueError):
+    """An append arrived with no declared agent-run identity."""
+
+
+def resolve_run_key(declared, *, source: str, project: str) -> str:
+    """The run's key by doc 05 §2.1's derivation, or a refusal.
+
+    The derivation is capture's own `resolve_origin_key`, so the sanitising,
+    the length bound and the prefix have one owner. Its fallback is not
+    inherited: capture merges an undeclared origin into one
+    `unknown:<source>:<project>` bucket, which is safe for a key that counts
+    corroboration and wrong for one that looks work up, because two runs
+    sharing it would each resume the other's work as their own.
+    """
+    if not isinstance(declared, str) or not declared.strip():
+        raise UndeclaredRun(
+            "a work-log entry needs a declared agent-run identity: send "
+            "`run_key`, or the X-Darkmem-Origin header the client mints at "
+            "process boot. Undeclared runs are refused rather than merged into "
+            "one bucket the way undeclared captures are: two runs sharing a key "
+            "would each resume the other's work as their own."
+        )
+    resolved = resolve_origin_key(declared, None, source=source, project=project)
+    # Unreachable while `declared` is non-empty, but asserted rather than
+    # assumed: the failure it guards is silent.
+    if resolved.startswith(f"{UNKNOWN_ORIGIN_PREFIX}:"):
+        raise UndeclaredRun(
+            f"origin resolution produced the merge-to-one bucket {resolved!r}; "
+            "refusing to file work under a key every unattributed run shares"
+        )
+    # `_sanitize_origin` drops separators and unprintables, so ":::" or a lone
+    # zero-width space reduces to the bare "<source>:", one key every such run
+    # would share.
+    if resolved == f"{source}:":
+        raise UndeclaredRun(
+            f"the declared agent-run identity {declared!r} contains nothing that "
+            f"survives sanitisation, so it resolves to the bare {resolved!r}. "
+            "Send an identity with at least one printable, non-separator character."
+        )
+    return resolved
 
 
 class WorkstreamNotFound(LookupError):

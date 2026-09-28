@@ -105,7 +105,7 @@ def declared_origin(ctx=None, *, headers=None) -> str | None:
 
     Exists so a door can offer the header fallback without unwrapping an MCP
     ``ctx`` itself. ``resolve_origin_key`` already reads the header when it is
-    given the ``ctx``, but the checkpoint doors resolve a declared identity
+    given the ``ctx``, but the work-log doors resolve a declared identity
     *before* calling it (they refuse the merge-to-one bucket rather than
     inheriting it), so they need the header separately.
     """

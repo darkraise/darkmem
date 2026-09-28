@@ -6,7 +6,6 @@ import type {
   DemoDreamCycle,
   DemoDreamMonitor,
   DemoFeedEvent,
-  DemoSessionRun,
 } from "../types"
 
 // ---------------------------------------------------------------------------
@@ -641,94 +640,5 @@ export const CURATED_DAY_BUCKETS: DemoDayBucket[] = [
         note: "2 entities / 1 relation written to the graph (pipeline Phase 2)",
       },
     ],
-  },
-]
-
-// ---------------------------------------------------------------------------
-// S33 — session checkpoints. OPERATIONAL digests — no verification badge,
-// always labelled "session digest · not verified knowledge".
-// ---------------------------------------------------------------------------
-
-// The markers and the line shape are the shipped ones, not a mockup's own:
-// `inject_block.MARKER_BEGIN` / `MARKER_END` are what the writer recognises,
-// and `resume_inject.render_checkpoint` emits a single `- (resume) …` line
-// that `inject_fill` leads the block with. This fixture spelled its own
-// `darkmem:resume:begin` pair until 2026-08-11, which a reader could
-// reasonably have copied into a CLAUDE.md — where the real writer would not
-// have recognised it and would have appended a second, live pair below.
-// Only the checkpoint's own line, and that is the honest shape: the vault
-// rows that share the block are whatever retrieval fills under the budget at
-// resume time, so a fixture that spelled them would be inventing a ranking.
-// It is also what the guard below requires — the vault's rung vocabulary in a
-// checkpoint fixture is exactly the over-claim T3.18 forbids.
-const RESUME_BLOCK = `<!-- darkmem:begin -->
-generated 2026-07-25T03:12:00Z, project darkmem-core-backend, 1 item, 2000 tokens
-- (resume) Applied the Fable review to feature-epics.md (22 findings, committed 5492b20), then added the Simple/Advanced detail toggle and the server-side session-resume subsystem. Next: update the mockups (S03, C03, S33) and rebuild index.html; initialise the claude-code-plugins repo with the README and plugin plan; commit the docs and mockups
-<!-- darkmem:end -->`
-
-export const CURATED_SESSION_RUNS: DemoSessionRun[] = [
-  {
-    id: "cc-run-8f3a2c",
-    title: "Overnight: darkmem feature-epics review",
-    origin_key: "cc-run-8f3a2c",
-    project: "darkmem-core-backend",
-    meta_label: "5 checkpoints · last 03:12 · ~1,850 tokens",
-    latest: {
-      saved_label: "saved 03:12 · ~1,850 tokens",
-      summary:
-        "Applied the Fable review to feature-epics.md: 22 confirmed findings landed across two passes (fact-layer retagged rebuild + target-new, T1–T4 retagged, a groundedness-judge row added to close E2's G-D gate, pointer/wording nits fixed), committed as 5492b20. Then added two new features to the list behind a design spec: the detail-level toggle and this session-resume subsystem.",
-      next_steps: [
-        "Update the mockups (S03 simple, C03 toggle, this screen) and rebuild index.html",
-        "Initialise the plugin marketplace repo with the README + plan",
-        "Commit the docs + mockups",
-      ],
-      key_decisions: [
-        "toggle default = advanced",
-        "checkpoints = server-side",
-        "plugin = plan-only this pass",
-      ],
-      touched_files: [
-        "docs/planning/feature-epics.md",
-        "docs/superpowers/specs/2026-07-25-…md",
-        "docs/design/mockups/fragments/*",
-      ],
-      resume_block: RESUME_BLOCK,
-      token_estimate: 1850,
-    },
-    history: [
-      {
-        time_label: "08:41",
-        event: "resumed",
-        detail: "new session loaded the 03:12 digest into CLAUDE.md",
-        tokens_label: "~1,850",
-      },
-      {
-        time_label: "03:12",
-        event: "checkpoint_saved",
-        detail: "features added behind the spec; ready to update mockups",
-        tokens_label: "~1,850",
-      },
-      {
-        time_label: "01:48",
-        event: "checkpoint_saved",
-        detail: "Fable review applied + committed 5492b20",
-        tokens_label: "~1,610",
-      },
-      {
-        time_label: "00:20",
-        event: "checkpoint_saved",
-        detail: "review workflow returned; verdict revise",
-        tokens_label: "~1,240",
-      },
-    ],
-  },
-  {
-    id: "cc-run-1d77e0",
-    title: "Frontend skeleton — Wave 4 build",
-    origin_key: "cc-run-1d77e0",
-    project: "darkmem",
-    meta_label: "0 checkpoints · no digest yet",
-    latest: null,
-    history: [],
   },
 ]

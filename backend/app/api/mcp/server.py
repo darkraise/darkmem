@@ -485,106 +485,6 @@ async def memory_tags() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Session checkpoints (T3.16) — the second door onto app.services.checkpoints
-#
-# Both verbs go through the same service the REST route calls. Invariant 17
-# asks for two-door parity, and the only version of parity that survives a
-# later change is the one where there is a single behaviour to change.
-# ---------------------------------------------------------------------------
-
-
-@mcp.tool(
-    description=(
-        "Save a session checkpoint: a compact summary and structured next "
-        "steps for this agent run, keyed on origin_key. Operational notes, "
-        "not vault knowledge — a checkpoint carries no verification badge."
-    )
-)
-async def checkpoint_save(
-    summary: str,
-    origin_key: str | None = None,
-    next_steps: list[str] | None = None,
-    project: str = "default",
-    ctx: Context | None = None,
-) -> str:
-    from app.schemas.checkpoint import CheckpointCreate
-    from app.services import checkpoints as checkpoint_service
-
-    # Validated through the same schema the REST door uses, so a payload one
-    # door refuses is not a payload the other accepts — the bound is a
-    # property of a checkpoint, not of a transport.
-    body = CheckpointCreate(
-        origin_key=origin_key,
-        summary=summary,
-        next_steps=list(next_steps or []),
-        project=project,
-    )
-    # Resolved exactly as the REST twin resolves it, through doc 05 §2.1 --
-    # and that means resolving `source` from this transport too, not passing
-    # the door's fallback as a constant. A constant here is a second key space:
-    # a client declaring `X-Darkmem-Client: codex` saved `codex:<id>` over REST
-    # and `checkpoint:<id>` over MCP, so `checkpoint_latest` on one door
-    # silently missed the other door's checkpoint.
-    source = resolve_client_source(
-        None, ctx, fallback=checkpoint_service.DOOR_SOURCE
-    )
-    origin = checkpoint_service.resolve_checkpoint_origin(
-        body.origin_key or declared_origin(ctx),
-        source=source,
-        project=body.project,
-    )
-    async with async_session_factory() as session:
-        try:
-            row = await checkpoint_service.save_checkpoint(
-                session,
-                origin_key=origin,
-                summary=body.summary,
-                next_steps=body.bounded_steps(),
-                project=body.project,
-                actor=source,
-            )
-            payload = checkpoint_service.serialize(row)
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-    return json.dumps(payload)
-
-
-@mcp.tool(
-    description=(
-        "Get the latest session checkpoint for an origin_key, or null when "
-        "that run saved none."
-    )
-)
-async def checkpoint_latest(
-    origin_key: str | None = None,
-    project: str = "default",
-    ctx: Context | None = None,
-) -> str:
-    from app.services import checkpoints as checkpoint_service
-
-    # Same ladder as the save above, for the same reason: a read resolving a
-    # different source from the write can never find what the write stored.
-    source = resolve_client_source(
-        None, ctx, fallback=checkpoint_service.DOOR_SOURCE
-    )
-    resolved = checkpoint_service.resolve_checkpoint_origin(
-        origin_key or declared_origin(ctx), source=source, project=project
-    )
-    async with async_session_factory() as session:
-        row = await checkpoint_service.latest_checkpoint(
-            session, origin_key=resolved, project=project
-        )
-        # `null` rather than an empty object, matching REST's 404: "saved
-        # nothing" and "saved an empty note" are different answers and the
-        # resume path branches on which one it got.
-        return json.dumps(
-            checkpoint_service.serialize(row) if row is not None else None
-        )
-
-
-# ---------------------------------------------------------------------------
 # Work-log tools (spec 2026-09-23 §2). Every one calls app.services.worklog,
 # the same functions app/api/routes/worklog.py serves. An unknown workstream
 # answers null, matching the REST door's 404.
@@ -625,7 +525,6 @@ async def worklog_append(
 ) -> str:
     from app.schemas.worklog import WorklogAppendRequest
     from app.services import worklog
-    from app.services.checkpoints import resolve_checkpoint_origin
 
     body = WorklogAppendRequest(
         project=project,
@@ -638,7 +537,7 @@ async def worklog_append(
         expected_last_seq=expected_last_seq,
     )
     source = resolve_client_source(None, ctx, fallback=worklog.DOOR_SOURCE)
-    resolved = resolve_checkpoint_origin(
+    resolved = worklog.resolve_run_key(
         body.run_key or declared_origin(ctx), source=source, project=body.project
     )
     async with async_session_factory() as session:
@@ -876,11 +775,11 @@ async def worklog_purge(project: str, workstream: str) -> str:
 # Document tools -- the MCP half of the document door (doc 16, spec 2026-08-23)
 #
 # Each one is a call into `app.services.document_door`, the same functions
-# `api/routes/documents.py` serves, for the reason the checkpoint banner above
-# states: two transports over one module, never two implementations. Session
-# handling follows each service function's own stated commit posture --
-# `put_document` commits internally, `delete_document` relies on this caller,
-# and the read verbs commit nothing.
+# `api/routes/documents.py` serves, for invariant 17's reason: two transports
+# over one module, never two implementations. Session handling follows each
+# service function's own stated commit posture -- `put_document` commits
+# internally, `delete_document` relies on this caller, and the read verbs
+# commit nothing.
 #
 # The three verbs keyed on a document take `document_id` OR `(project, uri)`,
 # and resolve it through `resolve_document_target` rather than through
