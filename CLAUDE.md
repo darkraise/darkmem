@@ -300,10 +300,7 @@ A memory carries:
   at three. **No capture response echoes `origin_key`** (absent from
   `MemoryResponse`), so a test asserting it through a capture door asserts
   nothing. It **is** served by `GET /api/v1/knowledge/facts/{id}`
-  (`FactSourceGroup.origin_key`), `GET /events` (`checkpoint_saved`
-  payloads), and `CheckpointResponse` on both verbs of both doors, where
-  `session_checkpoints.origin_key` is a lookup key rather than a
-  corroboration key.
+  (`FactSourceGroup.origin_key`).
 - `updated_at` is bumped by the **`touch_updated_at` SQL trigger**, not by
   SQLAlchemy's `onupdate`, so a raw-SQL UPDATE moves it too.
 - `technologies` (lowercase Text[]): a denormalised cache of entity names
@@ -1252,8 +1249,9 @@ in `memories` (`docs/superpowers/specs/2026-09-23-work-log-lane-design.md`).
 Entries are append-only from the API and ordered by `seq` (identity), never
 `created_at` (one append shares `now()`). A `ledger` entry's body is the
 exact appended text, so concatenating a workstream's ledger entries
-reproduces its file. The run key resolves as checkpoints resolve it; an
-undeclared run is refused. An append locks the workstream row
+reproduces its file. The run key resolves through `worklog.resolve_run_key`
+(capture's derivation, doc 05 §2.1); an undeclared run is refused, never
+merged into an `unknown:` bucket. An append locks the workstream row
 (`SELECT … FOR UPDATE`, or the creating insert) first, serialising it
 against purge and retention deletes. An optional `expected_last_seq` makes
 the append a compare-and-set on the newest entry of its one kind (0 when

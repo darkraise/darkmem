@@ -241,12 +241,6 @@ EVENT_TYPES: list[str] = [
     "human_verdict",
     "pin_decision",
     "undone",
-    "checkpoint_saved",
-    # T3.17, landed 2026-08-11 with its emitter. T3.16 reserved this slot and
-    # deliberately left it empty, on the reasoning that an unemitted value here
-    # is indistinguishable from one whose writer was deleted — so the value
-    # lands *with* the writer, not ahead of it.
-    "resumed",
     # The work-log lane (spec 2026-09-23 §1). Lifecycle only: no entry body
     # or properties value reaches a payload, because the entries table is
     # the history and this journal is unpurgeable by ruling (T2.59).
@@ -277,7 +271,6 @@ OBJECT_TYPES: list[str] = [
     "document",
     "page",
     "repository",
-    "checkpoint",
     "workstream",
     "system",
 ]

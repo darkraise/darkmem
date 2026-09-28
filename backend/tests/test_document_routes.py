@@ -454,10 +454,9 @@ async def test_get_requires_auth(client):
 def _ctx(headers: dict[str, str] | None):
     """An MCP ``Context`` as far as identity resolution is concerned.
 
-    Copied from `tests/test_checkpoints.py`: an in-process call with
-    `ctx=None` exercises the fallback rung and nothing above it, so the only
-    way to see which source the door resolved is to drive it with a real
-    header mapping.
+    An in-process call with `ctx=None` exercises the fallback rung and nothing
+    above it, so the only way to see which source the door resolved is to drive
+    it with a real header mapping.
     """
     from types import SimpleNamespace
 
