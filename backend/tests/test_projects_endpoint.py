@@ -130,6 +130,9 @@ async def test_counts_every_status_not_only_active(
         "checkpoint_count": 0,
         "page_count": 0,
         "last_checkpoint_at": None,
+        "workstream_count": 0,
+        "open_workstream_count": 0,
+        "last_worklog_at": None,
         "last_event_day": None,
     }
 
@@ -160,6 +163,32 @@ async def test_a_checkpoint_only_project_is_visible(client, auth_headers, sessio
     assert "ckpt-only" in body
     assert body["ckpt-only"]["checkpoint_count"] == 1
     assert body["ckpt-only"]["last_checkpoint_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_a_worklog_only_project_is_visible(client, auth_headers, session):
+    """The Activity route's open-workstream list finds its projects here."""
+    from app.services import worklog
+
+    first = await worklog.append(
+        session, project="worklog-only", key="plan-a", run_key="r",
+        entries=[{"kind": "note", "body": "a"}],
+    )
+    await worklog.append(
+        session, project="worklog-only", key="plan-b", run_key="r",
+        entries=[{"kind": "note", "body": "b"}],
+    )
+    await worklog.update_workstream(session, first.workstream.id, state="closed")
+    await session.flush()
+
+    resp = await client.get("/api/v1/projects", headers=auth_headers)
+    body = {p["name"]: p for p in resp.json()}
+    assert "worklog-only" in body
+    row = body["worklog-only"]
+    assert row["workstream_count"] == 2
+    assert row["open_workstream_count"] == 1
+    assert row["last_worklog_at"] is not None
+    assert row["memory_count"] == 0
 
 
 @pytest.mark.asyncio
