@@ -3,6 +3,8 @@ import uuid
 import pytest
 from sqlalchemy import text
 
+from app.api.deps import get_graph_service
+from app.main import app
 from app.models.memory import Memory
 from app.repositories.graph import PostgresGraphRepository
 from app.repositories.vector import PostgresVectorRepository
@@ -164,3 +166,45 @@ async def test_unified_graph_finds_the_real_partition_behind_a_wrong_nonzero_dim
 
     assert result["fingerprint_unresolved"] is False
     assert [m["id"] for m in result["memories"]] == [str(memory_id)]
+
+
+class _SpyGraphService:
+    def __init__(self):
+        self.kwargs: dict = {}
+
+    async def get_unified_graph(self, **kwargs):
+        self.kwargs = kwargs
+        return {"memories": [], "total_memories": 0, "memories_truncated": False}
+
+
+async def test_unified_route_forwards_all_and_the_raised_limit(client, auth_headers):
+    spy = _SpyGraphService()
+    app.dependency_overrides[get_graph_service] = lambda: spy
+    try:
+        response = await client.get(
+            "/api/v1/graph/unified?all=true&limit=20000", headers=auth_headers,
+        )
+    finally:
+        app.dependency_overrides.pop(get_graph_service, None)
+
+    assert response.status_code == 200
+    assert spy.kwargs["all_memories"] is True
+    assert spy.kwargs["limit"] == 20000
+
+
+async def test_unified_route_defaults_to_two_hundred_without_all(client, auth_headers):
+    spy = _SpyGraphService()
+    app.dependency_overrides[get_graph_service] = lambda: spy
+    try:
+        response = await client.get("/api/v1/graph/unified", headers=auth_headers)
+    finally:
+        app.dependency_overrides.pop(get_graph_service, None)
+
+    assert response.status_code == 200
+    assert spy.kwargs["all_memories"] is False
+    assert spy.kwargs["limit"] == 200
+
+
+async def test_unified_route_refuses_a_limit_past_the_ceiling(client, auth_headers):
+    response = await client.get("/api/v1/graph/unified?limit=50001", headers=auth_headers)
+    assert response.status_code == 422

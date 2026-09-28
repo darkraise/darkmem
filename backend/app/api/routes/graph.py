@@ -6,7 +6,7 @@ from app.api.deps import get_graph_service
 from app.database import get_session
 from app.repositories.graph import PostgresGraphRepository
 from app.schemas.graph import EntityResponse, FullGraphResponse, NeighborsResponse, RelationResponse
-from app.services.graph import GraphService
+from app.services.graph import GRAPH_MAX_NODES, GraphService
 
 router = APIRouter(prefix="/api/v1/graph", tags=["graph"])
 
@@ -46,7 +46,12 @@ async def list_entities(
 
 @router.get("/unified")
 async def get_unified_graph(
-    limit: int = Query(200, ge=1, le=1000),
+    limit: int = Query(200, ge=1, le=GRAPH_MAX_NODES),
+    all_memories: bool = Query(
+        False,
+        alias="all",
+        description="Every in-scope memory, newest first, up to the node ceiling; overrides limit.",
+    ),
     similarity_threshold: float = Query(0.75, ge=0.0, le=1.0),
     min_cluster_size: int = Query(3, ge=2, le=10),
     include_entities: bool = Query(False),
@@ -60,6 +65,7 @@ async def get_unified_graph(
         min_cluster_size=min_cluster_size,
         include_entities=include_entities,
         project=project,
+        all_memories=all_memories,
     )
 
 
