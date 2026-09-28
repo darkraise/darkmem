@@ -66,7 +66,7 @@ def knn_graph(vectors, k: int, threshold: float, chunk_size: int | None = None) 
         block = x[start:stop] @ x.T
         local = np.arange(stop - start)
         block[local, start + local] = -np.inf
-        top = np.argpartition(-block, k_eff - 1, axis=1)[:, :k_eff]
+        top = np.argpartition(block, -k_eff, axis=1)[:, -k_eff:]
         top_sims = np.take_along_axis(block, top, axis=1)
         order = np.argsort(-top_sims, axis=1, kind="stable")
         top = np.take_along_axis(top, order, axis=1)
