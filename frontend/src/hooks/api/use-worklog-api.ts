@@ -3,10 +3,12 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  type InfiniteData,
   type QueryClient,
 } from "@tanstack/react-query"
 import { ApiError, apiFetch } from "@/lib/api"
 import { DEMO } from "@/lib/demo-flag"
+import { DEMO_WORKLOG_ENTRIES, DEMO_WORKSTREAMS } from "@/demo/worklog"
 
 export type WorklogKind = "checkpoint" | "ledger" | "note"
 export type WorkstreamState = "open" | "closed"
@@ -85,6 +87,59 @@ export interface WorkstreamPatch {
 export const WORKLOG_LIVE_MS = 5_000
 const WORKSTREAM_PAGE = 50
 const ENTRY_PAGE = 200
+
+const DEMO_REFUSAL = "The demo is read-only: its work log cannot be changed."
+
+function demoWorkstreams(project: string, state: WorkstreamState): WorkstreamPage {
+  return {
+    items: DEMO_WORKSTREAMS.filter((w) => w.project === project && w.state === state),
+    next_before: null,
+  }
+}
+
+function demoEntries(workstreamId: string | null, kind: WorklogKind | null): WorklogEntryPage {
+  const all = workstreamId ? (DEMO_WORKLOG_ENTRIES[workstreamId] ?? []) : []
+  return { items: kind ? all.filter((e) => e.kind === kind) : all, next_after: null }
+}
+
+function demoResume(project: string, key: string): WorklogResume | null {
+  const workstream = DEMO_WORKSTREAMS.find((w) => w.project === project && w.key === key)
+  if (!workstream) return null
+  const entries = DEMO_WORKLOG_ENTRIES[workstream.id] ?? []
+  const checkpoints = entries.filter((e) => e.kind === "checkpoint")
+  return {
+    workstream,
+    checkpoint: checkpoints[checkpoints.length - 1] ?? null,
+    notes: entries.filter((e) => e.kind === "note"),
+    notes_truncated: false,
+    ledger: entries.filter((e) => e.kind === "ledger").slice(-20),
+  }
+}
+
+function demoSearch(params: WorklogSearchParams): WorklogSearchResponse {
+  const needle = params.query.toLowerCase()
+  const byId = new Map(DEMO_WORKSTREAMS.map((w) => [w.id, w]))
+  const hits = Object.values(DEMO_WORKLOG_ENTRIES)
+    .flat()
+    .filter((e) => {
+      const w = byId.get(e.workstream_id)
+      return (
+        w?.project === params.project &&
+        (!params.workstream || w.key === params.workstream) &&
+        (!params.kind || e.kind === params.kind) &&
+        e.body.toLowerCase().includes(needle)
+      )
+    })
+  return {
+    items: hits.map((e, rank) => ({
+      entry: e,
+      workstream: byId.get(e.workstream_id)!.key,
+      rrf_score: 1 / (60 + rank + 1),
+      arms: ["keyword"],
+    })),
+    semantic_ran: false,
+  }
+}
 /** One state of a project's workstreams, newest-created first, paged back on
  *  the server's `(created_at, id)` cursor. */
 export function useWorkstreams(project: string, state: WorkstreamState) {
@@ -98,6 +153,12 @@ export function useWorkstreams(project: string, state: WorkstreamState) {
     },
     getNextPageParam: (last: WorkstreamPage) => last.next_before,
     enabled: !DEMO,
+    initialData: DEMO
+      ? ({
+          pages: [demoWorkstreams(project, state)],
+          pageParams: [null],
+        } as InfiniteData<WorkstreamPage, string | null>)
+      : undefined,
   })
 }
 
@@ -121,6 +182,12 @@ export function useWorklogEntries(
     getNextPageParam: (last: WorklogEntryPage) => last.next_after,
     enabled: !DEMO && workstreamId !== null,
     refetchInterval: live && !DEMO ? WORKLOG_LIVE_MS : false,
+    initialData: DEMO
+      ? ({
+          pages: [demoEntries(workstreamId, kind)],
+          pageParams: [null],
+        } as InfiniteData<WorklogEntryPage, number | null>)
+      : undefined,
   })
 }
 
@@ -139,16 +206,19 @@ export function useWorklogResume(project: string, key: string, enabled = true) {
       }
     },
     enabled: !DEMO && enabled,
+    initialData: DEMO ? demoResume(project, key) : undefined,
   })
 }
 
 export function useWorklogSearch() {
   return useMutation<WorklogSearchResponse, Error, WorklogSearchParams>({
     mutationFn: (params) =>
-      apiFetch<WorklogSearchResponse>("/worklog/search", {
-        method: "POST",
-        body: JSON.stringify(params),
-      }),
+      DEMO
+        ? Promise.resolve(demoSearch(params))
+        : apiFetch<WorklogSearchResponse>("/worklog/search", {
+            method: "POST",
+            body: JSON.stringify(params),
+          }),
   })
 }
 
@@ -164,10 +234,12 @@ export function useWorkstreamUpdate() {
   const qc = useQueryClient()
   return useMutation<Workstream, Error, { id: string } & WorkstreamPatch>({
     mutationFn: ({ id, ...patch }) =>
-      apiFetch<Workstream>(`/worklog/workstreams/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify(patch),
-      }),
+      DEMO
+        ? Promise.reject(new Error(DEMO_REFUSAL))
+        : apiFetch<Workstream>(`/worklog/workstreams/${id}`, {
+            method: "PATCH",
+            body: JSON.stringify(patch),
+          }),
     onSuccess: () => invalidateWorklog(qc),
   })
 }
@@ -175,7 +247,10 @@ export function useWorkstreamUpdate() {
 export function useWorkstreamPurge() {
   const qc = useQueryClient()
   return useMutation<void, Error, string>({
-    mutationFn: (id) => apiFetch<void>(`/worklog/workstreams/${id}`, { method: "DELETE" }),
+    mutationFn: (id) =>
+      DEMO
+        ? Promise.reject(new Error(DEMO_REFUSAL))
+        : apiFetch<void>(`/worklog/workstreams/${id}`, { method: "DELETE" }),
     onSuccess: () => invalidateWorklog(qc),
   })
 }

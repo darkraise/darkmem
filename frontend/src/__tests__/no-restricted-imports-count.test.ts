@@ -112,7 +112,9 @@ describe("no-restricted-imports: src/demo/*", () => {
     // Re-measured when the job card test landed: 119 — it reads a fixture job
     // out of `useDemoStore` the same way. Re-measured when the checkpoint
     // views were removed: 117 — `checkpoints-tab.tsx` and
-    // `use-checkpoints-api.ts` each imported a demo fixture.
-    expect(countByRule(results, "no-restricted-imports")).toBe(117)
+    // `use-checkpoints-api.ts` each imported a demo fixture. Re-measured when
+    // the work-log demo fixtures landed: 118 — `use-worklog-api.ts` imports
+    // them for its `initialData` in demo mode, the same shape as projects.
+    expect(countByRule(results, "no-restricted-imports")).toBe(118)
   })
 })
