@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { BookOpen, Brain, FileText, Link2, Loader2, Pencil, Trash2 } from "lucide-react"
+import { BookOpen, Brain, FileText, History, Link2, Loader2, Pencil, Trash2 } from "lucide-react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,10 +24,11 @@ import {
   useDocumentSummary,
   type DocumentListItem,
 } from "@/hooks/api"
+import { RevisionsSheet } from "./revisions-sheet"
 
 export type ReaderMode = "read" | "edit"
 
-/** The document-level controls: edit, summarize, delete.
+/** The document-level controls: edit, summarize, revisions, delete.
  *
  * Icon-only with a tooltip that is also the accessible name -- `IconButton`
  * makes that label mandatory, so the row is compact without becoming a row of
@@ -52,6 +53,7 @@ export function DocumentActions({
   onDeleted: () => void
 }) {
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [revisionsOpen, setRevisionsOpen] = useState(false)
   const summarize = useDocumentSummarize(document.id)
   const remove = useDocumentDelete()
   const editing = mode === "edit"
@@ -80,6 +82,13 @@ export function DocumentActions({
             onError: (error) => toast.error(error.message),
           })
         }
+      />
+
+      <IconButton
+        icon={History}
+        label="Revisions"
+        variant="ghost"
+        onClick={() => setRevisionsOpen(true)}
       />
 
       <IconButton
@@ -120,6 +129,14 @@ export function DocumentActions({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <RevisionsSheet
+        // DocumentActions stays mounted across selections; without the key a
+        // pick on one document would ask for its revision under the next.
+        key={document.id}
+        documentId={document.id}
+        open={revisionsOpen}
+        onOpenChange={setRevisionsOpen}
+      />
     </div>
   )
 }
