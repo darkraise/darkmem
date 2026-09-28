@@ -160,7 +160,8 @@ async def run_dump(*, dest_dir: Path | None = None, stamp: str | None = None) ->
 
     Compression runs on the event loop inside the chunk loop below, which on a
     single worker (invariant 13) is a real stall for the dump's duration.
-    Accepted at 04:30 against this corpus and stated rather than hidden; the
+    Accepted at the 04:30 UTC default against this corpus and stated rather
+    than hidden, though east of UTC that lands in the local working day; the
     repair, if it ever bites, is a ``pg_dump | gzip`` subprocess pipe, which
     keeps the marker check on the raw stream and moves the CPU out of the loop.
 

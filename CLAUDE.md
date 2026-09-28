@@ -658,7 +658,9 @@ lock.
   per destination. The host timer stays as the floor that survives the app
   being down. Nothing serialises the two producers, so they are kept apart by
   directory (`/srv/darkmem-dumps` vs `/root/darkmem-backups`), prefix
-  (`darkmem-app-` vs `darkmem-`) and hour (04:30 vs 03:30). Never point them
+  (`darkmem-app-` vs `darkmem-`) and hour (the job's 04:30 is UTC, since the
+  registry evaluates cron in UTC; the timer's 03:30 is host-local, 20:30 UTC
+  on this UTC+7 host). Never point them
   at one directory: `backup.sh`'s glob `darkmem-*.sql.gz` matches this
   producer's files (the job's own prune matches only its prefix and never a
   `.part`, so it cannot delete a systemd dump). Destinations and secrets live in the `config` row

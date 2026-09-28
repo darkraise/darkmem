@@ -419,9 +419,10 @@ async def lifespan(app: FastAPI):
             "and prunes per destination. Independent of the host-side systemd "
             "backup timer by design -- two producers, no shared lock."
         ),
-        # 04:30 -- an hour clear of the systemd timer's 03:30, because nothing
-        # can serialise the two producers (m4) and dumping twice concurrently
-        # doubles I/O on the same Postgres for no benefit.
+        # 04:30 UTC, apart from the systemd timer's 03:30 host-local, because
+        # nothing can serialise the two producers (m4) and dumping twice
+        # concurrently doubles I/O on the same Postgres for no benefit. The
+        # gap depends on the host's timezone: about 8 hours at UTC+7.
         default_cron="30 4 * * *",
         min_interval_seconds=3600,
         runner=make_backup_ship_runner(app, async_session_factory),
