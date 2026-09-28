@@ -2,7 +2,12 @@ import { useRef, useEffect, useCallback } from "react"
 import Graph from "graphology"
 import Sigma from "sigma"
 import EdgeCurveProgram from "@sigma/edge-curve"
-import { NodeCircleProgram } from "sigma/rendering"
+import { EdgeRectangleProgram, NodeCircleProgram } from "sigma/rendering"
+import {
+  clusterAnchors,
+  scaleSettings,
+  seedAroundAnchor,
+} from "@/features/graph/lib/graph-scale"
 import {
   NodeDiamondProgram,
   drawDiamondNodeHover,
@@ -272,7 +277,17 @@ export function Graph2DRenderer({
       x: (seededUnit(id, 0) - 0.5) * 10,
       y: (seededUnit(id, 1) - 0.5) * 10,
     })
-    const place = (id: string) => settled.get(id) ?? placeSeeded(id)
+    // A never-seen memory starts beside its cluster's anchor, so the layout
+    // begins near a clustered arrangement instead of untangling noise.
+    const anchors = clusterAnchors(filteredMemories)
+    const place = (id: string, cluster: number) => {
+      const known = settled.get(id)
+      if (known) return known
+      const anchor = anchors.get(cluster)
+      return anchor
+        ? seedAroundAnchor(anchor, seededUnit(id, 0), seededUnit(id, 1))
+        : placeSeeded(id)
+    }
 
     const allNodeIds = new Set<string>()
     for (const m of filteredMemories) {
@@ -284,7 +299,7 @@ export function Graph2DRenderer({
       const size = computeSize(sizeMode, conns, m.importance)
       allNodeIds.add(m.id)
       graph.addNode(m.id, {
-        ...place(m.id),
+        ...place(m.id, m.cluster),
         label: m.content.slice(0, 30) + (m.content.length > 30 ? "…" : ""),
         size: size * 0.5,
         type: "disc",
@@ -407,6 +422,7 @@ export function Graph2DRenderer({
       }
     }
 
+    const scale = scaleSettings(graph.order, graph.size)
     const sigma = new Sigma(graph, containerRef.current, {
       antiAliasingFeather: 2,
       // Sorts each program's items by the `zIndex` the reducers emit. Only the
@@ -415,18 +431,22 @@ export function Graph2DRenderer({
       zIndex: true,
       renderLabels: true,
       renderEdgeLabels: false,
+      hideEdgesOnMove: scale.hideOnMove,
+      hideLabelsOnMove: scale.hideOnMove,
       labelSize: 12,
       // Per-node so a grounded label can recede with its node; sigma's
       // label renderer reads this attribute and falls back to `color`.
       labelColor: { attribute: "labelColor", color: labelColorToken },
       labelFont: "Inter, sans-serif",
-      defaultEdgeType: "curve",
+      defaultEdgeType: scale.curvedEdges ? "curve" : "line",
       // Order matters and is the whole point: sigma draws program by program
       // in registration order, and zIndex only sorts WITHIN a program. Giving
       // memories their own key after "diamond" is what puts the subject on top
       // of the overlay where they overlap.
       nodeProgramClasses: { diamond: NodeDiamondProgram, disc: NodeCircleProgram },
-      edgeProgramClasses: { curve: EdgeCurveProgram },
+      // Sigma replaces its default program map with this one, so the
+      // straight program must be registered here to be usable at all.
+      edgeProgramClasses: { curve: EdgeCurveProgram, line: EdgeRectangleProgram },
       defaultDrawNodeHover: (context, data, settings) => {
         // `_chromeKind` rides the reducer output: sigma mutates the reduced
         // object in place through applyNodeDefaults, so custom keys survive
@@ -728,7 +748,8 @@ export function Graph2DRenderer({
         // hardcoded gravity:1 / scalingRatio:10.
         gravity: Math.max(0.1, clusterTightness / 300),
         scalingRatio: Math.max(1, spacing / 10),
-        slowDown: 12,
+        slowDown: scale.slowDown,
+        barnesHutOptimize: scale.barnesHutOptimize,
       },
     })
     fa2Ref.current = fa2
@@ -736,7 +757,7 @@ export function Graph2DRenderer({
     fa2StopTimerRef.current = setTimeout(() => {
       fa2StopTimerRef.current = null
       if (fa2Ref.current) fa2Ref.current.stop()
-    }, 8000)
+    }, scale.layoutMs)
 
     onReady()
     // dispatchers read refs; listing them would rebuild + resettle every render
