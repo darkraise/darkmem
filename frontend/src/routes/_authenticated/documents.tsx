@@ -41,7 +41,7 @@ function DocumentsPage() {
           kind="empty"
           icon={FileText}
           title="No project holds anything yet"
-          description="A project appears here once a memory, document or checkpoint carries its name."
+          description="A project appears here once a memory, document or workstream carries its name."
         />
       ) : project ? (
         // Remounted per project: every piece of workspace state (selection,

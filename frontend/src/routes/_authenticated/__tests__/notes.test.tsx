@@ -61,6 +61,9 @@ const row = (name: string, kind: "project" | "personal") => ({
   checkpoint_count: 0,
   page_count: 0,
   last_checkpoint_at: null,
+  workstream_count: 0,
+  open_workstream_count: 0,
+  last_worklog_at: null,
   last_event_day: null,
 })
 

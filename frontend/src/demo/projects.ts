@@ -12,6 +12,9 @@ export const DEMO_PROJECTS: ProjectSummary[] = [
     checkpoint_count: 0,
     page_count: 0,
     last_checkpoint_at: null,
+    workstream_count: 0,
+    open_workstream_count: 0,
+    last_worklog_at: null,
     last_event_day: "2026-07-25",
   },
   {
@@ -22,6 +25,9 @@ export const DEMO_PROJECTS: ProjectSummary[] = [
     checkpoint_count: 3,
     page_count: 0,
     last_checkpoint_at: "2026-07-24T14:10:00Z",
+    workstream_count: 3,
+    open_workstream_count: 0,
+    last_worklog_at: "2026-07-24T14:10:00Z",
     last_event_day: "2026-07-25",
   },
   {
@@ -32,6 +38,9 @@ export const DEMO_PROJECTS: ProjectSummary[] = [
     checkpoint_count: 0,
     page_count: 0,
     last_checkpoint_at: null,
+    workstream_count: 0,
+    open_workstream_count: 0,
+    last_worklog_at: null,
     last_event_day: "2026-07-20",
   },
   {
@@ -42,6 +51,9 @@ export const DEMO_PROJECTS: ProjectSummary[] = [
     checkpoint_count: 0,
     page_count: 3,
     last_checkpoint_at: null,
+    workstream_count: 0,
+    open_workstream_count: 0,
+    last_worklog_at: null,
     last_event_day: "2026-07-24",
   },
 ]
