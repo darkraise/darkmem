@@ -117,7 +117,7 @@ describe("WorkLogPanel", () => {
     const user = userEvent.setup()
     render(<WorkLogPanel project="darkmem" />, { wrapper })
 
-    await screen.findByRole("button", { name: /Plan A/ })
+    await screen.findByText("Plan A", { selector: "h3" })
     expect(screen.queryByText("Old plan")).toBeNull()
     await user.click(screen.getByRole("button", { name: "Closed (1)" }))
     await user.click(screen.getByText("Old plan"))
@@ -151,7 +151,7 @@ describe("WorkLogPanel", () => {
     const user = userEvent.setup()
     render(<WorkLogPanel project="darkmem" />, { wrapper })
 
-    await screen.findByRole("button", { name: /Plan A/ })
+    await screen.findByText("Plan A", { selector: "h3" })
     expect(screen.queryByText("Plan B")).toBeNull()
     await user.click(screen.getByRole("button", { name: "More open workstreams" }))
     expect(await screen.findByText("Plan B")).toBeInTheDocument()
