@@ -485,6 +485,65 @@ class PostgresGraphRepository:
 
         return {"entities": entities, "relations": relations, "truncated": truncated}
 
+    async def get_entities_for_memories(self, memory_ids: list[str], limit: int) -> dict:
+        """Entities asserted by any of ``memory_ids``, most-asserted first, and
+        the relations between them.
+
+        ``truncated`` is exact: one row past ``limit`` is fetched to tell a full
+        page from a cut one.
+        """
+        if not memory_ids:
+            return {"entities": [], "relations": [], "truncated": False}
+
+        entity_rows = (
+            await self.session.execute(
+                text("""
+                    SELECT id, name, entity_type, properties, memory_ids
+                    FROM entities
+                    WHERE memory_ids && CAST(:ids AS uuid[])
+                    ORDER BY cardinality(memory_ids) DESC, id
+                    LIMIT :limit
+                """),
+                {"ids": [UUID(m) for m in memory_ids], "limit": limit + 1},
+            )
+        ).mappings().all()
+        truncated = len(entity_rows) > limit
+        entity_rows = entity_rows[:limit]
+
+        entities = [
+            {
+                "id": str(r["id"]),
+                "name": r["name"],
+                "entity_type": r["entity_type"],
+                "properties": r["properties"] or {},
+                "memory_ids": [str(m) for m in (r["memory_ids"] or [])],
+            }
+            for r in entity_rows
+        ]
+        if not entities:
+            return {"entities": [], "relations": [], "truncated": truncated}
+
+        rel_rows = (
+            await self.session.execute(
+                text("""
+                    SELECT r.source_entity_id, r.target_entity_id, r.rel_type, r.weight
+                    FROM entity_relations r
+                    WHERE r.source_entity_id = ANY(:ids) AND r.target_entity_id = ANY(:ids)
+                """),
+                {"ids": [r["id"] for r in entity_rows]},
+            )
+        ).mappings().all()
+        relations = [
+            {
+                "source": str(r["source_entity_id"]),
+                "target": str(r["target_entity_id"]),
+                "type": r["rel_type"],
+                "weight": r["weight"],
+            }
+            for r in rel_rows
+        ]
+        return {"entities": entities, "relations": relations, "truncated": truncated}
+
     async def delete_by_memory_id(self, memory_id: UUID):
         mid = str(memory_id)
 

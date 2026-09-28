@@ -10,6 +10,7 @@ from sqlalchemy import text
 
 import app.services.graph as graph_module
 from app.models.memory import Memory
+from app.repositories.graph import PostgresGraphRepository
 from app.repositories.vector import MemoryFilter, PostgresVectorRepository
 from app.services.embedder_registry import child_table
 from app.services.graph import GraphService
@@ -313,3 +314,85 @@ async def test_empty_arm_still_reports_counts(session):
     assert result["total_memories"] == 0
     assert result["memories_truncated"] is False
     assert result["memories"] == []
+
+
+async def _add_entity(session, name: str, memory_ids: list[uuid.UUID]) -> uuid.UUID:
+    return (
+        await session.execute(
+            text(
+                "INSERT INTO entities (name, entity_type, memory_ids) "
+                "VALUES (:name, 'concept', CAST(:ids AS uuid[])) RETURNING id"
+            ),
+            {"name": name, "ids": memory_ids},
+        )
+    ).scalar_one()
+
+
+async def _add_relation(session, source: uuid.UUID, target: uuid.UUID) -> None:
+    await session.execute(
+        text(
+            "INSERT INTO entity_relations (source_entity_id, target_entity_id, rel_type) "
+            "VALUES (:s, :t, 'RELATED_TO')"
+        ),
+        {"s": source, "t": target},
+    )
+
+
+@pytest.mark.asyncio
+async def test_entity_overlay_holds_only_entities_of_plotted_memories(session):
+    m1 = await _add_memory(session)
+    m2 = await _add_memory(session)
+    elsewhere = await _add_memory(session)
+    single = await _add_entity(session, "scale-single", [m1.id])
+    shared = await _add_entity(session, "scale-shared", [m1.id, m2.id])
+    foreign = await _add_entity(session, "scale-foreign", [elsewhere.id])
+    await _add_relation(session, single, shared)
+    await _add_relation(session, single, foreign)
+
+    result = await PostgresGraphRepository(session).get_entities_for_memories(
+        [str(m1.id), str(m2.id)], limit=10,
+    )
+
+    assert [e["name"] for e in result["entities"]] == ["scale-shared", "scale-single"]
+    assert result["relations"] == [
+        {"source": str(single), "target": str(shared), "type": "RELATED_TO", "weight": 0.5},
+    ]
+    assert result["truncated"] is False
+
+
+@pytest.mark.asyncio
+async def test_entity_overlay_reports_truncation(session):
+    m1 = await _add_memory(session)
+    await _add_entity(session, "scale-a", [m1.id])
+    await _add_entity(session, "scale-b", [m1.id])
+
+    result = await PostgresGraphRepository(session).get_entities_for_memories([str(m1.id)], limit=1)
+
+    assert len(result["entities"]) == 1
+    assert result["truncated"] is True
+
+
+@pytest.mark.asyncio
+async def test_entity_overlay_of_nothing_is_empty(session):
+    result = await PostgresGraphRepository(session).get_entities_for_memories([], limit=10)
+    assert result == {"entities": [], "relations": [], "truncated": False}
+
+
+@pytest.mark.asyncio
+async def test_unified_graph_overlay_uses_plotted_memories(session):
+    await _seed_partition(session)
+    plotted = await _add_memory(session, vector=[1.0, 0.0, 0.0, 0.0])
+    unplotted = await _add_memory(session, project="beta", vector=[0.0, 1.0, 0.0, 0.0])
+    await _add_entity(session, "scale-plotted", [plotted.id])
+    await _add_entity(session, "scale-unplotted", [unplotted.id])
+    svc = GraphService(
+        session,
+        vector_repo=PostgresVectorRepository(session),
+        graph_repo=PostgresGraphRepository(session),
+        llm=_FakeLLM(),
+    )
+
+    result = await svc.get_unified_graph(project="alpha", include_entities=True)
+
+    assert [e["name"] for e in result["entities"]] == ["scale-plotted"]
+    assert result["entities_truncated"] is False

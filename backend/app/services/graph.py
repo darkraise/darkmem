@@ -286,18 +286,10 @@ class GraphService:
             return [], [], False
 
         try:
-            memory_id_set = {m["id"] for m in memory_nodes}
-            full_graph = await self.graph_repo.get_full_graph(limit=500)
-            entities = [
-                e for e in full_graph["entities"]
-                if any(mid in memory_id_set for mid in e.get("memory_ids", []))
-            ]
-            entity_id_set = {e["id"] for e in entities}
-            relations = [
-                r for r in full_graph["relations"]
-                if r.get("source") in entity_id_set and r.get("target") in entity_id_set
-            ]
-            return entities, relations, bool(full_graph.get("truncated", False))
+            result = await self.graph_repo.get_entities_for_memories(
+                [m["id"] for m in memory_nodes], limit=GRAPH_MAX_ENTITIES,
+            )
+            return result["entities"], result["relations"], result["truncated"]
         except Exception:
             logger.exception("Failed to fetch entity data")
             return [], [], False
