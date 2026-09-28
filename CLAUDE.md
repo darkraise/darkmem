@@ -884,13 +884,13 @@ mirrors the HTTP 1–100 batch cap. To exercise a local deploy, call `/mcp/`
 directly with a script (the trailing slash matters); don't repoint the
 session's MCP client config.
 
-**Scopes are per tool** (`app/api/mcp/scopes.py`, `TOOL_SCOPES`, 48 tools):
+**Scopes are per tool** (`app/api/mcp/scopes.py`, `TOOL_SCOPES`, 46 tools):
 
-- `capture` (15): `memory_add`, `memory_batch_add`, `memory_update`,
+- `capture` (14): `memory_add`, `memory_batch_add`, `memory_update`,
   `memory_delete`, `document_put`, `document_update`, `document_delete`,
-  `checkpoint_save`, `research_run`, `worklog_append`, `worklog_update`,
+  `research_run`, `worklog_append`, `worklog_update`,
   `block_update`, `block_insert`, `block_move`, `block_delete`.
-- `read` (30).
+- `read` (29).
 - `admin` (3): `code_reindex` (the only MCP write door into the code
   subsystem; `docs/superpowers/specs/2026-08-28-file-scoped-reindex-design.md`),
   `document_delete_subtree`, `worklog_purge`.

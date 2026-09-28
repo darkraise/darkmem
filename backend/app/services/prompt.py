@@ -711,8 +711,6 @@ PROMPTS: dict[str, str] = {
         "change its title or properties.\n"
         "- **worklog_purge** — erase a workstream and its entries; needs an "
         "admin-scoped key.\n"
-        "- **checkpoint_save** / **checkpoint_latest** — the older single-run "
-        "checkpoint pair, still served; prefer the work log.\n"
         "After a checkpoint, file the durable facts the run established with "
         "memory_add, one per entry: the work log keeps how the work went, "
         "memories keep what is now true.\n"

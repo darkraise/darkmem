@@ -25,8 +25,6 @@ EXPECTED_TOOLS: frozenset[str] = frozenset({
     "block_insert",
     "block_move",
     "block_update",
-    "checkpoint_latest",
-    "checkpoint_save",
     "code_blast_radius",
     "code_changes",
     "code_communities",
