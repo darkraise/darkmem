@@ -1196,6 +1196,7 @@ async def document_update(
     uri: str | None = None,
     pinned: bool | None = None,
     tags: list[str] | None = None,
+    expected_hash: str | None = None,
     project: str | None = None,
     uri_prefix: str | None = None,
     new_uri_prefix: str | None = None,
@@ -1207,6 +1208,9 @@ async def document_update(
         uri: Optional new path. Onto an occupied path this refuses.
         pinned: Optional; true pins, false unpins.
         tags: Optional; replaces the document's tag set rather than merging.
+        expected_hash: Optional, single-document mode only: edit only if the
+            document still holds this content_hash. A mismatch answers a
+            `hash_conflict` envelope naming both hashes and moves nothing.
         project: Scope, for the subtree mode.
         uri_prefix: The prefix to rewrite, for the subtree mode.
         new_uri_prefix: What to rewrite it to.
@@ -1220,6 +1224,7 @@ async def document_update(
         DocumentNothingToChange, DocumentTargetUnresolved,
         DocumentUriConflict, rename_documents, update_document_metadata,
     )
+    from app.services.document_ingest import DocumentHashConflict
 
     subtree = uri_prefix is not None or new_uri_prefix is not None
     if (document_id is None) == (not subtree):
@@ -1245,7 +1250,8 @@ async def document_update(
             (("project", project), ("uri_prefix", uri_prefix),
              ("new_uri_prefix", new_uri_prefix))
             if not subtree else
-            (("title", title), ("uri", uri), ("pinned", pinned), ("tags", tags))
+            (("title", title), ("uri", uri), ("pinned", pinned), ("tags", tags),
+             ("expected_hash", expected_hash))
         )
         if value is not None
     )
@@ -1302,7 +1308,8 @@ async def document_update(
             else:
                 await update_document_metadata(
                     session, document_id=document_id, title=title, uri=uri,
-                    pinned=pinned, tags=tags,
+                    pinned=pinned, tags=tags, expected_hash=expected_hash,
+                    actor=current_key_name(), api_key_id=current_api_key_id(),
                 )
             await session.commit()
         except DocumentUriConflict as exc:
@@ -1311,6 +1318,15 @@ async def document_update(
             # is gone. Their REST twins are a 409 and a 404.
             await session.rollback()
             return json.dumps({"status": "uri_conflict", "reason": str(exc)})
+        except DocumentHashConflict as exc:
+            # Its REST twin is a 409 carrying the same two hashes.
+            await session.rollback()
+            return json.dumps({
+                "status": "hash_conflict",
+                "document_id": document_id,
+                "expected_hash": exc.expected_hash,
+                "current_hash": exc.current_hash,
+            })
         except DocumentTargetUnresolved as exc:
             await session.rollback()
             return json.dumps({"status": "unresolved", "reason": str(exc)})

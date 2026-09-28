@@ -1008,3 +1008,108 @@ async def test_document_delete_answers_an_envelope_for_a_missing_target(
         document_id="00000000-0000-0000-0000-000000000000",
     ))
     assert missing["status"] == "unresolved"
+
+
+@pytest.mark.asyncio
+async def test_document_update_guards_a_move_by_hash(session, monkeypatch):
+    """The success runs first: the refusal rolls the shared test session back,
+    so nothing after it may write to the database (see tests/conftest.py)."""
+    import json
+    import uuid
+
+    from app.api.mcp import server as mcp_server
+    from app.services.document_door import put_document
+
+    llm = _HashStub()
+    _patch_mcp(monkeypatch, session, llm)
+
+    filed = await put_document(
+        session, llm, project="mcp-dochash", uri="superpowers/notes/a.md", content="# A\n",
+    )
+    await session.commit()
+    document_id = str(filed.document_id)
+
+    moved = json.loads(await mcp_server.document_update(
+        document_id=document_id,
+        uri="superpowers/archive/20260928T000000Z/notes/a.md",
+        expected_hash=filed.content_hash,
+    ))
+    assert moved == {"status": "ok", "document_id": document_id}
+
+    stale = json.loads(await mcp_server.document_update(
+        document_id=document_id, uri="superpowers/notes/a.md", expected_hash="stale",
+    ))
+    assert stale == {
+        "status": "hash_conflict",
+        "document_id": document_id,
+        "expected_hash": "stale",
+        "current_hash": filed.content_hash,
+    }
+    missing = json.loads(await mcp_server.document_update(
+        document_id=str(uuid.uuid4()), uri="x.md", expected_hash="h",
+    ))
+    assert missing["status"] == "unresolved"
+    embedder_registry.forget(_HASH_FP)
+
+
+@pytest.mark.asyncio
+async def test_a_keyed_document_update_stamps_its_key(session, monkeypatch):
+    import json
+    from contextlib import asynccontextmanager
+
+    from mcp.server.auth.middleware.auth_context import auth_context_var
+    from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
+    from sqlalchemy import text
+
+    import app.api.mcp.auth as mcp_auth
+    from app.api.mcp import server as mcp_server
+    from app.services.api_keys import issue_key
+
+    @asynccontextmanager
+    async def _on_the_test_session():
+        yield session
+
+    monkeypatch.setattr(mcp_auth, "async_session_factory", lambda: _on_the_test_session())
+    monkeypatch.setattr(mcp_server, "async_session_factory", lambda: _on_the_test_session())
+    document_id = uuid.uuid4()
+    await session.execute(
+        text(
+            "INSERT INTO documents (id, project, uri, title, source_type, content_hash) "
+            "VALUES (CAST(:id AS uuid), 'mcp-stamp', 'superpowers/notes/s.md', 't', 'markdown', 'h1')"
+        ),
+        {"id": str(document_id)},
+    )
+    name = f"k-{uuid.uuid4().hex[:6]}"
+    row, credential = await issue_key(session, name=name, scopes=["capture"])
+    token = await mcp_auth.ApiKeyTokenVerifier().verify_token(credential)
+    reset = auth_context_var.set(AuthenticatedUser(token))
+    try:
+        moved = json.loads(await mcp_server.document_update(
+            document_id=str(document_id),
+            uri="superpowers/archive/20260928T000000Z/notes/s.md",
+            expected_hash="h1",
+        ))
+    finally:
+        auth_context_var.reset(reset)
+    assert moved == {"status": "ok", "document_id": str(document_id)}
+    stamped = (await session.execute(
+        text(
+            "SELECT actor, api_key_id FROM events WHERE event_type = 'document_updated' "
+            "AND object_id = CAST(:id AS uuid)"
+        ),
+        {"id": str(document_id)},
+    )).all()
+    assert [tuple(stamp) for stamp in stamped] == [(name, row.id)]
+
+
+@pytest.mark.asyncio
+async def test_document_update_refuses_a_hash_in_the_subtree_mode():
+    import json
+
+    from app.api.mcp import server as mcp_server
+
+    answer = json.loads(await mcp_server.document_update(
+        project="p", uri_prefix="a", new_uri_prefix="b", expected_hash="h",
+    ))
+    assert answer["status"] == "invalid_mode"
+    assert "expected_hash" in answer["reason"]

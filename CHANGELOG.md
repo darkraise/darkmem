@@ -43,6 +43,12 @@ work log replaces, are gone.
 - **Work-log counts on `GET /api/v1/projects`**: `workstream_count`,
   `open_workstream_count` and `last_worklog_at`. A project holding only
   workstreams is now listed.
+- **Hash-guarded document moves over a key.** `PATCH
+  /api/v1/documents/{document_id}` admits a `capture`-scoped key and takes an
+  optional `expected_hash`; a stale hash answers 409 and moves nothing. MCP
+  `document_update` takes the same parameter and answers a `hash_conflict`
+  envelope. The dr-superpowers mirror uses it to archive a deleted document
+  without losing its revisions.
 
 ### Removed
 
