@@ -13,6 +13,7 @@ import { GraphDetailPanel } from "@/features/graph/components/graph-detail-panel
 import { Graph2DRenderer } from "@/features/graph/components/graph-2d-renderer"
 import { Graph3DRenderer } from "@/features/graph/components/graph-3d-renderer"
 import { GraphToolbar } from "@/features/graph/components/graph-toolbar"
+import { NodeCountRow } from "@/features/graph/components/node-count-row"
 import { ChatOverlay } from "@/features/chat/components/chat-overlay"
 import {
   transformToGraphData,
@@ -68,10 +69,18 @@ export function RealMemoryGraphPage() {
     new Set(),
   )
 
+  const nodeLimit = useGraphPrefs((s) => s.nodeLimit)
+  const allNodes = useGraphPrefs((s) => s.allNodes)
+  const setNodeLimit = useGraphPrefs((s) => s.setNodeLimit)
+  const setAllNodes = useGraphPrefs((s) => s.setAllNodes)
+  const debouncedNodeLimit = useDebouncedValue(nodeLimit, 500)
+
   const { data, isLoading, isFetching, isError } = useUnifiedGraph(
     debouncedSimilarity,
     debouncedMinSize,
     entityLayerEnabled,
+    debouncedNodeLimit,
+    allNodes,
   )
 
   // `placeholderData: keepPreviousData` deliberately keeps the graph on screen
@@ -342,6 +351,17 @@ export function RealMemoryGraphPage() {
               clusterTightness={layout.clusterTightness}
               onClusterTightnessChange={layout.setClusterTightness}
               onReset={handleReset}
+              nodes={
+                <NodeCountRow
+                  nodeLimit={nodeLimit}
+                  onNodeLimitChange={setNodeLimit}
+                  allNodes={allNodes}
+                  onAllNodesChange={setAllNodes}
+                  shown={memoryCount}
+                  total={data?.total_memories}
+                  truncated={data?.memories_truncated}
+                />
+              }
               trailing={
                 !selection.showPanel && (
                   <Button

@@ -21,10 +21,11 @@ vi.mock("@/features/graph/components/mini-graph", () => ({
 const mockUseUnifiedGraph = vi.fn()
 vi.mock("@/hooks/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api")>()),
-  useUnifiedGraph: () => mockUseUnifiedGraph(),
+  useUnifiedGraph: (...args: unknown[]) => mockUseUnifiedGraph(...args),
 }))
 
 import { RealMemoryGraphPage } from "../real-memory-graph-page"
+import { useGraphPrefs } from "@/features/graph/lib/graph-prefs"
 
 const ONE_MEMORY: UnifiedGraphData = {
   memories: [
@@ -94,5 +95,39 @@ describe("RealMemoryGraphPage: entity-overlay truncation banner", () => {
     expect(
       screen.getByText(/Entity overlay truncated/),
     ).toBeInTheDocument()
+  })
+})
+
+describe("RealMemoryGraphPage: node budget", () => {
+  beforeEach(() => {
+    mockUseUnifiedGraph.mockReset()
+    useGraphPrefs.setState({ nodeLimit: 200, allNodes: false })
+  })
+
+  it("asks for the stored node limit", () => {
+    mockUseUnifiedGraph.mockReturnValue({ data: ONE_MEMORY, isLoading: false })
+    useGraphPrefs.setState({ nodeLimit: 750, allNodes: false })
+    render(<RealMemoryGraphPage />, { wrapper })
+    const calls = mockUseUnifiedGraph.mock.calls
+    expect(calls[calls.length - 1]!.slice(3)).toEqual([750, false])
+  })
+
+  it("asks for every memory when All is stored", () => {
+    mockUseUnifiedGraph.mockReturnValue({ data: ONE_MEMORY, isLoading: false })
+    useGraphPrefs.setState({ allNodes: true })
+    render(<RealMemoryGraphPage />, { wrapper })
+    const calls = mockUseUnifiedGraph.mock.calls
+    expect(calls[calls.length - 1]!.slice(3)).toEqual([200, true])
+  })
+
+  it("shows how many memories are plotted in the settings panel", async () => {
+    const user = userEvent.setup()
+    mockUseUnifiedGraph.mockReturnValue({
+      data: { ...ONE_MEMORY, total_memories: 4580, memories_truncated: true },
+      isLoading: false,
+    })
+    render(<RealMemoryGraphPage />, { wrapper })
+    await user.click(screen.getByRole("button", { name: /toggle graph settings/i }))
+    expect(await screen.findByTestId("node-count-summary")).toHaveTextContent("Showing 1 of 4,580")
   })
 })
