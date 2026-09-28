@@ -449,7 +449,7 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "modes of one `document_update`, dispatched on whether the call "
             "names a `document_id` or a `uri_prefix`, and refuses a call "
             "naming both or neither with an `invalid_mode` envelope. The "
-            "refusals map the same two service errors the routes do: "
+            "refusals map the same service errors the routes do: "
             "DocumentUriConflict is a 409 against a `uri_conflict` envelope, "
             "DocumentTargetUnresolved a 404 against an `unresolved` one -- "
             "the same envelope-not-traceback rule the block verbs follow, and "
@@ -468,7 +468,13 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "body is the whole address of the work and it names no single "
             "document; it answers the count of rows rewritten. A rename onto "
             "an occupied path is a 409 on both verbs, the shape the "
-            "content-hash CAS already uses."
+            "content-hash CAS already uses. The single-document PATCH also "
+            "admits a capture-scoped key and takes an optional expected_hash, "
+            "the metadata twin of the filing's compare-and-set: a stale hash "
+            "is a 409 against a `hash_conflict` envelope and moves nothing. "
+            "The dr-superpowers mirror archives a deleted document through it, "
+            "which keeps the document's revisions; the subtree rename stays "
+            "login-only."
         ),
     ),
     Surface(

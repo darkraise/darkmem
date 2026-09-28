@@ -115,10 +115,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
 # The routes a dr-superpowers mirror syncs through (spec 2026-09-23 §2) are the
-# only document doors a `dmk_` key reaches: filing, the by-uri read, the
-# manifest and the two revision reads. Every other document route stays
-# login-only; widening one is a decision about what a leaked key can read or
-# erase, made per route.
+# only document doors a `dmk_` key reaches: filing, the single-document
+# metadata PATCH, the by-uri read, the manifest and the two revision reads.
+# Every other document route stays login-only; widening one is a decision
+# about what a leaked key can read or erase, made per route.
 _require_capture = require_scope("capture")
 _require_read = require_scope("read")
 
@@ -285,6 +285,7 @@ class DocumentPatchRequest(BaseModel):
     uri: str | None = Field(default=None, min_length=1, max_length=500)
     pinned: bool | None = None
     tags: list[str] | None = None
+    expected_hash: str | None = None
 
     # The `tags` table's own columns are the only guard below this door:
     # `get_or_create` validates nothing, so a name or a derived category
@@ -926,10 +927,16 @@ async def delete_subtree_route(
 async def patch_document_route(
     document_id: UUID,
     body: DocumentPatchRequest,
-    _user=Depends(require_auth),
+    principal: Principal = Depends(_require_capture),
     session: AsyncSession = Depends(get_session),
 ) -> DocumentPatchResponse:
-    """Write only the metadata fields the caller named."""
+    """Write only the metadata fields the caller named.
+
+    A capture-scoped key reaches this route as it reaches filing, so a
+    client can retire a document by moving it under `expected_hash`: a move
+    keeps the document's revisions, where a delete would cascade them away.
+    The subtree rename stays login-only.
+    """
     try:
         await update_document_metadata(
             session,
@@ -938,6 +945,9 @@ async def patch_document_route(
             uri=body.uri,
             pinned=body.pinned,
             tags=body.tags,
+            expected_hash=body.expected_hash,
+            actor=principal.actor,
+            api_key_id=principal.api_key_id,
         )
     except DocumentTargetUnresolved as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
@@ -945,6 +955,12 @@ async def patch_document_route(
         # 409, the same shape the content-hash CAS and the block-first
         # refusal use: the caller made no mistake, the path is taken.
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except DocumentHashConflict as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"expected_hash {exc.expected_hash} does not match the "
+            f"document's current content_hash {exc.current_hash}",
+        ) from exc
     except DocumentNothingToChange as exc:
         # 422 rather than 200: the body is well formed and names nothing to
         # do, which is the same class as a body pydantic would reject.

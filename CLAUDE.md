@@ -895,9 +895,10 @@ session's MCP client config.
 Scopes don't imply one another. The subtree delete is a separate `admin`
 tool, not a mode on `document_delete`, because a mode would inherit
 `capture`. Its REST twin `POST /api/v1/documents/delete` sits behind
-ordinary login auth, like every document route except the five a
-dr-superpowers mirror syncs through (filing, the by-uri read, the manifest
-and the two revision reads, which admit a scoped key). That asymmetry is
+ordinary login auth, like every document route except the six a
+dr-superpowers mirror syncs through (filing, the single-document metadata
+PATCH, the by-uri read, the manifest and the two revision reads, which admit
+a scoped key). That asymmetry is
 deliberate and recorded on `docs/two-door-parity.md`'s `documents.write` row.
 `ratify` is outside the scope vocabulary: no MCP tool reaches `confirmed`.
 `tools/list` is deliberately **not** scope-filtered. A keyed capture stamps
@@ -1042,7 +1043,11 @@ the same `document_door` functions; targets resolve through
   tags) and `POST /api/v1/documents/rename` (a `uri_prefix` subtree, answers
   the count). MCP carries both as modes of `document_update`, dispatched on
   `document_id` vs `uri_prefix` (refusing both or neither). A rename onto a
-  taken `(project, uri)` is refused: 409, or a `uri_conflict` envelope. Tags
+  taken `(project, uri)` is refused: 409, or a `uri_conflict` envelope. The
+  single-document mode takes an optional `expected_hash`, carried in the
+  writer's own UPDATE (a stale hash answers 409, or a `hash_conflict`
+  envelope, and moves nothing), and its PATCH admits a `capture` key: the
+  dr-superpowers mirror archives a deleted document that way. Tags
   are bounded by `validate_tag_lengths` before any write
   (`PostgresTagRepository.get_or_create` validates nothing); that validator's
   `ValueError` escapes the tool as a tool error, not an envelope.

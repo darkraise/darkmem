@@ -99,7 +99,7 @@ purpose, and it is the surface the minimal client speaks:
 
 | Scope | Routes |
 |---|---|
-| `capture` | `POST /memories`, `POST /memories/batch`, `POST /documents`, `POST /worklog/entries`, `PATCH /worklog/workstreams/{id}` |
+| `capture` | `POST /memories`, `POST /memories/batch`, `POST /documents`, `PATCH /documents/{id}`, `POST /worklog/entries`, `PATCH /worklog/workstreams/{id}` |
 | `read` | `POST /memories/search/paginated`, `GET /documents/by-uri`, `GET /documents/manifest`, `GET /documents/{id}/revisions`, `GET /documents/{id}/revisions/{revision_id}`, `GET /worklog/resume`, `GET /worklog/workstreams`, `GET /worklog/workstreams/{id}/entries`, `POST /worklog/search` |
 | `admin` | `POST /repos/{id}/webhook`, `POST /repos/{id}/reindex-files`, `DELETE /worklog/workstreams/{id}` |
 

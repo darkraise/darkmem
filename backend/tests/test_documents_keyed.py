@@ -227,3 +227,73 @@ async def test_the_revision_routes_refuse_what_names_nothing(client, session, sc
     )).status_code == 422
     assert (await client.get(f"{V1}/{a['document_id']}/revisions", headers=capture)).status_code == 403
     assert (await client.get(f"{V1}/{a['document_id']}/revisions")).status_code == 401
+
+
+ARCHIVED = "superpowers/archive/20260928T000000Z/notes/a.md"
+
+
+async def _uri(session, document_id):
+    return (await session.execute(
+        text("SELECT uri FROM documents WHERE id = CAST(:id AS uuid)"),
+        {"id": str(document_id)},
+    )).scalar_one()
+
+
+async def test_a_capture_key_moves_a_document_under_its_hash(client, session):
+    name = f"k-{uuid.uuid4().hex[:6]}"
+    row, credential = await issue_key(session, name=name, scopes=["capture"])
+    document_id = await _document(session, uri="superpowers/notes/a.md", content_hash="h1")
+    moved = await client.patch(
+        f"{V1}/{document_id}",
+        json={"uri": ARCHIVED, "expected_hash": "h1"},
+        headers={"Authorization": f"Bearer {credential}"},
+    )
+    assert moved.status_code == 200, moved.text
+    assert moved.json() == {"document_id": str(document_id)}
+    assert await _uri(session, document_id) == ARCHIVED
+    stamped = (await session.execute(
+        text(
+            "SELECT actor, api_key_id FROM events WHERE event_type = 'document_updated' "
+            "AND object_id = CAST(:id AS uuid)"
+        ),
+        {"id": str(document_id)},
+    )).all()
+    assert [tuple(r) for r in stamped] == [(name, row.id)]
+
+
+async def test_a_read_key_cannot_move_a_document(client, session):
+    read = await _key(session, "read")
+    document_id = await _document(session, uri="superpowers/notes/b.md")
+    refused = await client.patch(f"{V1}/{document_id}", json={"uri": ARCHIVED}, headers=read)
+    assert refused.status_code == 403
+
+
+async def test_a_login_session_still_moves_a_document(client, session, auth_headers):
+    document_id = await _document(session, uri="superpowers/notes/c.md")
+    moved = await client.patch(f"{V1}/{document_id}", json={"title": "C"}, headers=auth_headers)
+    assert moved.status_code == 200, moved.text
+
+
+async def test_a_stale_expected_hash_answers_409_and_moves_nothing(client, session):
+    capture = await _key(session, "capture")
+    document_id = await _document(session, uri="superpowers/notes/d.md", content_hash="h1")
+    refused = await client.patch(
+        f"{V1}/{document_id}",
+        json={"uri": ARCHIVED, "expected_hash": "stale"},
+        headers=capture,
+    )
+    assert refused.status_code == 409
+    assert refused.json()["detail"] == (
+        "expected_hash stale does not match the document's current content_hash h1"
+    )
+    assert await _uri(session, document_id) == "superpowers/notes/d.md"
+
+
+async def test_an_expected_hash_on_a_missing_document_answers_404(client, session):
+    capture = await _key(session, "capture")
+    refused = await client.patch(
+        f"{V1}/{uuid.uuid4()}",
+        json={"uri": ARCHIVED, "expected_hash": "h1"},
+        headers=capture,
+    )
+    assert refused.status_code == 404
