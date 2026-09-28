@@ -102,15 +102,26 @@ OBJECT_TYPE = "document"
 class DocumentHashConflict(Exception):
     """``expected_hash`` did not match the document's current ``content_hash``.
 
-    Two raise sites, one guarantee. ``file_document`` raises it after the
+    Three raise sites, one guarantee. ``file_document`` raises it after the
     SAVEPOINT has rolled the filing back, like every other filing failure; a
     block verb raises it under the document's row lock, before any savepoint
-    has opened. Nothing was written on either path.
+    has opened; ``document_door.update_document_metadata`` raises it after its
+    guarded UPDATE matched no row (the SAVEPOINT has already closed on zero
+    rows written), or, for a tags-only call, under the row lock before any
+    tag is touched. Nothing was written on any path.
 
     ``current_hash`` is the hash that actually holds, so under a race it names
     the winner: re-read after the compare-and-set matched zero rows on the
-    filing path, read under the lock on the block path. None when the
-    precondition named a document that does not exist.
+    filing and metadata paths, read under the lock on the block path and the
+    tags-only metadata path. It is None when the column itself is NULL.
+
+    A missing document is reported differently per path, deliberately. Only
+    the filing path reports it through this exception, with ``current_hash``
+    None (and ``document_id`` None when nothing resolved at all), because an
+    unfiled uri is a valid put target, so a hash naming it is a failed
+    precondition rather than a bad address. The block verbs raise
+    ``BlockTargetUnresolved`` and the metadata writer raises
+    ``DocumentTargetUnresolved`` instead, never this exception.
     """
 
     def __init__(self, *, document_id, expected_hash: str, current_hash: str | None):

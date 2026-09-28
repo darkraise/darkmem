@@ -473,8 +473,9 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "the metadata twin of the filing's compare-and-set: a stale hash "
             "is a 409 against a `hash_conflict` envelope and moves nothing. "
             "The dr-superpowers mirror archives a deleted document through it, "
-            "which keeps the document's revisions; the subtree rename stays "
-            "login-only."
+            "which keeps the document's revisions; the REST subtree rename "
+            "stays login-only (its MCP mode is capture-scoped, as the tool "
+            "always was)."
         ),
     ),
     Surface(
