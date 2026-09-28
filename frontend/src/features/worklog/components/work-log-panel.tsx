@@ -7,6 +7,7 @@ import { EmptyState, listItemClass } from "@/components/darkmem"
 import { useWorklogResume, useWorkstreams, type Workstream } from "@/hooks/api"
 import { formatWhen } from "@/lib/format"
 import { EntryTimeline } from "./entry-timeline"
+import { WorkstreamHeader } from "./workstream-header"
 
 function WorkstreamList({
   items,
@@ -64,27 +65,17 @@ function MoreButton({
   )
 }
 
-function WorkstreamSummary({ workstream }: { workstream: Workstream }) {
-  return (
-    <div className="space-y-0.5">
-      <h3 className="text-base font-semibold">{workstream.title ?? workstream.key}</h3>
-      <p className="text-muted-foreground font-mono text-xs">
-        {workstream.key} · {workstream.state}
-        {workstream.client ? ` · ${workstream.client}` : ""}
-      </p>
-    </div>
-  )
-}
-
 /** A project's work log (spec §8): its workstreams, open first and closed
  *  collapsed, beside the selected one's entries. `initialWorkstream` is a
  *  workstream key; without it the newest open workstream is selected. */
 export function WorkLogPanel({
   project,
   initialWorkstream,
+  onOpenDocument,
 }: {
   project: string
   initialWorkstream?: string
+  onOpenDocument?: (uri: string) => void
 }) {
   const open = useWorkstreams(project, "open")
   const closed = useWorkstreams(project, "closed")
@@ -175,7 +166,7 @@ export function WorkLogPanel({
         <Skeleton className="h-64 w-full" />
       ) : selected ? (
         <section aria-label={`workstream ${selected.key}`} className="min-w-0 space-y-3">
-          <WorkstreamSummary workstream={selected} />
+          <WorkstreamHeader workstream={selected} onOpenDocument={onOpenDocument} />
           <EntryTimeline key={selected.id} workstream={selected} />
         </section>
       ) : (
