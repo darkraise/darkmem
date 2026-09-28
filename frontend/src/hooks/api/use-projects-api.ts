@@ -10,9 +10,7 @@ export interface ProjectSummary {
   kind: "project" | "personal"
   memory_count: number
   document_count: number
-  checkpoint_count: number
   page_count: number
-  last_checkpoint_at: string | null
   /** Every workstream the project holds, open or closed. */
   workstream_count: number
   open_workstream_count: number

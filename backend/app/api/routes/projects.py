@@ -15,11 +15,11 @@ class ProjectSummary(BaseModel):
     """A project any corpus actually contains.
 
     Derived for every ordinary project -- one exists here because a memory, a
-    document, a checkpoint, a workstream or a page carries it, and stops
-    existing when the last of them is deleted. Widened 2026-08-31 (spec §2.1,
-    review M2): grouping ``memories.project`` alone made a document-only
-    project -- exactly what the corpus import creates -- invisible to its own
-    scope picker.
+    document, a workstream or a page carries it, and stops existing when the
+    last of them is deleted. Widened 2026-08-31 (spec §2.1, review M2):
+    grouping ``memories.project`` alone made a document-only project --
+    exactly what the corpus import creates -- invisible to its own scope
+    picker.
 
     One exception, and it is the reason this endpoint reads the ``projects``
     registry at all: a ``kind='personal'`` row is served even holding nothing.
@@ -32,9 +32,7 @@ class ProjectSummary(BaseModel):
     kind: str = "project"
     memory_count: int
     document_count: int
-    checkpoint_count: int
     page_count: int
-    last_checkpoint_at: datetime | None
     workstream_count: int
     open_workstream_count: int
     last_worklog_at: datetime | None
@@ -51,8 +49,6 @@ _UNION_SQL = text(
         UNION
         SELECT project FROM documents
         UNION
-        SELECT project FROM session_checkpoints
-        UNION
         SELECT project FROM workstreams
         UNION
         SELECT project FROM pages WHERE deleted_at IS NULL
@@ -63,8 +59,6 @@ _UNION_SQL = text(
     ),
     m AS (SELECT project, count(*) AS n FROM memories GROUP BY project),
     d AS (SELECT project, count(*) AS n FROM documents GROUP BY project),
-    c AS (SELECT project, count(*) AS n, max(created_at) AS latest
-          FROM session_checkpoints GROUP BY project),
     w AS (SELECT project, count(*) AS n,
                  count(*) FILTER (WHERE state = 'open') AS open_n,
                  max(last_entry_at) AS latest
@@ -78,9 +72,7 @@ _UNION_SQL = text(
            COALESCE(p.kind, 'project') AS kind,
            COALESCE(m.n, 0) AS memory_count,
            COALESCE(d.n, 0) AS document_count,
-           COALESCE(c.n, 0) AS checkpoint_count,
            COALESCE(pg.n, 0) AS page_count,
-           c.latest AS last_checkpoint_at,
            COALESCE(w.n, 0) AS workstream_count,
            COALESCE(w.open_n, 0) AS open_workstream_count,
            w.latest AS last_worklog_at,
@@ -88,14 +80,13 @@ _UNION_SQL = text(
     FROM names
     LEFT JOIN m ON m.project = names.project
     LEFT JOIN d ON d.project = names.project
-    LEFT JOIN c ON c.project = names.project
     LEFT JOIN w ON w.project = names.project
     LEFT JOIN pg ON pg.project = names.project
     LEFT JOIN e ON e.project = names.project
     LEFT JOIN projects p ON p.name = names.project
     WHERE names.project IS NOT NULL AND names.project <> ''
-    ORDER BY COALESCE(m.n, 0) + COALESCE(d.n, 0) + COALESCE(c.n, 0)
-             + COALESCE(w.n, 0) + COALESCE(pg.n, 0) DESC,
+    ORDER BY COALESCE(m.n, 0) + COALESCE(d.n, 0) + COALESCE(w.n, 0)
+             + COALESCE(pg.n, 0) DESC,
              names.project ASC
     """
 )
@@ -106,8 +97,8 @@ async def list_projects(
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
-    """Every distinct project across memories, documents, checkpoints,
-    workstreams and pages, busiest first.
+    """Every distinct project across memories, documents, workstreams and
+    pages, busiest first.
 
     Counts every row rather than only the active ones: this drives a *scope*
     picker, and a project holding nothing but superseded rows is still a

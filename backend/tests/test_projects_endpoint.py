@@ -1,10 +1,10 @@
 """The scope catalogue.
 
 These tests scope every assertion to the projects they seed. Since the
-endpoint was widened to union documents and checkpoints (2026-08-31, review
-M2), a global assertion here would also be asserting the state of every other
-test module that commits a checkpoint or a document -- `test_checkpoints.py`
-commits rows that outlive it, and asserting "the corpus is empty" would be
+endpoint was widened to union documents, workstreams and pages (2026-08-31,
+review M2), a global assertion here would also be asserting the state of every
+other test module that commits a workstream or a document -- suites that commit
+rows outlive their own test, and asserting "the corpus is empty" would be
 asserting something about that module rather than about this endpoint.
 """
 from uuid import uuid4
@@ -12,7 +12,6 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import text
 
-from app.models.checkpoint import SessionCheckpoint
 from app.models.memory import Memory
 from app.repositories.documents import upsert_by_uri
 
@@ -127,9 +126,7 @@ async def test_counts_every_status_not_only_active(
         "kind": "project",
         "memory_count": 2,
         "document_count": 0,
-        "checkpoint_count": 0,
         "page_count": 0,
-        "last_checkpoint_at": None,
         "workstream_count": 0,
         "open_workstream_count": 0,
         "last_worklog_at": None,
@@ -149,20 +146,6 @@ async def test_a_document_only_project_is_visible(client, auth_headers, session)
     assert "docs-only" in body
     assert body["docs-only"]["memory_count"] == 0
     assert body["docs-only"]["document_count"] == 1
-
-
-@pytest.mark.asyncio
-async def test_a_checkpoint_only_project_is_visible(client, auth_headers, session):
-    session.add(SessionCheckpoint(
-        origin_key="cc-run-1", project="ckpt-only", summary="s", next_steps=[],
-    ))
-    await session.flush()
-
-    resp = await client.get("/api/v1/projects", headers=auth_headers)
-    body = {p["name"]: p for p in resp.json()}
-    assert "ckpt-only" in body
-    assert body["ckpt-only"]["checkpoint_count"] == 1
-    assert body["ckpt-only"]["last_checkpoint_at"] is not None
 
 
 @pytest.mark.asyncio
