@@ -6,9 +6,11 @@ better" log, not release notes for strangers. The ladder is
 
 ## v1.13.0 — unreleased
 
-**The memory door warns about working data.** A capture that looks like a
-log is still stored, but its answer now says so. Closed work logs are now
-pruned after 90 days.
+**The memory door warns about working data, and the work log gets its
+screens.** A capture that looks like a log is still stored, but its answer now
+says so. Closed work logs are now pruned after 90 days. The web UI reads the
+work log and a filed document's revisions, and session checkpoints, which the
+work log replaces, are gone.
 
 ### Added
 
@@ -29,6 +31,30 @@ pruned after 90 days.
   journals `workstream_purged` first, with `retention_days` in its payload,
   and a journal failure stops the sweep before deleting that workstream;
   earlier deletions in the run stand.
+- **Work log in the web UI.** A project's Progress tab keeps its board and
+  shows the work log beneath it: workstreams (open first, closed collapsed),
+  each one's entries by day with a kind filter, the selected entry in full,
+  links to the plan, spec and handoff documents a workstream names, close,
+  reopen, purge behind a confirmation, and search over the project's log. An
+  open workstream refreshes every 5 seconds. The Activity page's Work log tab
+  lists every project's open workstreams with their latest entry.
+- **Document revisions in the web UI.** A document's Revisions button opens
+  its revisions, newest first, and a line diff between any two.
+- **Work-log counts on `GET /api/v1/projects`**: `workstream_count`,
+  `open_workstream_count` and `last_worklog_at`. A project holding only
+  workstreams is now listed.
+
+### Removed
+
+- **Session checkpoints.** The MCP tools `checkpoint_save` and
+  `checkpoint_latest`, the routes `POST /api/v1/checkpoints` and
+  `GET /api/v1/checkpoints/latest`, the resume digest they fed, the
+  `session_checkpoints` table and the `checkpoint_saved` and `resumed` event
+  types are gone; `worklog_append` and `worklog_resume` replace them. The MCP
+  catalogue is now 46 tools (capture 14, read 29, admin 3). A client still
+  calling a checkpoint tool gets an unknown-tool error.
+- **`checkpoint_count` and `last_checkpoint_at`** leave `GET /api/v1/projects`,
+  and the Activity page's Checkpoints tab is replaced by its Work log tab.
 
 ## v1.12.0 — 2026-09-27
 
