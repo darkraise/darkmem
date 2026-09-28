@@ -121,6 +121,16 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
     reason:
       "Addressed by document id and carrying no project param — the same shape as documentOutline, and the read the block reader and increment 8's editor both share",
   },
+  documentRevisions: {
+    kind: "global",
+    reason:
+      "Addressed by document id and carrying no project param, the same shape as documentBlocks",
+  },
+  documentRevision: {
+    kind: "global",
+    reason:
+      "Addressed by document id and revision id; the same shape as documentRevisions",
+  },
   documentContents: {
     kind: "global",
     reason:
