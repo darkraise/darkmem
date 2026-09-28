@@ -64,10 +64,11 @@ publishes under the same number.
 
 ## The silent failure this runbook exists for
 
-**Before the schema freeze, a deploy can succeed and leave the database wrong.**
+**A database on an older copy of the baseline can take a deploy that succeeds
+and leaves it wrong.**
 
-A schema change *regenerates* `0001_baseline.py` in place rather than appending a
-revision, so the revision id never moves. `entrypoint.sh` runs
+Until 2026-09-28 a schema change *regenerated* `0001_baseline.py` in place rather
+than appending a revision, so the revision id never moved. `entrypoint.sh` runs
 `alembic upgrade head` at every container start; on a database already stamped
 `0001` that compares `0001` to `0001`, finds them equal, and does nothing. The
 deploy reports a clean migration while the code goes on to query columns the
@@ -88,16 +89,21 @@ and compares on every boot:
 - **stamp differs → refuse to start**, printing the remedy
 
 It fails closed on purpose. Serving on is quiet and cost days; refusing is loud
-and the fix is cheap before the freeze. **There is no override flag**, because an
+and names the repair. **There is no override flag**, because an
 env var to skip it would be reached for at exactly the moment it is protecting
 you.
 
-**Retire this check at the freeze.** Once the baseline is frozen and changes
-arrive as ordinary additive revisions, the revision id moves again and alembic's
-own comparison does the job. Retiring it is part of the freeze protocol
-(`docs/planning/baseline-schema-inventory.md`), not a later cleanup.
+**Why it outlived the regeneration era.** Since 2026-09-28 the baseline is
+permanent and every change is a revision alembic applies itself, so a database
+built from the permanent baseline never trips this. The databases built from the
+regenerated copies are all still stamped `0001`, though, and to alembic they look
+current. The guard is the only thing that tells them apart; the next three
+sections are how to bring one to the permanent baseline.
 
 ## Deploying a purely additive baseline change
+
+For a database on an older copy of the baseline only: one already on the
+permanent baseline upgrades through revisions at boot and needs none of this.
 
 **Read this before reaching for the drop below.** The drift-recovery procedure
 discards the database; when the baseline diff is *only* new objects, it does not
@@ -277,9 +283,10 @@ restored volume. It logs an error rather than a warning when it refuses.
 
 ## Recovering from schema drift
 
-Pre-freeze this is the policy's own remedy and the data is disposable by the
-owner's 2026-08-10 ruling. **Post-freeze it is not available** — that is what the
-freeze means.
+For a database on an older copy of the baseline whose diff rules out the
+additive path above. **As written it keeps only the rows step 2 captures**; deployed data is
+durable (owner ruling 2026-09-28), so when the corpus must survive, compose it with
+the data-only restore above instead of re-seeding.
 
 ```bash
 # 1. Back up first, always.

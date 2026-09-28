@@ -139,21 +139,22 @@ A few sharp edges that have each cost real debugging time:
 - **Never join across embedding partitions.** Vectors from two different models
   have no defined distance between them.
 
-## The schema, before the freeze
+## Changing the schema
 
-**The schema is one migration — `0001_baseline.py` — and it is not frozen.**
-Until it is, a schema change **regenerates that file in place**; it never adds a
-`0002`. The gate asserts exactly one revision exists.
+**Darkmem is deployed and its data must survive every release.** A schema
+change is a new Alembic revision in `backend/migrations/versions/`, chained
+after the current head, that upgrades a populated database in place. Never
+edit `0001_baseline.py`: its hash is pinned by a test and stamped into every
+deployed database, and a boot-time guard refuses to start when they disagree.
 
-The consequence to internalise: because the revision id never moves,
-`alembic upgrade head` does nothing on a database already stamped `0001`, so a
-deployed database silently drifts. **After regenerating the baseline, drop and
-recreate your database.** A boot-time guard compares a hash of the schema
-against what the database was built with and refuses to start when they
-disagree — it fails closed and has no override.
-
-The baseline is a single shared mutable file, so schema changes **serialise
-through one owner**. Two branches editing it conflict every time.
+- **Keep the chain linear.** The gate asserts exactly one head. If another
+  branch added a revision first, point yours at it (`down_revision`).
+- **Carry the data.** A new NOT NULL column needs a default or a backfill in
+  the same revision; a renamed or retyped column moves its values; drop a
+  table or column only once no released code reads it.
+- **Test against data.** The suite migrates an empty schema, which proves a
+  revision runs but not that it keeps rows. Run it against a restored backup
+  before shipping.
 
 ## Tests
 

@@ -40,52 +40,18 @@ justifies the method: `0001` calls `op.create_table` **nineteen** times but the 
 database holds **twenty-six** tables, and calls `op.create_index` **twenty-three** times
 but the database holds **sixty-three** indexes.
 
-### The freeze note
+### The baseline is permanent (owner ruling 2026-09-28)
 
-**The baseline is regenerated, not migrated, until the homelab cutover freezes it.** Doc
-19 §2: the greenfield schema ships as one Alembic revision, "regenerated freely (paired
-with drop/recreate) until the first deploy whose data must survive, at which event it is
-tagged `0001` and **frozen**; every change after the freeze is a new linear revision
-forever." The freeze trigger is an **event**, not a date — the homelab production cutover
-(doc 19 §4) — and a CI assertion holds `alembic history` at exactly one revision until the
-freeze tag exists, so nobody can quietly start a chain early.
+Until 2026-09-28 the baseline was regenerated in place on every schema change, with the
+database dropped and recreated, and a gate assertion held `alembic history` at one
+revision. That window was meant to close at a "schema freeze" event; the owner retired the
+freeze instead, because darkmem was already running in production with data that must
+survive. `0001_baseline.py` is now permanent — its hash is pinned by
+`tests/test_schema_guard.py` — and every schema change is an additive revision on a linear
+chain after it. The gate asserts a single head, not a single revision.
 
-> **Freeze date: _(deliberately blank — the cutover has not happened)_**
-
-Leaving it blank is correct and load-bearing. E1's cutover task (T1.54) fills the real
-date; writing a plausible date here would be exactly the dishonesty the definition-of-done
-exists to prevent.
-
-#### The two protocols (T0.15)
-
-**Protocol 1 — how the window ends.** The freeze trigger is an **event, not a date**: the
-homelab production cutover (doc 19 §4), the first deploy whose data outlives the schema. At
-that event the revision is tagged **`schema-frozen`**, the date above is filled in, and
-every change after it is an ordinary additive revision on a linear chain, forever. Nothing
-about the freeze is scheduled; it happens when the cutover happens.
-
-**Protocol 2 — how to change the schema while the window is open.** This is the one every
-E1–E3 schema task needs, because until the freeze the baseline is a *shared mutable file*
-that several lanes will want to edit.
-
-1. **Edit `backend/migrations/versions/0001_baseline.py` in place.** Never append a
-   `0002`. A second revision before the freeze means somebody quietly started the chain
-   early, and it also gives Alembic two heads — which breaks `conftest.py` and
-   `benchlib/bench_db.py`, both of which shell out to `alembic upgrade head`.
-2. **Drop and recreate the database.** The baseline is not re-runnable as a diff; it is
-   re-runnable from empty. Verify by rebuilding a scratch database, never by applying an
-   `ALTER` by hand and assuming the file matches.
-3. **Serialise through one owner per epic.** Concurrent regeneration of a single file
-   conflicts every time. One owner holds the baseline for the epic; other lanes hand
-   their schema needs to that owner rather than editing alongside.
-4. **Reconcile the inventory.** This document is the work order; a divergence between it
-   and the migration is a defect in one of them.
-
-**The assertion that holds it shut.** `./scripts/gate.sh` runs an `alembic single-revision`
-gate: while no `schema-frozen` tag exists it requires `alembic history` to show exactly one
-revision, and fails naming the gate otherwise. Once the tag exists the assertion stands
-down, because a linear chain is then correct. Verified in both directions — green at one
-revision, red with a deliberate second.
+This inventory describes `0001` as it stands. A later revision is its own record; when one
+changes an object listed here, note the revision beside that object's row.
 
 ## 1. How to read this inventory
 

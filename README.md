@@ -185,7 +185,7 @@ One command decides mergeability:
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow, the commit
-convention, and the schema rule that applies before the freeze.
+convention, and how to change the schema.
 
 ---
 

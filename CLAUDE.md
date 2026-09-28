@@ -12,15 +12,16 @@ named below, and in `docs/planning/gate-ledger.md` for every gate number.
 When you change the code a sentence here describes, correct the sentence in
 place. Don't add a note saying it was corrected.
 
-## Greenfield until the freeze (owner ruling 2026-08-31)
+## Deployed data is durable (owner ruling 2026-09-28)
 
-**Darkmem is greenfield. No backward compatibility is owed and no data
-migration is ever required.** No deployed database, earlier release or
-captured corpus constrains a change: if a new shape is better, take it and
-recreate the data. Never design a compatibility shim, dual-write, version
-negotiation or import path for existing rows. This holds **until the schema
-freeze** (defined under Commands → schema); at that event this section is
-retired and additive migration discipline begins.
+**Darkmem runs in production, on this host and on 192.168.0.199, and their
+data must survive every release.** A schema change ships as a new Alembic
+revision that upgrades a populated database in place, so `alembic upgrade
+head` at boot is the whole schema deploy. Never make a change that works
+only on an empty database, and never plan a release around dropping and
+recreating one: a new NOT NULL column carries a default or a backfill in the
+same revision, a renamed or retyped column carries its data across, and a
+table or column is dropped only once no released code reads it.
 
 ## Commands
 
@@ -47,7 +48,7 @@ retired and additive migration discipline begins.
 ### Gate and tests
 
 - **Merge gate (repo root): `./scripts/gate.sh`**. It runs the alembic
-  single-revision assertion, backend pytest, frontend typecheck/test/build,
+  single-head assertion, backend pytest, frontend typecheck/test/build,
   the browser-extension suite, both SDK suites (`sdks/python` under pytest,
   `sdks/ts` under the frontend's vitest), the benchlib harness suite, and the
   F1 bench in `--algo-only` mode. `--full` adds the retrieval eval, the API
@@ -115,28 +116,30 @@ retired and additive migration discipline begins.
   host-side runs against the dev Postgres on 5433. Containers migrate at
   startup via `entrypoint.sh`; `docker-compose.dev.yml` overrides the command
   and skips migrations.
-- **The schema is ONE revision, `0001_baseline.py`, not yet frozen.** A
-  schema change **regenerates that file in place** and you drop and recreate
-  the database; never append a `0002`. `./scripts/gate.sh` asserts exactly
-  one revision. Schema changes serialise through one owner per epic, because
-  two lanes editing the baseline always conflict.
-- **A regenerated baseline does not reach a deployed database by itself.**
-  The revision id never moves, so `alembic upgrade head` is a no-op on a
-  database already stamped `0001`. `app/schema_guard.py` (run from
-  `entrypoint.sh`) stamps a hash of the baseline file into the database and
-  **refuses to start** when they disagree; it fails closed with no override
-  and is retired at the freeze. After regenerating the baseline, drop and
-  recreate every deployed database yourself and re-seed
-  `admin_password_hash` plus all eight `llm_purpose_configs` rows,
+- **`0001_baseline.py` is permanent.** Never edit it, not even a comment:
+  its hash is pinned (`schema_guard.FROZEN_BASELINE_SHA`, asserted by
+  `tests/test_schema_guard.py`) and stamped into every deployed database. A
+  schema change is a new file in `backend/migrations/versions/` whose
+  `down_revision` is the current head. The chain stays linear: the gate and
+  the same test assert exactly one head, so when two lanes each add a
+  revision, rebase the later one's `down_revision` onto the other. The test
+  suite migrates an empty schema only, which proves a revision runs, not
+  that it keeps rows; run a new revision against a database holding data
+  (a restored backup on the dev Postgres) before shipping it.
+- **A database on an older copy of the baseline needs a one-time repair.**
+  Until 2026-09-28 a schema change regenerated `0001` in place, so a database
+  built from an earlier copy is still stamped `0001` and `alembic upgrade
+  head` does nothing to it.
+  `app/schema_guard.py` (run from `entrypoint.sh`) stamps a hash of the
+  baseline file into the database and **refuses to start** when they
+  disagree; it fails closed with no override. Bring the schema to the
+  permanent baseline by hand (the runbook's additive path when the diff
+  allows it, otherwise drop and restore), re-seeding `admin_password_hash`
+  and all eight `llm_purpose_configs` rows if the data is not restored,
   especially `verification`, which `llm_seed.py` does not reproduce at the
   qualified judge identity. Procedure: `docs/runbook-deployment.md`.
-  Background: `docs/planning/analyses/2026-08-17-production-schema-drift.md`.
-- **The freeze is an event, not a date** (owner ruling 2026-08-15): it happens
-  **after v1.0 ships and after the owner's review of the visual web UI
-  passes**. No deploy of disposable data triggers it. At the freeze the
-  revision is tagged `schema-frozen`, the gate assertion stands down, and
-  every later change is an additive revision. Protocol and object inventory:
-  `docs/planning/baseline-schema-inventory.md`.
+  192.168.0.199 (built at baseline `4ba88074`, v1.11.0) is one. Background:
+  `docs/planning/analyses/2026-08-17-production-schema-drift.md`.
 
 ### Build, deploy, release
 

@@ -369,23 +369,20 @@ DATABASE_URL=... python scripts/extraction_bench/run_bench.py --gold gold_heldou
 python scripts/extraction_bench/run_bench.py --algo-only            # warm cache only
 ```
 
-## 9. Changing the schema before the freeze
+## 9. Changing the schema
 
-Until the homelab cutover, the schema is **one baseline revision that is regenerated, not
-migrated** (doc 19 §2). That makes the baseline file a shared mutable artifact, so:
+The baseline is permanent since 2026-09-28 (owner ruling: deployed data is durable). Every
+schema change is an ordinary additive revision, chained after the current head, that
+upgrades a populated database in place.
 
-- **A task that adds a table regenerates the baseline.** It does not append revision 0002.
-  The single-revision property is asserted in CI (T0.15) and holds until the freeze tag.
-- **The chain is never two-headed, not even for one commit.** Regenerating means
-  *replacing* the revision file and deleting whatever chain preceded it in the same commit.
-  A new baseline committed beside the old one gives Alembic two heads, and every database
-  bootstrap in this repo — `backend/tests/conftest.py` and
-  `backend/scripts/benchlib/bench_db.py` — shells out to `alembic upgrade head`, which
-  fails on an ambiguous head. That failure is repo-wide, so it takes down every concurrent
-  lane, not just the one holding the schema.
-- **Schema changes serialise through one owner per epic.** Two agents regenerating the same
-  baseline file concurrently will conflict every time. Before touching it, check
-  `progress.md` for another `wip` task whose files include the baseline, and wait.
-- **After the freeze event, this inverts**: the baseline is frozen and every change is an
-  ordinary additive revision. T0.15 records the trigger; do not apply the freeze early
-  because it makes coordination easier.
+- **Never edit `0001_baseline.py`.** `tests/test_schema_guard.py` pins its hash, and every
+  deployed database carries that hash; `app/schema_guard.py` refuses to boot on a mismatch.
+- **The chain is never two-headed, not even for one commit.** Every database bootstrap in
+  this repo — `backend/tests/conftest.py` and `backend/scripts/benchlib/bench_db.py` —
+  shells out to `alembic upgrade head`, which fails on an ambiguous head, and that failure
+  takes down every concurrent lane. Two lanes that each add a revision must not both parent
+  on the same head: the one that lands second rebases its `down_revision` onto the first.
+  The gate and `test_the_revision_chain_is_linear_from_the_baseline` assert one head.
+- **A revision carries the data.** Defaults or backfills for new NOT NULL columns, data
+  moves for renames and retypes, drops only once no released code reads the object. The
+  suite migrates an empty schema only; run the revision against a restored backup.
