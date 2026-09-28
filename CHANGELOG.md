@@ -27,7 +27,8 @@ pruned after 90 days.
   90 days (`retention_days` on the Jobs page, minimum 1). Open workstreams
   and those marked `retain` are never deleted, however old. Each deletion
   journals `workstream_purged` first, with `retention_days` in its payload,
-  and a journal failure stops the sweep without deleting.
+  and a journal failure stops the sweep before deleting that workstream;
+  earlier deletions in the run stand.
 
 ## v1.12.0 — 2026-09-27
 

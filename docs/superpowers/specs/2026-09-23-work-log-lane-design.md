@@ -5,8 +5,11 @@ Status: design, owner-approved section by section on 2026-09-23. Increment 1
 planned (`docs/superpowers/plans/2026-09-23-work-log-increment-1-store-and-verbs.md`);
 amended the same day with four corrections found while planning, each marked
 "Amended 2026-09-23" below. Increments 1-3 done and deployed on this host as
-v1.12.0 (2026-09-27); increment 4 is planned in
-`docs/superpowers/plans/2026-09-27-work-log-increment-4-capture-warning.md`.
+v1.12.0 (2026-09-27); increment 4
+(`docs/superpowers/plans/2026-09-27-work-log-increment-4-capture-warning.md`)
+done and deployed on this host 2026-09-28, unreleased; increment 5
+(retention, `docs/superpowers/plans/2026-09-28-work-log-increment-5-retention.md`)
+implemented 2026-09-28, not yet deployed.
 Register: `docs/superpowers/registers/2026-09-23-work-log-lane.md`
 Companion spec (client side): `darkraise-ai-plugins`,
 `docs/superpowers/specs/2026-09-23-darkmem-mirror-design.md`

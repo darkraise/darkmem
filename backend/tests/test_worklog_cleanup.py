@@ -6,6 +6,8 @@ else would pass a direct call and still ignore the operator in production.
 """
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 import pytest_asyncio
 from sqlalchemy import text
@@ -26,9 +28,22 @@ from tests.conftest import test_engine
 PROJECT = "worklog-cleanup"
 
 
+async def _clear(made):
+    async with made() as cleanup:
+        await cleanup.execute(text("DELETE FROM workstreams WHERE project = :p"), {"p": PROJECT})
+        await cleanup.execute(text("DELETE FROM projects WHERE name = :p"), {"p": PROJECT})
+        await cleanup.execute(
+            text("DELETE FROM config WHERE key = :k"), {"k": f"job:{WORKLOG_CLEANUP_JOB_KEY}"}
+        )
+        await cleanup.commit()
+
+
 @pytest_asyncio.fixture
 async def factory(setup_database):
     made = async_sessionmaker(test_engine, expire_on_commit=False)
+    # conftest resets the schema per session; this guards a row left by a
+    # teardown that failed earlier in the same session.
+    await _clear(made)
     async with made() as s:
         stray = (await s.execute(
             text(
@@ -39,13 +54,7 @@ async def factory(setup_database):
         )).scalar_one()
     assert stray == 0, "another suite left an eligible workstream committed; the sweep would erase it"
     yield made
-    async with made() as cleanup:
-        await cleanup.execute(text("DELETE FROM workstreams WHERE project = :p"), {"p": PROJECT})
-        await cleanup.execute(text("DELETE FROM projects WHERE name = :p"), {"p": PROJECT})
-        await cleanup.execute(
-            text("DELETE FROM config WHERE key = :k"), {"k": f"job:{WORKLOG_CLEANUP_JOB_KEY}"}
-        )
-        await cleanup.commit()
+    await _clear(made)
 
 
 @pytest_asyncio.fixture
@@ -140,6 +149,20 @@ async def test_open_and_retained_workstreams_are_never_swept(factory, run_cleanu
     await _workstream(factory, "retained", closed_days_ago=400, retain=True)
     assert await run_cleanup(retention_days=1) == 0
     assert await _keys(factory) == ["open", "retained"]
+
+
+async def test_the_sweep_passes_a_locked_workstream_and_erases_the_next(factory, run_cleanup):
+    held_id = await _workstream(factory, "held", closed_days_ago=100)
+    await _workstream(factory, "free", closed_days_ago=91)
+    async with factory() as holder:
+        await holder.execute(
+            text("SELECT id FROM workstreams WHERE id = CAST(:id AS uuid) FOR UPDATE"),
+            {"id": str(held_id)},
+        )
+        result = await asyncio.wait_for(run_cleanup(), timeout=10)
+        await holder.rollback()
+    assert result == {"workstreams": 1, "entries": 1, "retention_days": 90}
+    assert await _keys(factory) == ["held"]
 
 
 async def test_each_erase_is_journalled_by_the_job(factory, run_cleanup):

@@ -244,6 +244,20 @@ async def test_expire_next_erases_the_longest_closed_first_and_journals_it(sessi
         {"kind": "note", "body": "a"}, {"kind": "note", "body": "b"},
     ])).workstream.id
     newer_id = (await _append(session, key="newer")).workstream.id
+    # Both rows share one transaction's now(), and uuid4 order is random. Give
+    # "newer" the smaller id and the earlier created_at, so an ordering by id or
+    # created_at alone erases it first; only closed_at order reaches "older".
+    while newer_id > older_id:
+        await session.execute(text("DELETE FROM workstreams WHERE id = CAST(:id AS uuid)"), {"id": str(newer_id)})
+        newer_id = (await _append(session, key="newer")).workstream.id
+    for ws_id, days in ((newer_id, 30), (older_id, 20)):
+        await session.execute(
+            text(
+                "UPDATE workstreams SET created_at = now() - make_interval(days => CAST(:d AS integer)) "
+                "WHERE id = CAST(:id AS uuid)"
+            ),
+            {"d": days, "id": str(ws_id)},
+        )
     await _close(session, newer_id, days_ago=5)
     await _close(session, older_id, days_ago=10)
 

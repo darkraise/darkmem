@@ -17,7 +17,9 @@ from app.services.job_registry import FieldDescriptor
 logger = logging.getLogger(__name__)
 
 WORKLOG_CLEANUP_JOB_KEY = "worklog_cleanup"
-# Nightly, after both backup producers start (03:30 timer, 04:30 backup_ship).
+# The registry evaluates cron in UTC, so this runs 45 minutes after
+# backup_ship's 04:30 UTC. The systemd timer's 03:30 is host-local time, so its
+# distance from this run depends on the host's timezone.
 # Overlapping a long backup_ship run is harmless: pg_dump reads one snapshot.
 WORKLOG_CLEANUP_CRON = "15 5 * * *"
 RETENTION_DAYS_DEFAULT = 90
