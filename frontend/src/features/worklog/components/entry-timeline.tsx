@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import {
@@ -106,9 +106,15 @@ function EntryDetail({ entry }: { entry: WorklogEntry | null }) {
 /** One workstream's entries: kind filter, a day-bucketed timeline of one-line
  *  rows, and the selected entry in full beside it. The timeline's rows have a
  *  fixed height, so a checkpoint expands into the detail pane, not in place. */
-export function EntryTimeline({ workstream }: { workstream: Workstream }) {
+export function EntryTimeline({
+  workstream,
+  initialEntryId,
+}: {
+  workstream: Workstream
+  initialEntryId?: string
+}) {
   const [kind, setKind] = useState<KindFilter>("all")
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(initialEntryId ?? null)
   const entries = useWorklogEntries(
     workstream.id,
     kind === "all" ? null : kind,
@@ -120,6 +126,14 @@ export function EntryTimeline({ workstream }: { workstream: Workstream }) {
   )
   const buckets = useMemo(() => bucketsByDay(items), [items])
   const selected = items.find((e) => e.id === selectedId) ?? null
+  // Entries page oldest first, so a hit on a recent entry of a long
+  // workstream sits past the first page; page forward until it has loaded.
+  const focusPending =
+    initialEntryId !== undefined && selectedId === initialEntryId && selected === null
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = entries
+  useEffect(() => {
+    if (focusPending && hasNextPage && !isFetchingNextPage) void fetchNextPage()
+  }, [focusPending, hasNextPage, isFetchingNextPage, fetchNextPage])
 
   let body
   if (entries.isError) {

@@ -8,6 +8,7 @@ import { useWorklogResume, useWorkstreams, type Workstream } from "@/hooks/api"
 import { formatWhen } from "@/lib/format"
 import { EntryTimeline } from "./entry-timeline"
 import { WorkstreamHeader } from "./workstream-header"
+import { WorklogSearch } from "./worklog-search"
 
 function WorkstreamList({
   items,
@@ -89,6 +90,7 @@ export function WorkLogPanel({
   )
   const [selectedKey, setSelectedKey] = useState<string | null>(initialWorkstream ?? null)
   const [showClosed, setShowClosed] = useState(false)
+  const [focusEntryId, setFocusEntryId] = useState<string | undefined>(undefined)
 
   const listed =
     selectedKey === null
@@ -128,55 +130,73 @@ export function WorkLogPanel({
     )
   }
 
+  const selectFromList = (key: string) => {
+    setSelectedKey(key)
+    setFocusEntryId(undefined)
+  }
+
   return (
-    <div className="grid gap-4 md:grid-cols-[16rem_minmax(0,1fr)]">
-      <nav aria-label="workstreams" className="space-y-3">
-        <WorkstreamList
-          items={openItems}
-          selectedKey={selected?.key ?? null}
-          onSelect={setSelectedKey}
-        />
-        <MoreButton query={open} label="More open workstreams" />
-        {closedItems.length > 0 ? (
-          <div className="space-y-1.5">
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-expanded={closedVisible}
-              onClick={() => setShowClosed((shown) => !shown)}
-            >
-              {closedVisible
-                ? "Hide closed"
-                : `Closed (${closedItems.length}${closed.hasNextPage ? "+" : ""})`}
-            </Button>
-            {closedVisible ? (
-              <>
-                <WorkstreamList
-                  items={closedItems}
-                  selectedKey={selected?.key ?? null}
-                  onSelect={setSelectedKey}
-                />
-                <MoreButton query={closed} label="More closed workstreams" />
-              </>
-            ) : null}
-          </div>
-        ) : null}
-      </nav>
-      {resolving ? (
-        <Skeleton className="h-64 w-full" />
-      ) : selected ? (
-        <section aria-label={`workstream ${selected.key}`} className="min-w-0 space-y-3">
-          <WorkstreamHeader workstream={selected} onOpenDocument={onOpenDocument} />
-          <EntryTimeline key={selected.id} workstream={selected} />
-        </section>
-      ) : (
-        <EmptyState
-          kind="empty"
-          icon={ScrollText}
-          title="No open workstream"
-          description="Every workstream in this project is closed; open one from the closed list to read it."
-        />
-      )}
+    <div className="space-y-4">
+      <WorklogSearch
+        project={project}
+        onOpen={(key, entryId) => {
+          setSelectedKey(key)
+          setFocusEntryId(entryId)
+        }}
+      />
+      <div className="grid gap-4 md:grid-cols-[16rem_minmax(0,1fr)]">
+        <nav aria-label="workstreams" className="space-y-3">
+          <WorkstreamList
+            items={openItems}
+            selectedKey={selected?.key ?? null}
+            onSelect={selectFromList}
+          />
+          <MoreButton query={open} label="More open workstreams" />
+          {closedItems.length > 0 ? (
+            <div className="space-y-1.5">
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-expanded={closedVisible}
+                onClick={() => setShowClosed((shown) => !shown)}
+              >
+                {closedVisible
+                  ? "Hide closed"
+                  : `Closed (${closedItems.length}${closed.hasNextPage ? "+" : ""})`}
+              </Button>
+              {closedVisible ? (
+                <>
+                  <WorkstreamList
+                    items={closedItems}
+                    selectedKey={selected?.key ?? null}
+                    onSelect={selectFromList}
+                  />
+                  <MoreButton query={closed} label="More closed workstreams" />
+                </>
+              ) : null}
+            </div>
+          ) : null}
+        </nav>
+        {resolving ? (
+          <Skeleton className="h-64 w-full" />
+        ) : selected ? (
+          <section aria-label={`workstream ${selected.key}`} className="min-w-0 space-y-3">
+            <WorkstreamHeader workstream={selected} onOpenDocument={onOpenDocument} />
+            <EntryTimeline
+              key={`${selected.id}:${focusEntryId ?? ""}`}
+              workstream={selected}
+              initialEntryId={focusEntryId}
+            />
+          </section>
+        ) : (
+          <EmptyState
+            kind="empty"
+            icon={ScrollText}
+            title="No open workstream"
+            description="Every workstream in this project is closed; open one from the closed list to read it."
+          />
+        )}
+      </div>
     </div>
   )
 }
