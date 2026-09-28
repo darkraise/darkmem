@@ -9,7 +9,7 @@ v1.12.0 (2026-09-27); increment 4
 (`docs/superpowers/plans/2026-09-27-work-log-increment-4-capture-warning.md`)
 done and deployed on this host 2026-09-28, unreleased; increment 5
 (retention, `docs/superpowers/plans/2026-09-28-work-log-increment-5-retention.md`)
-implemented 2026-09-28, not yet deployed.
+done and deployed on this host 2026-09-28, unreleased.
 Register: `docs/superpowers/registers/2026-09-23-work-log-lane.md`
 Companion spec (client side): `darkraise-ai-plugins`,
 `docs/superpowers/specs/2026-09-23-darkmem-mirror-design.md`
