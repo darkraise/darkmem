@@ -15,6 +15,7 @@ BACKEND = Path(__file__).resolve().parent.parent
 WORKLOG_MODULES = frozenset({
     "app.services.worklog",
     "app.services.worklog_embeddings",
+    "app.services.worklog_cleanup",
     "app.models.worklog",
     "app.schemas.worklog",
     "app.api.routes.worklog",
