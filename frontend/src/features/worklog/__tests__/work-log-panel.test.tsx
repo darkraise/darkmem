@@ -165,6 +165,39 @@ describe("WorkLogPanel", () => {
     expect(screen.getByText("Far plan", { selector: "h3" })).toBeInTheDocument()
   })
 
+  it("hides the closed list on request while a closed workstream is selected", async () => {
+    routeApi({ open: [OPEN], closed: [CLOSED] })
+    const user = userEvent.setup()
+    render(<WorkLogPanel project="darkmem" initialWorkstream="plan-old" />, { wrapper })
+
+    await screen.findByText("Old plan", { selector: "h3" })
+    expect(screen.getByRole("button", { name: /Old plan/ })).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Hide closed" }))
+    expect(screen.queryByRole("button", { name: /Old plan/ })).toBeNull()
+    expect(screen.getByText("Old plan", { selector: "h3" })).toBeInTheDocument()
+  })
+
+  it("opens on the open workstream with the newest entry, not the newest created", async () => {
+    const active = {
+      ...OPEN,
+      id: "w-active",
+      key: "plan-active",
+      title: "Active plan",
+      created_at: "2026-09-01T00:00:00Z",
+      last_entry_at: "2026-09-28T12:00:00Z",
+    }
+    routeApi({ open: [], closed: [] })
+    const routed = vi.mocked(apiFetch).getMockImplementation()!
+    vi.mocked(apiFetch).mockImplementation((path: string) =>
+      path.startsWith("/worklog/workstreams?") && path.includes("state=open")
+        ? Promise.resolve({ items: [OPEN, active], next_before: null })
+        : routed(path),
+    )
+    render(<WorkLogPanel project="darkmem" />, { wrapper })
+
+    expect(await screen.findByRole("region", { name: "workstream plan-active" })).toBeInTheDocument()
+  })
+
   it("says so when the project has no work log", async () => {
     routeApi({ open: [], closed: [] })
     render(<WorkLogPanel project="darkmem" />, { wrapper })

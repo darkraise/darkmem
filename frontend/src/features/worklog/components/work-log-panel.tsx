@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ScrollText } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { Skeleton } from "darkraise-ui/components/skeleton"
@@ -68,7 +68,8 @@ function MoreButton({
 
 /** A project's work log (spec §8): its workstreams, open first and closed
  *  collapsed, beside the selected one's entries. `initialWorkstream` is a
- *  workstream key; without it the newest open workstream is selected. */
+ *  workstream key; without it the open workstream with the newest entry is
+ *  selected (spec §1: `last_entry_at` is what the UI orders by). */
 export function WorkLogPanel({
   project,
   initialWorkstream,
@@ -89,7 +90,9 @@ export function WorkLogPanel({
     [closed.data],
   )
   const [selectedKey, setSelectedKey] = useState<string | null>(initialWorkstream ?? null)
-  const [showClosed, setShowClosed] = useState(false)
+  // null follows the selection: the closed list opens while a closed
+  // workstream is selected, until the reader toggles it themselves.
+  const [showClosed, setShowClosed] = useState<boolean | null>(null)
   const [focusEntryId, setFocusEntryId] = useState<string | undefined>(undefined)
 
   const listed =
@@ -103,9 +106,22 @@ export function WorkLogPanel({
     selectedKey !== null && listed === undefined && !open.isPending && !closed.isPending
   const lookup = useWorklogResume(project, selectedKey ?? "", unlisted)
   const resolving = unlisted && lookup.isLoading
+  const mostActive = useMemo(
+    () =>
+      openItems.reduce<Workstream | null>(
+        (best, w) => (best === null || w.last_entry_at > best.last_entry_at ? w : best),
+        null,
+      ),
+    [openItems],
+  )
+  // Pin the default pick, so closing it keeps it selected rather than jumping
+  // to the next open workstream.
+  useEffect(() => {
+    if (selectedKey === null && mostActive) setSelectedKey(mostActive.key)
+  }, [selectedKey, mostActive])
   const selected =
-    listed ?? (unlisted ? lookup.data?.workstream : undefined) ?? openItems[0] ?? null
-  const closedVisible = showClosed || selected?.state === "closed"
+    listed ?? (unlisted ? lookup.data?.workstream : undefined) ?? mostActive ?? null
+  const closedVisible = showClosed ?? selected?.state === "closed"
 
   if (open.isError || closed.isError) {
     return (
@@ -158,7 +174,7 @@ export function WorkLogPanel({
                 variant="ghost"
                 size="sm"
                 aria-expanded={closedVisible}
-                onClick={() => setShowClosed((shown) => !shown)}
+                onClick={() => setShowClosed(!closedVisible)}
               >
                 {closedVisible
                   ? "Hide closed"
