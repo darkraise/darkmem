@@ -24,6 +24,12 @@ export const DIM_MIN = 5
 export const DIM_MAX = 50
 export const DIM_STEP = 5
 
+/** How many memories the graph asks for. The ceiling is the server's. */
+export const NODE_LIMIT_DEFAULT = 200
+export const NODE_LIMIT_MIN = 50
+export const NODE_LIMIT_MAX = 50_000
+export const NODE_LIMIT_STEP = 100
+
 interface GraphPrefsState {
   selectionColor: SelectionColor
   /** Opacity of everything outside the focused node's neighbourhood, percent. */
@@ -31,9 +37,15 @@ interface GraphPrefsState {
   /** Width of the graph's detail panel, px. The canvas floor is applied
    *  against the live container width, which only the page knows. */
   detailPanelWidth: number
+  /** Memories to plot, newest first, while `allNodes` is off. */
+  nodeLimit: number
+  /** Plot every in-scope memory, up to the server's ceiling. */
+  allNodes: boolean
   setSelectionColor: (color: SelectionColor) => void
   setDimUnrelated: (percent: number) => void
   setDetailPanelWidth: (px: number) => void
+  setNodeLimit: (n: number) => void
+  setAllNodes: (all: boolean) => void
 }
 
 export const useGraphPrefs = create<GraphPrefsState>()(
@@ -42,6 +54,8 @@ export const useGraphPrefs = create<GraphPrefsState>()(
       selectionColor: DEFAULT_SELECTION_COLOR,
       dimUnrelated: DEFAULT_DIM,
       detailPanelWidth: DEFAULT_DETAIL_PANEL_WIDTH,
+      nodeLimit: NODE_LIMIT_DEFAULT,
+      allNodes: false,
 
       setSelectionColor: (selectionColor) => set({ selectionColor }),
 
@@ -58,6 +72,15 @@ export const useGraphPrefs = create<GraphPrefsState>()(
         if (!Number.isFinite(px)) return
         set({ detailPanelWidth: Math.max(DETAIL_PANEL_MIN_WIDTH, px) })
       },
+
+      setNodeLimit: (n) => {
+        if (!Number.isFinite(n)) return
+        set({
+          nodeLimit: Math.min(NODE_LIMIT_MAX, Math.max(NODE_LIMIT_MIN, Math.round(n))),
+        })
+      },
+
+      setAllNodes: (allNodes) => set({ allNodes }),
     }),
     { name: "darkmem-graph-prefs" },
   ),

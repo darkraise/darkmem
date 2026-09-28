@@ -48,6 +48,9 @@ interface GraphToolbarProps {
   clusterTightness: number
   onClusterTightnessChange: (v: number) => void
   onReset: () => void
+  /** The node budget control, shown first because it decides what every
+   *  other setting acts on. */
+  nodes?: React.ReactNode
   /** Rendered at the end of the button row. The details-panel toggle lives
    *  here rather than positioning itself over the canvas: two absolutely
    *  positioned clusters competing for the same corner is how they ended up
@@ -98,6 +101,7 @@ export function GraphToolbar({
   clusterTightness,
   onClusterTightnessChange,
   onReset,
+  nodes,
   trailing,
 }: GraphToolbarProps) {
   return (
@@ -123,7 +127,8 @@ export function GraphToolbar({
               it happens to be read. Render gates the rest (Tightness is
               2D-only), encodings say what a mark means, and the layout
               sliders drive the force simulation. */}
-          <Section title="Render">
+          {nodes && <Section title="Nodes">{nodes}</Section>}
+          <Section title="Render" divided={!!nodes}>
             <SegmentRow
               label="Mode"
               value={viewMode}
