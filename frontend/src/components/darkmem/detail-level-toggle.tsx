@@ -19,7 +19,7 @@ const OPTIONS: ReadonlyArray<IconSegmentedOption<DetailLevel>> = [
  *    /knowledge  — nine consumers: fact detail, ladder, sources, facts tab,
  *                  review queue, hygiene queue, topics, live dispute, article
  *                  detail (plus the article route itself).
- *    /activity   — day tab (raw id lists), checkpoints, dream digest.
+ *    /activity   — day tab (raw id lists), dream digest.
  *    /chat       — the retrieval context panel, through WhyRetrievedTrace.
  *    /memories   — every row, through WhyRetrievedTrace.
  *    /settings   — the Distribution tab's per-target detail. Route-level, so

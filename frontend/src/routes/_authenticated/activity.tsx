@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router"
 import { Tabs, TabsContent, TabsTrigger } from "darkraise-ui/components/tabs"
 import {
   Activity,
-  Bookmark,
+  ScrollText,
   Bug,
   CalendarDays,
   Gauge,
@@ -24,7 +24,7 @@ import { JobsTab } from "@/features/activity/components/jobs-tab"
 import { MonitorsTab } from "@/features/activity/components/monitors-tab"
 import { DreamTab } from "@/features/activity/components/dream-tab"
 import { DayTab } from "@/features/activity/components/day-tab"
-import { CheckpointsTab } from "@/features/activity/components/checkpoints-tab"
+import { OpenWorkstreams } from "@/features/worklog/components/open-workstreams"
 
 const TAB_VALUES = [
   "pipeline",
@@ -34,7 +34,7 @@ const TAB_VALUES = [
   "monitors",
   "dream",
   "day",
-  "checkpoints",
+  "worklog",
 ] as const
 export type ActivityTab = (typeof TAB_VALUES)[number]
 
@@ -111,9 +111,9 @@ function ActivityPage() {
               <CalendarDays aria-hidden className="size-[var(--icon-size)]" />
               Day drill
             </TabsTrigger>
-            <TabsTrigger className="flex-1 gap-2" value="checkpoints">
-              <Bookmark aria-hidden className="size-[var(--icon-size)]" />
-              Checkpoints
+            <TabsTrigger className="flex-1 gap-2" value="worklog">
+              <ScrollText aria-hidden className="size-[var(--icon-size)]" />
+              Work log
             </TabsTrigger>
           </ScrollTabsList>
         </div>
@@ -147,8 +147,8 @@ function ActivityPage() {
             }
           />
         </TabsContent>
-        <TabsContent value="checkpoints" className="pt-4">
-          <CheckpointsTab />
+        <TabsContent value="worklog" className="pt-4">
+          <OpenWorkstreams />
         </TabsContent>
       </Tabs>
     </div>
