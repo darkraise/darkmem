@@ -423,6 +423,8 @@ async def expire_next(
     if found is None:
         return None
     workstream = await get_workstream_by_id(session, found, for_update=True)
+    # _NEXT_EXPIRED already holds this row's lock, so it cannot have gone.
+    assert workstream is not None
     return await _journal_then_delete(
         session, workstream, actor=actor, api_key_id=None,
         extra={"retention_days": retention_days},

@@ -56,7 +56,7 @@ def make_worklog_cleanup_runner(app, session_factory: async_sessionmaker[AsyncSe
             entries += removed
 
         if not workstreams:
-            # 0, not {}: a nightly sweep with nothing to erase writes no job_runs row.
+            # Falsy, not None: a sweep with nothing to erase writes no job_runs row.
             return 0
         logger.info(
             "worklog_cleanup: erased %s workstream(s), %s entr(ies), closed over %s days",

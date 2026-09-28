@@ -117,7 +117,7 @@ def test_the_schema_is_one_retention_window_defaulting_to_ninety_days():
     assert WORKLOG_CLEANUP_JOB_KEY == "worklog_cleanup"
     assert RETENTION_DAYS_DEFAULT == 90
     [field] = WORKLOG_CLEANUP_CONFIG_SCHEMA
-    assert (field.key, field.default, field.min) == ("retention_days", 90, 1)
+    assert (field.key, field.default, field.min, field.max) == ("retention_days", 90, 1, 3650)
 
 
 async def test_the_default_window_is_ninety_days(factory, run_cleanup):
@@ -192,6 +192,23 @@ async def test_a_journal_failure_stops_the_sweep_and_keeps_the_workstream(factor
     assert await _keys(factory) == ["kept"]
 
 
+async def test_a_journal_failure_mid_sweep_keeps_every_earlier_erase(factory, run_cleanup, monkeypatch):
+    await _workstream(factory, "first", closed_days_ago=100)
+    await _workstream(factory, "second", closed_days_ago=95)
+    real = worklog.record_event
+    calls = 0
+
+    async def fails_on_the_second(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return False if calls == 2 else await real(*args, **kwargs)
+
+    monkeypatch.setattr(worklog, "record_event", fails_on_the_second)
+    with pytest.raises(worklog.WorklogJournalWriteFailed):
+        await run_cleanup()
+    assert await _keys(factory) == ["second"]
+
+
 def test_the_job_is_registered_with_its_runner_and_schema():
     import ast
     from pathlib import Path
@@ -214,3 +231,5 @@ def test_the_job_is_registered_with_its_runner_and_schema():
     runner = keywords["runner"]
     assert isinstance(runner, ast.Call) and isinstance(runner.func, ast.Name)
     assert runner.func.id == "make_worklog_cleanup_runner"
+    assert isinstance(keywords["min_interval_seconds"], ast.Constant)
+    assert keywords["min_interval_seconds"].value == 3600
