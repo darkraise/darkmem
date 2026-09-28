@@ -1,3 +1,4 @@
+import { MEMORY_TYPES } from "@/lib/taxonomy"
 import type { SimilarityEdge, UnifiedMemory } from "@/hooks/api"
 
 export interface SyntheticGraph {
@@ -16,8 +17,6 @@ function mulberry32(seed: number): () => number {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
 }
-
-const TYPES = ["fact", "decision", "preference", "problem", "reference"]
 
 /**
  * A deterministic memory graph for measuring the renderers at scale. About
@@ -41,7 +40,7 @@ export function syntheticMemoryGraph(
       content: `Synthetic memory ${i} about topic ${cluster}`,
       source: "synthetic",
       tags: [`topic-${cluster}`],
-      memory_type: TYPES[i % TYPES.length]!,
+      memory_type: MEMORY_TYPES[i % MEMORY_TYPES.length]!,
       importance: rand(),
       cluster,
       status: "active",
