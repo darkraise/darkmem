@@ -169,29 +169,36 @@ export function regionChipLabel(name: string, count: number): string {
   return `${name} \u00b7 ${count}`
 }
 
-export function drawHullForSigma(
+/**
+ * A group's convex hull in sigma's framed-graph space.
+ *
+ * The camera maps framed-graph space to the viewport by an affine transform,
+ * which carries a hull's vertices onto the hull of the mapped points. So the
+ * hull is recomputed only when the layout moves, and each frame maps just its
+ * few vertices.
+ */
+export function framedHullVertices(sigma: Sigma, memberIds: string[]): Point[] {
+  const points: Point[] = []
+  for (const id of memberIds) {
+    const data = sigma.getNodeDisplayData(id)
+    if (data) points.push({ x: data.x, y: data.y })
+  }
+  return points.length < 3 ? points : convexHull(points)
+}
+
+export function drawFramedHull(
   ctx: CanvasRenderingContext2D,
   sigma: Sigma,
-  memberIds: string[],
+  framed: Point[],
   color: string,
   fillAlpha: number,
   strokeAlpha: number,
 ): Point[] {
-  const positions: { x: number; y: number }[] = []
-  for (const id of memberIds) {
-    const data = sigma.getNodeDisplayData(id)
-    if (data) {
-      const vp = sigma.framedGraphToViewport(data)
-      positions.push({ x: vp.x, y: vp.y })
-    }
-  }
+  const positions = framed.map((p) => sigma.framedGraphToViewport(p))
   if (positions.length < 2) return positions
 
   if (positions.length === 2) {
-    const [a, b] = positions as [
-      { x: number; y: number },
-      { x: number; y: number },
-    ]
+    const [a, b] = positions as [Point, Point]
     const cx = (a.x + b.x) / 2
     const cy = (a.y + b.y) / 2
     const dx = b.x - a.x
@@ -209,7 +216,7 @@ export function drawHullForSigma(
     return positions
   }
 
-  const hull = expandHull(convexHull(positions), 25)
+  const hull = expandHull(positions, 25)
   ctx.save()
   drawSmoothClosed(ctx, hull)
   ctx.fillStyle = hexToRgba(color, fillAlpha)
@@ -220,6 +227,60 @@ export function drawHullForSigma(
   ctx.stroke()
   ctx.restore()
   return hull
+}
+
+/**
+ * Hull groups and their framed-space shapes, recomputed only when they can
+ * have changed.
+ *
+ * Groups depend on the memories and the mode, so they are rebuilt only when
+ * either identity moves. Shapes depend on node positions, which move only
+ * while the layout runs: they refresh at most every `refreshMs` then, and
+ * once more after `invalidate`.
+ */
+export function createHullShapeCache<M>(
+  computeGroups: (memories: M[], mode: HullMode) => Map<string, string[]>,
+  refreshMs: number,
+) {
+  let groupsFor: { memories: M[]; mode: HullMode } | null = null
+  let groups = new Map<string, string[]>()
+  const shapes = new Map<string, Point[]>()
+  let shapesAt = -Infinity
+  let stale = true
+  return {
+    update(
+      memories: M[],
+      mode: HullMode,
+      sigma: Sigma,
+      layoutRunning: boolean,
+      now: number,
+    ): Map<string, string[]> {
+      if (
+        !groupsFor ||
+        groupsFor.memories !== memories ||
+        groupsFor.mode !== mode
+      ) {
+        groups = computeGroups(memories, mode)
+        groupsFor = { memories, mode }
+        stale = true
+      }
+      if (stale || (layoutRunning && now - shapesAt >= refreshMs)) {
+        shapes.clear()
+        for (const [groupKey, members] of groups) {
+          shapes.set(groupKey, framedHullVertices(sigma, members))
+        }
+        shapesAt = now
+        stale = false
+      }
+      return groups
+    },
+    shape(groupKey: string): Point[] {
+      return shapes.get(groupKey) ?? []
+    },
+    invalidate(): void {
+      stale = true
+    },
+  }
 }
 
 /**

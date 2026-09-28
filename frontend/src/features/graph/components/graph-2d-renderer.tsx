@@ -37,7 +37,8 @@ import {
 } from "@/features/graph/lib/graph-utils"
 import {
   computeHullGroups,
-  drawHullForSigma,
+  createHullShapeCache,
+  drawFramedHull,
   drawRegionChip,
   hullTopAnchor,
   regionChipLabel,
@@ -107,6 +108,10 @@ const HUB_DEGREE = 5
 /** Sigma's camera ratio counts down as you move in, so *below* this is
  *  closer. 0.72 is the 1.4x of the spec, inverted. */
 const LABEL_ZOOM_RATIO = 0.72
+
+/** While the layout runs, hull shapes refresh at most this often; camera
+ *  moves never recompute them. */
+const HULL_REFRESH_MS = 250
 
 /** A connected edge must be unmistakably heavier than its neighbours -- that
  *  emphasis is most of what makes a selection legible. Both are scaled off
@@ -640,6 +645,11 @@ export function Graph2DRenderer({
     sigmaContainer.appendChild(hullCanvas)
     const hullCtx = hullCanvas.getContext("2d")!
 
+    // Hull groups change only with the data or the mode, and hull shapes only
+    // while the layout moves. Recomputing both on every frame is what made a
+    // large graph stutter on pan.
+    const hullCache = createHullShapeCache(computeHullGroups, HULL_REFRESH_MS)
+
     function drawHulls() {
       if (!sigmaRef.current || !containerRef.current) return
       const w = containerRef.current.clientWidth
@@ -654,9 +664,12 @@ export function Graph2DRenderer({
       hullCtx.setTransform(dpr, 0, 0, dpr, 0, 0)
       hullCtx.clearRect(0, 0, w, h)
 
-      const hullGroups = computeHullGroups(
+      const hullGroups = hullCache.update(
         filteredMemoriesRef.current,
         hullModeRef.current,
+        sigmaRef.current,
+        fa2Ref.current?.isRunning() ?? false,
+        performance.now(),
       )
       let idx = 0
       for (const [groupKey, members] of hullGroups) {
@@ -667,10 +680,10 @@ export function Graph2DRenderer({
           hullModeRef.current,
           paletteRef.current,
         )
-        const hull = drawHullForSigma(
+        const hull = drawFramedHull(
           hullCtx,
           sigmaRef.current,
-          members,
+          hullCache.shape(groupKey),
           color,
           0.06,
           0.28,
@@ -757,6 +770,8 @@ export function Graph2DRenderer({
     fa2StopTimerRef.current = setTimeout(() => {
       fa2StopTimerRef.current = null
       if (fa2Ref.current) fa2Ref.current.stop()
+      hullCache.invalidate()
+      sigmaRef.current?.refresh()
     }, scale.layoutMs)
 
     onReady()
