@@ -10,8 +10,8 @@ vi.mock("darkraise-ui/components/sonner", () => ({
   toast: { error: vi.fn(), success: vi.fn() },
   Toaster: () => null,
 }))
-vi.mock("@/features/activity/components/checkpoints-tab", () => ({
-  CheckpointsTab: () => null,
+vi.mock("@/features/worklog/components/work-log-panel", () => ({
+  WorkLogPanel: () => null,
 }))
 // The scrollspy the real reader drives from a scroll listener. Each click is
 // one heading crossing, which is the frame budget under test: the workspace
