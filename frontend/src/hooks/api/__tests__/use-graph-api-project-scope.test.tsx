@@ -43,12 +43,12 @@ describe("useUnifiedGraph: switching the active project never serves the previou
     })
     await waitFor(() => expect(result.current.data).toEqual(DATA_A))
 
-    const keyAlpha = projectScopedKey("unifiedGraph", 0.75, 3, false)
+    const keyAlpha = projectScopedKey("unifiedGraph", 0.75, 3, false, 200)
     expect(queryClient.getQueryData(keyAlpha)).toEqual(DATA_A)
     unmount()
 
     useProjectStore.getState().setProject("beta")
-    const keyBeta = projectScopedKey("unifiedGraph", 0.75, 3, false)
+    const keyBeta = projectScopedKey("unifiedGraph", 0.75, 3, false, 200)
     expect(keyBeta).not.toEqual(keyAlpha)
 
     // The critical assertion: project alpha's rows are not readable under

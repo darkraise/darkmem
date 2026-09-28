@@ -47,12 +47,16 @@ export interface UnifiedGraphData {
   clusters: Record<string, string[]>
   cluster_names: Record<string, string>
   similarity_edges: SimilarityEdge[]
+  /** In-scope memories the server could plot; `memories.length` of these
+   *  were sent, newest first. */
+  total_memories?: number
+  /** True when fewer memories were sent than `total_memories`. */
+  memories_truncated?: boolean
   entities?: GraphEntity[]
   entity_relations?: EntityRelation[]
-  /** True when the entity overlay's unscoped, 500-row fetch hit its limit
-   *  before the membership filter ran — some relevant entities may be
-   *  missing from `entities`/`entity_relations` with no other signal
-   *  (F10). Present only when `include_entities` was requested. */
+  /** True when the plotted memories assert more entities than the overlay's
+   *  20,000-entity ceiling carries; the most-asserted are kept (F10). Present
+   *  only when `include_entities` was requested. */
   entities_truncated?: boolean
 }
 
@@ -83,12 +87,15 @@ export function useUnifiedGraph(
   similarityThreshold = 0.75,
   minClusterSize = 3,
   includeEntities = false,
+  nodeLimit = 200,
+  allNodes = false,
 ) {
   const queryKey = useProjectScopedKey(
     "unifiedGraph",
     similarityThreshold,
     minClusterSize,
     includeEntities,
+    allNodes ? "all" : nodeLimit,
   )
   const project = useProjectStore((s) => s.activeProject)
   return useQuery<UnifiedGraphData>({
@@ -102,6 +109,7 @@ export function useUnifiedGraph(
     queryFn: () =>
       apiFetch(
         `/graph/unified?similarity_threshold=${similarityThreshold}&min_cluster_size=${minClusterSize}&include_entities=${includeEntities}` +
+          (allNodes ? "&all=true" : `&limit=${nodeLimit}`) +
           // Omitted, never sent empty: `project=` would ask for a project
           // *named* the empty string, while an absent param is what the route
           // reads as every project.
