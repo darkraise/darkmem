@@ -8,9 +8,11 @@ import numpy as np
 import pytest
 from sqlalchemy import text
 
+import app.services.graph as graph_module
 from app.models.memory import Memory
 from app.repositories.vector import MemoryFilter, PostgresVectorRepository
 from app.services.embedder_registry import child_table
+from app.services.graph import GraphService
 
 FINGERPRINT = "graph-scale-embedder|4"
 DIMS = 4
@@ -176,3 +178,138 @@ async def test_knn_clustering_on_an_empty_partition(session):
     assert await PostgresVectorRepository(session).get_louvain_clustered_vectors(
         FINGERPRINT, filters=SCOPE,
     ) == ([], [])
+
+
+class _FakeLLM:
+    def __init__(self, fail: bool = False):
+        self.fail = fail
+        self.calls = 0
+
+    def llm_fingerprint(self) -> str:
+        return FINGERPRINT
+
+    async def chat_completion(self, purpose, **kwargs):
+        self.calls += 1
+        if self.fail:
+            raise RuntimeError("naming down")
+        return "named cluster"
+
+
+def _service(session, llm=None) -> GraphService:
+    return GraphService(session, vector_repo=PostgresVectorRepository(session), llm=llm or _FakeLLM())
+
+
+async def _seed_five(session) -> list[Memory]:
+    await _seed_partition(session)
+    return [
+        await _add_memory(
+            session,
+            vector=[1.0, 0.01 * i, 0.0, 0.0],
+            created_at=BASE + timedelta(days=i),
+        )
+        for i in range(5)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_unified_graph_reports_total_and_truncation(session):
+    rows = await _seed_five(session)
+    svc = _service(session)
+
+    limited = await svc.get_unified_graph(limit=2, project="alpha")
+    assert [m["id"] for m in limited["memories"]] == [str(rows[4].id), str(rows[3].id)]
+    assert limited["total_memories"] == 5
+    assert limited["memories_truncated"] is True
+
+    everything = await svc.get_unified_graph(limit=2, project="alpha", all_memories=True)
+    assert len(everything["memories"]) == 5
+    assert everything["memories_truncated"] is False
+
+
+@pytest.mark.asyncio
+async def test_all_memories_is_bounded_by_the_ceiling(session, monkeypatch):
+    await _seed_five(session)
+    monkeypatch.setattr(graph_module, "GRAPH_MAX_NODES", 3)
+
+    result = await _service(session).get_unified_graph(project="alpha", all_memories=True)
+
+    assert len(result["memories"]) == 3
+    assert result["total_memories"] == 5
+    assert result["memories_truncated"] is True
+
+
+@pytest.mark.asyncio
+async def test_importance_comes_from_the_memory_row(session):
+    await _seed_partition(session)
+    memory = await _add_memory(session, vector=[1.0, 0.0, 0.0, 0.0], importance=0.2)
+
+    result = await _service(session).get_unified_graph(project="alpha")
+
+    [node] = result["memories"]
+    assert node["id"] == str(memory.id)
+    assert node["importance"] == pytest.approx(0.2)
+
+
+@pytest.mark.asyncio
+async def test_unchanged_corpus_is_served_from_cache(session, monkeypatch):
+    await _seed_five(session)
+    calls = 0
+    original = PostgresVectorRepository.get_louvain_clustered_vectors
+
+    async def counting(self, *args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return await original(self, *args, **kwargs)
+
+    monkeypatch.setattr(PostgresVectorRepository, "get_louvain_clustered_vectors", counting)
+    svc = _service(session)
+
+    first = await svc.get_unified_graph(project="alpha")
+    second = await svc.get_unified_graph(project="alpha")
+    assert calls == 1
+    assert second["memories"] == first["memories"]
+
+    await _add_memory(session, vector=[0.0, 1.0, 0.0, 0.0])
+    third = await svc.get_unified_graph(project="alpha")
+    assert calls == 2
+    assert third["total_memories"] == 6
+
+
+@pytest.mark.asyncio
+async def test_degraded_naming_is_not_cached(session, monkeypatch):
+    await _seed_five(session)
+    calls = 0
+    original = PostgresVectorRepository.get_louvain_clustered_vectors
+
+    async def counting(self, *args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return await original(self, *args, **kwargs)
+
+    monkeypatch.setattr(PostgresVectorRepository, "get_louvain_clustered_vectors", counting)
+    svc = _service(session, llm=_FakeLLM(fail=True))
+
+    await svc.get_unified_graph(project="alpha", similarity_threshold=0.5)
+    await svc.get_unified_graph(project="alpha", similarity_threshold=0.5)
+
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_similarity_edges_come_from_the_knn_pass(session):
+    await _seed_five(session)
+
+    result = await _service(session).get_unified_graph(project="alpha", similarity_threshold=0.9)
+
+    ids = {m["id"] for m in result["memories"]}
+    assert result["similarity_edges"]
+    assert all(e["source"] in ids and e["target"] in ids for e in result["similarity_edges"])
+    assert all(e["score"] >= 0.9 for e in result["similarity_edges"])
+
+
+@pytest.mark.asyncio
+async def test_empty_arm_still_reports_counts(session):
+    result = await GraphService(session).get_unified_graph()
+    assert result["total_memories"] == 0
+    assert result["memories_truncated"] is False
+    assert result["memories"] == []

@@ -1,8 +1,8 @@
 import asyncio
 import logging
+from collections import OrderedDict
 from uuid import UUID
 
-import numpy as np
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +20,31 @@ logger = logging.getLogger(__name__)
 # statement about what the corpus once claimed, and dropping it would empty the
 # context view of exactly the memory a reader opened it to understand.
 GRAPH_MEMORY_STATUSES: tuple[str, ...] = ("active",)
+
+GRAPH_MAX_NODES = 50_000
+GRAPH_MAX_ENTITIES = 20_000
+CLUSTER_NAME_LLM_CAP = 40
+_RESULT_CACHE_SIZE = 4
+
+# The assembled memory arm, keyed on everything that decides it. Module-level
+# state is sound only because invariant 13 pins one process.
+_result_cache: OrderedDict[tuple, dict] = OrderedDict()
+
+
+def reset_graph_caches() -> None:
+    """Test hook: forget every cached memory arm."""
+    _result_cache.clear()
+
+
+def _empty_memory_arm() -> dict:
+    return {
+        "memories": [],
+        "clusters": {},
+        "cluster_names": {},
+        "similarity_edges": [],
+        "total_memories": 0,
+        "memories_truncated": False,
+    }
 
 
 class GraphService:
@@ -42,48 +67,39 @@ class GraphService:
         min_cluster_size: int = 3,
         include_entities: bool = False,
         project: str | None = None,
+        all_memories: bool = False,
     ) -> dict:
-        memory_nodes = []
-        clusters: dict[int, list[str]] = {}
-        similarity_edges: list[dict] = []
+        effective_limit = GRAPH_MAX_NODES if all_memories else min(limit, GRAPH_MAX_NODES)
+        memory_arm = _empty_memory_arm()
         fingerprint_unresolved = False
 
         if self.vector_repo and self.llm is not None:
             try:
                 fingerprint = await self.vector_repo.resolve_read_fingerprint(self.llm)
-                clustered = await self.vector_repo.get_louvain_clustered_vectors(
-                    fingerprint=fingerprint,
-                    min_score=similarity_threshold,
-                    min_cluster_size=min_cluster_size,
-                    limit=limit,
-                    filters=self._memory_scope(
-                        MemoryFilter(project=project) if project is not None else None
-                    ),
+                scope = self._memory_scope(
+                    MemoryFilter(project=project) if project is not None else None
                 )
-                # Fetch importance only for the IDs we actually plot. The
-                # previous implementation did a full-table scan on every
-                # request, which gets expensive once the corpus grows.
-                clustered_ids = [p["memory_id"] for p in clustered]
-                importance_map = await self._fetch_importance_map(clustered_ids)
-                for p in clustered:
-                    payload = p.get("payload", {})
-                    mid = str(p["memory_id"])
-                    cluster_id = p.get("cluster", -1)
-                    memory_nodes.append({
-                        "id": mid,
-                        "content": payload.get("content", "") or "",
-                        "source": payload.get("source", ""),
-                        "tags": payload.get("tags", []),
-                        "memory_type": payload.get("memory_type"),
-                        "importance": importance_map.get(mid, 0.5),
-                        "cluster": cluster_id,
-                        "project": p.get("project"),
-                        "status": p.get("status"),
-                    })
-                    if cluster_id >= 0:
-                        clusters.setdefault(cluster_id, []).append(mid)
-
-                similarity_edges = self._compute_similarity_edges(clustered, similarity_threshold)
+                total, last_updated = await self.vector_repo.scope_stamp(fingerprint, scope)
+                key = (
+                    fingerprint, project, similarity_threshold, min_cluster_size,
+                    effective_limit, total, last_updated,
+                )
+                cached = _result_cache.get(key)
+                if cached is not None:
+                    _result_cache.move_to_end(key)
+                    memory_arm = cached
+                else:
+                    memory_arm, degraded = await self._build_memory_arm(
+                        fingerprint, scope, similarity_threshold, min_cluster_size,
+                        effective_limit, total,
+                    )
+                    # A degraded arm carries fallback names for clusters whose
+                    # naming call failed; caching it would pin them until the
+                    # corpus next changes.
+                    if not degraded:
+                        _result_cache[key] = memory_arm
+                        while len(_result_cache) > _RESULT_CACHE_SIZE:
+                            _result_cache.popitem(last=False)
             except EmbedderFingerprintUnresolved:
                 # Distinguishable from "no data": the embedding purpose's
                 # dimensions is unset, or set to a value no real embed has
@@ -99,25 +115,64 @@ class GraphService:
             except Exception:
                 logger.exception("Failed to fetch vector data")
 
-        cluster_names = await self._generate_cluster_names(clusters, memory_nodes)
-
-        result = {
-            "memories": memory_nodes,
-            "clusters": {str(k): v for k, v in clusters.items()},
-            "cluster_names": cluster_names,
-            "similarity_edges": similarity_edges,
-            "fingerprint_unresolved": fingerprint_unresolved,
-        }
+        result = {**memory_arm, "fingerprint_unresolved": fingerprint_unresolved}
 
         if include_entities:
             entities, entity_relations, entities_truncated = await self._fetch_entity_overlay(
-                memory_nodes
+                result["memories"]
             )
             result["entities"] = entities
             result["entity_relations"] = entity_relations
             result["entities_truncated"] = entities_truncated
 
         return result
+
+    async def _build_memory_arm(
+        self,
+        fingerprint: str,
+        scope: MemoryFilter,
+        similarity_threshold: float,
+        min_cluster_size: int,
+        limit: int,
+        total: int,
+    ) -> tuple[dict, bool]:
+        clustered, similarity_edges = await self.vector_repo.get_louvain_clustered_vectors(
+            fingerprint=fingerprint,
+            min_score=similarity_threshold,
+            min_cluster_size=min_cluster_size,
+            limit=limit,
+            filters=scope,
+        )
+        memory_nodes: list[dict] = []
+        clusters: dict[int, list[str]] = {}
+        for p in clustered:
+            payload = p.get("payload") or {}
+            mid = str(p["memory_id"])
+            cluster_id = p.get("cluster", -1)
+            importance = p.get("importance")
+            memory_nodes.append({
+                "id": mid,
+                "content": payload.get("content", "") or "",
+                "source": payload.get("source", ""),
+                "tags": payload.get("tags", []),
+                "memory_type": payload.get("memory_type"),
+                "importance": importance if importance is not None else 0.5,
+                "cluster": cluster_id,
+                "project": p.get("project"),
+                "status": p.get("status"),
+            })
+            if cluster_id >= 0:
+                clusters.setdefault(cluster_id, []).append(mid)
+
+        cluster_names, degraded = await self._generate_cluster_names(clusters, memory_nodes)
+        return {
+            "memories": memory_nodes,
+            "clusters": {str(k): v for k, v in clusters.items()},
+            "cluster_names": cluster_names,
+            "similarity_edges": similarity_edges,
+            "total_memories": total,
+            "memories_truncated": len(memory_nodes) < total,
+        }, degraded
 
     async def get_memory_context(self, memory_id: str) -> dict:
         if not self.graph_repo:
@@ -148,54 +203,15 @@ class GraphService:
             "neighbors": neighbors,
         }
 
-    async def _fetch_importance_map(self, memory_ids: list) -> dict[str, float]:
-        if not memory_ids:
-            return {}
-        try:
-            result = await self.session.execute(
-                select(Memory.id, Memory.importance).where(Memory.id.in_(memory_ids))
-            )
-            return {str(row[0]): row[1] for row in result.all()}
-        except Exception:
-            logger.exception("Failed to fetch importance data")
-            return {}
-
-    def _compute_similarity_edges(
-        self, clustered: list[dict], threshold: float, max_edges: int = 1000
-    ) -> list[dict]:
-        if len(clustered) < 2:
-            return []
-
-        from app.utils.math import cosine_similarity_matrix
-        vectors = np.array([p["vector"] for p in clustered], dtype=np.float32)
-        sim_matrix = cosine_similarity_matrix(vectors)
-        ids = [str(p["memory_id"]) for p in clustered]
-
-        edges = []
-        n = len(ids)
-        for i in range(n):
-            for j in range(i + 1, n):
-                score = float(sim_matrix[i, j])
-                if score >= threshold:
-                    edges.append({
-                        "source": ids[i],
-                        "target": ids[j],
-                        "score": round(score, 3),
-                    })
-        if len(edges) > max_edges:
-            edges.sort(key=lambda e: e["score"], reverse=True)
-            edges = edges[:max_edges]
-        return edges
-
     async def _generate_cluster_names(
         self, clusters: dict[int, list[str]], memory_nodes: list[dict]
-    ) -> dict[str, str]:
+    ) -> tuple[dict[str, str], bool]:
         cluster_names: dict[str, str] = {}
 
         if not self.llm or not clusters:
             for cid in clusters:
                 cluster_names[str(cid)] = f"Cluster {cid}"
-            return cluster_names
+            return cluster_names, False
 
         content_by_cluster: dict[int, list[str]] = {}
         for m in memory_nodes:
@@ -206,7 +222,7 @@ class GraphService:
         cluster_system_prompt = prompt.get("cluster_naming")
         sem = asyncio.Semaphore(3)
 
-        async def _name_one(cid: int, contents: list[str]) -> tuple[int, str]:
+        async def _name_one(cid: int, contents: list[str]) -> tuple[int, str, bool]:
             async with sem:
                 try:
                     joined = "\n".join(contents[:8]).replace("</memories>", "")
@@ -218,17 +234,19 @@ class GraphService:
                             {"role": "user", "content": sample},
                         ],
                     )
-                    return cid, name.strip().strip('"').strip("'")[:40]
+                    return cid, name.strip().strip('"').strip("'")[:40], False
                 except Exception:
-                    return cid, f"Cluster {cid}"
+                    return cid, f"Cluster {cid}", True
 
         results = await asyncio.gather(
             *[_name_one(cid, contents) for cid, contents in content_by_cluster.items()]
         )
-        for cid, name in results:
+        degraded = False
+        for cid, name, failed in results:
             cluster_names[str(cid)] = name
+            degraded = degraded or failed
 
-        return cluster_names
+        return cluster_names, degraded
 
     async def _fetch_entity_overlay(
         self, memory_nodes: list[dict]

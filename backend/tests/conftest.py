@@ -381,3 +381,12 @@ def cleared_promotion_record(tmp_path, monkeypatch):
     record.write_text(json.dumps({"gate_eligible": True, "source": "test fixture"}))
     monkeypatch.setattr(claim_gates, "PROMOTION_RECORD_PATH", record)
     return record
+
+
+@pytest.fixture(autouse=True)
+def _reset_graph_caches():
+    from app.services.graph import reset_graph_caches
+
+    reset_graph_caches()
+    yield
+    reset_graph_caches()
