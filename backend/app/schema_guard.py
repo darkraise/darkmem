@@ -1,29 +1,30 @@
 """Refuse to serve against a schema the running image was not built for.
 
-**The hole this closes, measured on production 2026-08-17.** Before the freeze a
-schema change *regenerates* `0001_baseline.py` in place rather than appending a
-revision, so the revision id never moves. `alembic upgrade head` therefore
-compares `0001` to `0001` on an already-stamped database, finds them equal, and
-does nothing — and the deploy reports a clean migration while the code runs
-against a schema it does not have. Production drifted five columns that way;
-`article_synthesis` died on every scheduled run for days, visible only in its own
-`config` row, because a job's failure goes to a row rather than to anyone's face.
+**The hole this closes, measured on production 2026-08-17.** Until 2026-09-28 a
+schema change *regenerated* `0001_baseline.py` in place rather than appending a
+revision, so the revision id never moved. `alembic upgrade head` therefore
+compares `0001` to `0001` on a database built from an older copy of that file,
+finds them equal, and does nothing — and the deploy reports a clean migration
+while the code runs against a schema it does not have. Production drifted five
+columns that way; `article_synthesis` died on every scheduled run for days,
+visible only in its own `config` row.
+
+**Since 2026-09-28 the baseline is permanent** (`FROZEN_BASELINE_SHA`, pinned by
+`tests/test_schema_guard.py`) and every schema change is a new revision chained
+after it, which alembic applies itself. The guard stays because the databases
+built from the regenerated copies are all still stamped `0001`: to alembic they
+look current, and only the file's content tells them apart. A mismatch here
+therefore means a database built before the baseline became permanent, which no
+revision can upgrade.
 
 The revision id cannot detect this. The baseline's *content* can, so this stamps
 a hash of the baseline file into the database it migrated and compares on every
 boot.
 
-**It fails closed, deliberately.** Refusing to start is loud and its remedy is
-cheap pre-freeze (drop and recreate, which is what the policy already says to
-do); serving on is quiet and was measured to cost days of a dead job. There is no
-override flag on purpose — an env var that lets an operator skip this would be
-reached for at exactly the moment it is protecting them.
-
-**After the schema freeze this check must be retired**, not merely satisfied:
-once the baseline is frozen and changes arrive as ordinary additive revisions,
-the revision id moves again and alembic's own comparison does this job. Retiring
-it is part of the freeze, and `docs/planning/baseline-schema-inventory.md` owns
-that protocol.
+**It fails closed, deliberately.** Refusing to start is loud; serving on is quiet
+and was measured to cost days of a dead job. There is no override flag on
+purpose — an env var that lets an operator skip this would be reached for at
+exactly the moment it is protecting them.
 """
 from __future__ import annotations
 
@@ -44,6 +45,7 @@ from app.config import settings
 # boot check that never runs.
 BASELINE = Path(__file__).resolve().parents[1] / "migrations" / "versions" / "0001_baseline.py"
 CONFIG_KEY = "schema_baseline_sha"
+FROZEN_BASELINE_SHA = "3c408f94c0e6b1128df3f8e173839a54d4ac0f0ca2fb2709b140c093e8d1457a"
 
 
 def baseline_sha() -> str:
@@ -88,16 +90,17 @@ async def evaluate(conn) -> int:
     print(
         "\n*** REFUSING TO START — SCHEMA DRIFT ***\n"
         f"This database was migrated from baseline {stored[:16]}, but the image\n"
-        f"carries baseline {current[:16]}. Before the freeze a schema change\n"
-        "regenerates 0001_baseline.py in place, so the revision id never moves\n"
-        "and `alembic upgrade head` is a NO-OP here — the migration you just saw\n"
+        f"carries baseline {current[:16]}. The database was built from a copy of\n"
+        "0001_baseline.py that was regenerated in place before the baseline\n"
+        "became permanent (2026-09-28). Alembic sees both as revision 0001, so\n"
+        "`alembic upgrade head` is a NO-OP here — the migration you just saw\n"
         "succeed did nothing, and the code is about to query columns this\n"
         "database does not have.\n\n"
-        "This is not recoverable by migrating. Pre-freeze the remedy is the\n"
-        "policy's own: back up, drop and recreate the database, redeploy, then\n"
-        "restore what must survive. docs/runbook-deployment.md carries the\n"
-        "procedure, including the rows a re-seed does NOT reproduce (the\n"
-        "verification LLM purpose row and the admin password hash).\n",
+        "No revision can upgrade it. Back up, bring the schema to the permanent\n"
+        "baseline by hand, then let the guard re-stamp: docs/runbook-deployment.md\n"
+        "(\"Recovering from schema drift\") carries the procedure, including the\n"
+        "rows a re-seed does NOT reproduce (the verification LLM purpose row and\n"
+        "the admin password hash).\n",
         file=sys.stderr,
     )
     return 1

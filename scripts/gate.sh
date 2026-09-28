@@ -151,35 +151,26 @@ BENCH_CACHE="$BACKEND/scripts/extraction_bench/.cache"
 
 # ── the floor ────────────────────────────────────────────────────────────
 
-# The single-revision assertion (doc 19 §2, T0.15).
-#
-# The greenfield baseline is ONE revision, regenerated in place until the
-# first deploy whose data must survive — the homelab cutover — at which event
-# it is tagged and frozen. Until that tag exists, a second revision means
-# somebody quietly started the chain early, which is exactly what this holds
-# shut. After the freeze, a linear chain is correct and the check stands down.
-FREEZE_TAG="schema-frozen"
-assert_single_revision() {
-    printf '\n\033[1m── %s ──\033[0m\n' "alembic single-revision"
+# The single-head assertion. `0001_baseline.py` is permanent (pinned by
+# tests/test_schema_guard.py) and every schema change is a revision chained
+# after it. Two lanes that each branch off the same parent leave two heads,
+# and `alembic upgrade head` refuses to run at boot — fail here instead.
+assert_single_head() {
+    printf '\n\033[1m── %s ──\033[0m\n' "alembic single-head"
     if [ -n "$FAILED_GATE" ]; then echo "skipped (a previous gate failed)"; return 0; fi
 
-    if git -C "$REPO_ROOT" rev-parse -q --verify "refs/tags/$FREEZE_TAG" >/dev/null 2>&1; then
-        echo "freeze tag '$FREEZE_TAG' exists — the chain is open; assertion stands down"
-        return 0
-    fi
-
     local count
-    count=$(cd "$BACKEND" && "$PY" -m alembic history 2>/dev/null | grep -c '.')
+    count=$(cd "$BACKEND" && "$PY" -m alembic heads 2>/dev/null | grep -c '.')
     if [ "$count" -ne 1 ]; then
-        FAILED_GATE="alembic single-revision"
-        echo "expected exactly 1 revision before the freeze, found $count." >&2
-        echo "A schema change REGENERATES the baseline in place; it never appends 0002." >&2
-        (cd "$BACKEND" && "$PY" -m alembic history 2>/dev/null) >&2
+        FAILED_GATE="alembic single-head"
+        echo "expected exactly 1 alembic head, found $count." >&2
+        echo "Rebase the later revision's down_revision onto the other head." >&2
+        (cd "$BACKEND" && "$PY" -m alembic heads 2>/dev/null) >&2
         return 0
     fi
-    echo "1 revision, unfrozen — correct"
+    echo "1 head — correct"
 }
-assert_single_revision
+assert_single_head
 
 
 # Backend suite. conftest overwrites DATABASE_URL from TEST_DATABASE_URL, so

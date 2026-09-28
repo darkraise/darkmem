@@ -1,17 +1,20 @@
 """The boot check that refuses to serve against a drifted schema.
 
-Measured cause, 2026-08-17: before the freeze a schema change regenerates
-``0001_baseline.py`` in place, so the revision id never moves and
-``alembic upgrade head`` is a no-op on an already-stamped database — the deploy
-reports a clean migration while the code runs against a schema it lacks.
+Measured cause, 2026-08-17: until 2026-09-28 a schema change regenerated
+``0001_baseline.py`` in place, so the revision id never moved and
+``alembic upgrade head`` is a no-op on a database built from an older copy — the
+deploy reports a clean migration while the code runs against a schema it lacks.
 Production drifted five columns that way and ``article_synthesis`` died on every
-scheduled run for days.
+scheduled run for days. The baseline is now permanent; the two tests below keep
+it that way.
 """
 from __future__ import annotations
 
 import hashlib
 
 import pytest
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import text
 
 from app import schema_guard
@@ -23,6 +26,25 @@ def test_the_baseline_it_hashes_actually_exists():
     it is asserted rather than assumed."""
     assert schema_guard.BASELINE.exists(), schema_guard.BASELINE
     assert schema_guard.BASELINE.name == "0001_baseline.py"
+
+
+def test_the_baseline_is_never_regenerated():
+    """Every deployed database is stamped with this digest. Editing the file in
+    place — even its docstring — moves it and makes every deployed app refuse to
+    boot. A schema change is a new revision chained after ``0001``."""
+    assert schema_guard.baseline_sha() == schema_guard.FROZEN_BASELINE_SHA
+
+
+def test_the_revision_chain_is_linear_from_the_baseline():
+    """Two lanes that each add a revision off the same parent leave two heads,
+    and ``alembic upgrade head`` then refuses to run at boot. Rebase the later
+    revision's ``down_revision`` onto the other."""
+    versions = schema_guard.BASELINE.parent
+    config = Config()
+    config.set_main_option("script_location", str(versions.parent))
+    script = ScriptDirectory.from_config(config)
+    assert len(script.get_heads()) == 1, script.get_heads()
+    assert script.get_bases() == ["0001"]
 
 
 def test_baseline_sha_is_the_files_own_digest():
@@ -59,8 +81,7 @@ async def test_an_unchanged_baseline_is_admitted(session):
 
 async def test_a_regenerated_baseline_is_REFUSED(session):
     """The whole point. A mismatch must fail closed, because serving on is
-    quiet and was measured to cost days of a dead job while refusing is loud and
-    its remedy (drop and recreate) is cheap pre-freeze."""
+    quiet and was measured to cost days of a dead job while refusing is loud."""
     await session.execute(
         text(
             "INSERT INTO config (key, value) VALUES (:k, jsonb_build_object('sha', CAST(:v AS text))) "
