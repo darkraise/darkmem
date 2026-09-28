@@ -17,6 +17,7 @@ import {
 } from "@/features/graph/lib/graph-colors"
 import type { ColorMode } from "@/features/graph/lib/graph-colors"
 import { computeHullGroups } from "@/features/graph/lib/graph-geometry"
+import { scaleSettings } from "@/features/graph/lib/graph-scale"
 import type { HullMode } from "@/features/graph/lib/graph-geometry"
 import { type GraphThemeTokens } from "@/features/graph/lib/code-graph-theme"
 import type { Link3D } from "@/features/graph/lib/graph-utils"
@@ -77,6 +78,34 @@ export function Graph3DRenderer({
   const hoveredRef = useRef<RenderedNode | null>(null)
   const ringRef = useRef<THREE.Mesh | null>(null)
   const hullMeshesRef = useRef<THREE.Mesh[]>([])
+  const scale = useMemo(
+    () => scaleSettings(graphData.nodes.length, graphData.links.length),
+    [graphData],
+  )
+  const scaleRef = useRef(scale)
+  scaleRef.current = scale
+
+  // Shared per shape: thousands of nodes would otherwise each upload their
+  // own copy of the same sphere. Materials stay per node, because the
+  // selection effect dims and highlights one node by mutating its material.
+  const geometriesRef = useRef(new Map<string, THREE.BufferGeometry>())
+  const geometryFor = (
+    kind: Node3D["nodeKind"],
+    radius: number,
+  ): THREE.BufferGeometry => {
+    const [w, h] = scaleRef.current.sphereSegments
+    const r = Math.round(radius * 10) / 10
+    const key = `${kind}:${r}:${w}x${h}`
+    let geometry = geometriesRef.current.get(key)
+    if (!geometry) {
+      geometry =
+        kind === "entity"
+          ? new THREE.OctahedronGeometry(r * 0.6)
+          : new THREE.SphereGeometry(r, w, h)
+      geometriesRef.current.set(key, geometry)
+    }
+    return geometry
+  }
 
   const isEntitySelected = selectedNodeId?.startsWith("entity:") ?? false
 
@@ -155,6 +184,7 @@ export function Graph3DRenderer({
     hullMeshesRef.current = []
 
     if (hullMode === "none") return
+    if (!scaleRef.current.hulls3D) return
 
     const memoryNodes = graphData.nodes.filter(
       (n) => n.nodeKind === "memory" && n.x != null,
@@ -334,15 +364,13 @@ export function Graph3DRenderer({
         ;(m.material as THREE.Material).dispose()
       }
       hullMeshesRef.current = []
+      for (const geometry of geometriesRef.current.values()) geometry.dispose()
+      geometriesRef.current.clear()
     }
   }, [])
 
   const nodeThreeObject = useCallback((node: Node3D) => {
-    const radius = 1 + node.val * 1.5
-    const geometry =
-      node.nodeKind === "entity"
-        ? new THREE.OctahedronGeometry(radius * 0.6)
-        : new THREE.SphereGeometry(radius, 16, 12)
+    const geometry = geometryFor(node.nodeKind, 1 + node.val * 1.5)
     const color = colorForNode(node, palette)
     const material = new THREE.MeshPhongMaterial({
       color,
@@ -403,7 +431,7 @@ export function Graph3DRenderer({
         return memoryEdgeColor(tokensRef.current.primary, tokensRef.current)
       }}
       linkDirectionalArrowLength={(link) =>
-        link.linkKind === "relation" ? 4 : 0
+        scale.arrows3D && link.linkKind === "relation" ? 4 : 0
       }
       linkDirectionalArrowRelPos={1}
       onNodeClick={(node: Node3D) => {
@@ -423,8 +451,8 @@ export function Graph3DRenderer({
       }}
       onNodeHover={handleNodeHover}
       onBackgroundClick={() => onNodeSelect(null)}
-      warmupTicks={80}
-      cooldownTicks={150}
+      warmupTicks={scale.warmupTicks3D}
+      cooldownTicks={scale.cooldownTicks3D}
       onEngineStop={() => {
         buildHulls()
         onReady()

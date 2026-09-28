@@ -31,6 +31,7 @@ import { useGraphLayout } from "@/features/graph/hooks/use-graph-layout"
 import { useGraphSelection } from "@/features/graph/hooks/use-graph-selection"
 import { useMemoryGraphTheme } from "@/features/graph/lib/memory-graph-theme"
 import { useGraphPrefs } from "@/features/graph/lib/graph-prefs"
+import { LARGE_3D_NOTICE_NODES } from "@/features/graph/lib/graph-scale"
 import { PanelResizeHandle } from "@/features/graph/components/panel-resize-handle"
 import {
   panelLayout,
@@ -56,6 +57,7 @@ export function RealMemoryGraphPage() {
   })
   const { tokens, palette } = useMemoryGraphTheme()
   const [viewMode, setViewMode] = useState<ViewMode>("2d")
+  const [large3DNoticeDismissed, setLarge3DNoticeDismissed] = useState(false)
   const [, setGraphReady] = useState(false)
   const [colorMode, setColorMode] = useState<ColorMode>(DEFAULT_COLOR_MODE)
 
@@ -310,6 +312,25 @@ export function RealMemoryGraphPage() {
                 {entityLayerEnabled ? "Loading entities" : "Updating graph"}
               </div>
             )}
+
+            {viewMode === "3d" &&
+              !large3DNoticeDismissed &&
+              graphData3D.nodes.length >= LARGE_3D_NOTICE_NODES && (
+                <div
+                  role="status"
+                  className="bg-warning/12 border-warning/55 text-warning-text absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-md border px-2.5 py-1 text-sm shadow-lg backdrop-blur-sm"
+                >
+                  Large graph: 3D is best-effort here. Switch to 2D for smooth
+                  navigation.
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setLarge3DNoticeDismissed(true)}
+                  >
+                    Dismiss
+                  </Button>
+                </div>
+              )}
 
             <div className="absolute top-3 left-3 z-30">
               <Button
