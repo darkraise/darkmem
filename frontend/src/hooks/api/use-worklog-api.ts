@@ -153,7 +153,9 @@ export function useWorklogSearch() {
 }
 
 function invalidateWorklog(qc: QueryClient) {
-  for (const key of ["worklogWorkstreams", "worklogEntries", "worklogResume"]) {
+  // "projects" too: the Activity list picks which projects to ask from its
+  // per-project workstream counts, and queries are otherwise fresh for 60 s.
+  for (const key of ["worklogWorkstreams", "worklogEntries", "worklogResume", "projects"]) {
     void qc.invalidateQueries({ queryKey: [key] })
   }
 }
