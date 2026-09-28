@@ -1,6 +1,7 @@
 """The unified graph at scale: selection order, counts, clustering and cache."""
 from __future__ import annotations
 
+import threading
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -9,6 +10,7 @@ import pytest
 from sqlalchemy import text
 
 import app.services.graph as graph_module
+import app.utils.graph_knn as graph_knn_module
 from app.models.memory import Memory
 from app.repositories.graph import PostgresGraphRepository
 from app.repositories.vector import MemoryFilter, PostgresVectorRepository
@@ -179,6 +181,28 @@ async def test_knn_clustering_on_an_empty_partition(session):
     assert await PostgresVectorRepository(session).get_louvain_clustered_vectors(
         FINGERPRINT, filters=SCOPE,
     ) == ([], [])
+
+
+@pytest.mark.asyncio
+async def test_knn_pass_runs_off_the_event_loop(session, monkeypatch):
+    await _seed_partition(session)
+    await _add_memory(session, vector=[1.0, 0.0, 0.0, 0.0])
+    await _add_memory(session, vector=[0.0, 1.0, 0.0, 0.0])
+
+    seen: list[str] = []
+    original = graph_knn_module.knn_graph
+
+    def spy(*args, **kwargs):
+        seen.append(threading.current_thread().name)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(graph_knn_module, "knn_graph", spy)
+
+    await PostgresVectorRepository(session).get_louvain_clustered_vectors(
+        FINGERPRINT, min_score=0.0, filters=SCOPE,
+    )
+
+    assert seen and seen[0].startswith("graph-knn")
 
 
 class _FakeLLM:

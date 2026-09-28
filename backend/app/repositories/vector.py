@@ -1,4 +1,6 @@
+import asyncio
 import json
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
@@ -9,6 +11,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.embedder_registry import child_table
 from app.utils.scope_labels import SCOPE_LABEL_COLUMNS, SCOPE_LABEL_JOIN, scope_labels
+
+# One server process (invariant 13) means this pass must not hold the event
+# loop; one worker keeps peak memory at a single pass's worth.
+_KNN_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="graph-knn")
+
+
+def _cluster_and_edges(
+    vectors: np.ndarray, ids: list[str], min_score: float, min_cluster_size: int,
+) -> tuple[list[int], list[dict]]:
+    from app.utils.graph_knn import CLUSTER_K, cluster_labels, knn_graph, similarity_edges
+
+    graph = knn_graph(vectors, k=CLUSTER_K, threshold=min_score)
+    return cluster_labels(graph, len(ids), min_cluster_size), similarity_edges(graph, ids)
+
 
 # An HNSW scan applies a WHERE as a post-scan filter over the candidate stream
 # it produces; it cannot seek on the predicate. Over-fetching by this factor is
@@ -367,19 +383,22 @@ class PostgresVectorRepository:
 
         One exact k-nearest-neighbour pass feeds both: Louvain clusters the
         top-``CLUSTER_K`` graph, and the edges are the pairs in either
-        endpoint's top ``EDGE_K``. Memory stays O(chunk x N).
+        endpoint's top ``EDGE_K``. Memory stays O(chunk x N). The pass itself
+        runs off the event loop (`_KNN_EXECUTOR`): invariant 13 pins one
+        server process, and a pass of several seconds would otherwise stall
+        every capture, MCP call, websocket and job for its duration.
         """
-        from app.utils.graph_knn import CLUSTER_K, cluster_labels, knn_graph, similarity_edges
-
         points, vectors = await self.get_vector_matrix(fingerprint, limit=limit, filters=filters)
         if not points:
             return [], []
 
-        graph = knn_graph(vectors, k=CLUSTER_K, threshold=min_score)
-        for point, label in zip(points, cluster_labels(graph, len(points), min_cluster_size)):
-            point["cluster"] = label
         ids = [str(p["memory_id"]) for p in points]
-        return points, similarity_edges(graph, ids)
+        labels, edges = await asyncio.get_running_loop().run_in_executor(
+            _KNN_EXECUTOR, _cluster_and_edges, vectors, ids, min_score, min_cluster_size,
+        )
+        for point, label in zip(points, labels):
+            point["cluster"] = label
+        return points, edges
 
     async def resolve_read_fingerprint(self, llm) -> str:
         """Resolve the fingerprint a bulk-partition read (projection, clustering)
