@@ -48,7 +48,10 @@ layout, cluster super-nodes. The 3D view is **best-effort** by owner ruling
   (`api/routes/vectors.py`) deterministic; nothing there relies on the old
   arbitrary order.
 - The response gains `total_memories` (count of in-scope memories under the
-  same `MemoryFilter`, i.e. project plus `GRAPH_MEMORY_STATUSES`) and
+  same `MemoryFilter`, i.e. project plus `GRAPH_MEMORY_STATUSES`, that have a
+  vector in the active partition; a memory still awaiting its embedding
+  cannot be plotted, so counting it would report a truncation no budget
+  closes) and
   `memories_truncated` (`len(memories) < total_memories`). Existing keys keep
   their names and shapes.
 
@@ -56,14 +59,18 @@ layout, cluster super-nodes. The 3D view is **best-effort** by owner ruling
 
 ### Vector read
 
-`get_all_vectors` selects `e.embedding::real[]` so asyncpg decodes floats in
-C, and stacks them into one `np.float32` array. Callers that expect a
-`vector` list per point keep getting one; the graph path reads the stacked
-array directly and never builds per-point lists.
+`get_all_vectors` selects `e.embedding::real[]` so asyncpg decodes floats
+natively, and keeps its `vector` list per point for the projection route. The
+graph path uses a sibling, `get_vector_matrix`, which streams the same rows in
+batches of 1,000 and packs each batch into one `np.float32` matrix, so a
+20,000 × 1024 read peaks near its 80 MB matrix rather than the ~0.65 GB the
+per-row lists would hold. `importance` rides the same row, replacing a lookup
+that passed one bind parameter per memory (past asyncpg's 32,767 limit at
+the ceiling).
 
 ### One neighbour pass for clustering and edges
 
-A new pure function in `app/services/graph_knn.py` (no DB, no I/O):
+A new pure function in `app/utils/graph_knn.py` (no DB, no I/O):
 
 `knn_graph(vectors, k, threshold, chunk_size) -> (src, dst, sim, rank)`
 
@@ -72,7 +79,9 @@ masks the diagonal, keeps each row's top `k` columns by `argpartition`, and
 drops pairs below `threshold`. `rank` is the pair's position (0-based) in
 the better-ranking endpoint's neighbour list. Output is undirected and
 deduplicated (stored as `i < j`; on collision keep the lower rank; the
-similarity is symmetric). Memory is O(chunk × N), never N×N.
+similarity is symmetric). Memory is O(chunk × N), never N×N; by default the
+chunk is sized so its scratch (a float32 block plus argpartition's int64
+index, 12 bytes per cell) stays near 128 MB.
 
 - **Clustering** runs `community_multilevel` on the graph built from
   `k = CLUSTER_K` (15) with similarity weights, then applies
@@ -164,9 +173,10 @@ reusing the tiers `code-graph-renderer.tsx`'s `getFA2Settings` already uses
 
 ### 3D renderer (best-effort)
 
-- Geometries shared per `(kind, radius bucket)` and materials shared per
-  colour; sphere segments drop to 8×6 from large. The recolour effect swaps
-  shared materials instead of mutating per-node ones.
+- Geometries shared per `(kind, radius, segments)`; sphere segments drop to
+  8×6 from large. Materials stay per node: the selection effect dims and
+  highlights one node by mutating its own material, so a shared material
+  would dim every node of that colour.
 - Directional arrows and hulls off from large.
 - From 5,000 nodes, a dismissible notice over the canvas: "Large graph: 3D
   is best-effort here. Switch to 2D for smooth navigation."
@@ -185,10 +195,10 @@ reusing the tiers `code-graph-renderer.tsx`'s `getFA2Settings` already uses
   `test_algorithms.py` Louvain tests move to the new function.
 - **Guards leg** from CLAUDE.md on `darkmem_test_2` (a query parameter
   changes on a served route).
-- **Backend bench** (`backend/scripts/bench_graph_scale.py`, on
+- **Backend bench** (`backend/scripts/benchlib/run_graph_scale.py`, on
   `darkmem_bench`): seeds 20,000 synthetic clustered 1024-d memories and
-  times `get_unified_graph(all=True)` cold and warm. Pass: cold ≤ 10 s, warm
-  ≤ 1 s.
+  times `get_unified_graph(all_memories=True)` cold and warm. Pass: cold ≤
+  10 s, warm ≤ 1 s, process peak RSS ≤ 1,500 MB.
 - **Frontend unit**: toolbar row and disabled state; hook query string
   (`limit` vs `all=true`); prefs persistence; hull-group memoisation;
   cluster-anchor seeding is deterministic.
@@ -208,7 +218,7 @@ reusing the tiers `code-graph-renderer.tsx`'s `getFA2Settings` already uses
 |---|---|---|
 | `GRAPH_MAX_NODES` | 50,000 | `app/services/graph.py` |
 | `GRAPH_MAX_ENTITIES` | 20,000 | `app/services/graph.py` |
-| `CLUSTER_K` | 15 | `app/services/graph_knn.py` |
-| `EDGE_K` | 5 | `app/services/graph_knn.py` |
+| `CLUSTER_K` | 15 | `app/utils/graph_knn.py` |
+| `EDGE_K` | 5 | `app/utils/graph_knn.py` |
 | `CLUSTER_NAME_LLM_CAP` | 40 | `app/services/graph.py` |
 | Result cache size | 4 | `app/services/graph.py` |
