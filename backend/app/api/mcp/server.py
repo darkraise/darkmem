@@ -625,7 +625,6 @@ async def worklog_append(
 ) -> str:
     from app.schemas.worklog import WorklogAppendRequest
     from app.services import worklog
-    from app.services.checkpoints import resolve_checkpoint_origin
 
     body = WorklogAppendRequest(
         project=project,
@@ -638,7 +637,7 @@ async def worklog_append(
         expected_last_seq=expected_last_seq,
     )
     source = resolve_client_source(None, ctx, fallback=worklog.DOOR_SOURCE)
-    resolved = resolve_checkpoint_origin(
+    resolved = worklog.resolve_run_key(
         body.run_key or declared_origin(ctx), source=source, project=body.project
     )
     async with async_session_factory() as session:

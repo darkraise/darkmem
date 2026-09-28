@@ -29,7 +29,6 @@ from app.schemas.worklog import (
     WorkstreamUpdateRequest,
 )
 from app.services import worklog
-from app.services.checkpoints import resolve_checkpoint_origin
 
 router = APIRouter(prefix="/api/v1/worklog", tags=["worklog"])
 
@@ -50,7 +49,7 @@ async def append_entries(
 ):
     source = resolve_client_source(None, headers=request.headers, fallback=worklog.DOOR_SOURCE)
     try:
-        run_key = resolve_checkpoint_origin(
+        run_key = worklog.resolve_run_key(
             body.run_key or request.headers.get(ORIGIN_HEADER),
             source=source,
             project=body.project,
