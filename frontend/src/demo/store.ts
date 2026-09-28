@@ -32,7 +32,6 @@ import {
   CURATED_FEED_EVENTS,
   CURATED_PIPELINE_FAILURES,
   CURATED_PIPELINE_RUNS,
-  CURATED_SESSION_RUNS,
 } from "./data/activity-curated"
 import {
   CURATED_CODE_BUCKETS,
@@ -171,7 +170,6 @@ const initialActivity = () => ({
   dreamActions: CURATED_DREAM_ACTIONS.map((a) => ({ ...a })),
   dreamPastActions: CURATED_DREAM_PAST_ACTIONS.map((a) => ({ ...a })),
   dayBuckets: CURATED_DAY_BUCKETS,
-  sessionRuns: CURATED_SESSION_RUNS,
 })
 
 // Deep-copy the Wave-5 settings fixtures so store mutations (arm writes,

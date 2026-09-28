@@ -39,6 +39,8 @@ const DEMO_ROUTES = [
   "/activity?tab=monitors",
   "/activity?tab=pipeline",
   "/activity?tab=triage",
+  "/activity?tab=worklog",
+  "/projects/darkmem?tab=progress",
   "/code/repositories",
   "/code/graph",
   "/code/wiki",

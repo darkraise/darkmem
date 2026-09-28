@@ -6,7 +6,6 @@ import {
   CURATED_FEED_EVENTS,
   CURATED_PIPELINE_FAILURES,
   CURATED_PIPELINE_RUNS,
-  CURATED_SESSION_RUNS,
   DAY_DRILL_DEFAULT,
   CURATED_DAY_BUCKETS,
 } from "../data/activity-curated"
@@ -284,31 +283,6 @@ describe("day drill", () => {
     expect(withPair).toHaveLength(1)
     expect(withPair[0]?.type).toBe("verified")
     expect(withPair[0]?.transition?.to_label).toBe("human-ratified")
-  })
-})
-
-describe("session checkpoints are operational, not knowledge", () => {
-  it("fixtures carry no verification vocabulary", () => {
-    const serialized = JSON.stringify(CURATED_SESSION_RUNS)
-    expect(serialized).not.toContain("verification_status")
-    expect(serialized).not.toContain("corroborated")
-  })
-
-  it("the resume block is marker-bounded for strip-before-rewrite", () => {
-    // The markers the *writer* recognises (`inject_block.MARKER_BEGIN` /
-    // `MARKER_END`), not a vocabulary of the mockup's own. This assertion
-    // pinned `darkmem:resume:begin` until 2026-08-11 — a pair no shipped code
-    // has ever written, and one that would have made the real writer append a
-    // second live pair beneath a human's pasted copy.
-    const run = CURATED_SESSION_RUNS[0]!
-    expect(run.latest?.resume_block).toContain("<!-- darkmem:begin -->")
-    expect(run.latest?.resume_block).toContain("<!-- darkmem:end -->")
-  })
-
-  it("one run honestly has no checkpoint yet", () => {
-    const empty = CURATED_SESSION_RUNS.find((r) => r.latest === null)
-    expect(empty).toBeDefined()
-    expect(empty?.history).toHaveLength(0)
   })
 })
 
