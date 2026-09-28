@@ -776,7 +776,7 @@ async def test_two_appends_to_an_existing_workstream_expecting_one_seq_admit_one
     assert bodies == ["zero\n", "one\n"]
 
 
-@pytest.mark.parametrize("declared", [None, "", "   ", ":::", "::", "​", " : "])
+@pytest.mark.parametrize("declared", [None, "", "   ", ":::", "::", "\u200b", " : "])
 def test_an_undeclared_or_unsanitisable_run_is_refused(declared):
     """Two runs sharing one key would each resume the other's work, so a run
     that declares nothing, or nothing that survives sanitising, is refused

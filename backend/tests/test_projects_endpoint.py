@@ -88,7 +88,7 @@ async def test_a_project_nothing_carries_is_absent(client, auth_headers):
     Formerly `test_empty_corpus_lists_no_projects`, which asserted the whole
     response was empty. That asserted the state of the shared test database
     rather than of this endpoint, and stopped holding the moment the union
-    could see another module's committed checkpoints.
+    could see another module's committed rows.
     """
     resp = await client.get("/api/v1/projects", headers=auth_headers)
     assert resp.status_code == 200
@@ -118,7 +118,7 @@ async def test_counts_every_status_not_only_active(
 
     resp = await client.get("/api/v1/projects", headers=auth_headers)
     # Exact equality on the seeded row, so an accidental extra FIELD still
-    # fails; scoped to that row, so another module's committed checkpoints
+    # fails; scoped to that row, so another module's committed rows
     # do not.
     mixed = next(p for p in resp.json() if p["name"] == "mixed")
     assert mixed == {

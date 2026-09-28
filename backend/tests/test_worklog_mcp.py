@@ -8,7 +8,7 @@ from uuid import UUID
 import pytest
 from sqlalchemy import select
 
-from app.api.mcp.client_identity import ORIGIN_HEADER
+from app.api.mcp.client_identity import CLIENT_HEADER, ORIGIN_HEADER
 from app.api.mcp.scopes import TOOL_SCOPES
 from app.models.worklog import WorklogEntry
 
@@ -82,6 +82,33 @@ async def test_the_run_can_come_from_the_origin_header(mcp_on_the_test_session):
     resumed = json.loads(await server.worklog_resume(project="proj", workstream="plan-a"))
     assert resumed["notes"][0]["run_key"].endswith("boot-7")
     assert appended["entry_ids"] == [resumed["notes"][0]["id"]]
+
+
+async def test_one_declared_client_lands_on_one_run_key_through_either_door(
+    client, auth_headers, mcp_on_the_test_session
+):
+    """Both transports feed the resolver the client the request declares; a door
+    that hard-coded its own source would key the same run twice."""
+    from app.api.mcp import server
+
+    rest = await client.post(
+        "/api/v1/worklog/entries",
+        json={
+            "project": "proj", "workstream": "plan-a", "run_key": "boot-9",
+            "entries": [{"kind": "note", "body": "over REST"}],
+        },
+        headers={**auth_headers, CLIENT_HEADER: "codex"},
+    )
+    assert rest.status_code == 201, rest.text
+    await server.worklog_append(
+        project="proj", workstream="plan-a", run_key="boot-9",
+        entries=[{"kind": "note", "body": "over MCP"}],
+        ctx=_ctx({CLIENT_HEADER: "codex"}),
+    )
+
+    resumed = json.loads(await server.worklog_resume(project="proj", workstream="plan-a"))
+    assert {n["run_key"] for n in resumed["notes"]} == {"codex:boot-9"}
+    assert len(resumed["notes"]) == 2
 
 
 async def test_an_undeclared_run_is_refused(mcp_on_the_test_session):
