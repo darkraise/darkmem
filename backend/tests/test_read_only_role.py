@@ -160,7 +160,6 @@ READABLE = (
     "events",
     "documents",
     "blocks",
-    "session_checkpoints",
     "config",
     "entities",
 )
@@ -270,7 +269,6 @@ PURE_READ_MODULES = (
     "services/hybrid_search.py",
     "services/facts_channel.py",
     "services/block_query.py",
-    "services/checkpoints.py",
     "services/events.py",
     "services/code_query.py",
 )

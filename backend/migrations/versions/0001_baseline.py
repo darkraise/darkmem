@@ -709,59 +709,6 @@ def _pass_two() -> None:
         """
     )
 
-    # session_checkpoints — operational, NOT vault knowledge (spec
-    # §Feature-2, T3.16). Keyed on `origin_key`, the agent-run identity
-    # `resolve_origin_key` already stamps on capture (T1.11), so a checkpoint
-    # and the memories from the same run share one key without this table
-    # referencing `memories` at all — the two are correlated, never joined.
-    #
-    # **No verification column, and that is the design.** A checkpoint is an
-    # agent's note to its successor, not a claim the vault has corroborated;
-    # giving it a rung would put an unearned badge on prose no ladder ever
-    # judged. It is deliberately outside `knowledge_triples` for the same
-    # reason (T3.18 owns the rule).
-    #
-    # `next_steps` is JSONB rather than prose: the resume path renders it
-    # into a token-budgeted block, and a structured list is what lets that
-    # budget drop whole steps instead of truncating a sentence mid-word.
-    #
-    # The two length CHECKs are the "payload size is bounded" done-when, in
-    # the database rather than only in the schema layer: this table is written
-    # by two doors and an unbounded summary would be an unbounded row on the
-    # resume path's hot read.
-    op.execute(
-        """
-        CREATE TABLE session_checkpoints (
-            id          UUID NOT NULL,
-            origin_key  TEXT NOT NULL,
-            project     TEXT NOT NULL DEFAULT 'default',
-            summary     TEXT NOT NULL,
-            next_steps  JSONB NOT NULL DEFAULT '[]'::jsonb,
-            created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-            CONSTRAINT session_checkpoints_pkey PRIMARY KEY (id),
-            CONSTRAINT chk_session_checkpoints_summary_len
-                CHECK (char_length(summary) <= 4000),
-            CONSTRAINT chk_session_checkpoints_next_steps_len
-                -- Mirrored by `checkpoints.NEXT_STEPS_MAX_BYTES`, which the
-                -- schema layer checks the *encoded* size against. Character
-                -- bounds alone were not enough: JSONB encoding of non-ASCII
-                -- text costs several bytes per character, so a payload well
-                -- inside every character limit still violated this CHECK and
-                -- surfaced as a 500 on a request validation had passed.
-                CHECK (pg_column_size(next_steps) <= 16384)
-        )
-        """
-    )
-    # "Latest per origin is ONE indexed query" (T3.16's done-when): DESC on
-    # created_at with id as the tie-break makes the newest row per origin the
-    # index's first entry for that key, so the read is a one-row index scan
-    # rather than a sort. The id tie-break matters because two checkpoints
-    # saved in one transaction share `now()`.
-    op.execute(
-        "CREATE INDEX ix_session_checkpoints_latest "
-        "ON session_checkpoints (project, origin_key, created_at DESC, id DESC)"
-    )
-
     # ------------------------------------------------------------------
     # workstreams + worklog_entries — the work-log lane
     # (docs/superpowers/specs/2026-09-23-work-log-lane-design.md §1)
@@ -1783,7 +1730,6 @@ def downgrade() -> None:
         "git_accounts",
         "worklog_entries",
         "workstreams",
-        "session_checkpoints",
         "article_citations",
         "knowledge_articles",
         "fact_access_stats",
