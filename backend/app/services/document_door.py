@@ -34,7 +34,7 @@ from app.services.block_embeddings import (
 )
 from app.services.block_pipeline import ingest_document
 from app.services.block_query import BlockQueryService
-from app.services.document_ingest import UNCHANGED, DocumentUriConflict
+from app.services.document_ingest import UNCHANGED, DocumentHashConflict, DocumentUriConflict
 from app.services.embedder_registry import child_table
 from app.services.events import record_event
 
@@ -697,6 +697,23 @@ async def _set_document_tags(
     await session.flush()
 
 
+async def _refuse_unmatched_update(
+    session: AsyncSession, doc_id: UUID, expected_hash: str | None
+) -> None:
+    """An UPDATE that matched no row named a missing document or lost its hash
+    precondition; one read tells which. The hash it reports may have moved
+    again since, which only makes the refusal name the newer winner."""
+    current = (await session.execute(
+        text("SELECT content_hash FROM documents WHERE id = CAST(:id AS uuid)"),
+        {"id": str(doc_id)},
+    )).first()
+    if current is None or expected_hash is None:
+        raise DocumentTargetUnresolved(f"document not found: {doc_id}")
+    raise DocumentHashConflict(
+        document_id=doc_id, expected_hash=expected_hash, current_hash=current[0],
+    )
+
+
 async def update_document_metadata(
     session: AsyncSession,
     *,
@@ -705,6 +722,9 @@ async def update_document_metadata(
     uri: str | None = None,
     pinned: bool | None = None,
     tags: list[str] | None = None,
+    expected_hash: str | None = None,
+    actor: str | None = None,
+    api_key_id: UUID | None = None,
 ) -> None:
     """Write only the fields the caller named.
 
@@ -718,7 +738,13 @@ async def update_document_metadata(
 
     A call naming no field at all is refused rather than journalled: `events`
     is append-only, so it would leave a permanent `{"fields": []}` row saying
-    an edit happened when none did.
+    an edit happened when none did. `expected_hash` is a precondition, not a
+    field, so a call naming only it is refused the same way.
+
+    `expected_hash` is a compare-and-set on `content_hash`, carried in the
+    writer's own statement (the UPDATE's WHERE, or the tags-only path's
+    locked read), never read and compared first: a filing landing between a
+    separate check and the move would be silently carried along.
     """
     if title is None and uri is None and pinned is None and tags is None:
         raise DocumentNothingToChange(
@@ -737,6 +763,12 @@ async def update_document_metadata(
         assignments.append(_PIN_ASSIGNMENT[pinned])
 
     if assignments:
+        hash_guard = ""
+        if expected_hash is not None:
+            hash_guard = (
+                " AND content_hash IS NOT DISTINCT FROM CAST(:expected_hash AS text)"
+            )
+            params["expected_hash"] = expected_hash
         try:
             # ux_documents_project_uri is what refuses a collision, and a
             # failed statement aborts the transaction it runs in -- so this
@@ -749,14 +781,14 @@ async def update_document_metadata(
                 project = (await session.execute(
                     text(
                         f"UPDATE documents SET {', '.join(assignments)} "
-                        "WHERE id = CAST(:id AS uuid) RETURNING project"
+                        f"WHERE id = CAST(:id AS uuid){hash_guard} RETURNING project"
                     ),
                     params,
                 )).scalar_one_or_none()
         except IntegrityError as exc:
             raise DocumentUriConflict(uri) from exc
         if project is None:
-            raise DocumentTargetUnresolved(f"document not found: {doc_id}")
+            await _refuse_unmatched_update(session, doc_id, expected_hash)
     else:
         # No column assignment means a tags-only or entirely empty call, so
         # nothing above confirmed the row exists or locked it. Both matter
@@ -766,15 +798,21 @@ async def update_document_metadata(
         # check is what stops a phantom `document_updated` event for an id
         # nobody ever filed -- `events` is append-only, so that row would
         # never be undone.
-        project = (await session.execute(
+        row = (await session.execute(
             text(
-                "SELECT project FROM documents WHERE id = CAST(:id AS uuid) "
-                "FOR UPDATE"
+                "SELECT project, content_hash FROM documents "
+                "WHERE id = CAST(:id AS uuid) FOR UPDATE"
             ),
             {"id": str(doc_id)},
-        )).scalar_one_or_none()
-        if project is None:
+        )).first()
+        if row is None:
             raise DocumentTargetUnresolved(f"document not found: {doc_id}")
+        project = row.project
+        if expected_hash is not None and row.content_hash != expected_hash:
+            raise DocumentHashConflict(
+                document_id=doc_id, expected_hash=expected_hash,
+                current_hash=row.content_hash,
+            )
 
     if tags is not None:
         await _set_document_tags(session, doc_id, tags)
@@ -788,6 +826,8 @@ async def update_document_metadata(
         object_type="document",
         object_id=doc_id,
         project=project,
+        actor=actor,
+        api_key_id=api_key_id,
         payload={
             "fields": sorted(
                 name for name, value in (

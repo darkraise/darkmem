@@ -23,6 +23,7 @@ from app.services.document_door import (
     rename_documents,
     update_document_metadata,
 )
+from app.services.document_ingest import DocumentHashConflict
 
 
 FINGERPRINT = "test-fp-docupdate|3"
@@ -520,3 +521,102 @@ async def test_a_subtree_delete_journals_the_caller_identity(session):
     assert row["event_type"] == DOCUMENTS_DELETED_EVENT
     assert row["actor"] == "agent-key"
     assert row["api_key_id"] == str(key_id)
+
+
+async def _content_hash(session, document_id):
+    return (await session.execute(
+        text("SELECT content_hash FROM documents WHERE id = CAST(:id AS uuid)"),
+        {"id": str(document_id)},
+    )).scalar_one()
+
+
+async def _updated_events(session, document_id) -> int:
+    return (await session.execute(
+        text(
+            "SELECT count(*) FROM events WHERE event_type = 'document_updated' "
+            "AND object_id = CAST(:id AS uuid)"
+        ),
+        {"id": str(document_id)},
+    )).scalar_one()
+
+
+@pytest.mark.asyncio
+async def test_a_matching_expected_hash_moves_the_document(session):
+    _, doc = await _file(session, "# T\n\npara", "notes/h1.md")
+    await update_document_metadata(
+        session, document_id=doc, uri="archive/notes/h1.md",
+        expected_hash=await _content_hash(session, doc),
+    )
+    assert (await _read(session, doc))["uri"] == "archive/notes/h1.md"
+    assert await _updated_events(session, doc) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_stale_expected_hash_refuses_and_moves_nothing(session):
+    _, doc = await _file(session, "# T\n\npara", "notes/h2.md")
+    current = await _content_hash(session, doc)
+    with pytest.raises(DocumentHashConflict) as refused:
+        await update_document_metadata(
+            session, document_id=doc, uri="archive/notes/h2.md",
+            expected_hash="stale",
+        )
+    assert refused.value.current_hash == current
+    assert refused.value.expected_hash == "stale"
+    assert (await _read(session, doc))["uri"] == "notes/h2.md"
+    assert await _updated_events(session, doc) == 0
+
+
+@pytest.mark.asyncio
+async def test_an_expected_hash_against_a_missing_id_is_unresolved(session):
+    with pytest.raises(DocumentTargetUnresolved):
+        await update_document_metadata(
+            session, document_id=uuid4(), uri="x.md", expected_hash="h",
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_tags_only_call_checks_the_hash_under_its_lock(session):
+    _, doc = await _file(session, "# T\n\npara", "notes/h3.md")
+    with pytest.raises(DocumentHashConflict):
+        await update_document_metadata(
+            session, document_id=doc, tags=["topic/x"], expected_hash="stale",
+        )
+    assert await _tags(session, doc) == set()
+    assert await _updated_events(session, doc) == 0
+
+
+@pytest.mark.asyncio
+async def test_a_tags_only_call_with_a_matching_hash_writes(session):
+    _, doc = await _file(session, "# T\n\npara", "notes/h4.md")
+    await update_document_metadata(
+        session, document_id=doc, tags=["topic/x"],
+        expected_hash=await _content_hash(session, doc),
+    )
+    assert await _tags(session, doc) == {"topic/x"}
+
+
+@pytest.mark.asyncio
+async def test_an_expected_hash_alone_names_nothing_to_change(session):
+    _, doc = await _file(session, "# T\n\npara", "notes/h5.md")
+    with pytest.raises(DocumentNothingToChange):
+        await update_document_metadata(
+            session, document_id=doc,
+            expected_hash=await _content_hash(session, doc),
+        )
+
+
+@pytest.mark.asyncio
+async def test_the_update_journals_the_caller_identity(session):
+    _, doc = await _file(session, "# T\n\npara", "notes/h6.md")
+    key_id = uuid4()
+    await update_document_metadata(
+        session, document_id=doc, title="New", actor="sync-key", api_key_id=key_id,
+    )
+    row = (await session.execute(
+        text(
+            "SELECT actor, CAST(api_key_id AS text) AS api_key_id FROM events "
+            "WHERE event_type = 'document_updated' AND object_id = CAST(:id AS uuid)"
+        ),
+        {"id": str(doc)},
+    )).mappings().one()
+    assert (row["actor"], row["api_key_id"]) == ("sync-key", str(key_id))
