@@ -137,8 +137,9 @@ table or column is dropped only once no released code reads it.
   allows it, otherwise drop and restore), re-seeding `admin_password_hash`
   and all eight `llm_purpose_configs` rows if the data is not restored,
   especially `verification`, which `llm_seed.py` does not reproduce at the
-  qualified judge identity. Procedure: `docs/runbook-deployment.md`.
-  192.168.0.199 (built at baseline `4ba88074`, v1.11.0) is one. Background:
+  qualified judge identity. Procedure: `docs/runbook-deployment.md`. Both
+  production databases are on the permanent baseline (192.168.0.199 was
+  repaired in place on 2026-09-28). Background:
   `docs/planning/analyses/2026-08-17-production-schema-drift.md`.
 
 ### Build, deploy, release
