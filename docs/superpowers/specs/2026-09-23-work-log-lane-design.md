@@ -212,8 +212,10 @@ UPDATE`, or, when absent, an `INSERT … ON CONFLICT DO NOTHING` whose loser
 re-locks the winner's row — and the transition (opened, reopened, continued)
 is read from the locked row (amended 2026-09-23: a single upsert read the
 prior state from its snapshot and could miss a concurrent close). A retention or purge `DELETE` racing an append therefore
-serialises on that row: if the append commits first, the delete's re-checked
-`state = 'closed'` predicate no longer matches and the workstream survives; if
+serialises on that row or passes it by: the retention sweep skips a row an
+append holds (`FOR UPDATE SKIP LOCKED`; amended 2026-09-28), and once the
+append has committed the sweep's `state = 'closed'` predicate no longer
+matches, so the workstream survives; if
 the delete commits first, the append's upsert creates a fresh workstream.
 Neither order loses an entry into a deleted parent.
 

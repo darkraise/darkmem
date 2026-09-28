@@ -167,3 +167,27 @@ async def test_a_journal_failure_stops_the_sweep_and_keeps_the_workstream(factor
     with pytest.raises(worklog.WorklogJournalWriteFailed):
         await run_cleanup()
     assert await _keys(factory) == ["kept"]
+
+
+def test_the_job_is_registered_with_its_runner_and_schema():
+    import ast
+    from pathlib import Path
+
+    tree = ast.parse((Path(__file__).resolve().parent.parent / "app" / "main.py").read_text())
+    keywords = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "Job":
+            kw = {k.arg: k.value for k in node.keywords}
+            key = kw.get("key")
+            if isinstance(key, ast.Name) and key.id == "WORKLOG_CLEANUP_JOB_KEY":
+                keywords = kw
+                break
+
+    assert keywords is not None, "worklog_cleanup is not wired at boot"
+    assert isinstance(keywords["config_schema"], ast.Name)
+    assert keywords["config_schema"].id == "WORKLOG_CLEANUP_CONFIG_SCHEMA"
+    assert isinstance(keywords["default_cron"], ast.Name)
+    assert keywords["default_cron"].id == "WORKLOG_CLEANUP_CRON"
+    runner = keywords["runner"]
+    assert isinstance(runner, ast.Call) and isinstance(runner.func, ast.Name)
+    assert runner.func.id == "make_worklog_cleanup_runner"

@@ -388,6 +388,27 @@ async def lifespan(app: FastAPI):
         config_schema=PAGE_ATTACHMENT_CLEANUP_CONFIG_SCHEMA,
     ))
 
+    from app.services.worklog_cleanup import (
+        WORKLOG_CLEANUP_CONFIG_SCHEMA,
+        WORKLOG_CLEANUP_CRON,
+        WORKLOG_CLEANUP_JOB_KEY,
+        make_worklog_cleanup_runner,
+    )
+    job_registry.register(Job(
+        key=WORKLOG_CLEANUP_JOB_KEY,
+        display_name="Work Log Retention",
+        description=(
+            "Deletes closed work-log workstreams, with their entries, once they "
+            "have been closed longer than the retention window. Open "
+            "workstreams and those marked retain are never deleted, however "
+            "old. Each deletion is journalled before it happens."
+        ),
+        default_cron=WORKLOG_CLEANUP_CRON,
+        min_interval_seconds=3600,
+        runner=make_worklog_cleanup_runner(app, async_session_factory),
+        config_schema=WORKLOG_CLEANUP_CONFIG_SCHEMA,
+    ))
+
     job_registry.register(Job(
         key=BACKUP_SHIP_JOB_KEY,
         display_name="Backup Ship",

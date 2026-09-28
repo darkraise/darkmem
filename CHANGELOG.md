@@ -7,7 +7,8 @@ better" log, not release notes for strangers. The ladder is
 ## v1.13.0 — unreleased
 
 **The memory door warns about working data.** A capture that looks like a
-log is still stored, but its answer now says so.
+log is still stored, but its answer now says so. Closed work logs are now
+pruned after 90 days.
 
 ### Added
 
@@ -21,6 +22,12 @@ log is still stored, but its answer now says so.
   answers the processed memory plus `warnings`.
 - **`capture_flagged` events.** Each flagged capture journals the signal
   names it matched, never its content, on the Activity feed's capture tab.
+- **Work-log retention.** A daily `worklog_cleanup` job deletes closed
+  workstreams, with their entries and vectors, once they have been closed for
+  90 days (`retention_days` on the Jobs page, minimum 1). Open workstreams
+  and those marked `retain` are never deleted, however old. Each deletion
+  journals `workstream_purged` first, with `retention_days` in its payload,
+  and a journal failure stops the sweep without deleting.
 
 ## v1.12.0 — 2026-09-27
 

@@ -606,18 +606,18 @@ breaks reproducibility tests and makes extraction E2E flaky.
 
 ## Jobs (`JobRegistry`)
 
-**Twenty-five** registered jobs (`app/main.py`; `tests/test_code_deriver.py`
+**Twenty-six** registered jobs (`app/main.py`; `tests/test_code_deriver.py`
 derives the roster from its AST). Keep this count and list current when you
 add one. Many register via `*_JOB_KEY` constants, so grepping for quoted keys
 undercounts.
 
-- **Nineteen live jobs:** `repo_sync`, `buffer_flush`, `code_enrichment`,
+- **Twenty live jobs:** `repo_sync`, `buffer_flush`, `code_enrichment`,
   `code_deriver`, `token_blocklist_cleanup`, `pipeline_failure_cleanup`,
   `graph_orphan_cleanup`, `tag_orphan_cleanup`, `expired_memory_cleanup`,
   `ppr_snapshot`, `relation_embedding_refresh`, `repo_entity_anchoring`,
   `repo_entity_merge`, `citation_reverify`, `job_run_cleanup`,
   `block_embedding_refresh`, `llm_usage_cleanup`, `backup_ship`,
-  `page_attachment_cleanup`.
+  `page_attachment_cleanup`, `worklog_cleanup`.
 - **Six Tier-C dream jobs** (`app/services/dream_jobs.py`,
   `register_dream_jobs`), all shipped (`SHIPPED_DREAM_JOBS`;
   `test_the_family_holds_no_placeholders_left`): `verification_recompute`,
@@ -728,9 +728,11 @@ making the write and its row atomic: `set_verification_status`, `ratify`,
 vault's `JournalWriteFailed`); `document_door.delete_documents`
 (`DocumentJournalWriteFailed`); `page_door._journal_each`, behind page
 trash/restore/purge (`PageJournalWriteFailed`); and
-`worklog.purge_workstream` (`WorklogJournalWriteFailed`). The contract is a
-shape, not a shared type: block-channel modules are firewalled from the
-vault and mint their own exception. `contradiction_scan._journal` (reads its
+`worklog._journal_then_delete`, behind the purge verb and the
+`worklog_cleanup` retention sweep (`WorklogJournalWriteFailed`). The
+contract is a shape, not a shared type: block-channel modules are
+firewalled from the vault and mint their own exception.
+`contradiction_scan._journal` (reads its
 row back) and `dream_undo` (counts `undone` rows back) hold the same posture
 by other means and are not in the seven. Why strict: verification metrics
 are SQL over this table, so a lost transition leaves the denominator; a lost
@@ -1257,8 +1259,13 @@ there is none), checked under that lock: a mismatch raises
 `WorklogSeqConflict` inside the savepoint, so nothing is written, created or
 reopened, and answers 409 / `seq_conflict`. Every append answers `last_seq`.
 `worklog_purge` and its REST twin are `admin`-scoped and strict-journal;
-payloads carry the workstream key and counts, never entry text. Nothing in
-the lane is extracted, ranked with memories or reachable from the vault.
+payloads carry the workstream key and counts, never entry text. The daily
+`worklog_cleanup` job (`retention_days`, default 90) erases each closed,
+unretained workstream closed longer than that, one transaction each,
+through the purge's journal-first helper (payload adds `retention_days`);
+open and `retain` workstreams are never swept, and `SKIP LOCKED` passes
+over one an append holds. Nothing in the lane is extracted, ranked with
+memories or reachable from the vault.
 
 `worklog_search` (REST `POST /api/v1/worklog/search`, `read`) takes a
 required project and fuses, by RRF at equal weights, a `ts_rank` arm over
