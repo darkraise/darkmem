@@ -22,7 +22,8 @@ describe("scaleSettings", () => {
   it("keeps today's small-graph behaviour", () => {
     const s = scaleSettings(200, 500)
     expect(s.curvedEdges).toBe(true)
-    expect(s.hideOnMove).toBe(false)
+    expect(s.hideLabelsOnMove).toBe(false)
+    expect(s.hoverDims).toBe(true)
     expect(s.slowDown).toBe(12)
     expect(s.layoutMs).toBe(8000)
     expect(s.arrows3D).toBe(true)
@@ -34,9 +35,15 @@ describe("scaleSettings", () => {
     expect(scaleSettings(200, CURVED_EDGE_LIMIT + 1).curvedEdges).toBe(false)
   })
 
+  it("stops dimming the graph on hover from the large tier", () => {
+    expect(scaleSettings(1999, 0).hoverDims).toBe(true)
+    expect(scaleSettings(2000, 0).hoverDims).toBe(false)
+  })
+
   it("trades detail for speed on huge graphs", () => {
     const s = scaleSettings(20000, 100000)
-    expect(s.hideOnMove).toBe(true)
+    expect(s.hideLabelsOnMove).toBe(true)
+    expect(s.hoverDims).toBe(false)
     expect(s.barnesHutOptimize).toBe(true)
     expect(s.layoutMs).toBe(20000)
     expect(s.sphereSegments).toEqual([8, 6])

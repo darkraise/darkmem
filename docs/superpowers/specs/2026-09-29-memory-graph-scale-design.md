@@ -157,7 +157,13 @@ reusing the tiers `code-graph-renderer.tsx`'s `getFA2Settings` already uses
 
 - **Edges**: straight (sigma's default line program) when the edge count is
   above 2,000; curved below, as today.
-- **Camera moves**: `hideEdgesOnMove` and `hideLabelsOnMove` on from large.
+- **Camera moves**: `hideLabelsOnMove` on from large. `hideEdgesOnMove`
+  stays off at every size: with it on, sigma runs a full refresh after each
+  pan release. A zoom crossing the label threshold re-reduces nodes only.
+- **Hover**: from large, hover enlarges the hovered node and thickens its
+  incident edges without dimming the rest of the graph, and repaints only
+  the two hovered nodes, their neighbours and their incident edges
+  (`hover-repaint.ts`). Below large, hover dims the graph as before.
 - **Hulls**: `computeHullGroups` runs once per `filteredMemories`/`hullMode`
   change, not per frame. Hull polygons are computed in graph coordinates
   and refreshed at most every 250 ms while FA2 runs, once when it stops;

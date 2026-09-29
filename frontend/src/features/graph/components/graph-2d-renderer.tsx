@@ -27,6 +27,7 @@ import {
   recede,
 } from "@/features/graph/lib/focus-model"
 import { useGraphPrefs } from "@/features/graph/lib/graph-prefs"
+import { hoverRepaintSet } from "@/features/graph/lib/hover-repaint"
 import FA2Layout from "graphology-layout-forceatlas2/worker"
 import { inferSettings } from "graphology-layout-forceatlas2"
 import {
@@ -436,8 +437,10 @@ export function Graph2DRenderer({
       zIndex: true,
       renderLabels: true,
       renderEdgeLabels: false,
-      hideEdgesOnMove: scale.hideOnMove,
-      hideLabelsOnMove: scale.hideOnMove,
+      // Off at every size: with it on, sigma runs a full refresh after each
+      // pan release, which at 20k nodes is a second-long main-thread stall.
+      hideEdgesOnMove: false,
+      hideLabelsOnMove: scale.hideLabelsOnMove,
       labelSize: 12,
       // Per-node so a grounded label can recede with its node; sigma's
       // label renderer reads this attribute and falls back to `color`.
@@ -518,9 +521,11 @@ export function Graph2DRenderer({
           )
         }
         const litNode = litByHover(node, hov, hoverNeighbour)
+        const hoverGround =
+          scale.hoverDims && !sel && !!hov && hov !== node && !hoverNeighbour
         if (tier === "ground" && !litNode) {
           dim(groundNodeAlpha(dimUnrelated))
-        } else if (!sel && hov && hov !== node && !hoverNeighbour) {
+        } else if (hoverGround) {
           // Nothing selected, but the pointer is on something: sort the
           // canvas the same way, half as far.
           dim(hoverGroundAlpha(dimUnrelated))
@@ -534,7 +539,7 @@ export function Graph2DRenderer({
             t.background,
             groundNodeAlpha(dimUnrelated),
           )
-        } else if (!sel && hov && hov !== node && !hoverNeighbour) {
+        } else if (hoverGround) {
           res.labelColor = recede(
             t.foreground,
             t.background,
@@ -579,7 +584,7 @@ export function Graph2DRenderer({
           res.size = Math.max(res.size ?? 0, HOVER_EDGE_SIZE)
         }
 
-        if (ground) {
+        if (ground === "selection" || (ground === "hover" && scale.hoverDims)) {
           res.color = recede(
             data.color || t.border,
             t.background,
@@ -606,19 +611,37 @@ export function Graph2DRenderer({
         next < LABEL_ZOOM_RATIO !== zoomRatioRef.current < LABEL_ZOOM_RATIO
       zoomRatioRef.current = next
       // Only when the threshold is actually crossed: refreshing on every
-      // frame of a zoom would re-reduce the whole graph per wheel tick.
-      if (crossed) sigma.refresh()
+      // frame of a zoom would re-reduce the whole graph per wheel tick. Labels
+      // are node output only, so the edges are left alone.
+      if (crossed) {
+        sigma.refresh({
+          partialGraph: { nodes: graph.nodes() },
+          skipIndexation: true,
+          schedule: true,
+        })
+      }
     })
 
+    const setHovered = (next: string | null) => {
+      const previous = hoveredNodeRef.current
+      hoveredNodeRef.current = next
+      if (scale.hoverDims) {
+        sigma.refresh()
+        return
+      }
+      sigma.refresh({
+        partialGraph: hoverRepaintSet(graph, previous, next),
+        skipIndexation: true,
+        schedule: true,
+      })
+    }
     sigma.on("enterNode", ({ node }) => {
-      hoveredNodeRef.current = node
       containerRef.current!.style.cursor = "pointer"
-      sigma.refresh()
+      setHovered(node)
     })
     sigma.on("leaveNode", () => {
-      hoveredNodeRef.current = null
       containerRef.current!.style.cursor = "default"
-      sigma.refresh()
+      setHovered(null)
     })
 
     sigma.on("clickNode", ({ node }) => {

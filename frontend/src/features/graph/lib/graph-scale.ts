@@ -10,7 +10,11 @@ export type ScaleTier = "small" | "medium" | "large" | "huge"
 export interface ScaleSettings {
   /** Curved edges cost several times a straight one per frame. */
   curvedEdges: boolean
-  hideOnMove: boolean
+  hideLabelsOnMove: boolean
+  /** Whether hovering with nothing selected recedes the rest of the graph.
+   *  That repaints every node and edge, so past the medium tier hover lights
+   *  only its own neighbourhood. */
+  hoverDims: boolean
   slowDown: number
   barnesHutOptimize: boolean
   /** How long ForceAtlas2 runs before it is stopped. */
@@ -27,7 +31,8 @@ export const LARGE_3D_NOTICE_NODES = 5000
 
 const TIERS: Record<ScaleTier, Omit<ScaleSettings, "curvedEdges">> = {
   small: {
-    hideOnMove: false,
+    hideLabelsOnMove: false,
+    hoverDims: true,
     slowDown: 12,
     barnesHutOptimize: false,
     layoutMs: 8000,
@@ -38,7 +43,8 @@ const TIERS: Record<ScaleTier, Omit<ScaleSettings, "curvedEdges">> = {
     cooldownTicks3D: 150,
   },
   medium: {
-    hideOnMove: false,
+    hideLabelsOnMove: false,
+    hoverDims: true,
     slowDown: 8,
     barnesHutOptimize: true,
     layoutMs: 10000,
@@ -49,7 +55,8 @@ const TIERS: Record<ScaleTier, Omit<ScaleSettings, "curvedEdges">> = {
     cooldownTicks3D: 150,
   },
   large: {
-    hideOnMove: true,
+    hideLabelsOnMove: true,
+    hoverDims: false,
     slowDown: 5,
     barnesHutOptimize: true,
     layoutMs: 15000,
@@ -60,7 +67,8 @@ const TIERS: Record<ScaleTier, Omit<ScaleSettings, "curvedEdges">> = {
     cooldownTicks3D: 100,
   },
   huge: {
-    hideOnMove: true,
+    hideLabelsOnMove: true,
+    hoverDims: false,
     slowDown: 3,
     barnesHutOptimize: true,
     layoutMs: 20000,
