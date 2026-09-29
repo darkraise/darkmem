@@ -21,6 +21,12 @@ on:
     branches: [master]
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      runner:
+        description: "Where to run: auto picks an idle self-hosted darkmem-ci runner, else GitHub-hosted"
+        type: choice
+        options: [auto, hosted, self-hosted]
+        default: auto
 
 # Never cancel a publish midway: a half-pushed multi-registry release is worse
 # than a slow one. Serialising on the branch also keeps two master pushes from
@@ -33,12 +39,32 @@ permissions:
   contents: read
 
 jobs:
+  # One pick for the whole release, passed into ci.yml too, so a release run
+  # never picks twice (scripts/pick_runner.py).
+  pick-runner:
+    name: Pick runner
+    runs-on: ubuntu-latest
+    outputs:
+      runs-on: ${{ steps.pick.outputs.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/pick_runner.py
+          sparse-checkout-cone-mode: false
+      - name: Pick
+        id: pick
+        env:
+          REQUESTED: ${{ inputs.runner || 'auto' }}
+          GH_TOKEN: ${{ secrets.RUNNER_PICKER_TOKEN }}
+        run: python3 scripts/pick_runner.py
+
   # Decides whether this push is a release at all, and as what version. Runs
   # before the test suite so a missing changelog section costs seconds rather
   # than a full pipeline.
   plan:
     name: Plan the release
-    runs-on: ubuntu-latest
+    needs: pick-runner
+    runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs-on) }}
     outputs:
       release: ${{ steps.decide.outputs.release }}
       version: ${{ steps.decide.outputs.version }}
@@ -135,14 +161,19 @@ jobs:
   # The same pipeline every pull request runs, not a copy of it. A release
   # whose tests fail publishes nothing.
   #
-  # Deliberately depends on NOTHING. This workflow owns master pushes, so if
-  # verification were gated on `plan` saying "this is a release", a push of only
+  # Depends only on `pick-runner`, whose picking paths always answer (a
+  # `pick-runner` that fails outright, say on checkout, skips the run), and
+  # never on `plan`: this workflow owns master pushes, so if verification were
+  # gated on `plan` saying "this is a release", a push of only
   # docs/chore/refactor commits would run no tests at all -- and a `plan` that
   # failed on a missing changelog section would skip the suite for a push that
   # does ship code. Master is verified on every push; `prepare` below is where
   # the release decision gates the irreversible half.
   verify:
+    needs: pick-runner
     uses: ./.github/workflows/ci.yml
+    with:
+      runs-on: ${{ needs.pick-runner.outputs.runs-on }}
     secrets: inherit
 
   # Syncs the product version fields and commits them, so the image's own
@@ -151,9 +182,9 @@ jobs:
   # the tag written later must point at the commit that produced it.
   prepare:
     name: Sync version fields
-    needs: [plan, verify]
+    needs: [pick-runner, plan, verify]
     if: needs.plan.outputs.release == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs-on) }}
     permissions:
       contents: write
     outputs:
@@ -215,8 +246,8 @@ jobs:
 
   publish:
     name: Publish image
-    needs: [plan, prepare]
-    runs-on: ubuntu-latest
+    needs: [pick-runner, plan, prepare]
+    runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs-on) }}
     permissions:
       contents: read
       packages: write        # GHCR push uses the job's own GITHUB_TOKEN
@@ -320,9 +351,9 @@ jobs:
   # what started the pipeline and already exists.
   tag:
     name: Tag the release
-    needs: [plan, prepare, publish]
+    needs: [pick-runner, plan, prepare, publish]
     if: github.ref_type != 'tag'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs-on) }}
     permissions:
       contents: write
     steps:
@@ -364,12 +395,12 @@ jobs:
   # failed.
   github-release:
     name: Create GitHub release
-    needs: [plan, prepare, publish, tag]
+    needs: [pick-runner, plan, prepare, publish, tag]
     # `always()` so a tag-triggered run, where the `tag` job is skipped, still
     # reaches this; the explicit result checks are what keep a failed publish
     # from announcing itself.
     if: always() && needs.publish.result == 'success' && needs.tag.result != 'failure'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs-on) }}
     permissions:
       contents: write        # creating a release writes to the repository
     steps:
