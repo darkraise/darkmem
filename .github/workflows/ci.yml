@@ -6,10 +6,21 @@ name: CI
 on:
   pull_request:
   workflow_dispatch:
+    inputs:
+      runner:
+        description: "Where to run: auto picks an idle self-hosted darkmem-ci runner, else GitHub-hosted"
+        type: choice
+        options: [auto, hosted, self-hosted]
+        default: auto
   # Callable so release.yml can gate publishing on this exact pipeline rather
   # than a copy of it: a release can never publish an image whose tests did not
   # run.
   workflow_call:
+    inputs:
+      runs-on:
+        description: "A runs-on value (JSON) the caller already picked; empty picks here"
+        type: string
+        default: ""
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -19,6 +30,34 @@ permissions:
   contents: read
 
 jobs:
+  # One pick per run: an idle self-hosted darkmem-ci runner, else GitHub-hosted
+  # (scripts/pick_runner.py). Under release.yml the caller has already picked,
+  # so its choice passes straight through.
+  pick-runner:
+    name: Pick runner
+    runs-on: ubuntu-latest
+    outputs:
+      runs-on: ${{ steps.pick.outputs.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+        if: inputs.runs-on == ''
+        with:
+          sparse-checkout: scripts/pick_runner.py
+          sparse-checkout-cone-mode: false
+      - name: Pick
+        id: pick
+        env:
+          CALLER_PICK: ${{ inputs.runs-on }}
+          REQUESTED: ${{ inputs.runner || 'auto' }}
+          GH_TOKEN: ${{ secrets.RUNNER_PICKER_TOKEN }}
+        run: |
+          if [ -n "$CALLER_PICK" ]; then
+            echo "runs-on=$CALLER_PICK" >> "$GITHUB_OUTPUT"
+            echo "Runner: \`$CALLER_PICK\` (picked by the calling workflow)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            python3 scripts/pick_runner.py
+          fi
+
   backend:
     name: Backend (${{ matrix.suite }})
     strategy:
@@ -33,7 +72,8 @@ jobs:
             shard: 3/3
           - suite: harness
             shard: harness
-    runs-on: ubuntu-latest
+    needs: pick-runner
+    runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs-on) }}
     services:
       postgres:
         image: pgvector/pgvector:0.8.2-pg17
@@ -42,21 +82,29 @@ jobs:
           POSTGRES_USER: darkmem
           POSTGRES_PASSWORD: darkmem
         ports:
-          - 5433:5432
+          - 5432
         options: >-
           --health-cmd "pg_isready -U darkmem"
           --health-interval 5s --health-timeout 3s --health-retries 10
-    env:
-      DATABASE_URL: postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem
-      TEST_DATABASE_URL: postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test
-      # The harness suite refuses to share a database with the app tests, so it
-      # gets its own (benchlib/bench_db.py).
-      BENCH_DATABASE_URL: postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_bench
     defaults:
       run:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
+      # The service publishes a random host port, so two jobs on one
+      # self-hosted machine never collide. `job` is not available in job-level
+      # env, hence GITHUB_ENV. The harness suite refuses to share a database
+      # with the app tests, so it gets its own (benchlib/bench_db.py).
+      - name: Point the job at its Postgres service
+        env:
+          PGPORT: ${{ job.services.postgres.ports['5432'] }}
+        run: |
+          {
+            echo "PGPORT=$PGPORT"
+            echo "DATABASE_URL=postgresql+asyncpg://darkmem:darkmem@localhost:$PGPORT/darkmem"
+            echo "TEST_DATABASE_URL=postgresql+asyncpg://darkmem:darkmem@localhost:$PGPORT/darkmem_test"
+            echo "BENCH_DATABASE_URL=postgresql+asyncpg://darkmem:darkmem@localhost:$PGPORT/darkmem_bench"
+          } >> "$GITHUB_ENV"
       # tests/test_planning_docs.py reads the canonical planning documents from
       # master. A branch build has that ref; a build of a *tag* is a detached
       # HEAD that has neither `master` nor `origin/master`, and every one of
@@ -80,7 +128,7 @@ jobs:
           pip install pytest pytest-asyncio ruff
       - name: Create test databases
         run: |
-          PGPASSWORD=darkmem psql -h localhost -p 5433 -U darkmem -d darkmem \
+          docker exec ${{ job.services.postgres.id }} psql -U darkmem -d darkmem \
             -c "CREATE DATABASE darkmem_test;" -c "CREATE DATABASE darkmem_bench;"
       - name: Lint (ruff, advisory)
         run: ruff check app/ --select F --output-format=github
@@ -104,7 +152,8 @@ jobs:
 
   frontend:
     name: Frontend (types + lint + build)
-    runs-on: ubuntu-latest
+    needs: pick-runner
+    runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs-on) }}
     defaults:
       run:
         working-directory: frontend
@@ -127,7 +176,8 @@ jobs:
 
   frontend-tests:
     name: Frontend tests (${{ matrix.shard }}/4)
-    runs-on: ubuntu-latest
+    needs: pick-runner
+    runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs-on) }}
     strategy:
       fail-fast: false
       matrix:
@@ -158,7 +208,11 @@ jobs:
   # release.yml still waits for this entire reusable workflow to succeed.
   images:
     name: Build, boot & scan image
-    runs-on: ubuntu-latest
+    needs: pick-runner
+    runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs-on) }}
+    env:
+      IMAGE: darkmem:ci-${{ github.run_id }}-${{ github.run_attempt }}
+      SMOKE: darkmem-smoke-${{ github.run_id }}-${{ github.run_attempt }}
     services:
       postgres:
         image: pgvector/pgvector:0.8.2-pg17
@@ -167,7 +221,7 @@ jobs:
           POSTGRES_USER: darkmem
           POSTGRES_PASSWORD: darkmem
         ports:
-          - 5433:5432
+          - 5432
         options: >-
           --health-cmd "pg_isready -U darkmem"
           --health-interval 5s --health-timeout 3s --health-retries 10
@@ -180,7 +234,7 @@ jobs:
           context: .
           push: false
           load: true
-          tags: darkmem:ci
+          tags: ${{ env.IMAGE }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -190,38 +244,47 @@ jobs:
       # the schema-baseline guard, then uvicorn answering /health.
       - name: Boot the image and probe /health
         run: |
-          docker run -d --name darkmem-smoke --network host \
+          # Joins the service's own network rather than the host's, so the
+          # probe can only ever reach this container, never whatever else
+          # listens on the runner's :8000.
+          docker run -d --name "$SMOKE" \
+            --network "${{ job.services.postgres.network }}" \
+            -p 127.0.0.1::8000 \
             -e ENVIRONMENT=production \
-            -e DB_HOST=localhost -e DB_PORT=5433 \
+            -e DB_HOST=postgres -e DB_PORT=5432 \
             -e DB_USER=darkmem -e DB_NAME=darkmem -e DB_PASSWORD=darkmem \
             -e JWT_SECRET=ci-only-secret-not-used-anywhere-else-0123456789 \
             -e COOKIE_SECURE=false \
-            darkmem:ci
+            "$IMAGE"
+          PORT=$(docker port "$SMOKE" 8000/tcp | head -n1 | sed 's/.*://')
           for i in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
+            if curl -fsS "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then
               echo "healthy after ${i}s"
-              curl -fsS http://127.0.0.1:8000/health
+              curl -fsS "http://127.0.0.1:$PORT/health"
               # The SPA ships inside this image; an API-only image is a
               # half-built artifact that /health alone would not catch.
-              curl -fsS -o /dev/null -w 'index=%{http_code}\n' http://127.0.0.1:8000/
+              curl -fsS -o /dev/null -w 'index=%{http_code}\n' "http://127.0.0.1:$PORT/"
               exit 0
             fi
             sleep 1
           done
           echo "::error::image did not answer /health within 60s"
-          docker logs darkmem-smoke
+          docker logs "$SMOKE"
           exit 1
       - name: Container logs (always)
         if: always()
-        run: docker logs darkmem-smoke || true
+        run: docker logs "$SMOKE" || true
       - name: Stop the container
         if: always()
-        run: docker rm -f darkmem-smoke || true
+        run: docker rm -f "$SMOKE" || true
 
       - name: Scan image (Trivy)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: darkmem:ci
+          image-ref: ${{ env.IMAGE }}
           severity: HIGH,CRITICAL
           exit-code: "0"   # advisory until the dependency tree is triaged; flip to "1" to enforce
           ignore-unfixed: true
+      - name: Remove the image
+        if: always()
+        run: docker rmi "$IMAGE" || true
