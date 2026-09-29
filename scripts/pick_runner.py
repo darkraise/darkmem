@@ -29,8 +29,12 @@ def choose(runners: list[dict], requested: str, token_present: bool) -> tuple[st
         return HOSTED, f"unknown runner request {requested!r}"
     if not token_present:
         return HOSTED, "RUNNER_PICKER_TOKEN is not set"
+    # GitHub matches runs-on labels case-insensitively, so a runner registered
+    # as `DarkMem-CI` still takes the jobs this picker routes to it.
     labelled = [
-        r for r in runners if any(label.get("name") == LABEL for label in r.get("labels", []))
+        r
+        for r in runners
+        if any((label.get("name") or "").lower() == LABEL for label in r.get("labels", []))
     ]
     for runner in labelled:
         if runner.get("status") == "online" and not runner.get("busy"):

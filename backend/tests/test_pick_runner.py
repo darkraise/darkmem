@@ -155,3 +155,27 @@ def test_outputs_are_valid_json():
     for requested in ("hosted", "self-hosted"):
         runs_on, _ = pick.choose([], requested, True)
         json.loads(runs_on)
+
+
+def test_the_label_matches_regardless_of_case():
+    runs_on, _ = pick.choose([_runner(labels=("self-hosted", "DarkMem-CI"))], "auto", True)
+    assert runs_on == SELF_HOSTED
+
+
+def test_listing_stops_on_an_empty_page_despite_a_wrong_total():
+    calls = []
+
+    def fetch(url, token):
+        calls.append(url)
+        return {"total_count": 500, "runners": [_runner()] if len(calls) == 1 else []}
+
+    assert len(pick.list_runners("darkraise/darkmem", "t", fetch)) == 1
+    assert len(calls) == 2
+
+
+def test_main_without_a_token_makes_no_call(tmp_path):
+    def fetch(url, token):
+        raise AssertionError("the API must not be called")
+
+    assert pick.main(_env(tmp_path), fetch=fetch) == 0
+    assert _outputs(tmp_path) == {"runs-on": HOSTED, "reason": "RUNNER_PICKER_TOKEN is not set"}
