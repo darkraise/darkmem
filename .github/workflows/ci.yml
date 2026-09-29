@@ -99,6 +99,7 @@ jobs:
         env:
           PGPORT: ${{ job.services.postgres.ports['5432'] }}
         run: |
+          : "${PGPORT:?the postgres service published no host port}"
           {
             echo "PGPORT=$PGPORT"
             echo "DATABASE_URL=postgresql+asyncpg://darkmem:darkmem@localhost:$PGPORT/darkmem"
@@ -120,8 +121,15 @@ jobs:
           cache-dependency-path: |
             backend/requirements.lock
             backend/pyproject.toml
+      # A virtualenv under RUNNER_TEMP, which the runner empties for every
+      # job: installing into setup-python's interpreter would persist on a
+      # self-hosted runner, and pip never removes a package the lock dropped,
+      # so tests could import what the image no longer ships.
       - name: Install (pinned)
         run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+          PATH="$RUNNER_TEMP/venv/bin:$PATH"
           python -m pip install --upgrade pip
           pip install -r requirements.lock
           pip install --no-deps .
@@ -257,6 +265,7 @@ jobs:
             -e COOKIE_SECURE=false \
             "$IMAGE"
           PORT=$(docker port "$SMOKE" 8000/tcp | head -n1 | sed 's/.*://')
+          [ -n "$PORT" ] || { echo "::error::the smoke container published no port"; docker logs "$SMOKE"; exit 1; }
           for i in $(seq 1 60); do
             if curl -fsS "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then
               echo "healthy after ${i}s"
