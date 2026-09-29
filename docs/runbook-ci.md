@@ -47,3 +47,45 @@ The Python cache uses [setup-python's dependency caching](https://github.com/act
 Splitting jobs trades extra runner setup and potentially more billed runner
 minutes for shorter elapsed time. Compare the slowest shard and total workflow
 runtime after deployment; runner queue time and registry uploads remain variable.
+
+## Self-hosted runner
+
+Every CI and release run starts with a `pick-runner` job
+(`scripts/pick_runner.py`). It sends the whole run to a self-hosted runner
+labelled `darkmem-ci` when one is online and idle, and to GitHub-hosted
+`ubuntu-latest` otherwise. A missing token, an API error or no idle runner
+always means GitHub-hosted, and the run's summary page says which it picked
+and why.
+
+**Machine.** A dedicated Linux box, never this host or 192.168.0.199 (both run
+production). Ubuntu 22.04 or 24.04 x64 with Docker, git, curl, python3 and the
+GitHub CLI `gh` (the release job `github-release` calls `gh release create`,
+after the image is pushed and the tag written, so a missing `gh` fails a
+release half-way); the runner's user must be in the `docker` group. Jobs use
+random host ports and per-run container and image names, so several runners
+on one machine are safe. Give each runner its own OS user: `publish` logs in
+to Docker Hub and GHCR, and the credentials sit in that user's
+`~/.docker/config.json` until the job's post-step logs out.
+
+**Register.** Repository Settings → Actions → Runners → New self-hosted runner;
+run the printed `config.sh` with `--labels darkmem-ci`, then install it as a
+service (`sudo ./svc.sh install && sudo ./svc.sh start`).
+
+**Token.** Create a fine-grained personal access token for this repository
+only, with Repository permissions → Administration: Read-only, and store it
+as the Actions secret `RUNNER_PICKER_TOKEN`. `GITHUB_TOKEN` cannot list
+runners, so without this secret every run is GitHub-hosted.
+
+**Forcing a choice.** Both workflows' manual dispatch takes `runner`: `auto`
+(default), `hosted` or `self-hosted`.
+
+**A run stuck in the queue.** The pick happens once, at the start. If the
+runner goes offline afterwards, the run's jobs wait for it. Cancel the run and
+re-dispatch it with `runner: hosted`.
+
+**Cost.** With one runner a run takes roughly the sum of its jobs rather than
+the longest one; the saving is GitHub-hosted minutes, spent only on the short
+picker job.
+The picker itself runs on GitHub-hosted, so an account with no hosted minutes
+left (billing or spending limit) starts no run at all, self-hosted runner or
+not.
