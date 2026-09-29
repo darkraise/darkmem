@@ -4,3 +4,4 @@
 * text=auto
 *.sh text eol=lf
 entrypoint.sh text eol=lf
+docs/superpowers/plans/completed.md merge=union
