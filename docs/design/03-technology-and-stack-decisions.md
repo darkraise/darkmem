@@ -279,7 +279,7 @@ flowchart TD
 
 ### 5.12 Graph and community detection
 
-**Decision.** **python-igraph** (floor `>=0.11.0`, locked `1.0.0` — a major-version jump) plus **leidenalg** (floor `>=0.10.0`, locked `0.12.0`). Leiden (`RBConfigurationVertexPartition`) detects code-graph communities; Louvain (`_louvain_igraph`) partitions the memory graph; and in-process igraph over a cached snapshot computes the target converged and personalised PageRank in a thread executor, not per query (doc 02 §4).
+**Decision.** **python-igraph** (floor `>=0.11.0`, locked `1.0.0` — a major-version jump) plus **leidenalg** (floor `>=0.10.0`, locked `0.12.0`). Leiden (`RBConfigurationVertexPartition`) detects code-graph communities; Louvain (igraph's `community_multilevel` over an exact k-nearest-neighbour graph, `app/utils/graph_knn.py`) partitions the memory graph; and in-process igraph over a cached snapshot computes the target converged and personalised PageRank in a thread executor, not per query (doc 02 §4).
 
 **Context / forces.** Community detection is an off-path report job (doc 02 §4), and converged PageRank runs over a cached in-process snapshot rather than per request. The single-Postgres moat (§3.1) forbids an external graph engine, so the graph computation happens in-process over rows read from the one store. Both PageRank and `FOR UPDATE SKIP LOCKED` are absent today — they are named targets, greenfield in either language.
 

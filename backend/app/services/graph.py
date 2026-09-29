@@ -29,7 +29,9 @@ _RESULT_CACHE_SIZE = 4
 _CLUSTER_NAME_CACHE_SIZE = 1024
 
 # The assembled memory arm, keyed on everything that decides it. Module-level
-# state is sound only because invariant 13 pins one process.
+# state is sound only because invariant 13 pins one process. A hit hands out
+# the cached lists themselves, not copies: mutating a result corrupts every
+# later hit.
 _result_cache: OrderedDict[tuple, dict] = OrderedDict()
 
 # LLM cluster names keyed on a hash of the prompt and the naming sample, so a

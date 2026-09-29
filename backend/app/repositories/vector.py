@@ -304,7 +304,10 @@ class PostgresVectorRepository:
 
         Rows stream in batches of 1,000 and each batch's embeddings are packed
         into float32 before the next arrives, so a 20,000 x 1024 read peaks
-        near its 80 MB matrix rather than the ~0.65 GB its lists would hold.
+        near twice its 80 MB matrix (the batches and their stack briefly
+        coexist) rather than the ~0.65 GB its lists would hold. The kNN pass
+        that consumes it adds a normalised copy and ~128 MB of chunk scratch
+        (`graph_knn.CHUNK_SCRATCH_BYTES`).
         """
         sql, params = self._bulk_read(fingerprint, limit, filters)
         points: list[dict] = []
