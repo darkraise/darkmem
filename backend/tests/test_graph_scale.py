@@ -152,6 +152,24 @@ async def test_scope_stamp_counts_the_readable_set(session):
 
 
 @pytest.mark.asyncio
+async def test_scope_stamp_moves_when_a_row_leaves_scope(session):
+    await _seed_partition(session)
+    await _add_memory(session, vector=[1.0, 0.0, 0.0, 0.0], updated_at=BASE)
+    retired = await _add_memory(session, vector=[0.0, 1.0, 0.0, 0.0], updated_at=BASE)
+    deleted = await _add_memory(session, vector=[0.0, 0.0, 1.0, 0.0], updated_at=BASE)
+    repo = PostgresVectorRepository(session)
+    assert (await repo.scope_stamp(FINGERPRINT, SCOPE))[0] == 3
+
+    await session.execute(
+        text("UPDATE memories SET status = 'deprecated' WHERE id = :id"), {"id": retired.id},
+    )
+    assert await repo.scope_stamp(FINGERPRINT, SCOPE) == (2, BASE)
+
+    await session.execute(text("DELETE FROM memories WHERE id = :id"), {"id": deleted.id})
+    assert await repo.scope_stamp(FINGERPRINT, SCOPE) == (1, BASE)
+
+
+@pytest.mark.asyncio
 async def test_knn_clustering_labels_blobs_and_bounds_edges(session):
     await _seed_partition(session)
     blob_a = [await _add_memory(session, vector=[1.0, 0.01 * i, 0.0, 0.0]) for i in range(4)]
@@ -298,6 +316,80 @@ async def test_unchanged_corpus_is_served_from_cache(session, monkeypatch):
     third = await svc.get_unified_graph(project="alpha")
     assert calls == 2
     assert third["total_memories"] == 6
+
+
+def _count_builds(monkeypatch) -> list[int]:
+    calls = [0]
+    original = PostgresVectorRepository.get_louvain_clustered_vectors
+
+    async def counting(self, *args, **kwargs):
+        calls[0] += 1
+        return await original(self, *args, **kwargs)
+
+    monkeypatch.setattr(PostgresVectorRepository, "get_louvain_clustered_vectors", counting)
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_cache_is_keyed_on_project_limit_and_cluster_size(session, monkeypatch):
+    await _seed_five(session)
+    # Same count and same newest updated_at (one transaction's now()) as
+    # alpha, so only the project itself can tell the two keys apart.
+    beta_ids = {
+        str((await _add_memory(session, project="beta", vector=[0.0, 1.0, 0.01 * i, 0.0])).id)
+        for i in range(5)
+    }
+    calls = _count_builds(monkeypatch)
+    svc = _service(session)
+
+    await svc.get_unified_graph(project="alpha")
+    await svc.get_unified_graph(project="alpha", limit=3)
+    await svc.get_unified_graph(project="alpha", min_cluster_size=2)
+    beta = await svc.get_unified_graph(project="beta")
+    assert calls[0] == 4
+    assert {m["id"] for m in beta["memories"]} == beta_ids
+
+    await svc.get_unified_graph(project="alpha", limit=3)
+    assert calls[0] == 4
+
+
+@pytest.mark.asyncio
+async def test_cache_evicts_the_least_recently_used_entry(session, monkeypatch):
+    await _seed_five(session)
+    calls = _count_builds(monkeypatch)
+    svc = _service(session)
+
+    for limit in (1, 2, 3, 4):
+        await svc.get_unified_graph(project="alpha", limit=limit)
+    await svc.get_unified_graph(project="alpha", limit=1)  # refreshes limit=1
+    await svc.get_unified_graph(project="alpha", limit=5)  # evicts limit=2
+    assert calls[0] == 5
+
+    await svc.get_unified_graph(project="alpha", limit=1)
+    assert calls[0] == 5
+    await svc.get_unified_graph(project="alpha", limit=2)
+    assert calls[0] == 6
+
+
+@pytest.mark.asyncio
+async def test_entity_overlay_is_added_to_a_cached_arm(session, monkeypatch):
+    await _seed_partition(session)
+    plotted = await _add_memory(session, vector=[1.0, 0.0, 0.0, 0.0])
+    await _add_entity(session, "scale-cached", [plotted.id])
+    calls = _count_builds(monkeypatch)
+    svc = GraphService(
+        session,
+        vector_repo=PostgresVectorRepository(session),
+        graph_repo=PostgresGraphRepository(session),
+        llm=_FakeLLM(),
+    )
+
+    bare = await svc.get_unified_graph(project="alpha")
+    overlaid = await svc.get_unified_graph(project="alpha", include_entities=True)
+
+    assert calls[0] == 1
+    assert "entities" not in bare
+    assert [e["name"] for e in overlaid["entities"]] == ["scale-cached"]
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { act, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
@@ -118,6 +118,27 @@ describe("RealMemoryGraphPage: node budget", () => {
     render(<RealMemoryGraphPage />, { wrapper })
     const calls = mockUseUnifiedGraph.mock.calls
     expect(calls[calls.length - 1]!.slice(3)).toEqual([200, true])
+  })
+
+  it("waits for the node limit to settle before asking for it", () => {
+    vi.useFakeTimers()
+    try {
+      mockUseUnifiedGraph.mockReturnValue({ data: ONE_MEMORY, isLoading: false })
+      render(<RealMemoryGraphPage />, { wrapper })
+      const lastLimit = () => {
+        const calls = mockUseUnifiedGraph.mock.calls
+        return calls[calls.length - 1]![3]
+      }
+
+      act(() => useGraphPrefs.setState({ nodeLimit: 900 }))
+      act(() => vi.advanceTimersByTime(499))
+      expect(lastLimit()).toBe(200)
+
+      act(() => vi.advanceTimersByTime(1))
+      expect(lastLimit()).toBe(900)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("shows how many memories are plotted in the settings panel", async () => {
