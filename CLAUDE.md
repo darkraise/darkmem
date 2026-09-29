@@ -181,8 +181,10 @@ table or column is dropped only once no released code reads it.
 - **CI picks its runner per run**: `scripts/pick_runner.py` sends every job
   to an idle self-hosted runner labelled `darkmem-ci` and falls back to
   `ubuntu-latest` on any doubt (no `RUNNER_PICKER_TOKEN`, API error, none
-  idle). Jobs must not use fixed host ports, container names or image tags,
-  or `--network host`. Setup: `docs/runbook-ci.md`.
+  idle). The picker job itself runs on GitHub-hosted, so with no hosted
+  minutes (billing, spending limit) nothing runs at all. Jobs must not use
+  fixed host ports, container names or image tags, or `--network host`
+  (`tests/test_ci_workflows.py`). Setup: `docs/runbook-ci.md`.
 - **Prod networking is bridge, not host** (owner ruling 2026-08-18). The app
   publishes `8000:8000` and Postgres `127.0.0.1:5432:5432`. Postgres must
   listen on `listen_addresses=*`, because the API connects across the stack

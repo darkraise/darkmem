@@ -58,14 +58,28 @@ always means GitHub-hosted, and the run's summary page says which it picked
 and why.
 
 **Machine.** A dedicated Linux box, never this host or 192.168.0.199 (both run
-production). Ubuntu 22.04 or 24.04 x64 with Docker, git, curl, python3 and the
-GitHub CLI `gh` (the release job `github-release` calls `gh release create`,
-after the image is pushed and the tag written, so a missing `gh` fails a
-release half-way); the runner's user must be in the `docker` group. Jobs use
-random host ports and per-run container and image names, so several runners
-on one machine are safe. Give each runner its own OS user: `publish` logs in
-to Docker Hub and GHCR, and the credentials sit in that user's
-`~/.docker/config.json` until the job's post-step logs out.
+production). Ubuntu 22.04 or 24.04 x64 with Docker Engine from Docker's own apt
+repository (it ships the buildx plugin, which Ubuntu's `docker.io` package does
+not), git, curl, python3 and the GitHub CLI `gh` (the release job
+`github-release` calls `gh release create`, after the image is pushed and the
+tag written, so a missing `gh` fails a release half-way); the runner's user
+must be in the `docker` group. Jobs use random host ports and per-run container
+and image names, so several runners on one machine are safe, and the backend
+job installs into a per-job virtualenv, so no package outlives its run.
+Prune regularly (`docker system prune -af --volumes` from a timer): pulled
+images, the Trivy cache and service containers' volumes accumulate.
+
+**Trust.** The `docker` group is root-equivalent, so one machine is one trust
+domain: any job on it can read any user's files, including the registry
+credentials `publish` leaves in `~/.docker/config.json` until its post-step
+logs out. Separate OS users per runner keep runners from tripping over each
+other, not from reading each other. Each job's Postgres service publishes its
+random port on every interface while the job runs; firewall the machine off
+from untrusted networks. The repository is private, so only collaborators'
+code runs here. **Before the repository is made public**, remove the runner or
+require approval for workflow runs from all outside contributors: a fork's
+pull request runs its own copy of `ci.yml`, which can name
+`[self-hosted, darkmem-ci]` directly and bypass the picker.
 
 **Register.** Repository Settings → Actions → Runners → New self-hosted runner;
 run the printed `config.sh` with `--labels darkmem-ci`, then install it as a
@@ -80,12 +94,14 @@ runners, so without this secret every run is GitHub-hosted.
 (default), `hosted` or `self-hosted`.
 
 **A run stuck in the queue.** The pick happens once, at the start. If the
-runner goes offline afterwards, the run's jobs wait for it. Cancel the run and
+runner goes offline afterwards, or `runner: self-hosted` was forced with no
+runner online, the run's jobs wait in the queue for one. Cancel the run and
 re-dispatch it with `runner: hosted`.
 
 **Cost.** With one runner a run takes roughly the sum of its jobs rather than
-the longest one; the saving is GitHub-hosted minutes, spent only on the short
-picker job.
-The picker itself runs on GitHub-hosted, so an account with no hosted minutes
-left (billing or spending limit) starts no run at all, self-hosted runner or
-not.
+the longest one. The saving is GitHub-hosted minutes, spent only on the short
+picker jobs: one per CI run, two per release (`ci.yml`'s `pick-runner` still
+starts on GitHub-hosted when it only passes the release's pick through).
+Because the pickers need GitHub-hosted, an account with no hosted minutes left
+(billing or spending limit) gets its runs created but every job refused,
+self-hosted runner or not.
