@@ -71,19 +71,19 @@ image tag, and none needs a host tool `ubuntu-latest` preinstalls but a plain
 Ubuntu box lacks.
 
 - **Postgres services** publish `- 5432` (a random host port). A first step
-  writes `PGPORT=${{ job.services.postgres.ports[5432] }}` and the three
+  writes `PGPORT=${{ job.services.postgres.ports['5432'] }}` and the three
   database URLs to `GITHUB_ENV`; the job-level `env` block that hardcodes 5433
   goes (the `job` context is not available at job level).
 - **Database creation** runs `docker exec ${{ job.services.postgres.id }} psql
   -U darkmem -d darkmem -c …` instead of host `psql`.
 - **Image job**: the tag becomes `darkmem:ci-${{ github.run_id }}-${{ github.run_attempt }}`
   (build, smoke and Trivy all read it from one job-level `env` value); the
-  smoke container is named the same way, runs with `-p 127.0.0.1::8000` and
-  `--add-host=host.docker.internal:host-gateway`, reaches Postgres at
-  `host.docker.internal:$PGPORT`, and the probe reads the published port from
-  `docker port`. The cleanup step also removes the image. No step uses
-  `--network host`, so the probe can never reach whatever else listens on the
-  runner's `:8000`.
+  smoke container is named the same way, joins the service's own network
+  (`--network ${{ job.services.postgres.network }}`, reaching Postgres as
+  `postgres:5432`), publishes `-p 127.0.0.1::8000`, and the probe reads the
+  published port from `docker port`. A final `always()` step removes the
+  image after Trivy. No step uses `--network host`, so the probe can never
+  reach whatever else listens on the runner's `:8000`.
 
 Behaviour on GitHub-hosted runners is unchanged apart from the random ports.
 
@@ -91,7 +91,10 @@ Behaviour on GitHub-hosted runners is unchanged apart from the random ports.
 
 - `docs/runbook-ci.md` gains a "Self-hosted runner" section: machine
   requirements (Ubuntu 22.04/24.04 x64, Docker with the runner user in the
-  `docker` group, git, curl), registering with the extra label `darkmem-ci`,
+  `docker` group, git, curl, python3, and `gh`, which `github-release` calls
+  after the image push and the tag; one OS user per runner, since `publish`'s
+  registry credentials sit in that user's Docker config until logout),
+  registering with the extra label `darkmem-ci`,
   creating `RUNNER_PICKER_TOKEN`, the `runner` dispatch input, and recovery
   when jobs queue on a runner that went offline after the pick (cancel,
   re-run with `runner: hosted`).
