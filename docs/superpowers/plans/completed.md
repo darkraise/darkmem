@@ -15,3 +15,4 @@
 - 2026-09-28 `docs/superpowers/plans/2026-09-28-work-log-increment-6-ui-and-checkpoint-removal.md` — merged into `master` at 3e51fd1c
 - 2026-09-28 `docs/superpowers/plans/2026-09-28-keyed-document-patch.md` — merged into `master` at 25ea1247
 - 2026-09-29 `docs/superpowers/plans/2026-09-29-memory-graph-scale.md` — merged into `master` at 97c46871
+- 2026-09-29 `docs/superpowers/plans/2026-09-29-ci-self-hosted-runner-fallback.md` — merged into `master` at 1b324ddd
