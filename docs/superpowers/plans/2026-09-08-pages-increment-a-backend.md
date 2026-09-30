@@ -28,11 +28,7 @@
 - **REST conventions** (`docs/api-rest-conventions.md`): 201 create, 204 delete, 202 async-accepted, POST `.../search` for complex queries.
 - **Comments:** default to none. Only where the WHY is non-obvious. Never reference the task, increment or a review finding.
 - **English only** in code, comments, docs, commits, tests.
-- **Commits:** `<type>(<scope>): <subject>`, subject ≤50 chars, imperative, no period. Every commit ends with:
-  ```
-  Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-  Claude-Session: https://claude.ai/code/session_01UQgipD4phQcUg2AtRvaqEh
-  ```
+- **Commits:** `<type>(<scope>): <subject>`, subject ≤50 chars, imperative, no period.
 - **Backend tests** run from `backend/` on a lane database of your own:
   `TEST_DATABASE_URL="postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test_3" .venv/bin/python -m pytest -q <paths>`
   Lanes `darkmem_test_2` through `darkmem_test_5` exist. **Never use `darkmem_test`** — the controller keeps it.

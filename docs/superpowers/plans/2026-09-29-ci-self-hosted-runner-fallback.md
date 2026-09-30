@@ -22,7 +22,7 @@
 - Every picking path answers hosted on doubt: missing token, API error, unknown request, no idle labelled runner.
 - No step may use `--network host`, a fixed host port, a fixed container name or a fixed image tag.
 - Lint workflows with `rhysd/actionlint:1.7.12` (pinned; the baseline below was measured with it).
-- Commit format `<type>(<scope>): <subject>`, subject ≤ 50 chars, body ends with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- Commit format `<type>(<scope>): <subject>`, subject ≤ 50 chars.
 
 ## Contracts
 
@@ -356,9 +356,7 @@ Expected: output contains `runs-on="ubuntu-latest"` and `reason=RUNNER_PICKER_TO
 
 ```bash
 git add scripts/pick_runner.py backend/tests/test_pick_runner.py
-git commit -m "chore(ci): add the self-hosted runner picker
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "chore(ci): add the self-hosted runner picker"
 ```
 
 ### Task 2: Route ci.yml and isolate its jobs
@@ -537,9 +535,7 @@ git commit -m "chore(ci): route jobs through the runner picker
 Every job reads its runs-on from pick-runner. Postgres services publish
 random ports, the smoke container joins the service network instead of
 the host's, and image and container names carry the run id, so jobs
-are safe on a shared self-hosted machine.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+are safe on a shared self-hosted machine."
 git push -u origin ci/self-hosted-runner-fallback
 ```
 
@@ -641,9 +637,7 @@ Expected: `exit 0` for the structural run; the shellcheck count shows no `ci.yml
 
 ```bash
 git add .github/workflows/release.yml
-git commit -m "chore(ci): route release jobs through the picker
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "chore(ci): route release jobs through the picker"
 git push
 ```
 
@@ -728,8 +722,6 @@ Expected: hits in both files.
 
 ```bash
 git add docs/runbook-ci.md CLAUDE.md
-git commit -m "docs(ci): document the self-hosted runner
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "docs(ci): document the self-hosted runner"
 git push
 ```

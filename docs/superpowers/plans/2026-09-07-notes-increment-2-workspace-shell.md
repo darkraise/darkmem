@@ -23,11 +23,7 @@
 - **darkraise-ui first.** Never re-implement a library component. A local component written against a library gap must record which gap.
 - **Single worker.** Nothing here may assume more than one uvicorn worker.
 - **English only** in code, comments, docs, commits, tests.
-- **Commits:** `<type>(<scope>): <subject>`, subject ≤50 chars, imperative, no period. End every commit message with:
-  ```
-  Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-  Claude-Session: https://claude.ai/code/session_01UQgipD4phQcUg2AtRvaqEh
-  ```
+- **Commits:** `<type>(<scope>): <subject>`, subject ≤50 chars, imperative, no period.
 - **Backend tests** run from `backend/` as `.venv/bin/python -m pytest -q`, with `TEST_DATABASE_URL` pointed at a lane database (`darkmem_test_2`..`darkmem_test_5`), never at `darkmem_test` if another lane is running. Example:
   `TEST_DATABASE_URL="postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test_2" .venv/bin/python -m pytest -q <paths>`
 - **Frontend tests** run from `frontend/` as `npm test` (vitest), typecheck as `npm run typecheck` (`tsc -b`, not bare `tsc`).

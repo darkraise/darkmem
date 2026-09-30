@@ -29,7 +29,7 @@
 - Scopes: every new door is `read`. The two REST routes declare the existing `_require_read` binding in `app/api/routes/documents.py`, so the file keeps exactly two `require_scope` call sites; the MCP tool joins `READ_TOOLS`.
 - Tests run from `backend/` with `TEST_DATABASE_URL=postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test_2` against the dev-compose Postgres (`docker compose -f docker-compose.dev.yml up -d postgres` from the repo root when it is down). Every pytest command below carries that variable; without it conftest falls back to `darkmem_test`, the controller's database, and drops its schema. If pytest cannot connect because `darkmem_test_2` does not exist (a fresh dev volume creates only `darkmem`), create it once: `docker exec darkmem-postgres-1 psql -U darkmem -d darkmem -c "CREATE DATABASE darkmem_test_2"`. Run pytest as `.venv/bin/python -m pytest`, never `uv run` (it writes an untracked `backend/uv.lock`). pytest-timeout is not installed; bound runs with `timeout`.
 - Every `git` command runs from the repository root (`/root/repositories/darkmem`); every pytest command runs from `backend/`.
-- Commits: `<type>(<scope>): <subject>`, subject ≤ 50 characters, imperative, ending with the line `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Never push; never `--no-verify`.
+- Commits: `<type>(<scope>): <subject>`, subject ≤ 50 characters, imperative. Never push; never `--no-verify`.
 - Done means all seven tasks committed with the full backend suite and the `CLAUDE.md` guard leg green on the branch. The CHANGELOG entry is written at release (`scripts/next_version.py` writes the version heading), not here.
 
 ## Contracts
@@ -275,7 +275,7 @@ git add backend/migrations/versions/0001_baseline.py backend/tests/test_inert_ob
 git commit -m "feat(schema): stamp who filed a document revision" -m "Adds actor and api_key_id to document_revisions, keys its index for
 paging on (created_at, id), and gives the downgrade the work-log
 family's pattern (register row 40). Regenerates the baseline: a deploy
-drops and recreates the database." -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+drops and recreates the database."
 ```
 
 ### Task 2: Revision writer
@@ -639,7 +639,7 @@ Expected: PASS.
 
 ```bash
 git add backend/app/repositories/documents.py backend/app/services/document_ingest.py backend/tests/test_document_revisions.py
-git commit -m "feat(documents): keep each filed content as a revision" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(documents): keep each filed content as a revision"
 ```
 
 ### Task 3: Revision read service
@@ -888,7 +888,7 @@ Expected: PASS. `test_block_retrieval.py` now forbids `app.services.document_rev
 
 ```bash
 git add backend/app/services/document_revisions.py backend/tests/test_block_retrieval.py backend/tests/test_document_revisions.py
-git commit -m "feat(documents): read a document's revisions" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(documents): read a document's revisions"
 ```
 
 ### Task 4: REST revision routes
@@ -1108,7 +1108,7 @@ Expected: PASS. (The enumeration guards stay red until Task 6.)
 
 ```bash
 git add backend/app/api/routes/documents.py backend/tests/test_documents_keyed.py backend/tests/test_api_keys.py
-git commit -m "feat(documents): serve revisions over REST" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(documents): serve revisions over REST"
 ```
 
 ### Task 5: MCP revision tool
@@ -1274,7 +1274,7 @@ Expected: PASS. (The enumeration guards stay red until Task 6.)
 
 ```bash
 git add backend/app/api/mcp/server.py backend/app/api/mcp/scopes.py backend/tests/test_mcp.py backend/app/services/prompt.py backend/tests/test_document_revisions.py
-git commit -m "feat(documents): serve revisions over MCP" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(documents): serve revisions over MCP"
 ```
 
 ### Task 6: Guard registries
@@ -1372,7 +1372,7 @@ Expected: PASS
 
 ```bash
 git add backend/app/services/content_surfaces.py backend/tests/test_api/test_rest_conformance.py backend/tests/test_door_parity.py docs/two-door-parity.md
-git commit -m "test(guards): classify the document revision doors" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "test(guards): classify the document revision doors"
 ```
 
 ### Task 7: CLAUDE.md, runbook, design docs and spec
@@ -1519,5 +1519,5 @@ Expected: PASS, with no failure.
 
 ```bash
 git add CLAUDE.md docs/runbook-exposed-deployment.md docs/design/12-api-and-mcp-contract.md docs/design/18-security-auth-and-trust.md docs/wiki/introduction.md docs/superpowers/specs/2026-09-23-work-log-lane-design.md
-git commit -m "docs(documents): document revisions and the counts" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "docs(documents): document revisions and the counts"
 ```

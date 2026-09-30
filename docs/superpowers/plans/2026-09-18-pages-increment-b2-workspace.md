@@ -29,10 +29,7 @@
 - **UI components come from darkraise-ui first** (CLAUDE.md). Enumerate with `ls frontend/node_modules/darkraise-ui/dist/components/` and read the `.d.ts` before writing a local component. A local component written against a library gap records which gap.
 - **Comments:** default to none; only where the WHY is non-obvious. Never reference the task, the increment or a review finding.
 - **English only** in code, comments, docs, commits and tests.
-- **Commits:** `<type>(<scope>): <subject>`, type = feat|fix|docs|style|refactor|test|chore|perf, subject <= 50 chars, imperative, no period. Every commit message ends with:
-  ```
-  Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-  ```
+- **Commits:** `<type>(<scope>): <subject>`, type = feat|fix|docs|style|refactor|test|chore|perf, subject <= 50 chars, imperative, no period.
 - **Frontend commands run from `frontend/`:** `npm run typecheck` (= `tsc -b`; plain `tsc` misses the project refs), `npm test` (= `vitest run`), `npm run build`. A single file: `npx vitest run src/path/to/file.test.ts`. `npm run lint` is advisory.
 - **Never run Playwright bare.** `npx playwright test` points `/api` at the live instance on `:8000`. The e2e leg is `backend/scripts/e2e/run_playwright_e2e.py` and it is **not** a task here.
 - **Host hazard:** an `earlyoom` daemon kills memory-heavy runs at ~80% swap. **Exit 143 is a SIGTERM, not a failure** — check `free -h` and re-run the leg alone before believing a red.

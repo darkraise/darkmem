@@ -286,11 +286,11 @@ Reason: A fixed trailer names the wrong model on some tasks, because implementer
 Cost if wrong: Commit trailers name a different model than intended; nothing reads them.
 ### Old
 ````text
-- Commits: `<type>(<scope>): <subject>`, subject ≤ 50 characters, imperative, ending with the line `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Never push; never `--no-verify`.
+- Commits: `<type>(<scope>): <subject>`, subject ≤ 50 characters, imperative. Never push; never `--no-verify`.
 ````
 ### New
 ````text
-- Commits: `<type>(<scope>): <subject>`, subject ≤ 50 characters, imperative. The trailer names the model that did the work, keyed on the task's **Implementer:** line: `dr-superpowers:impl-opus-*` ends with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` (the line each task's `git commit` command already spells); `dr-superpowers:impl-sonnet-*` ends with `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>` instead; a task run by the Codex executor carries no `Co-Authored-By` line; the controller's own commits carry `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`. A reviewer checks the trailer against this mapping, not against the task's command text. Never push; never `--no-verify`.
+- Commits: `<type>(<scope>): <subject>`, subject ≤ 50 characters, imperative. Never push; never `--no-verify`.
 ````
 
 ## A10 — Task 5

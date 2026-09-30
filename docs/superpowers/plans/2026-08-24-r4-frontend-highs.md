@@ -2301,10 +2301,7 @@ Settings on a demo build — Flags is the default tab — issued a request that
 401s, and `handleUnauthorized` navigated the whole page to /login. The same
 omission sat on `useAutoResearch`, `useResearchRuns` and `useLlmProviders`.
 All four now take the `enabled` option `useSystemPrompts` and
-`useNotifications` already had, and their Settings call sites pass `!DEMO`.
-
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_018XiqGjAhaYmvPyZ88AhUnR"
+`useNotifications` already had, and their Settings call sites pass `!DEMO`."
 ```
 
 ### Task 5: Render a failed article read as a failure, not an empty library
@@ -2874,10 +2871,7 @@ repo then rendered the first repo's name and branch, and saving issued a
 PUT that renamed the second repo and repointed its default branch.
 
 Mount the dialog only when a repo is selected, keyed by its id, so each
-edit gets its own form seeded from the repo actually being edited.
-
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_018XiqGjAhaYmvPyZ88AhUnR"
+edit gets its own form seeded from the repo actually being edited."
 ```
 
 ### Task 7: Render chat stream errors and refetch the failed thread

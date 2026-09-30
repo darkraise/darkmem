@@ -29,7 +29,7 @@
 - Backend tests run from `backend/` as `.venv/bin/python -m pytest -q ...` with `TEST_DATABASE_URL` pointing at a lane database (`darkmem_test_2`..`_5`), never at a real database.
 - Every Bash test command carries an explicit timeout (use the Bash tool's `timeout` parameter, e.g. 600000).
 - **Deploy is not a task in this plan.** Task 1 regenerates the baseline, so the running instance's `schema_guard` refuses its next boot until the database is dropped and recreated (CLAUDE.md "The schema is ONE revision"; `docs/runbook-deployment.md`). That is destructive for the live corpus, so no task deploys: after the branch merges, the controller asks the owner before running the drop/recreate/re-seed redeploy. No implementer runs `docker compose up`, runs `scripts/build-push.sh` at all (it tags `darkraise/darkmem:latest`, which production runs), or touches the `:8000` instance; Task 3's image check builds under a throwaway tag and removes it.
-- Commits follow `<type>(<scope>): <subject>` (≤ 50 chars, imperative) and end with `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`.
+- Commits follow `<type>(<scope>): <subject>` (≤ 50 chars, imperative).
 - Comments only where the WHY is non-obvious; never reference the task or the plan.
 
 ## Contracts
@@ -214,9 +214,7 @@ Expected: PASS.
 
 ```bash
 git add backend/migrations/versions/0001_baseline.py backend/tests/test_page_attachments_schema.py
-git commit -m "feat(pages): add page_attachments table
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(pages): add page_attachments table"
 ```
 
 ---
@@ -659,9 +657,7 @@ Expected: PASS (one test skipped when running as root).
 
 ```bash
 git add backend/app/config.py backend/app/services/page_attachments.py backend/tests/test_page_attachments.py
-git commit -m "feat(pages): add attachment storage service
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(pages): add attachment storage service"
 ```
 
 ---
@@ -782,9 +778,7 @@ Expected: the directory is owned by `app app`. Never build this branch as `darkr
 
 ```bash
 git add Dockerfile docker-compose.yml backend/app/main.py backend/tests/test_deployment_artifact.py
-git commit -m "feat(deploy): add the attachments volume
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(deploy): add the attachments volume"
 ```
 
 ---
@@ -1074,9 +1068,7 @@ Expected: PASS. httpx sets `Content-Length` for a `bytes` body, so `test_declare
 
 ```bash
 git add backend/app/api/routes/page_attachments.py backend/app/main.py backend/tests/test_page_attachment_routes.py
-git commit -m "feat(pages): add attachment upload and serve routes
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(pages): add attachment upload and serve routes"
 ```
 
 ---
@@ -1246,9 +1238,7 @@ Expected: PASS. A failure here names a guard these steps did not list; fix it th
 
 ```bash
 git add backend/app/services/content_surfaces.py backend/tests/test_api/test_rest_conformance.py backend/tests/test_door_parity.py docs/two-door-parity.md docs/runbook-backup-worker.md backend/app/api/deps.py CLAUDE.md
-git commit -m "chore(pages): classify the attachment routes
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "chore(pages): classify the attachment routes"
 ```
 
 ---
@@ -1721,7 +1711,5 @@ Expected: PASS.
 
 ```bash
 git add backend/app/services/page_attachment_cleanup.py backend/app/main.py backend/tests/test_page_attachment_cleanup.py backend/tests/test_code_deriver.py backend/tests/test_block_retrieval.py backend/tests/test_citation_reverifier.py CLAUDE.md
-git commit -m "feat(pages): add attachment cleanup job
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(pages): add attachment cleanup job"
 ```

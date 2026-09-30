@@ -34,7 +34,7 @@
 - If the dev Postgres is stopped, start only its service: `docker compose -f docker-compose.dev.yml up -d postgres` (repo root).
 - `rg` is a shell function on this host: never pipe a file list into `xargs rg`.
 - The merge gate, the Playwright leg (`backend/scripts/e2e/run_playwright_e2e.py`, never bare `npx playwright test`) and the production redeploy belong to the controller at finishing, not to any task. The redeploy needs the empty-table path of Assumptions, not a plain `docker compose up -d`.
-- Commits: `<type>(<scope>): <subject>`, subject ≤ 50 characters, imperative, ending with the line `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- Commits: `<type>(<scope>): <subject>`, subject ≤ 50 characters, imperative.
 
 ## Contracts
 
@@ -249,9 +249,7 @@ Expected: all PASS.
 
 ```bash
 git add backend/app/api/routes/projects.py backend/tests/test_projects_endpoint.py
-git commit -m "feat(projects): report work-log activity per project
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(projects): report work-log activity per project"
 ```
 
 ### Task 2: Frontend project summaries read the work log
@@ -324,9 +322,7 @@ Expected: PASS, and typecheck reports no error.
 
 ```bash
 git add frontend/src/hooks/api/use-projects-api.ts frontend/src/routes/_authenticated/projects.tsx frontend/src/routes/_authenticated/documents.tsx frontend/src/components/app-chrome/project-switcher.tsx frontend/src/demo/projects.ts frontend/src/routes/_authenticated/__tests__ frontend/src/components/app-chrome/__tests__/project-switcher.test.tsx frontend/src/features/knowledge/__tests__/topics-scope.test.tsx
-git commit -m "feat(projects): show work-log activity per project
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(projects): show work-log activity per project"
 ```
 
 ### Task 3: Work-log API hooks
@@ -693,9 +689,7 @@ Expected: PASS; typecheck reports no error.
 
 ```bash
 git add frontend/src/hooks/api/use-worklog-api.ts frontend/src/hooks/api/index.ts frontend/src/lib/query-keys.ts frontend/src/hooks/api/__tests__/use-worklog-api.test.tsx
-git commit -m "feat(worklog): add the SPA's work-log hooks
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(worklog): add the SPA's work-log hooks"
 ```
 
 ### Task 4: Work log panel
@@ -1309,9 +1303,7 @@ Expected: PASS; typecheck reports no error.
 
 ```bash
 git add frontend/src/features/worklog
-git commit -m "feat(worklog): add the Work log panel
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(worklog): add the Work log panel"
 ```
 
 ### Task 5: Work log header actions
@@ -1600,9 +1592,7 @@ Expected: PASS (the Task 4 tests still find the `h3` title); typecheck reports n
 
 ```bash
 git add frontend/src/features/worklog
-git commit -m "feat(worklog): close, reopen and purge a workstream
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(worklog): close, reopen and purge a workstream"
 ```
 
 ### Task 6: Work log search
@@ -1946,9 +1936,7 @@ Expected: PASS; typecheck reports no error.
 
 ```bash
 git add frontend/src/features/worklog
-git commit -m "feat(worklog): search a project's work log
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(worklog): search a project's work log"
 ```
 
 ### Task 7: Mount the Work log in the project workspace
@@ -2125,9 +2113,7 @@ Expected: PASS; typecheck reports no error.
 
 ```bash
 git add frontend/src/features/documents frontend/src/routes/_authenticated/projects_.\$project.tsx
-git commit -m "feat(worklog): show the Work log under the board
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(worklog): show the Work log under the board"
 ```
 
 ### Task 8: Activity Work log tab
@@ -2464,9 +2450,7 @@ Expected: PASS; typecheck reports no error.
 
 ```bash
 git add frontend/src/features/worklog frontend/src/routes/_authenticated/activity.tsx frontend/src/demo/projects.ts frontend/src/components/darkmem/detail-level-toggle.tsx
-git commit -m "feat(worklog): list open workstreams on Activity
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(worklog): list open workstreams on Activity"
 ```
 
 ### Task 9: Remove the checkpoint UI
@@ -2528,9 +2512,7 @@ Expected: every vitest file passes; typecheck and build succeed. If a run exits 
 
 ```bash
 git add -A frontend/src frontend/tests/demo-makes-no-api-calls.spec.ts
-git commit -m "refactor(activity): remove the checkpoint views
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "refactor(activity): remove the checkpoint views"
 ```
 
 ### Task 10: Line diff renderer
@@ -2664,9 +2646,7 @@ Expected: PASS; typecheck reports no error.
 
 ```bash
 git add frontend/package.json frontend/package-lock.json frontend/src/features/documents/components/line-diff.tsx frontend/src/features/documents/__tests__/line-diff.test.tsx
-git commit -m "feat(documents): add a line diff renderer
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(documents): add a line diff renderer"
 ```
 
 ### Task 11: Document revision hooks
@@ -2831,9 +2811,7 @@ Expected: PASS; typecheck reports no error.
 
 ```bash
 git add frontend/src/hooks/api/use-document-revisions-api.ts frontend/src/hooks/api/index.ts frontend/src/lib/query-keys.ts frontend/src/hooks/api/__tests__/use-document-revisions-api.test.tsx
-git commit -m "feat(documents): add the revision read hooks
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(documents): add the revision read hooks"
 ```
 
 ### Task 12: Revisions sheet on the document view
@@ -3178,9 +3156,7 @@ Expected: PASS; typecheck reports no error.
 
 ```bash
 git add frontend/src/features/documents
-git commit -m "feat(documents): compare revisions in a sheet
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(documents): compare revisions in a sheet"
 ```
 
 ### Task 13: Move run-key resolution into the work log
@@ -3293,9 +3269,7 @@ Expected: all PASS (`test_an_undeclared_run_is_refused` on both doors still hold
 
 ```bash
 git add backend/app/services/worklog.py backend/app/api/routes/worklog.py backend/app/api/mcp/server.py backend/tests/test_worklog_service.py
-git commit -m "refactor(worklog): own the run-key resolution
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "refactor(worklog): own the run-key resolution"
 ```
 
 ### Task 14: Remove the checkpoint doors
@@ -3390,9 +3364,7 @@ git commit -m "refactor(mcp): remove the checkpoint tools and routes
 
 checkpoint_save, checkpoint_latest, POST /api/v1/checkpoints and GET
 /api/v1/checkpoints/latest are gone; the work log (worklog_append,
-worklog_resume) replaces them.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+worklog_resume) replaces them."
 ```
 
 ### Task 15: Projects endpoint drops its checkpoint fields
@@ -3457,9 +3429,7 @@ Expected: PASS; typecheck reports no error.
 
 ```bash
 git add backend/app/api/routes/projects.py backend/tests/test_projects_endpoint.py backend/tests/test_projects_route.py frontend/src
-git commit -m "refactor(projects): drop the checkpoint counts
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "refactor(projects): drop the checkpoint counts"
 ```
 
 ### Task 16: Drop the checkpoint store
@@ -3530,9 +3500,7 @@ git commit -m "refactor(schema): drop session_checkpoints
 
 The table, its model, service and resume path are gone. A deployed
 database needs the table dropped and its schema_baseline_sha row
-deleted before the new image boots.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+deleted before the new image boots."
 ```
 
 ### Task 17: Retire the checkpoint vocabulary and prose
@@ -3629,9 +3597,7 @@ Expected: no output.
 
 ```bash
 git add backend/app backend/tests/test_document_routes.py frontend/src/features/activity/event-taxonomy.ts CLAUDE.md docs/agent-conventions.md
-git commit -m "refactor(events): retire the checkpoint vocabulary
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "refactor(events): retire the checkpoint vocabulary"
 ```
 
 ### Task 18: Work-log demo fixtures
@@ -3908,7 +3874,5 @@ Expected: PASS; typecheck reports no error.
 
 ```bash
 git add frontend/src/demo/worklog.ts frontend/src/hooks/api/use-worklog-api.ts frontend/src/hooks/api/__tests__/use-worklog-api.demo.test.tsx
-git commit -m "feat(demo): add work-log fixtures
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(demo): add work-log fixtures"
 ```

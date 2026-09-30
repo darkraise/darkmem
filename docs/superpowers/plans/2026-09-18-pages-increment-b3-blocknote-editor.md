@@ -30,7 +30,7 @@
 - **UI components come from darkraise-ui first** (CLAUDE.md). The editor's menus are BlockNote's own shadcn primitives because darkraise-ui's DropdownMenu, Popover and Select portal and BlockNote's slots must not; `page-editor.tsx` records that gap.
 - **Comments:** default to none; only where the WHY is non-obvious. Never reference the task, the increment or a review finding.
 - **English only** in code, comments, docs, commits and tests.
-- **Commits:** `<type>(<scope>): <subject>`, type = feat|fix|docs|style|refactor|test|chore|perf, subject <= 50 chars, imperative, no period. Every commit message ends with `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>` (the commit steps pass it as a second `-m`).
+- **Commits:** `<type>(<scope>): <subject>`, type = feat|fix|docs|style|refactor|test|chore|perf, subject <= 50 chars, imperative, no period.
 - **Every `git` command runs from the repo root**, and every path in a `git` command is repo-relative (`frontend/src/...`), unless its step says otherwise.
 - **Frontend commands run from `frontend/`:** `npm run typecheck` (= `tsc -b`), `npm test` (= `vitest run`), `npm run build`. One file: `npx vitest run <path>`. `npm run lint` is advisory, and the repo has pre-existing lint errors (`page-pane.tsx`'s title-sync effect, the tests' `wrapper` components); a task leaves no *new* one.
 - **Never run Playwright bare.** `npx playwright test` points `/api` at the live instance on `:8000`. The e2e leg is `backend/scripts/e2e/run_playwright_e2e.py` only (Task 15).
@@ -332,7 +332,7 @@ From the repo root:
 
 ```bash
 git add frontend/src/features/notes/lib/block-properties.ts frontend/src/features/notes/__tests__/block-properties.test.ts
-git commit -m "feat(notes): mirror the page block property rules" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(notes): mirror the page block property rules"
 ```
 
 
@@ -681,7 +681,7 @@ From the repo root:
 
 ```bash
 git add frontend/package.json frontend/package-lock.json frontend/src/features/notes/lib/editor-schema.tsx frontend/src/features/notes/__tests__/blocknote-probe.test.tsx
-git commit -m "feat(notes): add BlockNote and the page schema" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(notes): add BlockNote and the page schema"
 ```
 
 
@@ -1324,7 +1324,7 @@ From the repo root:
 
 ```bash
 git add frontend/src/features/notes/lib/inline-markdown.ts frontend/src/features/notes/__tests__/seeded.ts frontend/src/features/notes/__tests__/inline-markdown.test.ts
-git commit -m "feat(notes): convert block text to inline content" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(notes): convert block text to inline content"
 ```
 
 
@@ -2095,7 +2095,7 @@ From the repo root:
 
 ```bash
 git add frontend/src/features/notes/lib/sync-tree.ts frontend/src/features/notes/__tests__/fake-page-server.ts frontend/src/features/notes/__tests__/sync-tree.test.ts
-git commit -m "feat(notes): diff a page tree into block writes" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(notes): diff a page tree into block writes"
 ```
 
 
@@ -2513,7 +2513,7 @@ From the repo root:
 
 ```bash
 git add frontend/src/features/notes/lib/page-sync.ts frontend/src/features/notes/__tests__/page-sync.test.ts
-git commit -m "feat(notes): add the page save engine" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(notes): add the page save engine"
 ```
 
 
@@ -2963,7 +2963,7 @@ From the repo root:
 
 ```bash
 git add frontend/src/features/notes/lib/block-mapping.ts frontend/src/features/notes/__tests__/block-mapping.test.tsx
-git commit -m "feat(notes): map page blocks to editor blocks" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(notes): map page blocks to editor blocks"
 ```
 
 
@@ -3119,7 +3119,7 @@ From the repo root:
 
 ```bash
 git add frontend/src/features/notes/lib/nesting-guard.ts frontend/src/features/notes/__tests__/nesting-guard.test.tsx
-git commit -m "feat(notes): refuse new nesting under non-containers" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(notes): refuse new nesting under non-containers"
 ```
 
 
@@ -3352,7 +3352,7 @@ From the repo root:
 
 ```bash
 git add frontend/src/features/notes/lib/page-transport.ts frontend/src/features/notes/__tests__/page-transport.test.ts
-git commit -m "feat(notes): send sync writes over the page routes" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(notes): send sync writes over the page routes"
 ```
 
 
@@ -3790,7 +3790,7 @@ From the repo root:
 
 ```bash
 git add frontend/src/features/notes/use-page-sync.ts frontend/src/features/notes/__tests__/use-page-sync.test.tsx
-git commit -m "feat(notes): bind the save engine to the editor" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(notes): bind the save engine to the editor"
 ```
 
 
@@ -4034,7 +4034,7 @@ From the repo root:
 
 ```bash
 git add frontend/src/features/notes/use-document-mode.ts frontend/src/features/notes/use-page-editor.ts frontend/src/features/notes/__tests__/use-document-mode.test.tsx frontend/src/features/notes/__tests__/use-page-editor.test.tsx
-git commit -m "feat(notes): add the page editor hooks" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(notes): add the page editor hooks"
 ```
 
 
@@ -4304,7 +4304,7 @@ From the repo root:
 
 ```bash
 git add frontend/src/features/notes/page-outline.tsx frontend/src/features/notes/page-editor.tsx frontend/src/styles/globals.css frontend/src/features/notes/__tests__/page-editor.test.tsx
-git commit -m "feat(notes): add the BlockNote page editor" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(notes): add the BlockNote page editor"
 ```
 
 
@@ -4607,7 +4607,7 @@ From the repo root:
 
 ```bash
 git add frontend/src/features/notes/page-pane.tsx frontend/src/features/notes/__tests__/page-pane.test.tsx
-git commit -m "feat(notes): edit pages with the BlockNote editor" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(notes): edit pages with the BlockNote editor"
 ```
 
 
@@ -4985,7 +4985,7 @@ From the repo root:
 
 ```bash
 git add frontend/src/hooks/api/use-pages-api.ts frontend/src/hooks/api/__tests__/use-pages-mutations.test.tsx
-git commit -m "refactor(notes): drop the copied block editor" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "refactor(notes): drop the copied block editor"
 ```
 
 
@@ -5242,7 +5242,7 @@ From the repo root:
 
 ```bash
 git add frontend/src/features/notes/lib/demo-page.ts frontend/src/features/notes/demo-notes.tsx frontend/src/routes/_authenticated/notes.tsx frontend/src/features/notes/__tests__/demo-notes.test.tsx frontend/src/routes/_authenticated/__tests__/notes.demo.test.tsx
-git commit -m "feat(notes): show a sample page in demo mode" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(notes): show a sample page in demo mode"
 ```
 
 
@@ -5526,5 +5526,5 @@ From the repo root:
 
 ```bash
 git add frontend/tests/notes-editor.spec.ts CLAUDE.md
-git commit -m "test(notes): cover the page editor end to end" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "test(notes): cover the page editor end to end"
 ```

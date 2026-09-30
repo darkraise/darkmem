@@ -31,7 +31,7 @@
 - Nothing in the lane is extracted, embedded into memory retrieval, or imported by `app.services.pipeline`.
 - `session_checkpoints`, `checkpoint_save` and `checkpoint_latest` stay untouched in this increment; their removal is increment 6's (spec §9, amended 2026-09-23).
 - Tests run from `backend/` with `TEST_DATABASE_URL=postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test_2` against the dev-compose Postgres (`docker compose -f docker-compose.dev.yml up -d postgres` from the repo root when it is down).
-- Commits: `<type>(<scope>): <subject>`, subject ≤ 50 characters, imperative, ending with the line `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Never push; never `--no-verify`.
+- Commits: `<type>(<scope>): <subject>`, subject ≤ 50 characters, imperative. Never push; never `--no-verify`.
 
 ## Contracts
 
@@ -445,7 +445,7 @@ Expected: PASS.
 
 ```bash
 git add backend/migrations/versions/0001_baseline.py backend/app/models/worklog.py backend/app/models/__init__.py backend/tests/test_worklog_schema.py
-git commit -m "feat(worklog): add workstream and entry tables" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(worklog): add workstream and entry tables"
 ```
 
 ### Task 2: Lifecycle event vocabulary
@@ -571,7 +571,7 @@ Expected: PASS; typecheck exits 0.
 
 ```bash
 git add backend/app/services/events.py frontend/src/features/activity/event-taxonomy.ts backend/tests/test_worklog_schema.py
-git commit -m "feat(events): add the workstream lifecycle" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(events): add the workstream lifecycle"
 ```
 
 ### Task 3: Service write verbs
@@ -1383,7 +1383,7 @@ Expected: PASS. `test_event_taxonomy_map.py` now sees the four lifecycle literal
 
 ```bash
 git add backend/app/services/worklog.py backend/tests/test_worklog_service.py backend/tests/test_worklog_wall.py
-git commit -m "feat(worklog): add append, update and purge" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(worklog): add append, update and purge"
 ```
 
 ### Task 4: Service read verbs
@@ -1644,7 +1644,7 @@ Expected: PASS.
 
 ```bash
 git add backend/app/services/worklog.py backend/tests/test_worklog_service.py
-git commit -m "feat(worklog): add resume and list reads" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(worklog): add resume and list reads"
 ```
 
 ### Task 5: REST routes
@@ -2128,7 +2128,7 @@ Expected: PASS. (`test_rest_conformance.py` and `test_content_surface_scoping.py
 
 ```bash
 git add backend/app/schemas/worklog.py backend/app/api/routes/worklog.py backend/app/main.py backend/tests/test_worklog_rest.py backend/tests/test_api_keys.py
-git commit -m "feat(worklog): serve the work log over REST" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(worklog): serve the work log over REST"
 ```
 
 ### Task 6: MCP tools and scopes
@@ -2561,7 +2561,7 @@ Expected: PASS. (`test_every_registered_tool_is_named_in_the_instructions` fails
 
 ```bash
 git add backend/app/api/mcp/server.py backend/app/api/mcp/scopes.py backend/tests/test_mcp.py backend/tests/test_worklog_mcp.py
-git commit -m "feat(mcp): add the work-log tools" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(mcp): add the work-log tools"
 ```
 
 ### Task 7: Keyed document routes and manifest
@@ -2888,7 +2888,7 @@ Expected: PASS.
 
 ```bash
 git add backend/app/api/routes/documents.py backend/tests/test_documents_keyed.py backend/tests/test_api_keys.py
-git commit -m "feat(documents): key the sync routes, add manifest" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(documents): key the sync routes, add manifest"
 ```
 
 ### Task 8: Guard registries
@@ -3120,7 +3120,7 @@ Expected: PASS.
 
 ```bash
 git add backend/app/services/content_surfaces.py backend/tests/test_api/test_rest_conformance.py backend/tests/test_door_parity.py docs/two-door-parity.md
-git commit -m "test(guards): classify the work-log doors" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "test(guards): classify the work-log doors"
 ```
 
 ### Task 9: Instructions and CLAUDE.md counts
@@ -3349,5 +3349,5 @@ Expected: PASS — this is `CLAUDE.md`'s mandatory guard leg, green for the firs
 
 ```bash
 git add backend/app/services/prompt.py backend/tests/test_prompt_agent_instructions.py CLAUDE.md
-git commit -m "feat(mcp): route working data to the work log" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(mcp): route working data to the work log"
 ```

@@ -26,7 +26,7 @@
 - Run backend tests from `backend/` as `.venv/bin/python -m pytest`, always with `TEST_DATABASE_URL=postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test_2` and a Bash timeout. Never point pytest at production, and never run it without that variable: conftest drops the `public` schema of whatever test database it resolves, and the default is the controller's `darkmem_test`.
 - If the dev Postgres is stopped, start only its service: `docker compose -f docker-compose.dev.yml up -d postgres` (repo root). Stop it again when the plan is done.
 - `rg` is a shell function on this host: never pipe a file list into `xargs rg`.
-- Commits: `<type>(<scope>): <subject>`, subject ≤ 50 characters, imperative, ending with the line `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- Commits: `<type>(<scope>): <subject>`, subject ≤ 50 characters, imperative.
 
 ## Contracts
 
@@ -293,9 +293,7 @@ Expected: `originals 636/785  atoms 10/6234`. If the file is missing, say so in 
 
 ```bash
 git add backend/app/services/capture_lint.py backend/tests/test_capture_lint.py
-git commit -m "feat(capture): flag log-shaped memory content
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(capture): flag log-shaped memory content"
 ```
 
 ---
@@ -430,9 +428,7 @@ Expected: typecheck exit 0; the activity tests pass.
 
 ```bash
 git add backend/app/services/events.py frontend/src/features/activity/event-taxonomy.ts frontend/src/features/activity/use-feed.ts frontend/src/features/activity/__tests__/use-feed.real.test.tsx backend/tests/test_capture_warnings.py
-git commit -m "feat(events): add the capture_flagged event type
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(events): add the capture_flagged event type"
 ```
 
 ---
@@ -644,9 +640,7 @@ git commit -m "feat(capture): warn on log-shaped memory captures
 
 A capture capture_lint flags is still buffered; its ack carries
 warnings naming the signals, and it journals capture_flagged with the
-signal names only.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+signal names only."
 ```
 
 ---
@@ -818,9 +812,7 @@ Expected: all pass.
 
 ```bash
 git add backend/app/schemas/memory.py backend/app/api/routes/memories.py backend/app/api/mcp/server.py backend/tests/test_envelope.py backend/tests/test_capture_warnings.py
-git commit -m "feat(capture): carry warnings on the processed answer
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(capture): carry warnings on the processed answer"
 ```
 
 ---
@@ -943,9 +935,7 @@ Expected: all pass.
 
 ```bash
 git add backend/app/services/prompt.py backend/app/api/mcp/server.py backend/tests/test_prompt_agent_instructions.py backend/tests/test_door_parity.py docs/two-door-parity.md
-git commit -m "docs(mcp): tell agents what a capture warning means
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "docs(mcp): tell agents what a capture warning means"
 ```
 
 ---
@@ -1084,7 +1074,5 @@ Expected: the log ends `EXIT 0` after a `passed` line with no failures.
 
 ```bash
 git add frontend/src/hooks/api/use-memory-api.ts CLAUDE.md CHANGELOG.md docs/superpowers/specs/2026-09-23-work-log-lane-design.md
-git commit -m "docs(capture): record the memory-door warning
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "docs(capture): record the memory-door warning"
 ```

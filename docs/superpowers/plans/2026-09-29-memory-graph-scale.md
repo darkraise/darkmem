@@ -17,7 +17,7 @@
 ## Global Constraints
 
 - Language: English only in code, comments, docs, commits.
-- Commits: `<type>(<scope>): <subject>`, subject ≤ 50 chars, imperative, no period; end every commit message with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- Commits: `<type>(<scope>): <subject>`, subject ≤ 50 chars, imperative, no period.
 - Comments: none unless the WHY is non-obvious; never reference the task, plan or caller.
 - Backend commands run from `backend/` with `.venv/bin/python`; there is no `python` on PATH and no host `psql`.
 - Backend tests need the dev Postgres: `docker compose -f docker-compose.dev.yml up -d postgres` from the repo root (never the whole dev stack). Use `TEST_DATABASE_URL=postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test_2` for a delegated task's runs; `darkmem_test` is the controller's.
@@ -390,9 +390,7 @@ Expected: PASS (10 passed).
 
 ```bash
 git add backend/app/utils/graph_knn.py backend/tests/unit/test_graph_knn.py
-git commit -m "feat(graph): add a bounded-memory kNN graph
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(graph): add a bounded-memory kNN graph"
 ```
 
 ### Task 2: Bulk vector read: order, native floats, importance, stamp
@@ -686,9 +684,7 @@ Expected: PASS. If `session.stream` fails under the test fixture's transaction, 
 
 ```bash
 git add backend/app/repositories/vector.py backend/tests/test_graph_scale.py
-git commit -m "perf(graph): read vectors newest first, natively
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "perf(graph): read vectors newest first, natively"
 ```
 
 ### Task 3: kNN clustering in the vector repository
@@ -807,9 +803,7 @@ Expected: PASS. Then `rg -n "_louvain_igraph|_build_sparse_edges|_COMMUNITY_SAMP
 
 ```bash
 git add backend/app/repositories/vector.py backend/tests/unit/test_algorithms.py backend/tests/test_pushdown_remaining_channels.py backend/tests/test_graph_scale.py
-git commit -m "perf(graph): cluster on the kNN graph
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "perf(graph): cluster on the kNN graph"
 ```
 
 ### Task 4: Unified graph service: node budget, counts, cache
@@ -1216,9 +1210,7 @@ Expected: PASS. Then `rg -n "cosine_similarity_matrix|_fetch_importance_map|_com
 
 ```bash
 git add backend/app/services/graph.py backend/app/utils/math.py backend/tests/conftest.py backend/tests/test_graph_scale.py
-git commit -m "feat(graph): add node budget, counts and a cache
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(graph): add node budget, counts and a cache"
 ```
 
 ### Task 5: Unified route: node ceiling and all
@@ -1351,9 +1343,7 @@ Expected: PASS. Exit 143 is an earlyoom kill: check `free -h` and re-run before 
 
 ```bash
 git add backend/app/api/routes/graph.py backend/tests/test_api/test_graph.py
-git commit -m "feat(graph): accept all and a 50,000 node ceiling
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(graph): accept all and a 50,000 node ceiling"
 ```
 
 ### Task 6: Cluster naming budget
@@ -1571,9 +1561,7 @@ Expected: PASS (including the pre-existing `test_cluster_naming_dispatches_on_su
 
 ```bash
 git add backend/app/services/graph.py backend/tests/test_graph_cluster_naming.py
-git commit -m "perf(graph): cap and cache LLM cluster names
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "perf(graph): cap and cache LLM cluster names"
 ```
 
 ### Task 7: Entity overlay scoped to plotted memories
@@ -1779,9 +1767,7 @@ Expected: PASS.
 
 ```bash
 git add backend/app/repositories/graph.py backend/app/services/graph.py backend/tests/test_graph_scale.py
-git commit -m "fix(graph): scope the entity overlay to plotted nodes
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "fix(graph): scope the entity overlay to plotted nodes"
 ```
 
 ### Task 8: Graph scale bench
@@ -1981,9 +1967,7 @@ Expected: `PASS` (cold ≤ 10 s, warm ≤ 1 s, peak RSS ≤ 1,500 MB). Record th
 
 ```bash
 git add backend/scripts/benchlib/run_graph_scale.py
-git commit -m "test(graph): add a 20,000-node unified graph bench
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "test(graph): add a 20,000-node unified graph bench"
 ```
 
 ### Task 9: Frontend hook: node limit and all
@@ -2141,9 +2125,7 @@ Expected: PASS, typecheck clean.
 
 ```bash
 git add frontend/src/hooks/api/use-graph-api.ts frontend/src/hooks/api/__tests__/
-git commit -m "feat(graph): send the node budget from the hook
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(graph): send the node budget from the hook"
 ```
 
 ### Task 10: Node count control
@@ -2426,9 +2408,7 @@ Expected: PASS, typecheck clean.
 
 ```bash
 git add frontend/src/features/graph/lib/graph-prefs.ts frontend/src/features/graph/components/node-count-row.tsx frontend/src/features/graph/components/graph-toolbar.tsx frontend/src/features/graph/components/__tests__/node-count-row.test.tsx
-git commit -m "feat(graph): add a node count control with All
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(graph): add a node count control with All"
 ```
 
 ### Task 11: Graph page wiring
@@ -2564,9 +2544,7 @@ Expected: PASS, typecheck clean.
 
 ```bash
 git add frontend/src/features/memory-graph/components/real-memory-graph-page.tsx frontend/src/features/memory-graph/components/__tests__/real-memory-graph-page.test.tsx
-git commit -m "feat(graph): wire the node budget into the page
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(graph): wire the node budget into the page"
 ```
 
 ### Task 12: Scale tiers and cluster seeding
@@ -2827,9 +2805,7 @@ Expected: PASS, typecheck clean.
 
 ```bash
 git add frontend/src/features/graph/lib/graph-scale.ts frontend/src/features/graph/lib/__tests__/graph-scale.test.ts
-git commit -m "feat(graph): add scale tiers and cluster seeding
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(graph): add scale tiers and cluster seeding"
 ```
 
 ### Task 13: 2D renderer scale settings
@@ -2936,9 +2912,7 @@ Expected: PASS, typecheck clean, build succeeds.
 
 ```bash
 git add frontend/src/features/graph/components/graph-2d-renderer.tsx
-git commit -m "perf(graph): tune the 2D renderer by graph size
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "perf(graph): tune the 2D renderer by graph size"
 ```
 
 ### Task 14: 2D hull caching
@@ -3219,9 +3193,7 @@ Expected: PASS, typecheck clean, build succeeds.
 
 ```bash
 git add frontend/src/features/graph/lib/graph-geometry.ts frontend/src/features/graph/components/graph-2d-renderer.tsx frontend/src/features/graph/lib/__tests__/framed-hull.test.ts
-git commit -m "perf(graph): cache hull shapes between frames
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "perf(graph): cache hull shapes between frames"
 ```
 
 ### Task 15: 3D best-effort and large-graph notice
@@ -3434,9 +3406,7 @@ Expected: PASS, typecheck clean, build succeeds.
 
 ```bash
 git add frontend/src/features/graph/components/graph-3d-renderer.tsx frontend/src/features/memory-graph/components/real-memory-graph-page.tsx frontend/src/features/memory-graph/components/__tests__/large-3d-notice.test.tsx
-git commit -m "perf(graph): lighten 3D for large graphs
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "perf(graph): lighten 3D for large graphs"
 ```
 
 ### Task 16: Synthetic graph and 20k story
@@ -3641,9 +3611,7 @@ Expected: PASS, typecheck clean, Storybook builds.
 
 ```bash
 git add frontend/src/features/graph/lib/synthetic-graph.ts frontend/src/features/graph/lib/__tests__/synthetic-graph.test.ts frontend/src/features/graph/components/graph-2d-renderer.stories.tsx
-git commit -m "test(graph): add a 20,000-node 2D renderer story
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "test(graph): add a 20,000-node 2D renderer story"
 ```
 
 ### Task 17: Scale verification
@@ -3755,9 +3723,7 @@ bash $P/register set $R 3 verify --note "bench 20k: <result line from Step 1>; s
 bash $P/register set $R 5 verify --note "<same figures>; owner check on a GPU browser at the live instance owed"
 bash $P/register check $R
 git add $R
-git commit -m "docs(graph): record the 20,000-node measurements
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "docs(graph): record the 20,000-node measurements"
 ```
 
 ### Task 18: Gate and deploy
@@ -3818,7 +3784,5 @@ for row in 1 2 4; do
 done
 bash $P/register check $R
 git add $R
-git commit -m "docs(graph): record the node budget deploy
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "docs(graph): record the node budget deploy"
 ```

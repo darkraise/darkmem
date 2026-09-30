@@ -30,7 +30,7 @@
 - The merge gate (`./scripts/gate.sh`) and the redeploy CLAUDE.md requires after a backend change belong to the controller at finishing, not to any task.
 - If the dev Postgres is stopped, start only its service: `docker compose -f docker-compose.dev.yml up -d postgres` (repo root). Stop it again when the plan is done.
 - `rg` is a shell function on this host: never pipe a file list into `xargs rg`.
-- Commits: `<type>(<scope>): <subject>`, subject ≤ 50 characters, imperative, ending with the line `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- Commits: `<type>(<scope>): <subject>`, subject ≤ 50 characters, imperative.
 
 ## Contracts
 
@@ -368,9 +368,7 @@ git commit -m "feat(worklog): add the retention sweep
 
 expire_next erases the longest-closed unretained workstream past the
 window through the purge verb's journal-then-delete helper, skipping
-a row an append holds. The race tests now drive the real sweep.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+a row an append holds. The race tests now drive the real sweep."
 ```
 
 ### Task 2: The worklog_cleanup job runner
@@ -670,9 +668,7 @@ git add backend/app/services/worklog_cleanup.py backend/tests/test_worklog_clean
 git commit -m "feat(worklog): add the worklog_cleanup runner
 
 Calls expire_next one transaction at a time until nothing is eligible,
-reading retention_days from the job's config row.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+reading retention_days from the job's config row."
 ```
 
 ### Task 3: Register the job and move the roster
@@ -857,7 +853,5 @@ git add backend/app/main.py backend/tests/test_code_deriver.py backend/tests/tes
 git commit -m "feat(jobs): register worklog_cleanup
 
 The roster goes to twenty-six jobs, twenty of them live; CLAUDE.md and
-the changelog record the retention rule.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+the changelog record the retention rule."
 ```

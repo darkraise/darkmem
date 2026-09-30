@@ -21,7 +21,7 @@
 - Raw-SQL parameters whose type Postgres cannot infer carry an explicit `CAST(... AS ...)`.
 - A stale `expected_hash` writes nothing: no row change, no tag change, no `document_updated` event.
 - `expected_hash` is not a metadata field. A call naming only `expected_hash` is still `DocumentNothingToChange` (422 / `no_change`).
-- Commit messages: `<type>(<scope>): <subject>`, subject at most 50 characters, imperative, no period, ending with the line `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- Commit messages: `<type>(<scope>): <subject>`, subject at most 50 characters, imperative, no period.
 - No new comments that describe what code does; a comment states a non-obvious reason only.
 
 ## Contracts
@@ -347,7 +347,7 @@ Expected: PASS, every test in both files (the existing metadata tests prove the 
 
 ```bash
 git add backend/app/services/document_door.py backend/tests/test_document_update.py
-git commit -m "feat(documents): guard metadata edits by hash" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(documents): guard metadata edits by hash"
 ```
 
 ### Task 2: Keyed, hash-guarded REST PATCH
@@ -634,7 +634,7 @@ Expected: PASS (including `test_the_committed_table_is_the_enforced_table`).
 
 ```bash
 git add backend/app/api/routes/documents.py backend/tests/test_documents_keyed.py backend/tests/test_api_keys.py backend/tests/test_door_parity.py docs/two-door-parity.md docs/runbook-exposed-deployment.md CLAUDE.md
-git commit -m "feat(documents): admit a key on the metadata PATCH" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(documents): admit a key on the metadata PATCH"
 ```
 
 ### Task 3: MCP document_update hash precondition and changelog
@@ -896,5 +896,5 @@ Expected: PASS.
 
 ```bash
 git add backend/app/api/mcp/server.py backend/tests/test_mcp.py CHANGELOG.md
-git commit -m "feat(mcp): guard document_update by hash" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(mcp): guard document_update by hash"
 ```

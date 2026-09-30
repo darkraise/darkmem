@@ -33,11 +33,7 @@ pytest; React + TanStack Query + TypeScript on the frontend.
   seems to need one, stop and report.
 - **Language:** English only in code, comments, docs, commits, tests.
 - **Commits:** `<type>(<scope>): <subject>`, subject ≤50 chars, imperative, no
-  period. Every commit message ends with:
-  ```
-  Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-  Claude-Session: https://claude.ai/code/session_01V1jqL7Mx485MX5RQfnjDSj
-  ```
+  period.
 - **Backend tests** run from `backend/` as `python -m pytest -q`. They need a
   `darkmem_test` database on 127.0.0.1:5433.
 - **`pyproject.toml` sets `testpaths = ["tests"]`, so plain `pytest -q` does NOT

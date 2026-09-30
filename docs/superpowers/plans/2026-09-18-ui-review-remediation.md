@@ -28,7 +28,7 @@
 - **Copy rule:** the literal phrases the spec fixes are used verbatim: "Saved project not found — showing all", "Documents open one project at a time", "Code is scoped by repository, not by project", "Page content", "Mark as done", "Mark as not done", "Expand", "Collapse", "failed".
 - **Comments:** default to none; only where the WHY is non-obvious. Never reference a task, the review or a finding number.
 - **English only** in code, comments, docs, commits and tests.
-- **Commits:** `<type>(<scope>): <subject>`, type = feat|fix|docs|style|refactor|test|chore|perf, subject <= 50 chars, imperative, no period. Every commit message ends with `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>` (the commit steps pass it as a second `-m`).
+- **Commits:** `<type>(<scope>): <subject>`, type = feat|fix|docs|style|refactor|test|chore|perf, subject <= 50 chars, imperative, no period.
 - **Every `git` command runs from the worktree root** `/root/repositories/darkmem/.worktrees/ui-review`, with repo-relative paths (`frontend/src/...`).
 - **Frontend commands run from `frontend/`:** `npm run typecheck` (= `tsc -b`), `npx vitest run <path>`, `npm test` (= `vitest run`), `npm run build`. `npm run lint` is advisory; a task leaves no *new* lint error. **Never run prettier** on files a task does not edit (the frontend is not prettier-clean repo-wide).
 - **Playwright never reaches `:8000`.** A bare `npx playwright test` proxies `/api` to the live instance. Task-level demo specs run only as `E2E_API_TARGET=http://127.0.0.1:9 timeout 900 npx playwright test --project=demo-fixture <spec>` (the dead target means no request can reach a real backend; demo specs issue none). The full e2e leg runs only through `backend/scripts/e2e/run_playwright_e2e.py` (Task 25).
@@ -349,7 +349,7 @@ Expected: exit 0.
 
 ```bash
 git add frontend/src/hooks/api frontend/tests/demo-makes-no-api-calls.spec.ts
-git commit -m "fix(demo): keep every Settings read offline" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "fix(demo): keep every Settings read offline"
 ```
 
 ### Task 2: Demo fixtures for projects, usage and jobs
@@ -671,7 +671,7 @@ Expected: 31 passed.
 
 ```bash
 git add frontend/src/demo frontend/src/hooks/api
-git commit -m "feat(demo): add project, usage and job fixtures" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(demo): add project, usage and job fixtures"
 ```
 
 ### Task 3: Settings tab registry and dead code
@@ -760,7 +760,7 @@ Expected: PASS; typecheck exit 0. `rg -n "settings-tab\"" src` prints nothing.
 
 ```bash
 git add -A frontend/src/lib frontend/src/features/settings/__tests__/settings-distribution.real.test.tsx frontend/src/routes/_authenticated/settings.tsx frontend/src/routes/_authenticated/__tests__/settings-tabs.test.ts
-git commit -m "fix(settings): register the Backups tab" -m "Also deletes lib/settings-tab.ts, which nothing imported." -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "fix(settings): register the Backups tab" -m "Also deletes lib/settings-tab.ts, which nothing imported."
 ```
 
 ### Task 4: Project scope defaults to all projects
@@ -1123,7 +1123,7 @@ Expected: exit 0; the whole suite green.
 
 ```bash
 git add frontend/src/stores frontend/src/components/app-chrome frontend/src/routes/_authenticated.tsx
-git commit -m "feat(scope): open every session on all projects" -m "A persisted scope the corpus no longer holds widens to all projects" -m "and the switcher says so." -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(scope): open every session on all projects" -m "A persisted scope the corpus no longer holds widens to all projects" -m "and the switcher says so."
 ```
 
 ### Task 5: Code pages opt out of project scope
@@ -1365,7 +1365,7 @@ Expected: PASS; typecheck exit 0. `rg -n "not applied here|scope: repository, no
 
 ```bash
 git add frontend/src/components/app-chrome frontend/src/routes frontend/src/features/code
-git commit -m "feat(scope): disable the switcher on code pages" -m "Replaces the five inline repository-scope disclaimers, and adds a" -m "help tooltip to the context chip." -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(scope): disable the switcher on code pages" -m "Replaces the five inline repository-scope disclaimers, and adds a" -m "help tooltip to the context chip."
 ```
 
 ### Task 6: Memories and Documents read the global scope
@@ -1833,7 +1833,7 @@ Expected: every test passes.
 
 ```bash
 git add frontend/src/features/memories frontend/src/routes/_authenticated/memories.tsx frontend/src/routes/_authenticated/documents.tsx frontend/src/routes/_authenticated/__tests__/documents.test.tsx frontend/tests/honesty
-git commit -m "feat(scope): scope Memories and Documents globally" -m "Documents under all projects offers a chooser that sets the scope;" -m "the ?project= search param is gone." -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(scope): scope Memories and Documents globally" -m "Documents under all projects offers a chooser that sets the scope;" -m "the ?project= search param is gone."
 ```
 
 ### Task 7: Knowledge, graph and chat pages read the global scope
@@ -2113,7 +2113,7 @@ Expected: every test passes.
 
 ```bash
 git add frontend/src/features/knowledge frontend/src/features/memory-graph frontend/src/features/chat
-git commit -m "feat(scope): remove page-level project controls" -m "Facts, Review, Articles, the demo graph and the demo chat pane now" -m "read the header switcher's scope." -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(scope): remove page-level project controls" -m "Facts, Review, Articles, the demo graph and the demo chat pane now" -m "read the header switcher's scope."
 ```
 
 ### Task 8: Topics follows the global scope
@@ -2379,7 +2379,7 @@ Expected: 31 passed.
 
 ```bash
 git add frontend/src/components/app-chrome frontend/src/routes/_authenticated/documents.tsx frontend/src/features/knowledge
-git commit -m "feat(scope): make Topics follow the project switcher" -m "Under all projects it offers the same one-project chooser as Documents," -m "now a shared component." -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(scope): make Topics follow the project switcher" -m "Under all projects it offers the same one-project chooser as Documents," -m "now a shared component."
 ```
 
 ### Task 9: Responsive app header
@@ -2819,7 +2819,7 @@ Expected: PASS; typecheck exit 0. If a test asserts an old description string, u
 
 ```bash
 git add frontend/src/components/app-chrome frontend/src/routes frontend/src/styles/globals.css frontend/src/features/chat/components/real-chat-page.tsx frontend/src/features/memory-graph/components/real-memory-graph-page.tsx
-git commit -m "feat(chrome): collapse header controls below md" -m "Page actions go icon-only on narrow screens, long descriptions are" -m "shortened, and a truncated one shows in full in a tooltip." -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(chrome): collapse header controls below md" -m "Page actions go icon-only on narrow screens, long descriptions are" -m "shortened, and a truncated one shows in full in a tooltip."
 ```
 
 ### Task 10: Scrollable tab bars
@@ -3038,7 +3038,7 @@ Expected: PASS; typecheck exit 0.
 
 ```bash
 git add frontend/src/components/darkmem frontend/src/styles/globals.css frontend/src/routes/_authenticated/settings.tsx frontend/src/routes/_authenticated/activity.tsx
-git commit -m "feat(ui): scroll long tab bars instead of clipping" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(ui): scroll long tab bars instead of clipping"
 ```
 
 ### Task 11: Activity pipeline rows and chat thread pane
@@ -3298,7 +3298,7 @@ Expected: every test passes. A failure that asserts the old layout or copy this 
 
 ```bash
 git add frontend/src/features/activity frontend/src/features/chat
-git commit -m "fix(ui): stack pipeline rows and widen chat threads" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "fix(ui): stack pipeline rows and widen chat threads"
 ```
 
 ### Task 12: Code Graph layout and panel chrome
@@ -3425,7 +3425,7 @@ Expected: every test passes. A failure that asserts the old layout or copy this 
 
 ```bash
 git add frontend/src/features/code
-git commit -m "fix(code): stack the Code Graph panes below lg" -m "Also sentence-cases its panel headings, lifts its captions to 12px" -m "and spells out the node and edge counter." -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "fix(code): stack the Code Graph panes below lg" -m "Also sentence-cases its panel headings, lifts its captions to 12px" -m "and spells out the node and edge counter."
 ```
 
 ### Task 13: Contrast-safe text tokens
@@ -3553,7 +3553,7 @@ Expected: scan PASS; whole suite green; typecheck exit 0; build green (Tailwind 
 
 ```bash
 git add -A frontend/src
-git commit -m "fix(a11y): route semantic text colours via tokens" -m "Light mode darkens the accent, success, warning and info hues for text" -m "so they clear 4.5:1; dark mode keeps them. A scan forbids the raw classes." -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "fix(a11y): route semantic text colours via tokens" -m "Light mode darkens the accent, success, warning and info hues for text" -m "so they clear 4.5:1; dark mode keeps them. A scan forbids the raw classes."
 ```
 
 ### Task 14: Minimum 12px text
@@ -3636,7 +3636,7 @@ Expected: scan PASS; suite green; typecheck exit 0; build green. Layouts that br
 
 ```bash
 git add -A frontend/src
-git commit -m "fix(a11y): raise every sub-12px text to text-xs" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "fix(a11y): raise every sub-12px text to text-xs"
 ```
 
 ### Task 15: Notes editor accessibility
@@ -3815,7 +3815,7 @@ Expected: PASS; typecheck exit 0.
 
 ```bash
 git add frontend/src/features/notes
-git commit -m "fix(a11y): label the notes editor and its controls" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "fix(a11y): label the notes editor and its controls"
 ```
 
 ### Task 16: Graph canvas semantics and label overlap
@@ -4108,7 +4108,7 @@ Expected: PASS; typecheck exit 0.
 
 ```bash
 git add frontend/src/features/memory-graph frontend/src/features/code
-git commit -m "fix(a11y): graph canvas roles, focus rings, labels" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "fix(a11y): graph canvas roles, focus rings, labels"
 ```
 
 ### Task 17: Login follows the app theme
@@ -4353,7 +4353,7 @@ Expected: PASS (including `brand-assets.test.ts`); typecheck exit 0. The label's
 
 ```bash
 git add frontend/src/features/auth frontend/src/lib frontend/src/routes/_guest.tsx frontend/src/styles/globals.css
-git commit -m "fix(auth): build the login card on theme tokens" -m "It follows light and dark mode, uses the app's brand mark and the" -m "library button, and tints the particle backdrop from --primary." -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "fix(auth): build the login card on theme tokens" -m "It follows light and dark mode, uses the app's brand mark and the" -m "library button, and tints the particle backdrop from --primary."
 ```
 
 ### Task 18: Sidebar and theme surface
@@ -4456,7 +4456,7 @@ Expected: PASS; build green.
 
 ```bash
 git add frontend/src/styles/globals.css frontend/src/theme.config.ts frontend/src/__tests__
-git commit -m "style(chrome): calm the sidebar and neutral surface" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "style(chrome): calm the sidebar and neutral surface"
 ```
 
 ### Task 19: Articles and Dashboard polish
@@ -4689,7 +4689,7 @@ Expected: every test passes. A failure that asserts the old layout or copy this 
 
 ```bash
 git add frontend/src/routes frontend/src/features/knowledge frontend/src/features/dashboard
-git commit -m "style(ui): polish Articles and the Dashboard" -m "Articles gets its own icon and an aligned badge column; the contribution" -m "calendar fills its card and the stat cards are tighter." -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "style(ui): polish Articles and the Dashboard" -m "Articles gets its own icon and an aligned badge column; the contribution" -m "calendar fills its card and the stat cards are tighter."
 ```
 
 ### Task 20: Notes editor styling
@@ -4788,7 +4788,7 @@ Expected: PASS; typecheck exit 0.
 
 ```bash
 git add frontend/src/features/notes
-git commit -m "style(notes): put the page editor on theme tokens" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "style(notes): put the page editor on theme tokens"
 ```
 
 ### Task 21: Jobs and Review controls
@@ -4963,7 +4963,7 @@ Expected: every test passes. A failure that asserts the old layout or copy this 
 
 ```bash
 git add frontend/src/features/jobs frontend/src/features/knowledge
-git commit -m "feat(ui): clearer job cards and review mode switch" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(ui): clearer job cards and review mode switch"
 ```
 
 ### Task 22: Timestamps and kind lists in prose
@@ -5192,7 +5192,7 @@ Expected: PASS; typecheck exit 0. A test asserting an old raw ISO string or brac
 
 ```bash
 git add frontend/src/components/darkmem frontend/src/lib frontend/src/features/knowledge frontend/src/routes
-git commit -m "feat(copy): relative timestamps and prose kind lists" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(copy): relative timestamps and prose kind lists"
 ```
 
 ### Task 23: Advanced-only detail and corrected copy
@@ -5444,7 +5444,7 @@ Expected: every test passes (labels, lifecycle badges, exclusion counts and tags
 
 ```bash
 git add frontend/src/components/darkmem frontend/src/features frontend/src/routes/_authenticated/memories.tsx
-git commit -m "feat(copy): keep implementation detail in Advanced" -m "Task ids, raw keys, algorithm names and the populated state word render" -m "only in Advanced; long intros move to help tooltips; stale LLM and" -m "article-synthesis copy is corrected." -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "feat(copy): keep implementation detail in Advanced" -m "Task ids, raw keys, algorithm names and the populated state word render" -m "only in Advanced; long intros move to help tooltips; stale LLM and" -m "article-synthesis copy is corrected."
 ```
 
 ### Task 24: Demo-only visuals
@@ -5605,7 +5605,7 @@ Expected: every test passes.
 
 ```bash
 git add frontend/src/features/memories frontend/src/features/memory-graph frontend/src/routes/_authenticated/memories.tsx
-git commit -m "fix(demo): align demo memory rows and graph chrome" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git commit -m "fix(demo): align demo memory rows and graph chrome"
 ```
 
 ### Task 25: Final verification

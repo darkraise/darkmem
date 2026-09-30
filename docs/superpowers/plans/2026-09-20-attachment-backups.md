@@ -28,7 +28,7 @@
 - Frontend commands run from `frontend/`: `npm run typecheck`, `npm test`, `npm run build`.
 - Every Bash test command carries an explicit timeout (the Bash tool's `timeout` parameter, e.g. 600000).
 - **No task deploys.** No implementer runs `docker compose up`, runs `scripts/build-push.sh`, or touches the `:8000` instance. The branch inherits sub-project 1's regenerated baseline, so the deploy is a drop/recreate the owner has not authorised.
-- Commits follow `<type>(<scope>): <subject>` (≤ 50 chars, imperative) and end with `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`.
+- Commits follow `<type>(<scope>): <subject>` (≤ 50 chars, imperative).
 - Comments only where the WHY is non-obvious; never reference the task or the plan.
 
 ## Contracts

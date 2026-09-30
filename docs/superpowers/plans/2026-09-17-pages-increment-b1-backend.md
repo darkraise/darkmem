@@ -26,11 +26,7 @@
 - **REST conventions** (`docs/api-rest-conventions.md`): 201 create, 204 delete.
 - **Comments:** default to none; only where the WHY is non-obvious. Never reference the task, increment or a review finding.
 - **English only** in code, comments, docs, commits, tests.
-- **Commits:** `<type>(<scope>): <subject>`, subject ≤50 chars, imperative, no period. Every commit message ends with:
-  ```
-  Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-  Claude-Session: https://claude.ai/code/session_01UQgipD4phQcUg2AtRvaqEh
-  ```
+- **Commits:** `<type>(<scope>): <subject>`, subject ≤50 chars, imperative, no period.
 - **Backend tests** run from `backend/` on lane database 3, one named set of files per invocation, never the full suite in one process:
   `TEST_DATABASE_URL="postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test_3" timeout 900 .venv/bin/python -m pytest -q <paths>`
   **Never use `darkmem_test`** — the controller keeps it.
@@ -300,10 +296,7 @@ Same command as Step 4. Expected: PASS.
 
 ```bash
 git add backend/app/taxonomy.py backend/tests/test_taxonomy.py backend/tests/test_notes_schema.py
-git commit -m "feat(taxonomy): admit page-only block types
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01UQgipD4phQcUg2AtRvaqEh"
+git commit -m "feat(taxonomy): admit page-only block types"
 ```
 
 ---
@@ -564,10 +557,7 @@ Expected: PASS, including every pre-existing round-trip test (documents never ca
 
 ```bash
 git add backend/app/services/block_serializer.py backend/tests/test_block_serializer.py
-git commit -m "feat(blocks): serialise todo, toggle and callout
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01UQgipD4phQcUg2AtRvaqEh"
+git commit -m "feat(blocks): serialise todo, toggle and callout"
 ```
 
 ---
@@ -1056,10 +1046,7 @@ Expected: PASS. `test_block_verbs_round_trip_on_a_page` still passes: its insert
 
 ```bash
 git add backend/app/services/block_verbs.py backend/tests/test_block_verbs.py
-git commit -m "feat(blocks): add page block rules
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01UQgipD4phQcUg2AtRvaqEh"
+git commit -m "feat(blocks): add page block rules"
 ```
 
 ---
@@ -1653,10 +1640,7 @@ Expected: FAIL with a raw `IntegrityError` (the mapping no longer recognises `bl
 
 ```bash
 git add backend/app/services/block_verbs.py backend/tests/test_block_verbs.py
-git commit -m "feat(blocks): client block ids and batch insert
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01UQgipD4phQcUg2AtRvaqEh"
+git commit -m "feat(blocks): client block ids and batch insert"
 ```
 
 ---
@@ -1966,10 +1950,7 @@ Expected: both parametrisations FAIL on `_page_vectors(...) == 0`. Restore the c
 
 ```bash
 git add backend/app/services/block_verbs.py backend/tests/test_block_verbs.py
-git commit -m "feat(blocks): drop page vectors on edit
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01UQgipD4phQcUg2AtRvaqEh"
+git commit -m "feat(blocks): drop page vectors on edit"
 ```
 
 ---
@@ -2265,10 +2246,7 @@ Expected: FAIL on `assert nested == 0`. Restore. Then, inside `_flatten_headings
 ```bash
 git add backend/app/services/page_door.py backend/app/schemas/page.py \
         backend/tests/test_page_door.py backend/tests/test_page_document_isolation.py
-git commit -m "feat(pages): flatten headings, embed via sweep
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01UQgipD4phQcUg2AtRvaqEh"
+git commit -m "feat(pages): flatten headings, embed via sweep"
 ```
 
 ---
@@ -2420,10 +2398,7 @@ Expected: FAIL. Revert (`git diff backend/app/api/routes/documents.py` prints no
 ```bash
 git status --short   # only the test file may be modified
 git add backend/tests/test_page_document_isolation.py
-git commit -m "test(pages): pin document surfaces as unchanged
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01UQgipD4phQcUg2AtRvaqEh"
+git commit -m "test(pages): pin document surfaces as unchanged"
 ```
 
 ---
@@ -2752,10 +2727,7 @@ Expected: PASS. No route was added, so the guards stay green.
 
 ```bash
 git add backend/app/schemas/page.py backend/app/api/routes/pages.py backend/tests/test_page_routes.py
-git commit -m "feat(pages): page block models, ids and refusals
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01UQgipD4phQcUg2AtRvaqEh"
+git commit -m "feat(pages): page block models, ids and refusals"
 ```
 
 ---
@@ -3029,10 +3001,7 @@ Expected: PASS.
 git add backend/app/api/routes/pages.py backend/app/services/content_surfaces.py \
         backend/tests/test_api/test_rest_conformance.py backend/tests/test_door_parity.py \
         backend/tests/test_page_routes.py docs/two-door-parity.md
-git commit -m "feat(pages): batch insert page blocks over REST
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01UQgipD4phQcUg2AtRvaqEh"
+git commit -m "feat(pages): batch insert page blocks over REST"
 ```
 
 ---
@@ -3200,10 +3169,7 @@ Expected: PASS (the row-lock inventory is unchanged: `page_door.py` is already l
 
 ```bash
 git add backend/app/services/page_door.py backend/app/schemas/page.py backend/tests/test_page_door.py
-git commit -m "feat(pages): serve block source and list trash
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01UQgipD4phQcUg2AtRvaqEh"
+git commit -m "feat(pages): serve block source and list trash"
 ```
 
 ---
@@ -3369,10 +3335,7 @@ Expected: PASS.
 git add backend/app/api/routes/pages.py backend/app/services/content_surfaces.py \
         backend/tests/test_api/test_rest_conformance.py backend/tests/test_door_parity.py \
         backend/tests/test_page_routes.py docs/two-door-parity.md
-git commit -m "feat(pages): list trashed page roots over REST
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01UQgipD4phQcUg2AtRvaqEh"
+git commit -m "feat(pages): list trashed page roots over REST"
 ```
 
 ---
@@ -3502,8 +3465,5 @@ Expected: `thirteen routes` in CLAUDE.md, and `**80 surfaces: 25 two-door, 55 si
 
 ```bash
 git add CLAUDE.md
-git commit -m "docs(pages): record page block types and routes
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01UQgipD4phQcUg2AtRvaqEh"
+git commit -m "docs(pages): record page block types and routes"
 ```

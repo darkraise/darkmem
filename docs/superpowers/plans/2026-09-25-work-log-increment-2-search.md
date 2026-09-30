@@ -30,7 +30,7 @@
 - Nothing in the lane is reachable from `app.services.pipeline`, `hybrid_search`, `layer_composition`, `chat` or the vault writers, and no work-log module reads a memory table (spec §7).
 - Tests run from `backend/` with `TEST_DATABASE_URL=postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test_2` against the dev-compose Postgres (`docker compose -f docker-compose.dev.yml up -d postgres` from the repo root when it is down). Run pytest as `.venv/bin/python -m pytest`, never `uv run` (it writes an untracked `backend/uv.lock`).
 - Every `git` command runs from the repository root (`/root/repositories/darkmem`); every pytest command runs from `backend/`.
-- Commits: `<type>(<scope>): <subject>`, subject ≤ 50 characters, imperative, ending with the line `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Never push; never `--no-verify`.
+- Commits: `<type>(<scope>): <subject>`, subject ≤ 50 characters, imperative. Never push; never `--no-verify`.
 - Done means all nine tasks committed with the full backend suite and the `CLAUDE.md` guard leg green on the branch. Spec §9 then requires the increment deployed on this host before increment 3 starts; that deploy is the finishing step's and needs the owner's go-ahead. It regenerates no baseline, so it is an image rebuild whose boot `reconcile` creates the new family, with no drop and recreate. Register row 1 stays `doing` until the deploy is verified.
 
 ## Contracts
@@ -263,7 +263,7 @@ Expected: PASS
 
 ```bash
 git add backend/app/services/embedder_registry.py backend/tests/test_partition_templates.py backend/tests/test_worklog_embeddings.py
-git commit -m "feat(worklog): add the worklog_embeddings family" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(worklog): add the worklog_embeddings family"
 ```
 
 ### Task 2: Entry embedding writer
@@ -544,7 +544,7 @@ Expected: PASS
 
 ```bash
 git add backend/app/services/worklog_embeddings.py backend/tests/test_worklog_embeddings.py
-git commit -m "feat(worklog): embed entries into their family" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(worklog): embed entries into their family"
 ```
 
 ### Task 3: Refresh job work-log arm
@@ -1023,7 +1023,7 @@ Expected: PASS
 
 ```bash
 git add backend/app/services/block_embedding_refresh.py backend/app/services/job_runners.py backend/tests/test_block_embedding_refresh.py
-git commit -m "feat(worklog): sweep entries in the embedding refresh" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(worklog): sweep entries in the embedding refresh"
 ```
 
 ### Task 4: Search service verb
@@ -1470,7 +1470,7 @@ Expected: PASS
 
 ```bash
 git add backend/app/services/worklog.py backend/tests/test_worklog_search.py
-git commit -m "feat(worklog): add the search verb" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(worklog): add the search verb"
 ```
 
 ### Task 5: Wall scans
@@ -1632,7 +1632,7 @@ Expected: PASS. Then prove the family scan can fail: temporarily add the line `#
 
 ```bash
 git add backend/tests/test_worklog_wall.py docs/superpowers/specs/2026-09-23-work-log-lane-design.md
-git commit -m "test(worklog): wall off the vector family" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "test(worklog): wall off the vector family"
 ```
 
 ### Task 6: REST search route
@@ -1834,7 +1834,7 @@ Expected: PASS. (The enumeration guards stay red until Task 8.)
 
 ```bash
 git add backend/app/schemas/worklog.py backend/app/api/routes/worklog.py backend/tests/test_worklog_rest.py backend/tests/test_api_keys.py
-git commit -m "feat(worklog): serve search over REST" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(worklog): serve search over REST"
 ```
 
 ### Task 7: MCP search tool and scope
@@ -1994,7 +1994,7 @@ Expected: PASS. (`test_prompt_agent_instructions.py` stays red until Task 9.)
 
 ```bash
 git add backend/app/api/mcp/server.py backend/app/api/mcp/scopes.py backend/tests/test_mcp.py backend/tests/test_worklog_mcp.py
-git commit -m "feat(worklog): serve search over MCP" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(worklog): serve search over MCP"
 ```
 
 ### Task 8: Guard registries
@@ -2070,7 +2070,7 @@ Expected: PASS
 
 ```bash
 git add backend/app/services/content_surfaces.py backend/tests/test_api/test_rest_conformance.py backend/tests/test_door_parity.py docs/two-door-parity.md
-git commit -m "test(guards): classify the work-log search doors" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "test(guards): classify the work-log search doors"
 ```
 
 ### Task 9: Instructions, CLAUDE.md and runbook
@@ -2253,5 +2253,5 @@ Expected: PASS. Then re-read by hand the two prose counts the leg does not cover
 
 ```bash
 git add backend/app/services/prompt.py backend/tests/test_prompt_agent_instructions.py backend/app/main.py CLAUDE.md docs/runbook-exposed-deployment.md
-git commit -m "docs(worklog): document search and its budget" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "docs(worklog): document search and its budget"
 ```
