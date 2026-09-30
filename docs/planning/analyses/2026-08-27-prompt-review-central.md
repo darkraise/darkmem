@@ -8,7 +8,7 @@ machinery), judged against `app/taxonomy.py`, `app/services/extraction.py`,
 (reasoning call site), `app/services/graph.py` (cluster naming),
 `app/services/enrichment_worker.py` (summarization), `app/api/mcp/server.py`
 (agent_instructions), `app/api/routes/config.py` (override route). All line
-numbers verified against the working tree at commit `1fdd1b7c`.
+numbers verified against the working tree at commit `8bec991c`.
 
 Measured sizes (`len()` of each PROMPTS value; ~4 chars/token estimate):
 

@@ -1,6 +1,6 @@
 # Codebase review — 2026-08-28
 
-Reviewed at `9af67230` (master), immediately after the `darkraise-ui`
+Reviewed at `b46d10d6` (master), immediately after the `darkraise-ui`
 6.4.0 → 6.6.0 upgrade. Scope was the whole tree: `backend/`, `frontend/`,
 `extension/`, `sdks/`, `scripts/`.
 

@@ -468,7 +468,7 @@ routes are in it — without them it would not be a shippable unit.
 
 ### What increment 2's merged work costs
 
-`/notes` was built on `documents` and merged on 2026-09-08 as `c0f39b26`. Its
+`/notes` was built on `documents` and merged on 2026-09-08 as `faa01c8c`. Its
 data layer repoints:
 
 | File | Lines | Fate |

@@ -85,7 +85,7 @@
 - The baseline regeneration here means every deployed database must be dropped and recreated before this build runs (`CLAUDE.md`, Migrations; `app/schema_guard.py` refuses to boot otherwise). Deploying is the finishing step's, and it needs the owner's go-ahead because it replaces production data.
 - Race interleavings with a concurrent close, and two appends reopening one workstream, are not given their own two-session tests: the lock-then-decide read makes both a consequence of the row lock the two append-versus-delete races already exercise.
 - Between Task 5 and Task 8 the enumeration guards (`test_rest_conformance`, `test_door_parity`, `test_content_surface_scoping`, `test_prompt_agent_instructions`) fail by design: the doors exist before they are classified. Tasks 5–7 run targeted tests; Task 8 and Task 9 turn the guard leg green.
-- The 2026-09-23 MCP instruction change ("A memory is not a log") is committed as `116fb6f8` on this branch; Task 9 extends it.
+- The 2026-09-23 MCP instruction change ("A memory is not a log") is committed as `e135d06a` on this branch; Task 9 extends it.
 
 ## Task index
 

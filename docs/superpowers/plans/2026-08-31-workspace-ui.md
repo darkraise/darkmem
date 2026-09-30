@@ -8,8 +8,8 @@
 > dcc-superpower-companions:dispatching-tiered-implementers. Under
 > superpowers:executing-plans these lines are inert; ignore them.
 
-> **Status: LANDED 2026-09-02.** Commits `b7045664` test scoping, `550f5d03`
-> hooks, `3d53783d` components, `44fee85a` routes. Gate green: 6,501 backend,
+> **Status: LANDED 2026-09-02.** Commits `2e7cbe0b` test scoping, `9c8e399d`
+> hooks, `0f2066a9` components, `11171019` routes. Gate green: 6,501 backend,
 > 1,337 frontend, both SDK suites, 1,055 benchlib, F1 bench.
 >
 > Four notes for a reader treating this as a record. **(1)** The gate caught a

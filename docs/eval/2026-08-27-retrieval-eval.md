@@ -1,7 +1,7 @@
 # Retrieval eval — 2026-08-27
 
 - run id: `edeaff04-193b-488f-b13d-f806adbd77db` (recorded 2026-08-27T13:12:25.923935+00:00)
-- git sha: `7b0786fbb5ff7d099f06bfec4398f853c3e8eebb`
+- git sha: `913c7c806331e726c2865924c30a37dae630170d`
 - embedder fingerprint: `qwen3-embedding:0.6b|1024`
 - gate configuration: `classification_mode='simple', classifier_kind=None, relation_rescue=True`
 - corpus: 178 memories, gold v4, 118 pairs authored (102 live)

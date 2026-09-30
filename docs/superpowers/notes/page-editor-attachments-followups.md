@@ -1,10 +1,10 @@
 # Page editor images and files — open follow-ups
 
-Carried from the plan ledger before its workspace was deleted. The final review's 8 parked minors are not itemised in the ledger and are not recoverable here; the two Important findings and four of the minors were closed by the fix wave (`449b12f..0904e9d`).
+Carried from the plan ledger before its workspace was deleted. The final review's 8 parked minors are not itemised in the ledger and are not recoverable here; the two Important findings and four of the minors were closed by the fix wave (`d9ac23a..69aec60`).
 
 ## Owner decisions and hazards
 
-- **Deployed 2026-09-20, without a drop.** The only baseline change since production's stamp (`fe0313068316`, the `dd644aab` baseline) was the `page_attachments` table and its two indexes, so the runbook's additive path applied: DDL derived from a fresh migrate, backup `darkmem-20260920-192607.sql.gz`, stamp re-adopted as `4ba88074cac57ced`, live schema diffed equal to a fresh migrate. Documents stayed at 477. This also retires the "deploy is owed and destructive" entry in `attachment-backups-followups.md`, and the nightly attachment-tarball stage now has its table and its `darkmem-prod_attachment_data` volume.
+- **Deployed 2026-09-20, without a drop.** The only baseline change since production's stamp (`fe0313068316`, the `bb82d1a9` baseline) was the `page_attachments` table and its two indexes, so the runbook's additive path applied: DDL derived from a fresh migrate, backup `darkmem-20260920-192607.sql.gz`, stamp re-adopted as `4ba88074cac57ced`, live schema diffed equal to a fresh migrate. Documents stayed at 477. This also retires the "deploy is owed and destructive" entry in `attachment-backups-followups.md`, and the nightly attachment-tarball stage now has its table and its `darkmem-prod_attachment_data` volume.
 - **Any image URL becomes an `image` block**, attachment or external (owner ruling, spec §2), which is why `img-src` is `'self' data: https:`. `http:` is absent on purpose; adding it is the owner's call.
 - **An upload that resolves after its pane unmounts is lost** to the editor, and the attachment row stays orphaned until the sweep. Recorded as a design change in spec §8 and CLAUDE.md rather than fixed.
 - **A pasted captioned figure loses its caption and width on reload** (cv-3-1): markdown keeps only `url` and `name`, so there is no place to store them, and no phantom edit is sent.

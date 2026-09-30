@@ -958,7 +958,7 @@ contained.
   derived it with `docker/metadata-action`'s `type=sha`, which reads
   `github.sha` — the commit that *triggered* the run. Since the pipeline builds
   the version-sync commit that `prepare` creates one step earlier, v1.3.0
-  published `sha-544d349` for an image built from `a0c79463`.
+  published `sha-544d349` for an image built from `d7a3c9bb`.
 
   Every version tag was correct and the digest was right, so nothing shipped
   broken; what was wrong is the one tag whose entire purpose is to answer

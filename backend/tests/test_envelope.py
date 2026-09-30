@@ -854,7 +854,7 @@ async def test_a_declaration_that_matched_nothing_is_still_a_declaration(client,
 
 
 # --------------------------------------------------------------------------
-# 7. Two-door identity audit (envelope half; the row half landed in c341e7a)
+# 7. Two-door identity audit (envelope half; the row half landed in 764f31b)
 # --------------------------------------------------------------------------
 
 

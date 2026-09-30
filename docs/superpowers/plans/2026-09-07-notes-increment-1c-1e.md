@@ -20,7 +20,7 @@
 
 - **Lane order is forced: 1d (Task 5) must land before 1e (Tasks 7-12).** The first `document_tags` row the metadata verb writes is deleted within the hour by `tag_orphan_cleanup` if `prune_orphans` has not been widened first. Verified: `document_tags.tag_id` is `ON DELETE CASCADE` (`0001_baseline.py:1390`), `prune_orphans` deletes any tag lacking a `memory_tags` row, and the job is registered hourly at `app/main.py:458`.
 - **Lane 1c (Tasks 1-4) is independent** of 1d/1e and may run in parallel.
-- **No new schema.** `document_tags`, `documents.pinned_at`, `document_links` and `projects.kind` all exist in the baseline on master (1a-1b merged at `d0c8b95b`). What does *not* exist is a **mapped Table object** for `document_tags` — Task 5 creates it.
+- **No new schema.** `document_tags`, `documents.pinned_at`, `document_links` and `projects.kind` all exist in the baseline on master (1a-1b merged at `e1ae6589`). What does *not* exist is a **mapped Table object** for `document_tags` — Task 5 creates it.
 - **Reuse `DocumentHashConflict`** (`app/services/document_ingest.py:101`). It carries `expected_hash` / `current_hash` and already has a 409 mapping and an MCP `hash_conflict` envelope. Do not add a second conflict exception. `block_verbs.py:34` already imports from `document_ingest`, so Task 1's import creates no cycle.
 - **New exception classes go in `document_ingest.py`, not `document_door.py`.** `document_door` imports the repository; a repository raising a `document_door` class would close a cycle.
 - **Teach the shared error mappers, never add a per-site `except`.** REST has `_block_write_error` (`app/api/routes/documents.py:819`); MCP has `_block_refusal` (`app/api/mcp/server.py:1930`).

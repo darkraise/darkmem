@@ -71,7 +71,7 @@ Paths are under `frontend/src/` unless stated.
 
 ## Assumptions (evidence)
 
-- **The code blocks in this plan were written against the tree at `88a961c6` and were not executed while planning.** Each task's run steps are the verification; a step whose result differs from its **Expected** line stops the task and is reported, never adapted around.
+- **The code blocks in this plan were written against the tree at `6090428e` and were not executed while planning.** Each task's run steps are the verification; a step whose result differs from its **Expected** line stops the task and is reported, never adapted around.
 - **Unguarded demo reads** (2026-09-18, source read): `useClassificationAreas` `hooks/api/use-config-api.ts:275-282` (no `enabled`); `useApiKeys` `use-api-keys-api.ts:33-39` (`enabled: options?.enabled ?? true`); `useJobs` `use-jobs-api.ts:47-55` called with no argument by `features/settings/components/job-history-retention.tsx:22` (Maintenance tab); `useAutoResearch` / `useResearchRuns` `use-auto-research-api.ts:21-26, 75-80`. The `/jobs` page itself calls `useJobs(!DEMO)` through `features/activity/use-job-board.ts:70`, so it is already clean.
 - **`DEMO_ROUTES`** is `tests/demo-makes-no-api-calls.spec.ts:19-33` and has no `/settings` entry.
 - **The Settings Backups tab is unreachable** — adjacent bug: `routes/_authenticated/settings.tsx:36-46` `TAB_VALUES` lacks `"backups"` while `:133-136` renders its trigger and `:169-171` its content, so `onValueChange` drops the click and `validateSearch` drops `?tab=backups`. Task 3 fixes it; the spec counts "Settings: 10" tabs, which is the list with backups.

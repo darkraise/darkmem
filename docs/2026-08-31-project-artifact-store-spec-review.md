@@ -17,7 +17,7 @@ the code before the spec was revised.
 
 Reviewed: `docs/superpowers/specs/2026-08-31-project-artifact-store-design.md` (spec).
 All paths repo-relative to `/root/repositories/darkmem`. Line numbers verified against
-the working tree at `87c6434d`.
+the working tree at `6aac816b`.
 
 ---
 

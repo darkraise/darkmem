@@ -9,7 +9,7 @@
 > superpowers:executing-plans these lines are inert; ignore them.
 
 > **Status: LANDED 2026-09-02.** Task 1 and Task 2 executed and deployed on
-> this host (`a324bb1e` feat, `47a2039a` changelog). Gate green: 6,468 backend,
+> this host (`0af60430` feat, `fcf08190` changelog). Gate green: 6,468 backend,
 > 1,324 frontend, both SDK suites, 1,055 benchlib, F1 bench. Two corrections
 > made against the plan as written, both recorded in the commit: the test
 > sketch's `LATEST` fixture does not exist (the file has `CHECKPOINT` and a

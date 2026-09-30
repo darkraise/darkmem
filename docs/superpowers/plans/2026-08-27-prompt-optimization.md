@@ -57,7 +57,7 @@ Read both before starting. Every task below cites the finding it closes.
 
 ### Task 1: Make `agent_instructions` cover the whole tool roster and the scope model
 
-Closes: central review finding on `agent_instructions`; the auth gap introduced by the MCP v2 merge (`690b66f1`).
+Closes: central review finding on `agent_instructions`; the auth gap introduced by the MCP v2 merge (`b0119595`).
 
 The prompt documents 13 of 33 tools. Twenty are unmentioned, including all five document verbs — so an agent files documents through `memory_add`, which is the pipeline the document door exists to bypass. Since the merge, `/mcp` also requires a bearer key and each tool declares a scope, and the prompt says nothing about either.
 
@@ -1042,7 +1042,7 @@ State which of Tasks 1-11 landed, the gate result, and hand back before starting
 ## Phase 2 — BLOCKED as of 2026-08-27
 
 Phase 2 was implemented and then reverted on `feat/prompt-optimization`. The
-work is preserved on **`feat/prompt-extraction-diet`** (head `3d629ee9`) and
+work is preserved on **`feat/prompt-extraction-diet`** (head `a61c43c9`) and
 can be replayed once the blocker below clears.
 
 **The blocker.** Task 16's live re-record cannot run. `run_bench.py` refuses:
@@ -1082,7 +1082,7 @@ the star-shape relation failure is shown rather than described, and the
 notes were compressed. The reasoning rides in the budget test's docstring.
 
 **To resume:** confirm the vendor stack is stable, then cherry-pick
-`5cbc263d`, `63e29dd6`, `3d629ee9` onto a fresh branch, re-record both caches
+`556dfb4c`, `7748254c`, `a61c43c9` onto a fresh branch, re-record both caches
 live, update the pin in `test_taxonomy.py` to the new fingerprint
 (`606a42eef2e5d30a` for the diet as preserved), and write the ledger entry.
 

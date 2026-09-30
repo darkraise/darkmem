@@ -262,7 +262,7 @@ update" must not be accepted as an explanation for a shortfall unless the G-B
 runner captured response metadata showing what was actually served (requirement
 recorded under G-B below).
 
-Run context: git sha `a63675c515c88ea7089bf911dc68389e9dcc86dd`, model
+Run context: git sha `441b1349653b6c63cb08bbcc2bff4f7f1db56205`, model
 `deepseek-v4-flash` (`api_kind=deepseek`, `https://api.deepseek.com/v1`, seeded
 into `darkmem_bench` by `benchlib.run_smoke.seed_llm_purpose_configs`, key from
 `DEEPSEEK_API_KEY`, empty params so vendor-default temperature, content-derived
@@ -3623,7 +3623,7 @@ the probe asks for exactly this and nothing the loop does can produce it: *H1
 
 ### G-F stability probes measured (2026-09-03): **both reproduce — and the bar's literal wording does not survive contact**
 
-Run after the bar was committed (`5f3576fd`), never before. Artifacts:
+Run after the bar was committed (`7376e366`), never before. Artifacts:
 `docs/eval/2026-09-03-gf-stability/`.
 
 **Retrieval eval — two consecutive legs, each at `live_calls: 0`** (178 calls
@@ -3632,10 +3632,10 @@ lines differ and every one is run-identity or wall-clock: the run id with its
 timestamp, and six twin latency figures (`p50`/`p95`).
 
 **A third, unplanned comparison is stronger than the two legs.** A report
-produced in an **earlier session at a different commit** (`515a34a1`, run id
+produced in an **earlier session at a different commit** (`499303b7`, run id
 `efb4e8fa`) differs from today's runs only in run id, latency and the recorded
 git sha. It is preserved as
-`docs/eval/2026-09-03-gf-stability/retrieval-eval-prior-commit-515a34a1.md`
+`docs/eval/2026-09-03-gf-stability/retrieval-eval-prior-commit-499303b7.md`
 rather than cited at its original dated path: citing that path made it gate
 evidence, which the eval runner's own overwrite guard then correctly refused to
 let the routine gate replay overwrite. Copying it here is the remedy that guard

@@ -15,7 +15,7 @@ import { TASK_ID } from "../../types"
  * these tests exist to catch.
  *
  * The pinned numbers below are MEASURED from the files at
- * `def04642`, and they differ from the ones the design spec states. The spec
+ * `bb2215ee`, and they differ from the ones the design spec states. The spec
  * claimed 312 rows / 307 done / 2 todo / 2 dropped / 1 blocked; the file holds
  * 309 rows / 306 done / 1 todo / 2 dropped / 0 blocked. The spec's task-id
  * pattern (`^T\d+\.\d+[a-z]?$`) is why: it silently drops all 18 `TH*` rows

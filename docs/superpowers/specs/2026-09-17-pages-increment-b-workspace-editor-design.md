@@ -4,7 +4,7 @@
 adversarial review (21 findings), with the owner taking the three recommended
 rulings recorded in §1.
 **Builds on:** `docs/superpowers/specs/2026-09-08-pages-notion-model-design.md`
-(Increment A, merged and deployed 2026-09-17 at `37f5d299`). That spec's §11
+(Increment A, merged and deployed 2026-09-17 at `4aece897`). That spec's §11
 named Increment B as "repoint `/notes`, split `project-workspace.tsx`, retire
 `treeManagement`, drag to reorder siblings". This spec keeps that scope and adds
 the owner's request of 2026-09-17: a real Notion-style editor rather than the

@@ -7,7 +7,7 @@ behavior change, not a cleanup.
 
 This file states current rules only. The reasoning trail behind them —
 which claims were corrected when, and why — lives in `git log -p CLAUDE.md`
-(the last long-form revision is `6e345779`), in the design docs and specs
+(the last long-form revision is `d200bf58`), in the design docs and specs
 named below, and in `docs/planning/gate-ledger.md` for every gate number.
 When you change the code a sentence here describes, correct the sentence in
 place. Don't add a note saying it was corrected.

@@ -58,7 +58,7 @@
 
 ## Assumptions (evidence)
 
-- darkmem `master` at `b34afad6` is green: the full backend suite ran 7574 passed, 23 skipped on 2026-09-25 against `darkmem_test_2` (after `c798e65a` fixed the job-count guard, register row 30).
+- darkmem `master` at `63e26e74` is green: the full backend suite ran 7574 passed, 23 skipped on 2026-09-25 against `darkmem_test_2` (after `5800b9a6` fixed the job-count guard, register row 30).
 - `_ensure_children` creates one HNSW index per template (`backend/app/services/embedder_registry.py:326-343`), and `reconcile` gives every live fingerprint every template's child at boot (`:283-312`), so an existing deployment gains the new family on its next start with no migration.
 - Tests enumerate the families: `tests/test_partition_templates.py:16-34` pins the exact set; `tests/test_boot_reconciliation.py:38,53,70` and `tests/test_pipeline_phase1.py:119` iterate `_TABLE_TEMPLATES` and need no edit. No test assumes every child carries an HNSW index (`rg -i hnsw tests`, 2026-09-25).
 - `tests/test_block_embedding_refresh.py:382-399` imports `_DOCUMENT_ARM` and `_MISSING_SQL` and formats `_MISSING_SQL` with `owner=_DOCUMENT_ARM.owner_column`, so both names and that attribute stay; `:103-119` pins the all-budgets-zero short circuit, which Task 3 extends with `worklog_batch=0`. No test monkeypatches `embed_blocks` or asserts the isolation warning's text.
@@ -75,7 +75,7 @@
 - `docs/two-door-parity.md` reads 89 surfaces, 31 two-door, 51 REST-only, 7 MCP-only; one two-door row makes it 90 and 32.
 - Between Task 6 and Task 8 the enumeration guards (`test_rest_conformance`, `test_door_parity`, `test_content_surface_scoping`, `test_prompt_agent_instructions`) fail by design: the doors exist before they are classified. Tasks 6 and 7 run targeted tests; Tasks 8 and 9 turn the guard leg green.
 - Register row 18 (spec §7 forbids naming any `KnowledgeTripleRepository` method; the shipped scan checks only write and promote methods) is ruled in Task 5: a scan for every method name cannot tell `session.get` (which `worklog.append` calls) from a repository's `get`, so the rule becomes "no work-log module names the repository class, its module or the `knowledge_triples` table, and no service-layer work-log module's import closure reaches a vault writer", and Task 5 amends the spec's sentence to match. `app.api.routes.worklog` reaches `app.repositories.knowledge_triples` through the auth layer every router shares (`import_closure`, 2026-09-25), so the closure rule excludes the route module.
-- Dry run on 2026-09-25: every task's code in this plan's first draft, applied verbatim to a scratch worktree of `b34afad6`, gave a full backend suite of 7633 passed, 23 skipped, and the parity-doc diff was one row plus the headline. The tests added after plan review round 1 were dry-run separately (Tasks 2–5, same day).
+- Dry run on 2026-09-25: every task's code in this plan's first draft, applied verbatim to a scratch worktree of `63e26e74`, gave a full backend suite of 7633 passed, 23 skipped, and the parity-doc diff was one row plus the headline. The tests added after plan review round 1 were dry-run separately (Tasks 2–5, same day).
 - The baseline downgrade drops `*_embeddings__*` children by name and every base table `CASCADE` (`backend/migrations/versions/0001_baseline.py:1745-1753, 1810`), so after a downgrade the `worklog_embeddings__*` tables would survive without their foreign keys. Register row 40 defers adding the pattern to increment 3, which regenerates the baseline anyway.
 
 ## Task index

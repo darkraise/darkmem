@@ -41,7 +41,7 @@
 - **`CaptureAck.warnings: list[str]`** (Task 3), default empty, in `app/schemas/memory.py`. Every `CaptureResult` carries it on `result.ack.warnings`, including results that also carry a processed `memory`.
 - **`CapturedMemoryResponse(MemoryResponse)`** (Task 4), in `app/schemas/memory.py`: one extra field, `warnings: list[str]`. Served only by `POST /api/v1/memories` and `POST /api/v1/memories/batch` on their 201 path.
 - **MCP 201 answer** (Task 4): `memory_add` / `memory_batch_add` return `{**memory_to_dict(memory), "warnings": [...]}` for a processed memory.
-- **Test module `backend/tests/test_capture_warnings.py`** (created in Task 2, extended in Tasks 3 and 4) with shared constants `LOG = "Task 5 complete: 7708 passed after merging e4363418."` and `FACT = "Postgres must listen on all addresses because the API connects across the stack network."` (Task 2), and the helpers `_flagged(session)` and `_mcp_on(session, monkeypatch)` (Task 3; `_mcp_on` returns the MCP server module wired to the test session with no pipeline).
+- **Test module `backend/tests/test_capture_warnings.py`** (created in Task 2, extended in Tasks 3 and 4) with shared constants `LOG = "Task 5 complete: 7708 passed after merging 52c19537."` and `FACT = "Postgres must listen on all addresses because the API connects across the stack network."` (Task 2), and the helpers `_flagged(session)` and `_mcp_on(session, monkeypatch)` (Task 3; `_mcp_on` returns the MCP server module wired to the test session with no pipeline).
 
 ## Assumptions (evidence)
 
@@ -100,8 +100,8 @@ import pytest
 from app.services import capture_lint
 
 ONE_SIGNAL = [
-    ("commit_ref", "The fix landed in e4363418 on master's tip."),
-    ("commit_ref", "Compare a6937345..fd8d2865 for the change."),
+    ("commit_ref", "The fix landed in 52c19537 on master's tip."),
+    ("commit_ref", "Compare d395a712..1342ce70 for the change."),
     ("tally", "The suite reported 7708 passed."),
     ("tally", "Three shards, 3/4 finished."),
     ("tally", "The branch carries 76 commits."),
@@ -326,7 +326,7 @@ from __future__ import annotations
 
 from app.services.events import EVENT_TYPES
 
-LOG = "Task 5 complete: 7708 passed after merging e4363418."
+LOG = "Task 5 complete: 7708 passed after merging 52c19537."
 FACT = "Postgres must listen on all addresses because the API connects across the stack network."
 
 

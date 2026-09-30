@@ -51,11 +51,11 @@ marked *(demo)*. Owner decisions taken before this spec:
 - Remove page-level project controls; each page reads the store:
   Memories (free-text "project (blank = all)"), Facts (select), Review
   (free-text), Articles (select), Memory Graph (select), Documents (the select
-  added in 88a961c6), and the Chat thread header's second project chip.
+  added in 6090428e), and the Chat thread header's second project chip.
   The results headers keep naming the scope ("Results — project: darkmem").
 - `/documents` under `ALL_PROJECTS` renders a chooser: "Documents open one
   project at a time", one button per project holding documents; a click sets
-  the store. The `?project=` search param added in 88a961c6 is removed; the
+  the store. The `?project=` search param added in 6090428e is removed; the
   store is the source of truth.
 - Code pages (Repositories, Code Graph, Code Wiki) render the switcher
   disabled with the tooltip "Code is scoped by repository, not by project",

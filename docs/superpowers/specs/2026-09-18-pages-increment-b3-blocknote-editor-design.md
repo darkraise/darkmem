@@ -434,5 +434,5 @@ after the neighbouring word is edited.
 Frontend only; no schema change, no backend change. An ordinary redeploy per
 CLAUDE.md: gate legs, `DARKMEM_PUSH=0 ./scripts/build-push.sh`, image sha equals
 HEAD, `docker compose up -d`, the editor chunk confirmed in the running image's
-`/app/web`. **B2 is merged but not deployed** (production ran `5d13b529` on
+`/app/web`. **B2 is merged but not deployed** (production ran `935b6668` on
 2026-09-18), so the B3 deploy also ships B2 unless B2 is deployed first.

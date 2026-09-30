@@ -9,8 +9,8 @@
 > superpowers:executing-plans these lines are inert; ignore them.
 
 > **Status: LANDED AND DEPLOYED 2026-09-02, Task 8 included.** Commits
-> `c5f360ac` baseline, `b4242baa` writer + CAS, `a6f9e017` doors, `baa9726d`
-> CLAUDE.md, `0187e5b4` Task 8 defect fixes. Gate green: 6,498 backend (up
+> `1ec36892` baseline, `0137b23e` writer + CAS, `75797f7a` doors, `8d3380a8`
+> CLAUDE.md, `71a018db` Task 8 defect fixes. Gate green: 6,498 backend (up
 > 14), 1,324 frontend, both SDK suites, 1,055 benchlib, F1 bench;
 > `make generate` zero-diff; parity doc regenerated and asserted.
 >

@@ -848,7 +848,7 @@ any of those eight succeeds today; it does not fail the way this section's actio
 originally found.
 
 (b) **`api_keys.scopes` lost its ORM-side default entirely in the 2026-08-26 bearer epic**
-(commit `d993e3f2`) — `backend/app/models/api_key.py` now declares it
+(commit `ee1c7251`) — `backend/app/models/api_key.py` now declares it
 `mapped_column(JSONB, nullable=False)` with no `default=` at all, because a default of
 `["read", "write"]` silently granted a scope (`write`) nobody asked for. It is therefore no
 longer in the *ORM-only-default* class this table names; it is in a different, narrower

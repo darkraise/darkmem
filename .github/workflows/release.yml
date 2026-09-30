@@ -289,7 +289,7 @@ jobs:
       # The short-sha tag is spelled out rather than derived with `type=sha`,
       # which reads github.sha -- the commit that TRIGGERED the run, not the
       # version-sync commit prepare made and this job actually builds. v1.3.0
-      # published `sha-544d349` for an image built from a0c79463, which is the
+      # published `sha-544d349` for an image built from d7a3c9bb, which is the
       # one question that tag exists to answer. It is a YAML comment here and
       # not a line inside `tags:` below, because that value is a block scalar:
       # a `#` line there is tag input, not a comment.

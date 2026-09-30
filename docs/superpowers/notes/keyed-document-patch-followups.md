@@ -44,6 +44,6 @@ docstring) are omitted.
 `darkraise-ai-plugins` checkout covers this plan's spec
 (`docs/superpowers/specs/2026-09-28-darkmem-mirror-wiring-design.md`). Rows
 #2 and #3 are noted "Needs the darkmem server half (§4) first" — that half
-is now merged into darkmem `master` at `25ea1247`. Neither row is assigned
+is now merged into darkmem `master` at `1bf87a32`. Neither row is assigned
 to this plan's path, so this session did not resolve them; the plugin repo's
 register needs updating separately (out of scope for a darkmem-only merge).

@@ -9,8 +9,8 @@
 > superpowers:executing-plans these lines are inert; ignore them.
 
 > **Status: LANDED 2026-09-02.** All six tasks executed and deployed on this
-> host (`a9718089` taxonomy, `ac1f7a46` parsers, `79549b77` warning,
-> `c8fedc02` changelog). Gate green: 6,484 backend (up 16), 1,324 frontend,
+> host (`9f41ce5f` taxonomy, `981aa9ff` parsers, `048cc8b7` warning,
+> `ee677935` changelog). Gate green: 6,484 backend (up 16), 1,324 frontend,
 > both SDK suites, 1,055 benchlib, F1 bench; `make generate` zero-diff.
 > Three notes for anyone reading this plan as a record rather than a script:
 > **(1)** Task 3's frontmatter split is wider than its sketch — `parse_markdown`

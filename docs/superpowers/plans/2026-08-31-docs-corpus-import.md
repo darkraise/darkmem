@@ -8,7 +8,7 @@
 > dcc-superpower-companions:dispatching-tiered-implementers. Under
 > superpowers:executing-plans these lines are inert; ignore them.
 
-> **Status: LANDED 2026-09-02.** Commits `0a9337bf` script, `17f0bd12`
+> **Status: LANDED 2026-09-02.** Commits `b3b703aa` script, `d4840dda`
 > conventions doc. The import ran against the live instance: **475 created, 0
 > failures, exit 0** (474 measured at plan time plus the conventions doc this
 > plan writes, which the run then files).

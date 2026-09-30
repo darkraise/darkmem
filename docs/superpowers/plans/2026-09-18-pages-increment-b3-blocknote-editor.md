@@ -35,7 +35,7 @@
 - **Frontend commands run from `frontend/`:** `npm run typecheck` (= `tsc -b`), `npm test` (= `vitest run`), `npm run build`. One file: `npx vitest run <path>`. `npm run lint` is advisory, and the repo has pre-existing lint errors (`page-pane.tsx`'s title-sync effect, the tests' `wrapper` components); a task leaves no *new* one.
 - **Never run Playwright bare.** `npx playwright test` points `/api` at the live instance on `:8000`. The e2e leg is `backend/scripts/e2e/run_playwright_e2e.py` only (Task 15).
 - **Host hazard:** an `earlyoom` daemon kills memory-heavy runs at ~80% swap. **Exit 143 is a SIGTERM, not a failure** — check `free -h` and re-run the leg alone before believing a red.
-- **Deploy is not a task here.** After merge, CLAUDE.md's redeploy sequence applies: gate legs, `DARKMEM_PUSH=0 ./scripts/build-push.sh`, the image's sha tag equal to HEAD, `docker compose up -d`, then confirm a `page-editor-*.js` asset in the running image's `/app/web`. B2 is merged but not deployed (production ran `5d13b529` on 2026-09-18), so that deploy ships B2 as well.
+- **Deploy is not a task here.** After merge, CLAUDE.md's redeploy sequence applies: gate legs, `DARKMEM_PUSH=0 ./scripts/build-push.sh`, the image's sha tag equal to HEAD, `docker compose up -d`, then confirm a `page-editor-*.js` asset in the running image's `/app/web`. B2 is merged but not deployed (production ran `935b6668` on 2026-09-18), so that deploy ships B2 as well.
 
 ## Contracts
 
