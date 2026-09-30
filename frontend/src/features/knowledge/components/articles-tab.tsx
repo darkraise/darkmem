@@ -4,7 +4,6 @@ import { GitBranch, FileText } from "lucide-react"
 import {
   EmptyState,
   ExclusionStrip,
-  LayerChip,
   listItemClass,
   VerificationBadge,
   type VerificationStatus,
@@ -95,18 +94,8 @@ function fromLive(article: LiveArticle): ArticleView {
  *  distinction that made the raw fact-set fingerprint advanced-only while the
  *  stale label stayed in both (T1.48). */
 function CoverageReadout({ coverage }: { coverage: number | null }) {
-  if (coverage === null) {
-    return (
-      <span className="text-muted-foreground font-mono text-sm">
-        claim-support coverage not measured
-      </span>
-    )
-  }
-  return (
-    <span className="font-mono text-sm">
-      claim-support coverage {coverage.toFixed(2)}
-    </span>
-  )
+  if (coverage === null) return null
+  return <span className="font-mono text-sm">coverage {coverage.toFixed(2)}</span>
 }
 
 function ArticleRow({ article }: { article: ArticleView }) {
@@ -121,7 +110,6 @@ function ArticleRow({ article }: { article: ArticleView }) {
         data-testid="article-badges"
         className="flex w-40 shrink-0 flex-col items-start gap-1.5"
       >
-        <LayerChip layer={3} />
         <VerificationBadge
           status={article.status}
           detail={article.claim ?? undefined}
@@ -196,20 +184,12 @@ export function ArticlesTab() {
     [articles],
   )
 
-  const projectLabel = project === "all" ? "all projects" : project
-
   return (
     <div className="space-y-4">
-      <div className="border-border flex flex-wrap items-center gap-2.5 border-b border-dashed pb-3">
-        <span className="text-muted-foreground ml-auto font-mono text-sm">
-          sorted by priority — verified-fact count · read-heat · centrality
-        </span>
-      </div>
-
       <ListSurface
-        title={`Articles — project: ${projectLabel}`}
+        title="Articles"
         populated={shown.length > 0}
-        meta={`${shown.length} ${shown.length === 1 ? "subject" : "subjects"}`}
+        meta={`${shown.length} ${shown.length === 1 ? "article" : "articles"}`}
       >
         {/* An ungrounded / disputed article is withheld from this
             corroborated view and routed to Review — counted, never
@@ -220,9 +200,7 @@ export function ArticlesTab() {
               {
                 count: withheld,
                 unit: withheld === 1 ? "article" : "articles",
-                reason:
-                  "Awaiting review — withheld from this view and routed to Knowledge → Review; nothing was deleted.",
-                tag: "by_review_state",
+                reason: "awaiting review in Knowledge → Review",
               },
             ]}
           />
@@ -237,15 +215,9 @@ export function ArticlesTab() {
             icon={FileText}
             title="No articles yet"
             description={
-              DEMO
-                ? "Articles are synthesised once corroborated facts exist for a subject — none do here yet. No corroborated or confirmed facts means nothing for the synthesiser to ground a claim in, so it produces no draft rather than an ungrounded one."
-                : withheld > 0
-                  ? // Saying "nothing is being withheld" directly beneath a
-                    // strip counting withheld articles is the surface calling
-                    // itself a liar. When every article is in review, the empty
-                    // list has a cause and the copy names it.
-                    "Every article for this scope is in review — none is being shown here, and the strip above says how many and why. They are readable in Knowledge → Review; nothing was deleted."
-                  : "No articles have been synthesised for this project yet. Synthesis runs in the background over subjects that hold enough corroborated facts to ground one — nothing is being withheld from you here."
+              withheld > 0
+                ? "Every article here is awaiting review in Knowledge → Review."
+                : "Articles appear once a subject has enough corroborated facts."
             }
           />
         )}

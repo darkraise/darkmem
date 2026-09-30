@@ -81,7 +81,7 @@ describe("JobsPage — ruling 1: a held lock reports as busy, never as queued", 
       expect(toast.warning).toHaveBeenCalledWith(
         `${JOB.display_name} — busy`,
         expect.objectContaining({
-          description: expect.stringContaining("discarded, not queued"),
+          description: expect.stringContaining("try again when it finishes"),
         }),
       ),
     )

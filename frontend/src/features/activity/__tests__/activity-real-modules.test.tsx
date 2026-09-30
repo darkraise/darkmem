@@ -5,7 +5,6 @@ import type { ReactNode } from "react"
 import { useDemoStore } from "@/demo/store"
 import { FeedTab } from "../components/feed-tab"
 import { DayTab } from "../components/day-tab"
-import { MonitorsTab } from "../components/monitors-tab"
 
 // This exercises the fixture-backed path deliberately (T1.45/T1.61 are
 // done and this file pins their demo rendering), so it is frozen at
@@ -54,37 +53,5 @@ describe("DayTab reads the UTC day bucket (demo-bound)", () => {
   it("shows an honest empty state for a day with no events", () => {
     render(withQuery(<DayTab day="2020-01-01" onDayChange={() => {}} />))
     expect(screen.getByText("No activity on this day")).toBeInTheDocument()
-  })
-})
-
-describe("Buffer monitor — poison rows are actionable", () => {
-  it("shows claimed, stale, and poison rows with correctly-labelled attempt counts", () => {
-    render(withQuery(<MonitorsTab onOpenDigest={() => {}} />))
-    expect(screen.getByText(/stale claims/)).toBeInTheDocument()
-    expect(screen.getByText(/poison rows/)).toBeInTheDocument()
-    // "claimed N/M times" — never "failed" or "attempts" bare, per T1.13
-    // ruling 1: attempts count claims, not failures.
-    expect(screen.getAllByText(/claimed \d+\/\d+ times/).length).toBeGreaterThan(0)
-    expect(screen.queryByText(/failed \d+ times/)).not.toBeInTheDocument()
-  })
-
-  it("forgetting a poison row removes it and decrements the error count", () => {
-    render(withQuery(<MonitorsTab onOpenDigest={() => {}} />))
-    const before = useDemoStore.getState().bufferMonitor.target.error
-    fireEvent.click(screen.getByText("Forget"))
-    const after = useDemoStore.getState().bufferMonitor.target
-    expect(after.error).toBe(before - 1)
-    expect(after.poisonRows).toHaveLength(0)
-    expect(screen.queryByText(/poison rows/)).not.toBeInTheDocument()
-  })
-
-  it("retrying a poison row re-buffers it to pending", () => {
-    render(withQuery(<MonitorsTab onOpenDigest={() => {}} />))
-    const before = useDemoStore.getState().bufferMonitor.target
-    fireEvent.click(screen.getByText("Retry (re-buffer)"))
-    const after = useDemoStore.getState().bufferMonitor.target
-    expect(after.error).toBe(before.error - 1)
-    expect(after.pending).toBe(before.pending + 1)
-    expect(after.poisonRows).toHaveLength(0)
   })
 })

@@ -154,7 +154,7 @@ export function MemoryEditorDialog({
           },
         ],
       })
-      toast.success("Memory captured — pipeline runs asynchronously")
+      toast.success("Memory captured")
     }
     onOpenChange(false)
   }
@@ -197,7 +197,7 @@ export function MemoryEditorDialog({
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label>Project scope</Label>
+              <Label>Project</Label>
               <Select value={project} onValueChange={setProject}>
                 <SelectTrigger>
                   <SelectValue placeholder="Project" />
@@ -210,9 +210,6 @@ export function MemoryEditorDialog({
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-muted-foreground text-sm">
-                A record field on the new row, not a second scope control.
-              </p>
             </div>
 
             <div className="space-y-1.5">
@@ -273,17 +270,17 @@ export function MemoryEditorDialog({
               onChange={(e) => setContext(e.target.value)}
             />
             <p className="text-muted-foreground text-sm">
-              Declares when this memory applies (applies_when); conflicting
-              reads exclude it with a counted reason.
+              When this memory applies. Searches under a conflicting context
+              exclude it.
             </p>
           </div>
 
           <DialogFooter className="items-center">
-            <span className="text-muted-foreground mr-auto text-sm">
-              {editingRealMemory
-                ? "editing isn't wired to the backend yet"
-                : "submit → 202 Accepted (mock)"}
-            </span>
+            {editingRealMemory && (
+              <span className="text-muted-foreground mr-auto text-sm">
+                editing isn't wired to the backend yet
+              </span>
+            )}
             <Button
               type="button"
               variant="ghost"

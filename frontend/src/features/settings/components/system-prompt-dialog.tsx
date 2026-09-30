@@ -45,7 +45,7 @@ export function SystemPromptDialog({
   title,
   description,
   emptyTitle = "No prompt is configured",
-  emptyDescription = "This purpose resolves an empty system prompt, so the model is sent no instructions at all.",
+  emptyDescription = "The model is sent no instructions.",
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -117,7 +117,6 @@ export function SystemPromptDialog({
           <EmptyState
             kind="failed"
             title="Couldn't load the prompt"
-            description="The /config/system-prompts request failed — this is an error, not an empty prompt."
           />
         ) : isLoading ? (
           <div className="space-y-2">
@@ -129,9 +128,6 @@ export function SystemPromptDialog({
           <>
             <div className="flex flex-wrap items-center gap-2">
               <PromptViewToggle value={view} onChange={setView} />
-              <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
-                {promptKey}
-              </span>
               <span className="flex-1" />
               {!editing && (
                 <IconButton

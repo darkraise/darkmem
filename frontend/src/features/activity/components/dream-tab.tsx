@@ -39,11 +39,7 @@ import {
 } from "darkraise-ui/components/select"
 import { toast } from "darkraise-ui/components/sonner"
 import { cn } from "darkraise-ui/lib"
-import {
-  LayerChip,
-  useDetailLevel,
-  VerificationBadge,
-} from "@/components/darkmem"
+import { LayerChip, VerificationBadge } from "@/components/darkmem"
 import { dreamActionsOfType, eligibleForUndo } from "@/demo/activity"
 import {
   useDemoDreamActions,
@@ -123,7 +119,7 @@ function UndoControl({ action }: { action: DemoDreamAction }) {
   if (action.undone) {
     return (
       <span className="text-muted-foreground ml-auto text-sm italic">
-        {action.undone_note ?? "undone — journaled"}
+        {action.undone_note ?? "undone"}
       </span>
     )
   }
@@ -232,7 +228,7 @@ function DreamGroup({ group }: { group: DemoDreamGroup }) {
               {eligible.length === 1 ? "" : "s"} from cycle #{cycle.id}'s{" "}
               {group.label} group.
               {excluded > 0 &&
-                ` ${excluded} entr${excluded === 1 ? "y" : "ies"} in this group ${excluded === 1 ? "is" : "are"} excluded — undo is disabled for ${excluded === 1 ? "it" : "them"} (already undone, or blocked with the reason shown inline).`}
+                ` ${excluded} already undone or blocked entr${excluded === 1 ? "y is" : "ies are"} skipped.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <ul className="text-muted-foreground list-disc pl-5 text-sm">
@@ -243,11 +239,6 @@ function DreamGroup({ group }: { group: DemoDreamGroup }) {
               <li>+{eligible.length - 3} more in this batch</li>
             )}
           </ul>
-          <p className="text-muted-foreground border-border border-t border-dashed pt-2 font-mono text-sm">
-            journals {eligible.length} undone event
-            {eligible.length === 1 ? "" : "s"}, one per restored object ·
-            authenticated curation action
-          </p>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
@@ -296,14 +287,6 @@ function DemoDreamDigest() {
 
   return (
     <div className="space-y-4">
-      <p className="text-muted-foreground max-w-4xl text-sm">
-        One consolidation cycle's journaled changes, grouped by object and
-        action, with per-action and per-batch undo — tractable because
-        consolidation is invalidate-not-delete plus append-only events, so every
-        inverse is a status, pointer, or timestamp restore, never a
-        resurrection.
-      </p>
-
       <ModuleSurface
         title={`Dream digest — cycle #${cycle.id}`}
         state="populated"
@@ -386,7 +369,6 @@ function DemoDreamDigest() {
           <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2.5 text-sm">
             <Lock aria-hidden className="text-muted-foreground h-4 w-4" />
             Earlier cycles — {pastActions.length} actions past their undo window
-            (not part of cycle #{cycle.id}'s summary above)
             <ChevronDown
               aria-hidden
               className={cn(
@@ -495,7 +477,7 @@ function reportOutcome(scope: string, outcome: UndoOutcome) {
             (r) =>
               `#${r.event_id} ${actionLabel(r.action)}: ${reasonLabel(r.reason)}`,
           )
-          .join("; ") || "the door refused before writing anything",
+          .join("; ") || "nothing was changed",
     })
     return
   }
@@ -503,17 +485,15 @@ function reportOutcome(scope: string, outcome: UndoOutcome) {
   // door's own request-scoped session to roll back — this UI cannot promise
   // "nothing happened" here, so it does not.
   toast.error(`${scope} — undo failed, state unknown`, {
-    description: `${outcome.message}. The digest was re-read from the server — check it before retrying.`,
+    description: `${outcome.message}. Check the digest before retrying.`,
   })
 }
 
 function LiveActionRow({
   action,
-  detailLevel,
   onUndo,
 }: {
   action: DreamAction
-  detailLevel: "simple" | "advanced"
   onUndo: (eventId: number) => void
 }) {
   const changes = diffFields(action.before, action.after)
@@ -541,7 +521,7 @@ function LiveActionRow({
       <div className="text-sm">
         {changes.length === 0 ? (
           <span className="text-muted-foreground italic">
-            no field-level change captured for this action
+            no field changes recorded
           </span>
         ) : (
           <ul className="flex flex-col gap-0.5">
@@ -557,22 +537,13 @@ function LiveActionRow({
         )}
       </div>
 
-      {detailLevel === "advanced" && Object.keys(action.detail).length > 0 && (
-        <p className="text-muted-foreground font-mono text-xs">
-          event #{action.event_id} · {JSON.stringify(action.detail)}
-        </p>
-      )}
-
       <div className="flex items-center">
         {action.undone ? (
           <div className="flex flex-col gap-0.5">
             <span className="text-muted-foreground text-sm italic">
-              undone — journaled
+              undone
               {action.undone_by ? ` by ${action.undone_by}` : ""}
-              {action.undone_at ? ` at ${relativeTime(action.undone_at)}` : ""}
-              {detailLevel === "advanced" && action.undo_batch_id
-                ? ` (batch ${action.undo_batch_id.slice(0, 8)})`
-                : ""}
+              {action.undone_at ? ` ${relativeTime(action.undone_at)}` : ""}
             </span>
             {/* Read from this row's own journal-backed fields, not the
                 one-shot undo toast — this is what makes the round trip
@@ -612,12 +583,10 @@ function LiveActionRow({
 
 function LiveObjectGroupPanel({
   group,
-  detailLevel,
   onUndoAction,
   onUndoGroup,
 }: {
   group: DreamObjectGroup
-  detailLevel: "simple" | "advanced"
   onUndoAction: (eventId: number) => void
   onUndoGroup: (group: DreamObjectGroup, eligibleActions: DreamAction[]) => void
 }) {
@@ -651,7 +620,6 @@ function LiveObjectGroupPanel({
           <LiveActionRow
             key={action.event_id}
             action={action}
-            detailLevel={detailLevel}
             onUndo={onUndoAction}
           />
         ))}
@@ -661,7 +629,6 @@ function LiveObjectGroupPanel({
 }
 
 export function LiveDreamDigest() {
-  const level = useDetailLevel((s) => s.level)
   const {
     cycles,
     cyclesLoading,
@@ -691,7 +658,6 @@ export function LiveDreamDigest() {
       <EmptyState
         kind="failed"
         title="Could not load dream cycles"
-        description="The /dream-digest/cycles request failed. This is a failed read, not an empty history — nothing here says whether a cycle ran."
       />
     )
   }
@@ -700,7 +666,6 @@ export function LiveDreamDigest() {
       <EmptyState
         kind="failed"
         title="No consolidation cycles yet"
-        description="No dreaming pass or curation batch has journalled a cycle in this window."
       />
     )
   }
@@ -714,18 +679,10 @@ export function LiveDreamDigest() {
 
   return (
     <div className="space-y-4">
-      <p className="text-muted-foreground max-w-4xl text-sm">
-        One consolidation cycle's journaled changes, grouped by object — the
-        journal's own grouping, in the order the actions actually happened —
-        with per-action and per-object undo. Undo is a compare-and-swap against
-        live state: a request refused with 409 changed nothing, and the digest
-        re-reads from the server after every attempt.
-      </p>
-
       <ModuleSurface
         title="Dream digest"
         state={digestError ? "error" : digest ? "populated" : "empty"}
-        meta={`${cycles.length} of ${cyclesTotal} cycles loaded`}
+        meta={`${cyclesTotal} cycles`}
       >
       <div className="flex flex-wrap items-center gap-2.5">
         <Select
@@ -774,13 +731,11 @@ export function LiveDreamDigest() {
         <EmptyState
           kind="failed"
           title="Could not load this cycle"
-          description="The cycle read failed — this is a failed read, not an empty cycle."
         />
       ) : digestLoading || !digest ? (
         <EmptyState
           kind="failed"
           title="Loading cycle"
-          description="Reading the journal."
         />
       ) : (
         <>
@@ -820,7 +775,6 @@ export function LiveDreamDigest() {
               <LiveObjectGroupPanel
                 key={group.object_id}
                 group={group}
-                detailLevel={level}
                 onUndoAction={async (eventId) =>
                   reportOutcome(`action #${eventId}`, await undoAction(eventId))
                 }
@@ -876,8 +830,7 @@ export function LiveDreamDigest() {
               {cycleEligible.length === 1 ? "" : "s"} in cycle #
               {activeCycle?.cycle_id} that{" "}
               {cycleEligible.length === 1 ? "is" : "are"} currently undoable.
-              Actions already undone, or blocked (object changed since, or past
-              the undo window), are left untouched rather than sent and refused.
+              Already undone or blocked actions are skipped.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <ActionPreviewList actions={cycleEligible} />

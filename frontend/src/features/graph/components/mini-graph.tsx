@@ -30,15 +30,14 @@ export function MiniGraph({
     // pipeline did not extract, on a read that merely failed.
     return (
       <p className="text-destructive p-2 text-sm">
-        Context could not be loaded — a failed read, not an empty graph.
+        Context could not be loaded.
       </p>
     )
   }
   if (!data || (data.entities.length === 0 && data.neighbors.length === 0)) {
     return (
       <p className="text-muted-foreground p-2 text-sm">
-        No entities extracted yet. Run the pipeline with entity extraction
-        enabled to populate this graph.
+        No entities extracted for this memory yet.
       </p>
     )
   }

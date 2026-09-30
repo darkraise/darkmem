@@ -7,7 +7,6 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import { cn } from "darkraise-ui/lib"
-import { useDetailLevel } from "@/components/darkmem"
 
 export type SurfaceState = "populated" | "empty" | "staged" | "error"
 
@@ -41,8 +40,9 @@ export function SurfaceStateChip({
   label?: string
   className?: string
 }) {
-  const advanced = useDetailLevel((s) => s.level) === "advanced"
-  if (state === "populated" && !advanced) return null
+  // A caller-supplied label ("connected", "claimed") carries meaning of its
+  // own; only the bare data-state words are hidden.
+  if (!label && (state === "populated" || state === "staged")) return null
   const { icon: Icon, className: stateClass } = STATE_STYLES[state]
   return (
     <span
@@ -87,7 +87,7 @@ export function ModuleSurface({
         )}
         <div className="ml-auto flex items-center gap-2">
           {actions}
-          <SurfaceStateChip state={state} />
+          {state === "error" && <SurfaceStateChip state="error" />}
         </div>
       </div>
       <div className="flex flex-col gap-2.5 p-4">{children}</div>

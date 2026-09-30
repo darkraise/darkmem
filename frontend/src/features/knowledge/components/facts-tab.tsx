@@ -4,7 +4,6 @@ import { Loader2, Search, Archive } from "lucide-react"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import {
   EmptyState,
-  LayerChip,
   listItemClass,
   useDetailLevel,
   VerificationBadge,
@@ -70,7 +69,6 @@ export function FactRow({
       })}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <LayerChip layer={2} />
         <VerificationBadge
           status={fact.verification_status}
           detail={fact.claim}
@@ -104,18 +102,18 @@ export function FactRow({
         />
       )}
       <p className="text-muted-foreground text-sm">{fact.fact_text}</p>
-      {/* The badge string, visible rather than hover-only, in every mode. A
-          disputed claim is the two-sided form, so this line is where both
-          sides are on the row — a tooltip is not a rendering, and a
-          keyboard or touch reader never sees one. */}
-      {fact.claim && <p className="font-mono text-sm">{fact.claim}</p>}
+      {/* A disputed claim is the two-sided form, so both sides stay on the
+          row; every other claim only restates the origin count above. */}
+      {fact.claim && fact.verification_status === "disputed" && (
+        <p className="font-mono text-sm">{fact.claim}</p>
+      )}
       <AppliesWhenChips items={fact.applies_when} />
       <Link
         to="/knowledge/facts/$factId"
         params={{ factId: fact.id }}
         className="hover:text-primary-text text-muted-foreground block font-mono text-sm transition-colors"
       >
-        sources, ladder and windows →
+        details →
       </Link>
     </div>
   )
@@ -241,20 +239,18 @@ export function FactsTab() {
     )
   }
 
-  const projectLabel = project === ALL_PROJECTS ? "all projects" : project
   // Every number here is either the server's own count behind the server-side
   // filters (`total`) or a count of rows actually fetched (`loaded`). The
   // free-text needle is reported against `loaded`, because that is the only
   // set it was run over.
-  const headerMeta = error
-    ? "count unavailable"
-    : loading
-      ? "reading…"
+  const headerMeta =
+    error || loading
+      ? undefined
       : subjectActive
-        ? `${rows.length} of ${loaded} loaded · ${total} behind the filters`
+        ? `${rows.length} of ${loaded} loaded`
         : hasMore
           ? `${loaded} of ${total} loaded`
-          : `all ${total} shown`
+          : `${total} facts`
 
   return (
     <div className="space-y-4">
@@ -314,12 +310,10 @@ export function FactsTab() {
             ))}
           </SelectContent>
         </Select>
-        {/* The option lists come from the rows fetched so far. Said out loud
-            rather than left to look like the vault's full set. */}
+        {/* The option lists come from the rows fetched so far. */}
         {!optionsComplete && (
-          <p className="text-muted-foreground w-full font-mono text-sm">
-            relation and project options are read from the {loaded} facts loaded
-            so far, not from the whole vault
+          <p className="text-muted-foreground w-full text-sm">
+            Relation options cover the {loaded} facts loaded so far.
           </p>
         )}
       </div>
@@ -334,9 +328,6 @@ export function FactsTab() {
             sort its position would not track the scroll. */}
         {scale && (
           <div className="sticky top-2 hidden self-start lg:block">
-            <p className="text-muted-foreground mb-1 text-center font-mono text-xs leading-tight">
-              axis: {rows.length} loaded
-            </p>
             <div className="h-[calc(100vh-15rem)]">
               <TimelineScrubber
                 scale={scale}
@@ -350,7 +341,7 @@ export function FactsTab() {
         <ListSurface
           className="min-w-0"
           bodyClassName={rows.length > 0 ? "block" : undefined}
-          title={`Facts — project: ${projectLabel}`}
+          title="Facts"
           populated={rows.length > 0}
           meta={headerMeta}
         >
@@ -393,13 +384,7 @@ export function FactsTab() {
                           </Button>
                         )}
                       </div>
-                    ) : (
-                      <p className="text-muted-foreground py-1 text-center font-mono text-sm">
-                        {subjectActive
-                          ? `${rows.length} of all ${loaded} loaded match`
-                          : `all ${total} shown`}
-                      </p>
-                    )}
+                    ) : null}
                   </div>
                 )
               })}
@@ -424,7 +409,7 @@ export function FactsTab() {
             <EmptyState
               kind="filtered"
               title="Could not load facts"
-              description="The vault did not answer. This is a failed read, not an empty vault — nothing here says how many facts exist."
+              description="The request failed. Reload to try again."
             />
           ) : total === 0 ? (
             serverFiltersActive ? (
@@ -433,7 +418,7 @@ export function FactsTab() {
               <EmptyState
                 kind="filtered"
                 title="No facts match these filters"
-                description="Nothing was hidden — the vault holds no fact matching this relation, status and project. Widen a filter to see the rest."
+                description="Widen a filter to see more."
                 action={
                   <Button
                     variant="outline"
@@ -453,8 +438,8 @@ export function FactsTab() {
               <EmptyState
                 kind="empty"
                 icon={Archive}
-                title="No corroborated facts yet"
-                description="no corroborated facts yet; candidates are served labelled in search — corroboration takes several independent origins across memory, code, and human review. Nothing here means not yet, not broken."
+                title="No facts yet"
+                description="Facts appear as independent sources agree on them."
               />
             )
           ) : (
@@ -465,8 +450,8 @@ export function FactsTab() {
               title={`No loaded fact matches “${subject.trim()}”`}
               description={
                 hasMore
-                  ? `Searched the ${loaded} facts loaded so far. ${total} match the relation, status and project filters, so ${total - loaded} have not been read yet — this is not an answer about the whole vault.`
-                  : `Searched all ${loaded} facts behind the relation, status and project filters. Nothing was hidden.`
+                  ? `Searched the ${loaded} facts loaded so far; ${total - loaded} more are not loaded yet.`
+                  : `Searched all ${loaded} facts.`
               }
               action={
                 <div className="flex flex-wrap justify-center gap-2">

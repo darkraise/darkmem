@@ -72,15 +72,14 @@ export function ProvidersPanel() {
         // Not the empty state: "No providers configured" invites an operator
         // to re-add connections that already exist.
         <p className="text-destructive text-sm">
-          Providers could not be loaded — a failed read, not an unconfigured
-          instance.
+          Providers could not be loaded.
         </p>
       ) : providers.length === 0 ? (
         <EmptyState
           kind="empty"
           icon={Plug}
           title="No providers configured"
-          description="A provider is one vendor connection an operator can point several purposes at instead of configuring each one separately."
+          description="Add a vendor connection for purposes to use."
         />
       ) : (
         <div

@@ -69,9 +69,7 @@ export function GitAccountsTab() {
             <div>
               <CardTitle>Git accounts</CardTitle>
               <CardDescription>
-                Credentials for cloning private repositories. One account can serve
-                any number of repositories, so rotating a token is a single edit.
-                The default is preselected when you add a repository.
+                Credentials for cloning private repositories.
               </CardDescription>
             </div>
             <Button
@@ -92,8 +90,7 @@ export function GitAccountsTab() {
             // Not the empty state: "No git accounts" invites re-adding a
             // token the instance already holds.
             <p className="text-destructive text-sm">
-              Git accounts could not be loaded — a failed read, not an empty
-              credential store.
+              Git accounts could not be loaded.
             </p>
           ) : isLoading ? (
             <div className="space-y-2">
@@ -225,7 +222,7 @@ function DeleteAccountDialog({
           <DialogTitle>Delete {account.label}?</DialogTitle>
           <DialogDescription>
             {inUse
-              ? `${account.repo_count} repositor${account.repo_count === 1 ? "y" : "ies"} still use this account. Choose another for them — they are not re-cloned, the next fetch simply uses the new token.`
+              ? `${account.repo_count} repositor${account.repo_count === 1 ? "y" : "ies"} still use this account. Choose another for them.`
               : "The stored token is removed. This cannot be undone."}
           </DialogDescription>
         </DialogHeader>

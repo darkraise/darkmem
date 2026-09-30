@@ -11,14 +11,3 @@ test("activity day view drills into the UTC day bucket", async ({ page }) => {
   await page.goto("/activity?tab=day")
   await expect(page.getByText(/days are utc/i)).toBeVisible()
 })
-
-test("buffer monitor poison row is actionable, not just visible", async ({
-  page,
-}) => {
-  await page.goto("/activity?tab=monitors")
-  const forget = page.getByRole("button", { name: /^Forget$/ })
-  await expect(forget).toBeVisible()
-  await expect(
-    page.getByRole("button", { name: /Retry \(re-buffer\)/ }),
-  ).toBeVisible()
-})

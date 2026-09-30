@@ -4,11 +4,9 @@ import { Button } from "darkraise-ui/components/button"
 import { cn } from "darkraise-ui/lib"
 import { relativeTime } from "@/lib/format"
 import {
-  LayerChip,
   VerificationBadge,
   WhyRetrievedTrace,
   listItemClass,
-  type KnowledgeLayer,
   type VerificationStatus,
 } from "@/components/darkmem"
 import type { MemoryStatus } from "@/hooks/api"
@@ -17,9 +15,8 @@ import { Link } from "@tanstack/react-router"
 import { LifecycleBadge } from "./lifecycle-badge"
 
 // The minimal shape a result row needs to render, shared between the demo
-// store's DemoMemory and the real backend's Memory — the fields honesty
-// invariant 14 requires (layer, lifecycle, verification) always render,
-// whichever source populated them.
+// store's DemoMemory and the real backend's Memory — lifecycle and
+// verification always render, whichever source populated them.
 export interface MemoryRowData {
   id: string
   content: string
@@ -27,7 +24,6 @@ export interface MemoryRowData {
   flags?: string[] | null
   source: string
   created_at: string
-  layer: KnowledgeLayer
   status?: MemoryStatus
   verification_status?: VerificationStatus | null
   verification_detail?: string
@@ -56,7 +52,6 @@ export function MemoryRow({
     >
       <div className="flex items-start gap-2.5">
         <div className="flex shrink-0 flex-wrap items-center gap-1.5 pt-0.5">
-          <LayerChip layer={memory.layer} />
           <LifecycleBadge status={memory.status} />
           {memory.verification_status && (
             <VerificationBadge

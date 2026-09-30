@@ -323,8 +323,8 @@ export function ProjectWorkspace({
           // same question can answer differently depending on what is open.
           <p className="text-muted-foreground w-full px-1 text-xs">
             {selected
-              ? `Answering from ${selected.uri ?? selected.title ?? "the open document"} only. Every sentence cites a passage; an answer that cannot be grounded is withheld.`
-              : `Answering from every document in ${project}. Every sentence cites a passage; an answer that cannot be grounded is withheld.`}
+              ? `Answering from ${selected.uri ?? selected.title ?? "the open document"} only.`
+              : `Answering from every document in ${project}.`}
           </p>
         ) : null}
       </form>
@@ -345,14 +345,13 @@ export function ProjectWorkspace({
 
       {!asking && search.isError ? (
         <p className="text-destructive text-sm">
-          Search failed — a failed search, not an empty result.
+          Search failed.
         </p>
       ) : null}
 
       {!asking && search.isSuccess && hits.length === 0 ? (
         <p className="text-muted-foreground text-sm">
-          No sections matched. The search reads meaning, not exact words, so a
-          rephrasing may still find it.
+          No sections matched. Try rephrasing.
         </p>
       ) : null}
 
@@ -399,8 +398,7 @@ export function ProjectWorkspace({
             <RegionLabel>documents</RegionLabel>
             {documents.isError ? (
               <p className="text-destructive text-sm">
-                This project's documents could not be loaded — a failed read,
-                not an empty project.
+                This project's documents could not be loaded.
               </p>
             ) : documents.isLoading ? (
               <div className="space-y-2">
@@ -556,8 +554,7 @@ export function ProjectWorkspace({
             <EmptyState
               kind="empty"
               icon={FolderTree}
-              title="No ledger pinned"
-              description="This project's corpus holds no progress ledger, so the board has nothing to project. Coding clients record their progress in the work log below."
+              title="No progress ledger"
             />
           )}
         </div>

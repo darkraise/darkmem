@@ -2,12 +2,10 @@ import { DEMO } from "@/lib/demo-flag"
 import { useDemoHygiene } from "@/demo/hooks"
 import type { HygieneLineageChain, HygieneRow } from "@/demo/types"
 import {
-  useHygieneCounts,
   useHygieneDuplicates,
   useHygieneExpiringSoon,
   useHygieneLowConfidence,
   useHygieneSuperseded,
-  type HygieneCountsResponse,
   type HygieneDuplicateItem,
   type HygieneMemoryItem,
 } from "@/hooks/api"
@@ -118,15 +116,6 @@ export interface HygienePageQuery {
 export interface HygieneListResult<T> {
   rows: T[]
   total: number
-  loading: boolean
-  error: boolean
-}
-
-export interface HygieneCountsResult {
-  duplicates: number
-  low_confidence: number
-  expiring_soon: number
-  superseded: number
   loading: boolean
   error: boolean
 }
@@ -342,40 +331,6 @@ export function useHygieneSupersededRows(
   return {
     rows: items.map(memoryFromApi),
     total: api.data?.total ?? 0,
-    loading: api.isLoading,
-    error: api.isError,
-  }
-}
-
-function demoCounts(
-  demo: ReturnType<typeof useDemoHygiene>,
-  project: string | undefined,
-): HygieneCountsResponse {
-  if (!projectMatches(project)) {
-    return { duplicates: 0, low_confidence: 0, expiring_soon: 0, superseded: 0 }
-  }
-  return {
-    duplicates: demo.duplicates.length,
-    low_confidence: demo.lowConfidence.length,
-    expiring_soon: demo.expiring.length,
-    superseded: supersededRowsFromDemo(demo.lineage).length,
-  }
-}
-
-export function useHygieneCountsRows(query: { project?: string }): HygieneCountsResult {
-  const demo = useDemoHygiene()
-  const api = useHygieneCounts({ project: query.project }, { enabled: !DEMO })
-
-  if (DEMO) {
-    const counts = demoCounts(demo, query.project)
-    return { ...counts, loading: false, error: false }
-  }
-
-  return {
-    duplicates: api.data?.duplicates ?? 0,
-    low_confidence: api.data?.low_confidence ?? 0,
-    expiring_soon: api.data?.expiring_soon ?? 0,
-    superseded: api.data?.superseded ?? 0,
     loading: api.isLoading,
     error: api.isError,
   }

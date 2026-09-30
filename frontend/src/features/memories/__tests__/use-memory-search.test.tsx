@@ -8,7 +8,6 @@ vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
 import { apiFetch } from "@/lib/api"
 import {
   demoTraceToView,
-  EXCLUSION_CAVEAT,
   traceToView,
   useMemorySearchPage,
 } from "../use-memory-search"
@@ -87,13 +86,6 @@ describe("demoTraceToView", () => {
       rrfScore: 0.041,
       summary: "strong match",
     })
-  })
-})
-
-describe("EXCLUSION_CAVEAT (Ruling 1)", () => {
-  it("says an absent count is never proof nothing was filtered", () => {
-    expect(EXCLUSION_CAVEAT.toLowerCase()).toContain("never")
-    expect(EXCLUSION_CAVEAT.toLowerCase()).toMatch(/project|status/)
   })
 })
 

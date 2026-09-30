@@ -4,43 +4,19 @@ import { useDemoSecurity } from "@/demo/hooks"
 import { apiFetch } from "@/lib/api"
 
 /**
- * `T | null` fields have no real-mode source at all — no endpoint returns
- * them. `GET /auth/security-posture` (added to close this gap) covers
- * `trustProxyHeaders`, `cookieSecureValue`, `mcpHosts` and the rate-limit
- * thresholds; the remainder (session issue time/jti, the blocklist count,
- * the auth_lockout journal count) still have no backend read surface —
- * rendered null and skipped by the component (T1.45's precedent), never
- * approximated (ruling 4).
+ * Every `T | null` field is null until `GET /auth/security-posture` (or
+ * `/auth/me`) answers; the component skips a null row rather than
+ * approximating it.
  */
 export interface SecurityTabBinding {
-  isLoading: boolean
-  blocklisted: number | null
-  lockouts30d: number | null
   sessionSub: string | null
-  sessionIssuedLabel: string | null
-  sessionJti: string | null
-  rateLimitIpSource: string
+  rateLimitIpSource: string | null
   rateLimitAttemptThreshold: number | null
   rateLimitLockoutWindow: string | null
-  rateLimitJournaled: string | null
   cookieSecureValue: string | null
-  cookieSecureNote: string
-  /** null while the /setup/status probe is in flight — never defaulted to
-   *  either true or false, since both are meaningfully different claims. */
-  tofuClaimed: boolean | null
-  tofuClaimedLabel: string | null
-  tofuJournaled: string | null
-  trustProxyHeaders: boolean | null
   mcpHosts: { host: string; wild?: boolean }[] | null
-  /** The backup worker's posture. Rendered because Task 1's whole rationale
-   *  was that an operator must be able to tell it from the page — a field
-   *  that reaches the JSON and no surface is "never silent" only in theory. */
   readOnly: boolean | null
   readOnlyTokenRotationDisabled: boolean | null
-}
-
-interface SetupStatusResponse {
-  initialized: boolean
 }
 
 interface AuthMeResponse {
@@ -67,14 +43,15 @@ function formatSeconds(seconds: number): string {
   return `${seconds}s`
 }
 
+function ipSource(trustProxyHeaders: boolean): string {
+  return trustProxyHeaders
+    ? "X-Real-IP header (trusted proxy)"
+    : "direct connection address"
+}
+
 export function useSecurityTabBinding(): SecurityTabBinding {
   const demoSec = useDemoSecurity()
 
-  const statusQuery = useQuery<SetupStatusResponse>({
-    queryKey: ["setupStatus"],
-    queryFn: () => apiFetch<SetupStatusResponse>("/setup/status"),
-    enabled: !DEMO,
-  })
   const meQuery = useQuery<AuthMeResponse>({
     queryKey: ["authMe"],
     queryFn: () => apiFetch<AuthMeResponse>("/auth/me"),
@@ -88,22 +65,11 @@ export function useSecurityTabBinding(): SecurityTabBinding {
 
   if (DEMO) {
     return {
-      isLoading: false,
-      blocklisted: demoSec.blocklisted,
-      lockouts30d: demoSec.lockouts_30d,
       sessionSub: "admin",
-      sessionIssuedLabel: demoSec.session.issued_label,
-      sessionJti: demoSec.session.jti,
-      rateLimitIpSource: demoSec.rate_limit.ip_source,
+      rateLimitIpSource: ipSource(true),
       rateLimitAttemptThreshold: demoSec.rate_limit.attempt_threshold,
       rateLimitLockoutWindow: demoSec.rate_limit.lockout_window,
-      rateLimitJournaled: demoSec.rate_limit.journaled,
       cookieSecureValue: demoSec.cookie_secure.value,
-      cookieSecureNote: demoSec.cookie_secure.note,
-      tofuClaimed: true,
-      tofuClaimedLabel: demoSec.tofu.claimed_label,
-      tofuJournaled: demoSec.tofu.journaled,
-      trustProxyHeaders: true,
       mcpHosts: demoSec.mcp_hosts,
       // The demo is a production-shaped instance, not a worker.
       readOnly: false,
@@ -114,44 +80,23 @@ export function useSecurityTabBinding(): SecurityTabBinding {
   const posture = postureQuery.data
 
   return {
-    isLoading: statusQuery.isLoading || meQuery.isLoading || postureQuery.isLoading,
-    blocklisted: null,
-    lockouts30d: null,
     sessionSub: meQuery.data?.sub ?? null,
-    sessionIssuedLabel: null,
-    sessionJti: null,
-    rateLimitIpSource: posture
-      ? posture.trust_proxy_headers
-        ? "X-Real-IP (trust_proxy_headers is on) — the leftmost X-Forwarded-For is never trusted"
-        : "the raw transport-socket peer (trust_proxy_headers is off)"
-      : "X-Real-IP when trust_proxy_headers is on (an operator TLS proxy in front) — the leftmost X-Forwarded-For is never trusted",
+    rateLimitIpSource: posture ? ipSource(posture.trust_proxy_headers) : null,
     rateLimitAttemptThreshold: posture?.rate_limit_max_failures ?? null,
     rateLimitLockoutWindow: posture ? formatSeconds(posture.rate_limit_lockout_seconds) : null,
-    rateLimitJournaled: null,
     cookieSecureValue: posture
-      ? `${posture.cookie_secure} — ${
+      ? `${posture.cookie_secure ? "on" : "off"} — ${
           posture.cookie_secure_clamped
-            ? "enforced by the exposed posture, overriding an explicit false"
+            ? "forced on because the instance trusts proxy headers"
             : posture.cookie_secure_explicit
-              ? "explicit"
-              : `default for environment=${posture.environment}`
+              ? "set explicitly"
+              : `default for the ${posture.environment} environment`
         }`
       : null,
-    cookieSecureNote:
-      "Unset means Secure-only when environment=production; explicit false permits login over plain-HTTP LAN. " +
-      "With trust_proxy_headers on the tri-state collapses to enforced — an explicit false is overridden, not honoured.",
-    tofuClaimed: statusQuery.data?.initialized ?? null,
-    tofuClaimedLabel: statusQuery.data
-      ? statusQuery.data.initialized
-        ? "claimed"
-        : "not yet claimed"
-      : null,
-    tofuJournaled: null,
-    trustProxyHeaders: posture?.trust_proxy_headers ?? null,
     mcpHosts: posture
       ? posture.mcp_allowed_hosts.length > 0
         ? posture.mcp_allowed_hosts.map((host) => ({ host, wild: host === "*" }))
-        : [{ host: "localhost only (mcp_allowed_hosts is empty — the default)" }]
+        : [{ host: "localhost only" }]
       : null,
     readOnly: posture?.read_only ?? null,
     readOnlyTokenRotationDisabled:

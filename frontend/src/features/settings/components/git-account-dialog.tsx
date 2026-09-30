@@ -140,7 +140,7 @@ export function GitAccountDialog({
           <DialogDescription>
             {isEdit
               ? "Leave the token blank to keep the stored one. Changing it re-checks the account with the provider."
-              : "The token is checked with the provider before it is saved, and the account name comes back from that check."}
+              : "The token is checked with the provider before it is saved."}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3">
@@ -227,10 +227,6 @@ export function GitAccountDialog({
               placeholder="Personal, Work, CI bot…"
               required
             />
-            <p className="text-muted-foreground mt-1 text-sm">
-              Your own name for this credential. Two tokens for the same account
-              are fine as long as they are named differently.
-            </p>
           </div>
           <div className="flex items-start gap-2 rounded-md border px-3 py-2">
             <Switch

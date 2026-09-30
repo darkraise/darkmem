@@ -238,7 +238,7 @@ export const DocumentReader = memo(function DocumentReader({
   if (blocks.isError) {
     return (
       <p className="text-destructive text-sm">
-        This document could not be read — a failed read, not an empty document.
+        This document could not be read.
       </p>
     )
   }
@@ -246,7 +246,7 @@ export const DocumentReader = memo(function DocumentReader({
   if (rows.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">
-        This document is filed but holds no blocks.
+        This document is empty.
       </p>
     )
   }

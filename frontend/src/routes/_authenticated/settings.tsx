@@ -58,11 +58,7 @@ function SettingsPage() {
 
   return (
     <div className="space-y-4">
-      <PageChrome
-        icon={Settings}
-        title="Settings"
-        description="Tunables, LLM purposes, security, maintenance and appearance."
-      />
+      <PageChrome icon={Settings} title="Settings" />
       <Tabs
         border="accent"
         value={tab ?? "flags"}

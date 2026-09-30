@@ -21,21 +21,20 @@ const TOGGLES: {
 }[] = [
   {
     key: "full",
-    label: "full",
+    label: "Full rebuild",
     description:
-      "Rebuild the entire repo graph from scratch, ignoring last_indexed_commit. Off runs the incremental diff (changed files only since the last indexed HEAD).",
+      "Rebuild the whole graph instead of only the files changed since the last index.",
   },
   {
     key: "enrich_symbols",
-    label: "enrich_symbols",
+    label: "Enrich symbols",
     description:
-      "Drain the pending-symbol LLM-summary backlog inline during this run, bounded and scoped to this repo. Off leaves symbols draining lazily via the code_enrichment background job.",
+      "Summarise symbols with the LLM during this run instead of in the background.",
   },
   {
     key: "generate_wiki",
-    label: "generate_wiki",
-    description:
-      "Generate the LLM wiki over the graph after this run completes. GET /code/wiki is read-only and never triggers generation on its own — this toggle is the only way a wiki gets built.",
+    label: "Generate wiki",
+    description: "Write the wiki with the LLM after this run.",
   },
 ]
 
@@ -95,13 +94,11 @@ export function ReindexDialog({
               )}
             >
               <span className="min-w-0 flex-1 space-y-0.5">
-                <span className="block font-mono text-sm font-semibold">
+                <span className="block text-sm font-semibold">
                   {toggle.label}
                 </span>
                 <span className="text-muted-foreground block text-sm">
-                  {emphasizeWiki && toggle.key === "generate_wiki"
-                    ? "the one toggle that will populate the Wiki tab"
-                    : toggle.description}
+                  {toggle.description}
                 </span>
               </span>
               <Switch

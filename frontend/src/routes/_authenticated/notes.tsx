@@ -35,7 +35,6 @@ function NotesPage() {
       <PageChrome
         icon={NotebookPen}
         title="Notes"
-        description="Your personal workspace. Nothing here is a project artifact."
       />
 
       {DEMO ? (
@@ -44,7 +43,7 @@ function NotesPage() {
         // Never the empty state: "there is no personal space" is a claim
         // about the catalogue, and on a failed read it is an unfounded one.
         <p className="text-destructive text-sm">
-          Notes could not be loaded — a failed read, not an empty space.
+          Notes could not be loaded.
         </p>
       ) : isLoading ? (
         <Skeleton className="h-64 w-full" />

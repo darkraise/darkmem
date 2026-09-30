@@ -240,36 +240,13 @@ describe("store — maintenance", () => {
     useDemoStore.getState().runMaintenanceOp("expired_memory_cleanup")
     const m = useDemoStore.getState().maintenance
     expect(m.cleanup.expired).toBe(0)
-    expect(m.last_op_note).toMatch(/demoted to deprecated/)
+    expect(m.last_op_note).toMatch(/marked deprecated/)
   })
 
   it("prune_caches drops the retired fingerprints", () => {
     useDemoStore.getState().runMaintenanceOp("prune_caches")
     const m = useDemoStore.getState().maintenance
     expect(m.dbops.retired_fingerprints).toEqual([])
-    expect(m.last_op_note).toMatch(/3 retired cache tables dropped/)
-  })
-})
-
-describe("store — distribution curb", () => {
-  it("curbing flips the client and appends an inject_curbed log row", () => {
-    const before = useDemoStore.getState().distribution.log.length
-    useDemoStore.getState().setDistributionCurb("cursor", true)
-    const d = useDemoStore.getState().distribution
-    expect(d.clients.find((c) => c.id === "cursor")?.status).toBe("curbed")
-    expect(d.log.length).toBe(before + 1)
-    expect(d.log[0]).toMatchObject({
-      target: "cursor",
-      event_type: "inject_curbed",
-    })
-  })
-
-  it("un-curbing resumes without fabricating an inject log row", () => {
-    useDemoStore.getState().setDistributionCurb("codex-cli", false)
-    const d = useDemoStore.getState().distribution
-    expect(d.clients.find((c) => c.id === "codex-cli")?.status).toBe(
-      "connected",
-    )
-    expect(d.log.filter((r) => r.target === "codex-cli").length).toBe(2)
+    expect(m.last_op_note).toMatch(/3 unused caches dropped/)
   })
 })

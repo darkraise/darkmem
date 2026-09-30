@@ -88,7 +88,7 @@ describe("TopicsTab (live doors)", () => {
 
     expect(await screen.findByText(/not generated yet/i)).toBeInTheDocument()
     expect(
-      screen.getByText(/too small for a report — this one will not get one/i),
+      screen.getByText(/too small for a report/i),
     ).toBeInTheDocument()
   })
 
@@ -144,13 +144,7 @@ describe("TopicsTab (live doors)", () => {
     expect(screen.queryByText(/previous run:/i)).not.toBeInTheDocument()
   })
 
-  it("hides the raw subject key at the simple level and shows it at advanced", async () => {
-    serve([], { suggestions: [suggestion()] })
-    const { unmount } = renderTab()
-    expect(await screen.findByText(/subject key: postgres::tool/i)).toBeInTheDocument()
-    unmount()
-
-    useDetailLevel.setState({ level: "simple" })
+  it("never shows the raw subject key", async () => {
     serve([], { suggestions: [suggestion()] })
     renderTab()
     await screen.findByText(/anchors 3 verified facts/i)
@@ -197,16 +191,15 @@ describe("TopicsTab (live doors)", () => {
     })
     renderTab()
 
-    expect(await screen.findByText(/pinned —/i)).toBeInTheDocument()
+    expect(await screen.findByText("pinned")).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /accept/i })).not.toBeInTheDocument()
   })
 
-  it("says the last detection run is not reported rather than inventing a time", async () => {
+  it("shows no last-run time rather than inventing one", async () => {
     serve([topic()])
     renderTab()
 
-    expect(
-      await screen.findByText(/last detection run: not reported/i),
-    ).toBeInTheDocument()
+    await screen.findByText("a report about postgres tuning")
+    expect(screen.queryByText(/last run:/i)).not.toBeInTheDocument()
   })
 })

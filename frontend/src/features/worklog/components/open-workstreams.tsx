@@ -122,7 +122,7 @@ export function OpenWorkstreams() {
         kind="empty"
         icon={ScrollText}
         title="No open workstreams"
-        description="A workstream opens when a coding client first appends to it with worklog_append, and stays listed here until it is closed."
+        description="A workstream appears here when a coding client starts logging work, until it is closed."
       />
     )
   }

@@ -29,7 +29,7 @@ export function PhaseTicker({ phases }: { phases: DemoIndexPhase[] }) {
           </span>
           <span className="min-w-0 flex-1">{phase.label}</span>
           <span className="text-muted-foreground ml-auto shrink-0 font-mono text-sm">
-            {phase.state === "skipped" ? "skipped — opt-in" : phase.state}
+            {phase.state}
           </span>
         </div>
       ))}

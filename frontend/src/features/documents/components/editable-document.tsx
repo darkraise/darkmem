@@ -12,7 +12,7 @@ export function EditableDocument({ documentId }: { documentId: string }) {
   if (blocks.isError) {
     return (
       <p className="text-destructive text-sm">
-        This document could not be read — a failed read, not an empty document.
+        This document could not be read.
       </p>
     )
   }

@@ -38,18 +38,13 @@ export function LiveDisputePanel({ dispute }: { dispute: FactDispute }) {
       <div className="border-border space-y-2 rounded-md border p-3">
         <VerificationBadge status="disputed" label="counterpart" />
         <TripleOrUnrecorded triple={dispute.counterpart} />
-        {!dispute.counterpart && dispute.counterpart_absent && (
-          <p className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
-            {dispute.counterpart_absent}
-          </p>
-        )}
         {dispute.counterpart?.id && (
           <Link
             to="/knowledge/facts/$factId"
             params={{ factId: dispute.counterpart.id }}
             className="text-primary-text text-sm"
           >
-            view the counterpart fact →
+            view counterpart →
           </Link>
         )}
       </div>
@@ -63,7 +58,7 @@ export function LiveDisputePanel({ dispute }: { dispute: FactDispute }) {
           )}
           {dispute.witness_origin && (
             <>
-              <dt>witness_origin</dt>
+              <dt>witness</dt>
               <dd className="lowercase">{dispute.witness_origin}</dd>
             </>
           )}

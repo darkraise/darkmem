@@ -5,7 +5,6 @@ import { Skeleton } from "darkraise-ui/components/skeleton"
 import { toast } from "darkraise-ui/components/sonner"
 import { PageChrome } from "@/components/app-chrome"
 import {
-  HelpTip,
   IconSegmented,
   type IconSegmentedOption,
 } from "@/components/darkmem"
@@ -46,8 +45,7 @@ export function JobsPage() {
         if (result.ok) toast.success(`${job.name} — triggered`)
         else
           toast.warning(`${job.name} — busy`, {
-            description:
-              "A run already holds the lock; the trigger was discarded, not queued.",
+            description: "Already running; try again when it finishes.",
           })
       })
       .catch((err: unknown) => {
@@ -59,27 +57,9 @@ export function JobsPage() {
 
   return (
     <div className="space-y-4">
-      <PageChrome
-        icon={Timer}
-        title="Jobs"
-        description="The registered JobRegistry jobs — schedule, config, and manual triggers."
-      />
+      <PageChrome icon={Timer} title="Jobs" />
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
-          <span>
-            Cron, the enabled switch, per-job config and a manual trigger.
-          </span>
-          <HelpTip label="About Jobs">
-            A manual trigger acquires the same asyncio.Lock the scheduled loop
-            uses, so a save can never race a running tick, and a trigger that
-            lands while the lock is held returns busy (HTTP 409) immediately —
-            discarded, never queued behind the in-flight run.
-          </HelpTip>
-        </div>
-        {/* `ml-auto` rather than `flex-1` on the text: that block is capped at
-            max-w-4xl, so growing it stops short of the edge on a wide viewport
-            and left the switch stranded mid-row. */}
         <IconSegmented
           value={layout}
           options={LAYOUTS}
@@ -93,7 +73,6 @@ export function JobsPage() {
         <EmptyState
           kind="failed"
           title="Couldn't load the job board"
-          description="The /jobs request failed — this is an error state, not an empty registry."
         />
       ) : isLoading ? (
         <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
@@ -107,7 +86,7 @@ export function JobsPage() {
           icon={Timer}
           scope="page"
           title="No registered jobs"
-          description="The registry returned no jobs. On a healthy install this list is never empty, so treat it as a boot problem rather than a quiet day."
+          description="This usually means the server did not start cleanly."
         />
       ) : layout === "list" ? (
         <div className="flex flex-col gap-2">

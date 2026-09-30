@@ -4,18 +4,18 @@ import type { DemoIndexPhase, DemoRepo, DemoWiki } from "../types"
 // The fixed 14-phase indexing pipeline topology (doc 10 §2). Phases 13–14
 // are the two opt-in LLM-cost phases the reindex toggles gate.
 export const INDEX_PHASE_LABELS: string[] = [
-  "File discovery — rename-aware diff",
-  "Parsing — tree-sitter AST, size-budgeted",
-  "Structure — nodes/edges, strip-before-rewrite",
-  "Import resolution + Kahn topo sort",
+  "File discovery",
+  "Parsing",
+  "Structure",
+  "Import resolution",
   "Named bindings",
-  "Call tracing — resolving call sites to owner-qualified targets",
-  "Heritage / MRO",
+  "Call tracing",
+  "Inheritance",
   "Cross-file binding",
-  "Community detection (Leiden)",
+  "Community detection",
   "Process detection",
-  "Validation — prune low-confidence calls",
-  "Embeddings — per-fingerprint, register-before-insert",
+  "Validation",
+  "Embeddings",
   "Enrich symbols",
   "Generate wiki",
 ]
@@ -38,8 +38,6 @@ const midIndexPhases: DemoIndexPhase[] = INDEX_PHASE_LABELS.map(
 const BACKEND_WIKI: DemoWiki = {
   generated_at: "2026-07-20 04:12",
   head: "a1c9f02",
-  symbol_enrichment: "complete",
-  module_summaries: "complete",
   sections: [
     {
       id: "overview",
@@ -148,7 +146,7 @@ export const CURATED_CODE_REPOS: DemoRepo[] = [
     index_on_commit_enabled: true,
     debt: {
       queued_files: 168,
-      note: "dependent files queued · draining via next sync",
+      note: "dependent files queued for reindex",
     },
     auto_provisioned: null,
     stale: null,
@@ -199,7 +197,7 @@ export const CURATED_CODE_REPOS: DemoRepo[] = [
     error: null,
     phases: null,
     registered_note:
-      "queued for first index — Tier C, never on the capture path. Clone + first index run off the hot path.",
+      "queued for first index",
     wiki: null,
     files: [],
   },
@@ -234,7 +232,7 @@ export const CURATED_CODE_REPOS: DemoRepo[] = [
       last_good_head: "4b7e120",
       last_good_at: "2026-07-19 14:02 UTC",
       cause:
-        "an unhandled exception during phase 09 (community detection) — the Leiden partitioning step timed out. The run failed before reaching phase 14, and nothing was deleted.",
+        "community detection timed out.",
     },
     error: null,
     phases: null,
@@ -265,7 +263,7 @@ export const CURATED_CODE_REPOS: DemoRepo[] = [
     error: {
       headline: "Clone failed — 3 consecutive attempts",
       detail:
-        "indexing disabled after the third failure to protect the indexing loop from spinning on a broken remote.",
+        "Indexing is disabled. Fix access to the remote, then reindex.",
       message:
         "git@github.com:acme/internal-tools-cli.git — Permission denied (publickey). Could not read from remote repository.",
     },

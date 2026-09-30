@@ -35,7 +35,7 @@ export function ContextChip() {
   const [draft, setDraft] = useState<Partial<Record<ContextAxis, string>>>({})
   const [open, setOpen] = useState(false)
 
-  const label = declared ? `context: ${summarize(declared.axes)}` : "context: not declared"
+  const label = declared ? `context: ${summarize(declared.axes)}` : "context: none"
 
   return (
     <span className="inline-flex items-center gap-1">
@@ -65,16 +65,9 @@ export function ContextChip() {
           align="end"
           className="bg-card border-border w-72 space-y-3 rounded-lg border p-3 shadow-xl"
         >
-          <div className="space-y-1.5">
-            <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-              Declare session context
-            </p>
-            <p className="text-muted-foreground text-xs">
-              A retrieval hint (boosts or excludes rows by env / situation /
-              version) — not the project scope. Leave every field blank to stay
-              undeclared.
-            </p>
-          </div>
+          <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+            Declare session context
+          </p>
           <div className="space-y-2">
             {CONTEXT_AXES.map((axis) => (
               <div key={axis} className="space-y-1">

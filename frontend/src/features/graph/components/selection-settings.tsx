@@ -25,7 +25,7 @@ export function SelectionSettings({
   compact = false,
   className,
 }: {
-  /** The popover is narrow — drop the prose there. */
+  /** The popover is narrow — use small segments there. */
   compact?: boolean
   className?: string
 }) {
@@ -36,14 +36,6 @@ export function SelectionSettings({
 
   return (
     <div className={cn("flex flex-col", compact ? "gap-2" : "gap-3", className)}>
-      {!compact && (
-        <p className="text-muted-foreground text-sm">
-          A selected node keeps its own colour and gains a halo. This is what
-          that halo is painted in — the accent, or a high-contrast inversion
-          for a crowded canvas where the accent competes with relation edges.
-        </p>
-      )}
-
       {/* The same row primitives the toolbar popover uses, so the panel reads
           as a single grid -- and so a spacing change lands on both rather than
           on whichever copy someone remembered. The popover asks for the small
@@ -67,12 +59,6 @@ export function SelectionSettings({
         suffix="%"
         ariaLabel="Dim unrelated nodes, percent"
       />
-      {!compact && (
-        <p className="text-muted-foreground -mt-1 text-sm">
-          How far the rest of the map recedes when something is focused. It
-          keeps its colours and its shape — edges recede with it.
-        </p>
-      )}
     </div>
   )
 }

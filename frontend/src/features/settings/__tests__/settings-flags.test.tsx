@@ -50,15 +50,10 @@ describe("FlagsTab — invariant 23 honesty (demo mode)", () => {
     expect(screen.getAllByText("active")).toHaveLength(3)
   })
 
-  it("labels coded defaults distinctly from written overrides", () => {
+  it("marks written overrides and leaves defaults unmarked", () => {
     renderTab()
-    expect(screen.getAllByText("(coded default)").length).toBeGreaterThan(0)
     expect(screen.getAllByText("(override)").length).toBeGreaterThan(0)
-  })
-
-  it("shows the no-weight note for community injection", () => {
-    renderTab()
-    expect(screen.getByText(/no paired RRF weight/)).toBeInTheDocument()
+    expect(screen.queryByText("(coded default)")).not.toBeInTheDocument()
   })
 
   // Job schedules are the Jobs page's, and duplicating them here meant this
@@ -70,28 +65,8 @@ describe("FlagsTab — invariant 23 honesty (demo mode)", () => {
   })
 })
 
-describe("FlagsTab — ruling 1: activation ids named, not just inactive", () => {
-  it("names T2.30 for w_importance and T2.31 for w_heat/w_recency", () => {
-    renderTab()
-    expect(screen.getByText("T2.30")).toBeInTheDocument()
-    expect(screen.getAllByText("T2.31")).toHaveLength(2)
-  })
-})
-
-describe("FlagsTab — ruling 3: visibly unmeasured", () => {
-  it("badges every measurable-but-unmeasured arm and flag as unmeasured", () => {
-    renderTab()
-    // w_importance, w_heat, w_recency, w_context_boost, reranker_enabled.
-    expect(screen.getAllByText("unmeasured")).toHaveLength(5)
-  })
-
-  it("does not badge already-shipped flags with no measurement requirement", () => {
-    renderTab()
-    const hybridRow = screen.getByText("hybrid_search_enabled").closest("div")
-    expect(hybridRow?.textContent).not.toMatch(/unmeasured/)
-  })
-
-  it("flipping reranker_enabled stays possible despite being unmeasured", () => {
+describe("FlagsTab — feature flag editing", () => {
+  it("flipping reranker_enabled writes it to the store", () => {
     renderTab()
     openEditor("feature flags")
     const toggle = screen.getByLabelText("reranker_enabled")
@@ -121,10 +96,7 @@ describe("FlagsTab — behavioral feature flags", () => {
 })
 
 describe("FlagsTab — every badge explains itself", () => {
-  // The badges are the whole explanation of a row's state, and the two words
-  // most likely to be misread are "inactive" (which does not mean missing) and
-  // "unmeasured" (which does not mean locked).
-  it("explains what inactive means — built and wired at weight 0, not absent", () => {
+  it("explains what inactive means", () => {
     renderTab()
     const [pill] = screen.getAllByLabelText("About the inactive state")
     expect(pill).toBeInTheDocument()
@@ -136,13 +108,6 @@ describe("FlagsTab — every badge explains itself", () => {
       screen.getAllByLabelText("About the active state").length,
     ).toBeGreaterThan(0)
   })
-
-  it("explains that unmeasured is about the evidence, not the control", () => {
-    renderTab()
-    expect(
-      screen.getAllByLabelText("About the unmeasured badge"),
-    ).toHaveLength(5)
-  })
 })
 
 describe("FlagsTab — every section names itself", () => {
@@ -152,7 +117,7 @@ describe("FlagsTab — every section names itself", () => {
   it("gives every group head a help tip", () => {
     renderTab()
     for (const name of [
-      "rank_fusion_factor arms",
+      "ranking arms",
       "feature flags",
       "context match boost",
       "graph augmentation",
@@ -321,7 +286,7 @@ describe("FlagsTab — the corroboration gate is editable and honest", () => {
       fireEvent.keyDown(input, { key: "Enter" })
     }
     expect(
-      screen.getByText(/one request will write: n_default, time_gap_days/),
+      screen.getByText(/edited: n_default, time_gap_days/),
     ).toBeInTheDocument()
   })
 })
@@ -383,9 +348,7 @@ describe("FlagsTab — the classification label space", () => {
     renderTab()
     expect(screen.getByText("label space")).toBeInTheDocument()
     for (const label of ["fact", "decision", "problem", "procedural"]) {
-      expect(
-        screen.getByLabelText(`About the ${label} label`),
-      ).toBeInTheDocument()
+      expect(screen.getByText(label)).toBeInTheDocument()
     }
   })
 
@@ -395,12 +358,6 @@ describe("FlagsTab — the classification label space", () => {
     renderTab()
     expect(screen.queryByLabelText("technical")).not.toBeInTheDocument()
     expect(screen.queryByText("would add")).not.toBeInTheDocument()
-  })
-
-  it("still names the feature and where it lives, so it does not read as absent", () => {
-    renderTab()
-    expect(screen.getByText(/not read at\s+all/)).toBeInTheDocument()
-    expect(screen.getByText(/Edit and switch to/)).toBeInTheDocument()
   })
 
   it("brings the areas back in expanded mode", () => {
@@ -423,7 +380,7 @@ describe("FlagsTab — classification areas", () => {
     fireEvent.click(screen.getByLabelText("technical"))
     expect(
       screen.getByText(
-        /one request will write: classification_mode, classification_areas/,
+        /edited: classification_mode, classification_areas/,
       ),
     ).toBeInTheDocument()
     saveEditor()
@@ -448,7 +405,7 @@ describe("FlagsTab — classification areas", () => {
     openEditor("classification")
     const dialog = screen.getByRole("dialog")
     expect(within(dialog).queryByLabelText("technical")).not.toBeInTheDocument()
-    expect(within(dialog).getByText(/does not read/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/fixed set of labels/)).toBeInTheDocument()
 
     switchToExpanded()
     expect(within(dialog).getByLabelText("technical")).toBeInTheDocument()
@@ -473,7 +430,7 @@ describe("FlagsTab — classification areas", () => {
     // The mode is dirty too (demo starts simple), so the footer names both —
     // what matters is that the area edit survived being hidden.
     expect(
-      within(dialog).getByText(/one request will write:.*classification_areas/),
+      within(dialog).getByText(/edited:.*classification_areas/),
     ).toBeInTheDocument()
   })
 })

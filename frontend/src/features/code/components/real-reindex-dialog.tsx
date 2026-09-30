@@ -78,8 +78,8 @@ export function RealReindexDialog({
             {(field) => (
               <CheckboxField
                 name={field.name}
-                label="full"
-                description="Rebuild the entire repo graph from scratch, ignoring last_indexed_commit. Off runs the incremental diff (changed files only since the last indexed HEAD)."
+                label="Full rebuild"
+                description="Rebuild the whole graph instead of only the files changed since the last index."
                 value={field.state.value}
                 onChange={(v) => field.handleChange(v)}
                 onBlur={field.handleBlur}
@@ -91,8 +91,8 @@ export function RealReindexDialog({
             {(field) => (
               <CheckboxField
                 name={field.name}
-                label="enrich_symbols"
-                description="Drain the pending-symbol LLM-summary backlog inline during this run, bounded and scoped to this repo. Off leaves symbols draining lazily via the code_enrichment background job."
+                label="Enrich symbols"
+                description="Summarise symbols with the LLM during this run instead of in the background."
                 value={field.state.value}
                 onChange={(v) => field.handleChange(v)}
                 onBlur={field.handleBlur}
@@ -104,8 +104,8 @@ export function RealReindexDialog({
             {(field) => (
               <CheckboxField
                 name={field.name}
-                label="generate_wiki"
-                description="Generate the LLM wiki over the graph after this run completes. GET /code/wiki is read-only and never triggers generation on its own — this toggle is the only way a wiki gets built."
+                label="Generate wiki"
+                description="Write the wiki with the LLM after this run."
                 value={field.state.value}
                 onChange={(v) => field.handleChange(v)}
                 onBlur={field.handleBlur}

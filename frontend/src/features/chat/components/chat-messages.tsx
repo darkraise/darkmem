@@ -290,7 +290,6 @@ export function ChatMessages({
           icon={MessageCircle}
           scope="page"
           title="Ask about your memories"
-          description="Chat answers from the same ranked, labelled rows Memories and the vault serve — and every turn shows what it retrieved in the panel beside this one."
         />
       )}
 

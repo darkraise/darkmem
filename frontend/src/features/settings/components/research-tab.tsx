@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react"
-import { FlaskConical } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
@@ -63,24 +62,8 @@ export function ResearchTab() {
     <ModuleSurface
       title="Auto research"
       state={config.isLoading ? "empty" : "populated"}
-      meta={!known ? "reading…" : enabled ? "armed" : "disarmed"}
     >
       <div className="space-y-3.5">
-        <div className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-sm">
-          <FlaskConical aria-hidden className="h-4 w-4" />
-          <span>
-            The research loop files evidence an MCP agent gathered. It refuses
-            every run while disarmed, which is the shipped default.
-          </span>
-          <HelpTip label="About auto research">
-            Building the door is not arming the loop. The loop has no in-tree
-            gatherer by design — a model without web access would invent
-            sources — so the caller supplies the evidence through the
-            `research_run` MCP tool. Arming this switch lets that tool run; it
-            does not start anything on its own, and there is no schedule.
-          </HelpTip>
-        </div>
-
         <div className="flex flex-wrap items-center gap-2">
           <Badge
             variant="outline"
@@ -152,8 +135,7 @@ export function ResearchTab() {
         )}
         {config.isError && (
           <p className="text-muted-foreground text-sm">
-            the research config could not be read — a failed read, not a
-            disarmed loop
+            The research settings could not be loaded.
           </p>
         )}
 
@@ -161,13 +143,8 @@ export function ResearchTab() {
           <div className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-sm">
             <span>Filed runs</span>
             <HelpTip label="About re-running">
-              Re-running re-derives, it does not re-gather. The run&apos;s
-              memories go back through the pipeline, so entities, relations and
-              facts are recomputed under the current taxonomy. No evidence is
-              fetched, no row is filed and no origin is created, so
-              corroboration counts are untouched. A run whose memories were
-              deleted cannot be re-derived — the journal records what it filed,
-              never the finding text.
+              Re-derive reprocesses a run&apos;s memories. Nothing is fetched
+              again.
             </HelpTip>
           </div>
 
@@ -178,7 +155,7 @@ export function ResearchTab() {
           )}
           {runs.data && runs.data.items.length === 0 && (
             <p className="text-muted-foreground text-sm">
-              no research run has been filed on this install
+              No research runs yet.
             </p>
           )}
 

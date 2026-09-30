@@ -26,10 +26,6 @@ export function AppearanceTab() {
               : "A choice applies immediately and is saved server-side, so it follows you to another browser."}
           </HelpTip>
         </span>
-        <span className="flex-1" />
-        <span className="text-muted-foreground shrink-0 text-xs">
-          Also in the header palette button
-        </span>
       </CardHeader>
       <CardContent className="p-4">
         <ThemeSettingsPanel layout="page" />
@@ -56,14 +52,9 @@ export function GraphAppearanceCard() {
         </h3>
         <span className="shrink-0">
           <HelpTip label="About Graph">
-            These apply to every graph view. Unlike the theme axes above, they
-            are stored in this browser rather than server-side, so another
-            browser starts from the defaults.
+            These apply to every graph view and are saved in this browser
+            only.
           </HelpTip>
-        </span>
-        <span className="flex-1" />
-        <span className="text-muted-foreground shrink-0 text-xs">
-          Also in the graph toolbar
         </span>
       </CardHeader>
       <CardContent className="p-4">

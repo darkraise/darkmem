@@ -119,14 +119,10 @@ describe("ChangePasswordDialog", () => {
     expect(screen.queryByText(/Not ready —/)).not.toBeInTheDocument()
   })
 
-  it("keeps the revocation consequence next to the trigger", () => {
-    // A destructive side effect is never demoted to a hover.
+  it("states the sign-out consequence without a hover", () => {
     renderDialog()
-    // The description says it too, so this asserts the warning beside the
-    // button rather than any mention of it.
     expect(
-      screen.getAllByText(/revokes every token minted before this moment/)
-        .length,
-    ).toBeGreaterThan(0)
+      screen.getByText(/signs out every other session/),
+    ).toBeInTheDocument()
   })
 })

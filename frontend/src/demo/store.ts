@@ -23,11 +23,9 @@ import {
   DEMO_REPLY_CONTEXT,
 } from "./data/chat-curated"
 import {
-  CURATED_BUFFER_MONITOR,
   CURATED_DAY_BUCKETS,
   CURATED_DREAM_ACTIONS,
   CURATED_DREAM_CYCLE,
-  CURATED_DREAM_MONITOR,
   CURATED_DREAM_PAST_ACTIONS,
   CURATED_FEED_EVENTS,
   CURATED_PIPELINE_FAILURES,
@@ -35,7 +33,6 @@ import {
 } from "./data/activity-curated"
 import {
   CURATED_CODE_BUCKETS,
-  CURATED_DISTRIBUTION,
   CURATED_FLAGS,
   CURATED_LLM_PURPOSES,
   CURATED_MAINTENANCE,
@@ -164,8 +161,6 @@ const initialActivity = () => ({
     ...j,
     config_schema: j.config_schema.map((f) => ({ ...f })),
   })),
-  bufferMonitor: structuredClone(CURATED_BUFFER_MONITOR),
-  dreamMonitor: CURATED_DREAM_MONITOR,
   dreamCycle: CURATED_DREAM_CYCLE,
   dreamActions: CURATED_DREAM_ACTIONS.map((a) => ({ ...a })),
   dreamPastActions: CURATED_DREAM_PAST_ACTIONS.map((a) => ({ ...a })),
@@ -184,7 +179,6 @@ const initialSettings = () => ({
   },
   security: structuredClone(CURATED_SECURITY),
   maintenance: structuredClone(CURATED_MAINTENANCE),
-  distribution: structuredClone(CURATED_DISTRIBUTION),
   gitAccounts: structuredClone(CURATED_GIT_ACCOUNTS),
 })
 
@@ -386,33 +380,6 @@ export const useDemoStore = create<DemoStoreState>((set, get) => ({
     set((s) => ({
       pipelineFailures: s.pipelineFailures.filter((f) => f.id !== id),
     })),
-  retryBufferRow: (id) =>
-    set((s) => ({
-      bufferMonitor: {
-        ...s.bufferMonitor,
-        target: {
-          ...s.bufferMonitor.target,
-          error: Math.max(0, s.bufferMonitor.target.error - 1),
-          pending: s.bufferMonitor.target.pending + 1,
-          poisonRows: s.bufferMonitor.target.poisonRows.filter(
-            (r) => r.id !== id,
-          ),
-        },
-      },
-    })),
-  forgetBufferRow: (id) =>
-    set((s) => ({
-      bufferMonitor: {
-        ...s.bufferMonitor,
-        target: {
-          ...s.bufferMonitor.target,
-          error: Math.max(0, s.bufferMonitor.target.error - 1),
-          poisonRows: s.bufferMonitor.target.poisonRows.filter(
-            (r) => r.id !== id,
-          ),
-        },
-      },
-    })),
   triggerJob: (key) => {
     const job = get().jobs.find((j) => j.key === key)
     if (!job) return { ok: false, status: 409, lock_held_since: "unknown" }
@@ -604,7 +571,7 @@ export const useDemoStore = create<DemoStoreState>((set, get) => ({
             maintenance: {
               ...m,
               reembed: { ...m.reembed, memories: 0 },
-              last_op_note: `re-embed memories started — ${m.reembed.memories} embedding calls dispatched (POST returned 202)`,
+              last_op_note: "re-embed memories started",
             },
           }
         case "reembed_entities":
@@ -612,7 +579,7 @@ export const useDemoStore = create<DemoStoreState>((set, get) => ({
             maintenance: {
               ...m,
               reembed: { ...m.reembed, entities: 0 },
-              last_op_note: `re-embed entities started — ${m.reembed.entities} embedding calls dispatched (POST returned 202)`,
+              last_op_note: "re-embed entities started",
             },
           }
         case "expired_memory_cleanup":
@@ -620,23 +587,21 @@ export const useDemoStore = create<DemoStoreState>((set, get) => ({
             maintenance: {
               ...m,
               cleanup: { ...m.cleanup, expired: 0, expired_dependents: 0 },
-              last_op_note: `${m.cleanup.expired} expired memories deleted; ${m.cleanup.expired_dependents} dependents demoted to deprecated first (chk_superseded_has_pointer)`,
+              last_op_note: `${m.cleanup.expired} expired memories deleted; ${m.cleanup.expired_dependents} memories they replaced marked deprecated first`,
             },
           }
         case "graph_orphan_cleanup":
           return {
             maintenance: {
               ...m,
-              last_op_note:
-                "graph_orphan_cleanup ran now — the same job the hourly schedule already runs",
+              last_op_note: "Orphaned-entity cleanup ran",
             },
           }
         case "tag_orphan_cleanup":
           return {
             maintenance: {
               ...m,
-              last_op_note:
-                "tag_orphan_cleanup ran now — the same job the hourly schedule already runs",
+              last_op_note: "Unused-tag cleanup ran",
             },
           }
         case "prune_caches":
@@ -644,45 +609,10 @@ export const useDemoStore = create<DemoStoreState>((set, get) => ({
             maintenance: {
               ...m,
               dbops: { ...m.dbops, retired_fingerprints: [] },
-              last_op_note: `${m.dbops.retired_fingerprints.length} retired cache tables dropped — each rebuilds lazily on next use of its embedder`,
+              last_op_note: `${m.dbops.retired_fingerprints.length} unused caches dropped`,
             },
           }
       }
-    }),
-  setDistributionCurb: (clientId, curbed) =>
-    set((s) => {
-      const d = s.distribution
-      const clients = d.clients.map((c) => {
-        if (c.id !== clientId) return c
-        return curbed
-          ? {
-              ...c,
-              status: "curbed" as const,
-              push_note: "curbed by operator, just now",
-              curbed_note:
-                "Pull (MCP tools) is unaffected — only push stopped. The managed block was rewritten to an empty marker pair, not removed; re-enabling resumes idempotently.",
-            }
-          : {
-              ...c,
-              status: "connected" as const,
-              push_note: "active — awaiting the next session-start inject",
-              curbed_note: null,
-            }
-      })
-      const log = curbed
-        ? [
-            {
-              id: `log-curb-${d.log.length + 1}`,
-              target: clientId,
-              event_type: "inject_curbed" as const,
-              detail: "push disabled by operator (this demo session)",
-              time_label: "just now",
-              meta: "block → empty markers",
-            },
-            ...d.log,
-          ]
-        : d.log
-      return { distribution: { ...d, clients, log } }
     }),
   resetSettings: () => set(() => initialSettings()),
 }))

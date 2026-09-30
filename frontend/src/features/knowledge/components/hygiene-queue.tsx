@@ -26,12 +26,7 @@ import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { Checkbox } from "darkraise-ui/components/checkbox"
 import { toast } from "darkraise-ui/components/sonner"
-import {
-  LayerChip,
-  listItemClass,
-  Timestamp,
-  useDetailLevel,
-} from "@/components/darkmem"
+import { listItemClass, Timestamp, useDetailLevel } from "@/components/darkmem"
 import { formatWhen } from "@/lib/format"
 import { ApiError } from "@/lib/api"
 import { DEMO } from "@/lib/demo-flag"
@@ -48,7 +43,6 @@ import { undoReasonLabel } from "@/features/activity/use-dream-digest"
 import { LifecycleBadge } from "@/features/memories/components/lifecycle-badge"
 import {
   duplicateDirection,
-  useHygieneCountsRows,
   useHygieneDuplicateRows,
   useHygieneExpiringRows,
   useHygieneLowConfidenceRows,
@@ -174,8 +168,7 @@ function ActionNotice({
         <Check aria-hidden className="text-success-text h-3.5 w-3.5 shrink-0" />
         <span>
           {applied} applied
-          {refused.length > 0 ? `, ${refused.length} refused` : ""} — cycle{" "}
-          <span className="font-mono">{result.cycle_id}</span>
+          {refused.length > 0 ? `, ${refused.length} refused` : ""}
         </span>
         {undone ? (
           <span className="text-muted-foreground ml-auto font-mono">
@@ -223,7 +216,7 @@ function CategoryShell({
 }: {
   icon: ReactNode
   title: string
-  meta: string
+  meta?: string
   toolbar?: ReactNode
   isEmpty: boolean
   isError: boolean
@@ -247,7 +240,9 @@ function CategoryShell({
           {icon}
         </span>
         <span className="text-sm font-semibold">{title}</span>
-        <span className="text-muted-foreground font-mono text-sm">{meta}</span>
+        {meta && (
+          <span className="text-muted-foreground font-mono text-sm">{meta}</span>
+        )}
         {toolbar && (
           <div className="ml-auto flex flex-wrap items-center gap-2">
             {toolbar}
@@ -333,7 +328,6 @@ function DuplicateRow({
         )}
       </div>
       <div className="flex flex-wrap items-center gap-2 pl-6">
-        <LayerChip layer={0} />
         <Link
           to="/memories/$memoryId"
           params={{ memoryId: row.source_memory_id }}
@@ -356,8 +350,8 @@ function DuplicateRow({
       {level === "advanced" && (
         <p className="text-muted-foreground pl-6 font-mono text-sm">
           project {row.project}
-          {row.detected_at && ` · detected_at ${formatWhen(row.detected_at)}`} ·
-          created_at <Timestamp iso={row.created_at} />
+          {row.detected_at && ` · detected ${formatWhen(row.detected_at)}`} ·
+          created <Timestamp iso={row.created_at} />
         </p>
       )}
     </div>
@@ -373,21 +367,16 @@ function MemoryRowLine({
   const level = useDetailLevel((s) => s.level)
   return (
     <span className="min-w-52 flex-1 space-y-0.5">
-      <span className="flex flex-wrap items-center gap-1.5">
-        <span className="text-sm">
-          {row.content_preview || "(no content preview)"}
-        </span>
-        <Badge variant="outline" size="sm" className="font-mono">
-          {row.reason}
-        </Badge>
+      <span className="block text-sm">
+        {row.content_preview || "(no content preview)"}
       </span>
       {level === "advanced" && (
         <span className="text-muted-foreground block font-mono text-sm">
           project {row.project} · confidence {row.confidence ?? "—"}
-          {row.expires_at && ` · expires_at ${formatWhen(row.expires_at)}`}
+          {row.expires_at && ` · expires ${formatWhen(row.expires_at)}`}
           {row.superseded_by &&
-            ` · superseded_by ${shortId(row.superseded_by)}`}
-          {" · created_at "}
+            ` · superseded by ${shortId(row.superseded_by)}`}
+          {" · created "}
           <Timestamp iso={row.created_at} />
         </span>
       )}
@@ -410,10 +399,8 @@ function MemoryRow({
       })}
     >
       {lead}
-      {row.status === "superseded" ? (
+      {row.status === "superseded" && (
         <LifecycleBadge status="superseded" className="mt-0.5 shrink-0" />
-      ) : (
-        <LayerChip layer={0} className="mt-0.5 shrink-0" />
       )}
       <MemoryRowLine row={row} />
       <Link
@@ -459,7 +446,6 @@ export function HygieneQueue({ project }: { project?: string }) {
   const lowSel = useSelection()
   const expSel = useSelection()
 
-  const counts = useHygieneCountsRows({ project })
   const duplicates = useHygieneDuplicateRows({
     project,
     limit: PAGE,
@@ -634,26 +620,15 @@ export function HygieneQueue({ project }: { project?: string }) {
     )
   }
 
-  const countsLine = counts.error
-    ? "counts unavailable"
-    : counts.loading
-      ? "counts loading…"
-      : `${counts.duplicates} duplicate pair${counts.duplicates === 1 ? "" : "s"} · ${
-          counts.low_confidence
-        } low-confidence · ${counts.expiring_soon} expiring soon · ${counts.superseded} superseded`
+  const countMeta = (total: number) => (total > 0 ? String(total) : undefined)
 
   return (
     <div className="space-y-3">
-      <div className="border-border bg-muted/15 text-muted-foreground rounded-md border border-dashed px-2.5 py-1.5 text-sm">
-        Housekeeping over L0 memories — distinct from the Review queue's truth
-        adjudication over facts and articles.{" "}
-        <span className="font-mono">{countsLine}</span>
-      </div>
 
       <CategoryShell
         icon={<Copy aria-hidden />}
         title="Candidate duplicates"
-        meta="newest first — no consequence ranking here yet"
+        meta={countMeta(duplicates.total)}
         isEmpty={duplicates.total === 0}
         isError={duplicates.error}
         isLoading={duplicates.loading && duplicates.rows.length === 0}
@@ -665,8 +640,8 @@ export function HygieneQueue({ project }: { project?: string }) {
         }
         strandedTotal={duplicates.total}
         onBackToStart={() => setDupOffset(0)}
-        emptyLine="Candidate duplicates — none flagged by the last dream cycle"
-        errorLine="Could not load candidate duplicates — this is a failed read, not zero pairs"
+        emptyLine="No duplicates flagged."
+        errorLine="Could not load candidate duplicates."
         toolbar={
           <>
             <SelectionCount n={dupSel.selected.size} unit="pair" />
@@ -728,7 +703,7 @@ export function HygieneQueue({ project }: { project?: string }) {
       <CategoryShell
         icon={<Clock aria-hidden />}
         title="Low-confidence memories"
-        meta="lowest confidence first, ties by newest — no consequence ranking here yet"
+        meta={countMeta(lowConfidence.total)}
         isEmpty={lowConfidence.total === 0}
         isError={lowConfidence.error}
         isLoading={lowConfidence.loading && lowConfidence.rows.length === 0}
@@ -740,8 +715,8 @@ export function HygieneQueue({ project }: { project?: string }) {
         }
         strandedTotal={lowConfidence.total}
         onBackToStart={() => setLowOffset(0)}
-        emptyLine="Low-confidence memories — none below the review threshold"
-        errorLine="Could not load low-confidence memories — this is a failed read, not zero rows"
+        emptyLine="No low-confidence memories."
+        errorLine="Could not load low-confidence memories."
         toolbar={
           <>
             <SelectionCount n={lowSel.selected.size} unit="row" />
@@ -793,7 +768,7 @@ export function HygieneQueue({ project }: { project?: string }) {
       <CategoryShell
         icon={<Clock aria-hidden />}
         title="Expiring soon"
-        meta="soonest expires_at first — no consequence ranking here yet"
+        meta={countMeta(expiring.total)}
         isEmpty={expiring.total === 0}
         isError={expiring.error}
         isLoading={expiring.loading && expiring.rows.length === 0}
@@ -805,8 +780,8 @@ export function HygieneQueue({ project }: { project?: string }) {
         }
         strandedTotal={expiring.total}
         onBackToStart={() => setExpOffset(0)}
-        emptyLine="Expiring soon — no rows with expires_at inside the lookahead window"
-        errorLine="Could not load expiring memories — this is a failed read, not zero rows"
+        emptyLine="Nothing expiring soon."
+        errorLine="Could not load expiring memories."
         toolbar={
           <>
             <SelectionCount n={expSel.selected.size} unit="row" />
@@ -827,11 +802,6 @@ export function HygieneQueue({ project }: { project?: string }) {
           </>
         }
       >
-        <p className="text-muted-foreground text-sm italic">
-          No backend door extends or clears a TTL yet (`memory_dream`'s `refine`
-          allowlist is `summary`-only) — pruning now is the one real action
-          available here; see the report.
-        </p>
         {notices.expiring && (
           <ActionNotice
             result={notices.expiring}
@@ -866,7 +836,7 @@ export function HygieneQueue({ project }: { project?: string }) {
       <CategoryShell
         icon={<GitBranch aria-hidden />}
         title="Superseded lineage"
-        meta="newest first, read-only — no consequence ranking here yet"
+        meta={countMeta(superseded.total)}
         isEmpty={superseded.total === 0}
         isError={superseded.error}
         isLoading={superseded.loading && superseded.rows.length === 0}
@@ -878,15 +848,9 @@ export function HygieneQueue({ project }: { project?: string }) {
         }
         strandedTotal={superseded.total}
         onBackToStart={() => setSupOffset(0)}
-        emptyLine="Superseded lineage — nothing flagged for cleanup"
-        errorLine="Could not load superseded lineage — this is a failed read, not zero chains"
+        emptyLine="Nothing superseded."
+        errorLine="Could not load superseded lineage."
       >
-        <p className="text-muted-foreground text-sm italic">
-          No bulk action here: `deprecate()` (the primitive `prune` reuses) only
-          accepts an `active` memory, and every row below is already
-          `superseded` — every prune attempt would refuse with
-          `already_superseded`. Listed for visibility only.
-        </p>
         {superseded.rows.map((row) => (
           <MemoryRow key={row.id} row={row} />
         ))}
@@ -916,10 +880,10 @@ export function HygieneQueue({ project }: { project?: string }) {
             </AlertDialogTitle>
             <AlertDialogDescription>
               {pending?.kind === "confirm-dedup"
-                ? "Marks the near_duplicate pass-block as confirmed. This is undoable afterward through the batch's dream-digest cycle."
+                ? "Marks each pair as a confirmed duplicate. You can undo the batch afterwards."
                 : pending?.kind === "supersede-dup"
-                  ? "Retires the older memory in each pair, pointing superseded_by at the newer one (supersede()). This is undoable afterward through the batch's dream-digest cycle."
-                  : "Retires each memory with no successor (deprecate() — never a hard delete). This is undoable afterward through the batch's dream-digest cycle."}
+                  ? "Retires the older memory in each pair in favour of the newer one. You can undo the batch afterwards."
+                  : "Retires each memory; nothing is hard-deleted. You can undo the batch afterwards."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {pending?.kind === "supersede-dup" && (

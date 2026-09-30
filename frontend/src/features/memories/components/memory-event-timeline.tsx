@@ -79,7 +79,7 @@ function AttributionCell({ attribution }: { attribution: ActorAttribution }) {
           </Badge>
           {keyRevoked && (
             <span className="text-muted-foreground text-sm">
-              (revoked — the call it made is still recorded)
+              (revoked)
             </span>
           )}
         </>
@@ -89,7 +89,7 @@ function AttributionCell({ attribution }: { attribution: ActorAttribution }) {
         </Badge>
       ) : keyListUnreadable ? (
         <Badge variant="outline" size="sm" className="font-mono">
-          key: unresolvable — key list unreadable
+          key: unknown
         </Badge>
       ) : null}
       {actor ? (
@@ -128,8 +128,7 @@ export function MemoryEventTimeline({ memoryId }: { memoryId: string }) {
   if (isError) {
     return (
       <p className="text-muted-foreground text-sm">
-        the event journal could not be read — this is a failed read, not an
-        empty history
+        The history could not be loaded.
       </p>
     )
   }
@@ -138,7 +137,7 @@ export function MemoryEventTimeline({ memoryId }: { memoryId: string }) {
   if (rows.length === 0) {
     return (
       <p className="text-muted-foreground text-sm italic">
-        no journal rows for this memory
+        No events for this memory.
       </p>
     )
   }
@@ -163,8 +162,7 @@ export function MemoryEventTimeline({ memoryId }: { memoryId: string }) {
       ))}
       {events && events.total > rows.length && (
         <p className="text-muted-foreground border-border border-t border-dashed pt-2.5 text-sm">
-          showing {rows.length} of {events.total} — the journal is
-          server-paginated
+          showing {rows.length} of {events.total}
         </p>
       )}
     </div>

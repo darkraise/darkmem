@@ -41,7 +41,7 @@ async function setDetailLevel(page: Page, level: "simple" | "advanced") {
 
 async function shownCount(page: Page): Promise<number> {
   const meta = await page
-    .getByText(/^(all \d+ shown|\d+ of \d+ loaded)$/)
+    .getByText(/^(\d+ facts|\d+ of \d+ loaded)$/)
     .first()
     .textContent()
   const digits = meta?.match(/\d+/g) ?? []
@@ -58,10 +58,6 @@ test.describe("knowledge/facts", () => {
     page,
   }) => {
     await page.goto("/knowledge/facts")
-    // The scope is the route's all-projects capability, not a hardcoded
-    // project name — a vault whose facts live under another project would
-    // otherwise open empty and read as a cold start.
-    await expect(page.getByText("Facts — project: all projects")).toBeVisible()
 
     const total = await shownCount(page)
     expect(total).toBeGreaterThan(10)
@@ -95,12 +91,11 @@ test.describe("knowledge/facts", () => {
     await expect(relation).toBeVisible()
 
     await setDetailLevel(page, "simple")
-    // Simple collapses the taxonomy triple and nothing else: the claim, the
-    // rung and the layer label all survive the toggle (T1.48, invariant 14).
+    // Simple collapses the taxonomy triple and nothing else: the claim and
+    // the rung survive the toggle.
     await expect(relation).toBeHidden()
     await expect(claim).toBeVisible()
     await expect(page.getByText("disputed").first()).toBeVisible()
-    await expect(page.getByText("L2 · fact").first()).toBeVisible()
   })
 
   test("a fact row's link opens the detail route and can navigate back", async ({
@@ -117,16 +112,14 @@ test.describe("knowledge/facts", () => {
       .filter({ has: page.getByText(claimPattern) })
       .first()
 
-    await row.getByRole("link", { name: "sources, ladder and windows →" }).click()
+    await row.getByRole("link", { name: "details →" }).click()
     await expect(page).toHaveURL(/\/knowledge\/facts\/[^/]+$/)
     // The page chrome, the same claim carried onto the detail page verbatim,
     // and the dispute section — proof the click reached `FactDetail` and
     // rendered the disputed branch, not a blank or error page.
     await expect(page.getByRole("heading", { name: "Fact detail" })).toBeVisible()
     await expect(claim).toBeVisible()
-    await expect(
-      page.getByText("Both sides — strictly equal weight, no winner"),
-    ).toBeVisible()
+    await expect(page.getByText("Both sides", { exact: true })).toBeVisible()
 
     await page.getByRole("link", { name: "Back to Facts" }).click()
     await expect(page).toHaveURL(/\/knowledge\/facts$/)

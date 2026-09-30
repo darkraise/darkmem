@@ -7,12 +7,8 @@ import { Skeleton } from "darkraise-ui/components/skeleton"
 import { PageChrome } from "@/components/app-chrome"
 import { ExclusionStrip } from "@/components/darkmem"
 import { useMainVirtualizer } from "@/lib/use-main-virtualizer"
-import {
-  ALL_PROJECTS,
-  projectLabel,
-  useProjectStore,
-} from "@/stores/project-store"
-import { EXCLUSION_CAVEAT, useMemorySearchPage } from "../use-memory-search"
+import { ALL_PROJECTS, useProjectStore } from "@/stores/project-store"
+import { useMemorySearchPage } from "../use-memory-search"
 import { CreateMemoryDialog } from "./create-memory-dialog"
 import { MemoryResultsHeader } from "./memory-results-header"
 import { MemoryRow, type MemoryRowData } from "./memory-row"
@@ -25,10 +21,9 @@ const ROW_ESTIMATE = 84
  * The real-backend counterpart of the demo Memories page (Ruling 5's
  * DEMO ? demo : real split, at the component level rather than inside one
  * hook — `DEMO` is fixed for the process lifetime, so the branch never
- * toggles mid-session and never violates the rules of hooks). Every real
- * `Memory` row is L0 (the fact/article layers do not exist yet), so its
- * layer chip is always "memory" and it never carries a verification badge
- * — that ladder belongs to Facts, not raw memories, until T2.x.
+ * toggles mid-session and never violates the rules of hooks). A real
+ * `Memory` row never carries a verification badge — that ladder belongs to
+ * Facts, not raw memories.
  */
 export function RealMemoriesView() {
   const [query, setQuery] = useState("")
@@ -79,7 +74,6 @@ export function RealMemoriesView() {
   }, [activeProject])
 
   const searching = query.trim().length > 0
-  const scopeLabel = projectLabel(activeProject)
 
   const clearSearch = () => {
     setQuery("")
@@ -96,7 +90,6 @@ export function RealMemoriesView() {
     flags: memory.flags,
     source: memory.source,
     created_at: memory.created_at,
-    layer: 0,
     status: memory.status,
   })
 
@@ -105,7 +98,6 @@ export function RealMemoriesView() {
       <PageChrome
         icon={Brain}
         title="Memories"
-        description="The L0 capture-and-search surface"
         actions={
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="mr-2 size-4" />
@@ -142,17 +134,9 @@ export function RealMemoriesView() {
       </div>
 
       <div className="border-border bg-card min-w-0 overflow-hidden rounded-lg border">
-        <MemoryResultsHeader scopeLabel={scopeLabel} shown={rows.length} total={total} />
+        <MemoryResultsHeader shown={rows.length} total={total} />
 
         <div className="space-y-3 p-4">
-          {/* Ruling 1: this caveat and the strip below it render
-              unconditionally — including with zero exclusions — because an
-              absent count is never proof that project or status scoping
-              removed nothing (they run in SQL, before this envelope can
-              see, let alone count, the rows they drop). */}
-          <p className="text-muted-foreground text-sm italic">
-            {EXCLUSION_CAVEAT}
-          </p>
           <ExclusionStrip items={exclusions} />
 
           {isLoading ? (
@@ -170,7 +154,7 @@ export function RealMemoriesView() {
               kind="filtered"
               scope="page"
               title="Search failed"
-              description="Both the semantic and keyword channels failed for this request — an outage, never an empty list masquerading as no-match."
+              description="The search request failed. Try again in a moment."
             />
           ) : rows.length > 0 ? (
             <div
@@ -256,7 +240,7 @@ export function RealMemoriesView() {
               icon={Brain}
               scope="page"
               title="No memories captured yet"
-              description="Capture your first one and search starts working immediately — nothing needs to be pre-configured."
+              description="Capture your first one to start searching."
               action={
                 <Button onClick={() => setCreateOpen(true)}>
                   <Plus className="mr-2 size-4" />

@@ -2,10 +2,7 @@ import { Badge } from "darkraise-ui/components/badge"
 import { cn } from "darkraise-ui/lib"
 import { Timestamp, useDetailLevel } from "@/components/darkmem"
 import type { FactSource, OriginKind } from "@/demo/types"
-import {
-  distinctOriginCount,
-  groupSourcesByOrigin,
-} from "@/demo/knowledge"
+import { groupSourcesByOrigin } from "@/demo/knowledge"
 import type { FactSourceGroup } from "@/hooks/api"
 import { StaleBadge } from "./fact-parts"
 
@@ -66,10 +63,6 @@ export function FactSourcesGroups({
 }) {
   const level = useDetailLevel((s) => s.level)
   const groups = groupSourcesByOrigin(sources)
-  const distinct = distinctOriginCount(sources)
-  // The badge's K excludes a stale origin (doc 10 §6): a citation that
-  // stopped resolving is retained here as evidence, but stops corroborating.
-  const liveDistinct = groups.filter((group) => !group.stale).length
 
   return (
     <div className={cn("space-y-2.5", className)}>
@@ -83,13 +76,12 @@ export function FactSourcesGroups({
               {group.kind}
             </Badge>
             {group.stale && <StaleBadge />}
-            <span className="font-mono text-sm">
-              origin_key: {group.origin_key}
-            </span>
-            <span className="text-muted-foreground ml-auto text-sm whitespace-nowrap">
-              1 distinct origin · {group.rows.length}{" "}
-              {group.rows.length === 1 ? "row" : "rows"}
-            </span>
+            <span className="font-mono text-sm">{group.origin_key}</span>
+            {group.rows.length > 1 && (
+              <span className="text-muted-foreground ml-auto text-sm whitespace-nowrap">
+                {group.rows.length} entries, counted once
+              </span>
+            )}
           </div>
           {level === "advanced" && (
             <div>
@@ -103,28 +95,11 @@ export function FactSourcesGroups({
             // origin's citation no longer resolves, so it stopped
             // corroborating; it is not evidence *against* the fact.
             <p className="text-muted-foreground text-sm italic">
-              stale — this origin's citation no longer resolves and is
-              excluded from the badge's count, but the evidence stays on
-              record.
-            </p>
-          )}
-          {group.rows.length > 1 && (
-            <p className="text-muted-foreground text-sm italic">
-              same origin_key — same capturing session — {group.rows.length}{" "}
-              memories, one origin, counted once.
+              The citation no longer resolves, so this origin is not counted.
             </p>
           )}
         </div>
       ))}
-      <p className="text-muted-foreground text-sm">
-        COUNT(DISTINCT origin_key) over the {sources.length} raw fact_sources{" "}
-        {sources.length === 1 ? "row" : "rows"} above ={" "}
-        <b className="text-foreground">{liveDistinct}</b> — the badge's K.
-        {distinct !== liveDistinct &&
-          ` ${distinct} origins recorded in total; ${distinct - liveDistinct} stale and excluded from the badge.`}
-        {sources.length !== distinct &&
-          ` A UI that read "${sources.length} sources" here would silently overclaim.`}
-      </p>
     </div>
   )
 }

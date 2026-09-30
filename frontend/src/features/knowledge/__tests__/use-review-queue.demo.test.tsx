@@ -15,7 +15,6 @@ vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
 import { apiFetch } from "@/lib/api"
 import {
   useReviewArticleRows,
-  useReviewCounts,
   useReviewFactRows,
 } from "../use-review-queue"
 
@@ -84,29 +83,5 @@ describe("useReviewFactRows / useReviewArticleRows (DEMO on — the curated fixt
     )
     expect(pastEnd.current.rows).toHaveLength(0)
     expect(pastEnd.current.total).toBe(total)
-  })
-})
-
-describe("useReviewCounts (DEMO on)", () => {
-  it("counts the whole fixture when no project filter is active", () => {
-    const { result } = renderHook(() => useReviewCounts({}), { wrapper })
-    expect(result.current.facts).toBeGreaterThan(0)
-  })
-
-  it("honours the project filter the same way the live door now does (T2.88) — the fixture's own project matches, any other counts zero", () => {
-    const { result: unfiltered } = renderHook(() => useReviewCounts({}), { wrapper })
-    const { result: matched } = renderHook(
-      () => useReviewCounts({ project: "darkmem" }),
-      { wrapper },
-    )
-    expect(matched.current.facts).toBe(unfiltered.current.facts)
-    expect(matched.current.articles).toBe(unfiltered.current.articles)
-
-    const { result: unmatched } = renderHook(
-      () => useReviewCounts({ project: "no-such-project" }),
-      { wrapper },
-    )
-    expect(unmatched.current.facts).toBe(0)
-    expect(unmatched.current.articles).toBe(0)
   })
 })

@@ -57,9 +57,7 @@ describe("RealRepositoriesView", () => {
 
     render(<RealRepositoriesView />, { wrapper })
 
-    await screen.findByText(
-      "Last index failed — serving the last-good graph, marked stale",
-    )
+    await screen.findByText("Last index failed — showing the last good graph")
     expect(
       screen.getByText(/Leiden partitioning step timed out after 90s/),
     ).toBeInTheDocument()
@@ -96,10 +94,8 @@ describe("RealRepositoriesView", () => {
 
     render(<RealRepositoriesView />, { wrapper })
 
-    await screen.findByText(/168 dependent files queued for re-trace/)
-    expect(screen.getByText(/draining — last drained 24 files/)).toBeInTheDocument()
-    expect(screen.getByText(/commit 9a1c2d2/)).toBeInTheDocument()
-    expect(screen.getByText(/1 vanished — no longer referenced/)).toBeInTheDocument()
+    await screen.findByText(/168 dependent files queued for reindex/)
+    expect(screen.getByText(/last drained 24 files/)).toBeInTheDocument()
   })
 
   it("reads as not-yet-drained, never silently dropped, when nothing has drained yet", async () => {
@@ -127,10 +123,8 @@ describe("RealRepositoriesView", () => {
 
     render(<RealRepositoriesView />, { wrapper })
 
-    await screen.findByText(/12 dependent files queued for re-trace/)
-    expect(
-      screen.getByText(/no drain recorded yet — 12 deferred, 0 drained so far/),
-    ).toBeInTheDocument()
+    await screen.findByText(/12 dependent files queued for reindex/)
+    expect(screen.getByText("none drained yet")).toBeInTheDocument()
   })
 
   it("hides the debt indicator entirely for a repo with no debt history", async () => {
@@ -154,7 +148,7 @@ describe("RealRepositoriesView", () => {
     render(<RealRepositoriesView />, { wrapper })
 
     await screen.findByText("darkmem-backend")
-    expect(screen.queryByText(/queued for re-trace/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/queued for reindex/)).not.toBeInTheDocument()
   })
 
   it("renders the live phase label from status_message while indexing, not a bare spinner", async () => {
@@ -202,9 +196,6 @@ describe("RealRepositoriesView", () => {
     render(<RealRepositoriesView />, { wrapper })
 
     await screen.findByText(/auto-provisioned — queued/)
-    expect(
-      screen.getByText(/Queued for auto-provision indexing/),
-    ).toBeInTheDocument()
   })
 
   it("submits the reindex options the dialog collected, in POST /repos/{id}/reindex's own shape", async () => {
@@ -220,7 +211,7 @@ describe("RealRepositoriesView", () => {
     await user.click(screen.getByRole("button", { name: "Reindex" }))
 
     const dialog = await screen.findByRole("dialog")
-    await user.click(within(dialog).getByLabelText("enrich_symbols"))
+    await user.click(within(dialog).getByLabelText("Enrich symbols"))
     await user.click(within(dialog).getByRole("button", { name: "Run reindex" }))
 
     const reindexCall = vi

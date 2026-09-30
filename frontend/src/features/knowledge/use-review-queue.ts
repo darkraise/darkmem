@@ -4,7 +4,6 @@ import type { DemoReviewItem } from "@/demo/types"
 import type { VerificationStatus } from "@/components/darkmem"
 import {
   useReviewQueueArticles,
-  useReviewQueueCounts,
   useReviewQueueFacts,
   type ConsequenceExplanation,
   type ReviewQueueArticleItem,
@@ -110,13 +109,6 @@ export interface ReviewFactsResult {
 export interface ReviewArticlesResult {
   rows: ReviewArticleRowData[]
   total: number
-  loading: boolean
-  error: boolean
-}
-
-export interface ReviewCountsResult {
-  facts: number
-  articles: number
   loading: boolean
   error: boolean
 }
@@ -280,31 +272,6 @@ export function useReviewArticleRows(query: ReviewPageQuery): ReviewArticlesResu
   return {
     rows: items.map(articleFromApi),
     total: api.data?.total ?? 0,
-    loading: api.isLoading,
-    error: api.isError,
-  }
-}
-
-export function useReviewCounts(query: { project?: string }): ReviewCountsResult {
-  const demoItems = useDemoReviewItems()
-  const api = useReviewQueueCounts({ project: query.project }, { enabled: !DEMO })
-
-  if (DEMO) {
-    // Mirrors the same project filter useReviewFactRows / useReviewArticleRows
-    // apply to the fixture, now that the live counts door is project-scoped
-    // too (T2.88): no arm here is exempt, so demo must not diverge from live.
-    const inProject = !query.project || query.project === DEMO_PROJECT
-    return {
-      facts: inProject ? demoItems.filter((i) => i.kind === "fact").length : 0,
-      articles: inProject ? demoItems.filter((i) => i.kind === "article").length : 0,
-      loading: false,
-      error: false,
-    }
-  }
-
-  return {
-    facts: api.data?.facts ?? 0,
-    articles: api.data?.articles ?? 0,
     loading: api.isLoading,
     error: api.isError,
   }

@@ -1593,5 +1593,3 @@ export const CURATED_HYGIENE: HygieneQueueState = {
 
 export const LAST_DETECTION_RUN = "2026-07-22"
 
-export const PRIOR_DISMISSED_NOTE =
-  "1 suggestion dismissed on an earlier run — recorded and suppressed, not shown here again."

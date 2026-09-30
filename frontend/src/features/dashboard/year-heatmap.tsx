@@ -44,8 +44,7 @@ function CellPopover({ day }: { day: ContributionDay }) {
       )}
       {day.injects > 0 && (
         <p className="text-info-text text-sm">
-          {day.injects} inject{day.injects === 1 ? "" : "s"} — see the day
-          timeline for what was pushed
+          {day.injects} inject{day.injects === 1 ? "" : "s"}
         </p>
       )}
       {day.count > 0 && (

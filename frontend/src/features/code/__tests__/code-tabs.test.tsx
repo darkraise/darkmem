@@ -25,9 +25,7 @@ describe("RepositoriesTab", () => {
     expect(screen.queryByText("not applied here")).toBeNull()
     // T1 fail-stale banner — last-good graph served, never wiped
     expect(
-      screen.getByText(
-        "Last index failed — serving the last-good graph, marked stale",
-      ),
+      screen.getByText("Last index failed — showing the last good graph"),
     ).toBeInTheDocument()
     // T2 index-debt indicator
     expect(
@@ -37,7 +35,7 @@ describe("RepositoriesTab", () => {
     expect(screen.getByText("auto-provisioned 2026-07-22")).toBeInTheDocument()
     // live phase ticker for the mid-index repo
     expect(
-      screen.getAllByText(/Call tracing — resolving call sites/).length,
+      screen.getAllByText(/Call tracing/).length,
     ).toBeGreaterThan(0)
     // error banner surfaces the raw failure message
     expect(
@@ -118,7 +116,7 @@ describe("CodeGraphTab", () => {
       />,
     )
     expect(
-      screen.getByText(/serving last-good graph \(4b7e120\) — stale/),
+      screen.getByText(/showing last good graph \(4b7e120\)/),
     ).toBeInTheDocument()
   })
 })

@@ -70,7 +70,7 @@ describe("the envelope a converged turn carries", () => {
     const item = items[0]!
     expect(item.count).toBe(2)
     expect(item.tag).toBe("by_context_conflict")
-    expect(String(item.reason)).toContain("context declared for this turn")
+    expect(String(item.reason)).toContain("conflicted with this turn's context")
   })
 
   it("builds no trace for a row that carries no breakdown", () => {
@@ -79,7 +79,7 @@ describe("the envelope a converged turn carries", () => {
 })
 
 describe("ChatContextPanel renders the trace and the exclusion counts", () => {
-  it("shows the channel states and flags the turn as degraded", () => {
+  it("flags the turn as degraded and names the failed channel", () => {
     render(
       <ChatContextPanel
         rows={[{ id: "m1", content: "a row", status: "active" }]}
@@ -87,12 +87,11 @@ describe("ChatContextPanel renders the trace and the exclusion counts", () => {
       />,
     )
     expect(screen.getByText("degraded")).toBeInTheDocument()
-    expect(screen.getByText("memory.keyword")).toBeInTheDocument()
-    expect(screen.getByText("failed")).toBeInTheDocument()
-    expect(screen.getByText("not asked")).toBeInTheDocument()
+    expect(screen.getByText(/memory keyword search failed/)).toBeInTheDocument()
+    expect(screen.queryByText("not asked")).not.toBeInTheDocument()
   })
 
-  it("renders the exclusion count and the caveat about what it cannot count", () => {
+  it("renders the exclusion count", () => {
     render(
       <ChatContextPanel
         rows={[{ id: "m1", content: "a row", status: "active" }]}
@@ -100,9 +99,6 @@ describe("ChatContextPanel renders the trace and the exclusion counts", () => {
       />,
     )
     expect(screen.getByText(/2 rows excluded/)).toBeInTheDocument()
-    expect(
-      screen.getByText(/Project and status scoping run in the database/),
-    ).toBeInTheDocument()
   })
 
   it("renders each row's own arm scores, through the Memories adapter", () => {
@@ -130,7 +126,7 @@ describe("ChatContextPanel renders the trace and the exclusion counts", () => {
     expect(screen.getByText("0.0164")).toBeInTheDocument()
   })
 
-  it("shows an L2 row with its badge claim verbatim", () => {
+  it("shows a disputed L2 row with its badge claim verbatim", () => {
     render(
       <ChatContextPanel
         rows={[]}
@@ -139,8 +135,8 @@ describe("ChatContextPanel renders the trace and the exclusion counts", () => {
             id: "f1",
             text: "pgbouncer is the pooler",
             layer: "L2",
-            verification_status: "corroborated",
-            badge: { claim: "asserted by 3 distinct origins" },
+            verification_status: "disputed",
+            badge: { claim: "disputed: 2 origins assert x, 1 asserts y" },
           },
         ]}
         envelope={ENVELOPE}
@@ -148,7 +144,7 @@ describe("ChatContextPanel renders the trace and the exclusion counts", () => {
     )
     expect(screen.getByText("L2 · fact")).toBeInTheDocument()
     expect(
-      screen.getByText("asserted by 3 distinct origins"),
+      screen.getByText("disputed: 2 origins assert x, 1 asserts y"),
     ).toBeInTheDocument()
   })
 
@@ -183,15 +179,13 @@ describe("ChatContextPanel renders the trace and the exclusion counts", () => {
     expect(screen.getByText("supports a fact")).toBeInTheDocument()
   })
 
-  it("stays honest with no envelope at all — no channels, no counts, no caveat", () => {
+  it("shows no state word and no counts with no envelope at all", () => {
     render(
       <ChatContextPanel rows={[{ id: "m1", content: "a row", status: "active" }]} />,
     )
-    expect(screen.getByText("populated")).toBeInTheDocument()
+    expect(screen.queryByText("populated")).not.toBeInTheDocument()
+    expect(screen.queryByText("degraded")).not.toBeInTheDocument()
     expect(screen.queryByText(/rows excluded/)).not.toBeInTheDocument()
-    expect(
-      screen.queryByText(/Project and status scoping run in the database/),
-    ).not.toBeInTheDocument()
   })
 })
 

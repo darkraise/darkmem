@@ -44,15 +44,10 @@ describe("DocumentActions", () => {
     expect(remove).not.toHaveBeenCalled()
   })
 
-  it("states what delete does beyond removing the row", async () => {
-    // Deleting a document cascades its blocks and their embeddings. It
-    // withdraws no provenance and expires no fact — nothing mints a fact
-    // from a block, so there is none to withdraw.
+  it("warns that delete cannot be undone", async () => {
     renderActions()
     await userEvent.click(screen.getByRole("button", { name: /delete/i }))
     const dialog = await screen.findByRole("alertdialog")
-    expect(dialog.textContent).toMatch(/blocks/i)
-    expect(dialog.textContent).toMatch(/embeddings/i)
     expect(dialog.textContent).toMatch(/cannot be undone/i)
   })
 

@@ -91,8 +91,7 @@ export function JobHistoryDialog({
         <DialogHeader>
           <DialogTitle>{displayName} — run history</DialogTitle>
           <DialogDescription>
-            Newest first. A run that did nothing is not recorded, so this is
-            the list of times the job had something to say.
+            Newest first. Runs that did no work are not recorded.
           </DialogDescription>
         </DialogHeader>
 
@@ -100,7 +99,6 @@ export function JobHistoryDialog({
           <EmptyState
             kind="failed"
             title="Couldn’t load the history"
-            description="The runs request failed. This is an error, not an empty history."
           />
         ) : isLoading ? (
           <div className="space-y-2">
@@ -113,7 +111,6 @@ export function JobHistoryDialog({
             kind="empty"
             icon={History}
             title="No runs recorded yet"
-            description="Runs are recorded when a job does work or fails. A job that has only ever polled an empty queue has nothing here."
           />
         ) : (
           <>

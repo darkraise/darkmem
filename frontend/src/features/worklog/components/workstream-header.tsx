@@ -97,9 +97,8 @@ export function WorkstreamHeader({
           <AlertDialogHeader>
             <AlertDialogTitle>Purge {workstream.title ?? workstream.key}?</AlertDialogTitle>
             <AlertDialogDescription>
-              This erases the workstream and every entry in it. The journal
-              keeps only that it was purged and how many entries went. This
-              cannot be undone.
+              This erases the workstream and every entry in it. This cannot be
+              undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

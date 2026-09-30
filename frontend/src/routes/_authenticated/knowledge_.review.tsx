@@ -13,7 +13,6 @@ function KnowledgeReviewPage() {
       <PageChrome
         icon={ClipboardCheck}
         title="Review"
-        description="The triage queue — Review adjudicates truth, Hygiene curates housekeeping."
       />
       <ReviewTab />
     </div>

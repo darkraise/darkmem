@@ -57,7 +57,6 @@ function DemoChatPage({ initialId }: { initialId?: string }) {
       <PageChrome
         icon={MessageSquare}
         title="Chat"
-        description="Chat over your memory, with each answer's sources beside it."
       />
       <ChatPanels
         threads={

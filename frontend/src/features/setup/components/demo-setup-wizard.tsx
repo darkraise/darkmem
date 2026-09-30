@@ -6,7 +6,6 @@ import {
   Folder,
   GitBranch,
   Loader2,
-  Lock,
   RefreshCw,
 } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
@@ -138,10 +137,6 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
           darkmem
         </span>
         <span className="text-muted-foreground text-sm">Initial setup</span>
-        <span className="border-border text-muted-foreground inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-1 font-mono text-xs">
-          <Lock aria-hidden className="h-3 w-3" />
-          gated by require_uninitialized — no pre-shared secret
-        </span>
       </div>
 
       <div className="flex flex-wrap justify-center gap-1.5">
@@ -168,9 +163,8 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
               autoFocus
             />
             <span className="text-muted-foreground text-sm">
-              8–128 characters. This is the only credential the box will have —
-              set it, do not lose it. Whoever completes this step first owns the
-              box; the wizard closes to every later visitor.
+              8–128 characters. This is the only admin credential — keep it
+              safe.
             </span>
           </div>
           <div className="flex flex-col gap-1.5">
@@ -413,14 +407,13 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
             <span className="text-sm font-semibold">Default LLM provider</span>
             {llm.skipped ? (
               <span className="text-muted-foreground text-sm">
-                Skipped — the six purpose rows seed to system defaults (local
-                Ollama); revisit under Settings → LLM.
+                Skipped — defaults to a local Ollama; change it later under
+                Settings → LLM.
               </span>
             ) : (
               <>
                 <span className="text-muted-foreground text-sm">
-                  <b className="text-foreground font-semibold">{llm.kind}</b> —
-                  default vendor menu seeded; API key applied to this row
+                  <b className="text-foreground font-semibold">{llm.kind}</b>
                 </span>
                 <ul className="text-foreground ml-4 list-disc text-sm">
                   {Object.entries(llm.models)
@@ -464,10 +457,7 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
             )}
           </div>
           <span className="text-muted-foreground text-sm">
-            Nothing has been sent yet — Finish submits the whole draft in one
-            call. The password block commits first and unconditionally; the LLM
-            and repo blocks each run in their own savepoint and report their
-            own outcome.
+            Nothing has been sent yet — Finish applies these settings.
           </span>
         </div>
       )}

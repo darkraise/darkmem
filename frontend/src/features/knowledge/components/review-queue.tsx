@@ -6,7 +6,6 @@ import {
   ChevronRight,
   EyeOff,
   Pencil,
-  TrendingUp,
   UserCheck,
   XCircle,
   ClipboardCheck,
@@ -26,10 +25,8 @@ import { Button } from "darkraise-ui/components/button"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import {
   EmptyState,
-  LayerChip,
   listItemClass,
   Timestamp,
-  useDetailLevel,
   VerificationBadge,
 } from "@/components/darkmem"
 import { toast } from "darkraise-ui/components/sonner"
@@ -41,7 +38,6 @@ import { SuppressedBadge, UnderSourcedBadge } from "./fact-parts"
 import { ListSurface } from "./list-surface"
 import {
   useReviewArticleRows,
-  useReviewCounts,
   useReviewFactRows,
   type ReviewArticleRowData,
   type ReviewFactRowData,
@@ -89,79 +85,15 @@ function PageControls({
   )
 }
 
-function ConsequenceBreakdown({ fact }: { fact: ReviewFactRowData }) {
-  const c = fact.consequence
+function EvidenceBlock({ fact }: { fact: ReviewFactRowData }) {
+  if (fact.verification_status !== "disputed") return null
+  const c = fact.evidence?.payload?.contradiction
   if (!c) return null
   return (
-    <div className="border-border bg-muted/10 space-y-1 rounded-md border border-dashed p-2 font-mono text-sm">
-      <p>
-        retrieval_frequency: component{" "}
-        {c.retrieval_frequency.component.toFixed(3)} · weight{" "}
-        {c.retrieval_frequency.weight} · source_memories{" "}
-        {c.retrieval_frequency.source_memories} · peak_access_count{" "}
-        {c.retrieval_frequency.peak_access_count} · decayed_access{" "}
-        {c.retrieval_frequency.decayed_access.toFixed(3)} · half_life_days{" "}
-        {c.retrieval_frequency.half_life_days}
-      </p>
-      <p>
-        subject_salience: component {c.subject_salience.component.toFixed(3)} ·
-        weight {c.subject_salience.weight} · neighbour_count{" "}
-        {c.subject_salience.neighbour_count}
-      </p>
-      <p>
-        staleness: {c.staleness.stale ? "stale" : "fresh"} — {c.staleness.label}
-        {c.staleness.dispute_age_days != null &&
-          ` · dispute_age_days ${c.staleness.dispute_age_days.toFixed(1)}`}{" "}
-        · threshold_days {c.staleness.threshold_days}
-      </p>
-    </div>
-  )
-}
-
-function EvidenceBlock({ fact }: { fact: ReviewFactRowData }) {
-  const advanced = useDetailLevel((s) => s.level) === "advanced"
-  if (fact.verification_status !== "disputed") return null
-  const payload = fact.evidence?.payload
-  if (!payload) {
-    return (
-      <p className="text-muted-foreground border-border rounded-md border border-dashed p-2 text-sm italic">
-        no contradiction detail recorded for this dispute — absent means no scan
-        produced one here, never that no counterpart exists
-      </p>
-    )
-  }
-  const c = payload.contradiction
-  return (
-    <div className="border-border bg-muted/10 space-y-1 rounded-md border border-dashed p-2 text-sm">
-      {advanced && (
-        <p className="font-mono">
-          outcome {payload.outcome ?? "—"} · origin_count{" "}
-          {payload.origin_count ?? "—"} · required_n {payload.required_n ?? "—"} ·
-          gate_fired {payload.gate_fired ?? "—"}
-        </p>
-      )}
-      {advanced && payload.source_kinds && payload.source_kinds.length > 0 && (
-        <p className="font-mono">source_kinds [{payload.source_kinds.join(", ")}]</p>
-      )}
-      {c ? (
-        <p>
-          Contradicted by: {c.counterpart_subject} {c.counterpart_rel_type}{" "}
-          {c.counterpart_object}
-          {advanced && (
-            <span className="font-mono">
-              {" "}
-              · rule {c.rule} · witness_origin {c.witness_origin}
-            </span>
-          )}
-        </p>
-      ) : (
-        !advanced && (
-          <p className="text-muted-foreground">
-            The dispute&apos;s evidence is recorded; Advanced shows the ladder&apos;s raw decision.
-          </p>
-        )
-      )}
-    </div>
+    <p className="border-border bg-muted/10 rounded-md border border-dashed p-2 text-sm">
+      Contradicted by: {c.counterpart_subject} {c.counterpart_rel_type}{" "}
+      {c.counterpart_object}
+    </p>
   )
 }
 
@@ -194,11 +126,10 @@ function SuspicionBlock({ fact }: { fact: ReviewFactRowData }) {
           · since <Timestamp iso={s.suspected_at} />
         </span>
       </p>
-      <p>counterpart: {triple ?? "no triple recorded for the counterpart"}</p>
+      <p>counterpart: {triple ?? "not recorded"}</p>
       {s.counterpart_expired_at != null && (
         <p>
-          counterpart withdrawn <Timestamp iso={s.counterpart_expired_at} /> —
-          belief expired, flag stands
+          counterpart withdrawn <Timestamp iso={s.counterpart_expired_at} />
         </p>
       )}
     </div>
@@ -216,16 +147,20 @@ function FactRow({
   onReject: (fact: ReviewFactRowData) => void
   onDismissSuspicion: (fact: ReviewFactRowData) => void
 }) {
-  const level = useDetailLevel((s) => s.level)
+  // The reason chip only adds something when no badge already names it.
+  const reasonShown =
+    fact.reason !== fact.verification_status &&
+    !(fact.reason === "under-sourced" && fact.under_sourced)
   return (
     <div className={listItemClass({ className: "space-y-2 p-3" })}>
       <div className="flex flex-wrap items-center gap-2">
-        <LayerChip layer={2} />
         {/* Honesty labels: unconditional in every detail level. */}
         <VerificationBadge status={fact.verification_status} />
-        <Badge variant="outline" size="sm" className="font-mono">
-          queued: {fact.reason}
-        </Badge>
+        {reasonShown && (
+          <Badge variant="outline" size="sm" className="font-mono">
+            {fact.reason}
+          </Badge>
+        )}
         {fact.under_sourced && <UnderSourcedBadge />}
         {fact.label_suppressed != null && (
           <SuppressedBadge reason={fact.label_suppressed} />
@@ -247,15 +182,7 @@ function FactRow({
       ) : null}
       <p className="text-sm">{fact.fact_text}</p>
       <SuspicionBlock fact={fact} />
-      <p className="text-muted-foreground flex items-center gap-1.5 text-sm">
-        <TrendingUp aria-hidden className="h-3.5 w-3.5 shrink-0" />
-        <span>
-          <b className="text-foreground font-semibold">why ranked here:</b>{" "}
-          {fact.rank_note}
-        </span>
-      </p>
-      {level === "advanced" && <ConsequenceBreakdown fact={fact} />}
-      {level === "advanced" && <EvidenceBlock fact={fact} />}
+      <EvidenceBlock fact={fact} />
       <div className="border-border flex flex-wrap items-center gap-2 border-t border-dashed pt-2">
         <Button onClick={() => onRatify(fact)}>
           <UserCheck className="mr-1.5 size-3.5" />
@@ -289,13 +216,14 @@ function ArticleRow({ article }: { article: ReviewArticleRowData }) {
   return (
     <div className={listItemClass({ className: "space-y-2 p-3" })}>
       <div className="flex flex-wrap items-center gap-2">
-        <LayerChip layer={3} />
         <Badge variant="outline" size="sm" className="font-mono">
           {article.status}
         </Badge>
-        <Badge variant="outline" size="sm" className="font-mono">
-          queued: {article.reason}
-        </Badge>
+        {article.reason !== "unspecified" && (
+          <Badge variant="outline" size="sm" className="font-mono">
+            {article.reason}
+          </Badge>
+        )}
         <span className="text-muted-foreground ml-auto font-mono text-sm">
           project: {article.project}
         </span>
@@ -304,17 +232,11 @@ function ArticleRow({ article }: { article: ReviewArticleRowData }) {
         {article.title ?? article.subject_key}
       </p>
       {article.resynthesis_held_at && (
-        /* Queued, not withheld. The row says what was measured so a reviewer
-           sees the finding rather than only its name — and says plainly that
-           the article is still being served, because a queue entry that looks
-           like a suppression is the confusion this marker exists to avoid. */
         <p className="text-warning-text text-sm">
-          re-synthesis attempted and held
+          Re-synthesis could not be grounded
           {article.resynthesis_held_coverage !== null &&
-            ` at claim-support coverage ${article.resynthesis_held_coverage.toFixed(2)}`}
-          {
-            " — the standing article is still served, labelled stale; its subject's verified facts could not ground a replacement."
-          }
+            ` (coverage ${article.resynthesis_held_coverage.toFixed(2)})`}
+          ; the current article stays, marked stale.
         </p>
       )}
       {article.content_preview && (
@@ -343,9 +265,6 @@ function ArticleRow({ article }: { article: ReviewArticleRowData }) {
             Edit
           </Link>
         </Button>
-        <span className="text-muted-foreground ml-auto font-mono text-xs">
-          articles have no ratify/reject door yet — read-only here
-        </span>
       </div>
     </div>
   )
@@ -369,7 +288,6 @@ export function ReviewQueue({ project }: { project?: string }) {
     setArticlesOffset(0)
   }, [project])
 
-  const counts = useReviewCounts({ project })
   const facts = useReviewFactRows({ project, limit: PAGE, offset: factsOffset })
   const articles = useReviewArticleRows({
     project,
@@ -475,34 +393,18 @@ export function ReviewQueue({ project }: { project?: string }) {
     setDismissTarget(null)
   }
 
-  const countsLine = counts.error
-    ? "counts unavailable"
-    : counts.loading
-      ? "counts loading…"
-      : `${counts.facts} fact${counts.facts === 1 ? "" : "s"} · ${counts.articles} article${
-          counts.articles === 1 ? "" : "s"
-        } open`
-
   return (
     <div className="space-y-3">
-      <div className="border-border bg-muted/15 text-muted-foreground rounded-md border border-dashed px-2.5 py-1.5 text-sm">
-        Every row below is{" "}
-        <b className="text-foreground font-semibold">served labelled</b> to
-        retrieval right now, exactly as shown — queue position never withholds a
-        fact or article from search results.{" "}
-        <span className="font-mono">{countsLine}</span>
-      </div>
-
       <ListSurface
         title="Disputed / under-sourced facts"
         populated={facts.total > 0}
-        meta="consequence-ranked, not FIFO"
+        meta={facts.total > 0 ? `${facts.total} open` : undefined}
       >
         {facts.error ? (
           <EmptyState
             kind="filtered"
             title="Could not load the fact queue"
-            description="The vault did not answer. This is a failed read, not an empty queue."
+            description="The request failed. Reload to try again."
           />
         ) : facts.loading && facts.rows.length === 0 ? (
           // A pending read is not an absence — skeleton rows in the shape
@@ -521,7 +423,7 @@ export function ReviewQueue({ project }: { project?: string }) {
             kind="empty"
             icon={ClipboardCheck}
             title="No disputed or under-sourced facts"
-            description="The fact half of the review queue is caught up."
+            description="Nothing to review."
           />
         ) : facts.rows.length === 0 ? (
           // Rows shrank underneath a stale offset (a page-2 ratify/reject) —
@@ -564,13 +466,13 @@ export function ReviewQueue({ project }: { project?: string }) {
       <ListSurface
         title="Ungrounded articles"
         populated={articles.total > 0}
-        meta="arrival order — no consequence ranking for articles yet"
+        meta={articles.total > 0 ? `${articles.total} open` : undefined}
       >
         {articles.error ? (
           <EmptyState
             kind="filtered"
             title="Could not load the article queue"
-            description="The vault did not answer. This is a failed read, not an empty queue."
+            description="The request failed. Reload to try again."
           />
         ) : articles.loading && articles.rows.length === 0 ? (
           // A pending read is not an absence — skeleton rows in the shape
@@ -589,7 +491,7 @@ export function ReviewQueue({ project }: { project?: string }) {
             kind="empty"
             icon={ClipboardCheck}
             title="No ungrounded articles"
-            description="The article half of the review queue is caught up. Articles are queued here when synthesis cannot ground one."
+            description="Nothing to review."
           />
         ) : articles.rows.length === 0 ? (
           <EmptyState
@@ -630,17 +532,10 @@ export function ReviewQueue({ project }: { project?: string }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Ratify this fact?</AlertDialogTitle>
             <AlertDialogDescription>
-              This records you as a human origin; the fact will render as
-              confirmed. A later re-extraction that withdraws every memory
-              source still leaves the human fact_source, so the record survives.
-              This cannot be undone by the machine; only another human action
-              can reverse it.
+              The fact becomes confirmed, with you recorded as a source. Only
+              another human action can reverse it.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <p className="text-muted-foreground border-border border-t border-dashed pt-2 font-mono text-sm">
-            POST /api/v1/knowledge/facts/{ratifyTarget?.id}/ratify ·
-            authenticated · never exposed over the unauthenticated MCP surface
-          </p>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
@@ -668,17 +563,11 @@ export function ReviewQueue({ project }: { project?: string }) {
                 className="text-warning-text mt-0.5 h-4 w-4 shrink-0"
               />
               <span>
-                Withdraws belief in this fact (the same primitive a source
-                withdrawal uses) and journals a human_verdict event. This does
-                not change verification_status or review_state directly — it is
-                a belief-axis action, not a rung change.
+                Withdraws belief in this fact. Its verification status is not
+                changed.
               </span>
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <p className="text-muted-foreground border-border border-t border-dashed pt-2 font-mono text-sm">
-            POST /api/v1/review-queue/facts/{rejectTarget?.id}/reject ·
-            authenticated
-          </p>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
@@ -703,17 +592,10 @@ export function ReviewQueue({ project }: { project?: string }) {
               Dismiss this contradiction flag?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Says the model scan's finding was wrong — not that the fact is.
-              The fact keeps its rung either way; the flag never moved one. The
-              dismissal is journalled, and that record is what keeps the next
-              recompute from raising the same flag again.
+              Marks the model's contradiction finding as wrong. The fact keeps
+              its status, and the same flag is not raised again.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <p className="text-muted-foreground border-border border-t border-dashed pt-2 font-mono text-sm">
-            POST /api/v1/review-queue/facts/{dismissTarget?.id}
-            /dismiss-suspicion · authenticated · not a human_verdict — it
-            adjudicates the finding, not the fact
-          </p>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction

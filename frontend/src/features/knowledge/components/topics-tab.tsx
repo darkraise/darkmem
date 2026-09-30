@@ -12,7 +12,6 @@ import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { ProjectChooser } from "@/components/app-chrome"
 import { EmptyState, listItemClass, useDetailLevel } from "@/components/darkmem"
-import { PRIOR_DISMISSED_NOTE } from "@/demo/data-exports"
 import { useProjects } from "@/hooks/api"
 import { ALL_PROJECTS, useProjectStore } from "@/stores/project-store"
 import {
@@ -32,7 +31,7 @@ import { ListSurface } from "./list-surface"
  *  them is how a topic shows a permanent spinner. */
 const REPORT_NOTE: Record<string, string> = {
   pending: "not generated yet",
-  skipped: "too small for a report — this one will not get one",
+  skipped: "too small for a report",
   failed: "generation failed; it will be retried",
 }
 
@@ -109,7 +108,6 @@ function PinSuggestionCard({
   suggestion: PinSuggestionRowData
   onDecide: (subjectKey: string, decision: "accepted" | "dismissed") => void
 }) {
-  const level = useDetailLevel((s) => s.level)
   if (suggestion.decision) {
     const accepted = suggestion.decision === "accepted"
     const Icon = accepted ? BadgeCheck : X
@@ -118,9 +116,7 @@ function PinSuggestionCard({
         <Icon aria-hidden className="h-4 w-4 shrink-0" />
         <span>
           <b className="text-foreground font-semibold">{suggestion.subject}</b>{" "}
-          {accepted
-            ? "pinned — eligible for synthesis on the next salience pass; the article itself still has to be grounded from verified facts."
-            : "dismissed — recorded against the subject so later detection diffs suppress the suggestion, not merely hidden client-side."}
+          {accepted ? "pinned" : "dismissed"}
         </span>
       </div>
     )
@@ -167,11 +163,6 @@ function PinSuggestionCard({
           anchors {suggestion.anchoredFactCount} verified facts
         </span>
       </div>
-      {level === "advanced" && (
-        <p className="text-muted-foreground font-mono text-sm">
-          subject key: {suggestion.subjectKey}
-        </p>
-      )}
       <div className="border-border flex flex-wrap gap-2 border-t border-dashed pt-2">
         {/* Accept pins a subject; it never auto-creates an article. Both
             verbs key on the subject key, never on a community id. */}
@@ -208,7 +199,7 @@ function TopicsProjectChooser() {
   if (isError) {
     return (
       <p className="text-destructive text-sm">
-        Projects could not be loaded — a failed read, not an empty corpus.
+        Projects could not be loaded.
       </p>
     )
   }
@@ -217,20 +208,19 @@ function TopicsProjectChooser() {
     <ProjectChooser
       icon={Tags}
       heading="Topics open one project at a time"
-      description="Topics are detected per project. Pick one to see its communities; the project switcher in the header changes it later."
+      description="Pick a project to see its topics."
       projects={(data ?? [])
         .filter((p) => p.kind !== "personal" && p.memory_count > 0)
         .map((p) => ({ name: p.name, count: p.memory_count }))}
       noun={{ one: "memory", many: "memories" }}
       emptyTitle="No project holds memories yet"
-      emptyDescription="Topics are detected from memories; capture some and a project appears here."
+      emptyDescription="Capture memories and a project appears here."
       onChoose={setProject}
     />
   )
 }
 
 export function TopicsForProject({ project }: { project: string }) {
-  const advanced = useDetailLevel((s) => s.level) === "advanced"
   const { topics, suggestions, diff, lastRun, loading, error, decide } =
     useTopics(project)
 
@@ -240,13 +230,12 @@ export function TopicsForProject({ project }: { project: string }) {
   return (
     <div className="space-y-4">
       <div className="border-border flex flex-wrap items-center gap-2.5 border-b border-dashed pb-3">
-        <span className="text-sm font-semibold">
-          Topic communities
-          {advanced && <span className="text-muted-foreground font-normal"> (Leiden)</span>}
-        </span>
-        <span className="text-muted-foreground ml-auto font-mono text-sm">
-          last detection run: {lastRun ?? "not reported"}
-        </span>
+        <span className="text-sm font-semibold">Topic communities</span>
+        {lastRun && (
+          <span className="text-muted-foreground ml-auto font-mono text-sm">
+            last run: {lastRun}
+          </span>
+        )}
       </div>
 
       {error && (
@@ -256,7 +245,7 @@ export function TopicsForProject({ project }: { project: string }) {
       )}
 
       <ListSurface
-        title={`Topics — project: ${project}`}
+        title="Topics"
         populated={topics.length > 0}
         meta={loading ? "loading" : `${topics.length} communities`}
       >
@@ -273,7 +262,7 @@ export function TopicsForProject({ project }: { project: string }) {
             kind="empty"
             icon={Waypoints}
             title="No topics detected yet"
-            description="Community detection clusters memories once enough of them share entities — this project has not accumulated enough yet, or the detection job has not completed its first run. Nothing here means not yet, not broken."
+            description="Topics appear once enough memories share entities."
           />
         )}
       </ListSurface>
@@ -297,13 +286,9 @@ export function TopicsForProject({ project }: { project: string }) {
             kind="empty"
             icon={MapPin}
             title="Nothing to pin yet"
-            description="A subject is suggested once its community is new or growing and it already anchors verified facts. None qualify in this project right now."
+            description="A subject is suggested when a new or growing topic anchors verified facts."
           />
         )}
-        <div className="bg-muted/30 text-muted-foreground flex items-center gap-2 rounded-md px-2.5 py-2 text-sm">
-          <X aria-hidden className="h-4 w-4 shrink-0" />
-          {PRIOR_DISMISSED_NOTE}
-        </div>
       </ListSurface>
     </div>
   )

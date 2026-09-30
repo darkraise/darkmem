@@ -12,7 +12,7 @@ import {
   DialogTitle,
 } from "darkraise-ui/components/dialog"
 
-import { EmptyState, HelpTip } from "@/components/darkmem"
+import { EmptyState } from "@/components/darkmem"
 import { ModuleSurface } from "@/features/activity/components/module-surface"
 import {
   MASKED,
@@ -30,9 +30,7 @@ import {
  * The `backup_destinations` operator surface (increment 6, spec §9.3).
  *
  * **This is the second producer, not the only one.** The host's systemd timer
- * keeps its own local dumps whether or not the app is up, and the copy says so
- * on the surface rather than in a runbook: an operator who reads this tab as
- * "the backup system" would treat a red destination as no backup at all.
+ * keeps its own local dumps whether or not the app is up.
  *
  * **A secret is never rendered and never re-sent.** The server masks it on
  * read; an untouched field goes back as the mask, which the server reads as
@@ -94,24 +92,8 @@ export function BackupsTab() {
     <ModuleSurface
       title="Backups"
       state={isLoading ? "empty" : "populated"}
-      meta={`${destinations.length} destination${destinations.length === 1 ? "" : "s"}`}
     >
       <div className="space-y-3.5">
-        <div className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-sm">
-          <HardDriveDownload aria-hidden className="h-4 w-4" />
-          <span>
-            The host's systemd timer keeps its own local dumps independently of
-            this job; the two never share a directory or a retention set.
-          </span>
-          <HelpTip label="About off-host backups">
-            This job dumps the database with the image's own pg_dump, encrypts
-            with each destination's age recipient, ships, reads every upload
-            back to verify it, and prunes per destination. The age identity
-            that decrypts is yours and never enters this database — a snapshot
-            carrying its own decryption key would not be encrypted at rest.
-          </HelpTip>
-        </div>
-
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" disabled={isRunning} onClick={async () => {
             const result = await runNow()
@@ -137,15 +119,14 @@ export function BackupsTab() {
           // operator their backups are not set up, which on a failed read is
           // both false and the most alarming thing this tab can say.
           <p className="text-destructive text-sm">
-            Backup destinations could not be loaded — a failed read, not an
-            unconfigured backup system.
+            Backup destinations could not be loaded.
           </p>
         ) : destinations.length === 0 && !isLoading ? (
           <EmptyState
             kind="empty"
             icon={HardDriveDownload}
             title="No destinations configured"
-            description="Nothing is shipped off this host until a destination exists. The systemd timer's local dumps are unaffected either way."
+            description="Nothing is shipped off this host until a destination exists."
           />
         ) : (
           <ul className="space-y-2.5">
@@ -288,8 +269,7 @@ function InventorySection({ inventory }: { inventory: DestinationInventory[] }) 
         </div>
       ))}
       <p className="text-muted-foreground text-sm">
-        Restoring replaces the live database; it is deliberately a shell
-        command, not a button.
+        Restoring replaces the live database.
       </p>
     </div>
   )
@@ -521,10 +501,6 @@ function DestinationForm({
                 Stored. Saving without editing this field keeps it.
               </p>
             ) : null}
-            <p className="text-muted-foreground text-xs">
-              Authorisation, not confidentiality: the receiver stores
-              ciphertext, so the age recipient above is what protects the bytes.
-            </p>
           </div>
         </>
       ) : null}

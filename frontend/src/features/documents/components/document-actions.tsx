@@ -106,8 +106,7 @@ export function DocumentActions({
               Delete {document.title ?? document.uri ?? "this document"}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              This removes the document and all of its blocks, including
-              their embeddings. This cannot be undone.
+              This removes the document. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -169,10 +168,6 @@ export function DocumentDetail({
             <FileText className="size-4" />
             Summary
           </p>
-          <p className="text-muted-foreground text-sm">
-            A report over this document — not a verified claim, and never
-            badged.
-          </p>
         </CardHeader>
         <CardContent>
           {summary.isLoading ? (
@@ -181,7 +176,7 @@ export function DocumentDetail({
             <p className="text-sm">{summary.data.text}</p>
           ) : (
             <p className="text-muted-foreground text-sm italic">
-              no summary has been generated — generating one is an explicit act
+              no summary yet — use Summarize to generate one
             </p>
           )}
         </CardContent>
@@ -202,8 +197,7 @@ export function DocumentDetail({
             <Skeleton className="h-16 w-full rounded-md" />
           ) : connections.isError ? (
             <p className="text-destructive text-sm italic">
-              connections could not be read — this is a failed read, not an
-              empty one
+              connections could not be read
             </p>
           ) : connections.data?.comparable_documents === 0 ? (
             // Tested before `embedded`, because `embedded` is false in this
@@ -217,8 +211,7 @@ export function DocumentDetail({
             </p>
           ) : !connections.data?.embedded ? (
             <p className="text-muted-foreground text-sm italic">
-              not comparable yet — this document's blocks or this project's
-              other documents are still being embedded
+              not ready yet — documents are still being indexed
             </p>
           ) : connections.data.items.length === 0 ? (
             // The probe takes each passage's ten nearest blocks with no
@@ -229,9 +222,7 @@ export function DocumentDetail({
             // this fingerprint -- and it cannot mean "nothing is near", since
             // the read applies no similarity floor.
             <p className="text-muted-foreground text-sm italic">
-              no other document in this project surfaced — the comparison
-              samples each passage's nearest neighbours rather than scanning
-              every document, so a distant match can fall outside that window
+              no similar documents found
             </p>
           ) : (
             <div className="flex flex-col gap-1">
@@ -330,8 +321,7 @@ function RelatedMemoriesCard({ documentId }: { documentId: string }) {
           Related memories
         </p>
         <p className="text-muted-foreground text-sm">
-          Memories near a passage of this document — the passage is the
-          evidence, the score only orders the rows.
+          Memories near a passage of this document.
         </p>
       </CardHeader>
       <CardContent>
@@ -339,8 +329,7 @@ function RelatedMemoriesCard({ documentId }: { documentId: string }) {
           <Skeleton className="h-16 w-full rounded-md" />
         ) : related.isError ? (
           <p className="text-destructive text-sm italic">
-            related memories could not be read — this is a failed read, not an
-            empty one
+            related memories could not be read
           </p>
         ) : related.data?.comparable_memories === 0 ? (
           // Tested before `embedded`, for the reason the connections card
@@ -353,8 +342,7 @@ function RelatedMemoriesCard({ documentId }: { documentId: string }) {
           </p>
         ) : !related.data?.embedded ? (
           <p className="text-muted-foreground text-sm italic">
-            not comparable yet — this document's blocks or this project's
-            memories are still being embedded
+            not ready yet — memories are still being indexed
           </p>
         ) : related.data.items.length === 0 ? (
           // Defensive: unreachable while `comparable_memories > 0`. The read
@@ -362,7 +350,7 @@ function RelatedMemoriesCard({ documentId }: { documentId: string }) {
           // memory to this document's best block in the shared partition, so
           // a comparable memory always yields a row.
           <p className="text-muted-foreground text-sm italic">
-            no rows came back for this document
+            no related memories found
           </p>
         ) : (
           <div className="flex flex-col gap-1">

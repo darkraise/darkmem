@@ -70,23 +70,12 @@ function StaleBanner({ repo }: { repo: Repo }) {
       <Clock aria-hidden className="text-warning-text h-4.5 w-4.5 shrink-0" />
       <div className="space-y-1 text-sm">
         <p className="font-semibold">
-          Last index failed — serving the last-good graph, marked stale
+          Last index failed — showing the last good graph
         </p>
         <p className="text-muted-foreground">
           Cause: {staleCause(repo.status_message)}
         </p>
-        <p>
-          The graph indexed{" "}
-          {repo.last_indexed_at
-            ? relativeTime(repo.last_indexed_at)
-            : "previously"}{" "}
-          (HEAD{" "}
-          <span className="font-mono">
-            {repo.last_indexed_commit ?? "unknown"}
-          </span>
-          ) is still served to every code tool, labelled <b>stale</b>, until the
-          next run succeeds.
-        </p>
+        <p>Nothing retries automatically — reindex once the cause is fixed.</p>
       </div>
     </div>
   )
@@ -105,20 +94,14 @@ function IndexDebtIndicator({ repo }: { repo: Repo }) {
       <span className="border-warning/55 bg-warning/8 text-warning-text inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-0.5 text-sm">
         <Layers aria-hidden className="h-3.5 w-3.5" />
         {debt.queued} dependent {debt.queued === 1 ? "file" : "files"} queued
-        for re-trace
+        for reindex
       </span>
       <p className="text-muted-foreground text-sm">
         {debt.last_drain
-          ? `draining — last drained ${debt.last_drain.count} ${
+          ? `last drained ${debt.last_drain.count} ${
               debt.last_drain.count === 1 ? "file" : "files"
-            } ${relativeTime(debt.last_drain.at)} (commit ${
-              debt.last_drain.commit
-            })${
-              debt.last_drain.vanished > 0
-                ? `, ${debt.last_drain.vanished} vanished — no longer referenced`
-                : ""
-            }`
-          : `no drain recorded yet — ${debt.deferred_total} deferred, 0 drained so far`}
+            } ${relativeTime(debt.last_drain.at)}`
+          : "none drained yet"}
       </p>
     </div>
   )
@@ -151,7 +134,6 @@ function AutoProvisionLabel({ repo }: { repo: Repo }) {
   return (
     <p className="text-muted-foreground text-sm">
       auto-provisioned — queued {relativeTime(repo.created_at)}
-      {repo.status_message ? ` (${repo.status_message})` : ""}
     </p>
   )
 }
@@ -512,8 +494,7 @@ export function RealRepositoriesView() {
         // Not the empty state: it invites the operator to add a repository
         // they already have, on a read that merely failed.
         <p className="text-destructive p-3 text-sm">
-          Repositories could not be loaded — a failed read, not an unindexed
-          instance.
+          Repositories could not be loaded.
         </p>
       ) : isLoading ? (
         <p className="text-muted-foreground p-3 text-sm">
@@ -534,7 +515,7 @@ export function RealRepositoriesView() {
           kind="empty"
           icon={FolderGit2}
           title="No repositories indexed yet"
-          description="Add one and darkmem clones it, parses it with tree-sitter, and makes its symbols searchable."
+          description="Add one to make its code searchable."
         />
       )}
 

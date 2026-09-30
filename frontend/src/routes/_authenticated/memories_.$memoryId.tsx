@@ -6,7 +6,6 @@ import { Button } from "darkraise-ui/components/button"
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "darkraise-ui/components/card"
@@ -49,18 +48,15 @@ function formatDateTime(iso: string): string {
 
 function SectionCard({
   title,
-  hint,
   children,
 }: {
   title: string
-  hint?: string
   children: React.ReactNode
 }) {
   return (
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-sm font-semibold">{title}</CardTitle>
-        {hint && <CardDescription className="text-sm">{hint}</CardDescription>}
       </CardHeader>
       <CardContent className="space-y-2">{children}</CardContent>
     </Card>
@@ -80,7 +76,7 @@ const LADDER: VerificationStatus[] = [
 function RungLabel({ value }: { value: string | null }) {
   if (!value || value === "active") {
     return (
-      <span className="text-muted-foreground text-sm">active (no badge)</span>
+      <span className="text-muted-foreground text-sm">active</span>
     )
   }
   if ((LADDER as string[]).includes(value)) {
@@ -183,16 +179,14 @@ function SupersessionLineage({
       <div className="flex flex-wrap items-center gap-2.5">
         <LifecycleBadge status="deprecated" />
         <span className="text-muted-foreground text-sm italic">
-          superseded_by: null — the successor memory was later removed; this row
-          was demoted, not deleted.
+          The memory that replaced this one was later deleted.
         </span>
       </div>
     )
   }
   return (
     <p className="text-muted-foreground text-sm italic">
-      not superseded — this is the current, active version of this memory;
-      superseded_by is null.
+      Not superseded — this is the current version.
     </p>
   )
 }
@@ -225,7 +219,6 @@ function MemoryDetailPage() {
   useSetPageChrome({
     icon: Brain,
     title: "Memory detail",
-    description: "One memory, its enrichment, and its lineage.",
     parent: { label: "Memories", href: "/memories" },
     actions: memory ? (
       <Button variant="outline" onClick={() => setEditOpen(true)}>
@@ -242,7 +235,7 @@ function MemoryDetailPage() {
           kind="missing"
           scope="page"
           title="Memory not found"
-          description="This memory does not exist in the demo store — it may have been deleted."
+          description="This memory does not exist — it may have been deleted."
           action={
             <Button variant="outline" asChild>
               <Link to="/memories">
@@ -308,7 +301,7 @@ function MemoryDetailPage() {
             </CardContent>
           </Card>
 
-          <SectionCard title="Memory-relations">
+          <SectionCard title="Related memories">
             {memory.relations?.length ? (
               <div className="space-y-1.5">
                 {memory.relations.map((rel) => (
@@ -337,10 +330,7 @@ function MemoryDetailPage() {
             )}
           </SectionCard>
 
-          <SectionCard
-            title="Per-memory timeline"
-            hint="events by object — timestamp, event-type chip, and (for transitions) the from→to rung pair."
-          >
+          <SectionCard title="Timeline">
             <div>
               {timeline.map((event, i) => (
                 <TimelineRow key={i} event={event} />
@@ -364,14 +354,14 @@ function MemoryDetailPage() {
                 {memory.confidence.toFixed(2)}
               </MetaRow>
               {memory.applies_when && (
-                <MetaRow label="applies_when">{memory.applies_when}</MetaRow>
+                <MetaRow label="applies when">{memory.applies_when}</MetaRow>
               )}
             </dl>
           </SectionCard>
 
           <SectionCard title="Enrichment">
             <dl className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
-              <MetaRow label="classified_type">
+              <MetaRow label="type">
                 {memory.classified_type ?? "— pending"}
               </MetaRow>
               <MetaRow label="summary">{memory.summary ?? "—"}</MetaRow>
@@ -399,7 +389,7 @@ function MemoryDetailPage() {
             </dl>
           </SectionCard>
 
-          <SectionCard title="technologies">
+          <SectionCard title="Technologies">
             {memory.technologies?.length ? (
               <div className="flex flex-wrap gap-1.5">
                 {memory.technologies.map((tech) => (

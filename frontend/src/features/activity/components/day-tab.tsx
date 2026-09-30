@@ -40,8 +40,8 @@ function InjectDetail({ inject }: { inject: InjectRecordData }) {
       <div className="space-y-1">
         <p className="text-sm">
           Push curbed for <b className="font-semibold">{inject.tool}</b>
-          {inject.contextFile ? ` — ${inject.contextFile}` : ""}: the managed
-          block is cleared to an empty marker pair. Nothing was pushed.
+          {inject.contextFile ? ` — ${inject.contextFile}` : ""}. Nothing was
+          pushed.
         </p>
         {inject.reason && (
           <p className="text-muted-foreground text-sm">
@@ -119,11 +119,6 @@ function InjectDetail({ inject }: { inject: InjectRecordData }) {
                 </div>
               ),
             )}
-          <p className="text-muted-foreground text-sm">
-            The journal records ids and counts, never the injected text — so
-            this names what was pushed, and stays honest about rows that have
-            since been deleted.
-          </p>
         </div>
       )}
     </div>
@@ -192,20 +187,9 @@ export function DayTab({
 
   return (
     <div className="space-y-4">
-      <p className="text-muted-foreground max-w-4xl text-sm">
-        A calendar-day drill into that UTC day-bucket's slice of the durable
-        events substrate — the same event-row component the per-object timeline
-        renders.
-      </p>
       <ModuleSurface
         title="Day drill"
-        state={
-          isLoading
-            ? "empty"
-            : events && events.length > 0
-              ? "populated"
-              : "empty"
-        }
+        state="populated"
         meta={`day ${day}`}
         actions={
           <>
@@ -234,16 +218,12 @@ export function DayTab({
       >
         <span className="text-muted-foreground flex items-center gap-1.5 text-sm">
           <Clock aria-hidden className="h-3.5 w-3.5 shrink-0" />
-          <span>
-            <b className="text-foreground font-semibold">Days are UTC</b> — this
-            list is the UTC calendar date, not your local one.
-          </span>
+          <span>Days are UTC.</span>
         </span>
       {isError ? (
         <EmptyState
           kind="failed"
           title="Couldn't load this day"
-          description="The /events request for this UTC window failed — this is an error state, not an empty day."
         />
       ) : events && events.length > 0 ? (
         <div className="flex flex-col">
@@ -257,14 +237,8 @@ export function DayTab({
             </p>
           )}
         </div>
-      ) : (
-        // Honest empty: names the UTC bucket it checked; a quiet day is an
-        // ordinary outcome, not a blank.
-        <EmptyState
-          kind="filtered"
-          title="No activity on this day"
-          description={`No events rows fall in the UTC bucket for ${day} — nothing was created, verified, injected, or synced in this project on that date. The bucket boundary is the UTC calendar date, so a late-night local capture may land on the neighbouring day here.`}
-        />
+      ) : isLoading ? null : (
+        <EmptyState kind="filtered" title="No activity on this day" />
       )}
       </ModuleSurface>
     </div>

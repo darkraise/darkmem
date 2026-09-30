@@ -2,7 +2,6 @@ import type { ExclusionItem } from "@/components/darkmem"
 import type { KnowledgeLayer, VerificationStatus } from "@/components/darkmem"
 import type { MemoryStatus } from "@/hooks/api"
 import {
-  EXCLUSION_CAVEAT,
   traceToView,
   type MemoryTraceView,
 } from "@/features/memories/use-memory-search"
@@ -84,14 +83,10 @@ export interface ChatContextFact {
 // after the fusion, these name the composition's own two tallies plus the
 // re-read gap chat counts for itself.
 const EXCLUSION_COPY: Record<string, string> = {
-  by_context_conflict:
-    "conflicted with the context declared for this turn, so it was left out of the answer",
-  by_result_limit:
-    "ranked below this turn's context budget — composed and ordered, but not sent to the model",
-  not_found: "ranked, then could not be re-read before the answer was built",
+  by_context_conflict: "conflicted with this turn's context",
+  by_result_limit: "ranked below the context limit",
+  not_found: "could not be re-read",
 }
-
-export const CHAT_EXCLUSION_CAVEAT = EXCLUSION_CAVEAT
 
 export function layerNumber(layer: string | undefined): KnowledgeLayer {
   const parsed = Number((layer ?? "L0").replace(/^L/, ""))

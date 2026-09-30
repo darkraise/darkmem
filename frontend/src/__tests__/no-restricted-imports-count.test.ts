@@ -115,6 +115,8 @@ describe("no-restricted-imports: src/demo/*", () => {
     // `use-checkpoints-api.ts` each imported a demo fixture. Re-measured when
     // the work-log demo fixtures landed: 118 — `use-worklog-api.ts` imports
     // them for its `initialData` in demo mode, the same shape as projects.
-    expect(countByRule(results, "no-restricted-imports")).toBe(118)
+    // Re-measured when the UI copy prune removed the distribution mock, the
+    // monitors tab and the review/hygiene count hooks: 109.
+    expect(countByRule(results, "no-restricted-imports")).toBe(109)
   })
 })

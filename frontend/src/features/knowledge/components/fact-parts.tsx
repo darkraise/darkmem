@@ -30,8 +30,7 @@ export function FactTriple({
   )
 }
 
-// One label per declared context key; an explicit "no context restriction"
-// label when the fact carries none — the module is never silently omitted.
+// One label per declared context key; nothing when the fact carries none.
 export function AppliesWhenChips({
   items,
   className,
@@ -39,19 +38,7 @@ export function AppliesWhenChips({
   items: AppliesWhen[]
   className?: string
 }) {
-  if (items.length === 0) {
-    return (
-      <span className={cn("flex flex-wrap gap-1.5", className)}>
-        <Badge
-          variant="outline"
-          size="sm"
-          className="text-muted-foreground border-dashed italic"
-        >
-          no context restriction
-        </Badge>
-      </span>
-    )
-  }
+  if (items.length === 0) return null
   return (
     <span className={cn("flex flex-wrap gap-1.5", className)}>
       {items.map((item) => (
@@ -191,7 +178,7 @@ const LADDER: readonly string[] = [
 export function RungLabel({ value }: { value: string | null }) {
   if (!value) {
     return (
-      <span className="text-muted-foreground text-sm">— (no prior rung)</span>
+      <span className="text-muted-foreground text-sm">—</span>
     )
   }
   if (LADDER.includes(value)) {

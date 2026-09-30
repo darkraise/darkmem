@@ -194,9 +194,8 @@ describe("ProjectWorkspace — grounded Q&A", () => {
       ).toBeInTheDocument(),
     )
     expect(
-      screen.getByText(/faithfulness judge is not qualified/),
+      screen.getByText(/grounding could not be checked/),
     ).toBeInTheDocument()
-    expect(screen.getByText("horizon")).toBeInTheDocument()
     // The point of the clause: nothing answer-shaped is on the page.
     expect(screen.queryByText(/The sky is blue\./)).not.toBeInTheDocument()
   })
@@ -313,9 +312,6 @@ describe("DocumentDetail — summary and connections", () => {
       ).toBeInTheDocument(),
     )
     expect(
-      screen.getByText(/not a verified claim, and never/),
-    ).toBeInTheDocument()
-    expect(
       screen.queryByText(/corroborated|confirmed|verified claim badge/),
     ).toBeNull()
   })
@@ -326,7 +322,7 @@ describe("DocumentDetail — summary and connections", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText(/no summary has been generated/),
+        screen.getByText(/no summary yet/),
       ).toBeInTheDocument(),
     )
   })
@@ -348,7 +344,7 @@ describe("DocumentDetail — summary and connections", () => {
         ),
       ).toBeInTheDocument(),
     )
-    expect(screen.queryByText(/still being embedded/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/still being indexed/)).not.toBeInTheDocument()
   })
 
   it("an unembedded sibling document renders the pending copy instead", async () => {
@@ -358,7 +354,7 @@ describe("DocumentDetail — summary and connections", () => {
     render(<DocumentDetail documentId={DOCUMENT.id} />, { wrapper })
 
     await waitFor(() =>
-      expect(screen.getByText(/still being embedded/)).toBeInTheDocument(),
+      expect(screen.getByText(/still being indexed/)).toBeInTheDocument(),
     )
   })
 

@@ -80,16 +80,14 @@ test.beforeAll(() => {
   }
 })
 
-test("the Ask mode states its grounding rule before anything is asked", async ({
+test("the Ask mode states what it answers from before anything is asked", async ({
   page,
 }) => {
   await signIn(page)
   await page.goto("/documents")
   await chooseAnyProject(page)
   await page.getByRole("radio", { name: "Ask" }).click()
-  await expect(
-    page.getByText(/an answer that cannot be grounded is withheld/i),
-  ).toBeVisible()
+  await expect(page.getByText(/^Answering from /)).toBeVisible()
 })
 
 test("an empty corpus reads as empty rather than as a failure", async ({

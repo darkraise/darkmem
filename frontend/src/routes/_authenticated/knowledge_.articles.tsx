@@ -13,7 +13,6 @@ function KnowledgeArticlesPage() {
       <PageChrome
         icon={Newspaper}
         title="Articles"
-        description="Synthesised articles whose every claim links to a fact."
       />
       <ArticlesTab />
     </div>

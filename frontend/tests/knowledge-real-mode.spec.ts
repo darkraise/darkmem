@@ -92,7 +92,9 @@ test.describe("knowledge/facts — real mode", () => {
     await signIn(page)
     await page.goto("/knowledge/facts")
 
-    await expect(page.getByText(/^Facts — project:/)).toBeVisible()
+    await expect(
+      page.getByText(/^(\d+ facts|\d+ of \d+ loaded)$/).first(),
+    ).toBeVisible()
 
     await page
       .getByLabel("Filter facts by subject or object")
@@ -117,7 +119,7 @@ test.describe("knowledge/facts — real mode", () => {
       .locator("[data-index]")
       .filter({ hasText: new RegExp(escapeRegExp(SEEDED_TEXT!)) })
       .first()
-    await row.getByRole("link", { name: "sources, ladder and windows →" }).click()
+    await row.getByRole("link", { name: "details →" }).click()
 
     await expect(page).toHaveURL(/\/knowledge\/facts\/[^/]+$/)
     await expect(page.getByRole("heading", { name: "Fact detail" })).toBeVisible()

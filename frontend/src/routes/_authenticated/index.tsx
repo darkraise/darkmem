@@ -167,7 +167,7 @@ function DashboardPage() {
               kind="empty"
               icon={Activity}
               title="No activity yet"
-              description="Nothing has been journalled on this instance. Capture a memory or wait for a scheduled job, and it appears here."
+              description="Capture a memory or wait for a scheduled job, and it appears here."
             />
           )}
         </CardContent>

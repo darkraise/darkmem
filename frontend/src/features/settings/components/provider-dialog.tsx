@@ -193,8 +193,8 @@ export function ProviderDialog({
           </DialogTitle>
           <DialogDescription>
             {frozen
-              ? "This provider serves the verification judge. base_url and api_kind are its qualification identity and cannot be changed here; the key is still rotatable."
-              : "One vendor connection several purposes can point at."}
+              ? "Serves the verification judge, so base_url and api_kind are locked. The key can still be changed."
+              : "A vendor connection that purposes can use."}
           </DialogDescription>
         </DialogHeader>
 

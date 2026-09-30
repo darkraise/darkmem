@@ -83,27 +83,23 @@ describe("ArticlesTab on live data", () => {
     expect(screen.getByText("Postgres is a database.")).toBeInTheDocument()
   })
 
-  it("shows the coverage number as claim-support coverage", async () => {
+  it("shows the coverage number", async () => {
     serve([ROW])
 
     render(<ArticlesTab />, { wrapper })
 
     expect(
-      await screen.findByText(/claim-support coverage 0\.97/i),
+      await screen.findByText(/coverage 0\.97/i),
     ).toBeInTheDocument()
   })
 
-  it("says an unmeasured article is unmeasured rather than showing zero", async () => {
-    // With the groundedness gate open this is every article, and 0.00 would
-    // read as "measured, and ungrounded" — the opposite of what is true.
+  it("shows no coverage number for an unmeasured article rather than zero", async () => {
     serve([{ ...ROW, coverage: null }])
 
     render(<ArticlesTab />, { wrapper })
 
-    expect(
-      await screen.findByText(/claim-support coverage not measured/i),
-    ).toBeInTheDocument()
-    expect(screen.queryByText(/coverage 0\.00/i)).not.toBeInTheDocument()
+    await screen.findByText("postgres")
+    expect(screen.queryByText(/coverage/i)).not.toBeInTheDocument()
   })
 
   it("labels a stale article and still serves it", async () => {
@@ -135,8 +131,8 @@ describe("ArticlesTab on live data", () => {
     render(<ArticlesTab />, { wrapper })
 
     await screen.findByText("postgres")
-    expect(screen.getByText(/1 article/i)).toBeInTheDocument()
-    expect(screen.getByText(/routed to Knowledge → Review/i)).toBeInTheDocument()
+    expect(screen.getByText(/1 article excluded/i)).toBeInTheDocument()
+    expect(screen.getByText(/awaiting review in Knowledge → Review/i)).toBeInTheDocument()
   })
 
   it("does not default a real install to the demo fixture's project", async () => {
@@ -160,12 +156,12 @@ describe("ArticlesTab on live data", () => {
 
     render(<ArticlesTab />, { wrapper })
 
-    expect(await screen.findByText(/1 article/i)).toBeInTheDocument()
+    expect(await screen.findByText(/1 article excluded/i)).toBeInTheDocument()
     expect(
-      screen.queryByText(/nothing is being withheld from you here/i),
+      screen.queryByText(/Articles appear once a subject/i),
     ).not.toBeInTheDocument()
     expect(
-      screen.getByText(/Every article for this scope is in review/i),
+      screen.getByText(/Every article here is awaiting review/i),
     ).toBeInTheDocument()
   })
 
@@ -176,7 +172,7 @@ describe("ArticlesTab on live data", () => {
 
     expect(await screen.findByText("No articles yet")).toBeInTheDocument()
     expect(
-      screen.getByText(/nothing is being withheld from you here/i),
+      screen.getByText(/Articles appear once a subject/i),
     ).toBeInTheDocument()
   })
 

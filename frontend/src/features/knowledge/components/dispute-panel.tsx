@@ -1,4 +1,4 @@
-import { useDetailLevel, VerificationBadge } from "@/components/darkmem"
+import { VerificationBadge } from "@/components/darkmem"
 import { formatList } from "@/lib/format"
 import type { DisputeSide, FactDispute } from "@/demo/types"
 import { AppliesWhenChips } from "./fact-parts"
@@ -6,12 +6,11 @@ import { SourceRow } from "./fact-sources"
 import { BeliefWindowRow } from "./belief-window"
 
 function DisputeSideCard({ side }: { side: DisputeSide }) {
-  const advanced = useDetailLevel((s) => s.level) === "advanced"
   return (
     <div className="border-border space-y-2 rounded-md border p-3">
       <VerificationBadge status="disputed" />
       <p className="text-muted-foreground font-mono text-sm">
-        {advanced ? "object_name: " : "Object: "}
+        Object:{" "}
         {side.object_name}
       </p>
       <p className="text-sm">{side.assertion}</p>
@@ -20,7 +19,7 @@ function DisputeSideCard({ side }: { side: DisputeSide }) {
         of kind {formatList(side.origin_kinds)}
       </p>
       <p className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
-        {advanced ? "sources — grouped by origin_key" : "Sources, grouped by origin"}
+        Sources
       </p>
       <div>
         {side.sources.map((source, i) => (

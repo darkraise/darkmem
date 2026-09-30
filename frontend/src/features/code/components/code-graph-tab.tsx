@@ -285,7 +285,7 @@ export function CodeGraphTab({
       </Select>
       {repo.status === "stale" && repo.stale && (
         <span className="border-warning/60 bg-warning/10 text-warning-text inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-0.5 text-sm">
-          serving last-good graph ({repo.stale.last_good_head}) — stale
+          stale — showing last good graph ({repo.stale.last_good_head})
         </span>
       )}
       <span className="flex-1" />
@@ -315,13 +315,6 @@ export function CodeGraphTab({
               />
             </span>
           </div>
-          <p className="text-muted-foreground max-w-xl text-sm">
-            The layout switcher, canvas, and analysis panel have nothing to
-            render until this run completes — the graph is not empty, it is{" "}
-            <b className="text-foreground">not built yet</b>. Community and
-            process detection run after structure and cross-file binding, so the
-            community navigator and Processes panel populate last.
-          </p>
         </div>
       </div>
     )
@@ -351,12 +344,6 @@ export function CodeGraphTab({
               </Button>
             </div>
           </div>
-          <p className="text-muted-foreground mt-3 max-w-xl text-sm">
-            With no successful index ever committed for this repo, there is
-            nothing to fall back to — the failure is the whole story. A
-            fail-stale banner over a last-good graph is the Repositories
-            surface's concern.
-          </p>
         </div>
       </div>
     )
@@ -370,7 +357,7 @@ export function CodeGraphTab({
           kind="empty"
           icon={FolderGit2}
           title="No graph yet"
-          description={`${repo.name} is registered but has never been indexed — no symbols, no edges, no communities or processes to browse. Index it from Repositories to build the graph.`}
+          description={`${repo.name} has not been indexed yet.`}
           action={
             <Button variant="outline" onClick={onOpenRepositories}>
               Open reindex dialog on Repositories →
@@ -722,7 +709,7 @@ export function CodeGraphTab({
 
           <div className="border-border space-y-2 border-b p-2.5">
             <SectionTitle icon={<Share2 aria-hidden className="h-3 w-3" />}>
-              Blast radius risk buckets
+              Blast radius
             </SectionTitle>
             <div className="flex items-center gap-2">
               <Button

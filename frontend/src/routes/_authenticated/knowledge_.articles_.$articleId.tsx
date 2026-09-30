@@ -9,11 +9,7 @@ import { Progress } from "darkraise-ui/components/progress"
 import { Separator } from "darkraise-ui/components/separator"
 import { useSetPageChrome } from "@/components/app-chrome"
 import { DEMO } from "@/lib/demo-flag"
-import {
-  LayerChip,
-  useDetailLevel,
-  VerificationBadge,
-} from "@/components/darkmem"
+import { useDetailLevel, VerificationBadge } from "@/components/darkmem"
 import { useDemoArticle, useDemoFacts } from "@/demo/hooks"
 import type { ArticleCitation, ArticleSection, DemoFact } from "@/demo/types"
 import { ArticleDetailLive } from "@/features/knowledge/components/article-detail-live"
@@ -81,7 +77,6 @@ function CitationRow({
   citation: ArticleCitation
   fact?: DemoFact
 }) {
-  const level = useDetailLevel((s) => s.level)
   return (
     <div
       id={`cite-${citation.key}`}
@@ -95,12 +90,6 @@ function CitationRow({
       >
         fact {citation.fact_id.slice(0, 8)}
       </Link>
-      {level === "advanced" && (
-        <span className="text-muted-foreground font-mono text-xs whitespace-nowrap">
-          claim_span {citation.claim_span}
-        </span>
-      )}
-      <LayerChip layer={2} />
       {fact && (
         <VerificationBadge
           status={fact.verification_status}
@@ -144,7 +133,6 @@ function ArticleDetailPage() {
   useSetPageChrome({
     icon: Library,
     title: "Article detail",
-    description: "One synthesised article, every claim linked to its fact.",
     parent: { label: "Articles", href: "/knowledge/articles" },
   })
 
@@ -159,11 +147,7 @@ function ArticleDetailPage() {
           kind="missing"
           scope="page"
           title="Article not found"
-          description={
-            DEMO
-              ? "This article does not exist in the demo store."
-              : "Article synthesis is not shipped yet — it ships behind the groundedness gate, which is still open. There is no article channel to read."
-          }
+          description="This article does not exist in the demo store."
           action={
             <Button variant="outline" asChild>
               <Link to="/knowledge/articles">
@@ -200,7 +184,6 @@ function ArticleDetailPage() {
           reading measure. Supporting detail discloses below. */}
       <div className="space-y-4 pt-2 pb-6">
         <div className="flex flex-wrap items-center gap-2">
-          <LayerChip layer={3} />
           {/* The terminal superseded status REPLACES the rung badge; the
               stale overlay is appended, never a replacement. */}
           <VerificationBadge
@@ -213,18 +196,10 @@ function ArticleDetailPage() {
               synthesised before the latest verified change
             </span>
           )}
-          <span className="text-muted-foreground ml-auto font-mono text-sm">
-            article {article.id.slice(0, 8)}
-          </span>
         </div>
         <h2 className="max-w-[70ch] text-2xl leading-snug font-semibold">
           {article.title}
         </h2>
-        {article.claim && (
-          <p className="text-muted-foreground max-w-[70ch] font-mono text-sm">
-            {article.claim}
-          </p>
-        )}
         {superseded && successor && (
           <Link
             to="/knowledge/articles/$articleId"
@@ -235,8 +210,7 @@ function ArticleDetailPage() {
               aria-hidden
               className="text-muted-foreground h-3.5 w-3.5"
             />
-            superseded_by → article {successor.slice(0, 8)} — the current
-            statement of record for this subject
+            superseded by a newer version →
           </Link>
         )}
         {article.ungrounded_note && (
@@ -246,7 +220,7 @@ function ArticleDetailPage() {
               className="text-warning-text mt-0.5 h-4 w-4 shrink-0"
             />
             <span>
-              {article.ungrounded_note}{" "}
+              Flagged as ungrounded.{" "}
               <Link to="/knowledge/review" className="text-primary-text">
                 Open the Review queue →
               </Link>
@@ -254,12 +228,6 @@ function ArticleDetailPage() {
           </div>
         )}
 
-        {superseded && (
-          <p className="text-muted-foreground text-sm">
-            Synthesised content below is retained, not the servable statement of
-            record.
-          </p>
-        )}
         <div className="space-y-5 pt-1">
           {article.sections.map((section) => (
             <SectionBlock
@@ -283,8 +251,7 @@ function ArticleDetailPage() {
         <DetailSection
           value="citations"
           title="Citations"
-          meta={`${article.citations.length} · the article's only provenance`}
-          hint="article_citations.fact_id is a hard FK to knowledge_triples — safe because facts are invalidate-not-delete, so a citation can never dangle. Synthesis input is restricted to the subject's non-disputed corroborated/confirmed facts, never a raw document."
+          meta={String(article.citations.length)}
         >
           <div className="space-y-1.5">
             {article.citations.map((citation) => (
@@ -299,9 +266,8 @@ function ArticleDetailPage() {
 
         <DetailSection
           value="coverage"
-          title="Claim-support coverage"
-          meta={`${article.coverage.ratio.toFixed(2)} · ${article.coverage.entailed}/${article.coverage.total} entailed`}
-          hint="confidence is labelled claim-support coverage, never a vague score — it is the entailed/total ratio over this article's candidate sentences."
+          title="Coverage"
+          meta={article.coverage.ratio.toFixed(2)}
         >
           <Progress
             value={Math.round(article.coverage.ratio * 100)}
@@ -311,21 +277,9 @@ function ArticleDetailPage() {
             <b className="text-base font-semibold">
               {article.coverage.ratio.toFixed(2)}
             </b>{" "}
-            claim-support coverage — {article.coverage.entailed} /{" "}
-            {article.coverage.total} candidate sentences entailed by a cited
-            fact
-            {article.stale && (
-              <span className="text-muted-foreground">
-                {" "}
-                (unchanged since synthesis — re-synthesis has not run yet)
-              </span>
-            )}
+            — {article.coverage.entailed} of {article.coverage.total} sentences
+            supported by a cited fact
           </p>
-          {article.coverage_note && (
-            <p className="text-muted-foreground text-sm">
-              {article.coverage_note}
-            </p>
-          )}
         </DetailSection>
 
         {article.stale && (
@@ -335,19 +289,8 @@ function ArticleDetailPage() {
             meta={`stale since ${formatWhen(article.stale.since)}`}
           >
             <p className="border-border bg-muted/25 rounded-md border border-dashed p-2.5 text-sm">
-              {article.stale.reason} The stale overlay is surfaced wherever this
-              article is served — it is a label, never a suppression.
+              {article.stale.reason}
             </p>
-            {/* The stale label + reason above are the honesty signal and
-                render in every mode; the raw hash comparison is a
-                fingerprint, which simple mode hides (invariant 14 only
-                protects the label, never the technical proof behind it). */}
-            {level === "advanced" && (
-              <p className="text-warning-text font-mono text-sm">
-                fact_set_hash at synthesis {article.fact_set_hash} → current{" "}
-                {article.current_fact_set_hash} (changed → stale)
-              </p>
-            )}
           </DetailSection>
         )}
 
@@ -365,24 +308,18 @@ function ArticleDetailPage() {
                 stale overlay above already carries that signal in every
                 mode, so the raw hash itself is advanced-only detail. */}
             {level === "advanced" && (
-              <MetaRow label="fact_set_hash">
+              <MetaRow label="fact set hash">
                 {article.stale ? (
                   <span className="text-warning-text">
-                    at synthesis {article.fact_set_hash} → current{" "}
-                    {article.current_fact_set_hash} (changed → stale)
+                    {article.fact_set_hash} → {article.current_fact_set_hash}
                   </span>
                 ) : (
                   <span className="font-mono">{article.fact_set_hash}</span>
                 )}
               </MetaRow>
             )}
-            <MetaRow label="applies_when">{article.applies_when_label}</MetaRow>
+            <MetaRow label="applies when">{article.applies_when_label}</MetaRow>
           </dl>
-          {superseded && article.last_rung_note && (
-            <p className="text-muted-foreground text-sm">
-              {article.last_rung_note}
-            </p>
-          )}
         </DetailSection>
       </Accordion>
     </div>

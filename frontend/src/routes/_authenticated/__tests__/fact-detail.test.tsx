@@ -166,13 +166,13 @@ describe("FactDetail (DEMO off — GET /knowledge/facts/{id})", () => {
     expect(screen.queryByText("Fact not found")).not.toBeInTheDocument()
   })
 
-  it("renders the fact on a successful read", async () => {
+  it("renders the fact on a successful read, without restating a non-disputed claim", async () => {
     vi.mocked(apiFetch).mockResolvedValue(detailItem())
     render(<FactDetail factId="f1" />, { wrapper })
 
-    await screen.findByText(BADGE.claim)
-    expect(screen.getByText("darkmem uses postgres")).toBeInTheDocument()
+    await screen.findByText("darkmem uses postgres")
     expect(screen.getByText("corroborated")).toBeInTheDocument()
+    expect(screen.queryByText(BADGE.claim)).not.toBeInTheDocument()
   })
 
   it("a disputed fact renders the backend's two-sided claim verbatim", async () => {
@@ -206,7 +206,7 @@ describe("FactDetail (DEMO off — GET /knowledge/facts/{id})", () => {
     expect(screen.getByText("AVOIDS")).toBeInTheDocument()
   })
 
-  it("a disputed fact with no recorded counterpart says so, not silently", async () => {
+  it("a disputed fact with no recorded counterpart says so, without the backend slug", async () => {
     vi.mocked(apiFetch).mockResolvedValue(
       detailItem({
         verification_status: "disputed",
@@ -226,14 +226,15 @@ describe("FactDetail (DEMO off — GET /knowledge/facts/{id})", () => {
     render(<FactDetail factId="f1" />, { wrapper })
 
     await screen.findByText(DISPUTED_CLAIM)
-    expect(screen.getByText("no_finding_recorded")).toBeInTheDocument()
+    expect(screen.getByText("no triple on record")).toBeInTheDocument()
+    expect(screen.queryByText("no_finding_recorded")).not.toBeInTheDocument()
   })
 
-  it("renders the raw journal ladder, oldest event visible", async () => {
+  it("renders the ladder, oldest event visible", async () => {
     vi.mocked(apiFetch).mockResolvedValue(detailItem())
     render(<FactDetail factId="f1" />, { wrapper })
 
-    await screen.findByText(BADGE.claim)
+    await screen.findByText("darkmem uses postgres")
     // Collapsed by default (the sources section opens first) — open it.
     fireEvent.click(screen.getByText("Verification ladder"))
     expect(screen.getByText("verified")).toBeInTheDocument()
@@ -262,19 +263,15 @@ describe("FactDetail (DEMO off — GET /knowledge/facts/{id})", () => {
     )
     render(<FactDetail factId="f1" />, { wrapper })
 
-    await screen.findByText(BADGE.claim)
+    await screen.findByText("darkmem uses postgres")
     expect(screen.getByText("1 of 55 loaded")).toBeInTheDocument()
-    fireEvent.click(screen.getByText("Verification ladder"))
-    expect(
-      screen.getByText(/the 1 most recent of 55 .* not loaded here/),
-    ).toBeInTheDocument()
   })
 
   it("an untruncated ladder reports a plain count, not a fraction", async () => {
     vi.mocked(apiFetch).mockResolvedValue(detailItem())
     render(<FactDetail factId="f1" />, { wrapper })
 
-    await screen.findByText(BADGE.claim)
+    await screen.findByText("darkmem uses postgres")
     expect(screen.getByText("1 event")).toBeInTheDocument()
     expect(screen.queryByText(/of 1 loaded/)).not.toBeInTheDocument()
   })
@@ -321,7 +318,7 @@ describe("FactDetail (DEMO off — GET /knowledge/facts/{id})", () => {
       }),
     )
     render(<FactDetail factId="f1" />, { wrapper })
-    await screen.findByText(BADGE.claim)
+    await screen.findByText("darkmem uses postgres")
     fireEvent.click(screen.getByText("Verification ladder"))
 
     // No before/after at all: the badge and nothing else — no stray arrow.
@@ -349,8 +346,9 @@ describe("FactDetail (DEMO off — GET /knowledge/facts/{id})", () => {
     vi.mocked(apiFetch).mockResolvedValue(detailItem())
     render(<FactDetail factId="f1" />, { wrapper })
 
-    await screen.findByText(BADGE.claim)
-    expect(screen.getByText("origin_key: session-a")).toBeInTheDocument()
+    await screen.findByText("darkmem uses postgres")
+    expect(screen.getByText("session-a")).toBeInTheDocument()
+    expect(screen.getByText("1 origin")).toBeInTheDocument()
   })
 
   // T2.86, T2.48's rescope: `FactSourceGroup.stale` is served (once the
@@ -384,7 +382,7 @@ describe("FactDetail (DEMO off — GET /knowledge/facts/{id})", () => {
     )
     render(<FactDetail factId="f1" />, { wrapper })
 
-    await screen.findByText(BADGE.claim)
+    await screen.findByText("darkmem uses postgres")
     expect(screen.getByText("stale")).toBeInTheDocument()
     expect(screen.queryByText("disputed")).not.toBeInTheDocument()
   })
@@ -393,7 +391,7 @@ describe("FactDetail (DEMO off — GET /knowledge/facts/{id})", () => {
     vi.mocked(apiFetch).mockResolvedValue(detailItem())
     render(<FactDetail factId="f1" />, { wrapper })
 
-    await screen.findByText(BADGE.claim)
+    await screen.findByText("darkmem uses postgres")
     expect(screen.queryByText("stale")).not.toBeInTheDocument()
   })
 
@@ -456,7 +454,7 @@ describe("FactDetail (DEMO off — GET /knowledge/facts/{id})", () => {
     fireEvent.click(screen.getByText("Sources"))
 
     const staleGroup = screen
-      .getByText("origin_key: repo-b")
+      .getByText("repo-b")
       .closest<HTMLDivElement>("div.rounded-md")
     expect(staleGroup).not.toBeNull()
     expect(within(staleGroup!).getByText("stale")).toBeInTheDocument()
@@ -480,7 +478,7 @@ describe("FactDetail (DEMO off — GET /knowledge/facts/{id})", () => {
     )
     render(<FactDetail factId="f1" />, { wrapper })
 
-    await screen.findByText(BADGE.claim)
+    await screen.findByText("darkmem uses postgres")
     // Scoped to the section's own header: the Record section below it also
     // (correctly, by design) shows `fact.project` as its meta, so a
     // page-wide query for "darkmem" would pass for the wrong reason.
@@ -500,7 +498,7 @@ describe("FactDetail — Simple/Advanced (T2.86, own file)", () => {
   it("shows the raw triple and technical record fields in advanced mode", async () => {
     vi.mocked(apiFetch).mockResolvedValue(detailItem())
     render(<FactDetail factId="f1" />, { wrapper })
-    await screen.findByText(BADGE.claim)
+    await screen.findByText("darkmem uses postgres")
 
     // The hero triple is always in the DOM (advanced mode); the record
     // section's technical fields are behind the accordion — open it.
@@ -509,18 +507,17 @@ describe("FactDetail — Simple/Advanced (T2.86, own file)", () => {
     expect(screen.getByText("darkmem:USES:postgres")).toBeInTheDocument()
   })
 
-  it("collapses the raw triple and technical record fields in simple mode, never the claim", async () => {
+  it("collapses the raw triple and technical record fields in simple mode, never the badge", async () => {
     useDetailLevel.setState({ level: "simple" })
     vi.mocked(apiFetch).mockResolvedValue(detailItem())
     render(<FactDetail factId="f1" />, { wrapper })
-    await screen.findByText(BADGE.claim)
+    await screen.findByText("darkmem uses postgres")
 
     expect(screen.queryByText("USES")).not.toBeInTheDocument()
     fireEvent.click(screen.getByText("Record & provenance"))
     expect(screen.queryByText("darkmem:USES:postgres")).not.toBeInTheDocument()
     // Never collapsed: the honesty labels.
     expect(screen.getByText("corroborated")).toBeInTheDocument()
-    expect(screen.getByText(BADGE.claim)).toBeInTheDocument()
   })
 
   // T2.86 fix round (F5): `dispute.enumeration` rode the wire, asserted by a

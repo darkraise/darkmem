@@ -413,7 +413,7 @@ export function StepLLM() {
             <EmptyState
               kind="empty"
               title="No providers defined"
-              description="A provider is one vendor connection every purpose below can be pointed at — define at least one to fill in the required purposes."
+              description="Add at least one provider to assign the required models below."
             />
           )}
           {providers.map((p) => (
@@ -427,8 +427,7 @@ export function StepLLM() {
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Models by purpose</CardTitle>
           <p className="text-muted-foreground text-sm">
-            Choose a provider and model for each task. Hover or focus a help
-            icon for details. * Required
+            Choose a provider and model for each task. * Required
           </p>
         </CardHeader>
         <CardContent className="space-y-3">

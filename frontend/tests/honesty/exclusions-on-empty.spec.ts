@@ -39,7 +39,7 @@ test.describe("honesty/exclusions-on-empty", () => {
   }) => {
     await page.goto("/memories")
 
-    await expect(page.getByText(/results — project/i)).toBeVisible()
+    await expect(page.getByText(/^\d+ of \d+ shown$/)).toBeVisible()
 
     await page.getByLabel("Search memories").fill("cookie-secure")
     await selectProject(page, "default")
@@ -59,7 +59,6 @@ test.describe("honesty/exclusions-on-empty", () => {
     const exclusionCount = page.getByText(/^\d+ memories excluded$/)
     await expect(exclusionCount).toBeVisible()
     await expect(exclusionCount).toHaveText("2 memories excluded")
-    await expect(page.getByText("by_project")).toBeVisible()
 
     // The empty state renders too — the strip is not the only thing on
     // screen, and the two coexist rather than one masking the other.

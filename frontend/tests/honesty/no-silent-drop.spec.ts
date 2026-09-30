@@ -28,7 +28,7 @@ test.describe("honesty/no-silent-drop", () => {
   }) => {
     await page.goto("/memories")
 
-    await expect(page.getByText(/results — project/i)).toBeVisible()
+    await expect(page.getByText(/^\d+ of \d+ shown$/)).toBeVisible()
 
     // getByLabel("Session context") is ambiguous: the app-chrome
     // ContextChip shares the same aria-label with this page's own filter
@@ -59,6 +59,5 @@ test.describe("honesty/no-silent-drop", () => {
     await expect(exclusionCount).toHaveText("1 memory excluded")
 
     await expect(page.getByText(/env=dev-only row/i)).toBeVisible()
-    await expect(page.getByText("by_context_conflict")).toBeVisible()
   })
 })

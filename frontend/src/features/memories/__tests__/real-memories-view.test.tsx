@@ -49,7 +49,7 @@ describe("RealMemoriesView", () => {
     useProjectStore.setState({ activeProject: ALL_PROJECTS, missingProject: null })
   })
 
-  it("renders the exclusion caveat and strip even when every match was excluded (honesty/exclusions-on-empty)", async () => {
+  it("renders the exclusion strip even when every match was excluded (honesty/exclusions-on-empty)", async () => {
     vi.mocked(apiFetch).mockResolvedValue({
       items: [],
       total: 0,
@@ -70,36 +70,9 @@ describe("RealMemoriesView", () => {
     })
 
     await screen.findByText(/2 memories excluded/i)
-    // Ruling 1: the caveat renders unconditionally alongside the strip —
-    // an absent by_project/by_status count must not read as proof nothing
-    // was filtered by them.
-    expect(
-      screen.getByText(/never means nothing was filtered/i),
-    ).toBeInTheDocument()
     // The zero-row empty state still renders alongside the strip — the
     // exclusion strip is not itself the only thing on screen.
     expect(screen.getByText(/no matches/i)).toBeInTheDocument()
-  })
-
-  it("renders the caveat even with nothing excluded at all — the caveat is not conditional on a nonzero count", async () => {
-    vi.mocked(apiFetch).mockResolvedValue({
-      items: [],
-      total: 0,
-      limit: 50,
-      offset: 0,
-      envelope: {
-        query: "",
-        channels: {},
-        reranked: false,
-        weights: {},
-        excluded: {},
-      },
-    })
-
-    render(<RealMemoriesView />, { wrapper })
-
-    await screen.findByText(/never means nothing was filtered/i)
-    expect(screen.queryByText(/excluded$/i)).not.toBeInTheDocument()
   })
 
   it("shows the per-channel contribution and the fused rrf_score on demand (never labels a per-modality score as 'the score')", async () => {
@@ -249,7 +222,7 @@ describe("RealMemoriesView", () => {
     })
     render(<RealMemoriesView />, { wrapper })
 
-    expect(await screen.findByText("Results — project: acme")).toBeInTheDocument()
+    expect(await screen.findByText("0 of 0 shown")).toBeInTheDocument()
     expect(screen.queryByRole("textbox", { name: "Project scope" })).toBeNull()
     const bodies = vi
       .mocked(apiFetch)

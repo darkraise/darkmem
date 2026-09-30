@@ -66,23 +66,16 @@ interface BusyOutcome {
 
 function ReadOnlyField({
   label,
-  role,
   value,
   desc,
 }: {
   label: string
-  role: string
   value: string
   desc: string
 }) {
   return (
     <div className="border-border flex flex-col gap-1.5 border-b border-dashed px-1 py-2.5 last:border-b-0">
-      <div className="flex items-baseline gap-2">
-        <span className="font-mono text-sm font-semibold">{label}</span>
-        <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
-          {role}
-        </span>
-      </div>
+      <span className="text-sm font-semibold">{label}</span>
       <Input value={value} readOnly className="w-fit min-w-40 font-mono" />
       <p className="text-muted-foreground max-w-prose text-sm">{desc}</p>
     </div>
@@ -111,38 +104,34 @@ function JobConfigDialog({
             <Settings2 aria-hidden className="text-muted-foreground h-4 w-4" />
             Configure — {job.key}
           </DialogTitle>
-          <DialogDescription className="font-mono text-sm">
-            config row: job:{job.key}
+          <DialogDescription className="sr-only">
+            Settings for {job.key}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col">
           <ReadOnlyField
-            label="cron"
-            role="schedule · read-only here"
+            label="Schedule"
             value={job.cron}
-            desc={`${job.cron_label}. Five-field expressions are minute-precision; six-field put the seconds field first, Quartz-style. Edited via PUT /api/v1/jobs/{key}, not this dialog's Save.`}
+            desc={job.cron_label}
           />
           <ReadOnlyField
-            label="min_interval_seconds"
-            role="floor · read-only"
+            label="Minimum interval (seconds)"
             value={String(job.min_interval_seconds)}
-            desc="The loop will not fire more often than this floor, no matter how aggressive the cron computes. A registration-time constant — not editable via config."
+            desc="Runs never fire more often than this."
           />
           {job.max_run_seconds !== null && (
             <ReadOnlyField
-              label="max_run_seconds"
-              role="ceiling · read-only"
+              label="Maximum run time (seconds)"
               value={String(job.max_run_seconds)}
-              desc="A run still executing past this ceiling is treated as overrun. Also a registration-time constant, not editable via config."
+              desc="A run still going past this is treated as overrun."
             />
           )}
           <p className="text-muted-foreground pt-2 font-mono text-xs tracking-wide uppercase">
-            config_schema — job-specific, editable fields
+            Settings
           </p>
           {job.config_schema.length === 0 ? (
             <p className="text-muted-foreground py-2 text-sm italic">
-              This job declares no config_schema — there is nothing this dialog
-              can save.
+              This job has no editable settings.
             </p>
           ) : (
             job.config_schema.map((field) => {
@@ -196,10 +185,7 @@ function JobConfigDialog({
             })
           )}
         </div>
-        <DialogFooter className="items-center gap-2 sm:justify-between">
-          <span className="text-muted-foreground text-sm">
-            config_schema writes acquire the same lock the scheduled tick uses.
-          </span>
+        <DialogFooter className="items-center gap-2 sm:justify-end">
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose}>
               Cancel
@@ -276,7 +262,7 @@ function JobRow({
       </p>
       {job.last_run_label === null ? (
         <p className="text-muted-foreground text-sm italic">
-          last run: never — waiting on its first scheduled tick.
+          last run: never
         </p>
       ) : (
         <p
@@ -336,13 +322,9 @@ function JobRow({
             </span>
             <span className="text-muted-foreground text-sm">
               {busy.lock_held_since
-                ? `The lock acquired at ${busy.lock_held_since} is still held. `
-                : "The job's lock is still held by an earlier run. "}
-              This trigger request was not queued; try again once the current
-              run finishes.
-            </span>
-            <span className="text-warning-text font-mono text-sm">
-              HTTP 409 · POST /api/v1/jobs/{job.key}/trigger
+                ? `Running since ${busy.lock_held_since}. `
+                : ""}
+              Try again once the current run finishes.
             </span>
           </div>
           <Button
@@ -375,24 +357,18 @@ export function JobsTab() {
 
   return (
     <div className="space-y-4">
-      <p className="text-muted-foreground max-w-4xl text-sm">
-        The registered JobRegistry jobs with their cron schedule, last run, and
-        the per-job floor/ceiling. A manual trigger acquires the same per-job
-        lock the scheduled loop uses — a trigger that lands while the lock is
-        held returns busy (HTTP 409) immediately, discarded and never queued
-        behind the in-flight run.
-      </p>
       <ModuleSurface
         title="Jobs"
-        state={isLoading ? "empty" : jobs.length > 0 ? "populated" : "empty"}
+        state="populated"
         meta={`${jobs.length} registered · ${running} running · ${failed} last-run failed`}
       >
         {isError ? (
           <EmptyState
             kind="failed"
             title="Couldn't load the job board"
-            description="The /jobs request failed — this is an error state, not an empty registry."
           />
+        ) : !isLoading && jobs.length === 0 ? (
+          <p className="text-muted-foreground text-sm">No jobs registered.</p>
         ) : (
           jobs.map((job) => (
             <JobRow

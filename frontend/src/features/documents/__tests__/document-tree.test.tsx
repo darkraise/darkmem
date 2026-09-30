@@ -53,7 +53,7 @@ describe("DocumentTree", () => {
     render(
       <DocumentTree items={ITEMS} selectedId={null} onSelect={vi.fn()} truncated />,
     )
-    expect(screen.getByText(/cut at the pagination guard/i)).toBeInTheDocument()
+    expect(screen.getByText(/the list is incomplete/i)).toBeInTheDocument()
   })
 
   it("renders the empty state when the project holds nothing", () => {

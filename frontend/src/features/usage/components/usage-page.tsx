@@ -5,7 +5,7 @@ import { toast } from "darkraise-ui/components/sonner"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "darkraise-ui/components/tabs"
 
 import { PageChrome } from "@/components/app-chrome"
-import { EmptyState, HelpTip } from "@/components/darkmem"
+import { EmptyState } from "@/components/darkmem"
 import {
   SegmentGroup,
   SegmentGroupIndicator,
@@ -43,11 +43,7 @@ function SubjectDetail({
   if (isLoading) return <Skeleton className="h-40 w-full" />
   if (isError || !data) {
     return (
-      <EmptyState
-        kind="failed"
-        title="Could not read that subject"
-        description="A failed read is not an empty one."
-      />
+      <EmptyState kind="failed" title="Could not read that subject" />
     )
   }
   return <UsageSubjectPanel data={data} />
@@ -78,23 +74,9 @@ export function UsagePage() {
 
   return (
     <div className="space-y-4">
-      <PageChrome
-        icon={DollarSign}
-        title="Usage"
-        description="What every LLM call cost, and which work caused it."
-      />
+      <PageChrome icon={DollarSign} title="Usage" />
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
-          <span>Spend by purpose, model and subject, with its outliers.</span>
-          <HelpTip label="About Usage">
-            Every call is recorded, successes and failures alike, on a session
-            of its own — so a failed call, which the vendor still billed, is not
-            rolled back with the work it was metering. Costs are computed from
-            the price table at call time and stored with the rates used, so
-            re-pricing a model does not rewrite history.
-          </HelpTip>
-        </div>
         <div className="ml-auto">
           <SegmentGroup
             aria-label="Window"
@@ -125,11 +107,7 @@ export function UsagePage() {
           {overview.isLoading ? (
             <Skeleton className="h-64 w-full" />
           ) : overview.isError || !overview.data ? (
-            <EmptyState
-              kind="failed"
-              title="Could not read usage"
-              description="A failed read is not an empty one; this is not a claim that nothing was spent."
-            />
+            <EmptyState kind="failed" title="Could not read usage" />
           ) : (
             <UsageOverview
               data={overview.data}

@@ -142,15 +142,9 @@ export function ProjectSwitcher({
           align="end"
           className="bg-card border-border w-72 space-y-3 rounded-lg border p-3 shadow-xl"
         >
-          <div className="space-y-1.5">
-            <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-              Switch project
-            </p>
-            <p className="text-muted-foreground text-xs">
-              The isolation scope — every project-scoped view refetches against
-              it. This is not a context declaration.
-            </p>
-          </div>
+          <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+            Switch project
+          </p>
 
           <div className="max-h-64 space-y-0.5 overflow-y-auto">
             <ScopeRow

@@ -77,7 +77,6 @@ describe("ResearchTab — the arm switch", () => {
     render(<ResearchTab />, { wrapper })
 
     await waitFor(() => expect(screen.getAllByText("disarmed").length).toBeGreaterThan(0))
-    expect(screen.getByText(/refuses every run while disarmed/)).toBeInTheDocument()
     expect(screen.queryByText(/could not be read/)).not.toBeInTheDocument()
   })
 
@@ -117,7 +116,7 @@ describe("ResearchTab — the arm switch", () => {
     render(<ResearchTab />, { wrapper })
 
     await waitFor(() =>
-      expect(screen.getByText(/a failed read, not a disarmed loop/)).toBeInTheDocument(),
+      expect(screen.getByText(/research settings could not be loaded/)).toBeInTheDocument(),
     )
     expect(screen.getByText("unreadable")).toBeInTheDocument()
   })
@@ -176,14 +175,6 @@ describe("ResearchTab — the trigger re-derives, it does not gather", () => {
     for (const label of [/Run research/i, /Gather/i, /Search the web/i]) {
       expect(screen.queryByRole("button", { name: label })).not.toBeInTheDocument()
     }
-  })
-
-  it("says why the caller has to be the gatherer", async () => {
-    mockApi()
-    render(<ResearchTab />, { wrapper })
-    await waitFor(() =>
-      expect(screen.getByText(/evidence an MCP agent gathered/)).toBeInTheDocument(),
-    )
   })
 
   it("re-derives a run against the timestamp the listing gave it", async () => {
@@ -268,7 +259,7 @@ describe("ResearchTab — the trigger re-derives, it does not gather", () => {
     mockApi(DISARMED, { items: [], total: 0 })
     render(<ResearchTab />, { wrapper })
     await waitFor(() =>
-      expect(screen.getByText(/no research run has been filed/)).toBeInTheDocument(),
+      expect(screen.getByText(/No research runs yet/)).toBeInTheDocument(),
     )
   })
 })

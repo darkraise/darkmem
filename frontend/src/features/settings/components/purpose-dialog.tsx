@@ -38,12 +38,7 @@ import {
   useProbeProviderModels,
 } from "@/hooks/api/use-llm-providers-api"
 import type { LLMTabBinding } from "../use-llm-tab-binding"
-import {
-  ClassifierKindRow,
-  CodeBuckets,
-  CodeBucketsUnavailable,
-  Field,
-} from "./purpose-sections"
+import { ClassifierKindRow, CodeBuckets, Field } from "./purpose-sections"
 
 type Draft = {
   provider_name: string
@@ -261,7 +256,7 @@ export function PurposeDialog({
                 </div>
               </Field>
             )}
-            <Field label="params (jsonb)" span2>
+            <Field label="params" span2>
               <Input
                 value={draft.params}
                 aria-label={`${purpose.purpose} params`}
@@ -286,15 +281,12 @@ export function PurposeDialog({
             <p className="text-warning-text text-sm">{purpose.hint.text}</p>
           )}
 
-          {isSummarization &&
-            (binding.buckets ? (
-              <CodeBuckets
-                buckets={binding.buckets}
-                saveCodeBucket={binding.saveCodeBucket!}
-              />
-            ) : (
-              <CodeBucketsUnavailable />
-            ))}
+          {isSummarization && binding.buckets && (
+            <CodeBuckets
+              buckets={binding.buckets}
+              saveCodeBucket={binding.saveCodeBucket!}
+            />
+          )}
         </div>
 
         <div className="flex items-center gap-2.5 pt-1">

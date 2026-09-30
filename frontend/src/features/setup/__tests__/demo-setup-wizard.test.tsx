@@ -64,7 +64,7 @@ describe("DemoSetupWizard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Skip" }))
     fireEvent.click(screen.getByRole("button", { name: "Skip" }))
     expect(
-      screen.getByText(/six purpose rows seed to system defaults/),
+      screen.getByText(/defaults to a local Ollama/),
     ).toBeInTheDocument()
     expect(
       screen.getByText(/register repositories later/i),

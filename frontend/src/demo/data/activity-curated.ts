@@ -1,10 +1,8 @@
 import type { DemoPipelineFailure, DemoPipelineRun } from "@/features/activity/types"
 import type {
-  DemoBufferMonitor,
   DemoDayBucket,
   DemoDreamAction,
   DemoDreamCycle,
-  DemoDreamMonitor,
   DemoFeedEvent,
 } from "../types"
 
@@ -198,91 +196,6 @@ export const CURATED_PIPELINE_FAILURES: DemoPipelineFailure[] = [
     retry_queued: false,
   },
 ]
-
-// ---------------------------------------------------------------------------
-// S22 — staged monitors: buffer depth + dream run. live:false because the
-// backing tables/jobs do not exist yet (invariant 23) — the target block is
-// the sign-off design, labelled "target design · not yet live".
-// ---------------------------------------------------------------------------
-
-export const CURATED_BUFFER_MONITOR: DemoBufferMonitor = {
-  live: false,
-  staged_phase:
-    "memory_buffer and buffer_flush are live (T1.10/T1.13); no REST route reads them yet",
-  staged_reason:
-    "The durable Tier-B ingest buffer and its flush job are running, but nothing exposes memory_buffer rows over the API — this panel renders the target shape against curated data until that surface lands, so it never claims to be live traffic.",
-  target: {
-    pending: 18,
-    claimed: 4,
-    done: 214,
-    error: 4,
-    staleClaims: [
-      {
-        id: "buf-stale-1",
-        project: "darkmem",
-        attempts: 2,
-        maxAttempts: 5,
-        lastError: null,
-        claimedAt: "2026-07-27 08:41 UTC",
-      },
-    ],
-    poisonRows: [
-      {
-        id: "buf-poison-1",
-        project: "darkmem",
-        attempts: 5,
-        maxAttempts: 5,
-        lastError: "extraction timeout after 30s",
-      },
-    ],
-    wait_process_note:
-      "wait_process=true captures bypass the buffer entirely and run the five-phase pipeline synchronously — they never appear in these counts, only in the pipeline stepper.",
-  },
-}
-
-export const CURATED_DREAM_MONITOR: DemoDreamMonitor = {
-  live: false,
-  staged_phase:
-    "target-new, staged — ships once the consolidation job family (doc 08 §5) is live",
-  staged_reason:
-    'Once fact_lift, verification_recompute, contradiction_scan, memory_dream, topic_detection, and article_synthesis are registered Tier-C jobs, this panel will show a live run of the dependency chain — which job is running, which are queued behind it, and the busy (409) outcome if "Dream now" lands on a lock the scheduler already holds. The per-action ledger a completed cycle leaves behind is the separate Dream digest tab.',
-  target: {
-    last_cycle_label:
-      "last full cycle: 2026-07-23 03:00–03:04 UTC · all 6 jobs completed",
-    chain: [
-      { key: "fact_lift", caption: "done · cron */15 * * * *", state: "ok" },
-      {
-        key: "verification_recompute",
-        caption: "running · cron */2 * * * *",
-        state: "active",
-      },
-      {
-        key: "contradiction_scan",
-        caption: "queued · cron 0 */6 * * *",
-        state: "pending",
-      },
-      {
-        key: "memory_dream",
-        caption: "queued · cron 0 3 * * *",
-        state: "pending",
-      },
-      {
-        key: "topic_detection",
-        caption: "queued · daily per project",
-        state: "pending",
-      },
-      {
-        key: "article_synthesis",
-        caption: "queued · daily, debounced",
-        state: "pending",
-      },
-    ],
-    narrative:
-      "verification_recompute is running — draining sources_changed since 03:02:00. contradiction_scan, memory_dream, topic_detection, and article_synthesis stay queued behind it in dependency order until it finishes.",
-    lock_note:
-      "Each job holds its own per-job lock. A manual Dream now trigger that lands on a lock the scheduled loop already holds returns busy (HTTP 409) rather than queueing — the running job is never interrupted.",
-  },
-}
 
 // ---------------------------------------------------------------------------
 // S23 — dream digest: one cycle's journaled ledger, grouped by action type,

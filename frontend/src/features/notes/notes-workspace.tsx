@@ -212,8 +212,7 @@ export function NotesWorkspace({
             {list.isLoading ? <Skeleton className="h-64 w-full" /> : null}
             {list.isError ? (
               <p className="text-destructive text-sm">
-                The page tree could not be loaded — a failed read, not an empty
-                space.
+                The page tree could not be loaded.
               </p>
             ) : null}
             {list.data ? (
@@ -263,7 +262,7 @@ export function NotesWorkspace({
             />
           ) : page.isError ? (
             <p className="text-destructive text-sm">
-              This page could not be loaded — a failed read, not an empty page.
+              This page could not be loaded.
             </p>
           ) : page.isLoading || !page.data ? (
             <Skeleton className="h-64 w-full" />

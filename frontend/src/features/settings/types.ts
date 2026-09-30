@@ -82,9 +82,10 @@ export interface DemoCorroborationGate {
   rowPresent: boolean
   /** The task id whose measurement is the only thing that may loosen a floor,
    *  served by the backend so a renumbered task cannot leave this form naming
-   *  a gate that no longer exists. */
-  measurementTask: string
-  gate_note: string
+   *  a gate that no longer exists. Not rendered; the demo fixture still
+   *  carries it. */
+  measurementTask?: string
+  gate_note?: string
 }
 
 /** A pipeline/embedding tunable: a plain bounded number in the same
@@ -140,7 +141,8 @@ export type LLMPurposeName =
 
 export interface DemoLLMPurpose {
   purpose: LLMPurposeName
-  tier: string
+  /** Not rendered; the demo fixture still carries it. */
+  tier?: string
   role: string
   /** The `llm_providers` row this purpose resolves through. Editable — the
    *  connection fields below are the resolved, read-only view. */

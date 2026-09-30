@@ -21,9 +21,9 @@ export function McpPromptDialog({
       onOpenChange={onOpenChange}
       promptKey="agent_instructions"
       title="Injected MCP instructions"
-      description="Pushed onto the live server as the initialize response's instructions, so an edit reaches the next client without a restart."
+      description="Sent to MCP clients when they connect. An edit reaches the next client without a restart."
       emptyTitle="No instructions are injected"
-      emptyDescription="agent_instructions resolves empty, so the server sends no instructions at all and connecting clients are told nothing about darkmem."
+      emptyDescription="Connecting clients receive no instructions."
     />
   )
 }

@@ -67,8 +67,7 @@ export function ChangePasswordDialog({
         <DialogHeader>
           <DialogTitle>Change admin password</DialogTitle>
           <DialogDescription>
-            This box authenticates on one password. Changing it revokes every
-            token minted before this moment.
+            Changing it signs out every other session. This one stays signed in.
           </DialogDescription>
         </DialogHeader>
 
@@ -108,17 +107,6 @@ export function ChangePasswordDialog({
           </div>
         </div>
 
-        {/* The revocation consequence stays visible next to the trigger — a
-            destructive side effect is never demoted to a hover. */}
-        <p className="text-warning-text text-sm">
-          <b className="font-semibold">
-            Changing your password revokes every token minted before this moment
-          </b>{" "}
-          — the iat check treats them as dead on arrival, so any other signed-in
-          session is signed out immediately. This session is reissued and stays
-          live.
-        </p>
-
         {blockers.length > 0 && (
           <p className="text-muted-foreground text-sm">
             Not ready — {blockers.join("; ")}.
@@ -129,7 +117,7 @@ export function ChangePasswordDialog({
         )}
         {password.success && (
           <p className="text-success-text text-sm">
-            Password changed — all pre-change tokens are now dead by iat.
+            Password changed. Other sessions are signed out.
           </p>
         )}
 
@@ -148,7 +136,7 @@ export function ChangePasswordDialog({
             </Button>
           }
           headline="Change the admin password now?"
-          desc="Every token minted before this moment is revoked — the iat check treats them as dead on arrival, so any other signed-in session is signed out immediately. This is the box's only credential."
+          desc="Every other signed-in session is signed out immediately."
           confirmLabel="Confirm — change password"
           onConfirm={() => {
             password.change({ currentPassword: current, newPassword: next })

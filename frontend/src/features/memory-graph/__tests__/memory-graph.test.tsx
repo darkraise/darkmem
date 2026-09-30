@@ -19,20 +19,13 @@ describe("MemoryGraphExplorer", () => {
     ).toBeInTheDocument()
     expect(screen.getByText("Community navigator")).toBeInTheDocument()
     expect(screen.getByText("Retrieval & ranking")).toBeInTheDocument()
-    // read-only honesty note: browsing does not feed ranking
-    expect(
-      screen.getByText(/browsing them here does not feed ranking/),
-    ).toBeInTheDocument()
   })
 
-  it("click-to-inspect shows the entity's relations, no verification rung", () => {
+  it("click-to-inspect shows the entity's relations", () => {
     render(<MemoryGraphExplorer />)
     fireEvent.click(
       screen.getByRole("button", { name: "postgres (database)" }),
     )
-    expect(
-      screen.getByText(/L1 carries no verification rung/),
-    ).toBeInTheDocument()
     expect(screen.getByText(/relations \(2\)/)).toBeInTheDocument()
   })
 

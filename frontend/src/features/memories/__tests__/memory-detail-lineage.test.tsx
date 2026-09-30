@@ -149,7 +149,7 @@ describe("memory-detail supersession lineage", () => {
 
     render(<RealMemoryDetailView memoryId="mem-4" />, { wrapper })
     await screen.findByText(/we use nomic-embed-text for embeddings/i)
-    expect(screen.getByText(/unknown — not computed/i)).toBeInTheDocument()
+    expect(screen.getByText(/^unknown\.$/i)).toBeInTheDocument()
     expect(screen.queryByText(/replaced nothing/i)).not.toBeInTheDocument()
   })
 
@@ -199,7 +199,7 @@ describe("memory-detail supersession lineage", () => {
     await screen.findByText(/we use nomic-embed-text for embeddings/i)
     expect(screen.getAllByText("deprecated").length).toBeGreaterThan(0)
     expect(
-      screen.getByText(/successor memory was later removed/i),
+      screen.getByText(/replaced this one was later deleted/i),
     ).toBeInTheDocument()
   })
 

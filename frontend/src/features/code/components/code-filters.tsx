@@ -60,8 +60,7 @@ export function CodeFilters({
   return (
     <div className="min-h-0 flex-1 space-y-2 overflow-auto p-2.5">
       <p className="text-muted-foreground text-sm">
-        Node types to draw. Switching one off removes those nodes and every
-        edge touching them — it does not re-run the index.
+        Node types to draw.
       </p>
       <div className="space-y-1">
         {present.map((kind) => {

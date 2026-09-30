@@ -45,15 +45,14 @@ export function PageTrashSheet({
         <SheetHeader>
           <SheetTitle>Trash</SheetTitle>
           <SheetDescription>
-            The root of every trashed subtree. Restoring one brings its children
-            back with it.
+            Restoring a page brings its subpages back with it.
           </SheetDescription>
         </SheetHeader>
 
         {trash.isLoading ? <Skeleton className="h-24 w-full" /> : null}
         {trash.isError ? (
           <p className="text-destructive text-sm">
-            The trash could not be read — a failed read, not an empty trash.
+            The trash could not be read.
           </p>
         ) : null}
         {trash.isSuccess && trash.data.length === 0 ? (
@@ -112,8 +111,7 @@ export function PageTrashSheet({
             <AlertDialogHeader>
               <AlertDialogTitle>Empty the trash?</AlertDialogTitle>
               <AlertDialogDescription>
-                This deletes every trashed page and its blocks for good. It
-                cannot be undone.
+                This deletes every trashed page for good. It cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

@@ -50,13 +50,13 @@ describe("UsageOverview", () => {
       <UsageOverview data={{ ...BASE, merged_classification_present: true }} />,
     )
     expect(
-      screen.getByText(/includes folded classification/i),
+      screen.getByText(/classification runs inside extraction/i),
     ).toBeInTheDocument()
   })
 
   it("never renders an unmeasured call as free", () => {
     render(<UsageOverview data={{ ...BASE, unmeasured_calls: 7 }} />)
-    expect(screen.getByText(/7 calls not measured/i)).toBeInTheDocument()
+    expect(screen.getByText(/7 calls reported no token counts/i)).toBeInTheDocument()
   })
 
   it("names unpriced models rather than counting them as zero", () => {
@@ -87,7 +87,7 @@ describe("UsageOverview", () => {
 
   it("raises no caveats when every call is measured and priced", () => {
     render(<UsageOverview data={BASE} />)
-    expect(screen.queryByText(/not measured/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/no token counts/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/not priced/i)).not.toBeInTheDocument()
   })
 

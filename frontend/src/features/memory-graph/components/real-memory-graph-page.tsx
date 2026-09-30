@@ -53,7 +53,6 @@ export function RealMemoryGraphPage() {
   useSetPageChrome({
     icon: Waypoints,
     title: "Memory Graph",
-    description: "Entities and topics from your memories, for browsing only.",
   })
   const { tokens, palette } = useMemoryGraphTheme()
   const [viewMode, setViewMode] = useState<ViewMode>("2d")
@@ -243,7 +242,7 @@ export function RealMemoryGraphPage() {
           // Not the empty state: "no graph yet" tells the operator their
           // ingest produced nothing, on a read that merely failed.
           <p className="text-destructive p-3 text-sm">
-            The graph could not be loaded — a failed read, not an empty graph.
+            The graph could not be loaded.
           </p>
         )}
         {!isLoading && !isError && memoryCount === 0 && (
@@ -252,7 +251,7 @@ export function RealMemoryGraphPage() {
             icon={Waypoints}
             scope="page"
             title="No graph yet"
-            description="The graph is built from entities extracted on ingest. Capture memories with the pipeline running and nodes appear here."
+            description="Capture memories and nodes appear here."
           />
         )}
 

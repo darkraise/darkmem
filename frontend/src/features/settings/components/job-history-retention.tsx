@@ -48,14 +48,15 @@ export function JobHistoryRetention() {
           Job history retention
         </h3>
         <span className="flex-1" />
-        <span className="text-muted-foreground shrink-0 font-mono text-xs whitespace-nowrap">
-          {job ? `keeps newest ${committed}` : "job not registered"}
-        </span>
+        {job && (
+          <span className="text-muted-foreground shrink-0 font-mono text-xs whitespace-nowrap">
+            keeps newest {committed}
+          </span>
+        )}
       </CardHeader>
       <CardContent className="flex flex-col gap-2.5 p-4">
         <p className="text-muted-foreground text-sm">
-          Trims <span className="font-mono">job_runs</span> to its ceiling,
-          newest kept. Runs weekly; trigger it here to sweep now.
+          Keeps the newest job runs and deletes older ones. Runs weekly.
         </p>
 
         <div className="flex flex-wrap items-center gap-2">

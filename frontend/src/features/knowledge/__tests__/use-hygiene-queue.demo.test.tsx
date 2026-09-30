@@ -12,7 +12,6 @@ vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
 
 import { apiFetch } from "@/lib/api"
 import {
-  useHygieneCountsRows,
   useHygieneDuplicateRows,
   useHygieneExpiringRows,
   useHygieneLowConfidenceRows,
@@ -119,21 +118,5 @@ describe("useHygieneSupersededRows (DEMO on — flattened lineage)", () => {
     )
     expect(result.current.rows).toHaveLength(0)
     expect(result.current.total).toBe(0)
-  })
-})
-
-describe("useHygieneCountsRows (DEMO on)", () => {
-  it("counts the fixture directly, and honours the project filter the same way the list arms do", () => {
-    const { result: matched } = renderHook(() => useHygieneCountsRows({}), { wrapper })
-    expect(matched.current.duplicates).toBeGreaterThan(0)
-
-    const { result: unmatched } = renderHook(
-      () => useHygieneCountsRows({ project: "no-such-project" }),
-      { wrapper },
-    )
-    expect(unmatched.current.duplicates).toBe(0)
-    expect(unmatched.current.low_confidence).toBe(0)
-    expect(unmatched.current.expiring_soon).toBe(0)
-    expect(unmatched.current.superseded).toBe(0)
   })
 })

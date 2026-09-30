@@ -80,7 +80,7 @@ describe("/documents route", () => {
     ])
     renderRoute()
     expect(
-      await screen.findByText("Documents open one project at a time"),
+      await screen.findByText("Choose a project"),
     ).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /^darkmem/ })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /^other/ })).toBeInTheDocument()
@@ -110,7 +110,7 @@ describe("/documents route", () => {
   it("puts no project picker in the header", async () => {
     mockProjects([{ name: "darkmem", kind: "project", document_count: 475 }])
     renderRoute()
-    await screen.findByText("Documents open one project at a time")
+    await screen.findByText("Choose a project")
     expect(screen.queryByRole("combobox")).toBeNull()
   })
 

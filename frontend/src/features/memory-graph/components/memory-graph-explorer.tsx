@@ -54,7 +54,6 @@ export function MemoryGraphExplorer() {
   useSetPageChrome({
     icon: Waypoints,
     title: "Memory Graph",
-    description: "Entities and topics from your memories, for browsing only.",
   })
   const graph = useDemoMemoryGraph()
   const project = useProjectStore((s) => s.activeProject)
@@ -197,7 +196,7 @@ export function MemoryGraphExplorer() {
                 kind="empty"
                 icon={Waypoints}
                 title="No entity graph yet"
-                description={`${project === ALL_PROJECTS ? "No project" : `Project ${project}`} has no memories yet, so nothing has been extracted into entities or relations. The graph populates automatically as memories are captured; topic communities appear after the next clustering pass runs over it.`}
+                description={`${project === ALL_PROJECTS ? "No project" : `Project ${project}`} has no memories yet. The graph fills in as memories are captured.`}
               />
             </div>
           ) : (
@@ -395,11 +394,6 @@ export function MemoryGraphExplorer() {
                     </button>
                   ))}
                 </div>
-                <p className="text-muted-foreground text-sm">
-                  L1 carries no verification rung — these are pre-corroboration
-                  entities and relations straight from extraction; the ladder
-                  applies to L2 facts in the Knowledge vault.
-                </p>
               </div>
             ) : (
               <p className="text-muted-foreground p-3 text-sm">
@@ -422,8 +416,7 @@ export function MemoryGraphExplorer() {
             <div className="space-y-2 p-3">
               {scoped.topics.length === 0 ? (
                 <p className="text-muted-foreground text-sm">
-                  No communities detected yet — clustering runs over the entity
-                  graph once one exists.
+                  No communities detected yet.
                 </p>
               ) : (
                 scoped.topics.map((topic) => {
@@ -476,10 +469,6 @@ export function MemoryGraphExplorer() {
                   )
                 })
               )}
-              <p className="border-border text-muted-foreground border-t border-dashed pt-2 text-sm">
-                Topics are read-only labels from a clustering pass over the
-                entity graph — browsing them here does not feed ranking.
-              </p>
             </div>
           </div>
         </div>

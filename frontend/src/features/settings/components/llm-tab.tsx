@@ -7,7 +7,7 @@ import {
   TabsTrigger,
 } from "darkraise-ui/components/tabs"
 import { cn } from "darkraise-ui/lib"
-import { HelpTip, IconSegmented } from "@/components/darkmem"
+import { IconSegmented } from "@/components/darkmem"
 import type { DemoLLMPurpose } from "@/features/settings/types"
 import {
   LLM_LAYOUT_OPTIONS,
@@ -29,22 +29,6 @@ function PurposesPanel() {
 
   return (
     <div className="space-y-4">
-      <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
-        <span>Eight purposes, all live — each picks a provider and a model.</span>
-        <HelpTip label="About the LLM tab">
-          Each purpose picks a provider from the Providers sub-tab plus the
-          model and params that vary per purpose. `verification` is read-only
-          here: it judges the verification ladder, and its qualification is a
-          gate&apos;s evidence. A save live-reloads the orchestrator — no
-          redeploy, no LLM_* env vars. Each purpose is one row naming a shared
-          provider row, so a credential rotation on the Providers sub-tab
-          reaches every purpose that uses it with nothing to re-apply here.
-          Every vendor auth, reasoning-control and structured-output quirk that
-          api_kind selects is resolved by the backend orchestrator, never
-          re-implemented here.
-        </HelpTip>
-      </div>
-
       <div className="flex flex-wrap items-center gap-2">
         <IconSegmented
           value={layout}
@@ -115,7 +99,7 @@ function PurposesPanel() {
           }}
           promptKey={promptKeyForPurpose(promptFor.purpose)!}
           title={`${promptFor.purpose} system prompt`}
-          description={`Sent as the system message on every ${promptFor.purpose} call. An edit takes effect on the next call — no redeploy.`}
+          description={`Sent as the system message on every ${promptFor.purpose} call. An edit takes effect on the next call.`}
         />
       )}
     </div>

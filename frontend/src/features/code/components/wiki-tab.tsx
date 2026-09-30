@@ -209,25 +209,15 @@ export function WikiTab({
         </div>
 
         {wiki && (
-          <div className="bg-border grid gap-px sm:grid-cols-2 lg:grid-cols-4">
+          <div className="bg-border grid gap-px sm:grid-cols-2">
             <ProvenanceStat label="generated" value={wiki.generated_at} />
             <ProvenanceStat
-              label="describes commit"
+              label="commit"
               value={wiki.head}
               note={
-                behindHead
-                  ? `repo has moved to ${repo.head} since`
-                  : "current with HEAD"
+                behindHead ? `repo has moved to ${repo.head} since` : undefined
               }
               tone={behindHead ? "warn" : "neutral"}
-            />
-            <ProvenanceStat
-              label="symbol enrichment"
-              value={wiki.symbol_enrichment}
-            />
-            <ProvenanceStat
-              label="module summaries"
-              value={wiki.module_summaries}
             />
           </div>
         )}
@@ -277,7 +267,7 @@ export function WikiTab({
 
           <article className="min-w-0">
             <p className="text-muted-foreground font-mono text-xs tracking-[0.18em] uppercase">
-              Generated documentation · section {index + 1} of {sections.length}
+              Section {index + 1} of {sections.length}
             </p>
             <h2 className="mt-1.5 text-2xl font-semibold tracking-tight">
               {currentSection.label}
@@ -324,7 +314,7 @@ export function WikiTab({
             {referenced.length > 0 && (
               <section className="border-border bg-muted/20 mt-6 max-w-[70ch] rounded-md border p-3">
                 <p className="text-muted-foreground font-mono text-xs tracking-[0.18em] uppercase">
-                  Code this section describes
+                  Referenced code
                 </p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {referenced.map((target) => (
@@ -336,10 +326,6 @@ export function WikiTab({
                     />
                   ))}
                 </div>
-                <p className="text-muted-foreground mt-2 text-xs">
-                  Each opens the symbol in the code graph, where its source and
-                  callers live.
-                </p>
               </section>
             )}
 
@@ -386,11 +372,7 @@ export function WikiTab({
             kind="empty"
           icon={BookOpen}
             title="No wiki generated yet for this repository"
-            description={
-              repo.status === "registered" || repo.last_indexed_at === null
-                ? `${repo.name} has never been indexed, so there is no graph for a wiki to describe. Run a reindex with generate_wiki enabled — browsing this page never triggers generation.`
-                : `This repo has been indexed (its code graph and symbols are current as of ${repo.head ?? "the last run"}), but generate_wiki has never been enabled on a reindex, so there is no generated documentation to read yet. GET /code/wiki is read-only — it never spends LLM budget just because a page was opened.`
-            }
+            description="Run a reindex with Generate wiki on to build one."
             action={
               <div className="flex flex-wrap justify-center gap-2">
                 <Button onClick={() => setReindexOpen(true)}>

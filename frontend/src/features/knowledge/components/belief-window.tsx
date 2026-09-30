@@ -50,12 +50,12 @@ export function BeliefWindowRow({
             : "text-muted-foreground border-dashed",
         )}
       >
-        {open ? "open" : "window-closed"}
+        {open ? "open" : "closed"}
       </Badge>
       <span className="flex shrink-0 flex-wrap gap-4">
-        <DateField label="valid_at" value={window.valid_at} />
-        <DateField label="invalid_at" value={window.invalid_at} />
-        <DateField label="expired_at" value={window.expired_at} />
+        <DateField label="Valid from" value={window.valid_at} />
+        <DateField label="Invalid from" value={window.invalid_at} />
+        <DateField label="Expired" value={window.expired_at} />
       </span>
       {window.note && (
         <span className="text-muted-foreground min-w-52 flex-1 text-sm">

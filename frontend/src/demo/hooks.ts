@@ -38,8 +38,6 @@ export const useDemoPipelineRuns = () => useDemoStore((s) => s.pipelineRuns)
 export const useDemoFeedEvents = () => useDemoStore((s) => s.feedEvents)
 export const useDemoPipelineFailures = () =>
   useDemoStore((s) => s.pipelineFailures)
-export const useDemoBufferMonitor = () => useDemoStore((s) => s.bufferMonitor)
-export const useDemoDreamMonitor = () => useDemoStore((s) => s.dreamMonitor)
 export const useDemoDreamCycle = () => useDemoStore((s) => s.dreamCycle)
 export const useDemoDreamActions = () => useDemoStore((s) => s.dreamActions)
 export const useDemoDreamPastActions = () =>
@@ -50,4 +48,3 @@ export const useDemoFlags = () => useDemoStore((s) => s.flags)
 export const useDemoLLM = () => useDemoStore((s) => s.llm)
 export const useDemoSecurity = () => useDemoStore((s) => s.security)
 export const useDemoMaintenance = () => useDemoStore((s) => s.maintenance)
-export const useDemoDistribution = () => useDemoStore((s) => s.distribution)

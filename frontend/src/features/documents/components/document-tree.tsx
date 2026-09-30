@@ -414,7 +414,7 @@ export const DocumentTree = memo(function DocumentTree({
         kind="empty"
         icon={FileText}
         title="No documents filed in this project"
-        description="A document appears here the moment it is filed — over REST or over MCP."
+        description="A document appears here once it is filed."
         action={emptyAction}
       />
     )
@@ -506,8 +506,7 @@ export const DocumentTree = memo(function DocumentTree({
     <div className="space-y-2">
       {truncated ? (
         <p className="border-warning/50 text-muted-foreground rounded-md border border-dashed px-2.5 py-1.5 text-sm">
-          Showing the first {items.length} documents — the list was cut at the
-          pagination guard, so this tree is incomplete.
+          Showing the first {items.length} documents; the list is incomplete.
         </p>
       ) : null}
       <MaybeDnd

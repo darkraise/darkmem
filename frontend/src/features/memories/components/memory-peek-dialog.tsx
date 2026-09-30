@@ -66,8 +66,7 @@ export function MemoryPeekDialog({
           <Skeleton className="h-24 w-full rounded-md" />
         ) : memory.isError ? (
           <p className="text-destructive text-sm">
-            This memory could not be read — a failed read, not a missing
-            memory.
+            This memory could not be loaded.
           </p>
         ) : memory.data ? (
           <ScrollArea className="max-h-[55vh] pr-3">

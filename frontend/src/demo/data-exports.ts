@@ -7,7 +7,6 @@
  * change, mirroring how `hooks.ts` indirects the store).
  */
 export { DAY_DRILL_DEFAULT } from "./data/activity-curated"
-export { PRIOR_DISMISSED_NOTE } from "./data/knowledge-curated"
 export { CURATED_CHAT_THREADS } from "./data/chat-curated"
 export {
   SETUP_API_KINDS,

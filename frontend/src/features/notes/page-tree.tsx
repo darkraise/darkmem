@@ -363,7 +363,7 @@ export function PageTree({
         kind="empty"
         icon={FileText}
         title="No pages yet"
-        description="New page starts one. Nothing here is a project artifact."
+        description="Use New page to start one."
       />
     )
   }

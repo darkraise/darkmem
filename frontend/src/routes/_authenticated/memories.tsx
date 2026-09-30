@@ -156,7 +156,6 @@ function DemoMemoriesPage() {
     }
   }, [hasMore, lastRenderedIndex, rows.length])
 
-  const scopeLabel = scope === "all" ? "all projects" : scope
   const shownCount = searching ? outcome!.results.length : rows.length
   const matchCount = searching ? outcome!.totalMatches : browseRows.length
 
@@ -233,7 +232,6 @@ function DemoMemoriesPage() {
       <PageChrome
         icon={Brain}
         title="Memories"
-        description={`${memories.length.toLocaleString()} captured — the L0 capture-and-search surface`}
         actions={
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="mr-2 size-4" />
@@ -282,12 +280,12 @@ function DemoMemoriesPage() {
           >
             <SelectValue>
               {context == null
-                ? "context: not declared"
+                ? "context: none"
                 : `context: ${context}`}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={CONTEXT_NONE}>not declared</SelectItem>
+            <SelectItem value={CONTEXT_NONE}>none</SelectItem>
             {CONTEXT_OPTIONS.map((c) => (
               <SelectItem key={c} value={c}>
                 {c}
@@ -316,7 +314,6 @@ function DemoMemoriesPage() {
 
         <div className="border-border bg-card min-w-0 overflow-hidden rounded-lg border">
           <MemoryResultsHeader
-            scopeLabel={scopeLabel}
             shown={shownCount}
             total={matchCount}
           />
@@ -410,7 +407,7 @@ function DemoMemoriesPage() {
                 kind="empty"
               icon={Brain}
                 title="No memories captured yet"
-                description="Capture your first one and search starts working immediately — nothing needs to be pre-configured."
+                description="Capture your first one to start searching."
                 action={
                   <Button onClick={() => setCreateOpen(true)}>
                     <Plus className="mr-2 size-4" />

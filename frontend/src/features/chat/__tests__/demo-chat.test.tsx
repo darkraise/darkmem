@@ -37,7 +37,9 @@ describe("DemoContextPanel", () => {
         "showing keyword-only results — semantic search unavailable",
       ),
     ).toBeInTheDocument()
-    expect(screen.getAllByText(/channel: keyword/).length).toBe(2)
+    expect(screen.getByText(/cookie_secure is tri-state/)).toBeInTheDocument()
+    expect(screen.getByText(/Set COOKIE_SECURE=false on the LAN box/)).toBeInTheDocument()
+    expect(screen.queryByText(/channel: keyword/)).not.toBeInTheDocument()
   })
 
   it("empty register says why: no turn has run", () => {
@@ -78,9 +80,7 @@ describe("DemoMessagePane", () => {
     expect(
       screen.getByText("What does the supersession window default to?"),
     ).toBeInTheDocument()
-    expect(
-      screen.getByText("3 sources used this turn — see context panel"),
-    ).toBeInTheDocument()
+    expect(screen.getByText(/^3\s+sources$/)).toBeInTheDocument()
     expect(screen.queryByText("project: darkmem")).toBeNull()
   })
 })

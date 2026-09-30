@@ -6,11 +6,7 @@ import { Button } from "darkraise-ui/components/button"
 import { EmptyState, Timestamp } from "@/components/darkmem"
 import { Separator } from "darkraise-ui/components/separator"
 import { useSetPageChrome } from "@/components/app-chrome"
-import {
-  LayerChip,
-  useDetailLevel,
-  VerificationBadge,
-} from "@/components/darkmem"
+import { useDetailLevel, VerificationBadge } from "@/components/darkmem"
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoFact } from "@/demo/hooks"
 import { distinctOriginCount } from "@/demo/knowledge"
@@ -86,8 +82,6 @@ function DemoFactDetail({ factId }: { factId: string }) {
   useSetPageChrome({
     icon: Library,
     title: "Fact detail",
-    description:
-      "One L2 fact — its sources, ladder history, belief window, and context.",
     parent: { label: "Facts", href: "/knowledge/facts" },
   })
 
@@ -121,7 +115,6 @@ function DemoFactDetail({ factId }: { factId: string }) {
           here in every mode (invariant 14); only supporting detail discloses. */}
       <div className="space-y-4 pt-2 pb-6">
         <div className="flex flex-wrap items-center gap-2">
-          <LayerChip layer={2} />
           {/* verification_status verbatim — never softened, never
               recomputed client-side (invariant 14). */}
           <VerificationBadge
@@ -134,9 +127,6 @@ function DemoFactDetail({ factId }: { factId: string }) {
               code@{fact.code_provenance.commit_sha}
             </Badge>
           )}
-          <span className="text-muted-foreground ml-auto font-mono text-sm">
-            fact {fact.id.slice(0, 8)}
-          </span>
         </div>
         <FactTriple
           subject={fact.subject_name}
@@ -147,9 +137,11 @@ function DemoFactDetail({ factId }: { factId: string }) {
         <p className="max-w-[70ch] text-base leading-relaxed">
           {fact.fact_text}
         </p>
-        <p className="text-muted-foreground max-w-[70ch] font-mono text-sm">
-          {fact.claim}
-        </p>
+        {disputed && (
+          <p className="text-muted-foreground max-w-[70ch] font-mono text-sm">
+            {fact.claim}
+          </p>
+        )}
         {disputed && (
           <div className="border-warning/55 bg-warning/8 flex max-w-[70ch] items-start gap-2 rounded-sm border border-dashed px-2.5 py-1.5 text-sm">
             <CircleAlert
@@ -157,8 +149,7 @@ function DemoFactDetail({ factId }: { factId: string }) {
               className="text-warning-text mt-0.5 h-4 w-4 shrink-0"
             />
             <span>
-              Dispute open — both sides on record below at strictly equal
-              weight. Resolution happens only in the{" "}
+              Disputed. Resolve it in the{" "}
               <Link to="/knowledge/review" className="text-primary-text">
                 Review queue →
               </Link>
@@ -179,49 +170,20 @@ function DemoFactDetail({ factId }: { factId: string }) {
           <DetailSection
             value="sources"
             title="Sources"
-            meta={`${distinctOrigins} distinct ${distinctOrigins === 1 ? "origin" : "origins"} · ${fact.sources.length} ${fact.sources.length === 1 ? "row" : "rows"}`}
-            hint="fact_sources rows grouped by origin_key; the badge's K is COUNT(DISTINCT origin_key) over the non-stale groups, never the raw row count."
+            meta={`${distinctOrigins} ${distinctOrigins === 1 ? "origin" : "origins"}`}
           >
             <FactSourcesGroups sources={fact.sources} />
-            {fact.under_sourced_note && (
-              <p className="text-muted-foreground text-sm">
-                {fact.under_sourced_note}
-              </p>
-            )}
-            {fact.candidate_note && (
-              <p className="text-muted-foreground text-sm">
-                {fact.candidate_note}
-              </p>
-            )}
           </DetailSection>
         )}
 
         {fact.dispute && (
           <DetailSection
             value="dispute"
-            title={
-              disputed
-                ? "Both sides — strictly equal weight, no winner"
-                : "Dispute history — resolved by human ratification"
-            }
+            title={disputed ? "Both sides" : "Dispute history"}
             meta={disputed ? "open" : "resolved"}
-            hint={
-              disputed
-                ? "Both sides carry an overlapping validity window — that overlap is what makes this a genuine contradiction rather than a succession. Resolution happens only in the Review queue; this page never adjudicates."
-                : "Both sides' origins remain on record — ratification resolved the rung, it did not erase the losing side's sources."
-            }
           >
             <p className="text-sm font-semibold">{fact.dispute.summary}</p>
             <DisputePanel dispute={fact.dispute} />
-            {disputed && (
-              <p className="text-muted-foreground text-sm">
-                Origin counts are shown on both sides without a comparative
-                treatment — corroboration count does not adjudicate a dispute.{" "}
-                <Link to="/knowledge/review" className="text-primary-text">
-                  Adjudicate in Review →
-                </Link>
-              </p>
-            )}
           </DetailSection>
         )}
 
@@ -229,7 +191,6 @@ function DemoFactDetail({ factId }: { factId: string }) {
           value="ladder"
           title="Verification ladder"
           meta={`${fact.ladder.length} ${fact.ladder.length === 1 ? "event" : "events"}`}
-          hint="every rung transition this fact has taken — the machine ceiling is corroborated; only a human ratify reaches confirmed."
         >
           <div>
             {fact.ladder.map((event, i) => (
@@ -243,7 +204,6 @@ function DemoFactDetail({ factId }: { factId: string }) {
             value="windows"
             title="Belief window"
             meta={`${fact.windows.length} ${fact.windows.length === 1 ? "window" : "windows"}`}
-            hint="valid_at / invalid_at / expired_at as a timeline, showing what the belief was at a given point in time. Closed windows are retained as history, not live claims."
           >
             <div className="space-y-2.5">
               {fact.windows.map((window, i) => (
@@ -259,27 +219,29 @@ function DemoFactDetail({ factId }: { factId: string }) {
           meta={fact.project}
         >
           <dl className="grid grid-cols-[8rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
-            <MetaRow label="fact_id">{fact.id.slice(0, 8)}</MetaRow>
-            <MetaRow label="project">{fact.project}</MetaRow>
-            <MetaRow label="review_state">{fact.review_state ?? "—"}</MetaRow>
-            <MetaRow label="as_of">{fact.as_of}</MetaRow>
-            <MetaRow label="applies_when">
-              <AppliesWhenChips items={fact.applies_when} />
-            </MetaRow>
+            <MetaRow label="ID">{fact.id.slice(0, 8)}</MetaRow>
+            <MetaRow label="Project">{fact.project}</MetaRow>
+            <MetaRow label="Review">{fact.review_state ?? "—"}</MetaRow>
+            <MetaRow label="As of">{fact.as_of}</MetaRow>
+            {fact.applies_when.length > 0 && (
+              <MetaRow label="Applies when">
+                <AppliesWhenChips items={fact.applies_when} />
+              </MetaRow>
+            )}
             {fact.code_provenance && (
               <>
-                <MetaRow label="commit_sha">
+                <MetaRow label="Commit">
                   <span className="font-mono">
                     {fact.code_provenance.commit_sha}
                   </span>
                 </MetaRow>
-                <MetaRow label="basis">{fact.code_provenance.basis}</MetaRow>
-                <MetaRow label="file_path">
+                <MetaRow label="Basis">{fact.code_provenance.basis}</MetaRow>
+                <MetaRow label="File">
                   <span className="font-mono">
                     {fact.code_provenance.file_path}
                   </span>
                 </MetaRow>
-                <MetaRow label="symbol_key">
+                <MetaRow label="Symbol">
                   <span className="font-mono">
                     {fact.code_provenance.symbol_key}
                   </span>
@@ -294,9 +256,7 @@ function DemoFactDetail({ factId }: { factId: string }) {
               <VerificationBadge status="confirmed" />
               <span>
                 ratified by <b className="font-semibold">{fact.ratified.by}</b>{" "}
-                on {fact.ratified.on} — the ratification wrote a human-kind
-                fact_source, so a later re-extraction that withdraws every
-                memory source still leaves this one
+                on {fact.ratified.on}
               </span>
             </div>
           )}
@@ -312,7 +272,6 @@ function LiveFactDetailChrome() {
   useSetPageChrome({
     icon: Library,
     title: "Fact detail",
-    description: "One L2 fact — its sources, ladder history and context.",
     parent: { label: "Facts", href: "/knowledge/facts" },
   })
   return null
@@ -333,10 +292,6 @@ function LiveFactDetailBody({ fact }: { fact: LiveFactDetailData }) {
   const advanced = useDetailLevel((s) => s.level) === "advanced"
   const disputed = fact.verification_status === "disputed"
   const flatSources = sourceGroupsToFlatSources(fact.sources)
-  const rowCount = fact.sources.reduce(
-    (n, group) => n + group.sources.length,
-    0,
-  )
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -345,7 +300,6 @@ function LiveFactDetailBody({ fact }: { fact: LiveFactDetailData }) {
           raw triple, and the record section's technical identifiers, do. */}
       <div className="space-y-4 pt-2 pb-6">
         <div className="flex flex-wrap items-center gap-2">
-          <LayerChip layer={2} />
           <VerificationBadge
             status={fact.verification_status}
             detail={fact.claim}
@@ -354,9 +308,6 @@ function LiveFactDetailBody({ fact }: { fact: LiveFactDetailData }) {
           {fact.label_suppressed && (
             <SuppressedBadge reason={fact.label_suppressed} />
           )}
-          <span className="text-muted-foreground ml-auto font-mono text-sm">
-            fact {fact.id.slice(0, 8)}
-          </span>
         </div>
         {advanced && (
           <FactTriple
@@ -369,7 +320,7 @@ function LiveFactDetailBody({ fact }: { fact: LiveFactDetailData }) {
         <p className="max-w-[70ch] text-base leading-relaxed">
           {fact.fact_text}
         </p>
-        {fact.claim && (
+        {disputed && fact.claim && (
           <p className="text-muted-foreground max-w-[70ch] font-mono text-sm">
             {fact.claim}
           </p>
@@ -381,8 +332,7 @@ function LiveFactDetailBody({ fact }: { fact: LiveFactDetailData }) {
               className="text-warning-text mt-0.5 h-4 w-4 shrink-0"
             />
             <span>
-              Dispute open — both sides on record below at strictly equal
-              weight. Resolution happens only in the{" "}
+              Disputed. Resolve it in the{" "}
               <Link to="/knowledge/review" className="text-primary-text">
                 Review queue →
               </Link>
@@ -401,8 +351,7 @@ function LiveFactDetailBody({ fact }: { fact: LiveFactDetailData }) {
           <DetailSection
             value="sources"
             title="Sources"
-            meta={`${fact.sources.length} distinct ${fact.sources.length === 1 ? "origin" : "origins"} · ${rowCount} ${rowCount === 1 ? "row" : "rows"}`}
-            hint="fact_sources rows grouped by origin_key; the badge's K is COUNT(DISTINCT origin_key) over the non-stale groups, never the raw row count."
+            meta={`${fact.sources.length} ${fact.sources.length === 1 ? "origin" : "origins"}`}
           >
             <FactSourcesGroups sources={flatSources} />
           </DetailSection>
@@ -411,17 +360,10 @@ function LiveFactDetailBody({ fact }: { fact: LiveFactDetailData }) {
         {fact.dispute && (
           <DetailSection
             value="dispute"
-            title="Both sides — strictly equal weight, no winner"
+            title="Both sides"
             meta="open"
-            hint="Resolution happens only in the Review queue; this page never adjudicates."
           >
             <LiveDisputePanel dispute={fact.dispute} />
-            <p className="text-muted-foreground text-sm">
-              Corroboration count does not adjudicate a dispute.{" "}
-              <Link to="/knowledge/review" className="text-primary-text">
-                Adjudicate in Review →
-              </Link>
-            </p>
           </DetailSection>
         )}
 
@@ -432,11 +374,6 @@ function LiveFactDetailBody({ fact }: { fact: LiveFactDetailData }) {
             fact.ladder.length === fact.ladder_total
               ? `${fact.ladder.length} ${fact.ladder.length === 1 ? "event" : "events"}`
               : `${fact.ladder.length} of ${fact.ladder_total} loaded`
-          }
-          hint={
-            fact.ladder.length === fact.ladder_total
-              ? "every object_type='fact' events row for this id, oldest to newest — the raw journal, not a narrative built on top of it."
-              : `the ${fact.ladder.length} most recent of ${fact.ladder_total} object_type='fact' events rows for this id, oldest to newest — the earlier history exists but is not loaded here.`
           }
         >
           <FactLadderHistory events={fact.ladder} />
@@ -461,30 +398,32 @@ function LiveFactDetailBody({ fact }: { fact: LiveFactDetailData }) {
           meta={fact.project}
         >
           <dl className="grid grid-cols-[8rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
-            <MetaRow label="fact_id">{fact.id.slice(0, 8)}</MetaRow>
-            <MetaRow label="project">{fact.project}</MetaRow>
-            <MetaRow label="review_state">{fact.review_state ?? "—"}</MetaRow>
-            <MetaRow label="as_of">{fact.as_of}</MetaRow>
-            <MetaRow label="applies_when">
-              <AppliesWhenChips items={fact.applies_when} />
-            </MetaRow>
+            <MetaRow label="ID">{fact.id.slice(0, 8)}</MetaRow>
+            <MetaRow label="Project">{fact.project}</MetaRow>
+            <MetaRow label="Review">{fact.review_state ?? "—"}</MetaRow>
+            <MetaRow label="As of">{fact.as_of}</MetaRow>
+            {fact.applies_when.length > 0 && (
+              <MetaRow label="Applies when">
+                <AppliesWhenChips items={fact.applies_when} />
+              </MetaRow>
+            )}
             {advanced && (
               <>
-                <MetaRow label="triple_key">
+                <MetaRow label="Triple key">
                   <span className="font-mono">{fact.triple_key}</span>
                 </MetaRow>
                 {fact.source_file && (
-                  <MetaRow label="source_file">
+                  <MetaRow label="Source file">
                     <span className="font-mono">{fact.source_file}</span>
                   </MetaRow>
                 )}
                 {fact.reference_time && (
-                  <MetaRow label="reference_time">
+                  <MetaRow label="Reference time">
                     {fact.reference_time}
                   </MetaRow>
                 )}
                 {fact.learned_in && fact.learned_in.length > 0 && (
-                  <MetaRow label="learned_in">
+                  <MetaRow label="Learned in">
                     <span className="font-mono">
                       {fact.learned_in.join(", ")}
                     </span>
@@ -525,7 +464,7 @@ function LiveFactDetail({ factId }: { factId: string }) {
         <EmptyState
           kind="missing"
           title="Not a valid fact id"
-          description="This link is malformed — retrying it will not help."
+          description="This link is malformed."
           action={<BackToFacts />}
         />
       )}
@@ -533,7 +472,7 @@ function LiveFactDetail({ factId }: { factId: string }) {
         <EmptyState
           kind="failed"
           title="Couldn't load this fact"
-          description="The read failed — this is a fetch problem, not a missing fact. Try again."
+          description="The request failed. Try again."
           action={
             <div className="flex gap-2">
               <Button variant="outline" onClick={state.retry}>

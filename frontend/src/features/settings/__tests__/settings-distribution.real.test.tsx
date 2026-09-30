@@ -82,21 +82,20 @@ describe("Distribution tab — live", () => {
     expect(screen.getByText(".beta/rules/darkmem.mdc")).toBeInTheDocument()
   })
 
-  it("claims no connect status, inject log or watermark it does not have", async () => {
+  it("claims no connect status or inject log it does not have", async () => {
     // The fixture panel rendered on every install, not only in demo: four
-    // clients reporting "handshake ok", an inject log of deliveries that never
-    // happened, and watermark rows for a writer that does not exist — beside
-    // the live half, with nothing on screen telling them apart.
+    // clients reporting "handshake ok" and an inject log of deliveries that
+    // never happened, beside the live half, with nothing on screen telling
+    // them apart.
     vi.mocked(apiFetch).mockResolvedValue(STATE)
 
     render(withQuery(<DistributionTab />))
     await liveHalfRendered()
 
-    expect(screen.getByText(/nothing has completed the handshake/)).toBeInTheDocument()
-    // The inject log moved into the live half with T4.08 — it reads the
-    // journal now, so its empty state is a measured absence rather than a
-    // placeholder, and it is awaited rather than read synchronously.
-    expect(await screen.findByText(/no inject has happened/)).toBeInTheDocument()
+    // The inject log reads the journal, so its empty state is a measured
+    // absence rather than a placeholder, and it is awaited rather than read
+    // synchronously.
+    expect(await screen.findByText(/No context has been pushed yet/)).toBeInTheDocument()
     expect(screen.queryByText(/handshake ok/)).not.toBeInTheDocument()
     expect(screen.queryByText(/last inject/)).not.toBeInTheDocument()
   })
@@ -143,7 +142,7 @@ describe("Distribution tab — live", () => {
 
     render(withQuery(<DistributionTab />))
 
-    expect(await screen.findByText(/could not be read/)).toBeInTheDocument()
+    expect(await screen.findByText(/could not be loaded/)).toBeInTheDocument()
     expect(screen.queryByText("Push is live")).not.toBeInTheDocument()
   })
 
@@ -347,7 +346,7 @@ describe("Distribution tab — watch and curb (T4.08)", () => {
     await liveHalfRendered()
 
     expect(
-      screen.getByText(/this row asks for watch; the install has it off/),
+      screen.getByText(/set to watch, but watch is off/),
     ).toBeInTheDocument()
   })
 
@@ -373,12 +372,12 @@ describe("Distribution tab — watch and curb (T4.08)", () => {
     )
   })
 
-  it("the curb is one control and says it is enforced server-side", async () => {
+  it("the curb is one control that stops every target", async () => {
     route(STATE)
     render(withQuery(<DistributionTab />))
     await liveHalfRendered()
 
-    expect(screen.getByText(/enforced server-side/)).toBeInTheDocument()
+    expect(screen.getByText(/stops every target at once/)).toBeInTheDocument()
     expect(screen.getAllByLabelText("Allow push").length).toBe(1)
 
     fireEvent.click(screen.getByLabelText("Allow push"))
@@ -438,8 +437,8 @@ describe("Distribution tab — watch and curb (T4.08)", () => {
     await liveHalfRendered()
 
     expect(
-      await screen.findByText(/the inject log could not be read/),
+      await screen.findByText(/The inject log could not be loaded/),
     ).toBeInTheDocument()
-    expect(screen.queryByText(/no inject has happened/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/No context has been pushed yet/)).not.toBeInTheDocument()
   })
 })

@@ -32,10 +32,8 @@ export function RealCodeInspector({
     return (
       <div className="border-border bg-muted/20 flex w-full min-w-0 flex-col border-b lg:w-[24rem] lg:shrink-0 lg:border-r lg:border-b-0 p-3">
         <p className="text-muted-foreground text-sm">
-          {selectedNode.name} is a file, not a symbol — select a symbol
-          within it to view its real source. This inspector shows one
-          symbol's stored source at a time, not a synthesized whole-file
-          view.
+          {selectedNode.name} is a file — select a symbol within it to view
+          its source.
         </p>
       </div>
     )

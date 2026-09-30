@@ -36,7 +36,7 @@ export interface MemoryTimelineEvent {
   description: string
   note?: string
   /** Rung/lifecycle transition rendered as the from→to badge pair.
-   *  `from: null` renders the plain "active (no badge)" label. */
+   *  `from: null` renders the plain "active" label. */
   transition?: { from: string | null; to: string }
 }
 

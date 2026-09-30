@@ -38,9 +38,6 @@ export function DemoMessagePane({
         <span className="mr-auto text-sm font-semibold">
           {thread?.title ?? "New conversation"}
         </span>
-        <span className="border-border text-muted-foreground inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-0.5 text-sm italic">
-          context: not declared
-        </span>
       </div>
 
       {thread && thread.messages.length > 0 ? (
@@ -97,7 +94,8 @@ export function DemoMessagePane({
                     ) : (
                       <CircleCheck aria-hidden className="h-3 w-3" />
                     )}
-                    {message.context.sources_line}
+                    {message.context.rows.length}{" "}
+                    {message.context.rows.length === 1 ? "source" : "sources"}
                   </button>
                 )}
               </div>
@@ -112,10 +110,6 @@ export function DemoMessagePane({
           />
           <p className="text-sm font-semibold">
             Ask about your memory, facts, or code
-          </p>
-          <p className="text-muted-foreground max-w-md text-sm">
-            Chat reads the same ranked, labelled results Memories and the
-            vault do — nothing here is answered from an unlabelled guess.
           </p>
           <div className="mt-1 flex flex-wrap justify-center gap-2">
             {STARTERS.map((starter) => (

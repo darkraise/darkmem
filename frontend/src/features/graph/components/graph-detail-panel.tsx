@@ -396,7 +396,7 @@ function MemoryDetail({
         <NeighborHeading
           label="Similar memories"
           count={similarNeighbors.length}
-          hint="Joined by an edge on the canvas — cosine similarity above the threshold."
+          hint="Linked by an edge on the canvas."
         />
         {similarNeighbors.length === 0 ? (
           <p className="text-muted-foreground text-sm">
@@ -426,7 +426,7 @@ function MemoryDetail({
         <div className="border-border border-t pt-3">
           <NeighborHeading
             label="Entity Context"
-            hint="Memories asserting a shared entity, within this project — a different relation from the edges above."
+            hint="Memories that share an entity with this one."
           />
           {children}
           <p className="text-muted-foreground mt-1 text-sm">

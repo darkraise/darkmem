@@ -97,17 +97,6 @@ describe("BackupsTab", () => {
     expect(screen.getByText(/keeps 30/i)).toBeInTheDocument()
   })
 
-  it("states the two-producer posture so an operator is not told this is the only backup", async () => {
-    routes()
-    render(<BackupsTab />, { wrapper })
-
-    expect(
-      await screen.findByText(
-        /systemd timer keeps its own local dumps independently/i,
-      ),
-    ).toBeInTheDocument()
-  })
-
   it("renders the last outcome per destination, failure included", async () => {
     routes({
       "/events?event_type=backup_shipped&limit=50": {

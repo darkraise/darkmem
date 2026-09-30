@@ -114,44 +114,24 @@ describe("SecurityTab (real) — key management", () => {
   })
 })
 
-describe("SecurityTab (real) — ruling 3: reflects the real posture, never a hardcoded assumption", () => {
+describe("SecurityTab (real) — reflects the real posture, never a hardcoded assumption", () => {
   afterEach(() => vi.clearAllMocks())
 
-  it("renders the TOFU claim from GET /setup/status, not a hardcoded 'claimed'", async () => {
-    mockHappy()
-    render(<SecurityTab />, { wrapper })
-    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/setup/status"))
-    await waitFor(() =>
-      expect(screen.getAllByText("claimed").length).toBeGreaterThan(0),
-    )
-  })
-
-  it("mutation proof: an uninitialized status renders 'not claimed', not the fixed default", async () => {
-    vi.mocked(apiFetch).mockImplementation((path: string) => {
-      if (path === "/setup/status") return Promise.resolve({ initialized: false })
-      if (path === "/auth/me") return Promise.resolve({ authenticated: true, sub: "admin" })
-      return Promise.reject(new Error(`unexpected apiFetch(${path})`))
-    })
-    render(<SecurityTab />, { wrapper })
-    await waitFor(() => expect(screen.getByText("not claimed")).toBeInTheDocument())
-    expect(screen.queryByText("claimed")).not.toBeInTheDocument()
-  })
-
-  it("ruling 3: renders the live trust_proxy_headers / cookie_secure / mcp_allowed_hosts / rate-limit posture from GET /auth/security-posture", async () => {
+  it("renders the live trust_proxy_headers / cookie_secure / mcp_allowed_hosts / rate-limit posture from GET /auth/security-posture", async () => {
     mockHappy()
     render(<SecurityTab />, { wrapper })
     await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/auth/security-posture"))
 
     await waitFor(() =>
       expect(
-        screen.getByText(/X-Real-IP \(trusted proxy — trust_proxy_headers on\)/),
+        screen.getByText(/X-Real-IP header \(trusted proxy\)/),
       ).toBeInTheDocument(),
     )
     expect(screen.getByText("192.168.0.195:8000")).toBeInTheDocument()
     expect(screen.getByText(/5 failed attempts/)).toBeInTheDocument()
     expect(screen.getByText("5 minutes")).toBeInTheDocument()
     expect(
-      screen.getByText(/true — enforced by the exposed posture, overriding an explicit false/),
+      screen.getByText(/on — forced on because the instance trusts proxy headers/),
     ).toBeInTheDocument()
   })
 
@@ -173,14 +153,14 @@ describe("SecurityTab (real) — ruling 3: reflects the real posture, never a ha
     })
     render(<SecurityTab />, { wrapper })
     await waitFor(() =>
-      expect(screen.getByText(/raw socket peer \(trust_proxy_headers off\)/)).toBeInTheDocument(),
+      expect(screen.getByText(/direct connection address/)).toBeInTheDocument(),
     )
     expect(
-      screen.queryByText(/X-Real-IP \(trusted proxy — trust_proxy_headers on\)/),
+      screen.queryByText(/X-Real-IP header \(trusted proxy\)/),
     ).not.toBeInTheDocument()
   })
 
-  it("T4.03: the LAN posture still renders the honoured explicit false, never the clamp copy", async () => {
+  it("the LAN posture still renders the honoured explicit false, never the clamp copy", async () => {
     vi.mocked(apiFetch).mockImplementation((path: string) => {
       if (path === "/setup/status") return Promise.resolve({ initialized: true })
       if (path === "/auth/me") return Promise.resolve({ authenticated: true, sub: "admin" })
@@ -196,10 +176,10 @@ describe("SecurityTab (real) — ruling 3: reflects the real posture, never a ha
     })
     render(<SecurityTab />, { wrapper })
     await waitFor(() =>
-      expect(screen.getByText(/false — explicit/)).toBeInTheDocument(),
+      expect(screen.getByText(/off — set explicitly/)).toBeInTheDocument(),
     )
     expect(
-      screen.queryByText(/enforced by the exposed posture/),
+      screen.queryByText(/forced on because/),
     ).not.toBeInTheDocument()
   })
 
@@ -214,36 +194,17 @@ describe("SecurityTab (real) — ruling 3: reflects the real posture, never a ha
     })
     render(<SecurityTab />, { wrapper })
     await waitFor(() =>
-      expect(screen.getByText(/localhost only \(mcp_allowed_hosts is empty/)).toBeInTheDocument(),
+      expect(screen.getByText("localhost only")).toBeInTheDocument(),
     )
     expect(screen.queryByText("192.168.0.195:8000")).not.toBeInTheDocument()
   })
 
-  it("ruling 4: fields with genuinely no backend source still render as an honest gap, never a fabricated number", async () => {
-    mockHappy()
-    render(<SecurityTab />, { wrapper })
-    await waitFor(() => expect(screen.getAllByText("claimed").length).toBeGreaterThan(0))
-
-    // The blocklist count, lockouts_30d, the session issue time/jti, and
-    // the two journaled-count rows still have zero GET surface — every one
-    // must render the honest-gap copy, never a guessed value. (Everything
-    // /auth/security-posture now answers -- trust_proxy_headers,
-    // cookie_secure, mcp_allowed_hosts, the rate-limit thresholds -- is
-    // asserted as real data in the tests above, not as a gap here.)
-    expect(
-      screen.getAllByText(/not exposed via the API/).length,
-    ).toBeGreaterThanOrEqual(3)
-  })
-
-  it("session renders the real sub from GET /auth/me, and skips the issue time/jti it does not carry", async () => {
+  it("session renders the real sub from GET /auth/me", async () => {
     mockHappy()
     render(<SecurityTab />, { wrapper })
     await waitFor(() =>
       expect(screen.getByText(/signed in as admin/)).toBeInTheDocument(),
     )
-    expect(
-      screen.getByText(/issue time and jti are not exposed/),
-    ).toBeInTheDocument()
   })
 
 
@@ -323,9 +284,9 @@ describe("SecurityTab (real) — the three defects found in review", () => {
     mockHappy()
     const { container } = render(<SecurityTab />, { wrapper })
     await screen.findByText(/signed in as admin/)
-    // Auth, Tokens, TOFU, LAN trust, ApiKey — five distinct subjects that
-    // read as one long panel while they were divs inside a single surface.
-    expect(container.querySelectorAll(".dr-card").length).toBe(5)
+    // Sign-in, Session, MCP access, ApiKey — distinct subjects that read as
+    // one long panel while they were divs inside a single surface.
+    expect(container.querySelectorAll(".dr-card").length).toBe(4)
     for (const header of container.querySelectorAll(".dr-card-header")) {
       expect(header.className).toContain("flex-row")
     }

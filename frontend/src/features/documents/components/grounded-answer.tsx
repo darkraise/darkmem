@@ -26,14 +26,9 @@ export function GroundedAnswer({
 }) {
   return (
     <div className="border-border space-y-2 rounded-md border border-dashed p-3">
-      <div className="flex items-center gap-2">
-        <p className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
-          answer
-        </p>
-        <Badge variant="outline" size="sm" className="border-dashed font-mono">
-          horizon
-        </Badge>
-      </div>
+      <p className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
+        answer
+      </p>
       {answer.outcome === "withheld" ? (
         <div className="space-y-1">
           <p className="text-sm font-semibold">
@@ -46,7 +41,7 @@ export function GroundedAnswer({
           <p className="text-muted-foreground text-sm">
             {answer.judged
               ? `${answer.entailed} of ${answer.total} sentences were supported`
-              : "the faithfulness judge is not qualified for this check, so nothing was graded"}
+              : "grounding could not be checked"}
           </p>
         </div>
       ) : (
@@ -54,7 +49,7 @@ export function GroundedAnswer({
           {answer.outcome === "labelled" && (
             <p className="text-sm font-semibold">
               Could not fully ground this answer — {answer.entailed} of{" "}
-              {answer.total} sentences are supported by their cited span
+              {answer.total} sentences are supported
             </p>
           )}
           {answer.sentences.map((sentence, index) => (

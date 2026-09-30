@@ -4,7 +4,6 @@ import {
   SegmentGroupIndicator,
   SegmentGroupItem,
 } from "darkraise-ui/components/segment-group"
-import { HelpTip } from "@/components/darkmem"
 import { useProjectStore } from "@/stores/project-store"
 import { ReviewQueue } from "./review-queue"
 import { HygieneQueue } from "./hygiene-queue"
@@ -32,13 +31,9 @@ export function ReviewTab() {
           }}
         >
           <SegmentGroupIndicator />
-          <SegmentGroupItem value="review">Review — truth</SegmentGroupItem>
-          <SegmentGroupItem value="hygiene">Hygiene — housekeeping</SegmentGroupItem>
+          <SegmentGroupItem value="review">Review</SegmentGroupItem>
+          <SegmentGroupItem value="hygiene">Hygiene</SegmentGroupItem>
         </SegmentGroup>
-        <HelpTip label="About review actions">
-          Ratify and reject are available only here, in the signed-in app; no
-          MCP tool can reach them, whatever scopes a key holds.
-        </HelpTip>
       </div>
       {mode === "review" ? (
         <ReviewQueue project={project} />

@@ -19,11 +19,9 @@ test.describe("code repositories — stale banner and index-debt indicator", () 
     await expect(page.getByRole("heading", { name: "Repositories" })).toBeVisible()
 
     await expect(
-      page.getByText(
-        "Last index failed — serving the last-good graph, marked stale",
-      ),
+      page.getByText("Last index failed — showing the last good graph"),
     ).toBeVisible()
-    await expect(page.getByText(/Leiden partitioning step timed out/)).toBeVisible()
+    await expect(page.getByText(/community detection timed out/)).toBeVisible()
     await expect(page.getByText("last-good HEAD 4b7e120")).toBeVisible()
   })
 
@@ -35,6 +33,6 @@ test.describe("code repositories — stale banner and index-debt indicator", () 
     await expect(page.getByRole("heading", { name: "Repositories" })).toBeVisible()
 
     await expect(page.getByText(/168.*dependent files queued/)).toBeVisible()
-    await expect(page.getByText(/draining via next sync/)).toBeVisible()
+    await expect(page.getByText(/dependent files queued for reindex/)).toBeVisible()
   })
 })

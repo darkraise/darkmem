@@ -7,7 +7,8 @@ import { SurfaceStateChip } from "@/features/activity/components/module-surface"
 describe("the populated state word is advanced-only", () => {
   beforeEach(() => useDetailLevel.setState({ level: "simple" }))
 
-  it("ListSurface hides 'populated' in Simple and keeps 'empty'", () => {
+  it("ListSurface never shows 'populated' and keeps 'empty'", () => {
+    useDetailLevel.setState({ level: "advanced" })
     const { rerender } = render(
       <ListSurface title="Facts" populated>
         <div />
@@ -22,25 +23,20 @@ describe("the populated state word is advanced-only", () => {
     expect(screen.getByText("empty")).toBeInTheDocument()
   })
 
-  it("SurfaceStateChip hides 'populated' in Simple and keeps the others", () => {
-    const { rerender } = render(<SurfaceStateChip state="populated" />)
-    expect(screen.queryByText("populated")).toBeNull()
-    rerender(<SurfaceStateChip state="error" />)
-    expect(screen.getByText("error")).toBeInTheDocument()
-    rerender(<SurfaceStateChip state="empty" />)
-    expect(screen.getByText("empty")).toBeInTheDocument()
-  })
-
-  it("both show 'populated' in Advanced", () => {
-    useDetailLevel.setState({ level: "advanced" })
-    render(
-      <>
-        <ListSurface title="Facts" populated>
-          <div />
-        </ListSurface>
-        <SurfaceStateChip state="populated" />
-      </>,
-    )
-    expect(screen.getAllByText("populated")).toHaveLength(2)
-  })
+  it.each(["simple", "advanced"] as const)(
+    "SurfaceStateChip hides 'populated' and 'staged' in %s and keeps the others",
+    (level) => {
+      useDetailLevel.setState({ level })
+      const { rerender } = render(<SurfaceStateChip state="populated" />)
+      expect(screen.queryByText("populated")).toBeNull()
+      rerender(<SurfaceStateChip state="staged" />)
+      expect(screen.queryByText("staged")).toBeNull()
+      rerender(<SurfaceStateChip state="error" />)
+      expect(screen.getByText("error")).toBeInTheDocument()
+      rerender(<SurfaceStateChip state="empty" />)
+      expect(screen.getByText("empty")).toBeInTheDocument()
+      rerender(<SurfaceStateChip state="populated" label="connected" />)
+      expect(screen.getByText("connected")).toBeInTheDocument()
+    },
+  )
 })

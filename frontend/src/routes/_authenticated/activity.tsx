@@ -7,7 +7,6 @@ import {
   CalendarDays,
   Gauge,
   Moon,
-  Radio,
   Rss,
   Timer,
 } from "lucide-react"
@@ -21,7 +20,6 @@ import { PipelineTab } from "@/features/activity/components/pipeline-tab"
 import { FeedTab } from "@/features/activity/components/feed-tab"
 import { TriageTab } from "@/features/activity/components/triage-tab"
 import { JobsTab } from "@/features/activity/components/jobs-tab"
-import { MonitorsTab } from "@/features/activity/components/monitors-tab"
 import { DreamTab } from "@/features/activity/components/dream-tab"
 import { DayTab } from "@/features/activity/components/day-tab"
 import { OpenWorkstreams } from "@/features/worklog/components/open-workstreams"
@@ -31,7 +29,6 @@ const TAB_VALUES = [
   "feed",
   "triage",
   "jobs",
-  "monitors",
   "dream",
   "day",
   "worklog",
@@ -59,11 +56,7 @@ function ActivityPage() {
 
   return (
     <div className="space-y-4">
-      <PageChrome
-        icon={Activity}
-        title="Activity"
-        description="What the system is doing: pipeline runs, jobs, monitors, and digests."
-      />
+      <PageChrome icon={Activity} title="Activity" />
       <Tabs
         border="accent"
         value={tab ?? "pipeline"}
@@ -99,10 +92,6 @@ function ActivityPage() {
               <Timer aria-hidden className="size-[var(--icon-size)]" />
               Jobs
             </TabsTrigger>
-            <TabsTrigger className="flex-1 gap-2" value="monitors">
-              <Radio aria-hidden className="size-[var(--icon-size)]" />
-              Monitors
-            </TabsTrigger>
             <TabsTrigger className="flex-1 gap-2" value="dream">
               <Moon aria-hidden className="size-[var(--icon-size)]" />
               Dream digest
@@ -128,13 +117,6 @@ function ActivityPage() {
         </TabsContent>
         <TabsContent value="jobs" className="pt-4">
           <JobsTab />
-        </TabsContent>
-        <TabsContent value="monitors" className="pt-4">
-          <MonitorsTab
-            onOpenDigest={() =>
-              void navigate({ search: (prev) => ({ ...prev, tab: "dream" }) })
-            }
-          />
         </TabsContent>
         <TabsContent value="dream" className="pt-4">
           <DreamTab />

@@ -150,7 +150,7 @@ describe("ArticleDetailLive", () => {
 
     render(<ArticleDetailLive articleId={ARTICLE.id} />, { wrapper })
 
-    expect(await screen.findByText(/belief window closed/i)).toBeInTheDocument()
+    expect(await screen.findByText(/no longer believed/i)).toBeInTheDocument()
   })
 
   it("shows coverage in simple mode as well as advanced", async () => {
@@ -160,7 +160,7 @@ describe("ArticleDetailLive", () => {
     render(<ArticleDetailLive articleId={ARTICLE.id} />, { wrapper })
 
     expect(await screen.findByText("0.97")).toBeInTheDocument()
-    expect(screen.getByText(/claim-support coverage/i)).toBeInTheDocument()
+    expect(screen.getByText("Coverage")).toBeInTheDocument()
   })
 
   it("hides the raw fact-set hash in simple mode and shows it in advanced", async () => {
@@ -211,8 +211,8 @@ describe("ArticleDetailLive", () => {
 
     render(<ArticleDetailLive articleId={ARTICLE.id} />, { wrapper })
 
-    expect(await screen.findByText(/superseded_by →/)).toBeInTheDocument()
-    expect(screen.getByText(/supersedes article 33333333/)).toBeInTheDocument()
+    expect(await screen.findByText(/superseded by a newer version/)).toBeInTheDocument()
+    expect(screen.getByText(/view previous version/)).toBeInTheDocument()
   })
 
   it("shows a held re-synthesis beside the stale label, in both modes", async () => {
@@ -225,7 +225,7 @@ describe("ArticleDetailLive", () => {
     render(<ArticleDetailLive articleId={ARTICLE.id} />, { wrapper })
 
     expect(
-      await screen.findByText(/a re-synthesis was attempted and held at coverage 0\.42/i),
+      await screen.findByText(/re-synthesis could not be grounded \(coverage 0\.42\)/i),
     ).toBeInTheDocument()
     // …and it is not withheld: the prose and the badge are still there.
     expect(screen.getByText(/It runs in docker/)).toBeInTheDocument()
@@ -238,7 +238,7 @@ describe("ArticleDetailLive", () => {
     render(<ArticleDetailLive articleId={ARTICLE.id} />, { wrapper })
 
     expect(
-      await screen.findByText(/no sentence on this page is linked to the fact/i),
+      await screen.findByText("No citations recorded for this article."),
     ).toBeInTheDocument()
   })
 })

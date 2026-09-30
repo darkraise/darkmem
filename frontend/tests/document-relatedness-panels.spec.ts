@@ -142,9 +142,8 @@ const NO_MEMORIES = { items: [], embedded: false, comparable_memories: 0 }
 // The panel-specific halves of the "still being embedded" copy. The two
 // panels deliberately word it differently, and that difference is what lets
 // each assertion name one panel without scoping to its card.
-const CONNECTIONS_EMBEDDING =
-  /this project's other documents are still being embedded/
-const MEMORIES_EMBEDDING = /this project's memories are still being embedded/
+const CONNECTIONS_EMBEDDING = /documents are still being indexed/
+const MEMORIES_EMBEDDING = /memories are still being indexed/
 
 test.beforeAll(() => {
   if (!PASSWORD) {
@@ -244,7 +243,7 @@ test.describe("connections", () => {
     // no similarity floor, so the only thing an empty list can mean here is
     // that every passage's neighbour window was filled by other projects.
     await expect(
-      page.getByText(/no other document in this project surfaced/),
+      page.getByText(/no similar documents found/),
     ).toBeVisible()
     await expect(page.getByText(CONNECTIONS_EMBEDDING)).toHaveCount(0)
   })
@@ -303,7 +302,7 @@ test.describe("connections", () => {
     await openDocument(page)
 
     await expect(
-      page.getByText(/this is a failed read, not an empty one/).first(),
+      page.getByText(/could not be read/).first(),
     ).toBeVisible()
     await expect(
       page.getByText(/no other documents in this project to compare against/),
@@ -371,7 +370,7 @@ test.describe("related memories", () => {
     // always yields a row — but it is an arm that renders, and an arm that
     // renders is one a payload can reach.
     await expect(
-      page.getByText(/no rows came back for this document/),
+      page.getByText(/no related memories found/),
     ).toBeVisible()
     await expect(page.getByText(MEMORIES_EMBEDDING)).toHaveCount(0)
   })
@@ -431,7 +430,7 @@ test.describe("related memories", () => {
     await openDocument(page)
 
     await expect(
-      page.getByText(/this is a failed read, not an empty one/).first(),
+      page.getByText(/could not be read/).first(),
     ).toBeVisible()
     await expect(
       page.getByText(/no memories in this project to compare against/),

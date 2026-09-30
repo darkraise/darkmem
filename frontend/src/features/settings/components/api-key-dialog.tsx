@@ -23,8 +23,7 @@ import { McpConnectSnippets } from "./mcp-connect-snippets"
  *  arrived from the server after the click.
  *
  *  `ratify` is deliberately not here. It is not a scope at all — confirming a
- *  fact stays a human action — and the card below the dialog says so, because
- *  the absence is a decision a reader should be able to see.
+ *  fact stays a human action.
  */
 const SCOPE_ITEMS = [
   { value: "capture", label: "Save new memories" },

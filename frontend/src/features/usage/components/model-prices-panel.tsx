@@ -73,10 +73,8 @@ export function ModelPricesPanel({
       <CardHeader>
         <CardTitle className="text-sm">Model prices</CardTitle>
         <CardDescription>
-          Dollars per million tokens. A model with no rate here is reported as
-          &ldquo;not priced&rdquo; rather than as free, and editing a rate
-          changes what future calls cost — stored rows keep the rates they were
-          written with.
+          Dollars per million tokens. Changing a rate affects future calls
+          only.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">

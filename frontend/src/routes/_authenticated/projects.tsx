@@ -74,13 +74,12 @@ function ProjectsIndexPage() {
       <PageChrome
         icon={FolderKanban}
         title="Projects"
-        description="Every project the corpus holds — memories, documents and work logs."
       />
       {isError ? (
         // Not the empty state: "no project holds anything yet" is a claim
         // about the corpus, and on a failed read it is a false one.
         <p className="text-destructive text-sm">
-          Projects could not be loaded — a failed read, not an empty corpus.
+          Projects could not be loaded.
         </p>
       ) : isLoading ? (
         <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2 xl:grid-cols-3">

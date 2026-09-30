@@ -32,9 +32,8 @@ export function JobConfigDialog({
       <DialogContent className="flex max-h-[80vh] max-w-2xl flex-col gap-3">
         <DialogHeader>
           <DialogTitle>{job.name} — configuration</DialogTitle>
-          <DialogDescription>
-            Schedule and config_schema. The floor and ceiling stay read-only
-            registration constants.
+          <DialogDescription className="sr-only">
+            Schedule and settings for {job.name}
           </DialogDescription>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto">

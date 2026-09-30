@@ -54,8 +54,8 @@ export function ClassifierKindRow({ binding }: { binding: LLMTabBinding }) {
         label="classifier_kind"
       />
       <HelpTip label="About classifier_kind">
-        re-homes the dropped ml_profile_ref indirection inline — a two-value
-        field on this row, not a picker over a deleted table.
+        Which classifier labels new memories: an LLM, or a model that runs
+        in-process.
       </HelpTip>
     </div>
   )
@@ -75,8 +75,7 @@ export function CodeBuckets({
           code-summarization buckets
         </span>
         <HelpTip label="About code-summarization buckets">
-          each bucket carries its own model + prompt over the one summarization
-          connection.
+          Each bucket uses its own model over the summarization provider.
         </HelpTip>
       </div>
       <div className="grid gap-2.5 sm:grid-cols-3">
@@ -102,20 +101,6 @@ export function CodeBuckets({
           </div>
         ))}
       </div>
-    </div>
-  )
-}
-
-export function CodeBucketsUnavailable() {
-  return (
-    <div className="border-border text-muted-foreground flex flex-col gap-1 border-t border-dashed pt-2.5 text-sm">
-      <span className="font-mono text-xs tracking-wide uppercase">
-        code-summarization buckets
-      </span>
-      <span>
-        Not yet exposed via the API — no backend row exists for these, in either
-        mode.
-      </span>
     </div>
   )
 }

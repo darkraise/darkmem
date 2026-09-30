@@ -106,7 +106,7 @@ describe("per-memory timeline — who did what, with which key", () => {
       expect(screen.getByText("key: retired-laptop")).toBeInTheDocument(),
     )
     expect(
-      screen.getByText(/revoked — the call it made is still recorded/),
+      screen.getByText("(revoked)"),
     ).toBeInTheDocument()
   })
 
@@ -133,9 +133,9 @@ describe("per-memory timeline — who did what, with which key", () => {
       wrapper,
     })
     await waitFor(() =>
-      expect(screen.getByText(/no journal rows for this memory/)).toBeInTheDocument(),
+      expect(screen.getByText(/no events for this memory/i)).toBeInTheDocument(),
     )
-    expect(screen.queryByText(/could not be read/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/could not be loaded/)).not.toBeInTheDocument()
     unmount()
 
     vi.mocked(apiFetch).mockImplementation((path: string) => {
@@ -146,11 +146,11 @@ describe("per-memory timeline — who did what, with which key", () => {
     render(<MemoryEventTimeline memoryId={MEMORY_ID} />, { wrapper })
     await waitFor(() =>
       expect(
-        screen.getByText(/the event journal could not be read/),
+        screen.getByText(/history could not be loaded/),
       ).toBeInTheDocument(),
     )
     expect(
-      screen.queryByText(/no journal rows for this memory/),
+      screen.queryByText(/no events for this memory/i),
     ).not.toBeInTheDocument()
   })
 
@@ -170,7 +170,7 @@ describe("per-memory timeline — who did what, with which key", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText("key: unresolvable — key list unreadable"),
+        screen.getByText("key: unknown"),
       ).toBeInTheDocument(),
     )
   })

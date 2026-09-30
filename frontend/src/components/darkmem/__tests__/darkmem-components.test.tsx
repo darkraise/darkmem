@@ -32,7 +32,7 @@ describe("LayerChip", () => {
 })
 
 describe("ExclusionStrip", () => {
-  it("surfaces the exclusion count, reason, and tag", () => {
+  it("surfaces the exclusion count and reason", () => {
     render(
       <ExclusionStrip
         items={[
@@ -46,7 +46,7 @@ describe("ExclusionStrip", () => {
       />,
     )
     expect(screen.getByText("3 facts excluded")).toBeInTheDocument()
-    expect(screen.getByText("by_context_conflict")).toBeInTheDocument()
+    expect(screen.getByText(/conflicts with a dev-only row/)).toBeInTheDocument()
   })
 
   it("renders nothing when there are no exclusions", () => {

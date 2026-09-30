@@ -15,25 +15,11 @@ import { validateJobConfig } from "@/demo/activity"
 import { cronInfo } from "@/demo/settings"
 import type { DemoJob } from "@/features/activity/types"
 
-function SectionHead({
-  label,
-  role,
-  help,
-}: {
-  label: string
-  role: string
-  help?: string
-}) {
+function SectionHead({ label }: { label: string }) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="font-mono text-xs font-semibold tracking-wide uppercase">
-        {label}
-      </span>
-      <span className="text-muted-foreground font-mono text-xs">
-        {role}
-      </span>
-      {help && <HelpTip label={`About ${label}`}>{help}</HelpTip>}
-    </div>
+    <span className="font-mono text-xs font-semibold tracking-wide uppercase">
+      {label}
+    </span>
   )
 }
 
@@ -50,10 +36,7 @@ export function ScheduleSection({
 
   return (
     <div className="border-border bg-muted/8 flex flex-col gap-2 rounded-md border border-dashed px-3 py-2.5">
-      <SectionHead
-        label="schedule"
-        role={`editable · PUT /api/v1/jobs/${job.key}`}
-      />
+      <SectionHead label="Schedule" />
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex min-w-52 flex-col gap-1">
           <span className="font-mono text-sm font-semibold">cron</span>
@@ -108,13 +91,9 @@ export function ConfigSchemaSection({
   if (job.config_schema.length === 0) {
     return (
       <div className="border-border bg-muted/8 flex flex-col gap-1.5 rounded-md border border-dashed px-3 py-2.5">
-        <SectionHead
-          label="config_schema"
-          role="no fields declared for this job"
-        />
+        <SectionHead label="Settings" />
         <p className="text-muted-foreground text-sm italic">
-          {job.key} declares no config_schema — nothing beyond schedule to
-          configure.
+          This job has no other settings.
         </p>
       </div>
     )
@@ -123,22 +102,21 @@ export function ConfigSchemaSection({
   const validation = validateJobConfig(job.config_schema, values)
   return (
     <div className="border-border bg-muted/8 flex flex-col gap-2 rounded-md border border-dashed px-3 py-2.5">
-      <SectionHead
-        label="config_schema"
-        role={`editable · PUT /api/v1/jobs/${job.key}/config`}
-      />
+      <SectionHead label="Settings" />
       <div className="flex flex-wrap items-end gap-3">
         {job.config_schema.map((field) => {
           const error = validation.ok ? undefined : validation.errors[field.key]
           return (
             <div key={field.key} className="flex min-w-52 flex-col gap-1">
-              <span className="flex items-center gap-1.5 font-mono text-sm font-semibold">
-                {field.key}{" "}
-                <span className="text-muted-foreground font-normal lowercase">
-                  {field.type}
-                </span>
+              <span className="flex items-center gap-1.5 text-sm font-semibold">
+                {field.label}
+                {field.label !== field.key && (
+                  <span className="text-muted-foreground font-mono text-xs font-normal">
+                    {field.key}
+                  </span>
+                )}
                 {field.help && (
-                  <HelpTip label={`About ${field.key}`}>{field.help}</HelpTip>
+                  <HelpTip label={`About ${field.label}`}>{field.help}</HelpTip>
                 )}
               </span>
               <NumberField

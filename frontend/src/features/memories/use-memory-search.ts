@@ -30,15 +30,6 @@ function exclusionLabel(reason: string): string {
   return EXCLUSION_COPY[reason] ?? `excluded — ${reason}`
 }
 
-// Ruling 1: an empty (or partial) exclusion strip is never proof that
-// project or status scoping removed nothing. Those two run in SQL before
-// this envelope can see the rows they drop, so their count would read
-// "zero forever" — worse than honest silence, because zero reads as an
-// affirmative "nothing was removed." This caveat renders unconditionally
-// alongside the strip, including when there is nothing else to show.
-export const EXCLUSION_CAVEAT =
-  "These are only the reasons this request can count. Project and status scoping run in the database before counting — an absent reason here never means nothing was filtered by it."
-
 export function traceToView(trace: MemoryResultTrace): MemoryTraceView {
   const { scores, rank_fusion_factor } = trace
   const semantic = scores.semantic ?? null

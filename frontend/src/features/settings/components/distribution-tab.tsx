@@ -1,15 +1,4 @@
-import {
-  Bookmark,
-  CircleOff,
-  Clock,
-  Eye,
-  FileText,
-  Gauge,
-  Plug,
-  ShieldCheck,
-  Tags,
-  Zap,
-} from "lucide-react"
+import { Clock, Eye, FileText, Gauge, Plug, ShieldCheck } from "lucide-react"
 import { useState } from "react"
 import { Button } from "darkraise-ui/components/button"
 import { Card, CardContent, CardHeader } from "darkraise-ui/components/card"
@@ -19,111 +8,25 @@ import { McpPromptDialog } from "./mcp-prompt-dialog"
 import { McpConnectSnippets, mcpEndpoint } from "./mcp-connect-snippets"
 import { Switch } from "darkraise-ui/components/switch"
 import { cn } from "darkraise-ui/lib"
-import {
-  HelpTip,
-  LayerChip,
-  NumberField,
-  VerificationBadge,
-} from "@/components/darkmem"
-import {
-  ModuleSurface,
-  SurfaceStateChip,
-} from "@/features/activity/components/module-surface"
+import { NumberField } from "@/components/darkmem"
+import { ModuleSurface } from "@/features/activity/components/module-surface"
 import { DEMO } from "@/lib/demo-flag"
 import { useDetailLevel } from "@/components/darkmem"
 import { useDistribution, useEvents, useSetDistributionPolicy } from "@/hooks/api"
 import { relativeTime } from "@/lib/format"
-import { useDemoDistribution } from "@/demo/hooks"
-import { useDemoStore } from "@/demo/store"
-import type { DemoDistClient } from "@/demo/types"
 
 function SectionHead({
   icon: Icon,
-  help,
   children,
 }: {
   icon: typeof Plug
-  help?: React.ReactNode
   children: React.ReactNode
 }) {
   return (
     <h3 className="flex items-center gap-2 text-sm font-semibold">
       <Icon aria-hidden className="text-muted-foreground h-4 w-4" />
       {children}
-      {help && <HelpTip label="About this section">{help}</HelpTip>}
     </h3>
-  )
-}
-
-function ClientRow({ client }: { client: DemoDistClient }) {
-  const setCurb = useDemoStore((s) => s.setDistributionCurb)
-  const connected = client.status !== "disconnected"
-  const curbed = client.status === "curbed"
-
-  return (
-    <div
-      className={cn(
-        "border-inset bg-card flex flex-col gap-2 rounded-md border px-3.5 py-3",
-        curbed && "border-warning/50 bg-warning/5",
-        !connected && "border-dashed",
-      )}
-    >
-      <div className="flex flex-wrap items-center gap-2.5">
-        {connected ? (
-          <ShieldCheck aria-hidden className="text-muted-foreground h-4 w-4" />
-        ) : (
-          <CircleOff aria-hidden className="text-muted-foreground h-4 w-4" />
-        )}
-        <span className="text-sm font-semibold">{client.name}</span>
-        <SurfaceStateChip
-          state={connected ? "populated" : "empty"}
-          label={connected ? "connected" : "not connected"}
-        />
-        <span className="text-muted-foreground ml-auto font-mono text-sm whitespace-nowrap">
-          {client.handshake ?? "no MCP config detected"}
-        </span>
-      </div>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 font-mono text-sm">
-        <dt className="text-muted-foreground">context file</dt>
-        <dd className="break-words">{client.context_file}</dd>
-        <dt className="text-muted-foreground">mcp config</dt>
-        <dd className="break-words">{client.mcp_config}</dd>
-      </dl>
-      {connected ? (
-        <div className="text-muted-foreground flex flex-wrap items-center gap-2.5 text-sm">
-          <span>
-            push: <b className="text-foreground font-semibold">{client.push_note}</b>
-          </span>
-          <div className="ml-auto flex items-center gap-2">
-            <span className="text-muted-foreground font-mono text-sm">
-              curb push
-            </span>
-            <Switch
-              checked={!curbed}
-              onCheckedChange={(on) => setCurb(client.id, !on)}
-              aria-label={`${client.name} push`}
-            />
-          </div>
-        </div>
-      ) : (
-        <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-sm">
-          <Button variant="outline" className="border-primary/60 text-primary-text w-fit font-mono">
-            darkmem connect {client.id}
-          </Button>
-          {client.connect_hint && (
-            <HelpTip label={`Why ${client.name} is not connected`}>
-              {client.connect_hint}
-            </HelpTip>
-          )}
-        </div>
-      )}
-      {curbed && client.curbed_note && (
-        <div className="border-warning/55 bg-warning/10 flex items-center gap-2 rounded-md border border-dashed px-2.5 py-1.5 text-sm">
-          <CircleOff aria-hidden className="text-warning-text h-3.5 w-3.5 shrink-0" />
-          {client.curbed_note}
-        </div>
-      )}
-    </div>
   )
 }
 
@@ -219,21 +122,16 @@ function RecentInjects() {
 
   return (
     <div className="flex flex-col gap-2">
-      <SectionHead icon={Clock}>
-        Inject log — which inject happened where
-      </SectionHead>
+      <SectionHead icon={Clock}>Inject log</SectionHead>
       {pushes.isError || curbs.isError ? (
         <p className="text-muted-foreground text-sm">
-          the inject log could not be read — this says nothing about whether a
-          push happened, only that the journal is unavailable
+          The inject log could not be loaded.
         </p>
       ) : pushes.isLoading || curbs.isLoading ? (
         <p className="text-muted-foreground text-sm">loading…</p>
       ) : rows.length === 0 ? (
         <p className="text-muted-foreground text-sm">
-          no inject has happened. Nothing else writes this log, so an empty one
-          means no context has been pushed from this instance — not that the
-          record is missing.
+          No context has been pushed yet.
         </p>
       ) : (
         rows.map((row) => {
@@ -278,13 +176,7 @@ function RecentInjects() {
   )
 }
 
-/** The live half: the registry's targets, the policy, and the one curb.
- *
- *  Separate from the demo panel below rather than merged, matching the split
- *  the knowledge surfaces use: a demo fixture and a live read are two
- *  producers, and a component that branched per field would make "is this
- *  real" unanswerable from the screen.
- */
+/** The registry's targets, the policy, and the one curb. */
 function LiveDistribution() {
   const level = useDetailLevel((s) => s.level)
   const { data, isLoading, isError } = useDistribution({ enabled: !DEMO })
@@ -293,8 +185,7 @@ function LiveDistribution() {
   if (isError) {
     return (
       <p className="text-muted-foreground text-sm">
-        distribution config unavailable — the targets and the curb could not be
-        read, so nothing here describes what push would do
+        The distribution settings could not be loaded.
       </p>
     )
   }
@@ -312,8 +203,7 @@ function LiveDistribution() {
         // did not — on the one control whose whole purpose is "you can always
         // stop it".
         <p className="border-destructive/55 text-destructive rounded-md border border-dashed px-2.5 py-1.5 text-sm">
-          the change was not saved — push is still whatever the server last
-          accepted, shown below
+          The change was not saved.
         </p>
       )}
       <div className="border-inset flex flex-wrap items-center gap-3 rounded-md border p-3">
@@ -323,15 +213,7 @@ function LiveDistribution() {
             {policy.curbed ? "Push is curbed" : "Push is live"}
           </p>
           <p className="text-muted-foreground text-sm">
-            One control, stored on the server: every target stops at once. It
-            is <b className="font-semibold">enforced server-side</b> — a watch
-            refresh reads this flag fresh every time and refuses while it is
-            on, so a curb set here stops the next swap rather than the next
-            session. The client is the thing being curbed, which is why it is
-            not the client that decides. The session-start path has no caller
-            yet, so nothing pushes on that cadence to stop. When it lands it
-            will clear each managed block to an empty marker pair rather than
-            deleting it, leaving the human&apos;s own file untouched.
+            Turning push off stops every target at once.
           </p>
         </div>
         <Switch
@@ -351,13 +233,8 @@ function LiveDistribution() {
             {policy.watch_enabled ? "Watch is on" : "Watch is off"}
           </p>
           <p className="text-muted-foreground text-sm">
-            Off by default. On, a target may re-inject as the project, the open
-            file or the declared context shifts, instead of at session start
-            only — and every refresh journals what shifted, so the swap is
-            visible below rather than silent. It{" "}
-            <b className="font-semibold">permits</b> the cadence and does not
-            impose it: a target watches only if its own adapter row asks for
-            it. The curb above outranks this.
+            Lets targets set to watch re-inject when the project or open file
+            changes, instead of only at session start.
           </p>
         </div>
         <Switch
@@ -374,7 +251,7 @@ function LiveDistribution() {
         <SectionHead icon={FileText}>Managed block per target</SectionHead>
         {targets.length === 0 ? (
           <p className="text-muted-foreground text-sm">
-            no targets configured — add a row to the inject_adapters config
+            No targets configured.
           </p>
         ) : (
           targets.map((target) => (
@@ -401,7 +278,7 @@ function LiveDistribution() {
               </span>
               {target.refresh === "watch" && !target.watched && (
                 <span className="text-muted-foreground text-sm">
-                  this row asks for watch; the install has it off
+                  set to watch, but watch is off
                 </span>
               )}
               {level === "advanced" && (
@@ -449,38 +326,6 @@ function LiveDistribution() {
   )
 }
 
-/** What the fixture panel below claims, on an install that has no live source
- *  for any of it (doc 13 §6.5's stated empty state).
- *
- *  Connect status, the inject log and the watermark were rendered from
- *  `CURATED_DISTRIBUTION` on every install, not only in demo — four clients
- *  reporting "handshake ok", an inject log of deliveries that never happened,
- *  and watermark rows for a writer that does not exist. They stayed on screen
- *  while the live read was *failing*. Doc 15 §7's whole stance is that push
- *  must be visible; a fabricated log is the inverse of visible, and doc 13
- *  §6.5 states the honest alternative outright: "empty is 'no clients
- *  connected'".
- */
-function NoLiveDistributionSignal() {
-  return (
-    <div className="flex flex-col gap-2 pt-2">
-      <SectionHead icon={Plug}>Connect status per client</SectionHead>
-      <p className="text-muted-foreground text-sm">
-        no clients connected — nothing has completed the handshake against this
-        instance. Connect one with <code className="font-mono">darkmem
-        connect &lt;tool&gt;</code>, which verifies over{" "}
-        <code className="font-mono">/mcp</code> and writes the client&apos;s own
-        config.
-      </p>
-      <SectionHead icon={Bookmark}>Render watermark</SectionHead>
-      <p className="text-muted-foreground text-sm">
-        no watermark — one <code className="font-mono">config</code> row per
-        target is written by the first inject cycle, and none has run.
-      </p>
-    </div>
-  )
-}
-
 /** How to point an MCP client at this instance. The key field only fills the
  *  snippets in: it is never sent or stored, since the server cannot hand a
  *  secret back and this page must not become a second place one lives. */
@@ -502,23 +347,18 @@ function McpConnectCard() {
           <dd>Streamable HTTP</dd>
           <dt className="text-muted-foreground">Auth</dt>
           <dd>
-            <code className="font-mono">Authorization: Bearer dmk_…</code> on
-            every call — a request without a key is refused with 401
+            <code className="font-mono">Authorization: Bearer dmk_…</code>
           </dd>
         </dl>
         <p className="text-muted-foreground text-sm">
           Create a key under <b className="text-foreground">Security → Keys for apps and agents</b>.
-          Choose <i>Search and read memories</i> for lookups and{" "}
-          <i>Save new memories</i> so the agent can write too; a key sees
-          every tool in the list but can only call the ones its scopes cover.
           If the client runs on another machine, add this host to{" "}
           <code className="font-mono">MCP_ALLOWED_HOSTS</code> (for example{" "}
-          <code className="font-mono">{window.location.host}</code>), or it
-          gets 421.
+          <code className="font-mono">{window.location.host}</code>).
         </p>
         <div className="flex max-w-md flex-col gap-1">
           <Label htmlFor="mcp-connect-key" className="text-muted-foreground text-sm">
-            API key (optional — fills the snippets below, stays in this page)
+            API key (optional, fills in the snippets below)
           </Label>
           <Input
             id="mcp-connect-key"
@@ -537,36 +377,10 @@ function McpConnectCard() {
 
 export function DistributionTab() {
   const [promptOpen, setPromptOpen] = useState(false)
-  const d = useDemoDistribution()
-  const connected = d.clients.filter((c) => c.status !== "disconnected").length
-  const curbed = d.clients.filter((c) => c.status === "curbed").length
-  const disconnected = d.clients.length - connected
-  // Counting the fixture clients on a live install would put a fabricated
-  // tally in the surface header, which is the same claim the panel below was
-  // making in longer form.
-  const meta = DEMO
-    ? `${connected} connected · ${curbed} curbed · ${disconnected} not connected`
-    : "no clients connected · push not yet implemented"
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
-          <span>
-            Per-client connect status, the managed block, inject policy, the
-            curb control, and the inject log — push shown staged, not implied
-            shipped.
-          </span>
-        <HelpTip label="About the Distribution tab">
-          Connect status per client, the per-target managed block written into
-          each tool&apos;s native context file, the inject content policy and
-          token budget, the curb control (the human sees and curbs push —
-          never a silent context swap), the durable inject log, and the render
-          watermark. The pull door (memory_search over /mcp) exists today;
-          DistributionService, auto-inject, and the managed-block writer are
-          target work — shown staged, not implied shipped.
-        </HelpTip>
-        </div>
+      <div className="flex flex-wrap items-start justify-end gap-2">
         {/* The pull door is the one that works today, and its instructions are
             the only thing darkmem tells a connecting client about itself.
             They were readable nowhere on this surface. */}
@@ -586,154 +400,14 @@ export function DistributionTab() {
       {promptOpen && (
         <McpPromptDialog open onOpenChange={setPromptOpen} />
       )}
-      <ModuleSurface title="Distribution" state="staged" meta={meta}>
-        {/* Mounted only outside demo: a conditional *return* would still run
-            the query hook, which is what put a QueryClient requirement on the
-            demo path that never had one. */}
-        {!DEMO && <LiveDistribution />}
-        {!DEMO && <NoLiveDistributionSignal />}
-
-        {DEMO && (
-        <>
-        <div className="flex flex-col gap-2">
-          <SectionHead icon={Plug}>Connect status per client</SectionHead>
-          {d.clients.map((client) => (
-            <ClientRow key={client.id} client={client} />
-          ))}
-        </div>
-
-        <div className="flex flex-col gap-2 pt-2">
-          <SectionHead
-            icon={FileText}
-            help="Only the bytes between the two markers change on refresh (strip-before-rewrite); the human's own content above the block is never touched."
-          >
-            Per-target managed-block configuration — CLAUDE.md example
-          </SectionHead>
-          <pre className="border-inset bg-muted/15 overflow-x-auto rounded-md border px-3 py-2.5 font-mono text-sm leading-relaxed">
-            {d.block_preview}
-          </pre>
-        </div>
-
-        <div className="flex flex-col gap-2 pt-2">
-          <SectionHead icon={Gauge}>
-            Inject content policy &amp; token budget
-          </SectionHead>
-          <div className="border-inset flex flex-wrap items-center gap-2 rounded-md border border-dashed px-3 py-2.5 text-sm">
-            <LayerChip layer={2} />
-            <span className="text-muted-foreground">→</span>
-            <LayerChip layer={3} />
-            <span className="text-muted-foreground">→</span>
-            <LayerChip layer={0} />
-            <span className="text-muted-foreground">→</span>
-            <span className="text-muted-foreground">
-              fill truth-first until the budget is spent, then stop (top-K,
-              stated in the block header — not silent degradation)
-            </span>
-          </div>
-          <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
-            {d.policy.map((row) => (
-              <div
-                key={row.key}
-                className="border-inset bg-card flex flex-col gap-1 rounded-md border px-3 py-2.5"
-              >
-                <span className="flex items-center gap-1.5 font-mono text-sm font-semibold">
-                  {row.key}
-                  <HelpTip label={`About ${row.key}`}>{row.desc}</HelpTip>
-                </span>
-                <span className="text-primary-text font-mono text-sm">
-                  {row.value}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-2 pt-2">
-          <SectionHead
-            icon={Clock}
-            help="inject_curbed is a taxonomy-first addition to the closed event_type vocabulary. Each row records that the server selected and returned N items for a target; it is not a receipt that the client's file was actually written — an honest limit of the pull-then-write model, stated rather than implied away."
-          >
-            Inject log — which inject happened where
-          </SectionHead>
-          {d.log.map((row) => (
-            <div
-              key={row.id}
-              className={cn(
-                "border-inset bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2 text-sm",
-                row.event_type === "inject_curbed" &&
-                  "border-warning/50 bg-warning/5",
-              )}
-            >
-              {row.event_type === "inject_curbed" ? (
-                <CircleOff aria-hidden className="text-warning-text h-3.5 w-3.5" />
-              ) : (
-                <Zap aria-hidden className="text-muted-foreground h-3.5 w-3.5" />
-              )}
-              <span className="font-mono font-semibold">{row.target}</span>
-              <span className="text-muted-foreground min-w-40 flex-1">
-                event_type{" "}
-                <b className="text-foreground font-semibold">
-                  {row.event_type}
-                </b>{" "}
-                · {row.detail}
-              </span>
-              <span className="text-muted-foreground font-mono text-sm">
-                {row.time_label}
-              </span>
-              <span className="text-muted-foreground ml-auto font-mono text-sm whitespace-nowrap">
-                {row.meta}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex flex-col gap-2 pt-2">
-          <SectionHead
-            icon={Tags}
-            help="Neither item is relabelled on the way into the tool: a corroborated fact keeps its full badge claim, and a superseded memory keeps its amber lifecycle label rather than being silently promoted to active or dropped."
-          >
-            Labels survive injection — expanding the 14:12 UTC claude-code
-            delivery
-          </SectionHead>
-          <div className="border-inset bg-muted/10 flex flex-col gap-2 rounded-md border p-3">
-            {d.inject_items.map((item) => (
-              <div
-                key={item.text}
-                className="border-inset bg-card flex flex-col gap-1.5 rounded-md border px-3 py-2"
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <LayerChip layer={item.layer} />
-                  <VerificationBadge status={item.badge} />
-                  <span className="text-muted-foreground ml-auto font-mono text-xs tracking-wide uppercase">
-                    injected as:{" "}
-                    <b className="text-foreground">{item.as_label}</b>
-                  </span>
-                </div>
-                <span className="text-sm">{item.text}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-2 pt-2">
-          <SectionHead
-            icon={Bookmark}
-            help="One config row per target — no per-client heavy table, no queue, no broker. Used only for idempotent diffing on the next inject cycle; it is the server's best knowledge of the last delivered set, not a proof the file was rewritten."
-          >
-            Render watermark — a config row, not a table
-          </SectionHead>
-          <dl className="border-inset grid grid-cols-1 gap-x-3.5 gap-y-1 rounded-md border border-dashed px-3 py-2.5 font-mono text-sm sm:grid-cols-[auto_1fr]">
-            {d.watermarks.map((w) => (
-              <div key={w.key} className="contents">
-                <dt className="text-muted-foreground">{w.key}</dt>
-                <dd className="break-words">{w.value}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-        </>
-        )}
-      </ModuleSurface>
+      {/* Mounted only outside demo: a conditional *return* would still run
+          the query hook, which is what put a QueryClient requirement on the
+          demo path that never had one. */}
+      {!DEMO && (
+        <ModuleSurface title="Distribution" state="populated">
+          <LiveDistribution />
+        </ModuleSurface>
+      )}
     </div>
   )
 }

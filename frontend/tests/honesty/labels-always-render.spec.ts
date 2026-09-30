@@ -34,12 +34,12 @@ async function setDetailLevel(page: Page, level: "simple" | "advanced") {
 }
 
 test.describe("honesty/labels-always-render", () => {
-  test("memory list: layer chip, lifecycle badge, and exclusion count render in both modes", async ({
+  test("memory list: exclusion count renders in both modes", async ({
     page,
   }) => {
     await page.goto("/memories")
 
-    await expect(page.getByText(/results — project/i)).toBeVisible()
+    await expect(page.getByText(/^\d+ of \d+ shown$/)).toBeVisible()
 
     await selectProject(page, "darkmem")
 
@@ -53,8 +53,7 @@ test.describe("honesty/labels-always-render", () => {
       await setDetailLevel(page, level)
 
       await expect(page.getByText("1 memory excluded")).toBeVisible()
-      await expect(page.getByText("by_context_conflict")).toBeVisible()
-      await expect(page.getByText("L0 · memory").first()).toBeVisible()
+      await expect(page.getByText(/env=dev-only row/i)).toBeVisible()
     }
   })
 
@@ -63,7 +62,7 @@ test.describe("honesty/labels-always-render", () => {
   }) => {
     await page.goto("/memories")
 
-    await expect(page.getByText(/results — project/i)).toBeVisible()
+    await expect(page.getByText(/^\d+ of \d+ shown$/)).toBeVisible()
 
     await selectProject(page, "darkmem")
     // "introduced" appears in exactly one curated memory — the superseded
@@ -91,7 +90,6 @@ test.describe("honesty/labels-always-render", () => {
 
     for (const level of ["simple", "advanced"] as const) {
       await setDetailLevel(page, level)
-      await expect(page.getByText("L3 · article")).toBeVisible()
       await expect(page.getByText("corroborated").first()).toBeVisible()
       await expect(page.getByText("stale", { exact: true })).toBeVisible()
       await expect(
@@ -104,18 +102,17 @@ test.describe("honesty/labels-always-render", () => {
     page,
   }) => {
     // ARTICLE_IDS.retrievalFusionV1 — superseded_by ARTICLE_IDS.retrievalFusion.
-    // "superseded" also matches inside the successor link's "superseded_by"
-    // text, so the badge check is scoped with .first() (the badge renders
-    // before the successor link in the hero).
+    // "superseded" also matches inside the successor link's text, so the
+    // badge check is scoped with .first() (the badge renders before the
+    // successor link in the hero).
     await page.goto("/knowledge/articles/af0b3d9a")
 
     await expect(page.getByText("superseded").first()).toBeVisible()
 
     for (const level of ["simple", "advanced"] as const) {
       await setDetailLevel(page, level)
-      await expect(page.getByText("L3 · article")).toBeVisible()
       await expect(page.getByText("superseded").first()).toBeVisible()
-      await expect(page.getByText(/superseded_by → article a4c9a7e2/)).toBeVisible()
+      await expect(page.getByText(/superseded by a newer version/)).toBeVisible()
     }
   })
 })

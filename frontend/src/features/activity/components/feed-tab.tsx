@@ -61,21 +61,9 @@ export function FeedTab() {
 
   return (
     <div className="space-y-4">
-      <p className="text-muted-foreground max-w-4xl text-sm">
-        The recent slice of the durable{" "}
-        <code className="font-mono">events</code> substrate — captures, pipeline
-        outcomes, verification changes, consolidation, and repo syncs. This list
-        refreshes on a short poll; for the authoritative reconstruction of one
-        object's history or a calendar day, use the timeline or the day
-        drill-down, both reading the same substrate directly, never a
-        client-side count of what this page happened to fetch.
-      </p>
       <ModuleSurface
         title="Activity — live feed"
-        state={
-          isLoading ? "empty" : filtered.length > 0 ? "populated" : "empty"
-        }
-        meta="/activity"
+        state="populated"
         actions={
           <span className="text-success-text inline-flex items-center gap-1.5 font-mono text-sm">
             <span aria-hidden className="bg-success h-1.5 w-1.5 rounded-full" />
@@ -111,9 +99,9 @@ export function FeedTab() {
           <EmptyState
             kind="failed"
             title="Couldn't load the feed"
-            description="The /events request failed — this is an error state, not an empty feed. Retry by reopening Activity."
+            description="Reopen Activity to retry."
           />
-        ) : filtered.length === 0 ? (
+        ) : filtered.length === 0 && !isLoading ? (
           <EmptyState
             kind="empty"
             icon={Activity}
@@ -122,7 +110,7 @@ export function FeedTab() {
                 ? "No recent events"
                 : `No recent ${category} events`
             }
-            description={`The feed shows the ${events.length} most recent events substrate rows. For history further back, use the day drill-down, which reads the durable events substrate directly rather than this bounded page.`}
+            description="Older events are in the Day drill."
           />
         ) : (
           filtered.map((event) => <FeedRow key={event.id} event={event} />)

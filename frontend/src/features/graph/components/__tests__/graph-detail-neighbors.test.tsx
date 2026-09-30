@@ -126,14 +126,14 @@ describe("MemoryDetail neighbors", () => {
       renderPanel([], { children: <div>mini graph</div> })
       expect(screen.getByText("Entity Context")).toBeInTheDocument()
       expect(
-        screen.getByText(/Memories asserting a shared entity/),
+        screen.getByText(/share an entity with this one/),
       ).toBeInTheDocument()
     })
 
     it("distinguishes itself from the canvas edges in words", () => {
       renderPanel([], { children: <div>mini graph</div> })
       expect(
-        screen.getByText(/cosine similarity above the threshold/),
+        screen.getByText(/Linked by an edge on the canvas/),
       ).toBeInTheDocument()
     })
   })

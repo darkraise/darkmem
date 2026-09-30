@@ -1,17 +1,14 @@
 import { CircleDashed, TriangleAlert } from "lucide-react"
 import { EmptyState } from "@/components/darkmem"
-import { cn } from "darkraise-ui/lib"
 import {
   ExclusionStrip,
   LayerChip,
-  useDetailLevel,
   VerificationBadge,
   WhyRetrievedTrace,
 } from "@/components/darkmem"
 import { LifecycleBadge } from "@/features/memories/components/lifecycle-badge"
 import { SuppressedBadge } from "@/features/knowledge/components/fact-parts"
 import {
-  CHAT_EXCLUSION_CAVEAT,
   channelStates,
   exclusionItems,
   factNumbers,
@@ -37,12 +34,6 @@ interface ChatContextPanelProps {
   envelope?: ChatRetrievalEnvelope | null
 }
 
-const STATE_STYLE: Record<string, string> = {
-  ok: "text-success-text",
-  failed: "text-warning-text",
-  "not asked": "text-muted-foreground",
-}
-
 /**
  * The real counterpart of DemoContextPanel, over the rows a converged chat
  * turn now actually receives (T2.58).
@@ -61,8 +52,9 @@ export function ChatContextPanel({
 }: ChatContextPanelProps) {
   const populated = rows !== null
   const degraded = populated && envelope?.partial === true
-  const advanced = useDetailLevel((s) => s.level) === "advanced"
-  const channels = channelStates(envelope)
+  const failedChannels = channelStates(envelope)
+    .filter((channel) => channel.state === "failed")
+    .map((channel) => channel.name.replace(/[._]/g, " "))
   const exclusions = exclusionItems(envelope)
   const factNumber = factNumbers(facts)
 
@@ -75,18 +67,9 @@ export function ChatContextPanel({
         <span className="text-sm font-semibold">
           Context used for this turn
         </span>
-        {(!populated || degraded || advanced) && (
-          <span
-            className={cn(
-              "ml-auto font-mono text-sm",
-              !populated
-                ? "text-muted-foreground"
-                : degraded
-                  ? "text-warning-text"
-                  : "text-success-text",
-            )}
-          >
-            {!populated ? "empty" : degraded ? "degraded" : "populated"}
+        {degraded && (
+          <span className="text-warning-text ml-auto font-mono text-sm">
+            degraded
           </span>
         )}
       </div>
@@ -96,7 +79,7 @@ export function ChatContextPanel({
           kind="empty"
           icon={CircleDashed}
           title="No context yet"
-          description="Nothing has been asked in this thread — send a message to see the labelled rows it retrieved."
+          description="Send a message to see what it retrieves."
         />
       ) : (
         <>
@@ -107,28 +90,10 @@ export function ChatContextPanel({
                 className="text-warning-text h-3.5 w-3.5 shrink-0"
               />
               <b className="font-semibold">
-                A retrieval channel failed — this answer was built on what
-                survived, not on the whole corpus.
+                {failedChannels.length > 0
+                  ? `${failedChannels.join(", ")} search failed, so this answer may be incomplete.`
+                  : "A retrieval channel failed, so this answer may be incomplete."}
               </b>
-            </div>
-          )}
-
-          {channels.length > 0 && (
-            <div className="border-border bg-muted/12 space-y-1 rounded-md border p-2">
-              <p className="text-muted-foreground text-sm">
-                Channels this turn asked
-                {envelope?.reranked ? ", reranked" : ""}
-              </p>
-              <div className="flex flex-wrap gap-x-3 gap-y-1">
-                {channels.map((channel) => (
-                  <span key={channel.name} className="font-mono text-sm">
-                    {channel.name}{" "}
-                    <span className={STATE_STYLE[channel.state]}>
-                      {channel.state}
-                    </span>
-                  </span>
-                ))}
-              </div>
             </div>
           )}
 
@@ -150,12 +115,9 @@ export function ChatContextPanel({
                 )}
               </div>
               <p className="text-sm">{fact.text}</p>
-              {fact.badge && (
+              {fact.badge && fact.verification_status === "disputed" && (
                 <p className="text-muted-foreground font-mono text-sm">
-                  badge —{" "}
-                  <b className="text-foreground font-semibold">
-                    {fact.badge.claim}
-                  </b>
+                  {fact.badge.claim}
                 </p>
               )}
               {(() => {
@@ -175,7 +137,7 @@ export function ChatContextPanel({
             <EmptyState
               kind="filtered"
               title="No memories retrieved"
-              description="Retrieval ran for this turn and matched nothing. This is an empty result, not a failed search."
+              description="Nothing matched this message."
             />
           )}
 
@@ -214,14 +176,7 @@ export function ChatContextPanel({
             )
           })}
 
-          {envelope && (
-            <>
-              <ExclusionStrip items={exclusions} />
-              <p className="text-muted-foreground text-sm">
-                {CHAT_EXCLUSION_CAVEAT}
-              </p>
-            </>
-          )}
+          {envelope && <ExclusionStrip items={exclusions} />}
         </>
       )}
     </div>

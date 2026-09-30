@@ -36,7 +36,6 @@ const DEMO_ROUTES = [
   "/activity?tab=feed",
   "/activity?tab=day",
   "/activity?tab=jobs",
-  "/activity?tab=monitors",
   "/activity?tab=pipeline",
   "/activity?tab=triage",
   "/activity?tab=worklog",

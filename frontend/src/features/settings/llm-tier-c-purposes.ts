@@ -32,15 +32,11 @@
 export interface TierCLLMPurpose {
   purpose: "verification"
   role: string
-  /** Task id that gives this purpose its first consumer, or null when it
-   *  already has one (dispatched, just not yet write-editable here). */
-  activatesWith: string | null
 }
 
 export const TIER_C_LLM_PURPOSES: TierCLLMPurpose[] = [
   {
     purpose: "verification",
-    role: "fact verification-ladder judgments",
-    activatesWith: null,
+    role: "judges whether facts are supported by their sources",
   },
 ]

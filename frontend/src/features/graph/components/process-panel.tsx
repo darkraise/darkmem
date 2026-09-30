@@ -21,7 +21,7 @@ export function ProcessPanel({
         kind="empty"
         icon={Workflow}
         title="No execution flows"
-        description="Flows are traced from call edges during indexing. This repository produced none."
+        description="No execution flows were found when this repository was indexed."
       />
     )
   }

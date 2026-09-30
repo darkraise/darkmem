@@ -13,10 +13,8 @@ import { armStatus } from "@/demo/settings"
 // built and wired and contributing a factor of exactly 1 — not that a feature
 // is missing, and not that flipping it is unavailable.
 const STATUS_HELP: Record<"active" | "inactive", string> = {
-  active:
-    "This arm is at a non-zero weight, so it is changing the order of results right now. Its factor multiplies each row's fused rrf_score.",
-  inactive:
-    "Built and wired, sitting at weight 0 — its factor is exactly 1, so it moves nothing. Invariant 23: an unspent arm is shown at zero rather than hidden, because omitting it would read as 'this does not exist'. Raising it above zero is a deliberate activation.",
+  active: "Non-zero weight: this is changing the order of results.",
+  inactive: "Weight 0: this has no effect until raised above zero.",
 }
 
 // Invariant 23, per-row: an arm at 0 renders INACTIVE (built-but-unspent,

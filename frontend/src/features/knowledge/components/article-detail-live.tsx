@@ -7,7 +7,6 @@ import { EmptyState } from "@/components/darkmem"
 import { Progress } from "darkraise-ui/components/progress"
 import { Separator } from "darkraise-ui/components/separator"
 import {
-  LayerChip,
   VerificationBadge,
   useDetailLevel,
   type VerificationStatus,
@@ -18,7 +17,7 @@ import {
   type ArticleDetail,
 } from "@/hooks/api/use-articles-api"
 import { DetailSection } from "./detail-section"
-import { StaleBadge } from "./fact-parts"
+import { StaleBadge, SuppressedBadge } from "./fact-parts"
 
 /** One prose segment: either plain text, or text a citation grounds. */
 interface Segment {
@@ -84,15 +83,7 @@ export function segmentProse(
  *  — the opposite of what is true. */
 function Coverage({ coverage }: { coverage: number | null }) {
   if (coverage === null) {
-    return (
-      <p className="text-sm">
-        <b className="text-base font-semibold">not measured</b> — no
-        claim-support coverage has been computed for this article. Coverage is
-        measured by the entailment pass, which needs a qualified verification
-        judge; until one is qualified this reads as unmeasured rather than as a
-        number.
-      </p>
-    )
+    return <p className="text-muted-foreground text-sm">Not measured yet.</p>
   }
   return (
     <>
@@ -101,9 +92,8 @@ function Coverage({ coverage }: { coverage: number | null }) {
         aria-label="Claim-support coverage"
       />
       <p className="text-sm">
-        <b className="text-base font-semibold">{coverage.toFixed(2)}</b>{" "}
-        claim-support coverage — the fraction of this article's sentences a
-        cited fact entails.
+        <b className="text-base font-semibold">{coverage.toFixed(2)}</b> — share
+        of sentences a cited fact supports.
       </p>
     </>
   )
@@ -135,7 +125,7 @@ function CitationRow({
       <span className="min-w-52 flex-1 text-sm">“{citation.fact}”</span>
       {!citation.believed && (
         <span className="text-warning-text font-mono text-sm">
-          belief window closed — retained, no longer believed
+          no longer believed
         </span>
       )}
     </div>
@@ -170,11 +160,13 @@ function Detail({ article }: { article: ArticleDetail }) {
     <div className="mx-auto max-w-3xl">
       <div className="space-y-4 pt-2 pb-6">
         <div className="flex flex-wrap items-center gap-2">
-          <LayerChip layer={3} />
           <VerificationBadge
             status={(article.status ?? "candidate") as VerificationStatus}
           />
           {article.stale && <StaleBadge />}
+          {article.label_suppressed && (
+            <SuppressedBadge reason={article.label_suppressed} />
+          )}
           {article.stale && (
             <span className="text-muted-foreground text-sm italic">
               synthesised before the latest verified change
@@ -186,23 +178,15 @@ function Detail({ article }: { article: ArticleDetail }) {
               honesty signal about what the system tried, not a fingerprint. */}
           {article.resynthesis_held_at && (
             <span className="text-warning-text text-sm">
-              a re-synthesis was attempted and held
+              re-synthesis could not be grounded
               {article.resynthesis_held_coverage !== null &&
-                ` at coverage ${article.resynthesis_held_coverage.toFixed(2)}`}
+                ` (coverage ${article.resynthesis_held_coverage.toFixed(2)})`}
             </span>
           )}
-          <span className="text-muted-foreground ml-auto font-mono text-sm">
-            article {article.id.slice(0, 8)}
-          </span>
         </div>
         <h2 className="max-w-[70ch] text-2xl leading-snug font-semibold">
           {article.title ?? article.subject_key}
         </h2>
-        {article.label_suppressed && (
-          <p className="text-muted-foreground max-w-[70ch] font-mono text-sm">
-            rung withheld: {article.label_suppressed}
-          </p>
-        )}
         {article.superseded_by && (
           <Link
             to="/knowledge/articles/$articleId"
@@ -213,8 +197,7 @@ function Detail({ article }: { article: ArticleDetail }) {
               aria-hidden
               className="text-muted-foreground h-3.5 w-3.5"
             />
-            superseded_by → article {article.superseded_by.slice(0, 8)} — the
-            current statement of record for this subject
+            superseded by a newer version →
           </Link>
         )}
         {article.supersedes && (
@@ -224,7 +207,7 @@ function Detail({ article }: { article: ArticleDetail }) {
             className="text-muted-foreground hover:text-primary-text flex w-fit items-center gap-1.5 text-sm transition-colors"
           >
             <GitBranch aria-hidden className="h-3.5 w-3.5" />
-            supersedes article {article.supersedes.slice(0, 8)} — view history
+            view previous version →
           </Link>
         )}
 
@@ -250,8 +233,7 @@ function Detail({ article }: { article: ArticleDetail }) {
         </p>
         {uncited && article.citations.length === 0 && (
           <p className="text-muted-foreground max-w-[70ch] text-sm">
-            No citation rows are recorded for this article, so no sentence on
-            this page is linked to the fact that grounds it.
+            No citations recorded for this article.
           </p>
         )}
       </div>
@@ -266,8 +248,7 @@ function Detail({ article }: { article: ArticleDetail }) {
         <DetailSection
           value="citations"
           title="Citations"
-          meta={`${article.citations.length} · the article's only provenance`}
-          hint="article_citations.fact_id is a hard FK to knowledge_triples — safe because facts are invalidate-not-delete, so a citation can never dangle. Synthesis input is restricted to the subject's non-disputed corroborated/confirmed facts, never a raw document."
+          meta={String(article.citations.length)}
         >
           <div className="space-y-1.5">
             {article.citations.map((citation, i) => (
@@ -282,13 +263,12 @@ function Detail({ article }: { article: ArticleDetail }) {
 
         <DetailSection
           value="coverage"
-          title="Claim-support coverage"
+          title="Coverage"
           meta={
             article.coverage === null
               ? "not measured"
               : article.coverage.toFixed(2)
           }
-          hint="confidence is labelled claim-support coverage, never a vague score — it is the fraction of this article's sentences a cited fact entails."
         >
           <Coverage coverage={article.coverage} />
         </DetailSection>
@@ -311,7 +291,7 @@ function Detail({ article }: { article: ArticleDetail }) {
             {level === "advanced" && (
               <>
                 <dt className="text-muted-foreground font-mono">
-                  fact_set_hash
+                  fact set hash
                 </dt>
                 <dd className="min-w-0 font-mono break-words">
                   {article.fact_set_hash ?? "—"}
@@ -342,7 +322,7 @@ export function ArticleDetailLive({ articleId }: { articleId: string }) {
         kind="missing"
         scope="page"
         title="Article not found"
-        description="No article with this id exists in the vault. A superseded article stays readable through its lineage, so a missing one was never written rather than replaced."
+        description="No article exists with this id."
         action={
           <Button variant="outline" asChild>
             <Link to="/knowledge/articles">

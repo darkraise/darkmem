@@ -28,11 +28,10 @@ function DocumentsPage() {
       <PageChrome
         icon={FileText}
         title="Documents"
-        description="Browse, search and question the documents filed into each project."
       />
       {isError ? (
         <p className="text-destructive text-sm">
-          Projects could not be loaded — a failed read, not an empty corpus.
+          Projects could not be loaded.
         </p>
       ) : isLoading ? (
         <Skeleton className="h-64 w-full" />
@@ -50,8 +49,8 @@ function DocumentsPage() {
       ) : (
         <ProjectChooser
           icon={FileText}
-          heading="Documents open one project at a time"
-          description="Pick a project to browse its documents. The project switcher in the header changes it later."
+          heading="Choose a project"
+          description="Pick one to browse its documents."
           projects={rows
             .filter((p) => p.document_count > 0)
             .map((p) => ({ name: p.name, count: p.document_count }))}

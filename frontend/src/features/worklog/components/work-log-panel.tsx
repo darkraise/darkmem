@@ -141,7 +141,7 @@ export function WorkLogPanel({
         kind="empty"
         icon={ScrollText}
         title="No work log yet"
-        description="A coding client's checkpoints, ledger and notes appear here once it appends to a workstream in this project with worklog_append."
+        description="A coding client's checkpoints and notes appear here once it logs work in this project."
       />
     )
   }

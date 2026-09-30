@@ -36,7 +36,7 @@ export function UsageChip({
     return (
       <span
         className={cn("text-muted-foreground font-mono text-xs", className)}
-        title="No llm_usage rows for this item. Metering records one row per vendor call; an item that predates it, or whose rows the retention sweep removed, has no total to show."
+        title="No LLM calls were recorded for this item."
       >
         no spend recorded
       </span>

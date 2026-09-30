@@ -49,62 +49,57 @@ const GRAPH_DEFAULTS: Record<string, boolean> = {
   community_injection_enabled: false,
 }
 
-const FUSION_ARM_META: Record<
-  string,
-  { alias?: string; desc: string; step: number }
-> = {
+const FUSION_ARM_META: Record<string, { desc: string; step: number }> = {
   confidence_rank_gamma: {
-    alias: "w_conf",
-    desc: "1 + w·(confidence − 0.75) — scales a row's fused score by how far its content-quality estimate sits from the 0.75 default. Above 0 it multiplies rrf_score after fusion; after a rerank it rescales without reordering",
+    desc: "Ranks results with a higher confidence estimate above the rest",
     step: 0.05,
   },
   w_importance: {
-    desc: "1 + w·(importance − 0.5) — column populated, unread before this arm ships",
+    desc: "Ranks more important memories higher",
     step: 0.05,
   },
   w_heat: {
-    desc: "1 + w·heat_norm, heat computed in SQL from memory_access_stats — a row read often ranks higher",
+    desc: "Ranks frequently read memories higher",
     step: 0.05,
   },
   w_recency: {
-    desc: "1 + w·recency_norm, from last_accessed / created_at — a recently touched row ranks higher",
+    desc: "Ranks recently used or created memories higher",
     step: 0.05,
   },
   // Absent until 2026-08-21, which made this arm's help tip render the literal
   // string "w_context_boost": `armFrom` falls back to the flag name when the
   // meta table has no entry, so a missing row here reads as a description.
   w_context_boost: {
-    desc: "post-fusion multiplier on a MATCH outcome only — a NEUTRAL row carries a label with no boost, and a CONFLICT row is excluded and counted rather than down-weighted",
+    desc: "Boosts results whose context conditions match the query; results whose conditions conflict are left out",
     step: 0.05,
   },
 }
 
 const BEHAVIORAL_META: Record<string, string> = {
   hybrid_search_enabled:
-    "RRF fusion of semantic + keyword search, k=60 — the retrieval baseline the G-A gate already measured. Off, retrieval falls back to the semantic arm alone",
+    "Combines semantic and keyword search. Off, search uses semantic matching only",
   reranker_enabled:
-    "LLM-scores the top-40 RRF rows before serving — flips only on a measured win including its p95 cost (gate-ledger.md standing conditional gate)",
+    "Has an LLM re-score the top 40 results before they are returned. Adds latency and cost",
   relation_rescue:
-    "pattern-based rescue layer for relations the extractor misses (adjacency, subject-tracking, REPLACES). The only surviving ingestion-side behavioral flag",
+    "Recovers relations the extractor missed, using text patterns",
 }
 
-/** Doc 07 §4. Descriptions live here rather than on the wire for the reason
- *  `BEHAVIORAL_META` does — prose is a display concern. The *pairing* and the
- *  activation id do come from the backend's `GRAPH_CHANNELS`, because getting
- *  either wrong writes the wrong row with nothing looking wrong. */
+/** Descriptions live here rather than on the wire for the reason
+ *  `BEHAVIORAL_META` does — prose is a display concern. The *pairing* does
+ *  come from the backend's `GRAPH_CHANNELS`, because getting it wrong writes
+ *  the wrong row with nothing looking wrong. */
 const GRAPH_META: Record<string, string> = {
   ppr_enabled:
-    "personalized PageRank list, seeded from the query's resolved entities and read from a cached in-process snapshot the ppr_snapshot job refreshes. Retrieval never computes it inline",
+    "Adds results ranked by how close they are in the entity graph to the entities in the query",
   dual_level_enabled:
-    "global relation arm over relation_embeddings, scoped through the memories that assert each relation — a second ranked list, not a rescore of the first",
+    "Adds results found by searching the relations between entities",
   community_injection_enabled:
-    "injects a resolved community's report_string as local context. Context augmentation, so it adds no ranked list and takes no RRF weight",
+    "Adds a summary of the matching entity group as context. It adds no ranked list, so it has no weight",
 }
 
 const GRAPH_WEIGHT_META: Record<string, string> = {
-  w_ppr: "RRF list weight — how heavily the PPR-ranked list counts in the fusion. A list weight, never a per-row multiplier",
-  w_dual:
-    "RRF list weight — how heavily the dual-level relation channel counts in the fusion. A list weight, never a per-row multiplier",
+  w_ppr: "How much the graph-proximity results count in the ranking",
+  w_dual: "How much the relation-search results count in the ranking",
 }
 
 const TUNABLE_KEYS = [
@@ -122,25 +117,25 @@ const TUNABLE_META: Record<
   { desc: string; min: number; max: number; codedDefault: number; unit?: string }
 > = {
   pipeline_concurrency: {
-    desc: "how many memories Phase 2 extracts and classifies at once, and how wide Phase 4's dedup probes fan out. Raising it trades provider rate-limit headroom for batch latency",
+    desc: "How many memories are processed at once. Higher is faster but uses more of the provider's rate limit",
     min: 1,
     max: 20,
     codedDefault: 5,
   },
   embedding_batch_size: {
-    desc: "contents per chunk in Phase 1's single embedder call — larger batches cut round-trips, and overrun a model's context window",
+    desc: "How many texts are sent per embedding request. Larger batches mean fewer requests but can exceed the model's context window",
     min: 1,
     max: 200,
     codedDefault: 20,
   },
   embedding_concurrency: {
-    desc: "how many embed chunks are in flight at once against the embedding provider",
+    desc: "How many embedding requests run at once",
     min: 1,
     max: 10,
     codedDefault: 1,
   },
   entity_cache_ttl_minutes: {
-    desc: "how long Phase 3 keeps an entity vector in the in-memory (name_lower, fingerprint) cache before falling back to the DB cache",
+    desc: "How long entity embeddings stay in the in-memory cache",
     min: 1,
     max: 1440,
     codedDefault: 60,
@@ -195,7 +190,6 @@ export interface FlagsTabBinding {
    *  tab, so its own `isPending` would light up all of them at once. */
   isSaving: (key: string) => boolean
   allowlistPatterns: string[]
-  overridesWritten: number
   isLoading: boolean
   /** One `feature_flags` write for a whole section's edits. Every control on
    *  this tab that lives in that row goes through here, so a card with six
@@ -208,25 +202,15 @@ export interface FlagsTabBinding {
   saveAllowlist: (patterns: string[]) => void
 }
 
-function armFrom(
-  flag: string,
-  value: number,
-  activation: string | null | undefined,
-  measurable: string[],
-  measured: string[],
-  descOverride?: string,
-): DemoRankArm {
+function armFrom(flag: string, value: number, descOverride?: string): DemoRankArm {
   const meta = FUSION_ARM_META[flag]
   return {
     key: flag,
-    alias: meta?.alias,
     desc: descOverride ?? meta?.desc ?? flag,
     value,
     coded_default: CODED_DEFAULTS[flag] ?? 0,
     source: value === (CODED_DEFAULTS[flag] ?? 0) ? "default" : "override",
     step: meta?.step ?? 0.05,
-    activatesWith: activation ?? undefined,
-    unmeasured: measurable.includes(flag) && !measured.includes(flag),
   }
 }
 
@@ -304,7 +288,6 @@ export function useFlagsTabBinding(): FlagsTabBinding {
       // and pretending otherwise would show a spinner that never resolves.
       isSaving: () => false,
       allowlistPatterns: demoFlags.repo_allowlist.patterns,
-      overridesWritten: demoFlags.overrides_written,
       isLoading: false,
       // Demo mode has no request to batch, so one section save fans back out
       // to the store actions the fixture already had. The *caller's* shape is
@@ -338,11 +321,6 @@ export function useFlagsTabBinding(): FlagsTabBinding {
   }
 
   const flags = flagsQuery.data
-  const measurable = flags?.measurable_flags ?? []
-  const measured = flags?.measured_flags ?? []
-  const rankArmByFlag = new Map(
-    (flags?.rank_arms ?? []).map((a) => [a.flag, a.activation]),
-  )
 
   const fusionArms: DemoRankArm[] = flags
     ? (
@@ -352,20 +330,12 @@ export function useFlagsTabBinding(): FlagsTabBinding {
           "w_heat",
           "w_recency",
         ] as const
-      ).map((key) =>
-        armFrom(key, flags[key], rankArmByFlag.get(key), measurable, measured),
-      )
+      ).map((key) => armFrom(key, flags[key]))
     : []
 
   const contextBoost: DemoRankArm = flags
-    ? armFrom(
-        "w_context_boost",
-        flags.w_context_boost,
-        rankArmByFlag.get("w_context_boost"),
-        measurable,
-        measured,
-      )
-    : armFrom("w_context_boost", 0, undefined, [], [])
+    ? armFrom("w_context_boost", flags.w_context_boost)
+    : armFrom("w_context_boost", 0)
 
   const behavioralFlags: DemoBehavioralFlag[] = flags
     ? (
@@ -382,14 +352,13 @@ export function useFlagsTabBinding(): FlagsTabBinding {
           (flags[key] as boolean) === BEHAVIORAL_DEFAULTS[key]
             ? "default"
             : "override",
-        unmeasured: measurable.includes(key) && !measured.includes(key),
       }))
     : []
 
-  // The channel list, its flag→weight pairing and its activation id all come
-  // off `graph_channels`. Pairing `ppr_enabled` with `w_dual` here would write
-  // the wrong row with nothing about the result looking wrong, which is why
-  // this is read rather than re-typed.
+  // The channel list and its flag→weight pairing come off `graph_channels`.
+  // Pairing `ppr_enabled` with `w_dual` here would write the wrong row with
+  // nothing about the result looking wrong, which is why this is read rather
+  // than re-typed.
   const graphFlags: DemoGraphFlag[] = (flags?.graph_channels ?? []).map(
     (channel) => ({
       key: channel.flag,
@@ -399,26 +368,14 @@ export function useFlagsTabBinding(): FlagsTabBinding {
         channel.enabled === (GRAPH_DEFAULTS[channel.flag] ?? false)
           ? "default"
           : "override",
-      activatesWith: channel.activation ?? undefined,
-      unmeasured:
-        measurable.includes(channel.flag) && !measured.includes(channel.flag),
       paired_arm:
         channel.weight_flag === null
           ? null
           : armFrom(
               channel.weight_flag,
               channel.weight ?? 0,
-              // A list weight is not a `RankArm`, so it carries no activation
-              // of its own — the channel's is the one that governs both.
-              undefined,
-              measurable,
-              measured,
               GRAPH_WEIGHT_META[channel.weight_flag],
             ),
-      no_weight_note:
-        channel.weight_flag === null
-          ? "context augmentation, not a ranking signal — no paired RRF weight"
-          : undefined,
     }),
   )
 
@@ -452,18 +409,7 @@ export function useFlagsTabBinding(): FlagsTabBinding {
     ),
     measured: ladderQuery.data?.measured ?? [],
     rowPresent: ladderQuery.data?.row_present ?? false,
-    measurementTask: ladderQuery.data?.measurement_task ?? "T2.40",
-    gate_note: LADDER_GATE_NOTE,
   }
-
-  const overridesWritten =
-    fusionArms.filter((a) => a.source === "override").length +
-    (contextBoost.source === "override" ? 1 : 0) +
-    behavioralFlags.filter((f) => f.source === "override").length +
-    graphFlags.filter((f) => f.source === "override").length +
-    graphFlags.filter((f) => f.paired_arm?.source === "override").length +
-    tunables.filter((t) => t.source === "override").length +
-    corroboration.params.filter((p) => p.committed !== null).length
 
   return {
     fusionArms,
@@ -482,7 +428,6 @@ export function useFlagsTabBinding(): FlagsTabBinding {
     classificationAreasApply: flags?.classification_areas_apply ?? false,
     isSaving,
     allowlistPatterns: allowlistQuery.data?.patterns ?? [],
-    overridesWritten,
     isLoading: flagsQuery.isLoading,
     saveFlags: (section, patch) => {
       // `FeatureFlagsUpdate` is a partial schema, so a many-key body is one
@@ -502,14 +447,6 @@ export function useFlagsTabBinding(): FlagsTabBinding {
   }
 }
 
-/** Doc 08 §4.1's rule, spelled out once for the gate's section help. */
-export const LADDER_GATE_NOTE =
-  "N drops from 3 to 2 when two attributable origins differ in source-kind " +
-  "(memory + code beats three memories) or lie at least 7 days apart. " +
-  "Corroboration counts DISTINCT origin_key over fact_sources, never rows; " +
-  "anonymous origins fold into one reserved bucket that counts once and fires " +
-  "no gate, and a citation the re-verifier marked stale corroborates nothing."
-
 /** The demo instance's simple-mode label space.
  *
  *  Names come from the one shared vocabulary source rather than being spelled
@@ -517,13 +454,11 @@ export const LADDER_GATE_NOTE =
  *  `test_no_frontend_component_keeps_its_own_memory_type_list` fails the build
  *  on, and it goes stale the first time a type is added. Real mode serves each
  *  description from the backend's own `SIMPLE_TYPES`; demo mode has no backend
- *  to ask, so it says that rather than inventing prose that would then be a
+ *  to ask, so it serves none rather than inventing prose that would then be a
  *  second place the descriptions live. */
 const DEMO_LABELS: ClassificationLabel[] = MEMORY_TYPES.map((name) => ({
   name,
-  description:
-    "A simple-mode label. On a live instance its description is served from " +
-    "the backend's own vocabulary — demo mode has no backend to read it from.",
+  description: "",
   // Simple mode credits no area, because none is responsible for the fixed
   // vocabulary.
   area: null,

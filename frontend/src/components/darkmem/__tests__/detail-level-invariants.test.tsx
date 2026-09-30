@@ -69,7 +69,6 @@ const SUPERSEDED_ROW = {
   tags: [],
   source: "mcp",
   created_at: new Date().toISOString(),
-  layer: 0 as const,
   status: "superseded" as const,
   verification_status: "corroborated" as const,
   verification_detail: "asserted by 3 distinct origins, no known contradiction",
@@ -81,7 +80,7 @@ describe("detail level: MemoryRow honesty labels render in both modes", () => {
   })
 
   it.each(["simple", "advanced"] as const)(
-    "layer chip, lifecycle badge, and verification badge all render in %s mode",
+    "lifecycle badge and verification badge render in %s mode",
     (level) => {
       useDetailLevel.setState({ level })
       render(
@@ -92,7 +91,6 @@ describe("detail level: MemoryRow honesty labels render in both modes", () => {
           onToggleTrace={vi.fn()}
         />,
       )
-      expect(screen.getByText("L0 · memory")).toBeInTheDocument()
       expect(screen.getByText("superseded")).toBeInTheDocument()
       expect(screen.getByText("corroborated")).toBeInTheDocument()
     },
@@ -112,7 +110,6 @@ describe("detail level: MemoryRow honesty labels render in both modes", () => {
     expect(screen.queryByText("rrf_score")).not.toBeInTheDocument()
     expect(screen.queryByText("semantic")).not.toBeInTheDocument()
     // Never collapsed: the row's own honesty labels.
-    expect(screen.getByText("L0 · memory")).toBeInTheDocument()
     expect(screen.getByText("superseded")).toBeInTheDocument()
     expect(screen.getByText("corroborated")).toBeInTheDocument()
     expect(screen.getByText(/Why it ranked:/)).toBeInTheDocument()
@@ -142,24 +139,22 @@ describe("detail level: fact-sources honesty count renders in both modes", () =>
   })
 
   it.each(["simple", "advanced"] as const)(
-    "origin kind, origin_key, and the distinct-origin count all render in %s mode",
+    "origin kind and origin key render in %s mode",
     (level) => {
       useDetailLevel.setState({ level })
       render(<FactSourcesGroups sources={SOURCES} />)
-      expect(screen.getByText("origin_key: session-a")).toBeInTheDocument()
-      expect(screen.getByText("origin_key: session-b")).toBeInTheDocument()
-      expect(
-        screen.getByText(/COUNT\(DISTINCT origin_key\)/),
-      ).toBeInTheDocument()
-      expect(screen.getByText("2")).toBeInTheDocument()
+      expect(screen.getByText("session-a")).toBeInTheDocument()
+      expect(screen.getByText("session-b")).toBeInTheDocument()
+      expect(screen.getByText("memory")).toBeInTheDocument()
+      expect(screen.getByText("code")).toBeInTheDocument()
     },
   )
 
-  it("hides the raw per-source rows in simple mode, never the origin count", () => {
+  it("hides the raw per-source rows in simple mode, never the origin", () => {
     useDetailLevel.setState({ level: "simple" })
     render(<FactSourcesGroups sources={SOURCES} />)
     expect(screen.queryByText("memory abc12345")).not.toBeInTheDocument()
-    expect(screen.getByText("origin_key: session-a")).toBeInTheDocument()
+    expect(screen.getByText("session-a")).toBeInTheDocument()
   })
 
   // T2.86, T2.48's rescope: doc 10 §6's stale overlay is an honesty signal
@@ -322,20 +317,30 @@ describe("detail level: the Facts tab's honesty labels render in both modes", ()
   })
 
   it.each(["simple", "advanced"] as const)(
-    "rung badge, verbatim claim, under-sourced, belief window and review state all render in %s mode",
+    "rung badge, under-sourced, belief window, review state and origin count all render in %s mode",
     (level) => {
       useDetailLevel.setState({ level })
       render(<FactRow fact={FACT_ROW} focused={false} />)
-      expect(screen.getByText("L2 · fact")).toBeInTheDocument()
       expect(screen.getByText("corroborated")).toBeInTheDocument()
-      // Doc 12 §4: the claim is shown verbatim or not at all. Simple mode is
-      // not an exception — and for a disputed fact this line is both sides.
-      expect(screen.getByText(FACT_CLAIM)).toBeInTheDocument()
       expect(screen.getByText("under-sourced")).toBeInTheDocument()
       expect(screen.getByText("window closed")).toBeInTheDocument()
       expect(screen.getByText("in review")).toBeInTheDocument()
       expect(screen.getByText(/3 origins/)).toBeInTheDocument()
-      expect(screen.getByText("no context restriction")).toBeInTheDocument()
+    },
+  )
+
+  it.each(["simple", "advanced"] as const)(
+    "a disputed row keeps its two-sided claim in %s mode",
+    (level) => {
+      useDetailLevel.setState({ level })
+      const claim = "disputed: 2 origins assert x, 1 origin asserts y"
+      render(
+        <FactRow
+          fact={{ ...FACT_ROW, verification_status: "disputed", claim }}
+          focused={false}
+        />,
+      )
+      expect(screen.getByText(claim)).toBeInTheDocument()
     },
   )
 
@@ -346,9 +351,8 @@ describe("detail level: the Facts tab's honesty labels render in both modes", ()
     // it already carries, and the closed window's raw timestamp.
     expect(screen.queryByText("USES")).not.toBeInTheDocument()
     expect(screen.queryByText("2025-01-01T00:00:00Z")).not.toBeInTheDocument()
-    // Never collapsed: the row's own honesty labels and its claim.
+    // Never collapsed: the row's own honesty labels and its sentence.
     expect(screen.getByText("window closed")).toBeInTheDocument()
-    expect(screen.getByText(FACT_CLAIM)).toBeInTheDocument()
     expect(screen.getByText("darkmem uses postgres")).toBeInTheDocument()
   })
 
@@ -420,27 +424,29 @@ describe("detail level: the fact detail page's honesty labels render in both mod
   }
 
   it.each(["simple", "advanced"] as const)(
-    "the rung badge and the verbatim claim render in %s mode",
+    "the rung badge renders in %s mode",
     async (level) => {
       useDetailLevel.setState({ level })
       render(<FactDetail factId="f1" />, { wrapper: detailWrapper })
-      await screen.findByText(DETAIL_CLAIM)
+      await screen.findByText("darkmem uses postgres")
       expect(screen.getByText("corroborated")).toBeInTheDocument()
+      // A non-disputed claim only restates the sources count.
+      expect(screen.queryByText(DETAIL_CLAIM)).not.toBeInTheDocument()
     },
   )
 
-  it("collapses the raw triple in simple mode, never the claim", async () => {
+  it("collapses the raw triple in simple mode, never the badge", async () => {
     useDetailLevel.setState({ level: "simple" })
     render(<FactDetail factId="f1" />, { wrapper: detailWrapper })
-    await screen.findByText(DETAIL_CLAIM)
+    await screen.findByText("darkmem uses postgres")
     expect(screen.queryByText("USES")).not.toBeInTheDocument()
-    expect(screen.getByText(DETAIL_CLAIM)).toBeInTheDocument()
+    expect(screen.getByText("corroborated")).toBeInTheDocument()
   })
 
   it("shows the raw triple in advanced mode", async () => {
     useDetailLevel.setState({ level: "advanced" })
     render(<FactDetail factId="f1" />, { wrapper: detailWrapper })
-    await screen.findByText(DETAIL_CLAIM)
+    await screen.findByText("darkmem uses postgres")
     expect(screen.getByText("USES")).toBeInTheDocument()
   })
 })
@@ -503,9 +509,8 @@ describe("detail level: preference persists in localStorage and never touches th
 // T2.37 — the review queue is a new surface this flag must reach. Unlike
 // the Facts tab (which the reviewer found sits entirely outside this file's
 // coverage, making its own Simple/Advanced Done-when clause vacuous), the
-// review queue's honesty labels are asserted here at the render, gated by
-// an actual `useDetailLevel` read in `review-queue.tsx` — not a bare `<p>`
-// that happens to always render.
+// review queue's honesty labels are asserted here at the render, in both
+// detail levels.
 const REVIEW_CONSEQUENCE = {
   score: 0.42,
   tier: 1,
@@ -574,34 +579,15 @@ describe("detail level: the review queue's honesty labels survive Simple mode", 
   })
 
   it.each(["simple", "advanced"] as const)(
-    "the verification badge, queued-reason chip, and rank_note all render in %s mode",
+    "the verification badge renders and no ranking internals do, in %s mode",
     async (level) => {
       useDetailLevel.setState({ level })
       render(<ReviewQueue />, { wrapper: reviewQueueWrapper })
 
-      expect(await screen.findByText(/why ranked here:/)).toBeInTheDocument()
+      expect(await screen.findByText("darkmem uses postgres")).toBeInTheDocument()
       expect(screen.getByText("disputed")).toBeInTheDocument()
-      expect(screen.getByText(/queued: disputed/)).toBeInTheDocument()
+      expect(screen.queryByText(/why ranked here:/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/retrieval_frequency:/)).not.toBeInTheDocument()
     },
   )
-
-  it("collapses only the consequence breakdown in simple mode — never the row's own badges", async () => {
-    useDetailLevel.setState({ level: "simple" })
-    render(<ReviewQueue />, { wrapper: reviewQueueWrapper })
-
-    await screen.findByText(/why ranked here:/)
-    // Collapsed: the technical per-arm breakdown.
-    expect(screen.queryByText(/retrieval_frequency:/)).not.toBeInTheDocument()
-    // Never collapsed: the row's own honesty labels.
-    expect(screen.getByText("disputed")).toBeInTheDocument()
-    expect(screen.getByText(/queued: disputed/)).toBeInTheDocument()
-  })
-
-  it("shows the consequence breakdown in advanced mode", async () => {
-    useDetailLevel.setState({ level: "advanced" })
-    render(<ReviewQueue />, { wrapper: reviewQueueWrapper })
-
-    await screen.findByText(/why ranked here:/)
-    expect(screen.getByText(/retrieval_frequency:/)).toBeInTheDocument()
-  })
 })

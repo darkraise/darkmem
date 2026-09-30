@@ -2,7 +2,7 @@ import { FileText, FolderGit2, RefreshCw, X } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { EmptyState, listItemClass } from "@/components/darkmem"
 import { cn } from "darkraise-ui/lib"
-import { groupFailuresByStep, isPoison, POISON_ATTEMPTS } from "@/demo/activity"
+import { groupFailuresByStep, isPoison } from "@/demo/activity"
 import type { DemoPipelineFailure } from "@/features/activity/types"
 import { usePipelineTriage } from "../use-pipeline-triage"
 import { ModuleSurface } from "./module-surface"
@@ -64,10 +64,8 @@ function FailureRow({
       </div>
       {poison && (
         <p className="border-warning/50 bg-warning/5 rounded-md border border-dashed px-2.5 py-2 text-sm">
-          Same failed step and error message across all {failure.attempts}{" "}
-          attempts — surfaced instead of retried again automatically. Retrying
-          will not resolve this without a fix upstream (e.g. the extraction LLM
-          profile); retry stays available as a manual, deliberate action.
+          Failed the same way on all {failure.attempts} attempts; retrying
+          won&apos;t help until the cause is fixed.
         </p>
       )}
       <div className="flex flex-wrap items-center gap-2">
@@ -89,12 +87,6 @@ function FailureRow({
           Forget
         </Button>
       </div>
-      {failure.retry_queued && (
-        <p className="text-muted-foreground text-sm italic">
-          retry queued — the pipeline will re-attempt this step; the row stays
-          open until a clean run resolves it.
-        </p>
-      )}
     </div>
   )
 }
@@ -107,19 +99,10 @@ export function TriageTab() {
 
   return (
     <div className="space-y-4">
-      <p className="text-muted-foreground max-w-4xl text-sm">
-        Unresolved pipeline_failures rows, each naming its failed step and its
-        reason verbatim. A row still failing the same way after{" "}
-        {POISON_ATTEMPTS}+ attempts is surfaced as poison rather than left to
-        retry unnoticed — the threshold is a triage-surface heuristic, not a
-        backend gate.
-      </p>
       <ModuleSurface
         title="Failure triage"
-        state={
-          isLoading ? "empty" : failures.length > 0 ? "populated" : "empty"
-        }
-        meta={`pipeline_failures · ${failures.length} unresolved`}
+        state="populated"
+        meta={`${failures.length} unresolved`}
         actions={
           failures.length > 0 ? (
             <Button
@@ -137,15 +120,13 @@ export function TriageTab() {
           <EmptyState
             kind="failed"
             title="Couldn't load pipeline failures"
-            description="The /pipeline-failures request failed — this is an error state, not an empty triage queue."
           />
-        ) : failures.length === 0 ? (
+        ) : failures.length === 0 && !isLoading ? (
           // Healthy-empty: a queue at zero is a positive state, not an
           // absence to explain away.
           <EmptyState
             kind="resolved"
             title="No failures to triage"
-            description="Every memory-ingest and code-index run in the last 100 attempts completed without an unresolved pipeline_failures row — nothing is stuck, nothing is waiting on a retry."
           />
         ) : (
           groups.map((group) => (

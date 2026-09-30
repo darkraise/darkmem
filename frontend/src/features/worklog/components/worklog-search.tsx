@@ -43,7 +43,7 @@ export function WorklogSearch({
       ) : null}
       {search.isSuccess && !search.data.semantic_ran ? (
         <p className="text-muted-foreground text-xs">
-          Keyword matches only: the semantic arm did not run.
+          Showing keyword matches only.
         </p>
       ) : null}
       {hits.length > 0 ? (

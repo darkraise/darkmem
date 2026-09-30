@@ -236,8 +236,7 @@ describe("LiveDreamDigest (DEMO off — real /dream-digest)", () => {
     await screen.findByText(`object ${OBJECT_A.slice(0, 8)}`)
     // Event 102 is journalled undone: it must still render its row (with the
     // supersede badge asserted above) and carry the undone marker and actor.
-    expect(screen.getByText(/undone — journaled/)).toBeInTheDocument()
-    expect(screen.getByText(/alice/)).toBeInTheDocument()
+    expect(screen.getByText(/undone by alice/)).toBeInTheDocument()
   })
 
   it("T2.89: a re-read (not the one-shot toast) still says what was restored", async () => {
@@ -366,24 +365,19 @@ describe("LiveDreamDigest (DEMO off — real /dream-digest)", () => {
     )
   })
 
-  it("Simple mode collapses technical detail but never an honesty label", async () => {
+  it("shows the substance of each row in both detail levels, never raw event detail", async () => {
     mockReads()
     useDetailLevel.setState({ level: "advanced" })
     const { rerender } = render(<LiveDreamDigest />, { wrapper })
     await screen.findByText(`object ${OBJECT_A.slice(0, 8)}`)
-
-    // Advanced: the technical event-id/detail line is present.
-    expect(screen.getByText(/event #101/)).toBeInTheDocument()
+    expect(screen.queryByText(/event #101/)).not.toBeInTheDocument()
 
     useDetailLevel.setState({ level: "simple" })
     rerender(<LiveDreamDigest />)
 
-    // Collapsed: the raw event id / detail JSON line is gone.
     expect(screen.queryByText(/event #101/)).not.toBeInTheDocument()
-    // Never collapsed: undo reachability, the undone marker, and the
-    // before/after diff — the honesty and substance of the row.
     expect(screen.getAllByRole("button", { name: /^undo$/i }).length).toBeGreaterThan(0)
-    expect(screen.getByText(/undone — journaled/)).toBeInTheDocument()
+    expect(screen.getByText(/undone by alice/)).toBeInTheDocument()
     expect(screen.getByText(/status:/)).toBeInTheDocument()
   })
 
@@ -450,16 +444,17 @@ describe("LiveDreamDigest (DEMO off — real /dream-digest)", () => {
     const user = userEvent.setup()
     render(<LiveDreamDigest />, { wrapper })
 
-    await screen.findByText(/1 of 2 cycles loaded/i)
+    await screen.findByText(/^2 cycles$/i)
     const loadMore = screen.getByRole("button", { name: /load more cycles/i })
     await user.click(loadMore)
 
-    await screen.findByText(/2 of 2 cycles loaded/i)
     // Once every cycle behind the server's own count is loaded, the button
     // offering more must go away rather than linger uselessly.
-    expect(
-      screen.queryByRole("button", { name: /load more cycles/i }),
-    ).not.toBeInTheDocument()
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: /load more cycles/i }),
+      ).not.toBeInTheDocument(),
+    )
   })
 
   it("F3: the surface chip reads error, not EMPTY, during a failed cycle-digest read", async () => {

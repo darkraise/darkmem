@@ -13,7 +13,6 @@ function KnowledgeFactsPage() {
       <PageChrome
         icon={ScrollText}
         title="Facts"
-        description="Verified facts with their sources, rungs and belief windows."
       />
       <FactsTab />
     </div>

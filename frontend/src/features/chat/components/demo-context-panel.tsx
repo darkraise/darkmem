@@ -1,9 +1,7 @@
 import { CircleDashed, TriangleAlert } from "lucide-react"
-import { cn } from "darkraise-ui/lib"
 import {
   ExclusionStrip,
   LayerChip,
-  useDetailLevel,
   VerificationBadge,
   WhyRetrievedTrace,
 } from "@/components/darkmem"
@@ -16,25 +14,15 @@ export function DemoContextPanel({
 }: {
   context: DemoTurnContext | undefined
 }) {
-  const advanced = useDetailLevel((s) => s.level) === "advanced"
   return (
     <div className="border-border bg-card min-h-0 space-y-2.5 overflow-y-auto rounded-md border p-3 lg:rounded-none lg:border-0 lg:bg-transparent">
       <div className="flex items-center gap-2">
         <span className="text-sm font-semibold">
           Context used for this turn
         </span>
-        {(!context || context.degraded || advanced) && (
-          <span
-            className={cn(
-              "ml-auto font-mono text-sm",
-              context
-                ? context.degraded
-                  ? "text-warning-text"
-                  : "text-success-text"
-                : "text-muted-foreground",
-            )}
-          >
-            {context ? (context.degraded ? "degraded" : "populated") : "empty"}
+        {context?.degraded && (
+          <span className="text-warning-text ml-auto font-mono text-sm">
+            degraded
           </span>
         )}
       </div>
@@ -47,8 +35,7 @@ export function DemoContextPanel({
           />
           <p className="text-sm font-semibold">No context yet</p>
           <p className="text-muted-foreground text-sm">
-            Nothing has been asked in this thread — send a message to see the
-            labelled rows it retrieved.
+            Send a message to see what it retrieves.
           </p>
         </div>
       ) : (
@@ -62,10 +49,6 @@ export function DemoContextPanel({
               <b className="font-semibold">{context.degraded}</b>
             </div>
           )}
-          <p className="text-muted-foreground text-sm">
-            Same composed, labelled rows the Memories why-retrieved trace
-            renders — no chat-only re-derivation.
-          </p>
           {context.rows.map((row) => (
             <div
               key={row.id}
@@ -79,19 +62,8 @@ export function DemoContextPanel({
                     detail={row.badge_line}
                   />
                 )}
-                {row.channel && (
-                  <span className="text-muted-foreground ml-auto font-mono text-xs">
-                    channel: {row.channel}
-                  </span>
-                )}
               </div>
               <p className="text-sm">{row.subject_text}</p>
-              <p className="text-muted-foreground font-mono text-sm">
-                {row.verification ? "badge — " : ""}
-                <b className="text-foreground font-semibold">
-                  {row.badge_line}
-                </b>
-              </p>
               {row.trace && (
                 <WhyRetrievedTrace
                   channels={row.trace.channels}

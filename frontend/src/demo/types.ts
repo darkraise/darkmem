@@ -313,8 +313,6 @@ export interface DemoWiki {
   generated_at: string
   /** The commit the prose describes — may lag the repo HEAD. */
   head: string
-  symbol_enrichment: "complete" | "draining"
-  module_summaries: "complete" | "draining"
   sections: DemoWikiSection[]
 }
 
@@ -449,61 +447,6 @@ export interface DemoFeedEvent {
   badge?: VerificationStatus
   /** The one event whose toast carries honesty content (fact.verified dispute). */
   toast?: boolean
-}
-
-/** One `memory_buffer` row as the monitor renders it. `attempts` is a
- *  claim count, not a failure count — it increments when a row is claimed,
- *  so it means "times claimed", never "times failed" (T1.13, T1.61
- *  ruling 1). */
-export interface DemoBufferRow {
-  id: string
-  project: string
-  attempts: number
-  maxAttempts: number
-  lastError: string | null
-  claimedAt?: string
-}
-
-export interface DemoBufferMonitor {
-  /** false — no REST surface reads memory_buffer yet, even though the
-   *  table and the buffer_flush job are live (invariant 23; T1.61 ruling). */
-  live: false
-  staged_phase: string
-  staged_reason: string
-  target: {
-    pending: number
-    claimed: number
-    done: number
-    error: number
-    /** Still `status='claimed'` but past `buffer_claim_visibility_seconds`
-     *  — the `stale_claims()` read helper's subject. Self-healing (the
-     *  `buffer_flush` job's reclaim arm resolves these automatically), so
-     *  this list is observational only, never actionable. */
-    staleClaims: DemoBufferRow[]
-    /** `status='error'` — attempts exhausted, retained for triage forever
-     *  (the retention sweep only ever deletes `done`). Actionable: retry
-     *  re-queues to pending, forget deletes permanently. */
-    poisonRows: DemoBufferRow[]
-    wait_process_note: string
-  }
-}
-
-export interface DemoDreamChainJob {
-  key: string
-  caption: string
-  state: "ok" | "active" | "pending"
-}
-
-export interface DemoDreamMonitor {
-  live: false
-  staged_phase: string
-  staged_reason: string
-  target: {
-    last_cycle_label: string
-    chain: DemoDreamChainJob[]
-    narrative: string
-    lock_note: string
-  }
 }
 
 export type DreamActionType =
@@ -681,26 +624,17 @@ export interface DemoLLMState {
 }
 
 export interface DemoSecurityState {
-  blocklisted: number
-  lockouts_30d: number
-  session: { issued_label: string; jti: string }
   rate_limit: {
     attempt_threshold: number
     lockout_window: string
-    ip_source: string
-    journaled: string
   }
-  cookie_secure: { value: string; note: string }
-  tofu: { claimed_label: string; journaled: string }
+  cookie_secure: { value: string }
   /** MCP Host allowlist chips; wild = the explicit "*" opt-out. */
   mcp_hosts: { host: string; wild?: boolean }[]
-  /** Dormant Phase-4 ApiKey card — designed, not wired (invariant 23). */
-  api_key_scopes: { label: string; never?: boolean }[]
 }
 
 export interface DemoMaintenanceState {
-  fingerprint: string
-  reembed: { memories: number; entities: number; code_chunks: number }
+  reembed: { memories: number; entities: number }
   cleanup: {
     expired: number
     expired_dependents: number
@@ -709,60 +643,9 @@ export interface DemoMaintenanceState {
   }
   dbops: {
     retired_fingerprints: string[]
-    vacuum_target: string
-    vacuum_note: string
-    reindex_target: string
-    reindex_note: string
   }
   /** Outcome line of the last confirmed op this session; null = none yet. */
   last_op_note: string | null
-}
-
-export type DistClientStatus = "connected" | "curbed" | "disconnected"
-
-export interface DemoDistClient {
-  id: string
-  name: string
-  status: DistClientStatus
-  handshake: string | null
-  context_file: string
-  mcp_config: string
-  /** "active · last inject 14:12 UTC · 8 items, 1,840/2,000 tokens". */
-  push_note: string | null
-  curbed_note: string | null
-  connect_hint?: string
-}
-
-export interface DemoInjectLogRow {
-  id: string
-  target: string
-  event_type: "inject" | "inject_curbed"
-  detail: string
-  time_label: string
-  meta: string
-}
-
-export interface DemoInjectItem {
-  layer: KnowledgeLayer
-  badge: VerificationStatus
-  /** "injected as: corroborated" — the label the tool receives. */
-  as_label: string
-  text: string
-}
-
-export interface DemoDistPolicyRow {
-  key: string
-  value: string
-  desc: string
-}
-
-export interface DemoDistributionState {
-  clients: DemoDistClient[]
-  policy: DemoDistPolicyRow[]
-  block_preview: string
-  log: DemoInjectLogRow[]
-  inject_items: DemoInjectItem[]
-  watermarks: { key: string; value: string }[]
 }
 
 export interface DemoStoreState {
@@ -786,8 +669,6 @@ export interface DemoStoreState {
   pipelineRuns: DemoPipelineRun[]
   feedEvents: DemoFeedEvent[]
   pipelineFailures: DemoPipelineFailure[]
-  bufferMonitor: DemoBufferMonitor
-  dreamMonitor: DemoDreamMonitor
   dreamCycle: DemoDreamCycle
   dreamActions: DemoDreamAction[]
   /** Earlier cycles, past their undo window — every entry undo-blocked. */
@@ -798,7 +679,6 @@ export interface DemoStoreState {
   llm: DemoLLMState
   security: DemoSecurityState
   maintenance: DemoMaintenanceState
-  distribution: DemoDistributionState
   addMemory: (m: DemoMemory) => void
   updateMemory: (id: string, patch: Partial<DemoMemory>) => void
   deleteMemory: (id: string) => void
@@ -817,10 +697,6 @@ export interface DemoStoreState {
   retryFailure: (id: string) => void
   retryAllFailures: () => void
   forgetFailure: (id: string) => void
-  /** Re-buffers a poison row: back to pending, attempts untouched. */
-  retryBufferRow: (id: string) => void
-  /** Explicitly forgets a poison row: removed from triage permanently. */
-  forgetBufferRow: (id: string) => void
   /** Busy honesty: a trigger on a held lock returns 409 — never queued. */
   triggerJob: (key: string) => JobTriggerResult
   saveJobConfig: (key: string, values: Record<string, number>) => void
@@ -855,7 +731,6 @@ export interface DemoStoreState {
   runMaintenanceOp: (op: MaintenanceOpKey) => void
   /** Curbing stops push only; pull is unaffected. Appends an inject_curbed
    *  (or resumed inject) log row and updates the client's watermark. */
-  setDistributionCurb: (clientId: string, curbed: boolean) => void
   resetSettings: () => void
 }
 

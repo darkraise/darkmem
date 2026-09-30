@@ -65,7 +65,6 @@ export function RevisionsSheet({
       <EmptyState
         kind="empty"
         title="No revisions"
-        description="A revision is written when a filing changes this document's content; block edits and byte sources write none."
       />
     )
   } else if (items.length === 1) {
@@ -94,8 +93,7 @@ export function RevisionsSheet({
         <SheetHeader>
           <SheetTitle>Revisions</SheetTitle>
           <SheetDescription>
-            Each filing that changed this document's content, newest first. Pick
-            the two to compare.
+            Newest first. Pick two to compare.
           </SheetDescription>
         </SheetHeader>
         <div className="space-y-4 p-4">

@@ -108,14 +108,12 @@ function SupersessionLineage({ memory }: { memory: Memory }) {
           <div className="flex flex-wrap items-center gap-2.5">
             <LifecycleBadge status="deprecated" />
             <span className="text-muted-foreground text-sm italic">
-              superseded_by: null — the successor memory was later removed; this
-              row was demoted, not deleted.
+              The memory that replaced this one was later deleted.
             </span>
           </div>
         ) : (
           <p className="text-muted-foreground text-sm italic">
-            not superseded — this is the current, active version of this memory;
-            superseded_by is null.
+            Not superseded — this is the current version.
           </p>
         )}
       </div>
@@ -126,12 +124,11 @@ function SupersessionLineage({ memory }: { memory: Memory }) {
         <SectionLabel>Replaced</SectionLabel>
         {memory.predecessors === undefined ? (
           <p className="text-muted-foreground text-sm italic">
-            unknown — not computed for this read.
+            Unknown.
           </p>
         ) : memory.predecessors.length === 0 ? (
           <p className="text-muted-foreground text-sm italic">
-            replaced nothing — no earlier memory points here through
-            superseded_by.
+            Replaced nothing.
           </p>
         ) : (
           <div className="space-y-1.5">
@@ -178,7 +175,6 @@ export function RealMemoryDetailView({ memoryId }: { memoryId: string }) {
       <PageChrome
         icon={Brain}
         title="Memory detail"
-        description="One memory, its enrichment, and its supersession lineage."
         parent={{ label: "Memories", href: "/memories" }}
         actions={
           <Button variant="outline" onClick={() => setEditOpen(true)}>
@@ -238,11 +234,7 @@ export function RealMemoryDetailView({ memoryId }: { memoryId: string }) {
 
       <Card elevation="low">
         <CardHeader className="pb-3">
-          <p className="text-sm font-semibold">Per-memory timeline</p>
-          <p className="text-muted-foreground text-sm">
-            events by object — timestamp, event type, and the actor and API key
-            each call was made under.
-          </p>
+          <p className="text-sm font-semibold">Timeline</p>
         </CardHeader>
         <CardContent>
           <MemoryEventTimeline memoryId={memory.id} />

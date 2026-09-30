@@ -5,7 +5,7 @@ import { Input } from "darkraise-ui/components/input"
 import { Switch } from "darkraise-ui/components/switch"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { toast } from "darkraise-ui/components/sonner"
-import { EmptyState, HelpTip } from "@/components/darkmem"
+import { EmptyState } from "@/components/darkmem"
 import { DEMO } from "@/lib/demo-flag"
 import {
   useNotifications,
@@ -50,7 +50,7 @@ export function NotificationsTab() {
         kind="empty"
         icon={Send}
         title="Notifications need a live instance"
-        description="This tab reads and writes real credentials, so it is not backed by the demo fixture."
+        description="Notifications are not available in demo mode."
       />
     )
   }
@@ -59,7 +59,7 @@ export function NotificationsTab() {
       <EmptyState
         kind="failed"
         title="Couldn’t load notification settings"
-        description="The /config/notifications request failed — this is an error, not an empty configuration."
+        description="Reload the page to try again."
       />
     )
   }
@@ -102,18 +102,6 @@ export function NotificationsTab() {
 
   return (
     <div className="max-w-2xl space-y-4">
-      <div className="text-muted-foreground flex items-center gap-1.5 text-sm">
-        <span>
-          Where darkmem tells you something went wrong while nobody was
-          watching.
-        </span>
-        <HelpTip label="About notifications">
-          A notifier, not an alerting system: no routing rules, no severities,
-          no retry queue. A send that fails is logged and dropped, because a
-          notifier that can take down the run it reports on is worse than none.
-        </HelpTip>
-      </div>
-
       <div className="border-inset bg-card flex flex-col gap-3 rounded-lg border p-3.5">
         <div className="flex items-center gap-2">
           <Send aria-hidden className="text-muted-foreground size-[var(--icon-size)]" />
@@ -138,8 +126,7 @@ export function NotificationsTab() {
         </Field>
         {stored.telegram.bot_token === MASK && token === null && (
           <p className="text-muted-foreground text-sm">
-            A token is stored. It is never sent back to this screen — leave the
-            field as-is to keep it.
+            A token is stored. Leave the field as-is to keep it.
           </p>
         )}
 
@@ -158,8 +145,7 @@ export function NotificationsTab() {
         <div className="min-w-0 flex-1">
           <p className="font-medium">Notify on job failure</p>
           <p className="text-muted-foreground text-sm">
-            One message per failed background run, with the job key and its
-            error. A successful run is not news.
+            One message per failed background job, with its error.
           </p>
         </div>
         <Switch
@@ -197,7 +183,7 @@ export function NotificationsTab() {
         </Button>
         {dirty && (
           <span className="text-muted-foreground text-sm">
-            Unsaved changes — the test uses what is stored, not what is typed.
+            Unsaved changes — the test uses the saved settings.
           </span>
         )}
       </div>

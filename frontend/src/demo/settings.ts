@@ -31,10 +31,6 @@ export function activeArmCount(flags: DemoFlagsState): number {
   return allArms(flags).filter((a) => armStatus(a.value) === "active").length
 }
 
-export function sourceLabel(source: "default" | "override"): string {
-  return source === "default" ? "coded default" : "override"
-}
-
 // ---------------------------------------------------------------------------
 // The verification ladder's thresholds are FLOORS, not settings (doc 08 §4.1).
 // A config row may tighten one freely; loosening it below its shipped default

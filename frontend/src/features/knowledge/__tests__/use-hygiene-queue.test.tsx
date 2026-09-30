@@ -9,7 +9,6 @@ vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
 import { apiFetch } from "@/lib/api"
 import {
   duplicateDirection,
-  useHygieneCountsRows,
   useHygieneDuplicateRows,
   useHygieneLowConfidenceRows,
   useHygieneSupersededRows,
@@ -140,32 +139,6 @@ describe("useHygieneLowConfidenceRows / useHygieneSupersededRows", () => {
 
     expect(result.current.rows[0]!.status).toBe("superseded")
     expect(result.current.rows[0]!.superseded_by).toBe("m5")
-  })
-})
-
-describe("useHygieneCountsRows", () => {
-  beforeEach(() => vi.clearAllMocks())
-
-  it("passes the project filter through to the counts door — unlike the review queue's, this one accepts it", async () => {
-    vi.mocked(apiFetch).mockResolvedValue({
-      duplicates: 2,
-      low_confidence: 5,
-      expiring_soon: 1,
-      superseded: 9,
-    })
-    const { result } = renderHook(() => useHygieneCountsRows({ project: "darkmem" }), { wrapper })
-    await waitFor(() => expect(result.current.loading).toBe(false))
-
-    expect(result.current.duplicates).toBe(2)
-    expect(result.current.superseded).toBe(9)
-    const url = vi.mocked(apiFetch).mock.calls[0]![0] as string
-    expect(url).toContain("project=darkmem")
-  })
-
-  it("reports a failed read as an error", async () => {
-    vi.mocked(apiFetch).mockRejectedValue(new Error("boom"))
-    const { result } = renderHook(() => useHygieneCountsRows({}), { wrapper })
-    await waitFor(() => expect(result.current.error).toBe(true))
   })
 })
 

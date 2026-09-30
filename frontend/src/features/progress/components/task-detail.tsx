@@ -74,12 +74,10 @@ export function TaskDetail({
             )}
 
             {task.doneWhen.length > 0 && (
-              <Field label="The implementer's done-when checklist">
+              <Field label="Done-when checklist">
                 <p className="text-muted-foreground mb-2 text-sm leading-relaxed">
-                  Not a progress measure. These boxes are not maintained —
-                  806 unchecked against 17 checked across the whole corpus —
-                  so an unchecked item does not mean unfinished work. Status
-                  comes from the ledger alone.
+                  These boxes are not kept up to date; status comes from the
+                  ledger.
                 </p>
                 <ul className="space-y-1">
                   {task.doneWhen.map((item, i) => (

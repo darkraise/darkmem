@@ -238,11 +238,7 @@ export function RealWikiView({
           kind="empty"
           icon={BookOpen}
           title="No wiki generated yet for this repository"
-          description={
-            repo.last_indexed_at === null
-              ? `${repo.name} has never been indexed, so there is no graph for a wiki to describe. Run a reindex with generate_wiki enabled — browsing this page never triggers generation.`
-              : "This repo has been indexed, but generate_wiki has never been enabled on a reindex, so there is no generated documentation to read yet. GET /code/wiki is read-only — it never spends LLM budget just because a page was opened."
-          }
+          description="Run a reindex with Generate wiki on to build one."
           action={
             <Button onClick={() => setReindexOpen(true)}>
               Open reindex dialog

@@ -22,15 +22,10 @@ function StaleBanner({ repo }: { repo: DemoRepo }) {
       <Clock aria-hidden className="text-warning-text h-4.5 w-4.5 shrink-0" />
       <div className="space-y-1 text-sm">
         <p className="font-semibold">
-          Last index failed — serving the last-good graph, marked stale
+          Last index failed — showing the last good graph
         </p>
         <p className="text-muted-foreground">Cause: {repo.stale.cause}</p>
-        <p>
-          The graph indexed {repo.stale.last_good_at} (HEAD{" "}
-          <span className="font-mono">{repo.stale.last_good_head}</span>) is
-          still served to every code tool, labelled <b>stale</b>, until the
-          next run succeeds.
-        </p>
+        <p>Nothing retries automatically — reindex once the cause is fixed.</p>
       </div>
     </div>
   )
@@ -176,16 +171,6 @@ function RepoRow({
         )}
       </div>
 
-      {repo.stale && (
-        <p className="text-muted-foreground text-sm">
-          If a periodic run caused this, it has also disabled indexing on
-          commit, so nothing retries automatically — reindex now, or
-          re-enable indexing from the Edit Repo dialog once the underlying
-          issue is fixed. If a manual reindex caused it instead, don't count
-          on an automatic retry — reindex now rather than waiting on one. The
-          stale label clears the moment a run succeeds.
-        </p>
-      )}
     </div>
   )
 }

@@ -43,12 +43,6 @@ describe("SecurityTab — ApiKey honesty", () => {
     expect(screen.queryByText(/not available in this deployment/)).not.toBeInTheDocument()
     // Creation moved into a dialog; the card's live control is its trigger.
     expect(screen.getByRole("button", { name: /New key/ })).not.toBeDisabled()
-    // The point of this row is that `ratify` is NOT a scope, and that the
-    // omission is visible rather than inferred. The wording is now plain, the
-    // claim is the same.
-    expect(
-      screen.getByText(/Confirming a fact is never allowed/),
-    ).toBeInTheDocument()
   })
 
   it("cannot create a key without a label — the mint is never a bare click", async () => {
@@ -63,12 +57,9 @@ describe("SecurityTab — ApiKey honesty", () => {
     expect(screen.getByRole("button", { name: /Create key/ })).not.toBeDisabled()
   })
 
-  it("renders the three LAN doors and the TOFU claim", () => {
+  it("renders the MCP host allowlist", () => {
     render(<SecurityTab />, { wrapper })
-    expect(screen.getByText("/mcp")).toBeInTheDocument()
-    expect(screen.getByText("/api/v1 + /ws")).toBeInTheDocument()
-    expect(screen.getByText("/setup")).toBeInTheDocument()
-    expect(screen.getAllByText("claimed").length).toBeGreaterThan(0)
+    expect(screen.getByText("192.168.0.195:8000")).toBeInTheDocument()
   })
 })
 
@@ -83,49 +74,13 @@ describe("MaintenanceTab — confirmation gates", () => {
     fireEvent.click(screen.getByRole("button", { name: /Confirm — delete now/ }))
     expect(useDemoStore.getState().maintenance.cleanup.expired).toBe(0)
   })
-
-  it("marks endpoint-less ops as untriggerable, and offers no control for them", () => {
-    render(<MaintenanceTab />, { wrapper })
-    // VACUUM ANALYZE, REINDEX, and the code-chunk backfill: three operations
-    // the tab can describe and cannot run. None of them renders a button —
-    // a greyed control still reads as a control.
-    expect(screen.getAllByText("no trigger")).toHaveLength(3)
-    expect(
-      screen.getAllByText(/no endpoint serves this yet/),
-    ).toHaveLength(2)
-    // The ops that CAN run still have theirs.
-    expect(
-      screen.getAllByRole("button", { name: "Run now" }).length,
-    ).toBeGreaterThan(0)
-  })
 })
 
 describe("DistributionTab", () => {
-  it("labels injected context with layer + verification, unrelabelled", () => {
+  it("shows the MCP connect card and no fixture-backed push panel in demo", () => {
     render(<DistributionTab />)
-    expect(screen.getByText(/Labels survive injection/)).toBeInTheDocument()
-    expect(screen.getAllByText("corroborated").length).toBeGreaterThan(0)
-    expect(screen.getAllByText("superseded").length).toBeGreaterThan(0)
-  })
-
-  it("curbing a client appends an inject_curbed log row", () => {
-    render(<DistributionTab />)
-    const before = useDemoStore.getState().distribution.log.length
-    fireEvent.click(screen.getByLabelText("Cursor push"))
-    expect(useDemoStore.getState().distribution.log.length).toBe(before + 1)
-    expect(
-      useDemoStore.getState().distribution.clients.find(
-        (c) => c.id === "cursor",
-      )?.status,
-    ).toBe("curbed")
-  })
-
-  it("shows the not-connected client with its onboarding CTA inline", () => {
-    render(<DistributionTab />)
-    expect(screen.getByText("not connected")).toBeInTheDocument()
-    expect(
-      screen.getByRole("button", { name: /darkmem connect cline/ }),
-    ).toBeInTheDocument()
+    expect(screen.getByText("Connect an MCP client")).toBeInTheDocument()
+    expect(screen.queryByText(/Labels survive injection/)).not.toBeInTheDocument()
   })
 })
 

@@ -136,8 +136,7 @@ export function CodeExplorer({
   if (files.length === 0) {
     return (
       <p className="text-muted-foreground p-2.5 text-sm">
-        No file listing yet — the tree is written by an index run, so a repo
-        that has never been indexed has nothing to browse.
+        No files yet — index this repository to browse it.
       </p>
     )
   }
@@ -146,7 +145,7 @@ export function CodeExplorer({
     <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto p-1">
       {rows.length === 0 ? (
         <p className="text-muted-foreground p-2 text-sm">
-          No file or symbol matches "{query}" — the graph itself is unchanged.
+          No file or symbol matches "{query}".
         </p>
       ) : (
         <div

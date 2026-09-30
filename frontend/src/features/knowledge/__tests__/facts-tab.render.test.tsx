@@ -120,7 +120,6 @@ describe("FactsTab — the project scope reaches the route as the route defines 
 
     await screen.findByText("darkmem uses postgres")
     expect(urls()[0]).not.toContain("project=")
-    expect(screen.getByText(/Facts — project: all projects/)).toBeInTheDocument()
   })
 
   it("scopes by the header switcher and offers no project select", async () => {
@@ -130,7 +129,6 @@ describe("FactsTab — the project scope reaches the route as the route defines 
 
     await screen.findByText("darkmem uses postgres")
     expect(urls()[0]).toContain("project=acme")
-    expect(screen.getByText(/Facts — project: acme/)).toBeInTheDocument()
     expect(screen.queryByRole("combobox", { name: "Project scope" })).toBeNull()
   })
 })
@@ -184,9 +182,7 @@ describe("FactsTab — a disputed row renders both sides, on the row", () => {
     await screen.findByText(DISPUTED_CLAIM)
     // T2.36's `detail_available` gate is retired: `GET /knowledge/facts/{id}`
     // is a real door now (T2.86), so every row links, live data included.
-    expect(
-      screen.getByText(/sources, ladder and windows/),
-    ).toBeInTheDocument()
+    expect(screen.getByText("details →")).toBeInTheDocument()
     expect(document.querySelectorAll("a")).toHaveLength(1)
   })
 })
@@ -289,7 +285,7 @@ describe("FactsTab — the free-text filter never speaks for the whole vault", (
     expect(
       screen.getByText(/Searched the 25 facts loaded so far/),
     ).toBeInTheDocument()
-    expect(screen.queryByText(/Nothing was hidden/)).not.toBeInTheDocument()
+    expect(screen.getByText(/387 more are not loaded yet/)).toBeInTheDocument()
 
     // And it did not start paging the whole 412-row corpus in the background
     // to answer a question it can answer honestly with what it has.
@@ -297,7 +293,7 @@ describe("FactsTab — the free-text filter never speaks for the whole vault", (
     expect(vi.mocked(apiFetch).mock.calls.length).toBe(before)
   })
 
-  it("says nothing was hidden only once it has the whole filtered set", async () => {
+  it("reports the whole filtered set once every fact is loaded", async () => {
     const user = (await import("@testing-library/user-event")).default.setup()
     vi.mocked(apiFetch).mockResolvedValue(page([item()], 1))
     render(<FactsTab />, { wrapper })
@@ -310,7 +306,7 @@ describe("FactsTab — the free-text filter never speaks for the whole vault", (
 
     await screen.findByText(/No loaded fact matches/)
     expect(
-      screen.getByText(/Searched all 1 facts behind the relation/),
+      screen.getByText("Searched all 1 facts."),
     ).toBeInTheDocument()
   })
 })
@@ -321,7 +317,7 @@ describe("FactsTab — simple mode collapses detail and keeps every honesty labe
     useDetailLevel.setState({ level: "advanced" })
   })
 
-  it("hides the raw triple and still renders the badge and the verbatim claim", async () => {
+  it("hides the raw triple and still renders the badge and origin count", async () => {
     useDetailLevel.setState({ level: "simple" })
     vi.mocked(apiFetch).mockResolvedValue(page([item()], 1))
     render(<FactsTab />, { wrapper })
@@ -329,7 +325,9 @@ describe("FactsTab — simple mode collapses detail and keeps every honesty labe
     await screen.findByText("darkmem uses postgres")
     expect(screen.queryByText("USES")).not.toBeInTheDocument()
     expect(screen.getByText("corroborated")).toBeInTheDocument()
-    expect(screen.getByText(CORROBORATED_CLAIM)).toBeInTheDocument()
+    expect(screen.getByText(/3 origins/)).toBeInTheDocument()
+    // A non-disputed claim only restates the origin count, so it stays off the row.
+    expect(screen.queryByText(CORROBORATED_CLAIM)).not.toBeInTheDocument()
   })
 })
 
@@ -344,7 +342,7 @@ describe("FactsTab — a failed read stays a failed read", () => {
     render(<FactsTab />, { wrapper })
 
     await screen.findByText("Could not load facts")
-    expect(screen.queryByText("No corroborated facts yet")).not.toBeInTheDocument()
-    expect(screen.getByText("count unavailable")).toBeInTheDocument()
+    expect(screen.queryByText("No facts yet")).not.toBeInTheDocument()
+    expect(screen.queryByText(/of \d+ loaded/)).not.toBeInTheDocument()
   })
 })

@@ -8,7 +8,7 @@ export interface ExclusionItem {
   unit?: string
   /** Human explanation, e.g. "your context env=prod conflicts with a dev-only row". */
   reason: ReactNode
-  /** Machine reason tag, e.g. "by_context_conflict". */
+  /** Machine reason tag, e.g. "by_context_conflict". Not rendered. */
   tag?: string
 }
 
@@ -36,11 +36,6 @@ export function ExclusionStrip({ items, className }: ExclusionStripProps) {
             </b>
             <span className="text-muted-foreground"> — {item.reason}</span>
           </span>
-          {item.tag && (
-            <span className="text-muted-foreground ml-auto shrink-0 font-mono text-sm">
-              {item.tag}
-            </span>
-          )}
         </div>
       ))}
     </div>

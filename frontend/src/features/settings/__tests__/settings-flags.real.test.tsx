@@ -159,7 +159,7 @@ function putBody(path: string): unknown {
 describe("useFlagsTabBinding (DEMO off — real /config/feature-flags)", () => {
   afterEach(() => vi.clearAllMocks())
 
-  it("maps the wire response into fusion arms with the backend's own activation ids", async () => {
+  it("maps the wire response into fusion arms", async () => {
     mockApiFetch()
     const { result } = renderHook(() => useFlagsTabBinding(), { wrapper })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
@@ -169,64 +169,13 @@ describe("useFlagsTabBinding (DEMO off — real /config/feature-flags)", () => {
     const importance = result.current.fusionArms.find(
       (a) => a.key === "w_importance",
     )
-    expect(importance?.activatesWith).toBe("T2.30")
     expect(importance?.value).toBe(0)
     expect(importance?.source).toBe("default")
-
-    const heat = result.current.fusionArms.find((a) => a.key === "w_heat")
-    expect(heat?.activatesWith).toBe("T2.31")
 
     const confidence = result.current.fusionArms.find(
       (a) => a.key === "confidence_rank_gamma",
     )
-    // Already live — no activation id, but non-default so it reads "override".
-    expect(confidence?.activatesWith).toBeUndefined()
     expect(confidence?.source).toBe("override")
-  })
-
-  it("marks every measurable-but-unmeasured flag from measured_flags, never a hardcoded list", async () => {
-    mockApiFetch()
-    const { result } = renderHook(() => useFlagsTabBinding(), { wrapper })
-    await waitFor(() => expect(result.current.isLoading).toBe(false))
-
-    const importance = result.current.fusionArms.find(
-      (a) => a.key === "w_importance",
-    )
-    expect(importance?.unmeasured).toBe(true)
-    expect(result.current.contextBoost.unmeasured).toBe(true)
-
-    const reranker = result.current.behavioralFlags.find(
-      (f) => f.key === "reranker_enabled",
-    )
-    expect(reranker?.unmeasured).toBe(true)
-
-    const hybrid = result.current.behavioralFlags.find(
-      (f) => f.key === "hybrid_search_enabled",
-    )
-    expect(hybrid?.unmeasured).toBe(false)
-  })
-
-  it("clears the unmeasured badge once a flag is in measured_flags", async () => {
-    vi.mocked(apiFetch).mockImplementation((path: string) => {
-      if (path === "/config/feature-flags") {
-        return Promise.resolve({
-          ...FEATURE_FLAGS_FIXTURE,
-          measured_flags: ["reranker_enabled"],
-        })
-      }
-      if (path === "/jobs") return Promise.resolve({ jobs: [] })
-      if (path === "/config/repo-allowlist") return Promise.resolve({ patterns: [] })
-      if (path === "/config/verification-ladder") return Promise.resolve(LADDER_FIXTURE)
-      if (path === "/config/classification-areas") return Promise.resolve(AREAS_FIXTURE)
-      return Promise.reject(new Error(`unexpected apiFetch(${path})`))
-    })
-    const { result } = renderHook(() => useFlagsTabBinding(), { wrapper })
-    await waitFor(() => expect(result.current.isLoading).toBe(false))
-
-    const reranker = result.current.behavioralFlags.find(
-      (f) => f.key === "reranker_enabled",
-    )
-    expect(reranker?.unmeasured).toBe(false)
   })
 
   // The landed replacement for `reports graph augmentation and corroboration
@@ -258,20 +207,6 @@ describe("useFlagsTabBinding (DEMO off — real /config/feature-flags)", () => {
     // Context augmentation produces no ranked list, so there is no weight —
     // rendering a 0 here would invent a knob the fusion never reads.
     expect(graph("community_injection_enabled")?.paired_arm).toBeNull()
-    expect(graph("community_injection_enabled")?.no_weight_note).toMatch(
-      /no paired RRF weight/,
-    )
-  })
-
-  it("carries the graph channels' activation id and unmeasured badge", async () => {
-    mockApiFetch()
-    const { result } = renderHook(() => useFlagsTabBinding(), { wrapper })
-    await waitFor(() => expect(result.current.graphFlags.length).toBe(3))
-
-    for (const flag of result.current.graphFlags) {
-      expect(flag.activatesWith).toBe("T2.50")
-      expect(flag.unmeasured).toBe(true)
-    }
   })
 
   it("reads the enabled graph flag as an override, the default one as a default", async () => {
@@ -328,7 +263,6 @@ describe("useFlagsTabBinding (DEMO off — real /config/feature-flags)", () => {
     expect(param("time_gap_days")?.state).toBe("honoured")
     expect(param("n_default")?.state).toBe("default")
     expect(result.current.corroboration.rowPresent).toBe(true)
-    expect(result.current.corroboration.measurementTask).toBe("T2.40")
   })
 
   it("saveLadder PUTs every edited threshold in one request", async () => {
@@ -502,7 +436,7 @@ describe("useFlagsTabBinding (DEMO off — real /config/feature-flags)", () => {
     // renders as a "description" that says nothing. It had no entry until
     // 2026-08-21.
     expect(result.current.contextBoost.desc).not.toBe("w_context_boost")
-    expect(result.current.contextBoost.desc).toMatch(/MATCH/)
+    expect(result.current.contextBoost.desc).toMatch(/context conditions/)
   })
 
   it("saveFlags PUTs the section patch to /config/feature-flags, never the demo store", async () => {

@@ -71,10 +71,8 @@ export function ProviderItem({
             className="text-muted-foreground h-3.5 w-3.5"
           />
           <HelpTip label={`About ${provider.name}'s frozen fields`}>
-            This provider serves the verification judge. base_url and api_kind
-            are the judge's qualification identity, so the backend refuses to
-            change them. The key is still rotatable — that credential is owed
-            rotation regardless.
+            Serves the verification judge, so base_url and api_kind are locked.
+            The key can still be changed.
           </HelpTip>
         </>
       )}

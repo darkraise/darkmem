@@ -155,7 +155,7 @@ function mockApi(overrides: Record<string, unknown> = {}) {
 }
 
 async function switchToHygiene() {
-  fireEvent.click(screen.getByText("Hygiene — housekeeping"))
+  fireEvent.click(screen.getByText("Hygiene"))
   await screen.findByText("Superseded lineage")
 }
 
@@ -169,7 +169,7 @@ describe("ReviewTab: the two queues are visibly distinct surfaces", () => {
     mockApi()
     render(withQuery(<ReviewTab />))
 
-    expect(await screen.findByText(/why ranked here:/)).toBeInTheDocument()
+    expect(await screen.findByText("darkmem uses postgres")).toBeInTheDocument()
     expect(screen.getByText("Ungrounded articles")).toBeInTheDocument()
     expect(screen.queryByText("Candidate duplicates")).not.toBeInTheDocument()
 
@@ -180,51 +180,24 @@ describe("ReviewTab: the two queues are visibly distinct surfaces", () => {
   })
 })
 
-describe("ReviewTab: ranking rationale is shown per item", () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    useDetailLevel.setState({ level: "advanced" })
-  })
-
-  it("renders the consequence-derived rank_note on the fact row", async () => {
-    mockApi()
-    render(withQuery(<ReviewTab />))
-
-    await screen.findByText(/why ranked here:/)
-    expect(screen.getByText(/score 0\.42/)).toBeInTheDocument()
-  })
-})
-
-describe("ReviewTab: honesty labels survive Simple mode; technical detail collapses", () => {
+describe("ReviewTab: honesty labels survive Simple mode", () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it("keeps the verification badge and queued-reason chip in simple mode, drops the consequence breakdown", async () => {
-    mockApi()
-    useDetailLevel.setState({ level: "simple" })
-    render(withQuery(<ReviewTab />))
-    await screen.findByText(/why ranked here:/)
+  it.each(["simple", "advanced"] as const)(
+    "keeps the verification badge and shows no ranking internals in %s mode",
+    async (level) => {
+      mockApi()
+      useDetailLevel.setState({ level })
+      render(withQuery(<ReviewTab />))
+      await screen.findByText("darkmem uses postgres")
 
-    // Never collapsed: the honesty labels.
-    expect(screen.getByText("disputed")).toBeInTheDocument()
-    expect(screen.getByText(/queued: disputed/)).toBeInTheDocument()
-    // Always shown regardless of level (it is the Done-when clause itself,
-    // not a technical breakdown item).
-    expect(screen.getByText(/why ranked here:/)).toBeInTheDocument()
-
-    // Collapsed: the per-arm numeric breakdown.
-    expect(screen.queryByText(/retrieval_frequency:/)).not.toBeInTheDocument()
-  })
-
-  it("shows the consequence breakdown only in advanced mode", async () => {
-    mockApi()
-    useDetailLevel.setState({ level: "advanced" })
-    render(withQuery(<ReviewTab />))
-    await screen.findByText(/why ranked here:/)
-
-    expect(screen.getByText(/retrieval_frequency:/)).toBeInTheDocument()
-  })
+      expect(screen.getByText("disputed")).toBeInTheDocument()
+      expect(screen.queryByText(/why ranked here:/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/retrieval_frequency:/)).not.toBeInTheDocument()
+    },
+  )
 })
 
 describe("ReviewTab: a failed read renders as an error, never an empty queue", () => {
@@ -332,7 +305,7 @@ describe("ReviewTab: a stranded page shows a way back, never a false caught-up m
       throw new Error(`unexpected: ${url}`)
     })
     render(withQuery(<ReviewTab />))
-    await screen.findAllByText(/why ranked here:/)
+    await screen.findAllByText("darkmem uses postgres")
 
     fireEvent.click(screen.getByLabelText("Next page"))
 
@@ -343,7 +316,7 @@ describe("ReviewTab: a stranded page shows a way back, never a false caught-up m
     expect(screen.getByText(/10 facts still remain/)).toBeInTheDocument()
 
     fireEvent.click(screen.getByText("Back to the first page"))
-    expect((await screen.findAllByText(/why ranked here:/)).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText("darkmem uses postgres")).length).toBeGreaterThan(0)
   })
 })
 
@@ -443,33 +416,18 @@ describe("ReviewTab: a refused undo (409) is shown, never a silently reset spinn
   })
 })
 
-describe("ReviewTab: the counts header never fabricates a zero while loading (F4)", () => {
+describe("ReviewTab: the fact arm's header counts open facts", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     useDetailLevel.setState({ level: "advanced" })
   })
 
-  it("shows a loading line until the counts door actually answers", async () => {
-    let resolveCounts: (value: { facts: number; articles: number }) => void = () => {}
-    const countsPromise = new Promise<{ facts: number; articles: number }>((resolve) => {
-      resolveCounts = resolve
-    })
-    vi.mocked(apiFetch).mockImplementation(async (url: string) => {
-      if (url.startsWith("/review-queue/counts")) return countsPromise
-      if (url.startsWith("/review-queue/facts")) {
-        return { items: [FACT_ITEM], total: 1, limit: 10, offset: 0 }
-      }
-      if (url.startsWith("/review-queue/articles")) return emptyList()
-      throw new Error(`unexpected: ${url}`)
-    })
+  it("shows the open count once the facts arm answers", async () => {
+    mockApi()
     render(withQuery(<ReviewTab />))
-    await screen.findByText(/why ranked here:/)
+    await screen.findByText("darkmem uses postgres")
 
-    expect(screen.getByText(/counts loading…/)).toBeInTheDocument()
-    expect(screen.queryByText(/0 facts?/)).not.toBeInTheDocument()
-
-    resolveCounts({ facts: 1, articles: 0 })
-    await waitFor(() => expect(screen.getByText(/1 fact/)).toBeInTheDocument())
+    expect(screen.getByText("1 open")).toBeInTheDocument()
   })
 })
 
@@ -512,34 +470,6 @@ describe("ReviewTab: per-item refusal reasons reach the DOM (F6)", () => {
     expect(await screen.findByText(/0 applied, 1 refused/)).toBeInTheDocument()
     expect(screen.getByText(/no longer active/)).toBeInTheDocument()
   })
-})
-
-describe("HygieneQueue: every arm states its ordering honestly, in both detail modes (F5 / clause 2)", () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
-  it.each(["simple", "advanced"] as const)(
-    "shows an honest ordering line per arm and never claims consequence ranking, in %s mode",
-    async (level) => {
-      useDetailLevel.setState({ level })
-      mockApi()
-      render(withQuery(<ReviewTab />))
-      await switchToHygiene()
-
-      expect(screen.getByText(/^newest first —/)).toBeInTheDocument()
-      expect(screen.getByText(/lowest confidence first/)).toBeInTheDocument()
-      expect(screen.getByText(/soonest expires_at first/)).toBeInTheDocument()
-      expect(screen.getByText(/newest first, read-only/)).toBeInTheDocument()
-      // The one honest claim this epic allows on this surface is the
-      // absence of ranking, never its presence — doc 08 §6's
-      // "consequence-ranked, not FIFO" belongs to the Review queue's facts
-      // arm alone (T2.23's reported gap), and no hygiene arm may borrow it.
-      expect(
-        screen.queryByText("consequence-ranked, not FIFO"),
-      ).not.toBeInTheDocument()
-    },
-  )
 })
 
 // T2.37 fix round 2 — N3. The round-1 guards for F1 and F4 each covered one
@@ -609,65 +539,10 @@ describe("HygieneQueue: a stranded page shows a way back on every arm, not just 
     // non-empty (invariant 14) — the defect this whole finding guards.
     // Widened to all four arms (D3): each arm's own `emptyLine` prop must
     // stay suppressed independently, not just the duplicates arm's.
-    expect(
-      screen.queryByText("Candidate duplicates — none flagged by the last dream cycle"),
-    ).not.toBeInTheDocument()
-    expect(
-      screen.queryByText("Low-confidence memories — none below the review threshold"),
-    ).not.toBeInTheDocument()
-    expect(
-      screen.queryByText("Expiring soon — no rows with expires_at inside the lookahead window"),
-    ).not.toBeInTheDocument()
-    expect(
-      screen.queryByText("Superseded lineage — nothing flagged for cleanup"),
-    ).not.toBeInTheDocument()
-  })
-})
-
-describe("HygieneQueue: the counts header never fabricates a zero while loading (N3)", () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    useDetailLevel.setState({ level: "advanced" })
-  })
-
-  it("shows a loading line until the hygiene counts door actually answers", async () => {
-    let resolveCounts: (value: {
-      duplicates: number
-      low_confidence: number
-      expiring_soon: number
-      superseded: number
-    }) => void = () => {}
-    const countsPromise = new Promise<{
-      duplicates: number
-      low_confidence: number
-      expiring_soon: number
-      superseded: number
-    }>((resolve) => {
-      resolveCounts = resolve
-    })
-    vi.mocked(apiFetch).mockImplementation(async (url: string) => {
-      if (url.startsWith("/review-queue/counts")) return { facts: 0, articles: 0 }
-      if (url.startsWith("/review-queue/facts")) return emptyList()
-      if (url.startsWith("/review-queue/articles")) return emptyList()
-      if (url.startsWith("/hygiene-queue/counts")) return countsPromise
-      if (url.startsWith("/hygiene-queue/duplicates")) {
-        return { items: [DUPLICATE_ITEM], total: 1, limit: 10, offset: 0 }
-      }
-      if (url.startsWith("/hygiene-queue/low-confidence")) return emptyList()
-      if (url.startsWith("/hygiene-queue/expiring-soon")) return emptyList()
-      if (url.startsWith("/hygiene-queue/superseded")) return emptyList()
-      throw new Error(`unexpected: ${url}`)
-    })
-    render(withQuery(<ReviewTab />))
-    await switchToHygiene()
-
-    expect(screen.getByText(/counts loading…/)).toBeInTheDocument()
-    expect(screen.queryByText(/0 duplicate/)).not.toBeInTheDocument()
-
-    resolveCounts({ duplicates: 1, low_confidence: 0, expiring_soon: 0, superseded: 0 })
-    await waitFor(() =>
-      expect(screen.getByText(/1 duplicate pair/)).toBeInTheDocument(),
-    )
+    expect(screen.queryByText("No duplicates flagged.")).not.toBeInTheDocument()
+    expect(screen.queryByText("No low-confidence memories.")).not.toBeInTheDocument()
+    expect(screen.queryByText("Nothing expiring soon.")).not.toBeInTheDocument()
+    expect(screen.queryByText("Nothing superseded.")).not.toBeInTheDocument()
   })
 })
 
@@ -770,7 +645,7 @@ describe("ReviewTab: the ratify door reports a failed apply, not silence (N3 / F
     })
     render(withQuery(<ReviewTab />))
 
-    await screen.findByText(/why ranked here:/)
+    await screen.findByText("darkmem uses postgres")
     fireEvent.click(screen.getByText("Ratify → confirmed"))
     fireEvent.click(await screen.findByText("Ratify as confirmed"))
 
@@ -803,7 +678,7 @@ describe("ReviewTab: the reject door reports a failed apply, not silence (N3 / F
     })
     render(withQuery(<ReviewTab />))
 
-    await screen.findByText(/why ranked here:/)
+    await screen.findByText("darkmem uses postgres")
     fireEvent.click(screen.getByText("Reject"))
     // The row's own action button and the confirm dialog's action button are
     // both literally labelled "Reject" — the dialog's copy is the second to
@@ -893,7 +768,7 @@ describe("ReviewTab: a non-HTTP ratify failure reports state unknown, not applie
     })
     render(withQuery(<ReviewTab />))
 
-    await screen.findByText(/why ranked here:/)
+    await screen.findByText("darkmem uses postgres")
     fireEvent.click(screen.getByText("Ratify → confirmed"))
     fireEvent.click(await screen.findByText("Ratify as confirmed"))
 
@@ -927,7 +802,7 @@ describe("ReviewTab: a non-HTTP reject failure reports state unknown, not applie
     })
     render(withQuery(<ReviewTab />))
 
-    await screen.findByText(/why ranked here:/)
+    await screen.findByText("darkmem uses postgres")
     fireEvent.click(screen.getByText("Reject"))
     await waitFor(() => expect(screen.getAllByText("Reject")).toHaveLength(2))
     const rejectButtons = screen.getAllByText("Reject")
@@ -1147,7 +1022,7 @@ describe("ReviewTab: the model scan's flag reaches the reviewer (D-1)", () => {
     mockApi()
     render(withQuery(<ReviewTab />))
 
-    expect(await screen.findByText(/why ranked here:/)).toBeInTheDocument()
+    expect(await screen.findByText("darkmem uses postgres")).toBeInTheDocument()
     expect(screen.queryByText(/suspected contradiction/)).not.toBeInTheDocument()
     expect(screen.queryByText("Dismiss suspicion")).not.toBeInTheDocument()
   })
@@ -1159,13 +1034,12 @@ describe("ReviewTab: plain-language row chrome", () => {
     useDetailLevel.setState({ level: "advanced" })
   })
 
-  it("renders the queued time through the shared timestamp, and the MCP note once", async () => {
+  it("renders the queued time through the shared timestamp", async () => {
     mockApi()
     const { container } = render(withQuery(<ReviewTab />))
-    await screen.findByText(/why ranked here:/)
+    await screen.findByText("darkmem uses postgres")
     expect(container.querySelector('time[datetime="2026-08-01T00:00:00Z"]')).not.toBeNull()
     expect(screen.queryByText(/2026-08-01T00:00:00Z/)).toBeNull()
     expect(screen.queryByText(/never exposed over MCP/)).toBeNull()
-    expect(screen.getByRole("button", { name: "About review actions" })).toBeInTheDocument()
   })
 })

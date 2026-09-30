@@ -47,33 +47,13 @@ function mockHappy() {
 describe("MaintenanceTab (real)", () => {
   afterEach(() => vi.clearAllMocks())
 
-  it("renders the reembed counts and fingerprint from GET /reembed/obsolete-counts", async () => {
+  it("renders the reembed counts from GET /reembed/obsolete-counts", async () => {
     mockHappy()
     render(<MaintenanceTab />, { wrapper })
     await waitFor(() =>
-      expect(screen.getByText(`fp: ${OBSOLETE_COUNTS.current_fingerprint}`)).toBeInTheDocument(),
+      expect(screen.getByText("12 missing a vector")).toBeInTheDocument(),
     )
-    expect(screen.getByText("12 missing a vector")).toBeInTheDocument()
     expect(screen.getByText("3 missing")).toBeInTheDocument()
-  })
-
-  it("offers no code_chunks re-embed trigger — ReembedService.reembed_code_chunks is a stub that never embeds anything", async () => {
-    // Was a disabled button. There is no version of that button that works —
-    // the endpoint answers 202 and embeds nothing — so the row states the
-    // absence and points at the route that does the job, rather than greying
-    // out a control and leaving "why is this off?" to the tag beside it.
-    mockHappy()
-    render(<MaintenanceTab />, { wrapper })
-    await waitFor(() => expect(screen.getByText("40 missing")).toBeInTheDocument())
-    expect(
-      screen.queryByRole("button", { name: "Re-embed code chunks" }),
-    ).not.toBeInTheDocument()
-    expect(
-      screen.getByText(/not implemented\s+server-side/),
-    ).toBeInTheDocument()
-    // By text: the suite's router mock renders a bare <a> with no href, so
-    // there is no `link` role to match on.
-    expect(screen.getByText(/Repositories → Reindex/)).toBeInTheDocument()
   })
 
   it("triggering re-embed memories POSTs /reembed/memories after confirm", async () => {
@@ -102,10 +82,11 @@ describe("MaintenanceTab (real)", () => {
     )
   })
 
-  it("expired_memory_cleanup has no live count — renders the honest gap, never a fabricated N, and stays enabled", async () => {
+  it("expired_memory_cleanup has no live count — renders no fabricated N, and stays enabled", async () => {
     mockHappy()
     render(<MaintenanceTab />, { wrapper })
-    await waitFor(() => expect(screen.getByText("count not exposed via the API")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("12 missing a vector")).toBeInTheDocument())
+    expect(screen.queryByText(/\d+ expired$/)).not.toBeInTheDocument()
     expect(
       screen.getByRole("button", { name: /Run sweep now/ }),
     ).not.toBeDisabled()
@@ -121,7 +102,7 @@ describe("MaintenanceTab (real)", () => {
       return Promise.reject(new Error(`unexpected apiFetch(${path})`))
     })
     render(<MaintenanceTab />, { wrapper })
-    await waitFor(() => expect(screen.getByText("count not exposed via the API")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("12 missing a vector")).toBeInTheDocument())
 
     fireEvent.click(screen.getByRole("button", { name: /Run sweep now/ }))
     fireEvent.click(screen.getByRole("button", { name: "Confirm — delete now" }))
@@ -154,24 +135,15 @@ describe("MaintenanceTab (real)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirm — run now" }))
 
     await waitFor(() =>
-      expect(screen.getByText(/is already running — this trigger was not queued/)).toBeInTheDocument(),
+      expect(screen.getByText(/is already running — try again/)).toBeInTheDocument(),
     )
-  })
-
-  it("ruling 2: every trigger now journals to events, so the honest gap banner is gone", async () => {
-    mockHappy()
-    render(<MaintenanceTab />, { wrapper })
-    await waitFor(() => expect(screen.getByText("count not exposed via the API")).toBeInTheDocument())
-    expect(
-      screen.queryByText(/None of these triggers are journaled to the events timeline today/),
-    ).not.toBeInTheDocument()
   })
 
   it("failure counts come from GET /pipeline-failures/counts, keyed memory_ingest/code_index", async () => {
     mockHappy()
     render(<MaintenanceTab />, { wrapper })
     await waitFor(() =>
-      expect(screen.getByText("2 memory_ingest · 1 code_repo")).toBeInTheDocument(),
+      expect(screen.getByText("2 memory · 1 code")).toBeInTheDocument(),
     )
   })
 })

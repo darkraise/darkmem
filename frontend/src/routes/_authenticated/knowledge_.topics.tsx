@@ -13,7 +13,6 @@ function KnowledgeTopicsPage() {
       <PageChrome
         icon={Tags}
         title="Topics"
-        description="Topic clusters across the verified fact base."
       />
       <TopicsTab />
     </div>

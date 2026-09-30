@@ -62,25 +62,20 @@ describe("LLMTab", () => {
     ).not.toBeInTheDocument()
   })
 
-  it("renders the one remaining Tier-C purpose, clearly labelled and never omitted", () => {
+  it("renders the read-only verification purpose, never omitted", () => {
     renderTab()
     expect(screen.getAllByText("verification").length).toBeGreaterThan(0)
-    // verification is live and dispatched (T2.26) and stays read-only here
-    // by deliberate T2.106 ruling, not a pending write-wire gap.
-    expect(screen.getByText("tier c · live")).toBeInTheDocument()
     expect(
-      screen.getByText(/qualification record is a gate's evidence/),
+      screen.getByText(/managed by the judge qualification run/),
     ).toBeInTheDocument()
-    expect(screen.queryByText("tier c · inert")).not.toBeInTheDocument()
   })
 
-  it("does not render synthesis as a Tier-C read-only card", () => {
+  it("renders exactly one read-only purpose card", () => {
     renderTab()
-    // Only one Tier-C card left (verification); synthesis has its own
-    // full editable card among the seven live purposes above.
+    // synthesis has its own editable card among the seven live purposes.
     expect(
-      screen.queryByText(/no consumer yet — activates with/),
-    ).not.toBeInTheDocument()
+      screen.getAllByText(/managed by the judge qualification run/),
+    ).toHaveLength(1)
   })
 
   it("synthesis is a fully editable card that saves through the normal wire", () => {
@@ -133,12 +128,11 @@ describe("LLMTab", () => {
     const input = screen.getByLabelText("reasoning model")
     fireEvent.change(input, { target: { value: "gpt-5.1" } })
     fireEvent.click(screen.getByRole("button", { name: "Save" }))
-    // The trace moved into the toast's description: the changed field, and
-    // the live-reload fact that is the whole point of not needing a redeploy.
+    // The trace moved into the toast's description: the changed field.
     expect(toast.success).toHaveBeenCalledWith(
       "Saved — reasoning purpose updated",
       expect.objectContaining({
-        description: expect.stringMatching(/model.*no redeploy/),
+        description: expect.stringContaining("model"),
       }),
     )
   })

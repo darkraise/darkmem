@@ -1,11 +1,5 @@
 import { useState } from "react"
-import {
-  Flag,
-  Globe,
-  KeyRound,
-  Lock,
-  ShieldCheck,
-} from "lucide-react"
+import { Globe, KeyRound, Lock, ShieldCheck } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import {
   Card,
@@ -15,36 +9,11 @@ import {
 import { cn } from "darkraise-ui/lib"
 import { ApiKeyDialog } from "./api-key-dialog"
 import { EmptyState, HelpTip } from "@/components/darkmem"
-import {
-  SurfaceStateChip,
-} from "@/features/activity/components/module-surface"
 import { useApiKeys, useRevokeApiKey } from "@/hooks/api"
 import {
   useSecurityTabBinding,
   type SecurityTabBinding,
 } from "../use-security-tab-binding"
-
-// The closed scope set itself, which is design rather than per-instance data
-// and so stays a constant. `ratify` is listed precisely because it is *not* a
-// scope: a reader must be able to see that the omission is deliberate.
-const API_KEY_SCOPES: { label: string; inert?: boolean; never?: boolean }[] = [
-  // Each scope names the surface it actually reaches (T4.21). The boundary is
-  // the surface the minimal client speaks; widening `read` to the vault or the
-  // code graph is a decision about what a leaked key can exfiltrate, and it is
-  // demand-gated rather than taken because the word fits. The routes each one
-  // covers: capture -> POST /memories and /memories/batch; read -> POST
-  // /memories/search/paginated; admin -> the push webhook, the file-scoped
-  // reindex door, and on /mcp both `code_reindex` and
-  // `document_delete_subtree`. That last one erases every document under a uri
-  // prefix and cannot be undone short of a whole-database restore, so the
-  // label names all three: the webhook alone understates what a leak costs,
-  // and the erase alone sends a webhook operator looking for a narrower
-  // scope that does not exist.
-  { label: "Save new memories" },
-  { label: "Search and read memories" },
-  { label: "Receive push updates, reindex repositories, delete document subtrees" },
-  { label: "Confirming a fact is never allowed — only you can do that", never: true },
-]
 
 /** The scope literals as a reader should see them in a key's row. Keys are
  *  stored and sent with the literals; only the display changes. An unknown
@@ -67,321 +36,132 @@ function Row({ k, children }: { k: string; children: React.ReactNode }) {
   )
 }
 
-/** A field the backend has no read surface for at all today — never
- *  approximated (ruling 4), rendered as a labelled gap instead of a
- *  fabricated value or a silently omitted row. */
-function UnavailableRow({ k, note }: { k: string; note: string }) {
-  return (
-    <div className="flex flex-wrap items-baseline gap-2 text-sm">
-      <span className="text-muted-foreground w-32 shrink-0 font-mono text-sm">
-        {k}
-      </span>
-      <span className="text-muted-foreground min-w-0 flex-1 italic">
-        not exposed via the API — {note}
-      </span>
-    </div>
-  )
-}
-
 /** One card of security facts or controls.
  *
  *  Mirrors the Flags tab's `Section`: a library `Card` with a one-row header
- *  carrying the title, its help tip and a status tag, and the body below the
- *  divider. These were `div`s nested inside one outer surface, which made five
- *  distinct subjects — auth, tokens, the TOFU claim, the LAN posture, the key
- *  credential — read as one long panel.
- *
- *  `dormant` keeps its dashed treatment for a card describing something not
- *  wired; the border is already the inset step, so a dormant card reads softer
- *  still rather than louder. */
+ *  carrying the title and its help tip, and the body below the divider. */
 function CardShell({
   icon: Icon,
   title,
-  tag,
-  chip,
   help,
-  dormant,
   className,
   children,
 }: {
   icon: typeof Lock
   title: string
-  tag?: string
-  chip?: React.ReactNode
   help?: React.ReactNode
-  dormant?: boolean
   className?: string
   children: React.ReactNode
 }) {
   return (
-    <Card className={cn("gap-0 py-0", dormant && "border-dashed", className)}>
+    <Card className={cn("gap-0 py-0", className)}>
       <CardHeader className="border-border bg-muted/30 flex flex-row flex-nowrap items-center gap-2 space-y-0 overflow-hidden border-b px-4 py-2.5">
         <Icon aria-hidden className="text-primary-text h-4 w-4 shrink-0" />
-        <h3
-          className={cn(
-            "min-w-0 truncate text-sm font-semibold",
-            dormant && "text-muted-foreground",
-          )}
-        >
-          {title}
-        </h3>
+        <h3 className="min-w-0 truncate text-sm font-semibold">{title}</h3>
         {help && (
           <span className="shrink-0">
             <HelpTip label={`About ${title}`}>{help}</HelpTip>
           </span>
         )}
-        {chip}
-        <span className="flex-1" />
-        {tag && (
-          <span className="text-muted-foreground border-muted-foreground/60 shrink-0 rounded-full border border-dashed px-2.5 py-0.5 font-mono text-xs tracking-wide uppercase whitespace-nowrap">
-            {tag}
-          </span>
-        )}
       </CardHeader>
-      <CardContent
-        className={cn(
-          "flex flex-col gap-2.5 p-4",
-          dormant && "bg-muted/10",
-        )}
-      >
+      <CardContent className="flex flex-col gap-2.5 p-4">
         {children}
       </CardContent>
     </Card>
   )
 }
 
-function PillFlow({ steps }: { steps: string[] }) {
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {steps.map((step, i) => (
-        <span key={step} className="flex items-center gap-1.5">
-          <span
-            className={cn(
-              "border-inset bg-muted/40 rounded-full border px-2.5 py-0.5 font-mono text-sm whitespace-nowrap",
-              i === 0 && "border-primary/55 text-primary-text bg-primary/8",
-            )}
-          >
-            {step}
-          </span>
-          {i < steps.length - 1 && (
-            <span className="text-muted-foreground">→</span>
-          )}
-        </span>
-      ))}
-    </div>
-  )
-}
-
 function AuthCard({ binding }: { binding: SecurityTabBinding }) {
   return (
-    <CardShell icon={ShieldCheck} title="Auth">
+    <CardShell icon={ShieldCheck} title="Sign-in">
       <Row k="session">
         {binding.sessionSub ? `signed in as ${binding.sessionSub}` : "signed in"}
-        {binding.sessionIssuedLabel && `, ${binding.sessionIssuedLabel}`}
-        {binding.sessionJti && (
-          <>
-            {" · "}
-            <code className="font-mono">jti {binding.sessionJti}</code>
-          </>
-        )}
       </Row>
-      {binding.sessionIssuedLabel === null && (
-        <span className="text-muted-foreground -mt-1 text-sm italic">
-          issue time and jti are not exposed via GET /auth/me (it returns
-          only {"{authenticated, sub}"})
-        </span>
-      )}
-      {/* The form moved to the user menu (Change password). A pointer rather
-          than a second copy: two password forms against one credential is two
-          places for the validation and the revocation warning to drift. */}
       <Row k="password">
-        changed from the{" "}
-        <b className="text-foreground font-semibold">user menu</b> — the avatar
-        at the top right, <b className="text-foreground font-semibold">Change
-        password</b>. It is an account action rather than a posture setting, and
-        it is reachable from every page.
+        Change it from the user menu at the top right.
       </Row>
 
       <div className="border-inset flex flex-col gap-1.5 border-t border-dashed pt-2">
         <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
-          login rate limiting — per-IP with lockout
+          login rate limiting
         </span>
-        <Row k="IP source">
-          <span className="text-muted-foreground">
-            {binding.rateLimitIpSource}
-          </span>
-        </Row>
-        {binding.rateLimitAttemptThreshold !== null ? (
+        {binding.rateLimitIpSource !== null && (
+          <Row k="IP source">
+            <span className="text-muted-foreground">
+              {binding.rateLimitIpSource}
+            </span>
+          </Row>
+        )}
+        {binding.rateLimitAttemptThreshold !== null && (
           <Row k="attempt threshold">
             {binding.rateLimitAttemptThreshold} failed attempts
           </Row>
-        ) : (
-          <UnavailableRow
-            k="attempt threshold"
-            note="not exposed via the API"
-          />
         )}
-        {binding.rateLimitLockoutWindow !== null ? (
+        {binding.rateLimitLockoutWindow !== null && (
           <Row k="lockout window">{binding.rateLimitLockoutWindow}</Row>
-        ) : (
-          <UnavailableRow k="lockout window" note="not exposed via the API" />
-        )}
-        {binding.rateLimitJournaled !== null ? (
-          <Row k="journaled">{binding.rateLimitJournaled}</Row>
-        ) : (
-          <UnavailableRow
-            k="journaled"
-            note="not exposed via the API — no read endpoint aggregates auth_lockout events into a count"
-          />
         )}
       </div>
     </CardShell>
   )
 }
 
-function TokensCard({ binding }: { binding: SecurityTabBinding }) {
+function SessionCard({ binding }: { binding: SecurityTabBinding }) {
   return (
-    <CardShell
-      icon={Lock}
-      title="Tokens"
-      help="Revocation must outlive the token, never the reverse — a blocklisted jti is checked on every authenticated request until its own exp passes."
-    >
-      {binding.blocklisted !== null ? (
-        <Row k="blocklist">
-          {binding.blocklisted} rows — swept by token_blocklist_cleanup, hourly,
-          only after natural expiry
-        </Row>
-      ) : (
-        <UnavailableRow
-          k="blocklist"
-          note="no endpoint reads the token_blocklist table's row count"
-        />
-      )}
-      <PillFlow steps={["active", "blocklisted (rotation)", "swept"]} />
-      <PillFlow
-        steps={["active", "dead by iat (password change — ALL pre-change tokens)"]}
-      />
-      <PillFlow steps={["active", "expired (exp elapses)"]} />
-      <div className="border-border flex flex-col gap-1.5 border-t border-dashed pt-2">
+    <CardShell icon={Lock} title="Session">
+      <div className="flex flex-col gap-1.5">
         <div className="flex items-center gap-1.5">
           <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
-            cookie_secure — tri-state
+            secure cookie
           </span>
-          <HelpTip label="About cookie_secure">
-            {binding.cookieSecureNote}
+          <HelpTip label="About the secure cookie">
+            When on, the session cookie is only sent over HTTPS. It is off
+            only on a plain-HTTP LAN install.
           </HelpTip>
         </div>
-        {binding.cookieSecureValue !== null ? (
+        {binding.cookieSecureValue !== null && (
           <Row k="value">{binding.cookieSecureValue}</Row>
-        ) : (
-          <UnavailableRow
-            k="value"
-            note="app/config.py's cookie_secure setting has no GET surface"
-          />
         )}
       </div>
       <div className="border-border flex flex-col gap-1.5 border-t border-dashed pt-2">
         <div className="flex items-center gap-1.5">
           <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
-            read_only — backup worker posture
+            read-only mode
           </span>
-          <HelpTip label="About read_only">
-            This flag is not the enforcement. On a backup worker the app
-            connects as the SELECT-only darkmem_viewer role, and that is what
-            refuses every write. The flag only stops spend — the job scheduler
-            is never armed, chat and the reranker are refused — and quiets
-            known write-on-read paths. While it is on, token rotation is
-            disabled: a refresh reissues without blocklisting the token it
-            replaces, so a captured pre-refresh token stays valid until its own
-            exp.
+          <HelpTip label="About read-only mode">
+            A read-only instance serves a restored backup and refuses every
+            write.
           </HelpTip>
         </div>
-        {binding.readOnly !== null ? (
-          <>
-            <Row k="value">
-              {binding.readOnly
-                ? "true — this instance is a read-only backup worker"
-                : "false — ordinary read-write instance"}
-            </Row>
-            <Row k="token rotation">
-              {binding.readOnlyTokenRotationDisabled
-                ? "DISABLED — refresh and logout reissue without blocklisting"
-                : "active — refresh and logout blocklist the presented token"}
-            </Row>
-          </>
-        ) : (
-          <UnavailableRow
-            k="value"
-            note="the security-posture read has not returned yet"
-          />
+        {binding.readOnly !== null && (
+          <Row k="value">
+            {binding.readOnly
+              ? "on — this instance is a read-only backup"
+              : "off"}
+          </Row>
+        )}
+        {binding.readOnlyTokenRotationDisabled && (
+          <Row k="token rotation">
+            off — signing out or refreshing does not revoke the old token
+          </Row>
         )}
       </div>
     </CardShell>
   )
 }
 
-function TofuCard({ binding }: { binding: SecurityTabBinding }) {
-  return (
-    <CardShell
-      icon={Flag}
-      title="Setup — trust-on-first-use"
-      chip={
-        binding.tofuClaimed !== null ? (
-          <SurfaceStateChip
-            state="populated"
-            label={binding.tofuClaimed ? "claimed" : "not claimed"}
-          />
-        ) : undefined
-      }
-      help="There is no SETUP_SECRET and none will be reintroduced — on a single-human LAN box the secret-distribution problem is strictly worse than the TOFU race it would close, and the race window is bounded by the LAN boundary plus the minutes between first boot and the wizard."
-      className="sm:col-span-2"
-    >
-      <Row k="claimed at">
-        {binding.tofuClaimedLabel ?? "loading — GET /api/v1/setup/status"}
-      </Row>
-      <Row k="gate">
-        <code className="font-mono">require_uninitialized</code> 403s every
-        request to <code className="font-mono">/api/v1/setup/*</code> now that{" "}
-        <code className="font-mono">admin_password_hash</code> exists
-      </Row>
-      {binding.tofuJournaled !== null ? (
-        <Row k="journaled">
-          <code className="font-mono">{binding.tofuJournaled}</code>
-        </Row>
-      ) : (
-        <UnavailableRow
-          k="journaled"
-          note="GET /setup/status returns only {initialized}, not the setup_completed event's payload"
-        />
-      )}
-    </CardShell>
-  )
-}
-
-function LanTrustCard({ binding }: { binding: SecurityTabBinding }) {
+function McpAccessCard({ binding }: { binding: SecurityTabBinding }) {
   return (
     <CardShell
       icon={Globe}
-      title="LAN trust model"
-      tag="v1 committed posture"
-      help="darkmem trusts its LAN, authenticates its human by session, and authenticates its agents by a per-tool-scoped bearer key — a credential, not a session. Three postures, one service layer underneath all of them."
+      title="MCP access"
+      help="Every MCP call needs an API key. A client on another machine also needs its host listed here, set with MCP_ALLOWED_HOSTS."
       className="sm:col-span-2"
     >
-      <div className="border-inset bg-muted/12 flex flex-col gap-1.5 rounded-md border px-3 py-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-sm font-semibold">/mcp</span>
-          <HelpTip label="About the /mcp door">
-            Every call requires Authorization: Bearer dmk_…, with scopes
-            enforced per tool. The Host allowlist is a second, independent
-            guard: an unkeyed request gets 401 regardless of Host, and only a
-            keyed request that also fails the Host check gets 421, fixed by
-            extending the allowlist — never by disabling either guard.
-          </HelpTip>
-          <span className="text-muted-foreground ml-auto font-mono text-xs">
-            Bearer key required — scoped per tool
-          </span>
-        </div>
-        {binding.mcpHosts !== null ? (
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-muted-foreground font-mono text-xs uppercase">
+          allowed hosts
+        </span>
+        {binding.mcpHosts !== null && (
           <div className="flex flex-wrap gap-1.5">
             {binding.mcpHosts.map((h) => (
               <span
@@ -395,65 +175,12 @@ function LanTrustCard({ binding }: { binding: SecurityTabBinding }) {
               </span>
             ))}
           </div>
-        ) : (
-          <span className="text-muted-foreground text-sm italic">
-            not exposed via the API — mcp_allowed_hosts is an env-var-backed
-            setting with no GET surface
-          </span>
         )}
-      </div>
-      <div className="border-inset bg-muted/12 flex flex-col gap-1.5 rounded-md border px-3 py-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-sm font-semibold">/api/v1 + /ws</span>
-          <HelpTip label="About the /api/v1 and /ws door">
-            The one authenticated door on this box; /ws rejects a
-            missing/invalid/revoked token with close code 1008 before joining
-            the broadcast set.
-          </HelpTip>
-          <span className="text-muted-foreground ml-auto font-mono text-xs">
-            cookie JWT — the human door
-          </span>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-muted-foreground font-mono text-xs uppercase">
-            active IP strategy
-          </span>
-          {binding.trustProxyHeaders !== null ? (
-            <span className="font-mono text-sm">
-              {binding.trustProxyHeaders
-                ? "X-Real-IP (trusted proxy — trust_proxy_headers on)"
-                : "raw socket peer (trust_proxy_headers off)"}
-            </span>
-          ) : (
-            <span className="text-muted-foreground text-sm italic">
-              not exposed via the API — trust_proxy_headers has no GET
-              surface
-            </span>
-          )}
-        </div>
-      </div>
-      <div className="border-inset bg-muted/12 flex flex-col gap-1.5 rounded-md border px-3 py-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-sm font-semibold">/setup</span>
-          <HelpTip label="About the /setup door">
-            See the Setup card above — closes itself permanently the moment
-            the first wizard run completes.
-          </HelpTip>
-          <span className="text-muted-foreground ml-auto font-mono text-xs">
-            trust-on-first-use, open only until claimed
-          </span>
-        </div>
       </div>
     </CardShell>
   )
 }
 
-// The load-bearing honesty surface of this board (invariant 23), and its
-// direction reversed by T4.04: this card declared the api_keys table dormant
-// and every write `api_key_id=None`, which stopped being true when T4.01 wired
-// the credential and T4.02 stamped the columns. A stale dormancy claim is the
-// same defect as a premature shipped claim — it tells an operator a live
-// credential path does not exist.
 function ApiKeyCard() {
   const { data: keys, isLoading, isError } = useApiKeys()
   const revokeKey = useRevokeApiKey()
@@ -465,7 +192,6 @@ function ApiKeyCard() {
     <CardShell
       icon={KeyRound}
       title="Keys for apps and agents"
-      tag="live"
       // Plain language on purpose: whoever runs this box is not necessarily
       // the person who wrote it. The precise contract - the `dmk_<id>_<secret>`
       // shape, the closed scope set, minting being behind the human door, the
@@ -494,8 +220,7 @@ function ApiKeyCard() {
           <span className="text-muted-foreground text-sm">loading keys…</span>
         ) : isError ? (
           <span className="text-muted-foreground text-sm">
-            The list of keys could not be loaded. This is a failed read, not an
-            empty list — your keys are still there.
+            The list of keys could not be loaded.
           </span>
         ) : rows.length === 0 ? (
           <EmptyState
@@ -544,71 +269,19 @@ function ApiKeyCard() {
           ))
         )}
       </div>
-
-      <div className="flex flex-wrap gap-1.5">
-        {API_KEY_SCOPES.map((scope) => (
-          <span
-            key={scope.label}
-            className={cn(
-              "text-muted-foreground border-muted-foreground/50 rounded-full border border-dashed px-2 py-0.5 text-sm",
-              scope.inert && "opacity-60",
-              scope.never && "border-destructive/50 text-destructive",
-            )}
-          >
-            {scope.label}
-          </span>
-        ))}
-      </div>
     </CardShell>
   )
 }
 
 export function SecurityTab() {
   const binding = useSecurityTabBinding()
-  const blocklistedMeta =
-    binding.blocklisted !== null ? `${binding.blocklisted} blocklisted · ` : ""
-  const lockoutsMeta =
-    binding.lockouts30d !== null ? `${binding.lockouts30d} lockouts / 30d` : ""
 
   return (
-    <div className="space-y-4">
-      <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
-        <span>
-          Auth, tokens, the trust-on-first-use claim, the LAN trust model, and
-          the programmatic ApiKey bearer.
-        </span>
-        <HelpTip label="About the Security tab">
-          Auth (the admin password-change form and the session&apos;s
-          cookie-JWT state), tokens (rotation, blocklist, the
-          mass-revocation-by-iat rule a password change triggers), the
-          trust-on-first-use claim, the LAN trust model, and the ApiKey
-          bearer path, live since the credential was wired. Fields with no
-          backend read surface (the blocklist count, the lockout count, the
-          session's issue time and jti) render as an honest gap, never a
-          guessed number; the posture fields — cookie_secure,
-          trust_proxy_headers, mcp_allowed_hosts, the rate limiter's
-          thresholds — are live reads.
-        </HelpTip>
-      </div>
-      <div className="border-border bg-muted/30 flex flex-wrap items-center gap-2.5 rounded-lg border px-4 py-2.5">
-        <span className="text-sm font-semibold">Security</span>
-        {(blocklistedMeta + lockoutsMeta) && (
-          <span className="text-muted-foreground font-mono text-sm">
-            {blocklistedMeta + lockoutsMeta}
-          </span>
-        )}
-        <span className="ml-auto">
-          <SurfaceStateChip state={binding.isLoading ? "empty" : "populated"} />
-        </span>
-      </div>
-
-      <div className="flex flex-col gap-6">
-        <AuthCard binding={binding} />
-        <TokensCard binding={binding} />
-        <TofuCard binding={binding} />
-        <LanTrustCard binding={binding} />
-        <ApiKeyCard />
-      </div>
+    <div className="flex flex-col gap-6">
+      <AuthCard binding={binding} />
+      <SessionCard binding={binding} />
+      <McpAccessCard binding={binding} />
+      <ApiKeyCard />
     </div>
   )
 }

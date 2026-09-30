@@ -209,8 +209,8 @@ export function RealCodeGraphView({
       </Select>
       {repo.status === "stale" && (
         <span className="border-warning/60 bg-warning/10 text-warning-text inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-0.5 text-sm">
-          serving last-good graph ({repo.last_indexed_commit ?? "unknown"}) —
-          stale
+          stale — showing last good graph (
+          {repo.last_indexed_commit ?? "unknown"})
         </span>
       )}
     </div>
@@ -233,15 +233,14 @@ export function RealCodeGraphView({
           // Not the empty state: it tells the operator this repo was never
           // indexed and sends them to reindex a graph that may well exist.
           <p className="text-destructive p-3 text-sm">
-            The code graph could not be loaded — a failed read, not an
-            unindexed repository.
+            The code graph could not be loaded.
           </p>
         ) : (
         <EmptyState
           kind="empty"
           icon={FolderGit2}
           title="No graph yet"
-          description={`${repo.name} has no indexed graph — no symbols, no edges, no communities or processes to browse. Index it from Repositories to build the graph.`}
+          description={`${repo.name} has not been indexed yet.`}
           action={
             <Button variant="outline" onClick={onOpenRepositories}>
               Open reindex dialog on Repositories →
@@ -383,9 +382,9 @@ export function RealCodeGraphView({
               center={null}
             />
           </div>
-          <div className="border-border bg-card text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 border-t px-2.5 py-1.5 text-sm">
-            {colorBy === "community" ? (
-              graph.communities.map((c) => (
+          {colorBy === "community" && (
+            <div className="border-border bg-card text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 border-t px-2.5 py-1.5 text-sm">
+              {graph.communities.map((c) => (
                 <span key={c.id} className="inline-flex items-center gap-1.5">
                   <span
                     className="h-2 w-2 rounded-[2px]"
@@ -393,14 +392,9 @@ export function RealCodeGraphView({
                   />
                   community: {c.label}
                 </span>
-              ))
-            ) : (
-              <span className="inline-flex items-center gap-1.5">
-                node kinds coloured by tier — see the Filters tab for the full
-                legend
-              </span>
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="border-border bg-card flex min-h-0 w-full min-w-0 flex-col overflow-y-auto border-t lg:w-60 lg:shrink-0 lg:border-t-0 lg:border-l">
@@ -424,7 +418,7 @@ export function RealCodeGraphView({
 
           <div className="border-border space-y-2 border-b p-2.5">
             <SectionTitle icon={<Share2 aria-hidden className="h-3 w-3" />}>
-              Blast radius risk buckets
+              Blast radius
             </SectionTitle>
             <div className="flex items-center gap-2">
               <Button
@@ -486,7 +480,6 @@ export function RealCodeGraphView({
                 kind="empty"
                 icon={Workflow}
                 title="No traced processes"
-                description="Processes are traced from call edges during indexing. This repository produced none."
               />
             )}
             {graph.processes.map((process) => (
@@ -533,7 +526,6 @@ export function RealCodeGraphView({
                 kind="empty"
                 icon={Network}
                 title="No communities detected"
-                description="Community detection found no group above the size threshold in this repository."
               />
             )}
             {graph.communities.map((community) => (

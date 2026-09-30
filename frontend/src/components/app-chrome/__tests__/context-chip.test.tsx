@@ -15,10 +15,10 @@ describe("ContextChip", () => {
 
   // Ruling 4: an undeclared context renders as undeclared, literally —
   // never a default axis value standing in for "nothing chosen".
-  it("renders 'not declared' when nothing is declared, with no default value shown", () => {
+  it("renders 'none' when nothing is declared, with no default value shown", () => {
     render(<ContextChip />)
     const chip = screen.getByRole("button", { name: /session context/i })
-    expect(chip).toHaveTextContent("context: not declared")
+    expect(chip).toHaveTextContent("context: none")
     expect(chip.textContent).not.toMatch(/env=|situation=|version=/)
   })
 
@@ -37,7 +37,7 @@ describe("ContextChip", () => {
     expect(useContextStore.getState().declared).toEqual({ axes: { env: "prod" } })
   })
 
-  it("clearing returns the chip to 'not declared'", async () => {
+  it("clearing returns the chip to 'none'", async () => {
     useContextStore.getState().declareContext({ env: "prod" })
     const user = userEvent.setup()
     render(<ContextChip />)
@@ -46,7 +46,7 @@ describe("ContextChip", () => {
     await user.click(await screen.findByRole("button", { name: /^clear$/i }))
 
     expect(screen.getByRole("button", { name: /session context/i })).toHaveTextContent(
-      "context: not declared",
+      "context: none",
     )
     expect(useContextStore.getState().declared).toBeNull()
   })
@@ -62,7 +62,7 @@ describe("ContextChip", () => {
 
     expect(useContextStore.getState().declared).toBeNull()
     expect(screen.getByRole("button", { name: /session context/i })).toHaveTextContent(
-      "context: not declared",
+      "context: none",
     )
   })
 
@@ -92,7 +92,7 @@ describe("ContextChip", () => {
       screen.getByRole("button", { name: "About context hints" }),
     ).toBeInTheDocument()
     const chip = screen.getByRole("button", { name: "Session context" })
-    expect(chip).toHaveTextContent("context: not declared")
+    expect(chip).toHaveTextContent("context: none")
     expect(chip.className).toMatch(/border-dashed/)
     expect(chip.className).toMatch(/italic/)
   })

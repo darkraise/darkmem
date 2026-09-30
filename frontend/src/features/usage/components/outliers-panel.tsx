@@ -120,7 +120,7 @@ function OutlierRow({
             {row.unmeasured_calls > 0 ? (
               <span
                 className="text-warning-text inline-flex items-center gap-1 text-xs"
-                title={`${row.unmeasured_calls} of ${row.calls} calls sent no token envelope, so this is a floor`}
+                title={`${row.unmeasured_calls} of ${row.calls} calls reported no token counts, so this is a lower bound`}
               >
                 <AlertTriangle aria-hidden className="h-3 w-3" />
                 {row.unmeasured_calls} unmeasured
@@ -271,7 +271,6 @@ export function OutliersPanel({
           <EmptyState
             kind="failed"
             title="Could not read the outlier list"
-            description="A failed read is not an empty one; nothing is being asserted about spend here."
           />
         ) : rows.length === 0 ? (
           <EmptyState

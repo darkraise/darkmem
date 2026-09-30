@@ -180,17 +180,16 @@ export function UsageOverview({
   if (data.merged_classification_present) {
     caveats.push(
       <Caveat key="merged">
-        Extraction <strong>includes folded classification</strong> — under the
-        default config both run in one call, so classification&apos;s own total
-        reads near zero rather than being cheap.
+        Classification runs inside extraction calls, so its cost is counted
+        under extraction.
       </Caveat>,
     )
   }
   if (data.unmeasured_calls > 0) {
     caveats.push(
       <Caveat key="unmeasured">
-        {data.unmeasured_calls} calls not measured — the vendor sent no token
-        envelope, so this total is a floor, not the whole spend.
+        {data.unmeasured_calls} calls reported no token counts, so spend is a
+        lower bound.
       </Caveat>,
     )
   }
@@ -201,7 +200,7 @@ export function UsageOverview({
         {data.unpriced_models.length > 0
           ? ` (${data.unpriced_models.join(", ")})`
           : ""}{" "}
-        — measured, but no rate is set for the model. Add one under Prices.
+        — add a rate under Prices.
       </Caveat>,
     )
   }
@@ -209,8 +208,7 @@ export function UsageOverview({
     caveats.push(
       <Caveat key="failed">
         {data.failed_calls} calls failed, costing{" "}
-        {formatUsd(data.failed_cost_micros)}. A vendor bills for work that
-        errored after it started.
+        {formatUsd(data.failed_cost_micros)}.
       </Caveat>,
     )
   }

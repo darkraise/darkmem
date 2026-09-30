@@ -32,14 +32,6 @@ const TIER_C_PURPOSE_ICONS: Record<TierCLLMPurpose["purpose"], LucideIcon> = {
   verification: ShieldCheck,
 }
 
-function TierBadge({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="border-inset bg-muted text-muted-foreground ml-auto rounded-full border px-2 py-0.5 font-mono text-xs tracking-wide whitespace-nowrap uppercase">
-      {children}
-    </span>
-  )
-}
-
 /**
  * One writable purpose, read-only, in either layout. Editing lives in the
  * dialog `onEdit` opens.
@@ -71,7 +63,6 @@ export function PurposeItem({
         {purpose.role}
         {purpose.hint && ` — ${purpose.hint.text}`}
       </HelpTip>
-      <TierBadge>{purpose.tier}</TierBadge>
     </div>
   )
 
@@ -149,7 +140,6 @@ export function TierCPurposeItem({
   layout: LlmLayout
 }) {
   const Icon = TIER_C_PURPOSE_ICONS[purpose.purpose]
-  const live = purpose.activatesWith === null
 
   const identity = (
     <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -158,7 +148,6 @@ export function TierCPurposeItem({
       <HelpTip label={`About the ${purpose.purpose} purpose`}>
         {purpose.role}
       </HelpTip>
-      <TierBadge>{live ? "tier c · live" : "tier c · inert"}</TierBadge>
     </div>
   )
 
@@ -177,22 +166,7 @@ export function TierCPurposeItem({
 
   const note = (
     <p className="text-muted-foreground text-sm">
-      {live ? (
-        <>
-          Read-only by deliberate ruling, not an oversight. Its qualification
-          record is a gate's evidence, pinned to this exact model identity, and
-          the judge refuses to serve on a mismatched one. Changing the judge is
-          supported — re-run the qualification harness against the gold set,
-          which mints a record at the new identity — but it is a measurement,
-          not a settings edit.
-        </>
-      ) : (
-        <>
-          Seeded row, resolvable, no consumer yet — activates with{" "}
-          <span className="font-mono">{purpose.activatesWith}</span>. Rendered
-          rather than omitted: a hidden inert purpose reads as "not configured".
-        </>
-      )}
+      Read-only — managed by the judge qualification run.
     </p>
   )
 

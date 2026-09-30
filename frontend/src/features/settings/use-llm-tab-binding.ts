@@ -20,34 +20,27 @@ import { TIER_C_LLM_PURPOSES, type TierCLLMPurpose } from "./llm-tier-c-purposes
  *  descriptive text the demo fixture also carries, kept short here rather
  *  than imported from the demo module (real code should not depend on
  *  `@/demo/**` fixture data). */
-const LIVE_PURPOSE_META: Record<LLMPurposeName, { tier: string; role: string }> = {
+const LIVE_PURPOSE_META: Record<LLMPurposeName, { role: string }> = {
   embedding: {
-    tier: "tier A / B / C",
-    role: "every vector: content, entity, code chunk, query",
+    role: "embeds memories, entities, code and search queries",
   },
   extraction: {
-    tier: "tier B",
-    role: "the merged ingest call — entities + relations + classification fields",
+    role: "extracts entities and relations from new memories",
   },
   classification: {
-    tier: "tier B",
-    role: "classification, folded into extraction in simple mode",
+    role: "labels and summarises new memories",
   },
   reasoning: {
-    tier: "tier A / C",
-    role: "memory_reason, conversational chat, Tier-C dream-refine judgments",
+    role: "memory reasoning, chat and background refinement",
   },
   summarization: {
-    tier: "tier B / C",
-    role: "code enrichment + wiki, fanning out to three code-summarization buckets",
+    role: "code summaries and the code wiki",
   },
   reranker: {
-    tier: "tier A",
-    role: "retrieval rerank scoring, top-40 RRF rows, flag-gated",
+    role: "re-scores the top search results when the reranker is on",
   },
   synthesis: {
-    tier: "tier C",
-    role: "Layer-3 article write-ups and auto-research write-ups",
+    role: "article and research write-ups",
   },
 }
 
@@ -85,7 +78,6 @@ function toDemoPurpose(
   const meta = LIVE_PURPOSE_META[purpose]
   return {
     purpose,
-    tier: meta.tier,
     role: meta.role,
     provider_name: cfg?.provider_name ?? "",
     model: cfg?.model ?? "",
@@ -139,10 +131,10 @@ export interface LLMTabBinding {
  *  the layout until dismissed and pushed the cards down on every save. The
  *  fields it named are kept — they are the part that says what actually
  *  changed — while the orchestrator-rebuild prose that filled the rest of it
- *  is the same sentence on every save and now lives in the tab's help text. */
+ *  was the same sentence on every save and is gone. */
 function announceSave(purpose: string, fields: string[]) {
   toast.success(`Saved — ${purpose} purpose updated`, {
-    description: `${fields.join(", ")} · orchestrator rebuilt and swapped in-process, no redeploy`,
+    description: fields.join(", "),
   })
 }
 
