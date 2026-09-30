@@ -16,7 +16,7 @@ export const CURATED_FLAGS: DemoFlagsState = {
     {
       key: "w_conf",
       alias: "confidence_rank_gamma",
-      desc: "1 + w·(confidence − 0.75)",
+      desc: "Ranks results with a higher confidence estimate above the rest",
       value: 0.4,
       coded_default: 0,
       source: "override",
@@ -24,7 +24,7 @@ export const CURATED_FLAGS: DemoFlagsState = {
     },
     {
       key: "w_importance",
-      desc: "1 + w·(importance − 0.5) — column populated, unread before this arm ships",
+      desc: "Ranks more important memories higher",
       value: 0,
       coded_default: 0,
       source: "default",
@@ -34,7 +34,7 @@ export const CURATED_FLAGS: DemoFlagsState = {
     },
     {
       key: "w_heat",
-      desc: "1 + w·heat_norm, heat computed in SQL from memory_access_stats",
+      desc: "Ranks frequently read memories higher",
       value: 0,
       coded_default: 0,
       source: "default",
@@ -44,7 +44,7 @@ export const CURATED_FLAGS: DemoFlagsState = {
     },
     {
       key: "w_recency",
-      desc: "1 + w·recency_norm, from last_accessed / created_at",
+      desc: "Ranks recently used or created memories higher",
       value: 0,
       coded_default: 0,
       source: "default",
@@ -56,12 +56,12 @@ export const CURATED_FLAGS: DemoFlagsState = {
   graph_flags: [
     {
       key: "ppr_enabled",
-      desc: "personalized PageRank list, seeded from the query's resolved entities, read from a cached in-process snapshot",
+      desc: "Adds results ranked by how close they are in the entity graph to the entities in the query",
       enabled: false,
       source: "default",
       paired_arm: {
         key: "w_ppr",
-        desc: "RRF list weight — PPR-ranked memories",
+        desc: "How much the graph-proximity results count in the ranking",
         value: 0,
         coded_default: 0,
         source: "default",
@@ -70,12 +70,12 @@ export const CURATED_FLAGS: DemoFlagsState = {
     },
     {
       key: "dual_level_enabled",
-      desc: "global relation arm over relation_embeddings, scoped through asserting memories",
+      desc: "Adds results found by searching the relations between entities",
       enabled: true,
       source: "override",
       paired_arm: {
         key: "w_dual",
-        desc: "RRF list weight — dual-level relation channel",
+        desc: "How much the relation-search results count in the ranking",
         value: 0.15,
         coded_default: 0,
         source: "override",
@@ -84,7 +84,7 @@ export const CURATED_FLAGS: DemoFlagsState = {
     },
     {
       key: "community_injection_enabled",
-      desc: "injects a resolved community's report_string as local context",
+      desc: "Adds a summary of the matching entity group as context. It adds no ranked list, so it has no weight",
       enabled: false,
       source: "default",
       paired_arm: null,
@@ -94,7 +94,7 @@ export const CURATED_FLAGS: DemoFlagsState = {
   ],
   context_boost: {
     key: "w_context_boost",
-    desc: "post-fusion multiplier on a MATCH outcome only — NEUTRAL carries a label with no boost, CONFLICT excludes and counts",
+    desc: "Boosts results whose context conditions match the query; results whose conditions conflict are left out",
     value: 0.25,
     coded_default: 0,
     source: "override",
@@ -119,20 +119,20 @@ export const CURATED_FLAGS: DemoFlagsState = {
   behavioral_flags: [
     {
       key: "hybrid_search_enabled",
-      desc: "RRF fusion of semantic + keyword search, k=60 — the retrieval baseline the G-A gate already measured",
+      desc: "Combines semantic and keyword search. Off, search uses semantic matching only",
       enabled: true,
       source: "default",
     },
     {
       key: "reranker_enabled",
-      desc: "LLM-scores the top-40 RRF rows before serving — flips only on a measured win including its p95 cost (gate-ledger.md standing conditional gate)",
+      desc: "Has an LLM re-score the top 40 results before they are returned. Adds latency and cost",
       enabled: false,
       source: "default",
       unmeasured: true,
     },
     {
       key: "relation_rescue",
-      desc: "pattern-based rescue layer for relations the extractor misses (adjacency, subject-tracking, REPLACES)",
+      desc: "Recovers relations the extractor missed, using text patterns",
       enabled: true,
       source: "default",
     },
@@ -143,7 +143,7 @@ export const CURATED_FLAGS: DemoFlagsState = {
   tunables: [
     {
       key: "pipeline_concurrency",
-      desc: "how many memories Phase 2 extracts and classifies at once, and how wide Phase 4's dedup probes fan out",
+      desc: "How many memories are processed at once",
       value: 5,
       coded_default: 5,
       source: "default",
@@ -152,7 +152,7 @@ export const CURATED_FLAGS: DemoFlagsState = {
     },
     {
       key: "embedding_batch_size",
-      desc: "contents per chunk in Phase 1's single embedder call — larger batches cut round-trips, and overrun a model's context window",
+      desc: "How many texts go into one embedding call",
       value: 20,
       coded_default: 20,
       source: "default",
@@ -161,7 +161,7 @@ export const CURATED_FLAGS: DemoFlagsState = {
     },
     {
       key: "embedding_concurrency",
-      desc: "how many embed chunks are in flight at once against the embedding provider",
+      desc: "How many embedding calls run at once",
       value: 1,
       coded_default: 1,
       source: "default",
@@ -170,7 +170,7 @@ export const CURATED_FLAGS: DemoFlagsState = {
     },
     {
       key: "entity_cache_ttl_minutes",
-      desc: "how long Phase 3 keeps an entity vector in the in-memory (name_lower, fingerprint) cache before falling back to the DB cache",
+      desc: "How long an entity embedding stays cached in memory",
       value: 60,
       coded_default: 60,
       source: "default",
@@ -223,7 +223,7 @@ export const CURATED_LLM_PURPOSES: DemoLLMPurpose[] = [
     reasoning: false,
     hint: {
       tone: "info",
-      text: "seeded reasoning: off — a hidden chain-of-thought would otherwise peg the output cap on a reasoning-by-default vendor and truncate the extraction JSON.",
+      text: "Reasoning is off so long outputs are not cut short.",
     },
   },
   {
@@ -263,7 +263,7 @@ export const CURATED_LLM_PURPOSES: DemoLLMPurpose[] = [
     reasoning: false,
     hint: {
       tone: "info",
-      text: "the rerank purpose whose reranker_enabled activation toggle lives on Settings · Flags, not here.",
+      text: "Turn the reranker on or off under Settings → Flags.",
     },
   },
   {
@@ -291,7 +291,7 @@ export const CURATED_LLM_PURPOSES: DemoLLMPurpose[] = [
     reasoning: false,
     hint: {
       tone: "info",
-      text: "seeded, resolvable, and writable — no consumer until T3.02, so a mis-set connection here has no runtime effect yet.",
+      text: "Used when writing summary articles.",
     },
   },
 ]
@@ -446,7 +446,7 @@ export const SETUP_API_KINDS: SetupKindFixture[] = [
       classification: "glm-4.6-flash",
       reasoning: "glm-4.6",
     },
-    fetched_note: "7 models loaded (vendor /v1/models omits some — free-text entry still works)",
+    fetched_note: "7 models loaded; you can also type a model name",
   },
 ]
 

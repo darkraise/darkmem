@@ -23,7 +23,7 @@ export const CURATED_PIPELINE_RUNS: DemoPipelineRun[] = [
     substeps: null,
     terminal: "running",
     counts: null,
-    note: "processing — awaiting the terminal result. All five phases resolve server-side before /ws reports one status (completed/partial/failed); there is no incremental per-phase progress event.",
+    note: "processing",
   },
   {
     id: "mem_2a9f04",
@@ -47,7 +47,7 @@ export const CURATED_PIPELINE_RUNS: DemoPipelineRun[] = [
     substeps: { vector: "ok", graph: "error" },
     terminal: "partial",
     counts: { entities: 5, relations: 3 },
-    note: "Vector write (savepoint A) committed independently — the memory is embedded and searchable. The entity/relationship graph write (savepoint B) failed and rolled back on its own; surfaces in Failure triage for retry.",
+    note: "The memory is saved and searchable, but its graph write failed. Retry it from Failure triage.",
   },
   {
     id: "mem_9e02f7",
@@ -59,7 +59,7 @@ export const CURATED_PIPELINE_RUNS: DemoPipelineRun[] = [
     substeps: { vector: "ok", graph: "ok" },
     terminal: "partial",
     counts: { entities: 1, relations: 0 },
-    note: "Extraction returned a truncated response — degraded, not fatal. Content and vector are written and searchable; the entity graph carries only what parsed. A clean re-extraction resolves the row automatically.",
+    note: "Extraction returned a truncated response. The memory is searchable; its graph holds only what was parsed.",
   },
   {
     id: "mem_e41a88",
@@ -71,7 +71,7 @@ export const CURATED_PIPELINE_RUNS: DemoPipelineRun[] = [
     substeps: { vector: "skipped", graph: "skipped" },
     terminal: "failed",
     counts: { entities: 0, relations: 0 },
-    note: "Embedder outage — the chunked embed_batch call errored, then the concurrent extraction call errored independently on the same outage. Write never ran (vector and graph both stayed skipped). Retryable from Failure triage.",
+    note: "The embedding provider was unreachable, so nothing was written. Retry it from Failure triage.",
   },
 ]
 
@@ -283,7 +283,7 @@ export const CURATED_DREAM_CYCLE: DemoDreamCycle = {
         origins: "1 origin · kind [human]",
       },
     ],
-    note: "The contradiction scan surfaced this dispute this cycle — it is not one of the seven reversible dream actions and has no undo of its own; a dispute is adjudicated, not reversed. It routes to the Review queue for a human to ratify one side or leave both served.",
+    note: "The contradiction scan found this dispute. Resolve it in Knowledge → Review.",
   },
 }
 
@@ -297,7 +297,7 @@ export const CURATED_DREAM_ACTIONS: DemoDreamAction[] = [
     meta: "superseded_by → memory 7c1e2ab · 2026-07-24 03:01 UTC",
     transition: { from: null, to: "superseded", from_plain: "active" },
     undone: false,
-    undone_note: "undone — restored to active, superseded_by cleared; journaled",
+    undone_note: "undone — restored to active",
   },
   {
     id: "dream-sup-mcp-bearer",
@@ -324,7 +324,7 @@ export const CURATED_DREAM_ACTIONS: DemoDreamAction[] = [
       'before: "note about db retries" · after: "exponential backoff retry policy for transient asyncpg connection errors, max 3 attempts"',
     meta: "refined 2026-07-24 03:02 UTC",
     undone: false,
-    undone_note: "undone — prior summary restored; journaled",
+    undone_note: "undone — prior summary restored",
   },
   {
     id: "dream-ref-tags",
@@ -335,7 +335,7 @@ export const CURATED_DREAM_ACTIONS: DemoDreamAction[] = [
     note: "before: [db, retry] · after: [db, retry, asyncpg, backoff]",
     meta: "refined 2026-07-24 03:02 UTC",
     undone: false,
-    undone_note: "undone — prior tags restored; journaled",
+    undone_note: "undone — prior tags restored",
   },
   {
     id: "dream-edge-cookie",
@@ -346,7 +346,7 @@ export const CURATED_DREAM_ACTIONS: DemoDreamAction[] = [
       '+4 associative edges · 3 co-retrieved memories on "cookie_secure" (similarity ≥ 0.85)',
     meta: "derived 2026-07-24 03:03 UTC",
     undone: false,
-    undone_note: "undone — the 4 derived edges deleted; journaled",
+    undone_note: "undone — the 4 derived edges deleted",
   },
   {
     id: "dream-edge-reranker",
@@ -356,7 +356,7 @@ export const CURATED_DREAM_ACTIONS: DemoDreamAction[] = [
     title: '+3 associative edges · subject-salient memories on "reranker"',
     meta: "derived 2026-07-24 03:03 UTC",
     undone: false,
-    undone_note: "undone — the 3 derived edges deleted; journaled",
+    undone_note: "undone — the 3 derived edges deleted",
   },
   {
     id: "dream-prom-hybrid",
@@ -369,7 +369,7 @@ export const CURATED_DREAM_ACTIONS: DemoDreamAction[] = [
     meta: "promoted 2026-07-24 03:02 UTC",
     transition: { from: "candidate", to: "corroborated" },
     undone: false,
-    undone_note: "undone — rung restored to candidate; journaled",
+    undone_note: "undone — rung restored to candidate",
   },
   {
     id: "dream-dem-gamma",
@@ -383,7 +383,7 @@ export const CURATED_DREAM_ACTIONS: DemoDreamAction[] = [
     transition: { from: "corroborated", to: "candidate" },
     caution_tag: "demoted",
     undone: false,
-    undone_note: "undone — rung restored to corroborated; journaled",
+    undone_note: "undone — rung restored to corroborated",
   },
   {
     id: "dream-ratify-reranker",
@@ -397,7 +397,7 @@ export const CURATED_DREAM_ACTIONS: DemoDreamAction[] = [
     transition: { from: "corroborated", to: "confirmed", to_label: "human-ratified" },
     undone: false,
     undone_note:
-      "undone — the human-kind fact_source withdrawn, recompute queued; journaled",
+      "undone — the human confirmation withdrawn",
   },
   {
     id: "dream-inv-setup-secret",
@@ -416,7 +416,7 @@ export const CURATED_DREAM_ACTIONS: DemoDreamAction[] = [
     },
     undo_label: "Undo — reopen window",
     undone: false,
-    undone_note: "undone — belief window reopened (invalid_at cleared); journaled",
+    undone_note: "undone — fact reopened",
   },
   {
     id: "dream-resynth-setup",
@@ -429,7 +429,7 @@ export const CURATED_DREAM_ACTIONS: DemoDreamAction[] = [
     undo_label: "Undo — re-activate",
     undone: false,
     undone_note:
-      "undone — article re-activated, superseded_by unlinked; journaled",
+      "undone — article restored",
   },
 ]
 
