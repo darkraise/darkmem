@@ -306,10 +306,8 @@ async def lifespan(app: FastAPI):
         key="repo_sync",
         display_name="Repository Sync",
         description=(
-            "Per repo, on that repo's own intervals: fetches when Fetch from "
-            "remote is on, and indexes when Index on new commit is on and HEAD "
-            "has moved. Every switch is off by default. Manual reindex, the "
-            "webhook and the code_reindex MCP tool bypass this loop entirely."
+            "Fetches and re-indexes each repository on its own schedule, when "
+            "that repository's switches are on."
         ),
         default_cron="*/30 * * * * *",
         min_interval_seconds=15,
@@ -320,9 +318,8 @@ async def lifespan(app: FastAPI):
         key=BUFFER_FLUSH_JOB_KEY,
         display_name="Buffer Flush",
         description=(
-            "Claims accepted-but-unprocessed captures from the ingest buffer "
-            "and runs them through the five-phase pipeline. Disabling this "
-            "stops every 202-accepted capture from ever becoming a memory."
+            "Turns accepted captures into memories. With it off, new captures "
+            "are never processed."
         ),
         default_cron=BUFFER_FLUSH_CRON,
         min_interval_seconds=BUFFER_FLUSH_MIN_INTERVAL_SECONDS,
@@ -334,10 +331,8 @@ async def lifespan(app: FastAPI):
         key=JOB_RUN_CLEANUP_JOB_KEY,
         display_name="Job History Cleanup",
         description=(
-            "Trims job_runs to its configured ceiling, newest kept. Run "
-            "telemetry used to land in the append-only events table where "
-            "nothing could remove it; this is what keeps its replacement "
-            "bounded."
+            "Keeps job run history to its configured size, dropping the "
+            "oldest runs."
         ),
         # Weekly. The ceiling is what bounds the table, so the cadence only
         # decides how far past it the table may drift between sweeps.
@@ -355,10 +350,7 @@ async def lifespan(app: FastAPI):
         key=LLM_USAGE_CLEANUP_JOB_KEY,
         display_name="LLM Usage Retention",
         description=(
-            "Deletes llm_usage rows past the retention window. Trimmed by age "
-            "rather than by row count, because the question this table answers "
-            "is what the last N days cost -- a row ceiling would shorten that "
-            "answer during exactly the busy period worth investigating."
+            "Deletes LLM usage records older than the retention window."
         ),
         # Nightly, after the backup timer's 03:30 so a sweep never races a dump.
         default_cron="0 4 * * *",
@@ -377,10 +369,8 @@ async def lifespan(app: FastAPI):
         key=PAGE_ATTACHMENT_CLEANUP_JOB_KEY,
         display_name="Page Attachment Cleanup",
         description=(
-            "Deletes page attachments no page block references once they are "
-            "past the grace period, files left with no row by a crash, and "
-            "stale import staging directories. Trashed pages still count as "
-            "references, so emptying the trash is what releases a file."
+            "Deletes page attachments nothing references any more, after a "
+            "grace period."
         ),
         default_cron="20 * * * *",
         min_interval_seconds=600,
@@ -398,10 +388,8 @@ async def lifespan(app: FastAPI):
         key=WORKLOG_CLEANUP_JOB_KEY,
         display_name="Work Log Retention",
         description=(
-            "Deletes closed work-log workstreams, with their entries, once they "
-            "have been closed longer than the retention window. Open "
-            "workstreams and those marked retain are never deleted, however "
-            "old. Each deletion is journalled before it happens."
+            "Deletes closed workstreams once they pass the retention window. "
+            "Open and retained workstreams are kept."
         ),
         default_cron=WORKLOG_CLEANUP_CRON,
         min_interval_seconds=3600,
@@ -413,11 +401,8 @@ async def lifespan(app: FastAPI):
         key=BACKUP_SHIP_JOB_KEY,
         display_name="Backup Ship",
         description=(
-            "Dumps the database over the stack network with the image's own "
-            "pg_dump, encrypts with the destination's age recipient, ships to "
-            "every enabled destination, reads each upload back to verify it, "
-            "and prunes per destination. Independent of the host-side systemd "
-            "backup timer by design -- two producers, no shared lock."
+            "Backs up the database, encrypts it and ships it to each enabled "
+            "backup destination."
         ),
         # 04:30 UTC, apart from the systemd timer's 03:30 host-local, because
         # nothing can serialise the two producers (m4) and dumping twice
@@ -433,8 +418,7 @@ async def lifespan(app: FastAPI):
         key="code_enrichment",
         display_name="Code Symbol Enrichment",
         description=(
-            "Runs one batch of LLM summarisation against pending code "
-            "symbols (function / class / method docs)."
+            "Writes short summaries for code symbols that don't have one yet."
         ),
         default_cron="*/10 * * * * *",
         min_interval_seconds=1,
@@ -450,12 +434,8 @@ async def lifespan(app: FastAPI):
         key=CODE_DERIVER_JOB_KEY,
         display_name="Code Graph Deriver",
         description=(
-            "Derives each indexed repository's Layer-1 graph assertions from "
-            "its import edges (doc 10 §6) — the repo itself, its external "
-            "dependencies and languages — into entities.repo_ids[] / "
-            "entity_relations.repo_ids[]. Off the reindex path by design: a "
-            "derivation failure here is journaled under its own "
-            "pipeline_name and never fails an index run."
+            "Adds each indexed repository, its dependencies and its languages "
+            "to the knowledge graph."
         ),
         default_cron=CODE_DERIVER_CRON,
         min_interval_seconds=CODE_DERIVER_MIN_INTERVAL_SECONDS,
@@ -466,8 +446,7 @@ async def lifespan(app: FastAPI):
         key="token_blocklist_cleanup",
         display_name="Token Blocklist Cleanup",
         description=(
-            "Deletes expired entries from the auth token blocklist. Safe "
-            "to leave on; disable only if you are debugging revocation."
+            "Deletes expired entries from the sign-out token blocklist."
         ),
         default_cron="0 * * * *",
         min_interval_seconds=60,
@@ -478,12 +457,8 @@ async def lifespan(app: FastAPI):
         key="pipeline_failure_cleanup",
         display_name="Pipeline Failure Cleanup",
         description=(
-            "Prunes orphaned pipeline-failure rows and resolved entries "
-            "older than 30 days, AND keeps the events journal's monthly "
-            "partitions ahead of need. Leave this on: with it disabled, a "
-            "process running past the current partition horizon stops "
-            "journaling entirely, because a RANGE parent rejects any row with "
-            "no partition to land in."
+            "Prunes old resolved pipeline failures and prepares the activity "
+            "journal for the coming months. Leave it on."
         ),
         default_cron="0 * * * *",
         min_interval_seconds=60,
@@ -494,10 +469,8 @@ async def lifespan(app: FastAPI):
         key="graph_orphan_cleanup",
         display_name="Graph Orphan Cleanup",
         description=(
-            "Prunes entity-graph ghosts — entities and relations that no "
-            "live memory asserts any more (left by deleted memories). Keeps "
-            "entity dedup from collapsing fresh entities onto stale ghosts. "
-            "Safe to leave on."
+            "Removes graph entities and relations that no memory mentions any "
+            "more."
         ),
         default_cron="0 * * * *",
         min_interval_seconds=60,
@@ -508,9 +481,7 @@ async def lifespan(app: FastAPI):
         key="tag_orphan_cleanup",
         display_name="Tag Orphan Cleanup",
         description=(
-            "Prunes tags no live memory carries any more (left behind when "
-            "memories are deleted). Keeps the dashboard tag count and the tag "
-            "filter from showing unused tags. Safe to leave on."
+            "Removes tags that no memory carries any more."
         ),
         default_cron="0 * * * *",
         min_interval_seconds=60,
@@ -521,8 +492,7 @@ async def lifespan(app: FastAPI):
         key="expired_memory_cleanup",
         display_name="Expired Memory Cleanup",
         description=(
-            "Deletes memories past their expires_at TTL. Without this a "
-            "client-set TTL is never honored. Safe to leave on."
+            "Deletes memories past their expiry time."
         ),
         default_cron="0 * * * *",
         min_interval_seconds=60,
@@ -533,12 +503,8 @@ async def lifespan(app: FastAPI):
         key=PPR_SNAPSHOT_JOB_KEY,
         display_name="PPR Graph Snapshot",
         description=(
-            "Rebuilds the cached in-process entity-graph snapshot the PPR "
-            "retrieval arm ranks against (doc 07 §4), one rotating batch of "
-            "projects per run. Off the hot path by design: retrieval reads "
-            "the snapshot and can never trigger a build. Leaving this off "
-            "costs nothing while ppr_enabled is off, and starves the arm of "
-            "a snapshot once it is on."
+            "Rebuilds the graph snapshot used by graph-based ranking, a few "
+            "projects per run."
         ),
         default_cron="30 * * * *",
         min_interval_seconds=300,
@@ -550,12 +516,7 @@ async def lifespan(app: FastAPI):
         key=RELATION_EMBEDDING_JOB_KEY,
         display_name="Relation Embedding Refresh",
         description=(
-            "Keeps the relation_embeddings partition current for the "
-            "dual-level retrieval channel (doc 07 §4): embeds relations that "
-            "have no vector under the active embedder, then rotates the "
-            "oldest embedded slice so a renamed entity's stale vector is "
-            "corrected. Off the hot path — never inside capture. Each run "
-            "spends embedding calls, so 0 on either batch disables that arm."
+            "Embeds graph relations for relation-level search."
         ),
         default_cron="15 * * * *",
         min_interval_seconds=300,
@@ -567,12 +528,8 @@ async def lifespan(app: FastAPI):
         key=BLOCK_EMBEDDING_JOB_KEY,
         display_name="Block Embedding Refresh",
         description=(
-            "Embeds document blocks, page blocks and work-log entries that "
-            "have no vector under the active embedder, each on its own "
-            "budget: an embed that failed after its filing committed, an "
-            "embedder rotation, a page edit, or any work-log append (appends "
-            "never embed inline). Off the hot path. Each run spends embedding "
-            "calls, so a budget of 0 disables that sweep."
+            "Embeds document blocks, note blocks and work-log entries that "
+            "are missing an embedding."
         ),
         default_cron=BLOCK_EMBEDDING_CRON,
         min_interval_seconds=BLOCK_EMBEDDING_MIN_INTERVAL_SECONDS,
@@ -584,12 +541,8 @@ async def lifespan(app: FastAPI):
         key=REPO_ENTITY_ANCHORING_JOB_KEY,
         display_name="Repo Entity Anchoring",
         description=(
-            "Embeds entities a repository asserts but no memory does, so the "
-            "code bridge's dedup probe can see them (doc 10 §6). Without it a "
-            "code-minted 'postgres' and a memory-minted 'postgresql' stay two "
-            "nodes: they only merge on an exact name match. Off the hot path — "
-            "the deriver that mints these rows is LLM-free by design, so the "
-            "embed happens here instead."
+            "Embeds entities found in repositories so they can be matched to "
+            "the same things in memories."
         ),
         default_cron="45 * * * *",
         min_interval_seconds=300,
@@ -601,14 +554,8 @@ async def lifespan(app: FastAPI):
         key=REPO_ENTITY_MERGE_JOB_KEY,
         display_name="Repo Entity Merge",
         description=(
-            "Fuses a repository-asserted entity with the near-named node a "
-            "memory already minted, at the same 0.85 threshold and under the "
-            "same discriminator Phase 4 uses (doc 10 §6). Anchoring only "
-            "closes the order where the repo is indexed first; a repo indexed "
-            "after its memories — what every existing install produces — "
-            "leaves 'postgres' and 'postgresql' as two nodes forever, because "
-            "the deriver's write is an exact-key upsert with no probe. Off "
-            "the hot path: it merges after the fact, never during capture."
+            "Merges a repository's entity with the matching entity a memory "
+            "already created."
         ),
         default_cron="50 * * * *",
         min_interval_seconds=300,
@@ -620,13 +567,8 @@ async def lifespan(app: FastAPI):
         key=CITATION_REVERIFY_JOB_KEY,
         display_name="Citation Re-verify",
         description=(
-            "Re-resolves every code citation's recorded symbol_key against "
-            "its repository's current HEAD (doc 10 §6). A citation that no "
-            "longer resolves is marked stale and its fact is queued for the "
-            "verification recompute, which downgrades the badge — never "
-            "expiring the fact, because a deleted symbol may be a rename a "
-            "human should confirm. Leaving this off lets a badge keep "
-            "claiming evidence that no longer exists."
+            "Re-checks code citations against each repository's latest commit "
+            "and flags the ones that no longer resolve."
         ),
         default_cron=CITATION_REVERIFY_CRON,
         min_interval_seconds=CITATION_REVERIFY_MIN_INTERVAL_SECONDS,

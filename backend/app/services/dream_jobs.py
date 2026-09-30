@@ -644,10 +644,7 @@ def register_dream_jobs(registry: JobRegistry, llm_provider=None) -> None:
         key=FACT_LIFT_JOB_KEY,
         display_name="Fact Lift",
         description=(
-            "Derives Layer-2 candidate facts and their fact_sources from the "
-            "Layer-1 candidate graph, then runs the two temporal passes "
-            "(doc 08 §5.2). Emits one sources_changed event per touched fact "
-            "for the verification recompute to drain; it never promotes."
+            "Turns extracted graph relations into candidate facts."
         ),
         default_cron="*/15 * * * *",
         min_interval_seconds=60,
@@ -659,11 +656,8 @@ def register_dream_jobs(registry: JobRegistry, llm_provider=None) -> None:
         key=VERIFICATION_RECOMPUTE_JOB_KEY,
         display_name="Verification Recompute",
         description=(
-            "Drains sources_changed past a watermark and recomputes the "
-            "count-veto-N ladder per fact (doc 08 §4.3); a bounded, "
-            "slower-cadence slow arm reconciles a rotating slice of facts "
-            "directly from fact_sources as a backstop for a swallowed "
-            "emit (T2.10 finding I-4)."
+            "Recomputes each fact's verification status when its sources "
+            "change."
         ),
         default_cron="*/2 * * * *", min_interval_seconds=30,
         runner=_make_recompute_runner(registry, VERIFICATION_RECOMPUTE_JOB_KEY),
@@ -674,10 +668,8 @@ def register_dream_jobs(registry: JobRegistry, llm_provider=None) -> None:
         key=CONTRADICTION_SCAN_JOB_KEY,
         display_name="Contradiction Scan",
         description=(
-            "Model contradiction check over a combined same-endpoint and "
-            "pg_trgm candidate pool, scoring only overlapping-window pairs "
-            "and journalling a verdict per fact for the verification veto to "
-            "read back (doc 08 §5.3). It never writes a status itself."
+            "Checks facts for contradictions with a model and flags suspected "
+            "ones for review."
         ),
         default_cron="0 */6 * * *", min_interval_seconds=300,
         runner=_make_contradiction_runner(
@@ -693,10 +685,8 @@ def register_dream_jobs(registry: JobRegistry, llm_provider=None) -> None:
         key=MEMORY_DREAM_JOB_KEY,
         display_name="Memory Dream",
         description=(
-            "Dedups via supersede(), refines derived enrichment, and derives "
-            "near-duplicate memory-relation edges for the hygiene queue "
-            "(doc 08 §5.4/§5.5). It never deletes or merges a memory, and "
-            "every action journals an invertible before/after payload."
+            "Retires duplicate memories, refreshes summaries and links "
+            "near-duplicates. Every change can be undone."
         ),
         default_cron="0 3 * * *", min_interval_seconds=300,
         runner=_make_dream_runner(
@@ -709,11 +699,7 @@ def register_dream_jobs(registry: JobRegistry, llm_provider=None) -> None:
         key=TOPIC_DETECTION_JOB_KEY,
         display_name="Topic Detection",
         description=(
-            "Leiden community detection per active project, rotating over a "
-            "bounded batch of projects per run (doc 06 mechanics, scheduled "
-            "under this umbrella per doc 08 §5.6). Each project is detected "
-            "and rewritten in its own transaction, so one project's failure "
-            "costs that project's slice and not the batch."
+            "Groups each project's graph into topics, a few projects per run."
         ),
         default_cron="0 4 * * *", min_interval_seconds=300,
         runner=_make_topic_runner(registry, TOPIC_DETECTION_JOB_KEY, llm_provider),
@@ -728,13 +714,8 @@ def register_dream_jobs(registry: JobRegistry, llm_provider=None) -> None:
         key=ARTICLE_SYNTHESIS_JOB_KEY,
         display_name="Article Synthesis",
         description=(
-            "Synthesises a Layer-3 article per eligible subject from its "
-            "verified facts only (doc 09 §4.2, triggered under this umbrella "
-            "per doc 08 §5.6). Rotates over a bounded batch of projects; each "
-            "subject is drafted and written in its own transaction, so one "
-            "subject's failure costs that subject and not the batch. Articles "
-            "land unmeasured — `candidate`, review-open, NULL confidence — "
-            "because coverage is T3.03's to measure."
+            "Writes a summary article for each subject from its verified "
+            "facts."
         ),
         default_cron="0 5 * * *", min_interval_seconds=300,
         runner=_make_article_runner(registry, ARTICLE_SYNTHESIS_JOB_KEY, llm_provider),
