@@ -205,9 +205,9 @@ async def test_an_unbacked_loosening_clamps_and_the_response_shows_it(
     assert n_default["effective"] == CORROBORATION_N_DEFAULT
     assert n_default["state"] == "clamped"
     assert n_default["measured"] is False
-    assert n_default["note"] and "T2.40" in n_default["note"], (
-        "a clamp note must name the gate, so the operator learns what would "
-        "license the value rather than only that it was refused"
+    assert n_default["note"] and "recorded measurement" in n_default["note"], (
+        "a clamp note must say what would license the value, so the operator "
+        "learns more than that it was refused"
     )
 
 

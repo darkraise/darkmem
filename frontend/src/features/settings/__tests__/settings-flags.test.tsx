@@ -215,7 +215,7 @@ describe("FlagsTab — the corroboration gate is editable and honest", () => {
     expect(param?.effective).toBe(2)
     // The point of the whole surface: an echoed 1 would state that the ladder
     // promotes at one origin, and it does not.
-    expect(screen.getByText(/below the floor of 2/)).toBeInTheDocument()
+    expect(screen.getByText(/below the minimum of 2/)).toBeInTheDocument()
     expect(screen.getAllByText("clamped").length).toBeGreaterThan(0)
   })
 

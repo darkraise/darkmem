@@ -239,10 +239,8 @@ async def resolve_ladder(session: AsyncSession) -> LadderReport:
                 measured=False,
                 state="clamped",
                 note=(
-                    f"{candidate} is below the floor of {floor} and no "
-                    f"{MEASUREMENT_TASK} measurement names this parameter, so the "
-                    f"ladder is running at {floor}. Loosening a threshold takes a "
-                    "recorded measurement, not an edit."
+                    f"{candidate} is below the minimum of {floor}, so {floor} "
+                    "is used. Going lower needs a recorded measurement."
                 ),
             )
             continue
@@ -270,10 +268,8 @@ async def resolve_ladder(session: AsyncSession) -> LadderReport:
                 measured=is_measured,
                 state="clamped",
                 note=(
-                    f"{candidate} is below the absolute minimum of 1, which no "
-                    f"{MEASUREMENT_TASK} measurement can authorise — an origin "
-                    "threshold of zero would promote a fact with no sources at "
-                    "all. Running at 1."
+                    f"{candidate} is below the absolute minimum of 1, so 1 is "
+                    "used. A fact always needs at least one source."
                 ),
             )
             continue
@@ -310,10 +306,8 @@ async def resolve_ladder(session: AsyncSession) -> LadderReport:
             measured=prior.measured,
             state="clamped",
             note=(
-                f"n_default at {prior.effective} sits below n_diverse at "
-                f"{n_diverse}, which inverts the ladder — firing a diversity "
-                "gate would raise the bar rather than lower it. Running at "
-                f"{n_diverse}. This clamp is not unlockable by measurement."
+                f"n_default ({prior.effective}) cannot be lower than "
+                f"n_diverse ({n_diverse}), so {n_diverse} is used."
             ),
         )
 

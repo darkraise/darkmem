@@ -60,10 +60,8 @@ export function resolveLadderParam(
       effective: param.floor,
       state: "clamped",
       note:
-        `${committed} is below the floor of ${param.floor} and no T2.40 ` +
-        `measurement names this parameter, so the ladder is running at ` +
-        `${param.floor}. Loosening a threshold takes a recorded measurement, ` +
-        `not an edit.`,
+        `${committed} is below the minimum of ${param.floor}, so ` +
+        `${param.floor} is used. Going lower needs a recorded measurement.`,
     }
   }
   // An origin count of zero would make `k >= n` true for a fact with no
@@ -76,9 +74,8 @@ export function resolveLadderParam(
       effective: 1,
       state: "clamped",
       note:
-        `${committed} is below the absolute minimum of 1, which no T2.40 ` +
-        `measurement can authorise — an origin threshold of zero would ` +
-        `promote a fact with no sources at all. Running at 1.`,
+        `${committed} is below the absolute minimum of 1, so 1 is used. ` +
+        `A fact always needs at least one source.`,
     }
   }
   return { ...param, committed, effective: committed, state: "honoured", note: undefined }

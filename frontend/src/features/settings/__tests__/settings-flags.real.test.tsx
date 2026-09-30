@@ -104,7 +104,7 @@ const LADDER_FIXTURE = {
       floor: 2,
       measured: false,
       state: "clamped",
-      note: "1 is below the floor of 2 and no T2.40 measurement names this parameter, so the ladder is running at 2.",
+      note: "1 is below the minimum of 2, so 2 is used. Going lower needs a recorded measurement.",
     },
     {
       name: "time_gap_days",
@@ -258,7 +258,7 @@ describe("useFlagsTabBinding (DEMO off — real /config/feature-flags)", () => {
     expect(param("n_diverse")?.committed).toBe(1)
     expect(param("n_diverse")?.effective).toBe(2)
     expect(param("n_diverse")?.state).toBe("clamped")
-    expect(param("n_diverse")?.note).toMatch(/T2\.40/)
+    expect(param("n_diverse")?.note).toMatch(/recorded measurement/)
 
     expect(param("time_gap_days")?.state).toBe("honoured")
     expect(param("n_default")?.state).toBe("default")

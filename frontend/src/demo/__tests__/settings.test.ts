@@ -136,9 +136,9 @@ describe("resolveLadderParam — the floors, mirrored for display", () => {
   it("clamps an unbacked loosening back to the floor and says why", () => {
     const out = resolveLadderParam(floor3, 1, [])
     expect(out).toMatchObject({ committed: 1, effective: 3, state: "clamped" })
-    // The note must name the gate, so the row says what would license the
+    // The note must say what would license the
     // value rather than only that it was refused.
-    expect(out.note).toMatch(/T2\.40/)
+    expect(out.note).toMatch(/recorded measurement/)
   })
 
   it("honours a loosening a recorded measurement names by name", () => {
