@@ -152,6 +152,30 @@ export function useCreateMemory() {
   })
 }
 
+export function useUpdateMemory() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: string
+      content: string
+      memory_type: string
+      tags: string[]
+    }) =>
+      apiFetch<Memory>(`/memories/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (_memory, { id }) => {
+      qc.invalidateQueries({ queryKey: ["memory", id] })
+      qc.invalidateQueries({ queryKey: ["memories"] })
+      qc.invalidateQueries({ queryKey: ["memoriesPaginated"] })
+    },
+  })
+}
+
 export function useDeleteMemory() {
   const qc = useQueryClient()
   return useMutation({

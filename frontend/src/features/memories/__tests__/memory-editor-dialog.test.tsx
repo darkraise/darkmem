@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import type { ReactNode } from "react"
 
 // This file is a demo-fixture test by design (asserts against the demo
 // store), so it is frozen at DEMO: true rather than relying on the
 // about-to-change default (T1.58) — same idiom Step 3 applies elsewhere.
-// The real-mode edit-disable branch has its own file, memory-editor-dialog
+// The real-mode edit branch has its own file, memory-editor-dialog
 // .real.test.tsx, mocked the other way.
 vi.mock("@/lib/demo-flag", () => ({ DEMO: true }))
 vi.mock("darkraise-ui/components/sonner", () => ({
@@ -14,6 +16,14 @@ vi.mock("darkraise-ui/components/sonner", () => ({
 
 import { MemoryEditorDialog } from "@/features/memories/components/memory-editor-dialog"
 import { useDemoStore } from "@/demo/store"
+
+function wrapper({ children }: { children: ReactNode }) {
+  return (
+    <QueryClientProvider client={new QueryClient()}>
+      {children}
+    </QueryClientProvider>
+  )
+}
 
 describe("MemoryEditorDialog", () => {
   it("requires content and keeps the draft on a failed submit", async () => {
@@ -25,6 +35,7 @@ describe("MemoryEditorDialog", () => {
         onOpenChange={onOpenChange}
         projects={["default", "darkmem"]}
       />,
+      { wrapper },
     )
 
     await user.click(screen.getByRole("button", { name: "Create memory" }))
@@ -43,6 +54,7 @@ describe("MemoryEditorDialog", () => {
         projects={["default", "darkmem"]}
         defaultProject="darkmem"
       />,
+      { wrapper },
     )
 
     await user.type(
@@ -70,6 +82,7 @@ describe("MemoryEditorDialog", () => {
         memory={target}
         projects={["default", "darkmem"]}
       />,
+      { wrapper },
     )
 
     const content = screen.getByLabelText("Content")

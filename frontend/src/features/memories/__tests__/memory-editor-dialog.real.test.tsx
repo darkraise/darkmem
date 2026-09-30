@@ -1,11 +1,17 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi, beforeEach } from "vitest"
 import { render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import type { ReactNode } from "react"
 
 vi.mock("@/lib/demo-flag", () => ({ DEMO: false }))
+vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
 vi.mock("darkraise-ui/components/sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))
 
+import { apiFetch } from "@/lib/api"
+import { toast } from "darkraise-ui/components/sonner"
 import { MemoryEditorDialog } from "@/features/memories/components/memory-editor-dialog"
 import type { Memory } from "@/hooks/api/use-memory-api"
 
@@ -17,7 +23,7 @@ const REAL_MEMORY: Memory = {
   memory_type: "fact",
   importance: 5,
   metadata: {},
-  tags: [],
+  tags: ["embeddings"],
   created_at: "2026-01-01T00:00:00Z",
   updated_at: "2026-01-01T00:00:00Z",
   expires_at: null,
@@ -25,8 +31,18 @@ const REAL_MEMORY: Memory = {
   status: "active",
 }
 
-describe("MemoryEditorDialog (DEMO off — editing isn't wired to the backend yet)", () => {
-  it("prefills the fetched real memory's content but disables Save", () => {
+function wrapper({ children }: { children: ReactNode }) {
+  return (
+    <QueryClientProvider client={new QueryClient()}>
+      {children}
+    </QueryClientProvider>
+  )
+}
+
+describe("MemoryEditorDialog (DEMO off)", () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it("hides the fields the update route cannot save", () => {
     render(
       <MemoryEditorDialog
         open
@@ -34,26 +50,64 @@ describe("MemoryEditorDialog (DEMO off — editing isn't wired to the backend ye
         memory={REAL_MEMORY}
         projects={[]}
       />,
+      { wrapper },
     )
 
     expect(screen.getByLabelText("Content")).toHaveValue(REAL_MEMORY.content)
-    const save = screen.getByRole("button", { name: "Save changes" })
-    expect(save).toBeDisabled()
-    expect(save).toHaveAttribute("title", "Editing isn't wired to the backend yet")
+    expect(screen.queryByText("Project")).toBeNull()
+    expect(screen.queryByLabelText(/Context/)).toBeNull()
   })
 
-  it("names the reason inline, not only on the disabled button's title", () => {
+  it("saves content, type and tags through PUT and closes", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(REAL_MEMORY)
+    const onOpenChange = vi.fn()
+    const user = userEvent.setup()
     render(
       <MemoryEditorDialog
         open
-        onOpenChange={vi.fn()}
+        onOpenChange={onOpenChange}
         memory={REAL_MEMORY}
         projects={[]}
       />,
+      { wrapper },
     )
 
-    expect(
-      screen.getByText(/editing isn't wired to the backend yet/i),
-    ).toBeInTheDocument()
+    const content = screen.getByLabelText("Content")
+    await user.clear(content)
+    await user.type(content, "we use qwen3-embedding for embeddings")
+    await user.click(screen.getByRole("button", { name: "Save changes" }))
+
+    await vi.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+    expect(apiFetch).toHaveBeenCalledWith("/memories/mem-1", {
+      method: "PUT",
+      body: JSON.stringify({
+        content: "we use qwen3-embedding for embeddings",
+        memory_type: "fact",
+        tags: ["embeddings"],
+      }),
+    })
+    expect(toast.success).toHaveBeenCalledWith("Memory updated")
+  })
+
+  it("keeps the dialog open and says so when the save fails", async () => {
+    vi.mocked(apiFetch).mockRejectedValue(new Error("500"))
+    const onOpenChange = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <MemoryEditorDialog
+        open
+        onOpenChange={onOpenChange}
+        memory={REAL_MEMORY}
+        projects={[]}
+      />,
+      { wrapper },
+    )
+
+    await user.click(screen.getByRole("button", { name: "Save changes" }))
+
+    await vi.waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("Could not save the memory"),
+    )
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
   })
 })

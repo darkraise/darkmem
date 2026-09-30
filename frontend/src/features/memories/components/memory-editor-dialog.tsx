@@ -31,15 +31,15 @@ import { toast } from "darkraise-ui/components/sonner"
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoStore } from "@/demo/store"
 import type { DemoMemory } from "@/features/memories/types"
-import type { Memory } from "@/hooks/api/use-memory-api"
+import { useUpdateMemory, type Memory } from "@/hooks/api/use-memory-api"
 import { MEMORY_TYPE_OPTIONS } from "@/lib/taxonomy"
 
 // A DemoMemory carries the fields this form edits directly (project,
-// applies_when); a real Memory does not expose them over the wire, which is
-// fine because the real-mode edit branch below never submits — it only
-// prefills what the real row does carry. Real create never reaches this
-// component at all (RealMemoriesView routes create through
-// CreateMemoryDialog), so `memory` unset always means the demo create path.
+// applies_when). The real update route (`MemoryUpdate`) takes no
+// applies_when, so the real-mode edit hides that field and project and saves
+// content, type and tags only. Real create never reaches this component at
+// all (RealMemoriesView routes create through CreateMemoryDialog), so
+// `memory` unset always means the demo create path.
 function isDemoMemory(memory: DemoMemory | Memory): memory is DemoMemory {
   return "project" in memory
 }
@@ -62,6 +62,7 @@ export function MemoryEditorDialog({
 }: MemoryEditorDialogProps) {
   const addMemory = useDemoStore((s) => s.addMemory)
   const updateMemory = useDemoStore((s) => s.updateMemory)
+  const updateRealMemory = useUpdateMemory()
 
   const [content, setContent] = useState("")
   const [memoryType, setMemoryType] = useState("fact")
@@ -92,12 +93,26 @@ export function MemoryEditorDialog({
   }, [open, memory, defaultProject])
 
   const handleSubmit = () => {
-    // Belt-and-braces alongside the disabled Save button below — editing a
-    // real memory isn't wired to the backend yet, and the demo store's
-    // `updateMemory` only knows how to write a DemoMemory shape anyway.
-    if (editingRealMemory) return
     if (content.trim().length === 0) {
       setContentError(true)
+      return
+    }
+    if (editingRealMemory) {
+      updateRealMemory.mutate(
+        {
+          id: memory.id,
+          content: content.trim(),
+          memory_type: memoryType,
+          tags,
+        },
+        {
+          onSuccess: () => {
+            toast.success("Memory updated")
+            onOpenChange(false)
+          },
+          onError: () => toast.error("Could not save the memory"),
+        },
+      )
       return
     }
     const now = new Date().toISOString()
@@ -195,22 +210,30 @@ export function MemoryEditorDialog({
             )}
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label>Project</Label>
-              <Select value={project} onValueChange={setProject}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Project" />
-                </SelectTrigger>
-                <SelectContent>
-                  {projects.map((p) => (
-                    <SelectItem key={p} value={p}>
-                      {p}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div
+            className={
+              editingRealMemory
+                ? "grid grid-cols-1 gap-4"
+                : "grid grid-cols-1 gap-4 sm:grid-cols-2"
+            }
+          >
+            {!editingRealMemory && (
+              <div className="space-y-1.5">
+                <Label>Project</Label>
+                <Select value={project} onValueChange={setProject}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Project" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map((p) => (
+                      <SelectItem key={p} value={p}>
+                        {p}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <Label>
@@ -239,7 +262,10 @@ export function MemoryEditorDialog({
 
           <div className="space-y-1.5">
             <Label>Tags</Label>
-            <TagsInput value={tags} onValueChange={({ value }) => setTags(value)}>
+            <TagsInput
+              value={tags}
+              onValueChange={({ value }) => setTags(value)}
+            >
               <TagsInputControl>
                 {tags.map((tag, index) => (
                   <TagsInputItem key={tag} index={index} value={tag}>
@@ -256,31 +282,28 @@ export function MemoryEditorDialog({
             </TagsInput>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="memory-context">
-              Context{" "}
-              <span className="text-muted-foreground font-mono text-sm uppercase">
-                optional
-              </span>
-            </Label>
-            <Input
-              id="memory-context"
-              placeholder="e.g. env=prod"
-              value={context}
-              onChange={(e) => setContext(e.target.value)}
-            />
-            <p className="text-muted-foreground text-sm">
-              When this memory applies. Searches under a conflicting context
-              exclude it.
-            </p>
-          </div>
+          {!editingRealMemory && (
+            <div className="space-y-1.5">
+              <Label htmlFor="memory-context">
+                Context{" "}
+                <span className="text-muted-foreground font-mono text-sm uppercase">
+                  optional
+                </span>
+              </Label>
+              <Input
+                id="memory-context"
+                placeholder="e.g. env=prod"
+                value={context}
+                onChange={(e) => setContext(e.target.value)}
+              />
+              <p className="text-muted-foreground text-sm">
+                When this memory applies. Searches under a conflicting context
+                exclude it.
+              </p>
+            </div>
+          )}
 
           <DialogFooter className="items-center">
-            {editingRealMemory && (
-              <span className="text-muted-foreground mr-auto text-sm">
-                editing isn't wired to the backend yet
-              </span>
-            )}
             <Button
               type="button"
               variant="ghost"
@@ -288,15 +311,7 @@ export function MemoryEditorDialog({
             >
               Cancel
             </Button>
-            <Button
-              type="submit"
-              disabled={editingRealMemory}
-              title={
-                editingRealMemory
-                  ? "Editing isn't wired to the backend yet"
-                  : undefined
-              }
-            >
+            <Button type="submit" disabled={updateRealMemory.isPending}>
               {memory ? "Save changes" : "Create memory"}
             </Button>
           </DialogFooter>
