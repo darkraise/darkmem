@@ -109,7 +109,9 @@ async function openDocument(page: Page) {
   // itself. Unique until the document is selected, at which point the
   // breadcrumb renders it too — hence one click, no re-query.
   await page.getByText(URI, { exact: true }).click()
-  await expect(page.getByText("Related memories")).toBeVisible()
+  await expect(
+    page.getByText("Related memories", { exact: true }),
+  ).toBeVisible()
   await expect(page.getByText("Connections")).toBeVisible()
 }
 
