@@ -7,6 +7,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 // addition to `settings-tabs.test.tsx`, which is frozen at `DEMO: true` to pin
 // the fixture-backed rendering; the same split the security and maintenance
 // tabs already use. A live assertion in that file could not run at all.
+// Keys have their own suite (api-keys-card.real.test.tsx); stubbing the card
+// keeps these mocks answering only the distribution routes.
+vi.mock("../components/api-keys-card", () => ({ ApiKeysCard: () => null }))
 vi.mock("@/lib/demo-flag", () => ({ DEMO: false }))
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>()

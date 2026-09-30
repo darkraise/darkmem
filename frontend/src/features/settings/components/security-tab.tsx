@@ -1,29 +1,15 @@
-import { useState } from "react"
-import { Globe, KeyRound, Lock, ShieldCheck } from "lucide-react"
-import { Button } from "darkraise-ui/components/button"
+import { Globe, Lock, ShieldCheck } from "lucide-react"
 import {
   Card,
   CardContent,
   CardHeader,
 } from "darkraise-ui/components/card"
 import { cn } from "darkraise-ui/lib"
-import { ApiKeyDialog } from "./api-key-dialog"
-import { EmptyState, HelpTip } from "@/components/darkmem"
-import { useApiKeys, useRevokeApiKey } from "@/hooks/api"
+import { HelpTip } from "@/components/darkmem"
 import {
   useSecurityTabBinding,
   type SecurityTabBinding,
 } from "../use-security-tab-binding"
-
-/** The scope literals as a reader should see them in a key's row. Keys are
- *  stored and sent with the literals; only the display changes. An unknown
- *  literal falls back to itself rather than vanishing — a scope this build
- *  does not recognise is exactly the thing an operator must still see. */
-const SCOPE_WORDS: Record<string, string> = {
-  capture: "Save new memories",
-  read: "Search and read memories",
-  admin: "Receive push updates, reindex repositories, delete document subtrees",
-}
 
 function Row({ k, children }: { k: string; children: React.ReactNode }) {
   return (
@@ -181,98 +167,6 @@ function McpAccessCard({ binding }: { binding: SecurityTabBinding }) {
   )
 }
 
-function ApiKeyCard() {
-  const { data: keys, isLoading, isError } = useApiKeys()
-  const revokeKey = useRevokeApiKey()
-  const [creating, setCreating] = useState(false)
-
-  const rows = keys ?? []
-
-  return (
-    <CardShell
-      icon={KeyRound}
-      title="Keys for apps and agents"
-      // Plain language on purpose: whoever runs this box is not necessarily
-      // the person who wrote it. The precise contract - the `dmk_<id>_<secret>`
-      // shape, the closed scope set, minting being behind the human door, the
-      // Host allowlist standing regardless - lives in doc 18 §5 and in
-      // `api_key_scopes.py`, where the next developer needs it. A settings
-      // card is not the place to teach it.
-      help="A key lets an app or an AI agent use darkmem without logging in. You choose what each key may do, and you can revoke it whenever you like. The key itself is shown only once, when you create it."
-      className="sm:col-span-2"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-muted-foreground text-sm">
-          {rows.length === 0
-            ? "No keys yet"
-            : `${rows.length} ${rows.length === 1 ? "key" : "keys"}`}
-        </span>
-        <Button variant="outline" onClick={() => setCreating(true)}>
-          <KeyRound className="mr-1.5 size-3.5" />
-          New key
-        </Button>
-      </div>
-
-      <ApiKeyDialog open={creating} onOpenChange={setCreating} />
-
-      <div className="flex flex-col gap-1.5">
-        {isLoading ? (
-          <span className="text-muted-foreground text-sm">loading keys…</span>
-        ) : isError ? (
-          <span className="text-muted-foreground text-sm">
-            The list of keys could not be loaded.
-          </span>
-        ) : rows.length === 0 ? (
-          <EmptyState
-            kind="empty"
-            icon={KeyRound}
-            title="No keys yet"
-            description="Create one to let an app or an AI agent reach darkmem."
-          />
-        ) : (
-          rows.map((key) => (
-            <div
-              key={key.id}
-              className="border-border flex flex-wrap items-center gap-2 border-t border-dashed pt-1.5 text-sm first:border-t-0 first:pt-0"
-            >
-              <span className="font-mono">{key.name}</span>
-              <span className="text-muted-foreground font-mono text-sm">
-                {key.key_id}
-              </span>
-              <span className="text-muted-foreground text-sm">
-                {key.scopes.map((s) => SCOPE_WORDS[s] ?? s).join(" · ")}
-              </span>
-              <span className="text-muted-foreground text-sm">
-                {key.last_used_at
-                  ? `last used ${new Date(key.last_used_at).toLocaleString()}`
-                  : "never used"}
-              </span>
-              {key.revoked_at ? (
-                // Kept listed on purpose: the row survives revocation so the
-                // calls it already made keep a resolvable label in the
-                // per-object timeline.
-                <span className="text-muted-foreground ml-auto text-sm">
-                  revoked {new Date(key.revoked_at).toLocaleString()}
-                </span>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="ml-auto"
-                  disabled={revokeKey.isPending}
-                  onClick={() => revokeKey.mutate(key.id)}
-                >
-                  Revoke
-                </Button>
-              )}
-            </div>
-          ))
-        )}
-      </div>
-    </CardShell>
-  )
-}
-
 export function SecurityTab() {
   const binding = useSecurityTabBinding()
 
@@ -281,7 +175,6 @@ export function SecurityTab() {
       <AuthCard binding={binding} />
       <SessionCard binding={binding} />
       <McpAccessCard binding={binding} />
-      <ApiKeyCard />
     </div>
   )
 }

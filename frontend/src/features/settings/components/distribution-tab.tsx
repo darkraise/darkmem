@@ -4,6 +4,7 @@ import { Button } from "darkraise-ui/components/button"
 import { Card, CardContent, CardHeader } from "darkraise-ui/components/card"
 import { Input } from "darkraise-ui/components/input"
 import { Label } from "darkraise-ui/components/label"
+import { ApiKeysCard } from "./api-keys-card"
 import { McpPromptDialog } from "./mcp-prompt-dialog"
 import { McpConnectSnippets, mcpEndpoint } from "./mcp-connect-snippets"
 import { Switch } from "darkraise-ui/components/switch"
@@ -351,7 +352,7 @@ function McpConnectCard() {
           </dd>
         </dl>
         <p className="text-muted-foreground text-sm">
-          Create a key under <b className="text-foreground">Security → Keys for apps and agents</b>.
+          Create a key under <b className="text-foreground">Keys for apps and agents</b> above.
           If the client runs on another machine, add this host to{" "}
           <code className="font-mono">MCP_ALLOWED_HOSTS</code> (for example{" "}
           <code className="font-mono">{window.location.host}</code>).
@@ -396,6 +397,7 @@ export function DistributionTab() {
           mounted only outside demo: the dialog's query hook runs whenever it
           is in the tree, and an `enabled: false` query still needs a
           QueryClient above it. */}
+      <ApiKeysCard />
       <McpConnectCard />
       {promptOpen && (
         <McpPromptDialog open onOpenChange={setPromptOpen} />
