@@ -81,6 +81,11 @@ function StaleBanner({ repo }: { repo: Repo }) {
   )
 }
 
+function ErrorReason({ repo }: { repo: Repo }) {
+  if (repo.status !== "error" || !repo.status_message) return null
+  return <p className="text-destructive text-sm">{repo.status_message}</p>
+}
+
 // T1.39: the queued count alone cannot say whether the debt is draining or
 // stuck — `last_drain` is the evidence. Its timestamp advances across a
 // refetch (WS-triggered on every repo.indexing_completed) when a real drain
@@ -462,6 +467,7 @@ function RepoRow({
       <RepoTaskList repo={repo} />
       <IndexDebtIndicator repo={repo} />
       <StaleBanner repo={repo} />
+      <ErrorReason repo={repo} />
     </div>
   )
 }

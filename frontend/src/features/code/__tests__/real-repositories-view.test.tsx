@@ -64,6 +64,25 @@ describe("RealRepositoriesView", () => {
     expect(screen.getByText("last-good HEAD 4b7e120")).toBeInTheDocument()
   })
 
+  it("shows why a repository is in the error state", async () => {
+    vi.mocked(apiFetch).mockResolvedValue([
+      {
+        ...BASE_REPO,
+        status: "error",
+        status_message: "Clone failed: authentication required",
+        last_indexed_commit: null,
+        last_indexed_at: null,
+        index_debt: null,
+      },
+    ])
+
+    render(<RealRepositoriesView />, { wrapper })
+
+    expect(
+      await screen.findByText("Clone failed: authentication required"),
+    ).toBeInTheDocument()
+  })
+
   it("shows the queued count and reads as draining when a drain has landed", async () => {
     vi.mocked(apiFetch).mockResolvedValue([
       {
