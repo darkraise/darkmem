@@ -19,6 +19,11 @@ placeholder rows.
   remembered. `GET /api/v1/graph/unified` takes `limit` up to 50,000 and
   `all=true`, picks the newest memories first, and answers `total_memories`
   and `memories_truncated`, so the toolbar says "Showing N of M".
+- **Keys on the Integration tab.** Settings → Integration now lists the keys
+  for apps and agents as a grid, above the MCP connect card: each key shows
+  its status (active, expires soon, expired), scopes, and when it was created,
+  last used and expires. Revoked keys fold into their own section, and
+  revoking a key asks for confirmation first.
 - **Saving a memory edit.** The Edit dialog on a memory's page saves its
   content, type and tags through `PUT /api/v1/memories/{id}`. Project and
   context are not editable there, because that route does not update them.
