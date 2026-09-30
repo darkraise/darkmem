@@ -56,11 +56,11 @@ import { seedAdminPassword } from "./helpers/seed-admin"
 
 const PASSWORD = process.env.E2E_ADMIN_PASSWORD
 
-/** The workspace route the panels live under, and an empty project on a
- *  disposable stack: `seed_facts` files its memory under
- *  `t290-knowledge-e2e`, so `default` holds nothing but what this spec
- *  files. That emptiness is what makes the live-door test below predictable. */
-const PROJECT = "default"
+/** The workspace route the panels live under, and a project no other spec
+ *  files into, so it holds nothing but what this spec files. That emptiness
+ *  is what makes the live-door test below predictable; `default` was shared
+ *  with the scrollspy spec and broke it whenever that spec ran first. */
+const PROJECT = "e2e-relatedness"
 
 /** A root-level uri on purpose — one path segment means one leaf row with no
  *  folder to expand first. */
