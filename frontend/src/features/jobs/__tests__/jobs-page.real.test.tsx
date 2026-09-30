@@ -127,6 +127,45 @@ describe("JobsPage — ruling 1: a held lock reports as busy, never as queued", 
       ),
     )
   })
+
+  it("saves per-job settings through the configure dialog, PUT /jobs/{key}/config", async () => {
+    const configurable = {
+      ...JOB,
+      config: { batch_size: 7 },
+      config_schema: [
+        {
+          key: "batch_size",
+          type: "int",
+          label: "Batch size",
+          default: 5,
+          min: 1,
+          max: 100,
+        },
+      ],
+    }
+    vi.mocked(apiFetch).mockImplementation((path: string, init?: RequestInit) => {
+      if (path === "/jobs") return Promise.resolve({ jobs: [configurable] })
+      if (path === `/jobs/${JOB.key}/config` && init?.method === "PUT")
+        return Promise.resolve({ ...configurable, config: { batch_size: 9 } })
+      return Promise.reject(new Error(`unexpected apiFetch(${path})`))
+    })
+    await renderRows()
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure" }))
+    const field = await screen.findByLabelText(`${JOB.key} batch_size`)
+    fireEvent.change(field, { target: { value: "9" } })
+    fireEvent.click(screen.getByRole("button", { name: "Save config" }))
+
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith(
+        `/jobs/${JOB.key}/config`,
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ config: { batch_size: 9 } }),
+        }),
+      ),
+    )
+  })
 })
 
 describe("JobsPage layouts", () => {
