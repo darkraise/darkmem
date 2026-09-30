@@ -4,6 +4,57 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
+## v1.14.0 — 2026-09-30
+
+**The memory graph reaches every memory, and the UI stops talking to its
+builders.** The graph page now plots as many memories as you ask for, up to
+50,000, and stays usable at 20,000. Every page drops the copy written for the
+people building darkmem: task references, design rulings, internal names and
+placeholder rows.
+
+### Added
+
+- **Node count on the memory graph.** The toolbar's Nodes row sets how many
+  memories to plot (50 to 50,000, default 200), or **All**; the choice is
+  remembered. `GET /api/v1/graph/unified` takes `limit` up to 50,000 and
+  `all=true`, picks the newest memories first, and answers `total_memories`
+  and `memories_truncated`, so the toolbar says "Showing N of M".
+- **Saving a memory edit.** The Edit dialog on a memory's page saves its
+  content, type and tags through `PUT /api/v1/memories/{id}`. Project and
+  context are not editable there, because that route does not update them.
+- **Why a repository failed.** A repository in the error state shows its
+  failure message under the badge.
+- **Plain names on Settings → Flags.** Each ranking arm, flag and tunable is
+  labelled in words ("Hybrid search", "Recency"), with its config key beside
+  it in small text.
+
+### Changed
+
+- **The memory graph at scale.** Similarity edges and clusters come from one
+  bounded nearest-neighbour pass run off the event loop, the assembled graph
+  is cached until the corpus changes, only the 40 largest clusters get an LLM
+  name (cached until their members change), and the entity overlay covers the
+  plotted memories instead of 500 arbitrary entities. The 2D view tunes its
+  layout and drawing by graph size and no longer repaints the whole graph on
+  hover or pan. The 3D view is lighter on large graphs and, from 5,000 nodes,
+  suggests switching to 2D.
+- **Less noise on every page.** Settings, Activity, Jobs, Usage, Knowledge,
+  Chat, Code, Documents, Projects, Notes and Memories no longer show task and
+  gate references, design-ruling paragraphs, "populated", "staged", "coded
+  default" and "unmeasured" badges, table and column names, or rows that only
+  said a feature had no endpoint yet. Job descriptions and threshold warnings
+  are one plain sentence each.
+- **CI runs on a self-hosted runner when one is idle.** Every job, releases
+  included, goes to an idle `darkmem-ci` runner and falls back to GitHub-hosted
+  on any doubt. Setup and limits: `docs/runbook-ci.md`.
+- **The schema baseline is permanent.** `0001_baseline.py` is no longer
+  regenerated; schema changes are revisions chained after it.
+
+### Removed
+
+- **Activity → Monitors**, which only ever showed placeholder cards, and the
+  staged Distribution mock on Settings → Integration.
+
 ## v1.13.0 — 2026-09-28
 
 **The memory door warns about working data, and the work log gets its
