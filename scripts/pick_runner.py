@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Pick the runner a CI run uses: an idle self-hosted `darkmem-ci` runner when
-one exists, GitHub-hosted otherwise.
+"""Pick the verification runner, defaulting to self-hosted `darkmem-linux`.
+An explicit `auto` request prefers an idle runner and falls back to hosted.
 
-Every picking path answers GitHub-hosted on doubt and exits 0: the fallback
-must never be the thing that fails a run. Stdlib only, so the picker job needs
-no install step.
+In auto mode, missing credentials or listing errors fall back to hosted and
+exit 0. Explicit self-hosted mode needs no token or API call. Stdlib only, so
+the picker job needs no install step.
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import os
 import sys
 import urllib.request
 
-LABEL = "darkmem-ci"
+LABEL = "darkmem-linux"
 SELF_HOSTED = json.dumps(["self-hosted", "linux", "x64", LABEL], separators=(",", ":"))
 HOSTED = json.dumps("ubuntu-latest")
 API = "https://api.github.com"
@@ -30,7 +30,7 @@ def choose(runners: list[dict], requested: str, token_present: bool) -> tuple[st
     if not token_present:
         return HOSTED, "RUNNER_PICKER_TOKEN is not set"
     # GitHub matches runs-on labels case-insensitively, so a runner registered
-    # as `DarkMem-CI` still takes the jobs this picker routes to it.
+    # as `DarkMem-Linux` still takes the jobs this picker routes to it.
     labelled = [
         r
         for r in runners
@@ -77,7 +77,7 @@ def _append(path: str | None, text: str) -> None:
 
 
 def main(env=os.environ, fetch=_fetch) -> int:
-    requested = (env.get("REQUESTED") or "auto").strip()
+    requested = (env.get("REQUESTED") or "self-hosted").strip()
     token = (env.get("GH_TOKEN") or "").strip()
     runners: list[dict] = []
     error = None

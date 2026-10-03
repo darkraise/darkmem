@@ -1,6 +1,4 @@
-"""`scripts/pick_runner.py` routes every CI job, so its one promise is tested
-from each side: an idle darkmem-ci runner is used, and anything else falls back
-to GitHub-hosted without failing the run."""
+"""Verification defaults to darkmem-linux; explicit auto retains hosted fallback."""
 from __future__ import annotations
 
 import importlib.util
@@ -9,7 +7,7 @@ import urllib.error
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SELF_HOSTED = '["self-hosted","linux","x64","darkmem-ci"]'
+SELF_HOSTED = '["self-hosted","linux","x64","darkmem-linux"]'
 HOSTED = '"ubuntu-latest"'
 
 
@@ -23,7 +21,7 @@ def _load():
 pick = _load()
 
 
-def _runner(name="box-1", status="online", busy=False, labels=("self-hosted", "darkmem-ci")):
+def _runner(name="box-1", status="online", busy=False, labels=("self-hosted", "darkmem-linux")):
     return {"name": name, "status": status, "busy": busy, "labels": [{"name": n} for n in labels]}
 
 
@@ -36,23 +34,23 @@ def test_an_idle_labelled_runner_is_used():
 def test_a_busy_runner_falls_back():
     runs_on, reason = pick.choose([_runner(busy=True)], "auto", True)
     assert runs_on == HOSTED
-    assert reason == "1 darkmem-ci runner(s), 1 online, none idle"
+    assert reason == "1 darkmem-linux runner(s), 1 online, none idle"
 
 
 def test_an_offline_runner_falls_back():
     runs_on, reason = pick.choose([_runner(status="offline")], "auto", True)
     assert runs_on == HOSTED
-    assert reason == "1 darkmem-ci runner(s), 0 online, none idle"
+    assert reason == "1 darkmem-linux runner(s), 0 online, none idle"
 
 
 def test_a_runner_without_the_label_is_ignored():
     runs_on, reason = pick.choose([_runner(labels=("self-hosted", "other"))], "auto", True)
     assert runs_on == HOSTED
-    assert reason == "no darkmem-ci runner registered"
+    assert reason == "no darkmem-linux runner registered"
 
 
 def test_an_empty_listing_falls_back():
-    assert pick.choose([], "auto", True) == (HOSTED, "no darkmem-ci runner registered")
+    assert pick.choose([], "auto", True) == (HOSTED, "no darkmem-linux runner registered")
 
 
 def test_a_missing_token_falls_back():
@@ -110,7 +108,7 @@ def _outputs(tmp_path):
 
 
 def test_main_writes_both_outputs_for_an_idle_runner(tmp_path):
-    env = _env(tmp_path, GH_TOKEN="t")
+    env = _env(tmp_path, GH_TOKEN="t", REQUESTED="auto")
     assert pick.main(env, fetch=lambda url, token: {"total_count": 1, "runners": [_runner()]}) == 0
     out = _outputs(tmp_path)
     assert out["runs-on"] == SELF_HOSTED
@@ -122,14 +120,14 @@ def test_main_falls_back_when_the_api_fails(tmp_path):
     def fetch(url, token):
         raise urllib.error.URLError("timed out")
 
-    assert pick.main(_env(tmp_path, GH_TOKEN="t"), fetch=fetch) == 0
+    assert pick.main(_env(tmp_path, GH_TOKEN="t", REQUESTED="auto"), fetch=fetch) == 0
     out = _outputs(tmp_path)
     assert out["runs-on"] == HOSTED
     assert out["reason"].startswith("runner listing failed (URLError")
 
 
 def test_main_falls_back_without_a_repository(tmp_path):
-    env = _env(tmp_path, GH_TOKEN="t")
+    env = _env(tmp_path, GH_TOKEN="t", REQUESTED="auto")
     del env["GITHUB_REPOSITORY"]
     assert pick.main(env, fetch=lambda url, token: {"total_count": 0, "runners": []}) == 0
     assert _outputs(tmp_path)["runs-on"] == HOSTED
@@ -147,7 +145,7 @@ def test_main_keeps_a_multiline_error_on_one_output_line(tmp_path):
     def fetch(url, token):
         raise RuntimeError("line one\nline two")
 
-    pick.main(_env(tmp_path, GH_TOKEN="t"), fetch=fetch)
+    pick.main(_env(tmp_path, GH_TOKEN="t", REQUESTED="auto"), fetch=fetch)
     assert len((tmp_path / "out").read_text().splitlines()) == 2
 
 
@@ -158,7 +156,7 @@ def test_outputs_are_valid_json():
 
 
 def test_the_label_matches_regardless_of_case():
-    runs_on, _ = pick.choose([_runner(labels=("self-hosted", "DarkMem-CI"))], "auto", True)
+    runs_on, _ = pick.choose([_runner(labels=("self-hosted", "DarkMem-Linux"))], "auto", True)
     assert runs_on == SELF_HOSTED
 
 
@@ -177,5 +175,13 @@ def test_main_without_a_token_makes_no_call(tmp_path):
     def fetch(url, token):
         raise AssertionError("the API must not be called")
 
-    assert pick.main(_env(tmp_path), fetch=fetch) == 0
+    assert pick.main(_env(tmp_path, REQUESTED="auto"), fetch=fetch) == 0
     assert _outputs(tmp_path) == {"runs-on": HOSTED, "reason": "RUNNER_PICKER_TOKEN is not set"}
+
+
+def test_default_queues_on_self_hosted_without_listing_runners(tmp_path):
+    def fetch(url, token):
+        raise AssertionError("the default must not depend on the listing API")
+
+    assert pick.main(_env(tmp_path, GH_TOKEN="t"), fetch=fetch) == 0
+    assert _outputs(tmp_path)["runs-on"] == SELF_HOSTED

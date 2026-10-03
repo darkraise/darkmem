@@ -26,8 +26,11 @@ The optimized workflow runs these independently:
   isolation, worker caps and timeouts are unchanged.
 - Frontend typecheck, lint and build once, outside the test matrix. Build runs
   Vite directly because the preceding step already ran TypeScript.
-- The image build, real entrypoint smoke test and Trivy scan alongside the
-  suites. The image stays local to that job until release verification passes.
+- The image build and Trivy scan on GitHub-hosted alongside the suites.
+  A workflow artifact transfers the built image to the self-hosted smoke job,
+  which exercises its real entrypoint, `/health` and the bundled SPA.
+- API and Playwright e2e suites on self-hosted runners, each in a job
+  container with a private Postgres service and disposable application stack.
 
 Python downloads are cached against the dependency files. Docker installs the
 Python lockfile before copying package metadata, allowing the release's version
@@ -50,58 +53,91 @@ runtime after deployment; runner queue time and registry uploads remain variable
 
 ## Self-hosted runner
 
-Every CI and release run starts with a `pick-runner` job
-(`scripts/pick_runner.py`). It sends the whole run to a self-hosted runner
-labelled `darkmem-ci` when one is online and idle, and to GitHub-hosted
-`ubuntu-latest` otherwise. A missing token, an API error or no idle runner
-always means GitHub-hosted, and the run's summary page says which it picked
-and why.
+The default splits verification from image production:
 
-**Machine.** A dedicated Linux box, never this host or 192.168.0.199 (both run
-production). Ubuntu 22.04 or 24.04 x64 with Docker Engine from Docker's own apt
-repository (it ships the buildx plugin, which Ubuntu's `docker.io` package does
-not), git, curl, python3 and the GitHub CLI `gh` (the release job
-`github-release` calls `gh release create`, after the image is pushed and the
-tag written, so a missing `gh` fails a release half-way); the runner's user
-must be in the `docker` group. Jobs use random host ports and per-run container
-and image names, so several runners on one machine are safe, and the backend
-job installs into a per-job virtualenv, so no package outlives its run.
-Prune regularly (`docker system prune -af --volumes` from a timer): pulled
-images, the Trivy cache and service containers' volumes accumulate.
+| Jobs | Runner |
+| --- | --- |
+| Backend application/harness tests, frontend checks/unit tests, image boot check | `[self-hosted, linux, x64, darkmem-linux]` by default |
+| API and Playwright e2e | Always `[self-hosted, linux, x64, darkmem-linux]` |
+| Image build/scan, release planning/version sync, image publishing, tag/GitHub release | Always `ubuntu-latest` |
+| Short runner-picker jobs | `ubuntu-latest` |
 
-**Trust.** The `docker` group is root-equivalent, so one machine is one trust
-domain: any job on it can read any user's files, including the registry
-credentials `publish` leaves in `~/.docker/config.json` until its post-step
-logs out. Separate OS users per runner keep runners from tripping over each
-other, not from reading each other. Each job's Postgres service publishes its
-random port on every interface while the job runs; firewall the machine off
-from untrusted networks. The repository is private, so only collaborators'
-code runs here. **Before the repository is made public**, remove the runner or
-require approval for workflow runs from all outside contributors: a fork's
-pull request runs its own copy of `ci.yml`, which can name
-`[self-hosted, darkmem-ci]` directly and bypass the picker.
+`pick-runner` (`scripts/pick_runner.py`) selects only the first row's runner.
+The default is `self-hosted`, so busy or offline runners leave verification
+queued instead of consuming hosted test minutes. No token or runner-listing
+API call is needed for the default. The release passes its choice into the
+reusable CI workflow. Every master push still runs verification, including
+non-release pushes. A release cannot publish until the whole reusable CI
+workflow succeeds, including both e2e jobs.
+
+**Machine.** A dedicated Ubuntu 22.04/24.04 x64 Linux box, never this host or
+192.168.0.199 (both run production). Install Docker Engine, git, curl and
+python3; put the runner user in the `docker` group. Host jobs use
+`actions/setup-python` and `actions/setup-node` for their toolchains and a
+per-job Python virtualenv. The runner no longer needs `gh` or registry login
+credentials: publishing and release writes happen on GitHub-hosted.
+
+Backend host jobs use random Postgres ports and separate databases. Smoke
+verification uses a per-run container name and random loopback HTTP port.
+API and Playwright jobs use `python:3.12-bookworm` containers, each with its
+own Docker network and Postgres service (`darkmem_e2e`, no published host
+port). The harness's API ports 8321/8322 and Vite ports 3636/3637 stay inside
+those containers, so multiple runners on one machine do not collide.
+Playwright installs the lockfile's browser and system dependencies inside
+its job container; its failure traces are retained as artifacts for 7 days.
+An always-run step returns workspace/temp ownership to the runner user after
+container jobs, allowing subsequent host jobs to clean the checkout.
+
+**Models.** The runner's Docker containers must reach the LAN Ollama service.
+Set Repository Settings → Secrets and variables → Actions → Variables →
+`DARKMEM_OLLAMA_BASE_URL` to its OpenAI-compatible URL; the default is
+`http://192.168.0.196:11434/v1`, matching the local gate. It must serve the
+seeded `qwen2.5:3b` generation and `qwen3-embedding:0.6b` embedding models.
+The API harness's model preflight and all-skipped exit code remain enforced:
+a blocked suite fails CI instead of being ignored. Both e2e jobs always stay
+self-hosted, even for a manual `runner: hosted` dispatch, because GitHub-hosted
+runners cannot reach this LAN endpoint.
+
+**Trust.** Docker access is root-equivalent; use a dedicated trusted machine
+and separate OS users per runner. Firewall it off from untrusted networks:
+backend Postgres services publish random host ports while tests run. The
+repository is private, so only collaborators' code runs here. Before making
+it public, remove the runner or require approval for all outside contributors'
+workflow runs: a fork can name `[self-hosted, darkmem-linux]` directly.
+Prune Docker resources only when all runners on that host are idle; Docker
+pruning does not clear tool caches on disk.
 
 **Register.** Repository Settings → Actions → Runners → New self-hosted runner;
-run the printed `config.sh` with `--labels darkmem-ci`, then install it as a
-service (`sudo ./svc.sh install && sudo ./svc.sh start`).
+run the printed `config.sh` with `--labels darkmem-linux`, then install it as a
+service (`sudo ./svc.sh install && sudo ./svc.sh start`). For an existing
+runner, add `darkmem-linux` through its labels settings. It must also have the
+standard `self-hosted`, `linux` and `x64` labels.
 
-**Token.** Create a fine-grained personal access token for this repository
-only, with Repository permissions → Administration: Read-only, and store it
-as the Actions secret `RUNNER_PICKER_TOKEN`. `GITHUB_TOKEN` cannot list
-runners, so without this secret every run is GitHub-hosted.
+**Manual choices.** Both workflows' dispatch input `runner` accepts:
 
-**Forcing a choice.** Both workflows' manual dispatch takes `runner`: `auto`
-(default), `hosted` or `self-hosted`.
+- `self-hosted` (default): queue backend/frontend/smoke checks on `darkmem-linux`.
+- `hosted`: send those checks to `ubuntu-latest`.
+- `auto`: use an idle `darkmem-linux` runner, otherwise fall back to hosted.
 
-**A run stuck in the queue.** The pick happens once, at the start. If the
-runner goes offline afterwards, or `runner: self-hosted` was forced with no
-runner online, the run's jobs wait in the queue for one. Cancel the run and
-re-dispatch it with `runner: hosted`.
+Only `auto` needs `RUNNER_PICKER_TOKEN`, a fine-grained PAT scoped to this
+repository with Administration: Read-only. A missing token, API error or no
+idle matching runner causes hosted fallback in that mode. E2e stays
+self-hosted in every mode. The run summary records the selected check runner.
 
-**Cost.** With one runner a run takes roughly the sum of its jobs rather than
-the longest one. The saving is GitHub-hosted minutes, spent only on the short
-picker jobs: one per CI run, two per release (`ci.yml`'s `pick-runner` still
-starts on GitHub-hosted when it only passes the release's pick through).
-Because the pickers need GitHub-hosted, an account with no hosted minutes left
-(billing or spending limit) gets its runs created but every job refused,
-self-hosted runner or not.
+**A run stuck in the queue.** Restore the `darkmem-linux` runner or wait for
+its current job. To move the non-e2e checks to hosted, cancel and re-dispatch
+with `runner: hosted`; e2e still requires the self-hosted runner. With one
+runner, its jobs execute sequentially.
+
+**Image transfer.** CI saves its hosted build as a Docker tar artifact with
+1-day retention and no redundant artifact compression. The smoke job downloads
+by artifact ID and loads the build's recorded image reference, so retrying
+only the failed smoke job works even when `github.run_attempt` changes. Once
+the artifact expires, re-run the whole workflow to rebuild it. Registry pushes
+remain exclusive to the gated hosted release job.
+
+**Cost.** Hosted minutes are spent on image builds/scans, release jobs and
+short picker jobs (one per CI run, two per release). Tests and e2e use
+self-hosted capacity by default. Image transfer also uses artifact storage and
+network bandwidth. An account with no hosted minutes left still needs billing
+restored before it can run the complete pipeline.

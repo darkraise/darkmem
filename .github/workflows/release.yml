@@ -23,10 +23,10 @@ on:
   workflow_dispatch:
     inputs:
       runner:
-        description: "Where to run: auto picks an idle self-hosted darkmem-ci runner, else GitHub-hosted"
+        description: "Verification runner (e2e always uses darkmem-linux); image builds/publishing stay hosted"
         type: choice
-        options: [auto, hosted, self-hosted]
-        default: auto
+        options: [self-hosted, hosted, auto]
+        default: self-hosted
 
 # Never cancel a publish midway: a half-pushed multi-registry release is worse
 # than a slow one. Serialising on the branch also keeps two master pushes from
@@ -39,8 +39,8 @@ permissions:
   contents: read
 
 jobs:
-  # One pick for the whole release, passed into ci.yml too, so a release run
-  # never picks twice (scripts/pick_runner.py).
+  # Pick only the verification runner. Builds and release writes stay hosted.
+  # Pass the choice into ci.yml rather than consulting the runner API twice.
   pick-runner:
     name: Pick runner
     runs-on: ubuntu-latest
@@ -54,7 +54,7 @@ jobs:
       - name: Pick
         id: pick
         env:
-          REQUESTED: ${{ inputs.runner || 'auto' }}
+          REQUESTED: ${{ inputs.runner || 'self-hosted' }}
           GH_TOKEN: ${{ secrets.RUNNER_PICKER_TOKEN }}
         run: python3 scripts/pick_runner.py
 
@@ -63,8 +63,7 @@ jobs:
   # than a full pipeline.
   plan:
     name: Plan the release
-    needs: pick-runner
-    runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs-on) }}
+    runs-on: ubuntu-latest
     outputs:
       release: ${{ steps.decide.outputs.release }}
       version: ${{ steps.decide.outputs.version }}
@@ -182,9 +181,9 @@ jobs:
   # the tag written later must point at the commit that produced it.
   prepare:
     name: Sync version fields
-    needs: [pick-runner, plan, verify]
+    needs: [plan, verify]
     if: needs.plan.outputs.release == 'true'
-    runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs-on) }}
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     outputs:
@@ -246,8 +245,8 @@ jobs:
 
   publish:
     name: Publish image
-    needs: [pick-runner, plan, prepare]
-    runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs-on) }}
+    needs: [plan, prepare]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write        # GHCR push uses the job's own GITHUB_TOKEN
@@ -351,9 +350,9 @@ jobs:
   # what started the pipeline and already exists.
   tag:
     name: Tag the release
-    needs: [pick-runner, plan, prepare, publish]
+    needs: [plan, prepare, publish]
     if: github.ref_type != 'tag'
-    runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs-on) }}
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
@@ -395,12 +394,12 @@ jobs:
   # failed.
   github-release:
     name: Create GitHub release
-    needs: [pick-runner, plan, prepare, publish, tag]
+    needs: [plan, prepare, publish, tag]
     # `always()` so a tag-triggered run, where the `tag` job is skipped, still
     # reaches this; the explicit result checks are what keep a failed publish
     # from announcing itself.
     if: always() && needs.publish.result == 'success' && needs.tag.result != 'failure'
-    runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs-on) }}
+    runs-on: ubuntu-latest
     permissions:
       contents: write        # creating a release writes to the repository
     steps:

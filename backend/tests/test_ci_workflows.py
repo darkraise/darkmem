@@ -1,11 +1,4 @@
-"""The CI workflows' runner routing and self-hosted isolation, read as YAML.
-
-Every job must take its runner from `pick-runner`, and no job may hold a fixed
-host port, host networking or a fixed container name. A job breaking either
-rule still passes every GitHub-hosted run; it bypasses the self-hosted runner
-or collides with a concurrent job only on the shared machine, so nothing but
-this check catches it.
-"""
+"""CI keeps builds/publishing hosted and delegates verification safely."""
 from __future__ import annotations
 
 import re
@@ -28,18 +21,42 @@ def _needs(job: dict) -> list[str]:
     return [needs] if isinstance(needs, str) else list(needs)
 
 
-@pytest.mark.parametrize("workflow", ["ci.yml", "release.yml"])
-def test_every_job_takes_its_runner_from_the_picker(workflow):
+@pytest.mark.parametrize("workflow,hosted,routed", [
+    ("ci.yml", {"pick-runner", "images"}, {"backend", "frontend", "frontend-tests", "image-smoke"}),
+    ("release.yml", {"pick-runner", "plan", "prepare", "publish", "tag", "github-release"}, set()),
+])
+def test_builds_and_releases_stay_hosted_while_checks_use_the_picker(workflow, hosted, routed):
     jobs = _jobs(workflow)
-    assert jobs["pick-runner"]["runs-on"] == "ubuntu-latest"
-    for key, job in jobs.items():
-        if key == "pick-runner":
-            continue
-        assert "pick-runner" in _needs(job), f"{workflow}:{key} does not need pick-runner"
-        if "uses" in job:
-            assert job.get("with", {}).get("runs-on") == PASSED_THROUGH, f"{workflow}:{key}"
-        else:
-            assert job["runs-on"] == ROUTED, f"{workflow}:{key}"
+    for key in hosted:
+        assert jobs[key]["runs-on"] == "ubuntu-latest", f"{workflow}:{key}"
+    for key in routed:
+        assert "pick-runner" in _needs(jobs[key]), f"{workflow}:{key}"
+        assert jobs[key]["runs-on"] == ROUTED, f"{workflow}:{key}"
+    if workflow == "release.yml":
+        assert "pick-runner" in _needs(jobs["verify"])
+        assert jobs["verify"]["with"]["runs-on"] == PASSED_THROUGH
+        assert "verify" in _needs(jobs["prepare"])
+        assert "prepare" in _needs(jobs["publish"])
+
+
+def test_e2e_suites_have_private_networks_and_databases_on_self_hosted():
+    job = _jobs("ci.yml")["e2e"]
+    assert job["runs-on"] == ["self-hosted", "linux", "x64", "darkmem-linux"]
+    assert set(job["strategy"]["matrix"]["suite"]) == {"api", "playwright"}
+    assert job["container"]
+    assert not job["services"]["postgres"].get("ports")
+    assert job["services"]["postgres"]["env"]["POSTGRES_DB"] == "darkmem_e2e"
+    assert job["env"]["TEST_DATABASE_URL"].endswith("@postgres:5432/darkmem_e2e")
+
+
+def test_smoke_loads_the_hosted_build_artifact():
+    jobs = _jobs("ci.yml")
+    assert "images" in _needs(jobs["image-smoke"])
+    uploads = [s for s in jobs["images"]["steps"] if s.get("uses", "").startswith("actions/upload-artifact@")]
+    downloads = [s for s in jobs["image-smoke"]["steps"] if s.get("uses", "").startswith("actions/download-artifact@")]
+    assert len(uploads) == len(downloads) == 1
+    assert downloads[0]["with"]["artifact-ids"] == "${{ needs.images.outputs.artifact-id }}"
+    assert jobs["images"]["outputs"]["artifact-id"] == "${{ steps.upload.outputs.artifact-id }}"
 
 
 @pytest.mark.parametrize("workflow", ["ci.yml", "release.yml"])
