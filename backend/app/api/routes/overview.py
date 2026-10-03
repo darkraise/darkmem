@@ -16,6 +16,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.llm import lease_llm
 from app.api.auth import require_auth
 from app.database import get_session
 from app.schemas.overview import OverviewResponse
@@ -32,8 +33,9 @@ async def project_overview(
     session: AsyncSession = Depends(get_session),
 ):
     llm = getattr(request.app.state, "llm", None)
-    try:
-        result = await get_overview(session, llm, project)
-    except OverviewUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
-    return result.to_dict()
+    with lease_llm(llm):
+        try:
+            result = await get_overview(session, llm, project)
+        except OverviewUnavailable as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
+        return result.to_dict()

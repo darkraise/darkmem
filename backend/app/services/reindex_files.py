@@ -105,6 +105,12 @@ def classify_union_files(
         if not is_discoverable_path(name):
             buckets.skipped_unindexable.append(name)
             continue
+        try:
+            path = path.resolve()
+            path.relative_to(work_dir.resolve())
+        except (ValueError, OSError, RuntimeError):
+            buckets.skipped_unindexable.append(name)
+            continue
         if not path.is_file():
             buckets.skipped_missing.append(name)
             continue

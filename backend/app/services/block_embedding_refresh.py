@@ -424,6 +424,13 @@ async def _refresh_arm(
             "a fingerprint this run never actually verified."
         )
 
+    if converged and embedded < len(row_ids):
+        remaining = (await session.execute(
+            text(arm.missing_sql.format(table=table, owner=arm.owner_column)),
+            {"fp": fingerprint, "limit": 1},
+        )).first()
+        converged = remaining is None
+
     return RefreshOutcome(
         embedded=embedded,
         fingerprint=fingerprint,

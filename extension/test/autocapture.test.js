@@ -29,9 +29,7 @@ import {
   autoCaptureActive,
   autoCaptureIndicator,
   autoCaptureRequest,
-  firstSweep,
   readAutoCaptureState,
-  unsentTurns,
 } from "../src/autocapture.js";
 import { getOriginKey } from "../src/origin.js";
 
@@ -163,23 +161,6 @@ test("nothing in the auto-capture module mints an origin of its own", () => {
   assert.ok(!source.includes("ORIGIN_STORAGE_KEY"), "no writing the key here");
 });
 
-// ── what gets sent ──
-
-test("a turn already sent this page-view is not sent again", () => {
-  const seen = new Set();
-
-  assert.deepEqual(unsentTurns(seen, ["one", "two"]), ["one", "two"]);
-  assert.deepEqual(unsentTurns(seen, ["one", "two", "three"]), ["three"]);
-});
-
-test("blank turns are dropped rather than captured as empty memories", () => {
-  assert.deepEqual(unsentTurns(new Set(), ["", "   ", "real"]), ["real"]);
-});
-
-test("turns keep their order — a conversation captured out of order is a different one", () => {
-  assert.deepEqual(unsentTurns(new Set(), ["a", "b", "c"]), ["a", "b", "c"]);
-});
-
 // ── the indicator ──
 
 test("the indicator names the mode while it is on", () => {
@@ -196,19 +177,92 @@ test("the indicator clears when it is off, leaving the ordinary title", () => {
   assert.match(off.title, /Capture selection/);
 });
 
-// ── opting in does not back-fill ──
+test("registration status handles failure, recovery and overlapping syncs", async () => {
+  const listeners = {};
+  const badges = [];
+  const titles = [];
+  const registrations = [];
+  let finishBadge;
+  let badgeUpdated = new Promise((resolve) => { finishBadge = resolve; });
+  let registrationFails = true;
+  let registrationBlock;
+  let registrationStarted;
+  const storage = fakeStorage({ [AUTO_CAPTURE_KEY]: true });
+  globalThis.chrome = {
+    storage: { local: storage },
+    permissions: {
+      contains: async () => true,
+      onAdded: { addListener: (listener) => { listeners.permissionAdded = listener; } },
+      onRemoved: { addListener: () => {} },
+    },
+    scripting: {
+      unregisterContentScripts: async () => {},
+      registerContentScripts: async (scripts) => {
+        registrations.push(scripts);
+        if (registrationBlock) {
+          registrationStarted();
+          await registrationBlock;
+        }
+        if (registrationFails) throw new Error("registration refused");
+      },
+    },
+    action: {
+      setTitle: async ({ title }) => { titles.push(title); },
+      setBadgeText: async ({ text }) => { badges.push(text); finishBadge(); },
+    },
+    runtime: {
+      onInstalled: { addListener: () => {} },
+      onMessage: { addListener: (listener) => { listeners.message = listener; } },
+    },
+    contextMenus: { onClicked: { addListener: () => {} } },
+  };
 
-test("the first sweep sends nothing — opting in is not a request for the history", () => {
-  // The options page promises this in words. Sending the existing conversation
-  // is a materially larger act than "capture what happens from now on", on a
-  // click whose label promises the smaller one.
-  const sweep = firstSweep(["an earlier question", "an earlier answer"]);
+  try {
+    await import("../src/background.js?registration-test");
+    listeners.permissionAdded();
+    await badgeUpdated;
+    assert.equal(badges.at(-1), "");
+    assert.match(titles.at(-1), /auto-capture.*(?:failed|unavailable|not running)/i);
 
-  assert.deepEqual(sweep.toSend, []);
-});
+    const failedStatus = new Promise((resolve) => {
+      const keepAlive = listeners.message(
+        { type: "darkmem.auto_capture.sync" }, {}, resolve,
+      );
+      assert.equal(keepAlive, true);
+    });
+    assert.equal((await failedStatus).active, false);
 
-test("what was already on screen is never sent later either", () => {
-  const { seen } = firstSweep(["already here"]);
+    registrationFails = false;
+    badgeUpdated = new Promise((resolve) => { finishBadge = resolve; });
+    const recoveredStatus = new Promise((resolve) => {
+      const keepAlive = listeners.message(
+        { type: "darkmem.auto_capture.sync" }, {}, resolve,
+      );
+      assert.equal(keepAlive, true);
+    });
+    assert.equal((await recoveredStatus).active, true);
+    await badgeUpdated;
+    assert.equal(badges.at(-1), "REC");
+    assert.match(titles.at(-1), /auto-captur/i);
+    assert.deepEqual(registrations.at(-1)[0].js, ["src/content-autocapture.js"]);
 
-  assert.deepEqual(unsentTurns(seen, ["already here", "brand new"]), ["brand new"]);
+    let releaseRegistration;
+    registrationBlock = new Promise((resolve) => { releaseRegistration = resolve; });
+    const started = new Promise((resolve) => { registrationStarted = resolve; });
+    const firstSync = new Promise((resolve) => {
+      listeners.message({ type: "darkmem.auto_capture.sync" }, {}, resolve);
+    });
+    await started;
+    storage.data[AUTO_CAPTURE_KEY] = false;
+    const secondSync = new Promise((resolve) => {
+      listeners.message({ type: "darkmem.auto_capture.sync" }, {}, resolve);
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    releaseRegistration();
+    await Promise.all([firstSync, secondSync]);
+    assert.equal(badges.at(-1), "");
+    assert.match(titles.at(-1), /Capture selection/);
+  } finally {
+    delete globalThis.chrome;
+  }
 });

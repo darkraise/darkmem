@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
+from app.api.deps import refuse_when_read_only
 from app.database import get_session
 from app.schemas.git_account import (
     GitAccountCreate,
@@ -48,7 +49,7 @@ async def list_git_accounts(
     return GitAccountListResponse(accounts=await GitAccountService(session).list())
 
 
-@router.post("/verify", response_model=GitAccountVerifyResponse)
+@router.post("/verify", response_model=GitAccountVerifyResponse, dependencies=[Depends(refuse_when_read_only)])
 async def verify_git_token(
     data: GitAccountVerifyRequest,
     _: dict = Depends(require_auth),

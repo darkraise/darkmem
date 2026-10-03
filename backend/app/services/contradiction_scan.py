@@ -76,6 +76,7 @@ from uuid import uuid4
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.llm import lease_llm
 from app.models.config import Config
 from app.repositories.fact_sources import FactSourceRepository
 from app.services.events import CONTRADICTION_SCANNED, record_event
@@ -668,209 +669,210 @@ async def run_contradiction_scan(
     run_id = str(uuid4())
 
     llm = llm_provider() if callable(llm_provider) else llm_provider
-    if llm is None:
-        return ScanOutcome(skipped_reason="no LLM orchestrator configured")
+    with lease_llm(llm):
+        if llm is None:
+            return ScanOutcome(skipped_reason="no LLM orchestrator configured")
 
-    async with session_factory() as session:
-        state = await _load_state(session)
-        rows = (await session.execute(
-            _DRAIN_EVENTS,
-            {
-                "wm_ts": state.watermark_created_at or _EPOCH,
-                "wm_id": state.watermark_id if state.watermark_id is not None else -1,
-                "safe_until": moment - _COMMIT_SKEW_MARGIN,
-                "batch": batch_size,
-            },
-        )).mappings().all()
-
-        if not rows:
-            return ScanOutcome()
-
-        fact_ids: list[str] = []
-        seen: set[str] = set()
-        for row in rows:
-            fact_id = (row["payload"] or {}).get("fact_id")
-            if not fact_id:
-                # Unreachable from any producer — `fact_lift`,
-                # `fact_provenance`, `document_door` and the Tier-C citation
-                # re-verifier (named in words: a tree-wide scan owns its
-                # module basename) all write the key — so this is a guard,
-                # not a counter: a bucket that can only ever read zero would
-                # dilute `misses` rather than inform it. It is loud instead,
-                # because an event this drain cannot act on is a producer
-                # having changed shape, and the drain still consumes it.
-                logger.warning(
-                    "contradiction scan: sources_changed event %s names no "
-                    "fact_id and was drained without a check",
-                    row["id"],
-                )
-                continue
-            if fact_id not in seen:
-                seen.add(fact_id)
-                fact_ids.append(fact_id)
-
-        facts = [
-            dict(row) for row in (await session.execute(
-                _SERVABLE_FACTS, {"ids": fact_ids}
-            )).mappings().all()
-        ]
-        # Candidate generation and the echo test both run here, in the one
-        # short transaction, so the model phase below holds no session at all.
-        work: list[_FactWork] = []
-        for fact in facts:
-            pool = await generate_candidates(session, fact, top_k=top_k)
-            work.append(_FactWork(
-                fact=fact,
-                pool=pool,
-                asserting=await _attributable(session, str(fact["id"])),
-                challengers={
-                    candidate.fact_id: await _attributable(
-                        session, candidate.fact_id
-                    )
-                    for candidate in pool.candidates
-                },
-            ))
-        advanced_to = (int(rows[-1]["id"]), rows[-1]["created_at"])
-
-    tally.add("events_scanned", len(rows))
-    tally.add("facts_touched", len(fact_ids))
-    tally.add("facts_skipped_unservable", len(fact_ids) - len(facts))
-
-    judge = VerificationJudge(llm)
-    refused = False
-    verdict_lost = False
-    checked = 0
-
-    for index, item in enumerate(work):
-        fact, pool = item.fact, item.pool
-        tally.add("candidates_generated", len(pool.candidates))
-        tally.add("candidates_truncated", pool.truncated)
-
-        finding: dict[str, Any] | None = None
-        pairs_judged = 0
-        incomplete = False
-
-        for candidate in pool.candidates:
-            witness = _witness(
-                item.challengers[candidate.fact_id], item.asserting
-            )
-            if witness is None:
-                tally.add("pairs_echo")
-                continue
-            try:
-                async with session_factory() as probe_session:
-                    verdict = await judge.judge(
-                        probe_session, candidate.fact, fact["fact"],
-                        role=CONTRADICTION_ROLE,
-                    )
-            except JudgeNotQualifiedError:
-                refused = True
-                break
-            except Exception:
-                logger.exception(
-                    "contradiction check failed for fact %s against %s",
-                    fact["id"], candidate.fact_id,
-                )
-                tally.add("judge_failed")
-                incomplete = True
-                continue
-            pairs_judged += 1
-            tally.add("pairs_judged")
-            if not verdict.valid:
-                tally.add("judge_invalid")
-                incomplete = True
-                continue
-            if verdict.verdict == CONTRADICTED_VERDICT:
-                finding = {
-                    "counterpart_id": candidate.fact_id,
-                    "witness_origin": witness,
-                    "counterpart_subject": candidate.subject_name,
-                    "counterpart_rel_type": candidate.rel_type,
-                    "counterpart_object": candidate.object_name,
-                    "arms": list(candidate.arms),
-                    "reason": verdict.reason,
-                }
-                break
-
-        if refused:
-            tally.add("judge_refused")
-            tally.add("facts_unscanned", len(work) - index)
-            break
-
-        # An incomplete pass writes nothing rather than writing a clean
-        # verdict: the journal row is what the veto reads back, so a "clean"
-        # written over an undecided pair would resolve a standing dispute on
-        # evidence that was never gathered. Leaving the previous verdict alone
-        # is the conservative reading, and the fact is counted as a miss.
-        if incomplete and finding is None:
-            tally.add("facts_incomplete")
-            continue
-
-        async with session_factory() as write_session:
-            landed = await _journal(
-                write_session, fact, pool, finding,
-                pairs_judged=pairs_judged, run_id=run_id,
-            )
-            if landed:
-                await write_session.commit()
-
-        # A verdict the journal did not take is a verdict that did not happen:
-        # counting it as recorded would report the job's only output as
-        # delivered while the veto has nothing to read back.
-        if not landed:
-            logger.error(
-                "contradiction scan: the verdict for fact %s did not reach the "
-                "journal; the run stops with its watermark held",
-                fact["id"],
-            )
-            tally.add("journal_failed")
-            tally.add("facts_unscanned", len(work) - index - 1)
-            verdict_lost = True
-            break
-
-        checked += 1
-        tally.add("disputes_recorded" if finding is not None else "clears_recorded")
-
-    tally.add("facts_checked", checked)
-
-    # The watermark stands still on a refusal, and on a lost verdict. A refusal
-    # is a global precondition failure — no qualification record exists — not a
-    # poisonous row, so advancing past the drained events would silently
-    # discard a whole backlog that becomes checkable the moment the record is
-    # minted. A journal insert that failed is the same class: it cannot have
-    # failed because of this one fact's content, so it will fail for the rest
-    # of the batch too, and the events must stay unconsumed. Every other
-    # failure IS per-fact and is settled by the counters instead, exactly as
-    # the recompute settles its own.
-    if not refused and not verdict_lost:
         async with session_factory() as session:
             state = await _load_state(session)
-            await _save_state(
-                session,
-                replace(
-                    state,
-                    watermark_created_at=advanced_to[1],
-                    watermark_id=advanced_to[0],
-                ),
-            )
-            await session.commit()
+            rows = (await session.execute(
+                _DRAIN_EVENTS,
+                {
+                    "wm_ts": state.watermark_created_at or _EPOCH,
+                    "wm_id": state.watermark_id if state.watermark_id is not None else -1,
+                    "safe_until": moment - _COMMIT_SKEW_MARGIN,
+                    "batch": batch_size,
+                },
+            )).mappings().all()
 
-    return ScanOutcome(
-        watermark_advanced=not (refused or verdict_lost),
-        skipped_reason=(
-            "the verification judge is not qualified" if refused
-            else "a verdict could not be journalled" if verdict_lost
-            else None
-        ),
-        **{
-            name: tally.counts.get(name, 0)
-            for name in (
-                "events_scanned", "facts_touched", "facts_skipped_unservable",
-                "facts_checked", "candidates_generated", "pairs_echo",
-                "pairs_judged", "disputes_recorded", "clears_recorded",
-                "facts_incomplete", "facts_unscanned", "candidates_truncated",
-                "judge_refused", "judge_failed", "judge_invalid",
-                "journal_failed",
-            )
-        },
-    )
+            if not rows:
+                return ScanOutcome()
+
+            fact_ids: list[str] = []
+            seen: set[str] = set()
+            for row in rows:
+                fact_id = (row["payload"] or {}).get("fact_id")
+                if not fact_id:
+                    # Unreachable from any producer — `fact_lift`,
+                    # `fact_provenance`, `document_door` and the Tier-C citation
+                    # re-verifier (named in words: a tree-wide scan owns its
+                    # module basename) all write the key — so this is a guard,
+                    # not a counter: a bucket that can only ever read zero would
+                    # dilute `misses` rather than inform it. It is loud instead,
+                    # because an event this drain cannot act on is a producer
+                    # having changed shape, and the drain still consumes it.
+                    logger.warning(
+                        "contradiction scan: sources_changed event %s names no "
+                        "fact_id and was drained without a check",
+                        row["id"],
+                    )
+                    continue
+                if fact_id not in seen:
+                    seen.add(fact_id)
+                    fact_ids.append(fact_id)
+
+            facts = [
+                dict(row) for row in (await session.execute(
+                    _SERVABLE_FACTS, {"ids": fact_ids}
+                )).mappings().all()
+            ]
+            # Candidate generation and the echo test both run here, in the one
+            # short transaction, so the model phase below holds no session at all.
+            work: list[_FactWork] = []
+            for fact in facts:
+                pool = await generate_candidates(session, fact, top_k=top_k)
+                work.append(_FactWork(
+                    fact=fact,
+                    pool=pool,
+                    asserting=await _attributable(session, str(fact["id"])),
+                    challengers={
+                        candidate.fact_id: await _attributable(
+                            session, candidate.fact_id
+                        )
+                        for candidate in pool.candidates
+                    },
+                ))
+            advanced_to = (int(rows[-1]["id"]), rows[-1]["created_at"])
+
+        tally.add("events_scanned", len(rows))
+        tally.add("facts_touched", len(fact_ids))
+        tally.add("facts_skipped_unservable", len(fact_ids) - len(facts))
+
+        judge = VerificationJudge(llm)
+        refused = False
+        verdict_lost = False
+        checked = 0
+
+        for index, item in enumerate(work):
+            fact, pool = item.fact, item.pool
+            tally.add("candidates_generated", len(pool.candidates))
+            tally.add("candidates_truncated", pool.truncated)
+
+            finding: dict[str, Any] | None = None
+            pairs_judged = 0
+            incomplete = False
+
+            for candidate in pool.candidates:
+                witness = _witness(
+                    item.challengers[candidate.fact_id], item.asserting
+                )
+                if witness is None:
+                    tally.add("pairs_echo")
+                    continue
+                try:
+                    async with session_factory() as probe_session:
+                        verdict = await judge.judge(
+                            probe_session, candidate.fact, fact["fact"],
+                            role=CONTRADICTION_ROLE,
+                        )
+                except JudgeNotQualifiedError:
+                    refused = True
+                    break
+                except Exception:
+                    logger.exception(
+                        "contradiction check failed for fact %s against %s",
+                        fact["id"], candidate.fact_id,
+                    )
+                    tally.add("judge_failed")
+                    incomplete = True
+                    continue
+                pairs_judged += 1
+                tally.add("pairs_judged")
+                if not verdict.valid:
+                    tally.add("judge_invalid")
+                    incomplete = True
+                    continue
+                if verdict.verdict == CONTRADICTED_VERDICT:
+                    finding = {
+                        "counterpart_id": candidate.fact_id,
+                        "witness_origin": witness,
+                        "counterpart_subject": candidate.subject_name,
+                        "counterpart_rel_type": candidate.rel_type,
+                        "counterpart_object": candidate.object_name,
+                        "arms": list(candidate.arms),
+                        "reason": verdict.reason,
+                    }
+                    break
+
+            if refused:
+                tally.add("judge_refused")
+                tally.add("facts_unscanned", len(work) - index)
+                break
+
+            # An incomplete pass writes nothing rather than writing a clean
+            # verdict: the journal row is what the veto reads back, so a "clean"
+            # written over an undecided pair would resolve a standing dispute on
+            # evidence that was never gathered. Leaving the previous verdict alone
+            # is the conservative reading, and the fact is counted as a miss.
+            if incomplete and finding is None:
+                tally.add("facts_incomplete")
+                continue
+
+            async with session_factory() as write_session:
+                landed = await _journal(
+                    write_session, fact, pool, finding,
+                    pairs_judged=pairs_judged, run_id=run_id,
+                )
+                if landed:
+                    await write_session.commit()
+
+            # A verdict the journal did not take is a verdict that did not happen:
+            # counting it as recorded would report the job's only output as
+            # delivered while the veto has nothing to read back.
+            if not landed:
+                logger.error(
+                    "contradiction scan: the verdict for fact %s did not reach the "
+                    "journal; the run stops with its watermark held",
+                    fact["id"],
+                )
+                tally.add("journal_failed")
+                tally.add("facts_unscanned", len(work) - index - 1)
+                verdict_lost = True
+                break
+
+            checked += 1
+            tally.add("disputes_recorded" if finding is not None else "clears_recorded")
+
+        tally.add("facts_checked", checked)
+
+        # The watermark stands still on a refusal, and on a lost verdict. A refusal
+        # is a global precondition failure — no qualification record exists — not a
+        # poisonous row, so advancing past the drained events would silently
+        # discard a whole backlog that becomes checkable the moment the record is
+        # minted. A journal insert that failed is the same class: it cannot have
+        # failed because of this one fact's content, so it will fail for the rest
+        # of the batch too, and the events must stay unconsumed. Every other
+        # failure IS per-fact and is settled by the counters instead, exactly as
+        # the recompute settles its own.
+        if not refused and not verdict_lost:
+            async with session_factory() as session:
+                state = await _load_state(session)
+                await _save_state(
+                    session,
+                    replace(
+                        state,
+                        watermark_created_at=advanced_to[1],
+                        watermark_id=advanced_to[0],
+                    ),
+                )
+                await session.commit()
+
+        return ScanOutcome(
+            watermark_advanced=not (refused or verdict_lost),
+            skipped_reason=(
+                "the verification judge is not qualified" if refused
+                else "a verdict could not be journalled" if verdict_lost
+                else None
+            ),
+            **{
+                name: tally.counts.get(name, 0)
+                for name in (
+                    "events_scanned", "facts_touched", "facts_skipped_unservable",
+                    "facts_checked", "candidates_generated", "pairs_echo",
+                    "pairs_judged", "disputes_recorded", "clears_recorded",
+                    "facts_incomplete", "facts_unscanned", "candidates_truncated",
+                    "judge_refused", "judge_failed", "judge_invalid",
+                    "journal_failed",
+                )
+            },
+        )

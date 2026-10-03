@@ -146,6 +146,8 @@ async def detect_supersessions(
     project: str,
     new_relations: list[dict],
     now: datetime | None = None,
+    candidate_memory_ids: list[UUID] | None = None,
+    excluded_memory_ids: list[UUID] | None = None,
 ) -> list[UUID]:
     """Mark same-project active memories as superseded by ``new_memory_id``.
 
@@ -184,6 +186,10 @@ async def detect_supersessions(
         replaces_targets=replaces_targets,
         cutoff=cutoff,
     )
+    if candidate_memory_ids is not None:
+        stmt = stmt.where(Memory.id.in_(candidate_memory_ids))
+    if excluded_memory_ids:
+        stmt = stmt.where(Memory.id.not_in(excluded_memory_ids))
     rows = await session.execute(stmt)
     old_ids = [row[0] for row in rows.all()]
     if not old_ids:

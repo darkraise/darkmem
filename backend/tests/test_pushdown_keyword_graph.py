@@ -281,75 +281,25 @@ async def test_hybrid_search_forwards_the_scope_to_the_keyword_arm(session):
 
 
 @pytest.mark.asyncio
-async def test_pipeline_forwards_the_scope_to_both_channels(monkeypatch):
+@pytest.mark.parametrize("hybrid_enabled", [False, True])
+async def test_pipeline_forwards_the_scope_to_both_channels(session, session_factory, monkeypatch, hybrid_enabled):
     """``ProcessingPipeline.semantic_search`` is the only path the service
     layer has to a channel; if it drops the scope, every caller is unscoped."""
-    from sqlalchemy.ext.asyncio import async_sessionmaker
-
-    import app.services.pipeline as pipeline_mod
+    from app.models.config import Config
     from app.services.pipeline import ProcessingPipeline, _flag_cache_reset
-    from tests.conftest import test_engine
 
-    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    monkeypatch.setattr(HybridSearchService, "_record_access", lambda *args: None)
+    await _seed_partition(session)
+    included = await _add_memory(session, embed=True)
+    await _add_memory(session, embed=True, project="foreign")
+    await _add_memory(session, embed=True, status="deprecated")
+    session.add(Config(key="feature_flags", value={"hybrid_search_enabled": hybrid_enabled}))
+    await session.flush()
     scope = MemoryFilter(project="alpha", statuses=("active",))
-    seen: dict = {}
-
-    class _StubHybrid:
-        def __init__(self, llm, session):
-            pass
-
-        async def search(
-                self, query, limit=20, semantic_weight=0.7, filters=None,
-                ppr_weight=0.0, dual_weight=0.0, access_signals=False,
-            ):
-            seen["hybrid"] = filters
-            return []
-
-    class _StubVectorRepo:
-        def __init__(self, session):
-            pass
-
-        async def search(self, vector, fingerprint, limit=20, filters=None):
-            seen["vector"] = filters
-            return []
-
-    class _StubLLM:
-        async def embed(self, query):
-            return QUERY_VECTOR, FINGERPRINT
-
-    monkeypatch.setattr(
-        "app.services.hybrid_search.HybridSearchService", _StubHybrid, raising=True,
-    )
-    monkeypatch.setattr(pipeline_mod, "PostgresVectorRepository", _StubVectorRepo)
-
-    pipe = ProcessingPipeline(_StubLLM(), factory)
+    pipe = ProcessingPipeline(_FakeLLM(QUERY_VECTOR, FINGERPRINT), session_factory)
     _flag_cache_reset()
-    try:
-        monkeypatch.setattr(
-            pipeline_mod, "_get_feature_flags_cached",
-            _stub_flags(hybrid=True), raising=True,
-        )
-        await pipe.semantic_search("q", limit=5, filters=scope)
-        assert seen["hybrid"] == scope
-
-        monkeypatch.setattr(
-            pipeline_mod, "_get_feature_flags_cached",
-            _stub_flags(hybrid=False), raising=True,
-        )
-        await pipe.semantic_search("q", limit=5, filters=scope)
-        assert seen["vector"] == scope
-    finally:
-        _flag_cache_reset()
-
-
-def _stub_flags(hybrid: bool):
-    async def _flags(_factory):
-        return {
-            "hybrid_search_enabled": hybrid,
-            "reranker_enabled": False,
-            "confidence_rank_gamma": 0.0,
-        }
-    return _flags
+    rows = await pipe.semantic_search(RARE_TERM, limit=5, filters=scope)
+    assert [str(row["memory_id"]) for row in rows] == [str(included.id)]
 
 
 @pytest.mark.asyncio

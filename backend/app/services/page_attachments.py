@@ -10,8 +10,9 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import re
 import unicodedata
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote, unquote
@@ -31,6 +32,11 @@ STAGING_DIRNAME = ".staging"
 FILENAME_MAX_CHARS = 255
 DEFAULT_FILENAME = "file"
 _SNIFF_BYTES = 16
+_REFERENCE_IDS = re.compile(
+    re.escape(ATTACHMENT_URL_PREFIX)
+    + r"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
+)
+_ATTACHMENT_LOCK_KEY = "page-attachment-lifecycle"
 
 _INSERT = text(
     "INSERT INTO page_attachments (id, project, uploaded_for_page_id, filename, "
@@ -49,6 +55,33 @@ class AttachmentTooLarge(ValueError):
 
 class AttachmentsDirUnusable(RuntimeError):
     """`attachments_dir` cannot be created or written."""
+
+
+class AttachmentReferenceMissing(ValueError):
+    """A page would refer to an attachment that no longer exists."""
+
+
+async def lock_attachments(session: AsyncSession, *, collect: bool = False) -> None:
+    """Acquire before page-tree and owner locks, and retain through commit.
+
+    Reference and file writers share the lock; collection is exclusive. The
+    namespace is global because references may cross project boundaries.
+    """
+    function = "pg_advisory_xact_lock" if collect else "pg_advisory_xact_lock_shared"
+    await session.execute(text(f"SELECT {function}(hashtext(:key))"), {"key": _ATTACHMENT_LOCK_KEY})
+
+
+async def validate_attachment_references(session: AsyncSession, bodies: Iterable[str]) -> None:
+    """Revalidate under the caller's lifecycle lock, after any wait for GC."""
+    referenced = {UUID(match) for body in bodies for match in _REFERENCE_IDS.findall(body)}
+    if not referenced:
+        return
+    present = set((await session.execute(text(
+        "SELECT id FROM page_attachments WHERE id = ANY(CAST(:ids AS uuid[]))"
+    ), {"ids": list(referenced)})).scalars())
+    missing = referenced - present
+    if missing:
+        raise AttachmentReferenceMissing(f"no attachment with id {min(missing)}; upload it again before saving")
 
 
 @dataclass(frozen=True)
@@ -174,6 +207,13 @@ async def store_upload(
     chunks: AsyncIterator[bytes],
     max_bytes: int,
 ) -> StoredAttachment:
+    """Place bytes under the lifecycle lock and commit their row.
+
+    An insert failure precedes any COMMIT, so its file can be removed. Once
+    COMMIT is attempted, every error preserves the bytes: a lost response is
+    not proof the database rolled back.
+    """
+    await lock_attachments(session)
     written = await _write_file(chunks, max_bytes=max_bytes)
     try:
         await session.execute(_INSERT, {
@@ -185,14 +225,10 @@ async def store_upload(
             "size_bytes": written.size_bytes,
             "sha256": written.sha256,
         })
-        await session.commit()
     except Exception:
-        # Exception, not BaseException: a cancellation may arrive after the
-        # server acknowledged the COMMIT, and a row whose only bytes were
-        # unlinked is a 404 no arm of the cleanup job can repair -- where the
-        # file this keeps is row-less at worst, which arm 2 sweeps.
         attachment_path(written.id).unlink(missing_ok=True)
         raise
+    await session.commit()
     return StoredAttachment(
         id=written.id,
         url=attachment_url(written.id),

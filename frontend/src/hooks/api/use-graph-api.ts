@@ -1,7 +1,6 @@
 import {
   useQuery,
   useMutation,
-  keepPreviousData,
 } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
 import { useProjectScopedKey } from "@/lib/query-keys"
@@ -106,7 +105,8 @@ export function useUnifiedGraph(
     // the whole page for a skeleton to add an overlay to a graph already on
     // screen. Holding the previous data keeps the graph up while the new
     // shape arrives.
-    placeholderData: keepPreviousData,
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === project ? previous : undefined,
     queryFn: () =>
       apiFetch(
         `/graph/unified?similarity_threshold=${similarityThreshold}&min_cluster_size=${minClusterSize}&include_entities=${includeEntities}` +

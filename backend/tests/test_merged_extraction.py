@@ -145,12 +145,8 @@ async def test_simple_llm_mode_merges_to_one_call(setup_database, monkeypatch):
         classify_calls.append(content)
         return {"hall": "fact", "summary": None, "emotions": [], "flags": []}
 
-    async def resolve_llm():
-        return pipe.classification
-
     monkeypatch.setattr(pipe.extraction, "extract", fake_extract)
     monkeypatch.setattr(pipe.classification, "classify", fake_classify)
-    monkeypatch.setattr(pipe, "_resolve_classifier", resolve_llm)
 
     try:
         await pipe.process_batch([{"memory_id": mem_id,

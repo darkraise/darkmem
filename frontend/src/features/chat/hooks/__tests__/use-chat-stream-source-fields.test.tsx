@@ -3,6 +3,7 @@ import { renderHook, waitFor, act } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { useChatStream } from "../use-chat-stream"
+import { useAuthStore } from "@/features/auth"
 
 function sseStreamFromEvents(events: object[]): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder()
@@ -30,6 +31,64 @@ afterEach(() => {
 // carrying all three parses into the typed ChatSources with no cast
 // anywhere in this file.
 describe("useChatStream: the sources event's id/project/status reach state.sources untouched", () => {
+  it("uses shared session handling on unauthorized responses", async () => {
+    const logout = vi.spyOn(useAuthStore.getState(), "logout")
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 401, text: async () => "Unauthorized" }))
+    const { result } = renderHook(() => useChatStream(), { wrapper })
+    await act(async () => { await result.current.sendMessage(null, "draft") })
+    expect(logout).toHaveBeenCalled()
+    logout.mockRestore()
+  })
+  it("ignores a late response from an aborted older send", async () => {
+    let resolveFirst!: (value: unknown) => void
+    vi.stubGlobal("fetch", vi.fn()
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve }))
+      .mockResolvedValueOnce({ ok: true, body: sseStreamFromEvents([
+        { type: "token", content: "new answer" }, { type: "done", conversation_id: "second" },
+      ]) }))
+    const { result } = renderHook(() => useChatStream(), { wrapper })
+    let first!: ReturnType<typeof result.current.sendMessage>
+    act(() => { first = result.current.sendMessage("first", "old") })
+    await act(async () => { await result.current.sendMessage("second", "new") })
+    await act(async () => {
+      resolveFirst({ ok: true, body: sseStreamFromEvents([{ type: "token", content: "old answer" }, { type: "done", conversation_id: "first" }]) })
+      await first
+    })
+    expect(result.current.streamingContent).toBe("new answer")
+    expect(result.current.conversationId).toBe("second")
+  })
+
+  it("refreshes an existing thread on SSE failure without making its stored user turn retryable", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, body: sseStreamFromEvents([{ type: "error", message: "provider failed" }]) }))
+    const queryClient = new QueryClient()
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries")
+    const { result } = renderHook(() => useChatStream("existing"), { wrapper: ({ children }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider> })
+    await act(async () => { await result.current.sendMessage("existing", "stored user turn") })
+    expect(result.current.error).toContain("may already be saved")
+    expect(result.current.retryDraft).toBeNull()
+    expect(result.current.uncertainDraft).toBe("stored user turn")
+    expect(result.current.pendingUserMessage).toBeNull()
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["conversation", "existing"] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["conversations"] })
+  })
+
+  it("reports EOF without done as an uncertain failure", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, body: sseStreamFromEvents([{ type: "token", content: "partial" }]) }))
+    const { result } = renderHook(() => useChatStream(), { wrapper })
+    await act(async () => { await result.current.sendMessage(null, "draft") })
+    expect(result.current.error).toContain("before completion")
+    expect(result.current.uncertainDraft).toBe("draft")
+  })
+
+  it("aborts the request when the owner unmounts", async () => {
+    const fetchMock = vi.fn().mockImplementation(() => new Promise(() => {}))
+    vi.stubGlobal("fetch", fetchMock)
+    const { result, unmount } = renderHook(() => useChatStream(), { wrapper })
+    act(() => { void result.current.sendMessage(null, "draft") })
+    const signal = fetchMock.mock.calls[0]![1].signal as AbortSignal
+    unmount()
+    expect(signal.aborted).toBe(true)
+  })
   it("carries id, project, and status through from the SSE payload", async () => {
     const seededMemory = {
       index: 1,

@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
-from app.api.deps import get_analytics_service
+from app.api.deps import get_analytics_service, refuse_when_read_only
 from app.utils.background import spawn
 from app.config import FEATURE_FLAGS_DEFAULTS
 from app.database import get_session
@@ -110,9 +110,8 @@ def _swap_pipeline_llm(pipeline, new_llm) -> None:
 async def _close_orchestrator_safely(old_llm) -> None:
     """Close the previous orchestrator's httpx client without raising.
 
-    Runs as a background task so any concurrent request that still holds
-    a reference to ``old_llm`` finishes before its connection pool is
-    torn down. Swallows close-time exceptions to a warning — the new
+    The orchestrator drains acquisition leases before closing its pool.
+    Swallows close-time exceptions to a warning — the new
     orchestrator is already live so a failed close is just a leaked
     socket, not a user-visible error.
     """
@@ -152,6 +151,7 @@ async def apply_llm_config_change(
     go through this; two copies would drift and one of them would keep
     calling the old endpoint until restart.
     """
+    refuse_when_read_only()
     from app.database import async_session_factory
     from app.services.llm import LLMOrchestrator
     from app.services.usage_recorder import UsageRecorder
@@ -209,7 +209,7 @@ async def get_llm_config(
 # feature-flags) it should be PUT /config/llm. Left as POST because changing it
 # would break existing frontend clients. See docs/api-rest-conventions.md
 # ("Known deviations").
-@router.post("/llm", response_model=LLMConfigUpdateResponse)
+@router.post("/llm", response_model=LLMConfigUpdateResponse, dependencies=[Depends(refuse_when_read_only)])
 async def update_llm_config(
     body: LLMConfigUpdate,
     request: Request,
@@ -1046,7 +1046,7 @@ async def update_notifications(
     return masked(saved)
 
 
-@router.post("/notifications/test")
+@router.post("/notifications/test", dependencies=[Depends(refuse_when_read_only)])
 async def test_notification(
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
@@ -1310,5 +1310,3 @@ async def update_theme_settings(
         )
     )
     return ThemeSettingsResponse(settings=body.settings)
-
-

@@ -18,10 +18,6 @@ async def get_feature_flags_dict(session: AsyncSession) -> dict:
     if row:
         merged.update(row.value)
     if settings.read_only:
-        # An LLM scoring call per search, against the snapshot's restored
-        # credentials, is the spend class the disarmed scheduler exists to
-        # stop. The query embed stays -- a search surface that cannot embed
-        # cannot search -- so this clamps the optional call and nothing else.
         merged["reranker_enabled"] = False
     return merged
 

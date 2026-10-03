@@ -7,7 +7,7 @@ const API_BASE = "/api/v1"
 // full-page reloads. Reset once we're on /login so a later re-login works.
 let handling401 = false
 
-function handleUnauthorized() {
+export function handleUnauthorized() {
   useAuthStore.getState().logout()
   if (handling401) return
   handling401 = true

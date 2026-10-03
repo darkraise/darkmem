@@ -13,6 +13,12 @@ import { describeSkippedFiles } from "./websocket-events"
  * signal anything was missed.
  */
 const RECONCILE_QUERY_KEYS: string[] = [
+  "unifiedGraph",
+  "memoryContext",
+  "codeGraph",
+  "codeFiles",
+  "codeSymbols",
+  "codeSymbol",
   "memories",
   "memory",
   "memoriesPaginated",
@@ -76,6 +82,17 @@ export function useWebSocket() {
       }[keyof WebSocketEventMap] & { event?: string; data?: unknown }
 
       if (!msg.event) return
+
+      if (["pipeline.completed", "pipeline.partial", "pipeline.failed", "memory.deleted", "memory.bulk_deleted"].includes(msg.event)) {
+        for (const key of ["unifiedGraph", "memoryContext"]) {
+          void qc.invalidateQueries({ queryKey: [key] })
+        }
+      }
+      if (["repo.indexing_completed", "repo.indexing_failed", "enrichment.batch_completed"].includes(msg.event)) {
+        for (const key of ["codeGraph", "codeFiles", "codeSymbols", "codeSymbol"]) {
+          void qc.invalidateQueries({ queryKey: [key] })
+        }
+      }
 
       if (
         msg.event === "pipeline.completed" ||

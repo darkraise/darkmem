@@ -328,7 +328,7 @@ async def test_a_declared_length_over_the_ceiling_is_refused_before_the_body(
 
 
 @pytest.mark.asyncio
-async def test_placed_files_are_unlinked_even_when_the_rollback_fails(
+async def test_placed_files_are_preserved_when_the_rollback_fails(
     session, attachments_dir, tmp_path, monkeypatch
 ):
     from app.services import page_import
@@ -348,7 +348,7 @@ async def test_placed_files_are_unlinked_even_when_the_rollback_fails(
         p for p in attachments_dir.rglob("*")
         if p.is_file() and ".staging" not in p.parts
     ]
-    assert survivors == [], "a placed attachment file survived the failure"
+    assert len(survivors) == 1
 
 
 @pytest.mark.asyncio

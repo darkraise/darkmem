@@ -24,7 +24,7 @@ export function ChatOverlay({
   const navigate = useNavigate()
 
   const { data: convDetail } = useConversation(convId)
-  const stream = useChatStream()
+  const stream = useChatStream(convId)
 
   const messages = convDetail?.messages ?? []
 
@@ -108,6 +108,10 @@ export function ChatOverlay({
       />
 
       <ChatInput
+        key={convId ?? "new"}
+        error={stream.error}
+        retryDraft={stream.retryDraft}
+        uncertainDraft={stream.uncertainDraft}
         onSend={handleSend}
         onStop={stream.abort}
         isStreaming={stream.isStreaming}

@@ -19,6 +19,7 @@ import { alreadyCaptured, fingerprint, remember } from "./dedupe.js";
 import {
   AUTO_CAPTURE_MESSAGE,
   AUTO_CAPTURE_SCRIPT_ID,
+  AUTO_CAPTURE_SYNC_MESSAGE,
   CHAT_HOST_PATTERNS,
   autoCaptureIndicator,
   autoCaptureRequest,
@@ -110,12 +111,21 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
  * page without this extension being told, and a registration that outlived its
  * permission is the state the opt-in exists to make impossible.
  */
-async function syncAutoCapture() {
+let lastAutoCaptureSync = Promise.resolve();
+
+function syncAutoCapture() {
+  const result = lastAutoCaptureSync.then(reconcileAutoCapture);
+  lastAutoCaptureSync = result.catch(() => {});
+  return result;
+}
+
+async function reconcileAutoCapture() {
   const state = await readAutoCaptureState(
     chrome.storage.local,
     (request) => chrome.permissions.contains(request),
   );
 
+  let registered = false;
   try {
     if (state.active) {
       // Idempotent by removing first: `registerContentScripts` throws on a
@@ -132,24 +142,24 @@ async function syncAutoCapture() {
           runAt: "document_idle",
         },
       ]);
+      registered = true;
     } else {
       await chrome.scripting.unregisterContentScripts({
         ids: [AUTO_CAPTURE_SCRIPT_ID],
       }).catch(() => {});
     }
-  } catch {
-    // `scripting` is optional and absent until the opt-in grants it, so its
-    // absence is the ordinary state rather than an error worth reporting.
-  }
+  } catch {}
 
-  const indicator = autoCaptureIndicator(state.active);
+  const indicator = state.active && !registered
+    ? { badge: "", title: "Auto-capture unavailable — observer registration failed" }
+    : autoCaptureIndicator(registered);
   await notify(indicator.title);
   try {
     await chrome.action.setBadgeText({ text: indicator.badge });
   } catch {
     // The badge is a courtesy; the title already carries the mode.
   }
-  return state;
+  return { ...state, active: registered };
 }
 
 /**
@@ -189,7 +199,11 @@ async function captureTurn({ content, pageUrl, pageTitle }) {
   await remember(chrome.storage.local, originKey, digest);
 }
 
-chrome.runtime.onMessage.addListener((message) => {
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === AUTO_CAPTURE_SYNC_MESSAGE) {
+    syncAutoCapture().then(sendResponse, () => sendResponse(null));
+    return true;
+  }
   if (message?.type !== AUTO_CAPTURE_MESSAGE) return;
   // Failures are swallowed here rather than surfaced per turn: auto-capture
   // runs unattended by definition, and a toolbar that reported every transient

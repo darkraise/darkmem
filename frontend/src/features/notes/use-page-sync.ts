@@ -31,6 +31,24 @@ interface Entry {
  *  draining after its pane unmounts and a page that is reopened mid-drain
  *  shows the work rather than the older server copy. */
 const engines = new Map<string, Entry>()
+let lifecycleInstalled = false
+
+function onHidden() {
+  if (document.visibilityState === "hidden") flushAll()
+}
+
+function onLeave(event: BeforeUnloadEvent) {
+  if (!anyPending()) return
+  event.preventDefault()
+  event.returnValue = ""
+}
+
+function installLifecycle() {
+  if (lifecycleInstalled) return
+  document.addEventListener("visibilitychange", onHidden)
+  window.addEventListener("beforeunload", onLeave)
+  lifecycleInstalled = true
+}
 
 function anyPending(): boolean {
   // A block whose upload has not resolved carries no url, so it is absent
@@ -87,11 +105,13 @@ function acquire(
 }
 
 function mount(entry: Entry) {
+  installLifecycle()
   entry.mounted++
 }
 
 function unmount(pageId: string, entry: Entry) {
   entry.mounted--
+  if (engines.get(pageId) !== entry) return
   flushEntry(entry)
   release(pageId, entry)
 }
@@ -170,23 +190,6 @@ export function usePageSync(
     return () => unmount(page.id, entry)
   }, [entry, page.id])
 
-  useEffect(() => {
-    const onHidden = () => {
-      if (document.visibilityState === "hidden") flushAll()
-    }
-    const onLeave = (event: BeforeUnloadEvent) => {
-      if (!anyPending()) return
-      event.preventDefault()
-      event.returnValue = ""
-    }
-    document.addEventListener("visibilitychange", onHidden)
-    window.addEventListener("beforeunload", onLeave)
-    return () => {
-      document.removeEventListener("visibilitychange", onHidden)
-      window.removeEventListener("beforeunload", onLeave)
-    }
-  }, [])
-
   return useMemo(
     () => ({
       initialBlocks,
@@ -206,4 +209,7 @@ export function usePageSync(
 export function resetPageSyncEngines() {
   for (const entry of engines.values()) if (entry.timer !== null) clearTimeout(entry.timer)
   engines.clear()
+  document.removeEventListener("visibilitychange", onHidden)
+  window.removeEventListener("beforeunload", onLeave)
+  lifecycleInstalled = false
 }

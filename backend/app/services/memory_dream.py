@@ -69,6 +69,7 @@ from uuid import UUID
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.llm import lease_llm
 from app.models.config import Config
 from app.repositories.relational import PostgresMemoryRepository
 from app.repositories.memory_relations import (
@@ -2057,133 +2058,134 @@ async def run_memory_dream(
     outcome = DreamOutcome(cycle_id=str(new_id()))
 
     llm = llm_provider() if callable(llm_provider) else llm_provider
-    if llm is None:
-        outcome.skipped_reason = SKIPPED_LLM_UNAVAILABLE
-        logger.warning("memory dream: no LLM provider; the cycle does nothing")
-        return outcome
+    with lease_llm(llm):
+        if llm is None:
+            outcome.skipped_reason = SKIPPED_LLM_UNAVAILABLE
+            logger.warning("memory dream: no LLM provider; the cycle does nothing")
+            return outcome
 
-    fingerprint = await resolve_fingerprint(llm)
-    if fingerprint is None:
-        outcome.skipped_reason = SKIPPED_FINGERPRINT_UNRESOLVED
+        fingerprint = await resolve_fingerprint(llm)
+        if fingerprint is None:
+            outcome.skipped_reason = SKIPPED_FINGERPRINT_UNRESOLVED
 
-    # Phase R. Read-only, and committed before the LLM fan-out so a pooled
-    # connection does not sit `idle in transaction` for minutes.
-    async with session_factory() as session:
-        state = await _load_state(session)
-        seeds, outcome.wrapped = await next_seeds(
-            session, state=state, batch_size=batch_size
-        )
-        outcome.seeds_visited = len(seeds)
-        pairs: list[PairCandidate] = []
-        refine_targets: list[MemoryRow] = []
-        if fingerprint is not None:
-            pairs = await generate_pairs(
-                session,
-                seeds=seeds,
-                fingerprint=fingerprint,
-                pair_candidates=pair_candidates,
-                near_duplicate_threshold_pct=near_duplicate_threshold_pct,
-                judge_fanout=judge_fanout,
-                outcome=outcome,
-            )
-            refine_targets = [
-                seed for seed in seeds if needs_refine(seed)
-            ][:max(0, refine_batch)]
-        await session.commit()
-
-    if seeds and outcome.pairs_skipped_no_vector == len(seeds):
-        # The per-seed counter is the honest unit for one memory never
-        # re-embedded after a rotation; it is the wrong unit for "the partition
-        # this job reads is empty", and only the run-level check tells them
-        # apart.
-        outcome.pair_arm_skipped_reason = SKIPPED_NO_SEED_VECTORS
-        logger.warning(
-            "memory dream: no seed in a slice of %d had a vector under %s",
-            len(seeds), fingerprint,
-        )
-
-    # Phase C — no transaction is open across any of this.
-    actions: list = await _judge_pairs(
-        llm, pairs, llm_concurrency=llm_concurrency, outcome=outcome
-    )
-    actions += await _judge_refines(
-        llm, refine_targets, llm_concurrency=llm_concurrency, outcome=outcome
-    )
-
-    # Phase W.
-    advanced = seeds[-1] if seeds else None
-    batches = [
-        actions[index:index + write_batch]
-        for index in range(0, len(actions), max(1, write_batch))
-    ] or [[]]
-    for index, batch in enumerate(batches):
+        # Phase R. Read-only, and committed before the LLM fan-out so a pooled
+        # connection does not sit `idle in transaction` for minutes.
         async with session_factory() as session:
-            for action in batch:
-                await _apply(
-                    session, action, cycle_id=outcome.cycle_id, outcome=outcome
-                )
-            if index == len(batches) - 1 and advanced is not None:
-                # The cursor advances in the last batch's commit, not per
-                # batch: one seed's actions can straddle two batches, so no
-                # batch boundary corresponds to a seed the cursor could
-                # honestly point past. A crash re-does at most one slice, and
-                # every action is idempotent on replay.
-                await _save_state(
+            state = await _load_state(session)
+            seeds, outcome.wrapped = await next_seeds(
+                session, state=state, batch_size=batch_size
+            )
+            outcome.seeds_visited = len(seeds)
+            pairs: list[PairCandidate] = []
+            refine_targets: list[MemoryRow] = []
+            if fingerprint is not None:
+                pairs = await generate_pairs(
                     session,
-                    _State(
-                        seed_created_at=advanced.created_at,
-                        seed_id=advanced.memory_id,
-                    ),
+                    seeds=seeds,
+                    fingerprint=fingerprint,
+                    pair_candidates=pair_candidates,
+                    near_duplicate_threshold_pct=near_duplicate_threshold_pct,
+                    judge_fanout=judge_fanout,
+                    outcome=outcome,
                 )
-                outcome.cursor_created_at = advanced.created_at
-                outcome.cursor_id = advanced.memory_id
+                refine_targets = [
+                    seed for seed in seeds if needs_refine(seed)
+                ][:max(0, refine_batch)]
             await session.commit()
 
-    # Phase D — deterministic, no model call, its own session and commit so a
-    # derivation failure cannot roll back the actions Phase W already took.
-    if derivation_enabled and seeds:
-        async with session_factory() as session:
-            derivation = await run_derivation_pass(
-                session,
-                seeds=seeds,
-                fingerprint=fingerprint,
-                cycle_id=outcome.cycle_id,
-                overlap_threshold=overlap_threshold_pct / 100,
-                proximity_threshold=proximity_threshold_pct / 100,
-                derivation_batch=derivation_batch,
-                hot_entity_cap=derivation_hot_entity_cap,
-                neighbours=derivation_neighbours,
+        if seeds and outcome.pairs_skipped_no_vector == len(seeds):
+            # The per-seed counter is the honest unit for one memory never
+            # re-embedded after a rotation; it is the wrong unit for "the partition
+            # this job reads is empty", and only the run-level check tells them
+            # apart.
+            outcome.pair_arm_skipped_reason = SKIPPED_NO_SEED_VECTORS
+            logger.warning(
+                "memory dream: no seed in a slice of %d had a vector under %s",
+                len(seeds), fingerprint,
             )
-            await session.commit()
-        outcome.derivation_candidates = derivation.candidates
-        outcome.candidates_truncated = derivation.candidates_truncated
-        outcome.derived = derivation.derived
-        outcome.derivation_unchanged = derivation.unchanged
-        outcome.derivation_stripped = derivation.stripped
-        outcome.derivation_rows_deleted = derivation.rows_deleted
-        outcome.derivation_spared_unmeasured = derivation.spared_unmeasured
-        outcome.derivation_failed = derivation.failed
-        outcome.derivation_skipped_reason = derivation.proximity_skipped_reason
 
-    logger.info(
-        "memory dream cycle %s visited %d seed(s): %d pair(s) judged, "
-        "%d subsumed, %d associated (%d unchanged), %d refined, "
-        "%d stale-skipped, %d failed; derivation saw %d candidate(s) "
-        "(%d truncated): %d derived, %d unchanged, %d stripped, "
-        "%d spared as unmeasured%s",
-        outcome.cycle_id, outcome.seeds_visited, outcome.judged,
-        outcome.subsumed, outcome.associated, outcome.associate_unchanged,
-        outcome.refined, outcome.stale_skipped, outcome.failed,
-        outcome.derivation_candidates, outcome.candidates_truncated,
-        outcome.derived, outcome.derivation_unchanged,
-        outcome.derivation_stripped, outcome.derivation_spared_unmeasured,
-        f" (skipped: {outcome.skipped_reason})" if outcome.skipped_reason
-        else (
-            f" (pair arm: {outcome.pair_arm_skipped_reason})"
-            if outcome.pair_arm_skipped_reason else ""
-        ),
-    )
-    return outcome
+        # Phase C — no transaction is open across any of this.
+        actions: list = await _judge_pairs(
+            llm, pairs, llm_concurrency=llm_concurrency, outcome=outcome
+        )
+        actions += await _judge_refines(
+            llm, refine_targets, llm_concurrency=llm_concurrency, outcome=outcome
+        )
+
+        # Phase W.
+        advanced = seeds[-1] if seeds else None
+        batches = [
+            actions[index:index + write_batch]
+            for index in range(0, len(actions), max(1, write_batch))
+        ] or [[]]
+        for index, batch in enumerate(batches):
+            async with session_factory() as session:
+                for action in batch:
+                    await _apply(
+                        session, action, cycle_id=outcome.cycle_id, outcome=outcome
+                    )
+                if index == len(batches) - 1 and advanced is not None:
+                    # The cursor advances in the last batch's commit, not per
+                    # batch: one seed's actions can straddle two batches, so no
+                    # batch boundary corresponds to a seed the cursor could
+                    # honestly point past. A crash re-does at most one slice, and
+                    # every action is idempotent on replay.
+                    await _save_state(
+                        session,
+                        _State(
+                            seed_created_at=advanced.created_at,
+                            seed_id=advanced.memory_id,
+                        ),
+                    )
+                    outcome.cursor_created_at = advanced.created_at
+                    outcome.cursor_id = advanced.memory_id
+                await session.commit()
+
+        # Phase D — deterministic, no model call, its own session and commit so a
+        # derivation failure cannot roll back the actions Phase W already took.
+        if derivation_enabled and seeds:
+            async with session_factory() as session:
+                derivation = await run_derivation_pass(
+                    session,
+                    seeds=seeds,
+                    fingerprint=fingerprint,
+                    cycle_id=outcome.cycle_id,
+                    overlap_threshold=overlap_threshold_pct / 100,
+                    proximity_threshold=proximity_threshold_pct / 100,
+                    derivation_batch=derivation_batch,
+                    hot_entity_cap=derivation_hot_entity_cap,
+                    neighbours=derivation_neighbours,
+                )
+                await session.commit()
+            outcome.derivation_candidates = derivation.candidates
+            outcome.candidates_truncated = derivation.candidates_truncated
+            outcome.derived = derivation.derived
+            outcome.derivation_unchanged = derivation.unchanged
+            outcome.derivation_stripped = derivation.stripped
+            outcome.derivation_rows_deleted = derivation.rows_deleted
+            outcome.derivation_spared_unmeasured = derivation.spared_unmeasured
+            outcome.derivation_failed = derivation.failed
+            outcome.derivation_skipped_reason = derivation.proximity_skipped_reason
+
+        logger.info(
+            "memory dream cycle %s visited %d seed(s): %d pair(s) judged, "
+            "%d subsumed, %d associated (%d unchanged), %d refined, "
+            "%d stale-skipped, %d failed; derivation saw %d candidate(s) "
+            "(%d truncated): %d derived, %d unchanged, %d stripped, "
+            "%d spared as unmeasured%s",
+            outcome.cycle_id, outcome.seeds_visited, outcome.judged,
+            outcome.subsumed, outcome.associated, outcome.associate_unchanged,
+            outcome.refined, outcome.stale_skipped, outcome.failed,
+            outcome.derivation_candidates, outcome.candidates_truncated,
+            outcome.derived, outcome.derivation_unchanged,
+            outcome.derivation_stripped, outcome.derivation_spared_unmeasured,
+            f" (skipped: {outcome.skipped_reason})" if outcome.skipped_reason
+            else (
+                f" (pair arm: {outcome.pair_arm_skipped_reason})"
+                if outcome.pair_arm_skipped_reason else ""
+            ),
+        )
+        return outcome
 
 
 MEMORY_DREAM_CONFIG_SCHEMA: list[FieldDescriptor] = [

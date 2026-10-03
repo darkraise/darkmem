@@ -16,6 +16,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 
 from app.services.job_registry import FieldDescriptor
+from app.services.llm import lease_llm
 
 logger = logging.getLogger(__name__)
 
@@ -79,139 +80,140 @@ def make_repo_sync_runner(
         from app.api.websocket import event_manager
 
         active_llm = getattr(app, "state", None) and getattr(app.state, "llm", None)
-        now = time.monotonic()
+        with lease_llm(active_llm):
+            now = time.monotonic()
 
-        async with session_factory() as list_session:
-            repos = (await list_session.execute(
-                select(Repository).where(
-                    (Repository.fetch_enabled == True)  # noqa: E712
-                    | (Repository.index_on_commit_enabled == True)  # noqa: E712
-                )
-            )).scalars().all()
-            candidates = [(r.id, r.name) for r in repos]
-
-        for repo_id, repo_name in candidates:
-            async with session_factory() as repo_session:
-                try:
-                    manager = RepoManager(repo_session)
-                    repo = await manager.get(repo_id)
-                    if repo is None:
-                        continue
-
-                    # The index lane below takes claim_for_indexing; this lane
-                    # takes nothing, so it has to refuse on the same statuses
-                    # that claim refuses on -- otherwise a tick landing inside
-                    # an in-flight clone, webhook or manual reindex fetches and
-                    # `reset --hard`s the working tree that run owns, and a
-                    # fetch failing against a half-written clone rmtree's the
-                    # directory the clone is still writing into. The status is
-                    # read BEFORE _claim_due so a refused tick does not burn the
-                    # interval: the interval bounds how often a fetch happens,
-                    # not how often one is skipped, and a repo that goes idle
-                    # mid-window would otherwise wait out a whole interval it
-                    # never used. The residual window between this read and
-                    # pull_repo is accepted at homelab scale.
-                    if (
-                        repo.fetch_enabled
-                        and repo.status not in RepoManager.BUSY_STATUSES
-                        and _claim_due(
-                            repo_id, "fetch", repo.fetch_interval_seconds, now,
-                        )
-                    ):
-                        # Own try/except: a transient network fault fetching
-                        # must not fall into the shared handler below, which
-                        # would call mark_periodic_sync_failure and silently
-                        # disable index_on_commit_enabled -- a switch the
-                        # operator chose, for a fault that has nothing to do
-                        # with it. Noticing a local commit needs no network.
-                        try:
-                            await manager.pull_repo(repo)
-                        except Exception as fetch_exc:
-                            logger.warning(
-                                "Fetch failed for %s: %s", repo_name, fetch_exc,
-                            )
-                            # pull_repo reaches the DB through get_credential,
-                            # whose session.get() calls sit outside the
-                            # RuntimeError guard pull_repo puts around its git
-                            # subprocess calls. A DB-layer fault there leaves
-                            # the session in a failed transaction, which the
-                            # index lane below would inherit. Rolling back
-                            # expires every loaded attribute, so `repo` has to
-                            # be re-read before anything touches it -- a bare
-                            # rollback turns this into MissingGreenlet at the
-                            # next attribute access.
-                            await repo_session.rollback()
-                            repo = await manager.get(repo_id)
-                            if repo is None:
-                                continue
-
-                    if not repo.index_on_commit_enabled:
-                        continue
-                    if not _claim_due(
-                        repo_id, "index", repo.commit_poll_seconds, now,
-                    ):
-                        continue
-
-                    work_dir = manager.repo_working_dir(repo)
-                    if not work_dir.exists():
-                        continue
-
-                    head = await resolve_head_sha(work_dir)
-                    forced: tuple[list[str], list[str]] | None = None
-                    if head is None or head == repo.last_indexed_commit:
-                        if not repo.index_uncommitted:
-                            continue
-                        drift = await compute_working_tree_drift(
-                            repo_session, repo, work_dir,
-                        )
-                        if not drift[0] and not drift[1]:
-                            continue
-                        forced = drift
-                        # The retired standalone code_reconcile job ran every
-                        # drift-forced pipeline with llm=None, because it swept
-                        # every indexed repo unconditionally and extraction
-                        # cost on every repo's every drift tick was too broad
-                        # a default. This loop only reaches here for a repo
-                        # whose operator opted into index_uncommitted, so the
-                        # cost is scoped to what was asked for and carrying
-                        # active_llm (the same as any other index tick) is fine.
-
-                    # Losing the claim is the ordinary case, not an error: the
-                    # run that holds it is doing this tick's work.
-                    if not await manager.claim_for_indexing(
-                        repo_id, message="Indexing new commit...",
-                    ):
-                        continue
-
-                    pipeline = CodePipeline(
-                        session=repo_session, llm=active_llm,
-                        vector_repo=PostgresVectorRepository(repo_session, "code_chunks"),
-                        repo_manager=manager,
+            async with session_factory() as list_session:
+                repos = (await list_session.execute(
+                    select(Repository).where(
+                        (Repository.fetch_enabled == True)  # noqa: E712
+                        | (Repository.index_on_commit_enabled == True)  # noqa: E712
                     )
-                    # pull=False: the fetch lane above already owns fetching
-                    # this tick (or an earlier one); the index lane only ever
-                    # observes HEAD, never moves it.
-                    await pipeline.run(repo_id, forced_files=forced, pull=False)
-                    await repo_session.commit()
-                except Exception as e:
-                    await repo_session.rollback()
-                    logger.error("Indexing loop failed for %s: %s", repo_name, e)
+                )).scalars().all()
+                candidates = [(r.id, r.name) for r in repos]
+
+            for repo_id, repo_name in candidates:
+                async with session_factory() as repo_session:
                     try:
-                        async with session_factory() as fail_session:
-                            updated = await RepoManager(
-                                fail_session
-                            ).mark_periodic_sync_failure(repo_id, e)
-                        if updated is not None:
-                            await event_manager.broadcast(
-                                "repo.index_on_commit_disabled",
-                                {
-                                    "repo_id": str(repo_id),
-                                    "name": updated.name,
-                                    "status_message": updated.status_message or "",
-                                },
+                        manager = RepoManager(repo_session)
+                        repo = await manager.get(repo_id)
+                        if repo is None:
+                            continue
+
+                        # The index lane below takes claim_for_indexing; this lane
+                        # takes nothing, so it has to refuse on the same statuses
+                        # that claim refuses on -- otherwise a tick landing inside
+                        # an in-flight clone, webhook or manual reindex fetches and
+                        # `reset --hard`s the working tree that run owns, and a
+                        # fetch failing against a half-written clone rmtree's the
+                        # directory the clone is still writing into. The status is
+                        # read BEFORE _claim_due so a refused tick does not burn the
+                        # interval: the interval bounds how often a fetch happens,
+                        # not how often one is skipped, and a repo that goes idle
+                        # mid-window would otherwise wait out a whole interval it
+                        # never used. The residual window between this read and
+                        # pull_repo is accepted at homelab scale.
+                        if (
+                            repo.fetch_enabled
+                            and repo.status not in RepoManager.BUSY_STATUSES
+                            and _claim_due(
+                                repo_id, "fetch", repo.fetch_interval_seconds, now,
                             )
-                    except Exception as inner_e:
-                        logger.error("Failed to mark repo %s errored: %s", repo_id, inner_e)
+                        ):
+                            # Own try/except: a transient network fault fetching
+                            # must not fall into the shared handler below, which
+                            # would call mark_periodic_sync_failure and silently
+                            # disable index_on_commit_enabled -- a switch the
+                            # operator chose, for a fault that has nothing to do
+                            # with it. Noticing a local commit needs no network.
+                            try:
+                                await manager.pull_repo(repo)
+                            except Exception as fetch_exc:
+                                logger.warning(
+                                    "Fetch failed for %s: %s", repo_name, fetch_exc,
+                                )
+                                # pull_repo reaches the DB through get_credential,
+                                # whose session.get() calls sit outside the
+                                # RuntimeError guard pull_repo puts around its git
+                                # subprocess calls. A DB-layer fault there leaves
+                                # the session in a failed transaction, which the
+                                # index lane below would inherit. Rolling back
+                                # expires every loaded attribute, so `repo` has to
+                                # be re-read before anything touches it -- a bare
+                                # rollback turns this into MissingGreenlet at the
+                                # next attribute access.
+                                await repo_session.rollback()
+                                repo = await manager.get(repo_id)
+                                if repo is None:
+                                    continue
+
+                        if not repo.index_on_commit_enabled:
+                            continue
+                        if not _claim_due(
+                            repo_id, "index", repo.commit_poll_seconds, now,
+                        ):
+                            continue
+
+                        work_dir = manager.repo_working_dir(repo)
+                        if not work_dir.exists():
+                            continue
+
+                        head = await resolve_head_sha(work_dir)
+                        forced: tuple[list[str], list[str]] | None = None
+                        if head is None or head == repo.last_indexed_commit:
+                            if not repo.index_uncommitted:
+                                continue
+                            drift = await compute_working_tree_drift(
+                                repo_session, repo, work_dir,
+                            )
+                            if not drift[0] and not drift[1]:
+                                continue
+                            forced = drift
+                            # The retired standalone code_reconcile job ran every
+                            # drift-forced pipeline with llm=None, because it swept
+                            # every indexed repo unconditionally and extraction
+                            # cost on every repo's every drift tick was too broad
+                            # a default. This loop only reaches here for a repo
+                            # whose operator opted into index_uncommitted, so the
+                            # cost is scoped to what was asked for and carrying
+                            # active_llm (the same as any other index tick) is fine.
+
+                        # Losing the claim is the ordinary case, not an error: the
+                        # run that holds it is doing this tick's work.
+                        if not await manager.claim_for_indexing(
+                            repo_id, message="Indexing new commit...",
+                        ):
+                            continue
+
+                        pipeline = CodePipeline(
+                            session=repo_session, llm=active_llm,
+                            vector_repo=PostgresVectorRepository(repo_session, "code_chunks"),
+                            repo_manager=manager,
+                        )
+                        # pull=False: the fetch lane above already owns fetching
+                        # this tick (or an earlier one); the index lane only ever
+                        # observes HEAD, never moves it.
+                        await pipeline.run(repo_id, forced_files=forced, pull=False)
+                        await repo_session.commit()
+                    except Exception as e:
+                        await repo_session.rollback()
+                        logger.error("Indexing loop failed for %s: %s", repo_name, e)
+                        try:
+                            async with session_factory() as fail_session:
+                                updated = await RepoManager(
+                                    fail_session
+                                ).mark_periodic_sync_failure(repo_id, e)
+                            if updated is not None:
+                                await event_manager.broadcast(
+                                    "repo.index_on_commit_disabled",
+                                    {
+                                        "repo_id": str(repo_id),
+                                        "name": updated.name,
+                                        "status_message": updated.status_message or "",
+                                    },
+                                )
+                        except Exception as inner_e:
+                            logger.error("Failed to mark repo %s errored: %s", repo_id, inner_e)
     return run
 
 
@@ -520,25 +522,26 @@ def make_code_enrichment_runner(app, session_factory: async_sessionmaker[AsyncSe
         from app.api.websocket import event_manager
 
         llm = getattr(app.state, "llm", None)
-        if not llm:
-            logger.info("code_enrichment skipped: no LLM orchestrator")
-            return {}
+        with lease_llm(llm):
+            if not llm:
+                logger.info("code_enrichment skipped: no LLM orchestrator")
+                return {}
 
-        # app.state.job_registry is wired after this runner is constructed,
-        # so read it lazily here, not at construction time.
-        registry = getattr(app.state, "job_registry", None)
-        batch_size = 5
-        if registry is not None:
-            cfg = await registry.load_config("code_enrichment")
-            batch_size = int(cfg.config.get("batch_size", 5))
+            # app.state.job_registry is wired after this runner is constructed,
+            # so read it lazily here, not at construction time.
+            registry = getattr(app.state, "job_registry", None)
+            batch_size = 5
+            if registry is not None:
+                cfg = await registry.load_config("code_enrichment")
+                batch_size = int(cfg.config.get("batch_size", 5))
 
-        worker = EnrichmentWorker(llm, broadcast=event_manager.broadcast)
-        processed = await worker.process_batch(batch_size=batch_size)
-        # Every ten seconds against an empty symbol queue on an instance with
-        # no repositories indexed; an unreported no-op here was ~8.6k rows/day.
-        if not processed:
-            return {}
-        return processed if isinstance(processed, dict) else {"enriched": processed}
+            worker = EnrichmentWorker(llm, broadcast=event_manager.broadcast)
+            processed = await worker.process_batch(batch_size=batch_size)
+            # Every ten seconds against an empty symbol queue on an instance with
+            # no repositories indexed; an unreported no-op here was ~8.6k rows/day.
+            if not processed:
+                return {}
+            return processed if isinstance(processed, dict) else {"enriched": processed}
     return run
 
 
@@ -584,41 +587,42 @@ def make_ppr_snapshot_runner(
 
         fingerprint: str | None = None
         llm = getattr(app.state, "llm", None)
-        if llm is not None:
-            try:
-                async with session_factory() as session:
-                    fingerprint = await PostgresVectorRepository(
-                        session
-                    ).resolve_read_fingerprint(llm)
-            except Exception as e:
-                logger.info(
-                    "ppr_snapshot: no resolvable read fingerprint (%s); "
-                    "building relation-only snapshots", e,
-                )
+        with lease_llm(llm):
+            if llm is not None:
+                try:
+                    async with session_factory() as session:
+                        fingerprint = await PostgresVectorRepository(
+                            session
+                        ).resolve_read_fingerprint(llm)
+                except Exception as e:
+                    logger.info(
+                        "ppr_snapshot: no resolvable read fingerprint (%s); "
+                        "building relation-only snapshots", e,
+                    )
 
-        after_project = await _load_ppr_cursor(session_factory)
-        outcome = await refresh_snapshots(
-            session_factory,
-            fingerprint=fingerprint,
-            batch_size=batch_size,
-            after_project=after_project,
-            synonymy_threshold=float(knobs["synonymy_threshold_pct"]) / 100.0,
-            synonymy_top_k=int(knobs["synonymy_top_k"]),
-            synonymy_max_nodes=int(knobs["synonymy_max_nodes"]),
-            max_snapshot_edges=int(knobs["max_snapshot_edges"]),
-            build_timeout_seconds=float(knobs["build_timeout_seconds"]),
-        )
+            after_project = await _load_ppr_cursor(session_factory)
+            outcome = await refresh_snapshots(
+                session_factory,
+                fingerprint=fingerprint,
+                batch_size=batch_size,
+                after_project=after_project,
+                synonymy_threshold=float(knobs["synonymy_threshold_pct"]) / 100.0,
+                synonymy_top_k=int(knobs["synonymy_top_k"]),
+                synonymy_max_nodes=int(knobs["synonymy_max_nodes"]),
+                max_snapshot_edges=int(knobs["max_snapshot_edges"]),
+                build_timeout_seconds=float(knobs["build_timeout_seconds"]),
+            )
 
-        wrapped = outcome.projects_visited < batch_size
-        cursor = None if wrapped else outcome.last_project
-        await _save_ppr_cursor(session_factory, cursor)
+            wrapped = outcome.projects_visited < batch_size
+            cursor = None if wrapped else outcome.last_project
+            await _save_ppr_cursor(session_factory, cursor)
 
-        logger.info(
-            "PPR snapshot visited %d project(s) from cursor %r: %d built, "
-            "%d skipped; cursor now %r%s",
-            outcome.projects_visited, after_project, outcome.snapshots_built,
-            outcome.skipped, cursor, " (wrapped to start)" if wrapped else "",
-        )
+            logger.info(
+                "PPR snapshot visited %d project(s) from cursor %r: %d built, "
+                "%d skipped; cursor now %r%s",
+                outcome.projects_visited, after_project, outcome.snapshots_built,
+                outcome.skipped, cursor, " (wrapped to start)" if wrapped else "",
+            )
     return run
 
 
@@ -644,30 +648,31 @@ def make_relation_embedding_runner(
         )
 
         llm = getattr(app.state, "llm", None)
-        if llm is None:
-            logger.info("relation_embedding_refresh skipped: no LLM orchestrator")
-            return
+        with lease_llm(llm):
+            if llm is None:
+                logger.info("relation_embedding_refresh skipped: no LLM orchestrator")
+                return
 
-        registry = getattr(app.state, "job_registry", None)
-        knobs = {fd.key: fd.default for fd in RELATION_EMBEDDING_CONFIG_SCHEMA}
-        if registry is not None:
-            cfg = await registry.load_config(RELATION_EMBEDDING_JOB_KEY)
-            knobs.update(cfg.config or {})
+            registry = getattr(app.state, "job_registry", None)
+            knobs = {fd.key: fd.default for fd in RELATION_EMBEDDING_CONFIG_SCHEMA}
+            if registry is not None:
+                cfg = await registry.load_config(RELATION_EMBEDDING_JOB_KEY)
+                knobs.update(cfg.config or {})
 
-        async with session_factory() as session:
-            outcome = await refresh_relation_embeddings(
-                session, llm,
-                missing_batch=int(knobs["missing_batch"]),
-                rotation_batch=int(knobs["rotation_batch"]),
-                chunk_size=int(knobs["embed_chunk"]),
-            )
-            await session.commit()
+            async with session_factory() as session:
+                outcome = await refresh_relation_embeddings(
+                    session, llm,
+                    missing_batch=int(knobs["missing_batch"]),
+                    rotation_batch=int(knobs["rotation_batch"]),
+                    chunk_size=int(knobs["embed_chunk"]),
+                )
+                await session.commit()
 
-        if outcome.total:
-            logger.info(
-                "Relation embeddings: %d new, %d rotated under %s",
-                outcome.missing_written, outcome.rotated, outcome.fingerprint,
-            )
+            if outcome.total:
+                logger.info(
+                    "Relation embeddings: %d new, %d rotated under %s",
+                    outcome.missing_written, outcome.rotated, outcome.fingerprint,
+                )
     return run
 
 
@@ -695,29 +700,30 @@ def make_repo_entity_anchoring_runner(
         )
 
         llm = getattr(app.state, "llm", None)
-        if llm is None:
-            logger.info("repo_entity_anchoring skipped: no LLM orchestrator")
-            return
+        with lease_llm(llm):
+            if llm is None:
+                logger.info("repo_entity_anchoring skipped: no LLM orchestrator")
+                return
 
-        registry = getattr(app.state, "job_registry", None)
-        knobs = {fd.key: fd.default for fd in REPO_ENTITY_ANCHORING_CONFIG_SCHEMA}
-        if registry is not None:
-            cfg = await registry.load_config(REPO_ENTITY_ANCHORING_JOB_KEY)
-            knobs.update(cfg.config or {})
+            registry = getattr(app.state, "job_registry", None)
+            knobs = {fd.key: fd.default for fd in REPO_ENTITY_ANCHORING_CONFIG_SCHEMA}
+            if registry is not None:
+                cfg = await registry.load_config(REPO_ENTITY_ANCHORING_JOB_KEY)
+                knobs.update(cfg.config or {})
 
-        async with session_factory() as session:
-            outcome = await refresh_repo_entity_anchors(
-                session, llm,
-                missing_batch=int(knobs["missing_batch"]),
-                chunk_size=int(knobs["embed_chunk"]),
-            )
-            await session.commit()
+            async with session_factory() as session:
+                outcome = await refresh_repo_entity_anchors(
+                    session, llm,
+                    missing_batch=int(knobs["missing_batch"]),
+                    chunk_size=int(knobs["embed_chunk"]),
+                )
+                await session.commit()
 
-        if outcome.written:
-            logger.info(
-                "Repo entity anchoring: %d entities embedded under %s",
-                outcome.written, outcome.fingerprint,
-            )
+            if outcome.written:
+                logger.info(
+                    "Repo entity anchoring: %d entities embedded under %s",
+                    outcome.written, outcome.fingerprint,
+                )
     return run
 
 
@@ -745,27 +751,28 @@ def make_repo_entity_merge_runner(
         )
 
         llm = getattr(app.state, "llm", None)
-        if llm is None:
-            logger.info("repo_entity_merge skipped: no LLM orchestrator")
-            return
+        with lease_llm(llm):
+            if llm is None:
+                logger.info("repo_entity_merge skipped: no LLM orchestrator")
+                return
 
-        registry = getattr(app.state, "job_registry", None)
-        knobs = {fd.key: fd.default for fd in REPO_ENTITY_MERGE_CONFIG_SCHEMA}
-        if registry is not None:
-            cfg = await registry.load_config(REPO_ENTITY_MERGE_JOB_KEY)
-            knobs.update(cfg.config or {})
+            registry = getattr(app.state, "job_registry", None)
+            knobs = {fd.key: fd.default for fd in REPO_ENTITY_MERGE_CONFIG_SCHEMA}
+            if registry is not None:
+                cfg = await registry.load_config(REPO_ENTITY_MERGE_JOB_KEY)
+                knobs.update(cfg.config or {})
 
-        async with session_factory() as session:
-            outcome = await merge_repo_entity_duplicates(
-                session, llm, candidate_batch=int(knobs["candidate_batch"]),
-            )
-            await session.commit()
+            async with session_factory() as session:
+                outcome = await merge_repo_entity_duplicates(
+                    session, llm, candidate_batch=int(knobs["candidate_batch"]),
+                )
+                await session.commit()
 
-        if outcome.merged:
-            logger.info(
-                "Repo entity merge: %d pair(s) fused of %d probed under %s",
-                outcome.merged, outcome.probed, outcome.fingerprint,
-            )
+            if outcome.merged:
+                logger.info(
+                    "Repo entity merge: %d pair(s) fused of %d probed under %s",
+                    outcome.merged, outcome.probed, outcome.fingerprint,
+                )
     return run
 
 
@@ -984,55 +991,56 @@ def make_block_embedding_runner(
         from app.services.events import record_event
 
         llm = getattr(app.state, "llm", None)
-        if llm is None:
-            logger.info("block_embedding_refresh skipped: no LLM orchestrator")
-            return
+        with lease_llm(llm):
+            if llm is None:
+                logger.info("block_embedding_refresh skipped: no LLM orchestrator")
+                return
 
-        registry = getattr(app.state, "job_registry", None)
-        knobs = {fd.key: fd.default for fd in BLOCK_EMBEDDING_CONFIG_SCHEMA}
-        if registry is not None:
-            cfg = await registry.load_config(BLOCK_EMBEDDING_JOB_KEY)
-            knobs.update(cfg.config or {})
+            registry = getattr(app.state, "job_registry", None)
+            knobs = {fd.key: fd.default for fd in BLOCK_EMBEDDING_CONFIG_SCHEMA}
+            if registry is not None:
+                cfg = await registry.load_config(BLOCK_EMBEDDING_JOB_KEY)
+                knobs.update(cfg.config or {})
 
-        # A mismatched fingerprint raises out of refresh_block_embeddings and
-        # is deliberately NOT caught here: with the fingerprint resolved from
-        # a real embed call (T-doc-door.6 review, round 2), a mismatch can
-        # only mean the active embedder's config changed mid-run, and letting
-        # it propagate is what lands it in job_runs.last_error where an
-        # operator sees it, rather than silently reporting a batch converged
-        # under a fingerprint this run never verified.
-        async with session_factory() as session:
-            outcome = await refresh_block_embeddings(
-                session, llm,
-                batch=int(knobs["batch"]),
-                page_batch=int(knobs["page_batch"]),
-                worklog_batch=int(knobs["worklog_batch"]),
-            )
-            if outcome.embedded:
-                journalled = await record_event(
-                    session,
-                    event_type="block_embeddings_refreshed",
-                    object_type="system",
-                    payload={
-                        "embedded": outcome.embedded,
-                        "fingerprint": outcome.fingerprint,
-                        "converged": outcome.converged,
-                        "failed": outcome.failed,
-                    },
+            # A mismatched fingerprint raises out of refresh_block_embeddings and
+            # is deliberately NOT caught here: with the fingerprint resolved from
+            # a real embed call (T-doc-door.6 review, round 2), a mismatch can
+            # only mean the active embedder's config changed mid-run, and letting
+            # it propagate is what lands it in job_runs.last_error where an
+            # operator sees it, rather than silently reporting a batch converged
+            # under a fingerprint this run never verified.
+            async with session_factory() as session:
+                outcome = await refresh_block_embeddings(
+                    session, llm,
+                    batch=int(knobs["batch"]),
+                    page_batch=int(knobs["page_batch"]),
+                    worklog_batch=int(knobs["worklog_batch"]),
                 )
-                await session.commit()
-                if not journalled:
-                    logger.warning(
-                        "block_embedding_refresh: embedded %d block(s) under %s unjournalled",
-                        outcome.embedded, outcome.fingerprint,
+                if outcome.embedded:
+                    journalled = await record_event(
+                        session,
+                        event_type="block_embeddings_refreshed",
+                        object_type="system",
+                        payload={
+                            "embedded": outcome.embedded,
+                            "fingerprint": outcome.fingerprint,
+                            "converged": outcome.converged,
+                            "failed": outcome.failed,
+                        },
                     )
+                    await session.commit()
+                    if not journalled:
+                        logger.warning(
+                            "block_embedding_refresh: embedded %d block(s) under %s unjournalled",
+                            outcome.embedded, outcome.fingerprint,
+                        )
 
-        if outcome.embedded:
-            logger.info(
-                "Block embeddings: %d embedded under %s (converged=%s, failed=%d)",
-                outcome.embedded, outcome.fingerprint, outcome.converged,
-                outcome.failed,
-            )
+            if outcome.embedded:
+                logger.info(
+                    "Block embeddings: %d embedded under %s (converged=%s, failed=%d)",
+                    outcome.embedded, outcome.fingerprint, outcome.converged,
+                    outcome.failed,
+                )
     return run
 
 

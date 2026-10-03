@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { renderHook } from "@testing-library/react"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { renderHook, act, waitFor } from "@testing-library/react"
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 
 vi.mock("darkraise-ui/components/sonner", () => ({
@@ -62,6 +62,8 @@ const PIPELINE_STATUS = {
 }
 
 const CORE_PIPELINE_KEYS = [
+  "unifiedGraph",
+  "memoryContext",
   "memories",
   "memory",
   "memoriesPaginated",
@@ -72,6 +74,55 @@ const CORE_PIPELINE_KEYS = [
 ]
 
 describe("useWebSocket", () => {
+  it("refreshes mounted graph data after terminal writes and a reconnect", async () => {
+    vi.useRealTimers()
+    const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } })
+    let revision = "before"
+    const { result } = renderHook(() => {
+      useWebSocket()
+      return {
+        memory: useQuery({ queryKey: ["unifiedGraph", "project"], queryFn: async () => revision }),
+        code: useQuery({ queryKey: ["codeGraph", "repo"], queryFn: async () => revision }),
+      }
+    }, { wrapper: ({ children }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider> })
+    await waitFor(() => expect(result.current.memory.data).toBe("before"))
+    await waitFor(() => expect(result.current.code.data).toBe("before"))
+    const socket = MockWebSocket.latest()
+    socket.emitOpen()
+    revision = "written"
+    act(() => {
+      socket.emitMessage({ event: "memory.deleted", data: { memory_id: "deleted" } })
+      socket.emitMessage({ event: "repo.indexing_completed", data: { files_changed: 1, symbols_indexed: 1 } })
+    })
+    await waitFor(() => expect(result.current.memory.data).toBe("written"))
+    await waitFor(() => expect(result.current.code.data).toBe("written"))
+    revision = "missed while offline"
+    vi.useFakeTimers()
+    act(() => {
+      socket.emitClose()
+      vi.advanceTimersByTime(1000)
+      MockWebSocket.latest().emitOpen()
+      vi.runOnlyPendingTimers()
+    })
+    vi.useRealTimers()
+    await waitFor(() => expect(result.current.memory.data).toBe("missed while offline"))
+    await waitFor(() => expect(result.current.code.data).toBe("missed while offline"))
+  })
+  it("invalidates code graph families on terminal events and reconnect", () => {
+    const { invalidateSpy } = renderWithSpy()
+    const socket = MockWebSocket.latest()
+    socket.emitOpen()
+    for (const event of ["repo.indexing_completed", "repo.indexing_failed", "enrichment.batch_completed"]) {
+      invalidateSpy.mockClear()
+      socket.emitMessage({ event, data: { files_changed: 1, symbols_indexed: 2, error: "failed" } })
+      expect(invalidatedKeys(invalidateSpy)).toEqual(expect.arrayContaining(["codeGraph", "codeFiles", "codeSymbols", "codeSymbol"]))
+    }
+    invalidateSpy.mockClear()
+    socket.emitClose()
+    vi.advanceTimersByTime(1000)
+    MockWebSocket.latest().emitOpen()
+    expect(invalidatedKeys(invalidateSpy)).toEqual(expect.arrayContaining(["unifiedGraph", "codeGraph", "codeFiles", "codeSymbols", "codeSymbol"]))
+  })
   let originalWebSocket: typeof WebSocket
 
   beforeEach(() => {

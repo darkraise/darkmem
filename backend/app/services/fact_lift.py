@@ -155,7 +155,7 @@ from app.services.code_deriver import (
 )
 from app.services.contradiction_veto import adjudicate_contradiction
 from app.services.events import record_event
-from app.services.fact_provenance import MEMORY_SOURCE_KIND, memory_source_ref
+from app.services.fact_provenance import MEMORY_SOURCE_KIND, lock_facts_for_withdrawal, memory_source_ref
 from app.services.job_registry import FieldDescriptor
 from app.services.suffix_index import SuffixIndex
 from app.services.triple_key import compute_triple_key
@@ -1155,10 +1155,11 @@ async def _withdraw_code_sources(
     if not rows:
         return 0, 0
 
+    fact_ids = [str(row["fact_id"]) for row in rows]
+    await lock_facts_for_withdrawal(session, fact_ids)
     await session.execute(
         _WITHDRAW_CODE_SOURCES, {"ids": [str(row["source_id"]) for row in rows]}
     )
-    fact_ids = [str(row["fact_id"]) for row in rows]
     surviving = {
         str(fact_id)
         for fact_id in (

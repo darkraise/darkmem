@@ -82,7 +82,6 @@ export class PageSync {
   /** Work not yet on the server: a write in flight, or a difference left. */
   get pending(): boolean {
     if (this.running !== null) return true
-    if (this.stopped) return false
     try {
       return nextOp(this.snapshotTree, this.desiredTree) !== null
     } catch {

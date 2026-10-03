@@ -287,7 +287,7 @@ def test_both_doors_derive_the_weight_through_one_helper():
     from pathlib import Path
 
     backend = Path(__file__).resolve().parents[1]
-    for name in ("pipeline.py", "layer_composition.py"):
+    for name in ("hybrid_search.py", "layer_composition.py"):
         source = (backend / "app" / "services" / name).read_text()
         assert "dual_list_weight" in source, f"{name} does not use the helper"
         tree = ast.parse(source)

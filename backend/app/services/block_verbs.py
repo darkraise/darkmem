@@ -42,6 +42,9 @@ from app.services.document_door import (
 from app.services.document_ingest import DocumentHashConflict, compute_content_hash
 from app.services.embedder_registry import child_table
 from app.services.events import record_event
+from app.services.page_attachments import (
+    AttachmentReferenceMissing, lock_attachments, validate_attachment_references,
+)
 from app.taxonomy import normalize_block_type, normalize_page_block_type
 from app.utils.ids import new_id
 
@@ -408,6 +411,8 @@ async def _mutate(session, llm, *, document_id, apply, touched_embed, verb,
     instead of interleaving into a tree whose blocks were stripped underneath
     it.
     """
+    if owner.kind == "page":
+        await lock_attachments(session)
     await session.execute(owner.lock, {"id": document_id})
 
     meta = (await session.execute(owner.meta, {"id": document_id})).mappings().first()
@@ -456,6 +461,11 @@ async def _mutate(session, llm, *, document_id, apply, touched_embed, verb,
 
     before = {block.id: block for block in tree}
     tree, inserted, deleted_subtree = apply(tree)
+    if owner.kind == "page":
+        try:
+            await validate_attachment_references(session, (block.text for block in tree))
+        except AttachmentReferenceMissing as exc:
+            raise PageBlockInvalid(str(exc)) from exc
 
     # Frontmatter rides every serialisation, not only the conversion: an
     # ordinary edit of an already-block-first document would otherwise drop

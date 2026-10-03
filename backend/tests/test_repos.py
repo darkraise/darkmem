@@ -1,3 +1,49 @@
+import subprocess
+import traceback
+
+import pytest
+
+from app.services.git_forges import FORGES
+from app.services.repo_manager import RepoManager, _sanitize_url
+
+
+@pytest.mark.parametrize("provider", list(FORGES))
+@pytest.mark.parametrize("failure", ["error", "timeout", "checkout_warning"])
+async def test_git_diagnostics_scrub_every_forge(tmp_path, monkeypatch, caplog, provider, failure):
+    token = "SENTINEL_GIT_TOKEN"
+    url = RepoManager._auth_url("https://forge.example/org/repo.git", token, provider)
+    command = ["git", "clone", url]
+
+    def run_git(*args, **kwargs):
+        if failure == "timeout":
+            raise subprocess.TimeoutExpired(command, 300, stderr=url.encode())
+        message = f"fatal: authentication failed for '{url}'"
+        if failure == "checkout_warning":
+            message = f"Clone succeeded, but checkout failed: {url}"
+        return subprocess.CompletedProcess(command, 1, stdout=b"", stderr=message.encode())
+
+    monkeypatch.setattr(subprocess, "run", run_git)
+    if failure == "checkout_warning":
+        await RepoManager._run_git(tmp_path, command)
+        diagnostic = caplog.text
+    else:
+        with pytest.raises(RuntimeError) as caught:
+            await RepoManager._run_git(tmp_path, command)
+        diagnostic = "".join(traceback.format_exception(caught.value)) + caplog.text
+    assert token not in diagnostic
+    assert "forge.example/org/repo.git" in diagnostic
+
+
+@pytest.mark.parametrize("url", [
+    "https://SENTINEL_USER:SENTINEL_PASS@forge.example/repo.git",
+    "ssh://SENTINEL_USER@forge.example/repo.git",
+    "https://SENTINEL_USER:p%40ss@forge.example/repo.git",
+])
+def test_url_sanitizer_removes_all_userinfo(url):
+    sanitized = _sanitize_url(f"failed: {url}")
+    assert sanitized == "failed: " + url.split("://")[0] + "://***@forge.example/repo.git"
+
+
 async def test_create_repo_local(client, session, auth_headers, tmp_path):
     repo_dir = tmp_path / "test-repo"
     repo_dir.mkdir()
@@ -178,7 +224,7 @@ async def test_mark_periodic_sync_failure_disables_index_on_commit(session, tmp_
     assert updated.status == "error"
     assert "git fetch failed" in (updated.status_message or "")
     assert "ghp_secret123" not in (updated.status_message or "")
-    assert "x-access-token:***@" in (updated.status_message or "")
+    assert "***@" in (updated.status_message or "")
 
     # Round-trip: the next loop iteration filters by
     # index_on_commit_enabled=True and this repo must now be excluded.

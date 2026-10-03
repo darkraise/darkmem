@@ -24,6 +24,29 @@ async def _mk_memory(session, mid):
     await session.flush()
 
 
+async def test_memory_overlay_requires_relationship_assertion_in_selected_scope(session):
+    selected, foreign = uuid4(), uuid4()
+    session.add_all([
+        Memory(id=selected, content="selected", source="test", project="selected"),
+        Memory(id=foreign, content="foreign", source="test", project="foreign"),
+    ])
+    await session.flush()
+    graph = PostgresGraphRepository(session)
+    for memory_id in (selected, foreign):
+        for name in ("shared-source", "shared-target"):
+            await graph.create_entity(name, "tool", {}, memory_id)
+    for relation, memory_id in (("USES", selected), ("REPLACES", foreign)):
+        await graph.create_relationship(
+            "shared-source", "shared-target", relation, {}, 0.5, memory_id,
+            source_type="tool", target_type="tool",
+        )
+    overlay = await graph.get_entities_for_memories([str(selected)], limit=10)
+    assert len(overlay["entities"]) == 2
+    assert [relation["type"] for relation in overlay["relations"]] == ["USES"]
+    combined = await graph.get_entities_for_memories([str(selected), str(foreign)], limit=10)
+    assert {relation["type"] for relation in combined["relations"]} == {"USES", "REPLACES"}
+
+
 async def test_create_entity_merges_properties_across_memories(session):
     repo = PostgresGraphRepository(session)
     m1, m2 = uuid4(), uuid4()

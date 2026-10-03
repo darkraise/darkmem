@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { renderHook, waitFor } from "@testing-library/react"
+import { renderHook, waitFor, act } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 
@@ -15,6 +15,16 @@ import { projectScopedKey } from "@/lib/query-keys"
 // entry under one project, switches the store, and asserts the previous
 // project's rows are not what a fresh mount reads.
 describe("useUnifiedGraph: switching the active project never serves the previous project's rows", () => {
+  it("does not retain a mounted observer's rows while another project loads", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const previous = { memories: [{ id: "private-alpha" }], clusters: {}, cluster_names: {}, similarity_edges: [] }
+    vi.mocked(apiFetch).mockResolvedValueOnce(previous)
+    const { result } = renderHook(() => useUnifiedGraph(), { wrapper: wrapper(queryClient) })
+    await waitFor(() => expect(result.current.data).toEqual(previous))
+    vi.mocked(apiFetch).mockImplementationOnce(() => new Promise(() => {}))
+    act(() => useProjectStore.getState().setProject("beta"))
+    expect(result.current.data).toBeUndefined()
+  })
   beforeEach(() => {
     vi.clearAllMocks()
     useProjectStore.setState({

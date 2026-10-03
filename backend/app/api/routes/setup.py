@@ -17,7 +17,7 @@ from typing import Literal
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,7 +26,9 @@ from app.api.auth import (
     hash_password,
     require_uninitialized,
     set_auth_cookie,
+    validate_password_bytes,
 )
+from app.api.deps import refuse_when_read_only
 from app.database import get_session
 from app.models.code import Repository
 from app.models.config import Config
@@ -83,7 +85,7 @@ class ProbeModelsResponse(BaseModel):
 @router.post(
     "/probe-models",
     response_model=ProbeModelsResponse,
-    dependencies=[Depends(require_uninitialized)],
+    dependencies=[Depends(refuse_when_read_only), Depends(require_uninitialized)],
 )
 async def probe_models(body: ProbeModelsRequest) -> ProbeModelsResponse:
     """Live model probe used by the wizard.
@@ -281,6 +283,11 @@ class SetupRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     llm: SetupLLM | None = None
     repos: SetupRepos | None = None
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        return validate_password_bytes(value)
 
 
 class SetupSectionStatus(BaseModel):

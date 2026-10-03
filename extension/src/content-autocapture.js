@@ -21,7 +21,24 @@
  * hazard is capturing too much.
  */
 
-import { AUTO_CAPTURE_MESSAGE, firstSweep, unsentTurns } from "./autocapture.js";
+const AUTO_CAPTURE_MESSAGE = "darkmem.auto_capture.turn";
+
+function unsentTurns(seen, turns) {
+  const out = [];
+  for (const turn of turns ?? []) {
+    const text = (turn ?? "").trim();
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    out.push(text);
+  }
+  return out;
+}
+
+function firstSweep(turns) {
+  const seen = new Set();
+  unsentTurns(seen, turns);
+  return { seen };
+}
 
 /**
  * Where each surface keeps its message text.

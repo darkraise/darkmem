@@ -21,7 +21,7 @@ REPOS_BASE_DIR = Path(os.environ.get("DARKMEM_REPOS_DIR", "./data/repositories")
 
 
 def _sanitize_url(text: str) -> str:
-    return re.sub(r'x-access-token:[^@]+@', 'x-access-token:***@', text)
+    return re.sub(r'([a-z][a-z0-9+.-]*://)[^\s/]*@', r'\1***@', text, flags=re.IGNORECASE)
 
 
 # Common system / credential trees we never want the indexer to walk into,
@@ -227,7 +227,7 @@ class RepoManager:
                 await session.commit()
                 await event_manager.broadcast("repo.clone_completed", {"repo_id": str(repo_id), "name": repo.name})
         except Exception as e:
-            logger.error(f"Background clone failed for repo {repo_id}: {e}")
+            logger.error("Background clone failed for repo %s: %s", repo_id, _sanitize_url(str(e)))
             await event_manager.broadcast("repo.clone_failed", {"repo_id": str(repo_id), "error": _sanitize_url(str(e))[:200]})
             try:
                 async with async_session_factory() as session:
@@ -585,8 +585,8 @@ class RepoManager:
                 ),
             )
         except subprocess.TimeoutExpired:
-            raise RuntimeError(f"git command timed out after 300s: {_sanitize_url(' '.join(cmd))}")
-        stderr_text = result.stderr.decode()
+            raise RuntimeError(f"git command timed out after 300s: {_sanitize_url(' '.join(cmd))}") from None
+        stderr_text = _sanitize_url(result.stderr.decode(errors="replace"))
         if result.returncode != 0:
             if "Clone succeeded, but checkout failed" in stderr_text:
                 logger.warning("git clone succeeded with checkout warning: %s", stderr_text.strip())

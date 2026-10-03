@@ -1,7 +1,8 @@
-import { useRef, useCallback } from "react"
+import { useRef, useCallback, useEffect } from "react"
 import { Button } from "darkraise-ui/components/button"
 import { Badge } from "darkraise-ui/components/badge"
 import { Textarea } from "darkraise-ui/components/textarea"
+import { Alert, AlertDescription } from "darkraise-ui/components/alert"
 import { SendHorizonal, Square, X } from "lucide-react"
 
 interface ChatInputProps {
@@ -12,6 +13,9 @@ interface ChatInputProps {
   placeholder?: string
   contextLabel?: string | null
   onClearContext?: () => void
+  error?: string | null
+  retryDraft?: string | null
+  uncertainDraft?: string | null
 }
 
 export function ChatInput({
@@ -22,8 +26,18 @@ export function ChatInput({
   placeholder = "Ask about your memories... (@ to mention)",
   contextLabel,
   onClearContext,
+  error,
+  retryDraft,
+  uncertainDraft,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    if (retryDraft && textareaRef.current && !textareaRef.current.value) {
+      textareaRef.current.value = retryDraft
+      autoResize()
+    }
+  }, [retryDraft])
 
   const handleSubmit = useCallback(() => {
     const value = textareaRef.current?.value.trim()
@@ -52,6 +66,8 @@ export function ChatInput({
 
   return (
     <div className="border-border space-y-2 border-t p-3">
+      {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+      {uncertainDraft && <Textarea aria-label="Unconfirmed message" value={uncertainDraft} readOnly />}
       {contextLabel && (
         <Badge variant="secondary" className="gap-1">
           Context: {contextLabel}

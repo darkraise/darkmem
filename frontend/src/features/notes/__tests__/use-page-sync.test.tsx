@@ -90,6 +90,49 @@ afterEach(() => {
 })
 
 describe("usePageSync", () => {
+  it.each([409, 422])("retains a stopped %s draft across navigation until explicit discard", async (status) => {
+    const { t, sent } = transport(status)
+    const first = renderHook(() => usePageSync(PAGE, 0, () => t), { wrapper })
+    act(() => first.result.current.onDocumentChange([para("a", "retained draft")]))
+    await act(async () => first.result.current.flushNow())
+    expect(first.result.current.status.kind).toBe("stopped")
+    first.unmount()
+    await act(async () => vi.runAllTimersAsync())
+    const leaving = new Event("beforeunload", { cancelable: true })
+    window.dispatchEvent(leaving)
+    expect(leaving.defaultPrevented).toBe(true)
+    const reopened = renderHook(({ generation }) => usePageSync(PAGE, generation, () => t), {
+      wrapper, initialProps: { generation: 0 },
+    })
+    expect(reopened.result.current.initialBlocks[0]!.content).toEqual([
+      { type: "text", text: "retained draft", styles: {} },
+    ])
+    expect(reopened.result.current.status.kind).toBe("stopped")
+    expect(sent).toHaveLength(1)
+    act(() => reopened.result.current.discard())
+    reopened.rerender({ generation: 1 })
+    expect(reopened.result.current.initialBlocks[0]!.content).toEqual([
+      { type: "text", text: "a", styles: {} },
+    ])
+    const discarded = new Event("beforeunload", { cancelable: true })
+    window.dispatchEvent(discarded)
+    expect(discarded.defaultPrevented).toBe(false)
+  })
+
+  it("protects an in-flight save after the notes route unmounts, until it settles", async () => {
+    const { t } = transport(undefined, 50)
+    const view = renderHook(() => usePageSync(PAGE, 0, () => t), { wrapper })
+    act(() => view.result.current.onDocumentChange([para("a", "draft")]))
+    view.unmount()
+    const leaving = new Event("beforeunload", { cancelable: true })
+    window.dispatchEvent(leaving)
+    expect(leaving.defaultPrevented).toBe(true)
+    await act(async () => vi.advanceTimersByTimeAsync(50))
+    const saved = new Event("beforeunload", { cancelable: true })
+    window.dispatchEvent(saved)
+    expect(saved.defaultPrevented).toBe(false)
+  })
+
   it("mounts the page's blocks and sends typing after the idle pause", async () => {
     const { t, sent } = transport()
     const { result } = renderHook(() => usePageSync(PAGE, 0, () => t), { wrapper })
@@ -185,17 +228,31 @@ describe("usePageSync", () => {
   })
 
   it("builds a fresh engine for a new generation after a discard", () => {
-    const { t } = transport()
+    const { t, sent } = transport()
     const view = renderHook(({ gen }) => usePageSync(PAGE, gen, () => t), { wrapper, initialProps: { gen: 0 } })
     act(() => view.result.current.onDocumentChange([para("a", "local")]))
     act(() => view.result.current.discard())
     view.rerender({ gen: 1 })
     expect(view.result.current.initialBlocks[0]!.content).toEqual([{ type: "text", text: "a", styles: {} }])
+    expect(sent).toEqual([])
   })
 })
 
 describe("an upload in flight", () => {
   afterEach(() => setUploads(0))
+
+  it("keeps unload protection after the last editor unmounts until the upload settles", async () => {
+    const view = renderHook(() => usePageSync(PAGE, 0, () => transport().t), { wrapper })
+    await act(async () => setUploads(1))
+    view.unmount()
+    const leaving = new Event("beforeunload", { cancelable: true })
+    window.dispatchEvent(leaving)
+    expect(leaving.defaultPrevented).toBe(true)
+    await act(async () => setUploads(0))
+    const settled = new Event("beforeunload", { cancelable: true })
+    window.dispatchEvent(settled)
+    expect(settled.defaultPrevented).toBe(false)
+  })
 
   it("warns on unload even when the tree is settled", () => {
     renderHook(() => usePageSync(PAGE, 0, () => transport().t), { wrapper })

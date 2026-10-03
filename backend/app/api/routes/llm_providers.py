@@ -24,6 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
+from app.api.deps import refuse_when_read_only
 from app.config import LLMApiKind
 from app.database import get_session
 from app.models.llm_config import LLMPurposeConfigRow
@@ -256,7 +257,7 @@ async def delete_provider(
         await session.commit()
 
 
-@router.post("/probe-models", response_model=LLMProviderModelsResponse)
+@router.post("/probe-models", response_model=LLMProviderModelsResponse, dependencies=[Depends(refuse_when_read_only)])
 async def probe_draft_provider(
     body: ProviderProbeDraft,
     _user=Depends(require_auth),
@@ -265,7 +266,7 @@ async def probe_draft_provider(
     return await _probe(body.api_kind, body.base_url, body.api_key)
 
 
-@router.post("/{name}/probe-models", response_model=LLMProviderModelsResponse)
+@router.post("/{name}/probe-models", response_model=LLMProviderModelsResponse, dependencies=[Depends(refuse_when_read_only)])
 async def probe_saved_provider(
     name: str,
     _user=Depends(require_auth),

@@ -31,7 +31,7 @@ from app.services.feature_flags import get_feature_flags_dict
 from app.services.memory_buffer import buffered_memory_id
 from app.services.pipeline import ProcessingPipeline
 from app.services import prompt
-from app.services.rank_fusion import RANK_ARMS, rank_fusion_breakdown
+from app.services.rank_fusion import RANK_ARMS
 from app.services.supersession import demote_dependents
 from app.services.wait_process import drive as _drive_wait_process_flush
 from app.taxonomy import MEMORY_TYPES, normalize_memory_type
@@ -517,9 +517,11 @@ class MemoryService:
             tech = set(memory.technologies or [])
             if not (tech & set(params.technologies_any)):
                 reasons.append("technologies")
-        if params.tags_any:
-            tag_names = [t.name for t in memory.tags]
-            if not any(t in tag_names for t in params.tags_any):
+        if params.tags_any or params.tags_all:
+            tag_names = {tag.name for tag in memory.tags}
+            if (params.tags_any and not tag_names.intersection(params.tags_any)) or (
+                params.tags_all and not tag_names.issuperset(params.tags_all)
+            ):
                 reasons.append("tags")
         return reasons
 
@@ -629,52 +631,21 @@ limit=params.limit, offset=params.offset,
         context = context_echo(declared, declared_by)
 
         if not params.query or not self.pipeline:
-            items, total = await self.memory_repo.search_by_tags_paginated(
-                query=params.query, tags_any=params.tags_any, tags_all=params.tags_all,
-                memory_type=params.memory_type, source=params.source,
-                limit=params.limit, offset=params.offset,
-                project=params.project, status=list(params.status) if params.status else None,
-                technologies_any=params.technologies_any,
-                source_any=params.source_any, memory_type_any=params.memory_type_any,
-            )
-            envelope = RetrievalEnvelope(
-                query=params.query or "",
-                channels={
-                    "semantic": ChannelStatus(ran=False),
-                    "keyword": ChannelStatus(ran=False),
-                },
-                weights={"semantic_weight": params.semantic_weight},
-                page=PageInfo.build(
-                    limit=params.limit, offset=params.offset, total=total,
-                ),
-                context=context,
-            )
-            trace_items = [
-                MemoryTraceRow(memory=m, scores={}, rank_fusion_factor=1.0, rank_fusion_breakdown={})
-                for m in items
-            ]
-            return {
-                "items": trace_items, "total": total,
-                "limit": params.limit, "offset": params.offset, "envelope": envelope,
-            }
+            return await self._traced_sql_results(params, context)
 
         from app.services.hybrid_search import HybridSearchService
 
         flags = await get_feature_flags_dict(self.session)
         fetch_n = params.limit + params.offset + 50
         hybrid = HybridSearchService(self.pipeline.llm, self.session)
-        channel_trace = await hybrid.search_with_trace(
+        channel_trace = await hybrid.search_ranked(
             params.query, limit=fetch_n, semantic_weight=params.semantic_weight,
-            filters=self._semantic_filter(params),
+            filters=self._semantic_filter(params), flags=flags, with_trace=True,
         )
         fused = channel_trace.results
-
-        reranked = False
-        if flags.get("reranker_enabled") and fused:
-            from app.services.reranker import RerankerService
-            reranker = RerankerService(self.pipeline.llm)
-            fused = await reranker.rerank(params.query, fused, top_k=len(fused))
-            reranked = True
+        if not fused:
+            return await self._traced_sql_results(params, context, channel_trace)
+        reranked = channel_trace.reranked
 
         memory_ids = [row["memory_id"] for row in fused]
         all_memories = await self.memory_repo.get_many(memory_ids)
@@ -687,7 +658,7 @@ limit=params.limit, offset=params.offset,
         excluded: dict[str, int] = {}
         kept: list[tuple[dict, Memory]] = []
         for row in fused:
-            mem = by_id.get(row["memory_id"])
+            mem = by_id.get(str(row["memory_id"]))
             if mem is None:
                 excluded["not_found"] = excluded.get("not_found", 0) + 1
                 continue
@@ -697,35 +668,6 @@ limit=params.limit, offset=params.offset,
                     excluded[reason] = excluded.get(reason, 0) + 1
                 continue
             kept.append((row, mem))
-
-        # The post-fusion multiplier decides the order here, exactly as it does
-        # on the untraced path (``pipeline.semantic_search``). Computing it for
-        # display alone — which this door did — left an activated rank arm
-        # visible in the trace and absent from the ranking, so the live search
-        # surface would have gone on serving the unweighted order while the
-        # arm's own measurement said it had moved. Every arm sits at weight
-        # zero today, every factor is exactly 1.0, and the sort is stable, so
-        # the shipped order is unchanged to the bit.
-        #
-        # A rerank is authoritative and is not sorted away: the factor still
-        # rescales, matching ``preserve_order=True`` on the untraced path.
-        breakdowns = {
-            row["memory_id"]: rank_fusion_breakdown({"confidence": mem.confidence}, flags)
-            for row, mem in kept
-        }
-        factors: dict[str, float] = {}
-        for memory_id, breakdown in breakdowns.items():
-            factor = 1.0
-            for arm_value in breakdown.values():
-                factor *= arm_value
-            factors[memory_id] = factor
-        if not reranked:
-            kept.sort(
-                key=lambda pair: (
-                    float(pair[0].get("rrf_score") or 0.0) * factors[pair[0]["memory_id"]]
-                ),
-                reverse=True,
-            )
 
         total = len(kept)
         page = kept[params.offset:params.offset + params.limit]
@@ -738,9 +680,9 @@ limit=params.limit, offset=params.offset,
 
         items: list[MemoryTraceRow] = []
         for row, mem in page:
-            breakdown = breakdowns[row["memory_id"]]
-            factor = factors[row["memory_id"]]
-            channel = channel_trace.channel_scores.get(row["memory_id"], {})
+            breakdown = row["rank_fusion_breakdown"]
+            factor = row["rank_fusion_factor"]
+            channel = channel_trace.channel_scores.get(str(row["memory_id"]), {})
             scores = {
                 "semantic": channel.get("semantic"),
                 "keyword": channel.get("keyword"),
@@ -755,8 +697,8 @@ limit=params.limit, offset=params.offset,
         envelope = RetrievalEnvelope(
             query=params.query,
             channels={
-                "semantic": ChannelStatus(ran=True, failed=channel_trace.semantic_failed),
-                "keyword": ChannelStatus(ran=True, failed=channel_trace.keyword_failed),
+                "semantic": ChannelStatus(ran=channel_trace.semantic_ran, failed=channel_trace.semantic_failed),
+                "keyword": ChannelStatus(ran=channel_trace.keyword_ran, failed=channel_trace.keyword_failed),
             },
             reranked=reranked,
             weights=weights,
@@ -767,6 +709,36 @@ limit=params.limit, offset=params.offset,
         return {
             "items": items, "total": total,
             "limit": params.limit, "offset": params.offset, "envelope": envelope,
+        }
+
+    async def _traced_sql_results(self, params, context, channel_trace=None) -> dict:
+        items, total = await self.memory_repo.search_by_tags_paginated(
+            query=params.query, tags_any=params.tags_any, tags_all=params.tags_all,
+            memory_type=params.memory_type, source=params.source,
+            limit=params.limit, offset=params.offset,
+            project=params.project, status=list(params.status) if params.status else None,
+            technologies_any=params.technologies_any,
+            source_any=params.source_any, memory_type_any=params.memory_type_any,
+        )
+        channels = {
+            "semantic": ChannelStatus(ran=False),
+            "keyword": ChannelStatus(ran=False),
+        }
+        if channel_trace is not None:
+            channels = {
+                "semantic": ChannelStatus(ran=channel_trace.semantic_ran, failed=channel_trace.semantic_failed),
+                "keyword": ChannelStatus(ran=channel_trace.keyword_ran, failed=channel_trace.keyword_failed),
+                "sql_fallback": ChannelStatus(ran=True),
+            }
+        envelope = RetrievalEnvelope(
+            query=params.query or "", channels=channels,
+            weights={"semantic_weight": params.semantic_weight},
+            page=PageInfo.build(limit=params.limit, offset=params.offset, total=total),
+            context=context,
+        )
+        return {
+            "items": [MemoryTraceRow(memory=memory, scores={}, rank_fusion_factor=1.0, rank_fusion_breakdown={}) for memory in items],
+            "total": total, "limit": params.limit, "offset": params.offset, "envelope": envelope,
         }
 
     async def list_memories(self, offset: int = 0, limit: int = 50) -> tuple[list[Memory], int]:

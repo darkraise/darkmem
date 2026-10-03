@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import time
 from collections import deque, namedtuple
 from pathlib import Path, PurePosixPath
@@ -99,6 +100,9 @@ class CodePipeline:
         self._changed_files: list[str] = []
         self._deleted_files: list[str] = []
         self._all_file_paths: list[str] = []
+        self._repository_file_paths: list[str] = []
+        self._binding_context: dict[str, dict] = {}
+        self._stored_bindings: dict[str, dict] = {}
 
         self._parsed: dict[str, dict] = {}
 
@@ -838,16 +842,19 @@ class CodePipeline:
         loop = asyncio.get_running_loop()
 
         def _read_file() -> tuple[str, str] | None:
-            if not full_path.is_file():
-                return None
             try:
-                size = full_path.stat().st_size
-            except OSError:
+                root = work_dir.resolve(strict=True)
+                resolved_path = full_path.resolve(strict=True)
+                resolved_path.relative_to(root)
+                if not resolved_path.is_file():
+                    return None
+                size = resolved_path.stat().st_size
+            except (ValueError, OSError, RuntimeError):
                 return None
             if size > MAX_FILE_SIZE:
                 return None
             try:
-                content = full_path.read_text(encoding="utf-8", errors="replace")
+                content = resolved_path.read_text(encoding="utf-8", errors="replace")
             except Exception:
                 return None
             return (content, hashlib.sha256(content.encode()).hexdigest())
@@ -993,8 +1000,32 @@ class CodePipeline:
         from app.services.import_resolvers import resolve_import
         from app.services.suffix_index import SuffixIndex
 
+        self._repository_file_paths = list((await self.session.execute(
+            select(CodeFile.file_path).where(CodeFile.repo_id == self._repo.id)
+            .order_by(CodeFile.file_path)
+        )).scalars().all())
+        metadata_rows = (await self.session.execute(text(
+            "SELECT key, properties->'binding_metadata' AS metadata "
+            "FROM code_graph_nodes WHERE repo_id = :repo_id AND kind = 'file'"
+        ), {"repo_id": self._repo.id})).all()
+        metadata_by_file = dict(metadata_rows)
+        for file_path in self._repository_file_paths:
+            if file_path in self._parsed:
+                continue
+            metadata = metadata_by_file.get(file_path)
+            if metadata is not None and metadata.get("version") == 2:
+                self._stored_bindings[file_path] = metadata
+                self._all_imports[file_path] = list(metadata.get("imports", {}))
+                continue
+            parsed = await self._parse_one(self._work_dir, file_path)
+            if parsed is not None:
+                self._binding_context[file_path] = parsed
+                imports = parsed["parse_result"].imports
+                self._all_imports[file_path] = [entry.source for entry in imports]
+                self._all_extracted_imports[file_path] = list(imports)
+
         repo_root = str(self._work_dir)
-        suffix_index = SuffixIndex(self._all_file_paths)
+        suffix_index = SuffixIndex(self._repository_file_paths)
 
         refined_imports: dict[str, list[str]] = {}
         for fp, imports in self._all_imports.items():
@@ -1004,17 +1035,17 @@ class CodePipeline:
             for imp in imports:
                 refined = suffix_index.lookup(imp)
                 if refined is None:
-                    refined = resolve_import(fp, imp, lang, repo_root, self._all_file_paths)
+                    refined = resolve_import(fp, imp, lang, repo_root, self._repository_file_paths)
                 resolved = refined if refined else imp
                 resolved_list.append(resolved)
                 per_source[imp] = resolved
             refined_imports[fp] = resolved_list
             self._per_import_resolution[fp] = per_source
 
-        self._resolved_import_map = build_import_map(self._all_file_paths, refined_imports)
+        self._resolved_import_map = build_import_map(self._repository_file_paths, refined_imports)
 
         self._topological_order = _kahn_topological_sort(
-            self._all_file_paths, self._resolved_import_map
+            self._repository_file_paths, self._resolved_import_map
         )
 
         self._phase_done("04_import_resolution", t0)
@@ -1024,25 +1055,31 @@ class CodePipeline:
 
         from app.services.call_resolver import build_named_imports, build_wildcard_imports
         from app.services.named_bindings import propagate
+        from app.services.named_bindings.python_bindings import _parse_all_list
+        from app.services.named_bindings.typescript_bindings import _REEXPORT_PATTERN_WILDCARD
 
         self._named_import_map = build_named_imports(
-            self._all_extracted_imports, self._all_file_paths, self._per_import_resolution
+            self._all_extracted_imports, self._repository_file_paths, self._per_import_resolution
         )
-        self._wildcard_import_map = build_wildcard_imports(self._all_extracted_imports, self._all_file_paths)
+        self._wildcard_import_map = build_wildcard_imports(self._all_extracted_imports, self._repository_file_paths)
+        surviving = set(self._repository_file_paths)
+        for file_path, metadata in self._stored_bindings.items():
+            self._named_import_map[file_path] = {
+                name: tuple(binding) for name, binding in metadata.get("named", {}).items()
+                if binding[0] in surviving
+            }
+            self._wildcard_import_map[file_path] = set(metadata.get("wildcard", [])) & surviving
 
         symbol_table: dict[str, list[str]] = {}
-        for fp in self._all_file_paths:
-            parsed = self._parsed.get(fp)
-            if not parsed:
-                continue
-            symbol_table[fp] = [
-                sym.name for sym in parsed["parse_result"].symbols
-            ]
+        symbols = (await self.session.execute(
+            select(CodeFile.file_path, CodeSymbol.name).join(CodeSymbol)
+            .where(CodeFile.repo_id == self._repo.id, CodeSymbol.parent_symbol_id.is_(None))
+        )).all()
+        for file_path, symbol_name in symbols:
+            symbol_table.setdefault(file_path, []).append(symbol_name)
 
-        for fp in self._topological_order:
-            parsed = self._parsed.get(fp)
-            if not parsed:
-                continue
+        for fp in self._parsed.keys() | self._binding_context.keys():
+            parsed = self._parsed.get(fp) or self._binding_context.get(fp)
             lang = detect_language(fp) or "unknown"
             # Map each import source to the file IT resolved to. The previous
             # form picked one arbitrary file from the whole resolved set for
@@ -1054,11 +1091,54 @@ class CodePipeline:
                 if resolved != fp
             }
             extra = propagate(
-                fp, lang, import_map_for_file, symbol_table,
+                fp, lang, import_map_for_file, {},
                 source_text=parsed.get("content", ""),
             )
             if extra:
                 self._named_import_map.setdefault(fp, {}).update(extra)
+            wildcard_exports: dict[str, list[str] | None] = {}
+            if lang == "python":
+                allowed_names = _parse_all_list(parsed.get("content", ""))
+                for entry in self._all_extracted_imports.get(fp, []):
+                    target = import_map_for_file.get(entry.source)
+                    if "*" in entry.names and target in surviving:
+                        wildcard_exports[target] = allowed_names
+            elif lang in ("typescript", "javascript"):
+                for match in re.finditer(_REEXPORT_PATTERN_WILDCARD, parsed.get("content", "")):
+                    namespace, source = match.groups()
+                    target = import_map_for_file.get(source)
+                    if namespace is None and target in surviving:
+                        wildcard_exports[target] = None
+            self._stored_bindings[fp] = {
+                "version": 2,
+                "named": dict(self._named_import_map.get(fp, {})),
+                "wildcard": sorted(self._wildcard_import_map.get(fp, set())),
+                "wildcard_exports": wildcard_exports,
+                "imports": self._per_import_resolution.get(fp, {}),
+            }
+
+        for file_path in self._topological_order:
+            metadata = self._stored_bindings.get(file_path, {})
+            bindings = self._named_import_map.setdefault(file_path, {})
+            for target, allowed_names in metadata.get("wildcard_exports", {}).items():
+                if target not in surviving:
+                    continue
+                for symbol_name in symbol_table.get(target, []):
+                    if allowed_names is None or symbol_name in allowed_names:
+                        bindings.setdefault(symbol_name, (target, symbol_name))
+            symbol_table[file_path] = list(dict.fromkeys([
+                *symbol_table.get(file_path, []), *bindings,
+            ]))
+
+        for file_path in self._parsed.keys() | self._binding_context.keys():
+            await self.session.execute(text(
+                "UPDATE code_graph_nodes SET properties = jsonb_set("
+                "COALESCE(properties, '{}'::jsonb), '{binding_metadata}', CAST(:metadata AS jsonb)) "
+                "WHERE repo_id = :repo_id AND kind = 'file' AND key = :file_path"
+            ), {
+                "repo_id": self._repo.id, "file_path": file_path,
+                "metadata": json.dumps(self._stored_bindings[file_path]),
+            })
 
         for fp, bindings in list(self._named_import_map.items()):
             for name, (source_file, exported_name) in list(bindings.items()):

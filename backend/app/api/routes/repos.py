@@ -361,7 +361,9 @@ def _spawn_repo_index(
                 except Exception as inner_e:
                     logger.error("Failed to set error status for repo %s: %s", repo_id, inner_e)
 
-    task = asyncio.create_task(_run_index())
+    from app.services.llm import spawn_with_llm
+
+    task = spawn_with_llm(llm, _run_index())
     TaskRegistry.register(repo_id, kind, task, "Indexing repository...")
     return task
 
@@ -609,5 +611,4 @@ async def cancel_repo_task(
         await manager.session.flush()
 
     return {"status": "cancelled", "task_id": task_id}
-
 

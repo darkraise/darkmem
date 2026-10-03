@@ -81,7 +81,7 @@ class WriteResult:
 
 
 _BLOCK_TEXTS = """
-    SELECT CAST(id AS text) AS block_id, text
+    SELECT CAST(id AS text) AS block_id, text, document_id, page_id
     FROM blocks
     WHERE id = ANY(CAST(:ids AS uuid[]))
     ORDER BY id
@@ -109,6 +109,10 @@ async def embed_blocks(
     the column records when the block entered the partition, not when it was
     last touched.
 
+    Results for deleted or changed blocks are skipped. Current text is read
+    under the owner's mutation lock after the provider returns, and that lock
+    remains held through the vector write and the caller's commit.
+
     Blocks whose ``text`` is empty are embedded like any other row — an empty
     string is a legitimate embedder input, and a writer silently skipping it
     would leave a retrievable block with no vector and no record of why.
@@ -132,8 +136,16 @@ async def embed_blocks(
         )
 
     await ensure_partition(session, fingerprint, parent=parent)
+    await _lock_owners(session, rows)
+    current = {
+        row["block_id"]: row["text"]
+        for row in (await session.execute(text(_BLOCK_TEXTS), {"ids": ids})).mappings()
+    }
     table = child_table(parent, fingerprint)
+    written = 0
     for row, vector in zip(rows, vectors):
+        if row["block_id"] not in current or current[row["block_id"]] != row["text"]:
+            continue
         await session.execute(
             text(f"""
                 INSERT INTO {table} (block_id, fingerprint, embedding)
@@ -147,8 +159,33 @@ async def embed_blocks(
                 "embedding": str(list(vector)),
             },
         )
+        written += 1
 
-    return WriteResult(fingerprint=fingerprint, written=len(rows))
+    return WriteResult(fingerprint=fingerprint, written=written)
+
+
+async def _lock_owners(session: AsyncSession, rows) -> None:
+    """Keep freshness checks and vector writes under the content writer's locks.
+
+    Page tree locks precede owner rows, including multi-page sweeps, so a
+    trash purge cannot take the same owners in the opposite order. Registration
+    must finish first because it may commit the current transaction.
+    """
+    from app.services.page_door import _LOCK_ROOT, root_lock_key
+
+    page_ids = sorted({str(row["page_id"]) for row in rows if row["page_id"] is not None})
+    document_ids = sorted({str(row["document_id"]) for row in rows if row["document_id"] is not None})
+    if page_ids:
+        projects = (await session.execute(text(
+            "SELECT DISTINCT project FROM pages WHERE id = ANY(CAST(:ids AS uuid[])) ORDER BY project"
+        ), {"ids": page_ids})).scalars().all()
+        for project in projects:
+            await session.execute(_LOCK_ROOT, {"key": root_lock_key(project)})
+    for table, owner_ids in (("documents", document_ids), ("pages", page_ids)):
+        if owner_ids:
+            await session.execute(text(
+                f"SELECT id FROM {table} WHERE id = ANY(CAST(:ids AS uuid[])) ORDER BY id FOR UPDATE"
+            ), {"ids": owner_ids})
 
 
 async def ensure_partition(

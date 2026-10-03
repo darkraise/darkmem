@@ -6,6 +6,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.config import settings
 
 from app.models.memory import Memory
 from app.repositories.graph import PostgresGraphRepository
@@ -241,7 +242,7 @@ class GraphService:
                 members.setdefault(cid, []).append(m)
 
         names = {str(cid): _tag_cluster_name(members.get(cid, []), cid) for cid in clusters}
-        if not self.llm or not clusters:
+        if settings.read_only or not self.llm or not clusters:
             return names, False
 
         by_size = sorted(members, key=lambda cid: (-len(members[cid]), cid))

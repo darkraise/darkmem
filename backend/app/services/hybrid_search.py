@@ -3,25 +3,33 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.repositories.vector import MemoryFilter
+from app.repositories.vector import MemoryFilter, PostgresVectorRepository
 from app.config import settings
 from app.services.access_stats import spawn_record_access
 from app.services.embedder_registry import child_table
 from app.services.llm import LLMOrchestrator
 from app.services.rank_fusion import (
+    IMPORTANCE_DEFAULT,
     RRF_K,
     RankedList,
+    access_arms_active,
+    any_arm_active,
+    dual_list_weight,
     fusion_fetch_depth,
     heat_signal,
     normalize_row_id,
+    ppr_list_weight,
+    rank_fusion_breakdown,
     recency_signal,
     rrf_fuse,
 )
+from app.services.confidence import CONFIDENCE_DEFAULT
 from app.utils.scope_labels import SCOPE_LABEL_COLUMNS, SCOPE_LABEL_JOIN, scope_labels
 
 logger = logging.getLogger(__name__)
@@ -42,12 +50,105 @@ class ChannelTrace:
     channel_scores: dict[str, dict[str, float]] = field(default_factory=dict)
     semantic_failed: bool = False
     keyword_failed: bool = False
+    semantic_ran: bool = True
+    keyword_ran: bool = True
+    reranked: bool = False
 
 
 class HybridSearchService:
     def __init__(self, llm: LLMOrchestrator, session: AsyncSession):
         self.llm = llm
         self.session = session
+
+    async def search_ranked(
+        self, query: str, *, flags: dict, limit: int = 20,
+        semantic_weight: float = 0.7, filters: MemoryFilter | None = None,
+        with_trace: bool = False,
+    ) -> list[dict] | ChannelTrace:
+        """Share candidate selection and ranking between memory search doors."""
+        trace = None
+        hybrid_enabled = flags.get("hybrid_search_enabled", True)
+        if hybrid_enabled:
+            search = self.search_with_trace if with_trace else self.search
+            response = await search(
+                query, limit=limit, semantic_weight=semantic_weight, filters=filters,
+                ppr_weight=ppr_list_weight(flags), dual_weight=dual_list_weight(flags),
+                access_signals=access_arms_active(flags),
+            )
+            if with_trace:
+                trace = response
+                results = trace.results
+            else:
+                results = response
+        elif settings.read_only:
+            results = await self._keyword_search(query, limit, filters)
+            if with_trace:
+                trace = ChannelTrace(
+                    results=results,
+                    channel_scores={str(row["memory_id"]): {"keyword": float(row["score"])} for row in results},
+                    semantic_ran=False,
+                )
+        else:
+            vector, fingerprint = await self.llm.embed(query)
+            results = await PostgresVectorRepository(self.session).search(
+                vector, fingerprint=fingerprint, limit=limit, filters=filters,
+            )
+            if with_trace:
+                trace = ChannelTrace(
+                    results=results,
+                    channel_scores={str(row["memory_id"]): {"semantic": float(row["score"])} for row in results},
+                    keyword_ran=False,
+                )
+        reranked = bool(hybrid_enabled and flags.get("reranker_enabled") and results)
+        if reranked:
+            from app.services.reranker import RerankerService
+
+            results = await RerankerService(self.llm).rerank(query, results, top_k=limit)
+        results = await self.apply_rank_fusion_factor(
+            results, flags, preserve_order=reranked, with_trace=with_trace,
+        )
+        if trace is not None:
+            return replace(trace, results=results, reranked=reranked)
+        return results
+
+    async def apply_rank_fusion_factor(
+        self, results: list[dict], flags: dict, *, preserve_order: bool = False,
+        with_trace: bool = False,
+    ) -> list[dict]:
+        """Apply the shared row signals without overriding an authoritative rerank."""
+        if not results or (not any_arm_active(flags) and not with_trace):
+            return results
+        memory_ids = []
+        for row in results:
+            try:
+                memory_ids.append(UUID(normalize_row_id(row) or ""))
+            except (ValueError, TypeError):
+                continue
+        signal_map = {}
+        if memory_ids and any_arm_active(flags):
+            stored = await self.session.execute(
+                text("SELECT id, confidence, importance FROM memories WHERE id = ANY(CAST(:ids AS uuid[]))"),
+                {"ids": memory_ids},
+            )
+            signal_map = {str(row[0]): (float(row[1]), float(row[2])) for row in stored}
+        score_key = "rrf_score" if "rrf_score" in results[0] else "score"
+        for row in results:
+            confidence, importance = signal_map.get(normalize_row_id(row), (CONFIDENCE_DEFAULT, IMPORTANCE_DEFAULT))
+            signals = {"confidence": confidence, "importance": importance}
+            for name in ("heat", "recency"):
+                if row.get(name) is not None:
+                    signals[name] = float(row[name])
+            breakdown = rank_fusion_breakdown(signals, flags)
+            factor = 1.0
+            for value in breakdown.values():
+                factor *= value
+            row[score_key] = float(row.get(score_key) or 0.0) * factor
+            if with_trace:
+                row["rank_fusion_breakdown"] = breakdown
+                row["rank_fusion_factor"] = factor
+        if preserve_order:
+            return results
+        return sorted(results, key=lambda row: float(row.get(score_key) or 0.0), reverse=True)
 
     async def search(
         self,
@@ -166,6 +267,7 @@ class HybridSearchService:
             channel_scores=channel_scores,
             semantic_failed=semantic_failed,
             keyword_failed=keyword_failed,
+            semantic_ran=not settings.read_only,
         )
 
     async def _run_channels(

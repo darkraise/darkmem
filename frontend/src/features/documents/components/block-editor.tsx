@@ -9,6 +9,15 @@ import {
 } from "@/hooks/api"
 import { BlockView } from "./block-view"
 
+function stripAncestorPrefix(source: string, prefix: string): string {
+  if (!prefix) return source
+  const ancestorPattern = new RegExp(`^${prefix.replace(/> /g, "> ?")}`)
+  const emptyPattern = new RegExp(`^${prefix.trimEnd().replace(/> ?/g, "> ?")}$`)
+  return source.split("\n").map((line) =>
+    emptyPattern.test(line) ? "" : line.replace(ancestorPattern, ""),
+  ).join("\n")
+}
+
 /** Promote a block's source to its type, mirroring the serialiser's emit
  *  rules and nothing more.
  *
@@ -34,11 +43,22 @@ import { BlockView } from "./block-view"
 export function promote(
   source: string,
   stored?: string | null,
+  prefix = "",
 ): {
   type: string
   text: string
   properties?: Record<string, unknown>
 } {
+  source = stripAncestorPrefix(source, prefix)
+  const setext = !/^(`{3,}|~{3,})/.test(source) &&
+    /^([\s\S]+)\n(={3,}|-{3,})[ \t]*$/.exec(source)
+  if (setext) {
+    return {
+      type: "heading",
+      text: setext[1]!,
+      properties: { level: setext[2]!.startsWith("=") ? 1 : 2 },
+    }
+  }
   const heading = /^(#{1,6})\s+(.*)$/.exec(source)
   if (heading) {
     return {
@@ -50,15 +70,34 @@ export function promote(
   if (/^(?:-{3,}|\*{3,}|_{3,})\s*$/.test(source.trim())) {
     return { type: "divider", text: "" }
   }
-  const list = /^([-*+]|\d+[.)])\s+([\s\S]*)$/.exec(source)
+  const list = /^([-*+]|\d+[.)])[ \t]([\s\S]*)$/.exec(source)
   if (list) {
-    return { type: "list", text: list[2] ?? "", properties: { marker: list[1] } }
+    const indent = " ".repeat(list[1]!.length + 1)
+    const lines = (list[2] ?? "").split("\n")
+    return {
+      type: "list",
+      text: lines.map((line, index) =>
+        index > 0 && line.startsWith(indent) ? line.slice(indent.length) : line,
+      ).join("\n"),
+      properties: { marker: list[1] },
+    }
   }
-  const quote = /^>\s?([\s\S]*)$/.exec(source)
-  if (quote) return { type: "quote", text: quote[1] ?? "" }
-  if (source.startsWith("```")) {
+  if (source.startsWith(">")) {
+    return {
+      type: "quote",
+      text: source.split("\n").map((line) => line.replace(/^> ?/, "")).join("\n"),
+    }
+  }
+  const fence = /^(`{3,}|~{3,})([^\n]*)\n?/.exec(source)
+  if (fence) {
     const lines = source.split("\n")
-    return { type: "code", text: lines.slice(1, -1).join("\n") }
+    const closing = new RegExp(`^${fence[1]![0]}{${fence[1]!.length},}[ \\t]*$`)
+    const end = lines.length > 1 && closing.test(lines[lines.length - 1]!) ? -1 : undefined
+    return {
+      type: "code",
+      text: lines.slice(1, end).join("\n"),
+      properties: { language: fence[2]!.trim() },
+    }
   }
   if (stored === "html") return { type: "html", text: source }
   return { type: "paragraph", text: source }
@@ -92,17 +131,34 @@ export function BlockEditor({
 
   const sourceOf = (block: BlockRow) => block.source ?? block.text
 
+  const prefixOf = (block: BlockRow, visited = new Set<string>()): string => {
+    if (!block.parent_id || visited.has(block.block_id)) return ""
+    visited.add(block.block_id)
+    const parent = blocks.find((candidate) => candidate.block_id === block.parent_id)
+    if (!parent) return ""
+    const prefix = prefixOf(parent, visited)
+    if (parent.type === "quote") return prefix + "> "
+    if (parent.type === "list") {
+      const ownSource = stripAncestorPrefix(sourceOf(parent), prefix)
+      const marker = /^([-*+]|\d+[.)]) /.exec(ownSource)?.[1] ?? String(parent.properties?.marker ?? "-")
+      return prefix + " ".repeat(marker.length + 1)
+    }
+    return prefix
+  }
+
+  const mutationOptions = (block: BlockRow) => ({
+    onSuccess: () => setFailure(null),
+    onError: (error: unknown) => setFailure({ id: block.block_id, message: String(error) }),
+  })
+
   const commit = (block: BlockRow) => {
     const next = draft
     setFocused(null)
     if (next === sourceOf(block)) return
-    const { type, text, properties } = promote(next, block.type)
+    const { type, text, properties } = promote(next, block.type, block.source == null ? "" : prefixOf(block))
     update.mutate(
       { blockId: block.block_id, text, type, properties: properties ?? null },
-      {
-        onError: (error) =>
-          setFailure({ id: block.block_id, message: String(error) }),
-      },
+      mutationOptions(block),
     )
   }
 
@@ -129,11 +185,12 @@ export function BlockEditor({
                     type: "paragraph",
                     text: "",
                     afterBlockId: block.block_id,
-                  })
+                    parentId: block.parent_id,
+                  }, mutationOptions(block))
                 } else if (e.key === "Backspace" && draft === "") {
                   e.preventDefault()
                   setFocused(null)
-                  remove.mutate({ blockId: block.block_id })
+                  remove.mutate({ blockId: block.block_id }, mutationOptions(block))
                 }
               }}
             />
@@ -152,7 +209,7 @@ export function BlockEditor({
             </button>
           )}
           {failure?.id === block.block_id ? (
-            <p className="text-destructive text-sm">
+            <p role="alert" className="text-destructive text-sm">
               the edit was not saved — {failure.message}
             </p>
           ) : null}

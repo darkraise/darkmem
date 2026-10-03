@@ -26,6 +26,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { Script, createContext } from "node:vm";
+import { AUTO_CAPTURE_MESSAGE } from "../src/autocapture.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = join(ROOT, "src");
@@ -39,6 +41,48 @@ const sources = readdirSync(SRC)
   .map((f) => ({ file: f, text: readFileSync(join(SRC, f), "utf8") }));
 
 const manifest = JSON.parse(readFileSync(join(ROOT, "manifest.json"), "utf8"));
+
+test("the registered observer executes as a classic script and sends only new turns", () => {
+  const messages = [];
+  const turns = ["earlier question", "earlier answer"];
+  let onMutation;
+  const context = createContext({
+    chrome: { runtime: { sendMessage: (message) => messages.push(message) } },
+    document: {
+      title: "Chat",
+      body: {},
+      querySelectorAll: () => turns.map((innerText) => ({ innerText })),
+    },
+    location: { hostname: "chatgpt.com", href: "https://chatgpt.com/c/example" },
+    MutationObserver: class {
+      constructor(callback) {
+        onMutation = callback;
+      }
+      observe() {}
+    },
+  });
+
+  const observer = readFileSync(join(SRC, OBSERVER), "utf8");
+  new Script(observer, { filename: OBSERVER }).runInContext(context);
+
+  assert.equal(messages.length, 0);
+  assert.equal(typeof onMutation, "function");
+  turns.push("  ", "new answer", "next question");
+  onMutation();
+  onMutation();
+  assert.deepEqual(JSON.parse(JSON.stringify(messages)), [{
+    type: "darkmem.auto_capture.turn",
+    content: "new answer",
+    pageUrl: "https://chatgpt.com/c/example",
+    pageTitle: "Chat",
+  }, {
+    type: "darkmem.auto_capture.turn",
+    content: "next question",
+    pageUrl: "https://chatgpt.com/c/example",
+    pageTitle: "Chat",
+  }]);
+  assert.equal(messages[0].type, AUTO_CAPTURE_MESSAGE);
+});
 
 /**
  * Mechanisms that fire without a human. Each one is a way a page or a timer

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy import text
@@ -218,6 +219,34 @@ async def test_continuation_batches_drain_to_zero(session, tmp_path, monkeypatch
     # Termination: the drain stops rather than looping on an emptied queue.
     final = await _pipeline(session, manager).run(repo.id, full=False)
     assert final["status"] == "up_to_date"
+
+
+@pytest.mark.asyncio
+async def test_recurring_tick_retains_debt_until_manual_run(session, tmp_path, monkeypatch):
+    from contextlib import asynccontextmanager
+    from app.services import job_runners
+
+    repo, manager, _ = await _stage_overflow(session, tmp_path, monkeypatch, cap=1)
+    repo.index_on_commit_enabled = True
+    repo.index_uncommitted = False
+    await session.flush()
+    before = await index_debt.load(session, repo.id)
+
+    @asynccontextmanager
+    async def factory():
+        yield session
+
+    monkeypatch.setattr("app.services.git_head.resolve_head_sha", AsyncMock(return_value="sha-2"))
+    job_runners._due_reset()
+    await job_runners.make_repo_sync_runner(None, factory)()
+    assert await index_debt.load(session, repo.id) == before
+
+    await _continuation(session, manager, monkeypatch)
+    while index_debt.queued_files(await index_debt.load(session, repo.id)):
+        await _pipeline(session, manager).run(repo.id)
+    assert await _caller_files_with_edges(session, repo.id) == {
+        f"caller{number}.py" for number in range(CALLER_COUNT)
+    }
 
 
 @pytest.mark.asyncio

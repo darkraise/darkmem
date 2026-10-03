@@ -68,6 +68,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.llm import lease_llm
 from app.repositories.memory_communities import (
     CommunityDraft,
     MemberWriteError,
@@ -523,27 +524,28 @@ async def _run_report_pass(
     if report_batch <= 0 or not projects:
         return
     llm = llm_provider() if callable(llm_provider) else llm_provider
-    if llm is None:
-        # Postgres-only mode. Communities are detected and browsable; their
-        # reports stay `pending`, which is what that state means.
-        return
+    with lease_llm(llm):
+        if llm is None:
+            # Postgres-only mode. Communities are detected and browsable; their
+            # reports stay `pending`, which is what that state means.
+            return
 
-    remaining = report_batch
-    for project in projects:
-        if remaining <= 0:
-            break
-        try:
-            generated = await generate_reports(
-                session_factory, llm, project,
-                min_report_size=min_report_size,
-                limit=remaining,
-            )
-        except Exception:
-            logger.exception("Topic report pass failed for project %r", project)
-            continue
-        outcome.reports_generated += generated.generated
-        outcome.reports_failed += generated.failed
-        remaining -= generated.attempted
+        remaining = report_batch
+        for project in projects:
+            if remaining <= 0:
+                break
+            try:
+                generated = await generate_reports(
+                    session_factory, llm, project,
+                    min_report_size=min_report_size,
+                    limit=remaining,
+                )
+            except Exception:
+                logger.exception("Topic report pass failed for project %r", project)
+                continue
+            outcome.reports_generated += generated.generated
+            outcome.reports_failed += generated.failed
+            remaining -= generated.attempted
 
 
 async def _journal_abort(session_factory, project: str, reason: str) -> None:

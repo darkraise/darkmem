@@ -27,6 +27,7 @@ from app.services.page_attachments import (
     STAGING_DIRNAME,
     attachment_path,
     attachments_root,
+    lock_attachments,
 )
 
 logger = logging.getLogger(__name__)
@@ -65,9 +66,6 @@ _HAS_EXPIRED = text(
     "SELECT EXISTS (SELECT 1 FROM page_attachments "
     "WHERE created_at < now() - make_interval(hours => :grace))"
 )
-# One statement, so nothing can reference a row between the scan and the
-# delete. Global rather than per project: a URL pasted into another project's
-# page keeps its file alive.
 _DELETE_UNREFERENCED = text(
     """
     WITH referenced AS (
@@ -238,6 +236,7 @@ async def run_cleanup(
     now = time.time() if now is None else now
 
     async with session_factory() as session:
+        await lock_attachments(session, collect=True)
         if (await session.execute(_HAS_EXPIRED, {"grace": grace_hours})).scalar_one():
             ids = [
                 row[0] for row in
@@ -252,46 +251,38 @@ async def run_cleanup(
             report.files_failed += failed
 
     root = attachments_root()
-    files, parts = await asyncio.to_thread(_scan, root, now)
-    if files:
-        known: set[UUID] = set()
-        async with session_factory() as session:
+    async with session_factory() as session:
+        await lock_attachments(session, collect=True)
+        files, parts = await asyncio.to_thread(_scan, root, now)
+        if files:
+            known: set[UUID] = set()
             total_rows = await attachment_count(session)
             for start in range(0, len(files), _ID_BATCH):
                 batch = [attachment_id for attachment_id, _ in files[start:start + _ID_BATCH]]
                 known.update(
                     row[0] for row in (await session.execute(_KNOWN_IDS, {"ids": batch})).all()
                 )
-        rowless = [path for attachment_id, path in files if attachment_id not in known]
-        # Two guards, because neither closes the hazard alone. The empty-table
-        # one is the parked scenario's own signature -- an app booted against a
-        # freshly recreated database with the real volume mounted -- and a
-        # count threshold would still wipe a corpus smaller than the limit. The
-        # count one catches a wrong ATTACHMENTS_DIR on a populated instance.
-        # A large row-less set is not proof of a mistake: an import that fails
-        # between moving its staged files and committing leaves hundreds at
-        # once, which is why this routes to attachment_verify rather than
-        # telling the operator to raise the number.
-        if rowless and (total_rows == 0 or len(rowless) > rowless_bulk_limit):
-            report.rowless_skipped = len(rowless)
-            logger.error(
-                "page_attachment_cleanup: refusing to remove %s row-less files "
-                "(%s). Check whether this instance is serving a restored "
-                "attachment volume against an unrestored database, whether "
-                "ATTACHMENTS_DIR is right, or whether an import failed before "
-                "committing; `python -m app.services.attachment_verify` tells "
-                "them apart.",
-                len(rowless),
-                "page_attachments is empty"
-                if total_rows == 0
-                else f"limit {rowless_bulk_limit}",
-            )
-        else:
-            _log_removed("removing row-less files", rowless)
-            report.rowless_files_removed, failed = await asyncio.to_thread(_unlink, rowless)
-            report.files_failed += failed
-    report.part_files_removed, failed = await asyncio.to_thread(_unlink, parts)
-    report.files_failed += failed
+            rowless = [path for attachment_id, path in files if attachment_id not in known]
+            if rowless and (total_rows == 0 or len(rowless) > rowless_bulk_limit):
+                report.rowless_skipped = len(rowless)
+                logger.error(
+                    "page_attachment_cleanup: refusing to remove %s row-less files "
+                    "(%s). Check whether this instance is serving a restored "
+                    "attachment volume against an unrestored database, whether "
+                    "ATTACHMENTS_DIR is right, or whether an import failed before "
+                    "committing; `python -m app.services.attachment_verify` tells "
+                    "them apart.",
+                    len(rowless),
+                    "page_attachments is empty"
+                    if total_rows == 0
+                    else f"limit {rowless_bulk_limit}",
+                )
+            else:
+                _log_removed("removing row-less files", rowless)
+                report.rowless_files_removed, failed = await asyncio.to_thread(_unlink, rowless)
+                report.files_failed += failed
+        report.part_files_removed, failed = await asyncio.to_thread(_unlink, parts)
+        report.files_failed += failed
     report.staging_dirs_removed, failed = await asyncio.to_thread(
         _remove_stale_staging, root, staging_max_age_hours * 3600, now
     )

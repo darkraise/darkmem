@@ -10,6 +10,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import Field
 from sqlalchemy import select, text
 
+from app.services.llm import lease_llm
 from app.api.mcp.auth import ApiKeyTokenVerifier, current_api_key_id, current_key_name
 from app.api.mcp.client_identity import (
     FALLBACK_SOURCE,
@@ -116,10 +117,15 @@ def refresh_mcp_instructions() -> None:
 
 @asynccontextmanager
 async def _memory_service_context():
+    from contextlib import nullcontext
+    from app.services.pipeline import ProcessingPipeline
+
     async with async_session_factory() as session:
         try:
-            yield MemoryService(session, pipeline=_pipeline)
-            await session.commit()
+            pipeline = _pipeline
+            with pipeline._pinned() if isinstance(pipeline, ProcessingPipeline) else nullcontext(pipeline) as pinned:
+                yield MemoryService(session, pipeline=pinned)
+                await session.commit()
         except Exception:
             await session.rollback()
             raise
@@ -452,11 +458,12 @@ async def memory_overview(project: str = "default") -> str:
 
     async with _code_service_context() as session:
         llm = _pipeline.llm if _pipeline is not None else None
-        try:
-            result = await get_overview(session, llm, project)
-        except OverviewUnavailable as exc:
-            return json.dumps(_degraded(str(exc), project=project))
-        return json.dumps(result.to_dict())
+        with lease_llm(llm):
+            try:
+                result = await get_overview(session, llm, project)
+            except OverviewUnavailable as exc:
+                return json.dumps(_degraded(str(exc), project=project))
+            return json.dumps(result.to_dict())
 
 
 @mcp.tool(
@@ -683,17 +690,18 @@ async def worklog_search(
         limit=_worklog_limit(limit, worklog.MAX_SEARCH_LIMIT),
     )
     llm = _pipeline.llm if _pipeline is not None else None
-    async with async_session_factory() as session:
-        answer = await worklog.search(
-            session,
-            llm,
-            project=body.project,
-            query=body.query,
-            workstream=body.workstream,
-            kind=body.kind,
-            limit=body.limit,
-        )
-    return json.dumps(answer)
+    with lease_llm(llm):
+        async with async_session_factory() as session:
+            answer = await worklog.search(
+                session,
+                llm,
+                project=body.project,
+                query=body.query,
+                workstream=body.workstream,
+                kind=body.kind,
+                limit=body.limit,
+            )
+        return json.dumps(answer)
 
 
 @mcp.tool(
@@ -823,49 +831,50 @@ async def document_put(
     from app.services.document_ingest import DocumentHashConflict
     from app.services.document_door import DocumentIsBlockFirst, put_document
 
-    if not _pipeline or not _pipeline.llm:
-        return json.dumps(_degraded("embedder not configured", document_id=None))
+    with lease_llm(_pipeline.llm if _pipeline is not None else None) as llm:
+        if not _pipeline or not llm:
+            return json.dumps(_degraded("embedder not configured", document_id=None))
 
-    # The same ladder every other capture tool resolves through, and for the
-    # same reason: a constant here would be a second key space for the client
-    # that declares itself.
-    source = resolve_client_source(None, ctx)
-    async with async_session_factory() as session:
-        try:
-            result = await put_document(
-                session, _pipeline.llm,
-                project=project, uri=uri, content=content,
-                title=title, source_type=source_type, source=source,
-                expected_hash=expected_hash,
-                actor=current_key_name(), api_key_id=current_api_key_id(),
-            )
-        except DocumentIsBlockFirst as exc:
-            # A structured refusal, not a tool error (review M-4): its REST
-            # twin is a 409, and an agent should be able to machine-read this
-            # and switch to the block verbs rather than parse a traceback.
-            await session.rollback()
-            return json.dumps({
-                "status": "direction_conflict",
-                "document_uri": uri,
-                "project": project,
-                "reason": str(exc),
-            })
-        except DocumentHashConflict as exc:
-            # A structured refusal rather than a tool error: the caller can
-            # machine-read this, re-read the document and retry. Its REST twin
-            # is a 409 carrying the same two hashes.
-            await session.rollback()
-            return json.dumps({
-                "status": "hash_conflict",
-                "document_uri": uri,
-                "project": project,
-                "expected_hash": exc.expected_hash,
-                "current_hash": exc.current_hash,
-            })
-        except Exception:
-            await session.rollback()
-            raise
-    return json.dumps(vars(result))
+        # The same ladder every other capture tool resolves through, and for the
+        # same reason: a constant here would be a second key space for the client
+        # that declares itself.
+        source = resolve_client_source(None, ctx)
+        async with async_session_factory() as session:
+            try:
+                result = await put_document(
+                    session, llm,
+                    project=project, uri=uri, content=content,
+                    title=title, source_type=source_type, source=source,
+                    expected_hash=expected_hash,
+                    actor=current_key_name(), api_key_id=current_api_key_id(),
+                )
+            except DocumentIsBlockFirst as exc:
+                # A structured refusal, not a tool error (review M-4): its REST
+                # twin is a 409, and an agent should be able to machine-read this
+                # and switch to the block verbs rather than parse a traceback.
+                await session.rollback()
+                return json.dumps({
+                    "status": "direction_conflict",
+                    "document_uri": uri,
+                    "project": project,
+                    "reason": str(exc),
+                })
+            except DocumentHashConflict as exc:
+                # A structured refusal rather than a tool error: the caller can
+                # machine-read this, re-read the document and retry. Its REST twin
+                # is a 409 carrying the same two hashes.
+                await session.rollback()
+                return json.dumps({
+                    "status": "hash_conflict",
+                    "document_uri": uri,
+                    "project": project,
+                    "expected_hash": exc.expected_hash,
+                    "current_hash": exc.current_hash,
+                })
+            except Exception:
+                await session.rollback()
+                raise
+        return json.dumps(vars(result))
 
 
 @mcp.tool(
@@ -891,18 +900,19 @@ async def document_search(
     """
     from app.services.document_door import search_sections
 
-    if not _pipeline or not _pipeline.llm:
-        return json.dumps(_degraded("embedder not configured", results=[]))
+    with lease_llm(_pipeline.llm if _pipeline is not None else None) as llm:
+        if not _pipeline or not llm:
+            return json.dumps(_degraded("embedder not configured", results=[]))
 
-    limit = _clamp_limit(
-        limit, default=SEARCH_DEFAULT_LIMIT, maximum=SEARCH_MAX_LIMIT,
-    )
-    async with async_session_factory() as session:
-        hits = await search_sections(
-            session, _pipeline.llm, query=query, project=project,
-            limit=limit, document_id=document_id,
+        limit = _clamp_limit(
+            limit, default=SEARCH_DEFAULT_LIMIT, maximum=SEARCH_MAX_LIMIT,
         )
-    return json.dumps([vars(h) for h in hits])
+        async with async_session_factory() as session:
+            hits = await search_sections(
+                session, llm, query=query, project=project,
+                limit=limit, document_id=document_id,
+            )
+        return json.dumps([vars(h) for h in hits])
 
 
 @mcp.tool(
@@ -1553,47 +1563,48 @@ async def code_search(
         limit: Maximum number of results (default: 10).
     """
     limit = _clamp_limit(limit, default=10)
-    if not _pipeline or not _pipeline.llm:
-        # Return a typed, machine-readable result rather than raising a tool
-        # error so the MCP client can degrade gracefully (e.g. fall back to a
-        # text search) instead of treating an unconfigured embedder as a crash.
-        return json.dumps(_degraded("embedder not configured", results=[]))
+    with lease_llm(_pipeline.llm if _pipeline is not None else None) as llm:
+        if not _pipeline or not llm:
+            # Return a typed, machine-readable result rather than raising a tool
+            # error so the MCP client can degrade gracefully (e.g. fall back to a
+            # text search) instead of treating an unconfigured embedder as a crash.
+            return json.dumps(_degraded("embedder not configured", results=[]))
 
-    from app.models.code import Repository
-    from app.services.code_query import CodeQueryService
+        from app.models.code import Repository
+        from app.services.code_query import CodeQueryService
 
-    repo_id: UUID | None = None
-    if repo_name:
+        repo_id: UUID | None = None
+        if repo_name:
+            async with _code_service_context() as session:
+                repo = (await session.execute(
+                    select(Repository).where(Repository.name == repo_name)
+                )).scalar_one_or_none()
+                if not repo:
+                    raise ValueError(f"Repository not found: {repo_name}")
+                repo_id = repo.id
+
         async with _code_service_context() as session:
-            repo = (await session.execute(
-                select(Repository).where(Repository.name == repo_name)
-            )).scalar_one_or_none()
-            if not repo:
-                raise ValueError(f"Repository not found: {repo_name}")
-            repo_id = repo.id
+            results = await CodeQueryService(session, llm=llm).search_code(
+                query, limit, repo_id, language,
+            )
 
-    async with _code_service_context() as session:
-        results = await CodeQueryService(session, llm=_pipeline.llm).search_code(
-            query, limit, repo_id, language,
-        )
-
-    return json.dumps([
-        {
-            "file_path": r["file_path"],
-            "symbol_name": r["symbol_name"],
-            "chunk_content": r["chunk_content"],
-            "language": r["language"],
-            "repo_id": r["repo_id"],
-            "line_start": r["line_start"],
-            "line_end": r["line_end"],
-            # The REST twin serialises the same fused value under the same key
-            # (CodeSearchResult.score = rrf_score); emitting the raw semantic
-            # distance here is what let the two doors rank the same query
-            # differently.
-            "score": r["rrf_score"],
-        }
-        for r in results
-    ])
+        return json.dumps([
+            {
+                "file_path": r["file_path"],
+                "symbol_name": r["symbol_name"],
+                "chunk_content": r["chunk_content"],
+                "language": r["language"],
+                "repo_id": r["repo_id"],
+                "line_start": r["line_start"],
+                "line_end": r["line_end"],
+                # The REST twin serialises the same fused value under the same key
+                # (CodeSearchResult.score = rrf_score); emitting the raw semantic
+                # distance here is what let the two doors rank the same query
+                # differently.
+                "score": r["rrf_score"],
+            }
+            for r in results
+        ])
 
 
 @mcp.tool(
@@ -2259,26 +2270,27 @@ async def knowledge_search(
     )
     async with _code_service_context() as session:
         llm = _pipeline.llm if _pipeline is not None else None
-        service = LayerCompositionService(llm, session)
-        try:
-            result = await service.search(query, project=project, limit=limit)
-        except CompositionUnavailable as exc:
-            # Every channel down is recoverable unavailability, not a caller
-            # error: doc 12 §3 says say so in a typed envelope rather than
-            # returning rows a client cannot tell from a genuine no-match.
-            #
-            # The typed class and not its ``RuntimeError`` base (T2.80). The
-            # composition raises the base for its own defects — the grouping
-            # fixpoint that stopped decreasing, a reranker that returned a
-            # window of the wrong length — and catching those here served a
-            # bug over a healthy vault as an outage, which is the
-            # failed-versus-empty conflation this envelope exists to prevent,
-            # pointed at the operator instead of at the code.
-            return json.dumps({
-                **_degraded(str(exc), project=project),
-                **knowledge_search_unavailable(exc).model_dump(mode="json"),
-            })
-        return knowledge_search_response(result, fuse=fuse).model_dump_json()
+        with lease_llm(llm):
+            service = LayerCompositionService(llm, session)
+            try:
+                result = await service.search(query, project=project, limit=limit)
+            except CompositionUnavailable as exc:
+                # Every channel down is recoverable unavailability, not a caller
+                # error: doc 12 §3 says say so in a typed envelope rather than
+                # returning rows a client cannot tell from a genuine no-match.
+                #
+                # The typed class and not its ``RuntimeError`` base (T2.80). The
+                # composition raises the base for its own defects — the grouping
+                # fixpoint that stopped decreasing, a reranker that returned a
+                # window of the wrong length — and catching those here served a
+                # bug over a healthy vault as an outage, which is the
+                # failed-versus-empty conflation this envelope exists to prevent,
+                # pointed at the operator instead of at the code.
+                return json.dumps({
+                    **_degraded(str(exc), project=project),
+                    **knowledge_search_unavailable(exc).model_dump(mode="json"),
+                })
+            return knowledge_search_response(result, fuse=fuse).model_dump_json()
 
 
 # ── The research door (doc 09 §6, T3.27) ──────────────────────────────────
@@ -2476,21 +2488,22 @@ async def block_update(
     """
     from app.services.block_verbs import update_block
 
-    if not _pipeline or not _pipeline.llm:
-        return json.dumps(_degraded("embedder not configured", document_id=None))
-    async with async_session_factory() as session:
-        try:
-            result = await update_block(
-                session, _pipeline.llm, block_id=block_id, text=text,
-                type=type, properties=properties, expected_hash=expected_hash,
-            )
-        except Exception as exc:
-            await session.rollback()
-            refusal = _block_refusal(exc, block_id=block_id)
-            if refusal is not None:
-                return refusal
-            raise
-    return json.dumps(vars(result))
+    with lease_llm(_pipeline.llm if _pipeline is not None else None) as llm:
+        if not _pipeline or not llm:
+            return json.dumps(_degraded("embedder not configured", document_id=None))
+        async with async_session_factory() as session:
+            try:
+                result = await update_block(
+                    session, llm, block_id=block_id, text=text,
+                    type=type, properties=properties, expected_hash=expected_hash,
+                )
+            except Exception as exc:
+                await session.rollback()
+                refusal = _block_refusal(exc, block_id=block_id)
+                if refusal is not None:
+                    return refusal
+                raise
+        return json.dumps(vars(result))
 
 
 @mcp.tool(
@@ -2522,22 +2535,23 @@ async def block_insert(
     """
     from app.services.block_verbs import insert_block
 
-    if not _pipeline or not _pipeline.llm:
-        return json.dumps(_degraded("embedder not configured", document_id=None))
-    async with async_session_factory() as session:
-        try:
-            result = await insert_block(
-                session, _pipeline.llm, document_id=document_id, type=type,
-                text=text, parent_id=parent_id, after_block_id=after_block_id,
-                properties=properties, expected_hash=expected_hash,
-            )
-        except Exception as exc:
-            await session.rollback()
-            refusal = _block_refusal(exc, document_id=document_id)
-            if refusal is not None:
-                return refusal
-            raise
-    return json.dumps(vars(result))
+    with lease_llm(_pipeline.llm if _pipeline is not None else None) as llm:
+        if not _pipeline or not llm:
+            return json.dumps(_degraded("embedder not configured", document_id=None))
+        async with async_session_factory() as session:
+            try:
+                result = await insert_block(
+                    session, llm, document_id=document_id, type=type,
+                    text=text, parent_id=parent_id, after_block_id=after_block_id,
+                    properties=properties, expected_hash=expected_hash,
+                )
+            except Exception as exc:
+                await session.rollback()
+                refusal = _block_refusal(exc, document_id=document_id)
+                if refusal is not None:
+                    return refusal
+                raise
+        return json.dumps(vars(result))
 
 
 @mcp.tool(
@@ -2562,22 +2576,23 @@ async def block_move(
     """
     from app.services.block_verbs import move_block
 
-    if not _pipeline or not _pipeline.llm:
-        return json.dumps(_degraded("embedder not configured", document_id=None))
-    async with async_session_factory() as session:
-        try:
-            result = await move_block(
-                session, _pipeline.llm, block_id=block_id,
-                new_parent_id=new_parent_id, after_block_id=after_block_id,
-                expected_hash=expected_hash,
-            )
-        except Exception as exc:
-            await session.rollback()
-            refusal = _block_refusal(exc, block_id=block_id)
-            if refusal is not None:
-                return refusal
-            raise
-    return json.dumps(vars(result))
+    with lease_llm(_pipeline.llm if _pipeline is not None else None) as llm:
+        if not _pipeline or not llm:
+            return json.dumps(_degraded("embedder not configured", document_id=None))
+        async with async_session_factory() as session:
+            try:
+                result = await move_block(
+                    session, llm, block_id=block_id,
+                    new_parent_id=new_parent_id, after_block_id=after_block_id,
+                    expected_hash=expected_hash,
+                )
+            except Exception as exc:
+                await session.rollback()
+                refusal = _block_refusal(exc, block_id=block_id)
+                if refusal is not None:
+                    return refusal
+                raise
+        return json.dumps(vars(result))
 
 
 @mcp.tool(
@@ -2595,18 +2610,19 @@ async def block_delete(block_id: str, expected_hash: str | None = None) -> str:
     """
     from app.services.block_verbs import delete_block
 
-    if not _pipeline or not _pipeline.llm:
-        return json.dumps(_degraded("embedder not configured", document_id=None))
-    async with async_session_factory() as session:
-        try:
-            result = await delete_block(
-                session, _pipeline.llm, block_id=block_id,
-                expected_hash=expected_hash,
-            )
-        except Exception as exc:
-            await session.rollback()
-            refusal = _block_refusal(exc, block_id=block_id)
-            if refusal is not None:
-                return refusal
-            raise
-    return json.dumps(vars(result))
+    with lease_llm(_pipeline.llm if _pipeline is not None else None) as llm:
+        if not _pipeline or not llm:
+            return json.dumps(_degraded("embedder not configured", document_id=None))
+        async with async_session_factory() as session:
+            try:
+                result = await delete_block(
+                    session, llm, block_id=block_id,
+                    expected_hash=expected_hash,
+                )
+            except Exception as exc:
+                await session.rollback()
+                refusal = _block_refusal(exc, block_id=block_id)
+                if refusal is not None:
+                    return refusal
+                raise
+        return json.dumps(vars(result))

@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select, text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +14,7 @@ from app.api.auth import (
     require_auth,
     set_auth_cookie,
     verify_password,
+    validate_password_bytes,
 )
 from app.config import settings
 from app.database import async_session_factory, get_session
@@ -50,6 +51,11 @@ class PasswordRequest(BaseModel):
 class ChangePasswordRequest(BaseModel):
     current_password: str = Field(max_length=128)
     new_password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        return validate_password_bytes(value)
 
 
 def _client_ip(request: Request) -> str:

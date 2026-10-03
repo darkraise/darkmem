@@ -111,7 +111,8 @@ describe("PageSync", () => {
     refused.sync.setDesired([para("a", "x")])
     await refused.sync.flush()
     expect(refused.sync.status).toEqual({ kind: "stopped", reason: "refused", message: "status 422" })
-    expect(refused.sync.pending).toBe(false)
+    expect(refused.sync.pending).toBe(true)
+    expect(refused.sync.desired).toEqual([para("a", "x")])
   })
 
   it("joins a flush already running and sends an edit made mid-write", async () => {

@@ -12,6 +12,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.llm import lease_llm
 from app.api.auth import Principal, require_scope
 from app.api.mcp.client_identity import ORIGIN_HEADER, resolve_client_source
 from app.database import get_session
@@ -140,18 +141,19 @@ async def search_entries(
     # Not `get_llm`: it answers 503 without an orchestrator, and search still
     # has an answer then -- the keyword arm, with semantic_ran false.
     llm = getattr(request.app.state, "llm", None)
-    try:
-        return await worklog.search(
-            session,
-            llm,
-            project=body.project,
-            query=body.query,
-            workstream=body.workstream,
-            kind=body.kind,
-            limit=body.limit,
-        )
-    except ValueError as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
+    with lease_llm(llm):
+        try:
+            return await worklog.search(
+                session,
+                llm,
+                project=body.project,
+                query=body.query,
+                workstream=body.workstream,
+                kind=body.kind,
+                limit=body.limit,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
 
 
 @router.patch("/workstreams/{workstream_id}", response_model=WorkstreamOut)

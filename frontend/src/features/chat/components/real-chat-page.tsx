@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { MessageSquare } from "lucide-react"
 import { PageChrome } from "@/components/app-chrome"
 import {
@@ -24,7 +24,22 @@ import { ChatPanels } from "./chat-panels"
  */
 export function RealChatPage({ initialId }: { initialId?: string }) {
   const [activeId, setActiveId] = useState<string | null>(initialId ?? null)
+  const [routeId, setRouteId] = useState(initialId)
   const [selectedTurnId, setSelectedTurnId] = useState<string | null>(null)
+  const selectionVersion = useRef(0)
+  const selectConversation = (id: string | null) => {
+    selectionVersion.current += 1
+    setActiveId(id)
+  }
+
+  if (routeId !== initialId) {
+    setRouteId(initialId)
+    setActiveId(initialId ?? null)
+  }
+
+  useEffect(() => {
+    selectionVersion.current += 1
+  }, [initialId])
 
   const {
     data: convData,
@@ -37,7 +52,7 @@ export function RealChatPage({ initialId }: { initialId?: string }) {
   const { data: convDetail } = useConversation(activeId)
   const messages = convDetail?.messages ?? []
 
-  const stream = useChatStream()
+  const stream = useChatStream(activeId)
   const createConversation = useCreateConversation()
   const deleteConversation = useDeleteConversation()
 
@@ -70,9 +85,12 @@ export function RealChatPage({ initialId }: { initialId?: string }) {
     : (contextTurn?.context?.envelope ?? null)
 
   const handleSend = async (content: string) => {
+    const originVersion = selectionVersion.current
     const resultId = await stream.sendMessage(activeId, content)
-    if (!activeId && resultId) setActiveId(resultId)
-    setSelectedTurnId(null)
+    if (selectionVersion.current === originVersion) {
+      if (!activeId && resultId) setActiveId(resultId)
+      setSelectedTurnId(null)
+    }
   }
 
   return (
@@ -94,14 +112,14 @@ export function RealChatPage({ initialId }: { initialId?: string }) {
           <ChatSidebar
             conversations={conversations}
             activeId={activeId}
-            onSelect={(id) => setActiveId(id)}
+            onSelect={selectConversation}
             onCreate={async () => {
               const conv = await createConversation.mutateAsync({})
-              setActiveId(conv.id)
+              selectConversation(conv.id)
             }}
             onDelete={(id) => {
               deleteConversation.mutate(id)
-              if (id === activeId) setActiveId(null)
+              if (id === activeId) selectConversation(null)
             }}
             isLoading={conversationsLoading}
             isError={conversationsError}
@@ -121,6 +139,10 @@ export function RealChatPage({ initialId }: { initialId?: string }) {
               pendingUserMessage={stream.pendingUserMessage}
             />
             <ChatInput
+              key={activeId ?? "new"}
+              error={stream.error}
+              retryDraft={stream.retryDraft}
+              uncertainDraft={stream.uncertainDraft}
               onSend={handleSend}
               onStop={stream.abort}
               isStreaming={stream.isStreaming}

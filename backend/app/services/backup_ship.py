@@ -300,7 +300,9 @@ class Destination(Protocol):
 
     async def list_snapshots(self, family: Family = DUMPS) -> list[SnapshotInfo]: ...
 
-    async def prune(self, keep: int, family: Family = DUMPS) -> list[str]: ...
+    async def prune(
+        self, keep: int, family: Family = DUMPS, *, verified: set[str] | None = None
+    ) -> list[str]: ...
 
 
 async def _hash_stream(destination, name: str) -> str:
@@ -387,11 +389,13 @@ class LocalDestination:
             )
         return sorted(out, key=lambda s: s.name)
 
-    async def prune(self, keep: int, family: Family = DUMPS) -> list[str]:
+    async def prune(
+        self, keep: int, family: Family = DUMPS, *, verified: set[str] | None = None
+    ) -> list[str]:
         entries = [
-            (p.name, p.stat().st_mtime)
-            for p in self.directory.iterdir()
-            if p.is_file() and family.matches(p.name)
+            (snapshot.name, snapshot.modified_at.timestamp())
+            for snapshot in await self.list_snapshots(family)
+            if verified is None or snapshot.name in verified
         ]
         deleted = _survivors_and_deletions(entries, keep)
         for name in deleted:
@@ -532,6 +536,68 @@ async def _destination_holds(destination, stamp: str, outcome) -> bool:
     return event_type == BACKUP_SHIPPED and journalled == stamp
 
 
+async def _verified_snapshots(
+    session_factory, destination: Destination, family: Family, keep: int
+) -> set[str]:
+    """Revalidate prospective survivors against their journalled hashes.
+
+    Missing or expired journal evidence leaves an artifact untouched, never a
+    survivor that could displace a verified copy. Failed uploads remain for
+    operator inspection without consuming either family's retention window.
+    A best-effort failure event can be lost after overwriting the same name,
+    so a historical success alone is not sufficient evidence for a survivor.
+    """
+    async with session_factory() as session:
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT DISTINCT ON (payload->>'file') "
+                    "payload->>'file' AS file, payload->>'sha256' AS sha256, "
+                    "event_type FROM events "
+                    "WHERE event_type IN (:shipped, :failed) "
+                    "AND object_type = 'system' AND source = :source "
+                    "AND payload->>'destination' = :destination "
+                    "AND payload->>'file' IS NOT NULL "
+                    "ORDER BY payload->>'file', created_at DESC, id DESC"
+                ),
+                {"shipped": BACKUP_SHIPPED, "failed": BACKUP_VERIFY_FAILED,
+                 "source": BACKUP_SHIP_JOB_KEY, "destination": destination.name},
+            )
+        ).mappings().all()
+    expected = {
+        row["file"]: row["sha256"] for row in rows
+        if row["event_type"] == BACKUP_SHIPPED and row["sha256"]
+    }
+    listed = await destination.list_snapshots(family)
+    candidates = sorted(
+        (snapshot for snapshot in listed if snapshot.name in expected),
+        key=lambda snapshot: (snapshot.modified_at, snapshot.name), reverse=True,
+    )
+    verified = {snapshot.name for snapshot in candidates}
+    survivors = 0
+    timeout = (
+        ATTACHMENTS_READ_BACK_TIMEOUT_SECONDS if family == ATTACHMENTS
+        else READ_BACK_TIMEOUT_SECONDS
+    )
+    for snapshot in candidates:
+        if survivors >= keep:
+            break
+        try:
+            got = await destination.read_back_sha256(snapshot.name, timeout=timeout)
+        except Exception as exc:
+            logger.warning(
+                "backup_ship: %s retention read-back failed for %s: %s",
+                destination.name, snapshot.name, exc,
+            )
+            verified.remove(snapshot.name)
+            continue
+        if got != expected[snapshot.name]:
+            verified.remove(snapshot.name)
+            continue
+        survivors += 1
+    return verified
+
+
 async def ship_all(session_factory) -> dict:
     """Dump once, tar the attachment set when it changed, then ship both to
     every enabled destination in sequence.
@@ -660,15 +726,15 @@ async def ship_all(session_factory) -> dict:
                     },
                 )
 
-            # Retention runs whatever this snapshot did: the failure is about
-            # tonight's upload, not about the copies already on the destination.
-            # A destination that could not be built at all has nothing to prune.
             if destination is None:
                 attachments["verify_failed"].append(cfg.name)
                 continue
             try:
                 summary["pruned"][cfg.name] = await destination.prune(
-                    cfg.retention_keep, DUMPS
+                    cfg.retention_keep, DUMPS,
+                    verified=await _verified_snapshots(
+                        session_factory, destination, DUMPS, cfg.retention_keep
+                    ),
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("backup_ship: %s prune failed: %s", cfg.name, exc)
@@ -765,7 +831,11 @@ async def ship_all(session_factory) -> dict:
 
             try:
                 attachments["pruned"][cfg.name] = await destination.prune(
-                    cfg.attachments_retention_keep, ATTACHMENTS
+                    cfg.attachments_retention_keep, ATTACHMENTS,
+                    verified=await _verified_snapshots(
+                        session_factory, destination, ATTACHMENTS,
+                        cfg.attachments_retention_keep,
+                    ),
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
@@ -1024,10 +1094,14 @@ class SshDestination:
             for n in sorted(names)
         ]
 
-    async def prune(self, keep: int, family: Family = DUMPS) -> list[str]:
+    async def prune(
+        self, keep: int, family: Family = DUMPS, *, verified: set[str] | None = None
+    ) -> list[str]:
         remote_dir = self._remote_dir()
         async with self._scratch() as (_, base):
             names = await self._remote_names(base, family)
+            if verified is not None:
+                names = [name for name in names if name in verified]
             # Ordered by the stamp in the name, which sorts lexically because
             # it is zero-padded and big-endian. A remote mtime would need an
             # `ls -l` parse across an unknown locale.
@@ -1150,9 +1224,13 @@ class S3Destination:
             for n, size in sorted(entries)
         ]
 
-    async def prune(self, keep: int, family: Family = DUMPS) -> list[str]:
+    async def prune(
+        self, keep: int, family: Family = DUMPS, *, verified: set[str] | None = None
+    ) -> list[str]:
         client = self._factory()
         entries = await asyncio.to_thread(self._list_all, client, family)
+        if verified is not None:
+            entries = [entry for entry in entries if entry[0] in verified]
         # The stamp sorts lexically, so key order is snapshot order -- no
         # LastModified parse, and no dependence on what the service reports.
         doomed = sorted((n for n, _ in entries), reverse=True)[keep:]
@@ -1269,8 +1347,12 @@ class WorkerDestination:
             for item in sorted(await self._listing(family), key=lambda i: i["name"])
         ]
 
-    async def prune(self, keep: int, family: Family = DUMPS) -> list[str]:
+    async def prune(
+        self, keep: int, family: Family = DUMPS, *, verified: set[str] | None = None
+    ) -> list[str]:
         names = [item["name"] for item in await self._listing(family)]
+        if verified is not None:
+            names = [name for name in names if name in verified]
         doomed = sorted(names, reverse=True)[keep:]
         async with self._factory() as client:
             for name in doomed:

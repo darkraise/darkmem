@@ -529,8 +529,9 @@ class PostgresGraphRepository:
                     SELECT r.source_entity_id, r.target_entity_id, r.rel_type, r.weight
                     FROM entity_relations r
                     WHERE r.source_entity_id = ANY(:ids) AND r.target_entity_id = ANY(:ids)
+                      AND r.memory_ids && CAST(:memory_ids AS uuid[])
                 """),
-                {"ids": [r["id"] for r in entity_rows]},
+                {"ids": [r["id"] for r in entity_rows], "memory_ids": memory_ids},
             )
         ).mappings().all()
         relations = [

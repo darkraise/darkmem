@@ -398,7 +398,7 @@ Five phases, each a hard checkpoint:
    `canonical_map`; Phase 5 resolves relation endpoints by the same key.
    Probes fan out bounded by `pipeline_concurrency`.
 5. **Write.** Per memory, two savepoints: A = vector upsert + memory-row
-   enrichment; B = graph + technologies + supersession, so a graph failure
+   enrichment; B = graph + technologies + preexisting-memory supersession, so a graph failure
    does not roll back the vector write.
    - **Strip prior graph contributions (`delete_by_memory_id`) inside
      savepoint B**, as one atomic replace with the write: a B failure rolls
@@ -413,10 +413,12 @@ Five phases, each a hard checkpoint:
    - Lowercase entity names on write; stash differing original casing in
      `properties.display_name`.
    - Write rows, recompute `memories.technologies` from `TECH_TYPES`
-     entities, run supersession.
+     entities, run supersession excluding same-batch candidates.
    - Compute crossrefs in a separate session after the main commit.
 
-After Phase 5, `derive_memory_failed_step` records or resolves a
+After every Phase 5 write is visible, same-batch supersession reconciles
+in `(created_at, id)` order before multi-memory extraction journals.
+Then `derive_memory_failed_step` records or resolves a
 `pipeline_failures` row per memory, and the websocket broadcasts
 `pipeline.completed | partial | failed`.
 
@@ -438,7 +440,9 @@ Triggered in Phase 5 when the new memory carries a relation in the
 **`REPLACES` family** (`REPLACES`, `IMPROVES_ON`, legacy `BUILDS_ON`). The
 predicate is one shared function, `supersession.is_supersession_trigger`,
 imported by `pipeline.py`; narrowing it is a behaviour change. A candidate
-flips to `superseded` only if **all** hold:
+flips to `superseded` only if **all** hold. Preexisting candidates are checked
+inside the graph savepoint; same-batch candidates are checked deterministically
+after the batch's graph writes become visible:
 
 1. Same `project` as the new memory.
 2. Candidate `status = 'active'`.
@@ -504,6 +508,13 @@ route through this service.
 Parity is proven only while every rank arm is at weight 0; activating an arm
 obliges re-measuring both doors.
 
+Ordinary and traced memory search share `HybridSearchService.search_ranked`.
+Both apply all-tag filters and supported hybrid/graph flags, and read
+confidence, importance and channel-provided heat/recency for ranking.
+Pure-vector mode and SQL fallback match across these memory-search doors.
+These correctness tests do not authorize dormant-arm activation or replace
+the separate chat-versus-search retrieval-quality measurements.
+
 ## Feature flags
 
 Source of truth: the `config` row `feature_flags`. `get_feature_flags_dict`
@@ -524,6 +535,13 @@ measured retrieval win reported with its latency/cost twin and recorded in
 the gate ledger's arm activation log.
 
 ## LLM configuration
+
+Provider generations are leased from acquisition through request, stream
+or job completion, including pre-dispatch awaits, exceptions and
+cancellation. Configuration replacement retires old orchestrators only
+after their active leases drain. Detached tasks transfer a lease at spawn
+and release it even when canceled before first execution; this relies on
+the existing single-event-loop/worker contract.
 
 Eight purposes, all live: `embedding`, `extraction`, `classification`,
 `reasoning`, `summarization`, `reranker`, `verification`
@@ -662,8 +680,12 @@ lock.
 - `backup_ship` is the **second** backup producer. It runs the image's own
   `pg_dump` (the runtime stage installs `postgresql-client`, `age`,
   `openssh-client`, `rsync`), encrypts per destination with its `age`
-  recipient, ships, **reads every upload back and hashes it**, and prunes
-  per destination. The host timer stays as the floor that survives the app
+  recipient, ships, **reads every upload back and hashes it**, then prunes
+  per destination and artifact family using journalled-success candidates
+  whose prospective survivors pass a fresh checksum read-back. Failed or
+  unjournalled artifacts never consume the verified retention window and
+  remain for inspection; missing evidence can retain extra copies. This
+  adds retention read-back I/O. The host timer stays as the floor that survives the app
   being down. Nothing serialises the two producers, so they are kept apart by
   directory (`/srv/darkmem-dumps` vs `/root/darkmem-backups`), prefix
   (`darkmem-app-` vs `darkmem-`) and hour (the job's 04:30 is UTC, since the
@@ -799,6 +821,10 @@ is the validity window (`reference_time` / `valid_at` / `invalid_at` /
 that). **Verification** is the ladder `candidate → corroborated →
 confirmed`, with `disputed` sideways; `confirmed` is human-only (`ratify` is
 its one writer) and the machine's ceiling is `corroborated`.
+
+Memory/code source withdrawal locks affected facts in ID order before
+deleting sources and counting survivors, preserving a concurrent witness
+and the existing fact identity.
 
 **Corroboration** counts `COUNT(DISTINCT origin_key)` over `fact_sources`,
 never rows: N = 3, or 2 when two **attributable** origins differ in
@@ -952,6 +978,11 @@ the tool's own body.
   loopback clients. Refresh and change-password rotate (blocklist) the
   presented token; a password change revokes all pre-change tokens via the
   `iat` check.
+- Password creation/change validates at most 72 UTF-8 bytes, without
+  truncating existing hashes. Oversized login inputs fail normally and
+  participate in failed-attempt handling. REST and WebSocket handshakes
+  share session validation; established sockets revalidate before sending
+  and at one-second idle intervals for expiry, epoch change and revocation.
 - `DATABASE_URL` is derived from the `DB_*` vars (percent-encoded); an
   explicit `DATABASE_URL` overrides. There are no `LLM_*` env vars; LLM
   config lives in the database via the setup wizard.
@@ -1001,6 +1032,20 @@ deliberately deferred it (don't list it as a blocker).
 
 ## Code indexing
 
+Parser reads resolve both the repository root and file target and reject
+targets outside the root, including escaping symlinks; internal symlinks
+remain supported. Explicit-file classification rechecks containment before
+hashing. Git diagnostics redact URL userinfo for every forge, including
+checkout warnings and formatted timeout tracebacks. This is not a
+descriptor-based sandbox against concurrent hostile filesystem mutation.
+
+Incremental import resolution uses every surviving indexed repository file,
+while parsing, rewriting, embedding and phase-08 benefit accounting retain
+their incremental work subset. Direct binding metadata persists on file
+graph nodes; missing legacy metadata is reconstructed through the checked
+parser without rewriting or embedding unchanged files. Code-search fusion
+identity is `(repo_id, file_path, line_start)`, never path/line alone.
+
 `POST /repos/{id}/reindex` accepts `{full, enrich_symbols, generate_wiki}`,
 all default false. An unchanged HEAD short-circuits unless `full=true` **or
 the repo carries index debt**. Enrichment and wiki generation run only when
@@ -1015,6 +1060,10 @@ leaves the queue only after the run that re-traced it succeeded. Debt files
 are only added (their hash is unchanged, so phase 03 skips them and the
 drain deletes nothing). Deferral and drain journal a `repo_indexed` event and
 surface on `RepoResponse.index_debt`.
+
+Debt alone does not trigger a recurring poll at unchanged HEAD. Drain it
+through a later HEAD-triggered run or manual reindex; manual runs bypass
+the unchanged-HEAD shortcut when debt remains.
 
 **Every recurring indexing behaviour is a per-repo switch, all default
 off**: `fetch_enabled` (`fetch_interval_seconds`, default 300s, floor 30s),
@@ -1159,6 +1208,18 @@ rides the query string). The blocks read always serves `content_hash`, and
 MCP `document_get` takes `include_hash`, so each read or write's hash
 preconditions the next write.
 
+The document editor removes structural ancestor prefixes before promoting
+its supported blocks, including compact imported quotes, and nested
+insert-after preserves the predecessor's parent. Chat streams belong to
+their originating conversation; completion cannot reclaim a newer route
+selection. Send errors expose a retryable draft only for definite
+rejections, while uncertain delivery warns against duplicating an already
+stored turn. Recovery is in-memory, not idempotent replay or crash storage.
+
+Block embedding responses revalidate current text under owner locks before
+writing; stale provider responses are discarded. A page-refresh sweep
+reports convergence only when no skipped embedding gaps remain.
+
 **Two-door ruling (2026-08-23).** `documents.write` and
 `documents.retrieval` are two-door; `docs/two-door-parity.md` is the audit
 of record. This clears no gate. `POST /api/v1/documents/qa` stays
@@ -1177,6 +1238,16 @@ document search, connections, outline, the document block routes and the
 embedding sweep. Page vectors live in their **own `page_embeddings__<slug>`
 family** (a shared partition would let page rows crowd document hits out
 of the post-filtered HNSW stream).
+
+Attachment reference writers and placement acquire a global shared
+transaction lifecycle lock before root/owner locks; collection acquires
+the exclusive form. Writers revalidate attachment URLs under that lock,
+refusing already-collected references. Collection's filesystem phase and
+rowless scan/unlink cannot invalidate a committed reference. Import/upload
+cleanup preserves placed bytes when commit or rollback outcome is
+uncertain; only proved-uncommitted bytes are removed after a successful
+precommit rollback. Raw SQL/admin changes bypassing this protocol are not
+covered; new writers must join it.
 
 **REST-only, sixteen routes**: thirteen in `api/routes/pages.py`, two
 attachment routes in `api/routes/page_attachments.py` (upload and serve;
@@ -1218,6 +1289,11 @@ trash sheet) and a lazy-loaded **BlockNote 0.54.2** editor
   local mirror of `block_verbs.py`'s refusals (`lib/sync-tree.ts`,
   `lib/block-properties.ts`) says will be accepted. **Change a page rule in
   `block_verbs.py` and change the mirror with it.**
+- Stopped retries do not clear unsaved work: refused/conflicting drafts stay
+  in the module registry across same-tab navigation and reopen read-only.
+  Copy retained content before explicit **Discard draft and reload**.
+  Module-lifetime unload protection checks retained drafts and in-flight
+  uploads even after every pane unmounts; this is not durable crash recovery.
 - An update sends a **fixed property key set per type** regardless of value,
   since the server merges properties and never clears an omitted key.
 - Inline markdown the editor can't show rides as a `rawInline` atom written
@@ -1330,7 +1406,9 @@ keyword arm answers alone and the answer says `semantic_ran: false`.
   SQLSTATE `42501` to a 403 `read_only` envelope. `DARKMEM_READ_ONLY`
   (default off; shown on `GET /auth/security-posture`) is ergonomics: it
   skips boot writers, never arms `JobRegistry`, refuses chat and job
-  triggers, clamps `reranker_enabled`, quiets write-on-read paths, and
+  triggers and outbound provider/Git/notification/setup probes, uses local
+  graph-name fallbacks and skips provider health probes,
+  clamps `reranker_enabled`, quiets write-on-read paths, and
   skips the semantic search arm, so the worker needs **no external
   service** (`llm.embed` sits outside `_run_channels`' one-sided-failure
   guard, so attempting it against an unreachable embedder would raise out of

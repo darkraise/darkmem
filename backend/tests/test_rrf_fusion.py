@@ -472,15 +472,11 @@ async def test_semantic_search_preserves_the_rerank_verdict(session, monkeypatch
         {"memory_id": str(low), "rrf_score": 0.010},
     ]
 
-    class _StubHybrid:
-        def __init__(self, llm, sess):
-            pass
-
-        async def search(
-                self, query, limit=20, semantic_weight=0.7, filters=None,
-                ppr_weight=0.0, dual_weight=0.0, access_signals=False,
-            ):
-            return [dict(r) for r in fused]
+    async def search(
+        self, query, limit=20, semantic_weight=0.7, filters=None,
+        ppr_weight=0.0, dual_weight=0.0, access_signals=False,
+    ):
+        return [dict(row) for row in fused]
 
     class _StubReranker:
         def __init__(self, llm):
@@ -500,12 +496,12 @@ async def test_semantic_search_preserves_the_rerank_verdict(session, monkeypatch
         }
 
     monkeypatch.setattr(
-        "app.services.hybrid_search.HybridSearchService", _StubHybrid, raising=True,
+        "app.services.hybrid_search.HybridSearchService.search", search, raising=True,
     )
     monkeypatch.setattr(
         "app.services.reranker.RerankerService", _StubReranker, raising=True,
     )
-    monkeypatch.setattr(pipeline_mod, "_get_feature_flags_cached", _flags, raising=True)
+    monkeypatch.setattr("app.services.feature_flags.get_feature_flags_dict", _flags, raising=True)
 
     pipe = ProcessingPipeline(_StubLLM(), _SingleSessionFactory(session))
     _flag_cache_reset()

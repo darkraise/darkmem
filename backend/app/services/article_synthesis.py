@@ -62,6 +62,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.llm import lease_llm
 from app.services.article_eligibility import (
     SUPPORTING_BELIEF_PREDICATE,
     VERIFIED_STATUSES,
@@ -931,82 +932,83 @@ async def run_article_synthesis(
     """
     outcome = SynthesisOutcome(last_project=after_project)
     llm = llm_provider() if callable(llm_provider) else llm_provider
+    with lease_llm(llm):
 
-    async with session_factory() as session:
-        projects = [
-            row[0]
-            for row in (
-                await session.execute(
-                    _NEXT_PROJECTS_SQL,
-                    {"after_project": after_project, "batch_size": max(1, batch_size)},
-                )
-            ).all()
-        ]
-
-    for project in projects:
-        outcome.projects += 1
-        outcome.last_project = project
-        outcome.visited.append(project)
         async with session_factory() as session:
-            subjects = await select_for_synthesis(session, project=project)
-
-        for candidate in subjects:
-            outcome.attempted += 1
-            if llm is None:
-                # No orchestrator configured is not a draft failure; it is the
-                # job having nothing to run with. Counted as failed so the tick
-                # does not read as a clean no-op.
-                outcome.failed += 1
-                continue
-            try:
-                measurable = None
-                async with session_factory() as session:
-                    written = await synthesise_subject(
-                        session,
-                        llm,
-                        subject_key=candidate.subject_key,
-                        project=project,
-                        cap=hub_cap,
-                        budget_words=budget_words,
-                        now=now,
+            projects = [
+                row[0]
+                for row in (
+                    await session.execute(
+                        _NEXT_PROJECTS_SQL,
+                        {"after_project": after_project, "batch_size": max(1, batch_size)},
                     )
-                    if written is None:
-                        outcome.refused += 1
-                    else:
-                        outcome.written += 1
-                        measurable = written
-                    await session.commit()
+                ).all()
+            ]
 
-                # **After the commit, in its own session** (T3.03 D9). The
-                # article is durable before the judge is ever asked, so a
-                # refusal or an outage costs the measurement and never the
-                # article.
-                if measurable is not None:
-                    article_id, draft, facts = measurable
-                    if await _measure(
-                        session_factory, judge_for(llm), article_id=article_id,
-                        draft=draft, facts=facts, project=project,
-                    ):
-                        outcome.unmeasured += 1
-            except DraftRefused as refusal:
-                outcome.refused += 1
-                logger.warning(
-                    "article_synthesis: %s/%s refused: %s",
-                    project, candidate.subject_key, refusal,
-                )
-            except LiveArticleExists:
-                # Unreachable through the selector, which already excludes
-                # these. Counted rather than raised so a caller that skipped
-                # the selector degrades instead of aborting the batch.
-                outcome.refused += 1
-            except Exception as error:  # noqa: BLE001 - one subject must not end the tick
-                outcome.failed += 1
-                logger.warning(
-                    "article_synthesis: %s/%s failed: %s",
-                    project, candidate.subject_key, error,
-                )
+        for project in projects:
+            outcome.projects += 1
+            outcome.last_project = project
+            outcome.visited.append(project)
+            async with session_factory() as session:
+                subjects = await select_for_synthesis(session, project=project)
 
-    return outcome
+            for candidate in subjects:
+                outcome.attempted += 1
+                if llm is None:
+                    # No orchestrator configured is not a draft failure; it is the
+                    # job having nothing to run with. Counted as failed so the tick
+                    # does not read as a clean no-op.
+                    outcome.failed += 1
+                    continue
+                try:
+                    measurable = None
+                    async with session_factory() as session:
+                        written = await synthesise_subject(
+                            session,
+                            llm,
+                            subject_key=candidate.subject_key,
+                            project=project,
+                            cap=hub_cap,
+                            budget_words=budget_words,
+                            now=now,
+                        )
+                        if written is None:
+                            outcome.refused += 1
+                        else:
+                            outcome.written += 1
+                            measurable = written
+                        await session.commit()
+
+                    # **After the commit, in its own session** (T3.03 D9). The
+                    # article is durable before the judge is ever asked, so a
+                    # refusal or an outage costs the measurement and never the
+                    # article.
+                    if measurable is not None:
+                        article_id, draft, facts = measurable
+                        if await _measure(
+                            session_factory, judge_for(llm), article_id=article_id,
+                            draft=draft, facts=facts, project=project,
+                        ):
+                            outcome.unmeasured += 1
+                except DraftRefused as refusal:
+                    outcome.refused += 1
+                    logger.warning(
+                        "article_synthesis: %s/%s refused: %s",
+                        project, candidate.subject_key, refusal,
+                    )
+                except LiveArticleExists:
+                    # Unreachable through the selector, which already excludes
+                    # these. Counted rather than raised so a caller that skipped
+                    # the selector degrades instead of aborting the batch.
+                    outcome.refused += 1
+                except Exception as error:  # noqa: BLE001 - one subject must not end the tick
+                    outcome.failed += 1
+                    logger.warning(
+                        "article_synthesis: %s/%s failed: %s",
+                        project, candidate.subject_key, error,
+                    )
+
+        return outcome
 
 
 # ─────────────── coverage write-back (T3.03 Steps 4-6) ───────────────
@@ -1774,93 +1776,94 @@ async def run_article_resynthesis(
     """
     outcome = ResynthesisOutcome()
     llm = llm_provider() if callable(llm_provider) else llm_provider
-    judge = judge_for(llm)
+    with lease_llm(llm):
+        judge = judge_for(llm)
 
-    for project in projects:
-        outcome.projects += 1
-        outcome.last_project = project
-        async with session_factory() as session:
-            stale = await stale_articles(session, project=project)
-            outcome.stale += len(stale)
+        for project in projects:
+            outcome.projects += 1
+            outcome.last_project = project
+            async with session_factory() as session:
+                stale = await stale_articles(session, project=project)
+                outcome.stale += len(stale)
 
-            # The marker's third exit, and the only one no re-synthesis
-            # performs: a subject whose verified set reverted to what the
-            # standing article was built from is no longer stale, so the held
-            # finding describes nothing. Cleared here because this is the pass
-            # that already knows which live articles are stale — the marker
-            # must not outlive its condition, and nothing else looks.
-            outcome.cleared += await _clear_stale_free_markers(
-                session, project=project, still_stale={a.article_id for a in stale}
-            )
+                # The marker's third exit, and the only one no re-synthesis
+                # performs: a subject whose verified set reverted to what the
+                # standing article was built from is no longer stale, so the held
+                # finding describes nothing. Cleared here because this is the pass
+                # that already knows which live articles are stale — the marker
+                # must not outlive its condition, and nothing else looks.
+                outcome.cleared += await _clear_stale_free_markers(
+                    session, project=project, still_stale={a.article_id for a in stale}
+                )
 
-            ready: list[StaleArticle] = []
-            for article in stale:
-                # The retry policy the routing licenses (§3.5). Before it, a
-                # chronically ungroundable subject re-attempted every tick
-                # forever — one draft call plus one entailment call per claim,
-                # daily, discarded, with an in-memory counter as its only
-                # trace. That loop was defensible only while the tick was the
-                # sole escalation path; with a human now looking at the marker,
-                # re-paying for the same answer about the same fact set is
-                # spend without information. It resumes the moment the set
-                # moves, because the hash it is keyed on changes with it.
-                if await _held_on_this_fact_set(session, article):
-                    outcome.held_suppressed += 1
-                    continue
-                if await staleness_settled(
-                    session,
-                    article,
-                    project=project,
-                    debounce_hours=debounce_hours,
-                    now=now,
-                ):
-                    ready.append(article)
-                else:
-                    outcome.debounced += 1
-            await session.commit()
-
-        for article in ready:
-            outcome.attempted += 1
-            if llm is None:
-                # No orchestrator is the job having nothing to run with, not a
-                # draft failure — counted so the tick does not read as a clean
-                # no-op.
-                outcome.failed += 1
-                continue
-            try:
-                async with session_factory() as session:
-                    new_id, reason = await resynthesise_subject(
+                ready: list[StaleArticle] = []
+                for article in stale:
+                    # The retry policy the routing licenses (§3.5). Before it, a
+                    # chronically ungroundable subject re-attempted every tick
+                    # forever — one draft call plus one entailment call per claim,
+                    # daily, discarded, with an in-memory counter as its only
+                    # trace. That loop was defensible only while the tick was the
+                    # sole escalation path; with a human now looking at the marker,
+                    # re-paying for the same answer about the same fact set is
+                    # spend without information. It resumes the moment the set
+                    # moves, because the hash it is keyed on changes with it.
+                    if await _held_on_this_fact_set(session, article):
+                        outcome.held_suppressed += 1
+                        continue
+                    if await staleness_settled(
                         session,
-                        llm,
-                        judge,
                         article,
                         project=project,
-                        cap=hub_cap,
-                        budget_words=budget_words,
+                        debounce_hours=debounce_hours,
                         now=now,
-                    )
-                    if new_id is not None:
-                        outcome.resynthesised += 1
-                        if reason == "unmeasured":
-                            outcome.unmeasured += 1
-                    elif reason == "held":
-                        outcome.held += 1
-                    elif reason == "standing_measured":
-                        outcome.protected += 1
+                    ):
+                        ready.append(article)
                     else:
-                        outcome.skipped += 1
-                    await session.commit()
-            except DraftRefused as refusal:
-                outcome.refused += 1
-                logger.warning(
-                    "article_staleness: %s/%s refused: %s",
-                    project, article.subject_key, refusal,
-                )
-            except Exception as error:  # noqa: BLE001 - one subject must not end the tick
-                outcome.failed += 1
-                logger.warning(
-                    "article_staleness: %s/%s failed: %s",
-                    project, article.subject_key, error,
-                )
+                        outcome.debounced += 1
+                await session.commit()
 
-    return outcome
+            for article in ready:
+                outcome.attempted += 1
+                if llm is None:
+                    # No orchestrator is the job having nothing to run with, not a
+                    # draft failure — counted so the tick does not read as a clean
+                    # no-op.
+                    outcome.failed += 1
+                    continue
+                try:
+                    async with session_factory() as session:
+                        new_id, reason = await resynthesise_subject(
+                            session,
+                            llm,
+                            judge,
+                            article,
+                            project=project,
+                            cap=hub_cap,
+                            budget_words=budget_words,
+                            now=now,
+                        )
+                        if new_id is not None:
+                            outcome.resynthesised += 1
+                            if reason == "unmeasured":
+                                outcome.unmeasured += 1
+                        elif reason == "held":
+                            outcome.held += 1
+                        elif reason == "standing_measured":
+                            outcome.protected += 1
+                        else:
+                            outcome.skipped += 1
+                        await session.commit()
+                except DraftRefused as refusal:
+                    outcome.refused += 1
+                    logger.warning(
+                        "article_staleness: %s/%s refused: %s",
+                        project, article.subject_key, refusal,
+                    )
+                except Exception as error:  # noqa: BLE001 - one subject must not end the tick
+                    outcome.failed += 1
+                    logger.warning(
+                        "article_staleness: %s/%s failed: %s",
+                        project, article.subject_key, error,
+                    )
+
+        return outcome

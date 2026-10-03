@@ -137,11 +137,7 @@ async def savepoint_bed(
             raise bed.extraction_error
         return dict(bed.extraction)
 
-    async def _resolve():
-        return bed.pipe.classification
-
     bed.pipe.extraction.extract = _extract  # type: ignore[method-assign]
-    bed.pipe._resolve_classifier = _resolve  # type: ignore[method-assign]
 
     await bed.pipe._register_fingerprint(fingerprint)
     bed.memory_ids = await seed_memories(factory, contents)

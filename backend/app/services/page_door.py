@@ -24,6 +24,9 @@ from app.services.block_serializer import TreeBlock, reproduces_source, serializ
 from app.services.document_ingest import compute_content_hash
 from app.services.document_parsers import parse_markdown, split_frontmatter
 from app.services.events import record_event
+from app.services.page_attachments import (
+    AttachmentReferenceMissing, lock_attachments, validate_attachment_references,
+)
 from app.taxonomy import normalize_block_type
 
 __all__ = [
@@ -468,6 +471,11 @@ async def _insert_page(
     The caller owns the commit, so a caller writing many pages keeps them in
     one transaction. The MAX_BLOCKS refusal lives here so every caller keeps it.
     """
+    await lock_attachments(session)
+    try:
+        await validate_attachment_references(session, (block.text for block in tree))
+    except AttachmentReferenceMissing as exc:
+        raise PageNotRepresentable(str(exc)) from exc
     page_id = page_id or uuid4()
     serialized = serialize_tree(tree)
     stored_content = serialized.content

@@ -21,6 +21,7 @@ Two properties get extra weight because their failure is silent:
 from __future__ import annotations
 
 import uuid
+import asyncio
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -33,6 +34,74 @@ from app.services.supersession import detect_supersessions, is_supersession_trig
 from tests.test_pipeline_savepoints import savepoint_bed
 
 NOW = datetime(2026, 7, 28, 12, 0, tzinfo=timezone.utc)
+
+
+@pytest.mark.asyncio
+async def test_batch_supersession_waits_for_delayed_older_graph_writes(setup_database):
+    names = ("batch-first", "batch-second", "batch-third")
+    async with savepoint_bed(list(names), "supersession-batch-order|4", entity_names=names) as bed:
+        bed.memory_ids.sort()
+        async with bed.factory() as session:
+            await session.execute(text("UPDATE memories SET created_at = now() WHERE id = ANY(:ids)"), {"ids": bed.memory_ids})
+            await session.commit()
+
+        async def extract(content, system_prompt=None, **kwargs):
+            index = names.index(content)
+            entities = [{"name": content, "type": "tool"}]
+            relationships = []
+            if index:
+                entities.append({"name": names[index - 1], "type": "tool"})
+                relationships.append({"source": content, "target": names[index - 1], "type": "REPLACES"})
+            return {"entities": entities, "relationships": relationships, "memory_type": "fact"}
+
+        bed.pipe.extraction.extract = extract
+        real_write = bed.pipe._write_memory
+        newer_written = [asyncio.Event(), asyncio.Event(), asyncio.Event()]
+        completion_order = []
+
+        async def write_delayed(entry, *args, **kwargs):
+            index = bed.memory_ids.index(entry["memory_id"])
+            if index < 2:
+                await asyncio.wait_for(newer_written[index + 1].wait(), 10)
+            try:
+                result = await real_write(entry, *args, **kwargs)
+                completion_order.append(index)
+                return result
+            finally:
+                newer_written[index].set()
+
+        bed.pipe._write_memory = write_delayed
+        results = await bed.pipe.process_batch([bed.entry(index, name) for index, name in enumerate(names)])
+        assert completion_order == [2, 1, 0]
+        assert [result["graph"] for result in results] == ["ok", "ok", "ok"]
+        async with bed.factory() as session:
+            assert await _status(session, bed.memory_ids[0]) == ("superseded", bed.memory_ids[1])
+            assert await _status(session, bed.memory_ids[1]) == ("superseded", bed.memory_ids[2])
+            assert await _status(session, bed.memory_ids[2]) == ("active", None)
+
+
+@pytest.mark.asyncio
+async def test_batch_reconciliation_failure_reports_matching_journal_and_outcome(setup_database, monkeypatch):
+    import app.services.pipeline as pipeline_module
+
+    real_detect = pipeline_module.detect_supersessions
+
+    async def fail_reconciliation(*args, **kwargs):
+        if kwargs.get("candidate_memory_ids") is not None:
+            raise RuntimeError("post-write reconciliation failed")
+        return await real_detect(*args, **kwargs)
+
+    monkeypatch.setattr(pipeline_module, "detect_supersessions", fail_reconciliation)
+    async with savepoint_bed(["older", "newer"], "supersession-reconcile-error|4") as bed:
+        results = await bed.pipe.process_batch([bed.entry(index) for index in range(2)])
+        assert [result["graph"] for result in results] == ["error", "error"]
+        assert [result["vector"] for result in results] == ["ok", "ok"]
+        assert [event for event, payload in bed.broadcasts] == ["pipeline.partial", "pipeline.partial"]
+        async with bed.factory() as session:
+            outcomes = (await session.execute(text(
+                "SELECT payload->>'outcome' FROM events WHERE event_type = 'extracted' AND object_id = ANY(:ids)"
+            ), {"ids": bed.memory_ids})).scalars().all()
+        assert outcomes == ["partial", "partial"]
 
 
 def _mem(**overrides) -> Memory:

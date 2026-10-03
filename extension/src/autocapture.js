@@ -96,45 +96,7 @@ export async function readAutoCaptureState(storage, hasPermissions) {
  * extension to hold a credential the page's own scripts share an origin with.
  */
 export const AUTO_CAPTURE_MESSAGE = "darkmem.auto_capture.turn";
-
-/**
- * Turns the observer has not sent yet, in order.
- *
- * Keyed on the turn's own text rather than a DOM node: a chat surface
- * re-renders its list constantly, and node identity does not survive that
- * while the text does. The seen-set is the observer's, per page — the
- * *durable* guard against re-capturing is `dedupe.js` at the door, which
- * survives a reload and this does not.
- */
-export function unsentTurns(seen, turns) {
-  const out = [];
-  for (const turn of turns ?? []) {
-    const text = (turn ?? "").trim();
-    if (!text || seen.has(text)) continue;
-    seen.add(text);
-    out.push(text);
-  }
-  return out;
-}
-
-/**
- * The observer's opening state: everything already on screen counts as seen,
- * and nothing is sent.
- *
- * Opting in must not retroactively capture the conversation the human had
- * *before* they opted in. That is a materially larger act than "capture what
- * happens from now on" — it is the whole history, sent at once, on a click
- * whose label promises the smaller thing.
- *
- * A function rather than two lines in the observer because the promise is on
- * the options page and needs somewhere a test can reach: the mutation that
- * deletes the seeding step is invisible in a DOM-driven file.
- */
-export function firstSweep(turns) {
-  const seen = new Set();
-  unsentTurns(seen, turns);
-  return { seen, toSend: [] };
-}
+export const AUTO_CAPTURE_SYNC_MESSAGE = "darkmem.auto_capture.sync";
 
 /**
  * What the toolbar says while auto-capture is on.

@@ -34,11 +34,22 @@ class TokenPayload(BaseModel):
 
 
 def hash_password(password: str) -> str:
+    validate_password_bytes(password)
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def verify_password(password: str, hashed: str) -> bool:
-    return bcrypt.checkpw(password.encode(), hashed.encode())
+    try:
+        validate_password_bytes(password)
+        return bcrypt.checkpw(password.encode(), hashed.encode())
+    except ValueError:
+        return False
+
+
+def validate_password_bytes(password: str) -> str:
+    if len(password.encode("utf-8")) > 72:
+        raise ValueError("Password must be at most 72 UTF-8 bytes")
+    return password
 
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
@@ -113,6 +124,10 @@ async def require_auth(
     token = _extract_token(request)
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    return await validate_session_token(token, session)
+
+
+async def validate_session_token(token: str, session: AsyncSession) -> TokenPayload:
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[ALGORITHM])
     except jwt.ExpiredSignatureError:

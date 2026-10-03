@@ -240,11 +240,13 @@ async def test_every_write_is_refused_with_sqlstate_42501(viewer_engine, stateme
 ROW_LOCK_WRITERS = {
     "repositories/knowledge_triples.py",
     "services/block_verbs.py",
+    "services/block_embeddings.py",
     "services/buffer_flush.py",
     "services/document_door.py",
     "services/dream_undo.py",
     "services/entity_merge.py",
     "services/fact_lift.py",
+    "services/fact_provenance.py",
     "services/human_adjudication.py",
     "services/memory_dream.py",
     "services/page_door.py",

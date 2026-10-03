@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { render, screen, act, waitFor, fireEvent } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
@@ -30,6 +30,55 @@ function wrapper({ children }: { children: ReactNode }) {
 // required here (the plan's own text) — this step is assembly, not a new
 // invariant; Step 8 is what makes the third column honest.
 describe("RealChatPage", () => {
+  it("follows mounted route changes", async () => {
+    mockUseConversations.mockReturnValue({ data: { conversations: [] } })
+    const view = render(<RealChatPage initialId="first" />, { wrapper })
+    view.rerender(<RealChatPage initialId="second" />)
+    await waitFor(() => expect(mockUseConversation).toHaveBeenLastCalledWith("second"))
+  })
+
+  it("hides another conversation's live turn and does not navigate on its completion", async () => {
+    mockUseConversations.mockReturnValue({ data: { conversations: [{ id: "second", title: "Second", created_at: "", updated_at: "" }] } })
+    let controller!: ReadableStreamDefaultController<Uint8Array>
+    const body = new ReadableStream<Uint8Array>({ start(streamController) { controller = streamController } })
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, body }))
+    render(<RealChatPage />, { wrapper })
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "original draft" } })
+    await userEvent.click(screen.getByRole("button", { name: "Send message" }))
+    await act(async () => { controller.enqueue(new TextEncoder().encode('data: {"type":"token","content":"old live answer"}\n\n')) })
+    await userEvent.click(screen.getByText("Second"))
+    expect(screen.queryByText("old live answer")).not.toBeInTheDocument()
+    expect(screen.queryByText("original draft")).not.toBeInTheDocument()
+    await act(async () => {
+      controller.enqueue(new TextEncoder().encode('data: {"type":"done","conversation_id":"created"}\n\n'))
+      controller.close()
+    })
+    expect(mockUseConversation).toHaveBeenLastCalledWith("second")
+    vi.unstubAllGlobals()
+  })
+
+  it("announces a rejected send and restores its retryable draft", async () => {
+    mockUseConversations.mockReturnValue({ data: { conversations: [] } })
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 403, text: async () => "Read only" }))
+    render(<RealChatPage />, { wrapper })
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "keep this draft" } })
+    await userEvent.click(screen.getByRole("button", { name: "Send message" }))
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Read only"))
+    expect(screen.getByRole("textbox")).toHaveValue("keep this draft")
+    vi.unstubAllGlobals()
+  })
+
+  it("preserves an uncertain send for copying without putting it in the resend composer", async () => {
+    mockUseConversations.mockReturnValue({ data: { conversations: [] } })
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("connection lost")))
+    render(<RealChatPage />, { wrapper })
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "possibly stored" } })
+    await userEvent.click(screen.getByRole("button", { name: "Send message" }))
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/may already be saved/))
+    expect(screen.getByRole("textbox", { name: "Unconfirmed message" })).toHaveValue("possibly stored")
+    expect(screen.getByPlaceholderText(/Ask about your memories/)).toHaveValue("")
+    vi.unstubAllGlobals()
+  })
   beforeEach(() => {
     mockUseConversations.mockReset()
     mockUseConversation.mockReset()

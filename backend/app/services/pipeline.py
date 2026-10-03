@@ -2,6 +2,8 @@ import asyncio
 import logging
 import time
 from collections import OrderedDict
+from contextlib import contextmanager
+from copy import copy
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
@@ -14,7 +16,7 @@ from app.repositories.graph import PostgresGraphRepository
 from app.repositories.vector import MemoryFilter, PostgresVectorRepository
 from app.services.classification_llm import ClassificationService
 from app.services.extraction import ExtractionService
-from app.services.llm import LLMOrchestrator
+from app.services.llm import LLMOrchestrator, lease_llm
 from app.services.confidence import CONFIDENCE_DEFAULT, estimate_confidence
 from app.services.events import record_event
 from app.services.stated_expiry import derive_stated_expiry
@@ -22,14 +24,6 @@ from app.services.usage_recorder import UsageSubject, subject_scope
 from app.services.fact_provenance import (
     reconcile_memory_sources,
     withdraw_memory_sources,
-)
-from app.services.rank_fusion import (
-    IMPORTANCE_DEFAULT,
-    access_arms_active,
-    any_arm_active,
-    dual_list_weight,
-    ppr_list_weight,
-    rank_fusion_factor,
 )
 from app.services.relations import names_distinct
 from app.services.supersession import detect_supersessions, is_supersession_trigger
@@ -210,6 +204,20 @@ class ProcessingPipeline:
         # in-process ML classifier. None means "use self.classification".
         self._classifier_cache: tuple[float, object | None] | None = None
         self._classifier_cache_ttl = 30.0
+
+    @contextmanager
+    def _pinned(self):
+        """Keep one provider generation alive through all pre-dispatch awaits."""
+        with lease_llm(self.llm):
+            pinned = copy(self)
+            pinned.extraction = copy(self.extraction)
+            pinned.classification = copy(self.classification)
+            try:
+                yield pinned
+            finally:
+                self.last_entity_cache_stats = pinned.last_entity_cache_stats
+                if self.llm is pinned.llm:
+                    self._classifier_cache = pinned._classifier_cache
 
     def _cache_put(
         self,
@@ -477,6 +485,7 @@ class ProcessingPipeline:
         llm_classification: dict | None,
         name_to_embedding: dict[str, list[float]],
         canonical_map: dict[tuple[str, str], str],
+        batch_memory_ids: list[UUID] | None = None,
     ) -> dict:
         memory_id = entry["memory_id"]
         content = entry["content"]
@@ -767,6 +776,7 @@ class ProcessingPipeline:
                                         new_memory_created_at=mem_created_at,
                                         project=mem_project,
                                         new_relations=extraction.get("relationships", []),
+                                        excluded_memory_ids=batch_memory_ids,
                                     )
 
                             # The vault enqueue hook (doc 05 §8.4). Inside
@@ -805,14 +815,15 @@ class ProcessingPipeline:
             # partial/failed broadcast below. record_event never raises, so a
             # broken journal degrades loudly (its own log line) without
             # failing extraction or rolling back the writes above it.
-            await record_event(
-                session,
-                event_type="extracted",
-                object_type="memory",
-                object_id=memory_id,
-                project=mem_project,
-                payload={**status, "outcome": outcome},
-            )
+            if not batch_memory_ids:
+                await record_event(
+                    session,
+                    event_type="extracted",
+                    object_type="memory",
+                    object_id=memory_id,
+                    project=mem_project,
+                    payload={**status, "outcome": outcome},
+                )
 
             await session.commit()
 
@@ -862,6 +873,13 @@ class ProcessingPipeline:
         return results[0]
 
     async def process_batch(self, entries: list[dict]) -> list[dict]:
+        """Process a batch using one captured provider generation."""
+        if not entries:
+            return []
+        with self._pinned() as pipeline:
+            return await pipeline._process_batch(entries)
+
+    async def _process_batch(self, entries: list[dict]) -> list[dict]:
         """Process multiple memories through phased pipeline.
 
         Phases:
@@ -1174,6 +1192,7 @@ class ProcessingPipeline:
         # fingerprints (and breaks the cross-fingerprint-join invariant).
         content_write_fingerprint = embedding_fingerprint or entity_fingerprint or ""
         entity_write_fingerprint = entity_fingerprint or embedding_fingerprint or ""
+        batch_memory_ids = [UUID(str(entry["memory_id"])) for entry in entries] if len(entries) > 1 else None
 
         async def run_write(entry: dict, vector: list[float] | None, extraction, classification):
             async with semaphore:
@@ -1181,6 +1200,7 @@ class ProcessingPipeline:
                     entry, vector, content_write_fingerprint, entity_write_fingerprint,
                     extraction, classification,
                     name_to_embedding, canonical_map,
+                    batch_memory_ids=batch_memory_ids,
                 )
 
         results = await asyncio.gather(
@@ -1206,6 +1226,49 @@ class ProcessingPipeline:
                 })
             else:
                 normalized.append(result)
+
+        if batch_memory_ids:
+            from app.models.memory import Memory
+
+            statuses = {result["memory_id"]: result for result in normalized}
+            replacements = {
+                str(entry["memory_id"]): extraction.get("relationships", [])
+                for entry, extraction in zip(entries, extractions)
+                if isinstance(extraction, dict)
+                and statuses[str(entry["memory_id"])]["graph"] == "ok"
+            }
+            async with self.session_factory() as session:
+                stored = (await session.execute(
+                    select(Memory.id, Memory.content, Memory.created_at, Memory.project)
+                    .where(Memory.id.in_(batch_memory_ids))
+                    .order_by(Memory.created_at, Memory.id)
+                )).all()
+                for memory_id, content, created_at, project in stored:
+                    relations = replacements.get(str(memory_id), [])
+                    if not any(is_supersession_trigger(relation.get("type")) for relation in relations):
+                        continue
+                    try:
+                        async with session.begin_nested():
+                            await detect_supersessions(
+                                session, new_memory_id=memory_id,
+                                new_memory_text=content, new_memory_created_at=created_at,
+                                project=project, new_relations=relations,
+                                candidate_memory_ids=batch_memory_ids,
+                            )
+                    except Exception as error:
+                        status = statuses[str(memory_id)]
+                        status["graph"] = "error"
+                        status["error"] = status["error"] or f"Batch supersession failed: {error}"
+                        logger.exception("Batch supersession failed for %s", memory_id)
+                projects = {str(row.id): row.project for row in stored}
+                for entry, status in zip(entries, normalized):
+                    await record_event(
+                        session, event_type="extracted", object_type="memory",
+                        object_id=UUID(str(entry["memory_id"])),
+                        project=projects.get(str(entry["memory_id"]), entry.get("project")),
+                        payload={**status, "outcome": _derive_outcome(status)},
+                    )
+                await session.commit()
 
         return normalized
 
@@ -1305,38 +1368,22 @@ class ProcessingPipeline:
         semantic_weight: float = 0.7,
         filters: MemoryFilter | None = None,
     ) -> list[dict]:
+        with self._pinned() as pipeline:
+            return await pipeline._semantic_search(query, limit, semantic_weight, filters)
+
+    async def _semantic_search(
+        self, query: str, limit: int, semantic_weight: float, filters: MemoryFilter | None,
+    ) -> list[dict]:
         try:
-            flags = await _get_feature_flags_cached(self.session_factory)
-            if flags["hybrid_search_enabled"]:
-                from app.services.hybrid_search import HybridSearchService
-                async with self.session_factory() as session:
-                    hybrid = HybridSearchService(self.llm, session)
-                    results = await hybrid.search(
-                        query, limit=limit, semantic_weight=semantic_weight, filters=filters,
-                        ppr_weight=ppr_list_weight(flags),
-                        dual_weight=dual_list_weight(flags),
-                        access_signals=access_arms_active(flags),
-                    )
+            from app.services.feature_flags import get_feature_flags_dict
+            from app.services.hybrid_search import HybridSearchService
 
-                    reranked = bool(flags["reranker_enabled"])
-                    if reranked:
-                        from app.services.reranker import RerankerService
-                        reranker = RerankerService(self.llm)
-                        results = await reranker.rerank(query, results, top_k=limit)
-
-                    results = await self._apply_rank_fusion_factor(
-                        session, results, flags, preserve_order=reranked,
-                    )
-                    return results
-            else:
-                vector, fingerprint = await self.llm.embed(query)
-                async with self.session_factory() as session:
-                    vector_repo = PostgresVectorRepository(session)
-                    results = await vector_repo.search(
-                        vector, fingerprint=fingerprint, limit=limit, filters=filters,
-                    )
-                    results = await self._apply_rank_fusion_factor(session, results, flags)
-                    return results
+            async with self.session_factory() as session:
+                flags = await get_feature_flags_dict(session)
+                return await HybridSearchService(self.llm, session).search_ranked(
+                    query, limit=limit, semantic_weight=semantic_weight,
+                    filters=filters, flags=flags,
+                )
         except Exception as e:
             logger.error(f"Semantic search failed: {e}")
             raise
@@ -1363,51 +1410,11 @@ class ProcessingPipeline:
         ranking), scores are still rescaled but the input order is kept — the
         reranker's order is authoritative and must not be sorted away.
         """
-        if not results or not any_arm_active(flags):
-            return results
+        from app.services.hybrid_search import HybridSearchService
 
-        # Coerce every retrieval row's id to a real UUID so the bound
-        # parameter is uuid[] rather than text[]. PG won't use the PK
-        # index on memories.id when the operand is text.
-        raw_ids = [r.get("memory_id") or r.get("id") for r in results]
-        memory_ids: list[UUID] = []
-        for raw in raw_ids:
-            if not raw:
-                continue
-            try:
-                memory_ids.append(raw if isinstance(raw, UUID) else UUID(str(raw)))
-            except (ValueError, TypeError):
-                continue
-        if not memory_ids:
-            return results
-
-        from sqlalchemy import text as sa_text
-        row_result = await session.execute(
-            sa_text(
-                "SELECT id, confidence, importance FROM memories "
-                "WHERE id = ANY(CAST(:ids AS uuid[]))"
-            ),
-            {"ids": memory_ids},
+        return await HybridSearchService(self.llm, session).apply_rank_fusion_factor(
+            results, flags, preserve_order=preserve_order,
         )
-        signal_map: dict[str, tuple[float, float]] = {
-            str(row[0]): (float(row[1]), float(row[2])) for row in row_result
-        }
-
-        score_key = "rrf_score" if results and "rrf_score" in results[0] else "score"
-        for r in results:
-            mid = str(r.get("memory_id") or r.get("id") or "")
-            conf, imp = signal_map.get(mid, (CONFIDENCE_DEFAULT, IMPORTANCE_DEFAULT))
-            signals: dict[str, float] = {"confidence": conf, "importance": imp}
-            for name in ("heat", "recency"):
-                value = r.get(name)
-                if value is not None:
-                    signals[name] = float(value)
-            base = float(r.get(score_key, 0.0) or 0.0)
-            r[score_key] = base * rank_fusion_factor(signals, flags)
-
-        if preserve_order:
-            return results
-        return sorted(results, key=lambda r: float(r.get(score_key, 0.0) or 0.0), reverse=True)
 
     async def find_duplicates(self, memory_id: UUID, threshold: float = 0.9) -> list[dict]:
         """Find memories whose vectors are above ``threshold`` against this one.

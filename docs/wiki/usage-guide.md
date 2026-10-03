@@ -176,11 +176,17 @@ can query.
 | `code_blast_radius` | Everything that transitively depends on a symbol — check before refactoring |
 | `code_context` | Callers, callees, heritage and community for one symbol in a single call |
 
-Reindexing is incremental: an unchanged HEAD short-circuits. When a run
+Reindexing is incremental: an unchanged HEAD short-circuits unless a manual
+reindex requests a full pass or the repository carries index debt. When a run
 re-traces the callers of changed files it caps the work, and **persists the
-overflow as debt** rather than dropping it — later runs fold that queue back in
-until it reaches zero, because a graph with silently missing callers has no
-symptom.
+overflow as debt** rather than dropping it. Later pipeline runs, including
+manual reindex requests with unchanged HEAD, drain bounded batches until the
+queue reaches zero. Recurring indexing remains opt-in and HEAD-triggered (or
+working-tree drift when separately enabled): debt alone does not trigger a
+scheduled run. If HEAD stops moving, use manual reindex to drain retained debt.
+The repository API exposes `index_debt.queued`, lifetime `deferred_total` and
+`drained_total`, and timestamped `last_defer` / `last_drain` records so retained
+debt is distinguishable from a recently draining queue.
 
 ---
 

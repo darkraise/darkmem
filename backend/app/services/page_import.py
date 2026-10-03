@@ -38,12 +38,14 @@ from app.services.page_attachments import (
     attachments_root,
     clean_filename,
     insert_attachment_row,
+    lock_attachments,
     place_staged,
 )
 from app.services.page_door import (
     _LOCK_ROOT,
     MAX_BLOCKS,
     MAX_CONTENT_CHARS,
+    PageNotRepresentable,
     _insert_page,
     root_lock_key,
 )
@@ -270,11 +272,13 @@ async def _run_import(
     declared_length: int | None,
     actor: str | None,
 ) -> ImportReport:
+    """Keep placed bytes unless rollback succeeds before COMMIT is attempted."""
     warnings = _Warnings()
     staging = attachments_root() / STAGING_DIRNAME / str(uuid4())
     placed: list[UUID] = []
     archive: NotionArchive | None = None
     planned = False
+    commit_started = False
     deadline = time.monotonic() + settings.notion_import_max_seconds
     # A dedicated single-thread executor, not the default one: that also serves
     # bcrypt MCP auth, git subprocesses and code parsing. It does NOT serialise
@@ -302,6 +306,7 @@ async def _run_import(
         planned = True
         zip_path.unlink(missing_ok=True)
 
+        await lock_attachments(session)
         await session.execute(_LOCK_ROOT, {"key": root_lock_key(project)})
 
         # Files BEFORE rows: a file with no row is swept by the cleanup job,
@@ -357,6 +362,7 @@ async def _run_import(
                 "warnings": len(warnings.kept) + warnings.omitted,
             },
         )
+        commit_started = True
         await session.commit()
         return ImportReport(
             root_page_id=root.id,
@@ -368,15 +374,13 @@ async def _run_import(
             warnings_omitted=warnings.omitted,
         )
     except BaseException as exc:
-        # The unlinks are owed whatever the rollback does: a file with no row is
-        # exactly what a broken connection would otherwise leave behind.
         try:
             await session.rollback()
-        finally:
+        except BaseException:
+            raise exc
+        if not commit_started:
             for attachment_id in placed:
-                await asyncio.to_thread(
-                    attachment_path(attachment_id).unlink, True
-                )
+                await asyncio.to_thread(attachment_path(attachment_id).unlink, True)
         # Staging and extraction are the only phases that write bytes the disk
         # can refuse; past them a full disk is not the explanation and saying so
         # would be a guess.
@@ -384,6 +388,8 @@ async def _run_import(
             raise ImportNoSpace(
                 "the attachments filesystem ran out of space during the import"
             ) from exc
+        if isinstance(exc, PageNotRepresentable):
+            raise NotionExportInvalid(str(exc)) from exc
         raise
     finally:
         if archive is not None:

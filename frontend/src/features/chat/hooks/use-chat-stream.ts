@@ -1,5 +1,6 @@
-import { useState, useRef, useCallback } from "react"
+import { useState, useRef, useCallback, useEffect } from "react"
 import { useQueryClient } from "@tanstack/react-query"
+import { handleUnauthorized } from "@/lib/api"
 import type {
   ChatContextFact,
   ChatContextRow,
@@ -20,6 +21,9 @@ export interface ChatSources {
 }
 
 interface ChatStreamState {
+  conversationId: string | null
+  retryDraft: string | null
+  uncertainDraft: string | null
   isStreaming: boolean
   streamingContent: string
   sources: ChatSources | null
@@ -27,8 +31,11 @@ interface ChatStreamState {
   pendingUserMessage: string | null
 }
 
-export function useChatStream() {
+export function useChatStream(activeConversationId?: string | null) {
   const [state, setState] = useState<ChatStreamState>({
+    conversationId: null,
+    retryDraft: null,
+    uncertainDraft: null,
     isStreaming: false,
     streamingContent: "",
     sources: null,
@@ -37,6 +44,8 @@ export function useChatStream() {
   })
   const abortRef = useRef<AbortController | null>(null)
   const qc = useQueryClient()
+
+  useEffect(() => () => abortRef.current?.abort(), [])
 
   const sendMessage = useCallback(
     async (
@@ -49,6 +58,9 @@ export function useChatStream() {
       abortRef.current = controller
 
       setState({
+        conversationId,
+        retryDraft: null,
+        uncertainDraft: null,
         isStreaming: true,
         streamingContent: "",
         sources: null,
@@ -56,15 +68,26 @@ export function useChatStream() {
         pendingUserMessage: content,
       })
 
-      let resultConversationId: string | null = null
+      let resultConversationId: string | null = conversationId
+      let completed = false
+      let failed = false
+      const updateState = (update: (previous: ChatStreamState) => ChatStreamState) => {
+        if (abortRef.current === controller && !controller.signal.aborted) setState(update)
+      }
+      const fail = (message: string, retryable = false) => {
+        failed = true
+        updateState((previous) => ({
+          ...previous,
+          error: retryable ? message : `${message}. Your message may already be saved; check the conversation before sending it again.`,
+          retryDraft: retryable ? content : null,
+          uncertainDraft: retryable ? null : content,
+        }))
+      }
 
-      // The conversation detail always changes after a stream; the sidebar LIST
-      // only changes structurally when a brand-new conversation was created
-      // (incoming conversationId was null). Refetching the whole list on every
-      // message in an existing thread is wasted work, so gate it.
       const refreshAfterStream = () => {
-        if (!resultConversationId) return
-        qc.invalidateQueries({ queryKey: ["conversation", resultConversationId] })
+        if (resultConversationId) {
+          qc.invalidateQueries({ queryKey: ["conversation", resultConversationId] })
+        }
         // The sidebar list also shows each conversation's updated_at/message_count,
         // which change on every message — refresh it too, not only for new threads.
         qc.invalidateQueries({ queryKey: ["conversations"] })
@@ -84,14 +107,15 @@ export function useChatStream() {
         })
 
         if (!res.ok) {
+          if (res.status === 401) handleUnauthorized()
           const err = await res.text()
-          setState((s) => ({ ...s, isStreaming: false, error: err }))
+          fail(err, res.status >= 400 && res.status < 500 && res.status !== 408)
           return
         }
 
         const reader = res.body?.getReader()
         if (!reader) {
-          setState((s) => ({ ...s, isStreaming: false, error: "No stream" }))
+          fail("No stream")
           return
         }
 
@@ -101,6 +125,10 @@ export function useChatStream() {
 
         while (true) {
           const { done, value } = await reader.read()
+          if (controller.signal.aborted || abortRef.current !== controller) {
+            await reader.cancel()
+            return
+          }
           if (done) break
 
           buffer += decoder.decode(value, { stream: true })
@@ -117,8 +145,8 @@ export function useChatStream() {
               }
               switch (event.type) {
                 case "sources":
-                  setState((s) => ({
-                    ...s,
+                  updateState((previous) => ({
+                    ...previous,
                     sources: {
                       memories: event.memories,
                       facts: event.facts ?? [],
@@ -129,10 +157,13 @@ export function useChatStream() {
                   break
                 case "token":
                   accumulated += event.content
-                  setState((s) => ({ ...s, streamingContent: accumulated }))
+                  updateState((previous) => ({ ...previous, streamingContent: accumulated }))
                   break
                 case "error":
-                  setState((s) => ({ ...s, error: event.message }))
+                  fail(event.message)
+                  break
+                case "done":
+                  completed = true
                   break
               }
             } catch {
@@ -141,25 +172,17 @@ export function useChatStream() {
           }
         }
 
-        setState((s) => ({
-          ...s,
-          isStreaming: false,
-          pendingUserMessage: null,
-        }))
-        refreshAfterStream()
+        if (!completed && !failed) fail("Stream ended before completion")
 
         return resultConversationId
       } catch (err) {
         if ((err as Error).name !== "AbortError") {
-          setState((s) => ({
-            ...s,
-            isStreaming: false,
-            pendingUserMessage: null,
-            error: (err as Error).message,
-          }))
-          refreshAfterStream()
+          fail((err as Error).message)
           return resultConversationId
         }
+      } finally {
+        updateState((previous) => ({ ...previous, isStreaming: false, pendingUserMessage: null }))
+        refreshAfterStream()
       }
     },
     [qc],
@@ -171,7 +194,16 @@ export function useChatStream() {
   }, [])
 
   return {
-    ...state,
+    ...(activeConversationId === undefined || state.conversationId === activeConversationId ? state : {
+      conversationId: activeConversationId,
+      isStreaming: false,
+      streamingContent: "",
+      sources: null,
+      error: null,
+      pendingUserMessage: null,
+      retryDraft: null,
+      uncertainDraft: null,
+    }),
     sendMessage,
     abort,
   }

@@ -3,7 +3,8 @@ import json
 import logging
 import random
 import time
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
+from contextvars import ContextVar
 
 import httpx
 
@@ -19,6 +20,78 @@ from app.services.llm_quirks import (
 )
 
 logger = logging.getLogger(__name__)
+_borrowed_llms: ContextVar[tuple] = ContextVar("borrowed_llms", default=())
+
+
+def _retain_llm(llm):
+    if not isinstance(llm, LLMOrchestrator):
+        return lambda: None
+    if llm._client.is_closed or (llm._retiring and llm not in _borrowed_llms.get()):
+        raise RuntimeError("LLM orchestrator is retiring")
+    llm._leases += 1
+    llm._drained.clear()
+    released = False
+
+    def release():
+        nonlocal released
+        if released:
+            return
+        released = True
+        llm._leases -= 1
+        if not llm._leases:
+            llm._drained.set()
+
+    return release
+
+
+def spawn_with_llm(llm, coroutine, *, spawn=asyncio.create_task, **kwargs):
+    try:
+        release = _retain_llm(llm)
+    except BaseException:
+        coroutine.close()
+        raise
+    started = False
+
+    async def run():
+        nonlocal started
+        started = True
+        token = _borrowed_llms.set((*_borrowed_llms.get(), llm))
+        try:
+            return await coroutine
+        finally:
+            _borrowed_llms.reset(token)
+
+    wrapper = run()
+
+    def finished(_task):
+        if not started:
+            coroutine.close()
+        release()
+
+    try:
+        task = spawn(wrapper, **kwargs)
+    except BaseException:
+        wrapper.close()
+        coroutine.close()
+        release()
+        raise
+    task.add_done_callback(finished)
+    return task
+
+
+@contextmanager
+def lease_llm(llm):
+    if not isinstance(llm, LLMOrchestrator):
+        yield llm
+        return
+    release = _retain_llm(llm)
+    borrowed = _borrowed_llms.get()
+    token = _borrowed_llms.set((*borrowed, llm))
+    try:
+        yield llm
+    finally:
+        _borrowed_llms.reset(token)
+        release()
 
 #: Indirection so tests can observe the backoff without serving it.
 _sleep = asyncio.sleep
@@ -196,6 +269,10 @@ class LLMOrchestrator:
 
     def __init__(self, config: dict[str, LLMPurposeConfig], recorder=None):
         self.config = config
+        self._leases = 0
+        self._retiring = False
+        self._drained = asyncio.Event()
+        self._drained.set()
         #: Optional ``UsageRecorder``. None in tests and in any construction
         #: that has no session to write with; metering is never load-bearing.
         self._recorder = recorder
@@ -503,7 +580,15 @@ class LLMOrchestrator:
             async with semaphore:
                 return await self.embed_batch(chunk)
 
-        results = await asyncio.gather(*[run_chunk(c) for c in chunks])
+        tasks = [asyncio.create_task(run_chunk(chunk)) for chunk in chunks]
+        try:
+            results = await asyncio.gather(*tasks)
+        except BaseException:
+            for task in tasks:
+                if not task.cancelling():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
         if not results:
             return [], self.llm_fingerprint()
         fingerprint = results[0][1]
@@ -975,6 +1060,8 @@ class LLMOrchestrator:
                                started, ok, error_kind, None)
 
     async def close(self):
+        self._retiring = True
+        await self._drained.wait()
         await self._client.aclose()
 
     @staticmethod

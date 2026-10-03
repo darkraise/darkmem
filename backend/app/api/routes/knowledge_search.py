@@ -38,6 +38,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.llm import lease_llm
 from app.api.auth import require_auth
 from app.database import get_session
 from app.schemas.envelope import ErrorDetail, ErrorEnvelope
@@ -72,30 +73,31 @@ async def search_knowledge(
     # arm is the only part that needs one, and its failure is a one-sided
     # outage the envelope already reports as partial.
     llm = getattr(request.app.state, "llm", None)
-    service = LayerCompositionService(llm, session)
-    try:
-        result = await service.search(
-            body.query, project=body.project, limit=body.limit,
-        )
-    except CompositionUnavailable as exc:
-        # Answered here rather than through ``HTTPException`` because that
-        # handler keeps a string message or a list of details and never both:
-        # a dict ``detail`` is dropped to "Request failed", which would leave
-        # this door naming neither the outage nor the channels behind it while
-        # its twin names both. The body is the app's own error envelope —
-        # ``error.code`` is 503's ``unavailable``, the same word the tool's
-        # ``status`` carries — with the shared unavailability object under
-        # ``details``, so the composition's channel record survives the wrap.
-        unavailable = knowledge_search_unavailable(exc)
-        return JSONResponse(
-            status_code=503,
-            content=ErrorEnvelope(
-                error=ErrorDetail(
-                    code="unavailable",
-                    message=unavailable.reason,
-                    details=[unavailable.model_dump(mode="json")],
-                ),
-                detail=unavailable.reason,
-            ).model_dump(),
-        )
-    return knowledge_search_response(result, fuse=body.fuse)
+    with lease_llm(llm):
+        service = LayerCompositionService(llm, session)
+        try:
+            result = await service.search(
+                body.query, project=body.project, limit=body.limit,
+            )
+        except CompositionUnavailable as exc:
+            # Answered here rather than through ``HTTPException`` because that
+            # handler keeps a string message or a list of details and never both:
+            # a dict ``detail`` is dropped to "Request failed", which would leave
+            # this door naming neither the outage nor the channels behind it while
+            # its twin names both. The body is the app's own error envelope —
+            # ``error.code`` is 503's ``unavailable``, the same word the tool's
+            # ``status`` carries — with the shared unavailability object under
+            # ``details``, so the composition's channel record survives the wrap.
+            unavailable = knowledge_search_unavailable(exc)
+            return JSONResponse(
+                status_code=503,
+                content=ErrorEnvelope(
+                    error=ErrorDetail(
+                        code="unavailable",
+                        message=unavailable.reason,
+                        details=[unavailable.model_dump(mode="json")],
+                    ),
+                    detail=unavailable.reason,
+                ).model_dump(),
+            )
+        return knowledge_search_response(result, fuse=body.fuse)

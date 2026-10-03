@@ -14,7 +14,7 @@ from app.utils.graph_keys import compose_key, decompose_key, split_symbol_key
 
 logger = logging.getLogger(__name__)
 
-# Code search fuses its two arms on a composite ``file_path:line_start`` key
+# Code search fuses its two arms on a ``(repo_id, file_path, line_start)`` key
 # rather than on a row id, so it keeps its own accumulation loop; the constant
 # is imported because a second declaration of it can drift from the one the
 # memory path ranks by while both files still read as if they agreed.
@@ -33,7 +33,7 @@ class CodeQueryService:
         repo_id: UUID | None = None,
         language: str | None = None,
     ) -> list[dict]:
-        results_map: dict[str, dict] = {}
+        results_map: dict[tuple[str, str, int], dict] = {}
 
         # `settings.read_only` skips the vector arm outright rather than
         # letting it attempt and fail: a backup worker makes no external
@@ -47,7 +47,7 @@ class CodeQueryService:
                     limit=limit * 2, repo_id=repo_id, language=language,
                 )
                 for rank, chunk in enumerate(chunk_results, start=1):
-                    key = f"{chunk['file_path']}:{chunk['line_start']}"
+                    key = (str(chunk["repo_id"]), chunk["file_path"], chunk["line_start"])
                     if key not in results_map:
                         results_map[key] = {
                             "chunk_content": chunk.get("chunk_content", ""),
@@ -95,7 +95,7 @@ class CodeQueryService:
 
             text_results = (await self.session.execute(text_query)).all()
             for rank, (sym, file_path, rid, lang) in enumerate(text_results, start=1):
-                key = f"{file_path}:{sym.line_start}"
+                key = (str(rid), file_path, sym.line_start)
                 if key not in results_map:
                     results_map[key] = {
                         "chunk_content": sym.source_code[:500] if sym.source_code else "",

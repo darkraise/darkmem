@@ -267,7 +267,7 @@ class _FakeDestination:
             if family.matches(n)
         ]
 
-    async def prune(self, keep, family=None):
+    async def prune(self, keep, family=None, *, verified=None):
         family = family or backup_ship.DUMPS
         self.pruned_with.append(keep)
         self.pruned_families.append((keep, family.prefix))
@@ -347,9 +347,172 @@ async def test_ship_all_journals_a_read_back_mismatch(
     assert len(rows) == 2
     assert rows[0]["got"] == "0" * 64
     assert rows[0]["expected"] != "0" * 64
-    # A destination that failed verification is still pruned to its retention:
-    # the failure is about this snapshot, not about the ones already there.
     assert liar.pruned_with == [14, 3]
+
+
+@pytest.mark.parametrize("keep", [1, 2])
+@pytest.mark.parametrize("failed_family", ["dump", "attachments"])
+async def test_failed_uploads_never_displace_verified_retention_survivors(
+    session, session_factory, tmp_path, monkeypatch, keep, failed_family
+):
+    await _dump_into(tmp_path, monkeypatch)
+    _fake_archive(monkeypatch)
+    await bc.save_destinations(
+        session,
+        {"destinations": [
+            {**LOCAL, "name": name, "retention_keep": keep,
+             "attachments_retention_keep": keep}
+            for name in ("bad", "good")
+        ]},
+    )
+    run_number = 1
+
+    class CorruptingDestination(backup_ship.LocalDestination):
+        async def ship(self, local_path, *, timeout=None):
+            await super().ship(local_path, timeout=timeout)
+            family = backup_ship.DUMPS if failed_family == "dump" else backup_ship.ATTACHMENTS
+            if self.name == "bad" and run_number == 2 and family.matches(local_path.name):
+                (self.directory / local_path.name).write_bytes(b"corrupt")
+
+    directories = {}
+    for name in ("bad", "good"):
+        directory = tmp_path / name
+        directory.mkdir()
+        (directory / "darkmem-20260101-000000.sql.gz").write_bytes(b"systemd")
+        directories[name] = directory
+    monkeypatch.setattr(
+        backup_ship, "build_destination",
+        lambda cfg: CorruptingDestination(
+            name=cfg.name, directory=directories[cfg.name], retention_keep=keep
+        ),
+    )
+    monkeypatch.setattr(backup_ship, "_stamp", lambda: f"2026010{run_number}-000000")
+
+    async def changing_manifest(session):
+        return str(run_number)
+
+    monkeypatch.setattr(backup_ship, "manifest_hash", changing_manifest)
+    family = backup_ship.DUMPS if failed_family == "dump" else backup_ship.ATTACHMENTS
+    first_name = (
+        "darkmem-app-20260101-000000.sql.gz" if failed_family == "dump"
+        else "darkmem-app-attachments-20260101-000000.tar.gz"
+    )
+    await backup_ship.ship_all(session_factory)
+    first_bytes = (directories["bad"] / first_name).read_bytes()
+    run_number = 2
+    result = await backup_ship.ship_all(session_factory)
+    outcomes = result if failed_family == "dump" else result["attachments"]
+    assert outcomes["verify_failed"] == ["bad"]
+    assert outcomes["shipped"] == 1
+    assert (directories["bad"] / first_name).read_bytes() == first_bytes
+
+    run_number = 3
+    await backup_ship.ship_all(session_factory)
+    bad_names = {path.name for path in directories["bad"].iterdir() if family.matches(path.name)}
+    if keep == 2:
+        assert first_name in bad_names
+    else:
+        assert first_name not in bad_names
+    good_names = {path.name for path in directories["good"].iterdir() if family.matches(path.name)}
+    assert len(good_names) == keep
+    for directory in directories.values():
+        assert (directory / "darkmem-20260101-000000.sql.gz").read_bytes() == b"systemd"
+
+
+async def test_retention_uses_latest_file_outcome_and_destination_identity(
+    session_factory,
+):
+    file_name = "darkmem-app-20260101-000000.sql.gz"
+    payload = {"destination": "disk", "file": file_name, "family": "dump", "sha256": "hash"}
+    disk = _FakeDestination("disk", sha="hash", holds=[file_name])
+    other = _FakeDestination("other", sha="hash", holds=[file_name])
+    await backup_ship._journal_shipped(session_factory, payload)
+    await backup_ship._journal_verify_failed(session_factory, payload)
+    await backup_ship._journal_shipped(
+        session_factory, {**payload, "destination": "other"}
+    )
+    assert await backup_ship._verified_snapshots(session_factory, disk, backup_ship.DUMPS, 1) == set()
+    assert await backup_ship._verified_snapshots(session_factory, other, backup_ship.DUMPS, 1) == {file_name}
+    await backup_ship._journal_shipped(session_factory, payload)
+    assert await backup_ship._verified_snapshots(session_factory, disk, backup_ship.DUMPS, 1) == {file_name}
+
+
+@pytest.mark.parametrize("artifact", ["dump", "attachments"])
+async def test_overwritten_snapshot_is_not_trusted_when_failure_journaling_fails(
+    session, session_factory, tmp_path, monkeypatch, artifact
+):
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    destination_dir = tmp_path / "destination"
+    destination_dir.mkdir()
+    await _dump_into(source_dir, monkeypatch)
+    _fake_archive(monkeypatch)
+    await bc.save_destinations(
+        session, {"destinations": [{**LOCAL, "name": "disk", "retention_keep": 1,
+                                    "attachments_retention_keep": 1}]}
+    )
+    family = backup_ship.DUMPS if artifact == "dump" else backup_ship.ATTACHMENTS
+    names = [f"{family.prefix}2026010{day}-000000{family.suffixes[0]}" for day in (1, 2)]
+    for number, name in enumerate(names):
+        path = destination_dir / name
+        _touch(path, mtime=number + 1)
+        await backup_ship._journal_shipped(
+            session_factory,
+            {"destination": "disk", "family": artifact, "file": name,
+             "sha256": await backup_ship.sha256_file(path)},
+        )
+
+    class CorruptingDestination(backup_ship.LocalDestination):
+        async def ship(self, local_path, *, timeout=None):
+            await super().ship(local_path, timeout=timeout)
+            if family.matches(local_path.name):
+                (self.directory / local_path.name).write_bytes(b"corrupt")
+
+    monkeypatch.setattr(
+        backup_ship, "build_destination",
+        lambda cfg: CorruptingDestination(name="disk", directory=destination_dir),
+    )
+
+    async def lost_event(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(backup_ship, "_journal_verify_failed", lost_event)
+    for stamp in ("20260102-000000", "20260103-000000"):
+        monkeypatch.setattr(backup_ship, "_stamp", lambda: stamp)
+        result = await backup_ship.ship_all(session_factory)
+        outcome = result if artifact == "dump" else result["attachments"]
+        assert outcome["verify_failed"] == ["disk"]
+        assert (destination_dir / names[0]).read_bytes() == b"x"
+
+
+@pytest.mark.parametrize("kind", ["local", "ssh", "s3", "worker"])
+@pytest.mark.parametrize("artifact", ["dump", "attachments"])
+async def test_destination_retention_only_counts_verified_files(
+    tmp_path, monkeypatch, receiver_dir, kind, artifact
+):
+    family = backup_ship.DUMPS if artifact == "dump" else backup_ship.ATTACHMENTS
+    names = [f"{family.prefix}2026010{day}-000000{family.suffixes[-1]}" for day in range(1, 5)]
+    verified = {names[0], names[2]}
+    if kind == "local":
+        for number, name in enumerate(names):
+            _touch(tmp_path / name, mtime=number + 1)
+        destination = backup_ship.LocalDestination(name="disk", directory=tmp_path)
+    elif kind == "ssh":
+        destination = backup_ship.SshDestination(SSH_CFG)
+
+        async def run(argv, **kwargs):
+            return "\n".join(names).encode() if "ls -1" in argv[-1] else b""
+
+        monkeypatch.setattr(destination, "_run", run)
+    elif kind == "s3":
+        destination = _s3(_FakeS3({f"darkmem/{name}": b"x" for name in names}))
+    else:
+        for name in names:
+            (receiver_dir / name).write_bytes(b"x")
+        destination = _worker_destination()
+
+    assert await destination.prune(1, family, verified=verified) == [names[0]]
+    assert await destination.prune(0, family, verified=set()) == []
 
 
 async def test_one_failing_destination_does_not_stop_the_others(

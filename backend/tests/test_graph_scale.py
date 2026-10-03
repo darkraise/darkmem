@@ -444,13 +444,15 @@ async def _add_entity(session, name: str, memory_ids: list[uuid.UUID]) -> uuid.U
     ).scalar_one()
 
 
-async def _add_relation(session, source: uuid.UUID, target: uuid.UUID) -> None:
+async def _add_relation(
+    session, source: uuid.UUID, target: uuid.UUID, memory_ids: list[uuid.UUID],
+) -> None:
     await session.execute(
         text(
-            "INSERT INTO entity_relations (source_entity_id, target_entity_id, rel_type) "
-            "VALUES (:s, :t, 'RELATED_TO')"
+            "INSERT INTO entity_relations (source_entity_id, target_entity_id, rel_type, memory_ids) "
+            "VALUES (:source, :target, 'RELATED_TO', CAST(:memory_ids AS uuid[]))"
         ),
-        {"s": source, "t": target},
+        {"source": source, "target": target, "memory_ids": memory_ids},
     )
 
 
@@ -462,8 +464,9 @@ async def test_entity_overlay_holds_only_entities_of_plotted_memories(session):
     single = await _add_entity(session, "scale-single", [m1.id])
     shared = await _add_entity(session, "scale-shared", [m1.id, m2.id])
     foreign = await _add_entity(session, "scale-foreign", [elsewhere.id])
-    await _add_relation(session, single, shared)
-    await _add_relation(session, single, foreign)
+    await _add_relation(session, single, shared, [m1.id])
+    await _add_relation(session, single, foreign, [m1.id])
+    await _add_relation(session, shared, single, [elsewhere.id])
 
     result = await PostgresGraphRepository(session).get_entities_for_memories(
         [str(m1.id), str(m2.id)], limit=10,

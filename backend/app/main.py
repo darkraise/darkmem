@@ -219,16 +219,19 @@ async def lifespan(app: FastAPI):
 
         @register_retry_handler("code_index")
         async def _retry_code_index(repo_id):
+            from app.services.llm import lease_llm
+
             async with async_session_factory() as s:
                 code_vector_repo = PostgresVectorRepository(s, "code_chunks")
                 active_llm = getattr(app.state, "llm", None)
-                pipeline = CodePipeline(
-                    session=s, llm=active_llm,
-                    vector_repo=code_vector_repo,
-                    repo_manager=RepoManager(s),
-                )
-                await pipeline.run(repo_id)
-                await s.commit()
+                with lease_llm(active_llm):
+                    pipeline = CodePipeline(
+                        session=s, llm=active_llm,
+                        vector_repo=code_vector_repo,
+                        repo_manager=RepoManager(s),
+                    )
+                    await pipeline.run(repo_id)
+                    await s.commit()
 
     # ── Job registry: replaces the previous four bare asyncio loops ──
     from app.services.buffer_flush import (
@@ -1110,7 +1113,10 @@ async def health():
         except Exception:
             return False
 
-    pgvector_ok, llm_ok = await asyncio.gather(check_pgvector(), check_llm())
+    if settings.read_only:
+        pgvector_ok, llm_ok = await check_pgvector(), False
+    else:
+        pgvector_ok, llm_ok = await asyncio.gather(check_pgvector(), check_llm())
 
     # Status-code policy:
     #   * pgvector is a hard dependency — without it none of the API works;

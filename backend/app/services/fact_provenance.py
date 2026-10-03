@@ -184,6 +184,13 @@ _STILL_SOURCED = text("""
 """)
 
 
+async def lock_facts_for_withdrawal(session: AsyncSession, fact_ids: list[str]) -> None:
+    await session.execute(
+        text("SELECT id FROM knowledge_triples WHERE id = ANY(CAST(:ids AS uuid[])) ORDER BY id FOR UPDATE"),
+        {"ids": sorted(set(fact_ids))},
+    )
+
+
 async def _memory_provenance(session: AsyncSession, memory_id: UUID | str) -> list[dict]:
     result = await session.execute(
         _MEMORY_PROVENANCE,
@@ -226,11 +233,12 @@ async def _withdraw(session: AsyncSession, *, rows: list[dict]) -> list[str]:
     if not rows:
         return []
 
+    fact_ids = [str(row["fact_id"]) for row in rows]
+    await lock_facts_for_withdrawal(session, fact_ids)
     await session.execute(
         _WITHDRAW, {"ids": [str(row["source_id"]) for row in rows]}
     )
 
-    fact_ids = [str(row["fact_id"]) for row in rows]
     surviving = {
         str(fact_id)
         for fact_id in (

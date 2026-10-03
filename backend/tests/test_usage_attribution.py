@@ -94,10 +94,6 @@ async def _run_batch(monkeypatch, ids, project):
     llm = _orchestrator(factory)
     pipe = ProcessingPipeline(llm, factory)
 
-    async def resolve_llm():
-        return pipe.classification
-
-    monkeypatch.setattr(pipe, "_resolve_classifier", resolve_llm)
     await pipe.process_batch([
         {"memory_id": mem_id, "content": f"content for {mem_id}",
          "source": "api", "project": project}
@@ -181,10 +177,6 @@ async def test_a_mixed_project_batch_claims_no_project(clean_llm_usage, monkeypa
     llm = _orchestrator(factory)
     pipe = ProcessingPipeline(llm, factory)
 
-    async def resolve_llm():
-        return pipe.classification
-
-    monkeypatch.setattr(pipe, "_resolve_classifier", resolve_llm)
     try:
         await pipe.process_batch([
             {"memory_id": ids[0], "content": "a", "source": "api", "project": "one"},

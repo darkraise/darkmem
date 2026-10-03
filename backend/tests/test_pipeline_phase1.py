@@ -79,11 +79,7 @@ def make_pipeline(factory, embedder, extraction: dict, monkeypatch):
     async def _extract(content, system_prompt=None, **kwargs):
         return dict(extraction)
 
-    async def _resolve():
-        return pipe.classification
-
     monkeypatch.setattr(pipe.extraction, "extract", _extract)
-    monkeypatch.setattr(pipe, "_resolve_classifier", _resolve)
     return pipe
 
 

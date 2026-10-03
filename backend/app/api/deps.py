@@ -1,3 +1,5 @@
+from contextlib import nullcontext
+
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -11,12 +13,15 @@ from app.services.chat import ChatService
 from app.services.code_pipeline import CodePipeline
 from app.services.graph import GraphService
 from app.services.memory import MemoryService
+from app.services.pipeline import ProcessingPipeline
+from app.services.llm import lease_llm
 from app.services.repo_manager import RepoManager
 
 
 async def get_memory_service(request: Request, session: AsyncSession = Depends(get_session)) -> MemoryService:
     pipeline = getattr(request.app.state, "pipeline", None)
-    return MemoryService(session, pipeline=pipeline)
+    with pipeline._pinned() if isinstance(pipeline, ProcessingPipeline) else nullcontext(pipeline) as pinned:
+        yield MemoryService(session, pipeline=pinned)
 
 
 # LLM-dependent dependency policy:
@@ -33,13 +38,15 @@ async def get_chat_service(request: Request, session: AsyncSession = Depends(get
         from fastapi import HTTPException
         raise HTTPException(status_code=503, detail="LLM service unavailable")
     graph_repo = PostgresGraphRepository(session)
-    return ChatService(session, llm, graph_repo)
+    with lease_llm(llm):
+        yield ChatService(session, llm, graph_repo)
 
 
 async def get_analytics_service(request: Request, session: AsyncSession = Depends(get_session)) -> AnalyticsService:
     pipeline = getattr(request.app.state, "pipeline", None)
     graph_repo = PostgresGraphRepository(session)
-    return AnalyticsService(session, pipeline, graph_repo)
+    with pipeline._pinned() if isinstance(pipeline, ProcessingPipeline) else nullcontext(pipeline) as pinned:
+        yield AnalyticsService(session, pinned, graph_repo)
 
 
 async def get_llm(request: Request):
@@ -56,21 +63,24 @@ async def get_llm(request: Request):
         from fastapi import HTTPException  # noqa: PLC0415
 
         raise HTTPException(status_code=503, detail="LLM orchestrator is not configured")
-    return llm
+    with lease_llm(llm):
+        yield llm
 
 
 async def get_graph_service(request: Request, session: AsyncSession = Depends(get_session)) -> GraphService:
     llm = getattr(request.app.state, "llm", None)
     vector_repo = PostgresVectorRepository(session)
     graph_repo = PostgresGraphRepository(session)
-    return GraphService(session, vector_repo, graph_repo, llm)
+    with lease_llm(llm):
+        yield GraphService(session, vector_repo, graph_repo, llm)
 
 
 async def get_code_pipeline(request: Request, session: AsyncSession = Depends(get_session)) -> CodePipeline:
     llm = getattr(request.app.state, "llm", None)
     vector_repo = PostgresVectorRepository(session, "code_chunks")
     repo_manager = RepoManager(session)
-    return CodePipeline(session=session, llm=llm, vector_repo=vector_repo, repo_manager=repo_manager)
+    with lease_llm(llm):
+        yield CodePipeline(session=session, llm=llm, vector_repo=vector_repo, repo_manager=repo_manager)
 
 
 async def get_repo_manager(session: AsyncSession = Depends(get_session)) -> RepoManager:

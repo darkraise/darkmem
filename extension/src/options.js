@@ -1,8 +1,8 @@
 import { getOriginKey } from "./origin.js";
 import {
   AUTO_CAPTURE_KEY,
+  AUTO_CAPTURE_SYNC_MESSAGE,
   autoCaptureRequest,
-  readAutoCaptureState,
 } from "./autocapture.js";
 
 const FIELDS = {
@@ -40,15 +40,25 @@ const autoBox = document.getElementById("autocapture");
 const autoStatus = document.getElementById("autocapture-status");
 
 async function renderAutoCapture() {
-  const state = await readAutoCaptureState(chrome.storage.local, (request) =>
-    chrome.permissions.contains(request),
-  );
+  let state;
+  try {
+    state = await chrome.runtime.sendMessage({ type: AUTO_CAPTURE_SYNC_MESSAGE });
+  } catch {
+    state = null;
+  }
+  if (!state || typeof state.active !== "boolean") {
+    autoBox.checked = false;
+    autoStatus.textContent = "off — observer status unavailable";
+    return;
+  }
   autoBox.checked = state.active;
   autoStatus.textContent = state.active
     ? "on — every new turn on those three sites is sent to darkmem"
     : state.enabled && !state.granted
       ? "off — the browser permission was not granted, so nothing is being read"
-      : "off";
+      : state.enabled && state.granted
+        ? "off — observer registration failed"
+        : "off";
 }
 
 autoBox.addEventListener("change", async () => {
