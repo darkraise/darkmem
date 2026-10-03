@@ -4,7 +4,7 @@
 
 **Goal:** Resolve all 26 independently validated review items with behavioral regressions and independent review.
 
-**Status:** Implementation complete and merged into local `master` at `a8284309` on 2026-10-03. All nine tasks and 26 findings accepted by independent reviewers; merge-gate floor is GREEN and post-merge backend 7,947 passed/26 skipped, frontend 1,981 passed. Existing frontend lint debt remains. Evidence: docs/planning/reviews/2026-10-03-comprehensive-review-remediation.md. Local deployment is authorized and recorded separately after verification; nothing is pushed remotely.
+**Status:** Implementation complete and merged into local `master` at `a8284309` on 2026-10-03. All nine tasks and 26 findings accepted by independent reviewers; merge-gate floor is GREEN and post-merge backend 7,947 passed/26 skipped, frontend 1,981 passed. This machine is redeployed and healthy on local image `1fd43c8c`, with backend and served SPA artifact identity verified. Existing frontend lint debt remains. Evidence: docs/planning/reviews/2026-10-03-comprehensive-review-remediation.md. Nothing is pushed remotely.
 
 **Integration authorization:** On 2026-10-03 the owner additionally requests committing the fixes, merging into local `master` and redeploying this machine. Remote Git/image pushes, releases and remote-instance changes remain unauthorized.
 
