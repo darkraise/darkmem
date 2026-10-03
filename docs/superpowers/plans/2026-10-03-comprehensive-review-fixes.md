@@ -4,9 +4,9 @@
 
 **Goal:** Resolve all 26 independently validated review items with behavioral regressions and independent review.
 
-**Status:** Implementation complete on the uncommitted branch, 2026-10-03. All nine tasks and 26 findings accepted by independent reviewers; final backend 7,947 passed/26 skipped, frontend 1,981 passed, build and SDK/extension checks passed. Existing frontend lint debt remains. Evidence: docs/planning/reviews/2026-10-03-comprehensive-review-remediation.md. No integration or deployment performed.
+**Status:** Implementation complete and merged into local `master` at `a8284309` on 2026-10-03. All nine tasks and 26 findings accepted by independent reviewers; merge-gate floor is GREEN and post-merge backend 7,947 passed/26 skipped, frontend 1,981 passed. Existing frontend lint debt remains. Evidence: docs/planning/reviews/2026-10-03-comprehensive-review-remediation.md. Local deployment is authorized and recorded separately after verification; nothing is pushed remotely.
 
-**Integration authorization:** On 2026-10-03 the owner additionally requests committing the fixes, merging into local `master` and redeploying this machine. The implementation status above records the pre-integration checkpoint; integration evidence is recorded separately. Remote Git/image pushes, releases and remote-instance changes remain unauthorized.
+**Integration authorization:** On 2026-10-03 the owner additionally requests committing the fixes, merging into local `master` and redeploying this machine. Remote Git/image pushes, releases and remote-instance changes remain unauthorized.
 
 **Architecture:** Preserve existing service boundaries and public contracts. Repair end-to-end invariants with shared transaction/resource lifetime coordination and scope-aware identities; fix frontend recovery and ownership at the state boundary.
 

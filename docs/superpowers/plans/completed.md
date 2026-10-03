@@ -72,3 +72,4 @@
 - 2026-09-07 `docs/superpowers/plans/2026-09-07-notes-increment-1c-1e.md` — merged into `master` at c1887ef4
 - 2026-09-08 `docs/superpowers/plans/2026-09-07-notes-increment-2-workspace-shell.md` — merged into `master` at 3a85d6bd
 - 2026-09-21 `docs/superpowers/plans/2026-09-20-notion-import-route.md` — merged into `master` at ddc92320
+- 2026-10-03 `docs/superpowers/plans/2026-10-03-comprehensive-review-fixes.md` — merged into `master` at a8284309

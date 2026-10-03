@@ -93,3 +93,11 @@ The short-path smoke passed 137 tests. The final complete backend run then passe
 - Notes and chat recovery are in-memory session/tab behavior, not crash-proof browser storage or idempotent server replay. Same-batch reconciliation is not a new crash-recovery journal.
 - Backup verification deliberately favors over-retention on uncertainty and adds survivor readback I/O. Failed or unknown artifacts are not counted as verified survivors; producer/systemd behavior is unchanged.
 - Dormant retrieval arms and default ranking gates remain unchanged. Finding 13 is resolved under the accepted HEAD-only policy, not by introducing an automatic unchanged-HEAD timer. The review is not proof that unreported functionality is defect-free.
+
+## Local integration and deployment
+
+- Fix commit: `a8284309151a43e9426a6cbc37002ae7039cb99e`, `fix: resolve comprehensive review findings`; 101 files. Local `master` fast-forwards from the reviewed base to this commit. Feature/master tree equality and a clean worktree are verified; no remote push or release is performed.
+- Documented merge gate: GREEN, including the single Alembic head, all normal backend/frontend/extension/SDK/build checks, 1,062 benchlib tests and cached-only F1 floors. Log: `/tmp/darkmem-merge-gate-1003.log`; covered files are unchanged before/after the gate.
+- Post-merge verification: 7,947 backend passed, 26 skipped, exit 0 in 377.53 seconds; 1,981 frontend passed across 264 files, exit 0 in 213.90 seconds. Logs: `/tmp/darkmem-postmerge-backend-1003.log` and `/tmp/darkmem-postmerge-frontend-1003.log`.
+- Pre-deployment database backup: `/root/darkmem-backups/darkmem-20261003-114000.sql.gz`, 940K, retention disabled. The unchanged attachment archive is retained; both pass gzip integrity checks. Local rollback image is pinned as `darkraise/darkmem:rollback-review-20261003` (`sha256:be111563e56158a412345ee0d5db99733e55fa42c929473d34477062a7627fdf`). No existing backup is pruned.
+- Deployment target: only `darkmem-prod-darkmem-1` on this machine. Existing PostgreSQL, repository/attachment volumes and host-specific compose override must remain intact. Build uses `DARKMEM_PUSH=0`; no registry publication, Git tag or version bump is performed. Production cutover is pending successful build and health/artifact verification.

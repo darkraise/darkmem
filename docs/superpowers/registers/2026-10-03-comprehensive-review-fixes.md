@@ -3,7 +3,7 @@
 **Source:** docs/planning/reviews/2026-10-02-comprehensive-code-review.md and the independent gpt-6.1-sol extra-high validation in this conversation.
 **Covers:** docs/superpowers/specs/2026-10-03-comprehensive-review-fixes.md
 
-All 26 acceptance checks are satisfied on the uncommitted branch as of 2026-10-03; done means tests and independent review accepted, not merged or deployed. Evidence: docs/planning/reviews/2026-10-03-comprehensive-review-remediation.md.
+All 26 acceptance checks are satisfied as of 2026-10-03, and the fixes are merged into local `master` at `a8284309`. Done means tests and independent review accepted; deployment is verified separately. Evidence: docs/planning/reviews/2026-10-03-comprehensive-review-remediation.md.
 
 | # | Item | Assigned | Acceptance | State | Note |
 |---|---|---|---|---|---|
