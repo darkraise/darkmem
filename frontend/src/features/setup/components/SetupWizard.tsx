@@ -17,6 +17,7 @@ import { StepPassword, isStepPasswordValid } from "./StepPassword"
 import { StepLLM, isStepLLMValid } from "./StepLLM"
 import { StepRepoPath, isStepRepoPathValid } from "./StepRepoPath"
 import { StepFinish } from "./StepFinish"
+import { SetupBrand } from "./setup-brand"
 
 const STEP_TITLES: Record<1 | 2 | 3 | 4, string> = {
   1: "Admin password",
@@ -140,12 +141,7 @@ export function SetupWizard() {
   return (
     <GlassPanel className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden">
       <CardContent className="flex min-h-0 flex-col gap-5 overflow-hidden p-4 sm:p-8">
-        <div className="shrink-0 space-y-1 text-center">
-          <h1 className="font-mono text-2xl font-bold tracking-tight">
-            darkmem
-          </h1>
-          <p className="text-muted-foreground text-sm">Initial Setup</p>
-        </div>
+        <SetupBrand />
 
         <ol className="flex shrink-0 flex-wrap justify-center gap-2 text-sm">
           {([1, 2, 3, 4] as const).map((s) => {
