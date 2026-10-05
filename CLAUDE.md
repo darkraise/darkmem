@@ -108,7 +108,7 @@ table or column is dropped only once no released code reads it.
 - Dev servers: `./scripts/start_dev_server.sh` runs alembic upgrade, then
   uvicorn :8000 `--reload --timeout-keep-alive 75` (the 75 prevents sporadic
   502s through the vite proxy); `cd frontend && npm run dev` runs vite :3636
-  proxying `/api`, `/health`, `/ws` to :8000. On this host `:8000` is
+  proxying `/api`, `/health`, `/ws`, `/mcp` to :8000. On this host `:8000` is
   production, so the dev uvicorn cannot bind and vite proxies to prod.
 - Migrations (from `backend/`): `.venv/bin/python -m alembic upgrade head`.
   `migrations/env.py` reads `DATABASE_URL` via app settings (default port
