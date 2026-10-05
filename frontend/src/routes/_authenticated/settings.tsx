@@ -91,7 +91,7 @@ function SettingsPage() {
             into the side gutters, so a strip spanning the content width
             already covers everything that passes under it. */}
         <div className="bg-background before:bg-background sticky top-0 z-20 pb-2 before:absolute before:inset-x-0 before:bottom-full before:h-8 before:content-['']">
-          <ScrollTabsList activeValue={tab ?? "flags"}>
+          <ScrollTabsList activeValue={tab ?? "flags"} scrollButtons>
             <TabsTrigger className="flex-1 gap-2" value="flags">
               <Flag aria-hidden className="size-[var(--icon-size)]" />
               Flags
