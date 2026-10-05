@@ -76,7 +76,9 @@ describe("ResearchTab — the arm switch", () => {
     mockApi()
     render(<ResearchTab />, { wrapper })
 
-    await waitFor(() => expect(screen.getAllByText("disarmed").length).toBeGreaterThan(0))
+    await waitFor(() =>
+      expect(screen.getAllByText("disarmed").length).toBeGreaterThan(0),
+    )
     expect(screen.queryByText(/could not be read/)).not.toBeInTheDocument()
   })
 
@@ -86,13 +88,20 @@ describe("ResearchTab — the arm switch", () => {
     // Wait for the *loaded* state, not just the button: the control is
     // deliberately disabled while the config is in flight, so clicking a
     // rendered-but-loading button silently does nothing.
-    await waitFor(() => expect(screen.getAllByText("disarmed").length).toBeGreaterThan(0))
-    fireEvent.click(screen.getByRole("button", { name: /Arm the research loop/ }))
+    await waitFor(() =>
+      expect(screen.getAllByText("disarmed").length).toBeGreaterThan(0),
+    )
+    fireEvent.click(
+      screen.getByRole("button", { name: /Arm the research loop/ }),
+    )
 
     await waitFor(() => {
-      const put = vi.mocked(apiFetch).mock.calls.find(
-        ([, options]) => (options as RequestInit | undefined)?.method === "PUT",
-      )
+      const put = vi
+        .mocked(apiFetch)
+        .mock.calls.find(
+          ([, options]) =>
+            (options as RequestInit | undefined)?.method === "PUT",
+        )
       expect(put).toBeTruthy()
       expect(put?.[0]).toBe("/config/auto-research")
       // A real boolean, never a string: `bool("false")` is the coercion the
@@ -107,7 +116,9 @@ describe("ResearchTab — the arm switch", () => {
     mockApi({ ...DISARMED, enabled: true })
     render(<ResearchTab />, { wrapper })
 
-    await waitFor(() => expect(screen.getAllByText("armed").length).toBeGreaterThan(0))
+    await waitFor(() =>
+      expect(screen.getAllByText("armed").length).toBeGreaterThan(0),
+    )
     expect(screen.getByRole("button", { name: /Disarm/ })).toBeInTheDocument()
   })
 
@@ -116,13 +127,37 @@ describe("ResearchTab — the arm switch", () => {
     render(<ResearchTab />, { wrapper })
 
     await waitFor(() =>
-      expect(screen.getByText(/research settings could not be loaded/)).toBeInTheDocument(),
+      expect(
+        screen.getByText(/research settings could not be loaded/),
+      ).toBeInTheDocument(),
     )
     expect(screen.getByText("unreadable")).toBeInTheDocument()
   })
 })
 
 describe("ResearchTab — the budgets", () => {
+  it("cannot save budgets before the config is read", () => {
+    vi.mocked(apiFetch).mockImplementation(() => new Promise(() => {}))
+    render(<ResearchTab />, { wrapper })
+    expect(screen.getByRole("button", { name: /Save budgets/ })).toBeDisabled()
+  })
+
+  it("refuses an emptied budget instead of writing zero", async () => {
+    mockApi()
+    render(<ResearchTab />, { wrapper })
+    await waitFor(() =>
+      expect(screen.getByLabelText("Max findings per run")).toHaveValue("20"),
+    )
+    fireEvent.change(screen.getByLabelText("Max findings per run"), {
+      target: { value: "" },
+    })
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /Save budgets/ }),
+      ).toBeDisabled(),
+    )
+  })
+
   it("saves both budgets without touching the arm switch", async () => {
     mockApi()
     render(<ResearchTab />, { wrapper })
@@ -136,9 +171,12 @@ describe("ResearchTab — the budgets", () => {
     fireEvent.click(screen.getByRole("button", { name: /Save budgets/ }))
 
     await waitFor(() => {
-      const put = vi.mocked(apiFetch).mock.calls.find(
-        ([, options]) => (options as RequestInit | undefined)?.method === "PUT",
-      )
+      const put = vi
+        .mocked(apiFetch)
+        .mock.calls.find(
+          ([, options]) =>
+            (options as RequestInit | undefined)?.method === "PUT",
+        )
       expect(put).toBeTruthy()
       expect(JSON.parse((put?.[1] as RequestInit).body as string)).toEqual({
         max_findings_per_run: 5,
@@ -148,16 +186,24 @@ describe("ResearchTab — the budgets", () => {
   })
 
   it("a refused write says why and leaves the switch alone", async () => {
-    vi.mocked(apiFetch).mockImplementation((path: string, options?: RequestInit) => {
-      if (options?.method === "PUT") {
-        return Promise.reject(new Error("auto_research.enabled must be a boolean"))
-      }
-      if (path === "/config/auto-research") return Promise.resolve(DISARMED)
-      return Promise.reject(new Error(`unexpected apiFetch(${path})`))
-    })
+    vi.mocked(apiFetch).mockImplementation(
+      (path: string, options?: RequestInit) => {
+        if (options?.method === "PUT") {
+          return Promise.reject(
+            new Error("auto_research.enabled must be a boolean"),
+          )
+        }
+        if (path === "/config/auto-research") return Promise.resolve(DISARMED)
+        return Promise.reject(new Error(`unexpected apiFetch(${path})`))
+      },
+    )
     render(<ResearchTab />, { wrapper })
-    await waitFor(() => expect(screen.getAllByText("disarmed").length).toBeGreaterThan(0))
-    fireEvent.click(screen.getByRole("button", { name: /Arm the research loop/ }))
+    await waitFor(() =>
+      expect(screen.getAllByText("disarmed").length).toBeGreaterThan(0),
+    )
+    fireEvent.click(
+      screen.getByRole("button", { name: /Arm the research loop/ }),
+    )
 
     await waitFor(() =>
       expect(screen.getByText(/not saved/)).toBeInTheDocument(),
@@ -170,34 +216,45 @@ describe("ResearchTab — the trigger re-derives, it does not gather", () => {
   it("offers no control that would make the server gather", async () => {
     mockApi()
     render(<ResearchTab />, { wrapper })
-    await waitFor(() => expect(screen.getAllByText("disarmed").length).toBeGreaterThan(0))
+    await waitFor(() =>
+      expect(screen.getAllByText("disarmed").length).toBeGreaterThan(0),
+    )
 
     for (const label of [/Run research/i, /Gather/i, /Search the web/i]) {
-      expect(screen.queryByRole("button", { name: label })).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole("button", { name: label }),
+      ).not.toBeInTheDocument()
     }
   })
 
   it("re-derives a run against the timestamp the listing gave it", async () => {
     mockApi()
     render(<ResearchTab />, { wrapper })
-    await waitFor(() => expect(screen.getByText("pgvector HNSW")).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getByText("pgvector HNSW")).toBeInTheDocument(),
+    )
 
     fireEvent.click(screen.getByRole("button", { name: "Re-derive" }))
 
     // The composite-key bound rides back verbatim: `events` is partitioned by
     // month, and a re-run that sent only the id would scan every child.
     await waitFor(() =>
-      expect(apiFetch).toHaveBeenCalledWith("/config/auto-research/runs/7/rerun", {
-        method: "POST",
-        body: JSON.stringify({ occurred_at: "2026-08-14T09:00:00Z" }),
-      }),
+      expect(apiFetch).toHaveBeenCalledWith(
+        "/config/auto-research/runs/7/rerun",
+        {
+          method: "POST",
+          body: JSON.stringify({ occurred_at: "2026-08-14T09:00:00Z" }),
+        },
+      ),
     )
   })
 
   it("refuses a run whose evidence is gone instead of offering an empty re-run", async () => {
     mockApi()
     render(<ResearchTab />, { wrapper })
-    await waitFor(() => expect(screen.getByText("uv vs pip")).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getByText("uv vs pip")).toBeInTheDocument(),
+    )
 
     const dead = screen.getByRole("button", { name: "Nothing to re-derive" })
     expect(dead).toBeDisabled()
@@ -210,14 +267,22 @@ describe("ResearchTab — the trigger re-derives, it does not gather", () => {
       if (path === "/config/auto-research/runs") return Promise.resolve(RUNS)
       if (path === "/config/auto-research/runs/7/rerun") {
         return Promise.resolve({
-          event_id: 7, subject: "pgvector HNSW", project: "default",
-          filed: 7, reprocessed: 5, missing: 2, pending: 0, errors: 0,
+          event_id: 7,
+          subject: "pgvector HNSW",
+          project: "default",
+          filed: 7,
+          reprocessed: 5,
+          missing: 2,
+          pending: 0,
+          errors: 0,
         })
       }
       return Promise.reject(new Error(`unexpected apiFetch(${path})`))
     })
     render(<ResearchTab />, { wrapper })
-    await waitFor(() => expect(screen.getByText("pgvector HNSW")).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getByText("pgvector HNSW")).toBeInTheDocument(),
+    )
 
     fireEvent.click(screen.getByRole("button", { name: "Re-derive" }))
 
@@ -238,21 +303,31 @@ describe("ResearchTab — the trigger re-derives, it does not gather", () => {
       if (path === "/config/auto-research/runs") return Promise.resolve(RUNS)
       if (path === "/config/auto-research/runs/7/rerun") {
         return Promise.resolve({
-          event_id: 7, subject: "pgvector HNSW", project: "default",
-          filed: 7, reprocessed: 4, missing: 3, pending: 2, errors: 0,
+          event_id: 7,
+          subject: "pgvector HNSW",
+          project: "default",
+          filed: 7,
+          reprocessed: 4,
+          missing: 3,
+          pending: 2,
+          errors: 0,
         })
       }
       return Promise.reject(new Error(`unexpected apiFetch(${path})`))
     })
     render(<ResearchTab />, { wrapper })
-    await waitFor(() => expect(screen.getByText("pgvector HNSW")).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getByText("pgvector HNSW")).toBeInTheDocument(),
+    )
 
     fireEvent.click(screen.getByRole("button", { name: "Re-derive" }))
 
     await waitFor(() =>
       expect(screen.getByText(/1 no longer exist/)).toBeInTheDocument(),
     )
-    expect(screen.getByText(/2 still in the capture buffer/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/2 still in the capture buffer/),
+    ).toBeInTheDocument()
   })
 
   it("an empty install says so rather than rendering an empty table", async () => {

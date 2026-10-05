@@ -1,3 +1,14 @@
+import { useState } from "react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "darkraise-ui/components/alert-dialog"
 import { Card, CardContent } from "darkraise-ui/components/card"
 import { Button } from "darkraise-ui/components/button"
 import { Badge } from "darkraise-ui/components/badge"
@@ -53,6 +64,9 @@ export function ProviderItem({
 }) {
   const del = useDeleteLlmProvider()
   const probe = useProbeProviderModels()
+  // A provider holds a base_url and an API key; deleting one is unrecoverable
+  // from the UI, so the trash icon only opens a confirmation (as Revoke does).
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   const frozen = provider.serves_verification
   const canDelete = provider.used_by.length === 0
@@ -133,7 +147,7 @@ export function ProviderItem({
               className="text-destructive"
               aria-label={`Delete ${provider.name}`}
               disabled={!canDelete || del.isPending}
-              onClick={() => del.mutate(provider.name)}
+              onClick={() => setConfirmingDelete(true)}
             >
               <Trash2 aria-hidden className="h-4 w-4" />
             </Button>
@@ -145,6 +159,32 @@ export function ProviderItem({
             : `in use by: ${provider.used_by.join(", ")}`}
         </TooltipContent>
       </Tooltip>
+      <AlertDialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {provider.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Its base URL and API key are removed, and no purpose can use it
+              afterwards. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              data-variant="destructive"
+              disabled={del.isPending}
+              onClick={(e) => {
+                e.preventDefault()
+                del.mutate(provider.name, {
+                  onSettled: () => setConfirmingDelete(false),
+                })
+              }}
+            >
+              {del.isPending ? "Deleting…" : "Delete provider"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 
@@ -176,4 +216,3 @@ export function ProviderItem({
     </Card>
   )
 }
-

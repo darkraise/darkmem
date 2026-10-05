@@ -1,11 +1,11 @@
-import { Globe, Lock, ShieldCheck } from "lucide-react"
-import {
-  Card,
-  CardContent,
-  CardHeader,
-} from "darkraise-ui/components/card"
+import { useState } from "react"
+import { Globe, KeyRound, Lock, ShieldCheck } from "lucide-react"
+import { Button } from "darkraise-ui/components/button"
 import { cn } from "darkraise-ui/lib"
 import { HelpTip } from "@/components/darkmem"
+import { DEMO } from "@/lib/demo-flag"
+import { ChangePasswordDialog } from "./change-password-dialog"
+import { SettingsCard } from "./settings-card"
 import {
   useSecurityTabBinding,
   type SecurityTabBinding,
@@ -40,32 +40,44 @@ function CardShell({
   children: React.ReactNode
 }) {
   return (
-    <Card className={cn("gap-0 py-0", className)}>
-      <CardHeader className="border-border bg-muted/30 flex flex-row flex-nowrap items-center gap-2 space-y-0 overflow-hidden border-b px-4 py-2.5">
-        <Icon aria-hidden className="text-primary-text h-4 w-4 shrink-0" />
-        <h3 className="min-w-0 truncate text-sm font-semibold">{title}</h3>
-        {help && (
-          <span className="shrink-0">
-            <HelpTip label={`About ${title}`}>{help}</HelpTip>
-          </span>
-        )}
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2.5 p-4">
-        {children}
-      </CardContent>
-    </Card>
+    <SettingsCard icon={Icon} title={title} help={help} className={className}>
+      {children}
+    </SettingsCard>
   )
 }
 
 function AuthCard({ binding }: { binding: SecurityTabBinding }) {
+  // The control itself, not a pointer to the user menu: on a phone "top
+  // right" is a single avatar glyph. Mounted only while open, and never in
+  // demo, where the shell does not wire the dialog either (there is no
+  // server to take the change).
+  const [changingPassword, setChangingPassword] = useState(false)
   return (
     <CardShell icon={ShieldCheck} title="Sign-in">
       <Row k="session">
-        {binding.sessionSub ? `signed in as ${binding.sessionSub}` : "signed in"}
+        {binding.sessionSub
+          ? `signed in as ${binding.sessionSub}`
+          : "signed in"}
       </Row>
       <Row k="password">
-        Change it from the user menu at the top right.
+        {DEMO ? (
+          <span className="text-muted-foreground">
+            Not changeable in the demo.
+          </span>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setChangingPassword(true)}
+          >
+            <KeyRound aria-hidden className="mr-1.5 size-3.5" />
+            Change password
+          </Button>
+        )}
       </Row>
+      {changingPassword && (
+        <ChangePasswordDialog open onOpenChange={setChangingPassword} />
+      )}
 
       <div className="border-inset flex flex-col gap-1.5 border-t border-dashed pt-2">
         <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
@@ -100,8 +112,8 @@ function SessionCard({ binding }: { binding: SecurityTabBinding }) {
             secure cookie
           </span>
           <HelpTip label="About the secure cookie">
-            When on, the session cookie is only sent over HTTPS. It is off
-            only on a plain-HTTP LAN install.
+            When on, the session cookie is only sent over HTTPS. It is off only
+            on a plain-HTTP LAN install.
           </HelpTip>
         </div>
         {binding.cookieSecureValue !== null && (
@@ -148,10 +160,11 @@ function McpAccessCard({ binding }: { binding: SecurityTabBinding }) {
           allowed hosts
         </span>
         {binding.mcpHosts !== null && (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             {binding.mcpHosts.map((h) => (
               <span
                 key={h.host}
+                title={h.wild ? "* disables the Host allowlist" : undefined}
                 className={cn(
                   "border-inset bg-background rounded-full border px-2 py-0.5 font-mono text-sm",
                   h.wild && "text-warning-text border-warning/55 border-dashed",
@@ -160,6 +173,13 @@ function McpAccessCard({ binding }: { binding: SecurityTabBinding }) {
                 {h.host}
               </span>
             ))}
+            {binding.mcpHosts.some((h) => h.wild) && (
+              <HelpTip label="About the * host">
+                The * entry turns the Host allowlist off: a keyed request is
+                accepted whatever host it names. Every call still needs an API
+                key.
+              </HelpTip>
+            )}
           </div>
         )}
       </div>

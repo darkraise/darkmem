@@ -29,8 +29,10 @@ export function ConfirmGate({
 
   return (
     <div className="flex flex-col gap-2">
-      {/* The inner trigger stays the interactive element (keyboard included);
-          this wrapper only catches its bubbled click to arm the panel. */}
+      {/* The inner trigger stays the interactive, focusable element: a native
+          button turns Enter/Space into a click that bubbles here, so the gate
+          arms from the keyboard too. Never give a trigger tabIndex={-1}; that
+          drops it from the Tab order and strands keyboard users. */}
       <div
         className={cn("w-fit", disabled && "pointer-events-none opacity-55")}
         onClick={() => !disabled && setArmed(true)}

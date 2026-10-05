@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -132,6 +132,16 @@ describe("SecurityTab (real) — reflects the real posture, never a hardcoded as
       expect(screen.getByText("localhost only")).toBeInTheDocument(),
     )
     expect(screen.queryByText("192.168.0.195:8000")).not.toBeInTheDocument()
+  })
+
+  it("offers the password change in place rather than pointing at the user menu", async () => {
+    mockHappy()
+    render(<SecurityTab />, { wrapper })
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Change password/ }),
+    )
+    expect(await screen.findByRole("dialog")).toBeInTheDocument()
+    expect(screen.queryByText(/user menu/)).toBeNull()
   })
 
   it("session renders the real sub from GET /auth/me", async () => {

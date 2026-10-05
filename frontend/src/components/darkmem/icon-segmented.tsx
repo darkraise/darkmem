@@ -17,6 +17,12 @@ export interface IconSegmentedOption<T extends string> {
    *  screen reader or a test can address them by. */
   label: string
   icon: LucideIcon
+  /** Optional short visible text beside the icon. Use it when the choice
+   *  carries a real consequence (cost, where it runs) that should not be
+   *  readable only on hover; it must be a word from `label`, so the
+   *  accessible name still contains what is on screen. Leave it off for a
+   *  purely cosmetic toggle such as a layout switch. */
+  text?: string
 }
 
 /**
@@ -84,9 +90,14 @@ export function IconSegmented<T extends string>({
               <SegmentGroupItem
                 value={option.value}
                 aria-label={option.label}
-                className="size-8 rounded-md p-0"
+                className={
+                  option.text
+                    ? "h-8 gap-1.5 rounded-md px-2.5 py-0 text-sm"
+                    : "size-8 rounded-md p-0"
+                }
               >
                 <option.icon aria-hidden className="size-[var(--icon-size)]" />
+                {option.text && <span aria-hidden>{option.text}</span>}
               </SegmentGroupItem>
             </span>
           </TooltipTrigger>

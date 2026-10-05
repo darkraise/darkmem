@@ -83,15 +83,21 @@ describe("GitAccountsTab", () => {
     render(<GitAccountsTab />, { wrapper })
 
     const defaultRow = (await screen.findByText("Personal")).closest("li")!
-    expect(within(defaultRow).getByText("Default")).toBeInTheDocument()
     expect(
-      within(defaultRow).queryByRole("button", { name: /set default/i }),
+      within(defaultRow).getByText("Default for github.com"),
+    ).toBeInTheDocument()
+    expect(
+      within(defaultRow).queryByRole("button", {
+        name: /make default for github.com/i,
+      }),
     ).not.toBeInTheDocument()
 
     const botRow = screen.getByText("OSS bot").closest("li")!
-    expect(within(botRow).queryByText("Default")).not.toBeInTheDocument()
+    expect(within(botRow).queryByText(/^Default for/)).not.toBeInTheDocument()
     expect(
-      within(botRow).getByRole("button", { name: /set default/i }),
+      within(botRow).getByRole("button", {
+        name: /make default for github.com/i,
+      }),
     ).toBeInTheDocument()
   })
 
@@ -101,7 +107,21 @@ describe("GitAccountsTab", () => {
 
     const botRow = (await screen.findByText("OSS bot")).closest("li")!
     await userEvent.click(
-      within(botRow).getByRole("button", { name: /set default/i }),
+      within(botRow).getByRole("button", {
+        name: /make default for github.com/i,
+      }),
+    )
+    // Personal already holds github.com, so the swap is confirmed first.
+    expect(apiFetch).not.toHaveBeenCalledWith(
+      "/git-accounts/acc-2",
+      expect.objectContaining({ method: "PUT" }),
+    )
+    const confirm = await screen.findByRole("dialog")
+    expect(
+      within(confirm).getByText(/Personal is the default/),
+    ).toBeInTheDocument()
+    await userEvent.click(
+      within(confirm).getByRole("button", { name: "Make default" }),
     )
 
     expect(apiFetch).toHaveBeenCalledWith(

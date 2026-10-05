@@ -42,11 +42,26 @@ describe("MaintenanceTab — confirmation gates", () => {
     render(<MaintenanceTab />, { wrapper })
     fireEvent.click(screen.getByRole("button", { name: /Run sweep now/ }))
     // Armed, not run: the count is untouched until Confirm.
-    expect(
-      useDemoStore.getState().maintenance.cleanup.expired,
-    ).toBeGreaterThan(0)
-    fireEvent.click(screen.getByRole("button", { name: /Confirm — delete now/ }))
+    expect(useDemoStore.getState().maintenance.cleanup.expired).toBeGreaterThan(
+      0,
+    )
+    fireEvent.click(
+      screen.getByRole("button", { name: /Confirm — delete now/ }),
+    )
     expect(useDemoStore.getState().maintenance.cleanup.expired).toBe(0)
+  })
+})
+
+describe("MaintenanceTab — keyboard reach", () => {
+  it("keeps every gate trigger in the Tab order", () => {
+    render(<MaintenanceTab />, { wrapper })
+    const triggers = [
+      ...[/Re-embed memories/, /Re-embed entities/, /Run sweep now/].map(
+        (name) => screen.getByRole("button", { name }),
+      ),
+      ...screen.getAllByRole("button", { name: /^Run now$/ }),
+    ]
+    for (const b of triggers) expect(b).not.toHaveAttribute("tabindex", "-1")
   })
 })
 
@@ -65,7 +80,9 @@ describe("DistributionTab — keys for apps and agents", () => {
     fireEvent.change(screen.getByLabelText(/What is this key for/), {
       target: { value: "a name" },
     })
-    expect(screen.getByRole("button", { name: /Create key/ })).not.toBeDisabled()
+    expect(
+      screen.getByRole("button", { name: /Create key/ }),
+    ).not.toBeDisabled()
   })
 })
 
@@ -73,7 +90,9 @@ describe("DistributionTab", () => {
   it("shows the MCP connect card and no fixture-backed push panel in demo", () => {
     render(<DistributionTab />, { wrapper })
     expect(screen.getByText("Connect an MCP client")).toBeInTheDocument()
-    expect(screen.queryByText(/Labels survive injection/)).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(/Labels survive injection/),
+    ).not.toBeInTheDocument()
   })
 })
 
