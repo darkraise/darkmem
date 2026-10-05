@@ -71,8 +71,14 @@
 [data-mode="dark"] .md-prose {
   @apply prose-invert;
 }
+/* The fence follows the mode like the `.hljs-*` palette below does: the
+   fixed dark panel stays for dark mode only, because in light mode its
+   `text-foreground` code was near-black on near-black. */
 .md-prose pre {
-  @apply border-border rounded-lg border bg-[#0c1018] p-3;
+  @apply border-border bg-muted rounded-lg border p-3;
+}
+[data-mode="dark"] .md-prose pre {
+  @apply bg-[#0c1018];
 }
 .md-prose pre code {
   @apply text-foreground bg-transparent p-0;
