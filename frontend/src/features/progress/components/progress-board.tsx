@@ -15,6 +15,7 @@ import {
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { ScrollArea } from "darkraise-ui/components/scroll-area"
+import { Skeleton } from "darkraise-ui/components/skeleton"
 import { EmptyState } from "@/components/darkmem"
 import { LayoutGrid } from "lucide-react"
 import { LEDGER_STATUSES } from "../types"
@@ -113,6 +114,11 @@ export function ProgressBoard({
     }
   }, [corpus])
 
+  const refFound = useMemo(
+    () => parsedQuery.kind === "ref" && corpus.tasks.some((t) => isExactMatch(t, parsedQuery)),
+    [corpus.tasks, parsedQuery],
+  )
+
   const visible = useMemo(() => {
     return corpus.tasks.filter((entry) => {
       const { task, row, epic } = entry
@@ -121,10 +127,10 @@ export function ProgressBoard({
       if (owner !== ANY && row?.owner !== owner) return false
       if (model !== ANY && task.meta.Model !== model) return false
       if (startableOnly && !verdicts.get(task.id)?.startable) return false
-      if (!matchesTaskQuery(entry, parsedQuery, query)) return false
+      if (!matchesTaskQuery(entry, parsedQuery, query, refFound)) return false
       return true
     })
-  }, [corpus.tasks, epicKey, lane, owner, model, startableOnly, parsedQuery, query, verdicts])
+  }, [corpus.tasks, epicKey, lane, owner, model, startableOnly, parsedQuery, query, refFound, verdicts])
 
   /** The tasks the query names exactly, among those the other filters keep:
    *  `#6` with a plan selected is one task, and Enter opens it. */
@@ -225,7 +231,7 @@ export function ProgressBoard({
         </span>
       </div>
 
-      {(parsedQuery.kind === "number" || parsedQuery.kind === "ref") && (
+      {!corpus.loading && (parsedQuery.kind === "number" || parsedQuery.kind === "ref") && (
         <p className="text-muted-foreground text-sm" role="status">
           {onlyMatch
             ? `Enter opens ${onlyMatch.task.id}.`
@@ -244,7 +250,15 @@ export function ProgressBoard({
         </p>
       )}
 
-      {visible.length === 0 ? (
+      {corpus.loading ? (
+        // Not the empty state: while the plans' outlines and ledgers load,
+        // "no tasks match" would be a false claim about the board.
+        <div className="flex gap-3" aria-label="Loading the board">
+          {LIVE_STATUSES.map((s) => (
+            <Skeleton key={s} className="h-40 w-72 shrink-0" />
+          ))}
+        </div>
+      ) : visible.length === 0 ? (
         <EmptyState
           kind="empty"
           icon={LayoutGrid}

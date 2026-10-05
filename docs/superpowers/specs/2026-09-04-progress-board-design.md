@@ -237,10 +237,14 @@ of `2026-10-03-comprehensive-review-fixes.md`. The code is derived from the
 filename alone (`lib/plan-code.ts`): the date dropped, connective words
 (`and`, `the`, `plan`, …) skipped, each word contributing its first letter
 plus its digits (`increment-1` → `I1`, `t2.26` → `T226`), a word starting with
-a digit contributing itself (`3d` → `3D`). Two plans that abbreviate alike are
-suffixed in filename order (`MGS`, `MGS2`), so the older plan keeps the bare
-code and a reference never moves once written. The committed plans all derive
-distinct codes, which a golden test pins. Epic tasks keep their ids (`T3.01`).
+a digit contributing itself (`3d` → `3D`). A lettered task (`Task 5a`) keeps
+its letter (`PW-5A`). Two plans that abbreviate alike are suffixed in filename
+order (`MGS`, `MGS2`); a new plan sorts last by its date, so it never moves an
+existing code, but unfiling, renaming or back-dating a plan in such a group
+renumbers the later ones. No two committed plans abbreviate alike today (a
+golden test pins that every code is distinct), so no suffix is in play. Epic
+tasks keep their ids (`T3.01`), and a plan code holds no dot, so the two never
+collide.
 
 **What the board reads.** Every filed plan's **outline** (headings only), so
 listing hundreds of plan tasks costs no plan source. A plan whose outline has
@@ -251,15 +255,19 @@ checkboxes; a landed plan's section is read when one of its tasks is opened.
 **Status, strongest signal first** (`lib/plan-status.ts`), with the source
 shown in the task's detail:
 
-1. `plans/completed.md` records the plan → every task `done`, except one the
+1. `plans/completed.md` records the plan (the first path on an entry line;
+   a later path on the line is a note) → every task `done`, except one the
    ledger dropped. Many landed plans leave their boxes unticked, so the boxes
    never outvote the merge record.
 2. The plan's **work-log ledger** — the workstream whose `plan_uri` names the
    plan, else the one keyed by its slug. A line names its task as the agent
    does (`Task 3: … — done`, `#3 review`, a `| 3 | … |` row); its status is the
-   first of the six vocabulary words after the line's last separator, latest
-   line winning. A line with no vocabulary word is narrative and changes
-   nothing.
+   last separator-delimited segment that *is* one of the six vocabulary words
+   (alone, or followed by punctuation: `done, review approved`), latest line
+   winning. A vocabulary word inside prose (`addressed the review comments`)
+   is narrative and changes nothing. The ledger format is the agent's, and no
+   real ledger was available to check it against; the shapes above are the
+   ones the parser accepts.
 3. The task's **step checkboxes**, the tracking syntax a plan declares: all
    ticked `done`, some `wip`, none `todo`.
 
@@ -271,8 +279,9 @@ before it in its plan, since plans execute in task order unless they say
 otherwise.
 
 **Lookup.** The filter box reads `#6` as "every task numbered 6" (one per plan
-that has a task 6; `#3.01` finds `T3.01`), and `CRF-6`, `crf#6`, `CRF 6` or
-`T3.01` as the one task with that reference. Enter opens the task when the
+that has a task 6; `#3.01` finds `T3.01`), and `CRF-6`, `crf#6` or `T3.01` as
+the one task with that reference (the `-` or `#` is required, so `phase 5`
+stays text; a reference that names a task shows that task alone). Enter opens the task when the
 query, under the other filters, names exactly one — so `#6` opens directly
 once a plan is picked in the Epic / plan filter. The open task is the route's
 `?task=CRF-6` search param, so a task's view is a link; leaving the Progress

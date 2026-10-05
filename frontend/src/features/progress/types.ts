@@ -37,7 +37,7 @@ export const TASK_ID = /^T[A-Z]?\d+\.\d+[a-z]?$/
  * is the one an agent already uses for the task, so the reference is that
  * number made unique across the project's plans.
  */
-export const PLAN_REF = /^[A-Z0-9]+-\d+$/
+export const PLAN_REF = /^[A-Z0-9]+-\d+[A-Z]?$/
 
 export interface LedgerRow {
   id: string

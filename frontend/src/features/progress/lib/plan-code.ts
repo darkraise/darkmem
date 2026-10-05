@@ -42,8 +42,11 @@ export function derivePlanCode(filename: string): string {
  * Codes for a project's plans, unique among them.
  *
  * Two plans whose names abbreviate alike are told apart by a numeric suffix
- * in filename order, and filenames lead with their date, so the plan written
- * first keeps the bare code and a later plan can never take it away.
+ * in filename order. Filenames lead with their date, so a newly written plan
+ * sorts last and takes the next suffix without moving anyone else's code. A
+ * suffix does depend on the set of filed plans, though: unfiling, renaming or
+ * back-dating one of `XY`, `XY2`, `XY3` renumbers the later ones. No two of
+ * this repository's plans abbreviate alike today, so no suffix is in play.
  */
 export function assignPlanCodes(filenames: string[]): Map<string, string> {
   const codes = new Map<string, string>()

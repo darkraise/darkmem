@@ -2,9 +2,12 @@ import { describe, it, expect } from "vitest"
 import { readFileSync, readdirSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
+import { fromMarkdown } from "mdast-util-from-markdown"
+import { toString } from "mdast-util-to-string"
 
 import { assignPlanCodes, derivePlanCode } from "../plan-code"
 import {
+  normalizeTaskNumber,
   parseCompletedPlans,
   parsePlanLedger,
   parsePlanSections,
@@ -66,7 +69,64 @@ describe("plan codes", () => {
   })
 })
 
+/** Every `Task N` heading a CommonMark parser finds -- the same structure the
+ *  server's markdown-it parse serves as the outline -- first occurrence
+ *  winning, in document order. */
+function commonMarkTaskNumbers(markdown: string): string[] {
+  const numbers: string[] = []
+  const visit = (node: { type: string; children?: unknown[] }) => {
+    if (node.type === "heading") {
+      const m = /^Task\s+(\d+[a-z]?)\s*(?:[:.—–-]|$)/i.exec(toString(node as never).trim())
+      const n = m?.[1] && normalizeTaskNumber(m[1])
+      if (n && !numbers.includes(n)) numbers.push(n)
+    }
+    for (const child of node.children ?? []) visit(child as never)
+  }
+  visit(fromMarkdown(markdown) as never)
+  return numbers
+}
+
 describe("parsePlanSections against the committed plans", () => {
+  it("finds exactly the task headings a CommonMark parse finds, in every plan", () => {
+    // The outline lists tasks by the server's parse and the detail reads
+    // sections by this one; where they disagree a task opens with no body,
+    // and an unfinished plan's task loses its steps and so its status.
+    for (const f of planFiles()) {
+      const text = read(f)
+      expect([...parsePlanSections(text).keys()], f).toEqual(commonMarkTaskNumbers(text))
+    }
+  })
+
+  it("survives a stray fence (login-revamp keeps its Tasks 7 and 8)", () => {
+    const sections = parsePlanSections(read("2026-06-02-login-revamp.md"))
+    expect(sections.has("7")).toBe(true)
+    expect(sections.has("8")).toBe(true)
+  })
+
+  it("closes a fence only on a bare run of the same character", () => {
+    const sections = parsePlanSections(
+      [
+        "### Task 1: One",
+        "````md",
+        "```ts",
+        "### Task 9: quoted",
+        "```",
+        "~~~",
+        "````",
+        "- [x] real step",
+        "### Task 2: Two",
+      ].join("\n"),
+    )
+    expect([...sections.keys()]).toEqual(["1", "2"])
+    expect(sections.get("1")?.steps).toEqual([{ text: "real step", checked: true }])
+  })
+
+  it("keeps a lettered task", () => {
+    const sections = parsePlanSections(read("2026-08-31-personal-workspace.md"))
+    expect(sections.get("5a")?.title).toMatch(/^Serve `properties`/)
+    expect(normalizeTaskNumber("08A")).toBe("8a")
+  })
+
   it("finds one section per task-index row, in every plan that has an index", () => {
     const indexed = planFiles().filter((f) => read(f).includes("## Task index"))
     expect(indexed.length).toBe(19)
@@ -101,6 +161,13 @@ describe("parseCompletedPlans", () => {
     expect(done.has("completed.md")).toBe(false)
     expect(done.has("2026-08-24-r2-shipped-image.md")).toBe(false)
   })
+
+  it("reads only an entry's first path; a later one is a note", () => {
+    const done = parseCompletedPlans(
+      "- 2026-10-01 `plans/a.md` — merged; supersedes `plans/b.md`\nSee `plans/c.md`.\n",
+    )
+    expect([...done]).toEqual(["a.md"])
+  })
 })
 
 describe("planFromOutline", () => {
@@ -124,6 +191,17 @@ describe("planFromOutline", () => {
     expect(plan.tasks.map((t) => [t.id, t.number, t.title, t.after, t.blockId])).toEqual([
       ["CRF-1", "1", "Repository ingestion boundaries", undefined, "b1"],
       ["CRF-2", "2", "Note draft recovery", "CRF-1", "b2"],
+    ])
+  })
+
+  it("keeps a lettered task under an upper-case reference", () => {
+    const plan = planFromOutline(
+      [node("Task 5: Five", 3, "b5"), node("Task 5a: Inserted", 3, "b5a")],
+      { code: "PW", filename: "x.md", documentId: "d", title: null },
+    )
+    expect(plan.tasks.map((t) => [t.id, t.number, t.after])).toEqual([
+      ["PW-5", "5", undefined],
+      ["PW-5A", "5a", "PW-5"],
     ])
   })
 
@@ -159,6 +237,23 @@ describe("parsePlanLedger", () => {
 
   it("does not read a vocabulary word inside an identifier", () => {
     expect(parsePlanLedger("Task 1: DONE_WITH_CONCERNS").size).toBe(0)
+  })
+
+  it("does not read a vocabulary word inside prose", () => {
+    const ledger = parsePlanLedger(
+      [
+        "Task 2: the done-when list is wrong, fixing",
+        "Task 3: addressed the review comments",
+        "Task 5: implementer dispatched (todo list attached)",
+        "Task 6: blocked on nothing, moving on to review",
+      ].join("\n"),
+    )
+    expect(ledger.size).toBe(0)
+  })
+
+  it("reads a lettered task and a status with a punctuation trailer", () => {
+    const ledger = parsePlanLedger("Task 5a: inserted step — done ✅\n#7 blocked (fixture)\n")
+    expect(Object.fromEntries(ledger)).toEqual({ "5a": "done", "7": "blocked" })
   })
 })
 

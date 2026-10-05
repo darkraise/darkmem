@@ -24,9 +24,15 @@ describe("parseTaskQuery", () => {
   })
 
   it("reads a plan reference in any of its spellings", () => {
-    for (const q of ["CRF-6", "crf-6", "CRF#6", "crf 6", "CRF-06"]) {
+    for (const q of ["CRF-6", "crf-6", "CRF#6", "crf # 6", "CRF-06"]) {
       expect(parseTaskQuery(q)).toEqual({ kind: "ref", ref: "CRF-6" })
     }
+    expect(parseTaskQuery("pw-5a")).toEqual({ kind: "ref", ref: "PW-5A" })
+    expect(parseTaskQuery("#5A")).toEqual({ kind: "number", number: "5a" })
+  })
+
+  it("reads words and a number without a dash as text", () => {
+    expect(parseTaskQuery("phase 5")).toEqual({ kind: "text", text: "phase 5" })
   })
 
   it("reads an epic task id", () => {
@@ -55,12 +61,19 @@ describe("matchesTaskQuery", () => {
     const e2e = entry("AB-1", "1", "Fix the e2e-2 leg")
     expect(matchesTaskQuery(e2e, parseTaskQuery("e2e-2"), "e2e-2")).toBe(true)
   })
+
+  it("shows a found reference alone, never its prefix-sharing neighbours", () => {
+    const sixty = entry("CRF-60", "60")
+    const q = parseTaskQuery("CRF-6")
+    expect(matchesTaskQuery(sixty, q, "CRF-6", true)).toBe(false)
+    expect(matchesTaskQuery(six, q, "CRF-6", true)).toBe(true)
+  })
 })
 
 describe("findTaskByRef", () => {
   it("finds a task by any spelling of its reference, and nothing by a number", () => {
     const tasks = [entry("CRF-6", "6"), entry("T3.01", "3.01")]
-    expect(findTaskByRef(tasks, "crf 6")?.task.id).toBe("CRF-6")
+    expect(findTaskByRef(tasks, "crf#6")?.task.id).toBe("CRF-6")
     expect(findTaskByRef(tasks, "T3.01")?.task.id).toBe("T3.01")
     expect(findTaskByRef(tasks, "#6")).toBeNull()
     expect(findTaskByRef(tasks, "CRF-7")).toBeNull()

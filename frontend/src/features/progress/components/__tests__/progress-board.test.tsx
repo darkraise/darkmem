@@ -219,3 +219,13 @@ describe("ProgressBoard task references", () => {
     expect(onOpenDocument).toHaveBeenCalledWith("plan-doc", "b2")
   })
 })
+
+describe("ProgressBoard while loading", () => {
+  it("shows a loading board, never the false no-match state or a missing-task notice", () => {
+    const corpus: ProgressCorpus = { ...planCorpus(), loading: true, tasks: [] }
+    render(<ProgressBoard corpus={corpus} openTask="CRF-2" onOpenTaskChange={() => {}} />)
+    expect(screen.getByLabelText("Loading the board")).toBeInTheDocument()
+    expect(screen.queryByText(/No tasks match/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/No task CRF-2/)).not.toBeInTheDocument()
+  })
+})

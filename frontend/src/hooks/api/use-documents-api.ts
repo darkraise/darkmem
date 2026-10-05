@@ -277,8 +277,22 @@ export function useDocumentContents(documentIds: string[]) {
   })
 }
 
+/** Runs `task` over `items` with at most `limit` in flight, so a reader of a
+ *  hundred documents does not open a hundred requests at once. */
+async function forEachLimited<T>(items: T[], limit: number, task: (item: T) => Promise<void>) {
+  let next = 0
+  const worker = async () => {
+    while (next < items.length) {
+      const item = items[next++] as T
+      await task(item)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+}
+
 /**
- * Several documents' outlines (headings only), one request each.
+ * Several documents' outlines (headings only), one request each, eight at a
+ * time.
  *
  * The Progress board lists every filed plan's tasks from its task headings;
  * reading each plan's source instead would cost megabytes per visit to the
@@ -292,16 +306,14 @@ export function useDocumentOutlines(documentIds: string[]) {
     enabled: !DEMO && documentIds.length > 0,
     queryFn: async () => {
       const out = new Map<string, OutlineNode[]>()
-      await Promise.all(
-        documentIds.map(async (id) => {
-          try {
-            const res = await apiFetch<{ items: OutlineNode[] }>(`/documents/${id}/outline`)
-            out.set(id, res.items)
-          } catch {
-            // Skipped: one unreadable plan must not blank the board.
-          }
-        }),
-      )
+      await forEachLimited(documentIds, 8, async (id) => {
+        try {
+          const res = await apiFetch<{ items: OutlineNode[] }>(`/documents/${id}/outline`)
+          out.set(id, res.items)
+        } catch {
+          // Skipped: one unreadable plan must not blank the board.
+        }
+      })
       return out
     },
   })
