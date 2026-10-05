@@ -70,7 +70,7 @@ describe("ApiKeysCard (real)", () => {
 
     const tile = await screen.findByRole("article", { name: "push-webhook" })
     expect(within(tile).getByText("Active")).toBeInTheDocument()
-    expect(within(tile).getByText("Save")).toBeInTheDocument()
+    expect(within(tile).getByText("Write")).toBeInTheDocument()
     expect(within(tile).getByText("Admin")).toBeInTheDocument()
     expect(within(tile).getByText("Never")).toBeInTheDocument()
     expect(screen.getByText(/1 active · 1 revoked/)).toBeInTheDocument()
@@ -166,7 +166,9 @@ describe("ApiKeysCard (real)", () => {
     })
     const read = screen.getByRole("checkbox", { name: /Search and read/ })
     const admin = screen.getByRole("checkbox", { name: /Receive push updates/ })
-    const capture = screen.getByRole("checkbox", { name: /Save new memories/ })
+    const capture = screen.getByRole("checkbox", {
+      name: /Add, edit and delete/,
+    })
     expect(read).toHaveAttribute("aria-checked", "true")
     fireEvent.click(read)
     expect(screen.getByRole("button", { name: /Create key/ })).toBeDisabled()
@@ -221,6 +223,14 @@ describe("ApiKeysCard (real)", () => {
     })
     fireEvent.click(screen.getByRole("button", { name: /Create key/ }))
     expect(await screen.findByText("dmk_zzz999_plaintext")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Copy key" })).toBeInTheDocument()
+
+    // The secret is never shown again, so a stray Escape must not lose it:
+    // only the explicit button closes the box once a key is on it.
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape",
+    })
+    expect(screen.getByText("dmk_zzz999_plaintext")).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: /I have copied it/ }))
     await waitFor(() =>
