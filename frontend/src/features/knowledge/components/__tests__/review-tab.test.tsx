@@ -655,6 +655,62 @@ describe("ReviewTab: the ratify door reports a failed apply, not silence (N3 / F
   })
 })
 
+describe("ReviewTab: a successful ratify or reject is confirmed, not silent", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useDetailLevel.setState({ level: "advanced" })
+  })
+
+  function serveQueue() {
+    vi.mocked(apiFetch).mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") return undefined
+      if (url.startsWith("/review-queue/counts")) return { facts: 1, articles: 0 }
+      if (url.startsWith("/review-queue/facts")) {
+        return { items: [FACT_ITEM], total: 1, limit: 10, offset: 0 }
+      }
+      if (url.startsWith("/review-queue/articles")) return emptyList()
+      throw new Error(`unexpected: ${url}`)
+    })
+  }
+
+  it("toasts the ratified fact by its triple", async () => {
+    serveQueue()
+    render(withQuery(<ReviewTab />))
+    await screen.findByText("darkmem uses postgres")
+    fireEvent.click(screen.getByText("Ratify → confirmed"))
+    fireEvent.click(await screen.findByText("Ratify as confirmed"))
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalled())
+    const [title, opts] = vi.mocked(toast.success).mock.calls[0]!
+    expect(String(title)).toMatch(/ratified as confirmed/i)
+    expect(String((opts as { description?: string }).description)).toContain(
+      FACT_ITEM.subject_name,
+    )
+  })
+
+  it("toasts the rejected fact", async () => {
+    serveQueue()
+    render(withQuery(<ReviewTab />))
+    await screen.findByText("darkmem uses postgres")
+    fireEvent.click(screen.getByText("Reject"))
+    fireEvent.click(await screen.findByText("Reject — withdraw belief"))
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalled())
+    const [title] = vi.mocked(toast.success).mock.calls[0]!
+    expect(String(title)).toMatch(/rejected/i)
+  })
+
+  it("links each row to the fact's read-only page as 'Open fact', not 'Edit'", async () => {
+    serveQueue()
+    render(withQuery(<ReviewTab />))
+    await screen.findByText("darkmem uses postgres")
+    expect(screen.queryByText("Edit")).toBeNull()
+    // Link is stubbed to a bare <a> here, so this asserts the label and the
+    // element only; the demo adapter test asserts the target id.
+    expect(screen.getByText("Open fact").closest("a")).not.toBeNull()
+  })
+})
+
 describe("ReviewTab: the reject door reports a failed apply, not silence (N3 / F2)", () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -680,12 +736,8 @@ describe("ReviewTab: the reject door reports a failed apply, not silence (N3 / F
 
     await screen.findByText("darkmem uses postgres")
     fireEvent.click(screen.getByText("Reject"))
-    // The row's own action button and the confirm dialog's action button are
-    // both literally labelled "Reject" — the dialog's copy is the second to
-    // appear once it opens.
-    await waitFor(() => expect(screen.getAllByText("Reject")).toHaveLength(2))
-    const rejectButtons = screen.getAllByText("Reject")
-    fireEvent.click(rejectButtons[rejectButtons.length - 1]!)
+    // The confirm dialog's action names the outcome, not the bare verb.
+    fireEvent.click(await screen.findByText("Reject — withdraw belief"))
 
     await waitFor(() => expect(toast.error).toHaveBeenCalled())
     const [title] = vi.mocked(toast.error).mock.calls[0]!
@@ -804,9 +856,7 @@ describe("ReviewTab: a non-HTTP reject failure reports state unknown, not applie
 
     await screen.findByText("darkmem uses postgres")
     fireEvent.click(screen.getByText("Reject"))
-    await waitFor(() => expect(screen.getAllByText("Reject")).toHaveLength(2))
-    const rejectButtons = screen.getAllByText("Reject")
-    fireEvent.click(rejectButtons[rejectButtons.length - 1]!)
+    fireEvent.click(await screen.findByText("Reject — withdraw belief"))
 
     await waitFor(() => expect(toast.error).toHaveBeenCalled())
     const [title] = vi.mocked(toast.error).mock.calls[0]!

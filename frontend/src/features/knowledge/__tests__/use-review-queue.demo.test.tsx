@@ -13,6 +13,7 @@ vi.mock("@/lib/demo-flag", () => ({ DEMO: true }))
 vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
 
 import { apiFetch } from "@/lib/api"
+import { useDemoStore } from "@/demo/store"
 import {
   useReviewArticleRows,
   useReviewFactRows,
@@ -67,6 +68,42 @@ describe("useReviewFactRows / useReviewArticleRows (DEMO on — the curated fixt
     expect(page2.current.rows).toHaveLength(1)
     expect(page2.current.rows[0]!.id).not.toBe(page1.current.rows[0]!.id)
     expect(page2.current.total).toBe(corpusTotal)
+  })
+
+  it("links every row to a fixture that exists — the target id, never the queue row's own id", () => {
+    const { facts, articles } = useDemoStore.getState()
+    const { result: factRows } = renderHook(
+      () => useReviewFactRows({ limit: 100, offset: 0 }),
+      { wrapper },
+    )
+    const { result: articleRows } = renderHook(
+      () => useReviewArticleRows({ limit: 100, offset: 0 }),
+      { wrapper },
+    )
+    expect(factRows.current.rows.length).toBeGreaterThan(0)
+    for (const row of factRows.current.rows) {
+      expect(facts.some((f) => f.id === row.id)).toBe(true)
+      expect(row.queue_id).not.toBe(row.id)
+    }
+    expect(articleRows.current.rows.length).toBeGreaterThan(0)
+    for (const row of articleRows.current.rows) {
+      expect(articles.some((a) => a.id === row.id)).toBe(true)
+    }
+  })
+
+  it("carries the target fact's triple and sentence, like the Facts list row", () => {
+    const { facts } = useDemoStore.getState()
+    const { result } = renderHook(
+      () => useReviewFactRows({ limit: 100, offset: 0 }),
+      { wrapper },
+    )
+    for (const row of result.current.rows) {
+      const target = facts.find((f) => f.id === row.id)!
+      expect(row.subject_name).toBe(target.subject_name)
+      expect(row.rel_type).toBe(target.rel_type)
+      expect(row.object_name).toBe(target.object_name)
+      expect(row.fact_text).toBe(target.fact_text)
+    }
   })
 
   it("slices the article arm the same way, past the end of the fixture", () => {
