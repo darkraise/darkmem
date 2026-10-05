@@ -234,7 +234,8 @@ function EditRepoDialog({
         data.index_uncommitted = v.index_uncommitted
 
       const wasCustom = repo.has_custom_token && !repo.git_account_id
-      const currentChoice = repo.git_account_id ?? (wasCustom ? CUSTOM_TOKEN : NO_ACCOUNT)
+      const currentChoice =
+        repo.git_account_id ?? (wasCustom ? CUSTOM_TOKEN : NO_ACCOUNT)
       if (v.account === CUSTOM_TOKEN) {
         // A blank token on an already-custom repo means "leave it alone";
         // there is nothing to send.
@@ -287,12 +288,16 @@ function EditRepoDialog({
           </form.Field>
           <form.Field name="path">
             {(field) => (
+              // Read-only: RepoUpdateParams carries no local_path, so an
+              // editable field here could never be saved.
               <TextField
                 name={field.name}
                 label="Path"
+                description="Set when the repository is added; it can't be changed here."
                 value={field.state.value}
                 onChange={(v) => field.handleChange(v)}
                 onBlur={field.handleBlur}
+                readOnly
               />
             )}
           </form.Field>
@@ -330,6 +335,7 @@ function EditRepoDialog({
                           ? "Replace token (blank keeps the stored one)"
                           : "Auth token"
                       }
+                      type="password"
                       value={field.state.value}
                       onChange={(v) => field.handleChange(v)}
                       onBlur={field.handleBlur}
