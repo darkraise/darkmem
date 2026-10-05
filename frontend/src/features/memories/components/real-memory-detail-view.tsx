@@ -16,6 +16,7 @@ import { LifecycleBadge } from "./lifecycle-badge"
 import { MemoryEditorDialog } from "./memory-editor-dialog"
 import { MemoryEventTimeline } from "./memory-event-timeline"
 import { MemoryExcerptLink } from "./memory-excerpt-link"
+import { shortId } from "@/lib/short-id"
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
@@ -90,7 +91,7 @@ function SupersessionLineage({ memory }: { memory: Memory }) {
               />
             ) : (
               <span className="text-muted-foreground text-sm italic">
-                successor memory {memory.superseded_by.slice(0, 8)} could not be
+                successor memory {shortId(memory.superseded_by)} could not be
                 loaded
               </span>
             )}
@@ -177,7 +178,7 @@ export function RealMemoryDetailView({ memoryId }: { memoryId: string }) {
           <div className="flex flex-wrap items-center gap-2">
             <LifecycleBadge status={memory.status} />
             <span className="text-muted-foreground ml-auto font-mono text-sm">
-              memory {memory.id.slice(0, 8)}
+              memory {shortId(memory.id)}
             </span>
           </div>
         </CardHeader>

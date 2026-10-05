@@ -15,13 +15,14 @@ describe("subjectLabel", () => {
   it("splits a maintenance subject into its kind and its target", () => {
     const l = subjectLabel("maintenance", "reembed_memories:9f3c1a2b-1111-2222-3333-444455556666")
     expect(l.title).toBe("reembed memories")
-    expect(l.detail).toMatch(/^9f3c1a2b/)
+    // The random tail, not the UUIDv7 timestamp head (see lib/short-id).
+    expect(l.detail).toBe("…55556666")
   })
 
   it("names the conversation a chat turn belongs to", () => {
     const l = subjectLabel("chat", "aaaaaaaa-1111-2222-3333-444455556666:bbbbbbbb-1111")
     expect(l.title).toBe("Chat turn")
-    expect(l.detail).toMatch(/conversation aaaaaaaa/)
+    expect(l.detail).toMatch(/conversation …55556666/)
   })
 
   it("falls back to the raw id when the shape does not match its type", () => {

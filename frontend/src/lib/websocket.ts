@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "darkraise-ui/components/sonner"
 import type { WebSocketEventMap, PipelineStatus } from "./websocket-events"
 import { describeSkippedFiles } from "./websocket-events"
+import { shortId } from "@/lib/short-id"
 
 /**
  * Every query key any pipeline/memory/repo WebSocket event keeps fresh while
@@ -34,7 +35,7 @@ const RECONCILE_QUERY_KEYS: string[] = [
 ]
 
 function showPipelineToast(event: string, data: PipelineStatus) {
-  const id = data.memory_id.slice(0, 8)
+  const id = shortId(data.memory_id)
 
   if (event === "pipeline.completed") {
     toast.success(`Memory ${id} processed`, {

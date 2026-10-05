@@ -7,6 +7,7 @@ import type {
 import type { FeedCategory } from "@/features/activity/types"
 import { categoryOfEventType } from "@/features/activity/event-taxonomy"
 import { useEvents, type EventLogEntry } from "@/hooks/api"
+import { shortId } from "@/lib/short-id"
 
 const FEED_LIMIT = 8
 
@@ -38,7 +39,7 @@ function fromEventLog(entry: EventLogEntry): ActivityEvent {
     typeof entry.payload?.outcome === "string" ? entry.payload.outcome : null
   const detail = [
     entry.object_type,
-    entry.object_id ? entry.object_id.slice(0, 8) : null,
+    entry.object_id ? shortId(entry.object_id) : null,
     entry.project ? `· project ${entry.project}` : null,
     outcome,
   ]

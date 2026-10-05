@@ -12,6 +12,7 @@ import { ScrollArea } from "darkraise-ui/components/scroll-area"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { useMemory } from "@/hooks/api"
 import { LifecycleBadge } from "./lifecycle-badge"
+import { shortId } from "@/lib/short-id"
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
@@ -51,7 +52,7 @@ export function MemoryPeekDialog({
           <DialogTitle className="flex items-center gap-2">
             <span>Memory</span>
             <span className="text-muted-foreground font-mono text-sm font-normal">
-              {memoryId.slice(0, 8)}
+              {shortId(memoryId)}
             </span>
             <LifecycleBadge status={memory.data?.status} />
           </DialogTitle>

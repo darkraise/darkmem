@@ -35,6 +35,7 @@ import { DEMO } from "@/lib/demo-flag"
 import { ShareBar } from "@/features/usage/components/usage-charts"
 import { formatArguments } from "../mcp-format"
 import { ModuleSurface } from "./module-surface"
+import { shortId } from "@/lib/short-id"
 
 const WINDOWS: McpCallWindow[] = ["24h", "7d", "30d"]
 const STATUSES: (McpCallStatus | "all")[] = ["all", "ok", "error", "denied"]
@@ -87,13 +88,13 @@ function ObjectId({ id, tools }: { id: string; tools: string[] }) {
         params={{ memoryId: id }}
         className="text-primary-text font-mono text-xs underline-offset-2 hover:underline"
       >
-        {id.slice(0, 8)}
+        {shortId(id)}
       </Link>
     )
   }
   return (
     <span className="font-mono text-xs" title={id}>
-      {id.length > 12 ? id.slice(0, 8) : id}
+      {shortId(id)}
     </span>
   )
 }
@@ -418,7 +419,7 @@ export function McpTab() {
               className="gap-1 rounded-full font-mono"
               onClick={() => setObjectId(undefined)}
             >
-              returned {objectId.slice(0, 8)}
+              returned {shortId(objectId)}
               <X aria-label="Clear item filter" className="h-3 w-3" />
             </Button>
           )}

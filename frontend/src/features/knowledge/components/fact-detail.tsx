@@ -25,6 +25,7 @@ import { DisputePanel } from "./dispute-panel"
 import { LiveDisputePanel } from "./live-dispute"
 import { FactLadderHistory } from "./fact-ladder"
 import { DetailSection } from "./detail-section"
+import { shortId } from "@/lib/short-id"
 
 /** `/knowledge/facts/$factId` — plain component, `factId` as a prop rather
  *  than read off `Route.useParams()`, so it renders (and tests) without a
@@ -222,7 +223,7 @@ function DemoFactDetail({ factId }: { factId: string }) {
           meta={fact.project}
         >
           <dl className="grid grid-cols-[8rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
-            <MetaRow label="ID">{fact.id.slice(0, 8)}</MetaRow>
+            <MetaRow label="ID">{shortId(fact.id)}</MetaRow>
             <MetaRow label="Project">{fact.project}</MetaRow>
             <MetaRow label="Review">{fact.review_state ?? "—"}</MetaRow>
             <MetaRow label="As of">{fact.as_of}</MetaRow>
@@ -403,7 +404,7 @@ function LiveFactDetailBody({ fact }: { fact: LiveFactDetailData }) {
           meta={fact.project}
         >
           <dl className="grid grid-cols-[8rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
-            <MetaRow label="ID">{fact.id.slice(0, 8)}</MetaRow>
+            <MetaRow label="ID">{shortId(fact.id)}</MetaRow>
             <MetaRow label="Project">{fact.project}</MetaRow>
             <MetaRow label="Review">{fact.review_state ?? "—"}</MetaRow>
             <MetaRow label="As of">{fact.as_of}</MetaRow>

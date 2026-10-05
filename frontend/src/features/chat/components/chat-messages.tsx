@@ -10,6 +10,7 @@ import { SourceBadges } from "./source-badges"
 import { findEntityMatches } from "../lib/entity-match"
 import { LifecycleDot } from "@/features/memories/components/lifecycle-badge"
 import type { ChatMessage, MemoryStatus } from "@/hooks/api"
+import { shortId } from "@/lib/short-id"
 
 interface MemoryRef {
   index: number
@@ -88,7 +89,7 @@ function MemoryBadge({
 }) {
   const label = mem.content
     ? truncateContent(mem.content)
-    : `Memory ${mem.id?.slice(0, 8) ?? mem.index}`
+    : `Memory ${mem.id ? shortId(mem.id) : mem.index}`
   // Invariant 14: no citation chip may render with zero lifecycle signal.
   // LifecycleDot is always present (unlike LifecycleBadge, which renders
   // nothing for "active") — muted when there is nothing to flag, colored

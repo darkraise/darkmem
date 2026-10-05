@@ -64,6 +64,7 @@ import {
   type UndoOutcome,
 } from "../use-dream-digest"
 import { ModuleSurface } from "./module-surface"
+import { shortId } from "@/lib/short-id"
 
 const GROUP_ICONS: Record<DreamActionType, LucideIcon> = {
   supersede: ArrowRight,
@@ -419,7 +420,7 @@ function ActionPreviewList({ actions }: { actions: DreamAction[] }) {
       {actions.slice(0, 3).map((a) => (
         <li key={a.event_id} className="font-mono">
           #{a.event_id} {actionLabel(a.action)} · object{" "}
-          {a.object_id.slice(0, 8)}
+          {shortId(a.object_id)}
         </li>
       ))}
       {actions.length > 3 && <li>+{actions.length - 3} more</li>}
@@ -605,7 +606,7 @@ function LiveObjectGroupPanel({
     <div className="border-border bg-card overflow-hidden rounded-lg border">
       <div className="border-border bg-muted/30 flex flex-wrap items-center gap-2.5 border-b px-3.5 py-2.5">
         <span className="border-border bg-muted inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-sm font-semibold">
-          object {group.object_id.slice(0, 8)}
+          object {shortId(group.object_id)}
         </span>
         {group.project && (
           <span className="text-muted-foreground font-mono text-sm">
@@ -813,7 +814,7 @@ export function LiveDreamDigest() {
             <AlertDialogTitle>Undo this object's actions?</AlertDialogTitle>
             <AlertDialogDescription>
               {confirmGroup &&
-                `Restores ${confirmGroup.actions.length} action${confirmGroup.actions.length === 1 ? "" : "s"} on object ${confirmGroup.group.object_id.slice(0, 8)}.`}
+                `Restores ${confirmGroup.actions.length} action${confirmGroup.actions.length === 1 ? "" : "s"} on object ${shortId(confirmGroup.group.object_id)}.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {confirmGroup && <ActionPreviewList actions={confirmGroup.actions} />}
@@ -825,7 +826,7 @@ export function LiveDreamDigest() {
                 const { group, actions } = confirmGroup
                 setConfirmGroup(null)
                 reportOutcome(
-                  `object ${group.object_id.slice(0, 8)}`,
+                  `object ${shortId(group.object_id)}`,
                   await undoNamed(actions.map((a) => a.event_id)),
                 )
               }}

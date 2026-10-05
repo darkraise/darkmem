@@ -51,6 +51,7 @@ import {
   type HygieneDuplicateRowData,
   type HygieneMemoryRowData,
 } from "../use-hygiene-queue"
+import { shortId } from "@/lib/short-id"
 
 const PAGE = 10
 
@@ -288,9 +289,6 @@ function CategoryShell({
   )
 }
 
-function shortId(id: string): string {
-  return id.slice(0, 8)
-}
 
 function DuplicateRow({
   row,

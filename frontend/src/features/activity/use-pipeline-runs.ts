@@ -3,6 +3,7 @@ import { useDemoPipelineRuns } from "@/demo/hooks"
 import type { DemoPipelineRun, PipelineStepState } from "@/features/activity/types"
 import { relativeTime } from "@/lib/format"
 import { usePipelineLogs, type PipelineLog } from "@/hooks/api"
+import { shortId } from "@/lib/short-id"
 
 function stepState(raw: unknown, degradedValue: string): PipelineStepState {
   if (raw === "ok") return "ok"
@@ -71,7 +72,7 @@ function fromPipelineLog(log: PipelineLog): DemoPipelineRun {
   return {
     id: String(log.id),
     memory_id: log.memory_id ?? null,
-    content: log.memory_id ? `memory ${log.memory_id.slice(0, 8)}` : "(memory deleted)",
+    content: log.memory_id ? `memory ${shortId(log.memory_id)}` : "(memory deleted)",
     time_label: relativeTime(log.timestamp),
     steps: [
       embed,

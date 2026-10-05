@@ -12,6 +12,7 @@ import {
   useRetryFailure,
   type PipelineFailure,
 } from "@/hooks/api"
+import { shortId } from "@/lib/short-id"
 
 function fromPipelineFailure(
   f: PipelineFailure,
@@ -21,7 +22,7 @@ function fromPipelineFailure(
     id: f.id,
     target_kind: f.entity_type === "memory" ? "memory" : "code_repo",
     target_label:
-      f.entity_preview || `${f.entity_type} ${f.entity_id.slice(0, 8)}`,
+      f.entity_preview || `${f.entity_type} ${shortId(f.entity_id)}`,
     pipeline: f.pipeline_name === "code_index" ? "code_index" : "memory_ingest",
     failed_step: f.failed_step,
     reason: f.error_message ?? "(no error message recorded)",

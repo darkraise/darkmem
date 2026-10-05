@@ -11,6 +11,7 @@ import { resolveNodeColor, entityTypeColor, clusterColor } from "@/features/grap
 import { GraphSummary } from "./graph-summary"
 import type { ColorMode } from "@/features/graph/lib/graph-colors"
 import { useMemoryGraphTheme } from "@/features/graph/lib/memory-graph-theme"
+import { shortId } from "@/lib/short-id"
 
 interface GraphDetailPanelProps {
   selectedMemory: UnifiedMemory | null
@@ -173,7 +174,7 @@ function EntityDetail({
                 onClick={() => onNavigateToMemory?.(mid)}
                 title={mem?.content}
               >
-                {mem ? mem.content.slice(0, 80) : mid.slice(0, 8) + "…"}
+                {mem ? mem.content.slice(0, 80) : shortId(mid)}
               </Button>
             )
           })}
@@ -198,7 +199,7 @@ function EntityDetail({
                   <span className="text-foreground">{r.type}</span>
                   <span className="text-muted-foreground">→</span>
                   <span className="text-foreground truncate">
-                    {otherEntity?.name ?? otherId.slice(0, 8)}
+                    {otherEntity?.name ?? shortId(otherId)}
                   </span>
                 </div>
               )

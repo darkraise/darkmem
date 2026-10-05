@@ -10,6 +10,7 @@ import {
 import { LayerChip } from "@/components/darkmem"
 import { LifecycleBadge } from "@/features/memories/components/lifecycle-badge"
 import type { MemoryStatus } from "@/hooks/api"
+import { shortId } from "@/lib/short-id"
 
 interface SourceBadgesProps {
   memories: {
@@ -87,7 +88,7 @@ export function SourceBadges({ memories, entities }: SourceBadgesProps) {
                     <LifecycleBadge status={m.status} />
                   </div>
                   <div className="text-foreground/90 line-clamp-2 leading-relaxed">
-                    {m.content || `Memory ${m.id?.slice(0, 8)}`}
+                    {m.content || `Memory ${shortId(m.id)}`}
                   </div>
                   <div className="text-muted-foreground/50 mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-sm">
                     {m.source && (
