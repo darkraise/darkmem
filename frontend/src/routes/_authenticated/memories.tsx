@@ -5,12 +5,9 @@ import { Button } from "darkraise-ui/components/button"
 import { EmptyState } from "@/components/darkmem"
 import { Input } from "darkraise-ui/components/input"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "darkraise-ui/components/select"
+  ToggleGroup,
+  ToggleGroupItem,
+} from "darkraise-ui/components/toggle-group"
 import { PageChrome } from "@/components/app-chrome"
 import { cn } from "darkraise-ui/lib"
 import { dayKeyToMs, localDayKey } from "@/lib/format"
@@ -30,27 +27,46 @@ import { RealMemoriesView } from "@/features/memories/components/real-memories-v
 import { TimelineScrubber } from "@/components/timeline-scrubber"
 import { buildTimelineScale, dateToFraction } from "@/lib/timeline"
 import { ALL_PROJECTS, useProjectStore } from "@/stores/project-store"
+import { CONTEXT_AXES, useContextStore } from "@/stores/context-store"
+import type { MemoryStatus } from "@/hooks/api"
 
 export const Route = createFileRoute("/_authenticated/memories")({
   // The click-to-date contract: /memories?date=YYYY-MM-DD positions the
   // scrubber and scrolls the results to that day (heatmap cell clicks).
-  validateSearch: (search: Record<string, unknown>): { date?: string } => ({
+  // ?q= opens the page with that query typed (the graph inspector's
+  // "search memories mentioning" link).
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { date?: string; q?: string } => ({
     date: isValidDay(search.date) ? search.date : undefined,
+    q:
+      typeof search.q === "string" && search.q.trim() !== ""
+        ? search.q
+        : undefined,
   }),
   // DEMO is fixed for the process lifetime (import.meta.env, not runtime
   // state), so branching at the component level never violates the rules
   // of hooks — the demo view keeps its own store-backed browse/scrub/seek
   // affordances untouched, and the real view is the T1.44 rebuild against
   // `/search/paginated?with_trace=true` (Ruling 5).
-  component: () => (DEMO ? <DemoMemoriesPage /> : <RealMemoriesView />),
+  component: () => (DEMO ? <DemoMemoriesPage /> : <RealMemoriesRoute />),
 })
+
+function RealMemoriesRoute() {
+  const { q } = Route.useSearch()
+  return <RealMemoriesView initialQuery={q} />
+}
 
 const BROWSE_PAGE = 50
 const ROW_GAP = 8
 const ROW_ESTIMATE = 84
 
-const CONTEXT_OPTIONS = ["env=prod", "env=dev"]
-const CONTEXT_NONE = "__none__"
+type StatusFilter = "all" | MemoryStatus
+const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "active", label: "Active" },
+  { value: "superseded", label: "Superseded" },
+]
 
 interface MemoryListRow {
   memory: DemoMemory
@@ -59,15 +75,23 @@ interface MemoryListRow {
 
 function DemoMemoriesPage() {
   const memories = useDemoMemories()
-  const { date: dateParam } = Route.useSearch()
+  const { date: dateParam, q: queryParam } = Route.useSearch()
 
-  const [query, setQuery] = useState("")
+  const [query, setQuery] = useState(queryParam ?? "")
   const activeProject = useProjectStore((s) => s.activeProject)
   const setProject = useProjectStore((s) => s.setProject)
   const scope = activeProject ?? "all"
   const setScope = (next: string) =>
     setProject(next === "all" ? ALL_PROJECTS : next)
-  const [context, setContext] = useState<string | null>(null)
+  // The search honours the header's session-context declaration; there is
+  // no page-local context control to disagree with it.
+  const declared = useContextStore((s) => s.declared)
+  const context = declared
+    ? CONTEXT_AXES.filter((axis) => declared.axes[axis])
+        .map((axis) => `${axis}=${declared.axes[axis]}`)
+        .join(", ")
+    : null
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [browseLimit, setBrowseLimit] = useState(BROWSE_PAGE)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -90,27 +114,38 @@ function DemoMemoriesPage() {
     [memories, query, scope, context, searching],
   )
 
+  // Browse rows stay computed while searching so the scrubber column keeps
+  // its place (disabled) instead of unmounting and reflowing the results.
   const browseRows = useMemo(() => {
-    if (searching) return []
-    const scoped =
-      scope === "all" ? memories : memories.filter((m) => m.project === scope)
-    return [...scoped].sort((a, b) => b.created_at.localeCompare(a.created_at))
-  }, [memories, scope, searching])
+    const scoped = memories.filter(
+      (m) =>
+        (scope === "all" || m.project === scope) &&
+        (statusFilter === "all" || m.status === statusFilter),
+    )
+    return scoped.sort((a, b) => b.created_at.localeCompare(a.created_at))
+  }, [memories, scope, statusFilter])
+
+  const searchRows = useMemo(
+    () =>
+      outcome
+        ? outcome.results.filter(
+            (r) => statusFilter === "all" || r.memory.status === statusFilter,
+          )
+        : [],
+    [outcome, statusFilter],
+  )
 
   const rows = useMemo<MemoryListRow[]>(
     () =>
       searching
-        ? outcome!.results
+        ? searchRows
         : browseRows.slice(0, browseLimit).map((memory) => ({ memory })),
-    [searching, outcome, browseRows, browseLimit],
+    [searching, searchRows, browseRows, browseLimit],
   )
 
   // The scrubber's axis covers the whole browse corpus, not just the loaded
   // pages — seeking past the loaded tail expands browseLimit to reach it.
-  const scale = useMemo(
-    () => (searching ? null : buildTimelineScale(browseRows)),
-    [browseRows, searching],
-  )
+  const scale = useMemo(() => buildTimelineScale(browseRows), [browseRows])
 
   const hasMore = !searching && browseRows.length > browseLimit
   // Browse mode appends one trailing status row (loading / all-shown).
@@ -156,8 +191,12 @@ function DemoMemoriesPage() {
     }
   }, [hasMore, lastRenderedIndex, rows.length])
 
-  const shownCount = searching ? outcome!.results.length : rows.length
-  const matchCount = searching ? outcome!.totalMatches : browseRows.length
+  const shownCount = rows.length
+  const matchCount = searching
+    ? statusFilter === "all"
+      ? outcome!.totalMatches
+      : searchRows.length
+    : browseRows.length
 
   const clearSearch = () => {
     setQuery("")
@@ -177,7 +216,7 @@ function DemoMemoriesPage() {
   // that day (or the nearest older day), loading more pages if the target
   // sits past the infinite-scroll tail.
   const seekToDate = (dayKey: string) => {
-    if (!scale || browseRows.length === 0) return
+    if (searching || !scale || browseRows.length === 0) return
     let idx = browseRows.findIndex(
       (m) => localDayKey(new Date(m.created_at)) <= dayKey,
     )
@@ -267,43 +306,27 @@ function DemoMemoriesPage() {
           groupClassName="min-w-64 flex-1"
           aria-label="Search memories"
         />
-        <Select
-          value={context ?? CONTEXT_NONE}
-          onValueChange={(v) => setContext(v === CONTEXT_NONE ? null : v)}
-        >
-          <SelectTrigger
-            aria-label="Session context"
-            className={cn(
-              "w-52 rounded-full",
-              context == null && "text-muted-foreground border-dashed italic",
-            )}
-          >
-            <SelectValue>
-              {context == null
-                ? "context: none"
-                : `context: ${context}`}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={CONTEXT_NONE}>none</SelectItem>
-            {CONTEXT_OPTIONS.map((c) => (
-              <SelectItem key={c} value={c}>
-                {c}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </div>
 
       <div
         className={cn(
           "grid grid-cols-1 items-start gap-5",
-          !searching && scale && "lg:grid-cols-[3.5rem_minmax(0,1fr)]",
+          scale && "lg:grid-cols-[3.5rem_minmax(0,1fr)]",
         )}
       >
-        {/* time-scale scrubber — a line of time, not a list of memories */}
-        {!searching && scale && (
-          <div className="sticky top-2 hidden h-[calc(100vh-11rem)] self-start lg:block">
+        {/* time-scale scrubber — a line of time, not a list of memories.
+            While searching it stays in place, dimmed and inert (results are
+            ranked, not dated), so the results card does not jump sideways. */}
+        {scale && (
+          <div
+            aria-disabled={searching || undefined}
+            inert={searching}
+            title={searching ? "Clear the search to scrub by date" : undefined}
+            className={cn(
+              "sticky top-2 hidden h-[calc(100vh-11rem)] self-start transition-opacity lg:block",
+              searching && "opacity-40",
+            )}
+          >
             <TimelineScrubber
               scale={scale}
               position={scrubFraction}
@@ -313,10 +336,26 @@ function DemoMemoriesPage() {
         )}
 
         <div className="border-border bg-card min-w-0 overflow-hidden rounded-lg border">
-          <MemoryResultsHeader
-            shown={shownCount}
-            total={matchCount}
-          />
+          <MemoryResultsHeader shown={shownCount} total={matchCount}>
+            <ToggleGroup
+              type="single"
+              size="sm"
+              value={statusFilter}
+              onValueChange={(value) => {
+                if (STATUS_FILTERS.some((f) => f.value === value)) {
+                  setStatusFilter(value as StatusFilter)
+                  setBrowseLimit(BROWSE_PAGE)
+                }
+              }}
+              aria-label="Filter by status"
+            >
+              {STATUS_FILTERS.map((f) => (
+                <ToggleGroupItem key={f.value} value={f.value}>
+                  {f.label}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </MemoryResultsHeader>
 
           <div className="space-y-3 p-4">
             {/* Exclusion counts render even when the result list is empty —
@@ -402,10 +441,24 @@ function DemoMemoriesPage() {
                   </div>
                 }
               />
+            ) : statusFilter !== "all" ? (
+              <EmptyState
+                kind="filtered"
+                title={`No ${statusFilter} memories`}
+                description={`Nothing ${scope === "all" ? "" : `in project ${scope} `}is ${statusFilter}.`}
+                action={
+                  <Button
+                    variant="outline"
+                    onClick={() => setStatusFilter("all")}
+                  >
+                    Show all statuses
+                  </Button>
+                }
+              />
             ) : memories.length === 0 ? (
               <EmptyState
                 kind="empty"
-              icon={Brain}
+                icon={Brain}
                 title="No memories captured yet"
                 description="Capture your first one to start searching."
                 action={

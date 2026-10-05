@@ -25,8 +25,13 @@ const ROW_ESTIMATE = 84
  * `Memory` row never carries a verification badge — that ladder belongs to
  * Facts, not raw memories.
  */
-export function RealMemoriesView() {
-  const [query, setQuery] = useState("")
+export function RealMemoriesView({
+  initialQuery = "",
+}: {
+  /** The route's ?q= value: the page opens with it typed. */
+  initialQuery?: string
+} = {}) {
+  const [query, setQuery] = useState(initialQuery)
   const activeProject = useProjectStore((s) => s.activeProject)
   const setScope = useProjectStore((s) => s.setProject)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -229,7 +234,10 @@ export function RealMemoriesView() {
               title={`No memories in project ${activeProject}`}
               description="This project has no memories yet — other projects might."
               action={
-                <Button variant="outline" onClick={() => setScope(ALL_PROJECTS)}>
+                <Button
+                  variant="outline"
+                  onClick={() => setScope(ALL_PROJECTS)}
+                >
                   Show all projects
                 </Button>
               }
