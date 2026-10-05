@@ -1,6 +1,9 @@
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoEvents } from "@/demo/hooks"
-import type { ActivityEvent, ActivityEventKind } from "@/features/dashboard/types"
+import type {
+  ActivityEvent,
+  ActivityEventKind,
+} from "@/features/dashboard/types"
 import type { FeedCategory } from "@/features/activity/types"
 import { categoryOfEventType } from "@/features/activity/event-taxonomy"
 import { useEvents, type EventLogEntry } from "@/hooks/api"
@@ -46,6 +49,10 @@ function fromEventLog(entry: EventLogEntry): ActivityEvent {
     kind: category ? KIND_BY_CATEGORY[category] : FALLBACK_KIND,
     title: humanise(entry.event_type),
     detail: detail || undefined,
+    object:
+      entry.object_type && entry.object_id
+        ? { type: entry.object_type, id: entry.object_id }
+        : undefined,
     at: entry.created_at,
   }
 }

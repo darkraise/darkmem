@@ -1,5 +1,6 @@
-import { Fragment, useMemo } from "react"
-import { useNavigate } from "@tanstack/react-router"
+import { Fragment, useMemo, useRef, useState } from "react"
+import type { KeyboardEvent } from "react"
+import { Link, useNavigate } from "@tanstack/react-router"
 import {
   HoverCard,
   HoverCardContent,
@@ -52,6 +53,14 @@ function CellPopover({ day }: { day: ContributionDay }) {
           click to open this day on the Memories timeline
         </p>
       )}
+      {/* The Day drill's "Dashboard" link lands here; this is the way back. */}
+      <Link
+        to="/activity"
+        search={{ tab: "day", day: day.date }}
+        className="text-primary inline-block text-xs underline-offset-2 hover:underline"
+      >
+        Open in Activity › Day drill
+      </Link>
     </div>
   )
 }
@@ -67,6 +76,41 @@ export function YearHeatmap({ days }: { days: ContributionDay[] }) {
   const thresholds = useMemo(() => intensityThresholds(days), [days])
   const todayKey = localDayKey(new Date())
 
+  // Roving tabindex: the 365 cells are one tab stop, and the arrow keys walk
+  // the grid (left/right a week, up/down a day, Home/End the ends), so a
+  // keyboard user is not made to press Tab once per day to get past it.
+  const indexByDate = useMemo(
+    () => new Map(days.map((d, i) => [d.date, i])),
+    [days],
+  )
+  const [activeDate, setActiveDate] = useState<string | null>(null)
+  const cellRefs = useRef(new Map<string, HTMLButtonElement>())
+  const fallbackDate =
+    (indexByDate.has(todayKey) ? todayKey : days[days.length - 1]?.date) ?? null
+  const focusDate =
+    activeDate && indexByDate.has(activeDate) ? activeDate : fallbackDate
+
+  const onGridKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const from = focusDate ? indexByDate.get(focusDate) : undefined
+    if (from === undefined) return
+    const step: Record<string, number> = {
+      ArrowLeft: -7,
+      ArrowRight: 7,
+      ArrowUp: -1,
+      ArrowDown: 1,
+    }
+    let to: number
+    if (e.key in step) to = from + (step[e.key] ?? 0)
+    else if (e.key === "Home") to = 0
+    else if (e.key === "End") to = days.length - 1
+    else return
+    e.preventDefault()
+    const target = days[Math.max(0, Math.min(days.length - 1, to))]
+    if (!target) return
+    setActiveDate(target.date)
+    cellRefs.current.get(target.date)?.focus()
+  }
+
   return (
     <div className="space-y-2">
       <div className="overflow-x-auto p-px pb-1">
@@ -78,7 +122,10 @@ export function YearHeatmap({ days }: { days: ContributionDay[] }) {
             floor and scrolls instead. */}
         <div
           data-testid="heatmap-grid"
-          className="grid min-w-max [--cell-min:10px] gap-[3px] sm:min-w-0 sm:[--cell-min:0px] xl:gap-1"
+          role="group"
+          aria-label="Contribution calendar. Arrow keys move between days; Enter opens a day."
+          onKeyDown={onGridKeyDown}
+          className="grid min-w-max gap-[3px] [--cell-min:10px] sm:min-w-0 sm:[--cell-min:0px] xl:gap-1"
           style={{
             gridTemplateColumns: `auto repeat(${weeks.length}, minmax(var(--cell-min), 1fr))`,
           }}
@@ -121,6 +168,12 @@ export function YearHeatmap({ days }: { days: ContributionDay[] }) {
                     <HoverCardTrigger asChild>
                       <button
                         type="button"
+                        ref={(el) => {
+                          if (el) cellRefs.current.set(day.date, el)
+                          else cellRefs.current.delete(day.date)
+                        }}
+                        tabIndex={day.date === focusDate ? 0 : -1}
+                        onFocus={() => setActiveDate(day.date)}
                         // The inject count rides the label rather than a
                         // colour alone: a coloured dot nobody can read out
                         // is not a surface a human can check push against.
@@ -136,7 +189,8 @@ export function YearHeatmap({ days }: { days: ContributionDay[] }) {
                           intensityClass(day.count, thresholds),
                           "hover:ring-ring focus-visible:ring-ring outline-none hover:ring-1 focus-visible:ring-1",
                           day.date === todayKey && "ring-primary/60 ring-1",
-                          day.injects > 0 && "ring-info/70 ring-1 ring-offset-0",
+                          day.injects > 0 &&
+                            "ring-info/70 ring-1 ring-offset-0",
                         )}
                       />
                     </HoverCardTrigger>

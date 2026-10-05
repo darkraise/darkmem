@@ -57,5 +57,8 @@ export interface ActivityEvent {
   verification?: VerificationStatus
   /** Demo-only today, for the same reason. */
   layer?: KnowledgeLayer
+  /** The journalled object, when the event names one (`/events` rows carry
+   *  `object_type` + `object_id`); lets the feed item open it. */
+  object?: { type: string; id: string }
   at: string
 }
