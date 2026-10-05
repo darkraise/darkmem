@@ -146,12 +146,35 @@ non-e2e checks to hosted, cancel and re-dispatch with `runner: hosted`; e2e
 still requires the self-hosted runner. With one
 runner, its jobs execute sequentially.
 
-**Image transfer.** CI saves its hosted build as a Docker tar artifact with
-1-day retention and no redundant artifact compression. The smoke job downloads
-by artifact ID and loads the build's recorded image reference, so retrying
-only the failed smoke job works even when `github.run_attempt` changes. Once
-the artifact expires, re-run the whole workflow to rebuild it. Registry pushes
+**Image transfer.** CI saves its hosted build as a zstd-compressed Docker tar
+(`docker load` reads zstd directly) and uploads it as an artifact with 1-day
+retention and no redundant artifact compression. The smoke job downloads by
+artifact ID and loads the build's recorded image reference, so retrying only
+the failed smoke job works even when `github.run_attempt` changes. Once the
+artifact expires, re-run the whole workflow to rebuild it. Registry pushes
 remain exclusive to the gated hosted release job.
+
+Downloading the artifact from GitHub's blob storage to darkmem-linux is slow
+(840 MB uncompressed took 21 minutes on 2026-10-05). An S3-compatible store
+the operator runs (MinIO, Garage, Ceph RGW) can carry a second copy:
+
+| Setting | Kind | Value |
+| --- | --- | --- |
+| `CI_IMAGE_S3_ENDPOINT` | variable | Endpoint URL GitHub-hosted runners can reach; setting it turns the S3 path on |
+| `CI_IMAGE_S3_LAN_ENDPOINT` | variable | Optional endpoint the self-hosted runner uses instead (its LAN address) |
+| `CI_IMAGE_S3_BUCKET` | variable | Bucket name |
+| `CI_IMAGE_S3_REGION` | variable | Optional, default `us-east-1` |
+| `CI_IMAGE_S3_ACCESS_KEY_ID`, `CI_IMAGE_S3_SECRET_ACCESS_KEY` | secrets | A key limited to `ci-images/` in that bucket (put, get) |
+
+The hosted build uploads to `s3://<bucket>/ci-images/<run>-<attempt>/` and
+still uploads the artifact. The smoke job reads the S3 copy through the
+`amazon/aws-cli` image, so the runner needs only Docker. It falls back to the
+artifact when the build's upload failed or the store is unreachable from the
+runner (for example a hosted fallback runner and a LAN-only endpoint). Both S3
+steps are non-fatal. Nothing deletes the objects, so give the bucket a 1-day
+expiry rule on `ci-images/`. The upload crosses the internet into the store,
+so it only helps when that path is faster than the runner's path to GitHub's
+blob storage; compare the two step timings after enabling it.
 
 **Cost.** Hosted minutes are spent on image builds/scans, release jobs and
 short picker jobs (one per CI run, two per release). Tests and e2e use

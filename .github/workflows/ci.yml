@@ -221,6 +221,8 @@ jobs:
     outputs:
       artifact-id: ${{ steps.upload.outputs.artifact-id }}
       image: ${{ steps.image.outputs.image }}
+      # Empty unless the self-hosted S3 upload below succeeded.
+      s3-key: ${{ steps.s3.outputs.key }}
     env:
       IMAGE: darkmem:ci-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
@@ -246,14 +248,38 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: "0"   # advisory until the dependency tree is triaged; flip to "1" to enforce
           ignore-unfixed: true
+      # zstd shrinks the tar several-fold, which is what bounds the smoke
+      # job's download; `docker load` reads zstd natively.
       - name: Export image
-        run: docker save "$IMAGE" -o "$RUNNER_TEMP/darkmem-image.tar"
+        run: docker save "$IMAGE" | zstd -T0 -6 -q -o "$RUNNER_TEMP/darkmem-image.tar.zst"
+      # Optional fast path: a copy in the operator's own S3-compatible store,
+      # which the darkmem-linux runner reads over the LAN instead of pulling
+      # the artifact from GitHub's blob storage. Skipped unless the repository
+      # variable is set, and never fatal: the artifact below is always
+      # uploaded too, so a smoke job that can't reach the store (a hosted
+      # fallback runner, an outage) still has the image.
+      - name: Upload image to self-hosted S3
+        id: s3
+        if: vars.CI_IMAGE_S3_ENDPOINT != ''
+        continue-on-error: true
+        timeout-minutes: 15
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.CI_IMAGE_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CI_IMAGE_S3_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ vars.CI_IMAGE_S3_REGION || 'us-east-1' }}
+          ENDPOINT: ${{ vars.CI_IMAGE_S3_ENDPOINT }}
+          BUCKET: ${{ vars.CI_IMAGE_S3_BUCKET }}
+          KEY: ci-images/${{ github.run_id }}-${{ github.run_attempt }}/darkmem-image.tar.zst
+        run: |
+          aws s3 cp "$RUNNER_TEMP/darkmem-image.tar.zst" "s3://$BUCKET/$KEY" \
+            --endpoint-url "$ENDPOINT" --only-show-errors
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
       - name: Upload image for verification
         id: upload
         uses: actions/upload-artifact@v4
         with:
           name: darkmem-image-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/darkmem-image.tar
+          path: ${{ runner.temp }}/darkmem-image.tar.zst
           compression-level: 0
           retention-days: 1
           if-no-files-found: error
@@ -280,7 +306,30 @@ jobs:
           --health-cmd "pg_isready -U darkmem"
           --health-interval 5s --health-timeout 3s --health-retries 10
     steps:
+      # The S3 copy first (LAN-fast on darkmem-linux), the artifact when the
+      # build skipped or failed the S3 upload or this runner can't read it.
+      # The CLI runs from its image, so the runner needs only Docker.
+      - name: Download built image from self-hosted S3
+        id: s3
+        if: needs.images.outputs.s3-key != ''
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.CI_IMAGE_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CI_IMAGE_S3_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ vars.CI_IMAGE_S3_REGION || 'us-east-1' }}
+          ENDPOINT: ${{ vars.CI_IMAGE_S3_LAN_ENDPOINT || vars.CI_IMAGE_S3_ENDPOINT }}
+          BUCKET: ${{ vars.CI_IMAGE_S3_BUCKET }}
+          KEY: ${{ needs.images.outputs.s3-key }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/image"
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_DEFAULT_REGION \
+            -v "$RUNNER_TEMP/image:/out" amazon/aws-cli:2.27.50 \
+            s3 cp "s3://$BUCKET/$KEY" /out/darkmem-image.tar.zst \
+            --endpoint-url "$ENDPOINT" --only-show-errors
       - name: Download built image
+        if: steps.s3.outcome != 'success'
         uses: actions/download-artifact@v4
         with:
           artifact-ids: ${{ needs.images.outputs.artifact-id }}
@@ -288,7 +337,7 @@ jobs:
           path: ${{ runner.temp }}/image
       - name: Load image
         run: |
-          docker load -i "$RUNNER_TEMP/image/darkmem-image.tar"
+          docker load -i "$RUNNER_TEMP/image/darkmem-image.tar.zst"
       # An image that builds and cannot boot is the failure a registry push
       # makes permanent, so prove it boots before a tag is ever allowed to
       # publish it. This exercises the real entrypoint: alembic upgrade, then

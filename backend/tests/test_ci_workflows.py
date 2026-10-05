@@ -74,6 +74,28 @@ def test_smoke_loads_the_hosted_build_artifact():
     assert jobs["images"]["outputs"]["artifact-id"] == "${{ steps.upload.outputs.artifact-id }}"
 
 
+def _step(job: dict, name: str) -> dict:
+    return next(s for s in job["steps"] if s.get("name") == name)
+
+
+def test_the_s3_image_hand_off_is_optional_and_falls_back_to_the_artifact():
+    jobs = _jobs("ci.yml")
+    upload = _step(jobs["images"], "Upload image to self-hosted S3")
+    assert upload["continue-on-error"] is True
+    assert upload["if"] == "vars.CI_IMAGE_S3_ENDPOINT != ''"
+    # The artifact is always uploaded, whatever the S3 step did.
+    assert "if" not in _step(jobs["images"], "Upload image for verification")
+    assert jobs["images"]["outputs"]["s3-key"] == "${{ steps.s3.outputs.key }}"
+
+    download = _step(jobs["image-smoke"], "Download built image from self-hosted S3")
+    assert download["continue-on-error"] is True
+    assert download["if"] == "needs.images.outputs.s3-key != ''"
+    fallback = _step(jobs["image-smoke"], "Download built image")
+    assert fallback["if"] == "steps.s3.outcome != 'success'"
+    names = [s.get("name") for s in jobs["image-smoke"]["steps"]]
+    assert names.index("Download built image from self-hosted S3") < names.index("Download built image")
+
+
 @pytest.mark.parametrize("workflow", ["ci.yml", "release.yml"])
 def test_no_job_holds_a_fixed_host_resource(workflow):
     for key, job in _jobs(workflow).items():
