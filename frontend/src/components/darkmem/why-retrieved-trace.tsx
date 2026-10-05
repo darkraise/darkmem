@@ -88,14 +88,16 @@ export function WhyRetrievedTrace({
           </div>
         )
       })}
-      <div className="bg-primary/10 border-primary/35 mt-0.5 flex items-center gap-2.5 rounded-md border px-2.5 py-1.5">
+      {/* In a narrow pane the caption wraps as one line under the score
+          rather than stacking word by word beside it. */}
+      <div className="bg-primary/10 border-primary/35 mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 rounded-md border px-2.5 py-1.5">
         <span className="text-primary-text font-mono text-sm tracking-wide uppercase">
           rrf_score
         </span>
         <span className="font-mono text-sm font-semibold">
           {rrfScore.toFixed(4)}
         </span>
-        <span className="text-muted-foreground text-sm">
+        <span className="text-muted-foreground text-sm whitespace-nowrap">
           the ordering signal
         </span>
       </div>

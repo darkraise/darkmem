@@ -4,6 +4,12 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "darkraise-ui/components/resizable"
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "darkraise-ui/components/tabs"
 import { useMediaQuery } from "@/hooks/use-media-query"
 
 /** The three-pane chat shell, shared by the real and demo pages so both keep
@@ -11,9 +17,9 @@ import { useMediaQuery } from "@/hooks/use-media-query"
  *
  *  Above `lg` the panes are a resizable group: the reader drags the two
  *  handles to trade width between the thread list, the conversation and the
- *  retrieval context. Below `lg` they stack and the page scrolls normally —
- *  three resizable columns sharing a phone's width leaves each too narrow to
- *  read, and the group would need a horizontal scrollbar to avoid it.
+ *  retrieval context. Below `lg` the three panes become tabs — three
+ *  resizable columns sharing a phone's width leaves each too narrow to read,
+ *  and stacking them put the composer mid-page above the context panel.
  *
  *  The branch is a JS media query rather than a `lg:` class because it swaps
  *  the container element itself, which a Tailwind prefix cannot do. Crossing
@@ -36,7 +42,9 @@ function readStoredSizes(): number[] {
     if (
       Array.isArray(parsed) &&
       parsed.length === DEFAULT_SIZES.length &&
-      parsed.every((n) => typeof n === "number" && Number.isFinite(n) && n > 0) &&
+      parsed.every(
+        (n) => typeof n === "number" && Number.isFinite(n) && n > 0,
+      ) &&
       (parsed[0] as number) >= THREADS_MIN_SIZE
     ) {
       return parsed as number[]
@@ -52,12 +60,22 @@ export function ChatPanels({
   threads,
   conversation,
   context,
+  activeKey,
 }: {
   threads: ReactNode
   conversation: ReactNode
   context: ReactNode
+  /** The open conversation's id. Below lg, picking a thread (or starting a
+   *  new one) changes it, which brings the Conversation tab forward. */
+  activeKey?: string | null
 }) {
   const wide = useMediaQuery("(min-width: 1024px)")
+  const [narrowTab, setNarrowTab] = useState("conversation")
+  const [seenKey, setSeenKey] = useState(activeKey)
+  if (seenKey !== activeKey) {
+    setSeenKey(activeKey)
+    setNarrowTab("conversation")
+  }
   // Read once. Re-reading on every render would fight the group, which owns
   // the live sizes after mount and only reports them back through
   // `onLayoutChange`.
@@ -78,12 +96,45 @@ export function ChatPanels({
   }, [])
 
   if (!wide) {
+    // Stacked, the composer sat mid-page with the whole context panel under
+    // it. Below lg each pane is a tab instead, so the conversation owns the
+    // screen and its composer sits at the bottom of the viewport. Panes stay
+    // mounted (`forceMount`) so a half-typed draft survives a tab switch.
     return (
-      <div className="flex flex-col gap-4">
-        {threads}
-        {conversation}
-        {context}
-      </div>
+      <Tabs
+        variant="underline"
+        value={narrowTab}
+        onValueChange={setNarrowTab}
+        className="flex flex-col gap-3"
+      >
+        <TabsList className="border-border border-b">
+          <TabsTrigger value="threads">Threads</TabsTrigger>
+          <TabsTrigger value="conversation">Conversation</TabsTrigger>
+          <TabsTrigger value="context">Context</TabsTrigger>
+        </TabsList>
+        <TabsContent
+          value="threads"
+          forceMount
+          className="grid data-[state=inactive]:hidden"
+        >
+          {threads}
+        </TabsContent>
+        <TabsContent
+          value="conversation"
+          forceMount
+          // The viewport minus the app header, page title and tab strip.
+          className="grid h-[calc(100dvh-11rem)] min-h-[22rem] grid-rows-[minmax(0,1fr)] data-[state=inactive]:hidden"
+        >
+          {conversation}
+        </TabsContent>
+        <TabsContent
+          value="context"
+          forceMount
+          className="grid data-[state=inactive]:hidden"
+        >
+          {context}
+        </TabsContent>
+      </Tabs>
     )
   }
 

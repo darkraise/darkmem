@@ -77,9 +77,17 @@ export function ReindexDialog({
           <DialogTitle>Reindex — {repo.name}</DialogTitle>
           <p className="text-muted-foreground font-mono text-sm">
             {repo.head ? `current HEAD ${repo.head}` : "never indexed"}
-            {repo.last_indexed_at
-              ? ` · last indexed ${formatWhen(repo.last_indexed_at)}`
-              : ""}
+            {/* Relative here and on the card, with the absolute stamp on
+                hover in both places. */}
+            {repo.last_indexed_at && (
+              <>
+                {" "}
+                · last indexed{" "}
+                <time title={repo.last_indexed_at}>
+                  {formatWhen(repo.last_indexed_at)}
+                </time>
+              </>
+            )}
           </p>
         </DialogHeader>
         <div className="space-y-1">

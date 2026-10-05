@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useId, useState } from "react"
 import {
   Select,
   SelectContent,
@@ -37,12 +37,19 @@ export function GitAccountSelect({
 }: Props) {
   const { data } = useGitAccountsData()
   const [addOpen, setAddOpen] = useState(false)
+  const triggerId = useId()
 
   const accounts = data.accounts.filter((a) => a.provider === provider)
 
   return (
     <div>
-      <Label className="text-muted-foreground">{label}</Label>
+      <Label
+        id={`${triggerId}-label`}
+        htmlFor={triggerId}
+        className="text-muted-foreground"
+      >
+        {label}
+      </Label>
       <Select
         value={value}
         onValueChange={(next) => {
@@ -53,7 +60,11 @@ export function GitAccountSelect({
           onChange(next)
         }}
       >
-        <SelectTrigger className="h-9 w-full">
+        <SelectTrigger
+          id={triggerId}
+          aria-labelledby={`${triggerId}-label`}
+          className="h-9 w-full"
+        >
           <SelectValue placeholder="Select an account" />
         </SelectTrigger>
         <SelectContent>
@@ -66,7 +77,9 @@ export function GitAccountSelect({
           {accounts.length > 0 && <SelectSeparator />}
           <SelectItem value={NO_ACCOUNT}>No authentication (public)</SelectItem>
           {allowCustomToken && (
-            <SelectItem value={CUSTOM_TOKEN}>Custom token for this repo…</SelectItem>
+            <SelectItem value={CUSTOM_TOKEN}>
+              Custom token for this repo…
+            </SelectItem>
           )}
           <SelectItem value={ADD_ACCOUNT}>+ Add account…</SelectItem>
         </SelectContent>

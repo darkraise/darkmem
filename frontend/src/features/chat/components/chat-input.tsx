@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect } from "react"
+import { useRef, useCallback, useEffect, useId } from "react"
 import { Button } from "darkraise-ui/components/button"
 import { Badge } from "darkraise-ui/components/badge"
 import { Textarea } from "darkraise-ui/components/textarea"
@@ -31,6 +31,7 @@ export function ChatInput({
   uncertainDraft,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const hintId = useId()
 
   useEffect(() => {
     if (retryDraft && textareaRef.current && !textareaRef.current.value) {
@@ -66,8 +67,18 @@ export function ChatInput({
 
   return (
     <div className="border-border space-y-2 border-t p-3">
-      {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-      {uncertainDraft && <Textarea aria-label="Unconfirmed message" value={uncertainDraft} readOnly />}
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      {uncertainDraft && (
+        <Textarea
+          aria-label="Unconfirmed message"
+          value={uncertainDraft}
+          readOnly
+        />
+      )}
       {contextLabel && (
         <Badge variant="secondary" className="gap-1">
           Context: {contextLabel}
@@ -90,6 +101,8 @@ export function ChatInput({
           onInput={autoResize}
           onKeyDown={handleKeyDown}
           disabled={disabled}
+          aria-label="Message"
+          aria-describedby={hintId}
           className="max-h-[120px] min-h-[40px] flex-1 resize-none"
         />
         {isStreaming ? (
@@ -114,7 +127,9 @@ export function ChatInput({
           </Button>
         )}
       </div>
-      <p className="text-muted-foreground/30 text-center text-sm">
+      {/* The composer's only instructions: plain muted text (about 7:1),
+          not the /30 tint that measured 1.6:1. */}
+      <p id={hintId} className="text-muted-foreground text-center text-sm">
         Enter to send · Shift+Enter for new line
       </p>
     </div>
