@@ -193,6 +193,40 @@ describe("ApiKeysCard (real)", () => {
     ])
   })
 
+  it("closes on the X once a key is shown, and drops the plaintext", async () => {
+    const created = {
+      ...LIVE,
+      id: "44444444-4444-4444-4444-444444444444",
+      name: "review-probe",
+      key_id: "zzz999",
+      scopes: ["read"],
+      token: "dmk_zzz999_plaintext",
+    }
+    let keys: unknown[] = []
+    vi.mocked(apiFetch).mockImplementation(
+      (path: string, init?: RequestInit) => {
+        if (path === "/api-keys" && init?.method === "POST") {
+          keys = [created]
+          return Promise.resolve(created)
+        }
+        if (path === "/api-keys") return Promise.resolve(keys)
+        return Promise.reject(new Error(`unexpected apiFetch(${path})`))
+      },
+    )
+    render(<ApiKeysCard />, { wrapper })
+
+    fireEvent.click(await screen.findByRole("button", { name: /New key/ }))
+    fireEvent.change(await screen.findByLabelText(/What is this key for/), {
+      target: { value: "review-probe" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: /Create key/ }))
+    expect(await screen.findByText("dmk_zzz999_plaintext")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Close" }))
+    await waitFor(() =>
+      expect(screen.queryByText("dmk_zzz999_plaintext")).toBeNull(),
+    )
+  })
+
   it("drops the one-time plaintext when its dialog closes", async () => {
     const created = {
       ...LIVE,
@@ -231,6 +265,10 @@ describe("ApiKeysCard (real)", () => {
       key: "Escape",
     })
     expect(screen.getByText("dmk_zzz999_plaintext")).toBeInTheDocument()
+    fireEvent.pointerDown(document.body)
+    expect(screen.getByText("dmk_zzz999_plaintext")).toBeInTheDocument()
+    // The X still closes it: a close button that does nothing reads as broken.
+    expect(screen.getByRole("button", { name: "Close" })).toBeEnabled()
 
     fireEvent.click(screen.getByRole("button", { name: /I have copied it/ }))
     await waitFor(() =>

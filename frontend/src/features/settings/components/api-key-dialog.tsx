@@ -103,12 +103,14 @@ export function ApiKeyDialog({
   }
 
   return (
+    // Once a key is on screen a stray Escape or outside click must not lose
+    // it, but the X is a deliberate dismissal like "I have copied it": a close
+    // button that does nothing reads as broken.
     <Dialog
       open={open}
-      onOpenChange={(next) => {
-        if (!next && issued) return
-        close(next)
-      }}
+      onOpenChange={close}
+      closeOnEscape={!issued}
+      closeOnOutsidePointerDown={!issued}
     >
       <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col gap-3 overflow-y-auto">
         <DialogHeader>
