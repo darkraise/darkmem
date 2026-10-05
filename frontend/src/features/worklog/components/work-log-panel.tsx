@@ -228,6 +228,9 @@ export function WorkLogPanel({
             <WorkstreamHeader
               workstream={selected}
               onOpenDocument={onOpenDocument}
+              // A kept selection would look the purged key up again (a 404);
+              // letting go falls back to the most active open workstream.
+              onPurged={() => setSelectedKey(null)}
             />
             <EntryTimeline
               key={`${selected.id}:${focusEntryId ?? ""}`}

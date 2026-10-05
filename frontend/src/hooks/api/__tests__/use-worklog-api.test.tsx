@@ -116,3 +116,33 @@ describe("work-log writes", () => {
     })
   })
 })
+
+describe("purging a workstream", () => {
+  it("does not re-read the purged workstream, only the others", async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const shared = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    )
+    vi.mocked(apiFetch).mockImplementation(async (path: string) => {
+      if (path.startsWith("/worklog/workstreams/w1/entries")) {
+        throw new ApiError("Not found", 404)
+      }
+      return { items: [], next_after: null, next_before: null }
+    })
+    renderHook(() => useWorklogEntries("w1", null, false), { wrapper: shared })
+    renderHook(() => useWorklogEntries("w2", null, false), { wrapper: shared })
+    await waitFor(() => expect(vi.mocked(apiFetch)).toHaveBeenCalledTimes(2))
+    vi.mocked(apiFetch).mockClear()
+
+    const purge = renderHook(() => useWorkstreamPurge(), { wrapper: shared })
+    await purge.result.current.mutateAsync("w1")
+
+    await waitFor(() =>
+      expect(vi.mocked(apiFetch)).toHaveBeenCalledWith(
+        expect.stringContaining("/worklog/workstreams/w2/entries"),
+      ),
+    )
+    const paths = vi.mocked(apiFetch).mock.calls.map(([path]) => path)
+    expect(paths.filter((p) => p.includes("/workstreams/w1/entries"))).toEqual([])
+  })
+})
