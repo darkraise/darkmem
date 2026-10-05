@@ -75,6 +75,15 @@ describe("usePageEditor", () => {
     ])
   })
 
+  it("keeps the callouts inside the one Basic blocks run", async () => {
+    const editor = await mountHook()
+    // The menu draws a header at each change of group, so a group must be
+    // one contiguous run or its header appears twice.
+    const groups = pageSlashItems(editor, "").map((item) => item.group)
+    const runs = groups.filter((group, i) => group !== groups[i - 1])
+    expect(new Set(runs).size).toBe(runs.length)
+  })
+
   it("inserts a callout with the picked variant", async () => {
     const editor = await mountHook()
     editor.setTextCursorPosition("p2", "end")

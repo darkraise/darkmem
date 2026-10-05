@@ -196,6 +196,21 @@ export function shouldHoverExpand(
   )
 }
 
+/** The ids of every page above `pageId`, nearest first. Empty while the
+ *  page is not in the index yet (a fresh child before the list refetches). */
+export function ancestorsOf(
+  index: Map<string, PageNode>,
+  pageId: string,
+): string[] {
+  const out: string[] = []
+  let parent = index.get(pageId)?.parent_id ?? null
+  while (parent && !out.includes(parent)) {
+    out.push(parent)
+    parent = index.get(parent)?.parent_id ?? null
+  }
+  return out
+}
+
 export function pointerZone(
   rect: { top: number; height: number } | null,
   pointerY: number,
@@ -309,6 +324,21 @@ export function PageTree({
     },
     [project],
   )
+
+  // Open the folders above the selected page once per selection, so a new
+  // child page or a `?page=` link is not left selected inside a collapsed
+  // parent. Once per selection (re-tried until the page reaches the index)
+  // so the reader can still collapse that parent afterwards.
+  const revealedFor = useRef<string | null>(null)
+  useEffect(() => {
+    if (!selectedId || revealedFor.current === selectedId) return
+    if (!index.has(selectedId)) return
+    revealedFor.current = selectedId
+    const hidden = ancestorsOf(index, selectedId).filter(
+      (id) => !expanded.includes(id),
+    )
+    if (hidden.length > 0) handleExpandedChange([...expanded, ...hidden])
+  }, [selectedId, index, expanded, handleExpandedChange])
 
   const [activeId, setActiveId] = useState<string | null>(null)
   const [zone, setZone] = useState<DropZone | null>(null)
