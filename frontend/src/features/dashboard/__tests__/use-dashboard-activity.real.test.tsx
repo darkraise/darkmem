@@ -55,6 +55,17 @@ describe("useDashboardActivity (DEMO off — real /events)", () => {
     expect(event.title.length).toBeGreaterThan(0)
   })
 
+  it("titles an event with its initialisms upper-cased", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({
+      items: [{ ...ROW, event_type: "api_key_revoked", object_type: "system" }],
+      total: 1,
+    })
+    const { result } = renderHook(() => useDashboardActivity(), { wrapper })
+
+    await waitFor(() => expect(result.current.events.length).toBe(1))
+    expect(result.current.events[0]!.title).toBe("API key revoked")
+  })
+
   it("gives an unknown event type a renderable kind rather than undefined", async () => {
     vi.mocked(apiFetch).mockResolvedValue({
       items: [{ ...ROW, event_type: "some_future_event" }],

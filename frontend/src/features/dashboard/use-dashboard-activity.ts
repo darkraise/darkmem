@@ -39,8 +39,14 @@ const KIND_BY_CATEGORY: Record<FeedCategory, ActivityEventKind> = {
  *  taxonomy does not know yet must therefore still land on a real kind. */
 const FALLBACK_KIND: ActivityEventKind = "job"
 
+/** Words an event type spells in lowercase that read as initialisms. */
+const INITIALISMS = new Set(["api", "llm", "mcp", "url"])
+
 function humanise(eventType: string): string {
-  const spaced = eventType.replace(/_/g, " ")
+  const spaced = eventType
+    .split("_")
+    .map((word) => (INITIALISMS.has(word) ? word.toUpperCase() : word))
+    .join(" ")
   return spaced.charAt(0).toUpperCase() + spaced.slice(1)
 }
 
