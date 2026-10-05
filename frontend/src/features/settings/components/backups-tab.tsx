@@ -1,9 +1,23 @@
 import { useEffect, useState } from "react"
-import { HardDriveDownload, ShieldAlert, ShieldCheck } from "lucide-react"
+import {
+  Eye,
+  EyeOff,
+  HardDriveDownload,
+  ShieldAlert,
+  ShieldCheck,
+} from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
 import { Label } from "darkraise-ui/components/label"
+import {
+  PasswordInput,
+  PasswordInputControl,
+  PasswordInputField,
+  PasswordInputIndicator,
+  PasswordInputVisibilityTrigger,
+} from "darkraise-ui/components/password-input"
+import { Textarea } from "darkraise-ui/components/textarea"
 import { Switch } from "darkraise-ui/components/switch"
 import {
   Dialog,
@@ -88,22 +102,38 @@ export function BackupsTab() {
     }
   }
 
+  // Nothing to ship to: the empty state below says so, and a Run now that
+  // stays live above it only earns a refusal. Unknown (loading or a failed
+  // read) is not "none", so the button stays usable then.
+  const noDestinations = !isLoading && !isError && destinations.length === 0
+
   return (
-    <ModuleSurface
-      title="Backups"
-      state={isLoading ? "empty" : "populated"}
-    >
+    <ModuleSurface title="Backups" state={isLoading ? "empty" : "populated"}>
       <div className="space-y-3.5">
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" disabled={isRunning} onClick={async () => {
-            const result = await runNow()
-            setRunMessage(
-              result.ok ? "Backup run started." : (result.message ?? "Refused."),
-            )
-          }}>
+          <Button
+            variant="outline"
+            disabled={isRunning || noDestinations}
+            aria-describedby={noDestinations ? "backups-run-hint" : undefined}
+            onClick={async () => {
+              const result = await runNow()
+              setRunMessage(
+                result.ok
+                  ? "Backup run started."
+                  : (result.message ?? "Refused."),
+              )
+            }}
+          >
             {isRunning ? "Running…" : "Run now"}
           </Button>
-          {runMessage ? (
+          {noDestinations ? (
+            <span
+              id="backups-run-hint"
+              className="text-muted-foreground text-sm"
+            >
+              Add a destination to run a backup.
+            </span>
+          ) : runMessage ? (
             <span className="text-muted-foreground text-sm">{runMessage}</span>
           ) : null}
         </div>
@@ -156,7 +186,10 @@ export function BackupsTab() {
         <InventorySection inventory={inventory} />
       </div>
 
-      <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
+      <Dialog
+        open={editing !== null}
+        onOpenChange={(open) => !open && setEditing(null)}
+      >
         <DialogContent>
           <DialogTitle>Edit destination</DialogTitle>
           <DialogDescription>
@@ -196,7 +229,11 @@ function formatBytes(bytes: number): string {
  *  database, and section 9.6 makes it a shell command so the act stays with a
  *  human at a console who has read what is here first. This section's job is
  *  to make that decision informed, not to make it one click away. */
-function InventorySection({ inventory }: { inventory: DestinationInventory[] }) {
+function InventorySection({
+  inventory,
+}: {
+  inventory: DestinationInventory[]
+}) {
   if (inventory.length === 0) return null
   return (
     <div className="border-border flex flex-col gap-2.5 border-t border-dashed pt-3">
@@ -228,7 +265,9 @@ function InventorySection({ inventory }: { inventory: DestinationInventory[] }) 
                   <li key={snapshot.name} className="flex flex-wrap gap-2">
                     <span className="font-mono">{snapshot.name}</span>
                     <span>{formatBytes(snapshot.size)}</span>
-                    <span>{new Date(snapshot.modified_at).toLocaleString()}</span>
+                    <span>
+                      {new Date(snapshot.modified_at).toLocaleString()}
+                    </span>
                   </li>
                 ))}
             </ul>
@@ -245,7 +284,9 @@ function InventorySection({ inventory }: { inventory: DestinationInventory[] }) 
                   <li key={snapshot.name} className="flex flex-wrap gap-2">
                     <span className="font-mono">{snapshot.name}</span>
                     <span>{formatBytes(snapshot.size)}</span>
-                    <span>{new Date(snapshot.modified_at).toLocaleString()}</span>
+                    <span>
+                      {new Date(snapshot.modified_at).toLocaleString()}
+                    </span>
                   </li>
                 ))}
             </ul>
@@ -288,7 +329,11 @@ function OutcomeBadge({
   if (!outcome) return null
   const verified = outcome.event_type === "backup_shipped"
   return (
-    <Badge variant="outline" size="sm" className={verified ? "" : "border-dashed"}>
+    <Badge
+      variant="outline"
+      size="sm"
+      className={verified ? "" : "border-dashed"}
+    >
       {label}: {verified ? "verified" : "not restorable"}
     </Badge>
   )
@@ -429,7 +474,10 @@ function DestinationForm({
 
       {draft.kind !== "local" ? (
         <div className="flex flex-col gap-1">
-          <Label htmlFor="backup-recipient" className="text-muted-foreground text-sm">
+          <Label
+            htmlFor="backup-recipient"
+            className="text-muted-foreground text-sm"
+          >
             age recipient (public key)
           </Label>
           <Input
@@ -444,11 +492,20 @@ function DestinationForm({
 
       {draft.ssh ? (
         <div className="flex flex-col gap-1">
-          <Label htmlFor="backup-ssh-key" className="text-muted-foreground text-sm">
+          <Label
+            htmlFor="backup-ssh-key"
+            className="text-muted-foreground text-sm"
+          >
             ssh private key
           </Label>
-          <Input
+          {/* A textarea: a PEM key is multi-line, and a single-line input
+              flattened it on paste. */}
+          <Textarea
             id="backup-ssh-key"
+            rows={4}
+            spellCheck={false}
+            autoComplete="off"
+            className="font-mono text-xs"
             value={draft.ssh.private_key}
             onChange={(e) =>
               setDraft({
@@ -468,7 +525,10 @@ function DestinationForm({
       {draft.worker ? (
         <>
           <div className="flex flex-col gap-1">
-            <Label htmlFor="backup-worker-url" className="text-muted-foreground text-sm">
+            <Label
+              htmlFor="backup-worker-url"
+              className="text-muted-foreground text-sm"
+            >
               Receiver URL
             </Label>
             <Input
@@ -483,16 +543,19 @@ function DestinationForm({
             />
           </div>
           <div className="flex flex-col gap-1">
-            <Label htmlFor="backup-worker-token" className="text-muted-foreground text-sm">
+            <Label
+              htmlFor="backup-worker-token"
+              className="text-muted-foreground text-sm"
+            >
               Receiver token
             </Label>
-            <Input
+            <SecretField
               id="backup-worker-token"
               value={draft.worker.token}
-              onChange={(e) =>
+              onChange={(value) =>
                 setDraft({
                   ...draft,
-                  worker: { ...draft.worker!, token: e.target.value },
+                  worker: { ...draft.worker!, token: value },
                 })
               }
             />
@@ -507,16 +570,19 @@ function DestinationForm({
 
       {draft.s3 ? (
         <div className="flex flex-col gap-1">
-          <Label htmlFor="backup-s3-secret" className="text-muted-foreground text-sm">
+          <Label
+            htmlFor="backup-s3-secret"
+            className="text-muted-foreground text-sm"
+          >
             S3 secret access key
           </Label>
-          <Input
+          <SecretField
             id="backup-s3-secret"
             value={draft.s3.secret_access_key}
-            onChange={(e) =>
+            onChange={(value) =>
               setDraft({
                 ...draft,
-                s3: { ...draft.s3!, secret_access_key: e.target.value },
+                s3: { ...draft.s3!, secret_access_key: value },
               })
             }
           />
@@ -543,5 +609,36 @@ function DestinationForm({
         </Button>
       </div>
     </form>
+  )
+}
+
+/** A credential field: masked by default with a reveal toggle, so a token or
+ *  secret is not left on screen in clear text while the form is open. */
+function SecretField({
+  id,
+  value,
+  onChange,
+}: {
+  id: string
+  value: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <PasswordInput>
+      <PasswordInputControl>
+        <PasswordInputField
+          id={id}
+          value={value}
+          autoComplete="off"
+          onChange={(e) => onChange(e.target.value)}
+        />
+        <PasswordInputVisibilityTrigger>
+          <PasswordInputIndicator
+            visible={<EyeOff aria-hidden className="h-4 w-4" />}
+            hidden={<Eye aria-hidden className="h-4 w-4" />}
+          />
+        </PasswordInputVisibilityTrigger>
+      </PasswordInputControl>
+    </PasswordInput>
   )
 }
