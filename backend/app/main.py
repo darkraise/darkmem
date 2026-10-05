@@ -147,18 +147,28 @@ async def lifespan(app: FastAPI):
                 logger.exception("Boot-time projects registry backfill failed")
 
             llm_fp = llm.llm_fingerprint()
-            try:
-                llm_model_id, llm_dims = parse_fingerprint(llm_fp)
-                async with async_session_factory() as session:
-                    await embedder_registry.register(
-                        session,
-                        EmbedderInfo(
-                            fingerprint=llm_fp, model_id=llm_model_id,
-                            dims=llm_dims, source="llm",
-                        ),
-                    )
-            except Exception:
-                logger.exception("Failed to register LLM embedder %s at boot", llm_fp)
+            llm_model_id, _, llm_dims_text = llm_fp.rpartition("|")
+            if llm_dims_text == "0":
+                # Dimensions unset: there is no width to register until the
+                # first real embed names one (llm_fingerprint's docstring), so
+                # this is the expected path, not a failure.
+                logger.info(
+                    "Embedding dimensions unset; %s registers on its first embed",
+                    llm_model_id,
+                )
+            else:
+                try:
+                    llm_model_id, llm_dims = parse_fingerprint(llm_fp)
+                    async with async_session_factory() as session:
+                        await embedder_registry.register(
+                            session,
+                            EmbedderInfo(
+                                fingerprint=llm_fp, model_id=llm_model_id,
+                                dims=llm_dims, source="llm",
+                            ),
+                        )
+                except Exception:
+                    logger.exception("Failed to register LLM embedder %s at boot", llm_fp)
 
         from app.api.websocket import event_manager
         pipeline = ProcessingPipeline(llm, async_session_factory, broadcast=event_manager.broadcast)
