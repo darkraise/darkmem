@@ -195,6 +195,79 @@ describe("BackupsTab", () => {
     ).toBeInTheDocument()
   })
 
+  it("adds a destination from the empty state", async () => {
+    const fetchMock = routes({
+      "/config/backup-destinations": { destinations: [] },
+    })
+    render(<BackupsTab />, { wrapper })
+
+    // Both doors open the same form: the empty state's and the header's.
+    await screen.findByText(/no destinations configured/i)
+    const adds = screen.getAllByRole("button", { name: /add destination/i })
+    expect(adds).toHaveLength(2)
+    fireEvent.click(adds[1]!)
+
+    const add = await screen.findByRole("button", { name: /^add$/i })
+    expect(add).toBeDisabled()
+    fireEvent.change(screen.getByLabelText(/^name$/i), {
+      target: { value: "usb" },
+    })
+    fireEvent.click(add)
+
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === "PUT",
+      )
+      expect(put).toBeDefined()
+      const body = JSON.parse((put![1] as RequestInit).body as string)
+      expect(body.destinations).toEqual([
+        expect.objectContaining({
+          name: "usb",
+          kind: "local",
+          retention_keep: 14,
+          ssh: null,
+        }),
+      ])
+    })
+  })
+
+  it("appends a new destination after the existing ones", async () => {
+    const fetchMock = routes()
+    render(<BackupsTab />, { wrapper })
+    await screen.findByRole("button", { name: /edit nas/i })
+
+    fireEvent.click(screen.getByRole("button", { name: /add destination/i }))
+    fireEvent.change(await screen.findByLabelText(/^name$/i), {
+      target: { value: "second-disk" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }))
+
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === "PUT",
+      )
+      const body = JSON.parse((put![1] as RequestInit).body as string)
+      expect(body.destinations.map((d: { name: string }) => d.name)).toEqual([
+        "disk",
+        "nas",
+        "second-disk",
+      ])
+    })
+  })
+
+  it("edits an ssh destination's connection, not only its secrets", async () => {
+    routes()
+    render(<BackupsTab />, { wrapper })
+
+    fireEvent.click(await screen.findByRole("button", { name: /edit nas/i }))
+    expect(await screen.findByLabelText(/ssh host/i)).toHaveValue("192.0.2.10")
+    expect(screen.getByLabelText(/remote directory/i)).toHaveValue(
+      "/srv/darkmem",
+    )
+    // Identity is fixed once created.
+    expect(screen.queryByLabelText(/^name$/i)).toBeNull()
+  })
+
   it("disables Run now while there is no destination to ship to", async () => {
     routes({ "/config/backup-destinations": { destinations: [] } })
     render(<BackupsTab />, { wrapper })
