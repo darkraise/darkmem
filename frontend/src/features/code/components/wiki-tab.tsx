@@ -27,6 +27,7 @@ import {
   type WikiCodeTarget,
 } from "../lib/wiki-links"
 import { ReindexDialog } from "./reindex-dialog"
+import { ErrorBanner, StaleBanner } from "./repositories-tab"
 
 /** Every code reference is a live link into the graph for this repo. */
 function CodeRef({
@@ -177,14 +178,17 @@ export function WikiTab({
       <header className="border-border bg-card overflow-hidden rounded-lg border">
         <div className="border-border flex flex-wrap items-center gap-2.5 border-b px-3 py-2.5">
           <Select value={repo.id} onValueChange={onRepoChange}>
-            <SelectTrigger className="w-56" aria-label="Repository">
+            {/* Grows with the name up to 20rem and ellipsises past that;
+                the FolderGit2 icon (and the aria-label) already say "repo". */}
+            <SelectTrigger
+              className="w-auto max-w-[20rem] min-w-56"
+              aria-label="Repository"
+              title={repo.name}
+            >
               <SelectValue>
-                <span className="flex items-center gap-2">
-                  <FolderGit2 aria-hidden className="h-3.5 w-3.5" />
-                  <span className="text-muted-foreground font-mono text-xs uppercase">
-                    repo
-                  </span>
-                  {repo.name}
+                <span className="flex min-w-0 items-center gap-2">
+                  <FolderGit2 aria-hidden className="h-3.5 w-3.5 shrink-0" />
+                  <span className="min-w-0 truncate">{repo.name}</span>
                 </span>
               </SelectValue>
             </SelectTrigger>
@@ -366,11 +370,37 @@ export function WikiTab({
             </nav>
           </article>
         </div>
+      ) : repo.status === "error" || repo.status === "stale" ? (
+        // A reindex cannot succeed until the cause is fixed, so this repo
+        // gets the Repositories page's own banner and a way there, not the
+        // generic "run a reindex" invitation.
+        <div className="border-border bg-card space-y-3 rounded-lg border p-4">
+          <p className="text-sm font-semibold">
+            No wiki for {repo.name} — its last index did not complete
+          </p>
+          <ErrorBanner repo={repo} />
+          <StaleBanner repo={repo} />
+          <Button variant="outline" className="rounded-full" asChild>
+            <Link to="/code/repositories">
+              Fix on Repositories
+              <ArrowRight aria-hidden className="ml-1.5 h-3.5 w-3.5" />
+            </Link>
+          </Button>
+        </div>
+      ) : repo.status === "indexing" ? (
+        <div className="border-border bg-card rounded-lg border">
+          <EmptyState
+            kind="empty"
+            icon={BookOpen}
+            title="No wiki generated yet for this repository"
+            description="An index run is in progress. Once it finishes, run a reindex with Generate wiki on to build one."
+          />
+        </div>
       ) : (
         <div className="border-border bg-card rounded-lg border">
           <EmptyState
             kind="empty"
-          icon={BookOpen}
+            icon={BookOpen}
             title="No wiki generated yet for this repository"
             description="Run a reindex with Generate wiki on to build one."
             action={

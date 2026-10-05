@@ -162,6 +162,19 @@ describe("WikiTab", () => {
     ).toBeNull()
   })
 
+  it("an errored repo explains the failure instead of inviting a reindex", () => {
+    render(<WikiTab repoId="repo-tools" onRepoChange={vi.fn()} />)
+    expect(
+      screen.getByText(/Permission denied \(publickey\)/),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole("link", { name: /Fix on Repositories/ }),
+    ).toHaveAttribute("href", "/code/repositories")
+    expect(
+      screen.queryByRole("button", { name: /Open reindex dialog/ }),
+    ).toBeNull()
+  })
+
   it("empty state points at the reindex dialog, never implicitly generates", () => {
     render(<WikiTab repoId="repo-frontend" onRepoChange={vi.fn()} />)
     expect(
