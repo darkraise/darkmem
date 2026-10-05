@@ -2,7 +2,12 @@ import { useState } from "react"
 import { DollarSign } from "lucide-react"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { toast } from "darkraise-ui/components/sonner"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "darkraise-ui/components/tabs"
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "darkraise-ui/components/tabs"
 
 import { PageChrome } from "@/components/app-chrome"
 import { EmptyState } from "@/components/darkmem"
@@ -42,18 +47,17 @@ function SubjectDetail({
   const { data, isLoading, isError } = useUsageSubject(subjectType, subjectId)
   if (isLoading) return <Skeleton className="h-40 w-full" />
   if (isError || !data) {
-    return (
-      <EmptyState kind="failed" title="Could not read that subject" />
-    )
+    return <EmptyState kind="failed" title="Could not read that subject" />
   }
   return <UsageSubjectPanel data={data} />
 }
 
 export function UsagePage() {
   const [window, setWindow] = useState<UsageWindow>("30d")
-  const [selected, setSelected] = useState<
-    { subjectType: string; subjectId: string } | null
-  >(null)
+  const [selected, setSelected] = useState<{
+    subjectType: string
+    subjectId: string
+  } | null>(null)
   const [axis, setAxis] = useState<OutlierAxis>("cost")
   const [typeFilter, setTypeFilter] = useState<string | null>(null)
   const overview = useUsageOverview(window)
@@ -76,32 +80,33 @@ export function UsagePage() {
     <div className="space-y-4">
       <PageChrome icon={DollarSign} title="Usage" />
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="ml-auto">
-          <SegmentGroup
-            aria-label="Window"
-            color="accent"
-            value={window}
-            onValueChange={(v) => {
-              if (v) setWindow(v as UsageWindow)
-            }}
-          >
-            <SegmentGroupIndicator />
-            {WINDOWS.map((w) => (
-              <SegmentGroupItem key={w.value} value={w.value}>
-                {w.label}
-              </SegmentGroupItem>
-            ))}
-          </SegmentGroup>
-        </div>
-      </div>
-
       <Tabs defaultValue="overview">
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="outliers">Outliers</TabsTrigger>
-          <TabsTrigger value="prices">Prices</TabsTrigger>
-        </TabsList>
+        {/* The window applies to every tab, so it shares the tab row rather
+            than taking a toolbar band of its own. */}
+        <div className="flex flex-wrap items-center gap-3">
+          <TabsList>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="outliers">Outliers</TabsTrigger>
+            <TabsTrigger value="prices">Prices</TabsTrigger>
+          </TabsList>
+          <div className="ml-auto">
+            <SegmentGroup
+              aria-label="Window"
+              color="accent"
+              value={window}
+              onValueChange={(v) => {
+                if (v) setWindow(v as UsageWindow)
+              }}
+            >
+              <SegmentGroupIndicator />
+              {WINDOWS.map((w) => (
+                <SegmentGroupItem key={w.value} value={w.value}>
+                  {w.label}
+                </SegmentGroupItem>
+              ))}
+            </SegmentGroup>
+          </div>
+        </div>
 
         <TabsContent className="pt-4" value="overview">
           {overview.isLoading ? (
@@ -124,35 +129,37 @@ export function UsagePage() {
                 : "grid gap-4"
             }
           >
-          <OutliersPanel
-            availableTypes={availableTypes}
-            axis={axis}
-            isError={top.isError}
-            isLoading={top.isLoading}
-            onAxisChange={setAxis}
-            onSelect={(subjectType, subjectId) =>
-              setSelected({ subjectType, subjectId })
-            }
-            onTypeFilterChange={(t) => {
-              setTypeFilter(t)
-              setSelected(null)
-            }}
-            rows={visibleRows}
-            selectedKey={
-              selected ? `${selected.subjectType}:${selected.subjectId}` : null
-            }
-            typeFilter={typeFilter}
-            windowCalls={overview.data?.total_calls ?? 0}
-            windowTotal={overview.data?.total_cost_micros ?? 0}
-          />
-          {selected ? (
-            <div className="xl:sticky xl:top-4">
-              <SubjectDetail
-                subjectId={selected.subjectId}
-                subjectType={selected.subjectType}
-              />
-            </div>
-          ) : null}
+            <OutliersPanel
+              availableTypes={availableTypes}
+              axis={axis}
+              isError={top.isError}
+              isLoading={top.isLoading}
+              onAxisChange={setAxis}
+              onSelect={(subjectType, subjectId) =>
+                setSelected({ subjectType, subjectId })
+              }
+              onTypeFilterChange={(t) => {
+                setTypeFilter(t)
+                setSelected(null)
+              }}
+              rows={visibleRows}
+              selectedKey={
+                selected
+                  ? `${selected.subjectType}:${selected.subjectId}`
+                  : null
+              }
+              typeFilter={typeFilter}
+              windowCalls={overview.data?.total_calls ?? 0}
+              windowTotal={overview.data?.total_cost_micros ?? 0}
+            />
+            {selected ? (
+              <div className="xl:sticky xl:top-4">
+                <SubjectDetail
+                  subjectId={selected.subjectId}
+                  subjectType={selected.subjectType}
+                />
+              </div>
+            ) : null}
           </div>
         </TabsContent>
 
