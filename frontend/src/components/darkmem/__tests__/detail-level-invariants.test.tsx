@@ -325,7 +325,7 @@ describe("detail level: the Facts tab's honesty labels render in both modes", ()
       expect(screen.getByText("under-sourced")).toBeInTheDocument()
       expect(screen.getByText("window closed")).toBeInTheDocument()
       expect(screen.getByText("in review")).toBeInTheDocument()
-      expect(screen.getByText(/3 origins/)).toBeInTheDocument()
+      expect(screen.getAllByText(/3 origins/)[0]).toBeInTheDocument()
     },
   )
 
@@ -430,8 +430,8 @@ describe("detail level: the fact detail page's honesty labels render in both mod
       render(<FactDetail factId="f1" />, { wrapper: detailWrapper })
       await screen.findByText("darkmem uses postgres")
       expect(screen.getByText("corroborated")).toBeInTheDocument()
-      // A non-disputed claim only restates the sources count.
-      expect(screen.queryByText(DETAIL_CLAIM)).not.toBeInTheDocument()
+      // The claim is printed in every mode: the badge title is hover-only.
+      expect(screen.getByText(DETAIL_CLAIM)).toBeInTheDocument()
     },
   )
 

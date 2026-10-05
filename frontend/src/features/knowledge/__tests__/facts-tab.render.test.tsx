@@ -185,6 +185,18 @@ describe("FactsTab — a disputed row renders both sides, on the row", () => {
     expect(screen.getByText("details →")).toBeInTheDocument()
     expect(document.querySelectorAll("a")).toHaveLength(1)
   })
+
+  it("names each row's link after its fact, and counts one fact in the singular", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(page([item()], 1))
+    render(<FactsTab />, { wrapper })
+
+    await screen.findByText("darkmem uses postgres")
+    expect(
+      // Link is stubbed to an href-less <a>, which has no link role.
+      screen.getByLabelText("Open fact: darkmem USES postgres"),
+    ).toBeInTheDocument()
+    expect(screen.getByText("1 fact")).toBeInTheDocument()
+  })
 })
 
 describe("FactsTab — the belief axis renders beside the verification axis", () => {
@@ -304,9 +316,9 @@ describe("FactsTab — the free-text filter never speaks for the whole vault", (
       "nothing-matches-this",
     )
 
-    await screen.findByText(/No loaded fact matches/)
+    await screen.findByText(/No match for “nothing-matches-this”/)
     expect(
-      screen.getByText("Searched all 1 facts."),
+      screen.getByText("Searched all 1 fact."),
     ).toBeInTheDocument()
   })
 })
@@ -325,7 +337,7 @@ describe("FactsTab — simple mode collapses detail and keeps every honesty labe
     await screen.findByText("darkmem uses postgres")
     expect(screen.queryByText("USES")).not.toBeInTheDocument()
     expect(screen.getByText("corroborated")).toBeInTheDocument()
-    expect(screen.getByText(/3 origins/)).toBeInTheDocument()
+    expect(screen.getAllByText(/3 origins/)[0]).toBeInTheDocument()
     // A non-disputed claim only restates the origin count, so it stays off the row.
     expect(screen.queryByText(CORROBORATED_CLAIM)).not.toBeInTheDocument()
   })

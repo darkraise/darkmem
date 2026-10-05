@@ -54,6 +54,14 @@ export function FactRow({
 }) {
   const advanced = useDetailLevel((s) => s.level) === "advanced"
   const candidate = fact.verification_status === "candidate"
+  const originMeta =
+    fact.origin_count !== null
+      ? `${fact.origin_count} ${fact.origin_count === 1 ? "origin" : "origins"}${
+          fact.origin_kinds.length > 0
+            ? ` · ${formatList(fact.origin_kinds)}`
+            : ""
+        }`
+      : null
   return (
     <div
       // The dashed edge is now every row's, so `candidate` keeps the tint and
@@ -62,7 +70,9 @@ export function FactRow({
       className={listItemClass({
         interactive: true,
         className: cn(
-          "space-y-1.5 p-2.5",
+          // `relative` anchors the details link's stretched ::after, which
+          // makes the whole card the click target its hover promises.
+          "relative cursor-pointer space-y-1.5 p-2.5",
           candidate && "bg-muted/15",
           focused && "ring-primary/60 ring-1",
         ),
@@ -83,11 +93,11 @@ export function FactRow({
           invalidAt={advanced ? fact.invalid_at : null}
         />
         {fact.review_state === "open" && <InReviewBadge />}
-        {fact.origin_count !== null && (
-          <span className="text-muted-foreground ml-auto font-mono text-sm">
-            {fact.origin_count} {fact.origin_count === 1 ? "origin" : "origins"}
-            {fact.origin_kinds.length > 0 &&
-              ` · ${formatList(fact.origin_kinds)}`}
+        {/* Right of the badges from `sm` up; below it the same meta moves
+            to the footer line, so it never wraps between badge and title. */}
+        {originMeta && (
+          <span className="text-muted-foreground ml-auto hidden font-mono text-sm sm:inline">
+            {originMeta}
           </span>
         )}
       </div>
@@ -101,20 +111,37 @@ export function FactRow({
           object={fact.object_name}
         />
       )}
-      <p className="text-muted-foreground text-sm">{fact.fact_text}</p>
+      {/* Simple mode hides the triple, so the sentence becomes the row's
+          heading rather than a muted line under nothing. */}
+      <p
+        className={cn(
+          "text-sm",
+          advanced ? "text-muted-foreground" : "text-foreground font-medium",
+        )}
+      >
+        {fact.fact_text}
+      </p>
       {/* A disputed claim is the two-sided form, so both sides stay on the
           row; every other claim only restates the origin count above. */}
       {fact.claim && fact.verification_status === "disputed" && (
         <p className="font-mono text-sm">{fact.claim}</p>
       )}
       <AppliesWhenChips items={fact.applies_when} />
-      <Link
-        to="/knowledge/facts/$factId"
-        params={{ factId: fact.id }}
-        className="hover:text-primary-text text-muted-foreground block font-mono text-sm transition-colors"
-      >
-        details →
-      </Link>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <Link
+          to="/knowledge/facts/$factId"
+          params={{ factId: fact.id }}
+          aria-label={`Open fact: ${fact.subject_name} ${fact.rel_type} ${fact.object_name}`}
+          className="hover:text-primary-text text-muted-foreground w-fit font-mono text-sm transition-colors after:absolute after:inset-0 after:rounded-md after:content-['']"
+        >
+          details →
+        </Link>
+        {originMeta && (
+          <span className="text-muted-foreground font-mono text-sm sm:hidden">
+            {originMeta}
+          </span>
+        )}
+      </div>
     </div>
   )
 }
@@ -243,14 +270,29 @@ export function FactsTab() {
   // filters (`total`) or a count of rows actually fetched (`loaded`). The
   // free-text needle is reported against `loaded`, because that is the only
   // set it was run over.
+  // "loaded" is only said while more pages exist; otherwise the loaded rows
+  // are the whole result and the plain count is the honest one.
+  const factsWord = (n: number) => (n === 1 ? "fact" : "facts")
   const headerMeta =
     error || loading
       ? undefined
       : subjectActive
-        ? `${rows.length} of ${loaded} loaded`
+        ? hasMore
+          ? `${rows.length} of ${loaded} loaded`
+          : `${rows.length} of ${loaded} ${factsWord(loaded)}`
         : hasMore
           ? `${loaded} of ${total} loaded`
-          : `${total} facts`
+          : `${total} ${factsWord(total)}`
+  const localFiltersActive = relation !== ANY || status !== ANY
+  const activeFilterNames = [
+    relation !== ANY ? `relation ${relation}` : null,
+    status !== ANY ? `status ${status}` : null,
+  ].filter((f): f is string => f !== null)
+  const clearLocalFilters = () => {
+    setSubject("")
+    setRelation(ANY)
+    setStatus(ANY)
+  }
 
   return (
     <div className="space-y-4">
@@ -299,7 +341,7 @@ export function FactsTab() {
           </SelectContent>
         </Select>
         <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
-          <SelectTrigger className="w-48 rounded-full" aria-label="Sort order">
+          <SelectTrigger className="w-56 rounded-full" aria-label="Sort order">
             <SelectValue>sort: {SORTS[sort]}</SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -321,14 +363,26 @@ export function FactsTab() {
       <div
         className={cn(
           "grid grid-cols-1 items-start gap-5",
-          scale && "lg:grid-cols-[3.5rem_minmax(0,1fr)]",
+          // The column stays reserved while the list is chronological even
+          // when no row is left to seek, so a filter that empties the list
+          // does not jump the surface sideways.
+          chronological && "lg:grid-cols-[3.5rem_minmax(0,1fr)]",
         )}
       >
         {/* The scrubber only rides a chronological list — over the rung
             sort its position would not track the scroll. */}
-        {scale && (
+        {scale ? (
           <div className="sticky top-2 hidden self-start lg:block">
-            <div className="h-[calc(100vh-15rem)]">
+            {/* Never taller than the list it seeks over (a short result
+                must not trail a long empty axis), never shorter than a
+                usable rail. */}
+            <div
+              style={{
+                height: `max(12rem, min(calc(100vh - 15rem), ${
+                  virtualizer.getTotalSize() + 48
+                }px))`,
+              }}
+            >
               <TimelineScrubber
                 scale={scale}
                 position={scrubFraction}
@@ -336,7 +390,9 @@ export function FactsTab() {
               />
             </div>
           </div>
-        )}
+        ) : chronological ? (
+          <div aria-hidden className="hidden lg:block" />
+        ) : null}
 
         <ListSurface
           className="min-w-0"
@@ -415,21 +471,29 @@ export function FactsTab() {
             serverFiltersActive ? (
               // Backed by the server's own count behind these predicates, so
               // this one may speak about the scope rather than the page.
+              // "Clear filters" resets this page's filters only. The project
+              // scope is app-wide, so widening it is its own, labelled action.
               <EmptyState
                 kind="filtered"
                 title="No facts match these filters"
-                description="Widen a filter to see more."
+                description={
+                  activeProject
+                    ? `Widen a filter to see more. Showing project ${activeProject} only; showing all projects changes the scope for the whole app.`
+                    : "Widen a filter to see more."
+                }
                 action={
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setRelation(ANY)
-                      setStatus(ANY)
-                      setScope(null)
-                    }}
-                  >
-                    Clear filters
-                  </Button>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {localFiltersActive && (
+                      <Button variant="outline" onClick={clearLocalFilters}>
+                        Clear filters
+                      </Button>
+                    )}
+                    {activeProject && (
+                      <Button variant="outline" onClick={() => setScope(null)}>
+                        Show all projects
+                      </Button>
+                    )}
+                  </div>
                 }
               />
             ) : (
@@ -447,12 +511,20 @@ export function FactsTab() {
             // counts loaded rows and never claims the vault holds no match.
             <EmptyState
               kind="filtered"
-              title={`No loaded fact matches “${subject.trim()}”`}
-              description={
+              title={
+                hasMore
+                  ? `No loaded fact matches “${subject.trim()}”`
+                  : `No match for “${subject.trim()}”`
+              }
+              description={`${
                 hasMore
                   ? `Searched the ${loaded} facts loaded so far; ${total - loaded} more are not loaded yet.`
-                  : `Searched all ${loaded} facts.`
-              }
+                  : `Searched all ${loaded} ${factsWord(loaded)}.`
+              }${
+                activeFilterNames.length > 0
+                  ? ` Filters: ${activeFilterNames.join(", ")}.`
+                  : ""
+              }`}
               action={
                 <div className="flex flex-wrap justify-center gap-2">
                   {hasMore && (
@@ -463,6 +535,11 @@ export function FactsTab() {
                   <Button variant="outline" onClick={() => setSubject("")}>
                     Clear subject
                   </Button>
+                  {localFiltersActive && (
+                    <Button variant="outline" onClick={clearLocalFilters}>
+                      Clear all filters
+                    </Button>
+                  )}
                 </div>
               }
             />
