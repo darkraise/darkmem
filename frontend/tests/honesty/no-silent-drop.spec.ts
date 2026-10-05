@@ -30,16 +30,15 @@ test.describe("honesty/no-silent-drop", () => {
 
     await expect(page.getByText(/^\d+ of \d+ shown$/)).toBeVisible()
 
-    // The page's own context filter (a Select combobox), distinct from the
-    // app-chrome ContextChip ("Session context").
-    const contextTrigger = page.getByRole("combobox", {
-      name: "Filter by context",
-    })
+    // The session context is declared on the header's ContextChip; the
+    // page has no context control of its own.
+    const contextTrigger = page.getByRole("button", { name: "Session context" })
     await expect(contextTrigger).toBeVisible()
 
     await page.getByLabel("Search memories").fill("cookie-secure")
     await contextTrigger.click()
-    await page.getByRole("option", { name: "env=prod" }).click()
+    await page.getByRole("textbox", { name: "env" }).fill("prod")
+    await page.getByRole("button", { name: "Declare" }).click()
 
     // The surviving row (ID_TRUST_PROXY) must still render — this proves
     // the query itself matched, so an empty exclusion strip cannot be

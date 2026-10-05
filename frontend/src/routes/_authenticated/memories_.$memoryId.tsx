@@ -1,8 +1,13 @@
 import { useMemo, useState } from "react"
 import { createFileRoute, Link } from "@tanstack/react-router"
-import { ArrowLeft, ArrowRight, Brain, Link2, Pencil } from "lucide-react"
+import { ArrowLeft, ArrowRight, Brain, Check, Copy, Pencil } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
+import {
+  Clipboard,
+  ClipboardIndicator,
+  ClipboardTrigger,
+} from "darkraise-ui/components/clipboard"
 import {
   Card,
   CardContent,
@@ -10,7 +15,6 @@ import {
   CardTitle,
 } from "darkraise-ui/components/card"
 import { EmptyState } from "@/components/darkmem"
-import { Separator } from "darkraise-ui/components/separator"
 import { useSetPageChrome } from "@/components/app-chrome"
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoMemories } from "@/demo/hooks"
@@ -22,6 +26,7 @@ import {
 } from "@/components/darkmem"
 import { LifecycleBadge } from "@/features/memories/components/lifecycle-badge"
 import { MemoryEditorDialog } from "@/features/memories/components/memory-editor-dialog"
+import { MemoryExcerptLink } from "@/features/memories/components/memory-excerpt-link"
 import { RealMemoryDetailView } from "@/features/memories/components/real-memory-detail-view"
 
 // DEMO is fixed for the process lifetime (import.meta.env, not runtime
@@ -56,7 +61,11 @@ function SectionCard({
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-semibold">{title}</CardTitle>
+        {/* CardTitle renders a div (darkraise-ui types it HTMLDivElement);
+            an h2 gives the page a heading outline to jump through. */}
+        <CardTitle className="text-sm font-semibold">
+          <h2>{title}</h2>
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">{children}</CardContent>
     </Card>
@@ -75,9 +84,7 @@ const LADDER: VerificationStatus[] = [
 // otherwise — never a fabricated pill.
 function RungLabel({ value }: { value: string | null }) {
   if (!value || value === "active") {
-    return (
-      <span className="text-muted-foreground text-sm">active</span>
-    )
+    return <span className="text-muted-foreground text-sm">active</span>
   }
   if ((LADDER as string[]).includes(value)) {
     return <VerificationBadge status={value as VerificationStatus} />
@@ -96,7 +103,7 @@ function RungLabel({ value }: { value: string | null }) {
 function TimelineRow({ event }: { event: MemoryTimelineEvent }) {
   return (
     <div className="border-border flex flex-wrap items-start gap-2.5 border-t border-dashed py-2.5 first:border-t-0 first:pt-0">
-      <span className="text-muted-foreground w-40 shrink-0 pt-0.5 font-mono text-sm">
+      <span className="text-muted-foreground w-44 shrink-0 pt-0.5 font-mono text-sm whitespace-nowrap">
         {formatDateTime(event.at)}
       </span>
       <Badge variant="outline" size="sm" className="shrink-0 font-mono">
@@ -122,30 +129,6 @@ function TimelineRow({ event }: { event: MemoryTimelineEvent }) {
   )
 }
 
-function MemoryLink({
-  memoryId,
-  excerpt,
-}: {
-  memoryId: string
-  excerpt: string
-}) {
-  return (
-    <Link
-      to="/memories/$memoryId"
-      params={{ memoryId }}
-      className="hover:text-primary-text flex min-w-0 items-center gap-1.5 text-sm transition-colors"
-    >
-      <Link2
-        aria-hidden
-        className="text-muted-foreground h-3.5 w-3.5 shrink-0"
-      />
-      <span className="truncate">
-        memory {memoryId.slice(0, 8)} — “{excerpt}”
-      </span>
-    </Link>
-  )
-}
-
 function SupersessionLineage({
   memory,
   successor,
@@ -155,14 +138,14 @@ function SupersessionLineage({
 }) {
   if (memory.status === "superseded") {
     return (
-      <div className="flex flex-wrap items-center gap-2.5">
+      <div className="flex items-start gap-2.5">
         <LifecycleBadge status="superseded" />
         {memory.superseded_by ? (
-          <MemoryLink
+          <MemoryExcerptLink
             memoryId={memory.superseded_by}
             excerpt={
               successor
-                ? `${successor.content.slice(0, 80)}…`
+                ? `${successor.content.slice(0, 160)}…`
                 : "successor memory"
             }
           />
@@ -258,7 +241,9 @@ function MemoryDetailPage() {
         <div className="min-w-0 space-y-4">
           <Card elevation="low">
             <CardHeader className="space-y-3 pb-3">
-              <div className="flex flex-wrap items-center gap-2">
+              {/* Status only: captured/source/project/confidence and the id
+                  live once, in the Record card. */}
+              <div className="flex min-h-5 flex-wrap items-center gap-2">
                 <LifecycleBadge status={memory.status} />
                 {memory.verification_status && (
                   <VerificationBadge
@@ -266,38 +251,10 @@ function MemoryDetailPage() {
                     detail={memory.verification_detail}
                   />
                 )}
-                <span className="text-muted-foreground ml-auto font-mono text-sm">
-                  memory {memory.id.slice(0, 8)}
-                </span>
               </div>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent>
               <p className="text-base leading-relaxed">{memory.content}</p>
-              <Separator />
-              <div className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 font-mono text-sm">
-                <span>
-                  captured{" "}
-                  <b className="text-foreground font-medium">
-                    {formatDateTime(memory.created_at)}
-                  </b>
-                </span>
-                <span>
-                  via{" "}
-                  <b className="text-foreground font-medium">{memory.source}</b>
-                </span>
-                <span>
-                  project{" "}
-                  <b className="text-foreground font-medium">
-                    {memory.project}
-                  </b>
-                </span>
-                <span>
-                  confidence{" "}
-                  <b className="text-foreground font-medium">
-                    {memory.confidence.toFixed(2)}
-                  </b>
-                </span>
-              </div>
             </CardContent>
           </Card>
 
@@ -307,16 +264,16 @@ function MemoryDetailPage() {
                 {memory.relations.map((rel) => (
                   <div
                     key={`${rel.rel_type}-${rel.memory_id}`}
-                    className="border-border flex flex-wrap items-center gap-2.5 rounded-md border p-2.5"
+                    className="border-border flex items-start gap-2.5 rounded-md border p-2.5"
                   >
                     <Badge
                       variant="secondary"
                       size="sm"
-                      className="shrink-0 font-mono tracking-wide uppercase"
+                      className="shrink-0 justify-center font-mono tracking-wide uppercase sm:min-w-28"
                     >
                       {rel.rel_type}
                     </Badge>
-                    <MemoryLink
+                    <MemoryExcerptLink
                       memoryId={rel.memory_id}
                       excerpt={rel.excerpt}
                     />
@@ -343,7 +300,24 @@ function MemoryDetailPage() {
         <div className="space-y-4">
           <SectionCard title="Record">
             <dl className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
-              <MetaRow label="id">{memory.id.slice(0, 8)}</MetaRow>
+              <MetaRow label="id">
+                <span className="flex items-start gap-1">
+                  <span className="min-w-0 font-mono text-xs break-all">
+                    {memory.id}
+                  </span>
+                  <Clipboard value={memory.id} toast className="shrink-0">
+                    <ClipboardTrigger
+                      aria-label="Copy memory id"
+                      className="-mt-1"
+                    >
+                      <ClipboardIndicator
+                        copied={<Check className="size-3.5" />}
+                        fallback={<Copy className="size-3.5" />}
+                      />
+                    </ClipboardTrigger>
+                  </Clipboard>
+                </span>
+              </MetaRow>
               <MetaRow label="project">{memory.project}</MetaRow>
               <MetaRow label="source">{memory.source}</MetaRow>
               <MetaRow label="status">{memory.status}</MetaRow>

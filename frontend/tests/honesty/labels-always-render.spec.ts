@@ -43,11 +43,13 @@ test.describe("honesty/labels-always-render", () => {
 
     await selectProject(page, "darkmem")
 
-    const contextTrigger = page.getByRole("combobox", {
-      name: "Filter by context",
-    })
+    // The session context is declared on the header's ContextChip; the
+    // page has no context control of its own.
+    const contextTrigger = page.getByRole("button", { name: "Session context" })
+    await expect(contextTrigger).toBeVisible()
     await contextTrigger.click()
-    await page.getByRole("option", { name: "env=prod" }).click()
+    await page.getByRole("textbox", { name: "env" }).fill("prod")
+    await page.getByRole("button", { name: "Declare" }).click()
 
     await page.getByLabel("Search memories").fill("cookie-secure")
 

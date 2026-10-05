@@ -1,6 +1,5 @@
 import { useState } from "react"
-import { Link } from "@tanstack/react-router"
-import { Brain, Link2, Pencil } from "lucide-react"
+import { Brain, Pencil } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { Card, CardContent, CardHeader } from "darkraise-ui/components/card"
@@ -16,6 +15,7 @@ import {
 import { LifecycleBadge } from "./lifecycle-badge"
 import { MemoryEditorDialog } from "./memory-editor-dialog"
 import { MemoryEventTimeline } from "./memory-event-timeline"
+import { MemoryExcerptLink } from "./memory-excerpt-link"
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
@@ -26,19 +26,10 @@ function formatDateTime(iso: string): string {
 
 function LineageLink({ id, content }: { id: string; content: string }) {
   return (
-    <Link
-      to="/memories/$memoryId"
-      params={{ memoryId: id }}
-      className="hover:text-primary-text flex min-w-0 items-center gap-1.5 text-sm transition-colors"
-    >
-      <Link2
-        aria-hidden
-        className="text-muted-foreground h-3.5 w-3.5 shrink-0"
-      />
-      <span className="truncate">
-        memory {id.slice(0, 8)} — “{content.slice(0, 80)}…”
-      </span>
-    </Link>
+    <MemoryExcerptLink
+      memoryId={id}
+      excerpt={content.length > 160 ? `${content.slice(0, 160)}…` : content}
+    />
   )
 }
 
@@ -52,7 +43,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 function PredecessorRow({ entry }: { entry: MemoryLineageEntry }) {
   return (
-    <div className="flex flex-wrap items-center gap-2.5">
+    <div className="flex items-start gap-2.5">
       <LifecycleBadge status={entry.status} />
       <LineageLink id={entry.id} content={entry.content} />
     </div>
@@ -84,7 +75,7 @@ function SupersessionLineage({ memory }: { memory: Memory }) {
       <div>
         <SectionLabel>Replaced by</SectionLabel>
         {memory.status === "superseded" ? (
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex items-start gap-2.5">
             <LifecycleBadge status="superseded" />
             {!memory.superseded_by ? (
               <span className="text-muted-foreground text-sm italic">
@@ -123,9 +114,7 @@ function SupersessionLineage({ memory }: { memory: Memory }) {
       <div>
         <SectionLabel>Replaced</SectionLabel>
         {memory.predecessors === undefined ? (
-          <p className="text-muted-foreground text-sm italic">
-            Unknown.
-          </p>
+          <p className="text-muted-foreground text-sm italic">Unknown.</p>
         ) : memory.predecessors.length === 0 ? (
           <p className="text-muted-foreground text-sm italic">
             Replaced nothing.
@@ -225,7 +214,7 @@ export function RealMemoryDetailView({ memoryId }: { memoryId: string }) {
 
       <Card elevation="low">
         <CardHeader className="pb-3">
-          <p className="text-sm font-semibold">Supersession lineage</p>
+          <h2 className="text-sm font-semibold">Supersession lineage</h2>
         </CardHeader>
         <CardContent>
           <SupersessionLineage memory={memory} />
@@ -234,7 +223,7 @@ export function RealMemoryDetailView({ memoryId }: { memoryId: string }) {
 
       <Card elevation="low">
         <CardHeader className="pb-3">
-          <p className="text-sm font-semibold">Timeline</p>
+          <h2 className="text-sm font-semibold">Timeline</h2>
         </CardHeader>
         <CardContent>
           <MemoryEventTimeline memoryId={memory.id} />

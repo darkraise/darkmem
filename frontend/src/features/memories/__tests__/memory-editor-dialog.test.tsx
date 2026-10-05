@@ -99,4 +99,91 @@ describe("MemoryEditorDialog", () => {
     expect(lastEvent?.kind).toBe("updated")
     useDemoStore.getState().resetMemories()
   })
+
+  it("names its fields and ties the content error to the textarea", async () => {
+    const user = userEvent.setup()
+    render(
+      <MemoryEditorDialog
+        open
+        onOpenChange={vi.fn()}
+        projects={["default", "darkmem"]}
+      />,
+      { wrapper },
+    )
+
+    expect(screen.getByRole("combobox", { name: "Project" })).toBeVisible()
+    expect(screen.getByRole("combobox", { name: /Memory type/ })).toBeVisible()
+    expect(screen.getByRole("textbox", { name: "Tags" })).toBeVisible()
+
+    await user.click(screen.getByRole("button", { name: "Create memory" }))
+    const content = screen.getByLabelText("Content")
+    expect(content).toHaveAttribute("aria-invalid", "true")
+    expect(content).toHaveAccessibleDescription("Content is required.")
+    expect(content).toHaveFocus()
+  })
+
+  it("closes a pristine dialog on Cancel without asking", async () => {
+    const user = userEvent.setup()
+    const onOpenChange = vi.fn()
+    render(
+      <MemoryEditorDialog
+        open
+        onOpenChange={onOpenChange}
+        projects={["default"]}
+      />,
+      { wrapper },
+    )
+    await user.click(screen.getByRole("button", { name: "Cancel" }))
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
+  })
+
+  it("asks before discarding a typed draft", async () => {
+    const user = userEvent.setup()
+    const onOpenChange = vi.fn()
+    render(
+      <MemoryEditorDialog
+        open
+        onOpenChange={onOpenChange}
+        projects={["default"]}
+      />,
+      { wrapper },
+    )
+    await user.type(screen.getByLabelText("Content"), "half a thought")
+
+    await user.keyboard("{Escape}")
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
+    await user.click(
+      await screen.findByRole("button", { name: "Keep editing" }),
+    )
+    expect(screen.getByLabelText("Content")).toHaveValue("half a thought")
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }))
+    await user.click(await screen.findByRole("button", { name: "Discard" }))
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it("closes only the dropdown when Escape is pressed in a Select", async () => {
+    const user = userEvent.setup()
+    const onOpenChange = vi.fn()
+    render(
+      <MemoryEditorDialog
+        open
+        onOpenChange={onOpenChange}
+        projects={["default"]}
+      />,
+      { wrapper },
+    )
+    await user.click(screen.getByRole("combobox", { name: /Memory type/ }))
+    const listbox = await screen.findByRole("listbox")
+    listbox.focus()
+    await user.keyboard("{Escape}")
+    await vi.waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: /Memory type/ }),
+      ).toHaveAttribute("aria-expanded", "false"),
+    )
+    expect(onOpenChange).not.toHaveBeenCalled()
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
+  })
 })
