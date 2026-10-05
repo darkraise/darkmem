@@ -46,7 +46,9 @@ import {
   BackToTop,
   HeaderControls,
   ProjectScopeReconciler,
+  ShellBehaviours,
 } from "@/components/app-chrome"
+import { registerNavLabels } from "@/providers/router-adapter"
 import { projectScopeDisabledReason } from "@/components/app-chrome/project-switcher"
 
 const nav: NavGroup[] = [
@@ -104,6 +106,27 @@ const nav: NavGroup[] = [
 ]
 
 useBrandStore.setState({ appName: "darkmem" })
+// Names the collapsed rail's icon-only links (see `registerNavLabels`).
+registerNavLabels(nav)
+
+/** Library label overrides.
+ *
+ *  `userMenu.profile`: the UserMenu has three fixed slots and this app has no
+ *  profile, so the account action rides that slot under its own name.
+ *
+ *  `layout.*`: the palette behind "Search... Ctrl K" only ever lists the nav's
+ *  pages, so in a memory system "Search" promised content search it does not
+ *  do. It is named for what it does: jump to a page. */
+const UI_LABELS = {
+  userMenu: { profile: "Change password" },
+  layout: {
+    search: "Go to…",
+    searchWithShortcut: (shortcut: string) => `Go to page (${shortcut})`,
+    searchDialogPlaceholder: "Jump to a page…",
+    searchEmpty: "No page matches.",
+    navigationHeading: "Pages",
+  },
+}
 
 const AUTH_VERIFY_TTL_MS = 60_000
 let _lastAuthVerifyAt = 0
@@ -214,11 +237,10 @@ function AuthenticatedLayout() {
         : SidebarLayout
 
   return (
-    // Renames the UserMenu's profile slot. The library fixes its three item
-    // labels in `useUiLabels`, and `UiLabelsProvider` is the sanctioned way to
-    // override one — cheaper and less brittle than reimplementing the menu to
-    // add a fourth item. This app has no profile, so the slot is free.
-    <UiLabelsProvider value={{ userMenu: { profile: "Change password" } }}>
+    // `UiLabelsProvider` is the sanctioned way to override the library's
+    // fixed labels — cheaper and less brittle than reimplementing the menu
+    // or the palette. See UI_LABELS above for each override.
+    <UiLabelsProvider value={UI_LABELS}>
       <Shell
         nav={nav}
         // Controlled, not `defaultActiveBar`: this app ships no
@@ -249,7 +271,10 @@ function AuthenticatedLayout() {
       >
         {!DEMO && <LiveUpdates />}
         <ProjectScopeReconciler />
-        <main
+        <ShellBehaviours />
+        {/* A div, not <main>: the darkraise-ui Shell already renders the one
+            main landmark (#main-content) around this. */}
+        <div
           className={cn(
             "w-full",
             !fullWidth && "mx-auto max-w-[1400px]",
@@ -257,7 +282,7 @@ function AuthenticatedLayout() {
           )}
         >
           <Outlet />
-        </main>
+        </div>
         <BackToTop />
         {!DEMO && (
           <ChangePasswordDialog

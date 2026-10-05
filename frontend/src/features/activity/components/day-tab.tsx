@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router"
 import {
   ArrowRight,
+  CalendarX,
   ChevronLeft,
   ChevronRight,
   Circle,
@@ -194,24 +195,29 @@ export function DayTab({
         actions={
           <>
             <Button variant="ghost" asChild>
+              {/* Goes to the dashboard, whose calendar links back here per day. */}
               <Link to="/">
                 <ChevronLeft className="mr-1 size-3.5" />
-                Activity calendar
+                Dashboard
               </Link>
             </Button>
+            {/* Icon-only below sm so the stepper fits a phone header; the
+                date stays in the accessible name at every width. */}
             <Button
               variant="outline"
+              aria-label={`Previous day, ${shiftDay(day, -1)}`}
               onClick={() => onDayChange(shiftDay(day, -1))}
             >
-              <ChevronLeft className="mr-1 size-3.5" />
-              {shiftDay(day, -1)}
+              <ChevronLeft className="size-3.5 sm:mr-1" />
+              <span className="hidden sm:inline">{shiftDay(day, -1)}</span>
             </Button>
             <Button
               variant="outline"
+              aria-label={`Next day, ${shiftDay(day, 1)}`}
               onClick={() => onDayChange(shiftDay(day, 1))}
             >
-              {shiftDay(day, 1)}
-              <ChevronRight className="ml-1 size-3.5" />
+              <span className="hidden sm:inline">{shiftDay(day, 1)}</span>
+              <ChevronRight className="size-3.5 sm:ml-1" />
             </Button>
           </>
         }
@@ -220,26 +226,27 @@ export function DayTab({
           <Clock aria-hidden className="h-3.5 w-3.5 shrink-0" />
           <span>Days are UTC.</span>
         </span>
-      {isError ? (
-        <EmptyState
-          kind="failed"
-          title="Couldn't load this day"
-        />
-      ) : events && events.length > 0 ? (
-        <div className="flex flex-col">
-          {events.map((event) => (
-            <DayEventRow key={event.id} event={event} />
-          ))}
-          {truncated && (
-            <p className="text-muted-foreground pt-2.5 text-sm">
-              Showing {events.length} of {total} events for this day — narrow by
-              project to see the rest.
-            </p>
-          )}
-        </div>
-      ) : isLoading ? null : (
-        <EmptyState kind="filtered" title="No activity on this day" />
-      )}
+        {isError ? (
+          <EmptyState kind="failed" title="Couldn't load this day" />
+        ) : events && events.length > 0 ? (
+          <div className="flex flex-col">
+            {events.map((event) => (
+              <DayEventRow key={event.id} event={event} />
+            ))}
+            {truncated && (
+              <p className="text-muted-foreground pt-2.5 text-sm">
+                Showing {events.length} of {total} events for this day — narrow
+                by project to see the rest.
+              </p>
+            )}
+          </div>
+        ) : isLoading ? null : (
+          <EmptyState
+            kind="empty"
+            icon={CalendarX}
+            title="No activity on this day"
+          />
+        )}
       </ModuleSurface>
     </div>
   )

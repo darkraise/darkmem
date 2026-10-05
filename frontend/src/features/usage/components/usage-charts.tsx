@@ -32,7 +32,9 @@ import { formatTokens, formatUsd } from "../format"
  * plus the by-model and by-subject tables underneath, which carry every number
  * in text.
  */
-const ONE_SERIES = { value: { label: "Cost", color: "var(--chart-1)" } } satisfies ChartConfig
+const ONE_SERIES = {
+  value: { label: "Cost", color: "var(--chart-1)" },
+} satisfies ChartConfig
 
 /** Marks stay thin and the grid recessive: the data is the only loud thing. */
 const BAR_MAX = 24
@@ -69,7 +71,9 @@ export function SpendOverTime({ buckets }: { buckets: UsageSeriesBucket[] }) {
       config={ONE_SERIES}
       initialDimension={{ width: 640, height: 224 }}
     >
-      <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+      {/* Right margin leaves room for the peak label when the peak is the
+          last column; at phone width it was cut at the card edge. */}
+      <BarChart data={data} margin={{ top: 8, right: 24, bottom: 0, left: 0 }}>
         <CartesianGrid stroke={GRID} strokeWidth={1} vertical={false} />
         <XAxis
           axisLine={false}
@@ -89,7 +93,8 @@ export function SpendOverTime({ buckets }: { buckets: UsageSeriesBucket[] }) {
           content={
             <ChartTooltipContent
               formatter={(value, _name, item) => {
-                const row = (item as { payload?: (typeof data)[number] })?.payload
+                const row = (item as { payload?: (typeof data)[number] })
+                  ?.payload
                 return (
                   <span className="font-mono text-xs">
                     {formatUsd(Number(value))} · {row?.calls ?? 0} calls
@@ -174,7 +179,8 @@ export function CostByPurpose({ rows }: { rows: UsageBreakdownRow[] }) {
           content={
             <ChartTooltipContent
               formatter={(value, _name, item) => {
-                const row = (item as { payload?: (typeof data)[number] })?.payload
+                const row = (item as { payload?: (typeof data)[number] })
+                  ?.payload
                 return (
                   <span className="font-mono text-xs">
                     {formatUsd(Number(value))} · {row?.calls ?? 0} calls

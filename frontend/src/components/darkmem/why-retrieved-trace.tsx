@@ -63,7 +63,7 @@ export function WhyRetrievedTrace({
         return (
           <div
             key={channel.name}
-            className="grid grid-cols-[5.5rem_1fr_4rem] items-center gap-2 text-sm"
+            className="grid grid-cols-[5.5rem_1fr_5rem] items-center gap-2 text-sm"
           >
             <span className={cn("font-mono", off && "opacity-60")}>
               {channel.name}
@@ -79,7 +79,7 @@ export function WhyRetrievedTrace({
             </span>
             <span
               className={cn(
-                "text-muted-foreground text-right font-mono",
+                "text-muted-foreground text-right font-mono whitespace-nowrap",
                 off && "opacity-60",
               )}
             >
@@ -88,14 +88,16 @@ export function WhyRetrievedTrace({
           </div>
         )
       })}
-      <div className="bg-primary/10 border-primary/35 mt-0.5 flex items-center gap-2.5 rounded-md border px-2.5 py-1.5">
+      {/* In a narrow pane the caption wraps as one line under the score
+          rather than stacking word by word beside it. */}
+      <div className="bg-primary/10 border-primary/35 mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 rounded-md border px-2.5 py-1.5">
         <span className="text-primary-text font-mono text-sm tracking-wide uppercase">
           rrf_score
         </span>
         <span className="font-mono text-sm font-semibold">
           {rrfScore.toFixed(4)}
         </span>
-        <span className="text-muted-foreground text-sm">
+        <span className="text-muted-foreground text-sm whitespace-nowrap">
           the ordering signal
         </span>
       </div>

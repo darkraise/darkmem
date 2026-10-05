@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
-import { Input } from "darkraise-ui/components/input"
 import { Label } from "darkraise-ui/components/label"
 
-import { HelpTip } from "@/components/darkmem"
-import { ModuleSurface } from "@/features/activity/components/module-surface"
+import { HelpTip, NumberField } from "@/components/darkmem"
+import { Search } from "lucide-react"
+import { SettingsCard } from "./settings-card"
 import {
   useAutoResearch,
   useRerunResearchRun,
@@ -41,13 +41,16 @@ export function ResearchTab() {
   const update = useUpdateAutoResearch()
   const runs = useResearchRuns()
   const rerun = useRerunResearchRun()
-  const [findings, setFindings] = useState("")
-  const [chars, setChars] = useState("")
+  // Numbers, not strings: the old text inputs sent Number("") = 0 for an
+  // unread config and NaN for "abc". NumberField reports NaN for text it
+  // cannot parse, and that is refused below rather than written.
+  const [findings, setFindings] = useState<number>(NaN)
+  const [chars, setChars] = useState<number>(NaN)
 
   useEffect(() => {
     if (config.data) {
-      setFindings(String(config.data.max_findings_per_run))
-      setChars(String(config.data.max_content_chars))
+      setFindings(config.data.max_findings_per_run)
+      setChars(config.data.max_content_chars)
     }
   }, [config.data])
 
@@ -57,12 +60,14 @@ export function ResearchTab() {
   // until the row answers, and those are different claims.
   const known = config.data !== undefined
   const enabled = config.data?.enabled ?? false
+  const budgetsValid =
+    Number.isInteger(findings) &&
+    findings >= 1 &&
+    Number.isInteger(chars) &&
+    chars >= 1
 
   return (
-    <ModuleSurface
-      title="Auto research"
-      state={config.isLoading ? "empty" : "populated"}
-    >
+    <SettingsCard icon={Search} title="Auto research">
       <div className="space-y-3.5">
         <div className="flex flex-wrap items-center gap-2">
           <Badge
@@ -93,23 +98,29 @@ export function ResearchTab() {
 
         <div className="flex flex-wrap gap-2.5">
           <div className="flex min-w-40 flex-1 flex-col gap-1">
-            <Label htmlFor="research-findings" className="text-muted-foreground text-sm">
+            <Label className="text-muted-foreground text-sm">
               Max findings per run
             </Label>
-            <Input
-              id="research-findings"
+            <NumberField
+              aria-label="Max findings per run"
               value={findings}
-              onChange={(e) => setFindings(e.target.value)}
+              min={1}
+              step={1}
+              disabled={!known}
+              onValueChange={setFindings}
             />
           </div>
           <div className="flex min-w-40 flex-1 flex-col gap-1">
-            <Label htmlFor="research-chars" className="text-muted-foreground text-sm">
+            <Label className="text-muted-foreground text-sm">
               Max content characters
             </Label>
-            <Input
-              id="research-chars"
+            <NumberField
+              aria-label="Max content characters"
               value={chars}
-              onChange={(e) => setChars(e.target.value)}
+              min={1}
+              step={100}
+              disabled={!known}
+              onValueChange={setChars}
             />
           </div>
         </div>
@@ -117,11 +128,13 @@ export function ResearchTab() {
         <Button
           variant="outline"
           className="w-fit"
-          disabled={update.isPending}
+          // Gated on `known` too: before the read answers there is nothing
+          // in the fields, and a save would write zeros over the budget.
+          disabled={!known || !budgetsValid || update.isPending}
           onClick={() =>
             update.mutate({
-              max_findings_per_run: Number(findings),
-              max_content_chars: Number(chars),
+              max_findings_per_run: findings,
+              max_content_chars: chars,
             })
           }
         >
@@ -206,6 +219,6 @@ export function ResearchTab() {
           )}
         </div>
       </div>
-    </ModuleSurface>
+    </SettingsCard>
   )
 }

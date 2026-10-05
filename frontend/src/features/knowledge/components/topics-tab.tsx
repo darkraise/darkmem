@@ -208,7 +208,7 @@ function TopicsProjectChooser() {
     <ProjectChooser
       icon={Tags}
       heading="Topics open one project at a time"
-      description="Pick a project to see its topics."
+      description="Pick a project to see its topics. This sets the project scope for the whole app; change it back from the header switcher."
       projects={(data ?? [])
         .filter((p) => p.kind !== "personal" && p.memory_count > 0)
         .map((p) => ({ name: p.name, count: p.memory_count }))}

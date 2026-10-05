@@ -45,7 +45,8 @@ export function ChangePasswordDialog({
   // field was the problem. Reported only once a field has been touched, so an
   // untouched form is not scolded.
   const blockers = [
-    next !== "" && next.length < 8 &&
+    next !== "" &&
+      next.length < 8 &&
       "the new password must be at least 8 characters",
     confirm !== "" && next !== confirm && "the confirmation does not match",
     current === "" && next !== "" && "the current password is required",
@@ -129,7 +130,6 @@ export function ChangePasswordDialog({
               variant="outline"
               className="border-primary/60 text-primary-text"
               disabled={!filled || password.pending}
-              tabIndex={-1}
             >
               <Check className="mr-1.5 size-3.5" />
               Change password

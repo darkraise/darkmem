@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, Link } from "@tanstack/react-router"
 import {
   Brain,
   ClipboardCheck,
@@ -10,6 +10,7 @@ import {
   type LucideIcon,
   Activity,
 } from "lucide-react"
+import type { ReactNode } from "react"
 import {
   Card,
   CardContent,
@@ -76,11 +77,111 @@ const KIND_ICONS: Record<ActivityEvent["kind"], LucideIcon> = {
   review: ClipboardCheck,
 }
 
+/** Where a feed item opens: the journalled object itself when the event
+ *  names one the app has a page for, otherwise the surface that lists that
+ *  kind of event, so every item is a way in rather than a dead line. */
+function FeedItemLink({
+  event,
+  className,
+  children,
+}: {
+  event: ActivityEvent
+  className: string
+  children: ReactNode
+}) {
+  const id = event.object?.id
+  switch (event.object?.type) {
+    case "memory":
+      if (id)
+        return (
+          <Link
+            to="/memories/$memoryId"
+            params={{ memoryId: id }}
+            className={className}
+          >
+            {children}
+          </Link>
+        )
+      break
+    case "fact":
+      if (id)
+        return (
+          <Link
+            to="/knowledge/facts/$factId"
+            params={{ factId: id }}
+            className={className}
+          >
+            {children}
+          </Link>
+        )
+      break
+    case "article":
+      if (id)
+        return (
+          <Link
+            to="/knowledge/articles/$articleId"
+            params={{ articleId: id }}
+            className={className}
+          >
+            {children}
+          </Link>
+        )
+      break
+  }
+  switch (event.kind) {
+    case "memory":
+      return (
+        <Link to="/memories" className={className}>
+          {children}
+        </Link>
+      )
+    case "fact":
+      return (
+        <Link to="/knowledge/facts" className={className}>
+          {children}
+        </Link>
+      )
+    case "article":
+      return (
+        <Link to="/knowledge/articles" className={className}>
+          {children}
+        </Link>
+      )
+    case "review":
+      return (
+        <Link to="/knowledge/review" className={className}>
+          {children}
+        </Link>
+      )
+    case "job":
+      return (
+        <Link to="/jobs" className={className}>
+          {children}
+        </Link>
+      )
+    case "pipeline":
+      return (
+        <Link
+          to="/activity"
+          search={{ tab: "pipeline", day: undefined }}
+          className={className}
+        >
+          {children}
+        </Link>
+      )
+  }
+}
+
 function ActivityFeedItem({ event }: { event: ActivityEvent }) {
   const Icon = KIND_ICONS[event.kind]
   return (
-    <div
-      className={listItemClass({ className: "flex items-start gap-3 p-2.5" })}
+    <FeedItemLink
+      event={event}
+      className={listItemClass({
+        interactive: true,
+        className:
+          "focus-visible:ring-ring flex items-start gap-3 p-2.5 outline-none focus-visible:ring-1",
+      })}
     >
       <span className="bg-muted text-muted-foreground mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full">
         <Icon aria-hidden className="h-4 w-4" />
@@ -102,7 +203,7 @@ function ActivityFeedItem({ event }: { event: ActivityEvent }) {
       <span className="text-muted-foreground shrink-0 text-sm">
         {relativeTime(event.at)}
       </span>
-    </div>
+    </FeedItemLink>
   )
 }
 

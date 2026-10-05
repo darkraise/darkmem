@@ -72,6 +72,30 @@ export function ScheduleSection({
           </span>
         )}
       </div>
+      {/* Registration constants, not settings: printed as text, never as an
+          input that looks editable and silently ignores a change. */}
+      <dl className="text-muted-foreground grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-sm">
+        <dt>Minimum interval</dt>
+        <dd className="text-foreground font-mono">
+          {job.min_interval_seconds}s
+          <span className="text-muted-foreground font-sans">
+            {" "}
+            — runs never fire more often than this
+          </span>
+        </dd>
+        {job.max_run_seconds !== null && (
+          <>
+            <dt>Maximum run time</dt>
+            <dd className="text-foreground font-mono">
+              {job.max_run_seconds}s
+              <span className="text-muted-foreground font-sans">
+                {" "}
+                — a run still going past this is treated as overrun
+              </span>
+            </dd>
+          </>
+        )}
+      </dl>
     </div>
   )
 }
@@ -156,9 +180,10 @@ export function ConfigSchemaSection({
         >
           Save config
         </Button>
-        {saved && <span className="text-success-text font-mono text-sm">saved</span>}
+        {saved && (
+          <span className="text-success-text font-mono text-sm">saved</span>
+        )}
       </div>
     </div>
   )
 }
-

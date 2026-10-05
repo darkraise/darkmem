@@ -1,5 +1,14 @@
 import { useState } from "react"
-import { BookOpen, Brain, FileText, History, Link2, Loader2, Pencil, Trash2 } from "lucide-react"
+import {
+  BookOpen,
+  Brain,
+  FileText,
+  History,
+  Link2,
+  Loader2,
+  Pencil,
+  Trash2,
+} from "lucide-react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -79,7 +88,8 @@ export function DocumentActions({
             onSuccess: () => toast.success("Summary generated"),
             // Named, not swallowed: a 422 here means the document has no
             // blocks to summarise, which is a different thing from a failure.
-            onError: (error) => toast.error(error.message),
+            onError: (error) =>
+              toast.error(`Summary could not be generated — ${error.message}`),
           })
         }
       />
@@ -112,6 +122,9 @@ export function DocumentActions({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
+              // The library hard-codes `data-variant="default"` (the primary
+              // green) and spreads props after it; a delete is destructive.
+              data-variant="destructive"
               onClick={() => {
                 remove.mutate(document.id, {
                   onSuccess: () => {
@@ -119,7 +132,10 @@ export function DocumentActions({
                     setConfirmOpen(false)
                     onDeleted()
                   },
-                  onError: (error) => toast.error(error.message),
+                  onError: (error) =>
+                    toast.error(
+                      `The document could not be deleted — ${error.message}`,
+                    ),
                 })
               }}
             >
@@ -361,17 +377,18 @@ function RelatedMemoriesCard({ documentId }: { documentId: string }) {
                 onClick={() => setPeek(memory.memory_id)}
                 className="hover:bg-muted/50 focus-visible:ring-primary/40 -mx-1.5 cursor-pointer rounded-sm px-1.5 py-1 text-left text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none"
               >
-                <div className="flex items-start gap-1.5">
-                  <span className="line-clamp-2">{memory.content}</span>
+                {/* Text alone on the first lines; the status and score ride
+                    a meta line below. Beside a two-line clamp they squeezed
+                    the content down to a word or two. */}
+                <span className="line-clamp-2">{memory.content}</span>
+                <span className="text-muted-foreground mt-0.5 flex items-center gap-1.5 font-mono text-xs">
                   {memory.status !== "active" && (
-                    <Badge variant="outline" className="shrink-0 text-xs">
+                    <Badge variant="outline" className="text-xs">
                       {memory.status}
                     </Badge>
                   )}
-                  <span className="text-muted-foreground shrink-0 font-mono text-sm">
-                    {memory.score.toFixed(3)}
-                  </span>
-                </div>
+                  {memory.score.toFixed(3)}
+                </span>
                 <p className="text-muted-foreground line-clamp-2">
                   {memory.block_text}
                 </p>

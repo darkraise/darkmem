@@ -3,13 +3,14 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "darkraise-ui/components/dialog"
 import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
 import { Label } from "darkraise-ui/components/label"
-import { MultiSelect } from "darkraise-ui/components/multi-select"
+import { Checkbox } from "darkraise-ui/components/checkbox"
 import { KeyRound } from "lucide-react"
 import { useCreateApiKey, type ApiKeyCreated } from "@/hooks/api"
 import { McpConnectSnippets } from "./mcp-connect-snippets"
@@ -21,6 +22,11 @@ import { McpConnectSnippets } from "./mcp-connect-snippets"
  *  screen being a picker rather than a text box. The old field was free text
  *  split on commas, so `raed` was a valid thing to type and the failure
  *  arrived from the server after the click.
+ *
+ *  Checkbox rows rather than a MultiSelect: there are only three, every one
+ *  is visible without opening anything, and the MultiSelect's listbox
+ *  rendered inside the dialog's scroll box, so `admin` sat below its bottom
+ *  edge where nobody saw it.
  *
  *  `ratify` is deliberately not here. It is not a scope at all — confirming a
  *  fact stays a human action.
@@ -35,7 +41,11 @@ const SCOPE_ITEMS = [
   // only the erase leaves a webhook operator hunting for a narrower scope
   // that does not exist; naming only the webhook understates what a leak
   // costs.
-  { value: "admin", label: "Receive push updates, reindex repositories, delete document subtrees" },
+  {
+    value: "admin",
+    label:
+      "Receive push updates, reindex repositories, delete document subtrees",
+  },
 ]
 
 /**
@@ -86,20 +96,25 @@ export function ApiKeyDialog({
         {issued ? (
           <>
             <div className="border-inset bg-muted/20 flex flex-col gap-1 rounded-md border border-dashed p-2.5">
-              <code className="font-mono text-sm break-all">{issued.token}</code>
+              <code className="font-mono text-sm break-all">
+                {issued.token}
+              </code>
             </div>
             <p className="text-muted-foreground text-sm">
               To connect an MCP client with this key:
             </p>
             <McpConnectSnippets apiKey={issued.token} />
-            <Button className="w-fit" onClick={() => close(false)}>
-              I have copied it
-            </Button>
+            <DialogFooter>
+              <Button onClick={() => close(false)}>I have copied it</Button>
+            </DialogFooter>
           </>
         ) : (
           <>
             <div className="flex flex-col gap-1">
-              <Label htmlFor="apikey-label" className="text-muted-foreground text-sm">
+              <Label
+                htmlFor="apikey-label"
+                className="text-muted-foreground text-sm"
+              >
                 What is this key for?
               </Label>
               <Input
@@ -110,37 +125,66 @@ export function ApiKeyDialog({
               />
             </div>
 
-            <div className="flex flex-col gap-1">
-              <Label className="text-muted-foreground text-sm">
+            <fieldset className="flex flex-col gap-1.5">
+              <legend className="text-muted-foreground mb-1 text-sm">
                 What may it do?
-              </Label>
-              <MultiSelect
-                items={SCOPE_ITEMS}
-                value={scopes}
-                onValueChange={(details) => setScopes(details.value)}
-                placeholder="Choose at least one"
-              />
-            </div>
-
-            <Button
-              className="w-fit"
-              disabled={!label.trim() || scopes.length === 0 || createKey.isPending}
-              onClick={() =>
-                createKey.mutate(
-                  { name: label.trim(), scopes },
-                  { onSuccess: setIssued },
-                )
-              }
-            >
-              <KeyRound className="mr-1.5 size-3.5" />
-              {createKey.isPending ? "Creating…" : "Create key"}
-            </Button>
+              </legend>
+              {SCOPE_ITEMS.map((item) => (
+                <div key={item.value} className="flex items-start gap-2">
+                  <Checkbox
+                    id={`apikey-scope-${item.value}`}
+                    className="mt-0.5"
+                    checked={scopes.includes(item.value)}
+                    onCheckedChange={(checked) =>
+                      setScopes((prev) =>
+                        checked === true
+                          ? SCOPE_ITEMS.map((i) => i.value).filter(
+                              (v) => v === item.value || prev.includes(v),
+                            )
+                          : prev.filter((v) => v !== item.value),
+                      )
+                    }
+                  />
+                  <Label
+                    htmlFor={`apikey-scope-${item.value}`}
+                    className="text-sm font-normal"
+                  >
+                    {item.label}
+                  </Label>
+                </div>
+              ))}
+              {scopes.length === 0 && (
+                <p className="text-muted-foreground text-sm">
+                  Choose at least one.
+                </p>
+              )}
+            </fieldset>
 
             {createKey.isError && (
               <p className="text-destructive text-sm">
                 The key was not created — {createKey.error.message}
               </p>
             )}
+
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => close(false)}>
+                Cancel
+              </Button>
+              <Button
+                disabled={
+                  !label.trim() || scopes.length === 0 || createKey.isPending
+                }
+                onClick={() =>
+                  createKey.mutate(
+                    { name: label.trim(), scopes },
+                    { onSuccess: setIssued },
+                  )
+                }
+              >
+                <KeyRound className="mr-1.5 size-3.5" />
+                {createKey.isPending ? "Creating…" : "Create key"}
+              </Button>
+            </DialogFooter>
           </>
         )}
       </DialogContent>

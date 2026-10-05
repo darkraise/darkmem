@@ -28,5 +28,13 @@ test("job board shows cron and last run, and a trigger never silently queues", a
     .getByText(/^jobs$/i)
     .and(page.locator(':not([role="tab"])'))
   await expect(heading).toBeVisible()
-  await expect(page.getByText(/cron/i).first()).toBeVisible()
+  // The board is the shared /jobs list: each row prints the cron expression
+  // (five or six fields) beside its plain-English reading.
+  await expect(
+    page
+      .getByRole("main")
+      .locator("code")
+      .filter({ hasText: /^\S+( \S+){4,5}$/ })
+      .first(),
+  ).toBeVisible()
 })

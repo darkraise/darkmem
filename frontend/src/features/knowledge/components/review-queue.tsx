@@ -2,10 +2,10 @@ import { useEffect, useState } from "react"
 import { Link } from "@tanstack/react-router"
 import {
   AlertTriangle,
+  ArrowUpRight,
   ChevronLeft,
   ChevronRight,
   EyeOff,
-  Pencil,
   UserCheck,
   XCircle,
   ClipboardCheck,
@@ -136,6 +136,21 @@ function SuspicionBlock({ fact }: { fact: ReviewFactRowData }) {
   )
 }
 
+/** How a success toast names the fact it acted on: the triple when the row
+ *  has one, otherwise the readable sentence (clipped). */
+function factLabel(fact: ReviewFactRowData): string {
+  if (
+    fact.subject_name != null &&
+    fact.rel_type != null &&
+    fact.object_name != null
+  ) {
+    return `${fact.subject_name} → ${fact.rel_type} → ${fact.object_name}`
+  }
+  return fact.fact_text.length > 120
+    ? `${fact.fact_text.slice(0, 117)}…`
+    : fact.fact_text
+}
+
 function FactRow({
   fact,
   onRatify,
@@ -199,9 +214,10 @@ function FactRow({
           </Button>
         )}
         <Button variant="outline" asChild>
+          {/* The detail page is read-only, so this is "open", never "edit". */}
           <Link to="/knowledge/facts/$factId" params={{ factId: fact.id }}>
-            <Pencil className="mr-1.5 size-3.5" />
-            Edit
+            <ArrowUpRight className="mr-1.5 size-3.5" />
+            Open fact
           </Link>
         </Button>
         <span className="text-muted-foreground ml-auto text-xs">
@@ -261,8 +277,8 @@ function ArticleRow({ article }: { article: ReviewArticleRowData }) {
             to="/knowledge/articles/$articleId"
             params={{ articleId: article.id }}
           >
-            <Pencil className="mr-1.5 size-3.5" />
-            Edit
+            <ArrowUpRight className="mr-1.5 size-3.5" />
+            Open article
           </Link>
         </Button>
       </div>
@@ -314,11 +330,19 @@ export function ReviewQueue({ project }: { project?: string }) {
   // hygiene-queue.tsx (F3).
   const runRatify = (fact: ReviewFactRowData) => {
     if (DEMO) {
-      demoRatify(fact.id, "q.tran")
+      demoRatify(fact.queue_id, "q.tran")
+      toast.success("Fact ratified as confirmed", {
+        description: factLabel(fact),
+      })
     } else {
       ratifyMutation.mutate(
         { factId: fact.id },
         {
+          onSuccess: () => {
+            toast.success("Fact ratified as confirmed", {
+              description: factLabel(fact),
+            })
+          },
           onError: (error) => {
             if (error instanceof ApiError) {
               toast.error("Ratify failed — the fact was not changed", {
@@ -341,11 +365,19 @@ export function ReviewQueue({ project }: { project?: string }) {
   }
   const runReject = (fact: ReviewFactRowData) => {
     if (DEMO) {
-      demoClear(fact.id)
+      demoClear(fact.queue_id)
+      toast.success("Fact rejected — belief withdrawn", {
+        description: factLabel(fact),
+      })
     } else {
       rejectMutation.mutate(
         { factId: fact.id },
         {
+          onSuccess: () => {
+            toast.success("Fact rejected — belief withdrawn", {
+              description: factLabel(fact),
+            })
+          },
           onError: (error) => {
             if (error instanceof ApiError) {
               toast.error("Reject failed — the fact was not changed", {
@@ -373,6 +405,11 @@ export function ReviewQueue({ project }: { project?: string }) {
     dismissMutation.mutate(
       { factId: fact.id },
       {
+        onSuccess: () => {
+          toast.success("Contradiction flag dismissed", {
+            description: factLabel(fact),
+          })
+        },
         onError: (error) => {
           if (error instanceof ApiError) {
             toast.error("Dismiss failed — the flag was not cleared", {
@@ -445,7 +482,7 @@ export function ReviewQueue({ project }: { project?: string }) {
           <>
             {facts.rows.map((fact) => (
               <FactRow
-                key={fact.id}
+                key={fact.queue_id}
                 fact={fact}
                 onRatify={setRatifyTarget}
                 onReject={setRejectTarget}
@@ -509,7 +546,7 @@ export function ReviewQueue({ project }: { project?: string }) {
         ) : (
           <>
             {articles.rows.map((article) => (
-              <ArticleRow key={article.id} article={article} />
+              <ArticleRow key={article.queue_id} article={article} />
             ))}
             <PageControls
               offset={articlesOffset}
@@ -563,8 +600,13 @@ export function ReviewQueue({ project }: { project?: string }) {
                 className="text-warning-text mt-0.5 h-4 w-4 shrink-0"
               />
               <span>
-                Withdraws belief in this fact. Its verification status is not
-                changed.
+                Records your rejection and closes this fact&apos;s belief window
+                as of now, so it is no longer served as current. Its{" "}
+                <b className="font-semibold">
+                  {rejectTarget?.verification_status ?? "verification"}
+                </b>{" "}
+                label is not changed; the fact page will show it as belief
+                withdrawn.
               </span>
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -574,7 +616,7 @@ export function ReviewQueue({ project }: { project?: string }) {
               onClick={() => rejectTarget && runReject(rejectTarget)}
             >
               <XCircle className="mr-1.5 size-3.5" />
-              Reject
+              Reject — withdraw belief
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

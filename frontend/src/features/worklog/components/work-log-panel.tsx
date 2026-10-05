@@ -29,13 +29,20 @@ function WorkstreamList({
             onClick={() => onSelect(w.key)}
             className={listItemClass({
               interactive: true,
+              // Solid here: in this panel the dashed list edge sat beside
+              // the dashed warnings and read as a placeholder. The selected
+              // workstream gets a real fill and a left accent bar, not just a
+              // tinted edge.
               className: cn(
-                "bg-card flex w-full flex-col gap-0.5 p-2.5 text-left",
-                w.key === selectedKey && "border-primary/45 bg-primary/5",
+                "bg-card flex w-full flex-col gap-0.5 border-solid p-2.5 text-left",
+                w.key === selectedKey &&
+                  "border-primary/45 border-l-primary bg-primary/10 border-l-2",
               ),
             })}
           >
-            <span className="truncate text-sm font-semibold">{w.title ?? w.key}</span>
+            <span className="truncate text-sm font-semibold">
+              {w.title ?? w.key}
+            </span>
             <span className="text-muted-foreground truncate font-mono text-xs">
               {w.key} · {w.state} · {formatWhen(w.last_entry_at)}
             </span>
@@ -50,7 +57,11 @@ function MoreButton({
   query,
   label,
 }: {
-  query: { hasNextPage: boolean; isFetchingNextPage: boolean; fetchNextPage: () => unknown }
+  query: {
+    hasNextPage: boolean
+    isFetchingNextPage: boolean
+    fetchNextPage: () => unknown
+  }
   label: string
 }) {
   if (!query.hasNextPage) return null
@@ -89,11 +100,15 @@ export function WorkLogPanel({
     () => closed.data?.pages.flatMap((page) => page.items) ?? [],
     [closed.data],
   )
-  const [selectedKey, setSelectedKey] = useState<string | null>(initialWorkstream ?? null)
+  const [selectedKey, setSelectedKey] = useState<string | null>(
+    initialWorkstream ?? null,
+  )
   // null follows the selection: the closed list opens while a closed
   // workstream is selected, until the reader toggles it themselves.
   const [showClosed, setShowClosed] = useState<boolean | null>(null)
-  const [focusEntryId, setFocusEntryId] = useState<string | undefined>(undefined)
+  const [focusEntryId, setFocusEntryId] = useState<string | undefined>(
+    undefined,
+  )
 
   const listed =
     selectedKey === null
@@ -103,13 +118,17 @@ export function WorkLogPanel({
   // A key past the loaded pages (a link from Activity, a search hit) is looked
   // up on its own rather than silently replaced by the first open workstream.
   const unlisted =
-    selectedKey !== null && listed === undefined && !open.isPending && !closed.isPending
+    selectedKey !== null &&
+    listed === undefined &&
+    !open.isPending &&
+    !closed.isPending
   const lookup = useWorklogResume(project, selectedKey ?? "", unlisted)
   const resolving = unlisted && lookup.isLoading
   const mostActive = useMemo(
     () =>
       openItems.reduce<Workstream | null>(
-        (best, w) => (best === null || w.last_entry_at > best.last_entry_at ? w : best),
+        (best, w) =>
+          best === null || w.last_entry_at > best.last_entry_at ? w : best,
         null,
       ),
     [openItems],
@@ -120,7 +139,10 @@ export function WorkLogPanel({
     if (selectedKey === null && mostActive) setSelectedKey(mostActive.key)
   }, [selectedKey, mostActive])
   const selected =
-    listed ?? (unlisted ? lookup.data?.workstream : undefined) ?? mostActive ?? null
+    listed ??
+    (unlisted ? lookup.data?.workstream : undefined) ??
+    mostActive ??
+    null
   const closedVisible = showClosed ?? selected?.state === "closed"
 
   if (open.isError || closed.isError) {
@@ -160,7 +182,10 @@ export function WorkLogPanel({
           setFocusEntryId(entryId)
         }}
       />
-      <div className="grid gap-4 md:grid-cols-[16rem_minmax(0,1fr)]">
+      {/* The explicit `minmax(0,1fr)` track is what holds a phone to the
+          viewport: the implicit `auto` column sized itself to the header's
+          unwrapped max-content and pushed Close and Purge off-screen. */}
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[16rem_minmax(0,1fr)]">
         <nav aria-label="workstreams" className="space-y-3">
           <WorkstreamList
             items={openItems}
@@ -196,8 +221,14 @@ export function WorkLogPanel({
         {resolving ? (
           <Skeleton className="h-64 w-full" />
         ) : selected ? (
-          <section aria-label={`workstream ${selected.key}`} className="min-w-0 space-y-3">
-            <WorkstreamHeader workstream={selected} onOpenDocument={onOpenDocument} />
+          <section
+            aria-label={`workstream ${selected.key}`}
+            className="min-w-0 space-y-3"
+          >
+            <WorkstreamHeader
+              workstream={selected}
+              onOpenDocument={onOpenDocument}
+            />
             <EntryTimeline
               key={`${selected.id}:${focusEntryId ?? ""}`}
               workstream={selected}

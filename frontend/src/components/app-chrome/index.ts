@@ -1,5 +1,6 @@
 export { AppPageHeader } from "./app-page-header"
 export { BackToTop } from "./back-to-top"
+export { ShellBehaviours } from "./shell-behaviours"
 export { ContextChip } from "./context-chip"
 export { HeaderControls, HEADER_WIDE_QUERY } from "./header-controls"
 export { MinimalThemeSwitcher } from "./minimal-theme-switcher"

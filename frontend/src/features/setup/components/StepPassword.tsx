@@ -1,6 +1,6 @@
-import { Input } from "darkraise-ui/components/input"
 import { Label } from "darkraise-ui/components/label"
 import { useSetupWizardStore } from "@/features/setup/setupWizardStore"
+import { SetupPasswordField } from "./setup-brand"
 
 export function StepPassword() {
   const password = useSetupWizardStore((s) => s.password)
@@ -17,10 +17,8 @@ export function StepPassword() {
     <div className="space-y-4">
       <div className="space-y-1">
         <Label htmlFor="password">Admin password</Label>
-        <Input
+        <SetupPasswordField
           id="password"
-          type="password"
-          autoComplete="new-password"
           value={password.value}
           onChange={(e) => setPassword(e.target.value, password.confirm)}
           placeholder="At least 8 characters"
@@ -29,10 +27,8 @@ export function StepPassword() {
       </div>
       <div className="space-y-1">
         <Label htmlFor="confirm">Confirm password</Label>
-        <Input
+        <SetupPasswordField
           id="confirm"
-          type="password"
-          autoComplete="new-password"
           value={password.confirm}
           onChange={(e) => setPassword(password.value, e.target.value)}
           placeholder="Repeat password"

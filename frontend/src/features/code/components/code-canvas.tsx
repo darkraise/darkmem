@@ -1,10 +1,6 @@
 import { useMemo } from "react"
 import { cn } from "darkraise-ui/lib"
-import {
-  layoutGraph,
-  type GraphLayoutMode,
-  type Point,
-} from "@/demo/explore"
+import { layoutGraph, type GraphLayoutMode, type Point } from "@/demo/explore"
 import type { CodeNodeKind, DemoCodeGraph } from "@/features/code/types"
 
 export const CANVAS_W = 640
@@ -34,6 +30,12 @@ const KIND_CHART: Record<CodeNodeKind, number> = {
 }
 
 export const chartVar = (n: number) => `var(--chart-${n})`
+
+/** Approximate advance of one 10px monospace glyph, in SVG units. */
+const LABEL_CHAR_W = 6.1
+const RIGHT_LABEL = { x: 12, y: 4, anchor: "start" } as const
+const ABOVE_LABEL = { x: 0, y: -15, anchor: "middle" } as const
+const BELOW_LABEL = { x: 0, y: 22, anchor: "middle" } as const
 
 export interface CodeCanvasProps {
   graph: DemoCodeGraph
@@ -99,6 +101,29 @@ export function CodeCanvas({
     if (visibleIds && !visibleIds.has(id)) return true
     if (highlightCommunity && community !== highlightCommunity) return true
     return false
+  }
+
+  // Labels are drawn only for emphasised nodes. To the node's right is the
+  // default spot; when another node sits in that strip the label moves above
+  // the node (or below, if above is taken too), so a label never runs
+  // through a neighbour.
+  const labelSpot = (id: string, name: string) => {
+    const pos = positions[id]
+    if (!pos) return RIGHT_LABEL
+    const width = name.length * LABEL_CHAR_W
+    const occupied = (x0: number, x1: number, y0: number, y1: number) =>
+      graph.nodes.some((other) => {
+        if (other.id === id || isKindHidden(other.kind)) return false
+        const o = positions[other.id]
+        if (!o) return false
+        const dx = o.x - pos.x
+        const dy = o.y - pos.y
+        return dx + 8 > x0 && dx - 8 < x1 && dy + 8 > y0 && dy - 8 < y1
+      })
+    if (!occupied(10, 12 + width, -6, 6)) return RIGHT_LABEL
+    if (!occupied(-width / 2, width / 2, -22, -10)) return ABOVE_LABEL
+    if (!occupied(-width / 2, width / 2, 10, 22)) return BELOW_LABEL
+    return ABOVE_LABEL
   }
 
   const vw = CANVAS_W / zoom
@@ -223,17 +248,28 @@ export function CodeCanvas({
               stroke="hsl(var(--card))"
               strokeWidth={2}
             />
-            {(isSelected || isBlast || inProcess) && (
-              <text
-                x={12}
-                y={4}
-                className="font-mono"
-                fontSize={10}
-                fill="hsl(var(--foreground))"
-              >
-                {node.name}
-              </text>
-            )}
+            {(isSelected || isBlast || inProcess) &&
+              (() => {
+                const spot = labelSpot(node.id, node.name)
+                return (
+                  <text
+                    x={spot.x}
+                    y={spot.y}
+                    textAnchor={spot.anchor}
+                    className="font-mono"
+                    fontSize={10}
+                    fill="hsl(var(--foreground))"
+                    // A halo in the canvas colour keeps the label legible
+                    // where it crosses an edge or another node's ring.
+                    stroke="hsl(var(--background))"
+                    strokeWidth={3}
+                    strokeLinejoin="round"
+                    paintOrder="stroke"
+                  >
+                    {node.name}
+                  </text>
+                )
+              })()}
           </g>
         )
       })}

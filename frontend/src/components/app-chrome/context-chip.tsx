@@ -7,9 +7,19 @@ import {
   PopoverTrigger,
   PopoverContent,
 } from "darkraise-ui/components/popover"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "darkraise-ui/components/tooltip"
 import { cn } from "darkraise-ui/lib"
 import { HelpTip } from "@/components/darkmem"
-import { CONTEXT_AXES, useContextStore, type ContextAxis } from "@/stores/context-store"
+import {
+  CONTEXT_AXES,
+  useContextStore,
+  type ContextAxis,
+} from "@/stores/context-store"
 
 function summarize(axes: Partial<Record<ContextAxis, string>>): string {
   return CONTEXT_AXES.filter((axis) => axes[axis])
@@ -35,10 +45,12 @@ export function ContextChip() {
   const [draft, setDraft] = useState<Partial<Record<ContextAxis, string>>>({})
   const [open, setOpen] = useState(false)
 
-  const label = declared ? `context: ${summarize(declared.axes)}` : "context: none"
+  const label = declared
+    ? `context: ${summarize(declared.axes)}`
+    : "context: none"
 
   return (
-    <span className="inline-flex items-center gap-1">
+    <span className="inline-flex min-w-0 items-center gap-1">
       <Popover
         open={open}
         onOpenChange={(next) => {
@@ -46,20 +58,30 @@ export function ContextChip() {
           if (next) setDraft(declared?.axes ?? {})
         }}
       >
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            aria-label="Session context"
-            className={cn(
-              "border-border inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm transition-colors",
-              declared
-                ? "bg-muted hover:bg-muted/70"
-                : "text-muted-foreground hover:bg-muted/40 border-dashed italic",
-            )}
-          >
-            {label}
-          </button>
-        </PopoverTrigger>
+        {/* Capped and truncated: three declared axes made the chip ~550px
+            wide, which pushed the header's page actions over the project
+            pill. The full declaration is the tooltip and the popover. */}
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Session context"
+                  className={cn(
+                    "border-border inline-flex max-w-[16rem] min-w-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm transition-colors",
+                    declared
+                      ? "bg-muted hover:bg-muted/70"
+                      : "text-muted-foreground hover:bg-muted/40 border-dashed italic",
+                  )}
+                >
+                  <span className="min-w-0 truncate">{label}</span>
+                </button>
+              </PopoverTrigger>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-sm">{label}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         <PopoverContent
           side="bottom"
           align="end"
@@ -71,15 +93,26 @@ export function ContextChip() {
           <div className="space-y-2">
             {CONTEXT_AXES.map((axis) => (
               <div key={axis} className="space-y-1">
-                <Label htmlFor={`context-axis-${axis}`} className="text-xs capitalize">
+                <Label
+                  htmlFor={`context-axis-${axis}`}
+                  className="text-xs capitalize"
+                >
                   {axis}
                 </Label>
                 <Input
                   id={`context-axis-${axis}`}
                   aria-label={axis}
                   value={draft[axis] ?? ""}
-                  onChange={(e) => setDraft((prev) => ({ ...prev, [axis]: e.target.value }))}
-                  placeholder={axis === "env" ? "prod" : axis === "situation" ? "incident" : "15.3"}
+                  onChange={(e) =>
+                    setDraft((prev) => ({ ...prev, [axis]: e.target.value }))
+                  }
+                  placeholder={
+                    axis === "env"
+                      ? "prod"
+                      : axis === "situation"
+                        ? "incident"
+                        : "15.3"
+                  }
                 />
               </div>
             ))}

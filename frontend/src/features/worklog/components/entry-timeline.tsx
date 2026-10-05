@@ -47,29 +47,42 @@ function bucketsByDay(entries: WorklogEntry[]): TimelineBucket<WorklogEntry>[] {
     if (bucket) bucket.push(entry)
     else days.set(day, [entry])
   }
-  return [...days].map(([day, items]) => ({ id: day, date: day, count: items.length, items }))
+  return [...days].map(([day, items]) => ({
+    id: day,
+    date: day,
+    count: items.length,
+    items,
+  }))
 }
 
 function KindBadge({ kind }: { kind: WorklogKind }) {
   return <Badge variant={KIND_VARIANT[kind]}>{kind}</Badge>
 }
 
-function EntryRow({ entry, selected }: { entry: WorklogEntry; selected: boolean }) {
+function EntryRow({
+  entry,
+  selected,
+}: {
+  entry: WorklogEntry
+  selected: boolean
+}) {
+  const line = firstLine(entry.body)
+  // No run-key column: in a half-width timeline it kept 160px while the
+  // entry's own text, the only thing that tells rows apart, got ~12
+  // characters. The run key is in the detail header and the row's title.
   return (
     <div
+      title={`${line}\n${entry.run_key}`}
       className={cn(
-        "flex h-full items-center gap-2 px-2 text-sm",
-        selected && "bg-primary/5",
+        "flex h-full items-center gap-2 border-l-2 border-transparent px-2 text-sm",
+        selected && "bg-primary/10 border-primary",
       )}
     >
       <KindBadge kind={entry.kind} />
       <span className="text-muted-foreground w-12 shrink-0 font-mono text-xs">
         {entry.created_at.slice(11, 16)}
       </span>
-      <span className="min-w-0 flex-1 truncate">{firstLine(entry.body)}</span>
-      <span className="text-muted-foreground hidden max-w-40 truncate font-mono text-xs md:inline">
-        {entry.run_key}
-      </span>
+      <span className="min-w-0 flex-1 truncate">{line}</span>
     </div>
   )
 }
@@ -85,7 +98,10 @@ function EntryDetail({ entry }: { entry: WorklogEntry | null }) {
     )
   }
   return (
-    <article aria-label="entry" className="border-border min-w-0 space-y-2 rounded-md border p-3">
+    <article
+      aria-label="entry"
+      className="border-border min-w-0 space-y-2 self-start rounded-md border p-3"
+    >
       <div className="flex flex-wrap items-center gap-2">
         <KindBadge kind={entry.kind} />
         <span className="text-muted-foreground font-mono text-xs">
@@ -97,7 +113,13 @@ function EntryDetail({ entry }: { entry: WorklogEntry | null }) {
           {entry.body}
         </pre>
       ) : (
-        <AppMarkdown>{entry.body}</AppMarkdown>
+        // Compact headings: at full prose scale a checkpoint's `## State`
+        // outranked the workstream's own title above it. `!` because
+        // `.md-prose` is applied by an unlayered rule in globals.css, which
+        // outranks any layered utility.
+        <AppMarkdown className="prose-headings:mt-3! prose-headings:mb-1! prose-headings:text-sm! prose-headings:font-semibold!">
+          {entry.body}
+        </AppMarkdown>
       )}
     </article>
   )
@@ -114,7 +136,9 @@ export function EntryTimeline({
   initialEntryId?: string
 }) {
   const [kind, setKind] = useState<KindFilter>("all")
-  const [selectedId, setSelectedId] = useState<string | null>(initialEntryId ?? null)
+  const [selectedId, setSelectedId] = useState<string | null>(
+    initialEntryId ?? null,
+  )
   const entries = useWorklogEntries(
     workstream.id,
     kind === "all" ? null : kind,
@@ -129,7 +153,9 @@ export function EntryTimeline({
   // Entries page oldest first, so a hit on a recent entry of a long
   // workstream sits past the first page; page forward until it has loaded.
   const focusPending =
-    initialEntryId !== undefined && selectedId === initialEntryId && selected === null
+    initialEntryId !== undefined &&
+    selectedId === initialEntryId &&
+    selected === null
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = entries
   useEffect(() => {
     if (focusPending && hasNextPage && !isFetchingNextPage) void fetchNextPage()
@@ -152,9 +178,9 @@ export function EntryTimeline({
     body = <EmptyState kind="empty" title="No entries yet" />
   } else {
     body = (
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-2">
         <VirtualizedTimeline<WorklogEntry>
-          className="h-96"
+          className="h-96 min-w-0"
           layout="list"
           rowHeight={ROW_HEIGHT}
           granularity="day"

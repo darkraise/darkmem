@@ -1,7 +1,9 @@
+import type { ReactNode } from "react"
 import { Switch } from "darkraise-ui/components/switch"
+import { cn } from "darkraise-ui/lib"
 import type { DemoJob } from "@/features/activity/types"
 import { JobActions } from "./job-actions"
-import { JobLastRun, JobSchedule } from "./job-schedule-state"
+import { JobDisabledBadge, JobLastRun, JobSchedule } from "./job-schedule-state"
 import { listItemClass } from "@/components/darkmem"
 
 /**
@@ -9,6 +11,10 @@ import { listItemClass } from "@/components/darkmem"
  * scanning a long registry rather than reading one job: identity and schedule
  * on the left, state in the middle, actions pinned right so they form a
  * column the eye can run down.
+ *
+ * `aside` is a slot before the actions for a surface's own per-job figure
+ * (Activity → Jobs puts its 30-day usage chip there), so that surface reuses
+ * this row rather than growing a second job row with different verbs.
  */
 export function JobListRow({
   job,
@@ -16,13 +22,18 @@ export function JobListRow({
   onConfigure,
   onHistory,
   onToggleEnabled,
+  aside,
 }: {
   job: DemoJob
   onTrigger: () => void
   onConfigure: () => void
   onHistory: () => void
   onToggleEnabled: (enabled: boolean) => void
+  aside?: ReactNode
 }) {
+  // A disabled job will not run: its identity and schedule dim, and it says
+  // so in words, so a scan of the list does not depend on every switch.
+  const dim = !job.enabled && "opacity-60"
   return (
     <div
       className={listItemClass({
@@ -36,20 +47,23 @@ export function JobListRow({
         aria-label={`${job.key} enabled`}
       />
 
-      <div className="min-w-0 flex-1 basis-56">
+      <div className={cn("min-w-0 flex-1 basis-56", dim)}>
         <p className="truncate font-medium">{job.name}</p>
         <p className="text-muted-foreground truncate font-mono text-xs">
           {job.key}
         </p>
       </div>
 
-      <div className="min-w-0 basis-56">
+      <div className={cn("flex min-w-0 basis-56 items-center gap-2", dim)}>
         <JobSchedule cron={job.cron} />
+        {!job.enabled && <JobDisabledBadge />}
       </div>
 
       <div className="min-w-0 basis-40">
         <JobLastRun job={job} />
       </div>
+
+      {aside}
 
       <JobActions
         job={job}

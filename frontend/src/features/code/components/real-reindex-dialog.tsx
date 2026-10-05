@@ -7,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogClose,
 } from "darkraise-ui/components/dialog"
 import { CheckboxField } from "darkraise-ui/forms"
 import { Button } from "darkraise-ui/components/button"
@@ -124,6 +125,11 @@ export function RealReindexDialog({
           )}
 
           <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline">
+                Cancel
+              </Button>
+            </DialogClose>
             <Button
               type="submit"
               disabled={!!wholeFormError}

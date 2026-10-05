@@ -15,8 +15,11 @@ function DisputeSideCard({ side }: { side: DisputeSide }) {
       </p>
       <p className="text-sm">{side.assertion}</p>
       <p className="text-muted-foreground text-sm">
-        {side.origin_count} {side.origin_count === 1 ? "origin" : "origins"},
-        of kind {formatList(side.origin_kinds)}
+        {/* Same phrasing as the Facts list's origin meta; the bracketed
+            "of kinds [...]" form belongs to the verbatim badge claim only. */}
+        {side.origin_count} {side.origin_count === 1 ? "origin" : "origins"}
+        {side.origin_kinds.length > 0 &&
+          ` · ${formatList(side.origin_kinds)}`}
       </p>
       <p className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
         Sources

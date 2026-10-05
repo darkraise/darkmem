@@ -1,6 +1,6 @@
 import { DEMO } from "@/lib/demo-flag"
-import { useDemoReviewItems } from "@/demo/hooks"
-import type { DemoReviewItem } from "@/demo/types"
+import { useDemoFacts, useDemoReviewItems } from "@/demo/hooks"
+import type { DemoFact, DemoReviewItem } from "@/demo/types"
 import type { VerificationStatus } from "@/components/darkmem"
 import {
   useReviewQueueArticles,
@@ -38,12 +38,18 @@ function statusOf(value: string | null | undefined): VerificationStatus {
 }
 
 export interface ReviewFactRowData {
+  /** The fact's own id: what the detail link and the live ratify/reject
+   *  mutations address. */
   id: string
+  /** The queue row's identity, for React keys and the demo store's review
+   *  actions. Live, the queue item *is* the fact, so the two agree; the demo
+   *  fixture's review rows carry their own id and point at the fact through
+   *  `target_id`, and linking by the row id lands on "Fact not found". */
+  queue_id: string
   project: string
-  /** Null under demo — the fixture has no subject/rel/object split, and
-   *  faking one would be inventing data the demo never had. A renderer must
-   *  treat null as "no triple to show", not as an empty string to paper
-   *  over. */
+  /** Null when the triple is unknown — under demo, when the review row's
+   *  target fact is missing from the store. A renderer must treat null as
+   *  "no triple to show", not as an empty string to paper over. */
   subject_name: string | null
   rel_type: string | null
   object_name: string | null
@@ -77,7 +83,10 @@ export interface ReviewFactRowData {
 }
 
 export interface ReviewArticleRowData {
+  /** The article's own id (see `ReviewFactRowData.id`). */
   id: string
+  /** The queue row's identity (see `ReviewFactRowData.queue_id`). */
+  queue_id: string
   project: string
   subject_key: string
   title: string | null
@@ -131,6 +140,7 @@ function rankNoteOf(c: ConsequenceExplanation): string {
 function factFromApi(item: ReviewQueueFactItem): ReviewFactRowData {
   return {
     id: item.id,
+    queue_id: item.id,
     project: item.project,
     subject_name: item.subject_name,
     rel_type: item.rel_type,
@@ -153,6 +163,7 @@ function factFromApi(item: ReviewQueueFactItem): ReviewFactRowData {
 function articleFromApi(item: ReviewQueueArticleItem): ReviewArticleRowData {
   return {
     id: item.id,
+    queue_id: item.id,
     project: item.project,
     subject_key: item.subject_key,
     title: item.title,
@@ -174,14 +185,22 @@ function reasonOfDemo(item: DemoReviewItem): string {
   return "unspecified"
 }
 
-function factFromDemo(item: DemoReviewItem): ReviewFactRowData {
+function factFromDemo(
+  item: DemoReviewItem,
+  target: DemoFact | undefined,
+): ReviewFactRowData {
+  // The triple and the readable sentence come from the target fact itself,
+  // so a queue row reads like the Facts list row it triages (triple, then
+  // sentence). A missing target keeps the fallback: no triple, and the
+  // review row's own text.
   return {
-    id: item.id,
+    id: item.target_id,
+    queue_id: item.id,
     project: DEMO_PROJECT,
-    subject_name: null,
-    rel_type: null,
-    object_name: null,
-    fact_text: item.claim_line ?? item.title,
+    subject_name: target?.subject_name ?? null,
+    rel_type: target?.rel_type ?? null,
+    object_name: target?.object_name ?? null,
+    fact_text: target?.fact_text ?? item.claim_line ?? item.title,
     verification_status: statusOf(item.badge ?? null),
     reason: reasonOfDemo(item),
     under_sourced: Boolean(item.under_sourced),
@@ -200,7 +219,8 @@ function factFromDemo(item: DemoReviewItem): ReviewFactRowData {
 
 function articleFromDemo(item: DemoReviewItem): ReviewArticleRowData {
   return {
-    id: item.id,
+    id: item.target_id,
+    queue_id: item.id,
     project: DEMO_PROJECT,
     subject_key: item.title,
     title: item.title,
@@ -229,6 +249,7 @@ function demoPage<T>(
 
 export function useReviewFactRows(query: ReviewPageQuery): ReviewFactsResult {
   const demoItems = useDemoReviewItems()
+  const demoFacts = useDemoFacts()
   const api = useReviewQueueFacts(
     { project: query.project, limit: query.limit, offset: query.offset },
     { enabled: !DEMO },
@@ -238,7 +259,12 @@ export function useReviewFactRows(query: ReviewPageQuery): ReviewFactsResult {
     const matched = demoItems
       .filter((i) => i.kind === "fact")
       .filter(() => !query.project || query.project === DEMO_PROJECT)
-      .map(factFromDemo)
+      .map((i) =>
+        factFromDemo(
+          i,
+          demoFacts.find((f) => f.id === i.target_id),
+        ),
+      )
     const { rows, total } = demoPage(matched, query)
     return { rows, total, loading: false, error: false }
   }

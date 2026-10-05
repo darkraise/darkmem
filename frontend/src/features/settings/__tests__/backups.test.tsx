@@ -111,7 +111,11 @@ describe("BackupsTab", () => {
             actor: null,
             api_key_id: null,
             source: "backup_ship",
-            payload: { destination: "disk", file: "darkmem-app-x.sql.gz", sha256: "a".repeat(64) },
+            payload: {
+              destination: "disk",
+              file: "darkmem-app-x.sql.gz",
+              sha256: "a".repeat(64),
+            },
           },
         ],
         total: 1,
@@ -128,7 +132,11 @@ describe("BackupsTab", () => {
             actor: null,
             api_key_id: null,
             source: "backup_ship",
-            payload: { destination: "nas", file: "darkmem-app-x.sql.gz.age", error: "the NAS is unplugged" },
+            payload: {
+              destination: "nas",
+              file: "darkmem-app-x.sql.gz.age",
+              error: "the NAS is unplugged",
+            },
           },
         ],
         total: 1,
@@ -182,7 +190,30 @@ describe("BackupsTab", () => {
     fireEvent.click(await screen.findByRole("button", { name: /edit nas/i }))
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }))
 
-    expect(await screen.findByText(/encrypt before egress/i)).toBeInTheDocument()
+    expect(
+      await screen.findByText(/encrypt before egress/i),
+    ).toBeInTheDocument()
+  })
+
+  it("disables Run now while there is no destination to ship to", async () => {
+    routes({ "/config/backup-destinations": { destinations: [] } })
+    render(<BackupsTab />, { wrapper })
+
+    expect(
+      await screen.findByText("No destinations configured"),
+    ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /run now/i })).toBeDisabled()
+    expect(
+      screen.getByText(/Add a destination to run a backup/),
+    ).toBeInTheDocument()
+  })
+
+  it("edits the ssh private key in a multi-line field", async () => {
+    routes()
+    render(<BackupsTab />, { wrapper })
+
+    fireEvent.click(await screen.findByRole("button", { name: /edit nas/i }))
+    expect(screen.getByLabelText("ssh private key").tagName).toBe("TEXTAREA")
   })
 
   it("posts the job trigger when Run now is pressed", async () => {
@@ -337,7 +368,6 @@ describe("BackupsTab", () => {
   })
 })
 
-
 describe("a failed destinations read is not an unconfigured backup system", () => {
   it("reports the failure instead of claiming no destinations are configured", async () => {
     // "No destinations configured" tells an operator their backups are not
@@ -421,9 +451,7 @@ describe("outcome keying", () => {
   it("does not let a dump outcome overwrite a later attachment one", async () => {
     routes({
       "/events?event_type=backup_shipped&limit=50": {
-        items: [
-          { ...SHIPPED_DUMP, created_at: "2026-09-01T04:30:02Z" },
-        ],
+        items: [{ ...SHIPPED_DUMP, created_at: "2026-09-01T04:30:02Z" }],
         total: 1,
       },
       "/events?event_type=backup_verify_failed&limit=50": {
@@ -544,9 +572,7 @@ describe("the attachment family on the tab", () => {
     render(<BackupsTab />, { wrapper })
 
     expect(await screen.findByText(/database: verified/i)).toBeInTheDocument()
-    expect(
-      screen.getByText(/attachments: not restorable/i),
-    ).toBeInTheDocument()
+    expect(screen.getByText(/attachments: not restorable/i)).toBeInTheDocument()
   })
 
   it("labels each outcome line, so a never-run family is not read as the other", async () => {

@@ -71,8 +71,14 @@
 [data-mode="dark"] .md-prose {
   @apply prose-invert;
 }
+/* The fence follows the mode like the `.hljs-*` palette below does: the
+   fixed dark panel stays for dark mode only, because in light mode its
+   `text-foreground` code was near-black on near-black. */
 .md-prose pre {
-  @apply border-border rounded-lg border bg-[#0c1018] p-3;
+  @apply border-border bg-muted rounded-lg border p-3;
+}
+[data-mode="dark"] .md-prose pre {
+  @apply bg-[#0c1018];
 }
 .md-prose pre code {
   @apply text-foreground bg-transparent p-0;
@@ -362,6 +368,22 @@
     background-color: rgb(13 17 28 / 0.92);
   }
 }
+/* Light mode: the dark smoked fill blended to a mid grey behind light-mode
+   text (muted copy at ~1.8:1), so the setup wizard was illegible. The light
+   glass is the card token, frosted, with an ordinary border and a soft
+   shadow instead of the dark halo. */
+[data-mode="light"] .dm-glass {
+  background-color: hsl(var(--card) / 0.82);
+  border-color: hsl(var(--border));
+  box-shadow: 0 24px 60px rgb(0 0 0 / 0.12);
+}
+@supports not (
+  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+) {
+  [data-mode="light"] .dm-glass {
+    background-color: hsl(var(--card));
+  }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .dm-blob {
@@ -462,6 +484,59 @@
   .dr-sidebar-nav-item:is(.active, [data-status="active"])
   .dr-sidebar-nav-icon-svg {
   color: var(--primary-text);
+}
+
+/* darkraise-ui gap (LayoutHeader, 6.x): the header always mounts a
+   `NotificationBell` and no layout prop hides it. darkmem feeds it nothing,
+   so it opened an empty "No new notifications" panel on every page — a dead
+   control in prime header space. Hidden until the app has signals to put in
+   it or the library grows a `showNotifications` switch. */
+.dr-layout-header .dr-notification-bell-trigger {
+  display: none;
+}
+
+/* darkraise-ui gap (SidebarLayout, 6.x): the collapsed rail shares one square
+   between the brand mark and the expand toggle, and the toggle paints only on
+   hover, so at rest nothing says the rail can be reopened. The two stack
+   instead, with the toggle always visible under the mark. */
+.dr-sidebar-layout-aside[data-collapsed="true"]
+  .dr-sidebar-layout-aside-header {
+  height: auto;
+  padding-block: 0.5rem;
+}
+.dr-sidebar-layout-aside[data-collapsed="true"] .dr-sidebar-layout-brand-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  height: auto;
+}
+.dr-sidebar-layout-aside[data-collapsed="true"]
+  .dr-sidebar-layout-brand-slot
+  > * {
+  opacity: 1;
+}
+
+/* The rail's nav scroller overflows at common desktop heights; the edge that
+   still has items past it fades (`data-fade-*` set by ShellBehaviours). */
+.dr-sidebar-layout-nav-scroll[data-fade-end] {
+  mask-image: linear-gradient(
+    to bottom,
+    black calc(100% - 2.5rem),
+    transparent
+  );
+}
+.dr-sidebar-layout-nav-scroll[data-fade-start] {
+  mask-image: linear-gradient(to bottom, transparent, black 2.5rem);
+}
+.dr-sidebar-layout-nav-scroll[data-fade-start][data-fade-end] {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black 2.5rem,
+    black calc(100% - 2.5rem),
+    transparent
+  );
 }
 
 /* The sidebar search box carried the accent border at rest; it keeps the

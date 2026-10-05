@@ -51,7 +51,6 @@ import {
   type FlagsTabBinding,
 } from "../use-flags-tab-binding"
 
-
 const SETTING_NAMES: Record<string, string> = {
   confidence_rank_gamma: "Confidence",
   w_conf: "Confidence",
@@ -80,10 +79,16 @@ const SETTING_NAMES: Record<string, string> = {
 function SettingName({ name }: { name: string }) {
   const label = SETTING_NAMES[name]
   return (
-    <span className="flex items-baseline gap-2 whitespace-nowrap">
+    // Wraps rather than nowrap: on a phone "Parallel embedding calls
+    // embedding_concurrency" is wider than the card, and nowrap pushed the
+    // whole page (and the corroboration dialog) past the viewport. The key
+    // drops under the label instead, and may break anywhere as a last resort.
+    <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
       <span className="text-sm font-semibold">{label ?? name}</span>
       {label && (
-        <span className="text-muted-foreground font-mono text-xs">{name}</span>
+        <span className="text-muted-foreground font-mono text-xs [overflow-wrap:anywhere]">
+          {name}
+        </span>
       )}
     </span>
   )
@@ -228,7 +233,8 @@ function ClampedPill({ param }: { param: DemoLadderParam }) {
           clamped
         </TooltipTrigger>
         <TooltipContent className="max-w-sm text-sm leading-relaxed font-normal normal-case">
-          {param.note ?? `The saved value is not in effect; ${param.effective} is used.`}
+          {param.note ??
+            `The saved value is not in effect; ${param.effective} is used.`}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -342,9 +348,10 @@ function Section({
     <Card className="gap-0 py-0">
       {/* One row, always. Wrapping put the summary under the title on the
           longer names, which cost the header its scan line — the eye stops
-          finding the meta in the same place on every card. The title truncates
-          instead; nothing here is so long that its tail carries meaning the
-          help tip does not. */}
+          finding the meta in the same place on every card. From sm up the
+          title truncates instead. Below sm the meta drops under the title and
+          the title wraps on spaces: at phone width truncation left titles
+          three characters long ("GRA…"), identifiable only by their icon. */}
       {/* `flex-row space-y-0` are not redundant: the library's `.dr-card-header`
           is `flex flex-col space-y-1`, so setting only `flex-nowrap` left the
           children stacked in a column — a header three lines tall that still
@@ -355,20 +362,24 @@ function Section({
             colour the library's own comment calls the accent source. An icon
             on `text-accent` would be all but invisible on the header. */}
         <Icon aria-hidden className="text-primary-text h-4 w-4 shrink-0" />
-        <h3 className="text-foreground min-w-0 truncate font-mono text-xs font-semibold tracking-[0.14em] uppercase">
-          {name}
-        </h3>
-        {help && (
-          <span className="shrink-0">
-            <HelpTip label={`About ${name}`}>{help}</HelpTip>
-          </span>
-        )}
-        <span className="flex-1" />
-        {meta && (
-          <span className="text-muted-foreground shrink-0 font-mono text-xs whitespace-nowrap">
-            {meta}
-          </span>
-        )}
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <h3 className="text-foreground min-w-0 font-mono text-xs font-semibold tracking-[0.14em] uppercase sm:truncate">
+              {name}
+            </h3>
+            {help && (
+              <span className="shrink-0">
+                <HelpTip label={`About ${name}`}>{help}</HelpTip>
+              </span>
+            )}
+          </div>
+          <span className="hidden flex-1 sm:block" />
+          {meta && (
+            <span className="text-muted-foreground shrink-0 font-mono text-xs whitespace-nowrap">
+              {meta}
+            </span>
+          )}
+        </div>
         {onEdit && (
           <>
             <SavingMark saving={saving ?? false} />
@@ -700,39 +711,45 @@ function LadderDialog({
       }}
     >
       {corr.params.map((param) => (
+        // Two columns (name | fixed-width control group) so floor, input and
+        // reset line up across rows whatever the name's length; under sm the
+        // control group drops onto its own line instead of overflowing.
         <div
           key={param.name}
-          className="border-inset bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2"
+          className="border-inset bg-card grid grid-cols-1 items-center gap-2 rounded-md border px-3 py-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-2.5"
         >
-          <SettingName name={param.name} />
-          <HelpTip label={`About ${param.name}`}>
-            {LADDER_PARAM_HELP[param.name] ?? param.name}
-          </HelpTip>
-          <span className="flex-1" />
-          <span className="text-muted-foreground font-mono text-xs whitespace-nowrap">
-            floor {param.floor}
-          </span>
-          <ArmInput
-            arm={{
-              key: param.name,
-              desc: "",
-              value: draft[param.name] ?? param.floor,
-              coded_default: param.floor,
-              source: draft[param.name] === null ? "default" : "override",
-              step: 1,
-            }}
-            value={draft[param.name] ?? param.floor}
-            onChange={(v) => setDraft((d) => ({ ...d, [param.name]: v }))}
-            className="w-20"
-          />
-          <Button
-            variant="ghost"
-            className="text-muted-foreground font-mono text-xs"
-            disabled={draft[param.name] === null}
-            onClick={() => setDraft((d) => ({ ...d, [param.name]: null }))}
-          >
-            reset to floor
-          </Button>
+          <div className="flex min-w-0 items-center gap-2.5">
+            <SettingName name={param.name} />
+            <HelpTip label={`About ${param.name}`}>
+              {LADDER_PARAM_HELP[param.name] ?? param.name}
+            </HelpTip>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <span className="text-muted-foreground w-14 font-mono text-xs whitespace-nowrap sm:text-right">
+              floor {param.floor}
+            </span>
+            <ArmInput
+              arm={{
+                key: param.name,
+                desc: "",
+                value: draft[param.name] ?? param.floor,
+                coded_default: param.floor,
+                source: draft[param.name] === null ? "default" : "override",
+                step: 1,
+              }}
+              value={draft[param.name] ?? param.floor}
+              onChange={(v) => setDraft((d) => ({ ...d, [param.name]: v }))}
+              className="w-20"
+            />
+            <Button
+              variant="ghost"
+              className="text-muted-foreground font-mono text-xs"
+              disabled={draft[param.name] === null}
+              onClick={() => setDraft((d) => ({ ...d, [param.name]: null }))}
+            >
+              reset to floor
+            </Button>
+          </div>
         </div>
       ))}
     </SectionDialog>

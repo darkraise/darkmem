@@ -1,4 +1,14 @@
-import { useEffect, useState } from "react"
+import { useEffect, useId, useRef, useState } from "react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "darkraise-ui/components/alert-dialog"
 import { Button } from "darkraise-ui/components/button"
 import {
   Dialog,
@@ -70,6 +80,17 @@ export function MemoryEditorDialog({
   const [tags, setTags] = useState<string[]>([])
   const [context, setContext] = useState("")
   const [contentError, setContentError] = useState(false)
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
+  const contentRef = useRef<HTMLTextAreaElement>(null)
+  const dialogContentRef = useRef<HTMLDivElement>(null)
+  // The draft as it stood when the dialog opened (serialised); dismissal
+  // asks before throwing away anything that differs from it.
+  const [initialSnapshot, setInitialSnapshot] = useState("")
+  const ids = useId()
+  const projectLabelId = `${ids}-project-label`
+  const typeLabelId = `${ids}-type-label`
+  const tagsLabelId = `${ids}-tags-label`
+  const contentErrorId = `${ids}-content-error`
 
   // Real mode never opens this dialog for create (RealMemoriesView routes
   // create through CreateMemoryDialog); the only real-mode entry is the
@@ -90,11 +111,38 @@ export function MemoryEditorDialog({
       (memory && isDemoMemory(memory) ? memory.applies_when : undefined) ?? "",
     )
     setContentError(false)
+    setConfirmDiscard(false)
+    setInitialSnapshot(
+      snapshot(
+        memory?.content ?? "",
+        memory?.memory_type ?? "fact",
+        (memory && isDemoMemory(memory) ? memory.project : undefined) ??
+          defaultProject ??
+          "default",
+        memory?.tags ?? [],
+        (memory && isDemoMemory(memory) ? memory.applies_when : undefined) ??
+          "",
+      ),
+    )
   }, [open, memory, defaultProject])
+
+  const dirty =
+    snapshot(content, memoryType, project, tags, context) !== initialSnapshot
+
+  // Every dismissal (Escape, outside click, Cancel, the close button) goes
+  // through here so a typed draft is never dropped without a confirmation.
+  const requestOpenChange = (next: boolean) => {
+    if (next || !dirty) {
+      onOpenChange(next)
+      return
+    }
+    setConfirmDiscard(true)
+  }
 
   const handleSubmit = () => {
     if (content.trim().length === 0) {
       setContentError(true)
+      contentRef.current?.focus()
       return
     }
     if (editingRealMemory) {
@@ -169,154 +217,232 @@ export function MemoryEditorDialog({
           },
         ],
       })
-      toast.success("Memory captured")
+      toast.success("Memory created")
     }
     onOpenChange(false)
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{memory ? "Edit memory" : "New memory"}</DialogTitle>
-          <DialogDescription>
-            Capture a fact, decision, or note. Content is required.
-          </DialogDescription>
-        </DialogHeader>
-        <form
-          aria-label={memory ? "Edit memory" : "Create memory"}
-          className="space-y-4"
-          onSubmit={(e) => {
-            e.preventDefault()
-            handleSubmit()
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={requestOpenChange}
+        closeOnEscape={false}
+      >
+        <DialogContent
+          ref={dialogContentRef}
+          className="sm:max-w-lg"
+          onEscapeKeyDown={(event) => {
+            if (isEscapeForDialog(event, dialogContentRef.current)) {
+              requestOpenChange(false)
+            }
           }}
         >
-          <div className="space-y-1.5">
-            <Label htmlFor="memory-content">Content</Label>
-            <Textarea
-              id="memory-content"
-              rows={5}
-              placeholder="What do you want to remember?"
-              value={content}
-              onChange={(e) => {
-                setContent(e.target.value)
-                if (e.target.value.trim()) setContentError(false)
-              }}
-            />
-            {contentError && (
-              <p role="alert" className="text-destructive text-sm">
-                Content is required.
-              </p>
-            )}
-          </div>
-
-          <div
-            className={
-              editingRealMemory
-                ? "grid grid-cols-1 gap-4"
-                : "grid grid-cols-1 gap-4 sm:grid-cols-2"
-            }
+          <DialogHeader>
+            <DialogTitle>{memory ? "Edit memory" : "New memory"}</DialogTitle>
+            <DialogDescription>
+              Capture a fact, decision, or note. Content is required.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            aria-label={memory ? "Edit memory" : "Create memory"}
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault()
+              handleSubmit()
+            }}
           >
-            {!editingRealMemory && (
+            <div className="space-y-1.5">
+              <Label htmlFor="memory-content">Content</Label>
+              <Textarea
+                ref={contentRef}
+                id="memory-content"
+                aria-invalid={contentError || undefined}
+                aria-describedby={contentError ? contentErrorId : undefined}
+                rows={5}
+                placeholder="What do you want to remember?"
+                value={content}
+                onChange={(e) => {
+                  setContent(e.target.value)
+                  if (e.target.value.trim()) setContentError(false)
+                }}
+              />
+              {contentError && (
+                <p
+                  id={contentErrorId}
+                  role="alert"
+                  className="text-destructive text-sm"
+                >
+                  Content is required.
+                </p>
+              )}
+            </div>
+
+            <div
+              className={
+                editingRealMemory
+                  ? "grid grid-cols-1 gap-4"
+                  : "grid grid-cols-1 gap-4 sm:grid-cols-2"
+              }
+            >
+              {!editingRealMemory && (
+                <div className="space-y-1.5">
+                  <Label id={projectLabelId}>Project</Label>
+                  <Select value={project} onValueChange={setProject}>
+                    <SelectTrigger aria-labelledby={projectLabelId}>
+                      <SelectValue placeholder="Project" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {projects.map((p) => (
+                        <SelectItem key={p} value={p}>
+                          {p}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
               <div className="space-y-1.5">
-                <Label>Project</Label>
-                <Select value={project} onValueChange={setProject}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Project" />
+                <Label id={typeLabelId}>
+                  Memory type{" "}
+                  <span className="text-muted-foreground font-mono text-sm uppercase">
+                    optional hint
+                  </span>
+                </Label>
+                <Select value={memoryType} onValueChange={setMemoryType}>
+                  <SelectTrigger aria-labelledby={typeLabelId}>
+                    <SelectValue placeholder="Type" />
                   </SelectTrigger>
                   <SelectContent>
-                    {projects.map((p) => (
-                      <SelectItem key={p} value={p}>
-                        {p}
+                    {MEMORY_TYPE_OPTIONS.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>
+                        {t.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-muted-foreground text-sm">
+                  Classification runs regardless and may relabel it.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label id={tagsLabelId}>Tags</Label>
+              <TagsInput
+                value={tags}
+                onValueChange={({ value }) => setTags(value)}
+              >
+                <TagsInputControl>
+                  {tags.map((tag, index) => (
+                    <TagsInputItem key={tag} index={index} value={tag}>
+                      <TagsInputItemPreview>
+                        <TagsInputItemText>{tag}</TagsInputItemText>
+                        <TagsInputItemDeleteTrigger />
+                      </TagsInputItemPreview>
+                    </TagsInputItem>
+                  ))}
+                  <TagsInputInput
+                    aria-labelledby={tagsLabelId}
+                    placeholder={tags.length === 0 ? "Add tags…" : ""}
+                  />
+                </TagsInputControl>
+              </TagsInput>
+            </div>
+
+            {!editingRealMemory && (
+              <div className="space-y-1.5">
+                <Label htmlFor="memory-context">
+                  Context{" "}
+                  <span className="text-muted-foreground font-mono text-sm uppercase">
+                    optional
+                  </span>
+                </Label>
+                <Input
+                  id="memory-context"
+                  placeholder="e.g. env=prod"
+                  value={context}
+                  onChange={(e) => setContext(e.target.value)}
+                />
+                <p className="text-muted-foreground text-sm">
+                  When this memory applies. Searches under a conflicting context
+                  exclude it.
+                </p>
               </div>
             )}
 
-            <div className="space-y-1.5">
-              <Label>
-                Memory type{" "}
-                <span className="text-muted-foreground font-mono text-sm uppercase">
-                  optional hint
-                </span>
-              </Label>
-              <Select value={memoryType} onValueChange={setMemoryType}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {MEMORY_TYPE_OPTIONS.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-muted-foreground text-sm">
-                Classification runs regardless and may relabel it.
-              </p>
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>Tags</Label>
-            <TagsInput
-              value={tags}
-              onValueChange={({ value }) => setTags(value)}
+            <DialogFooter className="sm:items-center">
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full sm:w-auto"
+                onClick={() => requestOpenChange(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="w-full sm:w-auto"
+                disabled={updateRealMemory.isPending}
+              >
+                {memory ? "Save changes" : "Create memory"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <AlertDialog open={confirmDiscard} onOpenChange={setConfirmDiscard}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard this draft?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {memory
+                ? "Your edits to this memory have not been saved."
+                : "The memory you started has not been captured."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep editing</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmDiscard(false)
+                onOpenChange(false)
+              }}
             >
-              <TagsInputControl>
-                {tags.map((tag, index) => (
-                  <TagsInputItem key={tag} index={index} value={tag}>
-                    <TagsInputItemPreview>
-                      <TagsInputItemText>{tag}</TagsInputItemText>
-                      <TagsInputItemDeleteTrigger />
-                    </TagsInputItemPreview>
-                  </TagsInputItem>
-                ))}
-                <TagsInputInput
-                  placeholder={tags.length === 0 ? "Add tags…" : ""}
-                />
-              </TagsInputControl>
-            </TagsInput>
-          </div>
-
-          {!editingRealMemory && (
-            <div className="space-y-1.5">
-              <Label htmlFor="memory-context">
-                Context{" "}
-                <span className="text-muted-foreground font-mono text-sm uppercase">
-                  optional
-                </span>
-              </Label>
-              <Input
-                id="memory-context"
-                placeholder="e.g. env=prod"
-                value={context}
-                onChange={(e) => setContext(e.target.value)}
-              />
-              <p className="text-muted-foreground text-sm">
-                When this memory applies. Searches under a conflicting context
-                exclude it.
-              </p>
-            </div>
-          )}
-
-          <DialogFooter className="items-center">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => onOpenChange(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={updateRealMemory.isPending}>
-              {memory ? "Save changes" : "Create memory"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+              Discard
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
+}
+
+function snapshot(
+  content: string,
+  memoryType: string,
+  project: string,
+  tags: string[],
+  context: string,
+): string {
+  return JSON.stringify([content, memoryType, project, tags, context])
+}
+
+// Escape inside an open Select (or the discard confirmation) must close only
+// that layer. darkraise-ui gap: DismissableLayer decides "top layer" by DOM
+// containment, and both the Select listbox and the AlertDialog are portalled
+// outside the Dialog's node, so the Dialog also treats itself as top and one
+// keypress closed the dropdown and the dialog together. The Dialog therefore
+// runs with closeOnEscape off and closes itself only for a keypress aimed at
+// it; one whose target sits in another portalled layer is that layer's.
+// (preventDefault is no use here: every layer reads the one shared event, so
+// it would stop the Select from closing too.)
+function isEscapeForDialog(
+  event: KeyboardEvent,
+  dialogNode: HTMLElement | null,
+): boolean {
+  const target = event.target
+  if (!dialogNode || !(target instanceof Node)) return true
+  return target === document.body || dialogNode.contains(target)
 }

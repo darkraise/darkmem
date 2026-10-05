@@ -1,7 +1,8 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
+import { isPoison } from "@/demo/activity"
 import { useDemoStore } from "@/demo/store"
 import { PipelineTab } from "../components/pipeline-tab"
 import { TriageTab } from "../components/triage-tab"
@@ -52,6 +53,38 @@ describe("TriageTab", () => {
     render(withQuery(<TriageTab />))
     expect(screen.getByText("No failures to triage")).toBeInTheDocument()
   })
+
+  it("bulk retry leaves poison rows to their own deliberate retry", () => {
+    render(withQuery(<TriageTab />))
+    const failures = useDemoStore.getState().pipelineFailures
+    const poison = failures.filter((f) => isPoison(f))
+    expect(poison.length).toBeGreaterThan(0)
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: `Retry ${failures.length - poison.length} non-poison`,
+      }),
+    )
+    for (const f of useDemoStore.getState().pipelineFailures)
+      expect(f.retry_queued).toBe(!isPoison(f))
+    expect(screen.getByText("Retry anyway")).toBeEnabled()
+  })
+
+  it("forget asks first and keeps the row on cancel", () => {
+    render(withQuery(<TriageTab />))
+    const before = useDemoStore.getState().pipelineFailures.length
+    fireEvent.click(screen.getAllByRole("button", { name: "Forget" })[0]!)
+    const dialog = screen.getByRole("alertdialog")
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }))
+    expect(useDemoStore.getState().pipelineFailures).toHaveLength(before)
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Forget" })[0]!)
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: "Forget",
+      }),
+    )
+    expect(useDemoStore.getState().pipelineFailures).toHaveLength(before - 1)
+  })
 })
 
 describe("DreamTab undo honesty", () => {
@@ -69,11 +102,11 @@ describe("DreamTab undo honesty", () => {
 
   it("offers per-action undo buttons and per-batch undo", () => {
     render(<DreamTab />)
-    expect(screen.getAllByRole("button", { name: /^Undo(?! batch)/ }).length)
-      .toBeGreaterThan(0)
+    expect(
+      screen.getAllByRole("button", { name: /^Undo(?! batch)/ }).length,
+    ).toBeGreaterThan(0)
     expect(
       screen.getAllByRole("button", { name: /Undo batch/ }).length,
     ).toBeGreaterThan(0)
   })
 })
-

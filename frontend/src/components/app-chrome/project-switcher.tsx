@@ -26,7 +26,9 @@ export const CODE_SCOPE_REASON = "Code is scoped by repository, not by project"
 
 /** Code routes browse one repository at a time; a project scope would read
  *  as a filter that silently does nothing there. */
-export function projectScopeDisabledReason(pathname: string): string | undefined {
+export function projectScopeDisabledReason(
+  pathname: string,
+): string | undefined {
   return pathname === "/code" || pathname.startsWith("/code/")
     ? CODE_SCOPE_REASON
     : undefined
@@ -56,7 +58,10 @@ const TRIGGER_CLASS =
  *  count, showing "0 memories" for a scope that holds a hundred files. */
 function itemHint(row: ProjectSummary): string {
   const total =
-    row.memory_count + row.document_count + row.workstream_count + row.page_count
+    row.memory_count +
+    row.document_count +
+    row.workstream_count +
+    row.page_count
   return `${total} ${total === 1 ? "item" : "items"}`
 }
 
@@ -113,7 +118,10 @@ export function ProjectSwitcher({
                 aria-label="Project scope"
                 className={cn(TRIGGER_CLASS, "pointer-events-none opacity-60")}
               >
-                <Globe aria-hidden className="text-muted-foreground h-3.5 w-3.5" />
+                <Globe
+                  aria-hidden
+                  className="text-muted-foreground h-3.5 w-3.5"
+                />
                 project: {projectLabel(activeProject)}
               </button>
             </span>
@@ -149,7 +157,7 @@ export function ProjectSwitcher({
           <div className="max-h-64 space-y-0.5 overflow-y-auto">
             <ScopeRow
               label="All projects"
-              hint="every scope at once"
+              hint="all scopes"
               icon={Globe2}
               active={isAll}
               onSelect={() => switchTo(ALL_PROJECTS)}
@@ -219,9 +227,16 @@ function ScopeRow({
       )}
     >
       {Icon && <Icon aria-hidden className="h-3.5 w-3.5 shrink-0" />}
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      <span className="text-muted-foreground/70 shrink-0 text-xs">{hint}</span>
-      {active && <Check aria-hidden className="text-primary-text h-3.5 w-3.5 shrink-0" />}
+      {/* The label wins the row: the hint shrinks (and truncates) four times
+          faster, so "All projects" is no longer cut to "All pr…" by its own
+          hint in the 288px popover. */}
+      <span className="min-w-0 flex-auto truncate">{label}</span>
+      <span className="text-muted-foreground/70 min-w-0 shrink-[4] truncate text-xs">
+        {hint}
+      </span>
+      {active && (
+        <Check aria-hidden className="text-primary-text h-3.5 w-3.5 shrink-0" />
+      )}
     </button>
   )
 }

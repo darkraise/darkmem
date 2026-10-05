@@ -77,7 +77,8 @@ export function StepRepoPath() {
           {repos.detected.length > 0 ? (
             <>
               {" "}
-              — found <strong>{repos.detected.length}</strong> repository(ies).
+              — found <strong>{repos.detected.length}</strong>{" "}
+              {repos.detected.length === 1 ? "repository" : "repositories"}.
               Review them on the next step.
             </>
           ) : (

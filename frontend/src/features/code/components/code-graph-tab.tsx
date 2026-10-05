@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
   Boxes,
   Copy,
   Crosshair,
+  FileCode2,
   FolderGit2,
   ListTree,
   Maximize,
   Orbit,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pause,
   Play,
   Search,
@@ -23,9 +26,16 @@ import { Input } from "darkraise-ui/components/input"
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "darkraise-ui/components/dialog"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "darkraise-ui/components/tooltip"
 import {
   Tabs,
   TabsContent,
@@ -45,6 +55,8 @@ import {
 } from "darkraise-ui/components/toggle-group"
 import { EmptyState } from "@/components/darkmem"
 import { cn } from "darkraise-ui/lib"
+import { useMediaQuery } from "@/hooks/use-media-query"
+import { phaseProgressLabel, phaseProgressPercent } from "../lib/phase-progress"
 import { useDemoCodeRepos, useDemoCodeGraph } from "@/demo/hooks"
 import {
   computeBlastRadius,
@@ -135,6 +147,38 @@ export function CodeGraphTab({
   )
   const [openFiles, setOpenFiles] = useState<OpenCodeFile[]>([])
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false)
+  const [explorerCollapsed, setExplorerCollapsed] = useState(false)
+  const wide = useMediaQuery("(min-width: 1024px)")
+
+  // Explorer (224px), a docked inspector and the analysis rail are all
+  // fixed-width columns, so with all three open the canvas shrinks to about a
+  // quarter of the row. When the inspector opens, the Explorer folds to a
+  // strip; when it closes (or every file floats), the Explorer comes back.
+  // The reader can still expand the Explorer by hand at any time.
+  const inspectorShowing =
+    openFiles.some((f) => f.pinned) && !inspectorCollapsed
+  const prevInspectorShowing = useRef(inspectorShowing)
+  useEffect(() => {
+    if (prevInspectorShowing.current === inspectorShowing) return
+    prevInspectorShowing.current = inspectorShowing
+    setExplorerCollapsed(inspectorShowing)
+  }, [inspectorShowing])
+  const explorerStrip = wide && explorerCollapsed
+
+  // The canvas column's width bounds a floating file panel: it is scoped to
+  // that column, and a 420px panel in a narrower column would spill over the
+  // analysis rail and cover its controls.
+  const [canvasEl, setCanvasEl] = useState<HTMLDivElement | null>(null)
+  const [canvasWidth, setCanvasWidth] = useState<number | null>(null)
+  useEffect(() => {
+    if (!canvasEl) return
+    const measure = () => setCanvasWidth(canvasEl.clientWidth)
+    measure()
+    if (typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver(measure)
+    observer.observe(canvasEl)
+    return () => observer.disconnect()
+  }, [canvasEl])
 
   // Selection, analysis, camera, and open source files are per-repo state.
   useEffect(() => {
@@ -253,25 +297,27 @@ export function CodeGraphTab({
       })
   }
 
-  const donePhases = repo.phases?.filter((p) => p.state === "done").length ?? 0
-  const activePhases =
-    repo.phases?.filter((p) => p.state !== "skipped").length ?? 0
   const currentPhase = repo.phases?.find((p) => p.state === "current")
+  const progressLabel = phaseProgressLabel(repo.phases)
 
   const toolbar = (
     <div className="border-border bg-card flex flex-wrap items-center gap-2.5 border-b p-2.5">
       <Select value={repo.id} onValueChange={onRepoChange}>
-        <SelectTrigger className="w-56" aria-label="Repository">
+        <SelectTrigger
+          className="w-auto max-w-[20rem] min-w-56"
+          aria-label="Repository"
+          title={repo.name}
+        >
           <SelectValue>
-            <span className="flex items-center gap-2">
-              <FolderGit2 aria-hidden className="h-3.5 w-3.5" />
+            <span className="flex min-w-0 items-center gap-2">
+              <FolderGit2 aria-hidden className="h-3.5 w-3.5 shrink-0" />
               <span
                 className={cn(
                   "h-2 w-2 shrink-0 rounded-full",
                   STATUS_DOT[repo.status],
                 )}
               />
-              {repo.name}
+              <span className="min-w-0 truncate">{repo.name}</span>
             </span>
           </SelectValue>
         </SelectTrigger>
@@ -302,16 +348,14 @@ export function CodeGraphTab({
           <p className="text-sm font-semibold">
             Building the code graph for {repo.name}
           </p>
-          <div className="text-info-text flex items-center gap-2.5 font-mono text-sm">
-            {currentPhase
-              ? `phase ${String(currentPhase.n).padStart(2, "0")} — ${donePhases + 1} of ${activePhases} phases`
+          <div className="text-info-text flex flex-wrap items-center gap-2.5 font-mono text-sm">
+            {progressLabel
+              ? `${progressLabel} · ${currentPhase?.label ?? ""}`
               : "starting…"}
             <span className="bg-muted h-1.5 w-56 overflow-hidden rounded-full">
               <span
                 className="bg-info block h-full rounded-full"
-                style={{
-                  width: `${Math.round((donePhases / Math.max(activePhases, 1)) * 100)}%`,
-                }}
+                style={{ width: `${phaseProgressPercent(repo.phases)}%` }}
               />
             </span>
           </div>
@@ -503,13 +547,20 @@ export function CodeGraphTab({
           </div>
         </div>
         <div className="flex flex-col gap-0.5">
-          <span className="text-muted-foreground font-mono text-xs uppercase">
-            depth
+          {/* Depth is measured from the selected node, so without one it
+              would be a pressed control with no effect: disabled until a
+              node is selected, like Focus and Clear beside it. */}
+          <span
+            className="text-muted-foreground font-mono text-xs uppercase"
+            title={selectedId ? undefined : "Select a node to filter by depth"}
+          >
+            depth from selected
           </span>
           <ToggleGroup
             type="single"
             size="sm"
             value={depth}
+            disabled={!selectedId}
             onValueChange={(value) => {
               if (DEPTHS.includes(value as DepthValue))
                 setDepth(value as DepthValue)
@@ -524,57 +575,99 @@ export function CodeGraphTab({
           </ToggleGroup>
         </div>
         <span className="text-muted-foreground ml-auto font-mono text-sm whitespace-nowrap">
-          <b className="text-primary-text font-semibold">{graph.nodes.length}</b> n{" "}
-          <b className="text-primary-text font-semibold">{graph.edges.length}</b> e
+          <b className="text-primary-text font-semibold">
+            {graph.nodes.length}
+          </b>{" "}
+          nodes ·{" "}
+          <b className="text-primary-text font-semibold">
+            {graph.edges.length}
+          </b>{" "}
+          edges
         </span>
       </div>
 
-      {/* body — explorer/filters rail, code inspector, canvas, analysis */}
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+      {/* body — explorer/filters rail, code inspector, canvas, analysis.
+          From lg up the row fills the full-bleed page and each column
+          scrolls on its own. Below lg the sections stack at their natural
+          (or a fixed) height and the page scrolls: squeezing four stacked
+          sections into one viewport left the canvas 0px tall, painting over
+          the analysis rail. */}
+      <div className="flex flex-col lg:min-h-0 lg:flex-1 lg:flex-row">
         {/* explorer / filters */}
-        <Tabs
-          variant="underline"
-          value={leftTab}
-          onValueChange={setLeftTab}
-          className="border-border bg-card flex min-h-0 w-full min-w-0 flex-col border-b lg:w-56 lg:shrink-0 lg:border-r lg:border-b-0"
-        >
-          <TabsList className="border-border shrink-0 border-b px-1">
-            <TabsTrigger value="explorer">Explorer</TabsTrigger>
-            <TabsTrigger value="filters">Filters</TabsTrigger>
-          </TabsList>
-          <TabsContent
-            value="explorer"
-            className="flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"
+        {explorerStrip ? (
+          <div className="border-border bg-card flex w-9 shrink-0 flex-col items-center gap-2 border-r py-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              aria-label="Expand explorer"
+              onClick={() => setExplorerCollapsed(false)}
+            >
+              <PanelLeftOpen aria-hidden className="h-3.5 w-3.5" />
+            </Button>
+            <span
+              className="text-muted-foreground font-mono text-xs tracking-widest uppercase"
+              style={{ writingMode: "vertical-rl" }}
+            >
+              {leftTab === "filters" ? "filters" : "explorer"}
+            </span>
+          </div>
+        ) : (
+          <Tabs
+            variant="underline"
+            value={leftTab}
+            onValueChange={setLeftTab}
+            className="border-border bg-card flex h-72 w-full min-w-0 shrink-0 flex-col border-b lg:h-auto lg:min-h-0 lg:w-56 lg:border-r lg:border-b-0"
           >
-            <CodeExplorer
-              files={repo.files}
-              graph={graph}
-              query={search}
-              activePath={selectedNode?.file ?? null}
-              selectedNodeId={selectedId}
-              onOpenFile={openFile}
-              onSelectSymbol={selectNode}
-            />
-          </TabsContent>
-          <TabsContent
-            value="filters"
-            className="flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"
-          >
-            <CodeFilters
-              counts={kindCounts}
-              hidden={hiddenKinds}
-              onToggle={(kind) =>
-                setHiddenKinds((prev) => {
-                  const next = new Set(prev)
-                  if (next.has(kind)) next.delete(kind)
-                  else next.add(kind)
-                  return next
-                })
-              }
-              onReset={() => setHiddenKinds(new Set())}
-            />
-          </TabsContent>
-        </Tabs>
+            <div className="border-border flex shrink-0 items-center border-b px-1">
+              <TabsList className="min-w-0 flex-1">
+                <TabsTrigger value="explorer">Explorer</TabsTrigger>
+                <TabsTrigger value="filters">Filters</TabsTrigger>
+              </TabsList>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="hidden h-6 w-6 shrink-0 lg:inline-flex"
+                aria-label="Collapse explorer"
+                onClick={() => setExplorerCollapsed(true)}
+              >
+                <PanelLeftClose aria-hidden className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            <TabsContent
+              value="explorer"
+              className="flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"
+            >
+              <CodeExplorer
+                files={repo.files}
+                graph={graph}
+                query={search}
+                activePath={selectedNode?.file ?? null}
+                selectedNodeId={selectedId}
+                onOpenFile={openFile}
+                onSelectSymbol={selectNode}
+              />
+            </TabsContent>
+            <TabsContent
+              value="filters"
+              className="flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"
+            >
+              <CodeFilters
+                counts={kindCounts}
+                hidden={hiddenKinds}
+                onToggle={(kind) =>
+                  setHiddenKinds((prev) => {
+                    const next = new Set(prev)
+                    if (next.has(kind)) next.delete(kind)
+                    else next.add(kind)
+                    return next
+                  })
+                }
+                onReset={() => setHiddenKinds(new Set())}
+              />
+            </TabsContent>
+          </Tabs>
+        )}
 
         {/* code inspector — opened files stack top-to-bottom */}
         {openFiles.length > 0 && (
@@ -603,8 +696,13 @@ export function CodeGraphTab({
         )}
 
         {/* canvas */}
-        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="min-h-64 min-w-0 flex-1">
+        {/* `overflow-hidden`: floating file panels are scoped to this column
+            and must never paint over the analysis rail beside it. */}
+        <div
+          ref={setCanvasEl}
+          className="relative flex h-[min(70vh,30rem)] min-w-0 shrink-0 flex-col overflow-hidden lg:h-auto lg:min-h-0 lg:flex-1 lg:shrink"
+        >
+          <div className="min-h-0 min-w-0 flex-1 lg:min-h-64">
             <CodeCanvas
               graph={graph}
               layout={layout}
@@ -628,6 +726,7 @@ export function CodeGraphTab({
                 key={file.path}
                 file={file}
                 index={index}
+                boundsWidth={canvasWidth}
                 graph={graph}
                 activeSymbolId={selectedId}
                 onTogglePinned={(path) => patchFile(path, { pinned: true })}
@@ -688,7 +787,7 @@ export function CodeGraphTab({
         </div>
 
         {/* analysis panel */}
-        <div className="border-border bg-card flex min-h-0 w-full min-w-0 flex-col overflow-y-auto border-t lg:w-60 lg:shrink-0 lg:border-t-0 lg:border-l">
+        <div className="border-border bg-card flex w-full min-w-0 shrink-0 flex-col border-t lg:min-h-0 lg:w-60 lg:overflow-y-auto lg:border-t-0 lg:border-l">
           <div className="border-border space-y-1.5 border-b p-2.5">
             <SectionTitle icon={<Crosshair aria-hidden className="h-3 w-3" />}>
               Selected symbol
@@ -774,10 +873,18 @@ export function CodeGraphTab({
                   )
                 })}
                 {blast.affected.slice(0, 3).map((a) => (
-                  <p key={a.id} className="flex items-center gap-1.5 text-sm">
-                    {a.name}
-                    <span className="text-muted-foreground ml-auto font-mono text-xs">
-                      {a.file.split("/").pop()} · d{a.depth}
+                  // Name over file: side by side, a 240px rail cut both.
+                  <p
+                    key={a.id}
+                    className="min-w-0 text-sm"
+                    title={`${a.name} · ${a.file} · depth ${a.depth}`}
+                  >
+                    <span className="block truncate">{a.name}</span>
+                    <span className="text-muted-foreground flex min-w-0 font-mono text-xs">
+                      <span className="min-w-0 truncate">
+                        {a.file.split("/").pop()}
+                      </span>
+                      <span className="shrink-0">&nbsp;· d{a.depth}</span>
                     </span>
                   </p>
                 ))}
@@ -800,43 +907,52 @@ export function CodeGraphTab({
             <SectionTitle icon={<Workflow aria-hidden className="h-3 w-3" />}>
               Processes
             </SectionTitle>
-            {graph.processes.map((process) => (
-              <div
-                key={process.id}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-sm px-1 py-0.5",
-                  activeProcess === process.id && "bg-primary/10",
-                )}
-              >
-                <button
-                  type="button"
-                  className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-sm"
-                  onClick={() =>
-                    setActiveProcess((cur) =>
-                      cur === process.id ? null : process.id,
-                    )
-                  }
+            {/* The label owns line one and the step count sits under it, so
+                three processes never truncate to the same "memor…" stub; the
+                Mermaid export is an icon button with a tooltip. */}
+            <TooltipProvider delayDuration={150}>
+              {graph.processes.map((process) => (
+                <div
+                  key={process.id}
+                  className={cn(
+                    "flex items-start gap-1.5 rounded-sm px-1 py-0.5",
+                    activeProcess === process.id && "bg-primary/10",
+                  )}
                 >
-                  <Play
-                    aria-hidden
-                    className="text-muted-foreground h-3 w-3 shrink-0"
-                  />
-                  <span className="min-w-0 flex-1 truncate">
-                    {process.label}
-                  </span>
-                  <span className="text-muted-foreground shrink-0 font-mono text-xs">
-                    {process.steps.length} steps
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="text-muted-foreground hover:text-foreground shrink-0 font-mono text-xs"
-                  onClick={() => setMermaidProcess(process.id)}
-                >
-                  mermaid
-                </button>
-              </div>
-            ))}
+                  <button
+                    type="button"
+                    aria-pressed={activeProcess === process.id}
+                    className="flex min-w-0 flex-1 items-start gap-1.5 text-left text-sm"
+                    onClick={() =>
+                      setActiveProcess((cur) =>
+                        cur === process.id ? null : process.id,
+                      )
+                    }
+                  >
+                    <Play
+                      aria-hidden
+                      className="text-muted-foreground mt-1 h-3 w-3 shrink-0"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block break-words">{process.label}</span>
+                      <span className="text-muted-foreground block font-mono text-xs">
+                        {process.steps.length} steps
+                      </span>
+                    </span>
+                  </button>
+                  <Tooltip>
+                    <TooltipTrigger
+                      aria-label={`Mermaid export for ${process.label}`}
+                      className="text-muted-foreground hover:text-foreground focus-visible:ring-ring mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm focus-visible:ring-2 focus-visible:outline-none"
+                      onClick={() => setMermaidProcess(process.id)}
+                    >
+                      <FileCode2 aria-hidden className="h-3.5 w-3.5" />
+                    </TooltipTrigger>
+                    <TooltipContent side="left">Mermaid export</TooltipContent>
+                  </Tooltip>
+                </div>
+              ))}
+            </TooltipProvider>
           </div>
 
           <div className="space-y-1 p-2.5">
@@ -880,7 +996,7 @@ export function CodeGraphTab({
           if (!open) setMermaidProcess(null)
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg">
           {(() => {
             const process = graph.processes.find((p) => p.id === mermaidProcess)
             if (!process) return null
@@ -895,14 +1011,15 @@ export function CodeGraphTab({
                 <pre className="bg-background border-border text-muted-foreground overflow-x-auto rounded-md border p-3 font-mono text-sm leading-relaxed whitespace-pre">
                   {mermaid}
                 </pre>
-                <Button
-                  variant="outline"
-                  className="self-end"
-                  onClick={() => copyMermaid(mermaid)}
-                >
-                  <Copy aria-hidden className="mr-1 h-3.5 w-3.5" />
-                  {copied ? "Copied" : "Copy Mermaid"}
-                </Button>
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => copyMermaid(mermaid)}
+                  >
+                    <Copy aria-hidden className="mr-1 h-3.5 w-3.5" />
+                    {copied ? "Copied" : "Copy Mermaid"}
+                  </Button>
+                </DialogFooter>
               </>
             )
           })()}

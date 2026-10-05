@@ -136,15 +136,23 @@ function ArticleRow({ article }: { article: ArticleView }) {
           <Link
             to="/knowledge/articles/$articleId"
             params={{ articleId: article.supersedes }}
-            className="text-muted-foreground hover:text-primary-text flex w-fit items-center gap-1.5 text-sm transition-colors"
+            className="text-muted-foreground hover:text-primary-text flex w-fit items-baseline gap-1.5 text-sm transition-colors"
           >
-            <GitBranch aria-hidden className="h-3.5 w-3.5" />
-            supersedes 1 prior article —{" "}
-            <span className="text-primary-text">view history →</span>
+            <GitBranch aria-hidden className="h-3.5 w-3.5 shrink-0 self-center" />
+            {/* One inline run, so a narrow card wraps it as text instead of
+                splitting it into two flex columns. */}
+            <span>
+              supersedes 1 prior article —{" "}
+              <span className="text-primary-text whitespace-nowrap">
+                view history →
+              </span>
+            </span>
           </Link>
         )}
       </div>
-      <div className="flex shrink-0 flex-col items-end gap-0.5">
+      {/* Right-aligned column from `sm` up; below it, a left-aligned footer
+          line under the excerpt. */}
+      <div className="flex w-full shrink-0 flex-col items-start gap-0.5 sm:w-auto sm:items-end">
         <CoverageReadout coverage={article.coverage} />
         <span className="text-muted-foreground font-mono text-sm">
           {article.meta}

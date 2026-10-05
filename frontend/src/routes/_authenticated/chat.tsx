@@ -54,11 +54,9 @@ function DemoChatPage({ initialId }: { initialId?: string }) {
   return (
     // Same full-height shape as RealChatPage — one route, one layout.
     <div className="flex flex-col gap-4 lg:h-full lg:min-h-0">
-      <PageChrome
-        icon={MessageSquare}
-        title="Chat"
-      />
+      <PageChrome icon={MessageSquare} title="Chat" />
       <ChatPanels
+        activeKey={activeId}
         threads={
           <DemoThreadList
             threads={threads}

@@ -128,7 +128,11 @@ export function PipelineTab() {
       <ModuleSurface
         title="Pipeline — in flight"
         state="populated"
-        meta={`${inFlight.length} memory processing`}
+        meta={
+          inFlight.length === 0
+            ? "idle"
+            : `${inFlight.length} ${inFlight.length === 1 ? "memory" : "memories"} processing`
+        }
       >
         {inFlight.length === 0 ? (
           <p className="text-muted-foreground text-sm">

@@ -51,7 +51,12 @@ const BOT = {
 function route(overrides: Record<string, unknown> = {}) {
   vi.mocked(apiFetch).mockImplementation(async (path: string) => {
     if (path.startsWith("/git-accounts")) {
-      return overrides["/git-accounts"] ?? { accounts: [PERSONAL, BOT], providers: FORGES }
+      return (
+        overrides["/git-accounts"] ?? {
+          accounts: [PERSONAL, BOT],
+          providers: FORGES,
+        }
+      )
     }
     if (path.startsWith("/repos")) return overrides["/repos"] ?? []
     return {}
@@ -78,15 +83,21 @@ describe("GitAccountsTab", () => {
     render(<GitAccountsTab />, { wrapper })
 
     const defaultRow = (await screen.findByText("Personal")).closest("li")!
-    expect(within(defaultRow).getByText("Default")).toBeInTheDocument()
     expect(
-      within(defaultRow).queryByRole("button", { name: /set default/i }),
+      within(defaultRow).getByText("Default for github.com"),
+    ).toBeInTheDocument()
+    expect(
+      within(defaultRow).queryByRole("button", {
+        name: /make default for github.com/i,
+      }),
     ).not.toBeInTheDocument()
 
     const botRow = screen.getByText("OSS bot").closest("li")!
-    expect(within(botRow).queryByText("Default")).not.toBeInTheDocument()
+    expect(within(botRow).queryByText(/^Default for/)).not.toBeInTheDocument()
     expect(
-      within(botRow).getByRole("button", { name: /set default/i }),
+      within(botRow).getByRole("button", {
+        name: /make default for github.com/i,
+      }),
     ).toBeInTheDocument()
   })
 
@@ -96,7 +107,21 @@ describe("GitAccountsTab", () => {
 
     const botRow = (await screen.findByText("OSS bot")).closest("li")!
     await userEvent.click(
-      within(botRow).getByRole("button", { name: /set default/i }),
+      within(botRow).getByRole("button", {
+        name: /make default for github.com/i,
+      }),
+    )
+    // Personal already holds github.com, so the swap is confirmed first.
+    expect(apiFetch).not.toHaveBeenCalledWith(
+      "/git-accounts/acc-2",
+      expect.objectContaining({ method: "PUT" }),
+    )
+    const confirm = await screen.findByRole("dialog")
+    expect(
+      within(confirm).getByText(/Personal is the default/),
+    ).toBeInTheDocument()
+    await userEvent.click(
+      within(confirm).getByRole("button", { name: "Make default" }),
     )
 
     expect(apiFetch).toHaveBeenCalledWith(
@@ -121,7 +146,9 @@ describe("GitAccountsTab", () => {
     // until another account is picked — the server would refuse otherwise.
     const confirm = await screen.findByRole("button", { name: "Delete" })
     expect(confirm).toBeDisabled()
-    expect(screen.getByText(/2 repositories still use this account/i)).toBeInTheDocument()
+    expect(
+      screen.getByText(/2 repositories still use this account/i),
+    ).toBeInTheDocument()
   })
 
   it("deletes an unused account without asking for a reassignment", async () => {
@@ -157,7 +184,9 @@ describe("AddRepoDialog account picker", () => {
   // open is scoped to the dialog.
   const openDialog = async () => {
     render(<AddRepoDialog />, { wrapper })
-    await userEvent.click(screen.getByRole("button", { name: /add repository/i }))
+    await userEvent.click(
+      screen.getByRole("button", { name: /add repository/i }),
+    )
     return within(await screen.findByRole("dialog"))
   }
 
@@ -166,7 +195,9 @@ describe("AddRepoDialog account picker", () => {
     name: string,
   ) => {
     await userEvent.type(dialog.getAllByRole("textbox")[0], name)
-    await userEvent.click(dialog.getByRole("button", { name: "Add Repository" }))
+    await userEvent.click(
+      dialog.getByRole("button", { name: "Add Repository" }),
+    )
   }
 
   /** The provider picker comes first, so the account one is the last combobox. */
@@ -179,6 +210,20 @@ describe("AddRepoDialog account picker", () => {
     // The listbox portals out of the dialog, so it is found on the screen.
     await userEvent.click(await screen.findByText(option))
   }
+
+  it("labels every field so it is announced and focusable by its label", async () => {
+    route()
+    const dialog = await openDialog()
+    expect(dialog.getByLabelText("Name *")).toHaveAttribute("required")
+    expect(dialog.getByLabelText("URL")).toBeInTheDocument()
+    expect(dialog.getByLabelText("Default branch")).toBeInTheDocument()
+    expect(
+      dialog.getByRole("combobox", { name: "Provider" }),
+    ).toBeInTheDocument()
+    expect(
+      dialog.getByRole("combobox", { name: "Account" }),
+    ).toBeInTheDocument()
+  })
 
   it("preselects the provider's default account", async () => {
     route()

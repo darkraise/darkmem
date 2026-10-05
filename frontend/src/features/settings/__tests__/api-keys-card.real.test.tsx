@@ -1,5 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react"
 import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -71,11 +77,11 @@ describe("ApiKeysCard (real)", () => {
 
     expect(screen.queryByRole("article", { name: "retired-laptop" })).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: /Revoked keys \(1\)/ }))
-    const revoked = await screen.findByRole("article", { name: "retired-laptop" })
+    const revoked = await screen.findByRole("article", {
+      name: "retired-laptop",
+    })
     expect(within(revoked).getAllByText("Revoked").length).toBeGreaterThan(0)
-    expect(
-      within(revoked).queryByRole("button", { name: /Revoke/ }),
-    ).toBeNull()
+    expect(within(revoked).queryByRole("button", { name: /Revoke/ })).toBeNull()
   })
 
   it("revokes only after confirmation, through the DELETE door", async () => {
@@ -85,7 +91,9 @@ describe("ApiKeysCard (real)", () => {
 
     fireEvent.click(within(tile).getByRole("button", { name: /Revoke/ }))
     const dialog = await screen.findByRole("alertdialog")
-    expect(within(dialog).getByText(/Revoke push-webhook\?/)).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(/Revoke push-webhook\?/),
+    ).toBeInTheDocument()
     expect(apiFetch).not.toHaveBeenCalledWith(
       `/api-keys/${LIVE.id}`,
       expect.anything(),
@@ -142,6 +150,47 @@ describe("ApiKeysCard (real)", () => {
     expect(screen.queryByText(/^dmk_/)).toBeNull()
   })
 
+  it("picks scopes from labelled checkboxes and sends them in canonical order", async () => {
+    vi.mocked(apiFetch).mockImplementation(
+      (path: string, init?: RequestInit) => {
+        if (path === "/api-keys" && init?.method === "POST")
+          return Promise.resolve({ ...LIVE, token: "dmk_x_y" })
+        if (path === "/api-keys") return Promise.resolve([])
+        return Promise.reject(new Error(`unexpected apiFetch(${path})`))
+      },
+    )
+    render(<ApiKeysCard />, { wrapper })
+    fireEvent.click(await screen.findByRole("button", { name: /New key/ }))
+    fireEvent.change(await screen.findByLabelText(/What is this key for/), {
+      target: { value: "hook" },
+    })
+    const read = screen.getByRole("checkbox", { name: /Search and read/ })
+    const admin = screen.getByRole("checkbox", { name: /Receive push updates/ })
+    const capture = screen.getByRole("checkbox", { name: /Save new memories/ })
+    expect(read).toHaveAttribute("aria-checked", "true")
+    fireEvent.click(read)
+    expect(screen.getByRole("button", { name: /Create key/ })).toBeDisabled()
+    fireEvent.click(admin)
+    fireEvent.click(capture)
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /Create key/ }))
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith(
+        "/api-keys",
+        expect.objectContaining({ method: "POST" }),
+      ),
+    )
+    const post = vi
+      .mocked(apiFetch)
+      .mock.calls.find(
+        (c) => (c[1] as RequestInit | undefined)?.method === "POST",
+      )!
+    expect(JSON.parse((post[1] as RequestInit).body as string).scopes).toEqual([
+      "capture",
+      "admin",
+    ])
+  })
+
   it("drops the one-time plaintext when its dialog closes", async () => {
     const created = {
       ...LIVE,
@@ -152,14 +201,16 @@ describe("ApiKeysCard (real)", () => {
       token: "dmk_zzz999_plaintext",
     }
     let keys: unknown[] = []
-    vi.mocked(apiFetch).mockImplementation((path: string, init?: RequestInit) => {
-      if (path === "/api-keys" && init?.method === "POST") {
-        keys = [created]
-        return Promise.resolve(created)
-      }
-      if (path === "/api-keys") return Promise.resolve(keys)
-      return Promise.reject(new Error(`unexpected apiFetch(${path})`))
-    })
+    vi.mocked(apiFetch).mockImplementation(
+      (path: string, init?: RequestInit) => {
+        if (path === "/api-keys" && init?.method === "POST") {
+          keys = [created]
+          return Promise.resolve(created)
+        }
+        if (path === "/api-keys") return Promise.resolve(keys)
+        return Promise.reject(new Error(`unexpected apiFetch(${path})`))
+      },
+    )
     render(<ApiKeysCard />, { wrapper })
 
     fireEvent.click(await screen.findByRole("button", { name: /New key/ }))

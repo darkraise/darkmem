@@ -11,7 +11,13 @@
  * of `@tanstack/react-router` so the existing nav/sidebar/PageHeader keep
  * working without churn.
  */
-import type { CSSProperties, MouseEvent, ReactNode } from "react"
+import type {
+  AnchorHTMLAttributes,
+  CSSProperties,
+  MouseEvent,
+  ReactNode,
+  Ref,
+} from "react"
 import {
   Link as TanstackLink,
   useLocation as useTanstackLocation,
@@ -78,14 +84,45 @@ export function isNavHrefActive(
   )
 }
 
+/** href → label for the app's nav, so a collapsed rail link can be named.
+ *
+ *  darkraise-ui gap (SidebarItem, 6.x): a collapsed nav link renders only its
+ *  icon and sets no `aria-label`, so every rail link was an empty link to
+ *  assistive tech. `RouterLinkProps` carries no label, so the layout registers
+ *  its nav here and the adapter names any link the library marks
+ *  `data-collapsed="true"`. Retire once the library labels collapsed items. */
+const navLabels = new Map<string, string>()
+
+export function registerNavLabels(
+  groups: ReadonlyArray<{
+    items: ReadonlyArray<{ href: string; label: string }>
+  }>,
+) {
+  for (const group of groups) {
+    for (const item of group.items) navLabels.set(item.href, item.label)
+  }
+}
+
+/** Every prop beyond `RouterLinkProps` is forwarded to the anchor, and so is
+ *  the ref. Radix `Slot` (TooltipTrigger/PopoverTrigger `asChild`) merges its
+ *  ref, pointer/focus handlers, `data-state` and `aria-describedby` into the
+ *  child's props; dropping them is why the collapsed rail's per-item tooltip
+ *  never opened. The library's `data-collapsed` / `data-depth` hooks ride the
+ *  same path. */
 function AdapterLink({
   to,
   className,
   activeClassName,
+  // Consumed: TanStack would otherwise receive it as an unknown anchor prop.
+  activeExact: _activeExact,
   style,
   children,
   onClick,
-}: LinkProps) {
+  ref,
+  ...rest
+}: LinkProps & {
+  ref?: Ref<HTMLAnchorElement>
+} & Omit<AnchorHTMLAttributes<HTMLAnchorElement>, keyof LinkProps | "href">) {
   const pathname = useTanstackLocation({ select: (l) => l.pathname })
   const search = useTanstackLocation({ select: (l) => l.search }) as Record<
     string,
@@ -94,8 +131,15 @@ function AdapterLink({
   const target = splitNavHref(to)
   const active =
     activeClassName !== undefined && isNavHrefActive(to, pathname, search)
+  const collapsedLabel =
+    (rest as Record<string, unknown>)["data-collapsed"] === "true"
+      ? navLabels.get(to)
+      : undefined
   return (
     <TanstackLink
+      {...rest}
+      aria-label={rest["aria-label"] ?? collapsedLabel}
+      ref={ref}
       to={target.to}
       search={target.search}
       className={

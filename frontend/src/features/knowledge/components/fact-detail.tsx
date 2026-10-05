@@ -137,7 +137,10 @@ function DemoFactDetail({ factId }: { factId: string }) {
         <p className="max-w-[70ch] text-base leading-relaxed">
           {fact.fact_text}
         </p>
-        {disputed && (
+        {/* The badge's claim, printed for every rung: the badge's title is
+            hover-only, so keyboard and touch readers would otherwise never
+            see the honesty sentence. */}
+        {fact.claim && (
           <p className="text-muted-foreground max-w-[70ch] font-mono text-sm">
             {fact.claim}
           </p>
@@ -320,7 +323,9 @@ function LiveFactDetailBody({ fact }: { fact: LiveFactDetailData }) {
         <p className="max-w-[70ch] text-base leading-relaxed">
           {fact.fact_text}
         </p>
-        {disputed && fact.claim && (
+        {/* Printed for every rung, not only disputed: the badge's title is
+            hover-only, so keyboard and touch readers need it in the page. */}
+        {fact.claim && (
           <p className="text-muted-foreground max-w-[70ch] font-mono text-sm">
             {fact.claim}
           </p>

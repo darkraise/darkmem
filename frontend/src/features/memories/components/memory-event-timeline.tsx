@@ -69,7 +69,8 @@ export function attributeEvent(
 }
 
 function AttributionCell({ attribution }: { attribution: ActorAttribution }) {
-  const { actor, keyLabel, keyRevoked, keyUnresolved, keyListUnreadable } = attribution
+  const { actor, keyLabel, keyRevoked, keyUnresolved, keyListUnreadable } =
+    attribution
   return (
     <span className="flex flex-wrap items-center gap-1.5">
       {keyLabel !== null ? (
@@ -78,9 +79,7 @@ function AttributionCell({ attribution }: { attribution: ActorAttribution }) {
             key: {keyLabel}
           </Badge>
           {keyRevoked && (
-            <span className="text-muted-foreground text-sm">
-              (revoked)
-            </span>
+            <span className="text-muted-foreground text-sm">(revoked)</span>
           )}
         </>
       ) : keyUnresolved ? (
@@ -149,7 +148,7 @@ export function MemoryEventTimeline({ memoryId }: { memoryId: string }) {
           key={event.id}
           className="border-border flex flex-wrap items-start gap-2.5 border-t border-dashed py-2.5 first:border-t-0 first:pt-0"
         >
-          <span className="text-muted-foreground w-40 shrink-0 pt-0.5 font-mono text-sm">
+          <span className="text-muted-foreground w-44 shrink-0 pt-0.5 font-mono text-sm whitespace-nowrap">
             {formatDateTime(event.created_at)}
           </span>
           <Badge variant="outline" size="sm" className="shrink-0 font-mono">

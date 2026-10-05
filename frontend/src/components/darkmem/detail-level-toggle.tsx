@@ -52,7 +52,16 @@ function consumesDetailLevel(pathname: string): boolean {
   )
 }
 
-export function DetailLevelToggle() {
+/** Both variants print a visible "Detail" caption: the segments are icon-only
+ *  (a circle and lines), so without it the control's meaning lived only in a
+ *  hover tooltip. `row` emits the caption and the control as two siblings for
+ *  the narrow header popover's two-column grid, so the caption vanishes with
+ *  the control on routes that do not consume the level. */
+export function DetailLevelToggle({
+  variant = "inline",
+}: {
+  variant?: "inline" | "row"
+}) {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const level = useDetailLevel((s) => s.level)
   const setLevel = useDetailLevel((s) => s.setLevel)
@@ -61,12 +70,30 @@ export function DetailLevelToggle() {
   // detail level, you just can't reach it", which is not true here.
   if (!consumesDetailLevel(pathname)) return null
 
-  return (
+  const control = (
     <IconSegmented
       value={level}
       options={OPTIONS}
       onChange={setLevel}
       label="Detail level"
     />
+  )
+  if (variant === "row") {
+    return (
+      <>
+        <span aria-hidden className="text-muted-foreground text-xs font-medium">
+          Detail
+        </span>
+        <div className="flex min-w-0 items-center">{control}</div>
+      </>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span aria-hidden className="text-muted-foreground text-xs">
+        Detail
+      </span>
+      {control}
+    </span>
   )
 }

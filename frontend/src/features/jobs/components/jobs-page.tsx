@@ -2,14 +2,10 @@ import { useState } from "react"
 import { LayoutGrid, List, Timer } from "lucide-react"
 import { EmptyState } from "@/components/darkmem"
 import { Skeleton } from "darkraise-ui/components/skeleton"
-import { toast } from "darkraise-ui/components/sonner"
 import { PageChrome } from "@/components/app-chrome"
-import {
-  IconSegmented,
-  type IconSegmentedOption,
-} from "@/components/darkmem"
+import { IconSegmented, type IconSegmentedOption } from "@/components/darkmem"
 import type { DemoJob } from "@/features/activity/types"
-import { useJobsSettingsBinding } from "../use-jobs-binding"
+import { triggerWithToast, useJobsSettingsBinding } from "../use-jobs-binding"
 import { JobGridCard } from "./job-grid-card"
 import { JobListRow } from "./job-list-row"
 import { JobConfigDialog } from "./job-config-dialog"
@@ -37,29 +33,23 @@ export function JobsPage() {
     setEnabled,
   } = binding
 
-  // Same handling the list layout proves: a held lock resolves {ok:false,409}
-  // rather than throwing, so it must not be reported as a request failure.
-  const handleTrigger = (job: DemoJob) => {
-    trigger(job.key)
-      .then((result) => {
-        if (result.ok) toast.success(`${job.name} — triggered`)
-        else
-          toast.warning(`${job.name} — busy`, {
-            description: "Already running; try again when it finishes.",
-          })
-      })
-      .catch((err: unknown) => {
-        toast.error(`Trigger failed for ${job.name}`, {
-          description: err instanceof Error ? err.message : undefined,
-        })
-      })
-  }
+  const handleTrigger = (job: DemoJob) => triggerWithToast(trigger, job)
+  const running = jobs.filter((j) => j.running).length
+  const disabled = jobs.filter((j) => !j.enabled).length
 
   return (
     <div className="space-y-4">
       <PageChrome icon={Timer} title="Jobs" />
 
+      {/* The layout toggle shares its row with the board's summary rather
+          than holding a toolbar band on its own. */}
       <div className="flex flex-wrap items-center gap-3">
+        {!isLoading && !isError && jobs.length > 0 && (
+          <p className="text-muted-foreground font-mono text-sm">
+            {jobs.length} registered · {running} running
+            {disabled > 0 && ` · ${disabled} disabled`}
+          </p>
+        )}
         <IconSegmented
           value={layout}
           options={LAYOUTS}
@@ -70,10 +60,7 @@ export function JobsPage() {
       </div>
 
       {isError ? (
-        <EmptyState
-          kind="failed"
-          title="Couldn't load the job board"
-        />
+        <EmptyState kind="failed" title="Couldn't load the job board" />
       ) : isLoading ? (
         <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }, (_, i) => (

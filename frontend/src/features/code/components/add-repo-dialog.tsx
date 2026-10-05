@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useId, useRef, useState } from "react"
 import {
   Dialog,
   DialogContent,
@@ -28,7 +28,10 @@ import {
   GitAccountSelect,
   NO_ACCOUNT,
 } from "./git-account-select"
-import { IndexingModesFields, type IndexingModes } from "./indexing-modes-fields"
+import {
+  IndexingModesFields,
+  type IndexingModes,
+} from "./indexing-modes-fields"
 
 const INDEXING_MODES_DEFAULTS: IndexingModes = {
   fetch_enabled: false,
@@ -45,6 +48,16 @@ const CREDENTIAL_FREE = new Set(["local"])
 // Ported from routes/_authenticated/repos.tsx's AddRepoDialog (T1.59) — same
 // POST /repos shape, adapted to the Code section's own trigger/dialog chrome.
 export function AddRepoDialog() {
+  // Every Label is tied to its control: a bare <Label> beside an <Input>
+  // announces an unlabelled field and does not focus it when clicked.
+  const fieldId = useId()
+  const ids = {
+    name: `${fieldId}-name`,
+    url: `${fieldId}-url`,
+    provider: `${fieldId}-provider`,
+    branch: `${fieldId}-branch`,
+    token: `${fieldId}-token`,
+  }
   const [open, setOpen] = useState(false)
   const createRepo = useCreateRepo()
   const { data: accountData, isLoading: accountsLoading } = useGitAccountsData()
@@ -120,7 +133,8 @@ export function AddRepoDialog() {
       if (form.auth_token) params.auth_token = form.auth_token
       params.git_account_id = null
     } else {
-      params.git_account_id = accountChoice === NO_ACCOUNT ? null : accountChoice
+      params.git_account_id =
+        accountChoice === NO_ACCOUNT ? null : accountChoice
     }
 
     createRepo.mutate(params, {
@@ -147,28 +161,41 @@ export function AddRepoDialog() {
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
-            <Label className="text-muted-foreground">Name *</Label>
+            <Label htmlFor={ids.name} className="text-muted-foreground">
+              Name *
+            </Label>
             <Input
+              id={ids.name}
               value={form.name}
               onChange={(e) => set("name", e.target.value)}
               required
             />
           </div>
           <div>
-            <Label className="text-muted-foreground">URL</Label>
+            <Label htmlFor={ids.url} className="text-muted-foreground">
+              URL
+            </Label>
             <Input
+              id={ids.url}
               value={form.url ?? ""}
               onChange={(e) => set("url", e.target.value)}
               placeholder="https://github.com/org/repo"
             />
           </div>
           <div>
-            <Label className="text-muted-foreground">Provider</Label>
-            <Select
-              value={provider}
-              onValueChange={(v) => set("provider", v)}
+            <Label
+              id={`${ids.provider}-label`}
+              htmlFor={ids.provider}
+              className="text-muted-foreground"
             >
-              <SelectTrigger className="h-9 w-full">
+              Provider
+            </Label>
+            <Select value={provider} onValueChange={(v) => set("provider", v)}>
+              <SelectTrigger
+                id={ids.provider}
+                aria-labelledby={`${ids.provider}-label`}
+                className="h-9 w-full"
+              >
                 <SelectValue placeholder="Select provider" />
               </SelectTrigger>
               <SelectContent>
@@ -179,8 +206,11 @@ export function AddRepoDialog() {
             </Select>
           </div>
           <div>
-            <Label className="text-muted-foreground">Default branch</Label>
+            <Label htmlFor={ids.branch} className="text-muted-foreground">
+              Default branch
+            </Label>
             <Input
+              id={ids.branch}
               value={form.default_branch ?? "main"}
               onChange={(e) => set("default_branch", e.target.value)}
             />
@@ -194,8 +224,11 @@ export function AddRepoDialog() {
           )}
           {!credentialFree && accountChoice === CUSTOM_TOKEN && (
             <div>
-              <Label className="text-muted-foreground">Auth token</Label>
+              <Label htmlFor={ids.token} className="text-muted-foreground">
+                Auth token
+              </Label>
               <Input
+                id={ids.token}
                 type="password"
                 value={form.auth_token ?? ""}
                 onChange={(e) => set("auth_token", e.target.value)}

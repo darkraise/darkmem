@@ -1,4 +1,5 @@
 import { useState } from "react"
+import type { ReactNode } from "react"
 import {
   Check,
   Circle,
@@ -21,6 +22,7 @@ import {
 import { Switch } from "darkraise-ui/components/switch"
 import { cn } from "darkraise-ui/lib"
 import { GlassPanel } from "@/components/glass-panel"
+import { SetupBrand, SetupPasswordField } from "./setup-brand"
 import {
   SETUP_API_KINDS,
   SETUP_BASE_PATH,
@@ -31,10 +33,10 @@ import {
 import type { ApiKind } from "@/features/settings/types"
 
 const STEP_LABELS = [
-  "1. Admin password",
-  "2. Default LLM provider",
-  "3. Default code repo path",
-  "4. Review & finish",
+  "Admin password",
+  "Default LLM provider",
+  "Default code repo path",
+  "Review & finish",
 ]
 
 const CHAT_PURPOSES = ["extraction", "classification", "reasoning"] as const
@@ -55,16 +57,21 @@ const kindFixture = (kind: ApiKind): SetupKindFixture =>
 function StepPill({
   label,
   state,
+  className,
 }: {
-  label: string
+  label: ReactNode
   state: "done" | "active" | "upcoming"
+  className?: string
 }) {
-  const Icon = state === "done" ? Check : state === "active" ? CircleDot : Circle
+  const Icon =
+    state === "done" ? Check : state === "active" ? CircleDot : Circle
   return (
     <span
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm whitespace-nowrap",
-        state === "active" && "border-primary/55 text-primary-text bg-primary/10",
+        className,
+        state === "active" &&
+          "border-primary/55 text-primary-text bg-primary/10",
         state === "done" && "border-success/50 text-success-text bg-success/8",
         state === "upcoming" && "border-border text-muted-foreground",
       )}
@@ -98,6 +105,28 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
   const fixture = kindFixture(llm.kind)
   const passwordOk =
     password.length >= 8 && password.length <= 128 && password === confirm
+  // Named, not just a greyed-out Next: a short password used to block the
+  // step with nothing but the grey helper line saying why.
+  const passwordError =
+    password.length > 0 && password.length < 8
+      ? "At least 8 characters."
+      : password.length > 128
+        ? "At most 128 characters."
+        : null
+  // Mirrors the real wizard's step-2 gate (`missingRequiredModels`), so the
+  // preview does not pass an empty provider through to the review.
+  const requiredPurposes = [
+    ...(fixture.supports_embedding ? ["embedding"] : []),
+    ...CHAT_PURPOSES,
+  ]
+  const missingModels = requiredPurposes.filter(
+    (p) => !(llm.models[p] ?? "").trim(),
+  )
+  const reviewedModels = Object.entries(llm.models).filter(
+    ([, model]) => model !== "",
+  )
+  const nextBlocked =
+    (step === 0 && !passwordOk) || (step === 1 && missingModels.length > 0)
 
   const pickKind = (kind: ApiKind) => {
     const fx = kindFixture(kind)
@@ -132,19 +161,28 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
 
   return (
     <GlassPanel className="flex max-h-[90vh] w-full max-w-xl flex-col gap-4 overflow-y-auto p-6">
-      <div className="flex flex-col items-center gap-1">
-        <span className="bg-gradient-to-r from-[#c7d2fe] via-[#a5b4fc] to-[#67e8f9] bg-clip-text text-2xl font-extrabold tracking-[0.3px] text-transparent">
-          darkmem
-        </span>
-        <span className="text-muted-foreground text-sm">Initial setup</span>
-      </div>
+      <SetupBrand />
 
+      {/* Below sm the four pills wrapped one per row and took a quarter of
+          the panel; there only the current step shows, as the real wizard
+          does. */}
       <div className="flex flex-wrap justify-center gap-1.5">
         {STEP_LABELS.map((label, i) => (
           <StepPill
             key={label}
-            label={label}
+            label={
+              i === step ? (
+                <>
+                  <span className="sm:hidden">Step {i + 1} of 4 · </span>
+                  <span className="hidden sm:inline">{i + 1}. </span>
+                  {label}
+                </>
+              ) : (
+                `${i + 1}. ${label}`
+              )
+            }
             state={i < step ? "done" : i === step ? "active" : "upcoming"}
+            className={i === step ? undefined : "hidden sm:inline-flex"}
           />
         ))}
       </div>
@@ -155,30 +193,41 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
             <Label htmlFor="setup-password" className="text-sm">
               Admin password
             </Label>
-            <Input
+            <SetupPasswordField
               id="setup-password"
-              type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              aria-invalid={passwordError ? true : undefined}
+              aria-describedby="setup-password-help"
               autoFocus
             />
-            <span className="text-muted-foreground text-sm">
+            <span
+              id="setup-password-help"
+              className="text-muted-foreground text-sm"
+            >
               8–128 characters. This is the only admin credential — keep it
               safe.
             </span>
+            {passwordError && (
+              <span role="alert" className="text-destructive text-sm">
+                {passwordError}
+              </span>
+            )}
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="setup-confirm" className="text-sm">
               Confirm password
             </Label>
-            <Input
+            <SetupPasswordField
               id="setup-confirm"
-              type="password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
+              aria-invalid={
+                confirm !== "" && confirm !== password ? true : undefined
+              }
             />
             {confirm !== "" && confirm !== password && (
-              <span className="text-destructive text-sm">
+              <span role="alert" className="text-destructive text-sm">
                 Passwords do not match.
               </span>
             )}
@@ -354,11 +403,28 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
             <div className="flex flex-col gap-1">
               {SETUP_DIRS.map((dir) => {
                 const selected = selectedDirs.includes(dir.name)
+                // A folder without .git cannot be imported; it is listed as
+                // a plain muted row, not a disabled button that looks like a
+                // control the demo forgot to wire.
+                if (!dir.git) {
+                  return (
+                    <div
+                      key={dir.name}
+                      className="text-muted-foreground flex items-center gap-2 px-2 py-1.5 text-sm"
+                    >
+                      <Folder aria-hidden className="h-3.5 w-3.5" />
+                      {dir.name}
+                      <span className="ml-auto text-xs">
+                        not a git repository
+                      </span>
+                    </div>
+                  )
+                }
                 return (
                   <button
                     key={dir.name}
                     type="button"
-                    disabled={!dir.git}
+                    aria-pressed={selected}
                     onClick={() =>
                       setSelectedDirs((prev) =>
                         selected
@@ -369,7 +435,6 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
                     className={cn(
                       "flex items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-left text-sm",
                       selected && "border-primary/50 bg-primary/8",
-                      !dir.git && "text-muted-foreground",
                     )}
                   >
                     <Folder
@@ -377,22 +442,24 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
                       className="text-muted-foreground h-3.5 w-3.5"
                     />
                     {dir.name}
-                    {dir.git && (
-                      <span className="border-success/60 text-success-text ml-auto inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-mono text-xs">
-                        <GitBranch aria-hidden className="h-2.5 w-2.5" />
-                        git
-                      </span>
-                    )}
+                    <span className="border-success/60 text-success-text ml-auto inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-mono text-xs">
+                      <GitBranch aria-hidden className="h-2.5 w-2.5" />
+                      git
+                    </span>
                   </button>
                 )
               })}
             </div>
           </div>
           <span className="text-muted-foreground text-sm">
-            Selected base path: <code className="font-mono">{SETUP_BASE_PATH}</code>{" "}
-            — found <b className="text-foreground font-semibold">{selectedDirs.length}</b>{" "}
-            repository(ies). Detected .git folders are pre-selected; imported
-            repositories start with auto-sync off.
+            Selected base path:{" "}
+            <code className="font-mono">{SETUP_BASE_PATH}</code> — found{" "}
+            <b className="text-foreground font-semibold">
+              {selectedDirs.length}
+            </b>{" "}
+            {selectedDirs.length === 1 ? "repository" : "repositories"}.
+            Detected .git folders are pre-selected; imported repositories start
+            with auto-sync off.
           </span>
         </div>
       )}
@@ -415,20 +482,26 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
                 <span className="text-muted-foreground text-sm">
                   <b className="text-foreground font-semibold">{llm.kind}</b>
                 </span>
-                <ul className="text-foreground ml-4 list-disc text-sm">
-                  {Object.entries(llm.models)
-                    .filter(([, model]) => model !== "")
-                    .map(([purpose, model]) => (
+                {reviewedModels.length > 0 ? (
+                  <ul className="text-foreground ml-4 list-disc text-sm">
+                    {reviewedModels.map(([purpose, model]) => (
                       <li key={purpose}>
                         {purpose}: <code className="font-mono">{model}</code>
                       </li>
                     ))}
-                </ul>
+                  </ul>
+                ) : (
+                  <span className="text-warning-text text-sm">
+                    No models selected.
+                  </span>
+                )}
               </>
             )}
           </div>
           <div className="border-border bg-card/60 flex flex-col gap-1.5 rounded-md border p-3">
-            <span className="text-sm font-semibold">Default code repo path</span>
+            <span className="text-sm font-semibold">
+              Default code repo path
+            </span>
             {repoSkipped ? (
               <span className="text-muted-foreground text-sm">
                 Skipped — register repositories later from the Code page.
@@ -436,7 +509,8 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
             ) : (
               <>
                 <span className="text-muted-foreground text-sm">
-                  Base path: <code className="font-mono">{SETUP_BASE_PATH}</code>
+                  Base path:{" "}
+                  <code className="font-mono">{SETUP_BASE_PATH}</code>
                 </span>
                 {selectedDirs.map((name) => (
                   <div
@@ -470,7 +544,12 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
         >
           Back
         </Button>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {step === 1 && missingModels.length > 0 && (
+            <span className="text-muted-foreground text-sm">
+              Add a model for: {missingModels.join(", ")}
+            </span>
+          )}
           {(step === 1 || step === 2) && (
             <Button
               variant="outline"
@@ -486,7 +565,7 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
           )}
           {step < 3 ? (
             <Button
-              disabled={step === 0 && !passwordOk}
+              disabled={nextBlocked}
               onClick={() => {
                 if (step === 1) setLLM((d) => ({ ...d, skipped: false }))
                 if (step === 2) setRepoSkipped(false)

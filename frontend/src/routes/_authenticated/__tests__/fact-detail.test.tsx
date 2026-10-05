@@ -166,13 +166,13 @@ describe("FactDetail (DEMO off — GET /knowledge/facts/{id})", () => {
     expect(screen.queryByText("Fact not found")).not.toBeInTheDocument()
   })
 
-  it("renders the fact on a successful read, without restating a non-disputed claim", async () => {
+  it("renders the fact on a successful read, printing the badge claim visibly (not only as a hover title)", async () => {
     vi.mocked(apiFetch).mockResolvedValue(detailItem())
     render(<FactDetail factId="f1" />, { wrapper })
 
     await screen.findByText("darkmem uses postgres")
     expect(screen.getByText("corroborated")).toBeInTheDocument()
-    expect(screen.queryByText(BADGE.claim)).not.toBeInTheDocument()
+    expect(screen.getByText(BADGE.claim)).toBeInTheDocument()
   })
 
   it("a disputed fact renders the backend's two-sided claim verbatim", async () => {

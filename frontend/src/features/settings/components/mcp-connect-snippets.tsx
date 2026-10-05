@@ -1,15 +1,12 @@
+import { useState } from "react"
 import { Copy, Check } from "lucide-react"
 import {
   Clipboard,
   ClipboardIndicator,
   ClipboardTrigger,
 } from "darkraise-ui/components/clipboard"
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "darkraise-ui/components/tabs"
+import { Tabs, TabsContent, TabsTrigger } from "darkraise-ui/components/tabs"
+import { ScrollTabsList } from "@/components/darkmem/scroll-tabs-list"
 
 export const KEY_PLACEHOLDER = "<YOUR_API_KEY>"
 
@@ -85,17 +82,24 @@ function CodeBlock({ code }: { code: string }) {
 export function McpConnectSnippets({ apiKey }: { apiKey?: string }) {
   const url = mcpEndpoint()
   const items = snippets(url, apiKey?.trim() || KEY_PLACEHOLDER)
+  const [tab, setTab] = useState("claude-code")
   return (
-    <Tabs defaultValue="claude-code" className="min-w-0">
-      <TabsList>
+    <Tabs value={tab} onValueChange={setTab} className="min-w-0">
+      {/* Scrolls inside itself: a bare TabsList pushed "Test with curl" past
+          a phone viewport and gave the whole tab a horizontal scroll. */}
+      <ScrollTabsList activeValue={tab} className="justify-start">
         {items.map((s) => (
           <TabsTrigger key={s.id} value={s.id}>
             {s.label}
           </TabsTrigger>
         ))}
-      </TabsList>
+      </ScrollTabsList>
       {items.map((s) => (
-        <TabsContent key={s.id} value={s.id} className="flex flex-col gap-2 pt-2">
+        <TabsContent
+          key={s.id}
+          value={s.id}
+          className="flex flex-col gap-2 pt-2"
+        >
           <p className="text-muted-foreground text-sm">{s.hint}</p>
           <CodeBlock code={s.code} />
         </TabsContent>

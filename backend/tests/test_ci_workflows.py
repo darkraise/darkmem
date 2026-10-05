@@ -49,6 +49,21 @@ def test_e2e_suites_have_private_networks_and_databases_on_self_hosted():
     assert job["env"]["TEST_DATABASE_URL"].endswith("@postgres:5432/darkmem_e2e")
 
 
+def test_backend_suites_run_in_a_container_with_private_databases():
+    # setup-python has no build for the darkmem-linux runners' OS, so the
+    # backend suites bring their interpreter in a job container instead.
+    job = _jobs("ci.yml")["backend"]
+    assert job["container"] == "python:3.12-bookworm"
+    assert not any(
+        s.get("uses", "").startswith("actions/setup-python@") for s in job["steps"]
+    )
+    assert not job["services"]["postgres"].get("ports")
+    assert job["env"]["TEST_DATABASE_URL"].endswith("@postgres:5432/darkmem_test")
+    assert job["env"]["BENCH_DATABASE_URL"].endswith("@postgres:5432/darkmem_bench")
+    restore = job["steps"][-1]
+    assert restore["if"] == "always()" and "chown" in restore["run"]
+
+
 def test_smoke_loads_the_hosted_build_artifact():
     jobs = _jobs("ci.yml")
     assert "images" in _needs(jobs["image-smoke"])

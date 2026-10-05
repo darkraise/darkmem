@@ -100,14 +100,12 @@ export function RealChatPage({ initialId }: { initialId?: string }) {
     // scrolls normally — three panes sharing one viewport height would leave
     // each of them too short to read.
     <div className="flex flex-col gap-4 lg:h-full lg:min-h-0">
-      <PageChrome
-        icon={MessageSquare}
-        title="Chat"
-      />
+      <PageChrome icon={MessageSquare} title="Chat" />
       {/* The three panes are one surface, so they share a height rather than
           each ending where its own content does — and above `lg` the reader
           sets how that width is split. */}
       <ChatPanels
+        activeKey={activeId}
         threads={
           <ChatSidebar
             conversations={conversations}

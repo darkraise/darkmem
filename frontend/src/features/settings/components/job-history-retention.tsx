@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { History } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
-import { Card, CardContent, CardHeader } from "darkraise-ui/components/card"
+import { SettingsCard } from "./settings-card"
 import { toast } from "darkraise-ui/components/sonner"
 import { NumberField } from "@/components/darkmem"
 import { useJobs, useTriggerJob, useUpdateJobConfig } from "@/hooks/api"
@@ -38,76 +38,67 @@ export function JobHistoryRetention() {
     // The same card shell the rest of the Maintenance tab uses. This one sits
     // in that stack, so a second treatment for it read as a different kind of
     // thing when it is one more operation.
-    <Card className="gap-0 py-0">
-      <CardHeader className="border-border bg-muted/30 flex flex-row flex-nowrap items-center gap-2 space-y-0 overflow-hidden border-b px-4 py-2.5">
-        <History
-          aria-hidden
-          className="text-primary-text h-4 w-4 shrink-0"
-        />
-        <h3 className="min-w-0 truncate text-sm font-semibold">
-          Job history retention
-        </h3>
-        <span className="flex-1" />
-        {job && (
-          <span className="text-muted-foreground shrink-0 font-mono text-xs whitespace-nowrap">
+    <SettingsCard
+      icon={History}
+      title="Job history retention"
+      actions={
+        job && (
+          <span className="text-muted-foreground font-mono text-xs whitespace-nowrap">
             keeps newest {committed}
           </span>
-        )}
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2.5 p-4">
-        <p className="text-muted-foreground text-sm">
-          Keeps the newest job runs and deletes older ones. Runs weekly.
-        </p>
+        )
+      }
+    >
+      <p className="text-muted-foreground text-sm">
+        Keeps the newest job runs and deletes older ones. Runs weekly.
+      </p>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
-            max rows
-          </span>
-          <NumberField
-            value={draft}
-            min={100}
-            max={1000000}
-            aria-label="Max job history rows retained"
-            onValueChange={setDraft}
-            className="w-32"
-          />
-          <Button
-            variant="outline"
-            disabled={!dirty || updateConfig.isPending}
-            onClick={() => {
-              updateConfig
-                .mutateAsync({ key: JOB_KEY, config: { max_rows: draft } })
-                .then(() =>
-                  toast.success(`Job history ceiling set to ${draft}`),
-                )
-                .catch((err: unknown) =>
-                  toast.error("Couldn’t save the ceiling", {
-                    description: err instanceof Error ? err.message : undefined,
-                  }),
-                )
-            }}
-          >
-            Save ceiling
-          </Button>
-          <Button
-            variant="outline"
-            className="ml-auto"
-            disabled={trigger.isPending}
-            onClick={() => {
-              trigger
-                .mutateAsync(JOB_KEY)
-                .then(() => toast.success("Job history swept"))
-                .catch((err: unknown) =>
-                  toast.error("Sweep failed", {
-                    description: err instanceof Error ? err.message : undefined,
-                  }),
-                )
-            }}
-          >
-            Sweep now
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
+          max rows
+        </span>
+        <NumberField
+          value={draft}
+          min={100}
+          max={1000000}
+          aria-label="Max job history rows retained"
+          onValueChange={setDraft}
+          className="w-32"
+        />
+        <Button
+          variant="outline"
+          disabled={!dirty || updateConfig.isPending}
+          onClick={() => {
+            updateConfig
+              .mutateAsync({ key: JOB_KEY, config: { max_rows: draft } })
+              .then(() => toast.success(`Job history ceiling set to ${draft}`))
+              .catch((err: unknown) =>
+                toast.error("Couldn’t save the ceiling", {
+                  description: err instanceof Error ? err.message : undefined,
+                }),
+              )
+          }}
+        >
+          Save ceiling
+        </Button>
+        <Button
+          variant="outline"
+          className="ml-auto"
+          disabled={trigger.isPending}
+          onClick={() => {
+            trigger
+              .mutateAsync(JOB_KEY)
+              .then(() => toast.success("Job history swept"))
+              .catch((err: unknown) =>
+                toast.error("Sweep failed", {
+                  description: err instanceof Error ? err.message : undefined,
+                }),
+              )
+          }}
+        >
+          Sweep now
+        </Button>
+      </div>
+    </SettingsCard>
   )
 }

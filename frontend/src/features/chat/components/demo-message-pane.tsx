@@ -1,8 +1,7 @@
-import { useState } from "react"
-import { CircleCheck, MessageCircle, Send, TriangleAlert } from "lucide-react"
+import { CircleCheck, MessageCircle, TriangleAlert } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
-import { Input } from "darkraise-ui/components/input"
 import { cn } from "darkraise-ui/lib"
+import { ChatInput } from "./chat-input"
 import type { DemoChatThread } from "@/demo/types"
 
 const STARTERS = [
@@ -23,13 +22,10 @@ export function DemoMessagePane({
   onSelectTurn: (messageId: string) => void
   onSend: (content: string) => void
 }) {
-  const [draft, setDraft] = useState("")
-
   const send = (content: string) => {
     const trimmed = content.trim()
     if (trimmed === "") return
     onSend(trimmed)
-    setDraft("")
   }
 
   return (
@@ -90,7 +86,10 @@ export function DemoMessagePane({
                     )}
                   >
                     {message.context.degraded ? (
-                      <TriangleAlert aria-hidden className="text-warning-text h-3 w-3" />
+                      <TriangleAlert
+                        aria-hidden
+                        className="text-warning-text h-3 w-3"
+                      />
                     ) : (
                       <CircleCheck aria-hidden className="h-3 w-3" />
                     )}
@@ -126,29 +125,9 @@ export function DemoMessagePane({
         </div>
       )}
 
-      <form
-        className="border-border flex items-center gap-2 border-t px-3.5 py-2.5"
-        onSubmit={(e) => {
-          e.preventDefault()
-          send(draft)
-        }}
-      >
-        <Input
-          placeholder="Ask about your memory…"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          groupClassName="flex-1"
-          aria-label="Message"
-        />
-        <Button
-          type="submit"
-          size="icon"
-          aria-label="Send message"
-          disabled={draft.trim() === ""}
-        >
-          <Send aria-hidden className="h-4 w-4" />
-        </Button>
-      </form>
+      {/* The real page's composer, so both builds of /chat share one
+          multi-line input, its Enter / Shift+Enter hint and its labelling. */}
+      <ChatInput onSend={send} placeholder="Ask about your memory…" />
     </div>
   )
 }

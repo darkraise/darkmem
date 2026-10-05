@@ -93,7 +93,8 @@ test.describe("knowledge/facts — real mode", () => {
     await page.goto("/knowledge/facts")
 
     await expect(
-      page.getByText(/^(\d+ facts|\d+ of \d+ loaded)$/).first(),
+      // "1 fact" is singular, and "loaded" only shows while more pages exist.
+      page.getByText(/^(\d+ facts?|\d+ of \d+ loaded)$/).first(),
     ).toBeVisible()
 
     await page
@@ -119,7 +120,7 @@ test.describe("knowledge/facts — real mode", () => {
       .locator("[data-index]")
       .filter({ hasText: new RegExp(escapeRegExp(SEEDED_TEXT!)) })
       .first()
-    await row.getByRole("link", { name: "details →" }).click()
+    await row.getByRole("link", { name: /^Open fact: / }).click()
 
     await expect(page).toHaveURL(/\/knowledge\/facts\/[^/]+$/)
     await expect(page.getByRole("heading", { name: "Fact detail" })).toBeVisible()
