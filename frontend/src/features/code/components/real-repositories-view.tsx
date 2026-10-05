@@ -174,7 +174,8 @@ function RepoTaskList({ repo }: { repo: Repo }) {
                 { repoId: repo.id, taskId: task.id },
                 {
                   onSuccess: () => toast.success(`Task ${task.kind} cancelled`),
-                  onError: () => toast.error("Failed to cancel task"),
+                  onError: (err) =>
+                    toast.error(`Failed to cancel task: ${err.message}`),
                 },
               )
             }
@@ -217,7 +218,11 @@ function EditRepoDialog({
     onSubmit: async ({ value }) => {
       if (!repo) return
       const parsed = editRepoSchema.safeParse(value)
-      if (!parsed.success) return
+      if (!parsed.success) {
+        // An emptied name used to make Save do nothing at all.
+        toast.error(parsed.error.issues[0]?.message ?? "Check the fields")
+        return
+      }
       const v: EditRepoInput = parsed.data
       const data: RepoUpdateParams = {}
       if (v.name !== repo.name) data.name = v.name
@@ -541,7 +546,7 @@ export function RealRepositoriesView() {
             { id: reindexingRepo.id, options: v },
             {
               onSuccess: () => toast.success("Reindex triggered"),
-              onError: () => toast.error("Reindex failed"),
+              onError: (err) => toast.error(`Reindex failed: ${err.message}`),
             },
           )
         }}
@@ -578,7 +583,10 @@ export function RealRepositoriesView() {
                 if (confirmDeleteRepo) {
                   deleteRepo.mutate(confirmDeleteRepo.id, {
                     onSuccess: () => toast.success("Repository deleted"),
-                    onError: () => toast.error("Failed to delete repository"),
+                    onError: (err) =>
+                      toast.error(
+                        `Failed to delete repository: ${err.message}`,
+                      ),
                   })
                 }
                 setConfirmDeleteRepo(null)

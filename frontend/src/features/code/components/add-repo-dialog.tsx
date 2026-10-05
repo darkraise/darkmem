@@ -54,6 +54,7 @@ export function AddRepoDialog() {
   const ids = {
     name: `${fieldId}-name`,
     url: `${fieldId}-url`,
+    path: `${fieldId}-path`,
     provider: `${fieldId}-provider`,
     branch: `${fieldId}-branch`,
     token: `${fieldId}-token`,
@@ -102,6 +103,7 @@ export function AddRepoDialog() {
     setForm({
       name: "",
       url: "",
+      local_path: "",
       provider: "github",
       default_branch: "main",
       auth_token: "",
@@ -117,7 +119,13 @@ export function AddRepoDialog() {
     if (!form.name.trim()) return
 
     const params: RepoCreateParams = { name: form.name.trim() }
-    if (form.url) params.url = form.url
+    // A local checkout is addressed by its path on the server, never by URL:
+    // the URL field refused a filesystem path (422) and, left empty, the repo
+    // was created pointing at no working directory at all.
+    if (credentialFree) {
+      if (!form.local_path?.trim()) return
+      params.local_path = form.local_path.trim()
+    } else if (form.url) params.url = form.url
     if (form.provider) params.provider = form.provider
     if (form.default_branch) params.default_branch = form.default_branch
     params.fetch_enabled = form.fetch_enabled
@@ -143,7 +151,9 @@ export function AddRepoDialog() {
         setOpen(false)
         reset()
       },
-      onError: () => toast.error("Failed to add repository"),
+      // The server's reason (an unreachable URL, a refused scheme, a taken
+      // name) is the only thing that says what to change.
+      onError: (err) => toast.error(`Failed to add repository: ${err.message}`),
     })
   }
 
@@ -171,17 +181,35 @@ export function AddRepoDialog() {
               required
             />
           </div>
-          <div>
-            <Label htmlFor={ids.url} className="text-muted-foreground">
-              URL
-            </Label>
-            <Input
-              id={ids.url}
-              value={form.url ?? ""}
-              onChange={(e) => set("url", e.target.value)}
-              placeholder="https://github.com/org/repo"
-            />
-          </div>
+          {credentialFree ? (
+            <div>
+              <Label htmlFor={ids.path} className="text-muted-foreground">
+                Path on the server *
+              </Label>
+              <Input
+                id={ids.path}
+                value={form.local_path ?? ""}
+                onChange={(e) => set("local_path", e.target.value)}
+                placeholder="/srv/repos/my-project"
+                required
+              />
+              <p className="text-muted-foreground mt-1 text-xs">
+                A git checkout on the darkmem server, not on your computer.
+              </p>
+            </div>
+          ) : (
+            <div>
+              <Label htmlFor={ids.url} className="text-muted-foreground">
+                URL
+              </Label>
+              <Input
+                id={ids.url}
+                value={form.url ?? ""}
+                onChange={(e) => set("url", e.target.value)}
+                placeholder="https://github.com/org/repo"
+              />
+            </div>
+          )}
           <div>
             <Label
               id={`${ids.provider}-label`}

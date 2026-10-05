@@ -277,6 +277,38 @@ describe("RealRepositoriesView", () => {
       name: "new-service",
     })
   })
+  it("adds a local checkout by its path on the server, not a URL", async () => {
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path === "/repos") return Promise.resolve([])
+      return Promise.resolve({ id: "new-repo" })
+    })
+    const user = userEvent.setup()
+    render(<RealRepositoriesView />, { wrapper })
+
+    await screen.findByText("No repositories indexed yet")
+    await user.click(screen.getByRole("button", { name: /Add repository/ }))
+    const dialog = await screen.findByRole("dialog")
+    await user.type(within(dialog).getAllByRole("textbox")[0]!, "local-one")
+    await user.click(within(dialog).getByRole("combobox", { name: "Provider" }))
+    await user.click(await screen.findByRole("option", { name: "Local" }))
+    expect(within(dialog).queryByLabelText("URL")).toBeNull()
+    await user.type(
+      within(dialog).getByLabelText(/Path on the server/),
+      "/srv/repos/local-one",
+    )
+    await user.click(within(dialog).getByRole("button", { name: "Add Repository" }))
+
+    const post = vi
+      .mocked(apiFetch)
+      .mock.calls.find(([path, init]) => path === "/repos" && init?.method === "POST")
+    expect(JSON.parse(String(post?.[1]?.body))).toMatchObject({
+      name: "local-one",
+      provider: "local",
+      local_path: "/srv/repos/local-one",
+    })
+    expect(JSON.parse(String(post?.[1]?.body)).url).toBeUndefined()
+  })
+
   it("does not leak a touched-and-cancelled edit into the next repo's form", async () => {
     const REPO_A = {
       ...BASE_REPO,
