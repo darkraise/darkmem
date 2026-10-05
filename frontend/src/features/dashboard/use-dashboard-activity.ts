@@ -8,6 +8,7 @@ import type { FeedCategory } from "@/features/activity/types"
 import { categoryOfEventType } from "@/features/activity/event-taxonomy"
 import { useEvents, type EventLogEntry } from "@/hooks/api"
 import { shortId } from "@/lib/short-id"
+import { useProjectStore } from "@/stores/project-store"
 
 const FEED_LIMIT = 8
 /** Read past the sign-ins so eight vault events usually remain after them. */
@@ -85,7 +86,8 @@ export interface DashboardActivityState {
  */
 export function useDashboardActivity(): DashboardActivityState {
   const demo = useDemoEvents()
-  const query = useEvents({ limit: FETCH_LIMIT }, { enabled: !DEMO })
+  const project = useProjectStore((s) => s.activeProject) ?? undefined
+  const query = useEvents({ project, limit: FETCH_LIMIT }, { enabled: !DEMO })
 
   if (DEMO) {
     return { events: demo, isLoading: false, isError: false }

@@ -3,6 +3,7 @@ import { DEMO } from "@/lib/demo-flag"
 import { useDemoContributions } from "@/demo/hooks"
 import type { ContributionDay } from "@/features/dashboard/types"
 import { useEventsCalendar } from "@/hooks/api"
+import { useProjectStore } from "@/stores/project-store"
 import { calendarWindow, fillCalendarDays } from "./calendar"
 
 const INJECT_EVENT_TYPE = "inject"
@@ -35,10 +36,12 @@ export function useContributionCalendar(
   // the unscoped journal also counts logins, setup, maintenance runs and
   // indexing — which is how a fresh install showed a day of captures beside
   // an empty Memories page.
+  const project = useProjectStore((s) => s.activeProject) ?? undefined
   const query = useEventsCalendar(
     {
       since: window.since,
       until: window.until,
+      project,
       event_type: CAPTURE_EVENT_TYPE,
       object_type: CAPTURE_OBJECT_TYPE,
     },
@@ -50,7 +53,12 @@ export function useContributionCalendar(
   // calendar that refused to draw because the inject overlay was unavailable
   // would hide the activity it does know about.
   const injectQuery = useEventsCalendar(
-    { since: window.since, until: window.until, event_type: INJECT_EVENT_TYPE },
+    {
+      since: window.since,
+      until: window.until,
+      project,
+      event_type: INJECT_EVENT_TYPE,
+    },
     { enabled: !DEMO },
   )
 
