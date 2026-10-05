@@ -1,4 +1,14 @@
 import { useState } from "react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "darkraise-ui/components/alert-dialog"
 import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
 import { Skeleton } from "darkraise-ui/components/skeleton"
@@ -29,6 +39,9 @@ export function ChatSidebar({
   onRetry,
 }: ChatSidebarProps) {
   const [search, setSearch] = useState("")
+  const [pendingDelete, setPendingDelete] = useState<ChatConversation | null>(
+    null,
+  )
 
   const filtered = search.trim()
     ? conversations.filter((c) =>
@@ -49,10 +62,12 @@ export function ChatSidebar({
        The breakpoint is `lg`, matching where the page grid actually goes
        three-column. It read `md`, so between 768px and 1023px this behaved
        like a desktop rail inside a single-column stack. */
-    <div className="border-border bg-card flex max-h-56 w-full flex-col overflow-hidden rounded-md border lg:max-h-none lg:rounded-none lg:border-0 lg:bg-transparent">
+    <div className="border-border bg-card flex max-h-[calc(100dvh-11rem)] w-full flex-col overflow-hidden rounded-md border lg:max-h-none lg:rounded-none lg:border-0 lg:bg-transparent">
       <div className="border-border space-y-2 border-b p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="min-w-0 truncate text-sm font-semibold">Conversations</span>
+          <span className="min-w-0 truncate text-sm font-semibold">
+            Conversations
+          </span>
           <Button className="gap-1" onClick={onCreate}>
             <Plus className="h-3.5 w-3.5" /> New
           </Button>
@@ -121,27 +136,31 @@ export function ChatSidebar({
               <div className="truncate text-sm font-medium">
                 {conv.title || "Untitled"}
               </div>
-              <div className="mt-0.5 flex items-center gap-2">
-                <span className="text-sm opacity-50">
-                  {relativeTime(conv.updated_at)}
-                </span>
+              {/* Plain muted text (about 7:1 on the card): at 40-50% opacity
+                  this meta measured near 2:1. */}
+              <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-sm">
+                <span>{relativeTime(conv.updated_at)}</span>
                 {(conv.message_count ?? 0) > 0 && (
-                  <span className="text-sm opacity-40">
+                  <span>
                     {conv.message_count} msg
                     {conv.message_count !== 1 ? "s" : ""}
                   </span>
                 )}
               </div>
             </div>
+            {/* Revealed on hover, and on keyboard focus anywhere in the row,
+                so a keyboard user never lands on an invisible control. The
+                press only asks; the confirmation dialog deletes. */}
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Delete conversation"
-              className="text-muted-foreground hover:text-destructive h-8 w-8 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 max-lg:opacity-100"
+              aria-label={`Delete conversation ${conv.title || "Untitled"}`}
+              className="text-muted-foreground hover:text-destructive h-8 w-8 shrink-0 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 max-lg:opacity-100"
               onClick={(e) => {
                 e.stopPropagation()
-                onDelete(conv.id)
+                setPendingDelete(conv)
               }}
+              onKeyDown={(e) => e.stopPropagation()}
             >
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
@@ -155,6 +174,34 @@ export function ChatSidebar({
           />
         )}
       </div>
+
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete &ldquo;{pendingDelete?.title || "Untitled"}&rdquo;?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              The conversation and its messages are removed. This cannot be
+              undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingDelete) onDelete(pendingDelete.id)
+                setPendingDelete(null)
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

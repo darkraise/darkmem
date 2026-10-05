@@ -59,9 +59,7 @@ export function CodeFilters({
 
   return (
     <div className="min-h-0 flex-1 space-y-2 overflow-auto p-2.5">
-      <p className="text-muted-foreground text-sm">
-        Node types to draw.
-      </p>
+      <p className="text-muted-foreground text-sm">Node types to draw.</p>
       <div className="space-y-1">
         {present.map((kind) => {
           const on = !hidden.has(kind)
@@ -96,8 +94,10 @@ export function CodeFilters({
           )
         })}
       </div>
-      <div className="border-border flex items-center gap-2 border-t pt-2">
-        <span className="text-muted-foreground font-mono text-sm">
+      {/* The count stays on one line; in the 224px rail the button wraps
+          below it instead of squeezing it onto two. */}
+      <div className="border-border flex flex-wrap items-center gap-2 border-t pt-2">
+        <span className="text-muted-foreground font-mono text-sm whitespace-nowrap">
           {shown} of {total} drawn
         </span>
         <Button
