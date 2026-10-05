@@ -198,7 +198,7 @@ class MemoryService:
         for row, data in zip(rows, entries):
             await self.audit_repo.log(
                 "create", buffered_memory_id(row), api_key_id, {"source": data.source},
-                actor=actor,
+                actor=actor, project=data.project or "default",
             )
 
         # A flag never refuses (spec 2026-09-23 §5); it journals which signals
@@ -376,7 +376,7 @@ class MemoryService:
 
         await self.audit_repo.log(
             "update", memory_id, api_key_id, {"fields": list(update_fields.keys())},
-            actor=actor,
+            actor=actor, project=memory.project,
         )
 
         # Re-process if content changed. Commit first so the pipeline's
@@ -417,9 +417,13 @@ class MemoryService:
         # paths cannot drift apart.
         await demote_dependents(self.session, [memory_id])
 
+        existing = await self.memory_repo.get(memory_id)
         result = await self.memory_repo.delete(memory_id)
         if result:
-            await self.audit_repo.log("delete", memory_id, api_key_id, {}, actor=actor)
+            await self.audit_repo.log(
+                "delete", memory_id, api_key_id, {}, actor=actor,
+                project=existing.project if existing is not None else None,
+            )
             # The memory's memory_tags links are gone (ON DELETE CASCADE) after
             # the delete flush, so prune any tag now carried by no memory before
             # committing — keeps the dashboard tag count and tag filter honest.
@@ -917,6 +921,7 @@ limit=params.limit, offset=params.offset,
 
         await self.audit_repo.log(
             "delete", source_id, api_key_id, {"merged_into": str(target_id)}, actor=actor,
+            project=source.project,
         )
         await self.memory_repo.delete(source_id)
         await self.session.commit()
@@ -939,6 +944,7 @@ limit=params.limit, offset=params.offset,
 
         await self.audit_repo.log(
             "merge", target_id, api_key_id, {"source_id": str(source_id)}, actor=actor,
+            project=target.project,
         )
         await self.session.refresh(target, ["tags"])
         return await self.memory_repo.get(target_id)
