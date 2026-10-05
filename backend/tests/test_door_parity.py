@@ -248,6 +248,23 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="mcp_calls.read",
+        status=REST_ONLY,
+        rest=(
+            ("GET", f"{V1}/mcp-calls"),
+            ("GET", f"{V1}/mcp-calls/summary"),
+        ),
+        mcp=(),
+        reason=(
+            "The record of what MCP clients asked for, read by the operator. "
+            "An MCP twin would hand the audited party its own audit log, the "
+            "same shape the usage row above records: an agent that could read "
+            "which of its calls were logged, and how, holds the only signal "
+            "a human has for noticing what it did. Nothing an agent does with "
+            "a memory depends on it."
+        ),
+    ),
+    Surface(
         name="usage.prices",
         status=REST_ONLY,
         rest=(

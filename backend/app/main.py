@@ -19,7 +19,7 @@ from sqlalchemy import text
 
 from app.api.mcp.server import mcp as mcp_server, mcp_streamable_http_kwargs, set_pipeline
 from app.api.spa import mount_spa
-from app.api.routes import analytics, backups, api_keys as api_key_routes, git_accounts as git_account_routes, articles as articles_routes, auth, buffer as buffer_routes, chat, code, config, distribution as distribution_routes, documents as documents_routes, dream_digest as dream_digest_routes, events as events_routes, facts as facts_routes, graph, hygiene_queue, jobs, knowledge_search as knowledge_search_routes, llm_providers, memories, overview as overview_routes, pages as pages_routes, page_attachments as page_attachments_routes, page_import as page_import_routes, pipeline as pipeline_routes, pipeline_failures, projects as projects_routes, ratification as ratification_routes, reembed, repos, review_queue, setup, system, tags, topics as topics_routes, usage as usage_routes, vectors, worklog as worklog_routes
+from app.api.routes import analytics, backups, api_keys as api_key_routes, git_accounts as git_account_routes, articles as articles_routes, auth, buffer as buffer_routes, chat, code, config, distribution as distribution_routes, documents as documents_routes, dream_digest as dream_digest_routes, events as events_routes, facts as facts_routes, graph, hygiene_queue, jobs, knowledge_search as knowledge_search_routes, llm_providers, mcp_calls as mcp_calls_routes, memories, overview as overview_routes, pages as pages_routes, page_attachments as page_attachments_routes, page_import as page_import_routes, pipeline as pipeline_routes, pipeline_failures, projects as projects_routes, ratification as ratification_routes, reembed, repos, review_queue, setup, system, tags, topics as topics_routes, usage as usage_routes, vectors, worklog as worklog_routes
 from app.api.websocket import websocket_endpoint
 from sqlalchemy.exc import DBAPIError
 
@@ -362,6 +362,25 @@ async def lifespan(app: FastAPI):
         config_schema=LLM_USAGE_CONFIG_SCHEMA,
     ))
 
+    from app.services.mcp_call_log import (
+        MCP_CALL_CLEANUP_JOB_KEY,
+        MCP_CALL_CONFIG_SCHEMA,
+        make_mcp_call_cleanup_runner,
+    )
+
+    job_registry.register(Job(
+        key=MCP_CALL_CLEANUP_JOB_KEY,
+        display_name="MCP Call Log Retention",
+        description=(
+            "Deletes MCP call records older than the retention window. Also "
+            "holds the switch that decides whether search queries are logged."
+        ),
+        default_cron="15 4 * * *",
+        min_interval_seconds=3600,
+        runner=make_mcp_call_cleanup_runner(app, async_session_factory),
+        config_schema=MCP_CALL_CONFIG_SCHEMA,
+    ))
+
     from app.services.page_attachment_cleanup import (
         PAGE_ATTACHMENT_CLEANUP_CONFIG_SCHEMA,
         PAGE_ATTACHMENT_CLEANUP_JOB_KEY,
@@ -628,6 +647,14 @@ async def lifespan(app: FastAPI):
         yield
 
     await job_registry.stop_all()
+
+    # Write whatever MCP calls are still buffered; a log miss is tolerable,
+    # but a clean shutdown has no reason to cause one.
+    from app.services.mcp_call_log import drain as drain_mcp_call_log
+    try:
+        await drain_mcp_call_log()
+    except Exception:
+        logger.warning("Failed to drain the MCP call log at shutdown", exc_info=True)
 
     from app.services.task_registry import TaskRegistry
     TaskRegistry.cancel_all()
@@ -1054,6 +1081,7 @@ app.include_router(pages_routes.router)
 app.include_router(page_attachments_routes.router)
 app.include_router(reembed.router)
 app.include_router(usage_routes.router)
+app.include_router(mcp_calls_routes.router)
 app.include_router(api_key_routes.router)
 app.include_router(setup.router)
 app.include_router(system.router)

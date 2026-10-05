@@ -4,6 +4,33 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
+## v1.15.0 — 2026-10-05
+
+**You can see what your MCP clients asked for.** Every MCP tool call is now
+logged: which tool, which key and client, when, how long it took, how it
+ended, and which items it returned. Activity has a new MCP calls tab to read
+that history and spot patterns.
+
+### Added
+
+- **MCP call log.** Each `tools/call` on `/mcp` writes one row to the new
+  `mcp_tool_calls` table: tool, scope, status (`ok`, `error` or `denied`),
+  duration, the key and client that called it, the project, a reduced copy of
+  the arguments, the result count and up to 50 returned ids. Logging happens
+  off the request path, so it never slows or fails a call. Writes still
+  journal to `events` as before.
+- **Activity → MCP calls.** A summary for the last 24 hours, 7 days or 30
+  days, with call, error and denied counts, average and p95 latency, a
+  per-tool table, a per-caller table and the most-returned items. Under it is
+  a live list of recent calls that you can filter by tool, by status or to the
+  calls that returned one item. It reads `GET /api/v1/mcp-calls` and
+  `GET /api/v1/mcp-calls/summary` (login only, not exposed over MCP).
+- **MCP Call Log Retention job** (`mcp_call_cleanup`, nightly). It deletes
+  calls older than `retention_days` (default 30). Its `log_query_text` setting
+  (default 0) decides whether search queries are stored. When it is off, only
+  a query's length is kept. Content arguments such as `content`, `entries` and
+  `text` are only ever stored as their size.
+
 ## v1.14.0 — 2026-09-30
 
 **The memory graph reaches every memory, and the UI stops talking to its

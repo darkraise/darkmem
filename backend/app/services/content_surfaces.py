@@ -778,6 +778,15 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # The price table is pure configuration -- dollars per million tokens.
     "GET /api/v1/usage/prices",
     "PUT /api/v1/usage/prices",
+    # The MCP call log. No memory content crosses: arguments are minimised at
+    # write time (content arguments become sizes) and results become ids and a
+    # count. A search query is stored only when the operator turns on
+    # `log_query_text`, and it is the caller's own words, not a memory's. Ids
+    # are not content (the usage surface's reasoning), and the surface is
+    # operator-wide because an audit of what agents asked for that hid a
+    # project would report a fraction of the traffic as the traffic.
+    "GET /api/v1/mcp-calls",
+    "GET /api/v1/mcp-calls/summary",
     "GET /health",
     "GET /api/v1/analytics/stats",
     "POST /api/v1/analytics/reprocess",

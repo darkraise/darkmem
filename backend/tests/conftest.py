@@ -390,3 +390,16 @@ def _reset_graph_caches():
     reset_graph_caches()
     yield
     reset_graph_caches()
+
+
+@pytest.fixture(autouse=True)
+def _mcp_call_log_buffered_only(monkeypatch):
+    """The MCP call log flushes from a background task on the application
+    engine, which would commit rows outside every test's transaction. Tests
+    that assert on the log drain it onto their own connection instead."""
+    import app.services.mcp_call_log as mcp_call_log
+
+    monkeypatch.setattr(mcp_call_log, "_auto_flush", False)
+    mcp_call_log._reset_for_tests()
+    yield
+    mcp_call_log._reset_for_tests()

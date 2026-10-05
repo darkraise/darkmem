@@ -544,7 +544,7 @@ async def test_preflight_reports_target_baseline_revision(source, target):
     report = await preflight.run_preflight(source, target)
     check = _check(report, "target_revision_is_baseline")
     assert check.passed, check.detail
-    assert check.detail["expected"] == preflight.baseline_revision()
+    assert check.detail["expected"] == preflight.target_revision()
 
 
 async def test_preflight_catches_a_superseded_row_without_a_pointer(

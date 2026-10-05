@@ -1525,6 +1525,7 @@ def test_main_registers_the_full_direct_job_roster():
         "JOB_RUN_CLEANUP_JOB_KEY", "BLOCK_EMBEDDING_JOB_KEY",
         "LLM_USAGE_CLEANUP_JOB_KEY", "BACKUP_SHIP_JOB_KEY",
         "PAGE_ATTACHMENT_CLEANUP_JOB_KEY", "WORKLOG_CLEANUP_JOB_KEY",
+        "MCP_CALL_CLEANUP_JOB_KEY",
     }
     assert keys == expected, (
         f"direct job registrations in app/main.py drifted from the roster "

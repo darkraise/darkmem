@@ -64,33 +64,55 @@ def memory_types() -> frozenset[str]:
     return frozenset(MEMORY_TYPES)
 
 
-def baseline_revision() -> str:
-    """The sole revision id in migrations/versions, asserted to be sole.
+def target_revision() -> str:
+    """The head of the linear revision chain in migrations/versions.
 
-    The freeze has not happened, so the target's chain is exactly one revision.
-    Reading it here rather than hardcoding it means a regenerated baseline
-    cannot silently disagree with the transform.
+    The baseline froze on 2026-09-28 and every schema change since is a new
+    revision chained after it, so a target built with ``alembic upgrade head``
+    sits at the head, not at ``0001``. The chain is asserted linear and rooted
+    in a single baseline (one revision with no ``down_revision``), the same
+    shape the gate's single-head check holds. Reading it here rather than
+    hardcoding it means a new revision cannot silently disagree with the
+    transform.
     """
     versions = BACKEND_DIR / "migrations" / "versions"
-    found: list[tuple[str, str | None]] = []
+    parents: dict[str, str | None] = {}
     for path in sorted(versions.glob("*.py")):
         text = path.read_text(encoding="utf-8")
         revision = re.search(r"^revision:\s*str\s*=\s*['\"]([^'\"]+)['\"]", text, re.M)
         down = re.search(r"^down_revision[^=]*=\s*(.+?)\s*$", text, re.M)
         if revision is None:
             continue
-        found.append((revision.group(1), down.group(1) if down else None))
-    if len(found) != 1:
+        raw = down.group(1) if down else "None"
+        parent = re.search(r"['\"]([^'\"]+)['\"]", raw)
+        parents[revision.group(1)] = parent.group(1) if parent and "None" not in raw else None
+    roots = [r for r, p in parents.items() if p is None]
+    if len(roots) != 1:
         raise CutoverError(
-            f"expected exactly one alembic revision under {versions}, found "
-            f"{len(found)}: {[r for r, _ in found]}"
+            f"expected exactly one baseline revision under {versions}, found "
+            f"{len(roots)}: {roots}"
         )
-    revision, down_revision = found[0]
-    if down_revision is not None and "None" not in down_revision:
+    children: dict[str, list[str]] = {}
+    for rev, parent in parents.items():
+        if parent is not None:
+            if parent not in parents:
+                raise CutoverError(f"revision {rev!r} names unknown parent {parent!r}")
+            children.setdefault(parent, []).append(rev)
+    head = roots[0]
+    seen = 1
+    while head in children:
+        if len(children[head]) != 1:
+            raise CutoverError(
+                f"the revision chain branches at {head!r}: {sorted(children[head])}"
+            )
+        head = children[head][0]
+        seen += 1
+    if seen != len(parents):
         raise CutoverError(
-            f"the sole revision {revision!r} has down_revision {down_revision!r}"
+            f"revisions not on the chain from {roots[0]!r}: "
+            f"{sorted(set(parents) - set(children) - {head})}"
         )
-    return revision
+    return head
 
 
 async def _relations(conn: asyncpg.Connection) -> set[str]:
@@ -198,8 +220,8 @@ async def check_reset_derivations_absent(
 
 
 async def check_target_revision(target: asyncpg.Connection, report: PreflightReport) -> None:
-    """Assertion 4 — the target is the baseline, and the chain is still one."""
-    expected = baseline_revision()
+    """Assertion 4 — the target sits at the head of the linear chain."""
+    expected = target_revision()
     rows = await target.fetch("SELECT version_num FROM alembic_version")
     versions = sorted(r["version_num"] for r in rows)
     report.add(
