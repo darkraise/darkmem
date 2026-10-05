@@ -12,9 +12,8 @@ import { listItemClass } from "@/components/darkmem"
  * on the left, state in the middle, actions pinned right so they form a
  * column the eye can run down.
  *
- * `aside` is a slot before the actions for a surface's own per-job figure
- * (Activity → Jobs puts its 30-day usage chip there), so that surface reuses
- * this row rather than growing a second job row with different verbs.
+ * `aside` is a slot before the actions for a per-job figure (the jobs page
+ * puts its 30-day usage chip there).
  */
 export function JobListRow({
   job,

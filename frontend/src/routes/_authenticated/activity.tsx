@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, redirect } from "@tanstack/react-router"
 import { Tabs, TabsContent, TabsTrigger } from "darkraise-ui/components/tabs"
 import {
   Activity,
@@ -9,7 +9,6 @@ import {
   Moon,
   Plug,
   Rss,
-  Timer,
 } from "lucide-react"
 import { PageChrome } from "@/components/app-chrome"
 import { ScrollTabsList } from "@/components/darkmem"
@@ -20,7 +19,6 @@ import { utcDayKey } from "@/features/dashboard/calendar"
 import { PipelineTab } from "@/features/activity/components/pipeline-tab"
 import { FeedTab } from "@/features/activity/components/feed-tab"
 import { TriageTab } from "@/features/activity/components/triage-tab"
-import { JobsTab } from "@/features/activity/components/jobs-tab"
 import { DreamTab } from "@/features/activity/components/dream-tab"
 import { DayTab } from "@/features/activity/components/day-tab"
 import { McpTab } from "@/features/activity/components/mcp-tab"
@@ -30,7 +28,6 @@ const TAB_VALUES = [
   "pipeline",
   "feed",
   "triage",
-  "jobs",
   "dream",
   "day",
   "worklog",
@@ -45,6 +42,13 @@ export const Route = createFileRoute("/_authenticated/activity")({
       : undefined,
     day: isValidDay(search.day) ? search.day : undefined,
   }),
+  // Activity used to carry a second copy of the job board; its links now go
+  // to the one board.
+  beforeLoad: ({ location }) => {
+    if ((location.search as { tab?: unknown }).tab === "jobs") {
+      throw redirect({ to: "/jobs" })
+    }
+  },
   component: ActivityPage,
 })
 
@@ -91,10 +95,6 @@ function ActivityPage() {
               <Bug aria-hidden className="size-[var(--icon-size)]" />
               Triage
             </TabsTrigger>
-            <TabsTrigger className="flex-1 gap-2" value="jobs">
-              <Timer aria-hidden className="size-[var(--icon-size)]" />
-              Jobs
-            </TabsTrigger>
             <TabsTrigger className="flex-1 gap-2" value="dream">
               <Moon aria-hidden className="size-[var(--icon-size)]" />
               Dream digest
@@ -121,9 +121,6 @@ function ActivityPage() {
         </TabsContent>
         <TabsContent value="triage" className="pt-4">
           <TriageTab />
-        </TabsContent>
-        <TabsContent value="jobs" className="pt-4">
-          <JobsTab />
         </TabsContent>
         <TabsContent value="dream" className="pt-4">
           <DreamTab />

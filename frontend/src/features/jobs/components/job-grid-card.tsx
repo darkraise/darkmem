@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react"
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react"
 import { ChevronDown } from "lucide-react"
 import { Card, CardContent } from "darkraise-ui/components/card"
 import { Switch } from "darkraise-ui/components/switch"
@@ -13,12 +13,15 @@ export function JobGridCard({
   onConfigure,
   onHistory,
   onToggleEnabled,
+  aside,
 }: {
   job: DemoJob
   onTrigger: () => void
   onConfigure: () => void
   onHistory: () => void
   onToggleEnabled: (enabled: boolean) => void
+  /** A per-job figure beside the actions (the jobs page's usage chip). */
+  aside?: ReactNode
 }) {
   const [expanded, setExpanded] = useState(false)
   const [clamped, setClamped] = useState(false)
@@ -88,13 +91,14 @@ export function JobGridCard({
           <JobLastRun job={job} />
         </div>
 
-        <div className="mt-auto pt-1">
+        <div className="mt-auto flex items-center justify-between gap-2 pt-1">
           <JobActions
             job={job}
             onTrigger={onTrigger}
             onConfigure={onConfigure}
             onHistory={onHistory}
           />
+          {aside}
         </div>
       </CardContent>
     </Card>

@@ -10,6 +10,8 @@ import { JobGridCard } from "./job-grid-card"
 import { JobListRow } from "./job-list-row"
 import { JobConfigDialog } from "./job-config-dialog"
 import { JobHistoryDialog } from "./job-history-dialog"
+import { useUsageByJob } from "@/hooks/api"
+import { UsageChip } from "@/features/usage/components/usage-chip"
 
 type JobsLayout = "list" | "grid"
 
@@ -32,6 +34,16 @@ export function JobsPage() {
     saveConfig,
     setEnabled,
   } = binding
+
+  // Every run a job made in the window, not the last one: a job's cost is a
+  // rate, and one run's number invites reading a cheap tick as a cheap job.
+  const jobUsage = useUsageByJob("30d")
+  const usageByJob = new Map(
+    (jobUsage.data?.jobs ?? []).map((j) => [j.job_key, j]),
+  )
+  const usageChip = (job: DemoJob) => (
+    <UsageChip pending={jobUsage.isLoading} totals={usageByJob.get(job.key)} />
+  )
 
   const handleTrigger = (job: DemoJob) => triggerWithToast(trigger, job)
   const running = jobs.filter((j) => j.running).length
@@ -85,6 +97,7 @@ export function JobsPage() {
               onConfigure={() => setConfiguring(job)}
               onHistory={() => setViewingHistory(job)}
               onToggleEnabled={(on) => setEnabled(job.key, on)}
+              aside={usageChip(job)}
             />
           ))}
         </div>
@@ -98,6 +111,7 @@ export function JobsPage() {
               onConfigure={() => setConfiguring(job)}
               onHistory={() => setViewingHistory(job)}
               onToggleEnabled={(on) => setEnabled(job.key, on)}
+              aside={usageChip(job)}
             />
           ))}
         </div>

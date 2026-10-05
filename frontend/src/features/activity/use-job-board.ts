@@ -58,7 +58,7 @@ export interface JobBoardState {
 /**
  * `DEMO ? demo : real`, following `use-contribution-calendar.ts`. `trigger`
  * is a `Promise` on both branches — real mode's `POST .../trigger` genuinely
- * is one, and the demo store's synchronous result is wrapped so JobsTab
+ * is one, and the demo store's synchronous result is wrapped so the board
  * never special-cases which mode it's in (ruling 4: a 409 must render as
  * busy on either branch, not as a failure).
  */
