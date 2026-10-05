@@ -10,6 +10,9 @@ node_modules/
 .claude/**
 !.claude/agents/
 !.claude/agents/**
+!.claude/settings.json
+!.claude/hooks/
+!.claude/hooks/**
 backend/data/**
 frontend/test-results/
 frontend/playwright-report/
