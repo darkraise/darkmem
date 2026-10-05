@@ -189,8 +189,11 @@ export function RealMemoriesView({
                         memory={toRowData(row.memory)}
                         trace={row.trace}
                         expanded={expandedId === row.memory.id}
+                        // Without a query nothing was retrieved: the trace
+                        // reads "semantic off / keyword off / 0.0000", which
+                        // explains nothing.
                         onToggleTrace={
-                          row.trace
+                          row.trace && searching
                             ? () =>
                                 setExpandedId((prev) =>
                                   prev === row.memory.id ? null : row.memory.id,

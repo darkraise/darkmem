@@ -12,6 +12,7 @@ import { UsageChip } from "@/features/usage/components/usage-chip"
 import { usePipelineRuns } from "../use-pipeline-runs"
 import { ModuleSurface } from "./module-surface"
 import { PipelineStepper } from "./pipeline-stepper"
+import { DEMO } from "@/lib/demo-flag"
 
 const TERMINAL_STYLES: Record<
   PipelineTerminal,
@@ -125,30 +126,35 @@ export function PipelineTab() {
 
   return (
     <div className="space-y-4">
-      <ModuleSurface
-        title="Pipeline — in flight"
-        state="populated"
-        meta={
-          inFlight.length === 0
-            ? "idle"
-            : `${inFlight.length} ${inFlight.length === 1 ? "memory" : "memories"} processing`
-        }
-      >
-        {inFlight.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
-            Nothing is being processed right now.
-          </p>
-        ) : (
-          inFlight.map((run) => (
-            <PipelineRow
-              key={run.id}
-              pending={usage.isLoading}
-              run={run}
-              totals={usage.data}
-            />
-          ))
-        )}
-      </ModuleSurface>
+      {/* Real mode has no per-phase progress signal (doc 05 §10): every run it
+          reads is terminal, so this panel could only ever say "idle". Only
+          the demo fixture has in-flight rows to show. */}
+      {DEMO && (
+        <ModuleSurface
+          title="Pipeline — in flight"
+          state="populated"
+          meta={
+            inFlight.length === 0
+              ? "idle"
+              : `${inFlight.length} ${inFlight.length === 1 ? "memory" : "memories"} processing`
+          }
+        >
+          {inFlight.length === 0 ? (
+            <p className="text-muted-foreground text-sm">
+              Nothing is being processed right now.
+            </p>
+          ) : (
+            inFlight.map((run) => (
+              <PipelineRow
+                key={run.id}
+                pending={usage.isLoading}
+                run={run}
+                totals={usage.data}
+              />
+            ))
+          )}
+        </ModuleSurface>
+      )}
       <ModuleSurface
         title="Pipeline — recent"
         state="populated"

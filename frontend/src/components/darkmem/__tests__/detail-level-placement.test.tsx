@@ -39,12 +39,13 @@ const SHOWN = [
   "/activity",
   "/chat",
   "/memories",
-  "/memories/abc-123",
   "/settings",
 ]
 
 const HIDDEN = [
   "/",
+  // A memory's own page reads no detail level; only the list's rows do.
+  "/memories/abc-123",
   "/code",
   "/code/graph",
   "/code/repositories",

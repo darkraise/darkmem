@@ -105,7 +105,7 @@ describe("RealMemoriesView", () => {
       },
     })
 
-    render(<RealMemoriesView />, { wrapper })
+    render(<RealMemoriesView initialQuery="rrf" />, { wrapper })
     await screen.findByText(/RRF fuses semantic and keyword ranks/i)
 
     fireEvent.click(screen.getByRole("button", { name: /show why retrieved/i }))
@@ -114,6 +114,34 @@ describe("RealMemoriesView", () => {
     expect(screen.getByText("keyword")).toBeInTheDocument()
     expect(screen.getByText("rrf_score")).toBeInTheDocument()
     expect(screen.getByText("0.0271")).toBeInTheDocument()
+  })
+
+  it("offers no why? on the plain list, where nothing was retrieved", async () => {
+    // With no query the trace reads "semantic off / keyword off / 0.0000".
+    vi.mocked(apiFetch).mockResolvedValue({
+      items: [
+        {
+          id: "m1",
+          content: "listed, not retrieved",
+          tags: [],
+          source: "mcp",
+          created_at: new Date().toISOString(),
+          status: "active",
+          flags: [],
+          trace: {
+            scores: { semantic: null, keyword: null, rrf_score: 0, rerank_score: null },
+            rank_fusion_factor: 1.0,
+            rank_fusion_breakdown: {},
+          },
+        },
+      ],
+      total: 1,
+      limit: 50,
+      offset: 0,
+    })
+    render(<RealMemoriesView />, { wrapper })
+    await screen.findByText("listed, not retrieved")
+    expect(screen.queryByRole("button", { name: /show why retrieved/i })).toBeNull()
   })
 
   it("shows a superseded row by default, with its badge — never filtered out", async () => {
