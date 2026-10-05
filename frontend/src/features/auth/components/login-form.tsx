@@ -1,4 +1,5 @@
 import { useForm } from "@tanstack/react-form"
+import { Eye, EyeOff } from "lucide-react"
 import { FieldWrapper } from "darkraise-ui/forms"
 import { Button } from "darkraise-ui/components/button"
 import {
@@ -71,7 +72,10 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
                     onBlur={field.handleBlur}
                   />
                   <PasswordInputVisibilityTrigger>
-                    <PasswordInputIndicator />
+                    <PasswordInputIndicator
+                      visible={<EyeOff aria-hidden className="h-4 w-4" />}
+                      hidden={<Eye aria-hidden className="h-4 w-4" />}
+                    />
                   </PasswordInputVisibilityTrigger>
                 </PasswordInputControl>
               </PasswordInput>

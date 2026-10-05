@@ -43,7 +43,9 @@ test.describe("honesty/labels-always-render", () => {
 
     await selectProject(page, "darkmem")
 
-    const contextTrigger = page.getByRole("combobox", { name: "Session context" })
+    const contextTrigger = page.getByRole("combobox", {
+      name: "Filter by context",
+    })
     await contextTrigger.click()
     await page.getByRole("option", { name: "env=prod" }).click()
 
@@ -112,7 +114,9 @@ test.describe("honesty/labels-always-render", () => {
     for (const level of ["simple", "advanced"] as const) {
       await setDetailLevel(page, level)
       await expect(page.getByText("superseded").first()).toBeVisible()
-      await expect(page.getByText(/superseded by a newer version/)).toBeVisible()
+      await expect(
+        page.getByText(/superseded by a newer version/),
+      ).toBeVisible()
     }
   })
 })

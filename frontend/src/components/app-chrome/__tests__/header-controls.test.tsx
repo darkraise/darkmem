@@ -95,6 +95,41 @@ describe("HeaderControls", () => {
     ).toBeInTheDocument()
   })
 
+  it("captions each control in the overflow popover", async () => {
+    setWide(false)
+    const user = userEvent.setup()
+    render(<HeaderControls />, { wrapper })
+    await user.click(screen.getByRole("button", { name: "View options" }))
+    await screen.findByRole("button", { name: "Project scope" })
+    for (const caption of ["Project", "Context", "Theme"]) {
+      expect(
+        screen.getByText(caption, { selector: "span" }),
+      ).toBeInTheDocument()
+    }
+  })
+
+  it("offers a palette button below md, where the rail's search is hidden", async () => {
+    // Narrow for the wide query, matching for the rail-hidden one.
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query.includes("max-width"),
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }))
+    const user = userEvent.setup()
+    const seen: KeyboardEvent[] = []
+    const listener = (event: KeyboardEvent) => seen.push(event)
+    window.addEventListener("keydown", listener)
+    render(<HeaderControls />, { wrapper })
+    await user.click(screen.getByRole("button", { name: "Go to page" }))
+    window.removeEventListener("keydown", listener)
+    expect(seen.some((e) => e.key === "k" && e.ctrlKey)).toBe(true)
+  })
+
   it("passes the code-page reason to the switcher", () => {
     setWide(true)
     render(

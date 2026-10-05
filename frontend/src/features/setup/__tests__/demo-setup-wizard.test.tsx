@@ -63,11 +63,59 @@ describe("DemoSetupWizard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Next" }))
     fireEvent.click(screen.getByRole("button", { name: "Skip" }))
     fireEvent.click(screen.getByRole("button", { name: "Skip" }))
+    expect(screen.getByText(/defaults to a local Ollama/)).toBeInTheDocument()
+    expect(screen.getByText(/register repositories later/i)).toBeInTheDocument()
+  })
+
+  it("says why a short password blocks Next", () => {
+    render(<DemoSetupWizard onFinish={() => {}} />)
+    password("short")
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "At least 8 characters.",
+    )
+    expect(screen.getByLabelText("Admin password")).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    )
+    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled()
+  })
+
+  it("offers a show/hide toggle on both password fields", () => {
+    render(<DemoSetupWizard onFinish={() => {}} />)
     expect(
-      screen.getByText(/defaults to a local Ollama/),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByText(/register repositories later/i),
-    ).toBeInTheDocument()
+      screen.getAllByRole("button", { name: "Show password" }),
+    ).toHaveLength(2)
+  })
+
+  it("gates step 2 on the required purposes, as the real wizard does", () => {
+    render(<DemoSetupWizard onFinish={() => {}} />)
+    password("hunter2hunter2")
+    fireEvent.click(screen.getByRole("button", { name: "Next" }))
+    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled()
+    expect(screen.getByText(/Add a model for:/)).toHaveTextContent(
+      "embedding, extraction, classification, reasoning",
+    )
+    fireEvent.click(
+      screen.getByRole("button", { name: /Fetch available models/ }),
+    )
+    expect(screen.getByRole("button", { name: "Next" })).toBeEnabled()
+  })
+
+  it("pluralises the repository count and lists non-git folders as plain rows", () => {
+    render(<DemoSetupWizard onFinish={() => {}} />)
+    password("hunter2hunter2")
+    fireEvent.click(screen.getByRole("button", { name: "Next" }))
+    fireEvent.click(
+      screen.getByRole("button", { name: /Fetch available models/ }),
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Next" }))
+    expect(screen.getByText(/repositories\./)).toBeInTheDocument()
+    expect(screen.queryByText(/repository\(ies\)/)).toBeNull()
+    expect(screen.getAllByText("not a git repository").length).toBeGreaterThan(
+      0,
+    )
+    for (const button of screen.getAllByRole("button")) {
+      expect(button).not.toHaveTextContent("node_modules")
+    }
   })
 })

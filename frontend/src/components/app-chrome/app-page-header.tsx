@@ -55,14 +55,17 @@ export function AppPageHeader() {
           </Tooltip>
         </TooltipProvider>
       )}
+      {/* The icon repeats the sidebar's; below md the title needs its width
+          (a detail page's title was cut to "Memory…" at 390px). The title
+          truncates rather than holding its full width, so a crowded bar
+          ellipsises it instead of letting the actions paint over the
+          controls; the description gives way first. */}
       {Icon && (
-        <span className="bg-primary/10 text-primary-text flex h-7 w-7 shrink-0 items-center justify-center rounded-md">
+        <span className="bg-primary/10 text-primary-text hidden h-7 w-7 shrink-0 items-center justify-center rounded-md md:flex">
           <Icon aria-hidden className="h-4 w-4" />
         </span>
       )}
-      <h1 className="min-w-0 truncate text-sm font-semibold md:shrink-0">
-        {title}
-      </h1>
+      <h1 className="min-w-0 truncate text-sm font-semibold">{title}</h1>
       {description && <HeaderDescription text={description} />}
       {actions && (
         <div className="dm-header-actions ml-auto flex shrink-0 items-center gap-2 pl-2">
@@ -94,7 +97,7 @@ function HeaderDescription({ text }: { text: string }) {
   return (
     <div
       ref={boxRef}
-      className="dm-chrome-desc border-border hidden min-w-0 border-l pl-2.5 lg:block"
+      className="dm-chrome-desc border-border hidden min-w-0 shrink-[20] border-l pl-2.5 lg:block"
     >
       <TooltipProvider delayDuration={300}>
         <Tooltip open={truncated && hovered} onOpenChange={setHovered}>

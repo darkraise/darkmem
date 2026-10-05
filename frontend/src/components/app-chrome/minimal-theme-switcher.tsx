@@ -62,6 +62,23 @@ function surfacePreviewHsl(color: SurfaceColor): string {
   return NEUTRAL_SURFACE_PREVIEW[color] ?? "0 0% 50%"
 }
 
+function SurfaceGroup({
+  caption,
+  children,
+}: {
+  caption: string
+  children: ReactNode
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span aria-hidden className="text-muted-foreground text-xs">
+        {caption}
+      </span>
+      {children}
+    </div>
+  )
+}
+
 /** The library's own section shell, so this reads as the built-in popover. */
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -72,25 +89,49 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
+/** "cool" -> "Cool": a swatch's only name is its title/aria-label. */
+function titleCase(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1)
+}
+
+/** The 18 accent-backed surfaces; every other surface is a neutral. */
+const TINTED_SURFACES = new Set<string>(ACCENT_COLORS)
+
 function SwatchGrid<T extends string>({
   values,
   active,
   onPick,
   previewHsl,
+  columns,
+  label,
 }: {
   values: readonly T[]
   active: T
   onPick: (value: T) => void
   previewHsl: (value: T) => string
+  /** Fixed column count, chosen so the grid fills whole rows. The library's
+   *  `auto-fill` packs 9 a row, which left 30 surfaces as 9/9/9/3. */
+  columns?: number
+  label?: string
 }) {
   return (
-    <div className="dr-theme-switcher-swatch-grid">
+    <div
+      className="dr-theme-switcher-swatch-grid"
+      role="group"
+      aria-label={label}
+      style={
+        columns
+          ? { gridTemplateColumns: `repeat(${columns}, 1.5rem)` }
+          : undefined
+      }
+    >
       {values.map((value) => (
         <button
           key={value}
           type="button"
-          title={value}
-          aria-label={value}
+          title={titleCase(value)}
+          aria-label={titleCase(value)}
+          aria-pressed={active === value}
           className="dr-theme-switcher-swatch"
           data-active={active === value ? "true" : undefined}
           style={{ backgroundColor: `hsl(${previewHsl(value)})` }}
@@ -173,12 +214,30 @@ export function MinimalThemeSwitcher() {
     ),
     surfaceColor: (
       <Row label={labels.theme.axisLabels.surfaceColor}>
-        <SwatchGrid
-          values={SURFACE_COLORS}
-          active={surfaceColor}
-          onPick={setSurfaceColor}
-          previewHsl={surfacePreviewHsl}
-        />
+        {/* Split by kind so neutral and tinted surfaces read as two choices
+            rather than one undifferentiated block of dots. */}
+        <div className="flex min-w-0 flex-col gap-2">
+          <SurfaceGroup caption="Neutral">
+            <SwatchGrid
+              label="Neutral surfaces"
+              values={SURFACE_COLORS.filter((c) => !TINTED_SURFACES.has(c))}
+              active={surfaceColor}
+              onPick={setSurfaceColor}
+              previewHsl={surfacePreviewHsl}
+              columns={6}
+            />
+          </SurfaceGroup>
+          <SurfaceGroup caption="Tinted">
+            <SwatchGrid
+              label="Tinted surfaces"
+              values={SURFACE_COLORS.filter((c) => TINTED_SURFACES.has(c))}
+              active={surfaceColor}
+              onPick={setSurfaceColor}
+              previewHsl={surfacePreviewHsl}
+              columns={9}
+            />
+          </SurfaceGroup>
+        </div>
       </Row>
     ),
   }

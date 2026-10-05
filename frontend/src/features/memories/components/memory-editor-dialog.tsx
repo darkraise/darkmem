@@ -169,7 +169,7 @@ export function MemoryEditorDialog({
           },
         ],
       })
-      toast.success("Memory captured")
+      toast.success("Memory created")
     }
     onOpenChange(false)
   }

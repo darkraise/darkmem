@@ -30,10 +30,11 @@ test.describe("honesty/no-silent-drop", () => {
 
     await expect(page.getByText(/^\d+ of \d+ shown$/)).toBeVisible()
 
-    // getByLabel("Session context") is ambiguous: the app-chrome
-    // ContextChip shares the same aria-label with this page's own filter
-    // (a Select combobox) — scope to the combobox.
-    const contextTrigger = page.getByRole("combobox", { name: "Session context" })
+    // The page's own context filter (a Select combobox), distinct from the
+    // app-chrome ContextChip ("Session context").
+    const contextTrigger = page.getByRole("combobox", {
+      name: "Filter by context",
+    })
     await expect(contextTrigger).toBeVisible()
 
     await page.getByLabel("Search memories").fill("cookie-secure")
