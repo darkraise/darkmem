@@ -27,7 +27,7 @@ export function Field({
   children: ReactNode
 }) {
   return (
-    <div className={cn("flex flex-col gap-1", span2 && "col-span-2")}>
+    <div className={cn("flex flex-col gap-1", span2 && "sm:col-span-2")}>
       <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
         {label}
       </span>
@@ -39,8 +39,15 @@ export function Field({
 const CLASSIFIER_KIND_OPTIONS: ReadonlyArray<
   IconSegmentedOption<"llm" | "local">
 > = [
-  { value: "llm", label: "LLM-backed classifier", icon: Cloud },
-  { value: "local", label: "In-process classifier", icon: Cpu },
+  // Visible text, not icons alone: the two differ in cost and in where the
+  // model runs, which should not be readable only on hover.
+  { value: "llm", label: "LLM-backed classifier", icon: Cloud, text: "LLM" },
+  {
+    value: "local",
+    label: "In-process classifier",
+    icon: Cpu,
+    text: "In-process",
+  },
 ]
 
 export function ClassifierKindRow({ binding }: { binding: LLMTabBinding }) {

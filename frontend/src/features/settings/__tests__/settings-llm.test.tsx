@@ -149,14 +149,22 @@ describe("LLMTab", () => {
     renderTab()
     openPurposeEditor("classification")
     expect(screen.getByText("classifier_kind")).toBeInTheDocument()
-    // The segments are icon-only now, so their accessible names are the only
-    // handle on them — which is exactly what has to keep working.
+    // Each segment shows a short word beside its icon, and its accessible
+    // name (the full label) contains that word.
     expect(
       screen.getByRole("radio", { name: "LLM-backed classifier" }),
-    ).toBeInTheDocument()
+    ).toHaveTextContent("LLM")
     expect(
       screen.getByRole("radio", { name: "In-process classifier" }),
-    ).toBeInTheDocument()
+    ).toHaveTextContent("In-process")
+  })
+
+  it("does not open an empty model list on focus", () => {
+    renderTab()
+    openPurposeEditor("extraction")
+    fireEvent.focus(screen.getByLabelText("extraction model"))
+    expect(screen.queryByText("No models")).toBeNull()
+    expect(screen.queryByRole("listbox")).toBeNull()
   })
 
   it("renders the code-summarization buckets as their own cards in demo mode", () => {

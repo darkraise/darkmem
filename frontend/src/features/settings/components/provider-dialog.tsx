@@ -35,7 +35,7 @@ function Field({
   children: ReactNode
 }) {
   return (
-    <div className={cn("flex flex-col gap-1", span2 && "col-span-2")}>
+    <div className={cn("flex flex-col gap-1", span2 && "sm:col-span-2")}>
       <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
         {label}
       </span>
@@ -61,7 +61,11 @@ function ApiKindSelect({
       disabled={disabled}
       onValueChange={(v) => onChange(v as ApiKind)}
     >
-      <SelectTrigger aria-label={ariaLabel} disabled={disabled} className="font-mono">
+      <SelectTrigger
+        aria-label={ariaLabel}
+        disabled={disabled}
+        className="font-mono"
+      >
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -198,7 +202,7 @@ export function ProviderDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+        <div className="grid grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2">
           {!isEdit && (
             <Field label="name" span2>
               <Input

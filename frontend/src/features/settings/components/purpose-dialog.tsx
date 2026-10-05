@@ -115,6 +115,7 @@ export function PurposeDialog({
     value: m,
     label: m,
   }))
+  const hasModels = modelItems.length > 0
 
   const dirty = dirtyFields(purpose, draft)
   const patch = (p: Partial<Draft>) => setDraft((d) => ({ ...d, ...p }))
@@ -163,15 +164,19 @@ export function PurposeDialog({
             <ClassifierKindRow binding={binding} />
           )}
 
-          <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+          <div className="grid grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2">
             <Field label="model">
               <div ref={modelDropdown.ref}>
                 <Combobox
                   items={modelItems}
                   inputValue={draft.model}
                   onInputValueChange={(d) => patch({ model: d.value })}
-                  openOnClick
-                  openOnFocus
+                  // Only a list worth showing opens: with no probed models
+                  // the popover held nothing but "No models" and sat over the
+                  // params label on the dialog's first focus. The empty case
+                  // is helper text under the field instead.
+                  openOnClick={hasModels}
+                  openOnFocus={hasModels}
                   onOpenChange={modelDropdown.onOpenChange}
                 >
                   <ComboboxControl>
@@ -180,20 +185,27 @@ export function PurposeDialog({
                       placeholder="model id"
                       className="font-mono"
                     />
-                    <ComboboxTrigger />
+                    {hasModels && <ComboboxTrigger />}
                   </ComboboxControl>
-                  <ComboboxContent className={modelDropdown.contentClassName}>
-                    <ComboboxList>
-                      {modelItems.map((it) => (
-                        <ComboboxItem key={it.value} item={it}>
-                          <ComboboxItemText>{it.label}</ComboboxItemText>
-                        </ComboboxItem>
-                      ))}
-                      <ComboboxEmpty>No models</ComboboxEmpty>
-                    </ComboboxList>
-                  </ComboboxContent>
+                  {hasModels && (
+                    <ComboboxContent className={modelDropdown.contentClassName}>
+                      <ComboboxList>
+                        {modelItems.map((it) => (
+                          <ComboboxItem key={it.value} item={it}>
+                            <ComboboxItemText>{it.label}</ComboboxItemText>
+                          </ComboboxItem>
+                        ))}
+                        <ComboboxEmpty>No matching models</ComboboxEmpty>
+                      </ComboboxList>
+                    </ComboboxContent>
+                  )}
                 </Combobox>
               </div>
+              {probe.data && !probe.data.error && !hasModels && (
+                <span className="text-muted-foreground text-sm">
+                  The provider listed no models; type the model id.
+                </span>
+              )}
               {/* A probe failure is a 200 carrying `error`, not a thrown
                   request — it reports and the field stays typeable, so a
                   vendor that is briefly down cannot make a purpose
