@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import { describe, it, expect, vi } from "vitest"
 
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
@@ -28,15 +28,11 @@ describe("RepositoriesTab", () => {
       screen.getByText("Last index failed — showing the last good graph"),
     ).toBeInTheDocument()
     // T2 index-debt indicator
-    expect(
-      screen.getByText(/168 dependent files queued/),
-    ).toBeInTheDocument()
+    expect(screen.getByText(/168 dependent files queued/)).toBeInTheDocument()
     // auto-provision registration state
     expect(screen.getByText("auto-provisioned 2026-07-22")).toBeInTheDocument()
     // live phase ticker for the mid-index repo
-    expect(
-      screen.getAllByText(/Call tracing/).length,
-    ).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Call tracing/).length).toBeGreaterThan(0)
     // error banner surfaces the raw failure message
     expect(
       screen.getByText(/Permission denied \(publickey\)/),
@@ -104,7 +100,31 @@ describe("CodeGraphTab", () => {
     expect(
       screen.getByText(/Building the code graph for legacy-billing-service/),
     ).toBeInTheDocument()
-    expect(screen.getByText(/phase 06/)).toBeInTheDocument()
+    // Same wording as the Repositories card: every phase in the
+    // denominator, skipped ones named rather than dropped from the count.
+    expect(screen.getByText(/phase 06 of 14, \d+ skipped/)).toBeInTheDocument()
+  })
+
+  it("keeps the depth filter disabled until a node is selected", () => {
+    render(
+      <CodeGraphTab
+        repoId="repo-backend"
+        onRepoChange={vi.fn()}
+        onOpenRepositories={vi.fn()}
+      />,
+    )
+    const depth = screen.getByRole("radiogroup", {
+      name: /Neighbourhood depth/,
+    })
+    for (const item of depth.querySelectorAll("button")) {
+      expect(item).toBeDisabled()
+    }
+    fireEvent.click(screen.getByRole("button", { name: /^dedup_entities/ }))
+    for (const item of depth.querySelectorAll("button")) {
+      expect(item).not.toBeDisabled()
+    }
+    // The toolbar spells its count out rather than "18 n 18 e".
+    expect(screen.getByText(/nodes ·/)).toBeInTheDocument()
   })
 
   it("marks a stale repo's served graph in the toolbar", () => {
@@ -125,9 +145,7 @@ describe("WikiTab", () => {
   it("renders the generated wiki with toc and generation metadata", () => {
     render(<WikiTab repoId="repo-backend" onRepoChange={vi.fn()} />)
     expect(screen.getByText("Contents")).toBeInTheDocument()
-    expect(
-      screen.getAllByText("Ingestion pipeline").length,
-    ).toBeGreaterThan(0)
+    expect(screen.getAllByText("Ingestion pipeline").length).toBeGreaterThan(0)
     expect(screen.getByText("2026-07-20 04:12")).toBeInTheDocument()
     expect(
       screen.queryByText("repo-scoped — not the project switcher"),

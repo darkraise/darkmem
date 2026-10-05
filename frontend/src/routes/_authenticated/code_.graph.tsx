@@ -25,11 +25,10 @@ function CodeGraphPage() {
   useFullBleedContent()
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <PageChrome
-        icon={Network}
-        title="Code Graph"
-      />
+    // Full height only from lg up, where the graph's columns scroll on their
+    // own. Below lg the sections stack and the page itself scrolls.
+    <div className="flex min-h-0 flex-col lg:h-full">
+      <PageChrome icon={Network} title="Code Graph" />
       {DEMO ? (
         <CodeGraphTab
           repoId={repo}

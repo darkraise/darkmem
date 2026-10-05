@@ -27,6 +27,8 @@ export interface OpenCodeFile {
   collapsed: boolean
 }
 
+const MIN_FLOAT_WIDTH = 260
+
 const KEYWORDS =
   /\b(from|import|class|def|return|self|export|function|const|await|async|None|True|False)\b/g
 
@@ -139,9 +141,7 @@ function PanelChrome({
         <span className="min-w-0 flex-1 truncate font-mono text-sm">
           {name}
           {dir && (
-            <span className="text-muted-foreground ml-1.5 text-xs">
-              {dir}
-            </span>
+            <span className="text-muted-foreground ml-1.5 text-xs">{dir}</span>
           )}
         </span>
       </button>
@@ -152,7 +152,9 @@ function PanelChrome({
         variant="ghost"
         size="icon"
         className="h-6 w-6 shrink-0"
-        aria-label={file.pinned ? "Unpin — float this file" : "Pin — dock this file"}
+        aria-label={
+          file.pinned ? "Unpin — float this file" : "Pin — dock this file"
+        }
         aria-pressed={file.pinned}
         onClick={onTogglePinned}
       >
@@ -195,7 +197,10 @@ function DockedFilePanel({
   onClose,
   onSelectSymbol,
 }: CodeFilePanelProps) {
-  const source = useMemo(() => buildFileSource(graph, file.path), [graph, file.path])
+  const source = useMemo(
+    () => buildFileSource(graph, file.path),
+    [graph, file.path],
+  )
   return (
     <div className="border-border bg-card overflow-hidden rounded-md border shadow-sm">
       <div className="border-border bg-muted/40 flex items-center gap-1 border-b px-1.5 py-1">
@@ -226,19 +231,38 @@ export function FloatingFilePanel({
   file,
   graph,
   index,
+  boundsWidth,
   activeSymbolId,
   onTogglePinned,
   onToggleCollapsed,
   onClose,
   onSelectSymbol,
-}: CodeFilePanelProps & { index: number }) {
-  const source = useMemo(() => buildFileSource(graph, file.path), [graph, file.path])
+}: CodeFilePanelProps & {
+  index: number
+  /** Width of the column the panel floats in; the panel is sized to fit it
+   *  so it never spills over the neighbouring analysis rail. */
+  boundsWidth?: number | null
+}) {
+  const source = useMemo(
+    () => buildFileSource(graph, file.path),
+    [graph, file.path],
+  )
+  const offset = 24 + index * 28
+  const fitWidth =
+    boundsWidth != null
+      ? Math.max(MIN_FLOAT_WIDTH, Math.min(420, boundsWidth - offset - 24))
+      : 420
   return (
     <FloatingPanel
       scope="local"
-      defaultPosition={{ x: 24 + index * 28, y: 24 + index * 28 }}
-      defaultSize={{ width: 420, height: 320 }}
-      minWidth={260}
+      defaultPosition={{ x: offset, y: offset }}
+      defaultSize={{ width: fitWidth, height: 320 }}
+      maxWidth={
+        boundsWidth != null
+          ? Math.max(MIN_FLOAT_WIDTH, boundsWidth - 16)
+          : undefined
+      }
+      minWidth={MIN_FLOAT_WIDTH}
       minHeight={120}
       className="border-border bg-card z-20 flex flex-col overflow-hidden rounded-md border shadow-lg"
     >
@@ -298,33 +322,45 @@ export function CodeInspector({
   useEffect(() => {
     if (!activeSymbolId || collapsed) return
     const el = document.getElementById(`inspector-anchor-${activeSymbolId}`)
-    el?.scrollIntoView({ block: "center", behavior: "auto" })
+    const box = scrollRef.current
+    if (!el || !box || !box.contains(el)) return
+    // Scroll only the inspector's own column. `scrollIntoView` would also
+    // scroll every scrollable ancestor, shifting the whole page (and its
+    // toolbar under the app header) when a node is clicked.
+    const offset =
+      el.getBoundingClientRect().top - box.getBoundingClientRect().top
+    box.scrollTop += offset - box.clientHeight / 2 + el.clientHeight / 2
   }, [activeSymbolId, collapsed, files])
 
-  if (collapsed) {
+  // With every open file floating there is nothing to dock, so the column
+  // folds to its strip instead of holding 24rem open for a placeholder.
+  const allFloating = files.length > 0 && docked.length === 0
+
+  if (collapsed || allFloating) {
     return (
-      <div className="border-border bg-card flex w-9 shrink-0 flex-col items-center gap-2 border-r py-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          aria-label="Expand code inspector"
-          onClick={onToggleCollapsedPanel}
-        >
-          <PanelLeftOpen aria-hidden className="h-3.5 w-3.5" />
-        </Button>
-        <span
-          className="text-muted-foreground font-mono text-xs tracking-widest uppercase"
-          style={{ writingMode: "vertical-rl" }}
-        >
-          inspector · {files.length}
+      <div className="border-border bg-card flex w-full shrink-0 items-center gap-2 border-b px-2 py-1 lg:w-9 lg:flex-col lg:border-r lg:border-b-0 lg:px-0 lg:py-2">
+        {!allFloating && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            aria-label="Expand code inspector"
+            onClick={onToggleCollapsedPanel}
+          >
+            <PanelLeftOpen aria-hidden className="h-3.5 w-3.5" />
+          </Button>
+        )}
+        <span className="text-muted-foreground font-mono text-xs tracking-widest uppercase lg:[writing-mode:vertical-rl]">
+          inspector · {allFloating ? `${files.length} floating` : files.length}
         </span>
       </div>
     )
   }
 
   return (
-    <div className="border-border bg-muted/20 flex w-full min-w-0 flex-col border-b lg:w-[24rem] lg:shrink-0 lg:border-r lg:border-b-0">
+    // Below lg the column stacks above the canvas with a capped height, so a
+    // long file scrolls inside it rather than pushing the graph off-screen.
+    <div className="border-border bg-muted/20 flex max-h-[60vh] w-full min-w-0 shrink-0 flex-col border-b lg:max-h-none lg:w-80 lg:border-r lg:border-b-0 2xl:w-[24rem]">
       <div className="border-border bg-card flex items-center gap-1 border-b px-2 py-1.5">
         <span className="text-muted-foreground flex min-w-0 flex-1 items-center gap-1.5 font-mono text-sm tracking-wide uppercase">
           <Code2 aria-hidden className="h-3 w-3" />
@@ -347,7 +383,10 @@ export function CodeInspector({
           <PanelLeftClose aria-hidden className="h-3.5 w-3.5" />
         </Button>
       </div>
-      <div ref={scrollRef} className="min-h-0 flex-1 space-y-2 overflow-auto p-2">
+      <div
+        ref={scrollRef}
+        className="min-h-0 flex-1 space-y-2 overflow-auto p-2"
+      >
         {docked.length === 0 ? (
           <p className="text-muted-foreground p-2 text-sm">
             {files.length === 0
