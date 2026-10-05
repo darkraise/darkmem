@@ -111,10 +111,14 @@ describe("ProvidersPanel (DEMO off — read-only rendering)", () => {
   // is a 422 and not a partial update. These two pin the body from the panel's
   // side; the route's own suite pins the contract they have to match.
   it("sends a full-replace body when rotating a frozen provider's key", async () => {
-    vi.mocked(apiFetch).mockImplementation((_path: string, init?: RequestInit) =>
-      init?.method === "PUT"
-        ? Promise.resolve({ ...PROVIDERS.providers[1], no_embedding_purposes: [] })
-        : Promise.resolve(PROVIDERS),
+    vi.mocked(apiFetch).mockImplementation(
+      (_path: string, init?: RequestInit) =>
+        init?.method === "PUT"
+          ? Promise.resolve({
+              ...PROVIDERS.providers[1],
+              no_embedding_purposes: [],
+            })
+          : Promise.resolve(PROVIDERS),
     )
     render(<ProvidersPanel />, { wrapper })
     await openEditor("verification-judge")
@@ -124,13 +128,19 @@ describe("ProvidersPanel (DEMO off — read-only rendering)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }))
 
     await waitFor(() =>
-      expect(vi.mocked(apiFetch).mock.calls.some(
-        ([path]) => path === "/config/llm-providers/verification-judge",
-      )).toBe(true),
+      expect(
+        vi
+          .mocked(apiFetch)
+          .mock.calls.some(
+            ([path]) => path === "/config/llm-providers/verification-judge",
+          ),
+      ).toBe(true),
     )
-    const call = vi.mocked(apiFetch).mock.calls.find(
-      ([path]) => path === "/config/llm-providers/verification-judge",
-    )!
+    const call = vi
+      .mocked(apiFetch)
+      .mock.calls.find(
+        ([path]) => path === "/config/llm-providers/verification-judge",
+      )!
     expect(JSON.parse((call[1] as RequestInit)!.body as string)).toEqual({
       api_kind: "openai",
       base_url: "https://api.openai.com/v1",
@@ -139,10 +149,14 @@ describe("ProvidersPanel (DEMO off — read-only rendering)", () => {
   })
 
   it("resends the unchanged fields on an ordinary connection edit", async () => {
-    vi.mocked(apiFetch).mockImplementation((_path: string, init?: RequestInit) =>
-      init?.method === "PUT"
-        ? Promise.resolve({ ...PROVIDERS.providers[0], no_embedding_purposes: [] })
-        : Promise.resolve(PROVIDERS),
+    vi.mocked(apiFetch).mockImplementation(
+      (_path: string, init?: RequestInit) =>
+        init?.method === "PUT"
+          ? Promise.resolve({
+              ...PROVIDERS.providers[0],
+              no_embedding_purposes: [],
+            })
+          : Promise.resolve(PROVIDERS),
     )
     render(<ProvidersPanel />, { wrapper })
     const baseUrl = await openEditor("ollama-local")
@@ -150,13 +164,19 @@ describe("ProvidersPanel (DEMO off — read-only rendering)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }))
 
     await waitFor(() =>
-      expect(vi.mocked(apiFetch).mock.calls.some(
-        ([path]) => path === "/config/llm-providers/ollama-local",
-      )).toBe(true),
+      expect(
+        vi
+          .mocked(apiFetch)
+          .mock.calls.some(
+            ([path]) => path === "/config/llm-providers/ollama-local",
+          ),
+      ).toBe(true),
     )
-    const call = vi.mocked(apiFetch).mock.calls.find(
-      ([path]) => path === "/config/llm-providers/ollama-local",
-    )!
+    const call = vi
+      .mocked(apiFetch)
+      .mock.calls.find(
+        ([path]) => path === "/config/llm-providers/ollama-local",
+      )!
     expect(JSON.parse((call[1] as RequestInit)!.body as string)).toEqual({
       api_kind: "openai",
       base_url: "http://moved:11434/v1",
@@ -169,6 +189,30 @@ describe("ProvidersPanel (DEMO off — read-only rendering)", () => {
     render(<ProvidersPanel />, { wrapper })
     await waitFor(() =>
       expect(screen.getByLabelText("Delete ollama-local")).toBeDisabled(),
+    )
+  })
+
+  it("confirms before deleting a provider", async () => {
+    const unused = {
+      providers: [{ ...PROVIDERS.providers[0], name: "spare", used_by: [] }],
+    }
+    vi.mocked(apiFetch).mockImplementation(
+      (_path: string, init?: RequestInit) =>
+        Promise.resolve(init?.method === "DELETE" ? undefined : unused),
+    )
+    render(<ProvidersPanel />, { wrapper })
+    fireEvent.click(await screen.findByLabelText("Delete spare"))
+    // The trash icon only arms the confirmation; nothing is deleted yet.
+    expect(
+      vi.mocked(apiFetch).mock.calls.some((c) => c[1]?.method === "DELETE"),
+    ).toBe(false)
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Delete provider" }),
+    )
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith("/config/llm-providers/spare", {
+        method: "DELETE",
+      }),
     )
   })
 
@@ -230,10 +274,11 @@ describe("ProvidersPanel (DEMO off — read-only rendering)", () => {
   })
 
   it("adds a provider through the dialog rather than an inline card", async () => {
-    vi.mocked(apiFetch).mockImplementation((_path: string, init?: RequestInit) =>
-      init?.method === "POST"
-        ? Promise.resolve({ ...PROVIDERS.providers[0], name: "new-one" })
-        : Promise.resolve(PROVIDERS),
+    vi.mocked(apiFetch).mockImplementation(
+      (_path: string, init?: RequestInit) =>
+        init?.method === "POST"
+          ? Promise.resolve({ ...PROVIDERS.providers[0], name: "new-one" })
+          : Promise.resolve(PROVIDERS),
     )
     render(<ProvidersPanel />, { wrapper })
     await screen.findByLabelText("Edit ollama-local")
@@ -276,5 +321,4 @@ describe("ProvidersPanel (DEMO off — read-only rendering)", () => {
       screen.queryByLabelText("ollama-local api_key"),
     ).not.toBeInTheDocument()
   })
-
 })

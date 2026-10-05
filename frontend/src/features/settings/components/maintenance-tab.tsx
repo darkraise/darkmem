@@ -119,7 +119,6 @@ export function MaintenanceTab() {
                   variant="outline"
                   className="border-primary/60 text-primary-text"
                   disabled={m.reembed.memories === 0}
-                  tabIndex={-1}
                 >
                   <Zap className="mr-1.5 size-3.5" />
                   Re-embed memories
@@ -144,11 +143,7 @@ export function MaintenanceTab() {
               tone="primary"
               disabled={m.reembed.entities === 0}
               trigger={
-                <Button
-                  variant="outline"
-                  disabled={m.reembed.entities === 0}
-                  tabIndex={-1}
-                >
+                <Button variant="outline" disabled={m.reembed.entities === 0}>
                   Re-embed entities
                 </Button>
               }
@@ -176,7 +171,6 @@ export function MaintenanceTab() {
                   variant="outline"
                   className="border-destructive/60 text-destructive"
                   disabled={m.cleanup.expired === 0}
-                  tabIndex={-1}
                 >
                   <Trash2 className="mr-1.5 size-3.5" />
                   Run sweep now
@@ -199,7 +193,6 @@ export function MaintenanceTab() {
                 <Button
                   variant="outline"
                   className="border-warning/60 text-warning-text"
-                  tabIndex={-1}
                 >
                   Run now
                 </Button>
@@ -221,7 +214,6 @@ export function MaintenanceTab() {
                 <Button
                   variant="outline"
                   className="border-warning/60 text-warning-text"
-                  tabIndex={-1}
                 >
                   Run now
                 </Button>
@@ -274,7 +266,6 @@ export function MaintenanceTab() {
                   variant="outline"
                   className="border-destructive/60 text-destructive"
                   disabled={m.dbops.retiredFingerprints?.length === 0}
-                  tabIndex={-1}
                 >
                   <Trash2 className="mr-1.5 size-3.5" />
                   Prune caches
