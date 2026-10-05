@@ -1,6 +1,6 @@
 [project]
 name = "darkmem"
-version = "1.13.0"
+version = "1.14.0"
 description = "Centralized memory system for AI agents"
 requires-python = ">=3.12"
 license = "Apache-2.0"
