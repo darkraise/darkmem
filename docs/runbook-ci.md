@@ -56,15 +56,19 @@ The default splits verification from image production:
 
 | Jobs | Runner |
 | --- | --- |
-| Backend application/harness tests, frontend checks/unit tests, image boot check | `[self-hosted, linux, x64, darkmem-linux]` by default |
+| Backend application/harness tests, frontend checks/unit tests, image boot check | `[self-hosted, linux, x64, darkmem-linux]` while one is online, else `ubuntu-latest` |
 | API and Playwright e2e | Always `[self-hosted, linux, x64, darkmem-linux]` |
 | Image build/scan, release planning/version sync, image publishing, tag/GitHub release | Always `ubuntu-latest` |
 | Short runner-picker jobs | `ubuntu-latest` |
 
 `pick-runner` (`scripts/pick_runner.py`) selects only the first row's runner.
-The default is `self-hosted`, so busy or offline runners leave verification
-queued instead of consuming hosted test minutes. No token or runner-listing
-API call is needed for the default. The release passes its choice into the
+The default is `fallback`: those checks go to `darkmem-linux` whenever a
+runner with that label is online, queuing behind its current job when busy,
+and to `ubuntu-latest` only when none is online, none is registered or the
+runner listing fails. Listing runners needs `RUNNER_PICKER_TOKEN` (below);
+without it the picker cannot tell whether the runner is up, so it queues on
+self-hosted exactly as an explicit `self-hosted` request would. The release
+passes its choice into the
 reusable CI workflow. Every master push still runs verification, including
 non-release pushes. A release cannot publish until the whole reusable CI
 workflow succeeds, including both e2e jobs.
@@ -117,18 +121,27 @@ standard `self-hosted`, `linux` and `x64` labels.
 
 **Manual choices.** Both workflows' dispatch input `runner` accepts:
 
-- `self-hosted` (default): queue backend/frontend/smoke checks on `darkmem-linux`.
+- `fallback` (default, and what every pull request and master push uses):
+  `darkmem-linux` while one is online, otherwise hosted.
+- `self-hosted`: always queue backend/frontend/smoke checks on `darkmem-linux`.
 - `hosted`: send those checks to `ubuntu-latest`.
-- `auto`: use an idle `darkmem-linux` runner, otherwise fall back to hosted.
+- `auto`: use an idle `darkmem-linux` runner, otherwise fall back to hosted
+  (a busy runner also falls back).
 
-Only `auto` needs `RUNNER_PICKER_TOKEN`, a fine-grained PAT scoped to this
-repository with Administration: Read-only. A missing token, API error or no
-idle matching runner causes hosted fallback in that mode. E2e stays
-self-hosted in every mode. The run summary records the selected check runner.
+`fallback` and `auto` read the runner list through `RUNNER_PICKER_TOKEN`, a
+repository secret holding a fine-grained PAT scoped to this repository with
+Administration: Read-only (the runners API needs it, and the workflow's own
+`GITHUB_TOKEN` cannot be granted that permission). Without the token
+`fallback` queues on self-hosted and `auto` goes hosted; an API error sends
+both to hosted. E2e stays self-hosted in every mode, so while the runner is
+offline a run's e2e jobs (and therefore a release's publish) still wait for
+it. The run summary records the selected check runner and why.
 
-**A run stuck in the queue.** Restore the `darkmem-linux` runner or wait for
-its current job. To move the non-e2e checks to hosted, cancel and re-dispatch
-with `runner: hosted`; e2e still requires the self-hosted runner. With one
+**A run stuck in the queue.** The picker decides once, when the run starts:
+a runner that goes offline after that leaves the checks it was given queued.
+Restore the `darkmem-linux` runner or wait for its current job. To move the
+non-e2e checks to hosted, cancel and re-dispatch with `runner: hosted`; e2e
+still requires the self-hosted runner. With one
 runner, its jobs execute sequentially.
 
 **Image transfer.** CI saves its hosted build as a Docker tar artifact with

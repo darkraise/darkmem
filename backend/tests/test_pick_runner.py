@@ -1,4 +1,4 @@
-"""Verification defaults to darkmem-linux; explicit auto retains hosted fallback."""
+"""Verification prefers an online darkmem-linux runner and falls back to hosted."""
 from __future__ import annotations
 
 import importlib.util
@@ -150,7 +150,7 @@ def test_main_keeps_a_multiline_error_on_one_output_line(tmp_path):
 
 
 def test_outputs_are_valid_json():
-    for requested in ("hosted", "self-hosted"):
+    for requested in ("hosted", "self-hosted", "fallback"):
         runs_on, _ = pick.choose([], requested, True)
         json.loads(runs_on)
 
@@ -179,9 +179,59 @@ def test_main_without_a_token_makes_no_call(tmp_path):
     assert _outputs(tmp_path) == {"runs-on": HOSTED, "reason": "RUNNER_PICKER_TOKEN is not set"}
 
 
-def test_default_queues_on_self_hosted_without_listing_runners(tmp_path):
+def test_fallback_uses_an_idle_runner():
+    runs_on, reason = pick.choose([_runner()], "fallback", True)
+    assert runs_on == SELF_HOSTED
+    assert "box-1" in reason
+
+
+def test_fallback_queues_behind_a_busy_online_runner():
+    runs_on, reason = pick.choose([_runner(busy=True)], "fallback", True)
+    assert runs_on == SELF_HOSTED
+    assert reason == "1 darkmem-linux runner(s) online, all busy, queuing"
+
+
+def test_fallback_goes_hosted_when_every_runner_is_offline():
+    runners = [_runner("box-1", status="offline"), _runner("box-2", status="offline", busy=True)]
+    assert pick.choose(runners, "fallback", True) == (HOSTED, "2 darkmem-linux runner(s), none online")
+
+
+def test_fallback_goes_hosted_when_no_runner_is_registered():
+    runners = [_runner(labels=("self-hosted", "other"))]
+    assert pick.choose(runners, "fallback", True) == (HOSTED, "no darkmem-linux runner registered")
+
+
+def test_fallback_without_a_token_queues_on_self_hosted():
+    runs_on, reason = pick.choose([], "fallback", False)
+    assert runs_on == SELF_HOSTED
+    assert "RUNNER_PICKER_TOKEN is not set" in reason
+
+
+def test_default_is_fallback_and_lists_runners(tmp_path):
+    seen = []
+
     def fetch(url, token):
-        raise AssertionError("the default must not depend on the listing API")
+        seen.append(url)
+        return {"total_count": 1, "runners": [_runner(status="offline")]}
 
     assert pick.main(_env(tmp_path, GH_TOKEN="t"), fetch=fetch) == 0
+    assert seen
+    assert _outputs(tmp_path)["runs-on"] == HOSTED
+
+
+def test_default_without_a_token_queues_on_self_hosted_without_a_call(tmp_path):
+    def fetch(url, token):
+        raise AssertionError("the API must not be called without a token")
+
+    assert pick.main(_env(tmp_path), fetch=fetch) == 0
     assert _outputs(tmp_path)["runs-on"] == SELF_HOSTED
+
+
+def test_default_falls_back_to_hosted_when_the_listing_fails(tmp_path):
+    def fetch(url, token):
+        raise urllib.error.HTTPError(url, 403, "Forbidden", None, None)
+
+    assert pick.main(_env(tmp_path, GH_TOKEN="t"), fetch=fetch) == 0
+    out = _outputs(tmp_path)
+    assert out["runs-on"] == HOSTED
+    assert out["reason"].startswith("runner listing failed (HTTPError")

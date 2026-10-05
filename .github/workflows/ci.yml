@@ -10,8 +10,8 @@ on:
       runner:
         description: "Verification runner (e2e always uses darkmem-linux); image builds/publishing stay hosted"
         type: choice
-        options: [self-hosted, hosted, auto]
-        default: self-hosted
+        options: [fallback, self-hosted, hosted, auto]
+        default: fallback
   # Callable so release.yml can gate publishing on this exact pipeline rather
   # than a copy of it: a release can never publish an image whose tests did not
   # run.
@@ -30,8 +30,10 @@ permissions:
   contents: read
 
 jobs:
-  # Default verification to darkmem-linux, queuing when busy. Explicit auto
-  # retains hosted fallback. Under release.yml the choice passes through.
+  # Default (`fallback`): verification on darkmem-linux while a runner is
+  # online, queuing when busy, and hosted only when none is online (needs
+  # RUNNER_PICKER_TOKEN; without it, queue on self-hosted). Under release.yml
+  # the choice passes through.
   # Image builds stay hosted and LAN-dependent e2e stays self-hosted.
   pick-runner:
     name: Pick runner
@@ -48,7 +50,7 @@ jobs:
         id: pick
         env:
           CALLER_PICK: ${{ inputs.runs-on }}
-          REQUESTED: ${{ inputs.runner || 'self-hosted' }}
+          REQUESTED: ${{ inputs.runner || 'fallback' }}
           GH_TOKEN: ${{ secrets.RUNNER_PICKER_TOKEN }}
         run: |
           if [ -n "$CALLER_PICK" ]; then
