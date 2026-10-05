@@ -31,6 +31,8 @@ import {
 } from "@/components/darkmem"
 import { PageChrome } from "@/components/app-chrome"
 import { relativeTime } from "@/lib/format"
+import { DEMO } from "@/lib/demo-flag"
+import { cn } from "darkraise-ui/lib"
 import type { ActivityEvent } from "@/features/dashboard/types"
 import { CalendarCard } from "@/features/dashboard/calendar-card"
 import { useContributionCalendar } from "@/features/dashboard/use-contribution-calendar"
@@ -215,6 +217,9 @@ function DashboardPage() {
   // yet" are different claims, and the bug this page just came off was a
   // number that looked authoritative and was not.
   const tile = (n: number) => (statsLoading ? "—" : n.toLocaleString())
+  // The articles layer is off the nav until it has something to serve
+  // (`_authenticated.tsx`); a tile reading 0 forever advertised it anyway.
+  const showArticles = DEMO || stats.liveArticles > 0
 
   return (
     <div className="space-y-4">
@@ -224,7 +229,12 @@ function DashboardPage() {
         description="What the vault knows and what changed recently."
       />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div
+        className={cn(
+          "grid grid-cols-2 gap-3",
+          showArticles ? "lg:grid-cols-4" : "lg:grid-cols-3",
+        )}
+      >
         {/* No "+N today" delta: the only per-day series available is
             /events/calendar, which counts every event type — cron ticks and
             logins included — so on this vault it read "+20 today" beside a
@@ -232,7 +242,9 @@ function DashboardPage() {
             the tile it sits on is the same defect this page just came off. */}
         <StatTile label="Total memories" value={tile(stats.totalMemories)} />
         <StatTile label="Verified facts" value={tile(stats.verifiedFacts)} />
-        <StatTile label="Live articles" value={tile(stats.liveArticles)} />
+        {showArticles && (
+          <StatTile label="Live articles" value={tile(stats.liveArticles)} />
+        )}
         <StatTile
           label="Pending review"
           value={tile(stats.pendingReview)}

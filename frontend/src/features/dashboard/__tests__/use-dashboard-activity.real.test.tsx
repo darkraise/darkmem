@@ -68,6 +68,24 @@ describe("useDashboardActivity (DEMO off — real /events)", () => {
     )
   })
 
+  it("leaves sign-in and setup rows to their own reader", async () => {
+    const logins = Array.from({ length: 10 }, (_, i) => ({
+      ...ROW,
+      id: 100 + i,
+      event_type: i % 2 ? "auth_login_failed" : "auth_login_success",
+      object_type: null,
+      object_id: null,
+    }))
+    vi.mocked(apiFetch).mockResolvedValue({
+      items: [...logins, { ...ROW, event_type: "setup_complete" }, ROW],
+      total: 12,
+    })
+    const { result } = renderHook(() => useDashboardActivity(), { wrapper })
+
+    await waitFor(() => expect(result.current.events.length).toBe(1))
+    expect(result.current.events[0]!.id).toBe("55")
+  })
+
   it("surfaces a failed load as isError", async () => {
     vi.mocked(apiFetch).mockRejectedValue(new Error("boom"))
     const { result } = renderHook(() => useDashboardActivity(), { wrapper })
