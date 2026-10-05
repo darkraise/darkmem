@@ -19,6 +19,12 @@ import { EmptyState } from "@/components/darkmem"
 import { LayoutGrid } from "lucide-react"
 import { LEDGER_STATUSES } from "../types"
 import { startableVerdict } from "../lib/startable"
+import {
+  findTaskByRef,
+  isExactMatch,
+  matchesTaskQuery,
+  parseTaskQuery,
+} from "../lib/task-query"
 import type { BoardTask, ProgressCorpus } from "../use-progress-corpus"
 import { TaskCard } from "./task-card"
 import { TaskDetail } from "./task-detail"
@@ -34,7 +40,28 @@ const UNRECOGNISED = "unrecognised"
 
 type Grouping = "status" | "epic" | "lane"
 
-export function ProgressBoard({ corpus }: { corpus: ProgressCorpus }) {
+/**
+ * The board. Every task carries a reference unique on it -- `T3.01` for an
+ * epic task, `<plan code>-<n>` for task n of a plan -- and the filter box
+ * reads `#n` as a task number and a reference as one task, so pressing Enter
+ * on a query that names exactly one task opens it.
+ *
+ * `openTask` / `onOpenTaskChange` let the route own the open task as a
+ * `?task=` search param, so a task's view is a link. Without them the board
+ * keeps the open task itself.
+ */
+export function ProgressBoard({
+  corpus,
+  openTask,
+  onOpenTaskChange,
+  onOpenDocument,
+}: {
+  corpus: ProgressCorpus
+  openTask?: string | null
+  onOpenTaskChange?: (ref: string | null) => void
+  /** Opens a plan or epic file at a task's heading, in the Artifacts tab. */
+  onOpenDocument?: (documentId: string, blockId: string | null) => void
+}) {
   const [grouping, setGrouping] = useState<Grouping>("status")
   const [query, setQuery] = useState("")
   const [epicKey, setEpicKey] = useState(ANY)
@@ -43,7 +70,11 @@ export function ProgressBoard({ corpus }: { corpus: ProgressCorpus }) {
   const [model, setModel] = useState(ANY)
   const [startableOnly, setStartableOnly] = useState(false)
   const [showDropped, setShowDropped] = useState(false)
-  const [open, setOpen] = useState<BoardTask | null>(null)
+  const [localOpen, setLocalOpen] = useState<string | null>(null)
+  const openRef = onOpenTaskChange ? (openTask ?? null) : localOpen
+  const setOpenRef = onOpenTaskChange ?? setLocalOpen
+  const open = useMemo(() => findTaskByRef(corpus.tasks, openRef), [corpus.tasks, openRef])
+  const parsedQuery = useMemo(() => parseTaskQuery(query), [query])
 
   const verdicts = useMemo(() => {
     const map = new Map<string, ReturnType<typeof startableVerdict>>()
@@ -72,25 +103,36 @@ export function ProgressBoard({ corpus }: { corpus: ProgressCorpus }) {
       if (task.meta.Model) models.add(task.meta.Model)
     }
     return {
-      epics: corpus.epics.map((e) => e.key),
-      lanes: [...lanes].sort(),
-      owners: [...owners].sort(),
-      models: [...models].sort(),
+      epics: corpus.epics.map((e) => ({
+        value: e.key,
+        label: e.kind === "plan" ? `${e.key} — ${e.title}` : e.key,
+      })),
+      lanes: [...lanes].sort().map(asOption),
+      owners: [...owners].sort().map(asOption),
+      models: [...models].sort().map(asOption),
     }
   }, [corpus])
 
   const visible = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return corpus.tasks.filter(({ task, row, epic }) => {
+    return corpus.tasks.filter((entry) => {
+      const { task, row, epic } = entry
       if (epicKey !== ANY && epic.key !== epicKey) return false
       if (lane !== ANY && task.lane !== lane) return false
       if (owner !== ANY && row?.owner !== owner) return false
       if (model !== ANY && task.meta.Model !== model) return false
       if (startableOnly && !verdicts.get(task.id)?.startable) return false
-      if (q && !`${task.id} ${task.title}`.toLowerCase().includes(q)) return false
+      if (!matchesTaskQuery(entry, parsedQuery, query)) return false
       return true
     })
-  }, [corpus.tasks, epicKey, lane, owner, model, startableOnly, query, verdicts])
+  }, [corpus.tasks, epicKey, lane, owner, model, startableOnly, parsedQuery, query, verdicts])
+
+  /** The tasks the query names exactly, among those the other filters keep:
+   *  `#6` with a plan selected is one task, and Enter opens it. */
+  const exact = useMemo(
+    () => visible.filter((entry) => isExactMatch(entry, parsedQuery)),
+    [visible, parsedQuery],
+  )
+  const onlyMatch = exact.length === 1 ? exact[0] : undefined
 
   const columns = useMemo(() => {
     if (grouping === "status") {
@@ -140,19 +182,25 @@ export function ProgressBoard({ corpus }: { corpus: ProgressCorpus }) {
         >
           <SegmentGroupIndicator />
           <SegmentGroupItem value="status">Status</SegmentGroupItem>
-          <SegmentGroupItem value="epic">Epic</SegmentGroupItem>
+          <SegmentGroupItem value="epic">Epic / plan</SegmentGroupItem>
           <SegmentGroupItem value="lane">Lane</SegmentGroupItem>
         </SegmentGroup>
 
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Filter by id or title"
-          aria-label="Filter by id or title"
-          className="h-8 w-48"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && onlyMatch) {
+              e.preventDefault()
+              setOpenRef(onlyMatch.task.id)
+            }
+          }}
+          placeholder="#6, CRF-6, T3.01 or title"
+          aria-label="Filter by reference, #number or title"
+          className="h-8 w-56"
         />
 
-        <FilterSelect label="Epic" value={epicKey} onChange={setEpicKey} options={options.epics} />
+        <FilterSelect label="Epic / plan" value={epicKey} onChange={setEpicKey} options={options.epics} />
         <FilterSelect label="Lane" value={lane} onChange={setLane} options={options.lanes} />
         <FilterSelect label="Owner" value={owner} onChange={setOwner} options={options.owners} />
         <FilterSelect label="Model" value={model} onChange={setModel} options={options.models} />
@@ -176,6 +224,25 @@ export function ProgressBoard({ corpus }: { corpus: ProgressCorpus }) {
           {visible.length} of {corpus.tasks.length}
         </span>
       </div>
+
+      {(parsedQuery.kind === "number" || parsedQuery.kind === "ref") && (
+        <p className="text-muted-foreground text-sm" role="status">
+          {onlyMatch
+            ? `Enter opens ${onlyMatch.task.id}.`
+            : exact.length > 1
+              ? `${exact.length} tasks match — pick an epic or plan to narrow to one.`
+              : "No task matching these filters has that reference."}
+        </p>
+      )}
+
+      {openRef && !open && !corpus.loading && (
+        <p className="text-muted-foreground text-sm" role="status">
+          No task {openRef} on this board.{" "}
+          <Button variant="link" size="sm" className="h-auto p-0" onClick={() => setOpenRef(null)}>
+            Dismiss
+          </Button>
+        </p>
+      )}
 
       {visible.length === 0 ? (
         <EmptyState
@@ -206,7 +273,7 @@ export function ProgressBoard({ corpus }: { corpus: ProgressCorpus }) {
                           reason: null,
                         }
                       }
-                      onOpen={() => setOpen(entry)}
+                      onOpen={() => setOpenRef(entry.task.id)}
                     />
                   ))}
                 </div>
@@ -223,9 +290,22 @@ export function ProgressBoard({ corpus }: { corpus: ProgressCorpus }) {
         </p>
       )}
 
-      <TaskDetail entry={open} onClose={() => setOpen(null)} />
+      <TaskDetail
+        entry={open}
+        onClose={() => setOpenRef(null)}
+        onOpenDocument={onOpenDocument}
+      />
     </div>
   )
+}
+
+interface Option {
+  value: string
+  label: string
+}
+
+function asOption(value: string): Option {
+  return { value, label: value }
 }
 
 function FilterSelect({
@@ -237,7 +317,7 @@ function FilterSelect({
   label: string
   value: string
   onChange: (v: string) => void
-  options: string[]
+  options: Option[]
 }) {
   if (options.length === 0) return null
   return (
@@ -248,8 +328,8 @@ function FilterSelect({
       <SelectContent>
         <SelectItem value={ANY}>{label}: any</SelectItem>
         {options.map((o) => (
-          <SelectItem key={o} value={o}>
-            {o}
+          <SelectItem key={o.value} value={o.value}>
+            {o.label}
           </SelectItem>
         ))}
       </SelectContent>

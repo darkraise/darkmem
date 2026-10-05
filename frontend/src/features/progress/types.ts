@@ -2,7 +2,8 @@
  * Types for the Progress board — a projection of the planning corpus.
  *
  * Spec: `docs/superpowers/specs/2026-09-04-progress-board-design.md`. The board
- * derives from two committed markdown files and writes nothing.
+ * derives from the filed planning documents and the work log, and writes
+ * nothing.
  */
 
 /** `progress.md`'s status vocabulary, in workflow order. */
@@ -30,6 +31,14 @@ export function isLedgerStatus(value: string): value is LedgerStatus {
  */
 export const TASK_ID = /^T[A-Z]?\d+\.\d+[a-z]?$/
 
+/**
+ * A plan task's reference: the plan's code, a dash, and the task's number in
+ * the plan (`CRF-6` is "Task 6" of `comprehensive-review-fixes`). The number
+ * is the one an agent already uses for the task, so the reference is that
+ * number made unique across the project's plans.
+ */
+export const PLAN_REF = /^[A-Z0-9]+-\d+$/
+
 export interface LedgerRow {
   id: string
   title: string
@@ -48,14 +57,27 @@ export interface LedgerRow {
 }
 
 export interface EpicTask {
+  /** The task's board reference: `T3.01` for an epic task, `CRF-6` for a
+   *  plan task. Unique across one project's board. */
   id: string
+  /** What `#` looks up: `3.01` for `T3.01`, `6` for `CRF-6`. Not unique --
+   *  every plan has a task 1. */
+  number: string
   title: string
   /** The `## Lane X — …` heading this task sits under, or `null` outside one. */
   lane: string | null
   /** The backtick metadata line, split on each pair's first colon. */
   meta: Record<string, string>
-  /** The implementer's definition-of-done checklist. Never a progress measure. */
+  /** The implementer's definition-of-done checklist. Never a progress measure
+   *  for an epic task; a plan task's steps are, see `plan-status.ts`. */
   doneWhen: ChecklistItem[]
+  /** A plan task's predecessor in its plan, which it waits on: plans execute
+   *  in task order unless they say otherwise. Absent for epic tasks, whose
+   *  dependencies are the declared `Depends:` metadata. */
+  after?: string
+  /** The heading block that opens this task's section in its document, when
+   *  known, so the board can open the plan at the task. */
+  blockId?: string | null
 }
 
 export interface ChecklistItem {
@@ -64,9 +86,14 @@ export interface ChecklistItem {
 }
 
 export interface Epic {
-  /** `E3`, `EH1`, `M1` — the id prefix, from the `# ` heading. */
+  /** `E3`, `EH1`, `M1` — the id prefix, from the `# ` heading. For a plan,
+   *  its code (`CRF`). */
   key: string
+  /** An epic file under `planning/tasks/`, or a plan under `plans/`. */
+  kind: "epic" | "plan"
   filename: string
+  /** The filed document this group was read from. */
+  documentId?: string
   title: string
   goal: string | null
   entryGate: string | null

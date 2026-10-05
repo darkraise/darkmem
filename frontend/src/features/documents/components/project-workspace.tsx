@@ -109,10 +109,16 @@ type QueryMode = "search" | "ask"
 export function ProjectWorkspace({
   project,
   workstream,
+  task,
+  onTaskChange,
   ...tabs
 }: {
   project: string
   workstream?: string
+  /** The board task open in the Progress tab, by reference (`CRF-6`). Owned
+   *  by the route so an open task is a link. */
+  task?: string
+  onTaskChange?: (task: string | null) => void
 } & (
   | { tab: WorkspaceTab; onTabChange: (tab: WorkspaceTab) => void }
   | { tab?: undefined; onTabChange?: undefined }
@@ -145,7 +151,9 @@ export function ProjectWorkspace({
   const [mode, setMode] = useState<ReaderMode>("read")
   const search = useDocumentSearch()
   const qa = useGroundedQa()
-  const corpus = useProgressCorpus(items)
+  // The board's reads (every plan's outline, the ledgers) run only while the
+  // Progress tab shows it.
+  const corpus = useProgressCorpus(items, project, tabs.tab === "progress")
 
   const roots = useMemo(() => buildUriTree(items), [items])
   // Lazy initialiser rather than an effect: the route mounts a fresh
@@ -256,6 +264,19 @@ export function ProjectWorkspace({
       switchTab?.("artifacts")
     },
     [items, documentsLoading, switchTab],
+  )
+
+  // A board task names its plan or epic file by id and its heading by block.
+  const openDocumentAt = useCallback(
+    (documentId: string, blockId: string | null) => {
+      setSelectedId(documentId)
+      setFocusBlockId(blockId)
+      setMode("read")
+      // Leaving the Progress tab closes the open task: the route drops `task`
+      // with the tab, in the same navigation.
+      switchTab?.("artifacts")
+    },
+    [switchTab],
   )
 
   const hits = search.data?.items ?? []
@@ -543,18 +564,23 @@ export function ProjectWorkspace({
       <TabsContent value="progress" className="space-y-5">
         <div>
           <RegionLabel>project board</RegionLabel>
-          {/* A projection of the ledger and the epic files, never a second
-              store: the board writes nothing, so `progress.md` stays the one
-              place task state lives. That is what keeps it cheap, and it is
-              also why the board fills only for a project whose corpus holds
-              those files. */}
+          {/* A projection of the filed planning documents and the work log,
+              never a second store: the board writes nothing, so the files and
+              the ledgers stay the places task state lives. That is what keeps
+              it cheap, and it is also why the board fills only for a project
+              that files a ledger or a plan. */}
           {corpus.present ? (
-            <ProgressBoard corpus={corpus} />
+            <ProgressBoard
+              corpus={corpus}
+              openTask={task ?? null}
+              onOpenTaskChange={onTaskChange}
+              onOpenDocument={openDocumentAt}
+            />
           ) : (
             <EmptyState
               kind="empty"
               icon={FolderTree}
-              title="No progress ledger"
+              title="No plans or progress ledger"
             />
           )}
         </div>

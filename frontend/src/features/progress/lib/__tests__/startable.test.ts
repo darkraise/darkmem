@@ -96,11 +96,11 @@ describe("startableVerdict", () => {
       ["T9.00", { ...blank("T9.00"), status: "wip", rawStatus: "wip" }],
     ])
     const task = {
-      id: "T9.01", title: "t", lane: "Lane A",
+      id: "T9.01", number: "9.01", title: "t", lane: "Lane A",
       meta: { Depends: "T9.00" }, doneWhen: [],
     }
     const epic = {
-      key: "E9", filename: "E9.md", title: "E9", goal: null,
+      key: "E9", kind: "epic" as const, filename: "E9.md", title: "E9", goal: null,
       entryGate: null, doneWhen: null, branch: null,
       lanes: ["Lane A"], tasks: [task],
     }
@@ -116,11 +116,11 @@ describe("startableVerdict", () => {
       ["T9.00", { ...blank("T9.00"), status: "dropped", rawStatus: "dropped" }],
     ])
     const task = {
-      id: "T9.01", title: "t", lane: "Lane A",
+      id: "T9.01", number: "9.01", title: "t", lane: "Lane A",
       meta: { Depends: "T9.00" }, doneWhen: [],
     }
     const epic = {
-      key: "E9", filename: "E9.md", title: "E9", goal: null,
+      key: "E9", kind: "epic" as const, filename: "E9.md", title: "E9", goal: null,
       entryGate: null, doneWhen: null, branch: null,
       lanes: ["Lane A"], tasks: [task],
     }

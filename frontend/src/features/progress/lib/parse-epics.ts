@@ -116,6 +116,7 @@ export function parseEpics(markdown: string, filename: string): Epic {
 
     tasks.push({
       id,
+      number: id.replace(/^T[A-Z]?/, ""),
       title: (taskMatch[2] ?? "").trim(),
       lane,
       meta: metadata(body),
@@ -125,6 +126,7 @@ export function parseEpics(markdown: string, filename: string): Epic {
 
   return {
     key: heading?.[1] ?? filename.replace(/-.*$/, ""),
+    kind: "epic",
     filename,
     title: heading?.[2]?.trim() ?? filename,
     goal: field(preamble, "Goal"),

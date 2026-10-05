@@ -1,3 +1,4 @@
+import { useMemo } from "react"
 import {
   Dialog,
   DialogContent,
@@ -6,74 +7,138 @@ import {
   DialogTitle,
 } from "darkraise-ui/components/dialog"
 import { Badge } from "darkraise-ui/components/badge"
+import { Button } from "darkraise-ui/components/button"
+import {
+  Clipboard,
+  ClipboardIndicator,
+  ClipboardTrigger,
+} from "darkraise-ui/components/clipboard"
 import { ScrollArea } from "darkraise-ui/components/scroll-area"
-import { Square, SquareCheck } from "lucide-react"
+import { Skeleton } from "darkraise-ui/components/skeleton"
+import { Check, Copy, FileText, Square, SquareCheck } from "lucide-react"
+import { AppMarkdown } from "@/components/markdown"
+import { useDocumentContents } from "@/hooks/api"
 import type { BoardTask } from "../use-progress-corpus"
+import { parsePlanSections } from "../lib/parse-plan"
+import { PLAN_STATUS_SOURCE_LABEL } from "../lib/plan-status"
 import { plainText } from "../lib/plain-text"
 
 /**
- * One task in full, including the epic file's done-when checklist.
+ * One task in full.
  *
- * The checklist is labelled as the implementer's own, never as progress. The
- * corpus carries 806 unchecked boxes against 17 checked across a project that
- * has shipped through T3.28 and cleared three gates, so aggregating them into
- * a percentage would report roughly 2% done. The measurement is stated in the
- * copy rather than left for a reader to rediscover.
+ * An epic task shows its epic file's done-when checklist, labelled as the
+ * implementer's own and never as progress: the corpus carries 806 unchecked
+ * boxes against 17 checked across a project that has shipped through T3.28
+ * and cleared three gates, so aggregating them would report roughly 2% done.
+ *
+ * A plan task shows its section of the plan, read when the task is opened,
+ * and says which signal its status came from.
  */
 export function TaskDetail({
   entry,
   onClose,
+  onOpenDocument,
 }: {
   entry: BoardTask | null
   onClose: () => void
+  onOpenDocument?: (documentId: string, blockId: string | null) => void
 }) {
   if (!entry) return null
-  const { task, row, epic } = entry
-
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-baseline gap-2">
-            <span className="text-primary-text font-mono text-base">{task.id}</span>
-            <span>{plainText(task.title)}</span>
-          </DialogTitle>
-          <DialogDescription>
-            {epic.key} — {epic.title}
-            {task.lane ? ` · ${task.lane}` : ""}
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="max-w-3xl">
+        <TaskDetailBody entry={entry} onOpenDocument={onOpenDocument} />
+      </DialogContent>
+    </Dialog>
+  )
+}
 
-        <ScrollArea className="max-h-[60vh] pr-3">
-          <div className="space-y-4">
-            <div className="flex flex-wrap gap-1.5">
-              {row && (
-                <Badge variant="outline">{row.rawStatus || "no status"}</Badge>
-              )}
-              {Object.entries(task.meta).map(([k, v]) => (
-                <Badge key={k} variant="secondary" className="font-normal">
-                  {k}: {v}
-                </Badge>
-              ))}
-            </div>
+function TaskDetailBody({
+  entry,
+  onOpenDocument,
+}: {
+  entry: BoardTask
+  onOpenDocument?: (documentId: string, blockId: string | null) => void
+}) {
+  const { task, row, epic, statusFrom } = entry
+  const isPlan = epic.kind === "plan"
+  const documentId = epic.documentId ?? null
 
-            {row?.note && (
-              <Field label="Note">
-                <p className="text-sm leading-relaxed">{plainText(row.note)}</p>
-              </Field>
-            )}
-            {row?.review && (
-              <Field label="Review">
-                <p className="text-sm leading-relaxed">{plainText(row.review)}</p>
-              </Field>
-            )}
-            {row?.commit && (
-              <Field label="Commit">
-                <p className="font-mono text-sm">{row.commit}</p>
-              </Field>
-            )}
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-baseline gap-2 pr-6">
+          <span className="text-primary-text font-mono text-base">{task.id}</span>
+          <Clipboard value={task.id} toast={{ success: `Copied ${task.id}` }} className="self-center">
+            <ClipboardTrigger aria-label={`Copy reference ${task.id}`} className="size-6">
+              <ClipboardIndicator
+                copied={<Check className="size-3.5" />}
+                fallback={<Copy className="size-3.5" />}
+              />
+            </ClipboardTrigger>
+          </Clipboard>
+          <span>{plainText(task.title)}</span>
+        </DialogTitle>
+        <DialogDescription>
+          {isPlan ? `Task ${task.number} of plan ${epic.key} — ` : `${epic.key} — `}
+          {epic.title}
+          {task.lane ? ` · ${task.lane}` : ""}
+        </DialogDescription>
+      </DialogHeader>
 
-            {task.doneWhen.length > 0 && (
+      <ScrollArea className="max-h-[65vh] pr-3">
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {row && <Badge variant="outline">{row.rawStatus || "no status"}</Badge>}
+            {task.after && (
+              <Badge variant="secondary" className="font-normal">
+                after {task.after}
+              </Badge>
+            )}
+            {Object.entries(task.meta).map(([k, v]) => (
+              <Badge key={k} variant="secondary" className="font-normal">
+                {k}: {v}
+              </Badge>
+            ))}
+            {documentId && onOpenDocument && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="ml-auto h-7"
+                onClick={() => onOpenDocument(documentId, task.blockId ?? null)}
+              >
+                <FileText aria-hidden className="size-3.5" />
+                Open in {isPlan ? "plan" : "epic file"}
+              </Button>
+            )}
+          </div>
+
+          {statusFrom && (
+            <p className="text-muted-foreground text-sm">
+              Status from {PLAN_STATUS_SOURCE_LABEL[statusFrom]}.
+            </p>
+          )}
+
+          {row?.note && (
+            <Field label="Note">
+              <p className="text-sm leading-relaxed">{plainText(row.note)}</p>
+            </Field>
+          )}
+          {row?.review && (
+            <Field label="Review">
+              <p className="text-sm leading-relaxed">{plainText(row.review)}</p>
+            </Field>
+          )}
+          {row?.commit && (
+            <Field label="Commit">
+              <p className="font-mono text-sm">{row.commit}</p>
+            </Field>
+          )}
+
+          {isPlan && documentId ? (
+            <PlanSection documentId={documentId} number={task.number} />
+          ) : (
+            task.doneWhen.length > 0 && (
               <Field label="Done-when checklist">
                 <p className="text-muted-foreground mb-2 text-sm leading-relaxed">
                   These boxes are not kept up to date; status comes from the
@@ -92,17 +157,43 @@ export function TaskDetail({
                   ))}
                 </ul>
               </Field>
-            )}
+            )
+          )}
 
-            {epic.entryGate && (
-              <Field label="Epic entry gate">
-                <p className="text-sm leading-relaxed">{plainText(epic.entryGate)}</p>
-              </Field>
-            )}
-          </div>
-        </ScrollArea>
-      </DialogContent>
-    </Dialog>
+          {epic.entryGate && (
+            <Field label="Epic entry gate">
+              <p className="text-sm leading-relaxed">{plainText(epic.entryGate)}</p>
+            </Field>
+          )}
+        </div>
+      </ScrollArea>
+    </>
+  )
+}
+
+/** The task's own section of its plan, read on open. A landed plan's source
+ *  is never read for the board itself, so this is the first read of it. */
+function PlanSection({ documentId, number }: { documentId: string; number: string }) {
+  const ids = useMemo(() => [documentId], [documentId])
+  const contents = useDocumentContents(ids)
+  const section = useMemo(() => {
+    const text = contents.data?.get(documentId)
+    return text ? (parsePlanSections(text).get(number) ?? null) : null
+  }, [contents.data, documentId, number])
+
+  if (contents.isLoading) return <Skeleton className="h-24 w-full" />
+  if (contents.isError) {
+    return <p className="text-muted-foreground text-sm">The plan could not be read.</p>
+  }
+  if (!section?.body) {
+    return <p className="text-muted-foreground text-sm">The plan has no body under this task.</p>
+  }
+  return (
+    <Field label="Task in the plan">
+      <div className="text-sm">
+        <AppMarkdown>{section.body}</AppMarkdown>
+      </div>
+    </Field>
   )
 }
 

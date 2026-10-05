@@ -42,7 +42,8 @@ export function parseDepends(raw: string | undefined): {
  * "What can I start right now?" -- the one question the board answers that
  * neither file answers alone. It is a three-way join the reader currently
  * does in their head, per task: the ledger row's status, every dependency's
- * row, and the epic's entry gate.
+ * row, and the epic's entry gate. A plan task has no gate and no declared
+ * dependencies; it waits on the task before it in its plan.
  */
 export function startableVerdict(
   task: EpicTask,
@@ -78,12 +79,15 @@ export function startableVerdict(
   return { startable: true, reason: null }
 }
 
-/** The dependency ids of `task` that are not yet satisfied. */
+/** The dependency ids of `task` that are not yet satisfied: its declared
+ *  `Depends:` ids, plus, for a plan task, the task before it in its plan. */
 export function unmetDependencies(
   task: EpicTask,
   rows: Map<string, LedgerRow>,
 ): string[] {
-  return parseDepends(task.meta.Depends).ids.filter((id) => {
+  const ids = parseDepends(task.meta.Depends).ids
+  if (task.after) ids.push(task.after)
+  return ids.filter((id) => {
     const dep = rows.get(id)
     return !dep || !SATISFIED.has(dep.rawStatus)
   })

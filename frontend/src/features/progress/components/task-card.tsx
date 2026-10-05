@@ -45,7 +45,7 @@ export function TaskCard({
       </p>
 
       <div className="text-muted-foreground mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-        <span>{epic.key}</span>
+        <span title={epic.title}>{epic.key}</span>
         {task.lane && <span className="truncate">{task.lane}</span>}
         {task.meta.Size && <span>{task.meta.Size}</span>}
         {task.meta.Model && <span>{task.meta.Model}</span>}

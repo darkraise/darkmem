@@ -760,13 +760,17 @@ function contentReads() {
 }
 
 describe("project workspace — the corpus browser's own surface", () => {
-  it("runs the progress corpus scan the Progress tab reads", async () => {
+  it("runs the progress corpus scan only while the Progress tab shows the board", async () => {
     mockDocuments({ items: [DOC, LEDGER] })
-    renderWorkspace()
+    const { rerender } = renderWorkspace()
     await screen.findByText("design.md")
 
     expect(screen.getByRole("tab", { name: /progress/i })).toBeInTheDocument()
-    // The corpus scan is the Progress tab's data layer.
+    // The scan reads every plan's outline and the ledgers; the Artifacts tab
+    // shows none of it, so it pays for none of it.
+    expect(contentReads()).toHaveLength(0)
+
+    rerender(<ProjectWorkspace project="darkmem" tab="progress" onTabChange={vi.fn()} />)
     await waitFor(() => expect(contentReads().length).toBeGreaterThan(0))
   })
 

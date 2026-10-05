@@ -277,6 +277,36 @@ export function useDocumentContents(documentIds: string[]) {
   })
 }
 
+/**
+ * Several documents' outlines (headings only), one request each.
+ *
+ * The Progress board lists every filed plan's tasks from its task headings;
+ * reading each plan's source instead would cost megabytes per visit to the
+ * tab. A document whose outline cannot be read is left out rather than
+ * failing the board.
+ */
+export function useDocumentOutlines(documentIds: string[]) {
+  const key = [...documentIds].sort().join(",")
+  return useQuery<Map<string, OutlineNode[]>>({
+    queryKey: ["documentOutlines", key],
+    enabled: !DEMO && documentIds.length > 0,
+    queryFn: async () => {
+      const out = new Map<string, OutlineNode[]>()
+      await Promise.all(
+        documentIds.map(async (id) => {
+          try {
+            const res = await apiFetch<{ items: OutlineNode[] }>(`/documents/${id}/outline`)
+            out.set(id, res.items)
+          } catch {
+            // Skipped: one unreadable plan must not blank the board.
+          }
+        }),
+      )
+      return out
+    },
+  })
+}
+
 export interface RelatedMemory {
   memory_id: string
   content: string

@@ -1,6 +1,6 @@
 # The Progress board — a projection of the ledger, never a second store
 
-**Date:** 2026-09-04. **Status:** increment 1 landed 2026-09-04 (parsers + golden tests); increments 2-4 open. **Scope:** the
+**Date:** 2026-09-04. **Status:** increment 1 landed 2026-09-04 (parsers + golden tests); increments 2-4 open. §10 (plan tasks and task references) added 2026-10-05. **Scope:** the
 Progress tab of `/projects/$project`, which the artifacts spec deliberately
 left out (`2026-09-03-artifacts-workspace-revamp-design.md` §10).
 
@@ -222,3 +222,59 @@ fixture. Specifically pinned:
 
 Increment 1 is worth landing alone: if either parser cannot hold the real
 files, that is the finding, and it arrives before any UI is built on it.
+
+## 10. Plan tasks and task references (owner request, 2026-10-05)
+
+Work moved from the epic files to dr-superpowers plans
+(`superpowers/plans/<f>.md`, `docs/`-prefixed in this repository's own
+import). A plan numbers its tasks — one `## Task index` row and one
+`### Task N: …` heading per task — and agents refer to a task by that number
+("Task 6"). The owner asked for the board to use that number as the task's id,
+made unique by the plan's code, and for `#number` to find and open a task.
+
+**Reference.** A plan task's reference is `<plan code>-<N>`: `CRF-6` is Task 6
+of `2026-10-03-comprehensive-review-fixes.md`. The code is derived from the
+filename alone (`lib/plan-code.ts`): the date dropped, connective words
+(`and`, `the`, `plan`, …) skipped, each word contributing its first letter
+plus its digits (`increment-1` → `I1`, `t2.26` → `T226`), a word starting with
+a digit contributing itself (`3d` → `3D`). Two plans that abbreviate alike are
+suffixed in filename order (`MGS`, `MGS2`), so the older plan keeps the bare
+code and a reference never moves once written. The committed plans all derive
+distinct codes, which a golden test pins. Epic tasks keep their ids (`T3.01`).
+
+**What the board reads.** Every filed plan's **outline** (headings only), so
+listing hundreds of plan tasks costs no plan source. A plan whose outline has
+no `Task N` heading (the older free-form plans) contributes nothing. Only a
+plan not yet recorded in `plans/completed.md` is read in full, for its step
+checkboxes; a landed plan's section is read when one of its tasks is opened.
+
+**Status, strongest signal first** (`lib/plan-status.ts`), with the source
+shown in the task's detail:
+
+1. `plans/completed.md` records the plan → every task `done`, except one the
+   ledger dropped. Many landed plans leave their boxes unticked, so the boxes
+   never outvote the merge record.
+2. The plan's **work-log ledger** — the workstream whose `plan_uri` names the
+   plan, else the one keyed by its slug. A line names its task as the agent
+   does (`Task 3: … — done`, `#3 review`, a `| 3 | … |` row); its status is the
+   first of the six vocabulary words after the line's last separator, latest
+   line winning. A line with no vocabulary word is narrative and changes
+   nothing.
+3. The task's **step checkboxes**, the tracking syntax a plan declares: all
+   ticked `done`, some `wip`, none `todo`.
+
+This is still §4's projection: nothing is written, and the ledger and the
+plan stay where the state lives.
+
+**Startable.** A plan task has no gate and no `Depends:`; it waits on the task
+before it in its plan, since plans execute in task order unless they say
+otherwise.
+
+**Lookup.** The filter box reads `#6` as "every task numbered 6" (one per plan
+that has a task 6; `#3.01` finds `T3.01`), and `CRF-6`, `crf#6`, `CRF 6` or
+`T3.01` as the one task with that reference. Enter opens the task when the
+query, under the other filters, names exactly one — so `#6` opens directly
+once a plan is picked in the Epic / plan filter. The open task is the route's
+`?task=CRF-6` search param, so a task's view is a link; leaving the Progress
+tab drops it. The detail shows the plan's section for the task and opens the
+plan at the task's heading in the Artifacts tab.

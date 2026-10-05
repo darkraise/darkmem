@@ -162,6 +162,63 @@ export function useWorkstreams(project: string, state: WorkstreamState) {
   })
 }
 
+/** Pages read before the board gives up on a project's workstream list or
+ *  one ledger; both bound a read the board makes on every visit. */
+const MAX_BOARD_PAGES = 20
+
+/** Every workstream in a project, both states, for the Progress board's
+ *  plan-to-ledger join. */
+export function useAllWorkstreams(project: string, enabled = true) {
+  return useQuery<Workstream[]>({
+    queryKey: ["worklogAllWorkstreams", project],
+    enabled: !DEMO && enabled,
+    queryFn: async () => {
+      const out: Workstream[] = []
+      let before: string | null = null
+      for (let page = 0; page < MAX_BOARD_PAGES; page++) {
+        const qs = new URLSearchParams({ project, limit: "200" })
+        if (before) qs.set("before", before)
+        const res: WorkstreamPage = await apiFetch<WorkstreamPage>(`/worklog/workstreams?${qs}`)
+        out.push(...res.items)
+        if (!res.next_before) break
+        before = res.next_before
+      }
+      return out
+    },
+  })
+}
+
+/** Workstreams' ledgers as text: each one's `ledger` entries concatenated in
+ *  `seq` order, which reproduces the client's ledger file. */
+export function useLedgerTexts(workstreamIds: string[]) {
+  const key = [...workstreamIds].sort().join(",")
+  return useQuery<Map<string, string>>({
+    queryKey: ["worklogLedgerTexts", key],
+    enabled: !DEMO && workstreamIds.length > 0,
+    queryFn: async () => {
+      const out = new Map<string, string>()
+      await Promise.all(
+        workstreamIds.map(async (id) => {
+          let text = ""
+          let after: number | null = null
+          for (let page = 0; page < MAX_BOARD_PAGES; page++) {
+            const qs = new URLSearchParams({ kind: "ledger", limit: String(ENTRY_PAGE) })
+            if (after !== null) qs.set("after", String(after))
+            const res: WorklogEntryPage = await apiFetch<WorklogEntryPage>(
+              `/worklog/workstreams/${id}/entries?${qs}`,
+            )
+            text += res.items.map((e) => e.body).join("")
+            if (res.next_after === null) break
+            after = res.next_after
+          }
+          out.set(id, text)
+        }),
+      )
+      return out
+    },
+  })
+}
+
 /** A workstream's entries oldest first, paged forward on `seq`. `live` re-reads
  *  every loaded page on WORKLOG_LIVE_MS; a short last page re-read with the same
  *  cursor picks up whatever was appended since. */
@@ -225,7 +282,14 @@ export function useWorklogSearch() {
 function invalidateWorklog(qc: QueryClient) {
   // "projects" too: the Activity list picks which projects to ask from its
   // per-project workstream counts, and queries are otherwise fresh for 60 s.
-  for (const key of ["worklogWorkstreams", "worklogEntries", "worklogResume", "projects"]) {
+  for (const key of [
+    "worklogWorkstreams",
+    "worklogEntries",
+    "worklogResume",
+    "worklogAllWorkstreams",
+    "worklogLedgerTexts",
+    "projects",
+  ]) {
     void qc.invalidateQueries({ queryKey: [key] })
   }
 }

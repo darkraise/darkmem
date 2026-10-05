@@ -101,6 +101,16 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
     reason:
       "GET /worklog/workstreams requires an explicit `project`; the Work log passes the workspace's route param and the Activity list passes each project it enumerates, never the global switcher",
   },
+  worklogAllWorkstreams: {
+    kind: "manual",
+    reason:
+      "GET /worklog/workstreams with an explicit `project`, every page and both states; the Progress board passes the workspace's route param to join each plan to its ledger",
+  },
+  worklogLedgerTexts: {
+    kind: "global",
+    reason:
+      "Addressed by workstream ids and carrying no project param, the same shape as worklogEntries; the key is the sorted id list, as documentContents' is",
+  },
   worklogEntries: {
     kind: "global",
     reason:
@@ -130,6 +140,11 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
     kind: "global",
     reason:
       "Addressed by document id and revision id; the same shape as documentRevisions",
+  },
+  documentOutlines: {
+    kind: "global",
+    reason:
+      "Addressed by document ids and carrying no project param, the same shape as documentOutline; the key is the sorted id list because the Progress board reads every filed plan's outline at once",
   },
   documentContents: {
     kind: "global",
