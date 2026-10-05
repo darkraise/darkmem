@@ -33,7 +33,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.code import CodeFile, Repository
-from app.services.code_pipeline import MAX_FILE_SIZE, _list_all_files
+from app.services.code_pipeline import MAX_FILE_SIZE, _list_all_files, read_source_text
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +51,10 @@ def _file_hash(path: Path) -> str | None:
     try:
         if not path.is_file() or path.stat().st_size > MAX_FILE_SIZE:
             return None
-        content = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
+        return None
+    content = read_source_text(path)
+    if content is None:
         return None
     return hashlib.sha256(content.encode()).hexdigest()
 

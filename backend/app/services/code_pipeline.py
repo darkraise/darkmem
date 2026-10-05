@@ -49,6 +49,34 @@ IGNORED_EXTENSIONS = {
     ".pyc", ".pyo", ".exe", ".dll", ".so", ".dylib",
 }
 MAX_FILE_SIZE = 500_000
+#: How far into a file the binary sniff reads. git's own heuristic: a NUL byte
+#: in the first 8000 bytes means binary.
+BINARY_SNIFF_BYTES = 8000
+
+
+def read_source_text(path: Path) -> str | None:
+    """A file's text as the index reads it, or None for a file it skips.
+
+    Binary files are skipped. A NUL byte is valid UTF-8, so ``errors="replace"``
+    let a committed zip or png through as "text", its chunks carried NULs, and
+    Postgres ``TEXT`` refused the first one with ``UntranslatableCharacterError``,
+    aborting the whole index run. The sniff is git's; a NUL past it is caught
+    on the decoded text too, so none can reach a row.
+
+    Shared with ``code_reconcile._file_hash`` so the drift scan skips exactly the
+    files the pipeline skips: a file one side reads and the other does not would
+    read as drift on every tick.
+    """
+    try:
+        with path.open("rb") as handle:
+            head = handle.read(BINARY_SNIFF_BYTES)
+        if b"\x00" in head:
+            return None
+        content = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    return None if "\x00" in content else content
+
 # Ceiling on a single file's read+parse. tree-sitter parsing runs in the default
 # executor and can't truly be cancelled, but bounding the await frees the
 # coroutine (and the repo_sync job lock above it) instead of hanging forever on a
@@ -853,9 +881,8 @@ class CodePipeline:
                 return None
             if size > MAX_FILE_SIZE:
                 return None
-            try:
-                content = resolved_path.read_text(encoding="utf-8", errors="replace")
-            except Exception:
+            content = read_source_text(resolved_path)
+            if content is None:
                 return None
             return (content, hashlib.sha256(content.encode()).hexdigest())
 
