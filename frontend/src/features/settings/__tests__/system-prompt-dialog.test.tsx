@@ -142,7 +142,7 @@ describe("SystemPromptDialog", () => {
 
   // Mirrors the cap PUT /config/system-prompts enforces, so an over-long
   // prompt is refused where it is typed rather than after a round-trip.
-  it("refuses to save a prompt past the 20,000-character cap", async () => {
+  it("refuses to save a prompt past the 60,000-character cap", async () => {
     vi.mocked(apiFetch).mockResolvedValue(payload())
     const user = await openAndWait()
 
@@ -151,11 +151,28 @@ describe("SystemPromptDialog", () => {
       name: "extraction system prompt",
     })
     await user.clear(field)
-    // Pasted rather than typed: 20k keystrokes would take minutes.
+    // Pasted rather than typed: 60k keystrokes would take minutes.
     await user.click(field)
-    await user.paste("x".repeat(20_001))
+    await user.paste("x".repeat(60_001))
 
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled()
+  })
+
+  // The shipped extraction prompt is ~32k characters. Under the old 20k
+  // client cap it opened already over the limit, and no edit could be saved.
+  it("lets a prompt longer than 20,000 characters be saved", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(payload())
+    const user = await openAndWait()
+
+    await user.click(screen.getByRole("button", { name: "Edit prompt" }))
+    const field = screen.getByRole("textbox", {
+      name: "extraction system prompt",
+    })
+    await user.clear(field)
+    await user.click(field)
+    await user.paste("y".repeat(32_265))
+
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled()
   })
 
   it("reports a failed load as an error, never as an empty prompt", async () => {
