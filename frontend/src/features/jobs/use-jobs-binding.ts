@@ -9,8 +9,9 @@ import {
 import { useUpdateJob } from "@/hooks/api"
 
 export interface JobsSettingsBinding extends JobBoardState {
-  saveCron: (key: string, cron: string) => void
-  setEnabled: (key: string, enabled: boolean) => void
+  /** Both reject with the server's reason when the write is refused. */
+  saveCron: (key: string, cron: string) => Promise<void>
+  setEnabled: (key: string, enabled: boolean) => Promise<void>
 }
 
 /**
@@ -27,13 +28,21 @@ export function useJobsSettingsBinding(): JobsSettingsBinding {
   const updateJob = useUpdateJob()
 
   if (DEMO) {
-    return { ...board, saveCron: saveDemoCron, setEnabled: setDemoEnabled }
+    return {
+      ...board,
+      saveCron: async (key, cron) => saveDemoCron(key, cron),
+      setEnabled: async (key, enabled) => setDemoEnabled(key, enabled),
+    }
   }
 
   return {
     ...board,
-    saveCron: (key, cron) => updateJob.mutate({ key, data: { cron } }),
-    setEnabled: (key, enabled) => updateJob.mutate({ key, data: { enabled } }),
+    saveCron: async (key, cron) => {
+      await updateJob.mutateAsync({ key, data: { cron } })
+    },
+    setEnabled: async (key, enabled) => {
+      await updateJob.mutateAsync({ key, data: { enabled } })
+    },
   }
 }
 

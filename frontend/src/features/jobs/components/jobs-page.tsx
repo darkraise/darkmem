@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { toast } from "darkraise-ui/components/sonner"
 import { LayoutGrid, List, Timer } from "lucide-react"
 import { EmptyState } from "@/components/darkmem"
 import { Skeleton } from "darkraise-ui/components/skeleton"
@@ -46,6 +47,14 @@ export function JobsPage() {
   )
 
   const handleTrigger = (job: DemoJob) => triggerWithToast(trigger, job)
+  // The switch follows the server's state, so a refused toggle snaps back on
+  // its own; the toast says why it did.
+  const toggle = (job: DemoJob, on: boolean) =>
+    setEnabled(job.key, on).catch((error: unknown) =>
+      toast.error(
+        `${job.name}: ${error instanceof Error ? error.message : String(error)}`,
+      ),
+    )
   const running = jobs.filter((j) => j.running).length
   const disabled = jobs.filter((j) => !j.enabled).length
 
@@ -96,7 +105,7 @@ export function JobsPage() {
               onTrigger={() => handleTrigger(job)}
               onConfigure={() => setConfiguring(job)}
               onHistory={() => setViewingHistory(job)}
-              onToggleEnabled={(on) => setEnabled(job.key, on)}
+              onToggleEnabled={(on) => void toggle(job, on)}
               aside={usageChip(job)}
             />
           ))}
@@ -110,7 +119,7 @@ export function JobsPage() {
               onTrigger={() => handleTrigger(job)}
               onConfigure={() => setConfiguring(job)}
               onHistory={() => setViewingHistory(job)}
-              onToggleEnabled={(on) => setEnabled(job.key, on)}
+              onToggleEnabled={(on) => void toggle(job, on)}
               aside={usageChip(job)}
             />
           ))}

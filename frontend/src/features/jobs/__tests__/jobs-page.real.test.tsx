@@ -128,6 +128,29 @@ describe("JobsPage — ruling 1: a held lock reports as busy, never as queued", 
     )
   })
 
+  it("shows the server's refusal of a schedule instead of claiming it saved", async () => {
+    // The client cron check is a first pass; the server is the parser of
+    // record. "saved — takes effect…" used to print before its answer.
+    vi.mocked(apiFetch).mockImplementation((path: string, init?: RequestInit) => {
+      if (path === "/jobs") return Promise.resolve({ jobs: [JOB] })
+      if (path === `/jobs/${JOB.key}` && init?.method === "PUT")
+        return Promise.reject(new Error("Cron '*/10 * * * *' is not valid here"))
+      return Promise.reject(new Error(`unexpected apiFetch(${path})`))
+    })
+    await renderRows()
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure" }))
+    fireEvent.change(await screen.findByLabelText(`${JOB.key} cron`), {
+      target: { value: "*/10 * * * *" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Save schedule" }))
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Not saved: Cron '*/10 * * * *' is not valid here",
+    )
+    expect(screen.queryByText(/takes effect on the next/)).toBeNull()
+  })
+
   it("saves per-job settings through the configure dialog, PUT /jobs/{key}/config", async () => {
     const configurable = {
       ...JOB,

@@ -5,8 +5,12 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/demo-flag", () => ({ DEMO: false }))
 vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
+vi.mock("darkraise-ui/components/sonner", () => ({
+  toast: { error: vi.fn(), success: vi.fn() },
+}))
 
 import { apiFetch } from "@/lib/api"
+import { toast } from "darkraise-ui/components/sonner"
 import { useFlagsTabBinding } from "../use-flags-tab-binding"
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -425,6 +429,9 @@ describe("useFlagsTabBinding (DEMO off — real /config/feature-flags)", () => {
     await waitFor(() =>
       expect(result.current.isSaving("classification")).toBe(false),
     )
+    // The section dialog has closed by now; the refusal has to be said
+    // somewhere, or the old value just reappears.
+    expect(toast.error).toHaveBeenCalledWith("Not saved: boom")
   })
 
   it("gives w_context_boost a real description, not its own flag name", async () => {

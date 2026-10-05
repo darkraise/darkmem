@@ -107,7 +107,9 @@ function SavingMark({ saving }: { saving: boolean }) {
       className="inline-flex w-4 shrink-0 items-center justify-center"
       aria-hidden={!saving}
     >
-      {saving && <Spinner size="sm" label="Saving" />}
+      {/* `label` is a visible slot; the name belongs to assistive tech only,
+          or "Saving" is drawn over the row beside it. */}
+      {saving && <Spinner size="sm" aria-label="Saving" />}
     </span>
   )
 }

@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react"
+import { toast } from "darkraise-ui/components/sonner"
 import { DEMO } from "@/lib/demo-flag"
 import { MEMORY_TYPES } from "@/lib/taxonomy"
 import { useDemoFlags } from "@/demo/hooks"
@@ -246,10 +247,15 @@ export function useFlagsTabBinding(): FlagsTabBinding {
       setInFlight((keys) => [...keys, key])
       // The catch is required, not defensive: `mutateAsync` rejects on a failed
       // write and an unhandled rejection would take the page down over a
-      // settings save. The error surface is the mutation's own; this only has
-      // to stop the spinner.
+      // settings save. It also has to say so: the section dialogs close on
+      // Save, and nothing else rendered a refusal, so an out-of-range value
+      // (the server's 422) vanished and the old value stayed without a word.
       void run()
-        .catch(() => {})
+        .catch((error: unknown) => {
+          toast.error(
+            `Not saved: ${error instanceof Error ? error.message : String(error)}`,
+          )
+        })
         .finally(() =>
           setInFlight((keys) => {
             const at = keys.indexOf(key)

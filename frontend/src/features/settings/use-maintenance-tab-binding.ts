@@ -6,6 +6,7 @@ import { useDemoStore } from "@/demo/store"
 import type { MaintenanceOpKey } from "@/features/settings/types"
 import { apiFetch, ApiError } from "@/lib/api"
 import { useTriggerJob } from "@/hooks/api"
+import { toast } from "darkraise-ui/components/sonner"
 
 export interface MaintenanceTabBinding {
   reembed: { memories: number; entities: number }
@@ -58,12 +59,23 @@ export function useMaintenanceTabBinding(): MaintenanceTabBinding {
     void qc.invalidateQueries({ queryKey: ["pipelineFailureCounts"] })
   }
 
+  // A refusal (a 409 from the cache prune, a 503 from an unreachable
+  // embedder) used to leave the previous operation's note standing. It now
+  // replaces the note, and a toast carries it too: the note is drawn at the
+  // top of the tab, off screen from the buttons further down.
+  const failed = (label: string) => (error: unknown) => {
+    const reason = error instanceof Error ? error.message : String(error)
+    setRealLastOpNote(`${label} failed: ${reason}`)
+    toast.error(`${label} failed: ${reason}`)
+  }
+
   const reembedMemories = useMutation({
     mutationFn: () => apiFetch("/reembed/memories", { method: "POST" }),
     onSuccess: () => {
       setRealLastOpNote("re-embed memories started")
       invalidate()
     },
+    onError: failed("Re-embed memories"),
   })
   const reembedEntities = useMutation({
     mutationFn: () => apiFetch("/reembed/entities", { method: "POST" }),
@@ -71,6 +83,7 @@ export function useMaintenanceTabBinding(): MaintenanceTabBinding {
       setRealLastOpNote("re-embed entities started")
       invalidate()
     },
+    onError: failed("Re-embed entities"),
   })
   const pruneCaches = useMutation({
     mutationFn: () =>
@@ -80,6 +93,7 @@ export function useMaintenanceTabBinding(): MaintenanceTabBinding {
         `${result.deleted} unused caches dropped`,
       )
     },
+    onError: failed("Prune caches"),
   })
   const triggerJob = useTriggerJob()
 

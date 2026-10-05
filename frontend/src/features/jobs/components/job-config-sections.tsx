@@ -23,15 +23,22 @@ function SectionHead({ label }: { label: string }) {
   )
 }
 
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 export function ScheduleSection({
   job,
   saveCron,
 }: {
   job: DemoJob
-  saveCron: (key: string, cron: string) => void
+  saveCron: (key: string, cron: string) => Promise<void>
 }) {
   const [draft, setDraft] = useState(job.cron)
   const [saved, setSaved] = useState(false)
+  // The server is the cron parser of record; the client check is a first
+  // pass. "saved" waits for its answer, and a refusal says why.
+  const [refusal, setRefusal] = useState<string | null>(null)
   const info = cronInfo(draft)
 
   return (
@@ -46,6 +53,7 @@ export function ScheduleSection({
             onChange={(e) => {
               setDraft(e.target.value)
               setSaved(false)
+              setRefusal(null)
             }}
             className={cn("w-60 font-mono", !info.ok && "border-destructive")}
           />
@@ -60,8 +68,11 @@ export function ScheduleSection({
           className="border-primary/60 text-primary-text"
           disabled={!info.ok || draft === job.cron}
           onClick={() => {
-            saveCron(job.key, draft)
-            setSaved(true)
+            setRefusal(null)
+            saveCron(job.key, draft).then(
+              () => setSaved(true),
+              (error: unknown) => setRefusal(messageOf(error)),
+            )
           }}
         >
           Save schedule
@@ -69,6 +80,11 @@ export function ScheduleSection({
         {saved && (
           <span className="text-success-text font-mono text-sm">
             saved — takes effect on the next scheduled tick
+          </span>
+        )}
+        {refusal && (
+          <span role="alert" className="text-destructive text-sm">
+            Not saved: {refusal}
           </span>
         )}
       </div>
@@ -105,12 +121,13 @@ export function ConfigSchemaSection({
   saveConfig,
 }: {
   job: DemoJob
-  saveConfig: (key: string, config: Record<string, number>) => void
+  saveConfig: (key: string, config: Record<string, number>) => Promise<void>
 }) {
   const [values, setValues] = useState<Record<string, number>>(() =>
     Object.fromEntries(job.config_schema.map((f) => [f.key, f.value])),
   )
   const [saved, setSaved] = useState(false)
+  const [refusal, setRefusal] = useState<string | null>(null)
 
   if (job.config_schema.length === 0) {
     return (
@@ -173,8 +190,11 @@ export function ConfigSchemaSection({
           disabled={!validation.ok}
           onClick={() => {
             if (validation.ok) {
-              saveConfig(job.key, validation.config)
-              setSaved(true)
+              setRefusal(null)
+              saveConfig(job.key, validation.config).then(
+                () => setSaved(true),
+                (error: unknown) => setRefusal(messageOf(error)),
+              )
             }
           }}
         >
@@ -182,6 +202,11 @@ export function ConfigSchemaSection({
         </Button>
         {saved && (
           <span className="text-success-text font-mono text-sm">saved</span>
+        )}
+        {refusal && (
+          <span role="alert" className="text-destructive text-sm">
+            Not saved: {refusal}
+          </span>
         )}
       </div>
     </div>

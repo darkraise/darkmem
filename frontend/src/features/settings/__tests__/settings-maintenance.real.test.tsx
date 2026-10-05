@@ -82,6 +82,28 @@ describe("MaintenanceTab (real)", () => {
     )
   })
 
+  it("says a refused re-embed failed, instead of keeping the last note", async () => {
+    vi.mocked(apiFetch).mockImplementation((path: string, init?: RequestInit) => {
+      if (path === "/reembed/obsolete-counts") return Promise.resolve(OBSOLETE_COUNTS)
+      if (path === "/pipeline-failures/counts") return Promise.resolve(FAILURE_COUNTS)
+      if (path === "/reembed/memories" && init?.method === "POST") {
+        return Promise.reject(new Error("The embedder could not be reached"))
+      }
+      return Promise.reject(new Error(`unexpected apiFetch(${path})`))
+    })
+    render(<MaintenanceTab />, { wrapper })
+    await waitFor(() => expect(screen.getByText("12 missing a vector")).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole("button", { name: /Re-embed memories/ }))
+    fireEvent.click(screen.getByRole("button", { name: "Confirm — start re-embed" }))
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Re-embed memories failed: The embedder could not be reached/),
+      ).toBeInTheDocument(),
+    )
+  })
+
   it("expired_memory_cleanup has no live count — renders no fabricated N, and stays enabled", async () => {
     mockHappy()
     render(<MaintenanceTab />, { wrapper })

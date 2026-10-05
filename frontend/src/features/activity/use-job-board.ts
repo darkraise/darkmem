@@ -52,7 +52,8 @@ export interface JobBoardState {
   isLoading: boolean
   isError: boolean
   trigger: (key: string) => Promise<JobTriggerResult>
-  saveConfig: (key: string, config: Record<string, number>) => void
+  /** Rejects with the server's reason when the write is refused. */
+  saveConfig: (key: string, config: Record<string, number>) => Promise<void>
 }
 
 /**
@@ -77,7 +78,7 @@ export function useJobBoard(): JobBoardState {
       isLoading: false,
       isError: false,
       trigger: (key) => Promise.resolve(triggerDemo(key)),
-      saveConfig: saveDemoConfig,
+      saveConfig: async (key, config) => saveDemoConfig(key, config),
     }
   }
 
@@ -96,8 +97,8 @@ export function useJobBoard(): JobBoardState {
         throw err
       }
     },
-    saveConfig: (key, config) => {
-      configMutation.mutate({ key, config })
+    saveConfig: async (key, config) => {
+      await configMutation.mutateAsync({ key, config })
     },
   }
 }

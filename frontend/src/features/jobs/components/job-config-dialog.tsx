@@ -24,8 +24,8 @@ export function JobConfigDialog({
   job: DemoJob
   open: boolean
   onOpenChange: (open: boolean) => void
-  saveCron: (key: string, cron: string) => void
-  saveConfig: (key: string, config: Record<string, number>) => void
+  saveCron: (key: string, cron: string) => Promise<void>
+  saveConfig: (key: string, config: Record<string, number>) => Promise<void>
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
