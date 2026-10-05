@@ -172,6 +172,9 @@ export function useUpdateMemory() {
       qc.invalidateQueries({ queryKey: ["memory", id] })
       qc.invalidateQueries({ queryKey: ["memories"] })
       qc.invalidateQueries({ queryKey: ["memoriesPaginated"] })
+      // The detail page's timeline reads the journal; without this it kept
+      // showing the pre-edit history until a reload.
+      qc.invalidateQueries({ queryKey: ["events"] })
     },
   })
 }

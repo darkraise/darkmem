@@ -385,13 +385,13 @@ class MemoryService:
         # entities/relations.
         if self.pipeline and "content" in update_fields:
             await self.session.commit()
-            status = await self.pipeline.process_memory(
+            # The pipeline journals this run's `extracted` row itself, with its
+            # outcome; a second row here read as a failed run beside it.
+            await self.pipeline.process_memory(
                 memory_id=memory.id, content=memory.content, source=memory.source,
                 tags=[t.name for t in memory.tags], memory_type=memory.memory_type,
                 created_at=memory.created_at.isoformat(),
             )
-            await self.audit_repo.log("pipeline", memory.id, api_key_id, status, actor=actor)
-            await self.session.commit()
 
         return memory
 

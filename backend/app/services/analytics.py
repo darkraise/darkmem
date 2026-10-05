@@ -76,17 +76,13 @@ class AnalyticsService:
 
         processed = 0
         errors = 0
+        # The pipeline journals each memory's `extracted` row itself, with its
+        # outcome; a second row per memory here read as a failed run.
         for status in statuses:
-            mid = status.get("memory_id")
             if status.get("error"):
                 errors += 1
             else:
                 processed += 1
-            try:
-                from uuid import UUID
-                await self.audit_repo.log("pipeline", UUID(mid) if mid else None, None, status)
-            except Exception as e:
-                logger.warning("Audit log failed: %s", e)
 
         return {"processed": processed, "errors": errors, "total": len(memories)}
 
@@ -166,10 +162,16 @@ class AnalyticsService:
                 else:
                     processed += 1
 
-                try:
-                    await self.audit_repo.log("pipeline", memory_id, None, status if isinstance(status, dict) else {})
-                except Exception as e:
-                    logger.warning("Audit log failed: %s", e)
+                # A run that returned journalled its own `extracted` row. Only a
+                # raise (an empty status) left no trace, so only that is
+                # journalled here, and as the failure it was.
+                if not status:
+                    try:
+                        await self.audit_repo.log(
+                            "pipeline", memory_id, None, {"outcome": "failed"},
+                        )
+                    except Exception as e:
+                        logger.warning("Audit log failed: %s", e)
 
                 yield {
                     "type": "progress",
