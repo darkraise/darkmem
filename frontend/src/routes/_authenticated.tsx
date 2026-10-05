@@ -249,7 +249,10 @@ function AuthenticatedLayout() {
       >
         {!DEMO && <LiveUpdates />}
         <ProjectScopeReconciler />
-        <main
+        {/* A div, not <main>: the layout shell already renders
+            <main id="main-content"> around this, and a nested second main
+            landmark is announced twice. */}
+        <div
           className={cn(
             "w-full",
             !fullWidth && "mx-auto max-w-[1400px]",
@@ -257,7 +260,7 @@ function AuthenticatedLayout() {
           )}
         >
           <Outlet />
-        </main>
+        </div>
         <BackToTop />
         {!DEMO && (
           <ChangePasswordDialog
