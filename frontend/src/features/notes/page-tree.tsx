@@ -21,7 +21,14 @@ import {
   type DragMoveEvent,
   type DragOverEvent,
 } from "@dnd-kit/core"
-import { ChevronRight, FileText, MoreHorizontal, Plus } from "lucide-react"
+import {
+  ChevronRight,
+  FileText,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Trash2,
+} from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -51,6 +58,9 @@ import {
 const ROW = "w-full min-w-0 text-base"
 const ROW_GAP = "gap-1.5"
 const INDENT = "calc(var(--icon-size) + 0.375rem)"
+/** Every row is a page, branch or leaf, so every row carries the one page
+ *  glyph -- the document tree's rows carry their file icons the same way. */
+const PAGE_ICON = "text-muted-foreground size-[var(--icon-size)] shrink-0"
 
 export function notesExpansionStorageKey(project: string): string {
   return `darkmem:notes:expanded:${project}`
@@ -63,7 +73,9 @@ function readExpanded(project: string): string[] {
   try {
     const raw = window.localStorage.getItem(notesExpansionStorageKey(project))
     const parsed = raw ? (JSON.parse(raw) as unknown) : null
-    return Array.isArray(parsed) ? parsed.filter((v) => typeof v === "string") : []
+    return Array.isArray(parsed)
+      ? parsed.filter((v) => typeof v === "string")
+      : []
   } catch {
     return []
   }
@@ -71,7 +83,10 @@ function readExpanded(project: string): string[] {
 
 function writeExpanded(project: string, ids: string[]): void {
   try {
-    window.localStorage.setItem(notesExpansionStorageKey(project), JSON.stringify(ids))
+    window.localStorage.setItem(
+      notesExpansionStorageKey(project),
+      JSON.stringify(ids),
+    )
   } catch {
     // A viewer convenience, never state the tree depends on.
   }
@@ -97,7 +112,10 @@ function RowActions({
   // chain even out of a portal, so without it opening the menu also selects
   // the row and navigates away from whatever the pane is editing.
   return (
-    <span className="ml-auto flex shrink-0 items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+    // Hidden at rest so a long tree is not a wall of icons, but always shown
+    // on the selected row and on a device with no hover, where "appears on
+    // hover" means "never appears until tapped".
+    <span className="ml-auto flex shrink-0 items-center opacity-0 group-hover:opacity-100 group-data-[selected=true]:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
       <button
         type="button"
         aria-label={`New page under ${label}`}
@@ -121,9 +139,18 @@ function RowActions({
           align="end"
           onClick={(event) => event.stopPropagation()}
         >
-          <DropdownMenuItem onSelect={() => onRename(node)}>Rename</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onRename(node)}>
+            <Pencil aria-hidden className="mr-2 size-3.5" />
+            Rename
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => onDelete(node)}>Delete</DropdownMenuItem>
+          <DropdownMenuItem
+            className="text-destructive focus:text-destructive data-[highlighted]:text-destructive"
+            onSelect={() => onDelete(node)}
+          >
+            <Trash2 aria-hidden className="mr-2 size-3.5" />
+            Delete
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </span>
@@ -164,7 +191,9 @@ export function shouldHoverExpand(
   pageId: string,
 ): boolean {
   const node = index.get(pageId)
-  return Boolean(node) && node!.children.length > 0 && !expanded.includes(pageId)
+  return (
+    Boolean(node) && node!.children.length > 0 && !expanded.includes(pageId)
+  )
 }
 
 export function pointerZone(
@@ -205,7 +234,11 @@ function RowHandle({
   activeId: string | null
   children: ReactNode
 }) {
-  const { setNodeRef: setDragRef, listeners, isDragging } = useDraggable({
+  const {
+    setNodeRef: setDragRef,
+    listeners,
+    isDragging,
+  } = useDraggable({
     id: `${DRAG_PREFIX}${node.id}`,
   })
   const { setNodeRef: setDropRef, isOver } = useDroppable({
@@ -228,7 +261,7 @@ function RowHandle({
       data-dragging={isDragging || undefined}
       ref={setRef}
       {...listeners}
-      className="ring-primary flex min-w-0 flex-1 items-center gap-1.5 rounded-sm border-y border-transparent data-[dragging]:opacity-50 data-[drop-zone=after]:border-b-primary data-[drop-zone=before]:border-t-primary data-[drop-zone=inside]:ring-1"
+      className="ring-primary data-[drop-zone=after]:border-b-primary data-[drop-zone=before]:border-t-primary flex min-w-0 flex-1 items-center gap-1.5 rounded-sm border-y border-transparent data-[dragging]:opacity-50 data-[drop-zone=inside]:ring-1"
     >
       {children}
     </span>
@@ -265,7 +298,9 @@ export function PageTree({
   onDelete: (node: PageNode) => void
   onMove: (pageId: string, placement: DropPlacement) => void
 }) {
-  const [expanded, setExpanded] = useState<string[]>(() => readExpanded(project))
+  const [expanded, setExpanded] = useState<string[]>(() =>
+    readExpanded(project),
+  )
 
   const handleExpandedChange = useCallback(
     (next: string[]) => {
@@ -388,7 +423,8 @@ export function PageTree({
               <ChevronRight aria-hidden className="size-3.5" />
             </TreeViewBranchIndicator>
             <RowHandle node={node} zone={zone} activeId={activeId}>
-              <TreeViewBranchText className="truncate">
+              <FileText aria-hidden className={PAGE_ICON} />
+              <TreeViewBranchText className="truncate" title={titleOf(node)}>
                 {titleOf(node)}
               </TreeViewBranchText>
             </RowHandle>
@@ -411,7 +447,10 @@ export function PageTree({
             width on the chevron. */}
         <span aria-hidden className="w-[var(--icon-size)] shrink-0" />
         <RowHandle node={node} zone={zone} activeId={activeId}>
-          <span className="truncate">{titleOf(node)}</span>
+          <FileText aria-hidden className={PAGE_ICON} />
+          <span className="truncate" title={titleOf(node)}>
+            {titleOf(node)}
+          </span>
         </RowHandle>
         {actions}
       </TreeViewItem>
@@ -431,7 +470,9 @@ export function PageTree({
     >
       <TreeView
         expanded={expanded}
-        onExpandedChange={(d: { value: string[] }) => handleExpandedChange(d.value)}
+        onExpandedChange={(d: { value: string[] }) =>
+          handleExpandedChange(d.value)
+        }
         selectionMode="single"
         selected={selectedId ? [selectedId] : []}
         onSelectedChange={({ value }: { value: string[] }) => {

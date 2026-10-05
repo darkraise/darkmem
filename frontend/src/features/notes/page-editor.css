@@ -34,6 +34,29 @@
   font-size: inherit;
 }
 
+/* BlockNote's headings run 3em / 2em / 1.3em, so a body H1 dwarfed the
+   page's own title above it. Stepped down so the title stays the largest
+   type on the page. Every level is restated: the generic rule below
+   outranks BlockNote's per-level ones. */
+.bn-container.bn-shadcn [data-content-type="heading"] {
+  --level: 1.6em;
+}
+.bn-container.bn-shadcn [data-content-type="heading"][data-level="2"] {
+  --level: 1.35em;
+}
+.bn-container.bn-shadcn [data-content-type="heading"][data-level="3"] {
+  --level: 1.15em;
+}
+.bn-container.bn-shadcn [data-content-type="heading"][data-level="4"] {
+  --level: 1em;
+}
+.bn-container.bn-shadcn [data-content-type="heading"][data-level="5"] {
+  --level: 0.9em;
+}
+.bn-container.bn-shadcn [data-content-type="heading"][data-level="6"] {
+  --level: 0.8em;
+}
+
 /* BlockNote insets the document 54px for its side menu; the pane supplies
    that gutter instead, so the title and the first block share one edge. */
 .bn-container.bn-shadcn .bn-editor {

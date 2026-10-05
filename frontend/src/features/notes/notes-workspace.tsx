@@ -27,7 +27,8 @@ import { Skeleton } from "darkraise-ui/components/skeleton"
 import { toast } from "darkraise-ui/components/sonner"
 import { ApiError } from "@/lib/api"
 import { DEMO } from "@/lib/demo-flag"
-import { EmptyState } from "@/components/darkmem"
+import { EmptyState, IconButton } from "@/components/darkmem"
+import { useMediaQuery } from "@/hooks/use-media-query"
 import {
   invalidatePageLists,
   usePage,
@@ -75,6 +76,7 @@ export function NotesWorkspace({
   const restore = usePageRestore()
   const move = usePageMove()
 
+  const wide = useMediaQuery("(min-width: 1024px)")
   const roots = useMemo(() => buildPageTree(list.data ?? []), [list.data])
   const index = useMemo(() => pageNodeIndex(roots), [roots])
 
@@ -88,7 +90,9 @@ export function NotesWorkspace({
   // which the server does not distinguish. Every other failure is a fault and
   // renders as one.
   const vanished =
-    page.isError && page.error instanceof ApiError && page.error.status === NOT_FOUND
+    page.isError &&
+    page.error instanceof ApiError &&
+    page.error.status === NOT_FOUND
   useEffect(() => {
     if (vanished) onSelect(null)
   }, [onSelect, vanished])
@@ -169,12 +173,27 @@ export function NotesWorkspace({
 
   return (
     <ResizablePanelGroup
-      orientation="horizontal"
-      className="min-h-[60vh] lg:min-h-0 lg:flex-1"
+      // Stacked below `lg`, as the document workspace is: side by side on a
+      // phone the tree was ~90px and showed no page name at all. Remounted on
+      // a crossing because the panel sizes are seeded once.
+      key={wide ? "split" : "stack"}
+      orientation={wide ? "horizontal" : "vertical"}
+      className="min-h-[60vh] max-lg:h-[85svh]! lg:min-h-0 lg:flex-1"
     >
-      <ResizablePanel defaultSize={26} minSize={15} maxSize={45} id="page-tree">
-        <div className="flex h-full min-h-0 flex-col">
-          <div className="mb-1.5 flex items-center justify-end gap-1">
+      <ResizablePanel
+        defaultSize={wide ? 26 : 35}
+        minSize={15}
+        maxSize={wide ? 45 : 70}
+        id="page-tree"
+      >
+        <div className="flex h-full min-h-0 flex-col max-lg:pb-2">
+          {/* The same head the document tree has: a mono region label with
+              the pane's actions grouped beside it, not scattered top and
+              bottom. */}
+          <div className="mb-1.5 flex items-center gap-1 pr-3">
+            <p className="text-muted-foreground flex-1 font-mono text-xs tracking-wide uppercase">
+              pages
+            </p>
             <Button
               type="button"
               size="sm"
@@ -184,6 +203,13 @@ export function NotesWorkspace({
               <Plus className="mr-1 size-3.5" />
               New page
             </Button>
+            <IconButton
+              icon={Trash2}
+              label="Trash"
+              variant="ghost"
+              type="button"
+              onClick={() => setTrashOpen(true)}
+            />
             {DEMO ? null : (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -235,24 +261,13 @@ export function NotesWorkspace({
               />
             ) : null}
           </ScrollArea>
-          <div className="pt-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => setTrashOpen(true)}
-            >
-              <Trash2 className="mr-1 size-3.5" />
-              Trash
-            </Button>
-          </div>
         </div>
       </ResizablePanel>
 
       <ResizableHandle withHandle />
 
-      <ResizablePanel defaultSize={74} id="page-pane">
-        <div className="h-full min-h-0 pl-3">
+      <ResizablePanel defaultSize={wide ? 74 : 65} id="page-pane">
+        <div className="h-full min-h-0 max-lg:pt-2 lg:pl-3">
           {selectedId === null || vanished ? (
             <EmptyState
               kind="empty"
@@ -276,7 +291,6 @@ export function NotesWorkspace({
         project={project}
         open={trashOpen}
         onOpenChange={setTrashOpen}
-        onRestored={() => setTrashOpen(false)}
       />
 
       <NotionImportDialog
@@ -301,6 +315,7 @@ export function NotesWorkspace({
       >
         <DialogContent>
           <form
+            className="space-y-4"
             onSubmit={(e) => {
               e.preventDefault()
               commitRename()
@@ -317,6 +332,8 @@ export function NotesWorkspace({
             <Input
               id="page-rename"
               autoFocus
+              // Selected on open, so a rename can be typed straight over.
+              onFocus={(e) => e.currentTarget.select()}
               aria-label="New title"
               value={renameValue}
               onChange={(e) => setRenameValue(e.target.value)}
