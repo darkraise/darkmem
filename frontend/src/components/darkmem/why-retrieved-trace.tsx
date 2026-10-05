@@ -63,7 +63,7 @@ export function WhyRetrievedTrace({
         return (
           <div
             key={channel.name}
-            className="grid grid-cols-[5.5rem_1fr_4rem] items-center gap-2 text-sm"
+            className="grid grid-cols-[5.5rem_1fr_5rem] items-center gap-2 text-sm"
           >
             <span className={cn("font-mono", off && "opacity-60")}>
               {channel.name}
@@ -79,7 +79,7 @@ export function WhyRetrievedTrace({
             </span>
             <span
               className={cn(
-                "text-muted-foreground text-right font-mono",
+                "text-muted-foreground text-right font-mono whitespace-nowrap",
                 off && "opacity-60",
               )}
             >
