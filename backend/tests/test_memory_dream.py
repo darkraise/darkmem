@@ -113,6 +113,34 @@ async def seed_partition(session, fingerprint: str = FP) -> str:
     return child
 
 
+async def drop_seeded_partitions(session) -> None:
+    """Undo every committed `seed_partition`: its `t212-` child tables, then
+    its `embedders` rows. Any fixture that commits through `seed_partition`
+    (this suite's and `test_dream_undo.py`'s `committing`) must call it.
+
+    `seed_partition` registers an `embedders` row but creates only the
+    `memory_embeddings__<slug>` child table, not the full set
+    `embedder_registry.register` guarantees in production. A row left behind
+    is a half-registered fingerprint every later suite inherits: any
+    repository method that loops every `embedders` row and trusts the full
+    partition set (e.g. `delete_code_chunks_by_repo`) then crashes on this
+    fingerprint's missing `code_chunk_embeddings__<slug>` table. The child
+    tables go first (they FK to it), found through `information_schema`
+    rather than the registry's own template list, so this stays correct if
+    that list grows."""
+    stray_tables = (await session.execute(
+        text(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name ~ '__t212_'"
+        )
+    )).scalars().all()
+    for table_name in stray_tables:
+        await session.execute(text(f'DROP TABLE IF EXISTS "{table_name}"'))
+    await session.execute(
+        text("DELETE FROM embedders WHERE fingerprint LIKE 't212-%'")
+    )
+
+
 async def put_vector(session, memory_id, vector, fingerprint: str = FP) -> None:
     child = child_table("memory_embeddings", fingerprint)
     await session.execute(
@@ -733,35 +761,15 @@ async def committing(setup_database):
             # does not — and a stray committed tag is an orphan every other
             # suite's tag-sweep assertions would then count.
             #
-            # `seed_partition` durably registers an `embedders` row (real
-            # commit, via `committing`) but creates only the
-            # `memory_embeddings__<slug>` child table, not the full set
-            # `embedder_registry.register` guarantees in production. A row
-            # left behind is a half-registered fingerprint every later suite
-            # inherits: any repository method that loops every `embedders`
-            # row and trusts the full partition set (e.g.
-            # `delete_code_chunks_by_repo`) then crashes on this fingerprint's
-            # missing `code_chunk_embeddings__<slug>` table. Drop the child
-            # tables before the `embedders` row (they FK to it) — via
-            # `information_schema` rather than the registry's own table
-            # template list, so this stays correct if that list grows.
-            stray_tables = (await cleanup.execute(
-                text(
-                    "SELECT table_name FROM information_schema.tables "
-                    "WHERE table_schema = 'public' AND table_name ~ '__t212_'"
-                )
-            )).scalars().all()
-            for table_name in stray_tables:
-                await cleanup.execute(text(f'DROP TABLE IF EXISTS "{table_name}"'))
             for statement in (
                 "DELETE FROM memory_relations WHERE project LIKE 't212-%'",
                 "DELETE FROM knowledge_triples WHERE project LIKE 't212-%'",
                 "DELETE FROM memories WHERE project LIKE 't212-%'",
                 "DELETE FROM tags WHERE name LIKE 't212-%'",
                 "DELETE FROM config WHERE key = 'memory_dream_state'",
-                "DELETE FROM embedders WHERE fingerprint LIKE 't212-%'",
             ):
                 await cleanup.execute(text(statement))
+            await drop_seeded_partitions(cleanup)
             await cleanup.commit()
         await engine.dispose()
 

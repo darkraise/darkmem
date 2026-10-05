@@ -36,7 +36,12 @@ from app.services import events as events_module
 from app.services import memory_dream as dream
 from app.utils.ids import new_id
 from tests.test_dream_jobs import dream_job_implementation_modules
-from tests.test_memory_dream import StubLLM, put_vector, seed_partition
+from tests.test_memory_dream import (
+    StubLLM,
+    drop_seeded_partitions,
+    put_vector,
+    seed_partition,
+)
 
 BACKEND = pathlib.Path(__file__).resolve().parent.parent
 
@@ -185,6 +190,8 @@ async def committing(setup_database):
                 f"'{undo.RETENTION_CONFIG_KEY}'",
             ):
                 await cleanup.execute(text(statement))
+            # `build_dreamable_pair` commits a `seed_partition` fingerprint.
+            await drop_seeded_partitions(cleanup)
             await cleanup.commit()
         await engine.dispose()
 
