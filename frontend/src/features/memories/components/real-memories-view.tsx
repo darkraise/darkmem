@@ -201,13 +201,13 @@ export function RealMemoriesView({
                         <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
                         loading more…
                       </div>
-                    ) : (
+                    ) : hasMore ? (
                       <p className="text-muted-foreground py-1 text-center font-mono text-sm">
-                        {hasMore
-                          ? `${rows.length} of ${total} loaded`
-                          : `all ${total} shown`}
+                        {rows.length} of {total} loaded
                       </p>
-                    )}
+                    ) : // A complete list says nothing at its foot: the header
+                    // already reads "N of N shown".
+                    null}
                   </div>
                 )
               })}
