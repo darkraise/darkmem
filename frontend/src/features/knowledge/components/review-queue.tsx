@@ -600,8 +600,8 @@ export function ReviewQueue({ project }: { project?: string }) {
                 className="text-warning-text mt-0.5 h-4 w-4 shrink-0"
               />
               <span>
-                Records your rejection and closes this fact&apos;s belief
-                window as of now, so it is no longer served as current. Its{" "}
+                Records your rejection and closes this fact&apos;s belief window
+                as of now, so it is no longer served as current. Its{" "}
                 <b className="font-semibold">
                   {rejectTarget?.verification_status ?? "verification"}
                 </b>{" "}

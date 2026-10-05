@@ -245,7 +245,7 @@ describe("ReviewTab: bulk hygiene actions confirm before applying, and are undoa
       ),
     ).toBe(false)
 
-    fireEvent.click(screen.getByText("Apply"))
+    fireEvent.click(screen.getByText(/^Confirm \d+ pairs?$/))
 
     await waitFor(() =>
       expect(
@@ -351,7 +351,7 @@ describe("ReviewTab: a confirmed action that fails to apply is reported, not sil
     const checkbox = await screen.findByLabelText("Select duplicate pair rel1")
     fireEvent.click(checkbox)
     fireEvent.click(screen.getByText("Confirm dedup"))
-    fireEvent.click(await screen.findByText("Apply"))
+    fireEvent.click(await screen.findByText(/^Confirm \d+ pairs?$/))
 
     await waitFor(() => expect(toast.error).toHaveBeenCalled())
     const [title] = vi.mocked(toast.error).mock.calls[0]!
@@ -400,7 +400,7 @@ describe("ReviewTab: a refused undo (409) is shown, never a silently reset spinn
     const checkbox = await screen.findByLabelText("Select duplicate pair rel1")
     fireEvent.click(checkbox)
     fireEvent.click(screen.getByText("Confirm dedup"))
-    fireEvent.click(await screen.findByText("Apply"))
+    fireEvent.click(await screen.findByText(/^Confirm \d+ pairs?$/))
 
     fireEvent.click(await screen.findByText("Undo this batch"))
 
@@ -465,7 +465,7 @@ describe("ReviewTab: per-item refusal reasons reach the DOM (F6)", () => {
     const checkbox = await screen.findByLabelText("Select duplicate pair rel1")
     fireEvent.click(checkbox)
     fireEvent.click(screen.getByText("Confirm dedup"))
-    fireEvent.click(await screen.findByText("Apply"))
+    fireEvent.click(await screen.findByText(/^Confirm \d+ pairs?$/))
 
     expect(await screen.findByText(/0 applied, 1 refused/)).toBeInTheDocument()
     expect(screen.getByText(/no longer active/)).toBeInTheDocument()
@@ -581,7 +581,7 @@ describe("HygieneQueue: the prune (low-confidence) door reports a failed apply (
 
     fireEvent.click(await screen.findByLabelText("Select a low confidence capture"))
     fireEvent.click(screen.getByText("Prune"))
-    fireEvent.click(await screen.findByText("Apply"))
+    fireEvent.click(await screen.findByText(/^Prune \d+ rows?$/))
 
     await waitFor(() => expect(toast.error).toHaveBeenCalled())
     const [title] = vi.mocked(toast.error).mock.calls[0]!
@@ -617,7 +617,13 @@ describe("HygieneQueue: the prune (expiring-soon) door reports a failed apply (N
 
     fireEvent.click(await screen.findByLabelText("Select a memory about to expire"))
     fireEvent.click(screen.getByText("Prune now"))
-    fireEvent.click(await screen.findByText("Apply"))
+    const pruneAction = await screen.findByText(/^Prune \d+ rows?$/)
+    // The confirm keeps the destructive signal its trigger wore.
+    expect(pruneAction.closest("button")).toHaveAttribute(
+      "data-variant",
+      "destructive",
+    )
+    fireEvent.click(pruneAction)
 
     await waitFor(() => expect(toast.error).toHaveBeenCalled())
     const [title] = vi.mocked(toast.error).mock.calls[0]!
@@ -788,7 +794,7 @@ describe("HygieneQueue: a non-HTTP bulk failure reports state unknown, not appli
     const checkbox = await screen.findByLabelText("Select duplicate pair rel1")
     fireEvent.click(checkbox)
     fireEvent.click(screen.getByText("Confirm dedup"))
-    fireEvent.click(await screen.findByText("Apply"))
+    fireEvent.click(await screen.findByText(/^Confirm \d+ pairs?$/))
 
     await waitFor(() => expect(toast.error).toHaveBeenCalled())
     const [title, opts] = vi.mocked(toast.error).mock.calls[0]!
@@ -902,7 +908,7 @@ describe("ReviewTab: a non-409 undo failure reports state unknown, not refused (
     const checkbox = await screen.findByLabelText("Select duplicate pair rel1")
     fireEvent.click(checkbox)
     fireEvent.click(screen.getByText("Confirm dedup"))
-    fireEvent.click(await screen.findByText("Apply"))
+    fireEvent.click(await screen.findByText(/^Confirm \d+ pairs?$/))
 
     fireEvent.click(await screen.findByText("Undo this batch"))
 
@@ -970,7 +976,7 @@ describe("HygieneQueue: 'Supersede instead' states a direction and applies that 
       ),
     ).toBe(false)
 
-    fireEvent.click(screen.getByText("Apply"))
+    fireEvent.click(screen.getByText(/^Supersede \d+ pairs?$/))
 
     await waitFor(() =>
       expect(

@@ -901,7 +901,21 @@ export function HygieneQueue({ project }: { project?: string }) {
           )}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={applyPending}>Apply</AlertDialogAction>
+            {/* The action repeats the verb the user clicked, and a prune
+                keeps the destructive colour its trigger wore. */}
+            <AlertDialogAction
+              onClick={applyPending}
+              {...(pending?.kind === "prune-low" ||
+              pending?.kind === "prune-expiring"
+                ? { "data-variant": "destructive" }
+                : {})}
+            >
+              {pending?.kind === "confirm-dedup"
+                ? `Confirm ${pending.ids.length} pair${pending.ids.length === 1 ? "" : "s"}`
+                : pending?.kind === "supersede-dup"
+                  ? `Supersede ${pending.items.length} pair${pending.items.length === 1 ? "" : "s"}`
+                  : `Prune ${pending?.ids.length ?? 0} row${pending?.ids.length === 1 ? "" : "s"}`}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
