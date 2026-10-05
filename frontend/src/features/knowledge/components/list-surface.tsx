@@ -27,7 +27,9 @@ export function ListSurface({
     >
       <div className="border-border bg-muted/30 flex flex-wrap items-center gap-2.5 border-b px-4 py-2.5">
         <span className="text-sm font-semibold">{title}</span>
-        {!populated && (
+        {/* A meta count ("0 open") already says it; "empty" beside it is
+            noise. */}
+        {!populated && !meta && (
           <span className="text-muted-foreground font-mono text-sm">empty</span>
         )}
         {meta && (

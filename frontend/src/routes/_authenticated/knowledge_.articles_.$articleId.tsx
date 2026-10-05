@@ -36,7 +36,9 @@ function CitePill({
       href={`#cite-${citeKey}`}
       title={`grounded by citation ${citeKey}`}
       onClick={() => onNavigate(citeKey)}
-      className="border-primary/40 bg-primary/10 text-primary-text ml-1 inline-flex h-4 min-w-5 items-center justify-center rounded-full border px-1 align-super font-mono text-xs font-semibold no-underline"
+      // The pill stays 16px tall visually; the transparent ::after pads the
+      // hit area to at least 24px (WCAG 2.5.8) without moving the line box.
+      className="border-primary/40 bg-primary/10 text-primary-text relative ml-1 inline-flex h-4 min-w-5 items-center justify-center rounded-full border px-1 align-super font-mono text-xs font-semibold no-underline after:absolute after:-inset-x-1 after:-inset-y-1.5 after:content-['']"
     >
       {citeKey}
     </a>
@@ -200,6 +202,12 @@ function ArticleDetailPage() {
         <h2 className="max-w-[70ch] text-2xl leading-snug font-semibold">
           {article.title}
         </h2>
+        {/* The badge claim, visible: its title attribute is hover-only. */}
+        {article.claim && (
+          <p className="text-muted-foreground max-w-[70ch] font-mono text-sm">
+            {article.claim}
+          </p>
+        )}
         {superseded && successor && (
           <Link
             to="/knowledge/articles/$articleId"

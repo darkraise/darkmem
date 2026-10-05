@@ -249,7 +249,9 @@ function AuthenticatedLayout() {
       >
         {!DEMO && <LiveUpdates />}
         <ProjectScopeReconciler />
-        <main
+        {/* A div, not <main>: the darkraise-ui Shell already renders the one
+            main landmark (#main-content) around this. */}
+        <div
           className={cn(
             "w-full",
             !fullWidth && "mx-auto max-w-[1400px]",
@@ -257,7 +259,7 @@ function AuthenticatedLayout() {
           )}
         >
           <Outlet />
-        </main>
+        </div>
         <BackToTop />
         {!DEMO && (
           <ChangePasswordDialog
