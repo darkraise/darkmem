@@ -23,15 +23,27 @@ import {
 } from "@/stores/project-store"
 
 export const CODE_SCOPE_REASON = "Code is scoped by repository, not by project"
+export const WORKSPACE_SCOPE_REASON =
+  "This workspace shows the project named in its address"
+export const NOTES_SCOPE_REASON =
+  "Notes are your personal space, outside any project"
 
-/** Code routes browse one repository at a time; a project scope would read
- *  as a filter that silently does nothing there. */
+/** Routes whose subject is fixed by something other than the scope -- a
+ *  repository, the project in the URL, the personal space -- where a live
+ *  scope would read as a filter that silently does nothing. */
 export function projectScopeDisabledReason(
   pathname: string,
 ): string | undefined {
-  return pathname === "/code" || pathname.startsWith("/code/")
-    ? CODE_SCOPE_REASON
-    : undefined
+  if (pathname === "/code" || pathname.startsWith("/code/")) {
+    return CODE_SCOPE_REASON
+  }
+  // `/projects/<name>` only: the `/projects` card grid lists every project
+  // and stays scope-free without needing the chip disabled.
+  if (/^\/projects\/[^/]+/.test(pathname)) return WORKSPACE_SCOPE_REASON
+  if (pathname === "/notes" || pathname.startsWith("/notes/")) {
+    return NOTES_SCOPE_REASON
+  }
+  return undefined
 }
 
 const TRIGGER_CLASS =
