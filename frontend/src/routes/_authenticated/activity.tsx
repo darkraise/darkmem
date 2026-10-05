@@ -7,6 +7,7 @@ import {
   CalendarDays,
   Gauge,
   Moon,
+  Plug,
   Rss,
   Timer,
 } from "lucide-react"
@@ -22,6 +23,7 @@ import { TriageTab } from "@/features/activity/components/triage-tab"
 import { JobsTab } from "@/features/activity/components/jobs-tab"
 import { DreamTab } from "@/features/activity/components/dream-tab"
 import { DayTab } from "@/features/activity/components/day-tab"
+import { McpTab } from "@/features/activity/components/mcp-tab"
 import { OpenWorkstreams } from "@/features/worklog/components/open-workstreams"
 
 const TAB_VALUES = [
@@ -32,6 +34,7 @@ const TAB_VALUES = [
   "dream",
   "day",
   "worklog",
+  "mcp",
 ] as const
 export type ActivityTab = (typeof TAB_VALUES)[number]
 
@@ -104,6 +107,10 @@ function ActivityPage() {
               <ScrollText aria-hidden className="size-[var(--icon-size)]" />
               Work log
             </TabsTrigger>
+            <TabsTrigger className="flex-1 gap-2" value="mcp">
+              <Plug aria-hidden className="size-[var(--icon-size)]" />
+              MCP calls
+            </TabsTrigger>
           </ScrollTabsList>
         </div>
         <TabsContent value="pipeline" className="pt-4">
@@ -131,6 +138,9 @@ function ActivityPage() {
         </TabsContent>
         <TabsContent value="worklog" className="pt-4">
           <OpenWorkstreams />
+        </TabsContent>
+        <TabsContent value="mcp" className="pt-4">
+          <McpTab />
         </TabsContent>
       </Tabs>
     </div>

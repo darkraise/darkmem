@@ -28,6 +28,7 @@ ship, with every test still green.
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Mapping
 from typing import Any
 from uuid import UUID
@@ -37,8 +38,10 @@ from mcp.server.auth.provider import AccessToken
 from mcp.server.context import CallNext, HandlerResult, ServerRequestContext
 from mcp.shared.exceptions import MCPError
 
+from app.api.mcp.client_identity import resolve_client_source
 from app.services.api_key_scopes import API_KEY_SCOPES, FORBIDDEN_SCOPES
 from app.services.api_keys import mark_key_used
+from app.services.mcp_call_log import record_call
 
 logger = logging.getLogger(__name__)
 
@@ -220,13 +223,83 @@ class ToolScopeMiddleware:
             # than reporting it as an authorization failure.
             return await call_next(ctx)
 
+        started = time.monotonic()
         try:
             token = require_scope_for_tool(name)
         except ScopeDenied as exc:
+            _log_call(ctx, name, started, status="denied", error=str(exc))
             raise MCPError(code=SCOPE_DENIED, message=str(exc), data=name) from None
 
         await _mark_used(token)
-        return await call_next(ctx)
+        try:
+            result = await call_next(ctx)
+        except BaseException as exc:
+            _log_call(ctx, name, started, status="error", error=str(exc) or type(exc).__name__)
+            raise
+        error = _tool_error_text(result)
+        _log_call(
+            ctx, name, started,
+            status="error" if error is not None else "ok",
+            result=result if error is None else None,
+            error=error,
+        )
+        return result
+
+
+def _tool_error_text(result: Any) -> str | None:
+    """The message of a ``CallToolResult`` the SDK marked ``is_error``, else None.
+
+    A tool that raises does not reach the middleware as an exception: the SDK
+    folds it into a result with ``is_error=True`` and the message as text.
+    """
+    if getattr(result, "is_error", False) is True:
+        content = getattr(result, "content", None) or []
+    elif isinstance(result, Mapping) and result.get("isError") is True:
+        content = result.get("content") or []
+    else:
+        return None
+    first = content[0] if content else None
+    text = getattr(first, "text", None)
+    if text is None and isinstance(first, Mapping):
+        text = first.get("text")
+    return text if isinstance(text, str) and text else "tool error"
+
+
+def _log_call(
+    ctx: ServerRequestContext[Any, Any],
+    name: str,
+    started: float,
+    *,
+    status: str,
+    result: Any = None,
+    error: str | None = None,
+) -> None:
+    """Hand one call to ``mcp_call_log``. Never raises into the dispatch."""
+    try:
+        token = get_access_token()
+        raw_key = (token.claims or {}).get("api_key_id") if token is not None else None
+        try:
+            api_key_id = UUID(str(raw_key)) if raw_key else None
+        except ValueError:
+            api_key_id = None
+        request = getattr(ctx, "request", None)
+        headers = getattr(request, "headers", None)
+        params = ctx.params if isinstance(ctx.params, Mapping) else {}
+        arguments = params.get("arguments")
+        record_call(
+            tool=name,
+            scope=TOOL_SCOPES.get(name),
+            status=status,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            api_key_id=api_key_id,
+            key_name=token.subject if token is not None else None,
+            client=resolve_client_source(None, headers=headers) if headers is not None else None,
+            arguments=dict(arguments) if isinstance(arguments, Mapping) else {},
+            result=result,
+            error=error,
+        )
+    except Exception:
+        logger.warning("mcp call log: could not record %s", name, exc_info=True)
 
 
 async def _mark_used(token: AccessToken) -> None:

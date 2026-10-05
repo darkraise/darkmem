@@ -639,18 +639,18 @@ breaks reproducibility tests and makes extraction E2E flaky.
 
 ## Jobs (`JobRegistry`)
 
-**Twenty-six** registered jobs (`app/main.py`; `tests/test_code_deriver.py`
+**Twenty-seven** registered jobs (`app/main.py`; `tests/test_code_deriver.py`
 derives the roster from its AST). Keep this count and list current when you
 add one. Many register via `*_JOB_KEY` constants, so grepping for quoted keys
 undercounts.
 
-- **Twenty live jobs:** `repo_sync`, `buffer_flush`, `code_enrichment`,
+- **Twenty-one live jobs:** `repo_sync`, `buffer_flush`, `code_enrichment`,
   `code_deriver`, `token_blocklist_cleanup`, `pipeline_failure_cleanup`,
   `graph_orphan_cleanup`, `tag_orphan_cleanup`, `expired_memory_cleanup`,
   `ppr_snapshot`, `relation_embedding_refresh`, `repo_entity_anchoring`,
   `repo_entity_merge`, `citation_reverify`, `job_run_cleanup`,
   `block_embedding_refresh`, `llm_usage_cleanup`, `backup_ship`,
-  `page_attachment_cleanup`, `worklog_cleanup`.
+  `page_attachment_cleanup`, `worklog_cleanup`, `mcp_call_cleanup`.
 - **Six Tier-C dream jobs** (`app/services/dream_jobs.py`,
   `register_dream_jobs`), all shipped (`SHIPPED_DREAM_JOBS`;
   `test_the_family_holds_no_placeholders_left`): `verification_recompute`,
@@ -681,8 +681,8 @@ lock.
 - `repo_sync` also runs the working-tree drift scan (the retired
   `code_reconcile`), per repo, only when both `index_on_commit_enabled` and
   `index_uncommitted` are on (see Code indexing).
-- `llm_usage_cleanup` prunes **by age**, `job_run_cleanup` **by row count**,
-  deliberately: a row ceiling would shorten "what did the last N days cost"
+- `llm_usage_cleanup` and `mcp_call_cleanup` prune **by age**,
+  `job_run_cleanup` **by row count**, deliberately: a row ceiling would shorten "what did the last N days cost"
   during exactly the busy period worth investigating.
 - `backup_ship` is the **second** backup producer. It runs the image's own
   `pg_dump` (the runtime stage installs `postgresql-client`, `age`,
@@ -947,6 +947,16 @@ deliberate and recorded on `docs/two-door-parity.md`'s `documents.write` row.
 `ratify` is outside the scope vocabulary: no MCP tool reaches `confirmed`.
 `tools/list` is deliberately **not** scope-filtered. A keyed capture stamps
 `events.api_key_id` and `events.actor` on the journalled row.
+
+**Call log.** `ToolScopeMiddleware` hands every `tools/call` (allowed,
+errored or scope-denied) to `app/services/mcp_call_log.py`, which buffers
+in-process and writes `mcp_tool_calls` rows from one background task; a log
+failure never reaches the call, and read-only mode records nothing. Arguments
+are minimised at write time: `CONTENT_ARGS` become sizes, `QUERY_ARGS` are
+kept only while `mcp_call_cleanup`'s `log_query_text` is 1, and results reduce
+to a count plus up to 50 ids. It is not `events` (read traffic needs age
+retention, which the journal forbids). Read through `GET /api/v1/mcp-calls`
+and `/summary` (REST-only, login) on Activity → MCP calls.
 
 **Source resolution.** Memory writes resolve `source` per call: explicit
 arg (the literal `mcp` counts as unspecified) > `X-Darkmem-Client` header >
