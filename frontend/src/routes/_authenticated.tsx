@@ -132,10 +132,13 @@ const AUTH_VERIFY_TTL_MS = 60_000
 let _lastAuthVerifyAt = 0
 
 export const Route = createFileRoute("/_authenticated")({
-  beforeLoad: async () => {
+  beforeLoad: async ({ location }) => {
     if (DEMO) return
+    // Carry the page that was asked for, so signing in lands on it rather
+    // than on the dashboard.
+    const back = { redirect: location.href }
     if (!useAuthStore.getState().isAuthenticated) {
-      throw redirect({ to: "/login" })
+      throw redirect({ to: "/login", search: back })
     }
     const now = Date.now()
     if (now - _lastAuthVerifyAt < AUTH_VERIFY_TTL_MS) return
@@ -143,7 +146,7 @@ export const Route = createFileRoute("/_authenticated")({
     const ok = await checkAuth()
     if (!ok) {
       useAuthStore.getState().logout()
-      throw redirect({ to: "/login" })
+      throw redirect({ to: "/login", search: back })
     }
     _lastAuthVerifyAt = now
   },

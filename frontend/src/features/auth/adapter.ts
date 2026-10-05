@@ -12,6 +12,8 @@ export const authAdapter: AuthAdapter = {
     apiFetch<void>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ password }),
+      // A 401 here is the verdict on the typed password, not a lost session.
+      on401: "surface",
     }),
   logout: () => apiFetch<void>("/auth/logout", { method: "POST" }),
   me: () => apiFetch<User | null>("/auth/me", { method: "GET" }),

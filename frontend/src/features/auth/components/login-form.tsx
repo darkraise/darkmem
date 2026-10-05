@@ -23,7 +23,13 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
         onSuccess()
         return
       }
-      await login.mutateAsync(value)
+      try {
+        await login.mutateAsync(value)
+      } catch {
+        // Rendered below from `login.error`; rethrowing would only surface
+        // as an unhandled rejection.
+        return
+      }
       onSuccess()
     },
   })

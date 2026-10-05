@@ -15,7 +15,8 @@ export function handleUnauthorized() {
   // flips, but a user idle on a page triggers none — fall back to a single
   // location change, skipped if we're already on /login to avoid a loop.
   if (window.location.pathname !== "/login") {
-    window.location.href = "/login"
+    const back = window.location.pathname + window.location.search
+    window.location.href = `/login?redirect=${encodeURIComponent(back)}`
   } else {
     handling401 = false
   }
@@ -49,13 +50,13 @@ export interface ApiFetchOptions extends RequestInit {
    *  session is gone, so the app signs out and sends the caller to /login.
    *
    *  `"surface"` is for the endpoints where a 401 is the *answer to what was
-   *  submitted* and says nothing about the session. Today that is exactly
-   *  `POST /auth/change-password`, which returns 401 for a wrong CURRENT
-   *  password. Under the default it signed the operator out over a typo and
-   *  threw away the server's own "Current password is incorrect" — the
-   *  session was valid throughout and the password was unchanged. With
+   *  submitted* and says nothing about the session: `POST /auth/login`
+   *  (401 for a wrong password) and `POST /auth/change-password` (401 for a
+   *  wrong CURRENT password). Under the default the change-password form
+   *  signed the operator out over a typo, and the login form showed a bare
+   *  "Unauthorized" — both threw away the server's own message. With
    *  `"surface"` the response falls through to the normal error path, so the
-   *  caller gets the real message and stays signed in. */
+   *  caller gets the real message (and a signed-in caller stays signed in). */
   on401?: "redirect" | "surface"
 }
 
