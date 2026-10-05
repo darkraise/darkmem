@@ -1,10 +1,32 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
+import type { ReactNode } from "react"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { SourceBadges } from "../components/source-badges"
 import { ChatContextPanel } from "../components/chat-context-panel"
 import { ChatMessages } from "../components/chat-messages"
 import type { ChatMessage } from "@/hooks/api"
+
+// A citation chip with no selection handler links to the memory's page, and
+// these renders have no router; a plain anchor stands in for the Link.
+vi.mock("@tanstack/react-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
+  Link: ({
+    to,
+    params,
+    children,
+    ...rest
+  }: {
+    to: string
+    params?: Record<string, string>
+    children?: ReactNode
+    [key: string]: unknown
+  }) => (
+    <a href={params?.memoryId ? to.replace("$memoryId", params.memoryId) : to} {...rest}>
+      {children}
+    </a>
+  ),
+}))
 
 // T1.60 Step 8, three render sites (§6.1/§6.5): the same superseded/active
 // fixture is asserted at SourceBadges, ChatContextPanel, and the inline

@@ -3,6 +3,7 @@ import { type Components } from "react-markdown"
 import { AppMarkdown } from "@/components/markdown"
 import { Bot, User, FileText, Diamond, MessageCircle } from "lucide-react"
 import { Avatar, AvatarFallback } from "darkraise-ui/components/avatar"
+import { Link } from "@tanstack/react-router"
 import { Button } from "darkraise-ui/components/button"
 import { Spinner } from "darkraise-ui/components/spinner"
 import { EmptyState } from "@/components/darkmem"
@@ -99,16 +100,34 @@ function MemoryBadge({
   const title = mem.content
     ? `${mem.content} (${lifecycleWords})`
     : lifecycleWords
-  return (
-    <Button
-      variant="secondary"
-      className="mx-0.5 inline-flex h-auto items-center gap-1 px-1.5 py-0.5 align-baseline"
-      onClick={onClick}
-      title={title}
-    >
+  const body = (
+    <>
       <FileText className="h-3 w-3 shrink-0" />
       <span className="max-w-48 truncate">{label}</span>
       <LifecycleDot status={mem.status} />
+    </>
+  )
+  const className =
+    "mx-0.5 inline-flex h-auto items-center gap-1 px-1.5 py-0.5 align-baseline"
+  // With no selection handler (the full chat page) a chip that looked like a
+  // button did nothing; it opens the memory instead.
+  if (!onClick && mem.id) {
+    return (
+      <Button variant="secondary" className={className} title={title} asChild>
+        <Link to="/memories/$memoryId" params={{ memoryId: mem.id }}>
+          {body}
+        </Link>
+      </Button>
+    )
+  }
+  return (
+    <Button
+      variant="secondary"
+      className={className}
+      onClick={onClick}
+      title={title}
+    >
+      {body}
     </Button>
   )
 }
@@ -120,14 +139,28 @@ function EntityBadge({
   entity: EntityRef
   onClick?: () => void
 }) {
+  const body = (
+    <>
+      <Diamond className="h-3 w-3 shrink-0" />
+      <span>{entity.name}</span>
+    </>
+  )
+  // No entity page exists to open, so without a selection handler the chip is
+  // a label, not a button that does nothing.
+  if (!onClick) {
+    return (
+      <span className="border-border mx-0.5 inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 align-baseline text-sm">
+        {body}
+      </span>
+    )
+  }
   return (
     <Button
       variant="outline"
       className="mx-0.5 inline-flex h-auto items-center gap-1 px-1.5 py-0.5 align-baseline"
       onClick={onClick}
     >
-      <Diamond className="h-3 w-3 shrink-0" />
-      <span>{entity.name}</span>
+      {body}
     </Button>
   )
 }
@@ -298,8 +331,11 @@ export function ChatMessages({
         <div key={msg.id} className="animate-in fade-in duration-200">
           {msg.role === "user" ? (
             <div className="flex justify-end gap-3">
-              <div className="flex max-w-[85%] flex-col items-end gap-1 sm:max-w-[75%]">
-                <div className="text-foreground border-primary/20 bg-primary/10 rounded-2xl rounded-tr-sm border px-4 py-2.5 text-sm">
+              <div className="flex max-w-[85%] min-w-0 flex-col items-end gap-1 sm:max-w-[75%]">
+                {/* Pre-wrap keeps the Shift+Enter line breaks the message was
+                    typed with; anywhere-wrapping keeps an unbroken token (a
+                    URL, a hash) inside the bubble. */}
+                <div className="text-foreground border-primary/20 bg-primary/10 max-w-full rounded-2xl rounded-tr-sm border px-4 py-2.5 text-sm whitespace-pre-wrap [overflow-wrap:anywhere]">
                   {msg.content}
                 </div>
                 <span className="text-muted-foreground/70 px-1 text-sm">
@@ -317,8 +353,8 @@ export function ChatMessages({
       {isStreaming && pendingUserMessage && (
         <div className="animate-in fade-in duration-200">
           <div className="flex justify-end gap-3">
-            <div className="flex max-w-[85%] flex-col items-end gap-1 sm:max-w-[75%]">
-              <div className="text-foreground border-primary/20 bg-primary/10 rounded-2xl rounded-tr-sm border px-4 py-2.5 text-sm">
+            <div className="flex max-w-[85%] min-w-0 flex-col items-end gap-1 sm:max-w-[75%]">
+              <div className="text-foreground border-primary/20 bg-primary/10 max-w-full rounded-2xl rounded-tr-sm border px-4 py-2.5 text-sm whitespace-pre-wrap [overflow-wrap:anywhere]">
                 {pendingUserMessage}
               </div>
             </div>
@@ -388,7 +424,7 @@ function AssistantMessage({
   return (
     <div className="flex gap-3">
       <AssistantAvatar />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
         <AppMarkdown components={components}>{processed}</AppMarkdown>
         <div className="mt-1 flex items-center gap-2">
           <span className="text-muted-foreground/70 text-sm">

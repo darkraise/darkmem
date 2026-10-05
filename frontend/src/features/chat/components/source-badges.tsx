@@ -97,8 +97,13 @@ export function SourceBadges({ memories, entities }: SourceBadgesProps) {
                         {m.source}
                       </span>
                     )}
+                    {/* The fused ranking score, not a similarity: ~0.01-0.03
+                        for the best hit, so as a percentage every source read
+                        "1-2% match". It orders sources; it is not a grade. */}
                     {m.score != null && (
-                      <span>{Math.round(m.score * 100)}% match</span>
+                      <span title="Fused ranking score (RRF): higher ranks first; not a percentage">
+                        score {m.score.toFixed(3)}
+                      </span>
                     )}
                     {dateLabel && <span>{dateLabel}</span>}
                     {m.tags && m.tags.length > 0 && (
