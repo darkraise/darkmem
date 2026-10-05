@@ -112,11 +112,15 @@ describe("useWebSocket", () => {
     const { invalidateSpy } = renderWithSpy()
     const socket = MockWebSocket.latest()
     socket.emitOpen()
-    for (const event of ["repo.indexing_completed", "repo.indexing_failed", "enrichment.batch_completed"]) {
+    for (const event of ["repo.indexing_completed", "repo.indexing_failed"]) {
       invalidateSpy.mockClear()
       socket.emitMessage({ event, data: { files_changed: 1, symbols_indexed: 2, error: "failed" } })
       expect(invalidatedKeys(invalidateSpy)).toEqual(expect.arrayContaining(["codeGraph", "codeFiles", "codeSymbols", "codeSymbol"]))
     }
+    invalidateSpy.mockClear()
+    socket.emitMessage({ event: "enrichment.batch_completed", data: { processed: 5, pending_remaining: 9 } })
+    // Summaries live on symbols; the graph and file list are not refetched.
+    expect(invalidatedKeys(invalidateSpy).sort()).toEqual(["codeSymbol", "codeSymbols", "repoStats"])
     invalidateSpy.mockClear()
     socket.emitClose()
     vi.advanceTimersByTime(1000)

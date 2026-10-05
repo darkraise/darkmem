@@ -89,8 +89,16 @@ export function useWebSocket() {
           void qc.invalidateQueries({ queryKey: [key] })
         }
       }
-      if (["repo.indexing_completed", "repo.indexing_failed", "enrichment.batch_completed"].includes(msg.event)) {
+      if (["repo.indexing_completed", "repo.indexing_failed"].includes(msg.event)) {
         for (const key of ["codeGraph", "codeFiles", "codeSymbols", "codeSymbol"]) {
+          void qc.invalidateQueries({ queryKey: [key] })
+        }
+      }
+      // An enrichment batch writes symbol summaries only. The graph and file
+      // list carry none, and on a large repo the graph is tens of megabytes,
+      // so refetching them on every batch kept the Code Graph page busy.
+      if (msg.event === "enrichment.batch_completed") {
+        for (const key of ["codeSymbols", "codeSymbol"]) {
           void qc.invalidateQueries({ queryKey: [key] })
         }
       }
