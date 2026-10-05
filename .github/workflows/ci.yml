@@ -74,6 +74,12 @@ jobs:
             shard: harness
     needs: pick-runner
     runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs-on) }}
+    # A job container, like the e2e jobs: actions/setup-python has no build
+    # for the darkmem-linux runners' OS, so a host job died before any test
+    # ran. The container also gives each job a private network, so Postgres
+    # publishes no host port at all. The harness suite refuses to share a
+    # database with the app tests, so it gets its own (benchlib/bench_db.py).
+    container: python:3.12-bookworm
     services:
       postgres:
         image: pgvector/pgvector:0.8.2-pg17
@@ -81,50 +87,33 @@ jobs:
           POSTGRES_DB: darkmem
           POSTGRES_USER: darkmem
           POSTGRES_PASSWORD: darkmem
-        ports:
-          - 5432
         options: >-
           --health-cmd "pg_isready -U darkmem"
           --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://darkmem:darkmem@postgres:5432/darkmem
+      TEST_DATABASE_URL: postgresql+asyncpg://darkmem:darkmem@postgres:5432/darkmem_test
+      BENCH_DATABASE_URL: postgresql+asyncpg://darkmem:darkmem@postgres:5432/darkmem_bench
     defaults:
       run:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
-      # The service publishes a random host port, so two jobs on one
-      # self-hosted machine never collide. `job` is not available in job-level
-      # env, hence GITHUB_ENV. The harness suite refuses to share a database
-      # with the app tests, so it gets its own (benchlib/bench_db.py).
-      - name: Point the job at its Postgres service
-        env:
-          PGPORT: ${{ job.services.postgres.ports['5432'] }}
-        run: |
-          : "${PGPORT:?the postgres service published no host port}"
-          {
-            echo "PGPORT=$PGPORT"
-            echo "DATABASE_URL=postgresql+asyncpg://darkmem:darkmem@localhost:$PGPORT/darkmem"
-            echo "TEST_DATABASE_URL=postgresql+asyncpg://darkmem:darkmem@localhost:$PGPORT/darkmem_test"
-            echo "BENCH_DATABASE_URL=postgresql+asyncpg://darkmem:darkmem@localhost:$PGPORT/darkmem_bench"
-          } >> "$GITHUB_ENV"
       # tests/test_planning_docs.py reads the canonical planning documents from
       # master. A branch build has that ref; a build of a *tag* is a detached
       # HEAD that has neither `master` nor `origin/master`, and every one of
       # those checks then failed on "invalid object name 'master'" rather than
       # on anything about the documents. Fetch the branch so a tag build asks
       # the same question a branch build does.
+      # The checkout is owned by the runner user and the container runs as
+      # root, so git refuses the repository until it is marked safe.
       - name: Fetch the master ref the planning checks read
-        run: git fetch --no-tags --depth=1 origin +refs/heads/master:refs/remotes/origin/master
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: |
-            backend/requirements.lock
-            backend/pyproject.toml
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git fetch --no-tags --depth=1 origin +refs/heads/master:refs/remotes/origin/master
       # A virtualenv under RUNNER_TEMP, which the runner empties for every
-      # job: installing into setup-python's interpreter would persist on a
-      # self-hosted runner, and pip never removes a package the lock dropped,
-      # so tests could import what the image no longer ships.
+      # job, so pip never keeps a package the lock dropped and tests cannot
+      # import what the image no longer ships.
       - name: Install (pinned)
         run: |
           python -m venv "$RUNNER_TEMP/venv"
@@ -134,10 +123,18 @@ jobs:
           pip install -r requirements.lock
           pip install --no-deps .
           pip install pytest pytest-asyncio ruff
+      # The container has no psql or docker CLI; asyncpg comes from the lock.
       - name: Create test databases
         run: |
-          docker exec ${{ job.services.postgres.id }} psql -U darkmem -d darkmem \
-            -c "CREATE DATABASE darkmem_test;" -c "CREATE DATABASE darkmem_bench;"
+          python - <<'PY'
+          import asyncio, asyncpg
+          async def main():
+              conn = await asyncpg.connect("postgresql://darkmem:darkmem@postgres:5432/darkmem")
+              for name in ("darkmem_test", "darkmem_bench"):
+                  await conn.execute(f"CREATE DATABASE {name}")
+              await conn.close()
+          asyncio.run(main())
+          PY
       - name: Lint (ruff, advisory)
         run: ruff check app/ --select F --output-format=github
         continue-on-error: true
@@ -157,6 +154,12 @@ jobs:
       - name: Harness tests
         if: matrix.shard == 'harness'
         run: python -m pytest -q --durations=20 scripts/benchlib/tests
+      # Installs and test output are root-owned inside the job container.
+      # Return ownership to the runner so its next host job can clean this
+      # checkout.
+      - name: Restore runner workspace ownership
+        if: always()
+        run: chown -R "$(stat -c '%u:%g' "$GITHUB_WORKSPACE/..")" "$GITHUB_WORKSPACE" "$RUNNER_TEMP"
 
   frontend:
     name: Frontend (types + lint + build)

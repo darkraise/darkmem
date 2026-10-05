@@ -32,8 +32,8 @@ The optimized workflow runs these independently:
 - API and Playwright e2e suites on self-hosted runners, each in a job
   container with a private Postgres service and disposable application stack.
 
-Python downloads are cached against the dependency files. Docker installs the
-Python lockfile before copying package metadata, allowing the release's version
+Backend jobs install the lockfile fresh in each job container. Docker
+installs the Python lockfile before copying package metadata, allowing the release's version
 sync to reuse the dependency layer. Release serialization and publication gates
 are unchanged.
 
@@ -45,7 +45,6 @@ backend/.venv/bin/python -m unittest discover -s scripts/tests -p test_ci_pytest
 ```
 
 Vitest sharding is documented in its [performance guide](https://vitest.dev/guide/improving-performance.html#sharding).
-The Python cache uses [setup-python's dependency caching](https://github.com/actions/setup-python#caching-packages-dependencies).
 
 Splitting jobs trades extra runner setup and potentially more billed runner
 minutes for shorter elapsed time. Compare the slowest shard and total workflow
@@ -72,12 +71,15 @@ workflow succeeds, including both e2e jobs.
 
 **Machine.** A dedicated Ubuntu 22.04/24.04 x64 Linux box, never this host or
 192.168.0.199 (both run production). Install Docker Engine, git, curl and
-python3; put the runner user in the `docker` group. Host jobs use
-`actions/setup-python` and `actions/setup-node` for their toolchains and a
-per-job Python virtualenv. The runner no longer needs `gh` or registry login
-credentials: publishing and release writes happen on GitHub-hosted.
+python3; put the runner user in the `docker` group. Frontend host jobs use
+`actions/setup-node` for their toolchain. Backend jobs run in a
+`python:3.12-bookworm` job container with a per-job virtualenv, because
+`actions/setup-python` found no Python 3.12 build for the runners' OS. The
+runner no longer needs `gh` or registry login credentials: publishing and
+release writes happen on GitHub-hosted.
 
-Backend host jobs use random Postgres ports and separate databases. Smoke
+Backend jobs each get a private Docker network and Postgres service (no
+published host port) with separate app and harness databases. Smoke
 verification uses a per-run container name and random loopback HTTP port.
 API and Playwright jobs use `python:3.12-bookworm` containers, each with its
 own Docker network and Postgres service (`darkmem_e2e`, no published host
@@ -100,7 +102,7 @@ runners cannot reach this LAN endpoint.
 
 **Trust.** Docker access is root-equivalent; use a dedicated trusted machine
 and separate OS users per runner. Firewall it off from untrusted networks:
-backend Postgres services publish random host ports while tests run. The
+the image smoke check publishes a random loopback port while it runs. The
 repository is private, so only collaborators' code runs here. Before making
 it public, remove the runner or require approval for all outside contributors'
 workflow runs: a fork can name `[self-hosted, darkmem-linux]` directly.
