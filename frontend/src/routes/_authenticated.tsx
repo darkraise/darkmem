@@ -144,11 +144,14 @@ export const Route = createFileRoute("/_authenticated")({
     if (now - _lastAuthVerifyAt < AUTH_VERIFY_TTL_MS) return
     const { checkAuth } = await import("@/lib/api")
     const ok = await checkAuth()
-    if (!ok) {
+    if (ok === false) {
       useAuthStore.getState().logout()
       throw redirect({ to: "/login", search: back })
     }
-    _lastAuthVerifyAt = now
+    // An inconclusive check lets the page load and re-checks on the next
+    // navigation; if the session is really gone, the page's own requests
+    // answer 401 and send it to sign-in.
+    if (ok) _lastAuthVerifyAt = now
   },
   component: AuthenticatedLayout,
 })

@@ -205,14 +205,20 @@ export async function checkSetupStatus(): Promise<{ initialized: boolean }> {
   return response.json()
 }
 
-export async function checkAuth(): Promise<boolean> {
+/** Whether the session cookie still signs in: `false` only when the server
+ *  says so (401/403). `null` means the check could not tell -- the request was
+ *  aborted by a navigation, the network blipped or the server erred -- and is
+ *  not a sign-out: treating it as one logged out valid sessions. */
+export async function checkAuth(): Promise<boolean | null> {
   try {
     const response = await fetch(`${API_BASE}/auth/me`, {
       credentials: "include",
     })
-    return response.ok
+    if (response.ok) return true
+    if (response.status === 401 || response.status === 403) return false
+    return null
   } catch {
-    return false
+    return null
   }
 }
 
