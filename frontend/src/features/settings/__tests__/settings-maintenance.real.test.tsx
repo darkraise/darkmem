@@ -102,6 +102,8 @@ describe("MaintenanceTab (real)", () => {
         screen.getByText(/Re-embed memories failed: The embedder could not be reached/),
       ).toBeInTheDocument(),
     )
+    // Drawn as a failure, not in the green panel a completed operation gets.
+    expect(screen.getByRole("alert")).toHaveTextContent(/Re-embed memories failed/)
   })
 
   it("expired_memory_cleanup has no live count — renders no fabricated N, and stays enabled", async () => {

@@ -20,6 +20,8 @@ export interface MaintenanceTabBinding {
     retiredFingerprints: string[] | null
   }
   lastOpNote: string | null
+  /** The note reports a refusal or failure, not a completed operation. */
+  lastOpFailed: boolean
   run: (op: MaintenanceOpKey) => void
 }
 
@@ -41,7 +43,12 @@ export function useMaintenanceTabBinding(): MaintenanceTabBinding {
   const demoMaintenance = useDemoMaintenance()
   const runDemoOp = useDemoStore((s) => s.runMaintenanceOp)
   const qc = useQueryClient()
-  const [realLastOpNote, setRealLastOpNote] = useState<string | null>(null)
+  const [realLastOp, setRealLastOp] = useState<{
+    text: string
+    failed: boolean
+  } | null>(null)
+  const setRealLastOpNote = (text: string, failed = false) =>
+    setRealLastOp({ text, failed })
 
   const countsQuery = useQuery<ObsoleteCounts>({
     queryKey: ["reembedObsoleteCounts"],
@@ -65,7 +72,7 @@ export function useMaintenanceTabBinding(): MaintenanceTabBinding {
   // top of the tab, off screen from the buttons further down.
   const failed = (label: string) => (error: unknown) => {
     const reason = error instanceof Error ? error.message : String(error)
-    setRealLastOpNote(`${label} failed: ${reason}`)
+    setRealLastOpNote(`${label} failed: ${reason}`, true)
     toast.error(`${label} failed: ${reason}`)
   }
 
@@ -106,6 +113,7 @@ export function useMaintenanceTabBinding(): MaintenanceTabBinding {
       onError: (err) => {
         setRealLastOpNote(
           err instanceof ApiError && err.status === 409 ? busyNote(label) : `${label} failed to trigger`,
+          true,
         )
       },
     })
@@ -127,6 +135,7 @@ export function useMaintenanceTabBinding(): MaintenanceTabBinding {
         retiredFingerprints: demoMaintenance.dbops.retired_fingerprints,
       },
       lastOpNote: demoMaintenance.last_op_note,
+      lastOpFailed: false,
       run: runDemoOp,
     }
   }
@@ -145,7 +154,8 @@ export function useMaintenanceTabBinding(): MaintenanceTabBinding {
     dbops: {
       retiredFingerprints: null,
     },
-    lastOpNote: realLastOpNote,
+    lastOpNote: realLastOp?.text ?? null,
+    lastOpFailed: realLastOp?.failed ?? false,
     run: (op) => {
       switch (op) {
         case "reembed_memories":
