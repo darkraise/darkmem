@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 
@@ -15,8 +15,10 @@ import type { ReactNode } from "react"
 // detail levels.
 
 vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
+const navigateMock = vi.fn()
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tanstack/react-router")>()),
+  useNavigate: () => navigateMock,
   Link: ({
     to,
     params,
@@ -41,6 +43,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
 
 import { apiFetch } from "@/lib/api"
 import { useDetailLevel } from "@/components/darkmem/use-detail-level"
+import { AppPageHeader } from "@/components/app-chrome"
 import { RealMemoryDetailView } from "../components/real-memory-detail-view"
 
 // A real detector-produced pair, mirrored client-side: REPLACED is the old
@@ -212,5 +215,50 @@ describe("memory-detail supersession lineage", () => {
 
     await screen.findByText(/we use nomic-embed-text for embeddings/i)
     expect(screen.getByText(/not superseded/i)).toBeInTheDocument()
+  })
+
+  it("badges the successor with its own status, not this memory's", async () => {
+    mockRoutes({ "/memories/mem-1": REPLACED, "/memories/succ-1": SUCCESSOR })
+
+    render(<RealMemoryDetailView memoryId="mem-1" />, { wrapper })
+
+    await screen.findByText(/switched embeddings to qwen3-embedding/i)
+    // One "superseded" badge, this memory's own: the successor beside it is
+    // active, which carries no lifecycle badge.
+    expect(screen.getAllByText("superseded")).toHaveLength(1)
+  })
+})
+
+describe("memory-detail delete", () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it("deletes after a confirmation and returns to the list", async () => {
+    vi.mocked(apiFetch).mockImplementation((path: unknown, init?: unknown) => {
+      if ((init as RequestInit | undefined)?.method === "DELETE") {
+        return Promise.resolve(undefined)
+      }
+      return path === "/memories/succ-1"
+        ? Promise.resolve(SUCCESSOR)
+        : Promise.reject(new Error(`unmocked path: ${String(path)}`))
+    })
+    render(
+      <>
+        <AppPageHeader />
+        <RealMemoryDetailView memoryId="succ-1" />
+      </>,
+      { wrapper },
+    )
+
+    fireEvent.click(await screen.findByRole("button", { name: /^delete$/i }))
+    expect(await screen.findByText(/not a content purge/i)).toBeInTheDocument()
+    const confirm = screen
+      .getAllByRole("button", { name: /^delete$/i })
+      .find((button) => button.closest('[role="alertdialog"]'))!
+    fireEvent.click(confirm)
+
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith("/memories/succ-1", { method: "DELETE" }),
+    )
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith({ to: "/memories" }))
   })
 })

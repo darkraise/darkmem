@@ -56,6 +56,8 @@ export interface Memory {
   related_memories?: { memory_id: string; score: number }[]
   rrf_score?: number
   status?: MemoryStatus
+  /** Served on every MemoryResponse; the supersession scope. */
+  project?: string
   superseded_by?: string | null
   // Mirrors backend MemoryResponse.predecessors (T1.47) — the reverse of
   // `superseded_by`: memories this one directly replaced, newest first,
@@ -136,6 +138,8 @@ export function useCreateMemory() {
       tags?: string[]
       source?: string
       memory_type?: string
+      /** Absent files under the server's default project. */
+      project?: string
       waitProcess?: boolean
     }) => {
       const { waitProcess, ...body } = data
