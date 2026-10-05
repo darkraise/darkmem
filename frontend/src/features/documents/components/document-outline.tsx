@@ -33,9 +33,20 @@ import { useDocumentOutline } from "@/hooks/api"
  * the label stops being readable, and a document nesting six deep is asking
  * the rail to render structure the pane has no width for.
  */
-const LEVEL_STYLE: Record<number, { dot: string; text: string; indent: number }> = {
-  1: { dot: "0.6rem", text: "text-sm font-semibold text-foreground", indent: 0 },
-  2: { dot: "0.5rem", text: "text-sm font-medium text-foreground/90", indent: 8 },
+const LEVEL_STYLE: Record<
+  number,
+  { dot: string; text: string; indent: number }
+> = {
+  1: {
+    dot: "0.6rem",
+    text: "text-sm font-semibold text-foreground",
+    indent: 0,
+  },
+  2: {
+    dot: "0.5rem",
+    text: "text-sm font-medium text-foreground/90",
+    indent: 8,
+  },
   3: { dot: "0.375rem", text: "text-xs text-muted-foreground", indent: 18 },
   4: { dot: "0.25rem", text: "text-xs text-muted-foreground/80", indent: 26 },
 }
@@ -109,7 +120,8 @@ export function DocumentOutline({
       "[data-darkraise-scroll-viewport]",
     )
     if (!root) return
-    const measure = () => setRailHeight(root.clientHeight - STICKY_HEADER_PX - 24)
+    const measure = () =>
+      setRailHeight(root.clientHeight - STICKY_HEADER_PX - 24)
     measure()
     if (typeof ResizeObserver === "undefined") return
     const observer = new ResizeObserver(measure)
@@ -137,8 +149,14 @@ export function DocumentOutline({
     const railBox = rail.getBoundingClientRect()
     const rowBox = row.getBoundingClientRect()
     const next =
-      rail.scrollTop + (rowBox.top - railBox.top) - rail.clientHeight / 2 + rowBox.height / 2
-    const clamped = Math.max(0, Math.min(next, rail.scrollHeight - rail.clientHeight))
+      rail.scrollTop +
+      (rowBox.top - railBox.top) -
+      rail.clientHeight / 2 +
+      rowBox.height / 2
+    const clamped = Math.max(
+      0,
+      Math.min(next, rail.scrollHeight - rail.clientHeight),
+    )
     // A no-op guard: a heading change can arrive while the rail is already
     // where it belongs (a short section passing under the line), and
     // re-issuing a scroll there reads as a twitch.
@@ -187,7 +205,7 @@ export function DocumentOutline({
           the reader's bar that does. */}
       <div
         ref={railRef}
-        className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="min-h-0 flex-1 [scrollbar-width:none] overflow-y-auto [&::-webkit-scrollbar]:hidden"
       >
         {/* The library's own dot and gap are sized for an event log of a few
             entries; an outline is a dense column of twenty, so both are
@@ -239,7 +257,10 @@ export function DocumentOutline({
                     style={{ width: style.dot, height: style.dot }}
                   />
                 </TimelineIndicator>
-                <TimelineContent>
+                {/* `min-w-0`: the library's `1fr` content track keeps an
+                    `auto` minimum, so a long heading sized the column past
+                    the rail and was hard-cut instead of ellipsised. */}
+                <TimelineContent className="min-w-0">
                   <button
                     type="button"
                     data-outline-block={node.block_id}
