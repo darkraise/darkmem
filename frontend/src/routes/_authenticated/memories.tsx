@@ -271,21 +271,22 @@ function DemoMemoriesPage() {
           value={context ?? CONTEXT_NONE}
           onValueChange={(v) => setContext(v === CONTEXT_NONE ? null : v)}
         >
+          {/* Named as the page's filter: it sat beside the header's session
+              context chip with the same "context: none" text and the same
+              accessible name, while doing something different. */}
           <SelectTrigger
-            aria-label="Session context"
+            aria-label="Filter by context"
             className={cn(
               "w-52 rounded-full",
               context == null && "text-muted-foreground border-dashed italic",
             )}
           >
             <SelectValue>
-              {context == null
-                ? "context: none"
-                : `context: ${context}`}
+              {context == null ? "filter: any context" : `filter: ${context}`}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={CONTEXT_NONE}>none</SelectItem>
+            <SelectItem value={CONTEXT_NONE}>any context</SelectItem>
             {CONTEXT_OPTIONS.map((c) => (
               <SelectItem key={c} value={c}>
                 {c}
@@ -313,10 +314,7 @@ function DemoMemoriesPage() {
         )}
 
         <div className="border-border bg-card min-w-0 overflow-hidden rounded-lg border">
-          <MemoryResultsHeader
-            shown={shownCount}
-            total={matchCount}
-          />
+          <MemoryResultsHeader shown={shownCount} total={matchCount} />
 
           <div className="space-y-3 p-4">
             {/* Exclusion counts render even when the result list is empty —
@@ -405,7 +403,7 @@ function DemoMemoriesPage() {
             ) : memories.length === 0 ? (
               <EmptyState
                 kind="empty"
-              icon={Brain}
+                icon={Brain}
                 title="No memories captured yet"
                 description="Capture your first one to start searching."
                 action={
