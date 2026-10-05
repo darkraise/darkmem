@@ -39,6 +39,16 @@ describe("RepositoriesTab", () => {
     ).toBeInTheDocument()
   })
 
+  it("summarises an indexing repo and keeps the full ticker behind a toggle", () => {
+    render(<RepositoriesTab onOpenGraph={vi.fn()} />)
+    expect(screen.getByText(/phase 06 of 14, \d+ skipped/)).toBeInTheDocument()
+    const toggle = screen.getByRole("button", { name: /Show all 14 phases/ })
+    expect(toggle).toHaveAttribute("aria-expanded", "false")
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute("aria-expanded", "true")
+    expect(screen.getByText("File discovery")).toBeVisible()
+  })
+
   it("routes 'Open code graph' through the callback", () => {
     const onOpenGraph = vi.fn()
     render(<RepositoriesTab onOpenGraph={onOpenGraph} />)

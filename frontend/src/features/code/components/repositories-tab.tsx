@@ -1,5 +1,6 @@
 import { useState } from "react"
 import {
+  ChevronDown,
   Clock,
   FolderGit2,
   Layers,
@@ -7,7 +8,15 @@ import {
   Zap,
 } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "darkraise-ui/components/collapsible"
+import { Progress } from "darkraise-ui/components/progress"
 import { cn } from "darkraise-ui/lib"
+import { formatWhen } from "@/lib/format"
+import { phaseProgressLabel, phaseProgressPercent } from "../lib/phase-progress"
 import { ListSurface } from "@/features/knowledge/components/list-surface"
 import { useDemoCodeRepos } from "@/demo/hooks"
 import type { DemoRepo } from "@/demo/types"
@@ -15,12 +24,12 @@ import { RepoStatusChip } from "./repo-status-chip"
 import { PhaseTicker } from "./phase-ticker"
 import { ReindexDialog } from "./reindex-dialog"
 
-function StaleBanner({ repo }: { repo: DemoRepo }) {
+export function StaleBanner({ repo }: { repo: DemoRepo }) {
   if (!repo.stale) return null
   return (
     <div className="border-warning/50 bg-warning/8 flex gap-2.5 rounded-md border p-3">
       <Clock aria-hidden className="text-warning-text h-4.5 w-4.5 shrink-0" />
-      <div className="space-y-1 text-sm">
+      <div className="min-w-0 space-y-1 text-sm">
         <p className="font-semibold">
           Last index failed — showing the last good graph
         </p>
@@ -31,7 +40,7 @@ function StaleBanner({ repo }: { repo: DemoRepo }) {
   )
 }
 
-function ErrorBanner({ repo }: { repo: DemoRepo }) {
+export function ErrorBanner({ repo }: { repo: DemoRepo }) {
   if (!repo.error) return null
   return (
     <div className="border-destructive/50 bg-destructive/8 flex gap-2.5 rounded-md border p-3">
@@ -39,10 +48,12 @@ function ErrorBanner({ repo }: { repo: DemoRepo }) {
         aria-hidden
         className="text-destructive h-4.5 w-4.5 shrink-0"
       />
-      <div className="space-y-1 text-sm">
+      {/* `min-w-0` + `overflow-wrap:anywhere`: an unbreakable git URL in the mono line
+          must wrap inside the banner, not push the column past its border. */}
+      <div className="min-w-0 space-y-1 text-sm">
         <p className="font-semibold">{repo.error.headline}</p>
-        <p className="text-muted-foreground">{repo.error.detail}</p>
-        <p className="text-destructive font-mono text-sm">
+        <p className="text-muted-foreground break-words">{repo.error.detail}</p>
+        <p className="text-destructive font-mono text-sm [overflow-wrap:anywhere]">
           {repo.error.message}
         </p>
       </div>
@@ -96,7 +107,13 @@ function RepoRow({
         <p className="text-muted-foreground text-sm">
           branch <span className="font-mono">{repo.branch}</span>
           {repo.last_indexed_at && (
-            <> · last indexed {repo.last_indexed_at}</>
+            <>
+              {" "}
+              · last indexed{" "}
+              <time title={repo.last_indexed_at}>
+                {formatWhen(repo.last_indexed_at)}
+              </time>
+            </>
           )}
           {repo.index_on_commit_enabled && <> · indexing on</>}
         </p>
@@ -130,13 +147,39 @@ function RepoRow({
         </p>
       )}
 
-      {indexing && currentPhase && (
-        <p className="text-muted-foreground text-sm">
-          phase {String(currentPhase.n).padStart(2, "0")} of{" "}
-          {repo.phases?.length ?? 14} · {currentPhase.label}
-        </p>
+      {/* Summarised like every other row: the current phase and a progress
+          bar, with the full ticker one click away. Inline, 14 rows pushed
+          the rest of the list below the fold. */}
+      {indexing && repo.phases && (
+        <Collapsible className="space-y-2">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <p className="text-muted-foreground text-sm">
+              {phaseProgressLabel(repo.phases) ?? "starting…"}
+              {currentPhase && <> · {currentPhase.label}</>}
+            </p>
+            <Progress
+              value={phaseProgressPercent(repo.phases)}
+              aria-label={`Indexing progress for ${repo.name}`}
+              className="w-40 max-w-full"
+            />
+            <CollapsibleTrigger className="text-muted-foreground hover:text-foreground group ml-auto inline-flex items-center gap-1 text-sm">
+              <ChevronDown
+                aria-hidden
+                className="h-3.5 w-3.5 transition-transform group-data-[state=open]:rotate-180"
+              />
+              <span className="group-data-[state=open]:hidden">
+                Show all {repo.phases.length} phases
+              </span>
+              <span className="hidden group-data-[state=open]:inline">
+                Hide phases
+              </span>
+            </CollapsibleTrigger>
+          </div>
+          <CollapsibleContent>
+            <PhaseTicker phases={repo.phases} />
+          </CollapsibleContent>
+        </Collapsible>
       )}
-      {indexing && repo.phases && <PhaseTicker phases={repo.phases} />}
 
       <StaleBanner repo={repo} />
       <ErrorBanner repo={repo} />
@@ -170,7 +213,6 @@ function RepoRow({
           </Button>
         )}
       </div>
-
     </div>
   )
 }
