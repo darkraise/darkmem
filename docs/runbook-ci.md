@@ -65,7 +65,9 @@ The default splits verification from image production:
 The default is `fallback`: those checks go to `darkmem-linux` whenever a
 runner with that label is online, queuing behind its current job when busy,
 and to `ubuntu-latest` only when none is online, none is registered or the
-runner listing fails. Listing runners needs `RUNNER_PICKER_TOKEN` (below);
+runner listing fails. Before choosing hosted it lists the runners once more
+after 20 seconds, because ephemeral runners briefly disappear between jobs.
+Listing runners needs `RUNNER_PICKER_TOKEN` (below);
 without it the picker cannot tell whether the runner is up, so it queues on
 self-hosted exactly as an explicit `self-hosted` request would. The release
 passes its choice into the

@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 import urllib.request
 
 LABEL = "darkmem-linux"
@@ -23,6 +24,10 @@ SELF_HOSTED = json.dumps(["self-hosted", "linux", "x64", LABEL], separators=(","
 HOSTED = json.dumps("ubuntu-latest")
 API = "https://api.github.com"
 TIMEOUT_SECONDS = 10
+# Ephemeral runners deregister after each job and a fresh one registers a few
+# seconds later, so one empty listing may be that gap rather than an outage.
+# `fallback` looks once more before sending checks to hosted.
+RECHECK_SECONDS = 20
 
 
 LISTING_MODES = ("auto", "fallback")
@@ -105,26 +110,29 @@ def _append(path: str | None, text: str) -> None:
             handle.write(text)
 
 
-def main(env=os.environ, fetch=_fetch) -> int:
-    requested = (env.get("REQUESTED") or "fallback").strip()
-    token = (env.get("GH_TOKEN") or "").strip()
+def _pick(env, requested: str, token: str, fetch) -> tuple[str, str]:
     runners: list[dict] = []
-    error = None
     if requested in LISTING_MODES and token:
         try:
             runners = list_runners(env["GITHUB_REPOSITORY"], token, fetch)
         except Exception as exc:  # any listing failure falls back to hosted
-            error = f"runner listing failed ({type(exc).__name__}: {exc})"
-    if error:
-        runs_on, reason = HOSTED, error
-    else:
-        runs_on, reason = choose(runners, requested, bool(token))
+            return HOSTED, f"runner listing failed ({type(exc).__name__}: {exc})"
+    return choose(runners, requested, bool(token))
+
+
+def main(env=os.environ, fetch=_fetch, sleep=time.sleep) -> int:
+    requested = (env.get("REQUESTED") or "fallback").strip()
+    token = (env.get("GH_TOKEN") or "").strip()
+    runs_on, reason = _pick(env, requested, token, fetch)
+    if requested == "fallback" and token and runs_on == HOSTED:
+        sleep(RECHECK_SECONDS)
+        runs_on, reason = _pick(env, requested, token, fetch)
+        reason = f"{reason} (rechecked after {RECHECK_SECONDS}s)"
     reason = " ".join(reason.split())
     _append(env.get("GITHUB_OUTPUT"), f"runs-on={runs_on}\nreason={reason}\n")
     _append(env.get("GITHUB_STEP_SUMMARY"), f"Runner: `{runs_on}` ({reason})\n")
     print(f"runs-on={runs_on} ({reason})")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

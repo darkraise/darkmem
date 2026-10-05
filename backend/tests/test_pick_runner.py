@@ -214,9 +214,35 @@ def test_default_is_fallback_and_lists_runners(tmp_path):
         seen.append(url)
         return {"total_count": 1, "runners": [_runner(status="offline")]}
 
-    assert pick.main(_env(tmp_path, GH_TOKEN="t"), fetch=fetch) == 0
-    assert seen
-    assert _outputs(tmp_path)["runs-on"] == HOSTED
+    assert pick.main(_env(tmp_path, GH_TOKEN="t"), fetch=fetch, sleep=lambda s: None) == 0
+    assert len(seen) == 2
+    out = _outputs(tmp_path)
+    assert out["runs-on"] == HOSTED
+    assert out["reason"].endswith("(rechecked after 20s)")
+
+
+def test_fallback_recheck_catches_a_runner_that_registers_in_the_gap(tmp_path):
+    listings = iter([[], [_runner("ghr-next")]])
+    naps = []
+
+    def fetch(url, token):
+        runners = next(listings)
+        return {"total_count": len(runners), "runners": runners}
+
+    assert pick.main(_env(tmp_path, GH_TOKEN="t"), fetch=fetch, sleep=naps.append) == 0
+    assert naps == [pick.RECHECK_SECONDS]
+    out = _outputs(tmp_path)
+    assert out["runs-on"] == SELF_HOSTED
+    assert "ghr-next" in out["reason"]
+
+
+def test_fallback_does_not_recheck_when_self_hosted_is_chosen(tmp_path):
+    def sleep(seconds):
+        raise AssertionError("no recheck when a runner is online")
+
+    fetch = lambda url, token: {"total_count": 1, "runners": [_runner(busy=True)]}
+    assert pick.main(_env(tmp_path, GH_TOKEN="t"), fetch=fetch, sleep=sleep) == 0
+    assert _outputs(tmp_path)["runs-on"] == SELF_HOSTED
 
 
 def test_default_without_a_token_queues_on_self_hosted_without_a_call(tmp_path):
@@ -231,7 +257,7 @@ def test_default_falls_back_to_hosted_when_the_listing_fails(tmp_path):
     def fetch(url, token):
         raise urllib.error.HTTPError(url, 403, "Forbidden", None, None)
 
-    assert pick.main(_env(tmp_path, GH_TOKEN="t"), fetch=fetch) == 0
+    assert pick.main(_env(tmp_path, GH_TOKEN="t"), fetch=fetch, sleep=lambda s: None) == 0
     out = _outputs(tmp_path)
     assert out["runs-on"] == HOSTED
     assert out["reason"].startswith("runner listing failed (HTTPError")
