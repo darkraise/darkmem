@@ -10,6 +10,7 @@ import {
   useSetupWizardStore,
   PURPOSES,
 } from "@/features/setup/setupWizardStore"
+import { apiKindLabel } from "@/features/setup/api-kinds"
 
 export function StepFinish() {
   const password = useSetupWizardStore((s) => s.password)
@@ -44,8 +45,8 @@ export function StepFinish() {
                 {llm.providers.map((p) => (
                   <li key={p.name}>
                     <span className="font-mono">{p.name}</span>{" "}
-                    <span className="text-muted-foreground capitalize">
-                      ({p.api_kind})
+                    <span className="text-muted-foreground">
+                      ({apiKindLabel(p.api_kind)})
                     </span>
                   </li>
                 ))}

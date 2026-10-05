@@ -131,8 +131,11 @@ export function SetupWizard() {
       for (const f of result.repos_failed) {
         toast.warning(`Repo "${f.name}" not added: ${f.error}`)
       }
+      // Leave first, then clear: resetting while the wizard is still on
+      // screen re-rendered a blank step 1 for as long as the dashboard took
+      // to load, which read as "setup failed, start again".
+      await navigate({ to: "/" })
       reset()
-      navigate({ to: "/" })
     } catch (e) {
       toast.error(`Setup failed: ${(e as Error).message}`)
     }
