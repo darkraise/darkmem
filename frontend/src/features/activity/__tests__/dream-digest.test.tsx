@@ -195,9 +195,11 @@ describe("LiveDreamDigest (DEMO off — real /dream-digest)", () => {
 
   it("renders a genuinely empty cycle history distinctly from a failed read", async () => {
     vi.mocked(apiFetch).mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 })
-    render(<LiveDreamDigest />, { wrapper })
+    const { container } = render(<LiveDreamDigest />, { wrapper })
 
     await screen.findByText(/no consolidation cycles yet/i)
+    // An empty history is an absence, not an error: no failed-state mark.
+    expect(container.querySelector(".lucide-circle-alert")).toBeNull()
   })
 
   it("groups actions exactly as the server returned them — never regrouped by action kind", async () => {

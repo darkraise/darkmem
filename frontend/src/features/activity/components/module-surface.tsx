@@ -47,7 +47,7 @@ export function SurfaceStateChip({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-xs uppercase tracking-wide",
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-xs tracking-wide uppercase",
         stateClass,
         className,
       )}
@@ -83,9 +83,11 @@ export function ModuleSurface({
       <div className="border-border bg-muted/30 flex flex-wrap items-center gap-2.5 border-b px-4 py-2.5">
         <span className="text-sm font-semibold">{title}</span>
         {meta && (
-          <span className="text-muted-foreground font-mono text-sm">{meta}</span>
+          <span className="text-muted-foreground font-mono text-sm">
+            {meta}
+          </span>
         )}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           {actions}
           {state === "error" && <SurfaceStateChip state="error" />}
         </div>

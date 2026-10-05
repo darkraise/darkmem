@@ -128,7 +128,10 @@ export function PipelineStepper({ run }: { run: DemoPipelineRun }) {
             <>
               <span
                 aria-hidden
-                className={cn("ml-[13px] h-3 w-0.5 md:hidden", connectorClass(state))}
+                className={cn(
+                  "ml-[13px] h-3 w-0.5 md:hidden",
+                  connectorClass(state),
+                )}
               />
               <span
                 aria-hidden
@@ -139,7 +142,15 @@ export function PipelineStepper({ run }: { run: DemoPipelineRun }) {
               />
             </>
           )}
-          <div className="flex items-center gap-2 md:w-24 md:flex-none md:flex-col md:gap-1">
+          {/* The Write column carries two substep pills, wider than the
+              fixed 6rem the other phases use, so it sizes to its content
+              instead of clipping the "graph" pill. */}
+          <div
+            className={cn(
+              "flex items-center gap-2 md:flex-none md:flex-col md:gap-1",
+              i === 4 ? "md:w-auto md:min-w-24" : "md:w-24",
+            )}
+          >
             {i === 4 ? (
               <WriteDot state={state} substeps={run.substeps} />
             ) : (
@@ -164,7 +175,7 @@ export function PipelineStepper({ run }: { run: DemoPipelineRun }) {
               {PHASE_LABELS[i]}
             </span>
             {i === 4 && run.substeps && (
-              <span className="flex gap-1">
+              <span className="flex flex-wrap justify-center gap-1">
                 <SubstepPill label="vector" state={run.substeps.vector} />
                 <SubstepPill label="graph" state={run.substeps.graph} />
               </span>

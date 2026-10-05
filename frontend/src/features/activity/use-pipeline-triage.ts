@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { toast } from "darkraise-ui/components/sonner"
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoPipelineFailures } from "@/demo/hooks"
 import { useDemoStore } from "@/demo/store"
@@ -19,7 +20,8 @@ function fromPipelineFailure(
   return {
     id: f.id,
     target_kind: f.entity_type === "memory" ? "memory" : "code_repo",
-    target_label: f.entity_preview || `${f.entity_type} ${f.entity_id.slice(0, 8)}`,
+    target_label:
+      f.entity_preview || `${f.entity_type} ${f.entity_id.slice(0, 8)}`,
     pipeline: f.pipeline_name === "code_index" ? "code_index" : "memory_ingest",
     failed_step: f.failed_step,
     reason: f.error_message ?? "(no error message recorded)",
@@ -89,7 +91,8 @@ export function usePipelineTriage(): PipelineTriageState {
     retry: (id) => {
       setRetryingIds((prev) => new Set(prev).add(id))
       retryMutation.mutate(id, {
-        onError: () => {
+        onError: (err) => {
+          toast.error("Retry was not accepted", { description: err.message })
           setRetryingIds((prev) => {
             const next = new Set(prev)
             next.delete(id)
@@ -101,9 +104,20 @@ export function usePipelineTriage(): PipelineTriageState {
     retryAll: () => {
       setRetryingIds(new Set(liveIds))
       retryAllMutation.mutate(undefined, {
-        onError: () => setRetryingIds(new Set()),
+        onError: (err) => {
+          toast.error("Retry all was not accepted", {
+            description: err.message,
+          })
+          setRetryingIds(new Set())
+        },
       })
     },
-    forget: (id) => forgetMutation.mutate(id),
+    forget: (id) =>
+      forgetMutation.mutate(id, {
+        onError: (err) =>
+          toast.error("Could not forget the failure", {
+            description: err.message,
+          }),
+      }),
   }
 }
