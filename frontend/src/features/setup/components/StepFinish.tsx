@@ -46,7 +46,7 @@ export function StepFinish() {
                   <li key={p.name}>
                     <span className="font-mono">{p.name}</span>{" "}
                     <span className="text-muted-foreground">
-                      ({apiKindLabel(p.api_kind)})
+                      · {apiKindLabel(p.api_kind)}
                     </span>
                   </li>
                 ))}
