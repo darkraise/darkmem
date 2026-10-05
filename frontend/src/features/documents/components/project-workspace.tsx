@@ -65,6 +65,7 @@ import {
   type DocumentListItem,
   type QaCitation,
 } from "@/hooks/api"
+import { plainText } from "@/lib/plain-text"
 
 export const TAB_VALUES = ["artifacts", "progress"] as const
 export type WorkspaceTab = (typeof TAB_VALUES)[number]
@@ -420,7 +421,7 @@ export function ProjectWorkspace({
                 {hit.heading_path.join(" › ")}
                 {hit.path_truncated ? " › …" : ""}
               </span>
-              <span className="block truncate">{hit.text}</span>
+              <span className="block truncate">{plainText(hit.text)}</span>
             </button>
           ))}
         </div>

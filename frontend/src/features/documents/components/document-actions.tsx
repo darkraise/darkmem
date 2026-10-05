@@ -34,6 +34,7 @@ import {
   type DocumentListItem,
 } from "@/hooks/api"
 import { RevisionsSheet } from "./revisions-sheet"
+import { plainText } from "@/lib/plain-text"
 
 export type ReaderMode = "read" | "edit"
 
@@ -281,10 +282,10 @@ export function DocumentDetail({
                       </span>
                     </div>
                     <p className="text-muted-foreground line-clamp-2">
-                      {connection.block_text}
+                      {plainText(connection.block_text)}
                     </p>
                     <p className="text-muted-foreground line-clamp-2 italic">
-                      {connection.other_block_text}
+                      {plainText(connection.other_block_text)}
                     </p>
                   </Row>
                 )
@@ -390,7 +391,7 @@ function RelatedMemoriesCard({ documentId }: { documentId: string }) {
                   {memory.score.toFixed(3)}
                 </span>
                 <p className="text-muted-foreground line-clamp-2">
-                  {memory.block_text}
+                  {plainText(memory.block_text)}
                 </p>
               </button>
             ))}

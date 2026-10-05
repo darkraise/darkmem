@@ -9,7 +9,7 @@ import { Badge } from "darkraise-ui/components/badge"
 import { ScrollArea } from "darkraise-ui/components/scroll-area"
 import { Square, SquareCheck } from "lucide-react"
 import type { BoardTask } from "../use-progress-corpus"
-import { plainText } from "../lib/plain-text"
+import { plainText } from "@/lib/plain-text"
 
 /**
  * One task in full, including the epic file's done-when checklist.

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { plainText } from "../plain-text"
+import { plainText } from "./plain-text"
 
 describe("plainText", () => {
   it("unwraps bold, italic and code", () => {
