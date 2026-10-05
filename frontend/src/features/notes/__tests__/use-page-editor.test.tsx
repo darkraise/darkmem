@@ -84,6 +84,12 @@ describe("usePageEditor", () => {
     expect(new Set(runs).size).toBe(runs.length)
   })
 
+  it("gives every entry an icon, callouts included", async () => {
+    // An entry without one sat flush left against its neighbours' icons.
+    const editor = await mountHook()
+    expect(pageSlashItems(editor, "").filter((item) => !item.icon)).toEqual([])
+  })
+
   it("inserts a callout with the picked variant", async () => {
     const editor = await mountHook()
     editor.setTextCursorPosition("p2", "end")

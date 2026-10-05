@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { createElement, useEffect } from "react"
 import { filterSuggestionItems, insertOrUpdateBlockForSlashMenu } from "@blocknote/core/extensions"
 import {
   getDefaultReactSlashMenuItems,
@@ -9,7 +9,7 @@ import { toast } from "darkraise-ui/components/sonner"
 import { isImageType, uploadAttachment } from "./lib/attachments"
 import type { EditorBlockLike } from "./lib/block-mapping"
 import type { CalloutVariant } from "./lib/block-properties"
-import { pageSchema, type PageEditorInstance } from "./lib/editor-schema"
+import { CALLOUT_ICON, pageSchema, type PageEditorInstance } from "./lib/editor-schema"
 import { addsNestingViolation } from "./lib/nesting-guard"
 
 /** The built-in slash menu entries a page offers. Headings 4-6 stay
@@ -53,6 +53,9 @@ export function pageSlashItems(editor: PageEditorInstance, query: string): Defau
   const callouts: DefaultReactSuggestionItem[] = CALLOUT_ITEMS.map(({ variant, title }) => ({
     title,
     subtext: `A highlighted ${variant} note`,
+    // The block's own icon, at the built-ins' size: without one the entry
+    // sat flush left against the icon column of its neighbours.
+    icon: createElement(CALLOUT_ICON[variant], { size: 18 }),
     group: CALLOUT_GROUP,
     aliases: ["callout", "alert", variant],
     onItemClick: () => {
