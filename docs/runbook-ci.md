@@ -80,7 +80,16 @@ workflow succeeds, including both e2e jobs.
 python3; put the runner user in the `docker` group. Frontend host jobs use
 `actions/setup-node` for their toolchain. Backend jobs run in a
 `python:3.12-bookworm` job container with a per-job virtualenv, because
-`actions/setup-python` found no Python 3.12 build for the runners' OS. The
+`actions/setup-python` found no Python 3.12 build for the runners' OS.
+Workflows name a toolchain's version line, never a patch: Node's major comes
+from `frontend/.nvmrc` (matching the Dockerfile's `node:` line) and Python's
+minor from the Dockerfile's `python:` line, with `check-latest` off, so a
+runner reuses the Node build already in its tool cache and holds one per
+line (`backend/tests/test_ci_workflows.py`). To share that cache across
+runners on one host, give them all the same `RUNNER_TOOL_CACHE`. A moved
+image tag such as `python:3.12-bookworm` leaves the previous image dangling;
+the Docker prune below reclaims it. Bumping a line is a one-file change:
+`.nvmrc` plus the Dockerfile's `FROM`. The
 runner no longer needs `gh` or registry login credentials: publishing and
 release writes happen on GitHub-hosted.
 

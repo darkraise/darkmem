@@ -92,3 +92,39 @@ def test_the_ci_image_tag_is_per_run():
         tags = step.get("with", {}).get("tags")
         if tags is not None:
             assert "${{" in tags, f"fixed image tag {tags!r}"
+
+
+REPO = WORKFLOWS.parents[1]
+
+
+def _steps(workflow: str):
+    for key, job in _jobs(workflow).items():
+        for step in job.get("steps", []):
+            yield f"{workflow}:{key}", step
+
+
+def test_toolchains_name_a_version_line_never_a_patch():
+    # Self-hosted runners keep every toolchain they download. Naming only a
+    # major/minor line and leaving check-latest off lets a runner reuse the
+    # build already in its tool cache, so it holds one per line, not one per
+    # patch. Node's line lives in frontend/.nvmrc beside the Dockerfile's.
+    nvmrc = (REPO / "frontend" / ".nvmrc").read_text().strip()
+    assert re.fullmatch(r"\d+", nvmrc), f"frontend/.nvmrc must be a bare major, got {nvmrc!r}"
+    dockerfile = (REPO / "Dockerfile").read_text()
+    assert re.search(rf"^FROM node:{nvmrc}-", dockerfile, re.M), "Dockerfile node line drifted from .nvmrc"
+    python_line = re.search(r"^FROM python:(\d+\.\d+)-", dockerfile, re.M).group(1)
+
+    for workflow in ("ci.yml", "release.yml"):
+        for where, step in _steps(workflow):
+            uses, with_ = step.get("uses", ""), step.get("with") or {}
+            if uses.startswith("actions/setup-"):
+                assert with_.get("check-latest") in (None, False), where
+            if uses.startswith("actions/setup-node@"):
+                assert with_.get("node-version-file") == "frontend/.nvmrc", where
+                assert "node-version" not in with_, where
+            if uses.startswith("actions/setup-python@"):
+                assert str(with_["python-version"]) == python_line, where
+        for key, job in _jobs(workflow).items():
+            image = job.get("container")
+            if isinstance(image, str) and image.startswith("python:"):
+                assert image.split(":")[1].startswith(f"{python_line}-"), f"{workflow}:{key}"
