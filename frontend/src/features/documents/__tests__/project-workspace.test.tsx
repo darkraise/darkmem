@@ -289,6 +289,55 @@ describe("project workspace — the states a reader must be able to tell apart",
       ).toBeInTheDocument(),
     )
   })
+
+  it("clears search hits on Escape, on an empty search and on Clear", async () => {
+    // The hits used to stay up for good: an emptied box returned early and
+    // Escape did nothing, so twenty rows sat over the tree and the reader.
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path.startsWith("/documents/search")) {
+        return Promise.resolve({
+          items: [
+            {
+              block_id: "block-42",
+              document_id: DOC.id,
+              heading_path: ["Design"],
+              path_truncated: false,
+              text: "the storage section",
+            },
+          ],
+        })
+      }
+      return Promise.resolve({ items: [DOC] })
+    })
+    renderWorkspace()
+    await screen.findByText("design.md")
+    const box = screen.getByLabelText("search documents")
+    const runSearch = async () => {
+      fireEvent.change(box, { target: { value: "storage" } })
+      fireEvent.click(screen.getByRole("button", { name: /^search$/i }))
+      await screen.findByText("the storage section")
+    }
+
+    await runSearch()
+    fireEvent.keyDown(box, { key: "Escape" })
+    await waitFor(() =>
+      expect(screen.queryByText("the storage section")).toBeNull(),
+    )
+    expect(box).toHaveValue("")
+
+    await runSearch()
+    fireEvent.change(box, { target: { value: "  " } })
+    fireEvent.click(screen.getByRole("button", { name: /^search$/i }))
+    await waitFor(() =>
+      expect(screen.queryByText("the storage section")).toBeNull(),
+    )
+
+    await runSearch()
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }))
+    await waitFor(() =>
+      expect(screen.queryByText("the storage section")).toBeNull(),
+    )
+  })
 })
 
 describe("project workspace — selection identity", () => {

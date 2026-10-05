@@ -277,6 +277,11 @@ export function ProjectWorkspace({
   )
 
   const hits = search.data?.items ?? []
+  const clearQuery = () => {
+    setQuery("")
+    search.reset()
+    qa.reset()
+  }
   const noDocuments =
     !documents.isLoading && !documents.isError && items.length === 0
   const asking = queryMode === "ask"
@@ -288,7 +293,12 @@ export function ProjectWorkspace({
         onSubmit={(e) => {
           e.preventDefault()
           const text = query.trim()
-          if (!text) return
+          // Searching for nothing clears what the last search left open.
+          if (!text) {
+            search.reset()
+            qa.reset()
+            return
+          }
           if (asking) {
             qa.mutate({
               question: text,
@@ -315,6 +325,9 @@ export function ProjectWorkspace({
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") clearQuery()
+          }}
           placeholder={
             asking
               ? "Ask a question answered from these documents…"
@@ -376,8 +389,20 @@ export function ProjectWorkspace({
       ) : null}
 
       {!asking && hits.length > 0 ? (
-        <div className="border-border space-y-1.5 rounded-md border border-dashed p-3">
-          <RegionLabel>sections</RegionLabel>
+        // Capped, so twenty hits cannot push the tree and the reader below
+        // the fold, which made a clicked hit look like it did nothing.
+        <div className="border-border max-h-72 space-y-1.5 overflow-y-auto rounded-md border border-dashed p-3">
+          <div className="flex items-center justify-between gap-2">
+            <RegionLabel>sections</RegionLabel>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={clearQuery}
+            >
+              Clear
+            </Button>
+          </div>
           {hits.map((hit) => (
             <button
               key={hit.block_id}
