@@ -74,6 +74,52 @@ describe("ModelPricesPanel", () => {
     expect(sent["qwen3:4b"]).toBeUndefined()
   })
 
+  it("sends existing overrides and edits, never an untouched shipped default", () => {
+    // The PUT replaces the override layer: an untouched default sent along
+    // would be stored as an override and stop following the shipped rate.
+    const onSave = vi.fn()
+    const kept = { ...ROWS[0]!, model: "gpt-5.5", overridden: true }
+    const untouched = { ...ROWS[0]!, model: "nomic-embed-text:latest" }
+    render(
+      <ModelPricesPanel
+        models={[...ROWS, kept, untouched]}
+        unpricedModels={["qwen2.5:3b"]}
+        onSave={onSave}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText("qwen2.5:3b Input rate"), {
+      target: { value: "0.1" },
+    })
+    fireEvent.change(screen.getByLabelText("qwen2.5:3b Cached rate"), {
+      target: { value: "0" },
+    })
+    fireEvent.change(screen.getByLabelText("qwen2.5:3b Output rate"), {
+      target: { value: "0.2" },
+    })
+    // Retyping the shipped rate is no edit.
+    fireEvent.change(screen.getByLabelText("deepseek-v4-flash Input rate"), {
+      target: { value: "0.270" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: /save prices/i }))
+    expect(Object.keys(onSave.mock.calls[0]![0]).sort()).toEqual([
+      "gpt-5.5",
+      "qwen2.5:3b",
+    ])
+  })
+
+  it("shows an unpriced model's rates as empty, not as zero", () => {
+    render(
+      <ModelPricesPanel models={ROWS} unpricedModels={["qwen3:4b"]} onSave={vi.fn()} />,
+    )
+    expect(screen.getByLabelText("qwen3:4b Input rate")).toHaveValue("")
+    expect(screen.getByLabelText("qwen3:4b Input rate")).toHaveAttribute(
+      "placeholder",
+      "not priced",
+    )
+    // Untouched, so it does not block the save.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
+
   it("adds any model by name", () => {
     render(<ModelPricesPanel models={ROWS} onSave={vi.fn()} />)
     fireEvent.change(screen.getByLabelText("Model to price"), {

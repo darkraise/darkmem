@@ -74,11 +74,14 @@ export function ModelPricesPanel({
   const [added, setAdded] = useState<string[]>([])
   const [newModel, setNewModel] = useState("")
 
+  const known = new Set(models.map((row) => row.model))
+
+  // An unpriced row starts empty: a "0" there reads as a free model.
   const valueFor = (row: ModelPriceRow, field: string) =>
     draft[row.model]?.[field] ??
-    toDollars(row[field as keyof ModelPriceRow] as number)
-
-  const known = new Set(models.map((row) => row.model))
+    (known.has(row.model)
+      ? toDollars(row[field as keyof ModelPriceRow] as number)
+      : "")
   const extra = [...unpricedModels, ...added].filter(
     (model, i, all) => !known.has(model) && all.indexOf(model) === i,
   )
@@ -96,13 +99,25 @@ export function ModelPricesPanel({
       FIELDS.some(([field]) => !validRate(valueFor(row, field))),
   )
 
+  // A catalogue row the operator changed. Typing a rate and then retyping
+  // the shipped one is no change.
+  const isEdited = (row: ModelPriceRow) =>
+    FIELDS.some(
+      ([field]) =>
+        draft[row.model]?.[field] !== undefined &&
+        toMicros(valueFor(row, field)) !==
+          (row[field as keyof ModelPriceRow] as number),
+    )
+
   const handleSave = () => {
-    // A full replace, matching the config-singleton PUT: every row is sent, so
-    // clearing an override means editing it back rather than deleting a key
-    // the server can no longer see.
+    // The PUT replaces the override layer wholesale, so every existing
+    // override is sent again or it would be cleared. A shipped default nobody
+    // edited is left out: storing it would mark it overridden and freeze it
+    // against a later change to the shipped rate.
     const prices: Record<string, Record<string, number>> = {}
     for (const row of rows) {
       if (isUntouchedExtra(row)) continue
+      if (known.has(row.model) && !row.overridden && !isEdited(row)) continue
       prices[row.model] = Object.fromEntries(
         FIELDS.map(([field]) => [field, toMicros(valueFor(row, field))]),
       )
@@ -163,6 +178,9 @@ export function ModelPricesPanel({
                           }
                           className="w-28 text-right font-mono text-xs"
                           inputMode="decimal"
+                          placeholder={
+                            known.has(row.model) ? undefined : "not priced"
+                          }
                           value={valueFor(row, field)}
                           onChange={(e) =>
                             setDraft((d) => ({
