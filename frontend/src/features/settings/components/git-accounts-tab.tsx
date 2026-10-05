@@ -46,6 +46,12 @@ export function GitAccountsTab() {
   const [editing, setEditing] = useState<GitAccount | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [deleting, setDeleting] = useState<GitAccount | null>(null)
+  // The default is per host, so promoting an account silently displaces the
+  // host's current default; that swap is confirmed first.
+  const [promoting, setPromoting] = useState<{
+    account: GitAccount
+    displaced: GitAccount
+  } | null>(null)
 
   const accounts = data.accounts
   const forges = data.providers
@@ -60,6 +66,14 @@ export function GitAccountsTab() {
         onError: (error) => toast.error(error.message),
       },
     )
+
+  const requestDefault = (account: GitAccount) => {
+    const displaced = accounts.find(
+      (a) => a.is_default && a.host === account.host && a.id !== account.id,
+    )
+    if (displaced) setPromoting({ account, displaced })
+    else setDefault(account)
+  }
 
   return (
     <div className="space-y-4">
@@ -112,13 +126,16 @@ export function GitAccountsTab() {
                   key={account.id}
                   className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-3 py-2.5"
                 >
-                  <div className="min-w-0 flex-1">
+                  {/* Full width under sm so the action group wraps beneath
+                      the text instead of squeezing the meta line into a
+                      one-word-per-line column beside it. */}
+                  <div className="min-w-0 flex-1 basis-full sm:basis-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium">{account.label}</span>
                       {account.is_default && (
                         <Badge variant="outline" className="gap-1">
                           <Star aria-hidden className="h-3 w-3" />
-                          Default
+                          Default for {account.host}
                         </Badge>
                       )}
                     </div>
@@ -130,16 +147,16 @@ export function GitAccountsTab() {
                         ` · ${account.repo_count} repositor${account.repo_count === 1 ? "y" : "ies"}`}
                     </div>
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1">
                     {!account.is_default && (
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setDefault(account)}
+                        onClick={() => requestDefault(account)}
                         disabled={update.isPending}
                       >
                         <Star aria-hidden className="mr-1 h-4 w-4" />
-                        Set default
+                        Make default for {account.host}
                       </Button>
                     )}
                     <Button
@@ -176,6 +193,38 @@ export function GitAccountsTab() {
           open
           onOpenChange={setDialogOpen}
         />
+      )}
+      {promoting && (
+        <Dialog open onOpenChange={(open) => !open && setPromoting(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                Make {promoting.account.label} the default for{" "}
+                {promoting.account.host}?
+              </DialogTitle>
+              <DialogDescription>
+                {promoting.displaced.label} is the default for{" "}
+                {promoting.account.host} now and stops being it. Repositories
+                you add on that host preselect {promoting.account.label}{" "}
+                instead; existing repositories keep their account.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setPromoting(null)}>
+                Cancel
+              </Button>
+              <Button
+                disabled={update.isPending}
+                onClick={() => {
+                  setDefault(promoting.account)
+                  setPromoting(null)
+                }}
+              >
+                Make default
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
       {deleting && (
         <DeleteAccountDialog

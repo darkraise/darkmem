@@ -90,7 +90,8 @@ export function GitAccountDialog({
     e.preventDefault()
     if (isEdit) {
       const patch: Parameters<typeof update.mutate>[0]["data"] = {}
-      if (label.trim() && label.trim() !== account.label) patch.label = label.trim()
+      if (label.trim() && label.trim() !== account.label)
+        patch.label = label.trim()
       // An empty token field means "leave the stored one alone" — the server
       // only re-verifies when the value actually changes.
       if (token.trim()) patch.token = token.trim()
@@ -136,7 +137,9 @@ export function GitAccountDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Edit account" : "Add git account"}</DialogTitle>
+          <DialogTitle>
+            {isEdit ? "Edit account" : "Add git account"}
+          </DialogTitle>
           <DialogDescription>
             {isEdit
               ? "Leave the token blank to keep the stored one. Changing it re-checks the account with the provider."
@@ -147,9 +150,18 @@ export function GitAccountDialog({
           {!isEdit && (
             <>
               <div>
-                <Label className="text-muted-foreground">Provider</Label>
+                <Label
+                  htmlFor="git-account-provider"
+                  className="text-muted-foreground"
+                >
+                  Provider
+                </Label>
                 <Select value={provider} onValueChange={setProvider}>
-                  <SelectTrigger className="h-9 w-full">
+                  <SelectTrigger
+                    id="git-account-provider"
+                    aria-label="Provider"
+                    className="h-9 w-full"
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -162,31 +174,44 @@ export function GitAccountDialog({
                 </Select>
               </div>
               <div>
-                <Label className="text-muted-foreground">Host</Label>
+                <Label
+                  htmlFor="git-account-host"
+                  className="text-muted-foreground"
+                >
+                  Host
+                </Label>
                 <Input
+                  id="git-account-host"
                   value={host}
                   onChange={(e) => setHost(e.target.value)}
                   placeholder={forge?.default_host ?? "github.com"}
                 />
                 <p className="text-muted-foreground mt-1 text-sm">
-                  Leave blank for {forge?.default_host ?? "the provider default"}.
-                  Set it for a self-hosted install.
+                  Leave blank for{" "}
+                  {forge?.default_host ?? "the provider default"}. Set it for a
+                  self-hosted install.
                 </p>
               </div>
             </>
           )}
           <div>
-            <Label className="text-muted-foreground">
+            <Label
+              htmlFor="git-account-token"
+              className="text-muted-foreground"
+            >
               {isEdit ? "New token" : "Access token *"}
             </Label>
             <div className="flex gap-2">
               <PasswordInput className="flex-1">
                 <PasswordInputControl>
                   <PasswordInputField
+                    id="git-account-token"
                     value={token}
                     onChange={(e) => setToken(e.target.value)}
                     placeholder={
-                      isEdit ? `Keeps ••••${account.token_hint}` : "ghp_… or github_pat_…"
+                      isEdit
+                        ? `Keeps ••••${account.token_hint}`
+                        : "ghp_… or github_pat_…"
                     }
                     autoComplete="off"
                   />
@@ -213,15 +238,21 @@ export function GitAccountDialog({
             </div>
             {verify.data && (
               <p className="text-muted-foreground mt-1 flex items-center gap-1 text-sm">
-                <CheckCircle2 aria-hidden className="h-4 w-4 text-emerald-500" />
+                <CheckCircle2
+                  aria-hidden
+                  className="h-4 w-4 text-emerald-500"
+                />
                 {verify.data.username} on {verify.data.host}
                 {verify.data.scopes ? ` — ${verify.data.scopes}` : ""}
               </p>
             )}
           </div>
           <div>
-            <Label className="text-muted-foreground">Name *</Label>
+            <Label htmlFor="git-account-name" className="text-muted-foreground">
+              Name *
+            </Label>
             <Input
+              id="git-account-name"
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               placeholder="Personal, Work, CI bot…"
@@ -231,14 +262,15 @@ export function GitAccountDialog({
           <div className="flex items-start gap-2 rounded-md border px-3 py-2">
             <Switch
               className="mt-0.5"
+              aria-label={`Default for ${forge?.label ?? provider}`}
               checked={isDefault}
               onCheckedChange={setIsDefault}
             />
             <div className="text-sm">
               <div>Default for {forge?.label ?? provider}</div>
               <div className="text-muted-foreground text-sm">
-                Preselected when you add a repository on {effectiveHost}. Only one
-                account per host can hold this.
+                Preselected when you add a repository on {effectiveHost}. Only
+                one account per host can hold this.
               </div>
             </div>
           </div>
@@ -252,7 +284,9 @@ export function GitAccountDialog({
             </Button>
             <Button
               type="submit"
-              disabled={pending || (!isEdit && (!label.trim() || !token.trim()))}
+              disabled={
+                pending || (!isEdit && (!label.trim() || !token.trim()))
+              }
             >
               {pending ? "Saving..." : isEdit ? "Save" : "Add account"}
             </Button>
