@@ -37,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "darkraise-ui/components/select"
+import { Skeleton } from "darkraise-ui/components/skeleton"
 import { toast } from "darkraise-ui/components/sonner"
 import { cn } from "darkraise-ui/lib"
 import { LayerChip, VerificationBadge } from "@/components/darkmem"
@@ -188,7 +189,9 @@ function DreamGroup({ group }: { group: DemoDreamGroup }) {
         <span className="text-muted-foreground font-mono text-sm">
           {group.count_label}
         </span>
-        <span className="text-muted-foreground ml-auto text-sm whitespace-nowrap">
+        {/* Its own line on a phone: the retention note is the longest thing in
+            the header and was cut off at the card edge when held to one row. */}
+        <span className="text-muted-foreground basis-full text-sm sm:ml-auto sm:basis-auto">
           {cycle.undoable_until_label} · {cycle.retention_label}
         </span>
         {group.batchable && (
@@ -198,7 +201,9 @@ function DreamGroup({ group }: { group: DemoDreamGroup }) {
             onClick={() => setConfirmOpen(true)}
           >
             <Undo2 className="mr-1.5 size-3.5" />
-            Undo batch ({entries.length})
+            {/* What the button can still do, not how many entries exist: an
+                undone or blocked entry is not undoable. */}
+            Undo batch ({eligible.length})
           </Button>
         )}
       </div>
@@ -292,100 +297,105 @@ function DemoDreamDigest() {
         state="populated"
         meta={cycle.window_label}
       >
-      <div className="flex flex-wrap items-center gap-2.5">
-        <span className="text-muted-foreground text-sm">
-          {cycle.trigger_label}
-        </span>
-      </div>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <span className="text-muted-foreground text-sm">
+            {cycle.trigger_label}
+          </span>
+        </div>
 
-      <div className="grid grid-cols-2 gap-2.5 md:grid-cols-5">
-        {stats.map((stat) => (
-          <div
-            key={stat.label}
-            className={cn(
-              "border-border flex flex-col gap-0.5 rounded-md border p-2.5",
-              stat.caution && "border-warning/50 bg-warning/5",
-            )}
-          >
-            <span
+        <div className="grid grid-cols-2 gap-2.5 md:grid-cols-5">
+          {stats.map((stat) => (
+            <div
+              key={stat.label}
               className={cn(
-                "font-mono text-xl font-semibold",
-                stat.caution && "text-warning-text",
+                "border-border flex flex-col gap-0.5 rounded-md border p-2.5",
+                stat.caution && "border-warning/50 bg-warning/5",
               )}
             >
-              {stat.value}
-            </span>
-            <span className="text-muted-foreground text-sm">{stat.label}</span>
-            {stat.split && (
-              <span className="text-muted-foreground font-mono text-xs">
-                {stat.split}
+              <span
+                className={cn(
+                  "font-mono text-xl font-semibold",
+                  stat.caution && "text-warning-text",
+                )}
+              >
+                {stat.value}
               </span>
-            )}
-          </div>
-        ))}
-      </div>
-
-      <div className="space-y-3">
-        {cycle.groups.map((group) => (
-          <DreamGroup key={group.type} group={group} />
-        ))}
-      </div>
-
-      {cycle.disputed && (
-        <div className="border-destructive/45 bg-destructive/5 space-y-2.5 rounded-md border border-dashed p-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="border-warning/55 bg-warning/10 text-warning-text inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm font-semibold">
-              <Scale aria-hidden className="h-3.5 w-3.5" />
-              Disputed (surfaced this cycle)
-            </span>
-            <LayerChip layer={2} />
-          </div>
-          <p className="text-sm font-semibold">{cycle.disputed.legend}</p>
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto_1fr]">
-            <div className="border-border space-y-1.5 rounded-md border p-2.5">
-              <VerificationBadge status="disputed" />
-              <p className="text-sm">{cycle.disputed.sides[0].assertion}</p>
-              <p className="text-muted-foreground text-sm">
-                {cycle.disputed.sides[0].origins}
-              </p>
-            </div>
-            <div className="text-muted-foreground flex items-center justify-center font-mono text-sm uppercase">
-              vs
-            </div>
-            <div className="border-border space-y-1.5 rounded-md border p-2.5">
-              <VerificationBadge status="disputed" />
-              <p className="text-sm">{cycle.disputed.sides[1].assertion}</p>
-              <p className="text-muted-foreground text-sm">
-                {cycle.disputed.sides[1].origins}
-              </p>
-            </div>
-          </div>
-          <p className="text-muted-foreground text-sm">{cycle.disputed.note}</p>
-        </div>
-      )}
-
-      <Collapsible open={pastOpen} onOpenChange={setPastOpen}>
-        <div className="border-border rounded-md border border-dashed">
-          <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2.5 text-sm">
-            <Lock aria-hidden className="text-muted-foreground h-4 w-4" />
-            Earlier cycles — {pastActions.length} actions past their undo window
-            <ChevronDown
-              aria-hidden
-              className={cn(
-                "text-muted-foreground ml-auto h-4 w-4 transition-transform",
-                pastOpen && "rotate-180",
+              <span className="text-muted-foreground text-sm">
+                {stat.label}
+              </span>
+              {stat.split && (
+                <span className="text-muted-foreground font-mono text-xs">
+                  {stat.split}
+                </span>
               )}
-            />
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <div className="border-border space-y-2 border-t border-dashed p-3">
-              {pastActions.map((action) => (
-                <DreamEntry key={action.id} action={action} />
-              ))}
             </div>
-          </CollapsibleContent>
+          ))}
         </div>
-      </Collapsible>
+
+        <div className="space-y-3">
+          {cycle.groups.map((group) => (
+            <DreamGroup key={group.type} group={group} />
+          ))}
+        </div>
+
+        {cycle.disputed && (
+          <div className="border-destructive/45 bg-destructive/5 space-y-2.5 rounded-md border border-dashed p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="border-warning/55 bg-warning/10 text-warning-text inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm font-semibold">
+                <Scale aria-hidden className="h-3.5 w-3.5" />
+                Disputed (surfaced this cycle)
+              </span>
+              <LayerChip layer={2} />
+            </div>
+            <p className="text-sm font-semibold">{cycle.disputed.legend}</p>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto_1fr]">
+              <div className="border-border space-y-1.5 rounded-md border p-2.5">
+                <VerificationBadge status="disputed" />
+                <p className="text-sm">{cycle.disputed.sides[0].assertion}</p>
+                <p className="text-muted-foreground text-sm">
+                  {cycle.disputed.sides[0].origins}
+                </p>
+              </div>
+              <div className="text-muted-foreground flex items-center justify-center font-mono text-sm uppercase">
+                vs
+              </div>
+              <div className="border-border space-y-1.5 rounded-md border p-2.5">
+                <VerificationBadge status="disputed" />
+                <p className="text-sm">{cycle.disputed.sides[1].assertion}</p>
+                <p className="text-muted-foreground text-sm">
+                  {cycle.disputed.sides[1].origins}
+                </p>
+              </div>
+            </div>
+            <p className="text-muted-foreground text-sm">
+              {cycle.disputed.note}
+            </p>
+          </div>
+        )}
+
+        <Collapsible open={pastOpen} onOpenChange={setPastOpen}>
+          <div className="border-border rounded-md border border-dashed">
+            <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2.5 text-sm">
+              <Lock aria-hidden className="text-muted-foreground h-4 w-4" />
+              Earlier cycles — {pastActions.length} actions past their undo
+              window
+              <ChevronDown
+                aria-hidden
+                className={cn(
+                  "text-muted-foreground ml-auto h-4 w-4 transition-transform",
+                  pastOpen && "rotate-180",
+                )}
+              />
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="border-border space-y-2 border-t border-dashed p-3">
+                {pastActions.map((action) => (
+                  <DreamEntry key={action.id} action={action} />
+                ))}
+              </div>
+            </CollapsibleContent>
+          </div>
+        </Collapsible>
       </ModuleSurface>
     </div>
   )
@@ -654,18 +664,14 @@ export function LiveDreamDigest() {
 
   if (cyclesError) {
     // Invariant 14: a failed read is never rendered as an empty cycle list.
-    return (
-      <EmptyState
-        kind="failed"
-        title="Could not load dream cycles"
-      />
-    )
+    return <EmptyState kind="failed" title="Could not load dream cycles" />
   }
   if (!cyclesLoading && cycles.length === 0) {
     return (
       <EmptyState
-        kind="failed"
+        kind="empty"
         title="No consolidation cycles yet"
+        description="A cycle appears here once the dream jobs have run."
       />
     )
   }
@@ -684,108 +690,118 @@ export function LiveDreamDigest() {
         state={digestError ? "error" : digest ? "populated" : "empty"}
         meta={`${cyclesTotal} cycles`}
       >
-      <div className="flex flex-wrap items-center gap-2.5">
-        <Select
-          value={selectedCycleId ?? undefined}
-          onValueChange={selectCycle}
-        >
-          <SelectTrigger
-            className="w-auto min-w-52 rounded-full"
-            aria-label="Cycle"
+        <div className="flex flex-wrap items-center gap-2.5">
+          <Select
+            value={selectedCycleId ?? undefined}
+            onValueChange={selectCycle}
           >
-            <SelectValue>
-              {activeCycle
-                ? `cycle #${activeCycle.cycle_id} — ${activeCycle.total} actions`
-                : cyclesLoading
-                  ? "loading cycles…"
-                  : "select a cycle"}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {cycles.map((c) => (
-              <SelectItem key={c.cycle_id} value={c.cycle_id}>
-                cycle #{c.cycle_id} — {c.total} actions
-                {c.origin ? ` · ${c.origin}` : " · automated"}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {activeCycle && (
-          <span className="text-muted-foreground font-mono text-sm">
-            {relativeTime(activeCycle.started_at)} –{" "}
-            {relativeTime(activeCycle.ended_at)}
-          </span>
-        )}
-        {cyclesHasMore && (
-          <Button
-            variant="outline"
-            disabled={cyclesFetchingMore}
-            onClick={fetchMoreCycles}
-          >
-            {cyclesFetchingMore ? "loading…" : "load more cycles"}
-          </Button>
-        )}
-      </div>
-
-      {digestError ? (
-        <EmptyState
-          kind="failed"
-          title="Could not load this cycle"
-        />
-      ) : digestLoading || !digest ? (
-        <EmptyState
-          kind="failed"
-          title="Loading cycle"
-        />
-      ) : (
-        <>
-          <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
-            {Object.entries(digest.counts).map(([action, count]) => (
-              <div
-                key={action}
-                className="border-border flex flex-col gap-0.5 rounded-md border p-2.5"
-              >
-                <span className="font-mono text-xl font-semibold">{count}</span>
-                <span className="text-muted-foreground text-sm">
-                  {actionLabel(action)}
-                </span>
-              </div>
-            ))}
-            <div className="border-border flex flex-col gap-0.5 rounded-md border p-2.5">
-              <span className="font-mono text-xl font-semibold">
-                {digest.undone_count}
-              </span>
-              <span className="text-muted-foreground text-sm">undone</span>
-            </div>
-          </div>
-
-          <div className="flex justify-end">
+            <SelectTrigger
+              className="w-auto min-w-52 rounded-full"
+              aria-label="Cycle"
+            >
+              <SelectValue>
+                {activeCycle
+                  ? `cycle #${activeCycle.cycle_id} — ${activeCycle.total} actions`
+                  : cyclesLoading
+                    ? "loading cycles…"
+                    : "select a cycle"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {cycles.map((c) => (
+                <SelectItem key={c.cycle_id} value={c.cycle_id}>
+                  cycle #{c.cycle_id} — {c.total} actions
+                  {c.origin ? ` · ${c.origin}` : " · automated"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {activeCycle && (
+            <span className="text-muted-foreground font-mono text-sm">
+              {relativeTime(activeCycle.started_at)} –{" "}
+              {relativeTime(activeCycle.ended_at)}
+            </span>
+          )}
+          {cyclesHasMore && (
             <Button
               variant="outline"
-              disabled={cycleEligible.length === 0}
-              onClick={() => setConfirmCycle(true)}
+              disabled={cyclesFetchingMore}
+              onClick={fetchMoreCycles}
             >
-              <Undo2 className="mr-1.5 size-3.5" />
-              Undo remaining in cycle ({cycleEligible.length})
+              {cyclesFetchingMore ? "loading…" : "load more cycles"}
             </Button>
-          </div>
+          )}
+        </div>
 
-          <div className="space-y-3">
-            {digest.objects.map((group) => (
-              <LiveObjectGroupPanel
-                key={group.object_id}
-                group={group}
-                onUndoAction={async (eventId) =>
-                  reportOutcome(`action #${eventId}`, await undoAction(eventId))
-                }
-                onUndoGroup={(g, actions) =>
-                  setConfirmGroup({ group: g, actions })
-                }
-              />
-            ))}
+        {digestError ? (
+          <EmptyState kind="failed" title="Could not load this cycle" />
+        ) : digestLoading || !digest ? (
+          <div
+            aria-busy="true"
+            aria-label="Loading cycle"
+            className="space-y-2.5"
+          >
+            <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
+              {Array.from({ length: 4 }, (_, i) => (
+                <Skeleton key={i} className="h-16 w-full rounded-md" />
+              ))}
+            </div>
+            <Skeleton className="h-32 w-full rounded-lg" />
           </div>
-        </>
-      )}
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
+              {Object.entries(digest.counts).map(([action, count]) => (
+                <div
+                  key={action}
+                  className="border-border flex flex-col gap-0.5 rounded-md border p-2.5"
+                >
+                  <span className="font-mono text-xl font-semibold">
+                    {count}
+                  </span>
+                  <span className="text-muted-foreground text-sm">
+                    {actionLabel(action)}
+                  </span>
+                </div>
+              ))}
+              <div className="border-border flex flex-col gap-0.5 rounded-md border p-2.5">
+                <span className="font-mono text-xl font-semibold">
+                  {digest.undone_count}
+                </span>
+                <span className="text-muted-foreground text-sm">undone</span>
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <Button
+                variant="outline"
+                disabled={cycleEligible.length === 0}
+                onClick={() => setConfirmCycle(true)}
+              >
+                <Undo2 className="mr-1.5 size-3.5" />
+                Undo remaining in cycle ({cycleEligible.length})
+              </Button>
+            </div>
+
+            <div className="space-y-3">
+              {digest.objects.map((group) => (
+                <LiveObjectGroupPanel
+                  key={group.object_id}
+                  group={group}
+                  onUndoAction={async (eventId) =>
+                    reportOutcome(
+                      `action #${eventId}`,
+                      await undoAction(eventId),
+                    )
+                  }
+                  onUndoGroup={(g, actions) =>
+                    setConfirmGroup({ group: g, actions })
+                  }
+                />
+              ))}
+            </div>
+          </>
+        )}
       </ModuleSurface>
 
       <AlertDialog

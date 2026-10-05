@@ -1,6 +1,11 @@
+import { toast } from "darkraise-ui/components/sonner"
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoStore } from "@/demo/store"
-import { useJobBoard, type JobBoardState } from "@/features/activity/use-job-board"
+import type { DemoJob } from "@/features/activity/types"
+import {
+  useJobBoard,
+  type JobBoardState,
+} from "@/features/activity/use-job-board"
 import { useUpdateJob } from "@/hooks/api"
 
 export interface JobsSettingsBinding extends JobBoardState {
@@ -31,4 +36,29 @@ export function useJobsSettingsBinding(): JobsSettingsBinding {
     saveCron: (key, cron) => updateJob.mutate({ key, data: { cron } }),
     setEnabled: (key, enabled) => updateJob.mutate({ key, data: { enabled } }),
   }
+}
+
+/**
+ * Trigger a job and report the outcome as a toast. Shared by /jobs and
+ * Activity → Jobs so both doors answer a trigger the same way. A held lock
+ * resolves `{ok:false, 409}` rather than throwing, so it is reported as busy,
+ * never as a request failure.
+ */
+export function triggerWithToast(
+  trigger: JobBoardState["trigger"],
+  job: Pick<DemoJob, "key" | "name">,
+): void {
+  trigger(job.key)
+    .then((result) => {
+      if (result.ok) toast.success(`${job.name} — triggered`)
+      else
+        toast.warning(`${job.name} — busy`, {
+          description: "Already running; try again when it finishes.",
+        })
+    })
+    .catch((err: unknown) => {
+      toast.error(`Trigger failed for ${job.name}`, {
+        description: err instanceof Error ? err.message : undefined,
+      })
+    })
 }

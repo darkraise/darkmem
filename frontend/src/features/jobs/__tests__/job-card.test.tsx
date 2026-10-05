@@ -19,14 +19,43 @@ function renderCard(key: string) {
 }
 
 describe("JobGridCard", () => {
-  it("expands its description on click", async () => {
+  it("expands a clamped description from a visible more/less control", async () => {
+    // jsdom does no layout: report the clamped description as overflowing.
+    const spy = vi
+      .spyOn(HTMLElement.prototype, "scrollHeight", "get")
+      .mockReturnValue(100)
     const job = renderCard("pipeline_failure_cleanup")
-    const description = screen.getByRole("button", { name: job.description })
+    const description = screen.getByRole("button", {
+      name: new RegExp(job.description.slice(0, 20)),
+    })
     expect(description).toHaveAttribute("aria-expanded", "false")
-    expect(description).toHaveClass("line-clamp-2")
+    expect(description).toHaveClass("cursor-pointer")
+    expect(description).toHaveTextContent(/more$/)
+    expect(screen.getByText(job.description)).toHaveClass("line-clamp-2")
     await userEvent.click(description)
     expect(description).toHaveAttribute("aria-expanded", "true")
-    expect(description).not.toHaveClass("line-clamp-2")
+    expect(description).toHaveTextContent(/less$/)
+    expect(screen.getByText(job.description)).not.toHaveClass("line-clamp-2")
+    spy.mockRestore()
+  })
+
+  it("leaves a description that fits as plain text", () => {
+    const job = renderCard("pipeline_failure_cleanup")
+    expect(screen.getByText(job.description).closest("button")).toBeNull()
+  })
+
+  it("marks a disabled job in words, not only by its switch", () => {
+    const job = useDemoStore.getState().jobs.find((j) => j.key === "repo_sync")!
+    render(
+      <JobGridCard
+        job={{ ...job, enabled: false }}
+        onTrigger={vi.fn()}
+        onConfigure={vi.fn()}
+        onHistory={vi.fn()}
+        onToggleEnabled={vi.fn()}
+      />,
+    )
+    expect(screen.getByText("disabled")).toBeInTheDocument()
   })
 
   it("offers Run as an outline button", () => {

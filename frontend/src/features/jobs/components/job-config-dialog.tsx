@@ -31,7 +31,8 @@ export function JobConfigDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[80vh] max-w-2xl flex-col gap-3">
         <DialogHeader>
-          <DialogTitle>{job.name} — configuration</DialogTitle>
+          {/* pr-8 keeps a long name clear of the dialog's close button. */}
+          <DialogTitle className="pr-8">{job.name} — configuration</DialogTitle>
           <DialogDescription className="sr-only">
             Schedule and settings for {job.name}
           </DialogDescription>

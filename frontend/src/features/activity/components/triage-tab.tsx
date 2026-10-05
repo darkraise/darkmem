@@ -1,5 +1,17 @@
+import { useState } from "react"
 import { FileText, FolderGit2, RefreshCw, X } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "darkraise-ui/components/alert-dialog"
 import { Button } from "darkraise-ui/components/button"
+import { toast } from "darkraise-ui/components/sonner"
 import { EmptyState, listItemClass } from "@/components/darkmem"
 import { cn } from "darkraise-ui/lib"
 import { groupFailuresByStep, isPoison } from "@/demo/activity"
@@ -17,6 +29,7 @@ function FailureRow({
   forget: (id: string) => void
 }) {
   const poison = isPoison(failure)
+  const [confirmForget, setConfirmForget] = useState(false)
   const Icon = failure.target_kind === "memory" ? FileText : FolderGit2
 
   return (
@@ -30,7 +43,9 @@ function FailureRow({
     >
       <div className="flex flex-wrap items-center gap-2.5">
         <Icon aria-hidden className="text-muted-foreground h-4 w-4 shrink-0" />
-        <span className="min-w-0 flex-1 text-sm font-semibold">
+        {/* basis-full below sm: the chips and attempt count drop to their
+            own line rather than squeezing the title to a word per line. */}
+        <span className="min-w-0 basis-[calc(100%-1.625rem)] text-sm font-semibold sm:flex-1 sm:basis-auto">
           {failure.target_label}
         </span>
         <span className="border-border bg-muted/40 text-muted-foreground rounded-sm border px-2 py-0.5 font-mono text-xs">
@@ -73,7 +88,12 @@ function FailureRow({
           variant={poison ? "outline" : "default"}
           className={cn(poison && "border-warning/60 text-warning-text")}
           disabled={failure.retry_queued}
-          onClick={() => retry(failure.id)}
+          onClick={() => {
+            retry(failure.id)
+            toast.success("Retry queued", {
+              description: failure.target_label,
+            })
+          }}
         >
           <RefreshCw className="mr-1.5 size-3.5" />
           {failure.retry_queued
@@ -82,11 +102,40 @@ function FailureRow({
               ? "Retry anyway"
               : "Retry"}
         </Button>
-        <Button variant="outline" onClick={() => forget(failure.id)}>
+        <Button variant="outline" onClick={() => setConfirmForget(true)}>
           <X className="mr-1.5 size-3.5" />
           Forget
         </Button>
       </div>
+
+      {/* Forget sits beside Retry and cannot be taken back, so it confirms. */}
+      <AlertDialog open={confirmForget} onOpenChange={setConfirmForget}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Forget this failure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The failure record for {failure.target_label} is removed from
+              triage and is not retried. This cannot be undone; it reappears
+              only if the {failure.failed_step} step fails again.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                forget(failure.id)
+                setConfirmForget(false)
+                toast.success("Failure forgotten", {
+                  description: failure.target_label,
+                })
+              }}
+            >
+              <X className="mr-1.5 size-3.5" />
+              Forget
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
@@ -95,7 +144,24 @@ export function TriageTab() {
   const { failures, isLoading, isError, retry, retryAll, forget } =
     usePipelineTriage()
   const groups = groupFailuresByStep(failures)
-  const retryable = failures.filter((f) => !f.retry_queued).length
+  const queueable = failures.filter((f) => !f.retry_queued)
+  // A poison row says retrying won't help and asks for an explicit "Retry
+  // anyway", so the bulk action leaves those rows out rather than overriding
+  // the per-row guidance. With no poison row it stays the one retry-all call.
+  const poisonCount = queueable.filter(isPoison).length
+  const bulkTargets = queueable.filter((f) => !isPoison(f))
+  const retryBulk = () => {
+    if (poisonCount === 0) retryAll()
+    else for (const f of bulkTargets) retry(f.id)
+    toast.success(
+      `Retry queued for ${bulkTargets.length} failure${bulkTargets.length === 1 ? "" : "s"}`,
+      poisonCount > 0
+        ? {
+            description: `${poisonCount} poison row${poisonCount === 1 ? "" : "s"} skipped; retry ${poisonCount === 1 ? "it" : "them"} individually.`,
+          }
+        : undefined,
+    )
+  }
 
   return (
     <div className="space-y-4">
@@ -107,27 +173,23 @@ export function TriageTab() {
           failures.length > 0 ? (
             <Button
               variant="outline"
-              disabled={retryable === 0}
-              onClick={retryAll}
+              disabled={bulkTargets.length === 0}
+              onClick={retryBulk}
             >
               <RefreshCw className="mr-1.5 size-3.5" />
-              Retry all
+              {poisonCount > 0 && bulkTargets.length > 0
+                ? `Retry ${bulkTargets.length} non-poison`
+                : "Retry all"}
             </Button>
           ) : undefined
         }
       >
         {isError ? (
-          <EmptyState
-            kind="failed"
-            title="Couldn't load pipeline failures"
-          />
+          <EmptyState kind="failed" title="Couldn't load pipeline failures" />
         ) : failures.length === 0 && !isLoading ? (
           // Healthy-empty: a queue at zero is a positive state, not an
           // absence to explain away.
-          <EmptyState
-            kind="resolved"
-            title="No failures to triage"
-          />
+          <EmptyState kind="resolved" title="No failures to triage" />
         ) : (
           groups.map((group) => (
             <div key={group.step} className="space-y-2">

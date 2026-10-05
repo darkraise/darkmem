@@ -251,7 +251,7 @@ export function UsageOverview({
         </Card>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle className="text-sm">Spend over time</CardTitle>
@@ -270,8 +270,12 @@ export function UsageOverview({
         </Card>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <BreakdownTable title="By model" keyLabel="Model" rows={data.by_model} />
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
+        <BreakdownTable
+          title="By model"
+          keyLabel="Model"
+          rows={data.by_model}
+        />
         <BreakdownTable
           title="By subject"
           keyLabel="Subject"
