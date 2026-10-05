@@ -11,9 +11,9 @@ import { describeCron } from "../cron-describe"
 /**
  * Schedule and last-run state, drawn rather than spelled out.
  *
- * The cron leads with its plain reading ("At 5:00 AM every day") and keeps
- * the expression in the tooltip, because the expression is what actually
- * governs the job and must stay reachable. When `describeCron` cannot read an
+ * The cron leads with its plain reading ("At 5:00 AM every day") and prints
+ * the expression after it in muted mono (and in the tooltip), because the
+ * expression is what actually governs the job and must stay reachable. When `describeCron` cannot read an
  * expression confidently it returns null and the expression itself is shown —
  * a wrong sentence beside a cron the reader can see is worse than no sentence.
  */
@@ -22,15 +22,37 @@ export function JobSchedule({ cron }: { cron: string }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="text-muted-foreground inline-flex w-fit min-w-0 items-center gap-1.5 text-sm">
+        <span
+          tabIndex={0}
+          className="text-muted-foreground focus-visible:ring-ring inline-flex w-fit min-w-0 flex-wrap items-center gap-x-1.5 rounded-sm text-sm outline-none focus-visible:ring-1"
+        >
           <Clock aria-hidden className="size-[var(--icon-size-sm)] shrink-0" />
-          <span className="truncate">{plain ?? cron}</span>
+          <span className="min-w-0">{plain ?? cron}</span>
+          {plain && (
+            <code className="text-muted-foreground/80 shrink-0 font-mono text-xs">
+              {cron}
+            </code>
+          )}
         </span>
       </TooltipTrigger>
       <TooltipContent>
         <span className="font-mono">{cron}</span>
       </TooltipContent>
     </Tooltip>
+  )
+}
+
+/** Says in words that a job will not run, so a scan of the board does not
+ *  depend on reading every switch. */
+export function JobDisabledBadge() {
+  return (
+    <Badge
+      variant="outline"
+      size="sm"
+      className="text-muted-foreground w-fit shrink-0"
+    >
+      disabled
+    </Badge>
   )
 }
 
@@ -43,7 +65,10 @@ export function JobLastRun({ job }: { job: DemoJob }) {
   if (job.running) {
     return (
       <Badge className="w-fit gap-1.5">
-        <CircleDashed aria-hidden className="size-[var(--icon-size-sm)] animate-spin" />
+        <CircleDashed
+          aria-hidden
+          className="size-[var(--icon-size-sm)] animate-spin"
+        />
         running
       </Badge>
     )
@@ -69,7 +94,9 @@ export function JobLastRun({ job }: { job: DemoJob }) {
     >
       <Icon aria-hidden className="size-[var(--icon-size-sm)] shrink-0" />
       {!ok && <span className="font-medium">failed</span>}
-      <span className="text-muted-foreground truncate">{when ?? job.last_status}</span>
+      <span className="text-muted-foreground truncate">
+        {when ?? job.last_status}
+      </span>
     </span>
   )
 }
