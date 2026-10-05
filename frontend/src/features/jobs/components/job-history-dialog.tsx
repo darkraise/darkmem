@@ -41,8 +41,12 @@ function RunRow({ run }: { run: JobRun }) {
             manual
           </Badge>
         )}
+        {/* Schedules read in UTC; a run time with no zone beside them read
+            as the same clock. */}
         <span className="text-muted-foreground ml-auto font-mono text-xs">
-          {new Date(run.started_at).toLocaleString()}
+          {new Date(run.started_at).toLocaleString(undefined, {
+            timeZoneName: "short",
+          })}
         </span>
       </div>
 
