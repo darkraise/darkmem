@@ -37,7 +37,11 @@ export function WorklogSearch({
         />
       </form>
       {search.isError ? (
-        <EmptyState kind="failed" title="The search failed" description={search.error.message} />
+        <EmptyState
+          kind="failed"
+          title="The search failed"
+          description={search.error.message}
+        />
       ) : search.isSuccess && hits.length === 0 ? (
         <EmptyState kind="filtered" title="No entry matches" />
       ) : null}
@@ -55,14 +59,19 @@ export function WorklogSearch({
                 onClick={() => onOpen(hit.workstream, hit.entry.id)}
                 className={listItemClass({
                   interactive: true,
-                  className: "bg-card flex w-full items-center gap-2 p-2 text-left text-sm",
+                  // Solid, as the workstream list beside it is: dashed is
+                  // this panel's warning and drop-zone edge.
+                  className:
+                    "bg-card flex w-full items-center gap-2 border-solid p-2 text-left text-sm",
                 })}
               >
                 <Badge variant="outline">{hit.entry.kind}</Badge>
                 <span className="text-muted-foreground shrink-0 font-mono text-xs">
                   {hit.workstream}
                 </span>
-                <span className="min-w-0 flex-1 truncate">{firstLine(hit.entry.body)}</span>
+                <span className="min-w-0 flex-1 truncate">
+                  {firstLine(hit.entry.body)}
+                </span>
               </button>
             </li>
           ))}

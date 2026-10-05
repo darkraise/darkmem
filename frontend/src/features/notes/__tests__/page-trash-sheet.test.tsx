@@ -27,7 +27,10 @@ function wrapper({ children }: { children: ReactNode }) {
   const [qc] = useState(
     () =>
       new QueryClient({
-        defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+        defaultOptions: {
+          queries: { retry: false },
+          mutations: { retry: false },
+        },
       }),
   )
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
@@ -40,7 +43,12 @@ const TRASH = [
     parent_id: null,
     deleted_at: new Date(Date.now() - 3600_000).toISOString(),
   },
-  { id: "p2", title: null, parent_id: null, deleted_at: new Date().toISOString() },
+  {
+    id: "p2",
+    title: null,
+    parent_id: null,
+    deleted_at: new Date().toISOString(),
+  },
 ]
 
 function open(props: Partial<Parameters<typeof PageTrashSheet>[0]> = {}) {
@@ -61,6 +69,7 @@ function open(props: Partial<Parameters<typeof PageTrashSheet>[0]> = {}) {
 beforeEach(() => {
   vi.mocked(apiFetch).mockReset()
   vi.mocked(toast.error).mockReset()
+  vi.mocked(toast.success).mockReset()
 })
 
 describe("PageTrashSheet", () => {
@@ -86,6 +95,8 @@ describe("PageTrashSheet", () => {
       }),
     )
     await waitFor(() => expect(onRestored).toHaveBeenCalled())
+    // Confirmed in a toast; the sheet itself is left open for the next one.
+    expect(vi.mocked(toast.success)).toHaveBeenCalledWith("Gone restored")
   })
 
   it("shows the server's own message when a restore is refused", async () => {
@@ -109,20 +120,29 @@ describe("PageTrashSheet", () => {
         ? Promise.resolve({ purged: 2 })
         : Promise.resolve(TRASH),
     )
-    open()
+    const onOpenChange = vi.fn()
+    open({ onOpenChange })
     await screen.findByText("Gone")
     fireEvent.click(await screen.findByRole("button", { name: "Empty trash" }))
     expect(vi.mocked(apiFetch)).not.toHaveBeenCalledWith(
       expect.stringContaining("/trash/empty"),
       expect.anything(),
     )
-    fireEvent.click(await screen.findByRole("button", { name: "Delete permanently" }))
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Delete permanently" }),
+    )
     await waitFor(() =>
       expect(vi.mocked(apiFetch)).toHaveBeenCalledWith(
         "/pages/trash/empty?project=personal",
         { method: "POST" },
       ),
     )
+    // A success says so and closes the sheet rather than leaving it open
+    // with no feedback.
+    await waitFor(() =>
+      expect(vi.mocked(toast.success)).toHaveBeenCalledWith("Trash emptied"),
+    )
+    expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
   it("says the trash is empty rather than showing nothing", async () => {

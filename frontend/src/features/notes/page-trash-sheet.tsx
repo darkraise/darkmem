@@ -32,7 +32,9 @@ export function PageTrashSheet({
   project: string
   open: boolean
   onOpenChange: (open: boolean) => void
-  onRestored: () => void
+  /** Told after each restore. The sheet stays open: restoring three pages
+   *  used to mean reopening it three times. */
+  onRestored?: () => void
 }) {
   const trash = usePagesTrash(project, open)
   const restore = usePageRestore()
@@ -80,7 +82,10 @@ export function PageTrashSheet({
                   aria-label={`Restore ${label}`}
                   onClick={() =>
                     restore.mutate(item.id, {
-                      onSuccess: () => onRestored(),
+                      onSuccess: () => {
+                        toast.success(`${label} restored`)
+                        onRestored?.()
+                      },
                       // The server's own message, because the only refusal
                       // here -- a still-trashed parent -- names the page the
                       // operator has to restore first.
@@ -117,8 +122,16 @@ export function PageTrashSheet({
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction
+                // The library hard-codes `data-variant="default"` (the
+                // primary green) and spreads props after it, so this is how
+                // an irreversible confirm gets the destructive colour.
+                data-variant="destructive"
                 onClick={() =>
                   empty.mutate(project, {
+                    onSuccess: () => {
+                      toast.success("Trash emptied")
+                      onOpenChange(false)
+                    },
                     onError: (error) => toast.error(String(error.message)),
                   })
                 }

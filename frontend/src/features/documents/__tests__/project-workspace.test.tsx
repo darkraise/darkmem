@@ -1,5 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { useState, type ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -57,7 +63,10 @@ vi.mock("@/features/worklog/components/work-log-panel", () => ({
       <button type="button" onClick={() => onOpenDocument?.("notes/design.md")}>
         open design
       </button>
-      <button type="button" onClick={() => onOpenDocument?.("notes/missing.md")}>
+      <button
+        type="button"
+        onClick={() => onOpenDocument?.("notes/missing.md")}
+      >
         open missing
       </button>
     </div>
@@ -87,7 +96,10 @@ let lastQueryClient: QueryClient | null = null
 function wrapper({ children }: { children: ReactNode }) {
   const [qc] = useState(() => {
     const client = new QueryClient({
-      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
     })
     lastQueryClient = client
     return client
@@ -106,7 +118,11 @@ function mockDocuments(result: unknown | "fail") {
     // connections panel would render "not comparable yet" for every
     // document and this file would be asserting against the wrong state.
     if (path.endsWith("/connections")) {
-      return Promise.resolve({ items: [], embedded: true, comparable_documents: 0 })
+      return Promise.resolve({
+        items: [],
+        embedded: true,
+        comparable_documents: 0,
+      })
     }
     if (path.endsWith("/summary")) {
       return Promise.resolve(null)
@@ -115,7 +131,12 @@ function mockDocuments(result: unknown | "fail") {
       return Promise.resolve({
         document_id: DOC.id,
         items: [
-          { block_id: "block-h1", level: 1, text: "Design notes", order_index: 0 },
+          {
+            block_id: "block-h1",
+            level: 1,
+            text: "Design notes",
+            order_index: 0,
+          },
           { block_id: "block-h2", level: 2, text: "Storage", order_index: 4 },
         ],
       })
@@ -129,9 +150,16 @@ function mockDocuments(result: unknown | "fail") {
   })
 }
 
-function renderWorkspace(props: Partial<Parameters<typeof ProjectWorkspace>[0]> = {}) {
+function renderWorkspace(
+  props: Partial<Parameters<typeof ProjectWorkspace>[0]> = {},
+) {
   return render(
-    <ProjectWorkspace project="darkmem" tab="artifacts" onTabChange={vi.fn()} {...props} />,
+    <ProjectWorkspace
+      project="darkmem"
+      tab="artifacts"
+      onTabChange={vi.fn()}
+      {...props}
+    />,
     { wrapper },
   )
 }
@@ -165,7 +193,11 @@ function ProjectSwitcher({
           onTabChange={vi.fn()}
         />
       ) : (
-        <ProjectWorkspace project={project} tab="artifacts" onTabChange={vi.fn()} />
+        <ProjectWorkspace
+          project={project}
+          tab="artifacts"
+          onTabChange={vi.fn()}
+        />
       )}
     </>
   )
@@ -277,9 +309,13 @@ describe("project workspace — selection identity", () => {
     // ProjectWorkspace instance stays mounted and its document list
     // refetches under it, rather than the tree remounting.
     mockDocuments({ items: [moved] })
-    await lastQueryClient?.invalidateQueries({ queryKey: ["documentsAll", "darkmem"] })
+    await lastQueryClient?.invalidateQueries({
+      queryKey: ["documentsAll", "darkmem"],
+    })
 
-    await waitFor(() => expect(within(crumbs()).getByText(/new/)).toBeInTheDocument())
+    await waitFor(() =>
+      expect(within(crumbs()).getByText(/new/)).toBeInTheDocument(),
+    )
     expect(within(crumbs()).queryByText(/old/)).not.toBeInTheDocument()
   })
 })
@@ -304,6 +340,27 @@ describe("project workspace — layout", () => {
     const crumbs = await screen.findByLabelText("document path")
     expect(crumbs).toHaveTextContent("notes")
     expect(crumbs).toHaveTextContent("design.md")
+  })
+
+  it("marks only the open document as the current page, with valid list nesting", async () => {
+    mockDocuments({ items: [DOC] })
+    renderWorkspace()
+    fireEvent.click(await screen.findByText("design.md"))
+    const crumbs = await screen.findByLabelText("document path")
+    const current = crumbs.querySelectorAll('[aria-current="page"]')
+    expect(current).toHaveLength(1)
+    expect(current[0]).toHaveTextContent("design.md")
+    expect(crumbs.querySelectorAll("li li")).toHaveLength(0)
+  })
+
+  it("shows one empty state, not two panes, when nothing is filed", async () => {
+    mockDocuments({ items: [] })
+    renderWorkspace()
+    expect(
+      await screen.findByText(/No documents filed in this project/),
+    ).toBeInTheDocument()
+    expect(screen.queryByText("Nothing selected")).not.toBeInTheDocument()
+    expect(screen.queryByRole("separator")).not.toBeInTheDocument()
   })
 
   it("does not render the breadcrumb when no document is selected", async () => {
@@ -340,7 +397,9 @@ describe("project workspace — layout", () => {
 describe("project workspace — tree expansion", () => {
   it("opens only the top level, not every folder, on first load", async () => {
     // 475 documents all expanded is the reported "hard to navigate".
-    mockDocuments({ items: [DOC, { ...DOC, id: "doc-2", uri: "docs/planning/progress.md" }] })
+    mockDocuments({
+      items: [DOC, { ...DOC, id: "doc-2", uri: "docs/planning/progress.md" }],
+    })
     renderWorkspace()
     expect(await screen.findByText("notes")).toBeInTheDocument()
     expect(screen.queryByText("progress.md")).not.toBeInTheDocument()
@@ -351,7 +410,9 @@ describe("project workspace — tree expansion", () => {
     // "docs/planning" stays collapsed and "progress.md" is hidden -- see the
     // test above. A stored value naming that deeper folder must override the
     // default, or this test is indistinguishable from that one passing twice.
-    mockDocuments({ items: [DOC, { ...DOC, id: "doc-2", uri: "docs/planning/progress.md" }] })
+    mockDocuments({
+      items: [DOC, { ...DOC, id: "doc-2", uri: "docs/planning/progress.md" }],
+    })
     window.localStorage.setItem(
       expansionStorageKey("darkmem"),
       JSON.stringify(["docs", "docs/planning"]),
@@ -365,8 +426,13 @@ describe("project workspace — tree expansion", () => {
     // library as `expanded`, where `.includes(...)` throws and takes the
     // pane down -- it must fall back to the same top-level default an
     // absent key produces.
-    mockDocuments({ items: [DOC, { ...DOC, id: "doc-2", uri: "docs/planning/progress.md" }] })
-    window.localStorage.setItem(expansionStorageKey("darkmem"), JSON.stringify({}))
+    mockDocuments({
+      items: [DOC, { ...DOC, id: "doc-2", uri: "docs/planning/progress.md" }],
+    })
+    window.localStorage.setItem(
+      expansionStorageKey("darkmem"),
+      JSON.stringify({}),
+    )
     renderWorkspace()
     expect(await screen.findByText("notes")).toBeInTheDocument()
     expect(screen.queryByText("progress.md")).not.toBeInTheDocument()
@@ -376,7 +442,9 @@ describe("project workspace — tree expansion", () => {
     // Drives a real branch toggle through the UI (as document-tree.test.tsx
     // does) rather than calling onExpandedChange directly, so this covers the
     // wiring between the tree and the persisted key, not just the handler.
-    mockDocuments({ items: [DOC, { ...DOC, id: "doc-2", uri: "docs/planning/progress.md" }] })
+    mockDocuments({
+      items: [DOC, { ...DOC, id: "doc-2", uri: "docs/planning/progress.md" }],
+    })
     renderWorkspace()
     // "docs" is open by default (top level); its child "planning" is a
     // collapsed folder -- clicking it expands it.
@@ -397,7 +465,11 @@ describe("project workspace — tree expansion", () => {
     // document's own ancestor path did exactly that.
     const DOC_SRC = { ...DOC, id: "doc-src", uri: "src/readme.md" }
     mockDocuments({
-      items: [DOC, { ...DOC, id: "doc-2", uri: "docs/planning/progress.md" }, DOC_SRC],
+      items: [
+        DOC,
+        { ...DOC, id: "doc-2", uri: "docs/planning/progress.md" },
+        DOC_SRC,
+      ],
     })
     renderWorkspace()
     await screen.findByText("design.md")
@@ -456,7 +528,9 @@ describe("project workspace — tree expansion", () => {
     // Selecting the hit also renders a breadcrumb naming the same segment,
     // so scope to the tree row rather than the plain text, which now
     // matches twice.
-    const revealed = await screen.findByRole("treeitem", { name: "progress.md" })
+    const revealed = await screen.findByRole("treeitem", {
+      name: "progress.md",
+    })
     expect(revealed).toBeInTheDocument()
   })
 
@@ -495,12 +569,16 @@ describe("project workspace — tree expansion", () => {
     // must not carry project-a's opened-ness into project-b's tree -- the
     // route remounts ProjectWorkspace per project (key={project}) for
     // exactly this reason.
-    mockDocuments({ items: [DOC, { ...DOC, id: "doc-2", uri: "docs/planning/progress.md" }] })
+    mockDocuments({
+      items: [DOC, { ...DOC, id: "doc-2", uri: "docs/planning/progress.md" }],
+    })
     window.localStorage.setItem(
       expansionStorageKey("project-a"),
       JSON.stringify(["docs", "docs/planning"]),
     )
-    render(<ProjectSwitcher initial="project-a" next="project-b" />, { wrapper })
+    render(<ProjectSwitcher initial="project-a" next="project-b" />, {
+      wrapper,
+    })
 
     // project-a's stored expansion opens the deep folder.
     expect(await screen.findByText("progress.md")).toBeInTheDocument()
@@ -520,7 +598,9 @@ describe("project workspace — tree expansion", () => {
     // on a project switch. Without it, React reuses the same component
     // instance and project-a's `expanded` state rides straight into
     // project-b's tree.
-    mockDocuments({ items: [DOC, { ...DOC, id: "doc-2", uri: "docs/planning/progress.md" }] })
+    mockDocuments({
+      items: [DOC, { ...DOC, id: "doc-2", uri: "docs/planning/progress.md" }],
+    })
     window.localStorage.setItem(
       expansionStorageKey("project-a"),
       JSON.stringify(["docs", "docs/planning"]),
@@ -556,7 +636,9 @@ describe("project workspace — the reader's own chrome", () => {
     expect(bar).not.toBeNull()
     expect(bar).toHaveClass("sticky", "top-0")
     // The toolbar rides the same bar, not a separate row below it.
-    expect(bar).toContainElement(screen.getByRole("button", { name: /^edit$/i }))
+    expect(bar).toContainElement(
+      screen.getByRole("button", { name: /^edit$/i }),
+    )
   })
 
   it("parks the outline in a sticky rail and jumps the reader to a heading", async () => {
@@ -629,12 +711,16 @@ describe("project workspace — the two scrollbars that used to overlap", () => 
     // The marker follows the READER's reported position, not the last click:
     // one is a standing position, the other a one-off jump.
     expect(
-      container.querySelectorAll('.dr-timeline-indicator[data-status="current"]'),
+      container.querySelectorAll(
+        '.dr-timeline-indicator[data-status="current"]',
+      ),
     ).toHaveLength(0)
     fireEvent.click(screen.getByRole("button", { name: "report heading" }))
     await waitFor(() =>
       expect(
-        container.querySelectorAll('.dr-timeline-indicator[data-status="current"]'),
+        container.querySelectorAll(
+          '.dr-timeline-indicator[data-status="current"]',
+        ),
       ).toHaveLength(1),
     )
     expect(
@@ -653,7 +739,9 @@ describe("project workspace — the two scrollbars that used to overlap", () => 
     fireEvent.click(screen.getByRole("button", { name: "report heading" }))
     await waitFor(() =>
       expect(
-        container.querySelectorAll('.dr-timeline-indicator[data-status="current"]'),
+        container.querySelectorAll(
+          '.dr-timeline-indicator[data-status="current"]',
+        ),
       ).toHaveLength(1),
     )
   })
@@ -691,8 +779,12 @@ describe("project workspace — the two scrollbars that used to overlap", () => 
 
     for (const item of container.querySelectorAll(".dr-timeline-item")) {
       // No per-item rail width: that is what made the column ragged.
-      expect((item as HTMLElement).style.getPropertyValue("--timeline-dot-size")).toBe("")
-      const indicator = item.querySelector(".dr-timeline-indicator") as HTMLElement
+      expect(
+        (item as HTMLElement).style.getPropertyValue("--timeline-dot-size"),
+      ).toBe("")
+      const indicator = item.querySelector(
+        ".dr-timeline-indicator",
+      ) as HTMLElement
       // One box height at every level, with the disc centred inside it.
       expect(indicator.style.height).toBe(ROW_H)
       expect(indicator.querySelector("span[aria-hidden]")).not.toBeNull()
@@ -756,7 +848,9 @@ const LEDGER = {
 function contentReads() {
   return vi
     .mocked(apiFetch)
-    .mock.calls.filter(([path]) => String(path).includes("include_content=true"))
+    .mock.calls.filter(([path]) =>
+      String(path).includes("include_content=true"),
+    )
 }
 
 describe("project workspace — the corpus browser's own surface", () => {
@@ -858,7 +952,9 @@ describe("project workspace — the reveal after a uri change", () => {
     mockDocuments({ items: [{ ...DOC, uri: "archive/design.md" }, OTHER] })
     await lastQueryClient?.invalidateQueries({ queryKey: ["documentsAll"] })
     await waitFor(() =>
-      expect(screen.getByLabelText("document path")).toHaveTextContent("archive"),
+      expect(screen.getByLabelText("document path")).toHaveTextContent(
+        "archive",
+      ),
     )
 
     expect(
@@ -878,7 +974,9 @@ describe("the corpus browser carries no tree management", () => {
   it("renders the tab strip and the documents label", async () => {
     vi.mocked(apiFetch).mockResolvedValue({ items: [], total: 0 })
     renderWorkspace()
-    expect(await screen.findByRole("tab", { name: /Artifacts/i })).toBeInTheDocument()
+    expect(
+      await screen.findByRole("tab", { name: /Artifacts/i }),
+    ).toBeInTheDocument()
     expect(screen.getByText("documents")).toBeInTheDocument()
   })
 

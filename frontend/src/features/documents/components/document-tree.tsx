@@ -1,4 +1,11 @@
-import { memo, useCallback, useMemo, useState, type CSSProperties, type ReactNode } from "react"
+import {
+  memo,
+  useCallback,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react"
 import {
   DndContext,
   MouseSensor,
@@ -179,7 +186,10 @@ export function dropTargetFor(
   // `Math.max(0, ...)` rather than a bare `lastIndexOf`: a root-level leaf
   // has no slash, and `"docs2".slice(0, -1)` is the truthy `"docs"` -- which
   // resolved a root leaf into whatever folder its own name shadows.
-  const parent = node.path.slice(0, Math.max(0, node.path.length - leaf.length - 1))
+  const parent = node.path.slice(
+    0,
+    Math.max(0, node.path.length - leaf.length - 1),
+  )
   return parent ? (byPath.get(parent) ?? null) : null
 }
 
@@ -268,7 +278,11 @@ function RowHandle({
   activeNode: UriTreeNode | null
   children: ReactNode
 }) {
-  const { setNodeRef: setDragRef, listeners, isDragging } = useDraggable({
+  const {
+    setNodeRef: setDragRef,
+    listeners,
+    isDragging,
+  } = useDraggable({
     id: `${DRAG_PREFIX}${node.path}`,
   })
   const { setNodeRef: setDropRef, isOver } = useDroppable({
@@ -276,7 +290,8 @@ function RowHandle({
     disabled: ROW_DROP_DISABLED,
   })
   // The ring, not the candidacy, is what a refused target loses.
-  const refused = activeNode !== null && moveTarget(activeNode, dropTarget) === null
+  const refused =
+    activeNode !== null && moveTarget(activeNode, dropTarget) === null
   // Stable across renders: an inline arrow re-registers the droppable and
   // re-runs its ResizeObserver on every one.
   const setRef = useCallback(
@@ -383,7 +398,8 @@ export const DocumentTree = memo(function DocumentTree({
   const treeExpansionProps = controlled
     ? {
         expanded,
-        onExpandedChange: (d: { value: string[] }) => onExpandedChange?.(d.value),
+        onExpandedChange: (d: { value: string[] }) =>
+          onExpandedChange?.(d.value),
       }
     : {
         // Expanded by default. A collapsed tree of one `file:` or `docs`
@@ -462,7 +478,7 @@ export const DocumentTree = memo(function DocumentTree({
                   aria-hidden
                   className="hidden size-[var(--icon-size)] shrink-0 text-sky-700/80 group-data-[state=open]:block dark:text-sky-300/80"
                 />
-                <TreeViewBranchText className="truncate">
+                <TreeViewBranchText className="truncate" title={node.path}>
                   {node.name}
                 </TreeViewBranchText>
               </>,
@@ -493,8 +509,15 @@ export const DocumentTree = memo(function DocumentTree({
         <span aria-hidden className="w-[var(--icon-size)] shrink-0" />
         {handle(
           <>
-            <Icon aria-hidden className={`size-[var(--icon-size)] shrink-0 ${iconTone}`} />
-            <span className="truncate">{node.name}</span>
+            <Icon
+              aria-hidden
+              className={`size-[var(--icon-size)] shrink-0 ${iconTone}`}
+            />
+            {/* The full path, since the pane ellipsises long names and
+                nothing else reveals them until the document is opened. */}
+            <span className="truncate" title={node.path}>
+              {node.name}
+            </span>
           </>,
         )}
         {actions}
@@ -519,22 +542,22 @@ export const DocumentTree = memo(function DocumentTree({
         onDragEnd={onDragEnd}
         onDragCancel={onDragCancel}
       >
-      <TreeView
-        {...treeExpansionProps}
-        selectionMode="single"
-        selected={selectedId ? [selectedId] : []}
-        onSelectedChange={({ value }) => {
-          const doc = value.map((v) => byId.get(v)).find(Boolean)
-          if (doc) onSelect(doc)
-        }}
-      >
-        <TreeViewTree
-          className="gap-0 pl-1"
-          style={{ "--tree-view-indent": INDENT } as CSSProperties}
+        <TreeView
+          {...treeExpansionProps}
+          selectionMode="single"
+          selected={selectedId ? [selectedId] : []}
+          onSelectedChange={({ value }) => {
+            const doc = value.map((v) => byId.get(v)).find(Boolean)
+            if (doc) onSelect(doc)
+          }}
         >
-          {roots.map((root) => renderNode(root, 0))}
-        </TreeViewTree>
-      </TreeView>
+          <TreeViewTree
+            className="gap-0 pl-1"
+            style={{ "--tree-view-indent": INDENT } as CSSProperties}
+          >
+            {roots.map((root) => renderNode(root, 0))}
+          </TreeViewTree>
+        </TreeView>
       </MaybeDnd>
     </div>
   )

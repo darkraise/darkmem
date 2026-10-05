@@ -13,7 +13,11 @@ import {
 import { Button } from "darkraise-ui/components/button"
 import { toast } from "darkraise-ui/components/sonner"
 import { IconButton } from "@/components/darkmem"
-import { useWorkstreamPurge, useWorkstreamUpdate, type Workstream } from "@/hooks/api"
+import {
+  useWorkstreamPurge,
+  useWorkstreamUpdate,
+  type Workstream,
+} from "@/hooks/api"
 
 /** The workstream properties a client may point at a filed document with. */
 const LINKS = [
@@ -41,8 +45,10 @@ export function WorkstreamHeader({
   return (
     <div className="flex flex-wrap items-start gap-3">
       <div className="min-w-0 flex-1 space-y-0.5">
-        <h3 className="text-base font-semibold">{workstream.title ?? workstream.key}</h3>
-        <p className="text-muted-foreground font-mono text-xs">
+        <h3 className="text-lg font-semibold break-words">
+          {workstream.title ?? workstream.key}
+        </h3>
+        <p className="text-muted-foreground font-mono text-xs break-words">
           {workstream.key} · {workstream.state}
           {workstream.client ? ` · ${workstream.client}` : ""}
           {workstream.retain ? " · retained" : ""}
@@ -61,7 +67,10 @@ export function WorkstreamHeader({
                   {label}
                 </Button>
               ) : (
-                <span key={label} className="text-muted-foreground font-mono text-xs">
+                <span
+                  key={label}
+                  className="text-muted-foreground font-mono text-xs"
+                >
                   {label}: {uri}
                 </span>
               ),
@@ -69,7 +78,7 @@ export function WorkstreamHeader({
           </div>
         ) : null}
       </div>
-      <div className="flex items-center gap-1">
+      <div className="flex shrink-0 items-center gap-1">
         <Button
           variant="outline"
           size="sm"
@@ -95,7 +104,9 @@ export function WorkstreamHeader({
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Purge {workstream.title ?? workstream.key}?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Purge {workstream.title ?? workstream.key}?
+            </AlertDialogTitle>
             <AlertDialogDescription>
               This erases the workstream and every entry in it. This cannot be
               undone.
@@ -104,6 +115,9 @@ export function WorkstreamHeader({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
+              // The library hard-codes `data-variant="default"` (the primary
+              // green) and spreads props after it; an erase is destructive.
+              data-variant="destructive"
               onClick={() =>
                 purge.mutate(workstream.id, {
                   onSuccess: () => {

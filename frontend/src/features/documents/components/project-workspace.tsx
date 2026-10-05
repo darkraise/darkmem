@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useCallback,
   useEffect,
   useMemo,
@@ -37,6 +38,7 @@ import {
   TabsTrigger,
 } from "darkraise-ui/components/tabs"
 import { EmptyState } from "@/components/darkmem"
+import { useMediaQuery } from "@/hooks/use-media-query"
 import { WorkLogPanel } from "@/features/worklog/components/work-log-panel"
 import {
   DocumentActions,
@@ -81,15 +83,27 @@ function RegionLabel({ children }: { children: ReactNode }) {
 function DocumentCrumbs({ uri }: { uri: string | null }) {
   if (!uri) return null
   const parts = uri.split("/").filter(Boolean)
+  const last = parts.length - 1
+  // The separator is an `li` of its own, so it sits beside the item rather
+  // than inside it, and only the open document is the current page: the
+  // ancestors are folders, not pages. Under `sm` only the file name shows
+  // (a wrapped path overflowed the 48px bar); the full path stays in the
+  // title and in the screen-reader text.
   return (
-    <Breadcrumb aria-label="document path" className="min-w-0">
-      <BreadcrumbList>
-        {parts.map((part, i) => (
-          <BreadcrumbItem key={`${part}-${i}`}>
-            <BreadcrumbPage>{part}</BreadcrumbPage>
-            {i < parts.length - 1 ? <BreadcrumbSeparator /> : null}
-          </BreadcrumbItem>
-        ))}
+    <Breadcrumb aria-label="document path" className="min-w-0" title={uri}>
+      <BreadcrumbList className="min-w-0">
+        {parts.map((part, i) =>
+          i < last ? (
+            <Fragment key={`${part}-${i}`}>
+              <BreadcrumbItem className="max-sm:sr-only">{part}</BreadcrumbItem>
+              <BreadcrumbSeparator className="max-sm:hidden" />
+            </Fragment>
+          ) : (
+            <BreadcrumbItem key={`${part}-${i}`} className="min-w-0">
+              <BreadcrumbPage className="truncate">{part}</BreadcrumbPage>
+            </BreadcrumbItem>
+          ),
+        )}
       </BreadcrumbList>
     </Breadcrumb>
   )
@@ -146,6 +160,10 @@ export function ProjectWorkspace({
   const search = useDocumentSearch()
   const qa = useGroundedQa()
   const corpus = useProgressCorpus(items)
+  // Below `lg` the split stacks: side by side at 26% a phone left the tree
+  // ~90px wide, too narrow to show a single file name. Reads `false` in
+  // tests, so the stacked branch is the fallback.
+  const wide = useMediaQuery("(min-width: 1024px)")
 
   const roots = useMemo(() => buildUriTree(items), [items])
   // Lazy initialiser rather than an effect: the route mounts a fresh
@@ -259,6 +277,8 @@ export function ProjectWorkspace({
   )
 
   const hits = search.data?.items ?? []
+  const noDocuments =
+    !documents.isLoading && !documents.isError && items.length === 0
   const asking = queryMode === "ask"
 
   const artifacts = (
@@ -345,7 +365,7 @@ export function ProjectWorkspace({
 
       {!asking && search.isError ? (
         <p className="text-destructive text-sm">
-          Search failed.
+          Search failed — {search.error.message}
         </p>
       ) : null}
 
@@ -381,131 +401,156 @@ export function ProjectWorkspace({
         </div>
       ) : null}
 
-      <ResizablePanelGroup
-        orientation="horizontal"
-        // The floor for a broken or absent height chain (small screens,
-        // where the ancestors above deliberately carry no height): without
-        // it the panes collapse to zero. Once the chain above is real (at
-        // `lg`), the library's own `h-full` fills the real flexed height
-        // instead, so the floor stands down rather than driving the layout.
-        className="min-h-[60vh] lg:min-h-0 lg:flex-1"
-      >
-        <ResizablePanel defaultSize={26} minSize={15} maxSize={45} id="tree">
-          {/* Same gutter as the reader's, and for the same reason: the
+      {noDocuments ? (
+        // One page-scope state, not two panes: beside an empty tree the
+        // reader's "pick a document from the tree" is an instruction nobody
+        // can follow.
+        <EmptyState
+          kind="empty"
+          scope="page"
+          icon={FolderTree}
+          title="No documents filed in this project"
+          description="A document appears here once it is filed, over REST or the MCP document_put tool."
+        />
+      ) : (
+        <ResizablePanelGroup
+          // Remounted on a breakpoint crossing: the panel sizes are seeded
+          // once, and a horizontal 26% is not a sensible vertical one.
+          key={wide ? "split" : "stack"}
+          orientation={wide ? "horizontal" : "vertical"}
+          // The floor for a broken or absent height chain (small screens,
+          // where the ancestors above deliberately carry no height): without
+          // it the panes collapse to zero. Stacked, the group also takes a
+          // definite 85svh so the panels' percentage heights resolve and both
+          // panes stay usable; `!` because the library's own `h-full` otherwise
+          // wins and leaves the height at the floor. Once the chain above is
+          // real (at `lg`), the library's own `h-full` fills the real flexed
+          // height instead, so the floor stands down rather than driving the
+          // layout.
+          className="min-h-[60vh] max-lg:h-[85svh]! lg:min-h-0 lg:flex-1"
+        >
+          <ResizablePanel
+            defaultSize={wide ? 26 : 35}
+            minSize={15}
+            maxSize={wide ? 45 : 70}
+            id="tree"
+          >
+            {/* Same gutter as the reader's, and for the same reason: the
                 bar is 10px and an 8px pad left it 2px over the rows -- which
                 a full-width selected fill makes visible. */}
-          <ScrollArea className="h-full pr-3">
-            <RegionLabel>documents</RegionLabel>
-            {documents.isError ? (
-              <p className="text-destructive text-sm">
-                This project's documents could not be loaded.
-              </p>
-            ) : documents.isLoading ? (
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-2/3" />
-                <Skeleton className="h-4 w-1/2" />
-                <Skeleton className="h-4 w-3/4" />
-              </div>
-            ) : (
-              <DocumentTree
-                items={items}
-                selectedId={selected?.id ?? null}
-                onSelect={handleSelectDocument}
-                truncated={truncated}
-                expanded={effectiveExpanded}
-                onExpandedChange={handleExpandedChange}
-              />
-            )}
-          </ScrollArea>
-        </ResizablePanel>
-        <ResizableHandle withHandle />
-        <ResizablePanel defaultSize={74} id="reader">
-          {/* `pr-3` is the scrollbar's gutter, not decoration. The bar is
+            <ScrollArea className="h-full pr-3 max-lg:pb-2">
+              <RegionLabel>documents</RegionLabel>
+              {documents.isError ? (
+                <p className="text-destructive text-sm">
+                  This project's documents could not be loaded.
+                </p>
+              ) : documents.isLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-2/3" />
+                  <Skeleton className="h-4 w-1/2" />
+                  <Skeleton className="h-4 w-3/4" />
+                </div>
+              ) : (
+                <DocumentTree
+                  items={items}
+                  selectedId={selected?.id ?? null}
+                  onSelect={handleSelectDocument}
+                  truncated={truncated}
+                  expanded={effectiveExpanded}
+                  onExpandedChange={handleExpandedChange}
+                />
+              )}
+            </ScrollArea>
+          </ResizablePanel>
+          <ResizableHandle withHandle />
+          <ResizablePanel defaultSize={wide ? 74 : 65} id="reader">
+            {/* `pr-3` is the scrollbar's gutter, not decoration. The bar is
                 `absolute right-0 w-2.5` on the ScrollArea ROOT while the
                 viewport is inset by this padding, so the padding is what
                 moves the bar off the content instead of over it. Without it
                 the document's scrollbar sat on top of the outline rail. */}
-          <ScrollArea className="h-full pr-3 pl-2">
-            {selected ? (
-              <div>
-                {/* The path and the toolbar ride the scroll: a long
+            <ScrollArea className="h-full pr-3 pl-2 max-lg:pt-2 max-lg:pl-0">
+              {selected ? (
+                <div>
+                  {/* The path and the toolbar ride the scroll: a long
                       document otherwise scrolls its own identity and every
                       action off the top, and the reader has to come back up
                       to answer "which file is this" or to press Edit.
                       `sticky` resolves against the ScrollArea's own viewport,
                       which is the element that scrolls here. */}
-                <div className="bg-background border-border/60 sticky top-0 z-20 mb-3.5 flex h-12 items-center gap-2 border-b">
-                  <DocumentCrumbs uri={selected.uri ?? null} />
-                  <div className="flex-1" />
-                  <DocumentActions
-                    document={selected}
-                    mode={mode}
-                    onModeChange={setMode}
-                    onDeleted={() => {
-                      setSelectedId(null)
-                      setFocusBlockId(null)
+                  <div className="bg-background border-border/60 sticky top-0 z-20 mb-3.5 flex min-h-12 items-center gap-2 border-b py-1">
+                    <DocumentCrumbs uri={selected.uri ?? null} />
+                    <div className="flex-1" />
+                    <DocumentActions
+                      document={selected}
+                      mode={mode}
+                      onModeChange={setMode}
+                      onDeleted={() => {
+                        setSelectedId(null)
+                        setFocusBlockId(null)
+                        setMode("read")
+                      }}
+                    />
+                  </div>
+
+                  <div className="flex gap-5">
+                    <div className="min-w-0 flex-1">
+                      <Card className="p-4">
+                        {mode === "read" ? (
+                          <DocumentReader
+                            documentId={selected.id}
+                            focusBlockId={focusBlockId}
+                            onActiveHeadingChange={handleActiveHeading}
+                            // The outline is mounted beside the reader, in
+                            // the sticky rail below, so the reader's own rail
+                            // would be a second jump list for one document.
+                            showOutline={false}
+                          />
+                        ) : (
+                          <EditableDocument documentId={selected.id} />
+                        )}
+                      </Card>
+                    </div>
+
+                    {/* `self-start` is what makes this sticky at all: a
+                        stretched flex item is already as tall as the row, so
+                        it has nothing to stick within. `top-12` clears the
+                        header bar above rather than sliding under it. */}
+                    <aside className="sticky top-12 hidden max-h-[calc(100vh-16rem)] w-56 shrink-0 flex-col self-start pt-1 xl:flex">
+                      <DocumentOutline
+                        documentId={selected.id}
+                        activeBlockId={activeHeadingId}
+                        onNavigate={setFocusBlockId}
+                      />
+                    </aside>
+                  </div>
+
+                  {/* Below the split, not inside the body column: these three
+                      cards want the reader pane's full width, and the outline
+                      rail's stick range ends where the document does. */}
+                  <DocumentDetail
+                    documentId={selected.id}
+                    onOpenDocument={(documentId, blockId) => {
+                      const doc = items.find((d) => d.id === documentId)
+                      if (!doc) return
+                      setSelectedId(doc.id)
+                      setFocusBlockId(blockId)
                       setMode("read")
                     }}
                   />
                 </div>
-
-                <div className="flex gap-5">
-                  <div className="min-w-0 flex-1">
-                    <Card className="p-4">
-                      {mode === "read" ? (
-                        <DocumentReader
-                          documentId={selected.id}
-                          focusBlockId={focusBlockId}
-                          onActiveHeadingChange={handleActiveHeading}
-                          // The outline is mounted beside the reader, in
-                          // the sticky rail below, so the reader's own rail
-                          // would be a second jump list for one document.
-                          showOutline={false}
-                        />
-                      ) : (
-                        <EditableDocument documentId={selected.id} />
-                      )}
-                    </Card>
-                  </div>
-
-                  {/* `self-start` is what makes this sticky at all: a
-                        stretched flex item is already as tall as the row, so
-                        it has nothing to stick within. `top-12` clears the
-                        header bar above rather than sliding under it. */}
-                  <aside className="sticky top-12 hidden max-h-[calc(100vh-16rem)] w-56 shrink-0 flex-col self-start pt-1 xl:flex">
-                    <DocumentOutline
-                      documentId={selected.id}
-                      activeBlockId={activeHeadingId}
-                      onNavigate={setFocusBlockId}
-                    />
-                  </aside>
-                </div>
-
-                {/* Below the split, not inside the body column: these three
-                      cards want the reader pane's full width, and the outline
-                      rail's stick range ends where the document does. */}
-                <DocumentDetail
-                  documentId={selected.id}
-                  onOpenDocument={(documentId, blockId) => {
-                    const doc = items.find((d) => d.id === documentId)
-                    if (!doc) return
-                    setSelectedId(doc.id)
-                    setFocusBlockId(blockId)
-                    setMode("read")
-                  }}
+              ) : (
+                <EmptyState
+                  kind="empty"
+                  icon={FolderTree}
+                  title="Nothing selected"
+                  description="Pick a document from the tree to read it."
                 />
-              </div>
-            ) : (
-              <EmptyState
-                kind="empty"
-                icon={FolderTree}
-                title="Nothing selected"
-                description="Pick a document from the tree to read it."
-              />
-            )}
-          </ScrollArea>
-        </ResizablePanel>
-      </ResizablePanelGroup>
+              )}
+            </ScrollArea>
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      )}
     </>
   )
 
@@ -528,7 +573,10 @@ export function ProjectWorkspace({
       // `lg:`-only prefixing chat.tsx's height chain uses.
       className="flex flex-col lg:min-h-0 lg:flex-1"
     >
-      <TabsList>
+      {/* `w-fit self-start`: as a child of the flex-column Tabs root the
+          list is stretched to the full content width, with the library's
+          centred triggers floating in the middle of an empty strip. */}
+      <TabsList className="w-fit self-start">
         <TabsTrigger value="artifacts">Artifacts</TabsTrigger>
         <TabsTrigger value="progress">Progress</TabsTrigger>
       </TabsList>
@@ -554,7 +602,9 @@ export function ProjectWorkspace({
             <EmptyState
               kind="empty"
               icon={FolderTree}
+              scope="panel"
               title="No progress ledger"
+              description="The board is built from a progress.md ledger and epic files filed into this project. File them to see tasks here."
             />
           )}
         </div>
