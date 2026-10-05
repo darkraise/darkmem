@@ -1,14 +1,33 @@
 import { fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
+const navigateMock = vi.fn()
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tanstack/react-router")>()),
-  useNavigate: () => vi.fn(),
+  useNavigate: () => navigateMock,
 }))
+vi.mock("@/lib/demo-flag", () => ({ DEMO: false }))
 
 import { YearHeatmap } from "../year-heatmap"
 
 describe("YearHeatmap", () => {
+  it("opens a clicked day in Activity's Day drill on a real instance", () => {
+    // The real Memories page has no timeline, so ?date= landed on the whole,
+    // unfiltered list.
+    render(
+      <YearHeatmap
+        days={[
+          { date: "2026-07-24", count: 3, types: [], verified: 0, injects: 0 },
+        ]}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: /3 memories/ }))
+    expect(navigateMock).toHaveBeenCalledWith({
+      to: "/activity",
+      search: { tab: "day", day: "2026-07-24" },
+    })
+  })
+
   it("lays the weeks out as fluid grid columns that fill the card", () => {
     render(
       <YearHeatmap
