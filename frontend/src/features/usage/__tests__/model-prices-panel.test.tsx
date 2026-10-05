@@ -44,4 +44,52 @@ describe("ModelPricesPanel", () => {
     )
     expect(screen.getByText(/overridden/i)).toBeInTheDocument()
   })
+
+  it("offers the unpriced models as rows and sends only the ones filled in", () => {
+    // The overview says "add a rate under Prices" for these; the table had no
+    // row for them and no way to add one.
+    const onSave = vi.fn()
+    render(
+      <ModelPricesPanel
+        models={ROWS}
+        unpricedModels={["qwen2.5:3b", "qwen3:4b"]}
+        onSave={onSave}
+      />,
+    )
+    for (const [label, value] of [
+      ["qwen2.5:3b Input rate", "0.1"],
+      ["qwen2.5:3b Cached rate", "0"],
+      ["qwen2.5:3b Output rate", "0.2"],
+    ] as const) {
+      fireEvent.change(screen.getByLabelText(label), { target: { value } })
+    }
+    fireEvent.click(screen.getByRole("button", { name: /save prices/i }))
+    const sent = onSave.mock.calls[0]![0]
+    expect(sent["qwen2.5:3b"]).toEqual({
+      input_micros_per_mtok: 100_000,
+      cached_micros_per_mtok: 0,
+      output_micros_per_mtok: 200_000,
+    })
+    // Untouched, so not priced at zero.
+    expect(sent["qwen3:4b"]).toBeUndefined()
+  })
+
+  it("adds any model by name", () => {
+    render(<ModelPricesPanel models={ROWS} onSave={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText("Model to price"), {
+      target: { value: "my-local-model" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Add model" }))
+    expect(screen.getByLabelText("my-local-model Input rate")).toBeInTheDocument()
+  })
+
+  it("refuses a rate that is not a number before it reaches the server", () => {
+    const onSave = vi.fn()
+    render(<ModelPricesPanel models={ROWS} onSave={onSave} />)
+    fireEvent.change(screen.getByLabelText(/Input rate/i), {
+      target: { value: "abc" },
+    })
+    expect(screen.getByRole("alert")).toHaveTextContent(/must be a number/)
+    expect(screen.getByRole("button", { name: /save prices/i })).toBeDisabled()
+  })
 })

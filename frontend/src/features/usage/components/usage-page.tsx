@@ -171,6 +171,7 @@ export function UsagePage() {
           ) : (
             <ModelPricesPanel
               models={prices.data.models}
+              unpricedModels={overview.data?.unpriced_models ?? []}
               saving={savePrices.isPending}
               onSave={(next) =>
                 savePrices.mutate(next, {
