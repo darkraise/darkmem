@@ -129,6 +129,20 @@ function FeedItemLink({
           </Link>
         )
       break
+    // Block edits on a page or a document journal under the capture category,
+    // which used to send them to /memories.
+    case "page":
+      return (
+        <Link to="/notes" search={{ page: id }} className={className}>
+          {children}
+        </Link>
+      )
+    case "document":
+      return (
+        <Link to="/documents" className={className}>
+          {children}
+        </Link>
+      )
   }
   switch (event.kind) {
     case "memory":

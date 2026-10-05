@@ -31,3 +31,12 @@ describe("describeCron", () => {
     expect(describeCron("0 1-5/2,7 * * *")).toBeNull()
   })
 })
+
+describe("withZone", () => {
+  it("names UTC for a clock time and leaves intervals alone", async () => {
+    const { withZone } = await import("../components/job-schedule-state")
+    expect(withZone("At 4:30 AM every day")).toBe("At 4:30 AM every day UTC")
+    expect(withZone("Every 30 seconds")).toBe("Every 30 seconds")
+    expect(withZone("Every hour at :20")).toBe("Every hour at :20")
+  })
+})

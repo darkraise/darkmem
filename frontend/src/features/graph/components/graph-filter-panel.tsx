@@ -82,7 +82,8 @@ export function GraphFilterPanel({
     selectedTags.size > 0 ||
     selectedTypes.size > 0 ||
     selectedSources.size > 0 ||
-    selectedClusters.size > 0
+    selectedClusters.size > 0 ||
+    (selectedEntityTypes?.size ?? 0) > 0
 
   return (
     <div className="flex h-full max-h-full min-h-0 w-[280px] max-w-[calc(100vw-1.5rem)] flex-col">
