@@ -68,8 +68,10 @@ function TaskDetailBody({
     <>
       <DialogHeader>
         <DialogTitle className="flex items-baseline gap-2 pr-6">
-          <span className="text-primary-text font-mono text-base">{task.id}</span>
-          <Clipboard value={task.id} toast={{ success: `Copied ${task.id}` }} className="self-center">
+          <span className="text-primary-text shrink-0 font-mono text-base whitespace-nowrap">
+            {task.id}
+          </span>
+          <Clipboard value={task.id} toast={{ success: `Copied ${task.id}` }} className="shrink-0 self-center">
             <ClipboardTrigger aria-label={`Copy reference ${task.id}`} className="size-6">
               <ClipboardIndicator
                 copied={<Check className="size-3.5" />}
