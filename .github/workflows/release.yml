@@ -25,8 +25,8 @@ on:
       runner:
         description: "Verification runner (e2e always uses darkmem-linux); image builds/publishing stay hosted"
         type: choice
-        options: [self-hosted, hosted, auto]
-        default: self-hosted
+        options: [fallback, self-hosted, hosted, auto]
+        default: fallback
 
 # Never cancel a publish midway: a half-pushed multi-registry release is worse
 # than a slow one. Serialising on the branch also keeps two master pushes from
@@ -54,7 +54,7 @@ jobs:
       - name: Pick
         id: pick
         env:
-          REQUESTED: ${{ inputs.runner || 'self-hosted' }}
+          REQUESTED: ${{ inputs.runner || 'fallback' }}
           GH_TOKEN: ${{ secrets.RUNNER_PICKER_TOKEN }}
         run: python3 scripts/pick_runner.py
 

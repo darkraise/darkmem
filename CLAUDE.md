@@ -178,10 +178,13 @@ table or column is dropped only once no released code reads it.
   generated (`scripts/next_version.py`). `./scripts/release.sh vN.N.N` does
   not tag: it is the local pre-flight (sync version fields, build, deploy,
   probe `/openapi.json`). Fetch tags before deriving a version locally.
-- **CI verification defaults to `darkmem-linux`**: `scripts/pick_runner.py`
-  routes backend/frontend checks and image smoke verification to self-hosted
-  runners, queuing when busy, with no picker token required. Manual dispatch
-  can select `hosted` or `auto` for those checks. API and Playwright e2e always
+- **CI verification prefers `darkmem-linux`**: `scripts/pick_runner.py`'s
+  default `fallback` mode routes backend/frontend checks and image smoke
+  verification to self-hosted while a labelled runner is online (queuing when
+  busy) and to `ubuntu-latest` when none is online. Seeing the runners needs
+  the `RUNNER_PICKER_TOKEN` secret (fine-grained PAT, Administration:
+  Read-only); without it the picker queues on self-hosted. Manual dispatch
+  can select `self-hosted`, `hosted` or `auto` for those checks. API and Playwright e2e always
   run on `darkmem-linux` in isolated job containers with their own Postgres,
   using the LAN model endpoint (`vars.DARKMEM_OLLAMA_BASE_URL`). Image builds,
   scans, publishing and release writes run on `ubuntu-latest`; publishing

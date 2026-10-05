@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
-"""Pick the verification runner, defaulting to self-hosted `darkmem-linux`.
-An explicit `auto` request prefers an idle runner and falls back to hosted.
+"""Pick the verification runner: self-hosted `darkmem-linux` when one is up.
 
-In auto mode, missing credentials or listing errors fall back to hosted and
-exit 0. Explicit self-hosted mode needs no token or API call. Stdlib only, so
-the picker job needs no install step.
+The default `fallback` request uses `darkmem-linux` whenever a labelled runner
+is online (queuing behind its current job when busy) and falls back to hosted
+only when none is online or the listing fails. Without `RUNNER_PICKER_TOKEN`
+it cannot see the runners, so it queues on self-hosted as before.
+
+An explicit `auto` request prefers an idle runner and falls back to hosted,
+also when the token is missing. Explicit self-hosted and hosted modes need no
+token or API call. Every path exits 0. Stdlib only, so the picker job needs no
+install step.
 """
 from __future__ import annotations
 
 import json
 import os
 import sys
+import time
 import urllib.request
 
 LABEL = "darkmem-linux"
@@ -18,6 +24,23 @@ SELF_HOSTED = json.dumps(["self-hosted", "linux", "x64", LABEL], separators=(","
 HOSTED = json.dumps("ubuntu-latest")
 API = "https://api.github.com"
 TIMEOUT_SECONDS = 10
+# Ephemeral runners deregister after each job and a fresh one registers a few
+# seconds later, so one empty listing may be that gap rather than an outage.
+# `fallback` looks once more before sending checks to hosted.
+RECHECK_SECONDS = 20
+
+
+LISTING_MODES = ("auto", "fallback")
+
+
+def _labelled(runners: list[dict]) -> list[dict]:
+    # GitHub matches runs-on labels case-insensitively, so a runner registered
+    # as `DarkMem-Linux` still takes the jobs this picker routes to it.
+    return [
+        r
+        for r in runners
+        if any((label.get("name") or "").lower() == LABEL for label in r.get("labels", []))
+    ]
 
 
 def choose(runners: list[dict], requested: str, token_present: bool) -> tuple[str, str]:
@@ -25,17 +48,13 @@ def choose(runners: list[dict], requested: str, token_present: bool) -> tuple[st
         return HOSTED, "hosted requested"
     if requested == "self-hosted":
         return SELF_HOSTED, "self-hosted requested"
-    if requested != "auto":
+    if requested not in LISTING_MODES:
         return HOSTED, f"unknown runner request {requested!r}"
+    if requested == "fallback":
+        return _choose_fallback(runners, token_present)
     if not token_present:
         return HOSTED, "RUNNER_PICKER_TOKEN is not set"
-    # GitHub matches runs-on labels case-insensitively, so a runner registered
-    # as `DarkMem-Linux` still takes the jobs this picker routes to it.
-    labelled = [
-        r
-        for r in runners
-        if any((label.get("name") or "").lower() == LABEL for label in r.get("labels", []))
-    ]
+    labelled = _labelled(runners)
     for runner in labelled:
         if runner.get("status") == "online" and not runner.get("busy"):
             return SELF_HOSTED, f"idle self-hosted runner {runner.get('name')}"
@@ -43,6 +62,21 @@ def choose(runners: list[dict], requested: str, token_present: bool) -> tuple[st
         return HOSTED, f"no {LABEL} runner registered"
     online = sum(1 for r in labelled if r.get("status") == "online")
     return HOSTED, f"{len(labelled)} {LABEL} runner(s), {online} online, none idle"
+
+
+def _choose_fallback(runners: list[dict], token_present: bool) -> tuple[str, str]:
+    if not token_present:
+        return SELF_HOSTED, "RUNNER_PICKER_TOKEN is not set, so queuing on self-hosted"
+    labelled = _labelled(runners)
+    online = [r for r in labelled if r.get("status") == "online"]
+    for runner in online:
+        if not runner.get("busy"):
+            return SELF_HOSTED, f"idle self-hosted runner {runner.get('name')}"
+    if online:
+        return SELF_HOSTED, f"{len(online)} {LABEL} runner(s) online, all busy, queuing"
+    if not labelled:
+        return HOSTED, f"no {LABEL} runner registered"
+    return HOSTED, f"{len(labelled)} {LABEL} runner(s), none online"
 
 
 def _fetch(url: str, token: str) -> dict:
@@ -76,26 +110,29 @@ def _append(path: str | None, text: str) -> None:
             handle.write(text)
 
 
-def main(env=os.environ, fetch=_fetch) -> int:
-    requested = (env.get("REQUESTED") or "self-hosted").strip()
-    token = (env.get("GH_TOKEN") or "").strip()
+def _pick(env, requested: str, token: str, fetch) -> tuple[str, str]:
     runners: list[dict] = []
-    error = None
-    if requested == "auto" and token:
+    if requested in LISTING_MODES and token:
         try:
             runners = list_runners(env["GITHUB_REPOSITORY"], token, fetch)
         except Exception as exc:  # any listing failure falls back to hosted
-            error = f"runner listing failed ({type(exc).__name__}: {exc})"
-    if error:
-        runs_on, reason = HOSTED, error
-    else:
-        runs_on, reason = choose(runners, requested, bool(token))
+            return HOSTED, f"runner listing failed ({type(exc).__name__}: {exc})"
+    return choose(runners, requested, bool(token))
+
+
+def main(env=os.environ, fetch=_fetch, sleep=time.sleep) -> int:
+    requested = (env.get("REQUESTED") or "fallback").strip()
+    token = (env.get("GH_TOKEN") or "").strip()
+    runs_on, reason = _pick(env, requested, token, fetch)
+    if requested == "fallback" and token and runs_on == HOSTED:
+        sleep(RECHECK_SECONDS)
+        runs_on, reason = _pick(env, requested, token, fetch)
+        reason = f"{reason} (rechecked after {RECHECK_SECONDS}s)"
     reason = " ".join(reason.split())
     _append(env.get("GITHUB_OUTPUT"), f"runs-on={runs_on}\nreason={reason}\n")
     _append(env.get("GITHUB_STEP_SUMMARY"), f"Runner: `{runs_on}` ({reason})\n")
     print(f"runs-on={runs_on} ({reason})")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())
