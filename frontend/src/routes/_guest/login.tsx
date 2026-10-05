@@ -16,9 +16,7 @@ function LoginPage() {
   return (
     <LoginCard
       onSuccess={() =>
-        redirect
-          ? router.history.push(redirect)
-          : router.navigate({ to: "/" })
+        redirect ? router.history.push(redirect) : router.navigate({ to: "/" })
       }
     />
   )

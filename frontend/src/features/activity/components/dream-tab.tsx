@@ -419,8 +419,7 @@ function ActionPreviewList({ actions }: { actions: DreamAction[] }) {
     <ul className="text-muted-foreground list-disc pl-5 text-sm">
       {actions.slice(0, 3).map((a) => (
         <li key={a.event_id} className="font-mono">
-          #{a.event_id} {actionLabel(a.action)} · object{" "}
-          {shortId(a.object_id)}
+          #{a.event_id} {actionLabel(a.action)} · object {shortId(a.object_id)}
         </li>
       ))}
       {actions.length > 3 && <li>+{actions.length - 3} more</li>}
