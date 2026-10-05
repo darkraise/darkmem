@@ -205,6 +205,47 @@ describe("RealMemoriesView", () => {
     )
   })
 
+  it("files a new memory under the header's project, and refuses spaces alone", async () => {
+    // The dialog used to drop the scope and file every capture under
+    // "default", so a memory created while scoped never showed in the list.
+    useProjectStore.setState({ activeProject: "webapp", missingProject: null })
+    const user = userEvent.setup()
+    const bodies: Record<string, unknown>[] = []
+    vi.mocked(apiFetch).mockImplementation((path: unknown, options?: unknown) => {
+      const p = path as string
+      if (p === "/memories/search/paginated") {
+        return Promise.resolve({ items: [], total: 0, limit: 50, offset: 0 })
+      }
+      if (p.startsWith("/memories?")) {
+        bodies.push(JSON.parse((options as RequestInit).body as string))
+        return Promise.resolve({ schema_version: 1, id: "new-id", status: "accepted" })
+      }
+      return Promise.reject(new Error(`unmocked path: ${p}`))
+    })
+    render(
+      <>
+        <AppPageHeader />
+        <RealMemoriesView />
+      </>,
+      { wrapper },
+    )
+
+    await user.click(screen.getByRole("button", { name: /create memory/i }))
+    const dialog = screen.getByRole("dialog", { name: /new memory/i })
+    expect(dialog).toHaveTextContent("saved to project webapp")
+
+    await user.type(screen.getByLabelText("Content"), "   ")
+    await user.click(screen.getByRole("button", { name: "Create Memory" }))
+    expect(await screen.findByText("Content required")).toBeInTheDocument()
+    expect(bodies).toEqual([])
+
+    await user.clear(screen.getByLabelText("Content"))
+    await user.type(screen.getByLabelText("Content"), "scoped capture")
+    await user.click(screen.getByRole("button", { name: "Create Memory" }))
+    await waitFor(() => expect(bodies).toHaveLength(1))
+    expect(bodies[0]).toMatchObject({ content: "scoped capture", project: "webapp" })
+  })
+
   it("scopes by the header switcher and offers no project field of its own", async () => {
     useProjectStore.setState({ activeProject: "acme", missingProject: null })
     vi.mocked(apiFetch).mockResolvedValue({

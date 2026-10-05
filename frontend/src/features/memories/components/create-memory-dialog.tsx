@@ -20,6 +20,8 @@ import {
   TagsInputItemDeleteTrigger,
 } from "darkraise-ui/components/tags-input"
 import { toast } from "darkraise-ui/components/sonner"
+import { X } from "lucide-react"
+import { ALL_PROJECTS, useProjectStore } from "@/stores/project-store"
 import { MEMORY_TYPE_OPTIONS } from "@/lib/taxonomy"
 import { createMemorySchema, type CreateMemoryInput } from "../schemas"
 
@@ -35,11 +37,15 @@ export function CreateMemoryDialog({
   onOpenChange,
 }: CreateMemoryDialogProps) {
   const createMemory = useCreateMemory()
+  // A memory captured while the header scopes the app to one project belongs
+  // to it; the dialog used to drop the scope and file everything under
+  // "default", where the scoped list then never showed it.
+  const activeProject = useProjectStore((s) => s.activeProject)
+  const project = activeProject === ALL_PROJECTS ? undefined : activeProject
 
   const form = useForm({
     defaultValues: {
       content: "",
-      project: "default",
       memory_type: "fact" as MemoryTypeValue,
       tags: [] as string[],
     },
@@ -52,6 +58,7 @@ export function CreateMemoryDialog({
         content: value.content,
         memory_type: value.memory_type,
         tags: value.tags.length > 0 ? value.tags : undefined,
+        project,
         source: "dashboard",
         waitProcess: true,
       })
@@ -72,8 +79,18 @@ export function CreateMemoryDialog({
         <DialogHeader>
           <DialogTitle>New Memory</DialogTitle>
           <DialogDescription>
-            Create a memory to save a fact, decision, or note. Content is
-            required.
+            Create a memory to save a fact, decision, or note. It is saved to{" "}
+            {project ? (
+              <>
+                project <span className="font-mono">{project}</span>
+              </>
+            ) : (
+              <>
+                the <span className="font-mono">default</span> project (pick a
+                project in the header to file it elsewhere)
+              </>
+            )}
+            .
           </DialogDescription>
         </DialogHeader>
         <form
@@ -162,7 +179,9 @@ export function CreateMemoryDialog({
                         <TagsInputItem key={tag} index={index} value={tag}>
                           <TagsInputItemPreview>
                             <TagsInputItemText>{tag}</TagsInputItemText>
-                            <TagsInputItemDeleteTrigger />
+                            <TagsInputItemDeleteTrigger>
+                              <X aria-hidden className="size-3" />
+                            </TagsInputItemDeleteTrigger>
                           </TagsInputItemPreview>
                         </TagsInputItem>
                       ))}

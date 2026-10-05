@@ -5,8 +5,10 @@ import { MEMORY_TYPES } from "@/lib/taxonomy"
 export const createMemorySchema = z.object({
   content: z
     .string()
-    .min(1, "Content required")
-    .max(20_000, "Content too long"),
+    // Spaces alone are not content: they stored a blank row (the Edit dialog
+    // already refused them).
+    .refine((value) => value.trim().length > 0, "Content required")
+    .refine((value) => value.length <= 20_000, "Content too long"),
   project: z.string().default("default"),
   memory_type: z.enum(MEMORY_TYPES),
   tags: z.array(z.string().min(1)).max(20, "Up to 20 tags"),

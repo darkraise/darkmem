@@ -14,6 +14,8 @@ import { MemoryResultsHeader } from "./memory-results-header"
 import { MemoryRow, type MemoryRowData } from "./memory-row"
 
 const PAGE = 50
+/** `MemorySearchPaginatedRequest.limit`'s server bound (`le=500`). */
+const MAX_LIMIT = 500
 const ROW_GAP = 8
 const ROW_ESTIMATE = 84
 
@@ -48,6 +50,9 @@ export function RealMemoriesView({
     })
 
   const hasMore = rows.length < total
+  // The paginated route caps `limit` at MAX_LIMIT; growing past it answered
+  // 422 and the loaded rows gave way to "Search failed".
+  const canLoadMore = hasMore && limit < MAX_LIMIT
   const virtualCount = rows.length + 1
 
   const { listRef, virtualizer, scrollMargin } = useMainVirtualizer({
@@ -64,11 +69,11 @@ export function RealMemoriesView({
   // which re-runs the real paginated query (offset stays 0 — a bigger
   // `limit` is simplest against a route that already returns `total`).
   useEffect(() => {
-    if (!hasMore || isFetching || loadingRef.current) return
+    if (!canLoadMore || isFetching || loadingRef.current) return
     if (lastRenderedIndex < rows.length - 1) return
     loadingRef.current = true
-    setLimit((n) => n + PAGE)
-  }, [hasMore, isFetching, lastRenderedIndex, rows.length])
+    setLimit((n) => Math.min(n + PAGE, MAX_LIMIT))
+  }, [canLoadMore, isFetching, lastRenderedIndex, rows.length])
 
   useEffect(() => {
     loadingRef.current = false
@@ -204,6 +209,9 @@ export function RealMemoriesView({
                     ) : hasMore ? (
                       <p className="text-muted-foreground py-1 text-center font-mono text-sm">
                         {rows.length} of {total} loaded
+                        {canLoadMore
+                          ? ""
+                          : " — narrow the search to reach the rest"}
                       </p>
                     ) : // A complete list says nothing at its foot: the header
                     // already reads "N of N shown".

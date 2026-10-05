@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react"
+import { X } from "lucide-react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -339,7 +340,9 @@ export function MemoryEditorDialog({
                     <TagsInputItem key={tag} index={index} value={tag}>
                       <TagsInputItemPreview>
                         <TagsInputItemText>{tag}</TagsInputItemText>
-                        <TagsInputItemDeleteTrigger />
+                        <TagsInputItemDeleteTrigger>
+                          <X aria-hidden className="size-3" />
+                        </TagsInputItemDeleteTrigger>
                       </TagsInputItemPreview>
                     </TagsInputItem>
                   ))}
