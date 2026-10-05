@@ -125,7 +125,7 @@ function SummaryPanel({
           Log Retention job to record them.
         </p>
       )}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 2xl:grid-cols-2">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
@@ -165,7 +165,7 @@ function SummaryPanel({
                   <TableCell className="text-right font-mono text-xs tabular-nums">
                     {t.denied}
                   </TableCell>
-                  <TableCell className="text-right font-mono text-xs tabular-nums">
+                  <TableCell className="text-right font-mono text-xs whitespace-nowrap tabular-nums">
                     {t.p95_duration_ms} ms
                   </TableCell>
                   <TableCell className="text-muted-foreground text-right text-xs whitespace-nowrap">
