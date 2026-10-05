@@ -116,7 +116,10 @@ describe("no-restricted-imports: src/demo/*", () => {
     // the work-log demo fixtures landed: 118 — `use-worklog-api.ts` imports
     // them for its `initialData` in demo mode, the same shape as projects.
     // Re-measured when the UI copy prune removed the distribution mock, the
-    // monitors tab and the review/hygiene count hooks: 109.
-    expect(countByRule(results, "no-restricted-imports")).toBe(109)
+    // monitors tab and the review/hygiene count hooks: 109. Re-measured when
+    // the UI review fixes landed: 110 — the activity Jobs tab reuses the /jobs
+    // board and drops its demo import (-1), while the activity component test
+    // and the review-queue demo test each read one more fixture (+2).
+    expect(countByRule(results, "no-restricted-imports")).toBe(110)
   })
 })

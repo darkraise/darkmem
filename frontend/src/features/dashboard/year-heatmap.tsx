@@ -57,7 +57,7 @@ function CellPopover({ day }: { day: ContributionDay }) {
       <Link
         to="/activity"
         search={{ tab: "day", day: day.date }}
-        className="text-primary inline-block text-xs underline-offset-2 hover:underline"
+        className="text-primary-text inline-block text-xs underline-offset-2 hover:underline"
       >
         Open in Activity › Day drill
       </Link>
