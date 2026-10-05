@@ -17,19 +17,42 @@ import type { LLMTabBinding } from "../use-llm-tab-binding"
  * beside the row it sits under.
  */
 
+/** Sentence-case names for the wire keys the LLM dialogs edit. The key
+ *  itself stays beside the name as a mono hint (as the Flags tab's
+ *  SettingName does), so the dialogs read like the git and API-key dialogs
+ *  while an operator can still match a field to the config it writes. */
+const FIELD_NAMES: Record<string, string> = {
+  name: "Name",
+  api_kind: "API kind",
+  base_url: "Base URL",
+  api_key: "API key",
+  model: "Model",
+  provider_name: "Provider",
+  dimensions: "Dimensions",
+  reasoning: "Reasoning",
+  params: "Parameters",
+}
+
 export function Field({
   label,
   span2,
   children,
 }: {
+  /** The wire key; shown as a mono hint under its sentence-case name. */
   label: string
   span2?: boolean
   children: ReactNode
 }) {
+  const name = FIELD_NAMES[label]
   return (
     <div className={cn("flex flex-col gap-1", span2 && "sm:col-span-2")}>
-      <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
-        {label}
+      <span className="flex flex-wrap items-baseline gap-x-2">
+        <span className="text-muted-foreground text-sm">{name ?? label}</span>
+        {name && (
+          <span className="text-muted-foreground/80 font-mono text-xs">
+            {label}
+          </span>
+        )}
       </span>
       {children}
     </div>

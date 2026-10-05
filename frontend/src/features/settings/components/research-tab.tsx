@@ -4,7 +4,8 @@ import { Button } from "darkraise-ui/components/button"
 import { Label } from "darkraise-ui/components/label"
 
 import { HelpTip, NumberField } from "@/components/darkmem"
-import { ModuleSurface } from "@/features/activity/components/module-surface"
+import { Search } from "lucide-react"
+import { SettingsCard } from "./settings-card"
 import {
   useAutoResearch,
   useRerunResearchRun,
@@ -66,10 +67,7 @@ export function ResearchTab() {
     chars >= 1
 
   return (
-    <ModuleSurface
-      title="Auto research"
-      state={config.isLoading ? "empty" : "populated"}
-    >
+    <SettingsCard icon={Search} title="Auto research">
       <div className="space-y-3.5">
         <div className="flex flex-wrap items-center gap-2">
           <Badge
@@ -221,6 +219,6 @@ export function ResearchTab() {
           )}
         </div>
       </div>
-    </ModuleSurface>
+    </SettingsCard>
   )
 }

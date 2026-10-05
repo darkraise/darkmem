@@ -27,7 +27,7 @@ import {
 } from "darkraise-ui/components/dialog"
 
 import { EmptyState } from "@/components/darkmem"
-import { ModuleSurface } from "@/features/activity/components/module-surface"
+import { SettingsCard } from "./settings-card"
 import {
   MASKED,
   type BackupDestination,
@@ -108,7 +108,7 @@ export function BackupsTab() {
   const noDestinations = !isLoading && !isError && destinations.length === 0
 
   return (
-    <ModuleSurface title="Backups" state={isLoading ? "empty" : "populated"}>
+    <SettingsCard icon={HardDriveDownload} title="Backups">
       <div className="space-y-3.5">
         <div className="flex flex-wrap items-center gap-2">
           <Button
@@ -207,7 +207,7 @@ export function BackupsTab() {
           ) : null}
         </DialogContent>
       </Dialog>
-    </ModuleSurface>
+    </SettingsCard>
   )
 }
 

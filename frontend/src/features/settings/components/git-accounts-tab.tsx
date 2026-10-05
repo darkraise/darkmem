@@ -3,13 +3,6 @@ import { Button } from "darkraise-ui/components/button"
 import { Badge } from "darkraise-ui/components/badge"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "darkraise-ui/components/card"
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -34,6 +27,7 @@ import {
 } from "@/hooks/api/use-git-accounts-api"
 import { useGitAccountsData } from "../use-git-accounts-binding"
 import { GitAccountDialog } from "./git-account-dialog"
+import { SettingsCard } from "./settings-card"
 
 function formatVerified(at: string | null): string {
   if (!at) return "never checked"
@@ -77,114 +71,111 @@ export function GitAccountsTab() {
 
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-start gap-2">
-            <div>
-              <CardTitle>Git accounts</CardTitle>
-              <CardDescription>
-                Credentials for cloning private repositories.
-              </CardDescription>
-            </div>
-            <Button
-              variant="outline"
-              className="border-primary/60 text-primary-text ml-auto"
-              onClick={() => {
-                setEditing(null)
-                setDialogOpen(true)
-              }}
-            >
-              <Plus aria-hidden className="mr-1 h-4 w-4" />
-              Add account
-            </Button>
+      <SettingsCard
+        icon={KeyRound}
+        title="Git accounts"
+        actions={
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-primary/60 text-primary-text"
+            onClick={() => {
+              setEditing(null)
+              setDialogOpen(true)
+            }}
+          >
+            <Plus aria-hidden className="mr-1 h-4 w-4" />
+            Add account
+          </Button>
+        }
+      >
+        <p className="text-muted-foreground text-sm">
+          Credentials for cloning private repositories.
+        </p>
+        {isError ? (
+          // Not the empty state: "No git accounts" invites re-adding a
+          // token the instance already holds.
+          <p className="text-destructive text-sm">
+            Git accounts could not be loaded.
+          </p>
+        ) : isLoading ? (
+          <div className="space-y-2">
+            {Array.from({ length: 2 }, (_, i) => (
+              <Skeleton key={i} className="h-16 w-full rounded-md" />
+            ))}
           </div>
-        </CardHeader>
-        <CardContent>
-          {isError ? (
-            // Not the empty state: "No git accounts" invites re-adding a
-            // token the instance already holds.
-            <p className="text-destructive text-sm">
-              Git accounts could not be loaded.
-            </p>
-          ) : isLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 2 }, (_, i) => (
-                <Skeleton key={i} className="h-16 w-full rounded-md" />
-              ))}
-            </div>
-          ) : accounts.length === 0 ? (
-            <EmptyState
-              kind="empty"
-              icon={KeyRound}
-              title="No git accounts"
-              description="Add a personal access token to clone private repositories. The token is checked with the provider before it is saved."
-            />
-          ) : (
-            <ul className="flex flex-col gap-2.5">
-              {accounts.map((account) => (
-                <li
-                  key={account.id}
-                  className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-3 py-2.5"
-                >
-                  {/* Full width under sm so the action group wraps beneath
+        ) : accounts.length === 0 ? (
+          <EmptyState
+            kind="empty"
+            icon={KeyRound}
+            title="No git accounts"
+            description="Add a personal access token to clone private repositories. The token is checked with the provider before it is saved."
+          />
+        ) : (
+          <ul className="flex flex-col gap-2.5">
+            {accounts.map((account) => (
+              <li
+                key={account.id}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-3 py-2.5"
+              >
+                {/* Full width under sm so the action group wraps beneath
                       the text instead of squeezing the meta line into a
                       one-word-per-line column beside it. */}
-                  <div className="min-w-0 flex-1 basis-full sm:basis-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium">{account.label}</span>
-                      {account.is_default && (
-                        <Badge variant="outline" className="gap-1">
-                          <Star aria-hidden className="h-3 w-3" />
-                          Default for {account.host}
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="text-muted-foreground text-sm">
-                      @{account.username} · {forgeLabel(account.provider)} ·{" "}
-                      {account.host} · ••••{account.token_hint} ·{" "}
-                      {formatVerified(account.last_verified_at)}
-                      {account.repo_count > 0 &&
-                        ` · ${account.repo_count} repositor${account.repo_count === 1 ? "y" : "ies"}`}
-                    </div>
-                  </div>
-                  <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1">
-                    {!account.is_default && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => requestDefault(account)}
-                        disabled={update.isPending}
-                      >
-                        <Star aria-hidden className="mr-1 h-4 w-4" />
-                        Make default for {account.host}
-                      </Button>
+                <div className="min-w-0 flex-1 basis-full sm:basis-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{account.label}</span>
+                    {account.is_default && (
+                      <Badge variant="outline" className="gap-1">
+                        <Star aria-hidden className="h-3 w-3" />
+                        Default for {account.host}
+                      </Badge>
                     )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label={`Edit ${account.label}`}
-                      onClick={() => {
-                        setEditing(account)
-                        setDialogOpen(true)
-                      }}
-                    >
-                      <Pencil aria-hidden className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label={`Delete ${account.label}`}
-                      onClick={() => setDeleting(account)}
-                    >
-                      <Trash2 aria-hidden className="h-4 w-4" />
-                    </Button>
                   </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+                  <div className="text-muted-foreground text-sm">
+                    @{account.username} · {forgeLabel(account.provider)} ·{" "}
+                    {account.host} · ••••{account.token_hint} ·{" "}
+                    {formatVerified(account.last_verified_at)}
+                    {account.repo_count > 0 &&
+                      ` · ${account.repo_count} repositor${account.repo_count === 1 ? "y" : "ies"}`}
+                  </div>
+                </div>
+                <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1">
+                  {!account.is_default && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => requestDefault(account)}
+                      disabled={update.isPending}
+                    >
+                      <Star aria-hidden className="mr-1 h-4 w-4" />
+                      Make default for {account.host}
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`Edit ${account.label}`}
+                    onClick={() => {
+                      setEditing(account)
+                      setDialogOpen(true)
+                    }}
+                  >
+                    <Pencil aria-hidden className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`Delete ${account.label}`}
+                    onClick={() => setDeleting(account)}
+                  >
+                    <Trash2 aria-hidden className="h-4 w-4" />
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </SettingsCard>
 
       {dialogOpen && (
         <GitAccountDialog

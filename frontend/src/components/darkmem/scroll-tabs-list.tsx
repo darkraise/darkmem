@@ -50,11 +50,14 @@ export function ScrollTabsList({
     }
   }, [measure])
 
+  // Chevrons appear once the strip is found to overflow, which narrows it;
+  // re-run then so the active tab is not left under the right chevron.
+  const chevronsShown = scrollButtons && (edges.start || edges.end)
   useEffect(() => {
     scrollRef.current
       ?.querySelector<HTMLElement>('[role="tab"][data-state="active"]')
       ?.scrollIntoView({ block: "nearest", inline: "nearest" })
-  }, [activeValue])
+  }, [activeValue, chevronsShown])
 
   const scrollBy = (direction: -1 | 1) => {
     const el = scrollRef.current

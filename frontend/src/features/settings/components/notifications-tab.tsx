@@ -12,15 +12,20 @@ import {
   useTestNotification,
   useUpdateNotifications,
 } from "@/hooks/api"
+import { SettingsCard } from "./settings-card"
 
 const MASK = "***"
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-muted-foreground font-mono text-xs tracking-wide uppercase">
-        {label}
-      </span>
+      <span className="text-muted-foreground text-sm">{label}</span>
       {children}
     </div>
   )
@@ -90,7 +95,10 @@ export function NotificationsTab() {
         notify_on: { job_failure: failure },
       })
       .then(() => {
-        setEnabled(null); setToken(null); setChatId(null); setOnFailure(null)
+        setEnabled(null)
+        setToken(null)
+        setChatId(null)
+        setOnFailure(null)
         toast.success("Notification settings saved")
       })
       .catch((err: unknown) =>
@@ -101,92 +109,97 @@ export function NotificationsTab() {
   }
 
   return (
-    <div className="max-w-2xl space-y-4">
-      <div className="border-inset bg-card flex flex-col gap-3 rounded-lg border p-3.5">
-        <div className="flex items-center gap-2">
-          <Send aria-hidden className="text-muted-foreground size-[var(--icon-size)]" />
-          <span className="font-medium">Telegram</span>
+    <SettingsCard icon={Send} title="Notifications">
+      <div className="max-w-2xl space-y-4">
+        <div className="border-inset bg-card flex flex-col gap-3 rounded-lg border p-3.5">
+          <div className="flex items-center gap-2">
+            <Send
+              aria-hidden
+              className="text-muted-foreground size-[var(--icon-size)]"
+            />
+            <span className="font-medium">Telegram</span>
+            <Switch
+              checked={on}
+              onCheckedChange={setEnabled}
+              aria-label="Telegram notifications enabled"
+              className="ml-auto"
+            />
+          </div>
+
+          <Field label="Bot token">
+            <Input
+              value={tok}
+              aria-label="Telegram bot token"
+              type="password"
+              placeholder="123456:ABC-DEF…"
+              className="font-mono"
+              onChange={(e) => setToken(e.target.value)}
+            />
+          </Field>
+          {stored.telegram.bot_token === MASK && token === null && (
+            <p className="text-muted-foreground text-sm">
+              A token is stored. Leave the field as-is to keep it.
+            </p>
+          )}
+
+          <Field label="Chat id">
+            <Input
+              value={chat}
+              aria-label="Telegram chat id"
+              placeholder="-1001234567890"
+              className="font-mono"
+              onChange={(e) => setChatId(e.target.value)}
+            />
+          </Field>
+        </div>
+
+        <div className="border-inset bg-card flex items-center gap-2 rounded-lg border p-3.5">
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">Notify on job failure</p>
+            <p className="text-muted-foreground text-sm">
+              One message per failed background job, with its error.
+            </p>
+          </div>
           <Switch
-            checked={on}
-            onCheckedChange={setEnabled}
-            aria-label="Telegram notifications enabled"
-            className="ml-auto"
+            checked={failure}
+            onCheckedChange={setOnFailure}
+            aria-label="Notify on job failure"
           />
         </div>
 
-        <Field label="bot token">
-          <Input
-            value={tok}
-            aria-label="Telegram bot token"
-            type="password"
-            placeholder="123456:ABC-DEF…"
-            className="font-mono"
-            onChange={(e) => setToken(e.target.value)}
-          />
-        </Field>
-        {stored.telegram.bot_token === MASK && token === null && (
-          <p className="text-muted-foreground text-sm">
-            A token is stored. Leave the field as-is to keep it.
-          </p>
-        )}
-
-        <Field label="chat id">
-          <Input
-            value={chat}
-            aria-label="Telegram chat id"
-            placeholder="-1001234567890"
-            className="font-mono"
-            onChange={(e) => setChatId(e.target.value)}
-          />
-        </Field>
-      </div>
-
-      <div className="border-inset bg-card flex items-center gap-2 rounded-lg border p-3.5">
-        <div className="min-w-0 flex-1">
-          <p className="font-medium">Notify on job failure</p>
-          <p className="text-muted-foreground text-sm">
-            One message per failed background job, with its error.
-          </p>
+        <div className="flex items-center gap-2">
+          <Button disabled={!dirty || update.isPending} onClick={save}>
+            Save
+          </Button>
+          <Button
+            variant="outline"
+            disabled={test.isPending}
+            onClick={() => {
+              test
+                .mutateAsync()
+                .then((r) =>
+                  r.sent
+                    ? toast.success("Test message sent")
+                    : toast.error("Test message not sent", {
+                        description: r.error ?? undefined,
+                      }),
+                )
+                .catch((err: unknown) =>
+                  toast.error("Test failed", {
+                    description: err instanceof Error ? err.message : undefined,
+                  }),
+                )
+            }}
+          >
+            Send test message
+          </Button>
+          {dirty && (
+            <span className="text-muted-foreground text-sm">
+              Unsaved changes — the test uses the saved settings.
+            </span>
+          )}
         </div>
-        <Switch
-          checked={failure}
-          onCheckedChange={setOnFailure}
-          aria-label="Notify on job failure"
-        />
       </div>
-
-      <div className="flex items-center gap-2">
-        <Button disabled={!dirty || update.isPending} onClick={save}>
-          Save
-        </Button>
-        <Button
-          variant="outline"
-          disabled={test.isPending}
-          onClick={() => {
-            test
-              .mutateAsync()
-              .then((r) =>
-                r.sent
-                  ? toast.success("Test message sent")
-                  : toast.error("Test message not sent", {
-                      description: r.error ?? undefined,
-                    }),
-              )
-              .catch((err: unknown) =>
-                toast.error("Test failed", {
-                  description: err instanceof Error ? err.message : undefined,
-                }),
-              )
-          }}
-        >
-          Send test message
-        </Button>
-        {dirty && (
-          <span className="text-muted-foreground text-sm">
-            Unsaved changes — the test uses the saved settings.
-          </span>
-        )}
-      </div>
-    </div>
+    </SettingsCard>
   )
 }

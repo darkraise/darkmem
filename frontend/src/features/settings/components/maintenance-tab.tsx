@@ -1,10 +1,10 @@
 import { Link } from "@tanstack/react-router"
 import { Database, ExternalLink, RefreshCw, Trash2, Zap } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
-import { Card, CardContent, CardHeader } from "darkraise-ui/components/card"
 import { cn } from "darkraise-ui/lib"
 import { HelpTip } from "@/components/darkmem"
 import { ConfirmGate } from "./confirm-gate"
+import { SettingsCard } from "./settings-card"
 import { JobHistoryRetention } from "./job-history-retention"
 import { useMaintenanceTabBinding } from "../use-maintenance-tab-binding"
 
@@ -24,15 +24,9 @@ function OpCard({
   children: React.ReactNode
 }) {
   return (
-    <Card className="gap-0 py-0">
-      <CardHeader className="border-border bg-muted/30 flex flex-row flex-nowrap items-center gap-2 space-y-0 overflow-hidden border-b px-4 py-2.5">
-        <Icon aria-hidden className="text-primary-text h-4 w-4 shrink-0" />
-        <h3 className="min-w-0 truncate text-sm font-semibold">{title}</h3>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2.5 p-4">
-        {children}
-      </CardContent>
-    </Card>
+    <SettingsCard icon={Icon} title={title}>
+      {children}
+    </SettingsCard>
   )
 }
 

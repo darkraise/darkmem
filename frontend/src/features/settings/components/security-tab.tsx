@@ -1,11 +1,11 @@
 import { useState } from "react"
 import { Globe, KeyRound, Lock, ShieldCheck } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
-import { Card, CardContent, CardHeader } from "darkraise-ui/components/card"
 import { cn } from "darkraise-ui/lib"
 import { HelpTip } from "@/components/darkmem"
 import { DEMO } from "@/lib/demo-flag"
 import { ChangePasswordDialog } from "./change-password-dialog"
+import { SettingsCard } from "./settings-card"
 import {
   useSecurityTabBinding,
   type SecurityTabBinding,
@@ -40,20 +40,9 @@ function CardShell({
   children: React.ReactNode
 }) {
   return (
-    <Card className={cn("gap-0 py-0", className)}>
-      <CardHeader className="border-border bg-muted/30 flex flex-row flex-nowrap items-center gap-2 space-y-0 overflow-hidden border-b px-4 py-2.5">
-        <Icon aria-hidden className="text-primary-text h-4 w-4 shrink-0" />
-        <h3 className="min-w-0 truncate text-sm font-semibold">{title}</h3>
-        {help && (
-          <span className="shrink-0">
-            <HelpTip label={`About ${title}`}>{help}</HelpTip>
-          </span>
-        )}
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2.5 p-4">
-        {children}
-      </CardContent>
-    </Card>
+    <SettingsCard icon={Icon} title={title} help={help} className={className}>
+      {children}
+    </SettingsCard>
   )
 }
 
