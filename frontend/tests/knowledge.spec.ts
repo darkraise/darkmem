@@ -112,12 +112,14 @@ test.describe("knowledge/facts", () => {
       .filter({ has: page.getByText(claimPattern) })
       .first()
 
-    await row.getByRole("link", { name: "details →" }).click()
+    await row.getByRole("link", { name: /^Open fact: / }).click()
     await expect(page).toHaveURL(/\/knowledge\/facts\/[^/]+$/)
     // The page chrome, the same claim carried onto the detail page verbatim,
     // and the dispute section — proof the click reached `FactDetail` and
     // rendered the disputed branch, not a blank or error page.
-    await expect(page.getByRole("heading", { name: "Fact detail" })).toBeVisible()
+    await expect(
+      page.getByRole("heading", { name: "Fact detail" }),
+    ).toBeVisible()
     await expect(claim).toBeVisible()
     await expect(page.getByText("Both sides", { exact: true })).toBeVisible()
 

@@ -75,7 +75,8 @@ test.describe("honesty/labels-always-render", () => {
 
     for (const level of ["simple", "advanced"] as const) {
       await setDetailLevel(page, level)
-      await expect(page.getByText("superseded")).toBeVisible()
+      // Exact: the status filter's "Superseded" toggle also matches loosely.
+      await expect(page.getByText("superseded", { exact: true })).toBeVisible()
     }
   })
 
