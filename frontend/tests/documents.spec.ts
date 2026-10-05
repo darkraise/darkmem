@@ -49,7 +49,7 @@ async function signIn(page: Page) {
  */
 async function chooseAnyProject(page: Page) {
   await page.getByRole("button", { name: "Project scope" }).click()
-  // "All projects" carries the hint "every scope at once"; every real project
+  // "All projects" carries the hint "all scopes"; every real project
   // row carries an item count, which is what this matches.
   const rows = page.getByRole("button", { name: /\d+ items?$/ })
   const count = await rows.count()
