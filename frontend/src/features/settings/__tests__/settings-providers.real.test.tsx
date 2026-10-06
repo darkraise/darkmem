@@ -249,7 +249,7 @@ describe("ProvidersPanel (DEMO off — read-only rendering)", () => {
   })
 
   it("drops a Test connection result once the provider is saved", async () => {
-    let current = PROVIDERS
+    let current: { providers: unknown[] } = PROVIDERS
     vi.mocked(apiFetch).mockImplementation(
       (path: string, init?: RequestInit) => {
         if (path.endsWith("/probe-models"))
