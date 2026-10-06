@@ -21,6 +21,7 @@ import {
   type Workstream,
 } from "@/hooks/api"
 import { formatWhen } from "@/lib/format"
+import { plainText } from "@/lib/plain-text"
 
 type KindFilter = "all" | WorklogKind
 
@@ -33,9 +34,10 @@ const KIND_VARIANT: Record<WorklogKind, "default" | "secondary" | "outline"> = {
 const ROW_HEIGHT = 40
 
 /** The line a row shows: the first non-blank line, without a heading's hashes. */
+/** A row's one-line preview, as text: the detail renders the markdown. */
 export function firstLine(body: string): string {
   const line = body.split("\n").find((l) => l.trim()) ?? ""
-  return line.replace(/^#+\s*/, "").trim()
+  return plainText(line.replace(/^#+\s*/, ""))
 }
 
 /** UTC day buckets in entry order, so a ledger still reads forward. */

@@ -137,7 +137,7 @@ describe("ArticleDetailLive", () => {
     render(<ArticleDetailLive articleId={ARTICLE.id} />, { wrapper })
 
     expect(await screen.findByText(/“postgres is a database”/)).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: /fact aaaaaaaa/ })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /fact 11111111/ })).toHaveAttribute(
       "href",
       `/knowledge/facts/${CITATION.fact_id}`,
     )

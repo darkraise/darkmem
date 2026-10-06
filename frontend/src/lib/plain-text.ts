@@ -3,7 +3,9 @@
  *
  * The ledger's Note and Review cells and the epic files' gate prose are
  * markdown, and the board renders them as text -- so an entry gate reached the
- * dialog reading literally `**G-Z** holds T9.02 only.`
+ * dialog reading literally `**G-Z** holds T9.02 only.` A document block's text
+ * is the same case wherever it is quoted as a preview (search hits,
+ * connections, related memories).
  *
  * Deliberately not a markdown renderer. These fields are one paragraph of
  * prose in a card or a dialog row; parsing them properly would pull a renderer

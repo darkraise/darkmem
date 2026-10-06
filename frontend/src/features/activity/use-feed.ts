@@ -6,6 +6,7 @@ import type { FeedCategory } from "@/features/activity/types"
 import { relativeTime } from "@/lib/format"
 import { useEvents, type EventLogEntry } from "@/hooks/api"
 import { categoryOfEventType } from "./event-taxonomy"
+import { shortId } from "@/lib/short-id"
 
 /** The one row shape FeedTab renders, whichever source fed it. `layer` and
  *  `transition` stay optional because the real /events payload does not
@@ -37,9 +38,6 @@ function fromDemo(event: DemoFeedEvent): FeedRowData {
   }
 }
 
-function shortId(id: string | null): string {
-  return id ? id.slice(0, 8) : ""
-}
 
 function fromEventLog(entry: EventLogEntry): FeedRowData {
   const object = [entry.object_type, shortId(entry.object_id)]

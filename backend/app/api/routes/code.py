@@ -1,4 +1,5 @@
 import logging
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -122,13 +123,26 @@ async def list_files(
 @router.get("/graph/{repo_id}")
 async def code_graph(
     repo_id: UUID,
+    level: Literal["symbol", "file", "auto"] | None = Query(
+        None,
+        description=(
+            "Level of detail. Omitted with no scope: the whole symbol graph, "
+            "unchanged. 'file' folds symbols into their files; 'auto' folds "
+            "only when the scope holds more files plus symbols than the "
+            "response's auto_limit."
+        ),
+    ),
+    scope: str | None = Query(
+        None, max_length=1024,
+        description="A file or folder path; only it and what lies under it is drawn.",
+    ),
     _user=Depends(require_auth),
     request: Request = None,
     session: AsyncSession = Depends(get_session),
 ):
     svc = _get_service(request, session)
     with lease_llm(svc.llm):
-        return await svc.get_code_graph(repo_id)
+        return await svc.get_code_graph(repo_id, level=level, scope=scope)
 
 
 @router.get("/wiki/{repo_id}", response_model=dict | None)

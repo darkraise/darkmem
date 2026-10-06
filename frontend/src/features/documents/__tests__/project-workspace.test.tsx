@@ -289,6 +289,94 @@ describe("project workspace — the states a reader must be able to tell apart",
       ).toBeInTheDocument(),
     )
   })
+
+  it("clears search hits on Escape, on an empty search and on Clear", async () => {
+    // The hits used to stay up for good: an emptied box returned early and
+    // Escape did nothing, so twenty rows sat over the tree and the reader.
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path.startsWith("/documents/search")) {
+        return Promise.resolve({
+          items: [
+            {
+              block_id: "block-42",
+              document_id: DOC.id,
+              heading_path: ["Design"],
+              path_truncated: false,
+              text: "the storage section",
+            },
+          ],
+        })
+      }
+      return Promise.resolve({ items: [DOC] })
+    })
+    renderWorkspace()
+    await screen.findByText("design.md")
+    const box = screen.getByLabelText("search documents")
+    const runSearch = async () => {
+      fireEvent.change(box, { target: { value: "storage" } })
+      fireEvent.click(screen.getByRole("button", { name: /^search$/i }))
+      await screen.findByText("the storage section")
+    }
+
+    await runSearch()
+    fireEvent.keyDown(box, { key: "Escape" })
+    await waitFor(() =>
+      expect(screen.queryByText("the storage section")).toBeNull(),
+    )
+    expect(box).toHaveValue("")
+
+    await runSearch()
+    fireEvent.change(box, { target: { value: "  " } })
+    fireEvent.click(screen.getByRole("button", { name: /^search$/i }))
+    await waitFor(() =>
+      expect(screen.queryByText("the storage section")).toBeNull(),
+    )
+
+    await runSearch()
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }))
+    await waitFor(() =>
+      expect(screen.queryByText("the storage section")).toBeNull(),
+    )
+  })
+
+  it("says when no hit mentions the query's words, and only then", async () => {
+    // The search has no similarity floor, so a nonsense query still answers
+    // with its nearest sections. Ranking stays; the reader is told.
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path.startsWith("/documents/search")) {
+        return Promise.resolve({
+          items: [
+            {
+              block_id: "block-42",
+              document_id: DOC.id,
+              heading_path: ["Design"],
+              path_truncated: false,
+              text: "the storage section",
+            },
+          ],
+        })
+      }
+      return Promise.resolve({ items: [DOC] })
+    })
+    renderWorkspace()
+    await screen.findByText("design.md")
+    const box = screen.getByLabelText("search documents")
+
+    fireEvent.change(box, { target: { value: "zzqqxxyy" } })
+    fireEvent.click(screen.getByRole("button", { name: /^search$/i }))
+    expect(
+      await screen.findByText(/No section mentions these words/),
+    ).toBeInTheDocument()
+    // The hits stay: the notice qualifies them rather than hiding them.
+    expect(screen.getByText("the storage section")).toBeInTheDocument()
+
+    fireEvent.change(box, { target: { value: "storage" } })
+    fireEvent.click(screen.getByRole("button", { name: /^search$/i }))
+    await waitFor(() =>
+      expect(screen.queryByText(/No section mentions these words/)).toBeNull(),
+    )
+    expect(screen.getByText("the storage section")).toBeInTheDocument()
+  })
 })
 
 describe("project workspace — selection identity", () => {
@@ -357,10 +445,23 @@ describe("project workspace — layout", () => {
     mockDocuments({ items: [] })
     renderWorkspace()
     expect(
-      await screen.findByText(/No documents filed in this project/),
+      await screen.findByText("No documents filed in darkmem"),
     ).toBeInTheDocument()
     expect(screen.queryByText("Nothing selected")).not.toBeInTheDocument()
     expect(screen.queryByRole("separator")).not.toBeInTheDocument()
+  })
+
+  it("names the project and carries the caller's way out of an empty one", async () => {
+    mockDocuments({ items: [] })
+    renderWorkspace({
+      emptyAction: <button type="button">Choose another project</button>,
+    })
+    expect(
+      await screen.findByText("No documents filed in darkmem"),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: "Choose another project" }),
+    ).toBeInTheDocument()
   })
 
   it("does not render the breadcrumb when no document is selected", async () => {
@@ -921,12 +1022,16 @@ describe("project workspace — the corpus browser's own surface", () => {
     expect(onTabChange).not.toHaveBeenCalled()
   })
 
-  it("offers no create affordance in an empty tree", async () => {
-    // The corpus browser has no create verb at all.
+  it("offers New document in an empty tree, and no note verbs", async () => {
+    // The corpus browser files markdown documents; the notes verbs live on
+    // /notes.
     mockDocuments({ items: [] })
     renderWorkspace()
 
     expect(await screen.findByText(/no documents filed/i)).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: "New document" }),
+    ).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /new note/i })).toBeNull()
   })
 })
@@ -963,7 +1068,7 @@ describe("project workspace — the reveal after a uri change", () => {
   })
 })
 
-describe("the corpus browser carries no tree management", () => {
+describe("the corpus browser has no notes-mode capability flag", () => {
   // `Function.length` cannot see this: the prop is a default inside one
   // destructured parameter, so it is 1 either way. The source is the only
   // observable that distinguishes a removed prop from a defaulted one.
@@ -980,12 +1085,17 @@ describe("the corpus browser carries no tree management", () => {
     expect(screen.getByText("documents")).toBeInTheDocument()
   })
 
-  it("offers no per-row actions and no create buttons", async () => {
-    vi.mocked(apiFetch).mockResolvedValue({ items: [], total: 0 })
+  it("offers folder actions on folders only, and no note verbs", async () => {
+    mockDocuments({ items: [DOC] })
     renderWorkspace()
-    await screen.findByRole("tab", { name: /Artifacts/i })
+    await screen.findByText("design.md")
     expect(screen.queryByText("New note")).toBeNull()
     expect(screen.queryByText("New folder")).toBeNull()
-    expect(screen.queryByRole("button", { name: /^Actions for/ })).toBeNull()
+    expect(
+      screen.getByRole("button", { name: "Actions for notes" }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getAllByRole("button", { name: /^Actions for/ }),
+    ).toHaveLength(1)
   })
 })

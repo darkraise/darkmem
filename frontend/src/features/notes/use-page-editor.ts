@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { createElement, useEffect } from "react"
 import { filterSuggestionItems, insertOrUpdateBlockForSlashMenu } from "@blocknote/core/extensions"
 import {
   getDefaultReactSlashMenuItems,
@@ -9,7 +9,7 @@ import { toast } from "darkraise-ui/components/sonner"
 import { isImageType, uploadAttachment } from "./lib/attachments"
 import type { EditorBlockLike } from "./lib/block-mapping"
 import type { CalloutVariant } from "./lib/block-properties"
-import { pageSchema, type PageEditorInstance } from "./lib/editor-schema"
+import { CALLOUT_ICON, pageSchema, type PageEditorInstance } from "./lib/editor-schema"
 import { addsNestingViolation } from "./lib/nesting-guard"
 
 /** The built-in slash menu entries a page offers. Headings 4-6 stay
@@ -39,21 +39,33 @@ const CALLOUT_ITEMS: readonly { variant: CalloutVariant; title: string }[] = [
   { variant: "success", title: "Callout: success" },
 ]
 
+const CALLOUT_GROUP = "Basic blocks"
+
 /** The slash menu for `query`: the allowed built-ins plus one callout entry
- *  per variant. */
+ *  per variant, inside the built-ins' own "Basic blocks" run. The menu draws a
+ *  group header at every change of group, so callouts appended after the
+ *  Advanced and Media entries drew "Basic blocks" a second time (and React
+ *  warned about the duplicate key). */
 export function pageSlashItems(editor: PageEditorInstance, query: string): DefaultReactSuggestionItem[] {
   const builtIns = getDefaultReactSlashMenuItems(editor).filter((item) =>
     SLASH_KEYS.has((item as unknown as { key: string }).key),
   )
   const callouts: DefaultReactSuggestionItem[] = CALLOUT_ITEMS.map(({ variant, title }) => ({
     title,
-    group: "Basic blocks",
+    subtext: `A highlighted ${variant} note`,
+    // The block's own icon, at the built-ins' size: without one the entry
+    // sat flush left against the icon column of its neighbours.
+    icon: createElement(CALLOUT_ICON[variant], { size: 18 }),
+    group: CALLOUT_GROUP,
     aliases: ["callout", "alert", variant],
     onItemClick: () => {
       insertOrUpdateBlockForSlashMenu(editor, { type: "callout", props: { variant } })
     },
   }))
-  return filterSuggestionItems([...builtIns, ...callouts], query)
+  const at = builtIns.map((item) => item.group).lastIndexOf(CALLOUT_GROUP) + 1
+  const items =
+    at > 0 ? [...builtIns.slice(0, at), ...callouts, ...builtIns.slice(at)] : [...builtIns, ...callouts]
+  return filterSuggestionItems(items, query)
 }
 
 /** A page editor instance: the page schema and options, with the nesting

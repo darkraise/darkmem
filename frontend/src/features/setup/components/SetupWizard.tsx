@@ -38,6 +38,10 @@ export function SetupWizard() {
   const repos = useSetupWizardStore((s) => s.repos)
   const reset = useSetupWizardStore((s) => s.reset)
   const finalize = useFinalizeSetup()
+  // Still busy after the request succeeds: the dashboard takes a moment to
+  // load, and a live Finish button in that gap only earns a second, refused
+  // setup.
+  const busy = finalize.isPending || finalize.isSuccess
 
   const stepValid =
     step === 1
@@ -65,7 +69,7 @@ export function SetupWizard() {
   // step exactly as Next would, so it must pass Next's own validity check; the
   // password is not persisted, so after a reload it has to be re-entered first.
   const canJumpTo = (target: 1 | 2 | 3 | 4) => {
-    if (target === step || target > maxStep || finalize.isPending) return false
+    if (target === step || target > maxStep || busy) return false
     if (target < step) return true
     return stepValid && isStepPasswordValid(password)
   }
@@ -131,8 +135,11 @@ export function SetupWizard() {
       for (const f of result.repos_failed) {
         toast.warning(`Repo "${f.name}" not added: ${f.error}`)
       }
+      // Leave first, then clear: resetting while the wizard is still on
+      // screen re-rendered a blank step 1 for as long as the dashboard took
+      // to load, which read as "setup failed, start again".
+      await navigate({ to: "/" })
       reset()
-      navigate({ to: "/" })
     } catch (e) {
       toast.error(`Setup failed: ${(e as Error).message}`)
     }
@@ -181,7 +188,7 @@ export function SetupWizard() {
           <Button
             variant="ghost"
             onClick={goBack}
-            disabled={step === 1 || finalize.isPending}
+            disabled={step === 1 || busy}
           >
             Back
           </Button>
@@ -192,11 +199,7 @@ export function SetupWizard() {
               </span>
             )}
             {(step === 2 || step === 3) && (
-              <Button
-                variant="outline"
-                onClick={skip}
-                disabled={finalize.isPending}
-              >
+              <Button variant="outline" onClick={skip} disabled={busy}>
                 Skip
               </Button>
             )}
@@ -205,8 +208,12 @@ export function SetupWizard() {
                 Next
               </Button>
             ) : (
-              <Button onClick={handleFinish} disabled={finalize.isPending}>
-                {finalize.isPending ? "Finishing..." : "Finish"}
+              <Button onClick={handleFinish} disabled={busy}>
+                {finalize.isSuccess
+                  ? "Opening dashboard…"
+                  : finalize.isPending
+                    ? "Finishing..."
+                    : "Finish"}
               </Button>
             )}
           </div>

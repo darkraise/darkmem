@@ -21,7 +21,9 @@ const OPTIONS: ReadonlyArray<IconSegmentedOption<DetailLevel>> = [
  *                  detail (plus the article route itself).
  *    /activity   — day tab (raw id lists), dream digest.
  *    /chat       — the retrieval context panel, through WhyRetrievedTrace.
- *    /memories   — every row, through WhyRetrievedTrace.
+ *    /memories   — every row, through WhyRetrievedTrace. The list only: a
+ *                  memory's own page (/memories/<id>) reads nothing, so it
+ *                  is in DETAIL_LEVEL_EXACT_ROUTES, not here by prefix.
  *    /settings   — the Distribution tab's per-target detail. Route-level, so
  *                  the toggle is idle on the other Settings tabs; gating per
  *                  tab would make it appear and vanish *within* one page,
@@ -39,16 +41,21 @@ export const DETAIL_LEVEL_ROUTES = [
   "/knowledge",
   "/activity",
   "/chat",
-  "/memories",
   "/settings",
 ] as const
 
-/** Segment-wise prefix match: `/memories` covers `/memories/<id>` but not
- *  `/memoriesarchive`, and `/code` never inherits a decision made for a
+/** Pages that consume the level while the pages under them do not. */
+export const DETAIL_LEVEL_EXACT_ROUTES = ["/memories"] as const
+
+/** Segment-wise prefix match: `/knowledge` covers `/knowledge/<id>` but not
+ *  `/knowledgebase`, and `/code` never inherits a decision made for a
  *  differently-named sibling. A bare `startsWith` would conflate them. */
 function consumesDetailLevel(pathname: string): boolean {
-  return DETAIL_LEVEL_ROUTES.some(
-    (route) => pathname === route || pathname.startsWith(`${route}/`),
+  return (
+    (DETAIL_LEVEL_EXACT_ROUTES as readonly string[]).includes(pathname) ||
+    DETAIL_LEVEL_ROUTES.some(
+      (route) => pathname === route || pathname.startsWith(`${route}/`),
+    )
   )
 }
 

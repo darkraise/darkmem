@@ -35,6 +35,7 @@ import { DEMO } from "@/lib/demo-flag"
 import { ShareBar } from "@/features/usage/components/usage-charts"
 import { formatArguments } from "../mcp-format"
 import { ModuleSurface } from "./module-surface"
+import { shortId } from "@/lib/short-id"
 
 const WINDOWS: McpCallWindow[] = ["24h", "7d", "30d"]
 const STATUSES: (McpCallStatus | "all")[] = ["all", "ok", "error", "denied"]
@@ -87,13 +88,13 @@ function ObjectId({ id, tools }: { id: string; tools: string[] }) {
         params={{ memoryId: id }}
         className="text-primary-text font-mono text-xs underline-offset-2 hover:underline"
       >
-        {id.slice(0, 8)}
+        {shortId(id)}
       </Link>
     )
   }
   return (
     <span className="font-mono text-xs" title={id}>
-      {id.length > 12 ? id.slice(0, 8) : id}
+      {shortId(id)}
     </span>
   )
 }
@@ -124,7 +125,7 @@ function SummaryPanel({
           Log Retention job to record them.
         </p>
       )}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 2xl:grid-cols-2">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
@@ -133,6 +134,7 @@ function SummaryPanel({
                 <TableHead className="w-24">Share</TableHead>
                 <TableHead className="text-right">Calls</TableHead>
                 <TableHead className="text-right">Err</TableHead>
+                <TableHead className="text-right">Denied</TableHead>
                 <TableHead className="text-right">p95</TableHead>
                 <TableHead className="text-right">Last</TableHead>
               </TableRow>
@@ -155,10 +157,15 @@ function SummaryPanel({
                   <TableCell className="text-right font-mono text-xs tabular-nums">
                     {t.calls}
                   </TableCell>
+                  {/* Two columns, as the totals above count them: one "Err"
+                      summing both disagreed with ERRORS / DENIED. */}
                   <TableCell className="text-right font-mono text-xs tabular-nums">
-                    {t.errors + t.denied}
+                    {t.errors}
                   </TableCell>
                   <TableCell className="text-right font-mono text-xs tabular-nums">
+                    {t.denied}
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-xs whitespace-nowrap tabular-nums">
                     {t.p95_duration_ms} ms
                   </TableCell>
                   <TableCell className="text-muted-foreground text-right text-xs whitespace-nowrap">
@@ -299,6 +306,11 @@ export function McpTab() {
   const filtered = Boolean(tool || objectId || status !== "all")
   const items = calls.data?.items ?? []
   const total = calls.data?.total ?? 0
+  const nothingYet =
+    !filtered &&
+    calls.isSuccess &&
+    items.length === 0 &&
+    summary.data?.total === 0
 
   return (
     <div className="space-y-4">
@@ -354,111 +366,115 @@ export function McpTab() {
         )}
       </ModuleSurface>
 
-      <ModuleSurface
-        title="Recent MCP calls"
-        state={calls.isError ? "error" : "populated"}
-        meta={calls.data ? `${total.toLocaleString()} matching` : undefined}
-        actions={
-          <span className="text-muted-foreground font-mono text-sm">
-            {DEMO ? "demo data" : "polling every 10s"}
-          </span>
-        }
-      >
-        <div className="flex flex-wrap items-center gap-2.5">
-          <Select
-            value={tool ?? "__all"}
-            onValueChange={(v) => {
-              setTool(v === "__all" ? undefined : v)
-              setLimit(PAGE)
-            }}
-          >
-            <SelectTrigger
-              className="w-auto min-w-44 rounded-full"
-              aria-label="Tool"
-            >
-              <SelectValue>{tool ?? "all tools"}</SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all">all tools</SelectItem>
-              {(tool && !tools.includes(tool) ? [tool, ...tools] : tools).map(
-                (t) => (
-                  <SelectItem key={t} value={t}>
-                    {t}
-                  </SelectItem>
-                ),
-              )}
-            </SelectContent>
-          </Select>
-          <ToggleGroup
-            type="single"
-            value={status}
-            onValueChange={(v) => {
-              if (v) {
-                setStatus(v as McpCallStatus | "all")
+      {/* With no call in the window and none ever listed, the insights card
+          already says so; a second empty card under it said it again. */}
+      {nothingYet ? null : (
+        <ModuleSurface
+          title="Recent MCP calls"
+          state={calls.isError ? "error" : "populated"}
+          meta={calls.data ? `${total.toLocaleString()} matching` : undefined}
+          actions={
+            <span className="text-muted-foreground font-mono text-sm">
+              {DEMO ? "demo data" : "polling every 10s"}
+            </span>
+          }
+        >
+          <div className="flex flex-wrap items-center gap-2.5">
+            <Select
+              value={tool ?? "__all"}
+              onValueChange={(v) => {
+                setTool(v === "__all" ? undefined : v)
                 setLimit(PAGE)
-              }
-            }}
-            className="flex-wrap justify-start"
-          >
-            {STATUSES.map((s) => (
-              <ToggleGroupItem
-                key={s}
-                value={s}
-                size="sm"
-                className="font-mono text-sm"
-              >
-                {s}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-          {objectId && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-1 rounded-full font-mono"
-              onClick={() => setObjectId(undefined)}
+              }}
             >
-              returned {objectId.slice(0, 8)}
-              <X aria-label="Clear item filter" className="h-3 w-3" />
-            </Button>
-          )}
-        </div>
-        {calls.isError ? (
-          <EmptyState
-            kind="failed"
-            title="Couldn't load MCP calls"
-            description="Reopen the tab to retry."
-          />
-        ) : items.length === 0 && !calls.isLoading ? (
-          <EmptyState
-            kind={filtered ? "filtered" : "empty"}
-            title={
-              filtered ? "No calls match these filters" : "No MCP calls yet"
-            }
-            description={
-              filtered
-                ? "Clear a filter to see more."
-                : "Calls appear here as soon as a client uses an API key on /mcp."
-            }
-          />
-        ) : (
-          <>
-            {items.map((call) => (
-              <CallRow key={call.id} call={call} />
-            ))}
-            {items.length < total && limit < MAX_PAGE && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="self-start"
-                onClick={() => setLimit((l) => Math.min(MAX_PAGE, l + PAGE))}
+              <SelectTrigger
+                className="w-auto min-w-44 rounded-full"
+                aria-label="Tool"
               >
-                Show more
+                <SelectValue>{tool ?? "all tools"}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all">all tools</SelectItem>
+                {(tool && !tools.includes(tool) ? [tool, ...tools] : tools).map(
+                  (t) => (
+                    <SelectItem key={t} value={t}>
+                      {t}
+                    </SelectItem>
+                  ),
+                )}
+              </SelectContent>
+            </Select>
+            <ToggleGroup
+              type="single"
+              value={status}
+              onValueChange={(v) => {
+                if (v) {
+                  setStatus(v as McpCallStatus | "all")
+                  setLimit(PAGE)
+                }
+              }}
+              className="flex-wrap justify-start"
+            >
+              {STATUSES.map((s) => (
+                <ToggleGroupItem
+                  key={s}
+                  value={s}
+                  size="sm"
+                  className="font-mono text-sm"
+                >
+                  {s}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+            {objectId && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1 rounded-full font-mono"
+                onClick={() => setObjectId(undefined)}
+              >
+                returned {shortId(objectId)}
+                <X aria-label="Clear item filter" className="h-3 w-3" />
               </Button>
             )}
-          </>
-        )}
-      </ModuleSurface>
+          </div>
+          {calls.isError ? (
+            <EmptyState
+              kind="failed"
+              title="Couldn't load MCP calls"
+              description="Reopen the tab to retry."
+            />
+          ) : items.length === 0 && !calls.isLoading ? (
+            <EmptyState
+              kind={filtered ? "filtered" : "empty"}
+              title={
+                filtered ? "No calls match these filters" : "No MCP calls yet"
+              }
+              description={
+                filtered
+                  ? "Clear a filter to see more."
+                  : "Calls appear here as soon as a client uses an API key on /mcp."
+              }
+            />
+          ) : (
+            <>
+              {items.map((call) => (
+                <CallRow key={call.id} call={call} />
+              ))}
+              {items.length < total && limit < MAX_PAGE && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="self-start"
+                  onClick={() => setLimit((l) => Math.min(MAX_PAGE, l + PAGE))}
+                >
+                  Show more
+                </Button>
+              )}
+            </>
+          )}
+        </ModuleSurface>
+      )}
     </div>
   )
 }

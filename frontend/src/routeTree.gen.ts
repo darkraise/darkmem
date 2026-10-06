@@ -27,6 +27,7 @@ import { Route as AuthenticatedDocumentsRouteImport } from './routes/_authentica
 import { Route as AuthenticatedCodeRouteImport } from './routes/_authenticated/code'
 import { Route as AuthenticatedChatRouteImport } from './routes/_authenticated/chat'
 import { Route as AuthenticatedActivityRouteImport } from './routes/_authenticated/activity'
+import { Route as AuthenticatedSplatRouteImport } from './routes/_authenticated/$'
 import { Route as AuthenticatedProjectsProjectRouteImport } from './routes/_authenticated/projects_.$project'
 import { Route as AuthenticatedMemoriesMemoryIdRouteImport } from './routes/_authenticated/memories_.$memoryId'
 import { Route as AuthenticatedKnowledgeTopicsRouteImport } from './routes/_authenticated/knowledge_.topics'
@@ -129,6 +130,11 @@ const AuthenticatedActivityRoute = AuthenticatedActivityRouteImport.update({
   path: '/activity',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedSplatRoute = AuthenticatedSplatRouteImport.update({
+  id: '/$',
+  path: '/$',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedProjectsProjectRoute =
   AuthenticatedProjectsProjectRouteImport.update({
     id: '/projects_/$project',
@@ -196,6 +202,7 @@ const AuthenticatedKnowledgeArticlesArticleIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
+  '/$': typeof AuthenticatedSplatRoute
   '/activity': typeof AuthenticatedActivityRoute
   '/chat': typeof AuthenticatedChatRoute
   '/code': typeof AuthenticatedCodeRoute
@@ -225,6 +232,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof AuthenticatedIndexRoute
+  '/$': typeof AuthenticatedSplatRoute
   '/activity': typeof AuthenticatedActivityRoute
   '/chat': typeof AuthenticatedChatRoute
   '/code': typeof AuthenticatedCodeRoute
@@ -256,6 +264,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/_guest': typeof GuestRouteWithChildren
+  '/_authenticated/$': typeof AuthenticatedSplatRoute
   '/_authenticated/activity': typeof AuthenticatedActivityRoute
   '/_authenticated/chat': typeof AuthenticatedChatRoute
   '/_authenticated/code': typeof AuthenticatedCodeRoute
@@ -288,6 +297,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/$'
     | '/activity'
     | '/chat'
     | '/code'
@@ -317,6 +327,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/$'
     | '/activity'
     | '/chat'
     | '/code'
@@ -347,6 +358,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_authenticated'
     | '/_guest'
+    | '/_authenticated/$'
     | '/_authenticated/activity'
     | '/_authenticated/chat'
     | '/_authenticated/code'
@@ -509,6 +521,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedActivityRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/$': {
+      id: '/_authenticated/$'
+      path: '/$'
+      fullPath: '/$'
+      preLoaderRoute: typeof AuthenticatedSplatRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/projects_/$project': {
       id: '/_authenticated/projects_/$project'
       path: '/projects/$project'
@@ -590,6 +609,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedRouteChildren {
+  AuthenticatedSplatRoute: typeof AuthenticatedSplatRoute
   AuthenticatedActivityRoute: typeof AuthenticatedActivityRoute
   AuthenticatedChatRoute: typeof AuthenticatedChatRoute
   AuthenticatedCodeRoute: typeof AuthenticatedCodeRoute
@@ -618,6 +638,7 @@ interface AuthenticatedRouteChildren {
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
+  AuthenticatedSplatRoute: AuthenticatedSplatRoute,
   AuthenticatedActivityRoute: AuthenticatedActivityRoute,
   AuthenticatedChatRoute: AuthenticatedChatRoute,
   AuthenticatedCodeRoute: AuthenticatedCodeRoute,

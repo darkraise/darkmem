@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
-import { Brain, Loader2, Plus, Search, X } from "lucide-react"
+import { Brain, Info, Loader2, Plus, Search, X } from "lucide-react"
+import { Alert, AlertDescription } from "darkraise-ui/components/alert"
 import { Button } from "darkraise-ui/components/button"
 import { EmptyState } from "@/components/darkmem"
 import { Input } from "darkraise-ui/components/input"
@@ -14,6 +15,8 @@ import { MemoryResultsHeader } from "./memory-results-header"
 import { MemoryRow, type MemoryRowData } from "./memory-row"
 
 const PAGE = 50
+/** `MemorySearchPaginatedRequest.limit`'s server bound (`le=500`). */
+const MAX_LIMIT = 500
 const ROW_GAP = 8
 const ROW_ESTIMATE = 84
 
@@ -39,15 +42,25 @@ export function RealMemoriesView({
   const [createOpen, setCreateOpen] = useState(false)
   const loadingRef = useRef(false)
 
-  const { rows, total, exclusions, isLoading, isError, isFetching } =
-    useMemorySearchPage({
-      query,
-      project: activeProject ?? "all",
-      status: ["active", "superseded"],
-      limit,
-    })
+  const {
+    rows,
+    total,
+    exclusions,
+    noKeywordMatch,
+    isLoading,
+    isError,
+    isFetching,
+  } = useMemorySearchPage({
+    query,
+    project: activeProject ?? "all",
+    status: ["active", "superseded"],
+    limit,
+  })
 
   const hasMore = rows.length < total
+  // The paginated route caps `limit` at MAX_LIMIT; growing past it answered
+  // 422 and the loaded rows gave way to "Search failed".
+  const canLoadMore = hasMore && limit < MAX_LIMIT
   const virtualCount = rows.length + 1
 
   const { listRef, virtualizer, scrollMargin } = useMainVirtualizer({
@@ -64,11 +77,11 @@ export function RealMemoriesView({
   // which re-runs the real paginated query (offset stays 0 — a bigger
   // `limit` is simplest against a route that already returns `total`).
   useEffect(() => {
-    if (!hasMore || isFetching || loadingRef.current) return
+    if (!canLoadMore || isFetching || loadingRef.current) return
     if (lastRenderedIndex < rows.length - 1) return
     loadingRef.current = true
-    setLimit((n) => n + PAGE)
-  }, [hasMore, isFetching, lastRenderedIndex, rows.length])
+    setLimit((n) => Math.min(n + PAGE, MAX_LIMIT))
+  }, [canLoadMore, isFetching, lastRenderedIndex, rows.length])
 
   useEffect(() => {
     loadingRef.current = false
@@ -144,6 +157,19 @@ export function RealMemoriesView({
         <div className="space-y-3 p-4">
           <ExclusionStrip items={exclusions} />
 
+          {searching && noKeywordMatch && rows.length > 0 && !isError ? (
+            // Search has no score floor on meaning, so a query no memory
+            // contains still lists every memory; say so instead of an empty
+            // state the ranking never reaches.
+            <Alert variant="info" role="status">
+              <Info aria-hidden className="h-4 w-4" />
+              <AlertDescription>
+                No memory{activeProject ? ` in project ${activeProject}` : ""}{" "}
+                contains these words; these are the closest by meaning.
+              </AlertDescription>
+            </Alert>
+          ) : null}
+
           {isLoading ? (
             <div
               className="space-y-2"
@@ -184,8 +210,11 @@ export function RealMemoriesView({
                         memory={toRowData(row.memory)}
                         trace={row.trace}
                         expanded={expandedId === row.memory.id}
+                        // Without a query nothing was retrieved: the trace
+                        // reads "semantic off / keyword off / 0.0000", which
+                        // explains nothing.
                         onToggleTrace={
-                          row.trace
+                          row.trace && searching
                             ? () =>
                                 setExpandedId((prev) =>
                                   prev === row.memory.id ? null : row.memory.id,
@@ -201,13 +230,16 @@ export function RealMemoriesView({
                         <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
                         loading more…
                       </div>
-                    ) : (
+                    ) : hasMore ? (
                       <p className="text-muted-foreground py-1 text-center font-mono text-sm">
-                        {hasMore
-                          ? `${rows.length} of ${total} loaded`
-                          : `all ${total} shown`}
+                        {rows.length} of {total} loaded
+                        {canLoadMore
+                          ? ""
+                          : " — narrow the search to reach the rest"}
                       </p>
-                    )}
+                    ) : // A complete list says nothing at its foot: the header
+                    // already reads "N of N shown".
+                    null}
                   </div>
                 )
               })}

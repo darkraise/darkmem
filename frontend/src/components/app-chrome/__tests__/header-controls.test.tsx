@@ -55,9 +55,8 @@ describe("HeaderControls", () => {
     expect(
       screen.getByRole("button", { name: "Project scope" }),
     ).toBeInTheDocument()
-    expect(
-      screen.getByRole("button", { name: "Session context" }),
-    ).toBeInTheDocument()
+    // Real mode: the session context chip has no reader outside the demo.
+    expect(screen.queryByRole("button", { name: "Session context" })).toBeNull()
     expect(screen.getByText("detail-level")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Theme" })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "View options" })).toBeNull()
@@ -73,9 +72,6 @@ describe("HeaderControls", () => {
     expect(
       await screen.findByRole("button", { name: "Project scope" }),
     ).toBeInTheDocument()
-    expect(
-      screen.getByRole("button", { name: "Session context" }),
-    ).toBeInTheDocument()
     expect(screen.getByText("detail-level")).toBeInTheDocument()
   })
 
@@ -90,9 +86,8 @@ describe("HeaderControls", () => {
     await user.click(
       await screen.findByRole("button", { name: /^All projects/ }),
     )
-    expect(
-      screen.getByRole("button", { name: "Session context" }),
-    ).toBeInTheDocument()
+    // Still open: its other controls are still on screen.
+    expect(screen.getByText("detail-level")).toBeInTheDocument()
   })
 
   it("captions each control in the overflow popover", async () => {
@@ -101,11 +96,14 @@ describe("HeaderControls", () => {
     render(<HeaderControls />, { wrapper })
     await user.click(screen.getByRole("button", { name: "View options" }))
     await screen.findByRole("button", { name: "Project scope" })
-    for (const caption of ["Project", "Context", "Theme"]) {
+    for (const caption of ["Project", "Theme"]) {
       expect(
         screen.getByText(caption, { selector: "span" }),
       ).toBeInTheDocument()
     }
+    // Real mode never sends a declared context, so it offers no control
+    // for one (the demo page is the chip's only reader).
+    expect(screen.queryByText("Context", { selector: "span" })).toBeNull()
   })
 
   it("offers a palette button below md, where the rail's search is hidden", async () => {

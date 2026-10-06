@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react"
+import { toast } from "darkraise-ui/components/sonner"
 import { DEMO } from "@/lib/demo-flag"
 import { MEMORY_TYPES } from "@/lib/taxonomy"
 import { useDemoFlags } from "@/demo/hooks"
@@ -202,7 +203,12 @@ export interface FlagsTabBinding {
   saveAllowlist: (patterns: string[]) => void
 }
 
-function armFrom(flag: string, value: number, descOverride?: string): DemoRankArm {
+function armFrom(
+  flag: string,
+  value: number,
+  descOverride?: string,
+  bounds?: { min: number; max: number },
+): DemoRankArm {
   const meta = FUSION_ARM_META[flag]
   return {
     key: flag,
@@ -211,6 +217,8 @@ function armFrom(flag: string, value: number, descOverride?: string): DemoRankAr
     coded_default: CODED_DEFAULTS[flag] ?? 0,
     source: value === (CODED_DEFAULTS[flag] ?? 0) ? "default" : "override",
     step: meta?.step ?? 0.05,
+    min: bounds?.min,
+    max: bounds?.max,
   }
 }
 
@@ -246,10 +254,15 @@ export function useFlagsTabBinding(): FlagsTabBinding {
       setInFlight((keys) => [...keys, key])
       // The catch is required, not defensive: `mutateAsync` rejects on a failed
       // write and an unhandled rejection would take the page down over a
-      // settings save. The error surface is the mutation's own; this only has
-      // to stop the spinner.
+      // settings save. It also has to say so: the section dialogs close on
+      // Save, and nothing else rendered a refusal, so an out-of-range value
+      // (the server's 422) vanished and the old value stayed without a word.
       void run()
-        .catch(() => {})
+        .catch((error: unknown) => {
+          toast.error(
+            `Not saved: ${error instanceof Error ? error.message : String(error)}`,
+          )
+        })
         .finally(() =>
           setInFlight((keys) => {
             const at = keys.indexOf(key)
@@ -330,11 +343,18 @@ export function useFlagsTabBinding(): FlagsTabBinding {
           "w_heat",
           "w_recency",
         ] as const
-      ).map((key) => armFrom(key, flags[key]))
+      ).map((key) =>
+        armFrom(key, flags[key], undefined, flags.numeric_bounds?.[key]),
+      )
     : []
 
   const contextBoost: DemoRankArm = flags
-    ? armFrom("w_context_boost", flags.w_context_boost)
+    ? armFrom(
+        "w_context_boost",
+        flags.w_context_boost,
+        undefined,
+        flags.numeric_bounds?.w_context_boost,
+      )
     : armFrom("w_context_boost", 0)
 
   const behavioralFlags: DemoBehavioralFlag[] = flags
@@ -375,6 +395,7 @@ export function useFlagsTabBinding(): FlagsTabBinding {
               channel.weight_flag,
               channel.weight ?? 0,
               GRAPH_WEIGHT_META[channel.weight_flag],
+              flags?.numeric_bounds?.[channel.weight_flag],
             ),
     }),
   )

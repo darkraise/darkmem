@@ -11,7 +11,12 @@ import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
 import { Label } from "darkraise-ui/components/label"
 import { Checkbox } from "darkraise-ui/components/checkbox"
-import { KeyRound } from "lucide-react"
+import { Check, Copy, KeyRound } from "lucide-react"
+import {
+  Clipboard,
+  ClipboardIndicator,
+  ClipboardTrigger,
+} from "darkraise-ui/components/clipboard"
 import { useCreateApiKey, type ApiKeyCreated } from "@/hooks/api"
 import { McpConnectSnippets } from "./mcp-connect-snippets"
 
@@ -31,22 +36,37 @@ import { McpConnectSnippets } from "./mcp-connect-snippets"
  *  `ratify` is deliberately not here. It is not a scope at all — confirming a
  *  fact stays a human action.
  */
-const SCOPE_ITEMS = [
-  { value: "capture", label: "Save new memories" },
-  { value: "read", label: "Search and read memories" },
-  // `admin` covers three unrelated powers and the label has to carry all of
-  // them: the push webhook, which is the ordinary reason to mint one of
-  // these keys, the file-scoped reindex, and on /mcp `document_delete_subtree`
-  // -- which erases every document under a uri prefix with no undo. Naming
-  // only the erase leaves a webhook operator hunting for a narrower scope
-  // that does not exist; naming only the webhook understates what a leak
-  // costs.
-  {
-    value: "admin",
-    label:
-      "Receive push updates, reindex repositories, delete document subtrees",
+/** Short tag for the key list, full wording for the picker. One table, so
+ *  the list and the picker cannot describe a scope two ways. */
+export const SCOPE_LABELS: Record<string, { short: string; full: string }> = {
+  // `capture` is every MCP write that is not `admin`: memory add, update and
+  // delete, document filing, editing and deletion, document block edits,
+  // work-log appends and research filings. "Save new memories" read as
+  // append-only.
+  capture: {
+    short: "Write",
+    full: "Add, edit and delete memories, documents and work-log entries",
   },
-]
+  read: {
+    short: "Read",
+    full: "Search and read memories, documents, facts and code",
+  },
+  // `admin` covers unrelated powers and the label has to carry all of them:
+  // the push webhook, which is the ordinary reason to mint one of these
+  // keys, the file-scoped reindex, and on /mcp `document_delete_subtree` and
+  // `worklog_purge` -- which erase with no undo. Naming only the erase leaves
+  // a webhook operator hunting for a narrower scope that does not exist;
+  // naming only the webhook understates what a leak costs.
+  admin: {
+    short: "Admin",
+    full: "Receive push updates, reindex repositories, delete document subtrees, purge work logs",
+  },
+}
+
+const SCOPE_ITEMS = (["capture", "read", "admin"] as const).map((value) => ({
+  value,
+  label: SCOPE_LABELS[value]!.full,
+}))
 
 /**
  * Creating a key, in a dialog rather than inline on the card.
@@ -55,7 +75,8 @@ const SCOPE_ITEMS = [
  * hand it back. Inline on the card it appeared below a form the reader had
  * usually scrolled past by the time it rendered. Here it replaces the form in
  * a box that will not close until dismissed, which is the only moment the
- * credential exists.
+ * credential exists: once a key is shown, Escape and a click outside do
+ * nothing, and only "I have copied it" closes it.
  */
 export function ApiKeyDialog({
   open,
@@ -82,7 +103,15 @@ export function ApiKeyDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={close}>
+    // Once a key is on screen a stray Escape or outside click must not lose
+    // it, but the X is a deliberate dismissal like "I have copied it": a close
+    // button that does nothing reads as broken.
+    <Dialog
+      open={open}
+      onOpenChange={close}
+      closeOnEscape={!issued}
+      closeOnOutsidePointerDown={!issued}
+    >
       <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col gap-3 overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{issued ? "Your new key" : "New key"}</DialogTitle>
@@ -95,10 +124,18 @@ export function ApiKeyDialog({
 
         {issued ? (
           <>
-            <div className="border-inset bg-muted/20 flex flex-col gap-1 rounded-md border border-dashed p-2.5">
-              <code className="font-mono text-sm break-all">
+            <div className="border-inset bg-muted/20 flex items-start gap-2 rounded-md border border-dashed p-2.5">
+              <code className="min-w-0 flex-1 font-mono text-sm break-all">
                 {issued.token}
               </code>
+              <Clipboard value={issued.token} toast>
+                <ClipboardTrigger aria-label="Copy key">
+                  <ClipboardIndicator
+                    copied={<Check className="size-4" />}
+                    fallback={<Copy className="size-4" />}
+                  />
+                </ClipboardTrigger>
+              </Clipboard>
             </div>
             <p className="text-muted-foreground text-sm">
               To connect an MCP client with this key:

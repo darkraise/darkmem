@@ -15,6 +15,7 @@ import type { ArticleCitation, ArticleSection, DemoFact } from "@/demo/types"
 import { ArticleDetailLive } from "@/features/knowledge/components/article-detail-live"
 import { StaleBadge } from "@/features/knowledge/components/fact-parts"
 import { DetailSection } from "@/features/knowledge/components/detail-section"
+import { shortId } from "@/lib/short-id"
 
 export const Route = createFileRoute(
   "/_authenticated/knowledge_/articles_/$articleId",
@@ -90,7 +91,7 @@ function CitationRow({
         params={{ factId: citation.fact_id }}
         className="hover:text-primary-text font-mono text-sm transition-colors"
       >
-        fact {citation.fact_id.slice(0, 8)}
+        fact {shortId(citation.fact_id)}
       </Link>
       {fact && (
         <VerificationBadge
@@ -304,7 +305,7 @@ function ArticleDetailPage() {
 
         <DetailSection value="record" title="Record" meta={article.project}>
           <dl className="grid grid-cols-[8rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
-            <MetaRow label="article">{article.id.slice(0, 8)}</MetaRow>
+            <MetaRow label="article">{shortId(article.id)}</MetaRow>
             <MetaRow label="subject">
               {article.subject_key} · {article.subject_kind}
             </MetaRow>

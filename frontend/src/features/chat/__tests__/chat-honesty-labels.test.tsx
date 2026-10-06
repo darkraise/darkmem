@@ -1,10 +1,32 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
+import type { ReactNode } from "react"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { SourceBadges } from "../components/source-badges"
 import { ChatContextPanel } from "../components/chat-context-panel"
 import { ChatMessages } from "../components/chat-messages"
 import type { ChatMessage } from "@/hooks/api"
+
+// A citation chip with no selection handler links to the memory's page, and
+// these renders have no router; a plain anchor stands in for the Link.
+vi.mock("@tanstack/react-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
+  Link: ({
+    to,
+    params,
+    children,
+    ...rest
+  }: {
+    to: string
+    params?: Record<string, string>
+    children?: ReactNode
+    [key: string]: unknown
+  }) => (
+    <a href={params?.memoryId ? to.replace("$memoryId", params.memoryId) : to} {...rest}>
+      {children}
+    </a>
+  ),
+}))
 
 // T1.60 Step 8, three render sites (§6.1/§6.5): the same superseded/active
 // fixture is asserted at SourceBadges, ChatContextPanel, and the inline
@@ -114,5 +136,27 @@ describe("Inline citation chip (MemoryBadge, the third render site) honesty labe
     const dot = container.querySelector("span.rounded-full")
     expect(dot).not.toBeNull()
     expect(dot).toHaveClass("bg-muted-foreground/40")
+  })
+})
+
+// Audit O2b: "Ask about selection" puts the selected memory first in the
+// turn's context. Without a label it reads as the search's top hit, which it
+// may not be — a selected row the search missed carries no score at all.
+describe("the selected row says it was selected", () => {
+  const rows = [
+    { id: "m1", content: "picked on the graph", status: "active" as const, selected: true },
+    { id: "m2", content: "retrieved", status: "active" as const, score: 0.016 },
+  ]
+
+  it("in the context panel", () => {
+    render(<ChatContextPanel rows={rows} />)
+    expect(screen.getAllByText("your selection")).toHaveLength(1)
+  })
+
+  it("in the source list under an answer", async () => {
+    render(<SourceBadges memories={rows} entities={[]} />)
+    await userEvent.click(screen.getByRole("button", { name: /memories/i }))
+    expect(screen.getAllByText("your selection")).toHaveLength(1)
+    expect(screen.getByText("score 0.016")).toBeInTheDocument()
   })
 })

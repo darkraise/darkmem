@@ -19,6 +19,14 @@ import {
 } from "darkraise-ui/components/password-input"
 import { Textarea } from "darkraise-ui/components/textarea"
 import { Switch } from "darkraise-ui/components/switch"
+import { cn } from "darkraise-ui/lib"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "darkraise-ui/components/select"
 import {
   Dialog,
   DialogContent,
@@ -32,6 +40,7 @@ import {
   MASKED,
   type BackupDestination,
   type DestinationInventory,
+  type DestinationKind,
   type InventoryOutcome,
 } from "@/hooks/api/use-backups-api"
 import {
@@ -39,6 +48,7 @@ import {
   useBackupsTabBinding,
   type BackupOutcome,
 } from "@/features/settings/use-backups-tab-binding"
+import { keepDialogOpenOnListEscape } from "@/lib/portal-overlays"
 
 /**
  * The `backup_destinations` operator surface (increment 6, spec §9.3).
@@ -71,6 +81,9 @@ export function BackupsTab() {
   } = useBackupsTabBinding()
 
   const [editing, setEditing] = useState<BackupDestination | null>(null)
+  // A new destination is the same form over a blank draft; it differs only
+  // in what Save does (append rather than replace) and in naming the kind.
+  const [adding, setAdding] = useState(false)
   // Two error slots, not one: a refusal belongs beside the control that
   // caused it. One shared slot renders the dialog's 422 behind the dialog as
   // well, which reads as two separate failures.
@@ -80,13 +93,27 @@ export function BackupsTab() {
 
   async function commit(next: BackupDestination) {
     setFormError(null)
-    const merged = destinations.map((d) => (d.name === next.name ? next : d))
+    const merged = adding
+      ? [...destinations, next]
+      : destinations.map((d) => (d.name === next.name ? next : d))
     try {
       await save(merged)
       setEditing(null)
+      setAdding(false)
     } catch (exc) {
       setFormError(exc instanceof Error ? exc.message : String(exc))
     }
+  }
+
+  function openAdd() {
+    setFormError(null)
+    setEditing(newDestination("local"))
+    setAdding(true)
+  }
+
+  function closeForm() {
+    setEditing(null)
+    setAdding(false)
   }
 
   async function toggle(destination: BackupDestination, enabled: boolean) {
@@ -136,6 +163,9 @@ export function BackupsTab() {
           ) : runMessage ? (
             <span className="text-muted-foreground text-sm">{runMessage}</span>
           ) : null}
+          <Button variant="outline" className="ml-auto" onClick={openAdd}>
+            Add destination
+          </Button>
         </div>
 
         {rowError ? (
@@ -157,6 +187,7 @@ export function BackupsTab() {
             icon={HardDriveDownload}
             title="No destinations configured"
             description="Nothing is shipped off this host until a destination exists."
+            action={<Button onClick={openAdd}>Add destination</Button>}
           />
         ) : (
           <ul className="space-y-2.5">
@@ -188,20 +219,27 @@ export function BackupsTab() {
 
       <Dialog
         open={editing !== null}
-        onOpenChange={(open) => !open && setEditing(null)}
+        onOpenChange={(open) => !open && closeForm()}
       >
-        <DialogContent>
-          <DialogTitle>Edit destination</DialogTitle>
+        <DialogContent
+          onEscapeKeyDown={keepDialogOpenOnListEscape}
+          className="max-h-[90vh] overflow-y-auto"
+        >
+          <DialogTitle>
+            {adding ? "Add destination" : "Edit destination"}
+          </DialogTitle>
           <DialogDescription>
-            An untouched secret stays as it is. Typing into a masked field is
-            the only way to replace it.
+            {adding
+              ? "A destination off this host is shipped age-encrypted, so it needs the recipient's public key."
+              : "An untouched secret stays as it is. Typing into a masked field is the only way to replace it."}
           </DialogDescription>
           {editing ? (
             <DestinationForm
               destination={editing}
+              isNew={adding}
               busy={isSaving}
               error={formError}
-              onCancel={() => setEditing(null)}
+              onCancel={closeForm}
               onSave={commit}
             />
           ) : null}
@@ -209,6 +247,48 @@ export function BackupsTab() {
       </Dialog>
     </SettingsCard>
   )
+}
+
+const KIND_LABELS: Record<DestinationKind, string> = {
+  local: "local — this host's dump directory",
+  ssh: "ssh — a directory on another machine",
+  s3: "s3 — an S3-compatible bucket",
+  worker: "worker — a darkmem backup worker",
+}
+
+/** A blank destination of one kind, with the server's own defaults. */
+function newDestination(kind: DestinationKind, name = ""): BackupDestination {
+  return {
+    name,
+    kind,
+    enabled: true,
+    retention_keep: 14,
+    attachments_retention_keep: 3,
+    age_recipient: null,
+    ssh:
+      kind === "ssh"
+        ? {
+            host: "",
+            port: 22,
+            user: "",
+            remote_dir: "",
+            host_key: "",
+            private_key: "",
+          }
+        : null,
+    s3:
+      kind === "s3"
+        ? {
+            endpoint_url: "",
+            bucket: "",
+            prefix: "",
+            region: "auto",
+            access_key_id: "",
+            secret_access_key: "",
+          }
+        : null,
+    worker: kind === "worker" ? { url: "", token: "" } : null,
+  }
 }
 
 function formatBytes(bytes: number): string {
@@ -415,12 +495,15 @@ function OutcomeLine({
 
 function DestinationForm({
   destination,
+  isNew = false,
   busy,
   error,
   onCancel,
   onSave,
 }: {
   destination: BackupDestination
+  /** Name and kind are identity: set once on create, fixed after. */
+  isNew?: boolean
   busy: boolean
   error: string | null
   onCancel: () => void
@@ -430,6 +513,11 @@ function DestinationForm({
 
   useEffect(() => setDraft(destination), [destination])
 
+  const setSsh = (patch: Partial<NonNullable<BackupDestination["ssh"]>>) =>
+    setDraft((d) => ({ ...d, ssh: { ...d.ssh!, ...patch } }))
+  const setS3 = (patch: Partial<NonNullable<BackupDestination["s3"]>>) =>
+    setDraft((d) => ({ ...d, s3: { ...d.s3!, ...patch } }))
+
   return (
     <form
       className="space-y-3"
@@ -438,6 +526,135 @@ function DestinationForm({
         onSave(draft)
       }}
     >
+      {isNew ? (
+        <>
+          <div className="flex flex-col gap-1">
+            <Label
+              htmlFor="backup-name"
+              className="text-muted-foreground text-sm"
+            >
+              Name
+            </Label>
+            <Input
+              id="backup-name"
+              autoComplete="off"
+              value={draft.name}
+              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label className="text-muted-foreground text-sm">Kind</Label>
+            <Select
+              value={draft.kind}
+              onValueChange={(v) => {
+                const kind = v as DestinationKind
+                // Swap the connection block, keep what the operator typed
+                // into the fields every kind shares.
+                const blank = newDestination(kind, draft.name)
+                setDraft({
+                  ...blank,
+                  retention_keep: draft.retention_keep,
+                  attachments_retention_keep: draft.attachments_retention_keep,
+                  age_recipient: kind === "local" ? null : draft.age_recipient,
+                })
+              }}
+            >
+              <SelectTrigger aria-label="Destination kind">
+                <SelectValue>{KIND_LABELS[draft.kind]}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(KIND_LABELS) as DestinationKind[]).map((k) => (
+                  <SelectItem key={k} value={k}>
+                    {KIND_LABELS[k]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </>
+      ) : null}
+
+      {draft.ssh ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_6rem]">
+          <TextField
+            id="backup-ssh-host"
+            label="ssh host"
+            value={draft.ssh.host}
+            onChange={(host) => setSsh({ host })}
+          />
+          <TextField
+            id="backup-ssh-port"
+            label="Port"
+            inputMode="numeric"
+            value={String(draft.ssh.port)}
+            onChange={(port) => setSsh({ port: Number(port) || 0 })}
+          />
+          <TextField
+            id="backup-ssh-user"
+            label="User"
+            value={draft.ssh.user}
+            onChange={(user) => setSsh({ user })}
+          />
+          <TextField
+            id="backup-ssh-dir"
+            label="Remote directory"
+            value={draft.ssh.remote_dir}
+            onChange={(remote_dir) => setSsh({ remote_dir })}
+            className="sm:col-span-2"
+          />
+          <div className="flex flex-col gap-1 sm:col-span-2">
+            <Label
+              htmlFor="backup-ssh-host-key"
+              className="text-muted-foreground text-sm"
+            >
+              Host key (a known_hosts line, pinned)
+            </Label>
+            <Input
+              id="backup-ssh-host-key"
+              spellCheck={false}
+              className="font-mono text-xs"
+              value={draft.ssh.host_key}
+              onChange={(e) => setSsh({ host_key: e.target.value })}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {draft.s3 ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <TextField
+            id="backup-s3-endpoint"
+            label="Endpoint URL"
+            value={draft.s3.endpoint_url}
+            onChange={(endpoint_url) => setS3({ endpoint_url })}
+            className="sm:col-span-2"
+          />
+          <TextField
+            id="backup-s3-bucket"
+            label="Bucket"
+            value={draft.s3.bucket}
+            onChange={(bucket) => setS3({ bucket })}
+          />
+          <TextField
+            id="backup-s3-prefix"
+            label="Prefix"
+            value={draft.s3.prefix}
+            onChange={(prefix) => setS3({ prefix })}
+          />
+          <TextField
+            id="backup-s3-region"
+            label="Region"
+            value={draft.s3.region}
+            onChange={(region) => setS3({ region })}
+          />
+          <TextField
+            id="backup-s3-access-key"
+            label="Access key id"
+            value={draft.s3.access_key_id}
+            onChange={(access_key_id) => setS3({ access_key_id })}
+          />
+        </div>
+      ) : null}
       <div className="flex flex-col gap-1">
         <Label htmlFor="backup-keep" className="text-muted-foreground text-sm">
           Snapshots to keep
@@ -604,11 +821,42 @@ function DestinationForm({
         <Button type="button" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={busy}>
-          Save
+        <Button type="submit" disabled={busy || !draft.name.trim()}>
+          {isNew ? "Add" : "Save"}
         </Button>
       </div>
     </form>
+  )
+}
+
+function TextField({
+  id,
+  label,
+  value,
+  onChange,
+  inputMode,
+  className,
+}: {
+  id: string
+  label: string
+  value: string
+  onChange: (value: string) => void
+  inputMode?: "numeric"
+  className?: string
+}) {
+  return (
+    <div className={cn("flex flex-col gap-1", className)}>
+      <Label htmlFor={id} className="text-muted-foreground text-sm">
+        {label}
+      </Label>
+      <Input
+        id={id}
+        autoComplete="off"
+        inputMode={inputMode}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </div>
   )
 }
 

@@ -112,11 +112,15 @@ describe("useWebSocket", () => {
     const { invalidateSpy } = renderWithSpy()
     const socket = MockWebSocket.latest()
     socket.emitOpen()
-    for (const event of ["repo.indexing_completed", "repo.indexing_failed", "enrichment.batch_completed"]) {
+    for (const event of ["repo.indexing_completed", "repo.indexing_failed"]) {
       invalidateSpy.mockClear()
       socket.emitMessage({ event, data: { files_changed: 1, symbols_indexed: 2, error: "failed" } })
       expect(invalidatedKeys(invalidateSpy)).toEqual(expect.arrayContaining(["codeGraph", "codeFiles", "codeSymbols", "codeSymbol"]))
     }
+    invalidateSpy.mockClear()
+    socket.emitMessage({ event: "enrichment.batch_completed", data: { processed: 5, pending_remaining: 9 } })
+    // Summaries live on symbols; the graph and file list are not refetched.
+    expect(invalidatedKeys(invalidateSpy).sort()).toEqual(["codeSymbol", "codeSymbols", "repoStats"])
     invalidateSpy.mockClear()
     socket.emitClose()
     vi.advanceTimersByTime(1000)
@@ -154,6 +158,26 @@ describe("useWebSocket", () => {
       .map((call) => (call[0] as { queryKey?: unknown[] })?.queryKey?.[0])
       .filter((k): k is string => typeof k === "string")
   }
+
+  it("writes an indexing tick into the cached repo row instead of refetching the list", () => {
+    const { invalidateSpy, qc } = renderWithSpy()
+    qc.setQueryData(["repos"], [
+      { id: "r1", status: "ready", status_message: null },
+      { id: "r2", status: "ready", status_message: null },
+    ])
+    const socket = MockWebSocket.latest()
+    socket.emitOpen()
+    invalidateSpy.mockClear()
+    socket.emitMessage({
+      event: "repo.indexing_progress",
+      data: { repo_id: "r1", phase: 2, current: 12, total: 40, status_message: "Parsing files... 12/40 files" },
+    })
+    expect(invalidatedKeys(invalidateSpy)).not.toContain("repos")
+    expect(qc.getQueryData(["repos"])).toEqual([
+      { id: "r1", status: "indexing", status_message: "Parsing files... 12/40 files" },
+      { id: "r2", status: "ready", status_message: null },
+    ])
+  })
 
   it("invalidates the same core key set for completed, partial, and failed — partial is not folded into failure", () => {
     for (const outcome of ["pipeline.completed", "pipeline.partial", "pipeline.failed"]) {

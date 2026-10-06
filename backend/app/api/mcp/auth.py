@@ -7,9 +7,9 @@ two different ideas of what a valid key is.
 Deliberately does **not** call `mark_key_used` here. REST's `require_scope`
 (`app/api/auth.py`) marks a key used only after its scope check passes,
 because a call that authenticates and then fails the scope gate did not use
-the key for anything. Marking at the transport, before Task 7's per-tool
-scope check runs, would make `last_used_at` mean something different on MCP
-than it does on REST for the same key. Task 7 owns that call.
+the key for anything. Marking at the transport, before the per-tool scope
+check runs, would count a scope-denied call as use. `ToolScopeMiddleware`
+(`app/api/mcp/scopes.py`) owns that call.
 """
 import logging
 import uuid

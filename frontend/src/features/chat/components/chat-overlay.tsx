@@ -6,6 +6,7 @@ import { ChatInput } from "./chat-input"
 import { useConversation } from "@/hooks/api"
 import { useChatStream } from "../hooks/use-chat-stream"
 import { Button } from "darkraise-ui/components/button"
+import { shortId } from "@/lib/short-id"
 
 interface ChatOverlayProps {
   selectedNodeId?: string | null
@@ -28,11 +29,15 @@ export function ChatOverlay({
 
   const messages = convDetail?.messages ?? []
 
+  // Clearing the chip used to hide the label only: the next message still
+  // carried the selection. A new selection re-arms it.
+  const [contextCleared, setContextCleared] = useState(false)
   useEffect(() => {
+    setContextCleared(false)
     if (selectedEntityId) {
-      setContextLabel(`Entity: ${selectedEntityId.slice(0, 12)}…`)
+      setContextLabel(`Entity: ${shortId(selectedEntityId)}`)
     } else if (selectedNodeId) {
-      setContextLabel(`Memory: ${selectedNodeId.slice(0, 12)}…`)
+      setContextLabel(`Memory: ${shortId(selectedNodeId)}`)
     } else {
       setContextLabel(null)
     }
@@ -41,13 +46,15 @@ export function ChatOverlay({
   const handleSend = useCallback(
     async (content: string) => {
       const context: Record<string, unknown> = {}
-      if (selectedEntityId) context.selected_entity_id = selectedEntityId
-      else if (selectedNodeId) context.selected_node_id = selectedNodeId
+      if (!contextCleared) {
+        if (selectedEntityId) context.selected_entity_id = selectedEntityId
+        else if (selectedNodeId) context.selected_node_id = selectedNodeId
+      }
 
       const resultId = await stream.sendMessage(convId, content, context)
       if (!convId && resultId) setConvId(resultId)
     },
-    [convId, selectedNodeId, selectedEntityId, stream],
+    [convId, contextCleared, selectedNodeId, selectedEntityId, stream],
   )
 
   if (!open) {
@@ -116,7 +123,10 @@ export function ChatOverlay({
         onStop={stream.abort}
         isStreaming={stream.isStreaming}
         contextLabel={contextLabel}
-        onClearContext={() => setContextLabel(null)}
+        onClearContext={() => {
+          setContextLabel(null)
+          setContextCleared(true)
+        }}
         placeholder="Ask about selection..."
       />
     </div>

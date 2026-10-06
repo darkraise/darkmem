@@ -199,6 +199,16 @@ async def _events(session, event_type: str) -> list[dict]:
     return [dict(r) for r in rows.mappings().all()]
 
 
+async def _hint_registrations(session) -> list[dict]:
+    """The repo_registered rows this door writes. The journal is append-only
+    and outlives each test, and the REST repo door journals the same event
+    type, so a repo another test added must not count here."""
+    return [
+        row for row in await _events(session, "repo_registered")
+        if row["payload"].get("added_from") == "memory_hint"
+    ]
+
+
 async def _repos(session) -> list[Repository]:
     return list((await session.execute(select(Repository))).scalars().all())
 
@@ -235,7 +245,7 @@ async def test_allowlisted_hint_registers_the_repo_and_the_association(
          "opt_out": False},
     ]
 
-    registered = await _events(session, "repo_registered")
+    registered = await _hint_registrations(session)
     assert len(registered) == 1
     assert registered[0]["payload"]["remote"] == repo.url
     assert registered[0]["payload"]["queued_for"] == "tier_c"
@@ -349,7 +359,7 @@ async def test_project_opt_out_blocks_the_association(client, auth_headers, sess
     ).status_code == 202
     assoc = await _associations(session)
     assert [a["added_from"] for a in assoc] == ["manual"]
-    assert await _events(session, "repo_registered") == []
+    assert await _hint_registrations(session) == []
 
 
 async def test_capture_without_a_hint_touches_nothing(client, auth_headers, session):

@@ -105,7 +105,7 @@ describe("RealMemoriesView", () => {
       },
     })
 
-    render(<RealMemoriesView />, { wrapper })
+    render(<RealMemoriesView initialQuery="rrf" />, { wrapper })
     await screen.findByText(/RRF fuses semantic and keyword ranks/i)
 
     fireEvent.click(screen.getByRole("button", { name: /show why retrieved/i }))
@@ -114,6 +114,34 @@ describe("RealMemoriesView", () => {
     expect(screen.getByText("keyword")).toBeInTheDocument()
     expect(screen.getByText("rrf_score")).toBeInTheDocument()
     expect(screen.getByText("0.0271")).toBeInTheDocument()
+  })
+
+  it("offers no why? on the plain list, where nothing was retrieved", async () => {
+    // With no query the trace reads "semantic off / keyword off / 0.0000".
+    vi.mocked(apiFetch).mockResolvedValue({
+      items: [
+        {
+          id: "m1",
+          content: "listed, not retrieved",
+          tags: [],
+          source: "mcp",
+          created_at: new Date().toISOString(),
+          status: "active",
+          flags: [],
+          trace: {
+            scores: { semantic: null, keyword: null, rrf_score: 0, rerank_score: null },
+            rank_fusion_factor: 1.0,
+            rank_fusion_breakdown: {},
+          },
+        },
+      ],
+      total: 1,
+      limit: 50,
+      offset: 0,
+    })
+    render(<RealMemoriesView />, { wrapper })
+    await screen.findByText("listed, not retrieved")
+    expect(screen.queryByRole("button", { name: /show why retrieved/i })).toBeNull()
   })
 
   it("shows a superseded row by default, with its badge — never filtered out", async () => {
@@ -205,6 +233,47 @@ describe("RealMemoriesView", () => {
     )
   })
 
+  it("files a new memory under the header's project, and refuses spaces alone", async () => {
+    // The dialog used to drop the scope and file every capture under
+    // "default", so a memory created while scoped never showed in the list.
+    useProjectStore.setState({ activeProject: "webapp", missingProject: null })
+    const user = userEvent.setup()
+    const bodies: Record<string, unknown>[] = []
+    vi.mocked(apiFetch).mockImplementation((path: unknown, options?: unknown) => {
+      const p = path as string
+      if (p === "/memories/search/paginated") {
+        return Promise.resolve({ items: [], total: 0, limit: 50, offset: 0 })
+      }
+      if (p.startsWith("/memories?")) {
+        bodies.push(JSON.parse((options as RequestInit).body as string))
+        return Promise.resolve({ schema_version: 1, id: "new-id", status: "accepted" })
+      }
+      return Promise.reject(new Error(`unmocked path: ${p}`))
+    })
+    render(
+      <>
+        <AppPageHeader />
+        <RealMemoriesView />
+      </>,
+      { wrapper },
+    )
+
+    await user.click(screen.getByRole("button", { name: /create memory/i }))
+    const dialog = screen.getByRole("dialog", { name: /new memory/i })
+    expect(dialog).toHaveTextContent("saved to project webapp")
+
+    await user.type(screen.getByLabelText("Content"), "   ")
+    await user.click(screen.getByRole("button", { name: "Create Memory" }))
+    expect(await screen.findByText("Content required")).toBeInTheDocument()
+    expect(bodies).toEqual([])
+
+    await user.clear(screen.getByLabelText("Content"))
+    await user.type(screen.getByLabelText("Content"), "scoped capture")
+    await user.click(screen.getByRole("button", { name: "Create Memory" }))
+    await waitFor(() => expect(bodies).toHaveLength(1))
+    expect(bodies[0]).toMatchObject({ content: "scoped capture", project: "webapp" })
+  })
+
   it("scopes by the header switcher and offers no project field of its own", async () => {
     useProjectStore.setState({ activeProject: "acme", missingProject: null })
     vi.mocked(apiFetch).mockResolvedValue({
@@ -228,5 +297,60 @@ describe("RealMemoriesView", () => {
       .mocked(apiFetch)
       .mock.calls.map((call) => JSON.parse(String((call[1] as RequestInit | undefined)?.body ?? "{}")))
     expect(bodies.some((body) => body.project === "acme")).toBe(true)
+  })
+
+  // M8: the semantic arm has no score floor, so a query no memory contains
+  // still fills the list; the keyword arm's own count says so.
+  function semanticOnlyPage(keywordHits: number) {
+    return {
+      items: [
+        {
+          id: "m1",
+          content: "Postgres with pgvector for the memory store",
+          tags: [],
+          source: "api",
+          created_at: new Date().toISOString(),
+          status: "active",
+          flags: [],
+          trace: {
+            scores: { semantic: 0.0, keyword: null, rrf_score: 0.0115, rerank_score: null },
+            rank_fusion_factor: 1.0,
+            rank_fusion_breakdown: {},
+          },
+        },
+      ],
+      total: 1,
+      limit: 50,
+      offset: 0,
+      envelope: {
+        query: "zzqqxxnomatch",
+        channels: {
+          semantic: { ran: true, failed: false, hits: 1 },
+          keyword: { ran: true, failed: false, hits: keywordHits },
+        },
+        reranked: false,
+        weights: { semantic_weight: 0.7 },
+        excluded: {},
+      },
+    }
+  }
+
+  it("says no memory contains the words when the keyword arm matched nothing", async () => {
+    useProjectStore.setState({ activeProject: "webapp", missingProject: null })
+    vi.mocked(apiFetch).mockResolvedValue(semanticOnlyPage(0))
+    render(<RealMemoriesView initialQuery="zzqqxxnomatch" />, { wrapper })
+
+    await screen.findByText(/Postgres with pgvector/)
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "No memory in project webapp contains these words; these are the closest by meaning.",
+    )
+  })
+
+  it("makes no such claim when a keyword hit ranked below the loaded rows", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(semanticOnlyPage(1))
+    render(<RealMemoriesView initialQuery="pgvector" />, { wrapper })
+
+    await screen.findByText(/Postgres with pgvector/)
+    expect(screen.queryByText(/contains these words/)).toBeNull()
   })
 })

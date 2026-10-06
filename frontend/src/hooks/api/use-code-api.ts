@@ -103,9 +103,35 @@ export interface CodeGraphEdge {
   properties?: Record<string, unknown> | null
 }
 
+/** What GET /code/graph/{repo_id} folded, answered only when the caller
+ *  asked for a level or a scope. `file_edges` and the counts after it are
+ *  present only at the file level. */
+export interface CodeGraphStats {
+  files: number
+  symbols: number
+  files_drawn?: number
+  files_without_symbols?: number
+  symbol_edges?: number
+  file_edges?: number
+  boundary_edges?: number
+}
+
+export type CodeGraphLevel = "symbol" | "file"
+
 export interface CodeGraphData {
   nodes: CodeGraphNode[]
   edges: CodeGraphEdge[]
+  level?: CodeGraphLevel
+  requested_level?: CodeGraphLevel | "auto"
+  scope?: string | null
+  auto_limit?: number
+  stats?: CodeGraphStats
+}
+
+export interface CodeGraphOptions {
+  level?: CodeGraphLevel | "auto"
+  /** A file or folder path; null draws the whole repository. */
+  scope?: string | null
 }
 
 export interface CodeSearchResult {
@@ -283,10 +309,26 @@ export function useReindexRepo() {
   })
 }
 
-export function useCodeGraph(repoId: string | null) {
+export function useCodeGraph(
+  repoId: string | null,
+  { level, scope }: CodeGraphOptions = {},
+) {
   return useQuery<CodeGraphData>({
-    queryKey: ["codeGraph", repoId],
-    queryFn: () => apiFetch(`/code/graph/${repoId}`),
+    // The repo id stays second so the indexing events' ["codeGraph"]
+    // invalidation still reaches every level and scope.
+    queryKey: ["codeGraph", repoId, level ?? null, scope ?? null],
+    // Drilling into a folder asks for a new cache entry; holding the graph
+    // already on screen keeps the page up until the narrower one lands. A
+    // different repository never inherits another's graph.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === repoId ? previous : undefined,
+    queryFn: () => {
+      const params = new URLSearchParams()
+      if (level) params.set("level", level)
+      if (scope) params.set("scope", scope)
+      const query = params.toString()
+      return apiFetch(`/code/graph/${repoId}${query ? `?${query}` : ""}`)
+    },
     enabled: !!repoId,
   })
 }

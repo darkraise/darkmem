@@ -18,6 +18,7 @@ import {
 } from "@/hooks/api/use-articles-api"
 import { DetailSection } from "./detail-section"
 import { StaleBadge, SuppressedBadge } from "./fact-parts"
+import { shortId } from "@/lib/short-id"
 
 /** One prose segment: either plain text, or text a citation grounds. */
 interface Segment {
@@ -117,7 +118,7 @@ function CitationRow({
         params={{ factId: citation.fact_id }}
         className="text-primary-text font-mono text-sm hover:underline"
       >
-        fact {citation.fact_id.slice(0, 8)}
+        fact {shortId(citation.fact_id)}
       </Link>
       <span className="text-muted-foreground font-mono text-sm">
         {citation.subject_name} {citation.rel_type} {citation.object_name}
@@ -276,7 +277,7 @@ function Detail({ article }: { article: ArticleDetail }) {
         <DetailSection value="record" title="Record" meta={article.project}>
           <dl className="grid grid-cols-[8rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
             <dt className="text-muted-foreground font-mono">article</dt>
-            <dd className="min-w-0 break-words">{article.id.slice(0, 8)}</dd>
+            <dd className="min-w-0 break-words">{shortId(article.id)}</dd>
             <dt className="text-muted-foreground font-mono">subject</dt>
             <dd className="min-w-0 break-words">{article.subject_key}</dd>
             <dt className="text-muted-foreground font-mono">project</dt>

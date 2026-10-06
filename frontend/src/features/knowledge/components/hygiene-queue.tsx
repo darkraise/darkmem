@@ -51,6 +51,7 @@ import {
   type HygieneDuplicateRowData,
   type HygieneMemoryRowData,
 } from "../use-hygiene-queue"
+import { shortId } from "@/lib/short-id"
 
 const PAGE = 10
 
@@ -288,9 +289,6 @@ function CategoryShell({
   )
 }
 
-function shortId(id: string): string {
-  return id.slice(0, 8)
-}
 
 function DuplicateRow({
   row,
@@ -372,7 +370,9 @@ function MemoryRowLine({
       </span>
       {level === "advanced" && (
         <span className="text-muted-foreground block font-mono text-sm">
-          project {row.project} · confidence {row.confidence ?? "—"}
+          project {row.project} · confidence{" "}
+          {/* REAL on the wire: 0.85 arrived as 0.8500000238418579. */}
+          {row.confidence == null ? "—" : row.confidence.toFixed(2)}
           {row.expires_at && ` · expires ${formatWhen(row.expires_at)}`}
           {row.superseded_by &&
             ` · superseded by ${shortId(row.superseded_by)}`}

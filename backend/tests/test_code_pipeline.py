@@ -223,3 +223,30 @@ def test_reindex_classifier_rechecks_replaced_link_before_hashing(tmp_path, monk
     assert buckets.skipped_unindexable == ["source.py"]
     assert buckets.accepted == []
     hasher.assert_not_called()
+
+
+async def test_parser_skips_binary_files(tmp_path):
+    # A NUL byte is valid UTF-8, so a committed zip or png used to be read as
+    # text; its chunks carried NULs and Postgres refused the first one,
+    # aborting the whole index run (UntranslatableCharacterError).
+    (tmp_path / "archive.zip").write_bytes(b"PK\x03\x04\x00\x00binary\x00payload")
+    (tmp_path / "late.txt").write_bytes(b"a" * 9000 + b"\x00tail")
+    (tmp_path / "ok.py").write_text("def fine():\n    return 1\n")
+    pipeline = CodePipeline(None, None, None, None)
+
+    assert await pipeline._parse_one(tmp_path, "archive.zip") is None
+    assert await pipeline._parse_one(tmp_path, "late.txt") is None
+    parsed = await pipeline._parse_one(tmp_path, "ok.py")
+    assert parsed["parse_result"].symbols[0].name == "fine"
+
+
+def test_drift_scan_skips_the_files_the_parser_skips(tmp_path):
+    # A file one side reads and the other skips would read as drift on every
+    # reconcile tick, with no run ever able to resolve it.
+    from app.services.code_reconcile import _file_hash
+
+    (tmp_path / "image.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
+    (tmp_path / "ok.py").write_text("x = 1\n")
+
+    assert _file_hash(tmp_path / "image.png") is None
+    assert _file_hash(tmp_path / "ok.py") is not None

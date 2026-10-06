@@ -2,7 +2,7 @@ import { Badge } from "darkraise-ui/components/badge"
 import { GitCommitHorizontal, Lock } from "lucide-react"
 import type { BoardTask } from "../use-progress-corpus"
 import type { StartableVerdict } from "../lib/startable"
-import { plainText } from "../lib/plain-text"
+import { plainText } from "@/lib/plain-text"
 
 /**
  * One task, as a card.

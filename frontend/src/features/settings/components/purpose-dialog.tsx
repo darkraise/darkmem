@@ -32,6 +32,7 @@ import { cn } from "darkraise-ui/lib"
 import { NumberField } from "@/components/darkmem"
 import { validateParamsJson } from "@/demo/settings"
 import { embeddingKindWarning } from "@/features/setup/api-kinds"
+import { describeProbeError } from "@/features/setup/probe-error"
 import type { DemoLLMPurpose } from "@/features/settings/types"
 import {
   useLlmProviders,
@@ -39,6 +40,7 @@ import {
 } from "@/hooks/api/use-llm-providers-api"
 import type { LLMTabBinding } from "../use-llm-tab-binding"
 import { ClassifierKindRow, CodeBuckets, Field } from "./purpose-sections"
+import { keepDialogOpenOnListEscape } from "@/lib/portal-overlays"
 
 type Draft = {
   provider_name: string
@@ -150,7 +152,10 @@ export function PurposeDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col gap-3">
+      <DialogContent
+        onEscapeKeyDown={keepDialogOpenOnListEscape}
+        className="flex max-h-[85vh] max-w-2xl flex-col gap-3"
+      >
         <DialogHeader>
           <DialogTitle>{purpose.purpose} — configuration</DialogTitle>
           <DialogDescription>
@@ -212,7 +217,8 @@ export function PurposeDialog({
                   unconfigurable. */}
               {probe.data?.error && (
                 <span className="text-destructive text-sm">
-                  {probe.data.error}
+                  No model list from {draft.provider_name}:{" "}
+                  {describeProbeError(probe.data.error)}
                 </span>
               )}
             </Field>

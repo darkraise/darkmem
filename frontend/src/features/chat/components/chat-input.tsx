@@ -23,7 +23,7 @@ export function ChatInput({
   onStop,
   isStreaming = false,
   disabled = false,
-  placeholder = "Ask about your memories... (@ to mention)",
+  placeholder = "Ask about your memories…",
   contextLabel,
   onClearContext,
   error,

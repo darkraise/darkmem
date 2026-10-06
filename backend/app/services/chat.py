@@ -2,12 +2,15 @@ import logging
 import re
 import uuid
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 from sqlalchemy import select, func as sa_func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
 from app.models.chat import Conversation, Message
+from app.models.graph import Entity
+from app.models.memory import Memory
 from app.schemas.facts import FactBadge
 from app.schemas.retrieval_trace import RetrievalEnvelope
 from app.services.llm import LLMOrchestrator
@@ -17,6 +20,7 @@ from app.repositories.relational import PostgresMemoryRepository
 from app.repositories.vector import MemoryFilter
 from app.repositories.graph import PostgresGraphRepository
 from app.services.layer_composition import (
+    LAYER_BY_ID_KIND,
     ComposedResult,
     ComposedRow,
     CompositionUnavailable,
@@ -33,6 +37,11 @@ MAX_HISTORY_MESSAGES = 20
 MAX_PROMPT_CHARS = 24000
 
 CHAT_RETRIEVAL_LIMIT = 10
+
+# How many of a selected entity's asserting memories a turn carries ahead of
+# the retrieved ones. A busy entity is asserted by hundreds; the selection only
+# has to say what the question is about, not displace the retrieval answering it.
+CHAT_SELECTION_LIMIT = 5
 
 # Chat's rows land in the reasoning model's context verbatim, so it answers
 # only out of the lifecycle state it is willing to be quoted on. The vault
@@ -62,6 +71,30 @@ def _assemble_system_content(system_prompt: str, context_parts: list[str]) -> st
     if budget < 0:
         return header
     return header + body[:budget]
+
+
+@dataclass(frozen=True)
+class _Selection:
+    """What the user had selected on the graph when they asked.
+
+    ``rows`` are the memories the selection names, already shaped as context
+    rows: the memory itself, or the memories asserting the entity.
+    """
+
+    kind: str
+    id: str
+    rows: list[dict]
+
+
+def _as_uuid(value) -> uuid.UUID | None:
+    """A client-sent id, or ``None``: a malformed one is no selection, and a
+    bad ``CAST(... AS uuid)`` would abort the turn's transaction."""
+    if not isinstance(value, str):
+        return None
+    try:
+        return uuid.UUID(value)
+    except ValueError:
+        return None
 
 
 class ChatService:
@@ -320,11 +353,24 @@ class ChatService:
             question, composed, outage=outage, fact_asked=project is not None,
         )
 
+        # The selection reorders the context this turn answers from and never
+        # the search: the composition above ranked without it, so a turn with
+        # nothing selected answers exactly as the search surface does.
+        selection = await self._selection(context, scope, memories)
+        if selection is not None:
+            pinned = {row["id"] for row in selection.rows}
+            memories = [
+                {**row, "index": position}
+                for position, row in enumerate(
+                    [*selection.rows, *(m for m in memories if m["id"] not in pinned)],
+                    start=1,
+                )
+            ]
+
         try:
             entities = await self._lookup_entities(
                 entity_names,
-                context.get("selected_entity_id"),
-                context.get("selected_node_id"),
+                selection.id if selection and selection.kind == "entity" else None,
                 scope=scope,
             )
         except Exception as e:
@@ -340,6 +386,101 @@ class ChatService:
             "facts": facts,
             "entities": entities,
             "envelope": envelope,
+            "selection": (
+                {"kind": selection.kind, "id": selection.id} if selection else None
+            ),
+        }
+
+    async def _selection(
+        self, context: dict, scope: MemoryFilter, retrieved: list[dict],
+    ) -> _Selection | None:
+        """Resolve the graph selection into the memories a turn puts first.
+
+        The memory graph sends a selected memory as ``selected_node_id`` and a
+        selected entity as ``selected_entity_id`` (its node id spelled
+        ``entity:<id>``). A bare node id that names no memory is tried as an
+        entity, so either key reaches either kind.
+
+        Read in chat's own scope, like everything else that reaches the prompt:
+        a selected memory that is superseded, archived or in another project is
+        not pinned. A retrieved row keeps its scores and moves; a memory the
+        search did not retrieve arrives without any, because none ranked it.
+        """
+        node = context.get("selected_node_id")
+        entity_ref = context.get("selected_entity_id")
+        if isinstance(node, str) and node.startswith("entity:"):
+            entity_ref = entity_ref or node.removeprefix("entity:")
+            node = None
+
+        by_id = {row["id"]: row for row in retrieved}
+
+        memory_id = _as_uuid(node)
+        if memory_id is not None:
+            if str(memory_id) in by_id:
+                return _Selection("memory", str(memory_id), [
+                    {**by_id[str(memory_id)], "selected": True}
+                ])
+            memory = (await self.session.execute(
+                select(Memory).where(Memory.id == memory_id, *scope.orm_criteria(Memory))
+            )).scalar_one_or_none()
+            if memory is not None:
+                return _Selection("memory", str(memory.id), [self._selected_row(memory)])
+            entity_ref = entity_ref or node
+
+        entity_id = _as_uuid(entity_ref)
+        if entity_id is None:
+            return None
+        asserting = (await self.session.execute(
+            select(Entity.memory_ids).where(Entity.id == entity_id)
+        )).scalar_one_or_none()
+        if not asserting:
+            return None
+
+        # The entity's retrieved assertions first, in the order the search
+        # ranked them, since the question matched those too; then its newest.
+        asserting_ids = {str(m) for m in asserting}
+        rows = [
+            {**row, "selected": True} for row in retrieved if row["id"] in asserting_ids
+        ][:CHAT_SELECTION_LIMIT]
+        if len(rows) < CHAT_SELECTION_LIMIT:
+            more = (await self.session.execute(
+                select(Memory)
+                .where(
+                    Memory.id.in_([m for m in asserting if str(m) not in by_id]),
+                    *scope.orm_criteria(Memory),
+                )
+                .order_by(Memory.created_at.desc(), Memory.id.desc())
+                .limit(CHAT_SELECTION_LIMIT - len(rows))
+            )).scalars().all()
+            rows += [self._selected_row(memory) for memory in more]
+        if not rows:
+            return None
+        return _Selection("entity", str(entity_id), rows)
+
+    @staticmethod
+    def _selected_row(memory: Memory) -> dict:
+        """A selected memory the search did not retrieve, as a context row.
+
+        No score, breakdown or rank: nothing ranked it, and a zero would read
+        as a ranking that put it last. The panel shows a missing breakdown as
+        missing.
+        """
+        return {
+            "index": 0,
+            "id": str(memory.id),
+            "layer": LAYER_BY_ID_KIND["memory"],
+            "content": memory.content,
+            "source": memory.source,
+            "tags": [tag.name for tag in memory.tags],
+            "created_at": memory.created_at.isoformat() if memory.created_at else "",
+            "score": None,
+            "scores": None,
+            "rank_fusion_factor": None,
+            "channel_rank": None,
+            "context_match": None,
+            "grouped_under": None,
+            "selected": True,
+            **scope_labels(memory),
         }
 
     async def _chat_context(
@@ -515,7 +656,6 @@ class ChatService:
         self,
         entity_names: list[str],
         selected_entity_id: str | None = None,
-        selected_node_id: str | None = None,
         scope: MemoryFilter | None = None,
     ) -> list[dict]:
         if not self.graph_repo:
@@ -609,11 +749,34 @@ class ChatService:
             context_parts.append("</verified_facts>")
             context_parts.append("")
 
+        # The selection is named by citation number only: an entity's name is
+        # extracted from memory content, so it stays inside the data sections
+        # (<entity_knowledge> lists the selected entity first) rather than in
+        # an instruction.
+        selected = [f"[{m['index']}]" for m in retrieval["memories"] if m.get("selected")]
+        selection = retrieval.get("selection")
+        if selection and selected:
+            if selection["kind"] == "memory":
+                context_parts.append(
+                    f"The user selected memory {selected[0]} on the memory graph "
+                    "before asking; read the question as being about it."
+                )
+            else:
+                context_parts.append(
+                    "The user selected an entity on the memory graph before "
+                    f"asking; {', '.join(selected)} are memories that assert it. "
+                    "Read the question as being about that entity."
+                )
+            context_parts.append("")
+
         context_parts.append("<retrieved_memories>")
         for m in retrieval["memories"]:
-            context_parts.append(
-                f"[{m['index']}] (source: {m['source']}, tags: {', '.join(m['tags'])}, relevance: {m['score']:.6f})\n{m['content']}"
-            )
+            labels = [f"source: {m['source']}", f"tags: {', '.join(m['tags'])}"]
+            if m.get("selected"):
+                labels.append("selected by the user")
+            if m["score"] is not None:
+                labels.append(f"relevance: {m['score']:.6f}")
+            context_parts.append(f"[{m['index']}] ({', '.join(labels)})\n{m['content']}")
         context_parts.append("</retrieved_memories>")
 
         entity_facts = [e for e in retrieval["entities"] if not e.get("_relation")]

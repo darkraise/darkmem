@@ -4,6 +4,7 @@ import { DEMO } from "@/lib/demo-flag"
 import { useDemoDayBuckets } from "@/demo/hooks"
 import type { DemoDayEvent } from "@/demo/types"
 import { useEvents, type EventLogEntry } from "@/hooks/api"
+import { shortId } from "@/lib/short-id"
 
 /** The one row shape DayTab renders, whichever source fed it. `transition`
  *  stays optional — only the demo fixture models a from→to rung pair
@@ -86,9 +87,6 @@ function fromDemo(event: DemoDayEvent, index: number): DayRowData {
   }
 }
 
-function shortId(id: string | null): string {
-  return id ? id.slice(0, 8) : ""
-}
 
 function utcTimeLabel(iso: string): string {
   return `${iso.slice(11, 16)} UTC`

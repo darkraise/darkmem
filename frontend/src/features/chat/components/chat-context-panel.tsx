@@ -1,4 +1,5 @@
 import { CircleDashed, TriangleAlert } from "lucide-react"
+import { Badge } from "darkraise-ui/components/badge"
 import { EmptyState } from "@/components/darkmem"
 import {
   ExclusionStrip,
@@ -151,6 +152,11 @@ export function ChatContextPanel({
                 <div className="flex flex-wrap items-center gap-1.5">
                   <LayerChip layer={layerNumber(row.layer)} />
                   <LifecycleBadge status={row.status} />
+                  {/* Put first because it was selected on the graph; a row
+                      the search did not retrieve has no trace below. */}
+                  {row.selected && (
+                    <Badge variant="outline">your selection</Badge>
+                  )}
                   {row.grouped_under && (
                     <span className="text-muted-foreground font-mono text-sm">
                       {factNumber.has(row.grouped_under)

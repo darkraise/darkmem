@@ -55,6 +55,17 @@ describe("useDashboardActivity (DEMO off — real /events)", () => {
     expect(event.title.length).toBeGreaterThan(0)
   })
 
+  it("titles an event with its initialisms upper-cased", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({
+      items: [{ ...ROW, event_type: "api_key_revoked", object_type: "system" }],
+      total: 1,
+    })
+    const { result } = renderHook(() => useDashboardActivity(), { wrapper })
+
+    await waitFor(() => expect(result.current.events.length).toBe(1))
+    expect(result.current.events[0]!.title).toBe("API key revoked")
+  })
+
   it("gives an unknown event type a renderable kind rather than undefined", async () => {
     vi.mocked(apiFetch).mockResolvedValue({
       items: [{ ...ROW, event_type: "some_future_event" }],
@@ -66,6 +77,24 @@ describe("useDashboardActivity (DEMO off — real /events)", () => {
     expect(["memory", "fact", "article", "pipeline", "job", "review"]).toContain(
       result.current.events[0]!.kind,
     )
+  })
+
+  it("leaves sign-in and setup rows to their own reader", async () => {
+    const logins = Array.from({ length: 10 }, (_, i) => ({
+      ...ROW,
+      id: 100 + i,
+      event_type: i % 2 ? "auth_login_failed" : "auth_login_success",
+      object_type: null,
+      object_id: null,
+    }))
+    vi.mocked(apiFetch).mockResolvedValue({
+      items: [...logins, { ...ROW, event_type: "setup_complete" }, ROW],
+      total: 12,
+    })
+    const { result } = renderHook(() => useDashboardActivity(), { wrapper })
+
+    await waitFor(() => expect(result.current.events.length).toBe(1))
+    expect(result.current.events[0]!.id).toBe("55")
   })
 
   it("surfaces a failed load as isError", async () => {

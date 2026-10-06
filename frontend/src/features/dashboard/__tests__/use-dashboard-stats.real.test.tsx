@@ -8,6 +8,7 @@ vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
 
 import { apiFetch } from "@/lib/api"
 import { useDashboardStats } from "../use-dashboard-stats"
+import { ALL_PROJECTS, useProjectStore } from "@/stores/project-store"
 
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -29,12 +30,37 @@ function route(overrides: Record<string, unknown> = {}) {
       return overrides.articles ?? { items: [], total: 0, limit: 1, offset: 0 }
     if (path.startsWith("/review-queue/counts"))
       return overrides.review ?? { facts: 0, articles: 0 }
+    if (path === "/projects") return overrides.projects ?? []
     throw new Error(`unexpected path ${path}`)
   })
 }
 
 describe("useDashboardStats (DEMO off — real API)", () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useProjectStore.setState({ activeProject: ALL_PROJECTS, missingProject: null })
+  })
+
+  it("narrows every tile to the header's project", async () => {
+    // The tiles used to read the whole vault whatever the scope said.
+    useProjectStore.setState({ activeProject: "webapp", missingProject: null })
+    route({
+      stats: { memories: 22, tags: 0, entities: 0, relationships: 0, sources: [] },
+      projects: [
+        { name: "webapp", kind: "project", memory_count: 6 },
+        { name: "darkmem", kind: "project", memory_count: 16 },
+      ],
+    })
+    const { result } = renderHook(() => useDashboardStats(), { wrapper })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.stats.totalMemories).toBe(6)
+    const paths = vi.mocked(apiFetch).mock.calls.map(([path]) => String(path))
+    for (const scoped of ["verification_status=corroborated", "/knowledge/articles", "/review-queue/counts"]) {
+      expect(paths.find((p) => p.includes(scoped))).toContain("project=webapp")
+    }
+    expect(paths.some((p) => p.startsWith("/analytics/stats"))).toBe(false)
+  })
 
   // The bug this hook exists to close: the dashboard read the 5010-row demo
   // store unconditionally, so an empty vault still advertised 5010 memories

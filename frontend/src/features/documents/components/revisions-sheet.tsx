@@ -93,7 +93,9 @@ export function RevisionsSheet({
         <SheetHeader>
           <SheetTitle>Revisions</SheetTitle>
           <SheetDescription>
-            Newest first. Pick two to compare.
+            Newest first. Pick two to compare. A revision is written each time
+            the document is filed; edits made here in Edit mode change it
+            without writing one.
           </SheetDescription>
         </SheetHeader>
         <div className="space-y-4 p-4">

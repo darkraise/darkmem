@@ -32,6 +32,10 @@ from app.services.reembed import (
     ReembedService,
     reembed_locks,
 )
+from app.repositories.vector import (
+    EmbedderFingerprintUnresolved,
+    PostgresVectorRepository,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,11 +48,63 @@ async def _get_flags() -> dict:
     return await _get_feature_flags(async_session_factory)
 
 
-def _resolve_fingerprint(request: Request) -> str:
+def _is_sentinel(fingerprint: str) -> bool:
+    """``llm_fingerprint()``'s answer while ``dimensions`` is unset."""
+    return fingerprint.rsplit("|", 1)[-1] == "0"
+
+
+async def _read_fingerprint(llm, session: AsyncSession) -> str:
+    """The partition the counts, listings and cache prune read against.
+
+    With ``dimensions`` configured this is ``llm_fingerprint()``, as it always
+    was. Unset -- which is what the setup wizard writes unless the operator
+    types a number -- ``llm_fingerprint()`` is the ``model|0`` sentinel, which
+    names no partition: every row counted as "missing a vector" although all
+    of them had one, and the cache prune refused. The populated partition for
+    the same model is resolved instead (``resolve_read_fingerprint``), and
+    with nothing embedded yet the sentinel stands, which counts honestly as
+    everything missing.
+    """
+    configured = llm.llm_fingerprint()
+    if not _is_sentinel(configured):
+        return configured
+    try:
+        return await PostgresVectorRepository(session).resolve_read_fingerprint(llm)
+    except EmbedderFingerprintUnresolved:
+        return configured
+
+
+# Never stored; it only makes the active embedder name its fingerprint.
+_FINGERPRINT_PROBE_TEXT = "darkmem re-embed active-fingerprint probe"
+
+
+async def _write_fingerprint(llm) -> str:
+    """The partition a re-embed fills: the one the active embedder produces.
+
+    Unset ``dimensions`` used to hand the background task the ``model|0``
+    sentinel, which it refused ("Embedder fingerprint dims must be
+    positive"), so every re-embed failed with an empty journal detail. A
+    probe embed names the real one, the way the block sweep's
+    ``resolve_active_fingerprint`` does. Only the write doors come here, and
+    they refuse in read-only mode.
+    """
+    configured = llm.llm_fingerprint()
+    if not _is_sentinel(configured):
+        return configured
+    try:
+        _, fingerprint = await llm.embed(_FINGERPRINT_PROBE_TEXT)
+    except Exception as exc:
+        raise HTTPException(
+            503, f"The embedder could not be reached to name its partition: {exc}",
+        ) from exc
+    return fingerprint
+
+
+def _pipeline_llm(request: Request):
     pipeline = getattr(request.app.state, "pipeline", None)
     if pipeline is None or pipeline.llm is None:
         raise HTTPException(503, "Pipeline not initialized")
-    return pipeline.llm.llm_fingerprint()
+    return pipeline.llm
 
 
 @router.get("/obsolete-counts")
@@ -63,7 +119,7 @@ async def get_obsolete_counts(
             "memories": 0, "code_chunks": 0, "entities": 0,
             "current_fingerprint": "",
         }
-    fingerprint = pipeline.llm.llm_fingerprint()
+    fingerprint = await _read_fingerprint(pipeline.llm, session)
     svc = ReembedService(session)
     counts = await svc.count_missing(fingerprint)
     return {
@@ -80,7 +136,7 @@ async def list_obsolete_memories(
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
-    fingerprint = _resolve_fingerprint(request)
+    fingerprint = await _read_fingerprint(_pipeline_llm(request), session)
     svc = ReembedService(session)
     items, total, partition_missing = await svc.list_obsolete_memories(
         fingerprint, limit=limit, offset=offset,
@@ -99,7 +155,7 @@ async def list_obsolete_code_chunks(
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
-    fingerprint = _resolve_fingerprint(request)
+    fingerprint = await _read_fingerprint(_pipeline_llm(request), session)
     svc = ReembedService(session)
     items, total, partition_missing = await svc.list_obsolete_code_chunks(
         fingerprint, limit=limit, offset=offset,
@@ -118,7 +174,7 @@ async def list_obsolete_entities(
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
-    fingerprint = _resolve_fingerprint(request)
+    fingerprint = await _read_fingerprint(_pipeline_llm(request), session)
     svc = ReembedService(session)
     items, total, partition_missing = await svc.list_obsolete_entities(
         fingerprint, limit=limit, offset=offset,
@@ -153,7 +209,7 @@ async def _dispatch_single_category(
 
     try:
         with lease_llm(pipeline.llm) as snapshot_llm:
-            snapshot_fingerprint = snapshot_llm.llm_fingerprint()
+            snapshot_fingerprint = await _write_fingerprint(snapshot_llm)
             batch_id = str(uuid4())
 
             svc = ReembedService(session)
@@ -283,7 +339,7 @@ async def reembed_all(
 
     try:
         with lease_llm(pipeline.llm) as snapshot_llm:
-            snapshot_fingerprint = snapshot_llm.llm_fingerprint()
+            snapshot_fingerprint = await _write_fingerprint(snapshot_llm)
             batch_id = str(uuid4())
 
             svc = ReembedService(session)
@@ -349,7 +405,7 @@ async def prune_cache(
 ):
     from app.services.events import record_event
 
-    fingerprint = _resolve_fingerprint(request)
+    fingerprint = await _read_fingerprint(_pipeline_llm(request), session)
     svc = ReembedService(session)
     try:
         deleted = await svc.prune_obsolete_cache_entries(fingerprint)

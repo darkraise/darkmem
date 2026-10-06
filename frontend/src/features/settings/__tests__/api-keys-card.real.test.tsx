@@ -70,7 +70,7 @@ describe("ApiKeysCard (real)", () => {
 
     const tile = await screen.findByRole("article", { name: "push-webhook" })
     expect(within(tile).getByText("Active")).toBeInTheDocument()
-    expect(within(tile).getByText("Save")).toBeInTheDocument()
+    expect(within(tile).getByText("Write")).toBeInTheDocument()
     expect(within(tile).getByText("Admin")).toBeInTheDocument()
     expect(within(tile).getByText("Never")).toBeInTheDocument()
     expect(screen.getByText(/1 active · 1 revoked/)).toBeInTheDocument()
@@ -166,7 +166,9 @@ describe("ApiKeysCard (real)", () => {
     })
     const read = screen.getByRole("checkbox", { name: /Search and read/ })
     const admin = screen.getByRole("checkbox", { name: /Receive push updates/ })
-    const capture = screen.getByRole("checkbox", { name: /Save new memories/ })
+    const capture = screen.getByRole("checkbox", {
+      name: /Add, edit and delete/,
+    })
     expect(read).toHaveAttribute("aria-checked", "true")
     fireEvent.click(read)
     expect(screen.getByRole("button", { name: /Create key/ })).toBeDisabled()
@@ -189,6 +191,40 @@ describe("ApiKeysCard (real)", () => {
       "capture",
       "admin",
     ])
+  })
+
+  it("closes on the X once a key is shown, and drops the plaintext", async () => {
+    const created = {
+      ...LIVE,
+      id: "44444444-4444-4444-4444-444444444444",
+      name: "review-probe",
+      key_id: "zzz999",
+      scopes: ["read"],
+      token: "dmk_zzz999_plaintext",
+    }
+    let keys: unknown[] = []
+    vi.mocked(apiFetch).mockImplementation(
+      (path: string, init?: RequestInit) => {
+        if (path === "/api-keys" && init?.method === "POST") {
+          keys = [created]
+          return Promise.resolve(created)
+        }
+        if (path === "/api-keys") return Promise.resolve(keys)
+        return Promise.reject(new Error(`unexpected apiFetch(${path})`))
+      },
+    )
+    render(<ApiKeysCard />, { wrapper })
+
+    fireEvent.click(await screen.findByRole("button", { name: /New key/ }))
+    fireEvent.change(await screen.findByLabelText(/What is this key for/), {
+      target: { value: "review-probe" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: /Create key/ }))
+    expect(await screen.findByText("dmk_zzz999_plaintext")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Close" }))
+    await waitFor(() =>
+      expect(screen.queryByText("dmk_zzz999_plaintext")).toBeNull(),
+    )
   })
 
   it("drops the one-time plaintext when its dialog closes", async () => {
@@ -221,6 +257,18 @@ describe("ApiKeysCard (real)", () => {
     })
     fireEvent.click(screen.getByRole("button", { name: /Create key/ }))
     expect(await screen.findByText("dmk_zzz999_plaintext")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Copy key" })).toBeInTheDocument()
+
+    // The secret is never shown again, so a stray Escape must not lose it:
+    // only the explicit button closes the box once a key is on it.
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape",
+    })
+    expect(screen.getByText("dmk_zzz999_plaintext")).toBeInTheDocument()
+    fireEvent.pointerDown(document.body)
+    expect(screen.getByText("dmk_zzz999_plaintext")).toBeInTheDocument()
+    // The X still closes it: a close button that does nothing reads as broken.
+    expect(screen.getByRole("button", { name: "Close" })).toBeEnabled()
 
     fireEvent.click(screen.getByRole("button", { name: /I have copied it/ }))
     await waitFor(() =>

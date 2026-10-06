@@ -85,7 +85,15 @@ export function MaintenanceTab() {
   return (
     <div className="space-y-4">
       {m.lastOpNote && (
-        <div className="border-success/50 bg-success/8 rounded-md border p-3 text-sm">
+        <div
+          role={m.lastOpFailed ? "alert" : "status"}
+          className={cn(
+            "rounded-md border p-3 text-sm",
+            m.lastOpFailed
+              ? "border-destructive/50 bg-destructive/8"
+              : "border-success/50 bg-success/8",
+          )}
+        >
           <b className="font-semibold">Last operation:</b> {m.lastOpNote}
         </div>
       )}

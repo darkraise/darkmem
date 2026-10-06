@@ -7,7 +7,8 @@ vi.mock("@/lib/demo-flag", () => ({ DEMO: false }))
 vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
 
 import { apiFetch } from "@/lib/api"
-import { usePipelineRuns } from "../use-pipeline-runs"
+import { ALL_PROJECTS, useProjectStore } from "@/stores/project-store"
+import { derivedOutcome, usePipelineRuns } from "../use-pipeline-runs"
 
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({
@@ -89,5 +90,36 @@ describe("usePipelineRuns (DEMO off — real /analytics/pipeline-logs)", () => {
     const { result } = renderHook(() => usePipelineRuns(), { wrapper })
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(result.current.runs).toEqual([])
+  })
+})
+
+describe("derivedOutcome", () => {
+  it("reads a row journalled without an outcome from its steps", () => {
+    // Older update and reprocess doors wrote a second `extracted` row with
+    // only the step statuses; every step ok is a completed run, not a failure.
+    expect(
+      derivedOutcome({ embed: "ok", extract: "ok", vector: "ok", graph: "ok" }),
+    ).toBe("completed")
+    expect(
+      derivedOutcome({ embed: "ok", extract: "ok", vector: "ok", graph: "error" }),
+    ).toBe("partial")
+    expect(
+      derivedOutcome({ embed: "error", extract: "skipped", vector: "skipped", graph: "skipped" }),
+    ).toBe("failed")
+    expect(derivedOutcome({})).toBe("failed")
+  })
+
+  it("follows the header's project scope, as the dashboard does (M21)", async () => {
+    vi.mocked(apiFetch).mockResolvedValue([])
+    useProjectStore.setState({ activeProject: "webapp", missingProject: null })
+    try {
+      const { result } = renderHook(() => usePipelineRuns(), { wrapper })
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+      expect(apiFetch).toHaveBeenCalledWith(
+        "/analytics/pipeline-logs?limit=50&project=webapp",
+      )
+    } finally {
+      useProjectStore.setState({ activeProject: ALL_PROJECTS, missingProject: null })
+    }
   })
 })

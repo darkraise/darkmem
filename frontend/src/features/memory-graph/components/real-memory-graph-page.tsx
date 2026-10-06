@@ -461,7 +461,12 @@ export function RealMemoryGraphPage() {
                     return next
                   })
                 }
-                onShowAll={filters.clearFilters}
+                // Show All clears the entity-type picks too: they live on this
+                // page, not in the filter hook, and used to survive it.
+                onShowAll={() => {
+                  filters.clearFilters()
+                  setSelectedEntityTypes(new Set())
+                }}
                 entityLayerEnabled={entityLayerEnabled}
                 allEntityTypes={filters.allEntityTypes}
                 selectedEntityTypes={selectedEntityTypes}

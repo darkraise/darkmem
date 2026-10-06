@@ -49,6 +49,34 @@ IGNORED_EXTENSIONS = {
     ".pyc", ".pyo", ".exe", ".dll", ".so", ".dylib",
 }
 MAX_FILE_SIZE = 500_000
+#: How far into a file the binary sniff reads. git's own heuristic: a NUL byte
+#: in the first 8000 bytes means binary.
+BINARY_SNIFF_BYTES = 8000
+
+
+def read_source_text(path: Path) -> str | None:
+    """A file's text as the index reads it, or None for a file it skips.
+
+    Binary files are skipped. A NUL byte is valid UTF-8, so ``errors="replace"``
+    let a committed zip or png through as "text", its chunks carried NULs, and
+    Postgres ``TEXT`` refused the first one with ``UntranslatableCharacterError``,
+    aborting the whole index run. The sniff is git's; a NUL past it is caught
+    on the decoded text too, so none can reach a row.
+
+    Shared with ``code_reconcile._file_hash`` so the drift scan skips exactly the
+    files the pipeline skips: a file one side reads and the other does not would
+    read as drift on every tick.
+    """
+    try:
+        with path.open("rb") as handle:
+            head = handle.read(BINARY_SNIFF_BYTES)
+        if b"\x00" in head:
+            return None
+        content = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    return None if "\x00" in content else content
+
 # Ceiling on a single file's read+parse. tree-sitter parsing runs in the default
 # executor and can't truly be cancelled, but bounding the await frees the
 # coroutine (and the repo_sync job lock above it) instead of hanging forever on a
@@ -56,6 +84,10 @@ MAX_FILE_SIZE = 500_000
 PARSE_TIMEOUT = 60.0
 SIZE_BUDGET_BYTES = 20 * 1024 * 1024
 PARALLEL_MIN_FILES = 15
+# How often a phase that knows its count rewrites the status label
+# ("Parsing files... 1,200/3,996 files"); each rewrite is a commit and a
+# Repositories refetch.
+PROGRESS_INTERVAL_SECONDS = 1.0
 PARALLEL_MIN_BYTES = 512 * 1024
 CROSS_FILE_SKIP_THRESHOLD = 0.03
 CROSS_FILE_HARD_CAP = 2000
@@ -152,6 +184,90 @@ class CodePipeline:
         self._union_buckets: UnionBuckets | None = None
 
     async def run(
+        self,
+        repo_id: UUID,
+        full: bool = False,
+        enrich_symbols: bool = False,
+        generate_wiki: bool = False,
+        forced_files: tuple[list[str], list[str]] | None = None,
+        union_files: list[str] | None = None,
+        pull: bool = True,
+    ) -> dict:
+        """Index the repo and journal the run's outcome.
+
+        Every trigger (reindex route, webhook, polling, MCP ``code_reindex``)
+        comes through here, so this is the one place an index run leaves its
+        row for the Activity feed: ``repo_indexed`` with the run's counts, or
+        ``repo_index_failed`` with the exception's type and first line.
+        """
+        try:
+            stats = await self._run(
+                repo_id, full=full, enrich_symbols=enrich_symbols,
+                generate_wiki=generate_wiki, forced_files=forced_files,
+                union_files=union_files, pull=pull,
+            )
+        except Exception as exc:
+            await self._journal_failure(repo_id, exc)
+            raise
+        await self._journal_outcome(repo_id, stats)
+        return stats
+
+    async def _journal_outcome(self, repo_id: UUID, stats: dict) -> None:
+        from app.services.events import record_event
+
+        try:
+            completed = stats.get("status") != "up_to_date"
+            await record_event(
+                self.session,
+                event_type="repo_indexed",
+                object_type="repository",
+                object_id=repo_id,
+                source="code_index",
+                payload={
+                    "action": "completed" if completed else "up_to_date",
+                    "outcome": "completed" if completed else "up_to_date",
+                    "commit": stats.get("commit") or "",
+                    **{
+                        key: stats[key]
+                        for key in (
+                            "files_changed", "files_deleted", "files_skipped",
+                            "symbols_indexed", "chunks_stored",
+                        )
+                        if key in stats
+                    },
+                    "errors": len(stats.get("errors") or []),
+                },
+            )
+            await self.session.commit()
+        except Exception:
+            logger.warning("Failed to journal index outcome for repo %s", repo_id, exc_info=True)
+
+    async def _journal_failure(self, repo_id: UUID, exc: Exception) -> None:
+        from app.services.events import record_event
+        from app.services.repo_manager import _sanitize_url
+
+        # The journal is append-only and unpurgeable: one line of the error,
+        # never the SQL statement or the parameters an asyncpg error carries.
+        lines = str(exc).strip().splitlines()
+        cause = _sanitize_url(f"{type(exc).__name__}: {lines[0] if lines else ''}")[:300]
+        # No rollback here: the run's own failure path has already rolled
+        # back and committed its cleanup, and a failure before that (a pull,
+        # a missing working tree) left nothing pending. A session that is
+        # still unusable makes record_event return False, and nothing more.
+        try:
+            await record_event(
+                self.session,
+                event_type="repo_index_failed",
+                object_type="repository",
+                object_id=repo_id,
+                source="code_index",
+                payload={"outcome": "failed", "cause": cause},
+            )
+            await self.session.commit()
+        except Exception:
+            logger.warning("Failed to journal index failure for repo %s", repo_id, exc_info=True)
+
+    async def _run(
         self,
         repo_id: UUID,
         full: bool = False,
@@ -289,7 +405,7 @@ class CodePipeline:
                 "total_files": total,
             })
 
-            await self._update_status("Parsing files...", "repo.indexing_progress", {
+            await self._update_status(f"Parsing files... 0/{total:,} files", "repo.indexing_progress", {
                 "repo_id": self._repo_id_str, "phase": 2, "current": 0, "total": total,
             })
             await self.phase_02_parsing()
@@ -495,7 +611,38 @@ class CodePipeline:
         from app.api.websocket import event_manager
         self._repo.status_message = message
         await self.session.commit()
-        await event_manager.broadcast(event_type, event_data)
+        # The label rides the event, so the Repositories page can show it
+        # without refetching the whole repo list on every tick.
+        await event_manager.broadcast(event_type, {**event_data, "status_message": message})
+
+    async def _report_progress(
+        self, label: str, phase: int, done: int, total: int, unit: str,
+    ) -> None:
+        """Put a count on the phase label ("Parsing files... 1,200/3,996
+        files") where a phase knows one. At most once a second, plus the
+        last tick: each one commits the status message and broadcasts a
+        progress event the Repositories page refetches on.
+
+        Called only where the main session holds no pending write (parsing
+        reads files; embedding waits on the provider before it writes), so
+        the commit publishes the label and nothing else.
+        """
+        now = time.monotonic()
+        last = getattr(self, "_last_progress_at", 0.0)
+        if done < total and now - last < PROGRESS_INTERVAL_SECONDS:
+            return
+        self._last_progress_at = now
+        try:
+            await self._update_status(
+                f"{label} {done:,}/{total:,} {unit}", "repo.indexing_progress",
+                {
+                    "repo_id": self._repo_id_str, "phase": phase,
+                    "current": done, "total": total, "unit": unit,
+                },
+            )
+        except Exception:
+            # A progress label is a convenience; it never fails the run.
+            logger.warning("Failed to report indexing progress", exc_info=True)
 
     async def _phase_log(self, name: str) -> float:
         logger.info("[pipeline] starting phase %s", name)
@@ -795,12 +942,13 @@ class CodePipeline:
         if use_parallel:
             await self._parse_parallel(files, work_dir, total_bytes)
         else:
-            for fp in files:
+            for done, fp in enumerate(files, start=1):
                 result = await self._parse_one(work_dir, fp)
                 if result is not None:
                     self._parsed[fp] = result
                 else:
                     self._stats["files_skipped"] += 1
+                await self._report_progress("Parsing files...", 2, done, total, "files")
 
         self._phase_done("02_parsing", t0)
 
@@ -825,6 +973,7 @@ class CodePipeline:
         if current_batch:
             batches.append(current_batch)
 
+        done = 0
         for batch in batches:
             tasks = [self._parse_one(work_dir, fp) for fp in batch]
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -836,6 +985,8 @@ class CodePipeline:
                     self._stats["files_skipped"] += 1
                 else:
                     self._parsed[fp] = result
+            done += len(batch)
+            await self._report_progress("Parsing files...", 2, done, len(files), "files")
 
     async def _parse_one(self, work_dir: Path, rel_path: str) -> dict | None:
         full_path = work_dir / rel_path
@@ -853,9 +1004,8 @@ class CodePipeline:
                 return None
             if size > MAX_FILE_SIZE:
                 return None
-            try:
-                content = resolved_path.read_text(encoding="utf-8", errors="replace")
-            except Exception:
+            content = read_source_text(resolved_path)
+            if content is None:
                 return None
             return (content, hashlib.sha256(content.encode()).hexdigest())
 
@@ -1614,7 +1764,14 @@ class CodePipeline:
         # the fingerprint from the first embed call and assert agreement.
         embed_fingerprint: dict[str, str] = {}
 
+        total_chunks = sum(len(pr.chunks) for _fp, pr in file_items)
+        embedded = 0
+        # One reporter at a time: the tasks share this session, and a tick
+        # that finds another one mid-commit simply skips.
+        progress_lock = asyncio.Lock()
+
         async def _embed_one(fp: str, pr) -> None:
+            nonlocal embedded
             texts = [c["content"][:2000] for c in pr.chunks]
             async with sem:
                 try:
@@ -1626,6 +1783,12 @@ class CodePipeline:
                 except Exception as exc:
                     logger.warning("Batch embedding failed for %s: %s", fp, exc)
                     self._stats["errors"].append(f"embed:{fp}:{exc}")
+            embedded += len(texts)
+            if not progress_lock.locked():
+                async with progress_lock:
+                    await self._report_progress(
+                        "Generating embeddings...", 12, embedded, total_chunks, "chunks",
+                    )
 
         await asyncio.gather(*[_embed_one(fp, pr) for fp, pr in file_items])
 

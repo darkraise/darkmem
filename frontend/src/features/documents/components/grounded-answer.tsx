@@ -1,5 +1,6 @@
 import { Badge } from "darkraise-ui/components/badge"
 import type { DocumentListItem, QaCitation, QaResponse } from "@/hooks/api"
+import { shortId } from "@/lib/short-id"
 
 function documentLabel(doc: DocumentListItem): string {
   const last = doc.uri?.split("/").filter(Boolean).pop()
@@ -92,7 +93,7 @@ function CitationChip({
   if (!document) {
     return (
       <Badge variant="outline" size="sm" className="font-mono">
-        block {citation.block_id.slice(0, 8)} · {span}
+        block {shortId(citation.block_id)} · {span}
       </Badge>
     )
   }

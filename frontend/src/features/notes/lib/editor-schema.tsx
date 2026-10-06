@@ -18,7 +18,7 @@ const CALLOUT_TONE: Record<CalloutVariant, string> = {
   success: "border-success/40 bg-success/10 [&>svg]:text-success-text",
 }
 
-const CALLOUT_ICON: Record<CalloutVariant, typeof Info> = {
+export const CALLOUT_ICON: Record<CalloutVariant, typeof Info> = {
   info: Info,
   warning: TriangleAlert,
   error: CircleAlert,

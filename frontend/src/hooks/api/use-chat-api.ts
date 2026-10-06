@@ -55,18 +55,6 @@ export function useConversation(id: string | null) {
   })
 }
 
-export function useCreateConversation() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (data: { title?: string }) =>
-      apiFetch<ChatConversation>("/chat/conversations", {
-        method: "POST",
-        body: JSON.stringify(data),
-      }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["conversations"] }),
-  })
-}
-
 export function useUpdateConversation() {
   const qc = useQueryClient()
   return useMutation({

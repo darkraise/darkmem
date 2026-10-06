@@ -359,6 +359,34 @@ async def test_a_passing_scope_check_marks_the_key_used(door, mint_key, monkeypa
     assert scopes_module.ToolScopeMiddleware is ToolScopeMiddleware
 
 
+async def test_listing_the_tools_marks_the_key_used(door, mint_key, monkeypatch):
+    """An agent that only listed the tools still used a working key. Marking
+    only scope-checked ``tools/call`` left such a key reading "Last used:
+    Never" on the settings card."""
+    import app.api.mcp.scopes as scopes_module
+
+    marked: list = []
+
+    async def _record(api_key_id, **_kwargs):
+        marked.append(api_key_id)
+
+    monkeypatch.setattr(scopes_module, "mark_key_used", _record)
+
+    row_id, credential = await mint_key(scopes=["read"])
+    response = await door.post(
+        "/",
+        json={
+            "jsonrpc": "2.0", "id": 1, "method": "tools/list",
+            "params": {"_meta": _call("memory_stats")["params"]["_meta"]},
+        },
+        headers={"Authorization": f"Bearer {credential}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["result"]["tools"]
+    assert marked == [row_id]
+
+
 # --- Property 5: the Host allowlist is not replaced by the key -------------
 
 

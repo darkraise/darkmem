@@ -6,6 +6,7 @@ import { useDemoStore } from "@/demo/store"
 import type { MaintenanceOpKey } from "@/features/settings/types"
 import { apiFetch, ApiError } from "@/lib/api"
 import { useTriggerJob } from "@/hooks/api"
+import { toast } from "darkraise-ui/components/sonner"
 
 export interface MaintenanceTabBinding {
   reembed: { memories: number; entities: number }
@@ -19,6 +20,8 @@ export interface MaintenanceTabBinding {
     retiredFingerprints: string[] | null
   }
   lastOpNote: string | null
+  /** The note reports a refusal or failure, not a completed operation. */
+  lastOpFailed: boolean
   run: (op: MaintenanceOpKey) => void
 }
 
@@ -40,7 +43,12 @@ export function useMaintenanceTabBinding(): MaintenanceTabBinding {
   const demoMaintenance = useDemoMaintenance()
   const runDemoOp = useDemoStore((s) => s.runMaintenanceOp)
   const qc = useQueryClient()
-  const [realLastOpNote, setRealLastOpNote] = useState<string | null>(null)
+  const [realLastOp, setRealLastOp] = useState<{
+    text: string
+    failed: boolean
+  } | null>(null)
+  const setRealLastOpNote = (text: string, failed = false) =>
+    setRealLastOp({ text, failed })
 
   const countsQuery = useQuery<ObsoleteCounts>({
     queryKey: ["reembedObsoleteCounts"],
@@ -58,12 +66,23 @@ export function useMaintenanceTabBinding(): MaintenanceTabBinding {
     void qc.invalidateQueries({ queryKey: ["pipelineFailureCounts"] })
   }
 
+  // A refusal (a 409 from the cache prune, a 503 from an unreachable
+  // embedder) used to leave the previous operation's note standing. It now
+  // replaces the note, and a toast carries it too: the note is drawn at the
+  // top of the tab, off screen from the buttons further down.
+  const failed = (label: string) => (error: unknown) => {
+    const reason = error instanceof Error ? error.message : String(error)
+    setRealLastOpNote(`${label} failed: ${reason}`, true)
+    toast.error(`${label} failed: ${reason}`)
+  }
+
   const reembedMemories = useMutation({
     mutationFn: () => apiFetch("/reembed/memories", { method: "POST" }),
     onSuccess: () => {
       setRealLastOpNote("re-embed memories started")
       invalidate()
     },
+    onError: failed("Re-embed memories"),
   })
   const reembedEntities = useMutation({
     mutationFn: () => apiFetch("/reembed/entities", { method: "POST" }),
@@ -71,6 +90,7 @@ export function useMaintenanceTabBinding(): MaintenanceTabBinding {
       setRealLastOpNote("re-embed entities started")
       invalidate()
     },
+    onError: failed("Re-embed entities"),
   })
   const pruneCaches = useMutation({
     mutationFn: () =>
@@ -80,6 +100,7 @@ export function useMaintenanceTabBinding(): MaintenanceTabBinding {
         `${result.deleted} unused caches dropped`,
       )
     },
+    onError: failed("Prune caches"),
   })
   const triggerJob = useTriggerJob()
 
@@ -92,6 +113,7 @@ export function useMaintenanceTabBinding(): MaintenanceTabBinding {
       onError: (err) => {
         setRealLastOpNote(
           err instanceof ApiError && err.status === 409 ? busyNote(label) : `${label} failed to trigger`,
+          true,
         )
       },
     })
@@ -113,6 +135,7 @@ export function useMaintenanceTabBinding(): MaintenanceTabBinding {
         retiredFingerprints: demoMaintenance.dbops.retired_fingerprints,
       },
       lastOpNote: demoMaintenance.last_op_note,
+      lastOpFailed: false,
       run: runDemoOp,
     }
   }
@@ -131,7 +154,8 @@ export function useMaintenanceTabBinding(): MaintenanceTabBinding {
     dbops: {
       retiredFingerprints: null,
     },
-    lastOpNote: realLastOpNote,
+    lastOpNote: realLastOp?.text ?? null,
+    lastOpFailed: realLastOp?.failed ?? false,
     run: (op) => {
       switch (op) {
         case "reembed_memories":

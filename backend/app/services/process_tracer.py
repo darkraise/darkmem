@@ -8,9 +8,28 @@ from collections import deque
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.utils.graph_keys import compose_key, decompose_key
+from app.utils.graph_keys import compose_key, decompose_key, split_symbol_key
 
 logger = logging.getLogger(__name__)
+
+
+# The entry kind a process key starts with ("scored:", "route_tool:"). It
+# keeps keys unique; it is not a name, and it used to reach the UI as one.
+_ENTRY_KIND_PREFIX = re.compile(r"^(scored|route_tool):")
+
+
+def process_display_label(key: str) -> str:
+    """A process's readable name from its key: the entry-kind prefix
+    dropped, and a scored entry's symbol key spelled as ``Owner.name
+    (file)`` — ``scored:main::src/service.py`` reads ``main (src/service.py)``
+    and ``route_tool:DELETE /by-uri`` reads ``DELETE /by-uri``. Applied to a
+    label that is already clean it changes nothing."""
+    rest = _ENTRY_KIND_PREFIX.sub("", key, count=1)
+    if rest == key or "::" not in rest:
+        return rest
+    name, file_path, owner = split_symbol_key(rest)
+    qualified = f"{owner}.{name}" if owner else name
+    return f"{qualified} ({file_path})" if file_path else qualified
 
 
 TEST_FILE_PATTERNS = re.compile(
@@ -223,13 +242,14 @@ class ProcessTracer:
             await self.session.execute(
                 text("""
                     INSERT INTO code_graph_nodes (repo_id, kind, key, label, properties)
-                    VALUES (:repo_id, 'process', :key, :key, CAST(:props AS jsonb))
+                    VALUES (:repo_id, 'process', :key, :label, CAST(:props AS jsonb))
                     ON CONFLICT (repo_id, kind, key) DO UPDATE
-                        SET properties = EXCLUDED.properties
+                        SET properties = EXCLUDED.properties, label = EXCLUDED.label
                 """),
                 {
                     "repo_id": self.repo_id,
                     "key": proc_key,
+                    "label": process_display_label(proc_key),
                     "props": proc_props,
                 },
             )

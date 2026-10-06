@@ -1,12 +1,14 @@
 import { useEffect, useState, useRef } from "react"
 import { MessageSquare } from "lucide-react"
+import { Button } from "darkraise-ui/components/button"
 import { PageChrome } from "@/components/app-chrome"
+import { EmptyState } from "@/components/darkmem"
 import {
   useConversations,
   useConversation,
-  useCreateConversation,
   useDeleteConversation,
 } from "@/hooks/api"
+import { ApiError } from "@/lib/api"
 import { useChatStream } from "../hooks/use-chat-stream"
 import { ChatSidebar } from "./chat-sidebar"
 import { ChatMessages } from "./chat-messages"
@@ -21,25 +23,30 @@ import { ChatPanels } from "./chat-panels"
  * ChatOverlay already uses, just laid out as the three-column
  * thread-list | message-pane | context-panel shape DemoChatPage has,
  * instead of ChatOverlay's floating panel (T1.60, Step 7).
+ *
+ * The open conversation is the route's `?id=` (`conversationId`), so a reload
+ * or Back/Forward keeps it; `onSelect` moves it. `null` is an unsaved draft:
+ * "New" opens one without creating anything, and the first send creates the
+ * conversation server-side (each click used to store an empty "Untitled").
  */
-export function RealChatPage({ initialId }: { initialId?: string }) {
-  const [activeId, setActiveId] = useState<string | null>(initialId ?? null)
-  const [routeId, setRouteId] = useState(initialId)
+export function RealChatPage({
+  conversationId,
+  onSelect,
+}: {
+  conversationId: string | null
+  onSelect: (id: string | null, options?: { replace?: boolean }) => void
+}) {
+  // Each "New" is a distinct draft, so a turn still streaming from an earlier
+  // draft stays with that draft rather than appearing in the fresh one.
+  const [draft, setDraft] = useState(0)
+  const activeKey = conversationId ?? `draft:${draft}`
   const [selectedTurnId, setSelectedTurnId] = useState<string | null>(null)
-  const selectionVersion = useRef(0)
-  const selectConversation = (id: string | null) => {
-    selectionVersion.current += 1
-    setActiveId(id)
-  }
-
-  if (routeId !== initialId) {
-    setRouteId(initialId)
-    setActiveId(initialId ?? null)
-  }
-
+  // Read when a send completes: completion acts only if the reader is still on
+  // the conversation (or draft) that sent the turn.
+  const activeKeyRef = useRef(activeKey)
   useEffect(() => {
-    selectionVersion.current += 1
-  }, [initialId])
+    activeKeyRef.current = activeKey
+  }, [activeKey])
 
   const {
     data: convData,
@@ -49,11 +56,17 @@ export function RealChatPage({ initialId }: { initialId?: string }) {
   } = useConversations()
   const conversations = convData?.conversations ?? []
 
-  const { data: convDetail } = useConversation(activeId)
+  const {
+    data: convDetail,
+    isLoading: conversationLoading,
+    error: conversationError,
+    refetch: refetchConversation,
+  } = useConversation(conversationId)
   const messages = convDetail?.messages ?? []
+  const conversationMissing =
+    conversationError instanceof ApiError && conversationError.status === 404
 
-  const stream = useChatStream(activeId)
-  const createConversation = useCreateConversation()
+  const stream = useChatStream(activeKey)
   const deleteConversation = useDeleteConversation()
 
   // Mirrors DemoChatPage's own mechanism: defaults to the latest assistant
@@ -66,7 +79,7 @@ export function RealChatPage({ initialId }: { initialId?: string }) {
 
   useEffect(() => {
     setSelectedTurnId(null)
-  }, [activeId])
+  }, [activeKey])
 
   // The live-streaming turn while one is in flight, else the selected
   // historical turn's persisted snapshot, else no context yet (§6.4). The
@@ -85,10 +98,17 @@ export function RealChatPage({ initialId }: { initialId?: string }) {
     : (contextTurn?.context?.envelope ?? null)
 
   const handleSend = async (content: string) => {
-    const originVersion = selectionVersion.current
-    const resultId = await stream.sendMessage(activeId, content)
-    if (selectionVersion.current === originVersion) {
-      if (!activeId && resultId) setActiveId(resultId)
+    const origin = activeKey
+    const resultId = await stream.sendMessage(
+      conversationId,
+      content,
+      undefined,
+      origin,
+    )
+    if (activeKeyRef.current === origin) {
+      // The draft becomes the conversation its first turn created. Replacing
+      // the entry keeps Back from returning to a draft that no longer exists.
+      if (!conversationId && resultId) onSelect(resultId, { replace: true })
       setSelectedTurnId(null)
     }
   }
@@ -105,19 +125,21 @@ export function RealChatPage({ initialId }: { initialId?: string }) {
           each ending where its own content does — and above `lg` the reader
           sets how that width is split. */}
       <ChatPanels
-        activeKey={activeId}
+        activeKey={activeKey}
         threads={
           <ChatSidebar
             conversations={conversations}
-            activeId={activeId}
-            onSelect={selectConversation}
-            onCreate={async () => {
-              const conv = await createConversation.mutateAsync({})
-              selectConversation(conv.id)
+            activeId={conversationId}
+            onSelect={(id) => {
+              if (id !== conversationId) onSelect(id)
+            }}
+            onCreate={() => {
+              setDraft((n) => n + 1)
+              if (conversationId) onSelect(null)
             }}
             onDelete={(id) => {
               deleteConversation.mutate(id)
-              if (id === activeId) selectConversation(null)
+              if (id === conversationId) onSelect(null, { replace: true })
             }}
             isLoading={conversationsLoading}
             isError={conversationsError}
@@ -129,22 +151,57 @@ export function RealChatPage({ initialId }: { initialId?: string }) {
              flex child defaults to `min-height: auto`, which would grow this
              card to its content and push the input off the bottom. */
           <div className="border-border bg-card flex min-h-[24rem] flex-col overflow-hidden rounded-md border lg:min-h-0 lg:rounded-none lg:border-0 lg:bg-transparent">
-            <ChatMessages
-              messages={messages}
-              streamingContent={stream.streamingContent}
-              streamingSources={stream.sources}
-              isStreaming={stream.isStreaming}
-              pendingUserMessage={stream.pendingUserMessage}
-            />
-            <ChatInput
-              key={activeId ?? "new"}
-              error={stream.error}
-              retryDraft={stream.retryDraft}
-              uncertainDraft={stream.uncertainDraft}
-              onSend={handleSend}
-              onStop={stream.abort}
-              isStreaming={stream.isStreaming}
-            />
+            {conversationError && !stream.isStreaming ? (
+              <div className="flex flex-1 items-center justify-center p-4">
+                {conversationMissing ? (
+                  <EmptyState
+                    kind="missing"
+                    title="Conversation not found"
+                    description="It may have been deleted."
+                    action={
+                      <Button onClick={() => onSelect(null, { replace: true })}>
+                        Start a new conversation
+                      </Button>
+                    }
+                  />
+                ) : (
+                  <EmptyState
+                    kind="failed"
+                    title="Failed to load this conversation"
+                    action={
+                      <Button
+                        variant="outline"
+                        onClick={() => refetchConversation()}
+                      >
+                        Retry
+                      </Button>
+                    }
+                  />
+                )}
+              </div>
+            ) : (
+              <ChatMessages
+                messages={messages}
+                streamingContent={stream.streamingContent}
+                streamingSources={stream.sources}
+                isStreaming={stream.isStreaming}
+                pendingUserMessage={stream.pendingUserMessage}
+                isLoading={conversationLoading}
+              />
+            )}
+            {/* A deleted conversation takes no turn: the send would only
+                come back as "Conversation not found". */}
+            {!conversationMissing && (
+              <ChatInput
+                key={activeKey}
+                error={stream.error}
+                retryDraft={stream.retryDraft}
+                uncertainDraft={stream.uncertainDraft}
+                onSend={handleSend}
+                onStop={stream.abort}
+                isStreaming={stream.isStreaming}
+              />
+            )}
           </div>
         }
         context={

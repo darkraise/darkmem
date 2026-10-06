@@ -3,6 +3,7 @@ import { useDemoPipelineRuns } from "@/demo/hooks"
 import type { DemoPipelineRun, PipelineStepState } from "@/features/activity/types"
 import { relativeTime } from "@/lib/format"
 import { usePipelineLogs, type PipelineLog } from "@/hooks/api"
+import { shortId } from "@/lib/short-id"
 
 function stepState(raw: unknown, degradedValue: string): PipelineStepState {
   if (raw === "ok") return "ok"
@@ -54,6 +55,25 @@ function writeState(
   return "ok"
 }
 
+/** The pipeline's own `_derive_outcome`, for a journal row written without
+ *  one. Older update and reprocess doors journalled a second `extracted` row
+ *  carrying only the step statuses; read as "failed" outright, an edit whose
+ *  every step succeeded showed a failed run beside the completed one. */
+export function derivedOutcome(
+  details: Record<string, unknown>,
+): DemoPipelineRun["terminal"] {
+  const steps = [details.embed, details.extract, details.vector, details.graph]
+  const active = steps.filter(
+    (step) =>
+      typeof step === "string" && step !== "skipped" && step !== "pending",
+  )
+  if (active.length > 0 && active.every((step) => step === "ok")) {
+    return "completed"
+  }
+  if (active.some((step) => step === "ok")) return "partial"
+  return "failed"
+}
+
 function fromPipelineLog(log: PipelineLog): DemoPipelineRun {
   const details = log.details as Record<string, unknown>
   const embed = stepState(details.embed, "__never__")
@@ -66,12 +86,12 @@ function fromPipelineLog(log: PipelineLog): DemoPipelineRun {
   const terminal: DemoPipelineRun["terminal"] =
     outcome === "completed" || outcome === "partial" || outcome === "failed"
       ? outcome
-      : "failed"
+      : derivedOutcome(details)
 
   return {
     id: String(log.id),
     memory_id: log.memory_id ?? null,
-    content: log.memory_id ? `memory ${log.memory_id.slice(0, 8)}` : "(memory deleted)",
+    content: log.memory_id ? `memory ${shortId(log.memory_id)}` : "(memory deleted)",
     time_label: relativeTime(log.timestamp),
     steps: [
       embed,

@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import {
   CODE_SCOPE_REASON,
+  NOTES_SCOPE_REASON,
+  WORKSPACE_SCOPE_REASON,
   ProjectScopeReconciler,
   ProjectSwitcher,
   projectScopeDisabledReason,
@@ -328,6 +330,17 @@ describe("project scope on code pages", () => {
     expect(projectScopeDisabledReason("/code")).toBe(CODE_SCOPE_REASON)
     expect(projectScopeDisabledReason("/codex")).toBeUndefined()
     expect(projectScopeDisabledReason("/memories")).toBeUndefined()
+  })
+
+  it("disables the scope where the page's subject is fixed elsewhere", () => {
+    expect(projectScopeDisabledReason("/projects/darkmem")).toBe(
+      WORKSPACE_SCOPE_REASON,
+    )
+    expect(projectScopeDisabledReason("/notes")).toBe(NOTES_SCOPE_REASON)
+    // The card grid and the documents browser still follow the scope.
+    expect(projectScopeDisabledReason("/projects")).toBeUndefined()
+    expect(projectScopeDisabledReason("/documents")).toBeUndefined()
+    expect(projectScopeDisabledReason("/notesy")).toBeUndefined()
   })
 
   it("renders the switcher disabled, explaining why", async () => {

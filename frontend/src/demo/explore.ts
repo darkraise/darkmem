@@ -309,8 +309,10 @@ export function mermaidForProcess(
   graph: DemoCodeGraph,
 ): string {
   const letter = (i: number) => String.fromCharCode(65 + i)
+  // A step the graph does not draw (a symbol step on a file-level graph)
+  // still names its symbol, never its whole `name::file` key.
   const name = (id: string) =>
-    graph.nodes.find((n) => n.id === id)?.name ?? id
+    graph.nodes.find((n) => n.id === id)?.name ?? (id.split("::")[0] || id)
   const lines = ["flowchart TD"]
   for (let i = 0; i + 1 < process.steps.length; i++) {
     const from = process.steps[i]

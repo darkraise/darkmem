@@ -65,7 +65,8 @@ export function IndexingModesFields({
               Fetch from remote
             </label>
             <NumberInput
-              className="w-28"
+              // w-28 left 32px for digits beside the steppers: 300 read "3(".
+              className="w-36"
               value={value.fetch_interval_seconds}
               min={FETCH_INTERVAL_FLOOR_SECONDS}
               step={FETCH_INTERVAL_FLOOR_SECONDS}
@@ -112,7 +113,8 @@ export function IndexingModesFields({
               Index on new commit
             </label>
             <NumberInput
-              className="w-28"
+              // w-28 left 32px for digits beside the steppers: 300 read "3(".
+              className="w-36"
               value={value.commit_poll_seconds}
               min={COMMIT_POLL_FLOOR_SECONDS}
               step={COMMIT_POLL_FLOOR_SECONDS}

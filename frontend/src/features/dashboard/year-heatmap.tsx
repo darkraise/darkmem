@@ -14,8 +14,15 @@ import {
   intensityClass,
   intensityThresholds,
 } from "./heatmap"
+import { DEMO } from "@/lib/demo-flag"
 
 const CELL = "h-3 w-3 rounded-sm"
+
+/** A cell counts the day's capture events, which outlive a deleted memory,
+ *  so it names captures rather than memories that exist today. */
+function captures(count: number): string {
+  return `${count} capture${count === 1 ? "" : "s"}`
+}
 const WEEKDAY_LABELS = ["Mon", "", "Wed", "", "Fri", "", ""] as const
 
 function CellPopover({ day }: { day: ContributionDay }) {
@@ -23,9 +30,7 @@ function CellPopover({ day }: { day: ContributionDay }) {
     <div className="space-y-1.5">
       <p className="text-sm font-semibold">{formatDayKey(day.date)}</p>
       <p className="text-muted-foreground text-sm">
-        {day.count === 0
-          ? "no memories captured"
-          : `${day.count} memor${day.count === 1 ? "y" : "ies"} captured`}
+        {day.count === 0 ? "no captures" : captures(day.count)}
       </p>
       {day.types.length > 0 && (
         <ul className="space-y-0.5">
@@ -48,27 +53,36 @@ function CellPopover({ day }: { day: ContributionDay }) {
           {day.injects} inject{day.injects === 1 ? "" : "s"}
         </p>
       )}
-      {day.count > 0 && (
+      {DEMO ? (
+        <>
+          {day.count > 0 && (
+            <p className="text-muted-foreground text-xs">
+              click to open this day on the Memories timeline
+            </p>
+          )}
+          {/* The Day drill's "Dashboard" link lands here; this is the way back. */}
+          <Link
+            to="/activity"
+            search={{ tab: "day", day: day.date }}
+            className="text-primary-text inline-block text-xs underline-offset-2 hover:underline"
+          >
+            Open in Activity › Day drill
+          </Link>
+        </>
+      ) : (
         <p className="text-muted-foreground text-xs">
-          click to open this day on the Memories timeline
+          click to open this day in Activity › Day drill
         </p>
       )}
-      {/* The Day drill's "Dashboard" link lands here; this is the way back. */}
-      <Link
-        to="/activity"
-        search={{ tab: "day", day: day.date }}
-        className="text-primary-text inline-block text-xs underline-offset-2 hover:underline"
-      >
-        Open in Activity › Day drill
-      </Link>
     </div>
   )
 }
 
 /**
  * GitHub-style year heatmap: 53 Monday-first week columns up to today, month
- * labels across the top, Mon/Wed/Fri down the left. Cell click jumps to that
- * day on the Memories timeline via the `date` search param.
+ * labels across the top, Mon/Wed/Fri down the left. Cell click opens that day:
+ * on the demo's Memories timeline (`date` search param), or in Activity's Day
+ * drill on a real instance.
  */
 export function YearHeatmap({ days }: { days: ContributionDay[] }) {
   const navigate = useNavigate()
@@ -177,12 +191,20 @@ export function YearHeatmap({ days }: { days: ContributionDay[] }) {
                         // The inject count rides the label rather than a
                         // colour alone: a coloured dot nobody can read out
                         // is not a surface a human can check push against.
-                        aria-label={`${formatDayKey(day.date)} — ${day.count} memor${day.count === 1 ? "y" : "ies"}${day.injects > 0 ? `, ${day.injects} inject${day.injects === 1 ? "" : "s"}` : ""}`}
+                        aria-label={`${formatDayKey(day.date)} — ${captures(day.count)}${day.injects > 0 ? `, ${day.injects} inject${day.injects === 1 ? "" : "s"}` : ""}`}
                         onClick={() =>
-                          navigate({
-                            to: "/memories",
-                            search: { date: day.date },
-                          })
+                          // The real Memories page has no timeline to land
+                          // a date on (only the demo's does), so a day opens
+                          // where one day's activity is listed.
+                          DEMO
+                            ? navigate({
+                                to: "/memories",
+                                search: { date: day.date },
+                              })
+                            : navigate({
+                                to: "/activity",
+                                search: { tab: "day", day: day.date },
+                              })
                         }
                         className={cn(
                           "aspect-square w-full rounded-sm",
@@ -220,6 +242,7 @@ export function YearHeatmap({ days }: { days: ContributionDay[] }) {
           <span key={cls} className={cn(CELL, cls)} />
         ))}
         <span>More</span>
+        <span className="ml-2">memory captures per day</span>
       </div>
     </div>
   )

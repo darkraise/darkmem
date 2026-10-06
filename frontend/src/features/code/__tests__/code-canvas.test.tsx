@@ -60,4 +60,43 @@ describe("CodeCanvas", () => {
     expect(ring.getAttribute("class")).toMatch(/stroke-ring/)
     expect(ring.getAttribute("class")).toMatch(/group-focus-visible:opacity-100/)
   })
+
+  it("draws a folded file edge thicker the more symbol edges it carries", () => {
+    const files = {
+      repo_id: "r1",
+      nodes: ["a.py", "b.py", "c.py"].map((id) => ({
+        id,
+        name: id,
+        kind: "file" as const,
+        file: id,
+        community: "",
+      })),
+      edges: [
+        { source: "a.py", target: "b.py", type: "depends_on", weight: 64 },
+        { source: "a.py", target: "c.py", type: "depends_on", weight: 1 },
+      ],
+      communities: [],
+      processes: [],
+    }
+    const { container } = render(
+      <CodeCanvas
+        graph={files}
+        layout="force"
+        colorBy="kind"
+        selectedId={null}
+        onSelect={vi.fn()}
+        visibleIds={null}
+        blastIds={null}
+        highlightCommunity={null}
+        processIds={null}
+        playing={false}
+        zoom={1}
+        center={null}
+      />,
+    )
+    const widths = [...container.querySelectorAll("line")].map((l) =>
+      Number(l.getAttribute("stroke-width")),
+    )
+    expect(widths).toEqual([4, 1])
+  })
 })

@@ -10,6 +10,7 @@ import {
 import { useLayoutStore } from "darkraise-ui/layout"
 import { DetailLevelToggle } from "@/components/darkmem"
 import { useMediaQuery } from "@/hooks/use-media-query"
+import { DEMO } from "@/lib/demo-flag"
 import { ContextChip } from "./context-chip"
 import { MinimalThemeSwitcher } from "./minimal-theme-switcher"
 import { ProjectSwitcher } from "./project-switcher"
@@ -39,6 +40,12 @@ function openCommandPalette() {
   )
 }
 
+/** The session context chip only feeds the demo Memories page: real search
+ *  never sends a declared context (the wire verb is unbuilt, and the ranking
+ *  arm it would feed sits at weight 0). Shown live it promised a ranking
+ *  effect that does not happen, so real mode leaves it out. */
+const SHOW_CONTEXT = DEMO
+
 /**
  * The header's view controls. From 1280px up they sit inline beside the page
  * title; below it they share one overflow popover so the title keeps the bar.
@@ -59,7 +66,7 @@ export function HeaderControls({
     return (
       <div className="flex min-w-0 shrink-0 items-center gap-2">
         <ProjectSwitcher disabledReason={projectDisabledReason} />
-        <ContextChip />
+        {SHOW_CONTEXT && <ContextChip />}
         <DetailLevelToggle />
         <MinimalThemeSwitcher />
       </div>
@@ -108,9 +115,11 @@ export function HeaderControls({
           <ControlRow label="Project">
             <ProjectSwitcher disabledReason={projectDisabledReason} />
           </ControlRow>
-          <ControlRow label="Context">
-            <ContextChip />
-          </ControlRow>
+          {SHOW_CONTEXT && (
+            <ControlRow label="Context">
+              <ContextChip />
+            </ControlRow>
+          )}
           <DetailLevelToggle variant="row" />
           <ControlRow label="Theme">
             <MinimalThemeSwitcher />

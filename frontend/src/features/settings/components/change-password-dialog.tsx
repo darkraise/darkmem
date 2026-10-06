@@ -12,6 +12,11 @@ import { Input } from "darkraise-ui/components/input"
 import { Label } from "darkraise-ui/components/label"
 import { useChangePassword } from "../use-change-password"
 import { ConfirmGate } from "./confirm-gate"
+import {
+  PASSWORD_MAX_BYTES,
+  PASSWORD_MIN_CHARS,
+  passwordTooLong,
+} from "@/lib/password-rules"
 
 /**
  * The admin password change, opened from the user menu.
@@ -37,7 +42,11 @@ export function ChangePasswordDialog({
   const [confirm, setConfirm] = useState("")
   const password = useChangePassword()
 
-  const filled = current !== "" && next.length >= 8 && next === confirm
+  const filled =
+    current !== "" &&
+    next.length >= PASSWORD_MIN_CHARS &&
+    !passwordTooLong(next) &&
+    next === confirm
 
   // Why the button will not submit, said out loud. The three rules were
   // enforced silently: a short password with a mismatched confirmation greyed
@@ -46,8 +55,10 @@ export function ChangePasswordDialog({
   // untouched form is not scolded.
   const blockers = [
     next !== "" &&
-      next.length < 8 &&
-      "the new password must be at least 8 characters",
+      next.length < PASSWORD_MIN_CHARS &&
+      `the new password must be at least ${PASSWORD_MIN_CHARS} characters`,
+    passwordTooLong(next) &&
+      `the new password must be at most ${PASSWORD_MAX_BYTES} bytes`,
     confirm !== "" && next !== confirm && "the confirmation does not match",
     current === "" && next !== "" && "the current password is required",
   ].filter(Boolean) as string[]

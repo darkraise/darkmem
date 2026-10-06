@@ -3,7 +3,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest"
 
 import type { PageListItem } from "@/hooks/api"
 import { buildPageTree, pageNodeIndex } from "../lib/build-page-tree"
-import { PageTree, notesExpansionStorageKey } from "../page-tree"
+import { PageTree, ancestorsOf, notesExpansionStorageKey } from "../page-tree"
 
 function row(
   id: string,
@@ -96,6 +96,23 @@ describe("PageTree", () => {
     fireEvent.click(screen.getByRole("button", { name: "Actions for Alpha" }))
     fireEvent.click(within(screen.getByRole("menu")).getByText("Delete"))
     expect(onDelete).toHaveBeenCalledWith(expect.objectContaining({ id: "a" }))
+  })
+
+  it("opens the parent of a selected child page", () => {
+    // A new child page, or a ?page= link to one, arrives selected while its
+    // parent is collapsed; the row has to be on screen.
+    renderTree({ selectedId: "b" })
+    expect(screen.getByText("Beta")).toBeInTheDocument()
+    expect(
+      JSON.parse(window.localStorage.getItem(notesExpansionStorageKey("personal"))!),
+    ).toEqual(["a"])
+  })
+
+  it("lists a page's ancestors nearest first", () => {
+    const roots = buildPageTree([...ROWS, row("d", "b", 0, "Delta")])
+    expect(ancestorsOf(pageNodeIndex(roots), "d")).toEqual(["b", "a"])
+    expect(ancestorsOf(pageNodeIndex(roots), "a")).toEqual([])
+    expect(ancestorsOf(pageNodeIndex(roots), "missing")).toEqual([])
   })
 
   it("writes the expanded set when a branch is toggled", () => {

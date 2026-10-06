@@ -52,13 +52,14 @@ export interface JobBoardState {
   isLoading: boolean
   isError: boolean
   trigger: (key: string) => Promise<JobTriggerResult>
-  saveConfig: (key: string, config: Record<string, number>) => void
+  /** Rejects with the server's reason when the write is refused. */
+  saveConfig: (key: string, config: Record<string, number>) => Promise<void>
 }
 
 /**
  * `DEMO ? demo : real`, following `use-contribution-calendar.ts`. `trigger`
  * is a `Promise` on both branches — real mode's `POST .../trigger` genuinely
- * is one, and the demo store's synchronous result is wrapped so JobsTab
+ * is one, and the demo store's synchronous result is wrapped so the board
  * never special-cases which mode it's in (ruling 4: a 409 must render as
  * busy on either branch, not as a failure).
  */
@@ -77,7 +78,7 @@ export function useJobBoard(): JobBoardState {
       isLoading: false,
       isError: false,
       trigger: (key) => Promise.resolve(triggerDemo(key)),
-      saveConfig: saveDemoConfig,
+      saveConfig: async (key, config) => saveDemoConfig(key, config),
     }
   }
 
@@ -96,8 +97,8 @@ export function useJobBoard(): JobBoardState {
         throw err
       }
     },
-    saveConfig: (key, config) => {
-      configMutation.mutate({ key, config })
+    saveConfig: async (key, config) => {
+      await configMutation.mutateAsync({ key, config })
     },
   }
 }

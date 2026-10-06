@@ -32,20 +32,13 @@ import {
   useRevokeApiKey,
   type ApiKeySummary,
 } from "@/hooks/api"
-import { ApiKeyDialog } from "./api-key-dialog"
+import { ApiKeyDialog, SCOPE_LABELS } from "./api-key-dialog"
 
 /** Keys are stored and sent with the scope literals; only the display
  *  changes. An unknown literal falls back to itself rather than vanishing —
  *  a scope this build does not recognise is exactly the thing an operator
  *  must still see. */
-const SCOPES: Record<string, { short: string; full: string }> = {
-  capture: { short: "Save", full: "Save new memories" },
-  read: { short: "Read", full: "Search and read memories" },
-  admin: {
-    short: "Admin",
-    full: "Receive push updates, reindex repositories, delete document subtrees",
-  },
-}
+const SCOPES = SCOPE_LABELS
 
 const EXPIRES_SOON_MS = 7 * 24 * 60 * 60 * 1000
 

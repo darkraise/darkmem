@@ -1,3 +1,4 @@
+import { shortId as idTail } from "@/lib/short-id"
 /**
  * Turn a usage subject id back into something a person can read.
  *
@@ -34,7 +35,8 @@ export function subjectTypeTitle(subjectType: string): string {
 }
 
 function shortId(id: string): string {
-  return id.length > 12 ? `${id.slice(0, 8)}…` : id
+  const tail = idTail(id)
+  return tail === id ? id : `…${tail}`
 }
 
 function formatStamp(iso: string): string {

@@ -302,12 +302,18 @@ class PostgresAuditRepository(AuditRepositoryBase):
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def log(self, action, memory_id=None, api_key_id=None, details=None, *, actor=None):
+    async def log(
+        self, action, memory_id=None, api_key_id=None, details=None, *, actor=None, project=None,
+    ):
+        # `project` is the memory's, so a project-scoped read of the journal
+        # (the dashboard calendar, Activity) sees captures and edits, not only
+        # the pipeline's own rows.
         await record_event(
             self.session,
             event_type=self._ACTION_EVENT_TYPE.get(action, action),
             object_type="memory" if memory_id else "system",
             object_id=memory_id,
+            project=project,
             actor=actor,
             api_key_id=api_key_id,
             payload=details or {},

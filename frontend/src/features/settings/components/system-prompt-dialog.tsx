@@ -20,9 +20,11 @@ import {
   type PromptViewMode,
 } from "./prompt-view"
 
-/** Mirrors the cap `PUT /config/system-prompts` enforces, so an over-long
- *  prompt is refused where it is typed rather than after a round-trip. */
-const MAX_PROMPT_LENGTH = 20_000
+/** Mirrors the cap `PUT /config/system-prompts` enforces
+ *  (`PROMPT_OVERRIDE_MAX_CHARS`), so an over-long prompt is refused where it
+ *  is typed rather than after a round-trip. It sits above the ~32k shipped
+ *  extraction prompt so that prompt can be edited at all. */
+const MAX_PROMPT_LENGTH = 60_000
 
 /**
  * View and edit one system prompt.

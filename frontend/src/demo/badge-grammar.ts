@@ -119,7 +119,7 @@
  */
 
 const DATE = String.raw`\d{4}-\d{2}-\d{2}`
-const TAIL = String.raw`(?:, as of ${DATE}|, verification not yet recomputed)`
+const TAIL = String.raw`(?:, as of ${DATE}|, checked as of ${DATE}|, verification not yet recomputed)`
 const KINDS = String.raw`\[(?:[a-z]+(?:, [a-z]+)*)?\]`
 
 // "asserted by N distinct origin(s) of kinds [...], no known contradiction

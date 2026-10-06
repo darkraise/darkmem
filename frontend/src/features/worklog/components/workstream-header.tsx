@@ -29,9 +29,12 @@ const LINKS = [
 export function WorkstreamHeader({
   workstream,
   onOpenDocument,
+  onPurged,
 }: {
   workstream: Workstream
   onOpenDocument?: (uri: string) => void
+  /** The workstream no longer exists; the caller lets go of it. */
+  onPurged?: () => void
 }) {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const update = useWorkstreamUpdate()
@@ -123,6 +126,7 @@ export function WorkstreamHeader({
                   onSuccess: () => {
                     toast.success("Workstream purged")
                     setConfirmOpen(false)
+                    onPurged?.()
                   },
                   onError: (error) => toast.error(error.message),
                 })

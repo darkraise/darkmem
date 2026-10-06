@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "darkraise-ui/components/sonner"
 import type { WebSocketEventMap, PipelineStatus } from "./websocket-events"
 import { describeSkippedFiles } from "./websocket-events"
+import { shortId } from "@/lib/short-id"
 
 /**
  * Every query key any pipeline/memory/repo WebSocket event keeps fresh while
@@ -34,7 +35,7 @@ const RECONCILE_QUERY_KEYS: string[] = [
 ]
 
 function showPipelineToast(event: string, data: PipelineStatus) {
-  const id = data.memory_id.slice(0, 8)
+  const id = shortId(data.memory_id)
 
   if (event === "pipeline.completed") {
     toast.success(`Memory ${id} processed`, {
@@ -88,8 +89,16 @@ export function useWebSocket() {
           void qc.invalidateQueries({ queryKey: [key] })
         }
       }
-      if (["repo.indexing_completed", "repo.indexing_failed", "enrichment.batch_completed"].includes(msg.event)) {
+      if (["repo.indexing_completed", "repo.indexing_failed"].includes(msg.event)) {
         for (const key of ["codeGraph", "codeFiles", "codeSymbols", "codeSymbol"]) {
+          void qc.invalidateQueries({ queryKey: [key] })
+        }
+      }
+      // An enrichment batch writes symbol summaries only. The graph and file
+      // list carry none, and on a large repo the graph is tens of megabytes,
+      // so refetching them on every batch kept the Code Graph page busy.
+      if (msg.event === "enrichment.batch_completed") {
+        for (const key of ["codeSymbols", "codeSymbol"]) {
           void qc.invalidateQueries({ queryKey: [key] })
         }
       }
@@ -178,7 +187,25 @@ export function useWebSocket() {
         // live phase label. But the task list and aggregate stats only change
         // at the terminal events, so refetching them on each of the ~13 phase
         // ticks per index is pure waste — skip them mid-progress.
-        void qc.invalidateQueries({ queryKey: ["repos"] })
+        if (msg.event === "repo.indexing_progress") {
+          // Write the tick into the cached row. Refetching the repo list on
+          // every tick restarted a ~1 s request each time, so only the final
+          // "ready" answer ever rendered and the row never showed progress.
+          const d = msg.data as WebSocketEventMap["repo.indexing_progress"]
+          qc.setQueryData<Array<Record<string, unknown>>>(["repos"], (repos) =>
+            repos?.map((r) =>
+              r.id === d.repo_id
+                ? {
+                    ...r,
+                    status: "indexing",
+                    status_message: d.status_message ?? r.status_message,
+                  }
+                : r,
+            ),
+          )
+        } else {
+          void qc.invalidateQueries({ queryKey: ["repos"] })
+        }
         if (msg.event !== "repo.indexing_progress") {
           void qc.invalidateQueries({ queryKey: ["repoTasks"] })
           void qc.invalidateQueries({ queryKey: ["repoStats"] })

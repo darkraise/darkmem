@@ -5,8 +5,12 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/demo-flag", () => ({ DEMO: false }))
 vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
+vi.mock("darkraise-ui/components/sonner", () => ({
+  toast: { error: vi.fn(), success: vi.fn() },
+}))
 
 import { apiFetch } from "@/lib/api"
+import { toast } from "darkraise-ui/components/sonner"
 import { ResearchTab } from "../components/research-tab"
 
 /**
@@ -183,6 +187,54 @@ describe("ResearchTab — the budgets", () => {
         max_content_chars: 8000,
       })
     })
+  })
+
+  it("shows each budget's range and refuses a value outside it", async () => {
+    mockApi({
+      ...DISARMED,
+      max_findings_per_run_ceiling: 100,
+      max_content_chars_ceiling: 100000,
+    })
+    render(<ResearchTab />, { wrapper })
+    await waitFor(() =>
+      expect(screen.getByLabelText("Max findings per run")).toHaveValue("20"),
+    )
+    expect(screen.getByText("1 to 100")).toBeInTheDocument()
+    expect(
+      screen.getByText(`1 to ${(100000).toLocaleString()}`),
+    ).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText("Max findings per run"), {
+      target: { value: "999999999" },
+    })
+    expect(
+      await screen.findByText("Enter a number from 1 to 100."),
+    ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /Save budgets/ })).toBeDisabled()
+  })
+
+  it("confirms a save with what the server stored", async () => {
+    vi.mocked(apiFetch).mockImplementation(
+      (path: string, options?: RequestInit) => {
+        if (options?.method === "PUT")
+          return Promise.resolve({ ...DISARMED, max_findings_per_run: 5 })
+        if (path === "/config/auto-research") return Promise.resolve(DISARMED)
+        return Promise.resolve(RUNS)
+      },
+    )
+    render(<ResearchTab />, { wrapper })
+    await waitFor(() =>
+      expect(screen.getByLabelText("Max findings per run")).toHaveValue("20"),
+    )
+    fireEvent.change(screen.getByLabelText("Max findings per run"), {
+      target: { value: "5" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: /Save budgets/ }))
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        `Budgets saved: 5 findings, ${(8000).toLocaleString()} characters`,
+      ),
+    )
   })
 
   it("a refused write says why and leaves the switch alone", async () => {

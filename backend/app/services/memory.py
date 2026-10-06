@@ -73,6 +73,21 @@ class MemoryTraceRow:
     rank_fusion_breakdown: dict[str, float]
 
 
+def _counted_arm_status(channel_trace, arm: str) -> ChannelStatus:
+    """One arm's status plus how many rows it returned before fusion.
+
+    Counted from ``channel_scores`` (every row an arm returned, fused or not),
+    never from the page, so zero means the arm matched nothing in scope. An
+    arm that did not run, or failed, is not counted.
+    """
+    ran = getattr(channel_trace, f"{arm}_ran")
+    failed = getattr(channel_trace, f"{arm}_failed")
+    hits = None
+    if ran and not failed:
+        hits = sum(1 for scores in channel_trace.channel_scores.values() if arm in scores)
+    return ChannelStatus(ran=ran, failed=failed, hits=hits)
+
+
 def _fit_context(
     context_parts: list[str], sources: list[dict], budget: int
 ) -> tuple[list[str], list[dict]]:
@@ -198,7 +213,7 @@ class MemoryService:
         for row, data in zip(rows, entries):
             await self.audit_repo.log(
                 "create", buffered_memory_id(row), api_key_id, {"source": data.source},
-                actor=actor,
+                actor=actor, project=data.project or "default",
             )
 
         # A flag never refuses (spec 2026-09-23 §5); it journals which signals
@@ -376,7 +391,7 @@ class MemoryService:
 
         await self.audit_repo.log(
             "update", memory_id, api_key_id, {"fields": list(update_fields.keys())},
-            actor=actor,
+            actor=actor, project=memory.project,
         )
 
         # Re-process if content changed. Commit first so the pipeline's
@@ -385,13 +400,13 @@ class MemoryService:
         # entities/relations.
         if self.pipeline and "content" in update_fields:
             await self.session.commit()
-            status = await self.pipeline.process_memory(
+            # The pipeline journals this run's `extracted` row itself, with its
+            # outcome; a second row here read as a failed run beside it.
+            await self.pipeline.process_memory(
                 memory_id=memory.id, content=memory.content, source=memory.source,
                 tags=[t.name for t in memory.tags], memory_type=memory.memory_type,
                 created_at=memory.created_at.isoformat(),
             )
-            await self.audit_repo.log("pipeline", memory.id, api_key_id, status, actor=actor)
-            await self.session.commit()
 
         return memory
 
@@ -417,9 +432,13 @@ class MemoryService:
         # paths cannot drift apart.
         await demote_dependents(self.session, [memory_id])
 
+        existing = await self.memory_repo.get(memory_id)
         result = await self.memory_repo.delete(memory_id)
         if result:
-            await self.audit_repo.log("delete", memory_id, api_key_id, {}, actor=actor)
+            await self.audit_repo.log(
+                "delete", memory_id, api_key_id, {}, actor=actor,
+                project=existing.project if existing is not None else None,
+            )
             # The memory's memory_tags links are gone (ON DELETE CASCADE) after
             # the delete flush, so prune any tag now carried by no memory before
             # committing — keeps the dashboard tag count and tag filter honest.
@@ -697,8 +716,8 @@ limit=params.limit, offset=params.offset,
         envelope = RetrievalEnvelope(
             query=params.query,
             channels={
-                "semantic": ChannelStatus(ran=channel_trace.semantic_ran, failed=channel_trace.semantic_failed),
-                "keyword": ChannelStatus(ran=channel_trace.keyword_ran, failed=channel_trace.keyword_failed),
+                "semantic": _counted_arm_status(channel_trace, "semantic"),
+                "keyword": _counted_arm_status(channel_trace, "keyword"),
             },
             reranked=reranked,
             weights=weights,
@@ -917,6 +936,7 @@ limit=params.limit, offset=params.offset,
 
         await self.audit_repo.log(
             "delete", source_id, api_key_id, {"merged_into": str(target_id)}, actor=actor,
+            project=source.project,
         )
         await self.memory_repo.delete(source_id)
         await self.session.commit()
@@ -939,6 +959,7 @@ limit=params.limit, offset=params.offset,
 
         await self.audit_repo.log(
             "merge", target_id, api_key_id, {"source_id": str(source_id)}, actor=actor,
+            project=target.project,
         )
         await self.session.refresh(target, ["tags"])
         return await self.memory_repo.get(target_id)

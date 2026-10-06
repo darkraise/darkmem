@@ -7,8 +7,20 @@ import type {
 import type { FeedCategory } from "@/features/activity/types"
 import { categoryOfEventType } from "@/features/activity/event-taxonomy"
 import { useEvents, type EventLogEntry } from "@/hooks/api"
+import { shortId } from "@/lib/short-id"
+import { useProjectStore } from "@/stores/project-store"
 
 const FEED_LIMIT = 8
+/** Read past the sign-ins so eight vault events usually remain after them. */
+const FETCH_LIMIT = 50
+
+/** Sign-in and setup rows say who reached the instance, not what the vault
+ *  learned or did; they have their own reader (`GET /auth/audit`, Settings ->
+ *  Security) and the Activity feed's "all" view. On the dashboard they
+ *  crowded out every capture after a few failed logins. */
+function isVaultEvent(entry: EventLogEntry): boolean {
+  return !/^(auth|setup)_/.test(entry.event_type)
+}
 
 /** The dashboard's icon set is keyed by `ActivityEventKind`, the feed's
  *  taxonomy by `FeedCategory`. Deriving one from the other keeps
@@ -27,8 +39,14 @@ const KIND_BY_CATEGORY: Record<FeedCategory, ActivityEventKind> = {
  *  taxonomy does not know yet must therefore still land on a real kind. */
 const FALLBACK_KIND: ActivityEventKind = "job"
 
+/** Words an event type spells in lowercase that read as initialisms. */
+const INITIALISMS = new Set(["api", "llm", "mcp", "url"])
+
 function humanise(eventType: string): string {
-  const spaced = eventType.replace(/_/g, " ")
+  const spaced = eventType
+    .split("_")
+    .map((word) => (INITIALISMS.has(word) ? word.toUpperCase() : word))
+    .join(" ")
   return spaced.charAt(0).toUpperCase() + spaced.slice(1)
 }
 
@@ -38,7 +56,7 @@ function fromEventLog(entry: EventLogEntry): ActivityEvent {
     typeof entry.payload?.outcome === "string" ? entry.payload.outcome : null
   const detail = [
     entry.object_type,
-    entry.object_id ? entry.object_id.slice(0, 8) : null,
+    entry.object_id ? shortId(entry.object_id) : null,
     entry.project ? `· project ${entry.project}` : null,
     outcome,
   ]
@@ -74,14 +92,18 @@ export interface DashboardActivityState {
  */
 export function useDashboardActivity(): DashboardActivityState {
   const demo = useDemoEvents()
-  const query = useEvents({ limit: FEED_LIMIT }, { enabled: !DEMO })
+  const project = useProjectStore((s) => s.activeProject) ?? undefined
+  const query = useEvents({ project, limit: FETCH_LIMIT }, { enabled: !DEMO })
 
   if (DEMO) {
     return { events: demo, isLoading: false, isError: false }
   }
 
   return {
-    events: (query.data?.items ?? []).map(fromEventLog),
+    events: (query.data?.items ?? [])
+      .filter(isVaultEvent)
+      .slice(0, FEED_LIMIT)
+      .map(fromEventLog),
     isLoading: query.isLoading,
     isError: query.isError,
   }

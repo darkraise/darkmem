@@ -9,17 +9,17 @@ import {
 import { useUpdateJob } from "@/hooks/api"
 
 export interface JobsSettingsBinding extends JobBoardState {
-  saveCron: (key: string, cron: string) => void
-  setEnabled: (key: string, enabled: boolean) => void
+  /** Both reject with the server's reason when the write is refused. */
+  saveCron: (key: string, cron: string) => Promise<void>
+  setEnabled: (key: string, enabled: boolean) => Promise<void>
 }
 
 /**
- * Reuses `useJobBoard` (T1.45, Activity → Jobs) for the job list, `trigger`,
- * and `saveConfig` — the busy-409-never-queued handling it already proves
- * (ruling 1) is not reimplemented here. This binding adds only the two
- * writes Activity's board doesn't need: cron and the enabled switch, via the
- * same `PUT /jobs/{key}` the demo store's `saveJobCron`/`setJobEnabled`
- * simulate.
+ * Reuses `useJobBoard` (T1.45) for the job list, `trigger`, and
+ * `saveConfig` — the busy-409-never-queued handling it already proves
+ * (ruling 1) is not reimplemented here. This binding adds the two remaining
+ * writes: cron and the enabled switch, via the same `PUT /jobs/{key}` the
+ * demo store's `saveJobCron`/`setJobEnabled` simulate.
  */
 export function useJobsSettingsBinding(): JobsSettingsBinding {
   const board = useJobBoard()
@@ -28,19 +28,26 @@ export function useJobsSettingsBinding(): JobsSettingsBinding {
   const updateJob = useUpdateJob()
 
   if (DEMO) {
-    return { ...board, saveCron: saveDemoCron, setEnabled: setDemoEnabled }
+    return {
+      ...board,
+      saveCron: async (key, cron) => saveDemoCron(key, cron),
+      setEnabled: async (key, enabled) => setDemoEnabled(key, enabled),
+    }
   }
 
   return {
     ...board,
-    saveCron: (key, cron) => updateJob.mutate({ key, data: { cron } }),
-    setEnabled: (key, enabled) => updateJob.mutate({ key, data: { enabled } }),
+    saveCron: async (key, cron) => {
+      await updateJob.mutateAsync({ key, data: { cron } })
+    },
+    setEnabled: async (key, enabled) => {
+      await updateJob.mutateAsync({ key, data: { enabled } })
+    },
   }
 }
 
 /**
- * Trigger a job and report the outcome as a toast. Shared by /jobs and
- * Activity → Jobs so both doors answer a trigger the same way. A held lock
+ * Trigger a job and report the outcome as a toast. A held lock
  * resolves `{ok:false, 409}` rather than throwing, so it is reported as busy,
  * never as a request failure.
  */

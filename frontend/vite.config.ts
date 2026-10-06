@@ -47,6 +47,9 @@ export default defineConfig({
     proxy: {
       "/api": { target: API_TARGET, agent: noKeepAliveAgent },
       "/health": { target: API_TARGET, agent: noKeepAliveAgent },
+      // Settings -> Integration advertises `${origin}/mcp/` as the endpoint;
+      // without this the dev server answered it with a 404.
+      "/mcp": { target: API_TARGET, agent: noKeepAliveAgent },
       "/ws": { target: API_TARGET.replace(/^http/, "ws"), ws: true },
     },
   },

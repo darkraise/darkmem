@@ -2,6 +2,7 @@ import { useState } from "react"
 import { useForm } from "@tanstack/react-form"
 import { Clock, FolderGit2, Layers, RefreshCw, X } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
+import { Progress } from "darkraise-ui/components/progress"
 import { EmptyState, listItemClass } from "@/components/darkmem"
 import { Button } from "darkraise-ui/components/button"
 import { TextField } from "darkraise-ui/forms"
@@ -112,20 +113,42 @@ function IndexDebtIndicator({ repo }: { repo: Repo }) {
   )
 }
 
+/** The count a phase that knows one puts on its label
+ *  ("Parsing files... 1,200/3,996 files", code_pipeline._report_progress). */
+export function phaseCount(
+  message: string | null,
+): { done: number; total: number; unit: string } | null {
+  const match = message?.match(/([\d,]+)\/([\d,]+) (files|chunks)$/)
+  if (!match?.[1] || !match[2] || !match[3]) return null
+  const done = Number(match[1].replace(/,/g, ""))
+  const total = Number(match[2].replace(/,/g, ""))
+  return total > 0 ? { done, total, unit: match[3] } : null
+}
+
 // The live phase label: the backend broadcasts only the current tick's
 // label (repo.indexing_progress over the websocket), not a forward-looking
 // ticker — this renders what status_message actually carries while
-// indexing, honestly, rather than fabricating a multi-step bar. A full
-// done/current/pending ticker is buildable from code_pipeline.py's fixed
-// 14-phase sequence (phases 2-12 always fire in the same numbered order;
-// 13/14 are opt-in) but this step ships the simpler single-label rendering.
+// indexing, honestly, rather than fabricating a multi-step bar. Parsing and
+// embedding put a running count on their label, and only then is there a
+// bar: it measures that phase, never the whole run.
 function LivePhaseLabel({ repo }: { repo: Repo }) {
   if (repo.status !== "indexing") return null
+  const count = phaseCount(repo.status_message)
   return (
-    <p className="text-info-text flex items-center gap-1.5 text-sm">
-      <RefreshCw aria-hidden className="h-3.5 w-3.5 shrink-0 animate-spin" />
-      indexing — {repo.status_message ?? "starting…"}
-    </p>
+    <div className="space-y-1">
+      <p className="text-info-text flex items-center gap-1.5 text-sm">
+        <RefreshCw aria-hidden className="h-3.5 w-3.5 shrink-0 animate-spin" />
+        indexing — {repo.status_message ?? "starting…"}
+      </p>
+      {count && (
+        <Progress
+          value={count.done}
+          max={count.total}
+          aria-label={`${count.unit} done in this phase`}
+          className="max-w-md"
+        />
+      )}
+    </div>
   )
 }
 
@@ -174,7 +197,8 @@ function RepoTaskList({ repo }: { repo: Repo }) {
                 { repoId: repo.id, taskId: task.id },
                 {
                   onSuccess: () => toast.success(`Task ${task.kind} cancelled`),
-                  onError: () => toast.error("Failed to cancel task"),
+                  onError: (err) =>
+                    toast.error(`Failed to cancel task: ${err.message}`),
                 },
               )
             }
@@ -217,7 +241,11 @@ function EditRepoDialog({
     onSubmit: async ({ value }) => {
       if (!repo) return
       const parsed = editRepoSchema.safeParse(value)
-      if (!parsed.success) return
+      if (!parsed.success) {
+        // An emptied name used to make Save do nothing at all.
+        toast.error(parsed.error.issues[0]?.message ?? "Check the fields")
+        return
+      }
       const v: EditRepoInput = parsed.data
       const data: RepoUpdateParams = {}
       if (v.name !== repo.name) data.name = v.name
@@ -541,7 +569,7 @@ export function RealRepositoriesView() {
             { id: reindexingRepo.id, options: v },
             {
               onSuccess: () => toast.success("Reindex triggered"),
-              onError: () => toast.error("Reindex failed"),
+              onError: (err) => toast.error(`Reindex failed: ${err.message}`),
             },
           )
         }}
@@ -578,7 +606,10 @@ export function RealRepositoriesView() {
                 if (confirmDeleteRepo) {
                   deleteRepo.mutate(confirmDeleteRepo.id, {
                     onSuccess: () => toast.success("Repository deleted"),
-                    onError: () => toast.error("Failed to delete repository"),
+                    onError: (err) =>
+                      toast.error(
+                        `Failed to delete repository: ${err.message}`,
+                      ),
                   })
                 }
                 setConfirmDeleteRepo(null)

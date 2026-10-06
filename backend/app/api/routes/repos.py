@@ -137,6 +137,24 @@ async def create_repo(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    # The Activity feed's code tab reads repository lifecycle from the
+    # journal; a repo added from the UI used to leave no row there.
+    await record_event(
+        manager.session,
+        event_type="repo_registered",
+        object_type="repository",
+        object_id=repo.id,
+        actor=_user.sub,
+        source="repos_api",
+        payload={
+            "name": repo.name,
+            "added_from": "api",
+            "origin": "url" if body.url else "local_path",
+            "outcome": "registered",
+        },
+    )
+    await manager.session.commit()
+
     # A URL repo is still cloning; `on_ready` (above) indexes it once the
     # clone lands. Only a local_path repo has a tree to read right now, so
     # only that branch claims and spawns immediately.
@@ -263,6 +281,18 @@ async def delete_repo(
     _user=Depends(require_auth),
     manager: RepoManager = Depends(get_repo_manager),
 ):
+    repo = await manager.get(repo_id)
+    if repo is not None:
+        # Journalled into the delete's own transaction, before the row goes.
+        await record_event(
+            manager.session,
+            event_type="repo_deleted",
+            object_type="repository",
+            object_id=repo_id,
+            actor=_user.sub,
+            source="repos_api",
+            payload={"name": repo.name, "outcome": "deleted"},
+        )
     if not await manager.delete(repo_id):
         raise HTTPException(status_code=404, detail="Repository not found")
     # Nothing else ever removes a repo's due-times, so without this they
@@ -382,12 +412,24 @@ async def reindex_repo(
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
 
+    # The door's own row, as reindex-files writes one: the run it starts
+    # journals its outcome (`repo_indexed` / `repo_index_failed`) itself.
+    async def journal(outcome: str) -> None:
+        await journal_reindex_outcome(
+            manager.session, repo_id, outcome=outcome, file_count=0, commit=None,
+            actor=_user.sub, api_key_id=None, source="reindex_ui",
+            full=body.full,
+        )
+        await manager.session.commit()
+
     if not await manager.claim_for_indexing(repo_id, message="Queued for indexing..."):
+        await journal("repo_busy")
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Repository is already indexing",
         )
 
+    await journal("indexing")
     try:
         _spawn_repo_index(
             repo_id, pipeline, session_factory,

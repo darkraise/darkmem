@@ -17,6 +17,13 @@ import { describeCron } from "../cron-describe"
  * expression confidently it returns null and the expression itself is shown —
  * a wrong sentence beside a cron the reader can see is worse than no sentence.
  */
+/** The registry evaluates cron in UTC (`job_registry.py`), so a schedule that
+ *  names a clock time says which clock: a bare "At 4:30 AM" read as local
+ *  time in every other zone. Intervals ("Every 30 seconds") have no clock. */
+export function withZone(plain: string): string {
+  return /\b(AM|PM)\b/.test(plain) ? `${plain} UTC` : plain
+}
+
 export function JobSchedule({ cron }: { cron: string }) {
   const plain = describeCron(cron)
   return (
@@ -27,7 +34,7 @@ export function JobSchedule({ cron }: { cron: string }) {
           className="text-muted-foreground focus-visible:ring-ring inline-flex w-fit min-w-0 flex-wrap items-center gap-x-1.5 rounded-sm text-sm outline-none focus-visible:ring-1"
         >
           <Clock aria-hidden className="size-[var(--icon-size-sm)] shrink-0" />
-          <span className="min-w-0">{plain ?? cron}</span>
+          <span className="min-w-0">{plain ? withZone(plain) : cron}</span>
           {plain && (
             <code className="text-muted-foreground/80 shrink-0 font-mono text-xs">
               {cron}
@@ -36,7 +43,7 @@ export function JobSchedule({ cron }: { cron: string }) {
         </span>
       </TooltipTrigger>
       <TooltipContent>
-        <span className="font-mono">{cron}</span>
+        <span className="font-mono">{cron}</span> (UTC)
       </TooltipContent>
     </Tooltip>
   )

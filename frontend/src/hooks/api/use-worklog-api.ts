@@ -222,11 +222,19 @@ export function useWorklogSearch() {
   })
 }
 
-function invalidateWorklog(qc: QueryClient) {
+function invalidateWorklog(qc: QueryClient, purgedId?: string) {
   // "projects" too: the Activity list picks which projects to ask from its
   // per-project workstream counts, and queries are otherwise fresh for 60 s.
   for (const key of ["worklogWorkstreams", "worklogEntries", "worklogResume", "projects"]) {
-    void qc.invalidateQueries({ queryKey: [key] })
+    void qc.invalidateQueries({
+      queryKey: [key],
+      // A purged workstream's own reads would only answer 404 on refetch.
+      predicate: purgedId
+        ? (query) =>
+            query.queryKey[1] !== purgedId &&
+            (query.state.data as WorklogResume | null | undefined)?.workstream?.id !== purgedId
+        : undefined,
+    })
   }
 }
 
@@ -251,6 +259,21 @@ export function useWorkstreamPurge() {
       DEMO
         ? Promise.reject(new Error(DEMO_REFUSAL))
         : apiFetch<void>(`/worklog/workstreams/${id}`, { method: "DELETE" }),
-    onSuccess: () => invalidateWorklog(qc),
+    onSuccess: (_done, id) => {
+      // The workstream is gone for good: off the cached lists at once (or the
+      // panel re-selects it), and its own reads are left out of the refetch.
+      qc.setQueriesData<InfiniteData<WorkstreamPage, string | null>>(
+        { queryKey: ["worklogWorkstreams"] },
+        (data) =>
+          data && {
+            ...data,
+            pages: data.pages.map((page) => ({
+              ...page,
+              items: page.items.filter((w) => w.id !== id),
+            })),
+          },
+      )
+      invalidateWorklog(qc, id)
+    },
   })
 }

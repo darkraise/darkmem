@@ -74,6 +74,19 @@ describe("McpTab (DEMO off — real /mcp-calls)", () => {
     expect(apiFetch).toHaveBeenCalledWith("/mcp-calls?limit=50")
   })
 
+  it("says once that there are no calls, not in two stacked cards", async () => {
+    vi.mocked(apiFetch).mockImplementation(async (url: string) =>
+      url.startsWith("/mcp-calls/summary")
+        ? { ...DEMO_MCP_CALL_SUMMARY, total: 0, tools: [] }
+        : { items: [], total: 0 },
+    )
+    renderTab()
+
+    await screen.findByText("No MCP calls in this window")
+    expect(screen.queryByText("No MCP calls yet")).toBeNull()
+    expect(screen.queryByText("Recent MCP calls")).toBeNull()
+  })
+
   it("filters the list to the calls that returned an item", async () => {
     renderTab()
     await waitFor(() => expect(screen.getAllByText("show").length).toBe(3))

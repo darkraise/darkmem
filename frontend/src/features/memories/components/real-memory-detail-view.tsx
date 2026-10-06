@@ -1,5 +1,17 @@
 import { useState } from "react"
-import { Brain, Pencil } from "lucide-react"
+import { useNavigate } from "@tanstack/react-router"
+import { Brain, Pencil, Trash2 } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "darkraise-ui/components/alert-dialog"
+import { toast } from "darkraise-ui/components/sonner"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { Card, CardContent, CardHeader } from "darkraise-ui/components/card"
@@ -8,6 +20,7 @@ import { Separator } from "darkraise-ui/components/separator"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { PageChrome } from "@/components/app-chrome"
 import {
+  useDeleteMemory,
   useMemory,
   type Memory,
   type MemoryLineageEntry,
@@ -16,6 +29,7 @@ import { LifecycleBadge } from "./lifecycle-badge"
 import { MemoryEditorDialog } from "./memory-editor-dialog"
 import { MemoryEventTimeline } from "./memory-event-timeline"
 import { MemoryExcerptLink } from "./memory-excerpt-link"
+import { shortId } from "@/lib/short-id"
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
@@ -76,7 +90,11 @@ function SupersessionLineage({ memory }: { memory: Memory }) {
         <SectionLabel>Replaced by</SectionLabel>
         {memory.status === "superseded" ? (
           <div className="flex items-start gap-2.5">
-            <LifecycleBadge status="superseded" />
+            {/* The successor's own status: it sits beside the successor's
+                link, and the successor is normally the active version. */}
+            {successor.data?.status ? (
+              <LifecycleBadge status={successor.data.status} />
+            ) : null}
             {!memory.superseded_by ? (
               <span className="text-muted-foreground text-sm italic">
                 successor pointer missing
@@ -90,7 +108,7 @@ function SupersessionLineage({ memory }: { memory: Memory }) {
               />
             ) : (
               <span className="text-muted-foreground text-sm italic">
-                successor memory {memory.superseded_by.slice(0, 8)} could not be
+                successor memory {shortId(memory.superseded_by)} could not be
                 loaded
               </span>
             )}
@@ -132,8 +150,34 @@ function SupersessionLineage({ memory }: { memory: Memory }) {
 }
 
 export function RealMemoryDetailView({ memoryId }: { memoryId: string }) {
-  const { data: memory, isLoading, isError } = useMemory(memoryId)
+  // Off from the moment a delete is sent: the server's memory.deleted
+  // broadcast invalidates every memory query, often before the DELETE
+  // answers, and re-reading the row being deleted logged a 404. A disabled
+  // query keeps its data on screen and is never refetched.
+  const [deleting, setDeleting] = useState(false)
+  const {
+    data: memory,
+    isLoading,
+    isError,
+  } = useMemory(memoryId, { enabled: !deleting })
   const [editOpen, setEditOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const deleteMemory = useDeleteMemory()
+  const navigate = useNavigate()
+
+  const confirmDelete = () => {
+    setDeleting(true)
+    deleteMemory.mutate(memoryId, {
+      onSuccess: () => {
+        toast.success("Memory deleted")
+        void navigate({ to: "/memories" })
+      },
+      onError: (error) => {
+        setDeleting(false)
+        toast.error(`Delete failed: ${error.message}`)
+      },
+    })
+  }
 
   if (isLoading) {
     return (
@@ -166,10 +210,20 @@ export function RealMemoryDetailView({ memoryId }: { memoryId: string }) {
         title="Memory detail"
         parent={{ label: "Memories", href: "/memories" }}
         actions={
-          <Button variant="outline" onClick={() => setEditOpen(true)}>
-            <Pencil className="mr-2 size-4" />
-            Edit
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setEditOpen(true)}>
+              <Pencil className="mr-2 size-4" />
+              Edit
+            </Button>
+            <Button
+              variant="outline"
+              className="text-destructive"
+              onClick={() => setDeleteOpen(true)}
+            >
+              <Trash2 className="mr-2 size-4" />
+              Delete
+            </Button>
+          </div>
         }
       />
       <Card elevation="low">
@@ -177,12 +231,26 @@ export function RealMemoryDetailView({ memoryId }: { memoryId: string }) {
           <div className="flex flex-wrap items-center gap-2">
             <LifecycleBadge status={memory.status} />
             <span className="text-muted-foreground ml-auto font-mono text-sm">
-              memory {memory.id.slice(0, 8)}
+              memory {shortId(memory.id)}
             </span>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-base leading-relaxed">{memory.content}</p>
+          <p className="text-base leading-relaxed whitespace-pre-wrap">
+            {memory.content}
+          </p>
+          {memory.summary ? (
+            <p className="text-muted-foreground text-sm">{memory.summary}</p>
+          ) : null}
+          {memory.tags.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {memory.tags.map((tag) => (
+                <Badge key={tag} variant="outline" size="sm">
+                  {tag}
+                </Badge>
+              ))}
+            </div>
+          ) : null}
           <Separator />
           <div className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 font-mono text-sm">
             <span>
@@ -194,6 +262,20 @@ export function RealMemoryDetailView({ memoryId }: { memoryId: string }) {
             <span>
               via <b className="text-foreground font-medium">{memory.source}</b>
             </span>
+            {memory.project ? (
+              <span>
+                project{" "}
+                <b className="text-foreground font-medium">{memory.project}</b>
+              </span>
+            ) : null}
+            {memory.classified_type || memory.memory_type ? (
+              <span>
+                type{" "}
+                <b className="text-foreground font-medium">
+                  {memory.classified_type ?? memory.memory_type}
+                </b>
+              </span>
+            ) : null}
             {memory.technologies?.length ? (
               <span className="flex items-center gap-1.5">
                 {memory.technologies.map((tech) => (
@@ -236,6 +318,31 @@ export function RealMemoryDetailView({ memoryId }: { memoryId: string }) {
         memory={memory}
         projects={[]}
       />
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this memory?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The memory goes, with its embeddings, tags and graph
+              contributions. This is not a content purge: the activity journal
+              and any fact lifted from it keep text derived from it.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              // The library hard-codes the primary variant; a delete is
+              // destructive.
+              data-variant="destructive"
+              disabled={deleteMemory.isPending}
+              onClick={confirmDelete}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

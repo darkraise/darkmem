@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router"
 import { Link2 } from "lucide-react"
+import { shortId } from "@/lib/short-id"
 
 /** A link to another memory that leads with what it says: the excerpt wraps
  *  to two lines and the 8-char id follows as a secondary mono line, so a
@@ -25,7 +26,7 @@ export function MemoryExcerptLink({
       <span className="min-w-0">
         <span className="line-clamp-2 break-words">“{excerpt}”</span>
         <span className="text-muted-foreground block font-mono text-xs">
-          memory {memoryId.slice(0, 8)}
+          memory {shortId(memoryId)}
         </span>
       </span>
     </Link>

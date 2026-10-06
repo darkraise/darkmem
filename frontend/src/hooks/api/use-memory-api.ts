@@ -13,6 +13,9 @@ export type MemoryStatus = "active" | "superseded" | "deprecated"
 export interface ChannelStatus {
   ran: boolean
   failed?: boolean
+  // Rows the arm returned before fusion, counted over every row it found,
+  // never this page: 0 is exact; absent where the door does not count.
+  hits?: number | null
 }
 
 export interface RetrievalEnvelope {
@@ -56,6 +59,8 @@ export interface Memory {
   related_memories?: { memory_id: string; score: number }[]
   rrf_score?: number
   status?: MemoryStatus
+  /** Served on every MemoryResponse; the supersession scope. */
+  project?: string
   superseded_by?: string | null
   // Mirrors backend MemoryResponse.predecessors (T1.47) — the reverse of
   // `superseded_by`: memories this one directly replaced, newest first,
@@ -103,11 +108,11 @@ export function useMemories() {
   })
 }
 
-export function useMemory(id: string) {
+export function useMemory(id: string, options?: { enabled?: boolean }) {
   return useQuery<Memory>({
     queryKey: ["memory", id],
     queryFn: () => apiFetch(`/memories/${id}`),
-    enabled: !!id,
+    enabled: !!id && (options?.enabled ?? true),
   })
 }
 
@@ -136,6 +141,8 @@ export function useCreateMemory() {
       tags?: string[]
       source?: string
       memory_type?: string
+      /** Absent files under the server's default project. */
+      project?: string
       waitProcess?: boolean
     }) => {
       const { waitProcess, ...body } = data
@@ -172,6 +179,9 @@ export function useUpdateMemory() {
       qc.invalidateQueries({ queryKey: ["memory", id] })
       qc.invalidateQueries({ queryKey: ["memories"] })
       qc.invalidateQueries({ queryKey: ["memoriesPaginated"] })
+      // The detail page's timeline reads the journal; without this it kept
+      // showing the pre-edit history until a reload.
+      qc.invalidateQueries({ queryKey: ["events"] })
     },
   })
 }

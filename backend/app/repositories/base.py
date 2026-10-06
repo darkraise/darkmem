@@ -52,4 +52,5 @@ class AuditRepositoryBase(ABC):
         details: dict | None = None,
         *,
         actor: str | None = None,
+        project: str | None = None,
     ) -> None: ...

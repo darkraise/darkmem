@@ -19,6 +19,8 @@ import {
   type DayRowData,
   type InjectRecordData,
 } from "../use-day-events"
+import { DEMO } from "@/lib/demo-flag"
+import { utcDayKey } from "@/features/dashboard/calendar"
 
 /** One inject record's summary line and its expandable detail.
  *
@@ -185,6 +187,9 @@ export function DayTab({
   onDayChange: (day: string) => void
 }) {
   const { events, total, isLoading, isError, truncated } = useDayEvents(day)
+  // Days are UTC keys, so they compare as strings. Nothing has happened past
+  // today; the stepper used to walk into empty future days.
+  const atToday = !DEMO && day >= utcDayKey(new Date())
 
   return (
     <div className="space-y-4">
@@ -214,6 +219,7 @@ export function DayTab({
             <Button
               variant="outline"
               aria-label={`Next day, ${shiftDay(day, 1)}`}
+              disabled={atToday}
               onClick={() => onDayChange(shiftDay(day, 1))}
             >
               <span className="hidden sm:inline">{shiftDay(day, 1)}</span>

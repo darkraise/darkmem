@@ -66,7 +66,7 @@ describe("inject records on the calendar (T3.20, doc 13 §6.5)", () => {
       />,
     )
     expect(
-      screen.getByRole("button", { name: /4 memories, 2 injects/ }),
+      screen.getByRole("button", { name: /4 captures, 2 injects/ }),
     ).toBeInTheDocument()
   })
 

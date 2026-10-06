@@ -16,6 +16,10 @@ import {
   SelectValue,
 } from "darkraise-ui/components/select"
 import { API_KIND_OPTIONS } from "@/features/setup/api-kinds"
+import {
+  providerBaseUrlError,
+  providerNameError,
+} from "@/features/settings/provider-fields"
 import type { ApiKind } from "@/features/settings/types"
 import {
   MASKED_PROVIDER_KEY,
@@ -25,6 +29,7 @@ import {
 } from "@/hooks/api/use-llm-providers-api"
 
 import { Field } from "./purpose-sections"
+import { keepDialogOpenOnListEscape } from "@/lib/portal-overlays"
 
 function ApiKindSelect({
   value,
@@ -112,10 +117,13 @@ export function ProviderDialog({
   provider,
   open,
   onOpenChange,
+  onSaved,
 }: {
   provider: LlmProvider | null
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Called with the provider's name after an edit is saved. */
+  onSaved?: (name: string) => void
 }) {
   const isEdit = provider !== null
   const [draft, setDraft] = useState<ProviderDraft>(() =>
@@ -151,7 +159,12 @@ export function ProviderDialog({
                 : MASKED_PROVIDER_KEY,
           },
         },
-        { onSuccess: () => onOpenChange(false) },
+        {
+          onSuccess: () => {
+            onSaved?.(provider.name)
+            onOpenChange(false)
+          },
+        },
       )
       return
     }
@@ -166,13 +179,22 @@ export function ProviderDialog({
     )
   }
 
-  const canSubmit = isEdit
-    ? !pending
-    : Boolean(draft.name) && Boolean(draft.base_url) && !pending
+  const nameError = isEdit ? null : providerNameError(draft.name)
+  // A frozen provider resends the server's own base_url, so the field it
+  // cannot edit is never the reason Save is refused.
+  const baseUrlError = frozen ? null : providerBaseUrlError(draft.base_url)
+  const canSubmit =
+    !pending &&
+    !nameError &&
+    !baseUrlError &&
+    (isEdit || (Boolean(draft.name) && Boolean(draft.base_url)))
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[80vh] max-w-lg flex-col gap-3">
+      <DialogContent
+        onEscapeKeyDown={keepDialogOpenOnListEscape}
+        className="flex max-h-[80vh] max-w-lg flex-col gap-3"
+      >
         <DialogHeader>
           <DialogTitle>
             {isEdit ? `${provider.name} — connection` : "Add provider"}
@@ -190,9 +212,13 @@ export function ProviderDialog({
               <Input
                 value={draft.name}
                 aria-label="new provider name"
+                aria-invalid={nameError ? true : undefined}
                 onChange={(e) => patch({ name: e.target.value })}
                 className="font-mono"
               />
+              {nameError && (
+                <span className="text-destructive text-sm">{nameError}</span>
+              )}
             </Field>
           )}
           <Field label="api_kind">
@@ -212,9 +238,13 @@ export function ProviderDialog({
               aria-label={
                 isEdit ? `${provider.name} base_url` : "new provider base_url"
               }
+              aria-invalid={baseUrlError ? true : undefined}
               onChange={(e) => patch({ base_url: e.target.value })}
               className="font-mono"
             />
+            {baseUrlError && (
+              <span className="text-destructive text-sm">{baseUrlError}</span>
+            )}
           </Field>
           <Field label="api_key" span2>
             <div className="flex items-center gap-1.5">

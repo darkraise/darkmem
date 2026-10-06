@@ -47,6 +47,8 @@ class RepoIndexingProgress(BaseModel):
     phase: int
     current: int
     total: int
+    unit: str | None = None
+    status_message: str | None = None
 
 
 class RepoIndexingCompleted(BaseModel):

@@ -38,29 +38,86 @@ function toDollars(micros: number): string {
   return (micros / 1_000_000).toString()
 }
 
+/** A rate the server will take: a finite, non-negative number. Checked here so
+ *  "abc" is named beside its field instead of returning as the validator's
+ *  "prices.<model>.<field>: Input should be a valid number". */
+function validRate(dollars: string): boolean {
+  if (dollars.trim() === "") return false
+  const n = Number(dollars)
+  return Number.isFinite(n) && n >= 0
+}
+
+const EMPTY_ROW = {
+  input_micros_per_mtok: 0,
+  cached_micros_per_mtok: 0,
+  output_micros_per_mtok: 0,
+  overridden: false,
+} as const
+
 export function ModelPricesPanel({
   models,
+  unpricedModels = [],
   onSave,
   saving = false,
 }: {
   models: ModelPriceRow[]
+  /** Models that made calls in the window and have no rate. The overview's
+   *  caveat sends the reader here to price them, so they are rows to fill
+   *  in rather than names to retype. */
+  unpricedModels?: string[]
   onSave: (
     prices: Record<string, Record<string, number>>,
   ) => void
   saving?: boolean
 }) {
   const [draft, setDraft] = useState<Draft>({})
+  const [added, setAdded] = useState<string[]>([])
+  const [newModel, setNewModel] = useState("")
 
+  const known = new Set(models.map((row) => row.model))
+
+  // An unpriced row starts empty: a "0" there reads as a free model.
   const valueFor = (row: ModelPriceRow, field: string) =>
     draft[row.model]?.[field] ??
-    toDollars(row[field as keyof ModelPriceRow] as number)
+    (known.has(row.model)
+      ? toDollars(row[field as keyof ModelPriceRow] as number)
+      : "")
+  const extra = [...unpricedModels, ...added].filter(
+    (model, i, all) => !known.has(model) && all.indexOf(model) === i,
+  )
+  const rows: ModelPriceRow[] = [
+    ...models,
+    ...extra.map((model) => ({ model, ...EMPTY_ROW })),
+  ]
+  // A new row nobody typed into is not sent: it would price the model at
+  // zero, which reads as "free" rather than "not priced".
+  const isUntouchedExtra = (row: ModelPriceRow) =>
+    !known.has(row.model) && !draft[row.model]
+  const invalid = rows.some(
+    (row) =>
+      !isUntouchedExtra(row) &&
+      FIELDS.some(([field]) => !validRate(valueFor(row, field))),
+  )
+
+  // A catalogue row the operator changed. Typing a rate and then retyping
+  // the shipped one is no change.
+  const isEdited = (row: ModelPriceRow) =>
+    FIELDS.some(
+      ([field]) =>
+        draft[row.model]?.[field] !== undefined &&
+        toMicros(valueFor(row, field)) !==
+          (row[field as keyof ModelPriceRow] as number),
+    )
 
   const handleSave = () => {
-    // A full replace, matching the config-singleton PUT: every row is sent, so
-    // clearing an override means editing it back rather than deleting a key
-    // the server can no longer see.
+    // The PUT replaces the override layer wholesale, so every existing
+    // override is sent again or it would be cleared. A shipped default nobody
+    // edited is left out: storing it would mark it overridden and freeze it
+    // against a later change to the shipped rate.
     const prices: Record<string, Record<string, number>> = {}
-    for (const row of models) {
+    for (const row of rows) {
+      if (isUntouchedExtra(row)) continue
+      if (known.has(row.model) && !row.overridden && !isEdited(row)) continue
       prices[row.model] = Object.fromEntries(
         FIELDS.map(([field]) => [field, toMicros(valueFor(row, field))]),
       )
@@ -91,13 +148,18 @@ export function ModelPricesPanel({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {models.map((row) => (
+              {rows.map((row) => (
                 <TableRow key={row.model}>
                   <TableCell className="font-mono text-xs">
                     {row.model}
                     {row.overridden ? (
                       <Badge className="ml-1" variant="secondary">
                         overridden
+                      </Badge>
+                    ) : null}
+                    {!known.has(row.model) ? (
+                      <Badge className="ml-1" variant="outline">
+                        not priced
                       </Badge>
                     ) : null}
                   </TableCell>
@@ -110,8 +172,15 @@ export function ModelPricesPanel({
                       <div className="flex justify-end">
                         <Input
                           aria-label={`${row.model} ${label} rate`}
+                          aria-invalid={
+                            !isUntouchedExtra(row) &&
+                            !validRate(valueFor(row, field))
+                          }
                           className="w-28 text-right font-mono text-xs"
                           inputMode="decimal"
+                          placeholder={
+                            known.has(row.model) ? undefined : "not priced"
+                          }
                           value={valueFor(row, field)}
                           onChange={(e) =>
                             setDraft((d) => ({
@@ -131,7 +200,32 @@ export function ModelPricesPanel({
             </TableBody>
           </Table>
         </div>
-        <Button disabled={saving} onClick={handleSave} size="sm">
+        <form
+          className="flex flex-wrap items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            const model = newModel.trim()
+            if (model) setAdded((list) => [...list, model])
+            setNewModel("")
+          }}
+        >
+          <Input
+            aria-label="Model to price"
+            placeholder="model id, e.g. qwen2.5:3b"
+            className="w-64 font-mono text-xs"
+            value={newModel}
+            onChange={(e) => setNewModel(e.target.value)}
+          />
+          <Button type="submit" variant="outline" size="sm">
+            Add model
+          </Button>
+        </form>
+        {invalid ? (
+          <p role="alert" className="text-destructive text-sm">
+            Every rate must be a number of dollars, zero or more.
+          </p>
+        ) : null}
+        <Button disabled={saving || invalid} onClick={handleSave} size="sm">
           {saving ? "Saving…" : "Save prices"}
         </Button>
       </CardContent>

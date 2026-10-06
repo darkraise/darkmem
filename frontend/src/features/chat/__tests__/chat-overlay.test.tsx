@@ -40,3 +40,33 @@ describe("ChatOverlay send failures", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })
+
+describe("ChatOverlay selection context", () => {
+  async function sendWith(clear: boolean) {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 403, text: async () => "stop" })
+    vi.stubGlobal("fetch", fetchMock)
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatOverlay selectedNodeId="01a10d4c-f2f7-7498-bda7-c3973130a5d5" />
+      </QueryClientProvider>,
+    )
+    await userEvent.click(screen.getByRole("button", { name: "Open chat panel" }))
+    expect(screen.getByText(/Context: Memory: 3130a5d5/)).toBeInTheDocument()
+    if (clear) await userEvent.click(screen.getByRole("button", { name: "Clear context" }))
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "about this" } })
+    await userEvent.click(screen.getByRole("button", { name: "Send message" }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    return JSON.parse(String((fetchMock.mock.calls[0]![1] as RequestInit).body))
+  }
+
+  it("sends the selected memory as context", async () => {
+    const body = await sendWith(false)
+    expect(body.context).toEqual({ selected_node_id: "01a10d4c-f2f7-7498-bda7-c3973130a5d5" })
+  })
+
+  it("sends no selection once the context chip is cleared", async () => {
+    // Clearing used to hide the label only; the request still carried it.
+    const body = await sendWith(true)
+    expect(body.context ?? {}).toEqual({})
+  })
+})
