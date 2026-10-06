@@ -28,8 +28,11 @@ Backend:
 
 ```bash
 cd backend
-python -m pytest -q
+python -m pytest -q -n 4 --dist loadfile   # parallel; plain `pytest -q` runs serially
 ```
+
+Each pytest-xdist worker creates its own `<database>_gwN` next to
+`darkmem_test`, so the parallel run needs no extra setup.
 
 Frontend:
 

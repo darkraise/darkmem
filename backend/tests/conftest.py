@@ -9,10 +9,48 @@ from pathlib import Path
 # it. database.py builds its engine from settings.database_url at import time;
 # with DATABASE_URL unset that now derives the deployment default
 # (postgres:5432), which is unreachable from a host-side test run.
-os.environ["DATABASE_URL"] = os.environ.get(
+_TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
     "postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test",
 )
+
+
+def _ensure_worker_database(base_url: str, worker: str) -> str:
+    """Give each pytest-xdist worker a database of its own.
+
+    The session fixture below drops and re-migrates the whole schema, so two
+    processes can never share one database. Each worker derives
+    ``<base>_<worker>`` (``darkmem_test_gw0``, ...) and creates it on the same
+    server, connecting through the base database, which must already exist.
+    """
+    import asyncpg
+
+    base, _, name = base_url.rpartition("/")
+    worker_name = f"{name}_{worker}"
+
+    async def create() -> None:
+        dsn = f"{base}/{name}".replace("postgresql+asyncpg://", "postgresql://", 1)
+        conn = await asyncpg.connect(dsn)
+        try:
+            exists = await conn.fetchval(
+                "SELECT 1 FROM pg_database WHERE datname = $1", worker_name
+            )
+            if not exists:
+                await conn.execute(f'CREATE DATABASE "{worker_name}"')
+        finally:
+            await conn.close()
+
+    asyncio.run(create())
+    return f"{base}/{worker_name}"
+
+
+if os.environ.get("PYTEST_XDIST_WORKER"):
+    _TEST_DATABASE_URL = _ensure_worker_database(
+        _TEST_DATABASE_URL, os.environ["PYTEST_XDIST_WORKER"]
+    )
+    # Settings, and the tests that read the variable directly, follow it.
+    os.environ["TEST_DATABASE_URL"] = _TEST_DATABASE_URL
+os.environ["DATABASE_URL"] = _TEST_DATABASE_URL
 
 import pytest
 import pytest_asyncio
@@ -188,9 +226,13 @@ async def client(session):
     elif not getattr(app.state, "repo_sync_wakeup", None):
         repo_job = app.state.job_registry.get("repo_sync")
         app.state.repo_sync_wakeup = repo_job.wakeup if repo_job else asyncio.Event()
+    # A config PUT installs a live orchestrator on app.state; left behind, it
+    # made a later file's search dial an unreachable embedder for 95s.
+    previous_llm = getattr(app.state, "llm", None)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
     app.dependency_overrides.clear()
+    app.state.llm = previous_llm
 
 
 @pytest_asyncio.fixture(autouse=True)

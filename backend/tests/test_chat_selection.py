@@ -292,3 +292,27 @@ async def test_the_persisted_turn_keeps_the_selection_mark(session, monkeypatch)
     stored = await session.get(Message, message_id)
     assert stored.context["memories"][0]["id"] == str(selected.id)
     assert stored.context["memories"][0]["selected"] is True
+
+
+async def test_a_stream_that_breaks_mid_answer_reports_it_instead_of_finishing(
+    session, monkeypatch,
+):
+    """Reached before only through an orchestrator another file left on
+    app.state; asserted here in its own right."""
+    await _retrieved(session, monkeypatch)
+    svc = _service(session)
+
+    async def _stream(purpose, messages, **kwargs):
+        yield "partial"
+        raise RuntimeError("provider dropped the connection")
+
+    svc.llm.chat_completion_stream = _stream
+
+    events = [event async for event in svc.send_message(None, "what is this?", {})]
+    kinds = [event["type"] for event in events]
+
+    assert "done" not in kinds
+    assert events[-1] == {
+        "type": "error",
+        "message": "Stream interrupted: provider dropped the connection",
+    }

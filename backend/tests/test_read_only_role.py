@@ -147,6 +147,14 @@ async def viewer_engine(setup_database):
         async with privileged.connect() as conn:
             await conn.execute(text(f"DROP OWNED BY {VIEWER}"))
             await conn.execute(text(f"DROP ROLE IF EXISTS {VIEWER}"))
+            # The probe partition is committed, so it outlives the test. Left
+            # behind, every later reader that walks `embedders` looks for
+            # sibling partitions this probe never created.
+            await conn.execute(text(f"DROP TABLE IF EXISTS {child}"))
+            await conn.execute(
+                text("DELETE FROM embedders WHERE fingerprint = :fp"),
+                {"fp": PROBE_FINGERPRINT},
+            )
         await privileged.dispose()
 
 

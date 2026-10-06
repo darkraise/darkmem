@@ -21,7 +21,6 @@ existed, and that pin is the point of the paired assertions below.
 """
 from __future__ import annotations
 
-import uuid
 
 import pytest
 from sqlalchemy import func, select
@@ -353,10 +352,12 @@ async def test_those_doors_are_untouched_by_default(
     ), f"{method} {path} refuses as read-only with the flag OFF"
 
 
+# Fixed ids: parametrize ids must match across pytest-xdist workers.
+_MISSING_REPO = "00000000-0000-4000-8000-0000000000aa"
 NETWORK_DOORS = [
     ("POST", "/api/v1/repos", {"url": "https://example.com/x.git", "name": "x"}),
-    ("POST", f"/api/v1/repos/{uuid.uuid4()}/reindex", {}),
-    ("POST", f"/api/v1/repos/{uuid.uuid4()}/reindex-files", {"files": ["a.py"]}),
+    ("POST", f"/api/v1/repos/{_MISSING_REPO}/reindex", {}),
+    ("POST", f"/api/v1/repos/{_MISSING_REPO}/reindex-files", {"files": ["a.py"]}),
 ]
 
 
