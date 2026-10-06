@@ -38,6 +38,8 @@ export type QueryKeyScope =
 export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
   // ── auto: routed through projectScopedKey / useProjectScopedKey ──
   memories: { kind: "auto" },
+  // The pipeline journals each run under its memory's project.
+  pipelineLogs: { kind: "auto" },
   unifiedGraph: { kind: "auto" },
 
   // ── manual: already carries an explicit project field, not yet wired
@@ -229,7 +231,6 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
   stats: { kind: "global" },
   health: { kind: "global" },
   pipeline: { kind: "global" },
-  pipelineLogs: { kind: "global" },
   overview: { kind: "global" },
   pipelineFailures: { kind: "global" },
   pipelineFailureCounts: { kind: "global" },

@@ -1,6 +1,8 @@
 import { useState, useCallback, useRef } from "react"
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
+import { useProjectScopedKey } from "@/lib/query-keys"
+import { useProjectStore } from "@/stores/project-store"
 
 export interface Stats {
   memories: number
@@ -73,9 +75,15 @@ export function useHealth() {
 }
 
 export function usePipelineLogs(limit = 10, enabled: boolean = true) {
+  const queryKey = useProjectScopedKey("pipelineLogs", limit)
+  const project = useProjectStore((s) => s.activeProject)
   return useQuery<PipelineLog[]>({
-    queryKey: ["pipelineLogs", limit],
-    queryFn: () => apiFetch(`/analytics/pipeline-logs?limit=${limit}`),
+    queryKey,
+    queryFn: () => {
+      const params = new URLSearchParams({ limit: String(limit) })
+      if (project) params.set("project", project)
+      return apiFetch(`/analytics/pipeline-logs?${params}`)
+    },
     enabled,
   })
 }

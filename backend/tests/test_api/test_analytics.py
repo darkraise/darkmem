@@ -76,3 +76,32 @@ async def test_pipeline_logs_ignores_other_event_types(client, auth_headers, ses
     assert response.status_code == 200
     items = response.json()
     assert not any(item["memory_id"] == str(memory_id) for item in items)
+
+
+async def test_pipeline_logs_follow_the_project_scope(client, auth_headers, session):
+    """Activity -> Pipeline scoped to one project listed every project's runs."""
+    scoped, other = uuid.uuid4(), uuid.uuid4()
+    for memory_id, project in ((scoped, "webapp"), (other, "default")):
+        await record_event(
+            session,
+            event_type="extracted",
+            object_type="memory",
+            object_id=memory_id,
+            project=project,
+            payload={"embed": "ok", "extract": "ok", "vector": "ok", "graph": "ok", "outcome": "completed"},
+        )
+    await session.flush()
+
+    response = await client.get(
+        "/api/v1/analytics/pipeline-logs", params={"project": "webapp", "limit": 500},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    ids = {item["memory_id"] for item in response.json()}
+    assert str(scoped) in ids
+    assert str(other) not in ids
+
+    unscoped = await client.get(
+        "/api/v1/analytics/pipeline-logs", params={"limit": 500}, headers=auth_headers,
+    )
+    assert {str(scoped), str(other)} <= {item["memory_id"] for item in unscoped.json()}

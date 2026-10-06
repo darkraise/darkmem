@@ -58,6 +58,7 @@ async def reprocess_all_stream(
 @router.get("/pipeline-logs")
 async def get_pipeline_logs(
     limit: int = Query(20, ge=1, le=500),
+    project: str | None = Query(None, description="Only runs of memories in this project."),
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
@@ -71,9 +72,13 @@ async def get_pipeline_logs(
     rows = (await session.execute(
         sa_text(
             "SELECT id, object_id, payload, created_at FROM events "
-            "WHERE event_type = 'extracted' ORDER BY created_at DESC LIMIT :limit"
+            "WHERE event_type = 'extracted' "
+            # The pipeline journals each run under its memory's project, so the
+            # header scope filters here as it does on the dashboard's feed.
+            "AND (CAST(:project AS text) IS NULL OR project = CAST(:project AS text)) "
+            "ORDER BY created_at DESC LIMIT :limit"
         ),
-        {"limit": limit},
+        {"limit": limit, "project": project},
     )).all()
     return [
         {
