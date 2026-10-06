@@ -24,6 +24,7 @@ import { X } from "lucide-react"
 import { ALL_PROJECTS, useProjectStore } from "@/stores/project-store"
 import { MEMORY_TYPE_OPTIONS } from "@/lib/taxonomy"
 import { createMemorySchema, type CreateMemoryInput } from "../schemas"
+import { keepDialogOpenOnListEscape } from "@/lib/portal-overlays"
 
 type MemoryTypeValue = CreateMemoryInput["memory_type"]
 
@@ -75,7 +76,10 @@ export function CreateMemoryDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent
+        onEscapeKeyDown={keepDialogOpenOnListEscape}
+        className="sm:max-w-lg"
+      >
         <DialogHeader>
           <DialogTitle>New Memory</DialogTitle>
           <DialogDescription>
