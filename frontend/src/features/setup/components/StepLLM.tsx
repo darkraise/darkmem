@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
 import { Label } from "darkraise-ui/components/label"
@@ -48,7 +48,8 @@ import {
   providerBaseUrlError,
   providerNameError,
 } from "@/features/settings/provider-fields"
-import { useProbeModels } from "@/hooks/api/use-setup-api"
+import { describeProbeError } from "@/features/setup/probe-error"
+import { useSetupProviderModels } from "@/hooks/api/use-setup-api"
 
 const BASE_URL_DEFAULTS: Record<LlmApiKind, string> = {
   openai: "https://api.openai.com/v1",
@@ -68,26 +69,26 @@ const PURPOSE_HINT: Record<Purpose, string> = {
   reranker: "Optional — reorders search hits",
 }
 
+function probeTarget(provider: WizardProvider) {
+  return {
+    api_kind: provider.api_kind,
+    base_url: provider.base_url,
+    api_key: provider.api_key || null,
+  }
+}
+
 function ProviderRow({ provider }: { provider: WizardProvider }) {
   const update = useSetupWizardStore((s) => s.updateLlmProvider)
   const remove = useSetupWizardStore((s) => s.removeLlmProvider)
-  const probe = useProbeModels()
-  const [probeError, setProbeError] = useState<string | null>(null)
   const baseUrlError = providerBaseUrlError(provider.base_url)
-
-  const handleTest = async () => {
-    setProbeError(null)
-    try {
-      const result = await probe.mutateAsync({
-        api_kind: provider.api_kind,
-        base_url: provider.base_url,
-        api_key: provider.api_key || null,
-      })
-      if (result.error) setProbeError(result.error)
-    } catch (e) {
-      setProbeError((e as Error).message)
-    }
-  }
+  // The same query the purpose rows read, so the provider reports its own
+  // probe failure here, once, instead of each purpose repeating it.
+  const probe = useSetupProviderModels(probeTarget(provider))
+  const probeError = probe.error
+    ? probe.error.message
+    : probe.data?.error
+      ? describeProbeError(probe.data.error)
+      : null
 
   return (
     <div className="border-border bg-card flex flex-col gap-2.5 rounded-lg border p-3">
@@ -156,18 +157,18 @@ function ProviderRow({ provider }: { provider: WizardProvider }) {
       <div className="flex flex-wrap items-center gap-2">
         <Button
           variant="outline"
-          disabled={probe.isPending}
-          onClick={handleTest}
+          disabled={probe.isFetching || !provider.base_url}
+          onClick={() => void probe.refetch()}
         >
-          {probe.isPending ? "Testing…" : "Test"}
+          {probe.isFetching ? "Testing…" : "Test"}
         </Button>
-        {probe.data && !probe.data.error && (
+        {!probe.isFetching && probe.data && !probe.data.error && (
           <span className="text-muted-foreground text-sm">
             {probe.data.models.length} model
             {probe.data.models.length === 1 ? "" : "s"}
           </span>
         )}
-        {probeError && (
+        {!probe.isFetching && probeError && (
           <span role="alert" className="text-destructive text-sm">
             {probeError}
           </span>
@@ -311,7 +312,6 @@ function PurposeRow({ purpose }: { purpose: Purpose }) {
   const providers = useSetupWizardStore((s) => s.llm.providers)
   const draft = useSetupWizardStore((s) => s.llm.perPurpose[purpose])
   const setLlmPurpose = useSetupWizardStore((s) => s.setLlmPurpose)
-  const probe = useProbeModels()
   const modelDropdown = useDropdownPlacement()
 
   const provider = providers.find((p) => p.name === draft.provider_name)
@@ -319,19 +319,11 @@ function PurposeRow({ purpose }: { purpose: Purpose }) {
   const required = REQUIRED_PURPOSES_NON_EMBEDDING.includes(purpose)
   const warning = isEmbedding ? embeddingKindWarning(provider?.api_kind) : null
 
-  const providerName = draft.provider_name
-  useEffect(() => {
-    if (!provider) return
-    probe.mutate({
-      api_kind: provider.api_kind,
-      base_url: provider.base_url,
-      api_key: provider.api_key || null,
-    })
-    // Re-probe only when the *selected* provider's identity or connection
-    // details change — `probe.mutate`'s identity is not stable across
-    // renders, so depending on it here would re-probe every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [providerName, provider?.api_kind, provider?.base_url, provider?.api_key])
+  // Only the model list is read here; a failed probe is the provider row's
+  // to report, once, rather than every purpose's that picked it.
+  const probe = useSetupProviderModels(
+    provider ? probeTarget(provider) : undefined,
+  )
 
   const modelItems = (probe.data?.models ?? []).map((m) => ({
     value: m,
@@ -396,9 +388,6 @@ function PurposeRow({ purpose }: { purpose: Purpose }) {
             </ComboboxContent>
           </Combobox>
         </div>
-        {probe.data?.error && (
-          <span className="text-destructive text-sm">{probe.data.error}</span>
-        )}
         {warning && (
           <span className="text-warning-text text-sm">{warning}</span>
         )}

@@ -32,6 +32,7 @@ import { cn } from "darkraise-ui/lib"
 import { NumberField } from "@/components/darkmem"
 import { validateParamsJson } from "@/demo/settings"
 import { embeddingKindWarning } from "@/features/setup/api-kinds"
+import { describeProbeError } from "@/features/setup/probe-error"
 import type { DemoLLMPurpose } from "@/features/settings/types"
 import {
   useLlmProviders,
@@ -212,7 +213,8 @@ export function PurposeDialog({
                   unconfigurable. */}
               {probe.data?.error && (
                 <span className="text-destructive text-sm">
-                  {probe.data.error}
+                  No model list from {draft.provider_name}:{" "}
+                  {describeProbeError(probe.data.error)}
                 </span>
               )}
             </Field>
