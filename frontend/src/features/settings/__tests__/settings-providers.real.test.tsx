@@ -248,6 +248,42 @@ describe("ProvidersPanel (DEMO off — read-only rendering)", () => {
     )
   })
 
+  it("drops a Test connection result once the provider is saved", async () => {
+    let current = PROVIDERS
+    vi.mocked(apiFetch).mockImplementation(
+      (path: string, init?: RequestInit) => {
+        if (path.endsWith("/probe-models"))
+          return Promise.resolve({
+            models: ["a", "b", "c", "d"],
+            fetched_via: "openai",
+            error: null,
+          })
+        if (init?.method === "PUT") {
+          const moved = {
+            ...PROVIDERS.providers[0],
+            base_url: "http://moved:11434/v1",
+          }
+          current = { providers: [moved, PROVIDERS.providers[1]] }
+          return Promise.resolve({ ...moved, no_embedding_purposes: [] })
+        }
+        return Promise.resolve(current)
+      },
+    )
+    render(<ProvidersPanel />, { wrapper })
+    fireEvent.click(
+      await screen.findByLabelText("Test connection ollama-local"),
+    )
+    expect(await screen.findByText("4 models")).toBeInTheDocument()
+
+    const baseUrl = await openEditor("ollama-local")
+    fireEvent.change(baseUrl, { target: { value: "http://moved:11434/v1" } })
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+
+    await waitFor(() =>
+      expect(screen.queryByText("4 models")).not.toBeInTheDocument(),
+    )
+  })
+
   it("switches layout and persists the choice per panel", async () => {
     vi.mocked(apiFetch).mockResolvedValue(PROVIDERS)
     const { unmount } = render(<ProvidersPanel />, { wrapper })

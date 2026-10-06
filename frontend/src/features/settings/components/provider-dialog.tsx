@@ -116,10 +116,13 @@ export function ProviderDialog({
   provider,
   open,
   onOpenChange,
+  onSaved,
 }: {
   provider: LlmProvider | null
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Called with the provider's name after an edit is saved. */
+  onSaved?: (name: string) => void
 }) {
   const isEdit = provider !== null
   const [draft, setDraft] = useState<ProviderDraft>(() =>
@@ -155,7 +158,12 @@ export function ProviderDialog({
                 : MASKED_PROVIDER_KEY,
           },
         },
-        { onSuccess: () => onOpenChange(false) },
+        {
+          onSuccess: () => {
+            onSaved?.(provider.name)
+            onOpenChange(false)
+          },
+        },
       )
       return
     }
