@@ -193,6 +193,50 @@ describe("RealRepositoriesView", () => {
     await screen.findByText(/indexing — Building structure graph\.\.\./)
   })
 
+  it("puts the phase's running count in the row as text and a bar", async () => {
+    vi.mocked(apiFetch).mockResolvedValue([
+      {
+        ...BASE_REPO,
+        status: "indexing",
+        status_message: "Parsing files... 1,200/3,996 files",
+        index_debt: {
+          queued: 0,
+          deferred_total: 0,
+          drained_total: 0,
+          last_defer: null,
+          last_drain: null,
+        },
+      },
+    ])
+
+    render(<RealRepositoriesView />, { wrapper })
+
+    await screen.findByText(/indexing — Parsing files\.\.\. 1,200\/3,996 files/)
+    const bar = screen.getByRole("progressbar", { name: "files done in this phase" })
+    expect(bar).toHaveAttribute("aria-valuenow", "1200")
+    expect(bar).toHaveAttribute("aria-valuemax", "3996")
+  })
+
+  it("draws no bar for a phase without a count", async () => {
+    vi.mocked(apiFetch).mockResolvedValue([
+      {
+        ...BASE_REPO,
+        status: "indexing",
+        status_message: "Building structure graph...",
+        index_debt: {
+          queued: 0,
+          deferred_total: 0,
+          drained_total: 0,
+          last_defer: null,
+          last_drain: null,
+        },
+      },
+    ])
+    render(<RealRepositoriesView />, { wrapper })
+    await screen.findByText(/indexing — Building structure graph/)
+    expect(screen.queryByRole("progressbar")).toBeNull()
+  })
+
   it("shows an honest auto-provisioned marker for a queued repo, never fabricating a source", async () => {
     vi.mocked(apiFetch).mockResolvedValue([
       {

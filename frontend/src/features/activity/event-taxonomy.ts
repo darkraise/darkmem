@@ -80,6 +80,10 @@ const EVENT_TYPE_CATEGORY: Record<string, FeedCategory> = {
   repo_registered: "code",
   repo_synced: "code",
   repo_indexed: "code",
+  // A failed index run and a removed repository: the rest of a repo's
+  // lifecycle, on the same tab as its registration and indexing.
+  repo_index_failed: "code",
+  repo_deleted: "code",
   repo_webhook_received: "code",
   repo_reindex_requested: "code",
   mcp_proxied_refused: "code",
