@@ -39,7 +39,8 @@ _HOME_SUBPATH_BLOCKLIST: tuple[str, ...] = (
 def validate_local_path(raw: str, *, must_not_be_repo: bool = False) -> Path:
     """Resolve ``raw`` and reject it if the indexer shouldn't read from there.
 
-    Raises ``ValueError`` with a single sentence explaining the reason.
+    Raises ``ValueError`` with a single plain sentence naming the path, which
+    the setup wizard and the repository forms show as written.
     Returns the resolved ``Path`` so callers can use it directly.
 
     When ``must_not_be_repo=True``, also rejects paths whose immediate
@@ -48,26 +49,29 @@ def validate_local_path(raw: str, *, must_not_be_repo: bool = False) -> Path:
     repository (which would clash with detect-children-as-repos logic).
     """
     if not raw or not raw.strip():
-        raise ValueError("local_path must not be empty")
+        raise ValueError("Enter a folder path.")
     resolved = Path(raw).expanduser().resolve()
     if not resolved.exists():
-        raise ValueError(f"local_path does not exist: {resolved}")
+        raise ValueError(f"That folder does not exist on the server: {resolved}")
     if not resolved.is_dir():
-        raise ValueError(f"local_path is not a directory: {resolved}")
+        raise ValueError(f"That path is a file, not a folder: {resolved}")
     posix = resolved.as_posix()
     for blocked in _LOCAL_PATH_BLOCKLIST:
         if posix == blocked or posix.startswith(blocked + "/"):
-            raise ValueError(f"local_path is inside a blocked system tree: {blocked}")
+            raise ValueError(f"Darkmem does not read from system folders (blocked: {blocked})")
     home = Path.home().resolve().as_posix()
     if posix.startswith(home + "/"):
         rest = posix[len(home) + 1:]
         first = rest.split("/", 1)[0]
         if first in _HOME_SUBPATH_BLOCKLIST:
             raise ValueError(
-                f"local_path is inside a blocked credential tree: ~/{first}"
+                f"Darkmem does not read from credential folders (blocked: ~/{first})"
             )
     if must_not_be_repo and (resolved / ".git").is_dir():
-        raise ValueError(f"local_path is itself a git repository: {resolved}")
+        raise ValueError(
+            "That folder is itself a git repository; choose the folder that "
+            f"contains it: {resolved}"
+        )
     return resolved
 
 

@@ -6,6 +6,7 @@ from uuid import UUID
 
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.mcpserver import Context, MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import Field
 from sqlalchemy import select, text
@@ -134,11 +135,22 @@ async def _memory_service_context():
 from app.utils.serialization import memory_to_dict as _memory_to_dict
 
 
+class ToolInputError(ToolError, ValueError):
+    """A tool refusing its caller's input: a malformed id, a missing
+    argument, or a reference that names nothing.
+
+    The SDK hands a ``ToolError``'s message to the caller and logs it at INFO;
+    any other exception is treated as a crash, so the caller reads only "Error
+    executing tool <name>" and the log carries a traceback. ``ValueError``
+    stays a base so in-process callers that catch it keep working.
+    """
+
+
 def _validate_uuid(value: str) -> UUID:
     try:
         return UUID(value)
     except (ValueError, AttributeError):
-        raise ValueError(f"Invalid UUID format: {value}")
+        raise ToolInputError(f"Invalid UUID format: {value}") from None
 
 
 # Mirror the HTTP search bound (MemorySearchRequest: limit ge=1, le=500) so an
@@ -294,7 +306,7 @@ async def memory_get(memory_id: str) -> str:
     async with _memory_service_context() as service:
         memory = await service.get_memory(mid)
         if not memory:
-            raise ValueError(f"Memory not found: {memory_id}")
+            raise ToolInputError(f"Memory not found: {memory_id}")
         return json.dumps(_memory_to_dict(memory))
 
 
@@ -346,7 +358,7 @@ async def memory_update(
             mid, data, api_key_id=current_api_key_id(), actor=actor,
         )
         if not memory:
-            raise ValueError(f"Memory not found: {memory_id}")
+            raise ToolInputError(f"Memory not found: {memory_id}")
         return json.dumps(_memory_to_dict(memory))
 
 
@@ -368,7 +380,7 @@ async def memory_delete(memory_id: str, ctx: Context | None = None) -> str:
         actor = current_key_name() or resolve_client_source(None, ctx)
         result = await service.delete_memory(mid, api_key_id=current_api_key_id(), actor=actor)
         if not result:
-            raise ValueError(f"Memory not found: {memory_id}")
+            raise ToolInputError(f"Memory not found: {memory_id}")
         return json.dumps({"deleted": True, "memory_id": memory_id})
 
 
@@ -1434,7 +1446,7 @@ async def code_reindex(
     from app.services.repo_manager import RepoManager
 
     if not repo_path and not repo_name:
-        raise ValueError("one of repo_path or repo_name is required")
+        raise ToolInputError("one of repo_path or repo_name is required")
 
     # The raw caller-supplied count, not `accepted.union_files` -- the same
     # choice `reindex_repo_files` makes, so a caller comparing audit rows
@@ -1470,13 +1482,13 @@ async def code_reindex(
 
     if not rows:
         await _journal(None, "not_found")
-        raise ValueError(f"Repository not found: {repo_path or repo_name}")
+        raise ToolInputError(f"Repository not found: {repo_path or repo_name}")
     if len(rows) > 1:
         # `name` and `local_path` carry no uniqueness, so this is reachable;
         # a scalar_one_or_none here would raise MultipleResultsFound at the
         # caller instead of naming the candidates.
         await _journal(None, "ambiguous_repo")
-        raise ValueError(
+        raise ToolInputError(
             "Repository reference is ambiguous; pass one of these ids: "
             + ", ".join(str(r.id) for r in rows)
         )
@@ -1580,7 +1592,7 @@ async def code_search(
                     select(Repository).where(Repository.name == repo_name)
                 )).scalar_one_or_none()
                 if not repo:
-                    raise ValueError(f"Repository not found: {repo_name}")
+                    raise ToolInputError(f"Repository not found: {repo_name}")
                 repo_id = repo.id
 
         async with _code_service_context() as session:
@@ -1629,7 +1641,7 @@ async def code_symbol(
         rows = (await session.execute(query)).scalars().all()
 
         if not rows:
-            raise ValueError(f"Symbol not found: {name}")
+            raise ToolInputError(f"Symbol not found: {name}")
 
         return json.dumps([
             {
@@ -1721,14 +1733,14 @@ async def code_blast_radius(
         query = query.where(CodeSymbol.name == symbol_name)
         symbol_id = (await session.execute(query)).scalars().first()
         if symbol_id is None:
-            raise ValueError(f"Symbol not found: {symbol_name}")
+            raise ToolInputError(f"Symbol not found: {symbol_name}")
 
         result = await CodeQueryService(session).calculate_blast_radius(
             str(symbol_id), max_depth,
         )
 
     if result is None:
-        raise ValueError(f"Symbol not found: {symbol_name}")
+        raise ToolInputError(f"Symbol not found: {symbol_name}")
     return json.dumps(result)
 
 
@@ -1751,7 +1763,7 @@ async def code_dependencies(
             select(Repository).where(Repository.name == repo_name)
         )).scalar_one_or_none()
         if not repo:
-            raise ValueError(f"Repository not found: {repo_name}")
+            raise ToolInputError(f"Repository not found: {repo_name}")
 
         params: dict = {"repo_id": str(repo.id)}
         extra_filter = ""
@@ -1791,7 +1803,7 @@ async def code_context(
             stmt = stmt.join(Repository, CodeFile.repo_id == Repository.id).where(Repository.name == repo_name)
         row = (await session.execute(stmt.limit(1))).first()
         if not row:
-            raise ValueError(f"Symbol '{symbol_name}' not found")
+            raise ToolInputError(f"Symbol '{symbol_name}' not found")
 
         sym, file_path = row
         file = (await session.execute(select(CodeFile).where(CodeFile.id == sym.file_id))).scalar_one_or_none()
@@ -1933,13 +1945,13 @@ async def code_changes(
 
         repo = (await session.execute(select(Repository).where(Repository.name == repo_name))).scalar_one_or_none()
         if not repo:
-            raise ValueError(f"Repository '{repo_name}' not found")
+            raise ToolInputError(f"Repository '{repo_name}' not found")
 
         manager = RepoManager(session)
         work_dir = manager.repo_working_dir(repo)
 
         if not work_dir.exists():
-            raise ValueError("Repository working directory not found")
+            raise ToolInputError("Repository working directory not found")
 
         try:
             diff_output = await RepoManager._run_git(work_dir, ["git", "diff", "--name-status", "HEAD"])
@@ -1994,7 +2006,7 @@ async def code_communities(repo_name: str) -> str:
     async with _code_service_context() as session:
         repo = (await session.execute(select(Repository).where(Repository.name == repo_name))).scalar_one_or_none()
         if not repo:
-            raise ValueError(f"Repository '{repo_name}' not found")
+            raise ToolInputError(f"Repository '{repo_name}' not found")
 
         rows = (await session.execute(
             text("""
@@ -2032,7 +2044,7 @@ async def code_processes(repo_name: str) -> str:
     async with _code_service_context() as session:
         repo = (await session.execute(select(Repository).where(Repository.name == repo_name))).scalar_one_or_none()
         if not repo:
-            raise ValueError(f"Repository '{repo_name}' not found")
+            raise ToolInputError(f"Repository '{repo_name}' not found")
 
         process_rows = (await session.execute(
             text("""
@@ -2083,7 +2095,7 @@ async def code_rename(
     async with _code_service_context() as session:
         repo = (await session.execute(select(Repository).where(Repository.name == repo_name))).scalar_one_or_none()
         if not repo:
-            raise ValueError(f"Repository '{repo_name}' not found")
+            raise ToolInputError(f"Repository '{repo_name}' not found")
 
         definitions = (await session.execute(
             select(CodeSymbol, CodeFile.file_path).join(CodeFile).where(
@@ -2093,7 +2105,7 @@ async def code_rename(
         )).all()
 
         if not definitions:
-            raise ValueError(f"Symbol '{symbol_name}' not found")
+            raise ToolInputError(f"Symbol '{symbol_name}' not found")
 
         references = []
         for sym, fp in definitions:
@@ -2215,7 +2227,7 @@ async def fact_get(fact_id: str) -> str:
     async with _code_service_context() as session:
         item = await facts_read.get_fact(session, fid)
         if item is None:
-            raise ValueError(f"Fact not found: {fact_id}")
+            raise ToolInputError(f"Fact not found: {fact_id}")
         return FactDetailResponse.model_validate(item).model_dump_json()
 
 
@@ -2234,7 +2246,7 @@ async def article_get(article_id: str) -> str:
     async with _code_service_context() as session:
         item = await articles_read.get_article(session, aid)
         if item is None:
-            raise ValueError(f"Article not found: {article_id}")
+            raise ToolInputError(f"Article not found: {article_id}")
         return ArticleDetailResponse.model_validate(item).model_dump_json()
 
 
@@ -2375,16 +2387,16 @@ async def research_run(
     subject = (subject or "").strip()
     project = (project or "").strip()
     if not subject:
-        raise ValueError("subject is required")
+        raise ToolInputError("subject is required")
     if not project:
-        raise ValueError("project is required")
+        raise ToolInputError("project is required")
 
     parsed = [ResearchFindingInput.model_validate(finding) for finding in findings]
     if not parsed:
         # An empty run would return a filed-shaped result with filed=0, which
         # reads to an agent as "stored" — the same reason the batch cap
         # refuses an empty batch rather than accepting it as a no-op.
-        raise ValueError("findings must not be empty")
+        raise ToolInputError("findings must not be empty")
 
     gatherer = _SuppliedFindings([
         ResearchFinding(

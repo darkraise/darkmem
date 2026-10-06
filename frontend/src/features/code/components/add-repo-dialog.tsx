@@ -32,6 +32,7 @@ import {
   IndexingModesFields,
   type IndexingModes,
 } from "./indexing-modes-fields"
+import { keepDialogOpenOnListEscape } from "@/lib/portal-overlays"
 
 const INDEXING_MODES_DEFAULTS: IndexingModes = {
   fetch_enabled: false,
@@ -165,7 +166,7 @@ export function AddRepoDialog() {
           Add repository
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent onEscapeKeyDown={keepDialogOpenOnListEscape}>
         <DialogHeader>
           <DialogTitle>Add repository</DialogTitle>
         </DialogHeader>

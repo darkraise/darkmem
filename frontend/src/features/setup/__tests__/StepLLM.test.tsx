@@ -54,12 +54,65 @@ describe("StepLLM", () => {
   it("Test hits the unauthenticated wizard probe and reports the count", async () => {
     render(<StepLLM />, { wrapper })
     addProvider("user-openai")
-    fireEvent.click(screen.getByRole("button", { name: "Test" }))
+    // A new provider probes on its own; Test re-runs that probe.
+    fireEvent.click(await screen.findByRole("button", { name: "Test" }))
     await waitFor(() => expect(screen.getByText("2 models")).toBeInTheDocument())
     expect(fetch).toHaveBeenCalledWith(
       "/api/v1/setup/probe-models",
       expect.objectContaining({ method: "POST" }),
     )
+  })
+
+  it("reports a provider's probe failure once, on the provider, in plain words", async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        models: [],
+        fetched_via: "openai",
+        error: "API key required for api_kind='openai'",
+      }),
+    } as Response)
+    render(<StepLLM />, { wrapper })
+    addProvider("user-openai")
+    for (const purpose of ["extraction", "classification", "reasoning"]) {
+      useSetupWizardStore
+        .getState()
+        .setLlmPurpose(purpose as "extraction", { provider_name: "user-openai" })
+    }
+    expect(
+      await screen.findByText("This provider needs an API key."),
+    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(
+        screen.getAllByText("This provider needs an API key."),
+      ).toHaveLength(1),
+    )
+    expect(screen.queryByText(/api_kind=/)).not.toBeInTheDocument()
+    // One request for the provider, however many purposes picked it.
+    expect(
+      vi
+        .mocked(fetch)
+        .mock.calls.filter(([url]) => String(url).includes("probe-models")),
+    ).toHaveLength(1)
+  })
+
+  it("refuses a provider the server would refuse, saying why", () => {
+    render(<StepLLM />, { wrapper })
+    fireEvent.click(screen.getByRole("button", { name: "Add provider" }))
+    fireEvent.change(screen.getByLabelText("new provider name"), {
+      target: { value: "my/openai" },
+    })
+    fireEvent.change(screen.getByLabelText("new provider base_url"), {
+      target: { value: "api.openai.com" },
+    })
+    expect(
+      screen.getByText(/Use only letters, digits, dot, dash and underscore/),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/Enter an http:\/\/ or https:\/\/ address with a host/),
+    ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Create" })).toBeDisabled()
   })
 
   it("marks extraction, classification and reasoning as required; the rest optional", () => {

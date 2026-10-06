@@ -152,6 +152,9 @@ export interface FeatureFlags {
   // rule, and which of those have actually cleared one (T1.57 ruling 3).
   measurable_flags: string[]
   measured_flags: string[]
+  /** The range the PUT accepts for each numeric flag, read off the server's
+   *  own update schema. Optional so an older payload still reads. */
+  numeric_bounds?: Record<string, { min: number; max: number }>
 }
 
 export function useFeatureFlags(enabled: boolean = true) {

@@ -34,6 +34,7 @@ import {
   type GitAccount,
 } from "@/hooks/api/use-git-accounts-api"
 import { useGitAccountsData } from "../use-git-accounts-binding"
+import { keepDialogOpenOnListEscape } from "@/lib/portal-overlays"
 
 interface Props {
   /** null opens the add case; an account opens the edit case. */
@@ -135,7 +136,7 @@ export function GitAccountDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent onEscapeKeyDown={keepDialogOpenOnListEscape}>
         <DialogHeader>
           <DialogTitle>
             {isEdit ? "Edit account" : "Add git account"}

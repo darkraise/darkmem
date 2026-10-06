@@ -42,6 +42,7 @@ RESEARCH_SOURCE = "research"
 __all__ = [
     "AUTO_RESEARCH_CONFIG_KEY",
     "AUTO_RESEARCH_DEFAULTS",
+    "MAX_CONTENT_CHARS_CEILING",
     "MAX_FINDINGS_CEILING",
     "RESEARCH_SOURCE",
     "ResearchBudget",
@@ -74,6 +75,17 @@ MAX_FINDINGS_CEILING: int = next(
     for meta in MemoryBatchCreate.model_fields["entries"].metadata
     if getattr(meta, "max_length", None) is not None
 )
+
+
+# One finding becomes one memory. Past this a finding is a document's worth of
+# text, which belongs on the document door, and a budget of a billion
+# characters only reads as "no budget".
+MAX_CONTENT_CHARS_CEILING: int = 100_000
+
+BUDGET_CEILINGS: dict[str, int] = {
+    "max_findings_per_run": MAX_FINDINGS_CEILING,
+    "max_content_chars": MAX_CONTENT_CHARS_CEILING,
+}
 
 
 @dataclass(frozen=True)
@@ -117,13 +129,23 @@ async def load_budget(session: AsyncSession) -> ResearchBudget:
         )
         enabled = AUTO_RESEARCH_DEFAULTS["enabled"]
 
+    max_chars = _positive_int(
+        stored.get("max_content_chars"),
+        int(AUTO_RESEARCH_DEFAULTS["max_content_chars"]),
+    )
+    if max_chars > MAX_CONTENT_CHARS_CEILING:
+        # A row written before the writer refused this; the writer now
+        # refuses it, so only an older row reaches here.
+        logger.warning(
+            "%s.max_content_chars=%d exceeds the ceiling %d; clamping",
+            AUTO_RESEARCH_CONFIG_KEY, max_chars, MAX_CONTENT_CHARS_CEILING,
+        )
+        max_chars = MAX_CONTENT_CHARS_CEILING
+
     return ResearchBudget(
         enabled=bool(enabled),
         max_findings_per_run=max_findings,
-        max_content_chars=_positive_int(
-            stored.get("max_content_chars"),
-            int(AUTO_RESEARCH_DEFAULTS["max_content_chars"]),
-        ),
+        max_content_chars=max_chars,
     )
 
 
@@ -138,7 +160,7 @@ async def write_auto_research_config(
     is a different thing from arming it by default, and the default stays
     `False`.
 
-    Three rules, and the first is the one with teeth:
+    Four rules, and the first is the one with teeth:
 
     - **`enabled` fails closed on every non-boolean.** `bool("false")` is
       `True`, and `{"enabled": "false"}` is the most natural malformed shape an
@@ -149,6 +171,8 @@ async def write_auto_research_config(
     - **Unknown keys are refused**, not ignored. An operator who misspells
       `max_findings_per_run` must be told, or they will believe they set a
       budget they did not.
+    - **A budget over its ceiling is refused**, not stored for the reader
+      to clamp: the operator learns the range when they save.
     - **The write is a merge over the stored row**, so a partial update does
       not silently reset the fields it omits to their defaults.
 
@@ -170,12 +194,20 @@ async def write_auto_research_config(
             "open has no safe direction"
         )
 
-    for key in ("max_findings_per_run", "max_content_chars"):
+    for key, ceiling in BUDGET_CEILINGS.items():
         if key in patch:
             value = patch[key]
             if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
                 raise ValueError(
                     f"auto_research.{key} must be a positive integer, got {value!r}"
+                )
+            # Refused rather than stored and clamped on read: a save that
+            # answers 200 and then reads back a different number told the
+            # operator nothing.
+            if value > ceiling:
+                raise ValueError(
+                    f"auto_research.{key} must be between 1 and {ceiling:,}, "
+                    f"got {value:,}"
                 )
 
     row = (await session.execute(

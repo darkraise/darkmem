@@ -21,6 +21,7 @@ import { cn } from "darkraise-ui/lib"
 import { Pencil, Plug, ShieldCheck, Trash2 } from "lucide-react"
 import { HelpTip, IconButton } from "@/components/darkmem"
 import { apiKindLabel } from "@/features/setup/api-kinds"
+import { describeProbeError } from "@/features/setup/probe-error"
 import type { LlmLayout } from "@/features/settings/use-llm-layout"
 import {
   useDeleteLlmProvider,
@@ -35,7 +36,11 @@ function ProbeResult({
 }) {
   if (!result) return null
   if (result.error) {
-    return <span className="text-destructive text-sm">{result.error}</span>
+    return (
+      <span className="text-destructive text-sm">
+        {describeProbeError(result.error)}
+      </span>
+    )
   }
   return (
     <span className="text-muted-foreground text-sm">

@@ -126,6 +126,29 @@ it("does not select an inaccessible default folder", async () => {
   expect(useSetupWizardStore.getState().repos.basePath).toBe("")
 })
 
+it("shows a missing default folder once, in the browser's words", async () => {
+  const message =
+    "That folder does not exist on the server: /app/data/repositories"
+  vi.mocked(fetch).mockImplementation((async (url: string) => {
+    if (url.includes("/roots"))
+      return { ok: true, json: async () => ({ roots: [] }) }
+    return { ok: false, status: 422, json: async () => ({ detail: message }) }
+  }) as unknown as typeof fetch)
+  render(<StepRepoPath />, { wrapper })
+  expect(await screen.findByText(message)).toBeInTheDocument()
+  await waitFor(() =>
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("detect_repos=true"),
+      expect.anything(),
+    ),
+  )
+  // Let the default scan's rejection land before counting.
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  await waitFor(() => expect(screen.getAllByRole("alert")).toHaveLength(1))
+  expect(screen.getAllByText(new RegExp(message))).toHaveLength(1)
+  expect(screen.queryByText(/Could not select the default folder/)).toBeNull()
+})
+
 it("preserves a previously selected folder", async () => {
   useSetupWizardStore.getState().setReposBasePath("/repos")
   render(<StepRepoPath />, { wrapper })

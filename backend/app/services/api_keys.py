@@ -31,7 +31,9 @@ invalidate a credential.
 ``last_used_at`` is bumped by :func:`mark_key_used`, which the scope
 dependency calls after a credential authenticates — **not** by the
 authentication routine itself, which also runs for calls that then fail a
-scope check. This module previously deferred the bump to "T4.02's per-call
+scope check. The MCP door also marks every other authenticated request
+(``tools/list``, ``initialize``), so the bump is throttled to once per
+:data:`MARK_USED_INTERVAL` per key. This module previously deferred the bump to "T4.02's per-call
 stamping"; T4.02 closed without it, leaving the column with zero writers while
 the settings card rendered "never used" as a verdict, which is how an
 operator would have failed to notice a leaked key in daily use (E4 epic
@@ -47,10 +49,10 @@ import logging
 import secrets
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import bcrypt
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -78,6 +80,15 @@ _ALPHABET_SET = frozenset(_ALPHABET)
 # distinguishing a real key_id from an invented one by timing alone.
 _ABSENT_SENTINEL = b"darkmem-api-key-absent-sentinel"
 _ABSENT_SENTINEL_HASH = b"$2b$12$hUp/eRJucU6TA5QD2wH7Au8gwTNkdt3pPQUPhvJfdEg4hjCCj0glu"
+
+# A key's ``last_used_at`` moves at most once per this window. It is a
+# staleness signal read in minutes and days, and an agent's MCP session sends
+# several requests a second, so an unthrottled bump would be a write per call.
+MARK_USED_INTERVAL = timedelta(seconds=60)
+# Per-process memo of the last bump, so a call inside the window costs no
+# database round trip at all. The UPDATE's own predicate repeats the window,
+# which keeps the throttle honest across a restart.
+_last_marked: dict[uuid.UUID, datetime] = {}
 
 
 @dataclass(frozen=True)
@@ -291,6 +302,9 @@ async def mark_key_used(
     turn an authenticated request into a 500. The `events` row written beside
     it is the authoritative record; this column is the operator's index into
     it.
+
+    Throttled: a key bumped less than :data:`MARK_USED_INTERVAL` ago is left
+    alone, without opening a session when this process made that bump.
     """
     if settings.read_only:
         # Increment 7 group B: the bump would be refused by the viewer role on
@@ -298,18 +312,32 @@ async def mark_key_used(
         # read-only worker's log about the worker rather than about this.
         return
 
+    stamp = now or datetime.now(timezone.utc)
+    previous = _last_marked.get(api_key_id)
+    if previous is not None and stamp - previous < MARK_USED_INTERVAL:
+        return
+
     from app.database import async_session_factory  # noqa: PLC0415
 
     try:
         async with async_session_factory() as session:
-            await session.execute(
+            result = await session.execute(
                 update(ApiKey)
                 .where(ApiKey.id == api_key_id)
-                .values(last_used_at=now or datetime.now(timezone.utc))
+                .where(or_(
+                    ApiKey.last_used_at.is_(None),
+                    ApiKey.last_used_at < stamp - MARK_USED_INTERVAL,
+                ))
+                .values(last_used_at=stamp)
             )
             await session.commit()
     except Exception:
         logger.warning("api_keys: could not bump last_used_at for %s", api_key_id, exc_info=True)
+        return
+    # Only a bump this process made starts its window: a row the predicate
+    # skipped was stamped at a time this process does not know.
+    if result.rowcount == 1:
+        _last_marked[api_key_id] = stamp
 
 
 async def revoke_key(

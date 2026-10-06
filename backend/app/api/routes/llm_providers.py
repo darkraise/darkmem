@@ -29,7 +29,7 @@ from app.config import LLMApiKind
 from app.database import get_session
 from app.models.llm_config import LLMPurposeConfigRow
 from app.models.llm_provider import LLMProviderRow
-from app.schemas.config import LLMProviderModelsResponse
+from app.schemas.config import LLMProviderModelsResponse, ProviderBaseUrl, ProviderName
 from app.services import llm_quirks
 from app.services.config import VERIFICATION_PURPOSE
 from app.services.llm_provider_guard import (
@@ -59,9 +59,9 @@ class ProviderListResponse(BaseModel):
 
 
 class ProviderCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=64)
+    name: ProviderName
     api_kind: LLMApiKind
-    base_url: str
+    base_url: ProviderBaseUrl
     api_key: str | None = None
 
 
@@ -78,7 +78,7 @@ class ProviderUpdate(BaseModel):
     """
 
     api_kind: LLMApiKind
-    base_url: str
+    base_url: ProviderBaseUrl
     api_key: str | None = None
 
 

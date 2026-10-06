@@ -27,6 +27,9 @@ export interface DemoRankArm {
   coded_default: number
   source: FlagSource
   step?: number
+  /** The range the server accepts, from `numeric_bounds`; absent in demo. */
+  min?: number
+  max?: number
   /** Task id that turns this arm on; absent = already live (T1.57 ruling 1,
    *  read from the backend's own `RankArm.activation`, never guessed here). */
   activatesWith?: string

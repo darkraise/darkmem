@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it } from "vitest"
 import { Accordion } from "darkraise-ui/components/accordion"
@@ -23,14 +23,64 @@ describe("HelpTip", () => {
   })
 })
 
+describe("HelpTip on touch", () => {
+  // jsdom has no PointerEvent; a MouseEvent carrying pointerType is what the
+  // tooltip's handlers read.
+  const tap = (target: Element) => {
+    const event = new MouseEvent("pointerdown", {
+      bubbles: true,
+      cancelable: true,
+    })
+    Object.defineProperty(event, "pointerType", { value: "touch" })
+    act(() => {
+      target.dispatchEvent(event)
+    })
+  }
+
+  it("opens on a tap and closes on a second tap or a tap elsewhere", async () => {
+    render(
+      <>
+        <HelpTip label="About w_conf">confidence weighting rule</HelpTip>
+        <p>elsewhere</p>
+      </>,
+    )
+    const trigger = screen.getByRole("button", { name: "About w_conf" })
+
+    tap(trigger)
+    expect(
+      await screen.findByText("confidence weighting rule"),
+    ).toBeInTheDocument()
+
+    tap(trigger)
+    // Closed is the trigger's state; the content lingers for its exit
+    // animation, which jsdom never finishes.
+    await waitFor(() => expect(trigger).toHaveAttribute("data-state", "closed"))
+
+    tap(trigger)
+    await waitFor(() => expect(trigger).toHaveAttribute("data-state", "open"))
+    tap(screen.getByText("elsewhere"))
+    // Closed is the trigger's state; the content lingers for its exit
+    // animation, which jsdom never finishes.
+    await waitFor(() => expect(trigger).toHaveAttribute("data-state", "closed"))
+  })
+})
+
 describe("DetailSection", () => {
   it("collapses by default and discloses on demand; meta stays visible", () => {
     render(
       <Accordion type="multiple" defaultValue={["open-one"]}>
-        <DetailSection value="open-one" title="Sources" meta="3 distinct origins">
+        <DetailSection
+          value="open-one"
+          title="Sources"
+          meta="3 distinct origins"
+        >
           <span>source rows</span>
         </DetailSection>
-        <DetailSection value="closed-one" title="Verification ladder" meta="4 events">
+        <DetailSection
+          value="closed-one"
+          title="Verification ladder"
+          meta="4 events"
+        >
           <span>ladder rows</span>
         </DetailSection>
       </Accordion>,
@@ -40,9 +90,7 @@ describe("DetailSection", () => {
     expect(screen.queryByText("ladder rows")).not.toBeInTheDocument()
     // Collapsed rows still show their honest summary meta.
     expect(screen.getByText("4 events")).toBeInTheDocument()
-    fireEvent.click(
-      screen.getByRole("button", { name: /Verification ladder/ }),
-    )
+    fireEvent.click(screen.getByRole("button", { name: /Verification ladder/ }))
     expect(screen.getByText("ladder rows")).toBeInTheDocument()
   })
 })

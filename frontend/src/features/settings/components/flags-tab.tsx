@@ -40,6 +40,7 @@ import { HelpTip, IconButton, NumberField } from "@/components/darkmem"
 import { armStatus } from "@/demo/settings"
 import type {
   DemoBehavioralFlag,
+  DemoGraphFlag,
   DemoLadderParam,
   DemoRankArm,
   DemoTunable,
@@ -212,6 +213,18 @@ function ValueTag({ value, unit }: { value: number; unit?: string }) {
   )
 }
 
+/** The right-hand end of a setting row: marker, value and state pill as one
+ *  unit. On a narrow screen the row wraps, and these must wrap together:
+ *  as separate flex items a value stayed on the first line while its pill
+ *  dropped to the next, differently from row to row. */
+function RowValue({ children }: { children: ReactNode }) {
+  return (
+    <span className="ml-auto flex shrink-0 items-center gap-2.5">
+      {children}
+    </span>
+  )
+}
+
 /** A quiet marker on a value the operator changed; a default carries none. */
 function SourceTag({ source }: { source: DemoRankArm["source"] }) {
   if (source === "default") return null
@@ -283,6 +296,29 @@ function ArmInput({
   )
 }
 
+/** Why a draft arm value would be refused, or null. The bounds are the
+ *  server's (`numeric_bounds`), so this refuses exactly what the PUT would
+ *  answer 422 to, before the dialog closes on a save that cannot land. */
+function armRangeError(arm: DemoRankArm, value: number): string | null {
+  if (arm.min === undefined || arm.max === undefined) return null
+  if (value < arm.min || value > arm.max)
+    return `Enter a value from ${arm.min} to ${arm.max}.`
+  return null
+}
+
+/** The allowed range under an arm being edited, turning into the error when
+ *  the draft leaves it. */
+function ArmRange({ arm, error }: { arm: DemoRankArm; error: string | null }) {
+  if (error)
+    return <p className="text-destructive basis-full text-sm">{error}</p>
+  if (arm.min === undefined || arm.max === undefined) return null
+  return (
+    <p className="text-muted-foreground basis-full text-right text-xs">
+      {arm.min} to {arm.max}
+    </p>
+  )
+}
+
 /** One ranking arm.
  *
  *  The same row renders at rest and under edit, so the two cannot disagree
@@ -302,18 +338,23 @@ function ArmRow({
 }) {
   const editing = draft !== undefined && onChange !== undefined
   const shown = editing ? draft : arm.value
+  const error = editing ? armRangeError(arm, draft) : null
   return (
     <div className="border-inset bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
       <SettingName name={arm.key} />
       <HelpTip label={`About ${arm.key}`}>{help ?? arm.desc}</HelpTip>
-      <span className="flex-1" />
-      <SourceTag source={arm.source} />
-      {editing ? (
-        <ArmInput arm={arm} value={draft} onChange={onChange} />
-      ) : (
-        <ValueTag value={arm.value} />
-      )}
-      <ArmPill value={shown} />
+      <RowValue>
+        <SourceTag source={arm.source} />
+        {editing ? (
+          <ArmInput arm={arm} value={draft} onChange={onChange} />
+        ) : (
+          <ValueTag value={arm.value} />
+        )}
+        {/* No ACTIVE pill for a value the server will refuse: it would claim
+            an effect the save cannot have. */}
+        {!error && <ArmPill value={shown} />}
+      </RowValue>
+      {editing && <ArmRange arm={arm} error={error} />}
     </div>
   )
 }
@@ -415,17 +456,18 @@ function BehavioralFlagRow({
     <div className="border-inset bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
       <SettingName name={flag.key} />
       <HelpTip label={`About ${flag.key}`}>{flag.desc}</HelpTip>
-      <span className="flex-1" />
-      <SourceTag source={flag.source} />
-      {editing ? (
-        <Switch
-          checked={draft}
-          onCheckedChange={onChange}
-          aria-label={flag.key}
-        />
-      ) : (
-        <BoolTag on={flag.enabled} />
-      )}
+      <RowValue>
+        <SourceTag source={flag.source} />
+        {editing ? (
+          <Switch
+            checked={draft}
+            onCheckedChange={onChange}
+            aria-label={flag.key}
+          />
+        ) : (
+          <BoolTag on={flag.enabled} />
+        )}
+      </RowValue>
     </div>
   )
 }
@@ -451,13 +493,14 @@ function TunableRow({
         {tunable.desc}. Range {tunable.min}–{tunable.max}; default{" "}
         {tunable.coded_default}.
       </HelpTip>
-      <span className="flex-1" />
-      <SourceTag source={tunable.source} />
-      {editing ? (
-        <TunableInput tunable={tunable} value={draft} onChange={onChange} />
-      ) : (
-        <ValueTag value={tunable.value} unit={tunable.unit} />
-      )}
+      <RowValue>
+        <SourceTag source={tunable.source} />
+        {editing ? (
+          <TunableInput tunable={tunable} value={draft} onChange={onChange} />
+        ) : (
+          <ValueTag value={tunable.value} unit={tunable.unit} />
+        )}
+      </RowValue>
     </div>
   )
 }
@@ -646,15 +689,16 @@ function CorroborationSection({ binding }: { binding: FlagsTabBinding }) {
                   {" Default "}
                   {param.floor}.
                 </HelpTip>
-                <span className="flex-1" />
-                {param.committed !== null &&
-                  param.committed !== param.effective && (
-                    <span className="text-muted-foreground font-mono text-xs whitespace-nowrap">
-                      asked for {param.committed}
-                    </span>
-                  )}
-                <ValueTag value={param.effective} />
-                {param.state === "clamped" && <ClampedPill param={param} />}
+                <RowValue>
+                  {param.committed !== null &&
+                    param.committed !== param.effective && (
+                      <span className="text-muted-foreground font-mono text-xs whitespace-nowrap">
+                        asked for {param.committed}
+                      </span>
+                    )}
+                  <ValueTag value={param.effective} />
+                  {param.state === "clamped" && <ClampedPill param={param} />}
+                </RowValue>
               </div>
               {param.state === "clamped" && param.note && (
                 <p className="text-warning-text pl-0.5 text-sm">{param.note}</p>
@@ -1058,12 +1102,16 @@ function FlagsSectionDialog({
   const dirty = Object.keys(committed).filter((k) => draft[k] !== committed[k])
   const set = (key: string, value: number | boolean) =>
     setDraft((d) => ({ ...d, [key]: value }))
+  const armsInRange = (arms ?? []).every(
+    (arm) => armRangeError(arm, draft[arm.key] as number) === null,
+  )
 
   return (
     <SectionDialog
       title={title}
       description={description}
       dirty={dirty}
+      canSave={armsInRange}
       saving={binding.isSaving(section)}
       onOpenChange={onOpenChange}
       onSave={() => {
@@ -1123,10 +1171,16 @@ function GraphDialog({
   const dirty = Object.keys(committed).filter((k) => draft[k] !== committed[k])
   const set = (key: string, value: number | boolean) =>
     setDraft((d) => ({ ...d, [key]: value }))
+  const weightError = (flag: DemoGraphFlag) =>
+    flag.paired_arm
+      ? armRangeError(flag.paired_arm, draft[flag.paired_arm.key] as number)
+      : null
+  const weightsInRange = binding.graphFlags.every((f) => !weightError(f))
 
   return (
     <SectionDialog
       title="graph augmentation"
+      canSave={weightsInRange}
       description="Each channel adds results from the entity graph; its weight sets how much they count in the ranking."
       dirty={dirty}
       saving={binding.isSaving(SECTIONS.graph)}
@@ -1160,13 +1214,17 @@ function GraphDialog({
               <HelpTip label={`About ${flag.paired_arm.key}`}>
                 {flag.paired_arm.desc}
               </HelpTip>
-              <span className="flex-1" />
-              <ArmInput
-                arm={flag.paired_arm}
-                value={draft[flag.paired_arm.key] as number}
-                onChange={(v) => set(flag.paired_arm!.key, v)}
-              />
-              <ArmPill value={draft[flag.paired_arm.key] as number} />
+              <RowValue>
+                <ArmInput
+                  arm={flag.paired_arm}
+                  value={draft[flag.paired_arm.key] as number}
+                  onChange={(v) => set(flag.paired_arm!.key, v)}
+                />
+                {!weightError(flag) && (
+                  <ArmPill value={draft[flag.paired_arm.key] as number} />
+                )}
+              </RowValue>
+              <ArmRange arm={flag.paired_arm} error={weightError(flag)} />
             </div>
           )}
         </div>
@@ -1253,9 +1311,10 @@ export function FlagsTab() {
                 <div className="flex flex-wrap items-center gap-2.5">
                   <SettingName name={flag.key} />
                   <HelpTip label={`About ${flag.key}`}>{flag.desc}</HelpTip>
-                  <span className="flex-1" />
-                  <SourceTag source={flag.source} />
-                  <BoolTag on={flag.enabled} />
+                  <RowValue>
+                    <SourceTag source={flag.source} />
+                    <BoolTag on={flag.enabled} />
+                  </RowValue>
                 </div>
                 {flag.paired_arm && (
                   <div className="flex flex-wrap items-center gap-2 pl-0.5">
@@ -1263,10 +1322,11 @@ export function FlagsTab() {
                     <HelpTip label={`About ${flag.paired_arm.key}`}>
                       {flag.paired_arm.desc}
                     </HelpTip>
-                    <span className="flex-1" />
-                    <SourceTag source={flag.paired_arm.source} />
-                    <ValueTag value={flag.paired_arm.value} />
-                    <ArmPill value={flag.paired_arm.value} />
+                    <RowValue>
+                      <SourceTag source={flag.paired_arm.source} />
+                      <ValueTag value={flag.paired_arm.value} />
+                      <ArmPill value={flag.paired_arm.value} />
+                    </RowValue>
                   </div>
                 )}
               </div>

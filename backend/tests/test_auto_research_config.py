@@ -17,6 +17,8 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import text
 
+from app.models.config import Config
+
 from app.services.research_config import (
     AUTO_RESEARCH_CONFIG_KEY,
     AUTO_RESEARCH_DEFAULTS,
@@ -106,15 +108,36 @@ async def test_a_partial_update_does_not_reset_the_other_fields(session):
 
 
 async def test_the_writer_returns_what_the_reader_resolves(session):
-    """Not an echo of the request: the clamps and the fail-closed parse live on
-    the read path, so an echo could disagree with what a run will do."""
+    """Not an echo of the request: the fail-closed parse lives on the read
+    path, so an echo could disagree with what a run will do."""
     written = await write_auto_research_config(
-        session, {"enabled": True, "max_findings_per_run": 10_000},
+        session, {"enabled": True, "max_findings_per_run": 10},
     )
     read = await load_budget(session)
 
     assert written == read
-    assert written.max_findings_per_run < 10_000, "the reader's clamp must show"
+
+
+@pytest.mark.parametrize("key, ceiling", [
+    ("max_findings_per_run", 100),
+    ("max_content_chars", 100_000),
+])
+async def test_a_budget_over_its_ceiling_is_refused_not_clamped(session, key, ceiling):
+    """999,999,999 findings used to answer 200 and read back as 100: a save
+    that silently became another number. It is refused, naming the range."""
+    with pytest.raises(ValueError) as raised:
+        await write_auto_research_config(session, {key: ceiling + 1})
+    assert f"between 1 and {ceiling:,}" in str(raised.value)
+    assert await _stored(session) is None
+
+    at_the_bound = await write_auto_research_config(session, {key: ceiling})
+    assert getattr(at_the_bound, key) == ceiling
+
+
+async def test_an_older_row_over_the_content_ceiling_reads_clamped(session):
+    session.add(Config(key="auto_research", value={"max_content_chars": 999_999_999}))
+    await session.flush()
+    assert (await load_budget(session)).max_content_chars == 100_000
 
 
 # ── exactly one writer ───────────────────────────────────────────────

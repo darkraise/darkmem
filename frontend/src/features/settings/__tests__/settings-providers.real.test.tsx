@@ -248,6 +248,42 @@ describe("ProvidersPanel (DEMO off — read-only rendering)", () => {
     )
   })
 
+  it("drops a Test connection result once the provider is saved", async () => {
+    let current: { providers: unknown[] } = PROVIDERS
+    vi.mocked(apiFetch).mockImplementation(
+      (path: string, init?: RequestInit) => {
+        if (path.endsWith("/probe-models"))
+          return Promise.resolve({
+            models: ["a", "b", "c", "d"],
+            fetched_via: "openai",
+            error: null,
+          })
+        if (init?.method === "PUT") {
+          const moved = {
+            ...PROVIDERS.providers[0],
+            base_url: "http://moved:11434/v1",
+          }
+          current = { providers: [moved, PROVIDERS.providers[1]] }
+          return Promise.resolve({ ...moved, no_embedding_purposes: [] })
+        }
+        return Promise.resolve(current)
+      },
+    )
+    render(<ProvidersPanel />, { wrapper })
+    fireEvent.click(
+      await screen.findByLabelText("Test connection ollama-local"),
+    )
+    expect(await screen.findByText("4 models")).toBeInTheDocument()
+
+    const baseUrl = await openEditor("ollama-local")
+    fireEvent.change(baseUrl, { target: { value: "http://moved:11434/v1" } })
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+
+    await waitFor(() =>
+      expect(screen.queryByText("4 models")).not.toBeInTheDocument(),
+    )
+  })
+
   it("switches layout and persists the choice per panel", async () => {
     vi.mocked(apiFetch).mockResolvedValue(PROVIDERS)
     const { unmount } = render(<ProvidersPanel />, { wrapper })
@@ -308,6 +344,51 @@ describe("ProvidersPanel (DEMO off — read-only rendering)", () => {
         api_key: null,
       })
     })
+  })
+
+  it("refuses a name and a base_url the server would refuse, before sending", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(PROVIDERS)
+    render(<ProvidersPanel />, { wrapper })
+    await screen.findByLabelText("Edit ollama-local")
+
+    fireEvent.click(screen.getByRole("button", { name: /Add provider/ }))
+    fireEvent.change(await screen.findByLabelText("new provider name"), {
+      target: { value: "team/openai" },
+    })
+    fireEvent.change(screen.getByLabelText("new provider base_url"), {
+      target: { value: "not a url" },
+    })
+
+    expect(
+      screen.getByText(
+        "Use only letters, digits, dot, dash and underscore, starting with a letter or digit.",
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "Enter an http:// or https:// address with a host, for example https://api.openai.com/v1.",
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Create" })).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText("new provider name"), {
+      target: { value: "team-openai" },
+    })
+    fireEvent.change(screen.getByLabelText("new provider base_url"), {
+      target: { value: "https://api.openai.com/v1" },
+    })
+    expect(screen.getByRole("button", { name: "Create" })).toBeEnabled()
+  })
+
+  it("refuses saving an edit that breaks the base_url", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(PROVIDERS)
+    render(<ProvidersPanel />, { wrapper })
+    const baseUrl = await openEditor("ollama-local")
+    fireEvent.change(baseUrl, { target: { value: "localhost:11434" } })
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled()
+    expect(
+      vi.mocked(apiFetch).mock.calls.some(([, init]) => init?.method === "PUT"),
+    ).toBe(false)
   })
 
   it("shows no editable connection field until the editor is opened", async () => {

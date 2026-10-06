@@ -203,9 +203,13 @@ class ToolScopeMiddleware:
     before validation; the transport has already refused a body whose name
     disagrees with ``Mcp-Name``.
 
-    ``mark_key_used`` fires here, after the scope check and only on a pass,
-    matching REST's ``require_scope``: a call that authenticates and then fails
-    the scope gate did not use the key for anything.
+    ``mark_key_used`` fires here for every authenticated request except a
+    ``tools/call`` that fails its scope check, matching REST's
+    ``require_scope``: a call that authenticates and then fails the scope gate
+    did not use the key for anything. ``tools/list`` and ``initialize`` did:
+    an agent that only lists tools still holds a working key, and marking
+    nothing for it left a key in daily use reading "never used".
+    ``mark_key_used`` throttles the write per key.
     """
 
     async def __call__(
@@ -214,6 +218,9 @@ class ToolScopeMiddleware:
         call_next: CallNext,
     ) -> HandlerResult:
         if ctx.method != "tools/call":
+            token = get_access_token()
+            if token is not None:
+                await _mark_used(token)
             return await call_next(ctx)
 
         name = _tool_name(ctx.params)

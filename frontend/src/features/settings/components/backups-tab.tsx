@@ -48,6 +48,7 @@ import {
   useBackupsTabBinding,
   type BackupOutcome,
 } from "@/features/settings/use-backups-tab-binding"
+import { keepDialogOpenOnListEscape } from "@/lib/portal-overlays"
 
 /**
  * The `backup_destinations` operator surface (increment 6, spec §9.3).
@@ -220,7 +221,10 @@ export function BackupsTab() {
         open={editing !== null}
         onOpenChange={(open) => !open && closeForm()}
       >
-        <DialogContent className="max-h-[90vh] overflow-y-auto">
+        <DialogContent
+          onEscapeKeyDown={keepDialogOpenOnListEscape}
+          className="max-h-[90vh] overflow-y-auto"
+        >
           <DialogTitle>
             {adding ? "Add destination" : "Edit destination"}
           </DialogTitle>

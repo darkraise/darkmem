@@ -1,6 +1,53 @@
-from pydantic import BaseModel, Field
+import re
+from typing import Annotated
+from urllib.parse import urlsplit
+
+from pydantic import AfterValidator, BaseModel, Field
+from pydantic_core import PydanticCustomError
 
 from app.config import ClassifierKind, LLMApiKind
+
+# A provider's name is the last segment of its own REST path
+# (`/config/llm-providers/{name}`), so a "/" in it made a row no route could
+# ever reach again to edit or delete. Starting with a letter or digit keeps
+# "." and ".." out, which a path would normalise away.
+PROVIDER_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+PROVIDER_NAME_MAX_LENGTH = 64
+
+
+def _provider_name(value: str) -> str:
+    if not PROVIDER_NAME_PATTERN.fullmatch(value):
+        raise PydanticCustomError(
+            "provider_name",
+            "Use only letters, digits, dot, dash and underscore, starting with "
+            "a letter or digit.",
+        )
+    return value
+
+
+def _provider_base_url(value: str) -> str:
+    """Refuse what no vendor call could reach. Write-side only: rows stored
+    before this check still load, and only saving one asks for a fix."""
+    parts = urlsplit(value)
+    if (
+        parts.scheme not in ("http", "https")
+        or not parts.hostname
+        or any(ch.isspace() for ch in value)
+    ):
+        raise PydanticCustomError(
+            "provider_base_url",
+            "Enter an http:// or https:// address with a host, for example "
+            "https://api.openai.com/v1.",
+        )
+    return value
+
+
+ProviderName = Annotated[
+    str,
+    Field(min_length=1, max_length=PROVIDER_NAME_MAX_LENGTH),
+    AfterValidator(_provider_name),
+]
+ProviderBaseUrl = Annotated[str, AfterValidator(_provider_base_url)]
 
 
 class LLMPurposeConfigSchema(BaseModel):

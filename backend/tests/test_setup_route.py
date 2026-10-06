@@ -199,6 +199,18 @@ async def test_fs_list_marks_git_directory(client, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_fs_list_names_a_missing_folder_in_plain_words(client, tmp_path):
+    """The wizard shows this sentence as written, so it names the folder,
+    not the repository form's `local_path` field."""
+    missing = tmp_path / "repositories"
+    response = await client.get("/api/v1/setup/fs/list", params={"path": str(missing)})
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        f"That folder does not exist on the server: {missing}"
+    )
+
+
+@pytest.mark.asyncio
 async def test_fs_list_detect_repos_implies_must_not_be_repo(client, tmp_path):
     repo = tmp_path / "myrepo"
     repo.mkdir()
@@ -338,6 +350,30 @@ async def test_setup_accepts_a_provider_list(client, session):
         "SELECT provider_name FROM llm_purpose_configs WHERE purpose='extraction'"
     ))).scalar_one()
     assert row == "my-ds"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider, field", [
+    ({"name": "my/ds", "base_url": "https://api.deepseek.com/v1"}, "name"),
+    ({"name": "my-ds", "base_url": "api.deepseek.com"}, "base_url"),
+])
+async def test_setup_refuses_unusable_provider_fields(client, session, provider, field):
+    """The wizard writes the same rows the settings door does, under the same
+    rules: a provider it created must stay editable there."""
+    resp = await client.post("/api/v1/setup", json={
+        "password": "correct-horse-battery-staple",
+        "llm": {
+            "providers": [{"api_kind": "deepseek", "api_key": "sk-x", **provider}],
+            "purposes": {
+                "extraction": {"provider_name": provider["name"], "model": "m"},
+            },
+        },
+    })
+    assert resp.status_code == 422
+    assert field in resp.json()["detail"]
+    assert (await session.execute(text(
+        "SELECT count(*) FROM config WHERE key = 'admin_password_hash'"
+    ))).scalar_one() == 0
 
 
 @pytest.mark.asyncio

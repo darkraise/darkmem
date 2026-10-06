@@ -1,5 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { act, renderHook, waitFor } from "@testing-library/react"
+import {
+  act,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react"
 import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -12,6 +20,7 @@ vi.mock("darkraise-ui/components/sonner", () => ({
 import { apiFetch } from "@/lib/api"
 import { toast } from "darkraise-ui/components/sonner"
 import { useFlagsTabBinding } from "../use-flags-tab-binding"
+import { FlagsTab } from "../components/flags-tab"
 
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -485,5 +494,61 @@ describe("useFlagsTabBinding (DEMO off — real /config/feature-flags)", () => {
     expect(body).toEqual({
       patterns: ["github.com/darkraise/*", "*.forge.internal.example"],
     })
+  })
+})
+
+describe("FlagsTab — the ranking dialog enforces the server's ranges", () => {
+  afterEach(() => vi.clearAllMocks())
+
+  it("shows each arm's range, and refuses a value outside it before saving", async () => {
+    const bounds = { min: 0, max: 5 }
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path === "/config/feature-flags")
+        return Promise.resolve({
+          ...FEATURE_FLAGS_FIXTURE,
+          numeric_bounds: {
+            confidence_rank_gamma: bounds,
+            w_importance: bounds,
+            w_heat: bounds,
+            w_recency: bounds,
+            w_context_boost: bounds,
+          },
+        })
+      if (path === "/config/verification-ladder")
+        return Promise.resolve(LADDER_FIXTURE)
+      if (path === "/config/classification-areas")
+        return Promise.resolve(AREAS_FIXTURE)
+      if (path === "/config/repo-allowlist")
+        return Promise.resolve({ patterns: [] })
+      return Promise.resolve({ jobs: [] })
+    })
+    render(<FlagsTab />, { wrapper })
+    const heading = await waitFor(() => {
+      const h = screen
+        .getAllByRole("heading", { level: 3 })
+        .find((el) => el.textContent === "ranking arms")
+      if (!h) throw new Error("no ranking arms card yet")
+      return h
+    })
+    fireEvent.click(
+      within(heading.closest(".dr-card-header") as HTMLElement).getByRole(
+        "button",
+        { name: /Edit/ },
+      ),
+    )
+    const dialog = await screen.findByRole("dialog")
+    expect(within(dialog).getAllByText("0 to 5").length).toBe(4)
+
+    const field = within(dialog).getByLabelText("confidence_rank_gamma")
+    fireEvent.change(field, { target: { value: "10" } })
+    fireEvent.blur(field)
+
+    expect(
+      await within(dialog).findByText("Enter a value from 0 to 5."),
+    ).toBeInTheDocument()
+    expect(within(dialog).getByRole("button", { name: "Save" })).toBeDisabled()
+    // The row no longer claims an effect the save cannot have.
+    expect(within(dialog).getAllByText("inactive").length).toBe(3)
+    expect(within(dialog).queryByText("active")).not.toBeInTheDocument()
   })
 })

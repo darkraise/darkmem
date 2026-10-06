@@ -64,3 +64,20 @@ describe("missingRequiredModels", () => {
     expect(missingRequiredModels(draft({ skipped: true }))).toEqual([])
   })
 })
+
+describe("isStepLLMValid", () => {
+  it("holds the step while a provider's base URL is one finalize would refuse", async () => {
+    const { isStepLLMValid } = await import("../components/StepLLM")
+    const d = draft()
+    for (const p of ["extraction", "classification", "reasoning"] as const) {
+      d.perPurpose[p] = {
+        provider_name: "user-openai",
+        model: "gpt-4o-mini",
+        reasoning: false,
+      }
+    }
+    expect(isStepLLMValid(d)).toBe(true)
+    d.providers = [{ ...provider, base_url: "api.openai.com/v1" }]
+    expect(isStepLLMValid(d)).toBe(false)
+  })
+})

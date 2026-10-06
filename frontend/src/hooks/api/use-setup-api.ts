@@ -123,13 +123,28 @@ async function rawFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   return response.json() as Promise<T>
 }
 
-export function useProbeModels() {
-  return useMutation<ProbeModelsResponse, Error, ProbeModelsRequest>({
-    mutationFn: (body) =>
+// The wizard's model list for one provider's connection details, as a query
+// keyed on them: every purpose row and the provider's own row read one probe
+// and one answer, so a failure is reported once, on the provider, rather than
+// once per purpose that picked it.
+export function useSetupProviderModels(
+  provider: ProbeModelsRequest | undefined,
+) {
+  return useQuery<ProbeModelsResponse>({
+    queryKey: [
+      "setupProbe",
+      provider?.api_kind,
+      provider?.base_url,
+      provider?.api_key ?? null,
+    ],
+    queryFn: () =>
       rawFetch<ProbeModelsResponse>("/setup/probe-models", {
         method: "POST",
-        body: JSON.stringify(body),
+        body: JSON.stringify(provider),
       }),
+    enabled: Boolean(provider?.base_url),
+    retry: false,
+    staleTime: 60_000,
   })
 }
 

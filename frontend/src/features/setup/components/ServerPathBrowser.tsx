@@ -26,6 +26,18 @@ type Props = {
   disabled?: boolean
 }
 
+// The browser's own listing of `value`. Exported so a caller can tell
+// whether the browser already shows an error before printing its own copy
+// of it; react-query shares the one request between them.
+export function useFolderListing(apiBase: Props["apiBase"], value: string) {
+  return useQuery({
+    queryKey: ["fs", apiBase, "list", value],
+    queryFn: () => fsList(apiBase, value, false),
+    enabled: Boolean(value),
+    retry: false,
+  })
+}
+
 export function ServerPathBrowser(props: Props) {
   return <FolderBrowser key={`${props.apiBase}:${props.value}`} {...props} />
 }
@@ -42,12 +54,7 @@ function FolderBrowser({
   const [manual, setManual] = useState(value)
   const [filter, setFilter] = useState("")
   const [isConfirming, setIsConfirming] = useState(false)
-  const query = useQuery({
-    queryKey: ["fs", apiBase, "list", value],
-    queryFn: () => fsList(apiBase, value, false),
-    enabled: Boolean(value),
-    retry: false,
-  })
+  const query = useFolderListing(apiBase, value)
   const listing = query.data
   const isLoading = query.isFetching
   const error =

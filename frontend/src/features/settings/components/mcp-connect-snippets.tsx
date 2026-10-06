@@ -58,13 +58,20 @@ function snippets(url: string, key: string) {
   ]
 }
 
+// The copy button sits in its own column beside the scrolling code, not over
+// it: positioned absolutely it covered the text whenever a long line scrolled
+// under it, which on a phone is every line (padding only reserves room at
+// the end of the scroll, not at the visible edge).
 function CodeBlock({ code }: { code: string }) {
   return (
-    <div className="border-inset bg-muted/15 relative rounded-md border">
-      <pre className="overflow-x-auto px-3 py-2.5 pr-12 font-mono text-sm leading-relaxed whitespace-pre">
+    <div
+      className="border-inset bg-muted/15 flex items-start rounded-md border"
+      data-testid="snippet"
+    >
+      <pre className="min-w-0 flex-1 overflow-x-auto px-3 py-2.5 font-mono text-sm leading-relaxed whitespace-pre">
         {code}
       </pre>
-      <Clipboard value={code} toast className="absolute top-1.5 right-1.5">
+      <Clipboard value={code} toast className="shrink-0 p-1.5">
         <ClipboardTrigger aria-label="Copy snippet">
           <ClipboardIndicator
             copied={<Check className="size-4" />}

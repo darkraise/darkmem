@@ -22,7 +22,14 @@ export function ProvidersPanel() {
   // `null` with the dialog open is the add case; a provider is the edit case.
   const [editing, setEditing] = useState<LlmProvider | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  // Bumped per provider on every save. A card is keyed on it and on its
+  // connection fields, so it remounts and drops a "Test connection" result
+  // that answered for the connection as it was before the edit (a rotated
+  // key changes nothing the list shows, hence the counter).
+  const [saves, setSaves] = useState<Record<string, number>>({})
   const providers = data?.providers ?? []
+  const markSaved = (name: string) =>
+    setSaves((s) => ({ ...s, [name]: (s[name] ?? 0) + 1 }))
 
   const openAdd = () => {
     setEditing(null)
@@ -89,7 +96,7 @@ export function ProvidersPanel() {
         >
           {providers.map((p) => (
             <ProviderItem
-              key={p.name}
+              key={[p.name, p.api_kind, p.base_url, p.api_key, saves[p.name] ?? 0].join("\n")}
               provider={p}
               layout={layout}
               onEdit={() => openEdit(p)}
@@ -103,6 +110,7 @@ export function ProvidersPanel() {
           provider={editing}
           open
           onOpenChange={setDialogOpen}
+          onSaved={markSaved}
         />
       )}
     </div>
