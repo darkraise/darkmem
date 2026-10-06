@@ -611,7 +611,9 @@ class CodePipeline:
         from app.api.websocket import event_manager
         self._repo.status_message = message
         await self.session.commit()
-        await event_manager.broadcast(event_type, event_data)
+        # The label rides the event, so the Repositories page can show it
+        # without refetching the whole repo list on every tick.
+        await event_manager.broadcast(event_type, {**event_data, "status_message": message})
 
     async def _report_progress(
         self, label: str, phase: int, done: int, total: int, unit: str,

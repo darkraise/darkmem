@@ -187,7 +187,25 @@ export function useWebSocket() {
         // live phase label. But the task list and aggregate stats only change
         // at the terminal events, so refetching them on each of the ~13 phase
         // ticks per index is pure waste — skip them mid-progress.
-        void qc.invalidateQueries({ queryKey: ["repos"] })
+        if (msg.event === "repo.indexing_progress") {
+          // Write the tick into the cached row. Refetching the repo list on
+          // every tick restarted a ~1 s request each time, so only the final
+          // "ready" answer ever rendered and the row never showed progress.
+          const d = msg.data as WebSocketEventMap["repo.indexing_progress"]
+          qc.setQueryData<Array<Record<string, unknown>>>(["repos"], (repos) =>
+            repos?.map((r) =>
+              r.id === d.repo_id
+                ? {
+                    ...r,
+                    status: "indexing",
+                    status_message: d.status_message ?? r.status_message,
+                  }
+                : r,
+            ),
+          )
+        } else {
+          void qc.invalidateQueries({ queryKey: ["repos"] })
+        }
         if (msg.event !== "repo.indexing_progress") {
           void qc.invalidateQueries({ queryKey: ["repoTasks"] })
           void qc.invalidateQueries({ queryKey: ["repoStats"] })

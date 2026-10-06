@@ -42,6 +42,9 @@ export interface RepoIndexingProgress {
   phase: number
   current: number
   total: number
+  unit?: string
+  /** The phase label the pipeline just stored on the repo row. */
+  status_message?: string
 }
 
 export interface RepoIndexingCompleted {
