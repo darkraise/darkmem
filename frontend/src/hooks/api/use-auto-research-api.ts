@@ -11,6 +11,10 @@ export interface AutoResearchConfig {
   max_findings_per_run: number
   max_content_chars: number
   default_enabled: boolean
+  /** The largest value each budget accepts; the smallest is 1. Optional
+   *  only so a payload from before the field still reads. */
+  max_findings_per_run_ceiling?: number
+  max_content_chars_ceiling?: number
 }
 
 export interface AutoResearchUpdate {

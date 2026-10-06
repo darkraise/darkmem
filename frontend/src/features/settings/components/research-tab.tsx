@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { Label } from "darkraise-ui/components/label"
+import { toast } from "darkraise-ui/components/sonner"
 
 import { HelpTip, NumberField } from "@/components/darkmem"
 import { Search } from "lucide-react"
@@ -60,11 +61,13 @@ export function ResearchTab() {
   // until the row answers, and those are different claims.
   const known = config.data !== undefined
   const enabled = config.data?.enabled ?? false
-  const budgetsValid =
-    Number.isInteger(findings) &&
-    findings >= 1 &&
-    Number.isInteger(chars) &&
-    chars >= 1
+  // The server's own ceilings, so the range shown is the range it enforces;
+  // the fallbacks are its values for a payload that predates the fields.
+  const findingsMax = config.data?.max_findings_per_run_ceiling ?? 100
+  const charsMax = config.data?.max_content_chars_ceiling ?? 100_000
+  const findingsError = known ? budgetError(findings, findingsMax) : null
+  const charsError = known ? budgetError(chars, charsMax) : null
+  const budgetsValid = findingsError === null && charsError === null
 
   return (
     <SettingsCard icon={Search} title="Auto research">
@@ -104,11 +107,14 @@ export function ResearchTab() {
             <NumberField
               aria-label="Max findings per run"
               value={findings}
+              // No `max`: the field would clamp an over-range entry on blur,
+              // the same silent change of number this form exists to refuse.
               min={1}
               step={1}
               disabled={!known}
               onValueChange={setFindings}
             />
+            <BudgetHint error={findingsError} max={findingsMax} />
           </div>
           <div className="flex min-w-40 flex-1 flex-col gap-1">
             <Label className="text-muted-foreground text-sm">
@@ -122,6 +128,7 @@ export function ResearchTab() {
               disabled={!known}
               onValueChange={setChars}
             />
+            <BudgetHint error={charsError} max={charsMax} />
           </div>
         </div>
 
@@ -132,10 +139,18 @@ export function ResearchTab() {
           // in the fields, and a save would write zeros over the budget.
           disabled={!known || !budgetsValid || update.isPending}
           onClick={() =>
-            update.mutate({
-              max_findings_per_run: findings,
-              max_content_chars: chars,
-            })
+            update.mutate(
+              {
+                max_findings_per_run: findings,
+                max_content_chars: chars,
+              },
+              {
+                onSuccess: (saved) =>
+                  toast.success(
+                    `Budgets saved: ${saved.max_findings_per_run.toLocaleString()} findings, ${saved.max_content_chars.toLocaleString()} characters`,
+                  ),
+              },
+            )
           }
         >
           {update.isPending ? "Saving…" : "Save budgets"}
@@ -220,5 +235,24 @@ export function ResearchTab() {
         </div>
       </div>
     </SettingsCard>
+  )
+}
+
+function budgetError(value: number, max: number): string | null {
+  if (!Number.isInteger(value)) return "Enter a whole number."
+  if (value < 1 || value > max)
+    return `Enter a number from 1 to ${max.toLocaleString()}.`
+  return null
+}
+
+// The allowed range is always visible; it turns into the error when the
+// value leaves it, so the field never needs a second line for both.
+function BudgetHint({ error, max }: { error: string | null; max: number }) {
+  return error ? (
+    <span className="text-destructive text-sm">{error}</span>
+  ) : (
+    <span className="text-muted-foreground text-xs">
+      1 to {max.toLocaleString()}
+    </span>
   )
 }

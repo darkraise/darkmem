@@ -37,6 +37,8 @@ from app.services.backup_config import (
 )
 from app.services.analytics import AnalyticsService
 from app.services.research_config import (
+    MAX_CONTENT_CHARS_CEILING,
+    MAX_FINDINGS_CEILING,
     load_budget as load_research_budget,
     write_auto_research_config,
 )
@@ -729,6 +731,10 @@ class AutoResearchResponse(BaseModel):
     # The default is False and stays False: this surface makes arming an
     # explicit operator act, which is a different thing from arming it.
     default_enabled: bool = False
+    # The largest value each budget accepts (the smallest is 1), so the
+    # settings form can show and enforce the range the writer enforces.
+    max_findings_per_run_ceiling: int = MAX_FINDINGS_CEILING
+    max_content_chars_ceiling: int = MAX_CONTENT_CHARS_CEILING
 
 
 class AutoResearchUpdate(BaseModel):
