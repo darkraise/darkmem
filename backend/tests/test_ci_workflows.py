@@ -92,3 +92,19 @@ def test_the_ci_image_tag_is_per_run():
         tags = step.get("with", {}).get("tags")
         if tags is not None:
             assert "${{" in tags, f"fixed image tag {tags!r}"
+
+
+def test_the_image_artifact_does_not_outlive_a_passing_smoke():
+    # An uncompressed ~830 MB artifact held for a day per run filled the
+    # account's Actions storage (2026-10-06).
+    jobs = _jobs("ci.yml")
+    upload = next(s for s in jobs["images"]["steps"] if s.get("id") == "upload")
+    assert upload["with"]["compression-level"] != 0
+    smoke = jobs["image-smoke"]
+    assert smoke["permissions"]["actions"] == "write"
+    delete = next(s for s in smoke["steps"] if s.get("name") == "Delete the image artifact")
+    assert delete["if"] == "success()" and delete["continue-on-error"] is True
+    assert delete["env"]["ARTIFACT_ID"] == "${{ needs.images.outputs.artifact-id }}"
+    assert "actions/artifacts/$ARTIFACT_ID" in delete["run"]
+    # A called workflow can't exceed its caller's grant.
+    assert _jobs("release.yml")["verify"]["permissions"]["actions"] == "write"

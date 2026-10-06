@@ -254,7 +254,10 @@ jobs:
         with:
           name: darkmem-image-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/darkmem-image.tar
-          compression-level: 0
+          # `docker save` writes uncompressed layers, so level 1 shrinks the
+          # 830 MB tarball severalfold for little CPU. Every byte here counts
+          # against the account's Actions storage for as long as it lives.
+          compression-level: 1
           retention-days: 1
           if-no-files-found: error
 
@@ -262,6 +265,10 @@ jobs:
     name: Boot & verify image
     needs: [pick-runner, images]
     runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs-on) }}
+    # actions: write lets the job delete the image artifact once it has passed.
+    permissions:
+      contents: read
+      actions: write
     env:
       IMAGE: ${{ needs.images.outputs.image }}
       # Download by artifact ID, so re-running just this failed job still
@@ -333,6 +340,22 @@ jobs:
       - name: Remove the image
         if: always()
         run: docker rmi "$IMAGE" || true
+
+      # Nothing reads the artifact after a passing smoke, and a day of
+      # retention per run is what fills the account's Actions storage. A
+      # failed smoke keeps it so the job can be re-run alone. Best effort: a
+      # token without actions: write leaves it to expire.
+      - name: Delete the image artifact
+        if: success()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ needs.images.outputs.artifact-id }}
+        run: |
+          curl -fsS -X DELETE \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID"
 
   # These suites need the LAN model endpoint, so never fall back to hosted.
   # Job containers isolate the harness's fixed API/Vite ports per runner job.
