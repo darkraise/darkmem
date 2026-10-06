@@ -13,3 +13,4 @@ export type {
   PageChromeProps,
   PageChromeState,
 } from "./page-chrome"
+export { AppNotFound } from "./app-not-found"

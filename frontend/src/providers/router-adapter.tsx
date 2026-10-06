@@ -23,6 +23,7 @@ import {
   useLocation as useTanstackLocation,
   useNavigate as useTanstackNavigate,
   useRouter as useTanstackRouter,
+  useRouterState as useTanstackRouterState,
 } from "@tanstack/react-router"
 import type { RouterAdapter, RouterLinkProps } from "darkraise-ui/router"
 
@@ -84,6 +85,26 @@ export function isNavHrefActive(
   )
 }
 
+/** The splat route that serves the shell's not-found page. */
+export const NOT_FOUND_ROUTE_ID = "/_authenticated/$"
+
+/**
+ * True while the shell is showing its not-found page. Prefix matching would
+ * otherwise mark "Settings" current on `/settings/foo/bar`, a page that is
+ * not Settings; while this holds, no nav item is active.
+ */
+export function useIsNotFound(): boolean {
+  return useTanstackRouterState({
+    select: (s) =>
+      s.matches.some(
+        (m) =>
+          m.routeId === NOT_FOUND_ROUTE_ID ||
+          m.status === "notFound" ||
+          m.globalNotFound === true,
+      ),
+  })
+}
+
 /** href → label for the app's nav, so a collapsed rail link can be named.
  *
  *  darkraise-ui gap (SidebarItem, 6.x): a collapsed nav link renders only its
@@ -128,9 +149,12 @@ function AdapterLink({
     string,
     unknown
   >
+  const notFound = useIsNotFound()
   const target = splitNavHref(to)
   const active =
-    activeClassName !== undefined && isNavHrefActive(to, pathname, search)
+    activeClassName !== undefined &&
+    !notFound &&
+    isNavHrefActive(to, pathname, search)
   const collapsedLabel =
     (rest as Record<string, unknown>)["data-collapsed"] === "true"
       ? navLabels.get(to)
@@ -142,6 +166,10 @@ function AdapterLink({
       ref={ref}
       to={target.to}
       search={target.search}
+      // TanStack marks a link `data-status="active"` by prefix on its own;
+      // on the not-found page that would still claim `/settings/foo/bar` for
+      // Settings, so only an exact match may count there (and none does).
+      activeOptions={notFound ? { exact: true } : undefined}
       className={
         active && activeClassName
           ? [className, activeClassName].filter(Boolean).join(" ")
@@ -165,8 +193,11 @@ function useAdapterNavigate(): (to: string) => void {
   }
 }
 
+// The library decides which nav group is current from this path; on the
+// not-found page it gets one no nav item covers.
 function useAdapterPathname(): string {
-  return useTanstackLocation({ select: (l) => l.pathname })
+  const pathname = useTanstackLocation({ select: (l) => l.pathname })
+  return useIsNotFound() ? "" : pathname
 }
 
 function useAdapterBack(): () => void {

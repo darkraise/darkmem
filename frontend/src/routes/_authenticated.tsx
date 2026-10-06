@@ -42,6 +42,7 @@ import { useAuthStore } from "@/features/auth"
 import { useWebSocket } from "@/lib/websocket"
 import { DEMO } from "@/lib/demo-flag"
 import {
+  AppNotFound,
   AppPageHeader,
   BackToTop,
   HeaderControls,
@@ -154,6 +155,9 @@ export const Route = createFileRoute("/_authenticated")({
     if (ok) _lastAuthVerifyAt = now
   },
   component: AuthenticatedLayout,
+  // A child route that finds nothing (a stale detail id, say) still answers
+  // inside the shell, with the same page as an unknown path.
+  notFoundComponent: AppNotFound,
 })
 
 function LiveUpdates() {
