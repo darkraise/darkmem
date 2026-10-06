@@ -4,6 +4,131 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
+## v1.16.0 — 2026-10-06
+
+**A full pass over the web UI.** Every page was exercised end to end on a
+local stack, and what was broken, misleading or missing is fixed: 93
+findings, each with before and after screenshots, in
+`docs/2026-10-05-ui-e2e-audit.md`. Documents can now be edited in the web UI,
+a large repository gets a readable code graph, and controls that did nothing
+are gone. There is no schema change.
+
+### Added
+
+- **Documents in the web UI.** A document's Details dialog edits its title,
+  path, pinned flag and tags, and the reader shows the pin and the tags. "New
+  document" files markdown at a path. A folder row can create a document,
+  rename the folder or delete it, and dragging a document or folder moves it.
+  A path change carries the content hash read when the dialog opened, so a
+  concurrent edit answers "This document changed since you opened it".
+  `GET /api/v1/documents` rows now carry `tags` and `has_summary`.
+- **A readable code graph for a large repository.**
+  `GET /api/v1/code/graph/{repo_id}` takes an optional `level` (`symbol`,
+  `file` or `auto`) and `scope` (a file or folder path); without them the
+  answer is unchanged. The Code Graph page asks for `auto`, which folds a
+  scope of more than 2,000 files and symbols into files joined by weighted
+  dependency edges. A banner says what is folded, and the page drills in
+  through a folder picker, the explorer or "Show symbols in <file>". On this
+  repository the payload drops from 25 MB to 2.2 MB. The filter box now
+  narrows the drawn graph, communities that share a folder get distinct
+  names, and process names lose their internal key prefix.
+- **Repository activity and progress.** Adding, reindexing and deleting a
+  repository, and every index run's outcome, journal to the Activity feed's
+  code tab (`repo_registered`, `repo_reindex_requested`, `repo_deleted`,
+  `repo_indexed` and the new `repo_index_failed`). Parsing and embedding show
+  a running count ("Parsing files... 1,200/3,996 files") and a bar on the
+  repository row.
+- **Deleting a memory from its page.** The confirmation says what goes and
+  that it is not a content purge. The page also shows the project, type,
+  summary and tags, and labels a "Replaced by" successor with its own status.
+- **Backup destinations from the Backups tab.** Add destination creates a
+  local, ssh, s3 or worker destination, and the form edits each kind's
+  connection fields. Until now a fresh install could not arm an off-host
+  backup from the UI.
+- **Pricing any model.** Usage → Prices lists the models the overview reports
+  as unpriced, takes a rate for any model by name, and refuses a negative or
+  non-numeric rate beside its field.
+- **Chat answers about the graph selection.** "Ask about selection" puts the
+  selected memory, or up to five memories that assert a selected entity, at
+  the top of the turn's context, and the sources list labels them "your
+  selection". Retrieval and its ranking are unchanged.
+- **Ranges on numeric settings.** `GET /api/v1/config/feature-flags` serves
+  `numeric_bounds`, and the ranking-arms dialog shows each arm's range and
+  will not save a value outside it. Settings → Research shows its budgets'
+  ceilings (100 findings, 100,000 characters), and the server refuses a value
+  above them.
+- **"No memory contains these words."** When the keyword arm matches nothing,
+  the Memories page says the results are only the closest by meaning. The
+  traced search envelope counts each arm's rows (`hits`); ranking is
+  unchanged.
+- A fact badge reads "checked as of <day>" once the verification recompute has
+  passed the fact's latest source change, and a fact's memory sources link to
+  the memory.
+
+### Changed
+
+- **Sign-in.** A wrong password shows the server's message instead of
+  "Unauthorized", and signing in after a redirect returns to the page that was
+  asked for (`/login?redirect=`). A session check that fails for any reason
+  other than 401 or 403 no longer signs you out.
+- **Chat conversations.** New opens an unsaved draft instead of storing an
+  empty conversation, and the open conversation lives in `?id=`, so reload,
+  Back and Forward keep it.
+- **Activity → Pipeline** follows the header's project scope
+  (`GET /api/v1/analytics/pipeline-logs` takes `project`) and counts runs, not
+  memories. Editing a memory no longer journals a second `extracted` row that
+  read as a failed run.
+- **The dashboard** follows the header's project scope, keeps sign-ins out of
+  Recent activity, hides the Live articles tile while there are none, and its
+  calendar counts captures. A memory's capture, edit and delete rows in the
+  journal now carry its project; rows written before this release stay
+  without one.
+- **Settings.** Provider names and base URLs are validated on create and
+  update, in the dialog and in the setup wizard. A provider's Test connection
+  result is dropped once the provider is edited. A new API key stays on screen
+  until it is copied. The extraction system prompt can be edited. A key's Last
+  used updates on every authenticated MCP request, at most once a minute.
+- **MCP tool refusals** carry their reason ("Invalid UUID format: …") instead
+  of a bare "Error executing tool", and the server logs one INFO line instead
+  of a traceback.
+- Job schedules that name a clock time say UTC, and run history names its time
+  zone. Ids are labelled by their random tail, not the UUIDv7 timestamp head.
+- Escape on an open dropdown inside a dialog closes the dropdown, not the
+  dialog. Help tips open with a tap on touch screens. A signed-in reader gets
+  one not-found page inside the app shell.
+
+### Fixed
+
+- **Indexing a repository that holds a binary file** (a committed zip or png)
+  failed the whole run on a NUL byte. Binary files are now skipped, by the
+  drift scan too.
+- **Re-embedding with the embedding width unset** (the setup wizard's default)
+  counted every vector as missing and failed in the background. The
+  Maintenance counts, the re-embed and the cache prune now act on the
+  populated partition, and boot no longer logs that case as an error.
+- Adding a local repository asks for its path on the server, and a failed
+  repository action says why. An enrichment run no longer refetches the whole
+  code graph every ten seconds.
+- Saving one model price no longer stores every shipped rate as an override.
+- The setup wizard refuses an over-long password before Finish, keeps Finish
+  busy until the dashboard opens, and reports a provider probe failure or a
+  missing repository folder once, in plain words.
+- Documents no longer request a summary that was never generated, and section
+  search results can be cleared. Block and work-log previews read as text, not
+  raw markdown.
+- Smaller fixes across Notes (the slash menu, a linked page that is gone),
+  Projects ("Project not found"), Memories, Jobs, Activity → MCP calls (errors
+  and denials counted apart) and Settings.
+
+### Removed
+
+- **Controls that did nothing in real mode:** the header's "context: none"
+  chip, Activity → Pipeline's "in flight" panel, "why?" on a Memories list
+  with no query, the Detail toggle on a memory's own page, and chat's "@ to
+  mention" hint. Demo mode keeps the first two.
+- **Activity → Jobs**, a copy of the Jobs page. `/activity?tab=jobs` redirects
+  to `/jobs`, and the 30-day usage chip moved onto the Jobs page.
+
 ## v1.15.0 — 2026-10-05
 
 **You can see what your MCP clients asked for.** Every MCP tool call is now
