@@ -390,6 +390,34 @@ async def test_memory_search_rows_carry_the_lifecycle_label(mcp_http_client, ses
         assert "project" in row
 
 
+@pytest.mark.parametrize("memory_id, message", [
+    ("not-a-uuid", "Invalid UUID format: not-a-uuid"),
+    ("00000000-0000-4000-8000-000000000000",
+     "Memory not found: 00000000-0000-4000-8000-000000000000"),
+])
+async def test_a_refused_input_reaches_the_caller_without_a_traceback(
+    mcp_http_client, caplog, memory_id, message,
+):
+    """A tool refusing its own input says why, and is not logged as a crash.
+
+    Raised as a plain ``ValueError`` the SDK treated the refusal as an
+    unexpected exception: the caller read only "Error executing tool
+    memory_get", without the reason, and the server logged a traceback at
+    ERROR.
+    """
+    import logging
+
+    caplog.set_level(logging.INFO)
+    response = await mcp_http_client.post(
+        "/", json=_tool_call("memory_get", {"memory_id": memory_id}),
+    )
+    assert response.status_code == 200, response.text
+    result = response.json()["result"]
+    assert result["isError"] is True
+    assert result["content"][0]["text"] == f"Error executing tool memory_get: {message}"
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+
+
 @pytest.mark.asyncio
 async def test_block_verbs_answer_envelopes_rather_than_tool_errors(session, monkeypatch):
     """Review M-4: both refusals are outcomes a caller acts on, not crashes.
