@@ -21,6 +21,8 @@ export interface ChatSources {
 }
 
 interface ChatStreamState {
+  /** The key of the conversation the turn was sent from: its id, or the
+   *  caller's own key for an unsaved draft. The turn shows only there. */
   conversationId: string | null
   retryDraft: string | null
   uncertainDraft: string | null
@@ -52,13 +54,16 @@ export function useChatStream(activeConversationId?: string | null) {
       conversationId: string | null,
       content: string,
       context?: Record<string, unknown>,
+      // A draft has no id until its first turn creates one, so a caller with
+      // several drafts names which one is sending; it defaults to the id.
+      owner: string | null = conversationId,
     ) => {
       abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
 
       setState({
-        conversationId,
+        conversationId: owner,
         retryDraft: null,
         uncertainDraft: null,
         isStreaming: true,

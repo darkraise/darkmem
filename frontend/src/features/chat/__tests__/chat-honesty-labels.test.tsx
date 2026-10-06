@@ -138,3 +138,25 @@ describe("Inline citation chip (MemoryBadge, the third render site) honesty labe
     expect(dot).toHaveClass("bg-muted-foreground/40")
   })
 })
+
+// Audit O2b: "Ask about selection" puts the selected memory first in the
+// turn's context. Without a label it reads as the search's top hit, which it
+// may not be — a selected row the search missed carries no score at all.
+describe("the selected row says it was selected", () => {
+  const rows = [
+    { id: "m1", content: "picked on the graph", status: "active" as const, selected: true },
+    { id: "m2", content: "retrieved", status: "active" as const, score: 0.016 },
+  ]
+
+  it("in the context panel", () => {
+    render(<ChatContextPanel rows={rows} />)
+    expect(screen.getAllByText("your selection")).toHaveLength(1)
+  })
+
+  it("in the source list under an answer", async () => {
+    render(<SourceBadges memories={rows} entities={[]} />)
+    await userEvent.click(screen.getByRole("button", { name: /memories/i }))
+    expect(screen.getAllByText("your selection")).toHaveLength(1)
+    expect(screen.getByText("score 0.016")).toBeInTheDocument()
+  })
+})

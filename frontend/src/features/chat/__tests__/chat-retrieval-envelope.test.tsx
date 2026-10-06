@@ -13,14 +13,12 @@ import {
 
 const mockUseConversations = vi.fn()
 const mockUseConversation = vi.fn()
-const mockUseCreateConversation = vi.fn()
 const mockUseDeleteConversation = vi.fn()
 
 vi.mock("@/hooks/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api")>()),
   useConversations: () => mockUseConversations(),
   useConversation: (id: string | null) => mockUseConversation(id),
-  useCreateConversation: () => mockUseCreateConversation(),
   useDeleteConversation: () => mockUseDeleteConversation(),
 }))
 
@@ -202,7 +200,6 @@ describe("RealChatPage hands the panel the envelope of the turn it is showing", 
       isError: false,
       refetch: vi.fn(),
     })
-    mockUseCreateConversation.mockReturnValue({ mutateAsync: vi.fn() })
     mockUseDeleteConversation.mockReturnValue({ mutate: vi.fn() })
   })
 
@@ -232,7 +229,9 @@ describe("RealChatPage hands the panel the envelope of the turn it is showing", 
       },
     })
 
-    render(<RealChatPage initialId="c1" />, { wrapper })
+    render(<RealChatPage conversationId="c1" onSelect={vi.fn()} />, {
+      wrapper,
+    })
 
     expect(screen.getByText("degraded")).toBeInTheDocument()
     expect(screen.getByText(/2 rows excluded/)).toBeInTheDocument()

@@ -56,6 +56,9 @@ export interface ChatContextRow {
   channel_rank?: number
   /** The id of the fact this memory sources, when the composition nested it. */
   grouped_under?: string | null
+  /** Put first because it was selected on the memory graph (or asserts the
+   *  selected entity) when the turn was asked. */
+  selected?: boolean
 }
 
 export interface ChatContextFact {
