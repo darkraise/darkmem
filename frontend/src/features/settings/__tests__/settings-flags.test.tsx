@@ -466,3 +466,19 @@ describe("FlagsTab — ruling 2: repo_allowlist editing surface", () => {
     ).toBeInTheDocument()
   })
 })
+
+describe("FlagsTab — narrow screens", () => {
+  it("keeps every value with its state pill, so they wrap as one", () => {
+    renderTab()
+    const pills = screen.getAllByRole("button", {
+      name: /About the (active|inactive) state/,
+    })
+    expect(pills.length).toBeGreaterThan(0)
+    for (const pill of pills) {
+      // The pill's group also holds the number it describes.
+      const group = pill.closest("span.ml-auto") as HTMLElement | null
+      expect(group).not.toBeNull()
+      expect(group!.textContent).toMatch(/\d/)
+    }
+  })
+})
