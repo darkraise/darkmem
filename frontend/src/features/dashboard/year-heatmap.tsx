@@ -17,6 +17,12 @@ import {
 import { DEMO } from "@/lib/demo-flag"
 
 const CELL = "h-3 w-3 rounded-sm"
+
+/** A cell counts the day's capture events, which outlive a deleted memory,
+ *  so it names captures rather than memories that exist today. */
+function captures(count: number): string {
+  return `${count} capture${count === 1 ? "" : "s"}`
+}
 const WEEKDAY_LABELS = ["Mon", "", "Wed", "", "Fri", "", ""] as const
 
 function CellPopover({ day }: { day: ContributionDay }) {
@@ -24,9 +30,7 @@ function CellPopover({ day }: { day: ContributionDay }) {
     <div className="space-y-1.5">
       <p className="text-sm font-semibold">{formatDayKey(day.date)}</p>
       <p className="text-muted-foreground text-sm">
-        {day.count === 0
-          ? "no memories captured"
-          : `${day.count} memor${day.count === 1 ? "y" : "ies"} captured`}
+        {day.count === 0 ? "no captures" : captures(day.count)}
       </p>
       {day.types.length > 0 && (
         <ul className="space-y-0.5">
@@ -187,7 +191,7 @@ export function YearHeatmap({ days }: { days: ContributionDay[] }) {
                         // The inject count rides the label rather than a
                         // colour alone: a coloured dot nobody can read out
                         // is not a surface a human can check push against.
-                        aria-label={`${formatDayKey(day.date)} — ${day.count} memor${day.count === 1 ? "y" : "ies"}${day.injects > 0 ? `, ${day.injects} inject${day.injects === 1 ? "" : "s"}` : ""}`}
+                        aria-label={`${formatDayKey(day.date)} — ${captures(day.count)}${day.injects > 0 ? `, ${day.injects} inject${day.injects === 1 ? "" : "s"}` : ""}`}
                         onClick={() =>
                           // The real Memories page has no timeline to land
                           // a date on (only the demo's does), so a day opens
@@ -238,6 +242,7 @@ export function YearHeatmap({ days }: { days: ContributionDay[] }) {
           <span key={cls} className={cn(CELL, cls)} />
         ))}
         <span>More</span>
+        <span className="ml-2">memory captures per day</span>
       </div>
     </div>
   )

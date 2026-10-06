@@ -40,7 +40,7 @@ describe("useContributionCalendar (DEMO off — real /events/calendar)", () => {
   })
 
   it("counts memory captures only, not every journal row", async () => {
-    // Every cell reads "N memories captured"; an unscoped count took in
+    // Every cell reads "N captures"; an unscoped count took in
     // logins and maintenance runs and showed captures on an empty install.
     vi.mocked(apiFetch).mockResolvedValue({ buckets: [] } as never)
     const { result } = renderHook(() => useContributionCalendar(NOW), { wrapper })
