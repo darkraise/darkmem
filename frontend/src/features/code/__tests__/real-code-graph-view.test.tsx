@@ -386,4 +386,30 @@ describe("RealCodeGraphView", () => {
       ).toBe(true)
     })
   })
+
+  it("the filter box narrows the drawn graph and its counter, not only the explorer", async () => {
+    mockApi()
+    const user = userEvent.setup()
+    render(
+      <RealCodeGraphView repoId="r1" onRepoChange={vi.fn()} onOpenRepositories={vi.fn()} />,
+      { wrapper },
+    )
+    await screen.findByText("ingestion")
+    expect(screen.getByText("3 nodes · 2 edges")).toBeInTheDocument()
+
+    await user.type(
+      screen.getByRole("textbox", { name: /Filter the graph and explorer/ }),
+      "rrf",
+    )
+    expect(screen.getByText("1 of 3 nodes · 0 of 2 edges")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "rrf_fuse (function)" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "process_batch (function)" })).toBeNull()
+
+    await user.clear(screen.getByRole("textbox", { name: /Filter the graph and explorer/ }))
+    await user.type(
+      screen.getByRole("textbox", { name: /Filter the graph and explorer/ }),
+      "zzznomatch",
+    )
+    expect(screen.getByText("0 of 3 nodes · 0 of 2 edges")).toBeInTheDocument()
+  })
 })

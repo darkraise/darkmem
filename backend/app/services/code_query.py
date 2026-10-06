@@ -8,7 +8,9 @@ from sqlalchemy.orm import aliased
 from app.models.code import CodeFile, CodeSymbol
 from app.config import settings
 from app.repositories.vector import PostgresVectorRepository
+from app.services.community_detector import label_communities
 from app.services.llm import LLMOrchestrator
+from app.services.process_tracer import process_display_label
 from app.services.rank_fusion import RRF_K
 from app.utils.graph_keys import compose_key, decompose_key, split_symbol_key
 
@@ -271,7 +273,7 @@ class CodeQueryService:
         beside the graph, so it can say what is folded.
         """
         if level is None and scope is None:
-            return await self._symbol_graph(repo_id, None)
+            return await self._relabel(repo_id, await self._symbol_graph(repo_id, None))
 
         scope = normalise_graph_scope(scope)
         requested = level or "symbol"
@@ -288,12 +290,46 @@ class CodeQueryService:
         else:
             graph = await self._symbol_graph(repo_id, scope)
             graph["stats"] = dict(counts)
+        await self._relabel(repo_id, graph)
         graph.update({
             "level": chosen,
             "requested_level": requested,
             "scope": scope,
             "auto_limit": CODE_GRAPH_AUTO_LIMIT,
         })
+        return graph
+
+    async def _relabel(self, repo_id: UUID, graph: dict) -> dict:
+        """Readable, distinct names for process and community nodes.
+
+        Both are derived at read time so a graph indexed before the labels
+        were fixed reads the same as a fresh one: a process key's
+        entry-kind prefix is dropped, and every community of the repo is
+        labelled together (never only the ones in scope), so a label is
+        distinct and does not change as the user drills in.
+        """
+        communities = [n for n in graph["nodes"] if n.get("kind") == "community"]
+        for node in graph["nodes"]:
+            if node.get("kind") == "process":
+                node["label"] = process_display_label(node["id"])
+        if not communities:
+            return graph
+        rows = (await self.session.execute(
+            text("""
+                SELECT target_key, split_part(source_key, '::', 2) AS file_path, count(*) AS n
+                FROM code_edges
+                WHERE repo_id = :repo_id AND edge_type = 'member_of'
+                GROUP BY 1, 2
+            """),
+            {"repo_id": str(repo_id)},
+        )).mappings().all()
+        members: dict[str, list[str]] = {}
+        for row in rows:
+            members.setdefault(row["target_key"], []).extend([row["file_path"]] * row["n"])
+        labels = label_communities(members)
+        for node in communities:
+            if node["id"] in labels:
+                node["label"] = labels[node["id"]]
         return graph
 
     async def _scope_counts(self, repo_id: UUID, scope: str | None) -> dict:

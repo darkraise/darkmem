@@ -54,6 +54,7 @@ import { RealCodeInspector } from "./real-code-inspector"
 import { deriveCodeGraph, fileOfGraphKey } from "../lib/graph-derive"
 
 const LAYOUTS: GraphLayoutMode[] = ["force", "tree", "circles"]
+const LEGEND_LIMIT = 12
 
 function SectionTitle({
   icon,
@@ -152,12 +153,42 @@ export function RealCodeGraphView({
     )
   }, [graph, activeProcess])
 
+  // The filter box narrows the canvas and its counter as well as the
+  // explorer: a node stays when its name or its file matches, the same
+  // rule the explorer applies to its rows.
+  const trimmedSearch = search.trim().toLowerCase()
+  const shown = useMemo(() => {
+    if (!graph || trimmedSearch === "") return graph
+    const nodes = graph.nodes.filter(
+      (n) =>
+        n.name.toLowerCase().includes(trimmedSearch) ||
+        n.file.toLowerCase().includes(trimmedSearch),
+    )
+    const ids = new Set(nodes.map((n) => n.id))
+    const edges = graph.edges.filter(
+      (e) => ids.has(e.source) && ids.has(e.target),
+    )
+    return { ...graph, nodes, edges }
+  }, [graph, trimmedSearch])
+
   const kindCounts = useMemo(() => {
     const counts = new Map<CodeNodeKind, number>()
     for (const n of graph?.nodes ?? []) {
       counts.set(n.kind, (counts.get(n.kind) ?? 0) + 1)
     }
     return counts
+  }, [graph])
+
+  // The legend names the largest communities only; on the darkmem repo it
+  // listed all 240 and pushed the canvas half off screen.
+  const legendCommunities = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const n of graph?.nodes ?? []) {
+      counts.set(n.community, (counts.get(n.community) ?? 0) + 1)
+    }
+    return [...(graph?.communities ?? [])]
+      .sort((a, b) => (counts.get(b.id) ?? 0) - (counts.get(a.id) ?? 0))
+      .slice(0, LEGEND_LIMIT)
   }, [graph])
 
   const communityCounts = useMemo(() => {
@@ -323,7 +354,7 @@ export function RealCodeGraphView({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           groupClassName="w-56"
-          aria-label="Filter the explorer by file or symbol name"
+          aria-label="Filter the graph and explorer by file or symbol name"
         />
         <div className="flex flex-col gap-0.5">
           <span className="text-muted-foreground text-xs">Layout</span>
@@ -369,8 +400,9 @@ export function RealCodeGraphView({
         </div>
         <span className="text-muted-foreground ml-auto shrink-0 text-sm whitespace-nowrap">
           {graphRefreshing && "loading… "}
-          {graph.nodes.length} {nodeNoun(graph.nodes.length)} ·{" "}
-          {graph.edges.length} {graph.edges.length === 1 ? "edge" : "edges"}
+          {shown && shown !== graph
+            ? `${shown.nodes.length} of ${graph.nodes.length} ${nodeNoun(graph.nodes.length)} · ${shown.edges.length} of ${graph.edges.length} edges`
+            : `${graph.nodes.length} ${nodeNoun(graph.nodes.length)} · ${graph.edges.length} ${graph.edges.length === 1 ? "edge" : "edges"}`}
         </span>
       </div>
 
@@ -434,7 +466,7 @@ export function RealCodeGraphView({
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="min-h-64 min-w-0 flex-1">
             <CodeCanvas
-              graph={graph}
+              graph={shown ?? graph}
               layout={layout}
               colorBy={colorBy}
               selectedId={selectedId}
@@ -455,7 +487,7 @@ export function RealCodeGraphView({
           </div>
           {colorBy === "community" && (
             <div className="border-border bg-card text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 border-t px-2.5 py-1.5 text-sm">
-              {graph.communities.map((c) => (
+              {legendCommunities.map((c) => (
                 <span key={c.id} className="inline-flex items-center gap-1.5">
                   <span
                     className="h-2 w-2 rounded-[2px]"
@@ -464,6 +496,12 @@ export function RealCodeGraphView({
                   community: {c.label}
                 </span>
               ))}
+              {graph.communities.length > legendCommunities.length && (
+                <span>
+                  +{graph.communities.length - legendCommunities.length} more
+                  in the Community navigator
+                </span>
+              )}
             </div>
           )}
         </div>
