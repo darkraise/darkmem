@@ -42,8 +42,22 @@ export function keepDialogOpenOnListEscape(event: KeyboardEvent) {
 
   const listbox = target.closest('[role="listbox"]')
   const labelledBy = listbox?.getAttribute("aria-labelledby")
-  const selectTrigger = labelledBy ? document.getElementById(labelledBy) : null
-  if (selectTrigger?.getAttribute("aria-expanded") === "true") {
+  // A trigger given its own id (for a <label htmlFor>) no longer carries the
+  // id the list's aria-labelledby names, so fall back to the trigger that
+  // controls the list, then to the open trigger inside the dialog.
+  const selectTrigger = listbox
+    ? ((labelledBy ? document.getElementById(labelledBy) : null) ??
+      (listbox.id
+        ? document.querySelector(`[aria-controls="${CSS.escape(listbox.id)}"]`)
+        : null) ??
+      document.querySelector(
+        '[role="dialog"] button[aria-expanded="true"]',
+      ))
+    : null
+  if (
+    selectTrigger instanceof HTMLElement &&
+    selectTrigger.getAttribute("aria-expanded") === "true"
+  ) {
     event.preventDefault()
     selectTrigger.click()
     return

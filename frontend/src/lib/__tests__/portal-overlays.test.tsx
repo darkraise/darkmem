@@ -30,7 +30,7 @@ const ITEMS = [
   { value: "gitlab", label: "GitLab" },
 ]
 
-function Harness({ guarded }: { guarded: boolean }) {
+function Harness({ guarded, triggerId }: { guarded: boolean; triggerId?: string }) {
   const [open, setOpen] = useState(true)
   return (
     <>
@@ -43,7 +43,7 @@ function Harness({ guarded }: { guarded: boolean }) {
           <DialogDescription>probe</DialogDescription>
           <input aria-label="typed" defaultValue="half-typed token" />
           <Select defaultValue="github">
-            <SelectTrigger aria-label="provider">
+            <SelectTrigger aria-label="provider" id={triggerId}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -107,6 +107,20 @@ describe("keepDialogOpenOnListEscape", () => {
       key: "Escape",
     })
     expect(await screen.findByText("dialog closed")).toBeInTheDocument()
+  })
+
+  it("finds a trigger given its own id for a label", async () => {
+    // The list's aria-labelledby keeps naming the generated id, which no
+    // element carries once the trigger has its own (Add git account).
+    render(<Harness guarded triggerId="git-account-provider" />)
+    const listbox = await openSelect()
+    fireEvent.keyDown(listbox, { key: "Escape" })
+    await act(async () => {})
+    expect(screen.getByText("dialog open")).toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "provider" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    )
   })
 
   it("closes only an open Combobox list", async () => {
