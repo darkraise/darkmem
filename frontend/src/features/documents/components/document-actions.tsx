@@ -165,16 +165,20 @@ export function DocumentActions({
  */
 export function DocumentDetail({
   documentId,
+  hasSummary,
   onOpenDocument,
 }: {
   documentId: string
+  /** The list row's `has_summary`; `false` skips the summary read, whose
+   *  answer would be a 404. Omitted where no list row is in hand. */
+  hasSummary?: boolean
   /** Open a connected document in the same reader, focused on the passage
    *  that made it a connection. Omitted where the surface has no reader to
    *  steer, and the rows stay inert there rather than offering a navigation
    *  that would go nowhere. */
   onOpenDocument?: (documentId: string, blockId: string) => void
 }) {
-  const summary = useDocumentSummary(documentId)
+  const summary = useDocumentSummary(documentId, hasSummary)
   const connections = useDocumentConnections(documentId)
 
   return (

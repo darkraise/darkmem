@@ -104,7 +104,7 @@ from app.services import document_revisions
 from app.services.document_parsers import DocumentParseError
 from app.repositories.documents import resolve_by_id
 from app.services.document_summary import (
-    EmptySummaryError, read_summary, summarise_document,
+    SUMMARY_PROPERTY_KEY, EmptySummaryError, read_summary, summarise_document,
 )
 from app.schemas.memory import validate_tag_lengths
 from app.services.faithfulness_gate import FaithfulnessGate, Outcome
@@ -155,8 +155,14 @@ class DocumentListItem(BaseModel):
     # Served here and NOT on the keyed reads: those are TWO_DOOR and MCP
     # `document_get` has no metadata slot, so a REST-only field there would
     # be a wire divergence. This route is `documents.reads`, REST-only
-    # already, so the field costs no parity.
+    # already, so the field costs no parity -- the same holds for the
+    # field below.
     pinned_at: datetime | None = None
+    # Whether `GET /{id}/summary` would answer 200. That route 404s for "not
+    # generated yet", so a reader that asked unconditionally logged a failed
+    # request for every document nobody had summarised; this lets it ask
+    # only when there is something to read. Same predicate as `read_summary`.
+    has_summary: bool = False
 
 
 class DocumentListResponse(BaseModel):
@@ -458,9 +464,15 @@ class DocumentBlocksResponse(BaseModel):
 
 
 _LIST_SQL = text(
-    """
+    f"""
     SELECT CAST(d.id AS text) AS id, d.title, d.uri, d.source_type, d.project,
-           d.pinned_at, count(b.id) AS block_count
+           d.pinned_at, count(b.id) AS block_count,
+           -- `read_summary`'s own test: an object under the key with
+           -- non-empty text. `d.properties` needs no GROUP BY entry because
+           -- `d.id`, the primary key, is grouped.
+           (jsonb_typeof(d.properties -> '{SUMMARY_PROPERTY_KEY}') = 'object'
+            AND coalesce(d.properties -> '{SUMMARY_PROPERTY_KEY}' ->> 'text', '') <> '')
+               IS TRUE AS has_summary
     FROM documents d
     LEFT JOIN blocks b ON b.document_id = d.id
     -- CAST because asyncpg cannot infer a bare parameter's type in an
@@ -673,7 +685,9 @@ async def get_document_summary(
 
     Deliberately not an empty 200: "this document has no summary yet" and
     "its summary is empty prose" are different answers, and generating one is
-    an explicit act nobody has performed (doc 16 §6, TH1.14).
+    an explicit act nobody has performed (doc 16 §6, TH1.14). A reader learns
+    whether there is one to ask for from the list's `has_summary`, so it need
+    not spend a request on this 404.
     """
     summary = await read_summary(session, document_id=document_id)
     if summary is None:

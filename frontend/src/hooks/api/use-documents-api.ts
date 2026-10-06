@@ -19,6 +19,9 @@ export interface DocumentListItem {
   /** Optional so the four existing test fixtures that build this shape by
    *  hand keep typechecking. The API always sends it. */
   pinned_at?: string | null
+  /** Whether `GET /documents/{id}/summary` would answer 200 rather than its
+   *  "not generated yet" 404. Optional for the same reason as `pinned_at`. */
+  has_summary?: boolean
 }
 
 export interface DocumentListResponse {
@@ -99,11 +102,20 @@ export function useDocuments(project?: string) {
 
 /** `null` when no summary has been generated — the door answers 404 for that,
  *  and it is an ordinary state rather than a fault: generating one is an
- *  explicit act nobody has performed yet. Every other status still throws. */
-export function useDocumentSummary(documentId: string | null) {
+ *  explicit act nobody has performed yet. Every other status still throws.
+ *
+ *  `hasSummary` is the list row's `has_summary`. When it is `false` the read
+ *  is never sent: the 404 is the expected answer, and the browser logs every
+ *  one as a failed request, so opening any unsummarised document put an
+ *  error in the console. `undefined` (a caller with no list row) still asks.
+ *  A disabled query still serves what `useDocumentSummarize` seeds. */
+export function useDocumentSummary(
+  documentId: string | null,
+  hasSummary?: boolean,
+) {
   return useQuery<DocumentSummary | null>({
     queryKey: ["documentSummary", documentId],
-    enabled: !DEMO && Boolean(documentId),
+    enabled: !DEMO && Boolean(documentId) && hasSummary !== false,
     queryFn: async () => {
       try {
         return await apiFetch<DocumentSummary>(`/documents/${documentId}/summary`)
@@ -130,6 +142,8 @@ export function useDocumentSummarize(documentId: string | null) {
       // the authoritative body, so a refetch would spend a round trip to
       // learn what this response just said.
       qc.setQueryData(["documentSummary", documentId], summary)
+      // The list rows carry `has_summary`, which is now stale.
+      invalidateDocumentLists(qc)
     },
   })
 }

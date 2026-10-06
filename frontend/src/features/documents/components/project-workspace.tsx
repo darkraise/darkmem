@@ -556,6 +556,7 @@ export function ProjectWorkspace({
                       rail's stick range ends where the document does. */}
                   <DocumentDetail
                     documentId={selected.id}
+                    hasSummary={selected.has_summary}
                     onOpenDocument={(documentId, blockId) => {
                       const doc = items.find((d) => d.id === documentId)
                       if (!doc) return
