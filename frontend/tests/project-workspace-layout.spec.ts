@@ -4,7 +4,7 @@ import { seedAdminPassword } from "./helpers/seed-admin"
 /**
  * The one claim about the artifacts workspace that no unit test can make.
  *
- * jsdom performs no layout, so every vitest assertion about the tree and
+ * happy-dom performs no layout, so every vitest assertion about the tree and
  * reader panes passes whether they fill the viewport or collapse to zero
  * height. The height chain this pins runs route root -> Tabs -> TabsContent
  * -> ResizablePanelGroup, and a break anywhere along it is invisible to the

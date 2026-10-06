@@ -51,7 +51,7 @@ function wrapper({ children }: { children: ReactNode }) {
 const NARROW_WIDTH = 300
 
 /**
- * jsdom's ResizeObserver (stubbed as a no-op in setup.ts) never invokes its
+ * The ResizeObserver (stubbed as a no-op in setup.ts) never invokes its
  * callback, so `splitWidth` never leaves its initial 0 and the page always
  * falls back to `Number.POSITIVE_INFINITY` -- every other page-level test
  * therefore only ever exercises the non-floating split. Fire the callback

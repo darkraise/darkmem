@@ -3,7 +3,7 @@ import { pendingTimerCount, clearPendingTimers } from "../pending-timers"
 
 // Guards the harness itself. Without it a timer armed by a library — Redux
 // Toolkit's notification fallback, reached through recharts — outlives its
-// file, fires after vitest has deleted the jsdom globals, and reports an
+// file, fires after vitest has deleted the DOM globals, and reports an
 // unhandled `cancelAnimationFrame is not defined` with every test passing.
 describe("pending timer tracking", () => {
   it("counts a timer that is still armed", () => {

@@ -3,7 +3,7 @@ import { seedAdminPassword } from "./helpers/seed-admin"
 
 /**
  * The outline rail's two moving parts, neither of which a unit test can
- * assert: jsdom performs no layout, so `getBoundingClientRect` is all zeroes
+ * assert: happy-dom performs no layout, so `getBoundingClientRect` is all zeroes
  * and both the scrollspy and the rail's self-centring are pure geometry.
  * `project-workspace.test.tsx` can only check that whatever the reader
  * reports is what the rail marks; what the reader reports is measured here.

@@ -20,7 +20,7 @@ function renderCard(key: string) {
 
 describe("JobGridCard", () => {
   it("expands a clamped description from a visible more/less control", async () => {
-    // jsdom does no layout: report the clamped description as overflowing.
+    // The test DOM does no layout: report the clamped description as overflowing.
     const spy = vi
       .spyOn(HTMLElement.prototype, "scrollHeight", "get")
       .mockReturnValue(100)

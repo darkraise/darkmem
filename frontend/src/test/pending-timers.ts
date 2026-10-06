@@ -2,12 +2,12 @@
  * Timers a test file leaves behind when it ends.
  *
  * Vitest tears an environment down between files with
- * `keys.forEach((key) => delete global[key])`, so every jsdom global — `window`,
+ * `keys.forEach((key) => delete global[key])`, so every DOM global — `window`,
  * `document`, `cancelAnimationFrame` — stops existing for the moment between
  * one file's teardown and the next file's setup. A `setTimeout` scheduled
- * during the file sits on Node's queue, not jsdom's, so it survives that
- * deletion and can fire into the gap. A callback that touches any jsdom global
- * then throws where no test can catch it, and vitest reports an unhandled error
+ * during the file sits on Node's queue, not the DOM environment's, so it
+ * survives that deletion and can fire into the gap. A callback that touches
+ * any DOM global then throws where no test can catch it, and vitest reports an unhandled error
  * and exits non-zero with every test still passing.
  *
  * The live example is Redux Toolkit's notification scheduler, reached through

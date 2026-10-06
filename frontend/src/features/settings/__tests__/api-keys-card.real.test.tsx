@@ -116,7 +116,7 @@ describe("ApiKeysCard (real)", () => {
     const dialog = await screen.findByRole("alertdialog")
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }))
 
-    // Closed, not unmounted: jsdom never finishes the exit animation.
+    // Closed, not unmounted: the test DOM never finishes the exit animation.
     await waitFor(() => expect(dialog).toHaveAttribute("data-state", "closed"))
     expect(apiFetch).not.toHaveBeenCalledWith(
       `/api-keys/${LIVE.id}`,

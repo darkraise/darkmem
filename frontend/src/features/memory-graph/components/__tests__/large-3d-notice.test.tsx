@@ -67,7 +67,7 @@ describe("RealMemoryGraphPage: large 3D notice", () => {
     expect(await screen.findByText(/3D is best-effort here/)).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "Dismiss" }))
     expect(screen.queryByText(/3D is best-effort here/)).not.toBeInTheDocument()
-    // The page builds a real 5,000-node graph in jsdom before the notice can
+    // The page builds a real 5,000-node graph in the test DOM before the notice can
     // show: ~5-8s on a loaded runner, so the 5s default timed out on master
     // as well as here. The bound is the work's, not a wait for a flake.
   }, 20_000)

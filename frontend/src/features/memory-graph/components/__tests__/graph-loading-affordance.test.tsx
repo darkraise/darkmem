@@ -83,7 +83,7 @@ describe("graph loading affordance", () => {
     })
     render(<RealMemoryGraphPage />, { wrapper })
     // The renderer itself cannot be asserted here -- it mounts only once a
-    // ResizeObserver measurement arrives, which jsdom never supplies. The
+    // ResizeObserver measurement arrives, which the test DOM never supplies. The
     // absence of the skeleton is the claim that matters and is observable:
     // the canvas, its camera and its layout are left alone.
     expect(screen.queryByText("Loading graph")).not.toBeInTheDocument()

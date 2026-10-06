@@ -113,7 +113,7 @@ describe("PageTree drag layer", () => {
 
 })
 
-// dnd-kit's pointer pipeline does not run under jsdom, so the hover-to-expand
+// dnd-kit's pointer pipeline does not run under the test DOM, so the hover-to-expand
 // DECISION is a pure function and is tested here. The `setTimeout` that fires
 // it is untested, and is stated as such rather than left to look covered.
 describe("shouldHoverExpand", () => {
