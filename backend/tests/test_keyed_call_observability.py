@@ -169,6 +169,33 @@ async def test_a_keyed_call_bumps_last_used_at(client, committed_key, monkeypatc
     assert await _last_used_at(key_id) is not None
 
 
+async def test_the_bump_is_throttled_per_key(committed_key, monkeypatch):
+    """Every authenticated MCP request marks its key, so the bump moves the
+    column at most once a minute rather than writing on every call."""
+    from datetime import datetime, timedelta, timezone
+
+    from app.services import api_keys
+
+    key_id, _token = await committed_key("ci-throttle", ["read"])
+    start = datetime(2026, 10, 6, 12, 0, tzinfo=timezone.utc)
+
+    await api_keys.mark_key_used(key_id, now=start)
+    assert await _last_used_at(key_id) == start
+
+    await api_keys.mark_key_used(key_id, now=start + timedelta(seconds=30))
+    assert await _last_used_at(key_id) == start
+
+    # Another process (or this one after a restart) holds no memo; the
+    # UPDATE's own predicate keeps the same window.
+    monkeypatch.setattr(api_keys, "_last_marked", {})
+    await api_keys.mark_key_used(key_id, now=start + timedelta(seconds=45))
+    assert await _last_used_at(key_id) == start
+
+    later = start + timedelta(seconds=61)
+    await api_keys.mark_key_used(key_id, now=later)
+    assert await _last_used_at(key_id) == later
+
+
 async def test_a_rejected_key_does_not_count_as_use(client, committed_key, monkeypatch):
     """A credential that authenticates and then fails the scope gate did not
     use the key for anything, so it must not refresh the operator's
