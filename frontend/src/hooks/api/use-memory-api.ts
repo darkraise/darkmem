@@ -108,11 +108,11 @@ export function useMemories() {
   })
 }
 
-export function useMemory(id: string) {
+export function useMemory(id: string, options?: { enabled?: boolean }) {
   return useQuery<Memory>({
     queryKey: ["memory", id],
     queryFn: () => apiFetch(`/memories/${id}`),
-    enabled: !!id,
+    enabled: !!id && (options?.enabled ?? true),
   })
 }
 
