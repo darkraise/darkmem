@@ -23,6 +23,7 @@ interface SourceBadgesProps {
     created_at?: string
     project?: string
     status?: MemoryStatus
+    selected?: boolean
   }[]
   entities: { id?: string; name?: string; entity_type?: string }[]
 }
@@ -86,6 +87,9 @@ export function SourceBadges({ memories, entities }: SourceBadgesProps) {
                   <div className="mb-1 flex flex-wrap items-center gap-1.5">
                     <LayerChip layer={0} />
                     <LifecycleBadge status={m.status} />
+                    {m.selected && (
+                      <Badge variant="outline">your selection</Badge>
+                    )}
                   </div>
                   <div className="text-foreground/90 line-clamp-2 leading-relaxed">
                     {m.content || `Memory ${shortId(m.id)}`}
