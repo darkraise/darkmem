@@ -33,7 +33,9 @@ test.describe("auth", () => {
     page,
   }) => {
     await page.goto("/")
-    await expect(page).toHaveURL(/\/login$/)
+    // The guard carries the page that was asked for, so signing in lands
+    // back on it rather than on the dashboard.
+    await expect(page).toHaveURL(/\/login\?redirect=%2F$/)
   })
 
   // The rate limiter is in-memory, per-IP, 5 failures / 300s window / 300s
@@ -107,6 +109,6 @@ test.describe("auth", () => {
     await expect(page).toHaveURL(/\/login$/)
 
     await page.goto("/")
-    await expect(page).toHaveURL(/\/login$/)
+    await expect(page).toHaveURL(/\/login\?redirect=%2F$/)
   })
 })
