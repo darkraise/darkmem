@@ -63,6 +63,8 @@ from pathlib import Path
 
 from app.services.events import EVENT_TYPES
 
+from ._reachability_scan import parse_source
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 APP_ROOT = REPO_ROOT / "backend" / "app"
 TAXONOMY_TS = REPO_ROOT / "frontend/src/features/activity/event-taxonomy.ts"
@@ -112,7 +114,7 @@ def _iter_py_files() -> list[Path]:
 def _collect_name_constants() -> dict[str, set[str]]:
     names: dict[str, set[str]] = {}
     for path in _iter_py_files():
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        tree = parse_source(path)
         for node in ast.walk(tree):
             if not (isinstance(node, ast.Assign) and len(node.targets) == 1):
                 continue
@@ -129,7 +131,7 @@ def _collect_name_constants() -> dict[str, set[str]]:
 def _collect_dict_constants() -> dict[str, set[str]]:
     dicts: dict[str, set[str]] = {}
     for path in _iter_py_files():
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        tree = parse_source(path)
         for node in ast.walk(tree):
             if not (isinstance(node, ast.Assign) and len(node.targets) == 1):
                 continue
@@ -177,7 +179,7 @@ def _scan_event_type_kwargs() -> tuple[set[str], set[tuple[str, str]]]:
     emitted: set[str] = set()
     unresolved: set[tuple[str, str]] = set()
     for path in _iter_py_files():
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        tree = parse_source(path)
         rel = str(path.relative_to(REPO_ROOT / "backend"))
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
