@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback } from "darkraise-ui/components/avatar"
 import { Link } from "@tanstack/react-router"
 import { Button } from "darkraise-ui/components/button"
 import { Spinner } from "darkraise-ui/components/spinner"
+import { Skeleton } from "darkraise-ui/components/skeleton"
 import { EmptyState } from "@/components/darkmem"
 import { SourceBadges } from "./source-badges"
 import { findEntityMatches } from "../lib/entity-match"
@@ -46,6 +47,8 @@ interface ChatMessagesProps {
   } | null
   isStreaming?: boolean
   pendingUserMessage?: string | null
+  /** An existing conversation whose messages are still being read. */
+  isLoading?: boolean
   onNodeSelect?: (type: "memory" | "entity", id: string) => void
 }
 
@@ -296,6 +299,7 @@ export function ChatMessages({
   streamingSources = null,
   isStreaming = false,
   pendingUserMessage = null,
+  isLoading = false,
   onNodeSelect,
 }: ChatMessagesProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -310,15 +314,34 @@ export function ChatMessages({
   // conversation, while both columns beside it stated their own absence.
   const empty =
     messages.length === 0 && !isStreaming && !pendingUserMessage
+  // Opening a conversation used to flash the new-conversation hero until its
+  // messages arrived: a pending read is not an empty thread, so it gets the
+  // shape of one instead.
+  const loading = empty && isLoading
 
   return (
     <div
       className="flex-1 space-y-6 overflow-auto px-4 py-5"
       role="log"
       aria-live="polite"
-      aria-busy={isStreaming}
+      aria-busy={isStreaming || loading}
     >
-      {empty && (
+      {loading && (
+        <div role="status" aria-label="Loading conversation" className="space-y-6">
+          <div className="flex justify-end">
+            <Skeleton className="h-10 w-2/5 rounded-2xl" />
+          </div>
+          <div className="flex gap-3">
+            <Skeleton className="h-7 w-7 shrink-0 rounded-lg" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-4 w-4/5" />
+              <Skeleton className="h-4 w-3/5" />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {empty && !loading && (
         <EmptyState
           kind="empty"
           icon={MessageCircle}
