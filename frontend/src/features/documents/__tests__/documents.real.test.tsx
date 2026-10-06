@@ -33,7 +33,7 @@ vi.mock("darkraise-ui/components/sonner", () => ({
 }))
 
 import { apiFetch, ApiError } from "@/lib/api"
-import { DocumentDetail } from "../components/document-actions"
+import { DocumentActions, DocumentDetail } from "../components/document-actions"
 import { ProjectWorkspace } from "../components/project-workspace"
 
 /**
@@ -325,6 +325,73 @@ describe("DocumentDetail — summary and connections", () => {
         screen.getByText(/no summary yet/),
       ).toBeInTheDocument(),
     )
+  })
+
+  it("never asks for a summary the list says does not exist", async () => {
+    // The door answers 404 for "not generated yet", and the browser logs
+    // every 404 as a failed request -- so asking unconditionally put an
+    // error in the console for every unsummarised document opened.
+    mockApi({ summary: "missing" })
+    render(<DocumentDetail documentId={DOCUMENT.id} hasSummary={false} />, {
+      wrapper,
+    })
+
+    expect(await screen.findByText(/no summary yet/)).toBeInTheDocument()
+    await screen.findByText(/no other documents in this project/)
+    const asked = vi
+      .mocked(apiFetch)
+      .mock.calls.some(([path]) => String(path).endsWith("/summary"))
+    expect(asked).toBe(false)
+  })
+
+  it("shows a summary just generated even though the list said none", async () => {
+    // The read stays disabled until the list catches up; the generated
+    // summary is seeded into its cache, which a disabled query still serves.
+    mockApi()
+    const base = vi.mocked(apiFetch).getMockImplementation()!
+    vi.mocked(apiFetch).mockImplementation((path: string, init?: RequestInit) =>
+      init?.method === "POST" && path.endsWith("/summary")
+        ? Promise.resolve({
+            document_id: DOCUMENT.id,
+            text: "Freshly generated.",
+            generated_at: "2026-10-06T00:00:00Z",
+            block_count: 3,
+            badged: false,
+          })
+        : base(path, init),
+    )
+    render(
+      <>
+        <DocumentActions
+          document={{ ...DOCUMENT, has_summary: false }}
+          mode="read"
+          onModeChange={vi.fn()}
+          onDeleted={vi.fn()}
+        />
+        <DocumentDetail documentId={DOCUMENT.id} hasSummary={false} />
+      </>,
+      { wrapper },
+    )
+    expect(await screen.findByText(/no summary yet/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Summarize" }))
+
+    expect(await screen.findByText("Freshly generated.")).toBeInTheDocument()
+  })
+
+  it("the workspace hands the reader the list's has_summary", async () => {
+    mockApi({
+      list: { items: [{ ...DOCUMENT, has_summary: false }], horizon: true },
+      summary: "missing",
+    })
+    renderWorkspace()
+    fireEvent.click(await screen.findByText("sky.md"))
+
+    expect(await screen.findByText(/no summary yet/)).toBeInTheDocument()
+    const asked = vi
+      .mocked(apiFetch)
+      .mock.calls.some(([path]) => String(path).endsWith("/summary"))
+    expect(asked).toBe(false)
   })
 
   it("a single-document project says so rather than 'still being embedded'", async () => {

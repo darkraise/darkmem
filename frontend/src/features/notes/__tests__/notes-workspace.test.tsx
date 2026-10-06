@@ -104,15 +104,66 @@ describe("NotesWorkspace", () => {
     expect(await screen.findByText("pane:p1")).toBeInTheDocument()
   })
 
-  // A 404 means the selection no longer exists -- trashed or purged, the
-  // server does not distinguish -- which is a state, not a fault.
-  it("clears the selection on a 404 and shows the empty pane", async () => {
+  // A 404 means the selection no longer exists -- a state, not a fault. It
+  // used to clear the selection, so a dashboard link to a purged page landed
+  // on "Nothing selected" with no word that the page was gone.
+  it("says a purged page no longer exists, keeping the selection", async () => {
     vi.mocked(apiFetch).mockImplementation(((path: string) =>
-      path === "/pages/p1"
-        ? Promise.reject(new ApiError("no page p1", 404))
+      path === "/pages/gone"
+        ? Promise.reject(new ApiError("no page gone", 404))
         : route(path)) as never)
-    const { onSelect } = renderWorkspace({ selectedId: "p1" })
-    await waitFor(() => expect(onSelect).toHaveBeenCalledWith(null))
+    const { onSelect } = renderWorkspace({ selectedId: "gone" })
+
+    expect(
+      await screen.findByText("This page no longer exists"),
+    ).toBeInTheDocument()
+    expect(screen.queryByText("Nothing selected")).toBeNull()
+    expect(onSelect).not.toHaveBeenCalled()
+    // The trash is where a page trashed with its parent can still be found.
+    fireEvent.click(screen.getByRole("button", { name: "Open trash" }))
+    expect(await screen.findByText("Trash is empty.")).toBeInTheDocument()
+  })
+
+  it("says a trashed page is in the trash and restores it in place", async () => {
+    let restored = false
+    vi.mocked(apiFetch).mockImplementation(((
+      path: string,
+      init?: RequestInit,
+    ) => {
+      if (path === "/pages/p1") {
+        return restored
+          ? Promise.resolve(PAGE)
+          : Promise.reject(new ApiError("no live page with id p1", 404))
+      }
+      if (path.startsWith("/pages/trash")) {
+        return Promise.resolve(
+          restored
+            ? []
+            : [
+                {
+                  id: "p1",
+                  title: "Alpha",
+                  parent_id: null,
+                  deleted_at: new Date().toISOString(),
+                },
+              ],
+        )
+      }
+      if (path === "/pages/p1/restore" && init?.method === "POST") {
+        restored = true
+        return Promise.resolve({ restored: 1 })
+      }
+      return route(path)
+    }) as never)
+    renderWorkspace({ selectedId: "p1" })
+
+    expect(
+      await screen.findByText("This page is in the trash"),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/Alpha was moved to the trash/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Restore" }))
+    expect(await screen.findByText("pane:p1")).toBeInTheDocument()
   })
 
   it("shows an error, never the empty pane, when the page read fails otherwise", async () => {

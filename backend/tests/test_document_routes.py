@@ -1487,6 +1487,65 @@ async def test_the_list_serves_pinned_at(client, auth_headers, filed):
     assert pinned["pinned_at"] is not None
 
 
+async def test_the_list_serves_the_tags_the_patch_wrote(client, auth_headers, filed):
+    """A tag editor needs the current set to start from, and the PATCH was the
+    only door that touched it. Sorted, so a re-read compares equal."""
+    doc = await filed("notes/tagme.md", "body")
+    other = await filed("notes/plain.md", "body")
+
+    await client.patch(
+        f"{V1}/documents/{doc}",
+        json={"tags": ["zeta", "alpha"]},
+        headers=auth_headers,
+    )
+
+    listed = await client.get(
+        f"{V1}/documents", params={"project": "p"}, headers=auth_headers
+    )
+    rows = {r["id"]: r for r in listed.json()["items"]}
+    assert rows[doc]["tags"] == ["alpha", "zeta"]
+    assert rows[other]["tags"] == []
+
+
+async def test_the_list_says_whether_a_summary_exists(
+    client, auth_headers, filed, session
+):
+    """`has_summary` is what lets the reader skip `GET /{id}/summary` -- a 404
+    for every unsummarised document -- so it must agree with `read_summary`
+    on all three stored shapes, not only on the happy path."""
+    import json
+
+    from sqlalchemy import text as sql_text
+
+    from app.services.document_summary import SUMMARY_PROPERTY_KEY, read_summary
+
+    none = await filed("notes/none.md", "body")
+    empty = await filed("notes/empty.md", "body")
+    real = await filed("notes/real.md", "body")
+    for doc, stored in (
+        (empty, {"text": "", "generated_at": "2026-10-06T00:00:00Z"}),
+        (real, {"text": "A report.", "generated_at": "2026-10-06T00:00:00Z"}),
+    ):
+        await session.execute(
+            sql_text(
+                "UPDATE documents SET properties = COALESCE(properties, '{}'::jsonb)"
+                " || CAST(:patch AS jsonb) WHERE id = CAST(:id AS uuid)"
+            ),
+            {"id": doc, "patch": json.dumps({SUMMARY_PROPERTY_KEY: stored})},
+        )
+    await session.commit()
+
+    listed = await client.get(
+        f"{V1}/documents", params={"project": "p"}, headers=auth_headers
+    )
+    rows = {r["id"]: r for r in listed.json()["items"]}
+    for doc in (none, empty, real):
+        served = await read_summary(session, document_id=doc)
+        assert rows[doc]["has_summary"] is (served is not None), doc
+    assert rows[real]["has_summary"] is True
+    assert rows[none]["has_summary"] is False
+
+
 async def test_patch_refuses_a_project_field(client, auth_headers, filed):
     """Moving a document between spaces is not a rename. The field is absent
     from the model and extra keys are forbidden, so this is 422 rather than a

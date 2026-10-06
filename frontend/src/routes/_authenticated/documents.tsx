@@ -1,5 +1,7 @@
+import { useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import { FileText } from "lucide-react"
+import { Button } from "darkraise-ui/components/button"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { PageChrome, ProjectChooser } from "@/components/app-chrome"
 import { EmptyState } from "@/components/darkmem"
@@ -15,6 +17,9 @@ function DocumentsPage() {
   const { data, isLoading, isError } = useProjects()
   const activeProject = useProjectStore((s) => s.activeProject)
   const setProject = useProjectStore((s) => s.setProject)
+  // The chooser on request, over a scoped project that holds no document:
+  // without it the only way off that empty workspace was the header chip.
+  const [choosing, setChoosing] = useState(false)
   // The notes space has its own route and its own workspace (`/notes`); this
   // is the corpus browser, so the personal project never appears here.
   const rows = (data ?? []).filter((p) => p.kind !== "personal")
@@ -42,10 +47,18 @@ function DocumentsPage() {
           title="No project holds anything yet"
           description="A project appears here once a memory, document or workstream carries its name."
         />
-      ) : project ? (
+      ) : project && !choosing ? (
         // Remounted per project: every piece of workspace state (selection,
         // expansion, search focus) is meaningful only within one project.
-        <ProjectWorkspace key={project} project={project} />
+        <ProjectWorkspace
+          key={project}
+          project={project}
+          emptyAction={
+            <Button variant="outline" onClick={() => setChoosing(true)}>
+              Choose another project
+            </Button>
+          }
+        />
       ) : (
         <ProjectChooser
           icon={FileText}
@@ -57,7 +70,10 @@ function DocumentsPage() {
           noun={{ one: "document", many: "documents" }}
           emptyTitle="No project holds documents yet"
           emptyDescription="Documents appear here once an agent files one into a project."
-          onChoose={setProject}
+          onChoose={(name) => {
+            setChoosing(false)
+            setProject(name)
+          }}
         />
       )}
     </div>
