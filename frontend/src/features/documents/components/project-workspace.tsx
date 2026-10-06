@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { FolderTree, Search, Sparkles } from "lucide-react"
+import { FolderTree, Info, Search, Sparkles } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { Card } from "darkraise-ui/components/card"
 import { Input } from "darkraise-ui/components/input"
@@ -58,6 +58,7 @@ import {
   rootFolderPaths,
 } from "@/features/documents/tree-expansion"
 import { buildUriTree } from "@/features/documents/uri-tree"
+import { noHitMentionsQuery } from "@/features/documents/lexical-miss"
 import {
   useAllDocuments,
   useDocumentSearch,
@@ -278,6 +279,9 @@ export function ProjectWorkspace({
   )
 
   const hits = search.data?.items ?? []
+  // Judged against the query that was SENT, not the box: the box may have
+  // been edited since, and the notice describes the hits on screen.
+  const meaningOnly = noHitMentionsQuery(search.variables?.query ?? "", hits)
   const clearQuery = () => {
     setQuery("")
     search.reset()
@@ -404,6 +408,18 @@ export function ProjectWorkspace({
               Clear
             </Button>
           </div>
+          {meaningOnly ? (
+            // The search has no similarity floor, so it always answers with
+            // its nearest sections; this is the only place a reader learns
+            // that none of them is a word-for-word match.
+            <p
+              role="status"
+              className="text-muted-foreground flex items-start gap-1.5 px-1.5 pb-1 text-sm"
+            >
+              <Info aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+              No section mentions these words; these are the closest by meaning.
+            </p>
+          ) : null}
           {hits.map((hit) => (
             <button
               key={hit.block_id}

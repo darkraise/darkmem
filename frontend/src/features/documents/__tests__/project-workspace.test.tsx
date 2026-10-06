@@ -338,6 +338,45 @@ describe("project workspace — the states a reader must be able to tell apart",
       expect(screen.queryByText("the storage section")).toBeNull(),
     )
   })
+
+  it("says when no hit mentions the query's words, and only then", async () => {
+    // The search has no similarity floor, so a nonsense query still answers
+    // with its nearest sections. Ranking stays; the reader is told.
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path.startsWith("/documents/search")) {
+        return Promise.resolve({
+          items: [
+            {
+              block_id: "block-42",
+              document_id: DOC.id,
+              heading_path: ["Design"],
+              path_truncated: false,
+              text: "the storage section",
+            },
+          ],
+        })
+      }
+      return Promise.resolve({ items: [DOC] })
+    })
+    renderWorkspace()
+    await screen.findByText("design.md")
+    const box = screen.getByLabelText("search documents")
+
+    fireEvent.change(box, { target: { value: "zzqqxxyy" } })
+    fireEvent.click(screen.getByRole("button", { name: /^search$/i }))
+    expect(
+      await screen.findByText(/No section mentions these words/),
+    ).toBeInTheDocument()
+    // The hits stay: the notice qualifies them rather than hiding them.
+    expect(screen.getByText("the storage section")).toBeInTheDocument()
+
+    fireEvent.change(box, { target: { value: "storage" } })
+    fireEvent.click(screen.getByRole("button", { name: /^search$/i }))
+    await waitFor(() =>
+      expect(screen.queryByText(/No section mentions these words/)).toBeNull(),
+    )
+    expect(screen.getByText("the storage section")).toBeInTheDocument()
+  })
 })
 
 describe("project workspace — selection identity", () => {
