@@ -32,7 +32,7 @@ export function useContributionCalendar(
   // every re-render.
   const [now] = useState(() => fixedNow ?? Date.now())
   const window = useMemo(() => calendarWindow(now), [now])
-  // Memory captures only: every cell is labelled "N memories captured", and
+  // Memory captures only: every cell is labelled "N captures", and
   // the unscoped journal also counts logins, setup, maintenance runs and
   // indexing — which is how a fresh install showed a day of captures beside
   // an empty Memories page.

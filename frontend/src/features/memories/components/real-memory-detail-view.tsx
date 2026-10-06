@@ -150,20 +150,34 @@ function SupersessionLineage({ memory }: { memory: Memory }) {
 }
 
 export function RealMemoryDetailView({ memoryId }: { memoryId: string }) {
-  const { data: memory, isLoading, isError } = useMemory(memoryId)
+  // Off from the moment a delete is sent: the server's memory.deleted
+  // broadcast invalidates every memory query, often before the DELETE
+  // answers, and re-reading the row being deleted logged a 404. A disabled
+  // query keeps its data on screen and is never refetched.
+  const [deleting, setDeleting] = useState(false)
+  const {
+    data: memory,
+    isLoading,
+    isError,
+  } = useMemory(memoryId, { enabled: !deleting })
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const deleteMemory = useDeleteMemory()
   const navigate = useNavigate()
 
-  const confirmDelete = () =>
+  const confirmDelete = () => {
+    setDeleting(true)
     deleteMemory.mutate(memoryId, {
       onSuccess: () => {
         toast.success("Memory deleted")
         void navigate({ to: "/memories" })
       },
-      onError: (error) => toast.error(`Delete failed: ${error.message}`),
+      onError: (error) => {
+        setDeleting(false)
+        toast.error(`Delete failed: ${error.message}`)
+      },
     })
+  }
 
   if (isLoading) {
     return (

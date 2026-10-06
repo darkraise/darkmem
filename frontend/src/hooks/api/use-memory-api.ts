@@ -13,6 +13,9 @@ export type MemoryStatus = "active" | "superseded" | "deprecated"
 export interface ChannelStatus {
   ran: boolean
   failed?: boolean
+  // Rows the arm returned before fusion, counted over every row it found,
+  // never this page: 0 is exact; absent where the door does not count.
+  hits?: number | null
 }
 
 export interface RetrievalEnvelope {
@@ -105,11 +108,11 @@ export function useMemories() {
   })
 }
 
-export function useMemory(id: string) {
+export function useMemory(id: string, options?: { enabled?: boolean }) {
   return useQuery<Memory>({
     queryKey: ["memory", id],
     queryFn: () => apiFetch(`/memories/${id}`),
-    enabled: !!id,
+    enabled: !!id && (options?.enabled ?? true),
   })
 }
 

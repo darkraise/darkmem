@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
-import { Brain, Loader2, Plus, Search, X } from "lucide-react"
+import { Brain, Info, Loader2, Plus, Search, X } from "lucide-react"
+import { Alert, AlertDescription } from "darkraise-ui/components/alert"
 import { Button } from "darkraise-ui/components/button"
 import { EmptyState } from "@/components/darkmem"
 import { Input } from "darkraise-ui/components/input"
@@ -41,13 +42,20 @@ export function RealMemoriesView({
   const [createOpen, setCreateOpen] = useState(false)
   const loadingRef = useRef(false)
 
-  const { rows, total, exclusions, isLoading, isError, isFetching } =
-    useMemorySearchPage({
-      query,
-      project: activeProject ?? "all",
-      status: ["active", "superseded"],
-      limit,
-    })
+  const {
+    rows,
+    total,
+    exclusions,
+    noKeywordMatch,
+    isLoading,
+    isError,
+    isFetching,
+  } = useMemorySearchPage({
+    query,
+    project: activeProject ?? "all",
+    status: ["active", "superseded"],
+    limit,
+  })
 
   const hasMore = rows.length < total
   // The paginated route caps `limit` at MAX_LIMIT; growing past it answered
@@ -148,6 +156,19 @@ export function RealMemoriesView({
 
         <div className="space-y-3 p-4">
           <ExclusionStrip items={exclusions} />
+
+          {searching && noKeywordMatch && rows.length > 0 && !isError ? (
+            // Search has no score floor on meaning, so a query no memory
+            // contains still lists every memory; say so instead of an empty
+            // state the ranking never reaches.
+            <Alert variant="info" role="status">
+              <Info aria-hidden className="h-4 w-4" />
+              <AlertDescription>
+                No memory{activeProject ? ` in project ${activeProject}` : ""}{" "}
+                contains these words; these are the closest by meaning.
+              </AlertDescription>
+            </Alert>
+          ) : null}
 
           {isLoading ? (
             <div

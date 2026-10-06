@@ -75,6 +75,14 @@ describe("the grammar actually rejects what it claims to reject — proven, not 
     expect(validateBadgeClaim(GOOD).ok).toBe(true)
   })
 
+  it("accepts the producer's checked form for a fact the recompute held", () => {
+    expect(
+      validateBadgeClaim(
+        "asserted by 1 distinct origin of kinds [memory], no known contradiction, checked as of 2026-10-05",
+      ).ok,
+    ).toBe(true)
+  })
+
   it("rejects an added human attribution the producer never emits (the T2.75 divergence, replanted)", () => {
     const paraphrase =
       "human-ratified by q.tran on 2026-07-21; previously asserted by 2 distinct origins of kinds [human, memory]"

@@ -82,6 +82,9 @@ export interface MemorySearchPageResult {
   rows: MemorySearchRow[]
   total: number
   exclusions: ExclusionItem[]
+  /** The query matched no memory by its words: every row came from the
+   *  semantic arm, which has no score floor and so always fills the list. */
+  noKeywordMatch: boolean
   isLoading: boolean
   isError: boolean
   /** A page-size bump is in flight — distinct from `isLoading` (the very
@@ -134,10 +137,20 @@ export function useMemorySearchPage({
       }))
   }, [result.data])
 
+  // Read off the keyword arm's own pre-fusion count, not the rows: a keyword
+  // hit can rank below the loaded page, so "no row has a keyword score"
+  // would not mean "no memory contains these words".
+  const channels = result.data?.envelope?.channels
+  const noKeywordMatch =
+    channels?.keyword?.hits === 0 &&
+    channels.semantic?.ran === true &&
+    !channels.semantic.failed
+
   return {
     rows,
     total: result.data?.total ?? 0,
     exclusions,
+    noKeywordMatch,
     isLoading: result.isLoading,
     isError: result.isError,
     isFetching: result.isFetching,

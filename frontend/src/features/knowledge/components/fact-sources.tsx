@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router"
 import { Badge } from "darkraise-ui/components/badge"
 import { cn } from "darkraise-ui/lib"
 import { Timestamp, useDetailLevel } from "@/components/darkmem"
@@ -38,11 +39,41 @@ export function sourceGroupsToFlatSources(groups: FactSourceGroup[]): FactSource
   )
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const REF_LINK = "underline-offset-2 hover:underline text-primary-text"
+
+/** A source's ref, linked to the page that holds it where one exists: a
+ *  memory source's ref is the memory id, and a code source whose ref is a
+ *  bare repository id opens that repository's graph. A human or block ref,
+ *  or a code ref in another shape, has no single page and stays text. */
+function SourceRef({ source }: { source: FactSource }) {
+  if (source.kind === "memory" && UUID_RE.test(source.ref)) {
+    return (
+      <Link
+        to="/memories/$memoryId"
+        params={{ memoryId: source.ref }}
+        className={REF_LINK}
+      >
+        {source.ref}
+      </Link>
+    )
+  }
+  if (source.kind === "code" && UUID_RE.test(source.ref)) {
+    return (
+      <Link to="/code/graph" search={{ repo: source.ref }} className={REF_LINK}>
+        {source.ref}
+      </Link>
+    )
+  }
+  return <>{source.ref}</>
+}
+
 export function SourceRow({ source }: { source: FactSource }) {
   return (
     <div className="border-border flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 border-t border-dashed py-1.5 first:border-t-0 first:pt-0">
       <span className="min-w-40 shrink-0 font-mono text-sm font-semibold">
-        {source.ref}
+        <SourceRef source={source} />
       </span>
       <span className="min-w-52 flex-1 text-sm">{source.detail}</span>
       <span className="text-muted-foreground ml-auto shrink-0 font-mono text-sm">

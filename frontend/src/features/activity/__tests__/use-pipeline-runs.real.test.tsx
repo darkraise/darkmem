@@ -7,6 +7,7 @@ vi.mock("@/lib/demo-flag", () => ({ DEMO: false }))
 vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
 
 import { apiFetch } from "@/lib/api"
+import { ALL_PROJECTS, useProjectStore } from "@/stores/project-store"
 import { derivedOutcome, usePipelineRuns } from "../use-pipeline-runs"
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -106,5 +107,19 @@ describe("derivedOutcome", () => {
       derivedOutcome({ embed: "error", extract: "skipped", vector: "skipped", graph: "skipped" }),
     ).toBe("failed")
     expect(derivedOutcome({})).toBe("failed")
+  })
+
+  it("follows the header's project scope, as the dashboard does (M21)", async () => {
+    vi.mocked(apiFetch).mockResolvedValue([])
+    useProjectStore.setState({ activeProject: "webapp", missingProject: null })
+    try {
+      const { result } = renderHook(() => usePipelineRuns(), { wrapper })
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+      expect(apiFetch).toHaveBeenCalledWith(
+        "/analytics/pipeline-logs?limit=50&project=webapp",
+      )
+    } finally {
+      useProjectStore.setState({ activeProject: ALL_PROJECTS, missingProject: null })
+    }
   })
 })

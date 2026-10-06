@@ -298,4 +298,59 @@ describe("RealMemoriesView", () => {
       .mock.calls.map((call) => JSON.parse(String((call[1] as RequestInit | undefined)?.body ?? "{}")))
     expect(bodies.some((body) => body.project === "acme")).toBe(true)
   })
+
+  // M8: the semantic arm has no score floor, so a query no memory contains
+  // still fills the list; the keyword arm's own count says so.
+  function semanticOnlyPage(keywordHits: number) {
+    return {
+      items: [
+        {
+          id: "m1",
+          content: "Postgres with pgvector for the memory store",
+          tags: [],
+          source: "api",
+          created_at: new Date().toISOString(),
+          status: "active",
+          flags: [],
+          trace: {
+            scores: { semantic: 0.0, keyword: null, rrf_score: 0.0115, rerank_score: null },
+            rank_fusion_factor: 1.0,
+            rank_fusion_breakdown: {},
+          },
+        },
+      ],
+      total: 1,
+      limit: 50,
+      offset: 0,
+      envelope: {
+        query: "zzqqxxnomatch",
+        channels: {
+          semantic: { ran: true, failed: false, hits: 1 },
+          keyword: { ran: true, failed: false, hits: keywordHits },
+        },
+        reranked: false,
+        weights: { semantic_weight: 0.7 },
+        excluded: {},
+      },
+    }
+  }
+
+  it("says no memory contains the words when the keyword arm matched nothing", async () => {
+    useProjectStore.setState({ activeProject: "webapp", missingProject: null })
+    vi.mocked(apiFetch).mockResolvedValue(semanticOnlyPage(0))
+    render(<RealMemoriesView initialQuery="zzqqxxnomatch" />, { wrapper })
+
+    await screen.findByText(/Postgres with pgvector/)
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "No memory in project webapp contains these words; these are the closest by meaning.",
+    )
+  })
+
+  it("makes no such claim when a keyword hit ranked below the loaded rows", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(semanticOnlyPage(1))
+    render(<RealMemoriesView initialQuery="pgvector" />, { wrapper })
+
+    await screen.findByText(/Postgres with pgvector/)
+    expect(screen.queryByText(/contains these words/)).toBeNull()
+  })
 })
