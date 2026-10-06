@@ -181,6 +181,65 @@ async def test_provider_crud_round_trip(client, auth_headers):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("body, field, message", [
+    ({"name": "bad", "base_url": "not a url"}, "base_url",
+     "Enter an http:// or https:// address with a host"),
+    ({"name": "bad", "base_url": "ftp://x/v1"}, "base_url",
+     "Enter an http:// or https:// address with a host"),
+    ({"name": "bad", "base_url": "http://"}, "base_url",
+     "Enter an http:// or https:// address with a host"),
+    # A "/" in the name made a row no `/llm-providers/{name}` route could
+    # reach again: it could be created, never edited or deleted.
+    ({"name": "a/b", "base_url": "http://x/v1"}, "name",
+     "Use only letters, digits, dot, dash and underscore"),
+    ({"name": "..", "base_url": "http://x/v1"}, "name",
+     "Use only letters, digits, dot, dash and underscore"),
+])
+async def test_create_refuses_unusable_connection_fields(
+    client, auth_headers, body, field, message,
+):
+    response = await client.post(
+        "/api/v1/config/llm-providers",
+        json={"api_kind": "openai", **body},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"].startswith(f"{field}: {message}")
+
+
+@pytest.mark.asyncio
+async def test_a_stored_row_with_a_bad_url_still_loads_and_can_be_fixed(
+    client, auth_headers, session,
+):
+    """The check guards writes only: a row stored before it lists as it is,
+    and saving it asks for a usable address."""
+    await session.execute(text(
+        "INSERT INTO llm_providers (name, api_kind, base_url) "
+        "VALUES ('legacy','openai','not a url')"
+    ))
+    await session.commit()
+
+    listed = await client.get("/api/v1/config/llm-providers", headers=auth_headers)
+    assert listed.status_code == 200
+    row = next(p for p in listed.json()["providers"] if p["name"] == "legacy")
+    assert row["base_url"] == "not a url"
+
+    kept = await client.put(
+        "/api/v1/config/llm-providers/legacy",
+        json={"api_kind": "openai", "base_url": "not a url"},
+        headers=auth_headers,
+    )
+    assert kept.status_code == 422
+    fixed = await client.put(
+        "/api/v1/config/llm-providers/legacy",
+        json={"api_kind": "openai", "base_url": "http://fixed/v1"},
+        headers=auth_headers,
+    )
+    assert fixed.status_code == 200
+    assert fixed.json()["base_url"] == "http://fixed/v1"
+
+
+@pytest.mark.asyncio
 async def test_masked_key_sentinel_does_not_rotate(client, auth_headers, session):
     await client.post(
         "/api/v1/config/llm-providers",

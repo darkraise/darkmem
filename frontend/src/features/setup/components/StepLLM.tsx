@@ -44,6 +44,10 @@ import {
   type WizardProvider,
   useSetupWizardStore,
 } from "@/features/setup/setupWizardStore"
+import {
+  providerBaseUrlError,
+  providerNameError,
+} from "@/features/settings/provider-fields"
 import { useProbeModels } from "@/hooks/api/use-setup-api"
 
 const BASE_URL_DEFAULTS: Record<LlmApiKind, string> = {
@@ -69,6 +73,7 @@ function ProviderRow({ provider }: { provider: WizardProvider }) {
   const remove = useSetupWizardStore((s) => s.removeLlmProvider)
   const probe = useProbeModels()
   const [probeError, setProbeError] = useState<string | null>(null)
+  const baseUrlError = providerBaseUrlError(provider.base_url)
 
   const handleTest = async () => {
     setProbeError(null)
@@ -125,10 +130,14 @@ function ProviderRow({ provider }: { provider: WizardProvider }) {
             id={`${provider.name}-url`}
             value={provider.base_url}
             aria-label={`${provider.name} base_url`}
+            aria-invalid={baseUrlError ? true : undefined}
             onChange={(e) =>
               update(provider.name, { base_url: e.target.value })
             }
           />
+          {baseUrlError && (
+            <p className="text-destructive text-sm">{baseUrlError}</p>
+          )}
         </div>
         <div className="min-w-0 space-y-1 sm:col-span-2 lg:col-span-1">
           <Label htmlFor={`${provider.name}-key`}>API key</Label>
@@ -191,8 +200,14 @@ function NewProviderRow() {
   }
 
   const nameTaken = providers.some((p) => p.name === name.trim())
+  const nameError = providerNameError(name.trim())
+  const baseUrlError = providerBaseUrlError(baseUrl.trim())
   const canCreate =
-    name.trim().length > 0 && baseUrl.trim().length > 0 && !nameTaken
+    name.trim().length > 0 &&
+    baseUrl.trim().length > 0 &&
+    !nameTaken &&
+    !nameError &&
+    !baseUrlError
 
   const handleApiKindChange = (kind: LlmApiKind) => {
     setApiKind(kind)
@@ -242,6 +257,7 @@ function NewProviderRow() {
           {nameTaken && (
             <p className="text-destructive text-sm">Name already in use</p>
           )}
+          {nameError && <p className="text-destructive text-sm">{nameError}</p>}
         </div>
         <div className="space-y-1">
           <Label>API kind</Label>
@@ -266,8 +282,12 @@ function NewProviderRow() {
           <Input
             value={baseUrl}
             aria-label="new provider base_url"
+            aria-invalid={baseUrlError ? true : undefined}
             onChange={(e) => setBaseUrl(e.target.value)}
           />
+          {baseUrlError && (
+            <p className="text-destructive text-sm">{baseUrlError}</p>
+          )}
         </div>
         <div className="space-y-1">
           <Label>API key</Label>
@@ -445,5 +465,9 @@ export function isStepLLMValid(
 ): boolean {
   if (llm.skipped) return true
   if (llm.providers.length === 0) return false
+  // Finalize refuses the whole payload over one unusable provider, so the
+  // step does not let it through to that point.
+  if (llm.providers.some((p) => providerBaseUrlError(p.base_url) !== null))
+    return false
   return missingRequiredModels(llm).length === 0
 }

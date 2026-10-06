@@ -310,6 +310,51 @@ describe("ProvidersPanel (DEMO off — read-only rendering)", () => {
     })
   })
 
+  it("refuses a name and a base_url the server would refuse, before sending", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(PROVIDERS)
+    render(<ProvidersPanel />, { wrapper })
+    await screen.findByLabelText("Edit ollama-local")
+
+    fireEvent.click(screen.getByRole("button", { name: /Add provider/ }))
+    fireEvent.change(await screen.findByLabelText("new provider name"), {
+      target: { value: "team/openai" },
+    })
+    fireEvent.change(screen.getByLabelText("new provider base_url"), {
+      target: { value: "not a url" },
+    })
+
+    expect(
+      screen.getByText(
+        "Use only letters, digits, dot, dash and underscore, starting with a letter or digit.",
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "Enter an http:// or https:// address with a host, for example https://api.openai.com/v1.",
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Create" })).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText("new provider name"), {
+      target: { value: "team-openai" },
+    })
+    fireEvent.change(screen.getByLabelText("new provider base_url"), {
+      target: { value: "https://api.openai.com/v1" },
+    })
+    expect(screen.getByRole("button", { name: "Create" })).toBeEnabled()
+  })
+
+  it("refuses saving an edit that breaks the base_url", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(PROVIDERS)
+    render(<ProvidersPanel />, { wrapper })
+    const baseUrl = await openEditor("ollama-local")
+    fireEvent.change(baseUrl, { target: { value: "localhost:11434" } })
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled()
+    expect(
+      vi.mocked(apiFetch).mock.calls.some(([, init]) => init?.method === "PUT"),
+    ).toBe(false)
+  })
+
   it("shows no editable connection field until the editor is opened", async () => {
     vi.mocked(apiFetch).mockResolvedValue(PROVIDERS)
     render(<ProvidersPanel />, { wrapper })

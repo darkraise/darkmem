@@ -62,6 +62,24 @@ describe("StepLLM", () => {
     )
   })
 
+  it("refuses a provider the server would refuse, saying why", () => {
+    render(<StepLLM />, { wrapper })
+    fireEvent.click(screen.getByRole("button", { name: "Add provider" }))
+    fireEvent.change(screen.getByLabelText("new provider name"), {
+      target: { value: "my/openai" },
+    })
+    fireEvent.change(screen.getByLabelText("new provider base_url"), {
+      target: { value: "api.openai.com" },
+    })
+    expect(
+      screen.getByText(/Use only letters, digits, dot, dash and underscore/),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/Enter an http:\/\/ or https:\/\/ address with a host/),
+    ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Create" })).toBeDisabled()
+  })
+
   it("marks extraction, classification and reasoning as required; the rest optional", () => {
     render(<StepLLM />, { wrapper })
     const label = (purpose: string) =>

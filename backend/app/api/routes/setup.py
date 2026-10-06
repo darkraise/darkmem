@@ -34,6 +34,7 @@ from app.models.code import Repository
 from app.models.config import Config
 from app.services.events import record_event
 from app.models.llm_config import LLMPurposeConfigRow
+from app.schemas.config import ProviderBaseUrl, ProviderName
 from app.services.config import VERIFICATION_PURPOSE
 from app.services.llm_provider_guard import assert_not_verification_provider
 from app.services.llm_quirks import models_probe, quirks_for
@@ -251,9 +252,9 @@ async def fs_list(path: str, detect_repos: bool = False) -> FsListResponse:
 
 
 class SetupProvider(BaseModel):
-    name: str
+    name: ProviderName
     api_kind: Literal["openai", "anthropic", "ollama", "google", "deepseek", "zai"]
-    base_url: str
+    base_url: ProviderBaseUrl
     api_key: str | None = None
 
 

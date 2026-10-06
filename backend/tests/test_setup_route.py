@@ -341,6 +341,30 @@ async def test_setup_accepts_a_provider_list(client, session):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("provider, field", [
+    ({"name": "my/ds", "base_url": "https://api.deepseek.com/v1"}, "name"),
+    ({"name": "my-ds", "base_url": "api.deepseek.com"}, "base_url"),
+])
+async def test_setup_refuses_unusable_provider_fields(client, session, provider, field):
+    """The wizard writes the same rows the settings door does, under the same
+    rules: a provider it created must stay editable there."""
+    resp = await client.post("/api/v1/setup", json={
+        "password": "correct-horse-battery-staple",
+        "llm": {
+            "providers": [{"api_kind": "deepseek", "api_key": "sk-x", **provider}],
+            "purposes": {
+                "extraction": {"provider_name": provider["name"], "model": "m"},
+            },
+        },
+    })
+    assert resp.status_code == 422
+    assert field in resp.json()["detail"]
+    assert (await session.execute(text(
+        "SELECT count(*) FROM config WHERE key = 'admin_password_hash'"
+    ))).scalar_one() == 0
+
+
+@pytest.mark.asyncio
 async def test_setup_refuses_a_provider_named_after_a_seeded_one(client, session):
     """`verification-judge` is seeded by DEFAULT_PROVIDER_ROWS before the
     user's own providers are written. Without a name guard, a submitted
