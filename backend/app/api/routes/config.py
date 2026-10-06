@@ -398,6 +398,15 @@ class FeatureFlagsResponse(BaseModel):
     # measured win" rule, and which of those have actually cleared one.
     measurable_flags: list[str] = Field(default_factory=list)
     measured_flags: list[str] = Field(default_factory=list)
+    # The range the PUT accepts for every numeric flag, read off
+    # FeatureFlagsUpdate's own Field(ge=, le=) so the form shows and enforces
+    # the bounds the server applies rather than a copy of them.
+    numeric_bounds: dict[str, "FlagBound"] = Field(default_factory=dict)
+
+
+class FlagBound(BaseModel):
+    min: float
+    max: float
 
 
 class FeatureFlagsUpdate(BaseModel):
@@ -423,6 +432,19 @@ class FeatureFlagsUpdate(BaseModel):
     dual_level_enabled: bool | None = None
     w_dual: float | None = Field(default=None, ge=0, le=5)
     community_injection_enabled: bool | None = None
+
+
+def _numeric_flag_bounds() -> dict[str, FlagBound]:
+    bounds: dict[str, FlagBound] = {}
+    for name, field in FeatureFlagsUpdate.model_fields.items():
+        lower = next((m.ge for m in field.metadata if hasattr(m, "ge")), None)
+        upper = next((m.le for m in field.metadata if hasattr(m, "le")), None)
+        if lower is not None and upper is not None:
+            bounds[name] = FlagBound(min=lower, max=upper)
+    return bounds
+
+
+FeatureFlagsResponse.model_rebuild()
 
 
 async def _lock_config_row(session: AsyncSession, key: str) -> None:
@@ -509,6 +531,7 @@ def _flags_response(
         ),
         measurable_flags=list(MEASURABLE_FLAGS),
         measured_flags=measured,
+        numeric_bounds=_numeric_flag_bounds(),
     )
 
 

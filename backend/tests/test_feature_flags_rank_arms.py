@@ -128,3 +128,21 @@ async def test_measured_flags_come_from_the_config_row_not_a_guess(
 
     resp = await client.get("/api/v1/config/feature-flags", headers=auth_headers)
     assert resp.json()["measured_flags"] == ["reranker_enabled"]
+
+
+async def test_the_response_serves_the_ranges_the_put_enforces(client, auth_headers):
+    """The Flags dialog shows and enforces these, so they are the PUT's own
+    bounds rather than a copy the form could drift from."""
+    body = (await client.get("/api/v1/config/feature-flags", headers=auth_headers)).json()
+    bounds = body["numeric_bounds"]
+    for key in ("confidence_rank_gamma", "w_importance", "w_heat", "w_recency",
+                "w_context_boost", "w_ppr", "w_dual"):
+        assert bounds[key] == {"min": 0, "max": 5}, key
+    assert bounds["pipeline_concurrency"] == {"min": 1, "max": 20}
+
+    over = await client.put(
+        "/api/v1/config/feature-flags",
+        json={"confidence_rank_gamma": bounds["confidence_rank_gamma"]["max"] + 1},
+        headers=auth_headers,
+    )
+    assert over.status_code == 422

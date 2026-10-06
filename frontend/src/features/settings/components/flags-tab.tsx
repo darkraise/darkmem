@@ -40,6 +40,7 @@ import { HelpTip, IconButton, NumberField } from "@/components/darkmem"
 import { armStatus } from "@/demo/settings"
 import type {
   DemoBehavioralFlag,
+  DemoGraphFlag,
   DemoLadderParam,
   DemoRankArm,
   DemoTunable,
@@ -283,6 +284,29 @@ function ArmInput({
   )
 }
 
+/** Why a draft arm value would be refused, or null. The bounds are the
+ *  server's (`numeric_bounds`), so this refuses exactly what the PUT would
+ *  answer 422 to, before the dialog closes on a save that cannot land. */
+function armRangeError(arm: DemoRankArm, value: number): string | null {
+  if (arm.min === undefined || arm.max === undefined) return null
+  if (value < arm.min || value > arm.max)
+    return `Enter a value from ${arm.min} to ${arm.max}.`
+  return null
+}
+
+/** The allowed range under an arm being edited, turning into the error when
+ *  the draft leaves it. */
+function ArmRange({ arm, error }: { arm: DemoRankArm; error: string | null }) {
+  if (error)
+    return <p className="text-destructive basis-full text-sm">{error}</p>
+  if (arm.min === undefined || arm.max === undefined) return null
+  return (
+    <p className="text-muted-foreground basis-full text-right text-xs">
+      {arm.min} to {arm.max}
+    </p>
+  )
+}
+
 /** One ranking arm.
  *
  *  The same row renders at rest and under edit, so the two cannot disagree
@@ -302,6 +326,7 @@ function ArmRow({
 }) {
   const editing = draft !== undefined && onChange !== undefined
   const shown = editing ? draft : arm.value
+  const error = editing ? armRangeError(arm, draft) : null
   return (
     <div className="border-inset bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
       <SettingName name={arm.key} />
@@ -313,7 +338,10 @@ function ArmRow({
       ) : (
         <ValueTag value={arm.value} />
       )}
-      <ArmPill value={shown} />
+      {/* No ACTIVE pill for a value the server will refuse: it would claim
+          an effect the save cannot have. */}
+      {!error && <ArmPill value={shown} />}
+      {editing && <ArmRange arm={arm} error={error} />}
     </div>
   )
 }
@@ -1058,12 +1086,16 @@ function FlagsSectionDialog({
   const dirty = Object.keys(committed).filter((k) => draft[k] !== committed[k])
   const set = (key: string, value: number | boolean) =>
     setDraft((d) => ({ ...d, [key]: value }))
+  const armsInRange = (arms ?? []).every(
+    (arm) => armRangeError(arm, draft[arm.key] as number) === null,
+  )
 
   return (
     <SectionDialog
       title={title}
       description={description}
       dirty={dirty}
+      canSave={armsInRange}
       saving={binding.isSaving(section)}
       onOpenChange={onOpenChange}
       onSave={() => {
@@ -1123,10 +1155,16 @@ function GraphDialog({
   const dirty = Object.keys(committed).filter((k) => draft[k] !== committed[k])
   const set = (key: string, value: number | boolean) =>
     setDraft((d) => ({ ...d, [key]: value }))
+  const weightError = (flag: DemoGraphFlag) =>
+    flag.paired_arm
+      ? armRangeError(flag.paired_arm, draft[flag.paired_arm.key] as number)
+      : null
+  const weightsInRange = binding.graphFlags.every((f) => !weightError(f))
 
   return (
     <SectionDialog
       title="graph augmentation"
+      canSave={weightsInRange}
       description="Each channel adds results from the entity graph; its weight sets how much they count in the ranking."
       dirty={dirty}
       saving={binding.isSaving(SECTIONS.graph)}
@@ -1166,7 +1204,10 @@ function GraphDialog({
                 value={draft[flag.paired_arm.key] as number}
                 onChange={(v) => set(flag.paired_arm!.key, v)}
               />
-              <ArmPill value={draft[flag.paired_arm.key] as number} />
+              {!weightError(flag) && (
+                <ArmPill value={draft[flag.paired_arm.key] as number} />
+              )}
+              <ArmRange arm={flag.paired_arm} error={weightError(flag)} />
             </div>
           )}
         </div>

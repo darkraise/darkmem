@@ -203,7 +203,12 @@ export interface FlagsTabBinding {
   saveAllowlist: (patterns: string[]) => void
 }
 
-function armFrom(flag: string, value: number, descOverride?: string): DemoRankArm {
+function armFrom(
+  flag: string,
+  value: number,
+  descOverride?: string,
+  bounds?: { min: number; max: number },
+): DemoRankArm {
   const meta = FUSION_ARM_META[flag]
   return {
     key: flag,
@@ -212,6 +217,8 @@ function armFrom(flag: string, value: number, descOverride?: string): DemoRankAr
     coded_default: CODED_DEFAULTS[flag] ?? 0,
     source: value === (CODED_DEFAULTS[flag] ?? 0) ? "default" : "override",
     step: meta?.step ?? 0.05,
+    min: bounds?.min,
+    max: bounds?.max,
   }
 }
 
@@ -336,11 +343,18 @@ export function useFlagsTabBinding(): FlagsTabBinding {
           "w_heat",
           "w_recency",
         ] as const
-      ).map((key) => armFrom(key, flags[key]))
+      ).map((key) =>
+        armFrom(key, flags[key], undefined, flags.numeric_bounds?.[key]),
+      )
     : []
 
   const contextBoost: DemoRankArm = flags
-    ? armFrom("w_context_boost", flags.w_context_boost)
+    ? armFrom(
+        "w_context_boost",
+        flags.w_context_boost,
+        undefined,
+        flags.numeric_bounds?.w_context_boost,
+      )
     : armFrom("w_context_boost", 0)
 
   const behavioralFlags: DemoBehavioralFlag[] = flags
@@ -381,6 +395,7 @@ export function useFlagsTabBinding(): FlagsTabBinding {
               channel.weight_flag,
               channel.weight ?? 0,
               GRAPH_WEIGHT_META[channel.weight_flag],
+              flags?.numeric_bounds?.[channel.weight_flag],
             ),
     }),
   )
