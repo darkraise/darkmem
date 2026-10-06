@@ -192,6 +192,34 @@ def test_the_zero_origin_sentence_survives_having_no_transition_either():
     )
 
 
+def test_a_fact_the_recompute_reached_and_held_names_the_checked_day():
+    """Degradation 1's other half: an ordinary hold journals nothing, so a
+    fact the drain reached and kept on its rung has no transition, and
+    "not yet recomputed" would say the job never ran."""
+    assert build_claim(
+        verification_status="candidate",
+        origin_count=1,
+        origin_kinds=["memory"],
+        as_of=None,
+        checked_as_of=AS_OF,
+    ) == (
+        "asserted by 1 distinct origin of kinds [memory], "
+        "no known contradiction, checked as of 2026-07-20"
+    )
+
+
+def test_a_journalled_transition_keeps_its_own_day_over_a_check():
+    claim = build_claim(
+        verification_status="corroborated",
+        origin_count=2,
+        origin_kinds=["memory"],
+        as_of=AS_OF,
+        checked_as_of=AS_OF + timedelta(days=3),
+    )
+    assert claim.endswith(", as of 2026-07-20")
+    assert "checked" not in claim
+
+
 def test_the_claimed_day_is_utc_whatever_offset_the_row_arrives_in():
     east = datetime(2026, 7, 21, 1, 30, 0, tzinfo=timezone(timedelta(hours=13)))
     assert east.date().isoformat() == "2026-07-21"
@@ -500,6 +528,182 @@ async def test_a_fact_with_no_verification_history_carries_no_as_of(session):
     badge = await badge_for_fact(session, await _row(session, fact_id))
     assert badge.as_of is None
     assert badge.claim.endswith("verification not yet recomputed")
+
+
+# ───────────── Degradation 1: the recompute's progress, read as data ─────────────
+
+
+async def _journal_sources_changed(session, fact_id, *, at) -> int:
+    """A ``sources_changed`` event at a chosen instant, as the producers write
+    it; returns the event id, the watermark's tiebreak."""
+    await session.execute(
+        text("SELECT events_ensure_partition(CAST(:at AS timestamptz)::date)"),
+        {"at": at},
+    )
+    event_id = (
+        await session.execute(
+            text(
+                """
+                INSERT INTO events (created_at, event_type, object_type, object_id,
+                                    project, payload)
+                VALUES (
+                    CAST(:at AS timestamptz), 'sources_changed', 'fact',
+                    CAST(:fid AS uuid), CAST(:project AS text),
+                    CAST(:payload AS jsonb)
+                )
+                RETURNING id
+                """
+            ),
+            {
+                "at": at,
+                "fid": str(fact_id),
+                "project": PROJECT,
+                "payload": json.dumps({"fact_id": str(fact_id)}),
+            },
+        )
+    ).scalar_one()
+    await session.flush()
+    return int(event_id)
+
+
+async def _set_watermark(session, *, at, event_id) -> None:
+    """The recompute's state row, as its drain saves it. Other suites commit a
+    real one, so every test here writes its own inside its own transaction."""
+    from app.services.fact_badge import RECOMPUTE_STATE_KEY
+
+    state = {"watermark_created_at": None, "watermark_id": None}
+    if at is not None:
+        state = {"watermark_created_at": at.isoformat(), "watermark_id": event_id}
+    await session.execute(
+        text(
+            "INSERT INTO config (key, value) VALUES (:key, CAST(:value AS jsonb)) "
+            "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
+        ),
+        {"key": RECOMPUTE_STATE_KEY, "value": json.dumps(state)},
+    )
+    await session.flush()
+
+
+def test_the_state_key_is_the_jobs_own():
+    """Spelled twice because the read path may not import the job (invariant
+    15); this pins the two spellings together."""
+    from app.services.fact_badge import RECOMPUTE_STATE_KEY
+    from app.services.verification_recompute import _STATE_CONFIG_KEY
+
+    assert RECOMPUTE_STATE_KEY == _STATE_CONFIG_KEY
+
+
+async def test_a_fact_whose_evidence_the_drain_passed_reads_checked_as_of(session):
+    fact_id = await _fact(session)
+    await _source(session, fact_id, origin="session-a")
+    await _journal_sources_changed(session, fact_id, at=AS_OF)
+    other = await _fact(session, obj="kubernetes")
+    later = await _journal_sources_changed(session, other, at=AS_OF + timedelta(days=2))
+    await _set_watermark(session, at=AS_OF + timedelta(days=2), event_id=later)
+
+    badge = await badge_for_fact(session, await _row(session, fact_id))
+    assert badge.as_of is None, "a check is not a transition; as_of stays the journal's"
+    assert badge.claim == (
+        "asserted by 1 distinct origin of kinds [memory], "
+        "no known contradiction, checked as of 2026-07-22"
+    )
+
+
+async def test_evidence_newer_than_the_watermark_is_not_yet_checked(session):
+    fact_id = await _fact(session)
+    await _source(session, fact_id, origin="session-a")
+    first = await _journal_sources_changed(session, fact_id, at=AS_OF)
+    await _journal_sources_changed(session, fact_id, at=AS_OF + timedelta(days=1))
+    await _set_watermark(session, at=AS_OF, event_id=first)
+
+    badge = await badge_for_fact(session, await _row(session, fact_id))
+    assert badge.claim.endswith("verification not yet recomputed")
+
+
+async def test_a_same_instant_tie_reads_the_way_the_drain_ordered_it(session):
+    """Two events of one transaction share ``created_at``; the drain orders
+    them by id, and so must the reader, or it claims a check the drain has not
+    reached yet."""
+    reached = await _fact(session, obj="reached")
+    pending = await _fact(session, obj="pending")
+    for fact_id in (reached, pending):
+        await _source(session, fact_id, origin="session-a")
+    watermark = await _journal_sources_changed(session, reached, at=AS_OF)
+    await _journal_sources_changed(session, pending, at=AS_OF)
+    await _set_watermark(session, at=AS_OF, event_id=watermark)
+
+    badges = await badges_for_facts(
+        session, [await _row(session, reached), await _row(session, pending)]
+    )
+    assert badges[str(reached)].claim.endswith("checked as of 2026-07-20")
+    assert badges[str(pending)].claim.endswith("verification not yet recomputed")
+
+
+async def test_a_recompute_that_never_drained_claims_no_check(session):
+    fact_id = await _fact(session)
+    await _source(session, fact_id, origin="session-a")
+    await _journal_sources_changed(session, fact_id, at=AS_OF)
+    await _set_watermark(session, at=None, event_id=None)
+
+    badge = await badge_for_fact(session, await _row(session, fact_id))
+    assert badge.claim.endswith("verification not yet recomputed")
+
+
+async def test_the_real_drain_holding_a_candidate_turns_the_badge_to_checked(session):
+    """End to end through the job itself: a lone origin keeps its fact a
+    candidate, so the drain journals nothing, and the badge must still say
+    the fact was checked."""
+    from app.services.events import record_event
+    from app.services.verification_recompute import run_recompute
+
+    tail = (
+        await session.execute(
+            text(
+                "SELECT created_at, id FROM events WHERE event_type = 'sources_changed' "
+                "ORDER BY created_at DESC, id DESC LIMIT 1"
+            )
+        )
+    ).first()
+    if tail is None:
+        await _set_watermark(session, at=datetime(1970, 1, 1, tzinfo=timezone.utc), event_id=-1)
+    else:
+        await _set_watermark(session, at=tail.created_at, event_id=tail.id)
+
+    fact_id = await _fact(session)
+    await _source(session, fact_id, origin="session-a")
+    await record_event(
+        session,
+        event_type="sources_changed",
+        object_type="fact",
+        object_id=uuid.UUID(str(fact_id)),
+        project=PROJECT,
+        payload={"fact_id": str(fact_id)},
+    )
+    await session.flush()
+    before = await badge_for_fact(session, await _row(session, fact_id))
+    assert before.claim.endswith("verification not yet recomputed")
+
+    outcome = await run_recompute(
+        session, now=datetime.now(timezone.utc) + timedelta(seconds=30)
+    )
+    assert str(fact_id) in outcome.drain.recomputed_ids
+    assert outcome.drain.transitions == 0
+    await session.flush()  # the job's runner commits its state row
+
+    emitted_at = (
+        await session.execute(
+            text(
+                "SELECT created_at FROM events WHERE event_type = 'sources_changed' "
+                "AND object_id = CAST(:id AS uuid)"
+            ),
+            {"id": str(fact_id)},
+        )
+    ).scalar_one()
+    after = await badge_for_fact(session, await _row(session, fact_id))
+    assert after.as_of is None
+    assert after.claim.endswith(
+        f"checked as of {emitted_at.astimezone(timezone.utc).date().isoformat()}"
+    )
 
 
 async def test_a_disputed_fact_renders_both_sides_from_the_journalled_block(session):

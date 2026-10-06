@@ -26,14 +26,32 @@ and adjudicates nothing).
 **Degradation 1 — no verification transition to be "as of".** Doc 12 defines
 ``as_of`` as *when verification was last recomputed (the events transition)*,
 so it is read from the latest ``verified`` event and from nowhere else. A fact
-the recompute has never reached has no such row: its status is the ``candidate``
-the column defaults to, and no timestamp on the fact row means what ``as_of``
+with no such row is one the recompute has never reached, or one it reached and
+held: an ordinary hold journals nothing, so a ``candidate`` that stays a
+candidate never gets a row. No timestamp on the fact row means what ``as_of``
 means. ``updated_at``, ``created_at`` and ``reference_time`` are all *nearby*
 and all answer a different question, so substituting one would put a
 plausible-looking lie in the product's most repeated honesty surface. The badge
-carries ``as_of: None`` and the claim's tail becomes ``verification not yet
-recomputed``. Cold start reaches this on every fact, which is exactly why it is
-a stated form rather than an exception.
+carries ``as_of: None`` either way.
+
+The claim's tail tells the two apart from the recompute's own progress, read
+as data. The job's state row (``config`` key ``verification_recompute_state``)
+holds its drain watermark: the ``(created_at, id)`` of the last
+``sources_changed`` event it drained, saved in the same transaction as the
+rungs it recomputed. When that watermark has reached the fact's latest
+``sources_changed`` event, every recorded change to the fact's evidence has
+been drained and the tail reads ``checked as of`` the watermark's day — a day
+at or after that change, by which the rung accounts for all of it. An old
+watermark under-claims; it never dates a check later than the drain got.
+Otherwise the tail is ``verification not yet recomputed``. Cold start reaches
+that on every fact, which is exactly why it is a stated form rather than an
+exception.
+
+"Checked" means the drain reached the fact's evidence, not that the fact's
+own recompute succeeded: a per-fact failure advances the watermark too (one
+poisonous fact must not stall the queue), and the job's slow arm re-reaches
+it. The state is read through SQL and nothing of the job is imported, because
+a read path reaching a dream-job module breaches invariant 15.
 
 **Degradation 2 — a dispute whose counterpart was never journalled.** The
 two-sided form needs the other side, and the only thing that ever knows it is
@@ -130,6 +148,7 @@ _DISPUTED_PREFIX = "disputed:"
 _ORIGIN_ASSERTS = "origin asserts"
 _ORIGINS_ASSERT = "origins assert"
 _AS_OF = "as of"
+_CHECKED_AS_OF = "checked as of"
 _NOT_RECOMPUTED = "verification not yet recomputed"
 _HUMAN_RATIFIED = "human-ratified"
 _COUNTERPART_UNRECORDED = "the contradicting claim was not recorded"
@@ -153,6 +172,7 @@ CLAIM_VOCABULARY: tuple[str, ...] = (
     _ORIGIN_ASSERTS,
     _ORIGINS_ASSERT,
     _AS_OF,
+    _CHECKED_AS_OF,
     _NOT_RECOMPUTED,
     _HUMAN_RATIFIED,
     _COUNTERPART_UNRECORDED,
@@ -249,11 +269,14 @@ def _as_of_date(as_of: datetime | None) -> str | None:
     return moment.astimezone(timezone.utc).date().isoformat()
 
 
-def _tail(as_of: datetime | None) -> str:
+def _tail(as_of: datetime | None, checked_as_of: datetime | None = None) -> str:
     day = _as_of_date(as_of)
-    if day is None:
-        return f", {_NOT_RECOMPUTED}"
-    return f", {_AS_OF} {day}"
+    if day is not None:
+        return f", {_AS_OF} {day}"
+    checked = _as_of_date(checked_as_of)
+    if checked is not None:
+        return f", {_CHECKED_AS_OF} {checked}"
+    return f", {_NOT_RECOMPUTED}"
 
 
 def _triple_text(subject: Any, rel_type: Any, obj: Any) -> str | None:
@@ -276,9 +299,14 @@ def build_claim(
     claim_text: str | None = None,
     counterpart_text: str | None = None,
     counterpart_origin_count: int | None = None,
+    checked_as_of: datetime | None = None,
 ) -> str:
-    """The exact sentence doc 12 fixes, in whichever of its forms applies."""
-    tail = _tail(as_of)
+    """The exact sentence doc 12 fixes, in whichever of its forms applies.
+
+    ``checked_as_of`` is consulted only when there is no transition to be
+    "as of" (Degradation 1): a journalled transition always names its own day.
+    """
+    tail = _tail(as_of, checked_as_of)
 
     if verification_status == DISPUTED:
         mine = _origins_phrase(
@@ -386,6 +414,7 @@ def build_badge(
     counterpart_text: str | None = None,
     counterpart_origin_count: int | None = None,
     stale: bool = False,
+    checked_as_of: datetime | None = None,
 ) -> Badge:
     """One row's badge.
 
@@ -413,6 +442,7 @@ def build_badge(
         claim_text=claim_text,
         counterpart_text=counterpart_text,
         counterpart_origin_count=counterpart_origin_count,
+        checked_as_of=checked_as_of,
     )
     return Badge(
         verification_status=verification_status,
@@ -494,15 +524,72 @@ async def badges_for_articles(
     return badges
 
 
+# The recompute's progress, read as data (Degradation 1). The key names the
+# job's own state row and is spelled here rather than imported: the job is a
+# dream-job module and this is a read path (invariant 15). The badge tests pin
+# this spelling to the job's.
+RECOMPUTE_STATE_KEY = "verification_recompute_state"
+
+# A fact's latest `sources_changed` event is drained when it sits at or behind
+# the watermark in the drain's own `(created_at, id)` order. The same tuple
+# compare the drain uses, so a same-transaction tie reads the way the drain
+# read it.
+_CHECKED_BY_RECOMPUTE_SQL = text(
+    """
+    WITH progress AS (
+        SELECT CAST(value ->> 'watermark_created_at' AS timestamptz) AS wm_ts,
+               CAST(value ->> 'watermark_id' AS bigint) AS wm_id
+        FROM config
+        WHERE key = :state_key
+    ),
+    latest AS (
+        SELECT DISTINCT ON (object_id) object_id, id, created_at
+        FROM events
+        WHERE object_type = 'fact'
+          AND event_type = 'sources_changed'
+          AND object_id = ANY(CAST(:ids AS uuid[]))
+        ORDER BY object_id, created_at DESC, id DESC
+    )
+    SELECT latest.object_id, progress.wm_ts
+    FROM latest CROSS JOIN progress
+    WHERE progress.wm_id IS NOT NULL
+      AND (latest.created_at < progress.wm_ts
+           OR (latest.created_at = progress.wm_ts AND latest.id <= progress.wm_id))
+    """
+)
+
+
+async def checked_by_recompute(
+    session: AsyncSession, fact_ids: Sequence[str]
+) -> dict[str, datetime]:
+    """The watermark's ``created_at`` for each fact the drain has reached.
+
+    A fact is present when its latest ``sources_changed`` event is at or
+    behind the recompute's watermark, so every recorded change to its evidence
+    has been drained. Absent: a fact with no such event, any fact on a vault
+    whose recompute has never drained, and a fact with evidence newer than the
+    watermark.
+    """
+    if not fact_ids:
+        return {}
+    result = await session.execute(
+        _CHECKED_BY_RECOMPUTE_SQL,
+        {"ids": list(fact_ids), "state_key": RECOMPUTE_STATE_KEY},
+    )
+    return {str(row["object_id"]): row["wm_ts"] for row in result.mappings().all()}
+
+
 async def badges_for_facts(
     session: AsyncSession, rows: Sequence[Mapping[str, Any]]
 ) -> dict[str, Badge]:
-    """One badge per fact row, in three batched queries however long the page.
+    """One badge per fact row, in at most four batched queries however long
+    the page.
 
     The queries are the provenance profiles, the latest ``verified`` event per
-    fact, and — only when something on the page is disputed — the profiles of
-    the counterparts those disputes name. A per-row fan-out would put a page's
-    worth of round trips behind a browsing list.
+    fact, the recompute's progress (Degradation 1), and — only when something
+    on the page is disputed — the profiles of the counterparts those disputes
+    name. A per-row fan-out would put a page's worth of round trips behind a
+    browsing list.
     """
     if not rows:
         return {}
@@ -510,6 +597,7 @@ async def badges_for_facts(
     sources = FactSourceRepository(session)
     profiles = await sources.origin_profiles(fact_ids)
     evidence = await latest_verified_evidence(session, fact_ids)
+    checked = await checked_by_recompute(session, fact_ids)
 
     counterpart_by_fact: dict[str, tuple[str | None, str | None]] = {}
     for row in rows:
@@ -551,6 +639,7 @@ async def badges_for_facts(
             object_name=row.get("object_name"),
             counterpart_text=counterpart_text,
             counterpart_origin_count=counterpart_count,
+            checked_as_of=checked.get(fid),
         )
     return badges
 
@@ -662,12 +751,14 @@ __all__ = [
     "build_article_claim",
     "CertaintyWordError",
     "LIFECYCLE_ID_KINDS",
+    "RECOMPUTE_STATE_KEY",
     "VERIFIED_TIER_STATUSES",
     "assert_no_certainty_words",
     "badge_for_fact",
     "badges_for_facts",
     "build_badge",
     "build_claim",
+    "checked_by_recompute",
     "counterpart_claim",
     "row_labels",
 ]
