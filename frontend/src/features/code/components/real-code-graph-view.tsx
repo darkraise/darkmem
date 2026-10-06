@@ -49,8 +49,9 @@ import type { BlastRadiusResult } from "@/hooks/api"
 import { chartVar, CodeCanvas } from "./code-canvas"
 import { CodeExplorer } from "./code-explorer"
 import { CodeFilters } from "./code-filters"
+import { CodeGraphLodBanner } from "./code-graph-lod-banner"
 import { RealCodeInspector } from "./real-code-inspector"
-import { deriveCodeGraph } from "../lib/graph-derive"
+import { deriveCodeGraph, fileOfGraphKey } from "../lib/graph-derive"
 
 const LAYOUTS: GraphLayoutMode[] = ["force", "tree", "circles"]
 
@@ -89,8 +90,23 @@ export function RealCodeGraphView({
     repos?.find((r) => r.status === "ready") ??
     repos?.find(() => true)
 
-  const { data: raw, isLoading: graphLoading, isError: graphError } =
-    useCodeGraph(repo?.id ?? null)
+  // The drill-in scope belongs to the repository it was chosen on, so
+  // switching repositories never asks the new one for the old one's folder.
+  const [scoped, setScoped] = useState<{
+    repoId: string
+    scope: string | null
+  } | null>(null)
+  const scope = scoped && scoped.repoId === repo?.id ? scoped.scope : null
+
+  // `auto`: the server folds the graph to files when the scope holds more
+  // nodes than the canvas can lay out (CODE_GRAPH_AUTO_LIMIT); a small
+  // repository still gets its whole symbol graph.
+  const {
+    data: raw,
+    isLoading: graphLoading,
+    isError: graphError,
+    isPlaceholderData: graphRefreshing,
+  } = useCodeGraph(repo?.id ?? null, { level: "auto", scope })
   const { data: files } = useCodeFiles(repo?.id ?? null)
 
   const graph = useMemo(
@@ -127,7 +143,13 @@ export function RealCodeGraphView({
 
   const processIds = useMemo(() => {
     const process = graph?.processes.find((p) => p.id === activeProcess)
-    return process ? new Set(process.steps) : null
+    if (!process || !graph) return null
+    // On a file-level graph a step is a symbol the canvas does not draw;
+    // its file is the node that lights up.
+    const drawn = new Set(graph.nodes.map((n) => n.id))
+    return new Set(
+      process.steps.map((step) => (drawn.has(step) ? step : fileOfGraphKey(step))),
+    )
   }, [graph, activeProcess])
 
   const kindCounts = useMemo(() => {
@@ -168,6 +190,25 @@ export function RealCodeGraphView({
   const selectNode = (id: string | null) => {
     setSelectedId(id)
     setBlast(null)
+  }
+
+  const folded = raw?.level === "file"
+  const nodeNoun = (count: number) =>
+    folded ? (count === 1 ? "file" : "files") : count === 1 ? "node" : "nodes"
+
+  const changeScope = (next: string | null) => {
+    setScoped({ repoId: repo.id, scope: next })
+    setSelectedId(null)
+    setBlast(null)
+    setActiveCommunity(null)
+    setActiveProcess(null)
+  }
+
+  // On the folded graph a file has no symbol rows to expand, so opening one
+  // drills into it. Only a drawn file: one that defines no symbol would
+  // drill into an empty graph.
+  const openFile = (path: string) => {
+    if (folded && graph?.nodes.some((n) => n.id === path)) changeScope(path)
   }
 
   const runBlastRadius = () => {
@@ -221,6 +262,25 @@ export function RealCodeGraphView({
       <div className="flex min-h-0 flex-1 flex-col">
         {toolbar}
         <p className="text-muted-foreground p-8 text-sm">Loading graph…</p>
+      </div>
+    )
+  }
+
+  if ((!graph || graph.nodes.length === 0) && scope !== null && !graphError) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        {toolbar}
+        <EmptyState
+          kind="empty"
+          icon={FolderGit2}
+          title={`Nothing to draw in ${scope}`}
+          description="No file or symbol under this path is indexed."
+          action={
+            <Button variant="outline" onClick={() => changeScope(null)}>
+              Back to the whole repository
+            </Button>
+          }
+        />
       </div>
     )
   }
@@ -308,10 +368,21 @@ export function RealCodeGraphView({
           </ToggleGroup>
         </div>
         <span className="text-muted-foreground ml-auto shrink-0 text-sm whitespace-nowrap">
-          {graph.nodes.length} {graph.nodes.length === 1 ? "node" : "nodes"} ·{" "}
+          {graphRefreshing && "loading… "}
+          {graph.nodes.length} {nodeNoun(graph.nodes.length)} ·{" "}
           {graph.edges.length} {graph.edges.length === 1 ? "edge" : "edges"}
         </span>
       </div>
+
+      {raw && (
+        <CodeGraphLodBanner
+          raw={raw}
+          selectedFile={
+            folded && selectedNode?.kind === "file" ? selectedNode.id : null
+          }
+          onScope={changeScope}
+        />
+      )}
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         <Tabs
@@ -334,7 +405,7 @@ export function RealCodeGraphView({
               query={search}
               activePath={selectedNode?.file ?? null}
               selectedNodeId={selectedId}
-              onOpenFile={() => undefined}
+              onOpenFile={openFile}
               onSelectSymbol={selectNode}
             />
           </TabsContent>

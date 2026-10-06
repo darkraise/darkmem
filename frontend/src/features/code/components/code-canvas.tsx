@@ -84,6 +84,14 @@ export function CodeCanvas({
     [graph, layout],
   )
 
+  // Edges resolve their endpoints through this map: a per-edge
+  // `graph.nodes.find` is O(edges × nodes), which on a 22,507-node graph was
+  // most of the time the tab spent unresponsive.
+  const nodeById = useMemo(
+    () => new Map(graph.nodes.map((n) => [n.id, n])),
+    [graph],
+  )
+
   const communityChart = useMemo(() => {
     const map = new Map<string, number>()
     for (const c of graph.communities) map.set(c.id, c.chart)
@@ -143,8 +151,8 @@ export function CodeCanvas({
       {graph.edges.map((edge, i) => {
         const from = positions[edge.source]
         const to = positions[edge.target]
-        const a = graph.nodes.find((n) => n.id === edge.source)
-        const b = graph.nodes.find((n) => n.id === edge.target)
+        const a = nodeById.get(edge.source)
+        const b = nodeById.get(edge.target)
         if (!from || !to || !a || !b) return null
         if (isKindHidden(a.kind) || isKindHidden(b.kind)) return null
         const sameCommunity = a.community === b.community
@@ -166,7 +174,9 @@ export function CodeCanvas({
                 ? nodeColor(a.community, a.kind)
                 : "hsl(var(--border))"
             }
-            strokeWidth={1.3}
+            strokeWidth={
+              edge.weight ? Math.min(4, 1 + Math.log2(edge.weight) * 0.5) : 1.3
+            }
             opacity={hidden ? 0.08 : sameCommunity ? 0.65 : 0.9}
             style={{ transition: "opacity 300ms" }}
           />

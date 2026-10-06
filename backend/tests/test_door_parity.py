@@ -1493,7 +1493,10 @@ PARITY_TABLE: tuple[Surface, ...] = (
         rest=(("GET", f"{V1}/code/graph/{{repo_id}}"),),
         reason=(
             "The whole-repo node-and-edge dump the UI canvas lays out "
-            "client-side. The agent-facing projections of the very same rows "
+            "client-side; its optional level and scope parameters are the "
+            "canvas's level of detail, folding symbols into files on a large "
+            "repo and drilling into one file or folder. The agent-facing "
+            "projections of the very same rows "
             "are the six code_* graph tools below, which answer a question "
             "instead of shipping a graph; a tool twin would hand an agent a "
             "repo-sized payload to traverse itself."

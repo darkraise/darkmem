@@ -4,6 +4,7 @@ import {
   deriveCodeGraph,
   deriveCommunities,
   deriveProcesses,
+  fileOfGraphKey,
 } from "../lib/graph-derive"
 
 describe("deriveCommunities", () => {
@@ -185,5 +186,33 @@ describe("deriveCodeGraph", () => {
     expect(graph.edges).toEqual([
       { source: "file:main.py", target: "sym:a", type: "CONTAINS" },
     ])
+  })
+})
+
+describe("the file-level graph", () => {
+  it("carries a folded edge's weight to the canvas", () => {
+    const graph = deriveCodeGraph("r1", {
+      nodes: [
+        { id: "a.py", label: "a.py", kind: "file", file_path: "a.py" },
+        { id: "b.py", label: "b.py", kind: "file", file_path: "b.py" },
+      ],
+      edges: [
+        {
+          source: "a.py",
+          target: "b.py",
+          type: "depends_on",
+          properties: { weight: 12, edge_types: { calls: 12 } },
+        },
+      ],
+    })
+    expect(graph.edges).toEqual([
+      { source: "a.py", target: "b.py", type: "depends_on", weight: 12 },
+    ])
+  })
+
+  it("maps a symbol step to its file, and leaves any other key alone", () => {
+    expect(fileOfGraphKey("run::pkg/a.py")).toBe("pkg/a.py")
+    expect(fileOfGraphKey("start::pkg/a.py::Svc")).toBe("pkg/a.py")
+    expect(fileOfGraphKey("pkg/a.py")).toBe("pkg/a.py")
   })
 })
