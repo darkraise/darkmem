@@ -125,10 +125,14 @@ type QueryMode = "search" | "ask"
 export function ProjectWorkspace({
   project,
   workstream,
+  emptyAction,
   ...tabs
 }: {
   project: string
   workstream?: string
+  /** Offered in the empty state when the project holds no document -- the
+   *  `/documents` route's way back to its project chooser. */
+  emptyAction?: ReactNode
 } & (
   | { tab: WorkspaceTab; onTabChange: (tab: WorkspaceTab) => void }
   | { tab?: undefined; onTabChange?: undefined }
@@ -451,8 +455,9 @@ export function ProjectWorkspace({
           kind="empty"
           scope="page"
           icon={FolderTree}
-          title="No documents filed in this project"
+          title={`No documents filed in ${project}`}
           description="A document appears here once it is filed, over REST or the MCP document_put tool."
+          action={emptyAction}
         />
       ) : (
         <ResizablePanelGroup

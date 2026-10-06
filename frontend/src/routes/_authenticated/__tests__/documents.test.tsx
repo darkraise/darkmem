@@ -16,8 +16,17 @@ vi.mock("@tanstack/react-router", async () => {
   }
 })
 vi.mock("@/features/documents/components/project-workspace", () => ({
-  ProjectWorkspace: ({ project }: { project: string }) => (
-    <div data-testid="workspace">{project}</div>
+  ProjectWorkspace: ({
+    project,
+    emptyAction,
+  }: {
+    project: string
+    emptyAction?: ReactNode
+  }) => (
+    <div>
+      <div data-testid="workspace">{project}</div>
+      {emptyAction}
+    </div>
   ),
 }))
 
@@ -132,6 +141,28 @@ describe("/documents route", () => {
     mockProjects([{ name: "notes", kind: "personal", document_count: 3 }])
     renderRoute()
     expect(await screen.findByText(/no project holds anything/i)).toBeInTheDocument()
+  })
+
+  it("offers a way back to the chooser from a project with no documents", async () => {
+    // Scoped to a project holding nothing, the page was a bare "No documents
+    // filed" with no way off it but the header chip.
+    useProjectStore.setState({ activeProject: "research", missingProject: null })
+    mockProjects([
+      { name: "research", kind: "project", document_count: 0 },
+      { name: "darkmem", kind: "project", document_count: 475 },
+    ])
+    renderRoute()
+    expect(await screen.findByTestId("workspace")).toHaveTextContent("research")
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Choose another project" }),
+    )
+    expect(await screen.findByText("Choose a project")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /^research/ })).toBeNull()
+
+    await userEvent.click(screen.getByRole("button", { name: /^darkmem/ }))
+    expect(useProjectStore.getState().activeProject).toBe("darkmem")
+    expect(await screen.findByTestId("workspace")).toHaveTextContent("darkmem")
   })
 
   it("claims the full height and width for its resizable split", () => {

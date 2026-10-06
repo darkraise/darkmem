@@ -445,10 +445,23 @@ describe("project workspace — layout", () => {
     mockDocuments({ items: [] })
     renderWorkspace()
     expect(
-      await screen.findByText(/No documents filed in this project/),
+      await screen.findByText("No documents filed in darkmem"),
     ).toBeInTheDocument()
     expect(screen.queryByText("Nothing selected")).not.toBeInTheDocument()
     expect(screen.queryByRole("separator")).not.toBeInTheDocument()
+  })
+
+  it("names the project and carries the caller's way out of an empty one", async () => {
+    mockDocuments({ items: [] })
+    renderWorkspace({
+      emptyAction: <button type="button">Choose another project</button>,
+    })
+    expect(
+      await screen.findByText("No documents filed in darkmem"),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: "Choose another project" }),
+    ).toBeInTheDocument()
   })
 
   it("does not render the breadcrumb when no document is selected", async () => {
