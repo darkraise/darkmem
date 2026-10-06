@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { MoreHorizontal, Plus, Trash2 } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
@@ -27,6 +27,7 @@ import { Skeleton } from "darkraise-ui/components/skeleton"
 import { toast } from "darkraise-ui/components/sonner"
 import { ApiError } from "@/lib/api"
 import { DEMO } from "@/lib/demo-flag"
+import { relativeTime } from "@/lib/format"
 import { EmptyState, IconButton } from "@/components/darkmem"
 import { useMediaQuery } from "@/hooks/use-media-query"
 import {
@@ -38,6 +39,7 @@ import {
   usePageRename,
   usePageRestore,
   usePages,
+  usePagesTrash,
   type PageListItem,
 } from "@/hooks/api"
 import {
@@ -87,15 +89,20 @@ export function NotesWorkspace({
   const [importing, setImporting] = useState(false)
 
   // A 404 says the selection no longer exists -- trashed or purged elsewhere,
-  // which the server does not distinguish. Every other failure is a fault and
-  // renders as one.
+  // which the page read does not distinguish. Every other failure is a fault
+  // and renders as one. The selection is KEPT: clearing it showed "Nothing
+  // selected", so a link to a purged page (the dashboard's rows) looked like
+  // it went nowhere rather than saying the page is gone.
   const vanished =
     page.isError &&
     page.error instanceof ApiError &&
     page.error.status === NOT_FOUND
-  useEffect(() => {
-    if (vanished) onSelect(null)
-  }, [onSelect, vanished])
+  // The trash roots tell trashed from purged. Read only once a selection has
+  // vanished; it shares the trash sheet's cache entry.
+  const trash = usePagesTrash(project, vanished)
+  const trashed = vanished
+    ? trash.data?.find((item) => item.id === selectedId)
+    : undefined
 
   const refuse = useCallback(
     (error: unknown) =>
@@ -268,12 +275,59 @@ export function NotesWorkspace({
 
       <ResizablePanel defaultSize={wide ? 74 : 65} id="page-pane">
         <div className="h-full min-h-0 max-lg:pt-2 lg:pl-3">
-          {selectedId === null || vanished ? (
+          {selectedId === null ? (
             <EmptyState
               kind="empty"
               icon={Plus}
               title="Nothing selected"
               description="Pick a page from the tree, or start a new one."
+            />
+          ) : vanished && trash.isLoading ? (
+            <Skeleton className="h-64 w-full" />
+          ) : vanished && trashed ? (
+            <EmptyState
+              kind="missing"
+              title="This page is in the trash"
+              description={`${trashed.title?.trim() ? trashed.title : PAGE_TITLE_FALLBACK} was moved to the trash ${relativeTime(trashed.deleted_at)}. Restore it to read and edit it again.`}
+              action={
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={restore.isPending}
+                  onClick={() =>
+                    restore.mutate(trashed.id, {
+                      onSuccess: () => {
+                        // The pane's own read 404'd; `invalidatePageLists`
+                        // covers the tree and the trash, not this entry.
+                        void qc.invalidateQueries({
+                          queryKey: ["page", trashed.id],
+                        })
+                      },
+                      onError: refuse,
+                    })
+                  }
+                >
+                  Restore
+                </Button>
+              }
+            />
+          ) : vanished ? (
+            // Not in the trash roots: purged, never existed, or trashed along
+            // with a page above it (the trash lists only subtree roots, and
+            // restoring that root brings this one back).
+            <EmptyState
+              kind="missing"
+              title="This page no longer exists"
+              description="It was deleted for good, or moved to the trash along with a page above it. The trash lists what can still be restored."
+              action={
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setTrashOpen(true)}
+                >
+                  Open trash
+                </Button>
+              }
             />
           ) : page.isError ? (
             <p className="text-destructive text-sm">
