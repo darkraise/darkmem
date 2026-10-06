@@ -1913,7 +1913,8 @@ async def code_context(
             """),
             {"repo_id": repo_id_str, "symbol_key": symbol_key},
         )).mappings().all()
-        context["processes"] = [r["label"] for r in process_rows]
+        from app.services.process_tracer import process_display_label
+        context["processes"] = [process_display_label(r["label"]) for r in process_rows]
 
     return json.dumps(context)
 
@@ -2026,6 +2027,7 @@ async def code_communities(repo_name: str) -> str:
 )
 async def code_processes(repo_name: str) -> str:
     from app.models.code import Repository
+    from app.services.process_tracer import process_display_label
 
     async with _code_service_context() as session:
         repo = (await session.execute(select(Repository).where(Repository.name == repo_name))).scalar_one_or_none()
@@ -2057,7 +2059,7 @@ async def code_processes(repo_name: str) -> str:
             )).mappings().all()
             steps = [r["source_key"].split("::")[0] for r in step_rows]
             processes.append({
-                "name": p["label"] or p["key"],
+                "name": process_display_label(p["key"]),
                 "kind": meta.get("entry_kind"),
                 "entry_file": meta.get("entry_file"),
                 "steps": steps,

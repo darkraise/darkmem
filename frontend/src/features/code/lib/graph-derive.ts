@@ -134,7 +134,22 @@ export function deriveCodeGraph(
   const nodeIds = new Set(nodes.map((n) => n.id))
   const edges: DemoCodeEdge[] = raw.edges
     .filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target))
-    .map((e) => ({ source: e.source, target: e.target, type: e.type }))
+    .map((e) => {
+      // A file-level `depends_on` edge carries how many symbol edges it
+      // folds; the canvas draws that as stroke width.
+      const weight = e.properties?.["weight"]
+      return typeof weight === "number"
+        ? { source: e.source, target: e.target, type: e.type, weight }
+        : { source: e.source, target: e.target, type: e.type }
+    })
 
   return { repo_id: repoId, nodes, edges, communities, processes }
+}
+
+/** The file a graph key belongs to: a symbol key is `name::file[::owner]`
+ *  (graph_keys.py), anything else is returned as it is. At the file level a
+ *  process step is still a symbol key, and this is the node it lands on. */
+export function fileOfGraphKey(key: string): string {
+  const parts = key.split("::")
+  return parts.length > 1 && parts[1] ? parts[1] : key
 }

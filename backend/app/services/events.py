@@ -201,7 +201,17 @@ EVENT_TYPES: list[str] = [
     "block_embeddings_refreshed",
     "repo_registered",
     "repo_synced",
+    # An index run's own record: `action` says what it did -- completed,
+    # up_to_date (HEAD had not moved), or the index-debt deferred/drained.
     "repo_indexed",
+    # An index run that raised. Its own value rather than a `repo_indexed`
+    # action, so failures are countable without parsing a payload (the
+    # backup_verify_failed precedent). The payload carries the exception's
+    # type and first line, never the statement or parameters behind it.
+    "repo_index_failed",
+    # DELETE /repos/{id}, journalled before the row goes so the id still
+    # names something; the payload carries the name, nothing else.
+    "repo_deleted",
     # The keyed act, distinct from the indexing it triggers: the webhook is
     # the only route a credential reaches, and the index that follows is the
     # system's own work (it may short-circuit on an unchanged HEAD, or never

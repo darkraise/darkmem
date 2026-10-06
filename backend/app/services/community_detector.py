@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import logging
 from collections import Counter
+from collections.abc import Iterable, Mapping
+from typing import TypeVar
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +14,69 @@ from app.utils.leiden import partition_graph
 
 logger = logging.getLogger(__name__)
 
+K = TypeVar("K")
+
 _LARGE_GRAPH_THRESHOLD = 10_000
+
+
+def _dir_and_stem(file_path: str | None) -> tuple[str, str] | None:
+    if not file_path:
+        return None
+    parts = file_path.replace("\\", "/").split("/")
+    stem = parts[-1].rsplit(".", 1)[0] or parts[-1]
+    return (parts[-2] if len(parts) > 1 else parts[0]), stem
+
+
+def _most_common(values: list[str]) -> str | None:
+    if not values:
+        return None
+    counts = Counter(values)
+    # Ties break by name so a label never depends on row order.
+    return min(counts, key=lambda v: (-counts[v], v))
+
+
+def label_communities(members: Mapping[K, Iterable[str | None]]) -> dict[K, str]:
+    """A distinct, descriptive label per community from its members' files.
+
+    A community is named after the folder most of its members live in. That
+    alone named 100 of darkmem's 240 communities "tests", so communities
+    sharing a folder are told apart by their most common file stem
+    ("tests/test_events"), and any still alike are numbered by size
+    ("tests/test_events (2)"). The code graph route relabels with this at
+    read time, so a graph indexed before it still reads distinctly.
+    """
+    paths = {key: [p for p in files] for key, files in members.items()}
+    base: dict[K, str] = {}
+    for key, files in paths.items():
+        dirs = [ds[0] for ds in map(_dir_and_stem, files) if ds]
+        base[key] = _most_common(dirs) or "community"
+
+    def by_label(labels: dict[K, str]) -> dict[str, list[K]]:
+        groups: dict[str, list[K]] = {}
+        for key, label in labels.items():
+            groups.setdefault(label, []).append(key)
+        return groups
+
+    labels = dict(base)
+    for label, keys in by_label(base).items():
+        if len(keys) < 2:
+            continue
+        for key in keys:
+            stems = [
+                ds[1] for ds in map(_dir_and_stem, paths[key])
+                if ds and ds[0] == label
+            ]
+            stem = _most_common(stems)
+            if stem and stem != label:
+                labels[key] = f"{label}/{stem}"
+
+    for label, keys in by_label(labels).items():
+        if len(keys) < 2:
+            continue
+        keys.sort(key=lambda k: (-len(paths[k]), str(k)))
+        for n, key in enumerate(keys[1:], start=2):
+            labels[key] = f"{label} ({n})"
+    return labels
 
 
 class CommunityDetector:
@@ -140,18 +204,13 @@ class CommunityDetector:
         for node_idx, comm_id in enumerate(membership):
             communities.setdefault(comm_id, []).append(node_idx)
 
-        comm_labels: dict[int, str] = {}
-        for comm_id, members in communities.items():
-            dirs = []
-            for idx in members:
-                fp = node_list[idx]["file_path"]
-                if fp:
-                    parts = fp.replace("\\", "/").split("/")
-                    dirs.append(parts[-2] if len(parts) > 1 else parts[0])
-            if dirs:
-                comm_labels[comm_id] = Counter(dirs).most_common(1)[0][0]
-            else:
-                comm_labels[comm_id] = f"community_{comm_id}"
+        # Only the communities stored below compete for a label, so the
+        # labels written here match the ones the code graph route derives.
+        comm_labels = label_communities({
+            comm_id: [node_list[idx]["file_path"] for idx in members]
+            for comm_id, members in communities.items()
+            if len(members) >= 2
+        })
 
         total_members = 0
         for comm_id, members in communities.items():

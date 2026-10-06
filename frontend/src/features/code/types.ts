@@ -43,6 +43,8 @@ export interface DemoCodeEdge {
   source: string
   target: string
   type: string
+  /** Symbol edges folded into a file-level edge; absent on symbol edges. */
+  weight?: number
 }
 
 export interface DemoCodeCommunity {
