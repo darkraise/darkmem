@@ -245,6 +245,7 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
   codeSymbol: { kind: "global" },
   fs: { kind: "global" },
   reposPath: { kind: "global" },
+  setupProbe: { kind: "global" },
   usage: {
     kind: "global",
     reason:
