@@ -1022,12 +1022,16 @@ describe("project workspace — the corpus browser's own surface", () => {
     expect(onTabChange).not.toHaveBeenCalled()
   })
 
-  it("offers no create affordance in an empty tree", async () => {
-    // The corpus browser has no create verb at all.
+  it("offers New document in an empty tree, and no note verbs", async () => {
+    // The corpus browser files markdown documents; the notes verbs live on
+    // /notes.
     mockDocuments({ items: [] })
     renderWorkspace()
 
     expect(await screen.findByText(/no documents filed/i)).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: "New document" }),
+    ).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /new note/i })).toBeNull()
   })
 })
@@ -1064,7 +1068,7 @@ describe("project workspace — the reveal after a uri change", () => {
   })
 })
 
-describe("the corpus browser carries no tree management", () => {
+describe("the corpus browser has no notes-mode capability flag", () => {
   // `Function.length` cannot see this: the prop is a default inside one
   // destructured parameter, so it is 1 either way. The source is the only
   // observable that distinguishes a removed prop from a defaulted one.
@@ -1081,12 +1085,17 @@ describe("the corpus browser carries no tree management", () => {
     expect(screen.getByText("documents")).toBeInTheDocument()
   })
 
-  it("offers no per-row actions and no create buttons", async () => {
-    vi.mocked(apiFetch).mockResolvedValue({ items: [], total: 0 })
+  it("offers folder actions on folders only, and no note verbs", async () => {
+    mockDocuments({ items: [DOC] })
     renderWorkspace()
-    await screen.findByRole("tab", { name: /Artifacts/i })
+    await screen.findByText("design.md")
     expect(screen.queryByText("New note")).toBeNull()
     expect(screen.queryByText("New folder")).toBeNull()
-    expect(screen.queryByRole("button", { name: /^Actions for/ })).toBeNull()
+    expect(
+      screen.getByRole("button", { name: "Actions for notes" }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getAllByRole("button", { name: /^Actions for/ }),
+    ).toHaveLength(1)
   })
 })

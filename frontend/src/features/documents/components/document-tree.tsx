@@ -21,7 +21,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core"
-import { ChevronRight, FileText, Folder, FolderOpen } from "lucide-react"
+import { ChevronRight, FileText, Folder, FolderOpen, Pin } from "lucide-react"
 import {
   TreeView,
   TreeViewBranch,
@@ -343,9 +343,8 @@ export const DocumentTree = memo(function DocumentTree({
   selectedId: string | null
   onSelect: (doc: DocumentListItem) => void
   truncated: boolean
-  /** Optional per-node action slot. Increment 8 mounts its "new subpage"
-   *  affordance here; this surface passes nothing. Declared now so the
-   *  editor extends this component rather than rewriting it. */
+  /** Optional per-node action slot: the artifacts workspace mounts its
+   *  folder menu here. */
   nodeActions?: (node: UriTreeNode) => ReactNode
   /** Rendered inside the empty state. Without it an empty space has no
    *  affordance at all: this branch returns before any row, and `nodeActions`
@@ -518,6 +517,12 @@ export const DocumentTree = memo(function DocumentTree({
             <span className="truncate" title={node.path}>
               {node.name}
             </span>
+            {node.document?.pinned_at ? (
+              <span title="Pinned" className="text-muted-foreground shrink-0">
+                <Pin aria-hidden className="size-3.5" />
+                <span className="sr-only">(pinned)</span>
+              </span>
+            ) : null}
           </>,
         )}
         {actions}

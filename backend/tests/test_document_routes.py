@@ -1487,6 +1487,26 @@ async def test_the_list_serves_pinned_at(client, auth_headers, filed):
     assert pinned["pinned_at"] is not None
 
 
+async def test_the_list_serves_the_tags_the_patch_wrote(client, auth_headers, filed):
+    """A tag editor needs the current set to start from, and the PATCH was the
+    only door that touched it. Sorted, so a re-read compares equal."""
+    doc = await filed("notes/tagme.md", "body")
+    other = await filed("notes/plain.md", "body")
+
+    await client.patch(
+        f"{V1}/documents/{doc}",
+        json={"tags": ["zeta", "alpha"]},
+        headers=auth_headers,
+    )
+
+    listed = await client.get(
+        f"{V1}/documents", params={"project": "p"}, headers=auth_headers
+    )
+    rows = {r["id"]: r for r in listed.json()["items"]}
+    assert rows[doc]["tags"] == ["alpha", "zeta"]
+    assert rows[other]["tags"] == []
+
+
 async def test_the_list_says_whether_a_summary_exists(
     client, auth_headers, filed, session
 ):

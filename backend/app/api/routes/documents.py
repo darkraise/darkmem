@@ -155,9 +155,13 @@ class DocumentListItem(BaseModel):
     # Served here and NOT on the keyed reads: those are TWO_DOOR and MCP
     # `document_get` has no metadata slot, so a REST-only field there would
     # be a wire divergence. This route is `documents.reads`, REST-only
-    # already, so the field costs no parity -- the same holds for the
-    # field below.
+    # already, so the field costs no parity -- the same holds for the two
+    # fields below.
     pinned_at: datetime | None = None
+    # The document's tag names, sorted. The metadata PATCH writes them and
+    # nothing read them back, so a tag editor had no current set to start
+    # from.
+    tags: list[str] = Field(default_factory=list)
     # Whether `GET /{id}/summary` would answer 200. That route 404s for "not
     # generated yet", so a reader that asked unconditionally logged a failed
     # request for every document nobody had summarised; this lets it ask
@@ -467,6 +471,12 @@ _LIST_SQL = text(
     f"""
     SELECT CAST(d.id AS text) AS id, d.title, d.uri, d.source_type, d.project,
            d.pinned_at, count(b.id) AS block_count,
+           ARRAY(
+               SELECT t.name FROM document_tags dt
+               JOIN tags t ON t.id = dt.tag_id
+               WHERE dt.document_id = d.id
+               ORDER BY t.name
+           ) AS tags,
            -- `read_summary`'s own test: an object under the key with
            -- non-empty text. `d.properties` needs no GROUP BY entry because
            -- `d.id`, the primary key, is grouped.

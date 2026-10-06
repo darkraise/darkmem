@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { FolderTree, Info, Search, Sparkles } from "lucide-react"
+import { FilePlus, FolderTree, Info, Search, Sparkles } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { Card } from "darkraise-ui/components/card"
 import { Input } from "darkraise-ui/components/input"
@@ -45,6 +45,14 @@ import {
   DocumentDetail,
   type ReaderMode,
 } from "@/features/documents/components/document-actions"
+import {
+  DeleteFolderDialog,
+  DocumentBadges,
+  FolderActions,
+  NewDocumentDialog,
+  RenameFolderDialog,
+  useMoveDocuments,
+} from "@/features/documents/components/document-metadata"
 import { DocumentOutline } from "@/features/documents/components/document-outline"
 import { DocumentReader } from "@/features/documents/components/document-reader"
 import { EditableDocument } from "@/features/documents/components/editable-document"
@@ -57,7 +65,12 @@ import {
   pathsToDocument,
   rootFolderPaths,
 } from "@/features/documents/tree-expansion"
-import { buildUriTree } from "@/features/documents/uri-tree"
+import {
+  buildPathMap,
+  buildUriTree,
+  NO_PATH,
+  type UriTreeNode,
+} from "@/features/documents/uri-tree"
 import { noHitMentionsQuery } from "@/features/documents/lexical-miss"
 import {
   useAllDocuments,
@@ -172,6 +185,35 @@ export function ProjectWorkspace({
   const wide = useMediaQuery("(min-width: 1024px)")
 
   const roots = useMemo(() => buildUriTree(items), [items])
+  const byPath = useMemo(() => buildPathMap(roots), [roots])
+
+  // Document management (create, folder rename and delete, drag-to-move).
+  // `newDocumentAt` is the path the create dialog opens on: null is closed.
+  const [newDocumentAt, setNewDocumentAt] = useState<string | null>(null)
+  const [renaming, setRenaming] = useState<UriTreeNode | null>(null)
+  const [deleting, setDeleting] = useState<UriTreeNode | null>(null)
+  const moveDocuments = useMoveDocuments(project, items, (path) =>
+    byPath.get(path),
+  )
+  // Ref-stable for the memoised tree, as `handleExpandedChange` is.
+  const moveRef = useRef(moveDocuments)
+  moveRef.current = moveDocuments
+  const handleMove = useCallback(
+    (target: Parameters<typeof moveDocuments>[0]) => moveRef.current(target),
+    [],
+  )
+  const folderActions = useCallback(
+    (node: UriTreeNode) =>
+      node.children.length > 0 && node.path !== NO_PATH ? (
+        <FolderActions
+          node={node}
+          onNewHere={(folder) => setNewDocumentAt(`${folder}/`)}
+          onRename={setRenaming}
+          onDelete={setDeleting}
+        />
+      ) : null,
+    [],
+  )
   // Lazy initialiser rather than an effect: the route mounts a fresh
   // ProjectWorkspace instance per project (`key={project}`), so this only
   // ever needs to run once, at mount, with no post-commit correction window
@@ -456,8 +498,16 @@ export function ProjectWorkspace({
           scope="page"
           icon={FolderTree}
           title={`No documents filed in ${project}`}
-          description="A document appears here once it is filed, over REST or the MCP document_put tool."
-          action={emptyAction}
+          description="A document appears here once it is filed, over REST or the MCP document_put tool, or created here."
+          action={
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button variant="outline" onClick={() => setNewDocumentAt("")}>
+                <FilePlus className="mr-1.5 size-3.5" />
+                New document
+              </Button>
+              {emptyAction}
+            </div>
+          }
         />
       ) : (
         <ResizablePanelGroup
@@ -486,7 +536,24 @@ export function ProjectWorkspace({
                 bar is 10px and an 8px pad left it 2px over the rows -- which
                 a full-width selected fill makes visible. */}
             <ScrollArea className="h-full pr-3 max-lg:pb-2">
-              <RegionLabel>documents</RegionLabel>
+              <div className="flex items-center justify-between gap-2">
+                <RegionLabel>documents</RegionLabel>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  // Opens on the open document's folder: the likeliest place
+                  // for a sibling.
+                  onClick={() => {
+                    const uri = selected?.uri ?? ""
+                    const slash = uri.lastIndexOf("/")
+                    setNewDocumentAt(slash > 0 ? uri.slice(0, slash + 1) : "")
+                  }}
+                >
+                  <FilePlus className="mr-1 size-3.5" />
+                  New document
+                </Button>
+              </div>
               {documents.isError ? (
                 <p className="text-destructive text-sm">
                   This project's documents could not be loaded.
@@ -505,6 +572,8 @@ export function ProjectWorkspace({
                   truncated={truncated}
                   expanded={effectiveExpanded}
                   onExpandedChange={handleExpandedChange}
+                  nodeActions={folderActions}
+                  onMove={handleMove}
                 />
               )}
             </ScrollArea>
@@ -527,6 +596,7 @@ export function ProjectWorkspace({
                       which is the element that scrolls here. */}
                   <div className="bg-background border-border/60 sticky top-0 z-20 mb-3.5 flex min-h-12 items-center gap-2 border-b py-1">
                     <DocumentCrumbs uri={selected.uri ?? null} />
+                    <DocumentBadges document={selected} />
                     <div className="flex-1" />
                     <DocumentActions
                       document={selected}
@@ -599,6 +669,33 @@ export function ProjectWorkspace({
           </ResizablePanel>
         </ResizablePanelGroup>
       )}
+
+      <NewDocumentDialog
+        project={project}
+        items={items}
+        open={newDocumentAt !== null}
+        initialUri={newDocumentAt ?? ""}
+        onOpenChange={(open) => {
+          if (!open) setNewDocumentAt(null)
+        }}
+        onCreated={(documentId) => {
+          setSelectedId(documentId)
+          setFocusBlockId(null)
+          setMode("read")
+        }}
+      />
+      <RenameFolderDialog
+        project={project}
+        items={items}
+        node={renaming}
+        onClose={() => setRenaming(null)}
+      />
+      <DeleteFolderDialog
+        project={project}
+        items={items}
+        node={deleting}
+        onClose={() => setDeleting(null)}
+      />
     </>
   )
 

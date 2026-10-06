@@ -7,6 +7,7 @@ import {
   Link2,
   Loader2,
   Pencil,
+  SlidersHorizontal,
   Trash2,
 } from "lucide-react"
 import {
@@ -33,12 +34,13 @@ import {
   useDocumentSummary,
   type DocumentListItem,
 } from "@/hooks/api"
+import { DocumentDetailsDialog } from "./document-metadata"
 import { RevisionsSheet } from "./revisions-sheet"
 import { plainText } from "@/lib/plain-text"
 
 export type ReaderMode = "read" | "edit"
 
-/** The document-level controls: edit, summarize, revisions, delete.
+/** The document-level controls: edit, details, summarize, revisions, delete.
  *
  * Icon-only with a tooltip that is also the accessible name -- `IconButton`
  * makes that label mandatory, so the row is compact without becoming a row of
@@ -64,6 +66,7 @@ export function DocumentActions({
 }) {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [revisionsOpen, setRevisionsOpen] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const summarize = useDocumentSummarize(document.id)
   const remove = useDocumentDelete()
   const editing = mode === "edit"
@@ -76,6 +79,13 @@ export function DocumentActions({
         variant={editing ? "default" : "ghost"}
         aria-pressed={editing}
         onClick={() => onModeChange(editing ? "read" : "edit")}
+      />
+
+      <IconButton
+        icon={SlidersHorizontal}
+        label="Details"
+        variant="ghost"
+        onClick={() => setDetailsOpen(true)}
       />
 
       <IconButton
@@ -145,6 +155,11 @@ export function DocumentActions({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <DocumentDetailsDialog
+        document={document}
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
+      />
       <RevisionsSheet
         // DocumentActions stays mounted across selections; without the key a
         // pick on one document would ask for its revision under the next.

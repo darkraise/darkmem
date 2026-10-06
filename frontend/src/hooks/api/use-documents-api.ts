@@ -22,6 +22,8 @@ export interface DocumentListItem {
   /** Whether `GET /documents/{id}/summary` would answer 200 rather than its
    *  "not generated yet" 404. Optional for the same reason as `pinned_at`. */
   has_summary?: boolean
+  /** Tag names, sorted. Optional for the same reason as `pinned_at`. */
+  tags?: string[]
 }
 
 export interface DocumentListResponse {
@@ -386,27 +388,51 @@ export interface DocumentCreateParams {
   project: string
   uri: string
   title?: string
+  /** Markdown. Blank seeds a heading from the title instead. */
+  content?: string
+}
+
+export interface DocumentCreateResult {
+  document_id: string
+  /** created | updated | unchanged -- anything but `created` means a
+   *  document was already filed at this uri when the POST landed. */
+  outcome: string
 }
 
 export function useDocumentCreate() {
   const qc = useQueryClient()
-  return useMutation<{ document_id: string }, Error, DocumentCreateParams>({
+  return useMutation<DocumentCreateResult, Error, DocumentCreateParams>({
     // Seeded content, never empty: `DocumentPutRequest.content` is
     // `min_length=1`, so an empty body is a 422. And note `document_put` is
     // an UPSERT on `(project, uri)` -- the caller mints a uri no document
-    // holds, or this silently returns the existing document's id.
-    mutationFn: ({ project, uri, title }) =>
+    // holds (`isUriTaken`), or this silently refiles the existing document.
+    mutationFn: ({ project, uri, title, content }) =>
       apiFetch(`/documents`, {
         method: "POST",
         body: JSON.stringify({
           project,
           uri,
-          content: `# ${title ?? "Untitled"}\n`,
+          content: content?.trim() ? content : `# ${title ?? "Untitled"}\n`,
           title: title ?? "Untitled",
         }),
       }),
     onSuccess: () => invalidateDocumentLists(qc),
   })
+}
+
+/** Whether a document is filed at exactly `(project, uri)` right now.
+ *
+ *  Through the manifest rather than `GET /documents/by-uri`: that read
+ *  answers a free path with a 404, which the browser logs as a failed
+ *  request on every successful create. The manifest answers 200 with the
+ *  subtree under the prefix, sorted by uri, so the exact uri -- the
+ *  shortest key under itself -- is the first row when it exists. */
+export async function isUriTaken(project: string, uri: string): Promise<boolean> {
+  const res = await apiFetch<{ items: { uri: string }[] }>(
+    `/documents/manifest?project=${encodeURIComponent(project)}` +
+      `&uri_prefix=${encodeURIComponent(uri)}&limit=1`,
+  )
+  return res.items[0]?.uri === uri
 }
 
 export interface DocumentMetadataParams {
@@ -415,6 +441,8 @@ export interface DocumentMetadataParams {
   uri?: string
   pinned?: boolean
   tags?: string[]
+  /** Compare-and-set on the document's `content_hash`; 409 when stale. */
+  expected_hash?: string
 }
 
 export function useDocumentMetadataUpdate() {
