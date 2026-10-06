@@ -158,7 +158,7 @@ export function PipelineTab() {
       <ModuleSurface
         title="Pipeline — recent"
         state="populated"
-        meta={`${recent.length} memories · ${partial} partial · ${failed} failed`}
+        meta={`${recent.length} ${recent.length === 1 ? "run" : "runs"} · ${partial} partial · ${failed} failed`}
       >
         {isError ? (
           <EmptyState

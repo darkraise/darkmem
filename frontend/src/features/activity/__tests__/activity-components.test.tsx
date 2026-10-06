@@ -31,6 +31,12 @@ describe("PipelineTab honesty", () => {
     expect(screen.getByText("content_embedding")).toBeInTheDocument()
   })
 
+  it("counts runs, not memories: one memory can run twice", () => {
+    render(withQuery(<PipelineTab />))
+    expect(screen.getByText(/\d+ runs? · \d+ partial · \d+ failed/)).toBeInTheDocument()
+    expect(screen.queryByText(/\d+ memories · \d+ partial/)).toBeNull()
+  })
+
   it("renders the honest terminal chips", () => {
     render(withQuery(<PipelineTab />))
     expect(screen.getByText("running")).toBeInTheDocument()
