@@ -199,6 +199,18 @@ async def test_fs_list_marks_git_directory(client, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_fs_list_names_a_missing_folder_in_plain_words(client, tmp_path):
+    """The wizard shows this sentence as written, so it names the folder,
+    not the repository form's `local_path` field."""
+    missing = tmp_path / "repositories"
+    response = await client.get("/api/v1/setup/fs/list", params={"path": str(missing)})
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        f"That folder does not exist on the server: {missing}"
+    )
+
+
+@pytest.mark.asyncio
 async def test_fs_list_detect_repos_implies_must_not_be_repo(client, tmp_path):
     repo = tmp_path / "myrepo"
     repo.mkdir()

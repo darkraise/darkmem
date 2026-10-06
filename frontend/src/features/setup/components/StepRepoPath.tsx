@@ -4,7 +4,7 @@ import {
   type DetectedRepo,
 } from "@/features/setup/setupWizardStore"
 import { fsList, type FsListResponse } from "@/hooks/api/use-setup-api"
-import { ServerPathBrowser } from "./ServerPathBrowser"
+import { ServerPathBrowser, useFolderListing } from "./ServerPathBrowser"
 
 export function StepRepoPath() {
   const repos = useSetupWizardStore((s) => s.repos)
@@ -16,6 +16,13 @@ export function StepRepoPath() {
   )
   const [selectDefault, setSelectDefault] = useState(!repos.basePath)
   const [defaultError, setDefaultError] = useState<string | null>(null)
+  // When the folder itself cannot be listed (it does not exist, say), the
+  // browser's panel already says so; repeating it below read as two errors.
+  const listing = useFolderListing("/setup", browsePath)
+  const panelError =
+    listing.error?.message ?? listing.data?.blocked_reason ?? null
+  const showDefaultError =
+    defaultError !== null && !listing.isFetching && defaultError !== panelError
 
   useEffect(() => {
     if (!selectDefault) return
@@ -64,7 +71,7 @@ export function StepRepoPath() {
         onChange={browse}
         onConfirm={handleConfirm}
       />
-      {defaultError && (
+      {showDefaultError && (
         <p role="alert" className="text-destructive text-sm">
           Could not select the default folder: {defaultError}. Choose another
           folder or retry with “Use this folder”.
