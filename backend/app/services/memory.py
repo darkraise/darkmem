@@ -73,6 +73,21 @@ class MemoryTraceRow:
     rank_fusion_breakdown: dict[str, float]
 
 
+def _counted_arm_status(channel_trace, arm: str) -> ChannelStatus:
+    """One arm's status plus how many rows it returned before fusion.
+
+    Counted from ``channel_scores`` (every row an arm returned, fused or not),
+    never from the page, so zero means the arm matched nothing in scope. An
+    arm that did not run, or failed, is not counted.
+    """
+    ran = getattr(channel_trace, f"{arm}_ran")
+    failed = getattr(channel_trace, f"{arm}_failed")
+    hits = None
+    if ran and not failed:
+        hits = sum(1 for scores in channel_trace.channel_scores.values() if arm in scores)
+    return ChannelStatus(ran=ran, failed=failed, hits=hits)
+
+
 def _fit_context(
     context_parts: list[str], sources: list[dict], budget: int
 ) -> tuple[list[str], list[dict]]:
@@ -701,8 +716,8 @@ limit=params.limit, offset=params.offset,
         envelope = RetrievalEnvelope(
             query=params.query,
             channels={
-                "semantic": ChannelStatus(ran=channel_trace.semantic_ran, failed=channel_trace.semantic_failed),
-                "keyword": ChannelStatus(ran=channel_trace.keyword_ran, failed=channel_trace.keyword_failed),
+                "semantic": _counted_arm_status(channel_trace, "semantic"),
+                "keyword": _counted_arm_status(channel_trace, "keyword"),
             },
             reranked=reranked,
             weights=weights,

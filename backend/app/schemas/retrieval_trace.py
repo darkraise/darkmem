@@ -16,6 +16,14 @@ from app.schemas.envelope import ResponseEnvelope
 class ChannelStatus(BaseModel):
     ran: bool
     failed: bool = False
+    # How many rows the arm returned before fusion, read to its fetch depth:
+    # zero is exact (the arm matched nothing in scope), a count at the depth
+    # is a floor. Memory search sets it so a reader can tell "no memory holds
+    # these words" from "the keyword hits ranked below this page", which
+    # per-row scores alone cannot: the semantic arm has no score floor. A door
+    # that does not count leaves it unset and off the wire, so it never reads
+    # as zero and every other door's channel shape stays as it was.
+    hits: int | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class RetrievalEnvelope(ResponseEnvelope):

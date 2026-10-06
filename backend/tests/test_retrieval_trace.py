@@ -300,6 +300,38 @@ async def test_search_with_trace_reports_per_channel_scores_and_channel_status(s
     assert all("rrf_score" in row for row in trace.results)
 
 
+async def test_envelope_counts_each_arms_hits_before_fusion_not_from_the_page(session):
+    """The SPA's "no memory contains these words" notice reads ``hits``.
+
+    The semantic arm has no score floor, so a nonsense query still fills the
+    page; only the keyword arm's own count can say nothing matched. It must
+    count every row the arm returned, not the page's rows: here the one
+    keyword hit ranks below a one-row page and is still counted.
+    """
+    await _seed_partition(session)
+    nearest = await _seed_memory(session, content="alpha beta gamma delta epsilon")
+    worded = await _seed_memory(session, content="kubernetes ingress controller tuning")
+    await _seed_embedding(session, nearest.id, [1.0, 0.0, 0.0, 0.0])
+    await _seed_embedding(session, worded.id, [0.0, 1.0, 0.0, 0.0])
+    svc = MemoryService(session, pipeline=_RealPipelineStub([1.0, 0.0, 0.0, 0.0]))
+
+    nonsense = await svc.search_memories_paginated(
+        MemorySearchRequest(query="zzqqxxnomatch", project="trace-test", limit=10, with_trace=True),
+    )
+    assert nonsense["total"] == 2, "the semantic arm answers a nonsense query in full"
+    assert nonsense["envelope"].channels["keyword"].hits == 0
+    assert nonsense["envelope"].channels["semantic"].hits == 2
+
+    below_the_page = await svc.search_memories_paginated(
+        MemorySearchRequest(
+            query="kubernetes", project="trace-test", limit=1, semantic_weight=1.0, with_trace=True,
+        ),
+    )
+    assert [row.memory.id for row in below_the_page["items"]] == [nearest.id]
+    assert below_the_page["items"][0].scores["keyword"] is None
+    assert below_the_page["envelope"].channels["keyword"].hits == 1
+
+
 @pytest.mark.parametrize("door", ["list", "paginated", "traced"])
 async def test_semantic_doors_require_every_requested_tag(session, session_factory, door, monkeypatch):
     from app.repositories.relational import PostgresMemoryRepository
@@ -545,7 +577,8 @@ async def test_read_only_vector_mode_uses_filtered_local_search_without_provider
         assert ids == expected
         if envelope is not None:
             assert envelope["channels"]["semantic"] == {"ran": False, "failed": False}
-            assert envelope["channels"]["keyword"] == {"ran": True, "failed": False}
+            # Counted before the tag filter: `incomplete` matched, then was excluded.
+            assert envelope["channels"]["keyword"] == {"ran": True, "failed": False, "hits": 3}
             assert envelope["reranked"] is False
             assert envelope["excluded"] == {"tags": 1}
     assert attempted_dispatches == []
