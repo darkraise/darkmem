@@ -138,6 +138,9 @@ async def test_delete_by_memory_id_self_heals_dangling_memory_ids(session):
 
 async def test_prune_orphan_entities_removes_ghosts_keeps_live(session):
     repo = PostgresGraphRepository(session)
+    # The sweep is unscoped, and another file's committed orphans can share
+    # this worker's database; clear them so the counts below are this test's.
+    await repo.prune_orphan_entities()
     live, dead = uuid4(), uuid4()  # `dead` is never inserted as a memory
     await _mk_memory(session, live)
 
@@ -158,7 +161,10 @@ async def test_prune_orphan_entities_removes_ghosts_keeps_live(session):
     assert stats["entities_pruned"] == 2
     assert stats["relations_pruned"] == 1
     # The dangling relation is gone too.
-    rel_count = (await session.execute(text("SELECT count(*) FROM entity_relations"))).scalar_one()
+    rel_count = (await session.execute(
+        text("SELECT count(*) FROM entity_relations WHERE CAST(:dead AS uuid) = ANY(memory_ids)"),
+        {"dead": str(dead)},
+    )).scalar_one()
     assert rel_count == 0
 
 
