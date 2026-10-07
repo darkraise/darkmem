@@ -170,11 +170,6 @@ jobs:
   # the release decision gates the irreversible half.
   verify:
     needs: pick-runner
-    # A called workflow gets no more than this; ci.yml's image-smoke needs
-    # actions: write to delete its image artifact after a passing boot.
-    permissions:
-      contents: read
-      actions: write
     uses: ./.github/workflows/ci.yml
     with:
       runs-on: ${{ needs.pick-runner.outputs.runs-on }}

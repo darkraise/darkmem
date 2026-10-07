@@ -179,15 +179,15 @@ table or column is dropped only once no released code reads it.
   not tag: it is the local pre-flight (sync version fields, build, deploy,
   probe `/openapi.json`). Fetch tags before deriving a version locally.
 - **CI verification prefers `darkmem-linux`**: `scripts/pick_runner.py`'s
-  default `fallback` mode routes backend/frontend checks and image smoke
-  verification to self-hosted while a labelled runner is online (queuing when
-  busy) and to `ubuntu-latest` when none is online. Seeing the runners needs
+  default `fallback` mode routes backend/frontend checks to self-hosted
+  while a labelled runner is online (queuing when busy) and to `ubuntu-latest` when none is online. Seeing the runners needs
   the `RUNNER_PICKER_TOKEN` secret (fine-grained PAT, Administration:
   Read-only); without it the picker queues on self-hosted. Manual dispatch
   can select `self-hosted`, `hosted` or `auto` for those checks. API and Playwright e2e always
   run on `darkmem-linux` in isolated job containers with their own Postgres,
   using the LAN model endpoint (`vars.DARKMEM_OLLAMA_BASE_URL`). Image builds,
-  scans, publishing and release writes run on `ubuntu-latest`; publishing
+  scans and the image boot smoke (one job, so CI stores no image artifact),
+  publishing and release writes run on `ubuntu-latest`; publishing
   waits for all checks, including e2e. Picker jobs also run hosted, so hosted
   minutes are still required. Jobs must not use fixed host ports, container
   names or image tags, or `--network host` (`tests/test_ci_workflows.py`).

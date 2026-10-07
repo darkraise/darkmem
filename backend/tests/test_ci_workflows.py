@@ -22,7 +22,7 @@ def _needs(job: dict) -> list[str]:
 
 
 @pytest.mark.parametrize("workflow,hosted,routed", [
-    ("ci.yml", {"pick-runner", "images"}, {"backend", "frontend", "frontend-tests", "image-smoke"}),
+    ("ci.yml", {"pick-runner", "images"}, {"backend", "frontend", "frontend-tests"}),
     ("release.yml", {"pick-runner", "plan", "prepare", "publish", "tag", "github-release"}, set()),
 ])
 def test_builds_and_releases_stay_hosted_while_checks_use_the_picker(workflow, hosted, routed):
@@ -64,14 +64,21 @@ def test_backend_suites_run_in_a_container_with_private_databases():
     assert restore["if"] == "always()" and "chown" in restore["run"]
 
 
-def test_smoke_loads_the_hosted_build_artifact():
-    jobs = _jobs("ci.yml")
-    assert "images" in _needs(jobs["image-smoke"])
-    uploads = [s for s in jobs["images"]["steps"] if s.get("uses", "").startswith("actions/upload-artifact@")]
-    downloads = [s for s in jobs["image-smoke"]["steps"] if s.get("uses", "").startswith("actions/download-artifact@")]
-    assert len(uploads) == len(downloads) == 1
-    assert downloads[0]["with"]["artifact-ids"] == "${{ needs.images.outputs.artifact-id }}"
-    assert jobs["images"]["outputs"]["artifact-id"] == "${{ steps.upload.outputs.artifact-id }}"
+def test_the_image_boots_in_the_job_that_built_it():
+    # An 830 MB image artifact per run filled the account's Actions storage
+    # (2026-10-06); building and booting in one job stores none.
+    job = _jobs("ci.yml")["images"]
+    names = [s.get("name", "") for s in job["steps"]]
+    assert "Build image" in names and "Boot the image and probe /health" in names
+    assert names.index("Build image") < names.index("Boot the image and probe /health")
+    assert "postgres" in job["services"]
+
+
+def test_the_image_job_uploads_no_artifact():
+    for step in _jobs("ci.yml")["images"]["steps"]:
+        assert not step.get("uses", "").startswith("actions/upload-artifact@")
+    build = next(s for s in _jobs("ci.yml")["images"]["steps"] if s.get("name") == "Build image")
+    assert build["env"]["DOCKER_BUILD_RECORD_UPLOAD"] is False
 
 
 @pytest.mark.parametrize("workflow", ["ci.yml", "release.yml"])
@@ -93,18 +100,3 @@ def test_the_ci_image_tag_is_per_run():
         if tags is not None:
             assert "${{" in tags, f"fixed image tag {tags!r}"
 
-
-def test_the_image_artifact_does_not_outlive_a_passing_smoke():
-    # An uncompressed ~830 MB artifact held for a day per run filled the
-    # account's Actions storage (2026-10-06).
-    jobs = _jobs("ci.yml")
-    upload = next(s for s in jobs["images"]["steps"] if s.get("id") == "upload")
-    assert upload["with"]["compression-level"] != 0
-    smoke = jobs["image-smoke"]
-    assert smoke["permissions"]["actions"] == "write"
-    delete = next(s for s in smoke["steps"] if s.get("name") == "Delete the image artifact")
-    assert delete["if"] == "success()" and delete["continue-on-error"] is True
-    assert delete["env"]["ARTIFACT_ID"] == "${{ needs.images.outputs.artifact-id }}"
-    assert "actions/artifacts/$ARTIFACT_ID" in delete["run"]
-    # A called workflow can't exceed its caller's grant.
-    assert _jobs("release.yml")["verify"]["permissions"]["actions"] == "write"
