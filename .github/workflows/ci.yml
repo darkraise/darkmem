@@ -213,24 +213,38 @@ jobs:
           TEST_SHARD: ${{ matrix.shard }}/4
         run: npx vitest run --shard="$TEST_SHARD"
 
-  # Build on GitHub-hosted, then transfer this exact image to the smoke job.
+  # Build, scan and boot the image in one hosted job. Nothing crosses a job
+  # boundary, so no artifact is stored: an 830 MB image artifact per run is
+  # what filled the account's Actions storage (2026-10-06), and a full quota
+  # refuses every upload until the billing month resets.
   # No registry push occurs until the entire reusable workflow succeeds.
   images:
-    name: Build & scan image
+    name: Build, scan & boot image
     runs-on: ubuntu-latest
-    outputs:
-      artifact-id: ${{ steps.upload.outputs.artifact-id }}
-      image: ${{ steps.image.outputs.image }}
     env:
       IMAGE: darkmem:ci-${{ github.run_id }}-${{ github.run_attempt }}
+      SMOKE: darkmem-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        env:
+          POSTGRES_DB: darkmem
+          POSTGRES_USER: darkmem
+          POSTGRES_PASSWORD: darkmem
+        ports:
+          - 5432
+        options: >-
+          --health-cmd "pg_isready -U darkmem"
+          --health-interval 5s --health-timeout 3s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - name: Record image reference
-        id: image
-        run: echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
       - name: Build image
         uses: docker/build-push-action@v6
+        env:
+          # The build record is a 90-day artifact per build; with storage
+          # full its upload only warns, but it still counts.
+          DOCKER_BUILD_RECORD_UPLOAD: false
         with:
           context: .
           push: false
@@ -246,49 +260,6 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: "0"   # advisory until the dependency tree is triaged; flip to "1" to enforce
           ignore-unfixed: true
-      - name: Export image
-        run: docker save "$IMAGE" -o "$RUNNER_TEMP/darkmem-image.tar"
-      - name: Upload image for verification
-        id: upload
-        uses: actions/upload-artifact@v4
-        with:
-          name: darkmem-image-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/darkmem-image.tar
-          compression-level: 0
-          retention-days: 1
-          if-no-files-found: error
-
-  image-smoke:
-    name: Boot & verify image
-    needs: [pick-runner, images]
-    runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs-on) }}
-    env:
-      IMAGE: ${{ needs.images.outputs.image }}
-      # Download by artifact ID, so re-running just this failed job still
-      # loads the successful build's image and its original attempt's tag.
-      SMOKE: darkmem-smoke-${{ github.run_id }}-${{ github.run_attempt }}
-    services:
-      postgres:
-        image: pgvector/pgvector:0.8.2-pg17
-        env:
-          POSTGRES_DB: darkmem
-          POSTGRES_USER: darkmem
-          POSTGRES_PASSWORD: darkmem
-        ports:
-          - 5432
-        options: >-
-          --health-cmd "pg_isready -U darkmem"
-          --health-interval 5s --health-timeout 3s --health-retries 10
-    steps:
-      - name: Download built image
-        uses: actions/download-artifact@v4
-        with:
-          artifact-ids: ${{ needs.images.outputs.artifact-id }}
-          merge-multiple: true
-          path: ${{ runner.temp }}/image
-      - name: Load image
-        run: |
-          docker load -i "$RUNNER_TEMP/image/darkmem-image.tar"
       # An image that builds and cannot boot is the failure a registry push
       # makes permanent, so prove it boots before a tag is ever allowed to
       # publish it. This exercises the real entrypoint: alembic upgrade, then
@@ -395,6 +366,9 @@ jobs:
         run: python scripts/e2e/run_playwright_e2e.py
       - name: Upload Playwright failure traces
         if: always() && matrix.suite == 'playwright'
+        # A full Actions storage quota refuses the upload; that must not turn
+        # a passing suite red.
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: playwright-results-${{ github.run_id }}-${{ github.run_attempt }}

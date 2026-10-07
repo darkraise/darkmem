@@ -26,9 +26,9 @@ The optimized workflow runs these independently:
   isolation, worker caps and timeouts are unchanged.
 - Frontend typecheck, lint and build once, outside the test matrix. Build runs
   Vite directly because the preceding step already ran TypeScript.
-- The image build and Trivy scan on GitHub-hosted alongside the suites.
-  A workflow artifact transfers the built image to the self-hosted smoke job,
-  which exercises its real entrypoint, `/health` and the bundled SPA.
+- The image build, Trivy scan and boot smoke in one GitHub-hosted job
+  alongside the suites. The smoke exercises the image's real entrypoint,
+  `/health` and the bundled SPA.
 - API and Playwright e2e suites on self-hosted runners, each in a job
   container with a private Postgres service and disposable application stack.
 
@@ -125,7 +125,7 @@ standard `self-hosted`, `linux` and `x64` labels.
 
 - `fallback` (default, and what every pull request and master push uses):
   `darkmem-linux` while one is online, otherwise hosted.
-- `self-hosted`: always queue backend/frontend/smoke checks on `darkmem-linux`.
+- `self-hosted`: always queue backend/frontend checks on `darkmem-linux`.
 - `hosted`: send those checks to `ubuntu-latest`.
 - `auto`: use an idle `darkmem-linux` runner, otherwise fall back to hosted
   (a busy runner also falls back).
@@ -146,15 +146,13 @@ non-e2e checks to hosted, cancel and re-dispatch with `runner: hosted`; e2e
 still requires the self-hosted runner. With one
 runner, its jobs execute sequentially.
 
-**Image transfer.** CI saves its hosted build as a Docker tar artifact with
-1-day retention and no redundant artifact compression. The smoke job downloads
-by artifact ID and loads the build's recorded image reference, so retrying
-only the failed smoke job works even when `github.run_attempt` changes. Once
-the artifact expires, re-run the whole workflow to rebuild it. Registry pushes
-remain exclusive to the gated hosted release job.
+**No image artifact.** The image is built, scanned and booted in the same
+hosted job, so CI uploads no artifact (the buildx build record upload is off
+too). An 830 MB image artifact per run filled the account's Actions storage on
+2026-10-06, and a full quota refuses every upload until usage drops. Registry
+pushes remain exclusive to the gated hosted release job.
 
 **Cost.** Hosted minutes are spent on image builds/scans, release jobs and
 short picker jobs (one per CI run, two per release). Tests and e2e use
-self-hosted capacity by default. Image transfer also uses artifact storage and
-network bandwidth. An account with no hosted minutes left still needs billing
+self-hosted capacity by default. An account with no hosted minutes left still needs billing
 restored before it can run the complete pipeline.
