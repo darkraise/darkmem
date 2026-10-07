@@ -380,6 +380,10 @@ jobs:
         run: python scripts/e2e/run_playwright_e2e.py
       - name: Upload Playwright failure traces
         if: always() && matrix.suite == 'playwright'
+        # Diagnostics only: the suite's own step carries the verdict, so a
+        # refused upload (e.g. the account's artifact storage quota) must not
+        # turn a passing run red.
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: playwright-results-${{ github.run_id }}-${{ github.run_attempt }}
