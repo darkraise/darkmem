@@ -141,6 +141,28 @@ ExemptNodeIds = Callable[[str, ast.Module], "set[int]"]
 _DOCSTRING_HOLDERS = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
 
 
+_PARSED: dict[Path, tuple[str, ast.Module]] = {}
+
+
+def parse_source(path: Path) -> ast.Module:
+    """`ast.parse` of one file, memoised per process for files under `app/`.
+
+    The invariant scans re-parse the same ~300 `app/` modules, and that was
+    ~40s of a serial run. The cache keys on the text, so a file rewritten
+    mid-run is parsed afresh. Trees are shared: a caller walks one and must
+    never mutate it. Only `app/` is held (~100 MB a process); anything else,
+    test files and the scratch modules tests write included, parses fresh.
+    """
+    text = path.read_text(encoding="utf-8")
+    if "app" not in path.parts:
+        return ast.parse(text, filename=str(path))
+    cached = _PARSED.get(path)
+    if cached is None or cached[0] != text:
+        cached = (text, ast.parse(text, filename=str(path)))
+        _PARSED[path] = cached
+    return cached[1]
+
+
 def docstring_node_ids(tree: ast.AST) -> set[int]:
     """Identity of every docstring constant in `tree`.
 
@@ -415,7 +437,7 @@ def find_forbidden_reach(
         rel = str(path.relative_to(root))
         if rel in skip_files:
             continue
-        tree = ast.parse(path.read_text(), filename=rel)
+        tree = parse_source(path)
         docstrings = docstring_node_ids(tree)
         exempt = exempt_node_ids(rel, tree) if exempt_node_ids else set()
         for node in ast.walk(tree):
@@ -491,7 +513,7 @@ def app_imports(dotted: str, backend: Path) -> set[str]:
     if path is None:
         return set()
     found: set[str] = set()
-    for node in ast.walk(ast.parse(path.read_text(), filename=str(path))):
+    for node in ast.walk(parse_source(path)):
         if isinstance(node, ast.Import):
             found.update(a.name for a in node.names if a.name.split(".")[0] == "app")
         elif isinstance(node, ast.ImportFrom):

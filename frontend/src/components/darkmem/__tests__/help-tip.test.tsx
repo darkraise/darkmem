@@ -24,8 +24,7 @@ describe("HelpTip", () => {
 })
 
 describe("HelpTip on touch", () => {
-  // jsdom has no PointerEvent; a MouseEvent carrying pointerType is what the
-  // tooltip's handlers read.
+  // A MouseEvent carrying pointerType is what the tooltip's handlers read.
   const tap = (target: Element) => {
     const event = new MouseEvent("pointerdown", {
       bubbles: true,
@@ -53,14 +52,14 @@ describe("HelpTip on touch", () => {
 
     tap(trigger)
     // Closed is the trigger's state; the content lingers for its exit
-    // animation, which jsdom never finishes.
+    // animation, which the test DOM never finishes.
     await waitFor(() => expect(trigger).toHaveAttribute("data-state", "closed"))
 
     tap(trigger)
     await waitFor(() => expect(trigger).toHaveAttribute("data-state", "open"))
     tap(screen.getByText("elsewhere"))
     // Closed is the trigger's state; the content lingers for its exit
-    // animation, which jsdom never finishes.
+    // animation, which the test DOM never finishes.
     await waitFor(() => expect(trigger).toHaveAttribute("data-state", "closed"))
   })
 })

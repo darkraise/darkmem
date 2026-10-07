@@ -4,7 +4,7 @@ import { test, expect, type Page } from "@playwright/test"
  * The Progress board and the explorer tree, end to end.
  *
  * These two surfaces are the reason a real browser is not optional here. The
- * unit suite runs in jsdom, which performs NO layout: it can assert that both
+ * unit suite runs in happy-dom, which performs NO layout: it can assert that both
  * folder icons render and that a column exists, and it would pass just as
  * happily if every row collapsed to zero height, the indent guides drew
  * nowhere, or the board's columns stacked into an unreadable ribbon. Height,
@@ -124,7 +124,7 @@ test.describe("project workspace", () => {
     await expect(page.getByText("waiting on an owner ruling")).toBeVisible()
 
     // Columns lay out side by side rather than stacking -- the assertion
-    // jsdom cannot make.
+    // happy-dom cannot make.
     const todoBox = await todo.boundingBox()
     const blockedBox = await page
       .getByRole("heading", { name: "blocked", exact: true })
@@ -153,14 +153,14 @@ test.describe("project workspace", () => {
     const folder = page.getByText("planning", { exact: true }).first()
     await expect(folder).toBeVisible()
 
-    // A row that collapsed to zero height passes every jsdom assertion.
+    // A row that collapsed to zero height passes every happy-dom assertion.
     const folderBox = await folder.boundingBox()
     expect(folderBox).not.toBeNull()
     expect(folderBox!.height).toBeGreaterThan(12)
 
     // The folder icon flips with its branch, and only a browser can say so:
     // both icons are always in the DOM and a `data-state` CSS variant picks
-    // one, so jsdom sees two icons in every state. Scoped to THIS row --
+    // one, so happy-dom sees two icons in every state. Scoped to THIS row --
     // `docs` above it is already open, and an unscoped `.first()` reads that
     // row's correctly-hidden closed icon.
     const row = folder.locator("..")

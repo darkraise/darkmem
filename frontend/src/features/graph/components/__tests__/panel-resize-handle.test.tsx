@@ -40,7 +40,7 @@ function setup(width = 400) {
   return { handle, onCommit, widthAt }
 }
 
-// jsdom has no native pointer-capture implementation; stub it the same way
+// The test DOM has no native pointer-capture implementation; stub it the same way
 // the component's own runtime environment (a real browser) provides it, so
 // dispatching pointerdown does not throw before the behaviour under test runs.
 function stubPointerCapture() {

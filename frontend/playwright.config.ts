@@ -116,9 +116,12 @@ export default defineConfig({
   // state (measured live this task: login/logout and setup-redirect
   // assertions flake under the default parallel worker count against a real
   // backend, never having had one to race against in gate.sh --full before,
-  // since every real-mode spec soft-skipped until this task). Demo-fixture
-  // specs need no such serialization — they never share mutable server state.
-  workers: process.env.E2E_DISPOSABLE_STACK ? 1 : undefined,
+  // since every real-mode spec soft-skipped until this task). So the
+  // "chromium" project runs one worker there. Demo-fixture specs need no such
+  // serialization — they never share mutable server state — but the pool is
+  // capped at 3 there: the self-hosted CI runner's default of 11 workers
+  // overloaded the one vite dev server (WS-proxy resets, timeouts after
+  // goto), while 3 took the project from 2.5 to 2.0 min locally.
   // One retry against a disposable stack only: even serialized, a handful of
   // real-mode specs sharing one live backend/vite-proxy pair occasionally hit
   // a transient WS-proxy reset under this sandboxed environment's load — a
@@ -126,10 +129,12 @@ export default defineConfig({
   // fails after one retry, but a one-off proxy hiccup does not fail the gate
   // on a rerun that would have passed.
   retries: process.env.E2E_DISPOSABLE_STACK ? 1 : 0,
+  workers: process.env.E2E_DISPOSABLE_STACK ? 3 : undefined,
   projects: [
     {
       name: "chromium",
       testIgnore: DEMO_FIXTURE_SPECS,
+      workers: process.env.E2E_DISPOSABLE_STACK ? 1 : undefined,
       use: { ...devices["Desktop Chrome"], baseURL: "http://localhost:3636" },
     },
     {

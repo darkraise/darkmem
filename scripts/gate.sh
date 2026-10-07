@@ -175,10 +175,20 @@ assert_single_head
 
 # Backend suite. conftest overwrites DATABASE_URL from TEST_DATABASE_URL, so
 # the gate must set the latter or it silently tests a different database.
+# With pytest-xdist installed it runs GATE_PYTEST_WORKERS workers (default 4),
+# each creating and using its own `<database>_gwN`; whole files stay on one
+# worker. 4 workers took the suite from 19 min to 3.5 min on a 4-core host.
+# Set GATE_PYTEST_WORKERS=0 to run serially (it also does without xdist).
+PYTEST_PARALLEL=()
+if [ "${GATE_PYTEST_WORKERS:-4}" != "0" ] && "$PY" -c "import xdist" 2>/dev/null; then
+    PYTEST_PARALLEL=(-n "${GATE_PYTEST_WORKERS:-4}" --dist loadfile)
+else
+    echo "backend pytest: running serially (GATE_PYTEST_WORKERS=0, or pytest-xdist is not installed in $PY)"
+fi
 run_gate "backend pytest" 1500 "$BACKEND" \
     env -C "$BACKEND" \
         TEST_DATABASE_URL="${TEST_DATABASE_URL:-postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test}" \
-        "$PY" -m pytest -q
+        "$PY" -m pytest -q "${PYTEST_PARALLEL[@]}"
 
 # Frontend. `tsc -b` (not plain tsc) — plain tsc misses the project refs.
 run_gate "frontend typecheck" 600 "$FRONTEND" \

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest"
 
 // sigma reads WebGL enums off the global constructors at module load, and
-// jsdom ships neither. Stub them before the dynamic imports below; the values
+// The test DOM ships neither. Stub them before the dynamic imports below; the values
 // are the real GL constants so a program definition still round-trips.
 const GL = { FLOAT: 0x1406, UNSIGNED_BYTE: 0x1401, TRIANGLES: 0x0004 }
 Object.assign(globalThis, {

@@ -22,7 +22,7 @@ export interface GraphThemeTokens {
   fontMono: string
 }
 
-// Defaults mirror the darkraise-ui dark theme so jsdom (which returns "" for
+// Defaults mirror the darkraise-ui dark theme so the test DOM (which returns "" for
 // every custom property) still yields valid hex and a non-NaN hue.
 const FALLBACK = {
   background: { h: 222, s: 47, l: 6 },

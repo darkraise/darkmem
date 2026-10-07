@@ -131,7 +131,7 @@ describe("FlagsTab — every section names itself", () => {
   })
 
   it("keeps every card header on one row", () => {
-    // jsdom does not lay out, so height cannot be asserted. The class that
+    // The test DOM does not lay out, so height cannot be asserted. The class that
     // decides this can: the library's `.dr-card-header` is `flex flex-col`,
     // so a header carrying only `flex-nowrap` still stacks its children into
     // a column — which is exactly the bug this pins. `flex-row` is the

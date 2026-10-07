@@ -6,8 +6,22 @@ import { trackTimers, clearPendingTimers } from "./pending-timers"
 // `pending-timers.ts` for what fires into the gap between two files.
 trackTimers()
 
+// happy-dom sends a request no test mocked to a real socket on
+// localhost:3000. Refuse it before it leaves the process, as a network
+// failure, so no test can reach whatever happens to listen there.
+const happyDOM = (window as unknown as {
+  happyDOM?: { settings: { fetch: { interceptor: unknown } } }
+}).happyDOM
+if (happyDOM) {
+  happyDOM.settings.fetch.interceptor = {
+    beforeAsyncRequest: async ({ request }: { request: { url: string } }) => {
+      throw new TypeError(`unmocked request under test: ${request.url}`)
+    },
+  }
+}
+
 // Node 25's experimental localStorage (a bare object with no Storage
-// methods) shadows jsdom's implementation in the vitest environment.
+// methods) shadows the DOM environment's implementation under vitest.
 // Installed at module level so import-time side effects see it too.
 const localStorageStore = new Map<string, string>()
 Object.defineProperty(window, "localStorage", {
@@ -28,7 +42,8 @@ Object.defineProperty(window, "localStorage", {
   },
 })
 
-// jsdom provides none of these; the atmospheric backdrop needs all three.
+// Deterministic stubs whatever the test DOM provides; the atmospheric
+// backdrop needs all three.
 beforeAll(() => {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
     matches: false,
@@ -68,18 +83,18 @@ beforeAll(() => {
   window.requestAnimationFrame = vi.fn(() => 1)
   window.cancelAnimationFrame = vi.fn()
 
-  // jsdom ships no ResizeObserver and lays nothing out, so every rect is
-  // 0×0. @tanstack/react-virtual refuses to compute a range for a
-  // zero-height scroll container, which would leave every virtualized list
-  // rendering nothing at all under test. Give elements a viewport-sized box.
+  // The test DOM lays nothing out, so every rect is 0×0, and the no-op
+  // ResizeObserver below never reports a size. @tanstack/react-virtual
+  // refuses to compute a range for a zero-height scroll container, which
+  // would leave every virtualized list rendering nothing at all under test. Give elements a viewport-sized box.
   window.ResizeObserver = class {
     observe() {}
     unobserve() {}
     disconnect() {}
   } as unknown as typeof ResizeObserver
 
-  // jsdom ships no scrollIntoView (T1.60) — ChatMessages calls it in an
-  // effect on every render, which throws under jsdom without this stub.
+  // ChatMessages calls scrollIntoView in an effect on every render (T1.60);
+  // stubbed so no test depends on whether the test DOM implements it.
   Element.prototype.scrollIntoView = vi.fn()
 
   // react-virtual sizes its scroll container from offsetWidth/offsetHeight.

@@ -78,6 +78,14 @@ table or column is dropped only once no released code reads it.
   so setting `DATABASE_URL` in front of pytest tests the wrong database. It
   then runs `DROP SCHEMA public CASCADE` and `alembic upgrade head`: never
   point it at a real database.
+- **Run the backend suite in parallel**: `.venv/bin/python -m pytest -q -n 4
+  --dist loadfile` (pytest-xdist, in the `dev` extra) took it from 19 min to
+  3.5 min on 4 cores. Each worker creates and uses its own
+  `<TEST_DATABASE_URL's database>_gwN` on the same server (`darkmem_test_gw0`,
+  or `darkmem_test_2_gw0` from a lane), so lanes never share one. The gate
+  does this with `GATE_PYTEST_WORKERS` workers (default 4, `0` for serial).
+  A test that passes alone and fails under `-n` is leaking state across
+  files; fix the leak, never pin the test to serial.
 - **The guards leg is mandatory after registering any route or MCP tool.** A
   new door trips full-list enumeration guards that live outside the module
   you worked in and that no door-local test touches, and a full-suite run on
@@ -98,8 +106,8 @@ table or column is dropped only once no released code reads it.
   counts sentence in `docs/two-door-parity.md` (outside the generated block)
   and this file's tool and job counts.
 - Frontend (from `frontend/`): `npm run typecheck` (= `tsc -b`; plain `tsc`
-  misses the project refs), `npm test` (vitest; excludes `tests/`, which is
-  Playwright via `npm run test:e2e`), `npm run build`. `npm run lint` is
+  misses the project refs), `npm test` (vitest on happy-dom; excludes
+  `tests/`, which is Playwright via `npm run test:e2e`), `npm run build`. `npm run lint` is
   advisory. The frontend is not prettier-clean; never run a repo-wide
   `prettier --write`.
 

@@ -34,7 +34,7 @@ describe("DocumentTree", () => {
   })
 
   it("gives each leaf its extension's icon and each folder both states", () => {
-    // The explorer look is CSS over darkraise-ui's parts, so jsdom cannot
+    // The explorer look is CSS over darkraise-ui's parts, so the test DOM cannot
     // confirm which folder icon is *visible* -- it performs no layout. What
     // it can confirm is that both are rendered, which is what the
     // `data-state` rule switches between, and that a leaf picked up an icon
@@ -176,7 +176,7 @@ describe("DocumentTree — VSCode-shaped rows", () => {
     const rows = container.querySelectorAll(
       ".dr-tree-view-item, .dr-tree-view-branch-control",
     )
-    // jsdom performs no layout, so width is asserted through the class that
+    // The test DOM performs no layout, so width is asserted through the class that
     // produces it plus the absence of any per-depth offset on the row.
     for (const row of rows) {
       expect(row).toHaveClass("w-full")
@@ -202,7 +202,7 @@ describe("DocumentTree — VSCode-shaped rows", () => {
     // A guide descends from the expander that opened the branch: an ancestor
     // at depth `level` has its chevron centred at `level * step + icon / 2`
     // inside every descendant row, which is one whole column left of that
-    // row's own chevron, so no guide crosses a glyph. jsdom performs no
+    // row's own chevron, so no guide crosses a glyph. The test DOM performs no
     // layout, so the invariant is asserted on the expression that produces
     // it: guide, indent and icon width all have to be written in terms of one
     // `--icon-size`, because a hardcoded pixel icon re-breaks the alignment

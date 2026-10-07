@@ -183,7 +183,7 @@ const TOUCH_ACTIVATION = {
 const HOVER_EXPAND_MS = 600
 
 /** Whether hovering `pageId` should arm the expand timer. Separated from the
- *  timer because dnd-kit's pointer pipeline does not run under jsdom, so this
+ *  timer because dnd-kit's pointer pipeline does not run under the test DOM, so this
  *  is the half a unit test can reach; the timer itself is untested. */
 export function shouldHoverExpand(
   index: Map<string, PageNode>,

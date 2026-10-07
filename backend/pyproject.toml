@@ -89,6 +89,7 @@ include = ["app*"]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
+    "pytest-xdist>=3.6.0",
 ]
 # Optional ML inference stack — required to load ML profiles via the
 # Darkmem ML Profiles tab. CPU-only by deliberate choice; install via

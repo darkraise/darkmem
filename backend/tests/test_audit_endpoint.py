@@ -39,7 +39,12 @@ async def test_audit_returns_only_security_rows_newest_first(client, session, au
     r = await client.get("/api/v1/auth/audit", headers=auth_headers)
     assert r.status_code == 200
     actions = [row["action"] for row in r.json()["items"]]
-    assert set(actions) == {"auth_login_failed", "auth_login_success", "setup_complete"}
+    # Audit rows commit on their own session and `events` is append-only, so
+    # another file's lockout drill can leave security rows behind on this
+    # database. The claim is the filter's: every seeded security row comes
+    # back, and nothing but security rows does.
+    assert {"auth_login_failed", "auth_login_success", "setup_complete"} <= set(actions)
+    assert all(a.startswith(("auth_", "setup_")) for a in actions), actions
     # Newest first: the last-inserted security row leads.
     assert actions[0] == "setup_complete"
 

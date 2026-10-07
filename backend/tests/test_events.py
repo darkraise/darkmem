@@ -58,6 +58,8 @@ import pytest
 
 from app.services.events import EVENT_TYPES
 
+from ._reachability_scan import parse_source
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 APP_ROOT = REPO_ROOT / "backend" / "app"
 
@@ -70,7 +72,7 @@ def _iter_py_files() -> list[Path]:
 
 def _parsed_modules() -> list[tuple[Path, ast.Module]]:
     return [
-        (path, ast.parse(path.read_text(encoding="utf-8"), filename=str(path)))
+        (path, parse_source(path))
         for path in _iter_py_files()
     ]
 

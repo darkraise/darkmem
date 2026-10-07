@@ -18,7 +18,10 @@ export default defineConfig({
     alias: { "@": path.resolve(__dirname, "./src") },
   },
   test: {
-    environment: "jsdom",
+    // happy-dom over jsdom: environment setup was 230s of a 295s run (284
+    // files, each paying it once), against 91s under happy-dom, with the
+    // same 2,181 tests passing.
+    environment: "happy-dom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     exclude: ["**/node_modules/**", "**/dist/**", "tests/**"],

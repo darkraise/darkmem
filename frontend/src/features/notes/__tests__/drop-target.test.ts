@@ -51,7 +51,7 @@ describe("dropZoneFor", () => {
     expect(dropZoneFor(20, 30)).toBe("inside")
   })
 
-  // jsdom and a collapsed row both produce a zero box; guessing `before`
+  // The test DOM and a collapsed row both produce a zero box; guessing `before`
   // there would make every unmeasured drop a reorder.
   it("falls back to inside when the row has no height", () => {
     expect(dropZoneFor(0, 0)).toBe("inside")

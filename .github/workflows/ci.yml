@@ -61,26 +61,16 @@ jobs:
           fi
 
   backend:
-    name: Backend (${{ matrix.suite }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - suite: app 1/3
-            shard: 1/3
-          - suite: app 2/3
-            shard: 2/3
-          - suite: app 3/3
-            shard: 3/3
-          - suite: harness
-            shard: harness
+    name: Backend tests
     needs: pick-runner
     runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs-on) }}
     # A job container, like the e2e jobs: actions/setup-python has no build
     # for the darkmem-linux runners' OS, so a host job died before any test
     # ran. The container also gives each job a private network, so Postgres
     # publishes no host port at all. The harness suite refuses to share a
-    # database with the app tests, so it gets its own (benchlib/bench_db.py).
+    # database with the app tests, so it gets its own (benchlib/bench_db.py),
+    # and each pytest-xdist worker derives its own from darkmem_test
+    # (tests/conftest.py).
     container: python:3.12-bookworm
     services:
       postgres:
@@ -124,7 +114,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.lock
           pip install --no-deps .
-          pip install pytest pytest-asyncio ruff
+          pip install pytest pytest-asyncio pytest-xdist ruff
       # The container has no psql or docker CLI; asyncpg comes from the lock.
       - name: Create test databases
         run: |
@@ -140,21 +130,16 @@ jobs:
       - name: Lint (ruff, advisory)
         run: ruff check app/ --select F --output-format=github
         continue-on-error: true
-      # Each matrix job owns its Postgres service. Never run concurrent pytest
-      # processes against one database: session fixtures reset its schema.
-      - name: Check shard coverage
-        if: matrix.shard == '1/3'
-        run: python -m unittest discover -s ../scripts/tests -p 'test_ci_pytest.py'
+      # Four workers, each on its own database, whole files per worker. Fixed
+      # rather than `auto`: several runners share one machine, and four
+      # matches a hosted runner's cores.
       - name: Test
-        if: matrix.shard != 'harness'
-        env:
-          TEST_SHARD: ${{ matrix.shard }}
-        run: python ../scripts/ci_pytest.py --shard "$TEST_SHARD" -q --durations=20 tests
+        run: python -m pytest -q -n 4 --dist loadfile --durations=20 tests
       # pyproject sets testpaths = ["tests"], so the line above does NOT collect
       # the harness suite. Run it explicitly or the eval harness can break while
       # the floor stays green.
       - name: Harness tests
-        if: matrix.shard == 'harness'
+        if: success() || failure()
         run: python -m pytest -q --durations=20 scripts/benchlib/tests
       # Installs and test output are root-owned inside the job container.
       # Return ownership to the runner so its next host job can clean this
@@ -188,13 +173,13 @@ jobs:
         run: npx vite build
 
   frontend-tests:
-    name: Frontend tests (${{ matrix.shard }}/4)
+    name: Frontend tests (${{ matrix.shard }}/2)
     needs: pick-runner
     runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs-on) }}
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2]
     defaults:
       run:
         working-directory: frontend
@@ -210,7 +195,7 @@ jobs:
       # and the per-runner worker cap remain unchanged.
       - name: Unit tests
         env:
-          TEST_SHARD: ${{ matrix.shard }}/4
+          TEST_SHARD: ${{ matrix.shard }}/2
         run: npx vitest run --shard="$TEST_SHARD"
 
   # Build, scan and boot the image in one hosted job. Nothing crosses a job

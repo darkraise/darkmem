@@ -6,6 +6,11 @@ from sqlalchemy import select
 from app.models.llm_usage import LLMUsage
 from app.services.usage_recorder import UsageRecorder, UsageSubject, subject_scope
 
+# These read the whole table back with scalar_one(). The recorder's rows from
+# any test that drives a real call through app.state.llm are committed, and a
+# parallel worker can run such a file first on this database.
+pytestmark = pytest.mark.usefixtures("clean_llm_usage")
+
 
 @pytest.mark.asyncio
 async def test_a_failed_call_is_recorded(session_factory, session):

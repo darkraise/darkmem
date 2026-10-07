@@ -25,7 +25,9 @@ function pick(
   { type = "application/zip", bytes = 3 } = {},
 ) {
   const input = document.querySelector('input[type="file"]') as HTMLInputElement
-  const file = new File([new Uint8Array(bytes)], name, { type })
+  // The size is declared, not allocated: a real 1 GB buffer cost seconds.
+  const file = new File([new Uint8Array(Math.min(bytes, 3))], name, { type })
+  Object.defineProperty(file, "size", { value: bytes })
   Object.defineProperty(input, "files", { value: [file], configurable: true })
   fireEvent.change(input)
   return file

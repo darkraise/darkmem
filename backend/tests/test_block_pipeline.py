@@ -79,6 +79,7 @@ from app.services.document_parsers import (
 
 from ._reachability_scan import (
     ReachabilityRules, find_forbidden_reach, import_closure, module_path,
+    parse_source,
 )
 from .conftest import test_engine
 # TH1.03's minimal-PDF writer, reused rather than copied: a second generator
@@ -888,7 +889,7 @@ def _opt_out_offenders(paths: list[pathlib.Path], root: pathlib.Path) -> list[st
     )
     for path in paths:
         rel = str(path.relative_to(root))
-        tree = ast.parse(path.read_text(), filename=rel)
+        tree = parse_source(path)
         exempt = _writer_body_nodes(rel, tree)
         for node in ast.walk(tree):
             if (

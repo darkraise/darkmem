@@ -37,7 +37,7 @@ vi.mock("@/features/documents/components/document-reader", () => ({
     <div>
       reader:{documentId}:focus={focusBlockId ?? "none"}
       {/* Stands in for the scrollspy. The real reader reports this from a
-          scroll listener over its own body; jsdom performs no layout, so the
+          scroll listener over its own body; the test DOM performs no layout, so the
           only thing the workspace's own suite can assert is that whatever the
           reader reports is what the rail marks. */}
       <button type="button" onClick={() => onActiveHeadingChange?.("block-h2")}>
@@ -475,7 +475,7 @@ describe("project workspace — layout", () => {
   })
 
   it("carries a height chain down to the resizable group at lg", async () => {
-    // jsdom performs no layout, so this cannot verify anything renders at a
+    // The test DOM performs no layout, so this cannot verify anything renders at a
     // real pixel height -- only that the class chain the layout depends on is
     // present. Visual confirmation needs the running app.
     mockDocuments({ items: [DOC] })
@@ -725,7 +725,7 @@ describe("project workspace — tree expansion", () => {
 
 describe("project workspace — the reader's own chrome", () => {
   it("keeps the path and the toolbar with the reader as it scrolls", async () => {
-    // jsdom performs no layout, so this asserts the class chain the sticky
+    // The test DOM performs no layout, so this asserts the class chain the sticky
     // header depends on, not a rendered position. A long document otherwise
     // scrolls its own identity and every action off the top.
     mockDocuments({ items: [DOC] })
@@ -909,12 +909,10 @@ describe("project workspace — the two scrollbars that used to overlap", () => 
     expect(connectors.length).toBeGreaterThan(0)
     for (const connector of connectors) {
       expect(connector.className).toContain("[grid-row:1_/_3]")
-      // jsdom folds the `calc()` the component writes, so the assertion is on
-      // the folded pair: down by half a row, back up by the same half.
+      // Down by half a row, back up by the same half.
       const style = (connector as HTMLElement).style
-      const half = Number.parseFloat(ROW_H) / 2
-      expect(style.marginTop).toContain(`${half}rem`)
-      expect(style.marginBottom).toContain(`-${half}rem`)
+      expect(style.marginTop).toBe(`calc(${ROW_H} / 2)`)
+      expect(style.marginBottom).toBe(`calc(${ROW_H} / -2)`)
     }
   })
 
