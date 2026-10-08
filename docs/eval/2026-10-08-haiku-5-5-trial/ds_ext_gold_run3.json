@@ -1,0 +1,1280 @@
+[
+ {
+  "id": "e1",
+  "raw": {
+   "entities": [
+    {
+     "name": "Elasticsearch",
+     "type": "service"
+    },
+    {
+     "name": "Meilisearch",
+     "type": "service"
+    }
+   ],
+   "relationships": [
+    {
+     "source": "Meilisearch",
+     "target": "Elasticsearch",
+     "type": "REPLACES",
+     "weight": 0.9
+    }
+   ],
+   "memory_type": "decision",
+   "importance": 0.7,
+   "summary": "Migrated the search backend from Elasticsearch to Meilisearch to reduce memory usage.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9101,
+   "completion_tokens": 117,
+   "total_tokens": 9218,
+   "prompt_tokens_details": {
+    "cached_tokens": 8960
+   },
+   "prompt_cache_hit_tokens": 8960,
+   "prompt_cache_miss_tokens": 141
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "e2",
+  "raw": {
+   "entities": [
+    {
+     "name": "darkmem",
+     "type": "project"
+    },
+    {
+     "name": "Postgres",
+     "type": "database"
+    },
+    {
+     "name": "Redis",
+     "type": "database"
+    }
+   ],
+   "relationships": [
+    {
+     "source": "darkmem",
+     "target": "Postgres",
+     "type": "DEPENDS_ON",
+     "weight": 0.9
+    },
+    {
+     "source": "darkmem",
+     "target": "Redis",
+     "type": "USES",
+     "weight": 0.5
+    }
+   ],
+   "memory_type": "fact",
+   "importance": 0.6,
+   "summary": "darkmem hard-depends on Postgres and uses Redis only for optional caching.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9101,
+   "completion_tokens": 151,
+   "total_tokens": 9252,
+   "prompt_tokens_details": {
+    "cached_tokens": 8960
+   },
+   "prompt_cache_hit_tokens": 8960,
+   "prompt_cache_miss_tokens": 141
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "e3",
+  "raw": {
+   "entities": [
+    {
+     "name": "PostgresVectorRepo",
+     "type": "artifact",
+     "properties": {}
+    },
+    {
+     "name": "VectorRepo",
+     "type": "artifact",
+     "properties": {}
+    }
+   ],
+   "relationships": [
+    {
+     "source": "PostgresVectorRepo",
+     "target": "VectorRepo",
+     "type": "IMPLEMENTS",
+     "properties": {},
+     "weight": 0.9
+    }
+   ],
+   "memory_type": "fact",
+   "importance": 0.5,
+   "summary": "PostgresVectorRepo implements the VectorRepo protocol.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9096,
+   "completion_tokens": 123,
+   "total_tokens": 9219,
+   "prompt_tokens_details": {
+    "cached_tokens": 8960
+   },
+   "prompt_cache_hit_tokens": 8960,
+   "prompt_cache_miss_tokens": 136
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "e4",
+  "raw": {
+   "entities": [
+    {
+     "name": "AdminUser",
+     "type": "artifact",
+     "properties": {}
+    },
+    {
+     "name": "BaseUser",
+     "type": "artifact",
+     "properties": {}
+    },
+    {
+     "name": "auth module",
+     "type": "artifact",
+     "properties": {}
+    }
+   ],
+   "relationships": [
+    {
+     "source": "AdminUser",
+     "target": "BaseUser",
+     "type": "EXTENDS",
+     "properties": {},
+     "weight": 0.9
+    }
+   ],
+   "memory_type": "fact",
+   "importance": 0.5,
+   "summary": "AdminUser is a subclass of BaseUser in the auth module.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9096,
+   "completion_tokens": 139,
+   "total_tokens": 9235,
+   "prompt_tokens_details": {
+    "cached_tokens": 8960
+   },
+   "prompt_cache_hit_tokens": 8960,
+   "prompt_cache_miss_tokens": 136
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "e5",
+  "raw": {
+   "entities": [
+    {
+     "name": "Leiden",
+     "type": "algorithm",
+     "properties": {}
+    },
+    {
+     "name": "Louvain",
+     "type": "algorithm",
+     "properties": {}
+    },
+    {
+     "name": "darkmem",
+     "type": "project",
+     "properties": {}
+    }
+   ],
+   "relationships": [
+    {
+     "source": "Leiden",
+     "target": "Louvain",
+     "type": "IMPROVES_ON",
+     "properties": {},
+     "weight": 0.8
+    },
+    {
+     "source": "darkmem",
+     "target": "Leiden",
+     "type": "USES",
+     "properties": {},
+     "weight": 0.5
+    }
+   ],
+   "memory_type": "fact",
+   "importance": 0.5,
+   "summary": "Leiden improves on Louvain by guaranteeing connected communities, and darkmem uses Leiden for clustering.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9104,
+   "completion_tokens": 184,
+   "total_tokens": 9288,
+   "prompt_tokens_details": {
+    "cached_tokens": 8960
+   },
+   "prompt_cache_hit_tokens": 8960,
+   "prompt_cache_miss_tokens": 144
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "e6",
+  "raw": {
+   "entities": [
+    {
+     "name": "Grafana",
+     "type": "service"
+    },
+    {
+     "name": "Proxmox",
+     "type": "service"
+    },
+    {
+     "name": "Go",
+     "type": "language"
+    }
+   ],
+   "relationships": [
+    {
+     "source": "Grafana",
+     "target": "Proxmox",
+     "type": "DEPLOYED_ON",
+     "weight": 0.8
+    },
+    {
+     "source": "Grafana",
+     "target": "Go",
+     "type": "USES",
+     "weight": 0.8
+    }
+   ],
+   "memory_type": "fact",
+   "importance": 0.5,
+   "summary": "Grafana is deployed on a dedicated Proxmox host and implemented in Go.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9101,
+   "completion_tokens": 158,
+   "total_tokens": 9259,
+   "prompt_tokens_details": {
+    "cached_tokens": 8960
+   },
+   "prompt_cache_hit_tokens": 8960,
+   "prompt_cache_miss_tokens": 141
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "e7",
+  "raw": {
+   "entities": [
+    {
+     "name": "Helios migration",
+     "type": "event"
+    },
+    {
+     "name": "2026-04-09",
+     "type": "concept"
+    },
+    {
+     "name": "runbook",
+     "type": "artifact"
+    },
+    {
+     "name": "Dana Kim",
+     "type": "person"
+    }
+   ],
+   "relationships": [
+    {
+     "source": "Helios migration",
+     "target": "2026-04-09",
+     "type": "HAPPENED_ON",
+     "weight": 0.9
+    },
+    {
+     "source": "runbook",
+     "target": "Dana Kim",
+     "type": "AUTHORED_BY",
+     "weight": 0.9
+    }
+   ],
+   "memory_type": "milestone",
+   "importance": 0.6,
+   "summary": "The Helios migration completed on 2026-04-09, with its runbook authored by Dana Kim.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9107,
+   "completion_tokens": 192,
+   "total_tokens": 9299,
+   "prompt_tokens_details": {
+    "cached_tokens": 8960
+   },
+   "prompt_cache_hit_tokens": 8960,
+   "prompt_cache_miss_tokens": 147
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "e8",
+  "raw": {
+   "entities": [
+    {
+     "name": "Phoenix v2",
+     "type": "artifact"
+    },
+    {
+     "name": "March outage",
+     "type": "event"
+    }
+   ],
+   "relationships": [
+    {
+     "source": "Phoenix v2",
+     "target": "March outage",
+     "type": "RELATED_TO",
+     "weight": 0.5
+    }
+   ],
+   "memory_type": "milestone",
+   "importance": 0.6,
+   "summary": "Upgraded to Phoenix v2 following the March outage.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9095,
+   "completion_tokens": 112,
+   "total_tokens": 9207,
+   "prompt_tokens_details": {
+    "cached_tokens": 8960
+   },
+   "prompt_cache_hit_tokens": 8960,
+   "prompt_cache_miss_tokens": 135
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "e9",
+  "raw": {
+   "entities": [
+    {
+     "name": "Qdrant",
+     "type": "database",
+     "properties": {}
+    },
+    {
+     "name": "pgvector",
+     "type": "tool",
+     "properties": {}
+    }
+   ],
+   "relationships": [
+    {
+     "source": "Qdrant",
+     "target": "pgvector",
+     "type": "IMPROVES_ON",
+     "properties": {},
+     "weight": 0.8
+    }
+   ],
+   "memory_type": "decision",
+   "importance": 0.7,
+   "summary": "Qdrant was chosen over pgvector for the vector store after benchmarking payload filtering.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9101,
+   "completion_tokens": 130,
+   "total_tokens": 9231,
+   "prompt_tokens_details": {
+    "cached_tokens": 8960
+   },
+   "prompt_cache_hit_tokens": 8960,
+   "prompt_cache_miss_tokens": 141
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "e10",
+  "raw": {
+   "entities": [
+    {
+     "name": "dashboard",
+     "type": "artifact",
+     "properties": {}
+    },
+    {
+     "name": "admin console",
+     "type": "artifact",
+     "properties": {}
+    },
+    {
+     "name": "billing portal",
+     "type": "artifact",
+     "properties": {}
+    },
+    {
+     "name": "chakra-ui",
+     "type": "tool",
+     "properties": {}
+    },
+    {
+     "name": "tRPC",
+     "type": "tool",
+     "properties": {}
+    }
+   ],
+   "relationships": [
+    {
+     "source": "dashboard",
+     "target": "chakra-ui",
+     "type": "USES",
+     "properties": {},
+     "weight": 0.8
+    },
+    {
+     "source": "admin console",
+     "target": "chakra-ui",
+     "type": "USES",
+     "properties": {},
+     "weight": 0.8
+    },
+    {
+     "source": "billing portal",
+     "target": "chakra-ui",
+     "type": "USES",
+     "properties": {},
+     "weight": 0.8
+    },
+    {
+     "source": "dashboard",
+     "target": "tRPC",
+     "type": "USES",
+     "properties": {},
+     "weight": 0.8
+    },
+    {
+     "source": "admin console",
+     "target": "tRPC",
+     "type": "USES",
+     "properties": {},
+     "weight": 0.8
+    },
+    {
+     "source": "billing portal",
+     "target": "tRPC",
+     "type": "USES",
+     "properties": {},
+     "weight": 0.8
+    }
+   ],
+   "memory_type": "architecture",
+   "importance": 0.5,
+   "summary": "The dashboard, admin console, and billing portal all share chakra-ui for UI and tRPC for data fetching.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9108,
+   "completion_tokens": 359,
+   "total_tokens": 9467,
+   "prompt_tokens_details": {
+    "cached_tokens": 8960
+   },
+   "prompt_cache_hit_tokens": 8960,
+   "prompt_cache_miss_tokens": 148
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "e11",
+  "raw": {
+   "entities": [
+    {
+     "name": "Promtail",
+     "type": "tool",
+     "properties": {}
+    },
+    {
+     "name": "Fluent Bit",
+     "type": "tool",
+     "properties": {}
+    },
+    {
+     "name": "Loki",
+     "type": "service",
+     "properties": {}
+    }
+   ],
+   "relationships": [
+    {
+     "source": "Promtail",
+     "target": "Loki",
+     "type": "USES",
+     "properties": {},
+     "weight": 0.8
+    },
+    {
+     "source": "Fluent Bit",
+     "target": "Loki",
+     "type": "USES",
+     "properties": {},
+     "weight": 0.8
+    }
+   ],
+   "memory_type": "fact",
+   "importance": 0.5,
+   "summary": "Both Promtail and Fluent Bit ship logs to Loki.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9096,
+   "completion_tokens": 173,
+   "total_tokens": 9269,
+   "prompt_tokens_details": {
+    "cached_tokens": 8960
+   },
+   "prompt_cache_hit_tokens": 8960,
+   "prompt_cache_miss_tokens": 136
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "e12",
+  "raw": {
+   "entities": [
+    {
+     "name": "Promtail",
+     "type": "tool"
+    },
+    {
+     "name": "client.backoff",
+     "type": "artifact"
+    },
+    {
+     "name": "limits.readline_rate",
+     "type": "artifact"
+    },
+    {
+     "name": "192.168.0.50:9080",
+     "type": "place"
+    }
+   ],
+   "relationships": [
+    {
+     "source": "Promtail",
+     "target": "client.backoff",
+     "type": "USES",
+     "weight": 0.6
+    },
+    {
+     "source": "Promtail",
+     "target": "limits.readline_rate",
+     "type": "USES",
+     "weight": 0.6
+    },
+    {
+     "source": "Promtail",
+     "target": "192.168.0.50:9080",
+     "type": "DEPLOYED_ON",
+     "weight": 0.8
+    }
+   ],
+   "memory_type": "procedural",
+   "importance": 0.5,
+   "summary": "Configure Promtail's client.backoff and limits.readline_rate; it listens at 192.168.0.50:9080.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9111,
+   "completion_tokens": 229,
+   "total_tokens": 9340,
+   "prompt_tokens_details": {
+    "cached_tokens": 8960
+   },
+   "prompt_cache_hit_tokens": 8960,
+   "prompt_cache_miss_tokens": 151
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "e13",
+  "raw": {
+   "entities": [
+    {
+     "name": "black",
+     "type": "tool",
+     "properties": {}
+    },
+    {
+     "name": "isort",
+     "type": "tool",
+     "properties": {}
+    }
+   ],
+   "relationships": [],
+   "memory_type": "preference",
+   "importance": 0.6,
+   "summary": "Always run black with line-length 100 and isort before committing, and never use a bare except.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9104,
+   "completion_tokens": 95,
+   "total_tokens": 9199,
+   "prompt_tokens_details": {
+    "cached_tokens": 8960
+   },
+   "prompt_cache_hit_tokens": 8960,
+   "prompt_cache_miss_tokens": 144
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "e14",
+  "raw": {
+   "entities": [
+    {
+     "name": "JWT",
+     "type": "protocol"
+    },
+    {
+     "name": "RFC 7519",
+     "type": "paper"
+    },
+    {
+     "name": "RS256",
+     "type": "algorithm"
+    },
+    {
+     "name": "gateway",
+     "type": "artifact"
+    }
+   ],
+   "relationships": [
+    {
+     "source": "gateway",
+     "target": "JWT",
+     "type": "USES",
+     "weight": 0.8
+    },
+    {
+     "source": "JWT",
+     "target": "RFC 7519",
+     "type": "IMPLEMENTS",
+     "weight": 0.8
+    },
+    {
+     "source": "JWT",
+     "target": "RS256",
+     "type": "USES",
+     "weight": 0.8
+    }
+   ],
+   "memory_type": "fact",
+   "importance": 0.5,
+   "summary": "The gateway's JWT auth conforms to RFC 7519 and signs tokens with RS256.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9102,
+   "completion_tokens": 203,
+   "total_tokens": 9305,
+   "prompt_tokens_details": {
+    "cached_tokens": 8960
+   },
+   "prompt_cache_hit_tokens": 8960,
+   "prompt_cache_miss_tokens": 142
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "e15",
+  "raw": {
+   "entities": [
+    {
+     "name": "Phoenix v2",
+     "type": "artifact"
+    },
+    {
+     "name": "2026-05-30",
+     "type": "concept"
+    }
+   ],
+   "relationships": [
+    {
+     "source": "Phoenix v2",
+     "target": "2026-05-30",
+     "type": "HAPPENED_ON",
+     "weight": 0.9
+    }
+   ],
+   "memory_type": "milestone",
+   "importance": 0.7,
+   "summary": "Phoenix v2 was shipped to production on 2026-05-30.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9100,
+   "completion_tokens": 128,
+   "total_tokens": 9228,
+   "prompt_tokens_details": {
+    "cached_tokens": 8960
+   },
+   "prompt_cache_hit_tokens": 8960,
+   "prompt_cache_miss_tokens": 140
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "e16",
+  "raw": {
+   "entities": [
+    {
+     "name": "pgvector",
+     "type": "tool"
+    },
+    {
+     "name": "HNSW",
+     "type": "algorithm"
+    },
+    {
+     "name": "IVFFlat",
+     "type": "algorithm"
+    }
+   ],
+   "relationships": [
+    {
+     "source": "pgvector",
+     "target": "HNSW",
+     "type": "HAS_PART",
+     "weight": 0.9
+    },
+    {
+     "source": "pgvector",
+     "target": "IVFFlat",
+     "type": "HAS_PART",
+     "weight": 0.9
+    }
+   ],
+   "memory_type": "fact",
+   "importance": 0.5,
+   "summary": "pgvector provides two index types: HNSW and IVFFlat.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9101,
+   "completion_tokens": 159,
+   "total_tokens": 9260,
+   "prompt_tokens_details": {
+    "cached_tokens": 8960
+   },
+   "prompt_cache_hit_tokens": 8960,
+   "prompt_cache_miss_tokens": 141
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "e17",
+  "raw": {
+   "entities": [
+    {
+     "name": "RFC 7519",
+     "type": "paper"
+    },
+    {
+     "name": "PEP 484",
+     "type": "paper"
+    },
+    {
+     "name": "design doc",
+     "type": "artifact"
+    }
+   ],
+   "relationships": [
+    {
+     "source": "design doc",
+     "target": "RFC 7519",
+     "type": "CITES",
+     "weight": 0.9
+    },
+    {
+     "source": "design doc",
+     "target": "PEP 484",
+     "type": "CITES",
+     "weight": 0.9
+    }
+   ],
+   "memory_type": "reference",
+   "importance": 0.4,
+   "summary": "The design doc formally cites RFC 7519 and PEP 484.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9097,
+   "completion_tokens": 158,
+   "total_tokens": 9255,
+   "prompt_tokens_details": {
+    "cached_tokens": 8960
+   },
+   "prompt_cache_hit_tokens": 8960,
+   "prompt_cache_miss_tokens": 137
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "e18",
+  "raw": {
+   "entities": [
+    {
+     "name": "finalize handler",
+     "type": "artifact"
+    },
+    {
+     "name": "savepoints",
+     "type": "concept"
+    },
+    {
+     "name": "commit-per-block",
+     "type": "concept"
+    }
+   ],
+   "relationships": [
+    {
+     "source": "commit-per-block",
+     "target": "savepoints",
+     "type": "REPLACES",
+     "weight": 0.9
+    },
+    {
+     "source": "finalize handler",
+     "target": "commit-per-block",
+     "type": "USES",
+     "weight": 0.8
+    }
+   ],
+   "memory_type": "decision",
+   "importance": 0.6,
+   "summary": "The finalize handler avoids savepoints, having been refactored to commit-per-block.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9104,
+   "completion_tokens": 163,
+   "total_tokens": 9267,
+   "prompt_tokens_details": {
+    "cached_tokens": 8960
+   },
+   "prompt_cache_hit_tokens": 8960,
+   "prompt_cache_miss_tokens": 144
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "e19",
+  "raw": {
+   "entities": [
+    {
+     "name": "Grafana",
+     "type": "service",
+     "properties": {}
+    },
+    {
+     "name": "Loki",
+     "type": "service",
+     "properties": {}
+    },
+    {
+     "name": "Proxmox",
+     "type": "service",
+     "properties": {}
+    }
+   ],
+   "relationships": [
+    {
+     "source": "Grafana",
+     "target": "Proxmox",
+     "type": "DEPLOYED_ON",
+     "properties": {},
+     "weight": 0.8
+    },
+    {
+     "source": "Loki",
+     "target": "Proxmox",
+     "type": "DEPLOYED_ON",
+     "properties": {},
+     "weight": 0.8
+    }
+   ],
+   "memory_type": "fact",
+   "importance": 0.4,
+   "summary": "Grafana and Loki are both hosted on the Proxmox host.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9098,
+   "completion_tokens": 183,
+   "total_tokens": 9281,
+   "prompt_tokens_details": {
+    "cached_tokens": 8960
+   },
+   "prompt_cache_hit_tokens": 8960,
+   "prompt_cache_miss_tokens": 138
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "e20",
+  "raw": {
+   "entities": [
+    {
+     "name": "audit report",
+     "type": "artifact"
+    },
+    {
+     "name": "Priya Nair",
+     "type": "person"
+    },
+    {
+     "name": "SRE team",
+     "type": "organization"
+    }
+   ],
+   "relationships": [
+    {
+     "source": "audit report",
+     "target": "Priya Nair",
+     "type": "AUTHORED_BY",
+     "weight": 0.9
+    }
+   ],
+   "memory_type": "fact",
+   "importance": 0.4,
+   "summary": "The audit report was authored by Priya Nair of the SRE team.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9100,
+   "completion_tokens": 133,
+   "total_tokens": 9233,
+   "prompt_tokens_details": {
+    "cached_tokens": 8960
+   },
+   "prompt_cache_hit_tokens": 8960,
+   "prompt_cache_miss_tokens": 140
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "e21",
+  "raw": {
+   "entities": [
+    {
+     "name": "darkmem",
+     "type": "project"
+    },
+    {
+     "name": "Python",
+     "type": "language"
+    },
+    {
+     "name": "Go",
+     "type": "language"
+    },
+    {
+     "name": "CLI",
+     "type": "artifact"
+    }
+   ],
+   "relationships": [
+    {
+     "source": "darkmem",
+     "target": "Python",
+     "type": "USES",
+     "weight": 0.9
+    },
+    {
+     "source": "CLI",
+     "target": "Go",
+     "type": "USES",
+     "weight": 0.9
+    },
+    {
+     "source": "darkmem",
+     "target": "CLI",
+     "type": "HAS_PART",
+     "weight": 0.8
+    }
+   ],
+   "memory_type": "fact",
+   "importance": 0.5,
+   "summary": "darkmem is implemented in Python while its CLI is built in Go.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9099,
+   "completion_tokens": 190,
+   "total_tokens": 9289,
+   "prompt_tokens_details": {
+    "cached_tokens": 8960
+   },
+   "prompt_cache_hit_tokens": 8960,
+   "prompt_cache_miss_tokens": 139
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "e22",
+  "raw": {
+   "entities": [
+    {
+     "name": "Redis",
+     "type": "database"
+    },
+    {
+     "name": "C",
+     "type": "language"
+    }
+   ],
+   "relationships": [
+    {
+     "source": "Redis",
+     "target": "C",
+     "type": "USES",
+     "weight": 0.9
+    }
+   ],
+   "memory_type": "fact",
+   "importance": 0.5,
+   "summary": "Redis is an in-memory key-value store implemented in C.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9097,
+   "completion_tokens": 103,
+   "total_tokens": 9200,
+   "prompt_tokens_details": {
+    "cached_tokens": 8960
+   },
+   "prompt_cache_hit_tokens": 8960,
+   "prompt_cache_miss_tokens": 137
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "e23",
+  "raw": {
+   "entities": [
+    {
+     "name": "Qdrant",
+     "type": "database"
+    },
+    {
+     "name": "Milvus",
+     "type": "database"
+    }
+   ],
+   "relationships": [],
+   "memory_type": "fact",
+   "importance": 0.4,
+   "summary": "Qdrant and Milvus are both vector databases that were evaluated.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9098,
+   "completion_tokens": 81,
+   "total_tokens": 9179,
+   "prompt_tokens_details": {
+    "cached_tokens": 8960
+   },
+   "prompt_cache_hit_tokens": 8960,
+   "prompt_cache_miss_tokens": 138
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "e24",
+  "raw": {
+   "entities": [
+    {
+     "name": "darkmem",
+     "type": "project"
+    },
+    {
+     "name": "Kafka",
+     "type": "tool"
+    },
+    {
+     "name": "v3.1",
+     "type": "artifact"
+    }
+   ],
+   "relationships": [
+    {
+     "source": "darkmem",
+     "target": "Kafka",
+     "type": "MENTIONS",
+     "weight": 0.4
+    },
+    {
+     "source": "darkmem",
+     "target": "v3.1",
+     "type": "MENTIONS",
+     "weight": 0.4
+    }
+   ],
+   "memory_type": "decision",
+   "importance": 0.4,
+   "summary": "darkmem plans to add a Kafka source connector in v3.1.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9099,
+   "completion_tokens": 155,
+   "total_tokens": 9254,
+   "prompt_tokens_details": {
+    "cached_tokens": 8960
+   },
+   "prompt_cache_hit_tokens": 8960,
+   "prompt_cache_miss_tokens": 139
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "e25",
+  "raw": {
+   "entities": [
+    {
+     "name": "Celery",
+     "type": "tool"
+    },
+    {
+     "name": "asyncio",
+     "type": "tool"
+    }
+   ],
+   "relationships": [
+    {
+     "source": "asyncio",
+     "target": "Celery",
+     "type": "REPLACES",
+     "weight": 0.9
+    }
+   ],
+   "memory_type": "decision",
+   "importance": 0.7,
+   "summary": "Replaced Celery with a custom asyncio worker to avoid Celery's broker latency.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9103,
+   "completion_tokens": 117,
+   "total_tokens": 9220,
+   "prompt_tokens_details": {
+    "cached_tokens": 8960
+   },
+   "prompt_cache_hit_tokens": 8960,
+   "prompt_cache_miss_tokens": 143
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "e26",
+  "raw": {
+   "entities": [
+    {
+     "name": "darkraise-ui",
+     "type": "tool"
+    },
+    {
+     "name": "Select",
+     "type": "artifact"
+    }
+   ],
+   "relationships": [
+    {
+     "source": "darkraise-ui",
+     "target": "Select",
+     "type": "HAS_PART",
+     "weight": 0.8
+    }
+   ],
+   "memory_type": "problem",
+   "importance": 0.5,
+   "summary": "darkraise-ui's Select component shows the raw value until the dropdown is opened.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9100,
+   "completion_tokens": 112,
+   "total_tokens": 9212,
+   "prompt_tokens_details": {
+    "cached_tokens": 8960
+   },
+   "prompt_cache_hit_tokens": 8960,
+   "prompt_cache_miss_tokens": 140
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ }
+]

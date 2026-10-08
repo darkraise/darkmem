@@ -1,0 +1,282 @@
+[
+ {
+  "sym": "app/services/rank_fusion.py:dual_list_weight",
+  "text": "Given a mapping of fusion-weight settings, returns the dual-level list's fusion weight as a float. The result is 0.0 when the `dual_level_enabled` flag is falsy and otherwise the `w_dual` weight. It has no side effects.",
+  "usage": {
+   "input_tokens": 435,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 0,
+   "cache_creation": {
+    "ephemeral_5m_input_tokens": 0,
+    "ephemeral_1h_input_tokens": 0
+   },
+   "output_tokens": 84,
+   "output_tokens_details": {
+    "thinking_tokens": 0
+   },
+   "service_tier": "standard",
+   "inference_geo": "global"
+  },
+  "stop": "end_turn"
+ },
+ {
+  "sym": "app/services/worklog.py:list_workstreams",
+  "text": "Fetches up to `limit` workstreams for the given `project` from the database (read-only via the async `session`), newest-created first, optionally filtered by `state` (\"open\" or \"closed\", otherwise raising `ValueError`) and paged to entries older than the opaque `before` cursor. Returns a dict with `items` (serialized workstreams) and `next_before`, a cursor for the next page or `None` when the page came back short.",
+  "usage": {
+   "input_tokens": 722,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 0,
+   "cache_creation": {
+    "ephemeral_5m_input_tokens": 0,
+    "ephemeral_1h_input_tokens": 0
+   },
+   "output_tokens": 138,
+   "output_tokens_details": {
+    "thinking_tokens": 0
+   },
+   "service_tier": "standard",
+   "inference_geo": "global"
+  },
+  "stop": "end_turn"
+ },
+ {
+  "sym": "app/services/worklog.py:serialize_workstream",
+  "text": "Converts a `Workstream` object into a JSON-friendly dictionary of its fields (id, project, key, title, client, state, retain, properties, and timestamps). The id is returned as a string, timestamps are ISO-8601 strings (with `closed_at` as `None` when unset), and missing properties become an empty dict. It has no side effects.",
+  "usage": {
+   "input_tokens": 494,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 0,
+   "cache_creation": {
+    "ephemeral_5m_input_tokens": 0,
+    "ephemeral_1h_input_tokens": 0
+   },
+   "output_tokens": 113,
+   "output_tokens_details": {
+    "thinking_tokens": 0
+   },
+   "service_tier": "standard",
+   "inference_geo": "global"
+  },
+  "stop": "end_turn"
+ },
+ {
+  "sym": "app/services/llm_quirks.py:assert_reasoning_effort",
+  "text": "Validates a `reasoning_effort` value against the capabilities of the vendor API identified by `api_kind`, returning `None` if the value is `None` or acceptable. Otherwise it raises a `RuntimeError` naming the vendor's allowed effort levels when the vendor doesn't support the parameter, has retired that value, or doesn't recognize it.",
+  "usage": {
+   "input_tokens": 697,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 0,
+   "cache_creation": {
+    "ephemeral_5m_input_tokens": 0,
+    "ephemeral_1h_input_tokens": 0
+   },
+   "output_tokens": 118,
+   "output_tokens_details": {
+    "thinking_tokens": 0
+   },
+   "service_tier": "standard",
+   "inference_geo": "global"
+  },
+  "stop": "end_turn"
+ },
+ {
+  "sym": "app/services/supersession.py:is_supersession_trigger",
+  "text": "Given a relation type string (or None, treated as empty), this returns a boolean indicating whether it belongs to the REPLACES family (REPLACES, IMPROVES_ON, or legacy BUILDS_ON) and should therefore trigger supersession detection. It has no side effects.",
+  "usage": {
+   "input_tokens": 434,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 0,
+   "cache_creation": {
+    "ephemeral_5m_input_tokens": 0,
+    "ephemeral_1h_input_tokens": 0
+   },
+   "output_tokens": 94,
+   "output_tokens_details": {
+    "thinking_tokens": 0
+   },
+   "service_tier": "standard",
+   "inference_geo": "global"
+  },
+  "stop": "end_turn"
+ },
+ {
+  "sym": "app/services/worklog.py:update_workstream",
+  "text": "Updates the workstream identified by `workstream_id` in the database via the async `session`, optionally changing its state (\"open\"/\"closed\", which also sets or clears its close timestamp), retain flag, and title, and shallow-merging `properties` into its existing properties; a close or reopen also records a journal event attributed to `actor`/`api_key_id`. Returns the refreshed `Workstream`, and raises `ValueError` for an invalid state, `WorkstreamNotFound` if no such workstream exists, or `WorklogRejected` if the database rejects the changes.",
+  "usage": {
+   "input_tokens": 1003,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 0,
+   "cache_creation": {
+    "ephemeral_5m_input_tokens": 0,
+    "ephemeral_1h_input_tokens": 0
+   },
+   "output_tokens": 186,
+   "output_tokens_details": {
+    "thinking_tokens": 0
+   },
+   "service_tier": "standard",
+   "inference_geo": "global"
+  },
+  "stop": "end_turn"
+ },
+ {
+  "sym": "app/services/llm_quirks.py:native_root",
+  "text": "Takes a server base URL string and returns it with any trailing slashes removed and, if present, a trailing `/v1` or `/api` suffix stripped. The result is the native root URL, so a single configured URL can serve both the OpenAI-compatible and native API protocols. It has no side effects.",
+  "usage": {
+   "input_tokens": 422,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 0,
+   "cache_creation": {
+    "ephemeral_5m_input_tokens": 0,
+    "ephemeral_1h_input_tokens": 0
+   },
+   "output_tokens": 95,
+   "output_tokens_details": {
+    "thinking_tokens": 0
+   },
+   "service_tier": "standard",
+   "inference_geo": "global"
+  },
+  "stop": "end_turn"
+ },
+ {
+  "sym": "app/services/usage_pricing.py:normalise_price_overrides",
+  "text": "Validates an operator-supplied price table `raw`, a dict mapping model names to dicts of rate fields. Returns a new dict mapping each model to its rates coerced to integers, and raises `ValueError` if the table or any model's rates isn't a dict, contains a rate field not in the allowed set, or has a non-numeric (including boolean) or negative rate.",
+  "usage": {
+   "input_tokens": 724,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 0,
+   "cache_creation": {
+    "ephemeral_5m_input_tokens": 0,
+    "ephemeral_1h_input_tokens": 0
+   },
+   "output_tokens": 119,
+   "output_tokens_details": {
+    "thinking_tokens": 0
+   },
+   "service_tier": "standard",
+   "inference_geo": "global"
+  },
+  "stop": "end_turn"
+ },
+ {
+  "sym": "app/services/worklog.py:get_workstream_by_id",
+  "text": "Asynchronously fetches the `Workstream` record matching the given `workstream_id` through the provided SQLAlchemy `AsyncSession`, returning it or `None` if no match exists. When `for_update` is true, it takes a row-level lock in the database and refreshes any already-loaded instance in the session with the current database state.",
+  "usage": {
+   "input_tokens": 453,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 0,
+   "cache_creation": {
+    "ephemeral_5m_input_tokens": 0,
+    "ephemeral_1h_input_tokens": 0
+   },
+   "output_tokens": 107,
+   "output_tokens_details": {
+    "thinking_tokens": 0
+   },
+   "service_tier": "standard",
+   "inference_geo": "global"
+  },
+  "stop": "end_turn"
+ },
+ {
+  "sym": "app/services/supersession.py:demote_dependents",
+  "text": "Given an async database session and a sequence of memory IDs (UUIDs or strings), this marks every memory whose `superseded_by` points at one of those IDs as 'deprecated' and clears that pointer, returning None. It writes to the `memories` table inside the caller's transaction and must run before deleting those IDs so the supersession check constraint isn't violated; an empty input does nothing.",
+  "usage": {
+   "input_tokens": 639,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 0,
+   "cache_creation": {
+    "ephemeral_5m_input_tokens": 0,
+    "ephemeral_1h_input_tokens": 0
+   },
+   "output_tokens": 126,
+   "output_tokens_details": {
+    "thinking_tokens": 0
+   },
+   "service_tier": "standard",
+   "inference_geo": "global"
+  },
+  "stop": "end_turn"
+ },
+ {
+  "sym": "app/services/worklog.py:list_entries",
+  "text": "Asynchronously reads up to `limit` worklog entries for the given `workstream_id` from the database session, oldest first by sequence number, optionally filtered by entry `kind`, a `since` creation timestamp, and an `after` sequence cursor; raises `ValueError` for an unrecognized kind. Returns a dict with the serialized entries under `\"items\"` and a `\"next_after\"` cursor (the last entry's sequence number when a full page was returned, otherwise `None`).",
+  "usage": {
+   "input_tokens": 673,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 0,
+   "cache_creation": {
+    "ephemeral_5m_input_tokens": 0,
+    "ephemeral_1h_input_tokens": 0
+   },
+   "output_tokens": 174,
+   "output_tokens_details": {
+    "thinking_tokens": 16
+   },
+   "service_tier": "standard",
+   "inference_geo": "global"
+  },
+  "stop": "end_turn"
+ },
+ {
+  "sym": "app/services/worklog.py:serialize_entry",
+  "text": "Converts a `WorklogEntry` into a JSON-friendly dictionary with its identifier, workstream identifier, sequence number, run key, kind, body, properties and creation timestamp. IDs become strings, missing properties default to an empty dict, and the timestamp is ISO-8601 formatted; there are no side effects.",
+  "usage": {
+   "input_tokens": 408,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 0,
+   "cache_creation": {
+    "ephemeral_5m_input_tokens": 0,
+    "ephemeral_1h_input_tokens": 0
+   },
+   "output_tokens": 108,
+   "output_tokens_details": {
+    "thinking_tokens": 0
+   },
+   "service_tier": "standard",
+   "inference_geo": "global"
+  },
+  "stop": "end_turn"
+ },
+ {
+  "sym": "app/services/rank_fusion.py:rank_fusion_factor",
+  "text": "Computes the combined multiplier applied after reciprocal rank fusion, given `signals` (a mapping of signal names to float values) and `weights` (a mapping of per-arm weights). It returns a float equal to the product of each arm's multiplier, where zero-weighted arms contribute exactly 1.0, and it has no side effects.",
+  "usage": {
+   "input_tokens": 467,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 0,
+   "cache_creation": {
+    "ephemeral_5m_input_tokens": 0,
+    "ephemeral_1h_input_tokens": 0
+   },
+   "output_tokens": 110,
+   "output_tokens_details": {
+    "thinking_tokens": 0
+   },
+   "service_tier": "standard",
+   "inference_geo": "global"
+  },
+  "stop": "end_turn"
+ },
+ {
+  "sym": "app/services/llm_quirks.py:assert_can_embed",
+  "text": "Validates that the vendor identified by `api_kind` (a string or None) offers an embeddings endpoint, returning None when it does. If it does not (e.g., Anthropic or DeepSeek), it raises a `RuntimeError` naming the vendor and the requested `model`; there are no other side effects.",
+  "usage": {
+   "input_tokens": 521,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 0,
+   "cache_creation": {
+    "ephemeral_5m_input_tokens": 0,
+    "ephemeral_1h_input_tokens": 0
+   },
+   "output_tokens": 100,
+   "output_tokens_details": {
+    "thinking_tokens": 0
+   },
+   "service_tier": "standard",
+   "inference_geo": "global"
+  },
+  "stop": "end_turn"
+ }
+]

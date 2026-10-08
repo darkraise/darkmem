@@ -15,3 +15,7 @@ Run from this directory with `backend/.venv/bin/python`. Export `AK` (Anthropic 
 `ds_trial.py <ext gold.json|ext gold_heldout.json|rerank|summ>` is the DeepSeek twin of all three,
 with the seeded `deepseek-flash-*` profiles' request settings. Export `DK` (DeepSeek key). Its
 outputs are the `ds_*.json` files (paired run, 2026-10-08, DeepSeek peak window).
+
+`claude_trial.py <model> <off|low|medium|high> <ext gold.json|rerank [max_tokens]|summ>` runs the same
+three tests on any Claude model (Sonnet 5.5 and Opus 5.5 so far; `off` maps to each model's
+thinking-off mode). Outputs are `<model>_<think>_*.json`; `*_run2/3` are repeat runs for stability.
