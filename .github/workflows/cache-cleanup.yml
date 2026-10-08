@@ -1,0 +1,42 @@
+name: Cache cleanup
+
+# Actions caches are scoped to the ref that wrote them. A pull request's
+# caches (refs/pull/N/merge) can only be restored by that same pull request,
+# so once it closes they are dead weight that crowds master's caches out of
+# the repository's 10 GB cache allowance. Dispatch by hand with `all` to
+# empty the whole cache, e.g. after a dependency overhaul.
+on:
+  pull_request:
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref whose caches to delete (e.g. refs/heads/master), or `all`"
+        type: string
+        required: true
+
+permissions:
+  actions: write
+
+jobs:
+  delete:
+    name: Delete caches
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete caches for the ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          # Values reach the shell through env, never through ${{ }} inside `run`.
+          TARGET: ${{ github.event_name == 'pull_request' && format('refs/pull/{0}/merge', github.event.pull_request.number) || inputs.ref }}
+        run: |
+          if [ "$TARGET" = all ]; then
+            ids=$(gh cache list --limit 1000 --json id --jq '.[].id')
+          else
+            ids=$(gh cache list --ref "$TARGET" --limit 1000 --json id --jq '.[].id')
+          fi
+          n=0
+          for id in $ids; do
+            gh cache delete "$id" && n=$((n + 1))
+          done
+          echo "Deleted $n cache(s) for $TARGET" | tee -a "$GITHUB_STEP_SUMMARY"

@@ -153,3 +153,10 @@ pushes remain exclusive to the gated hosted release job.
 short picker jobs (one per CI run, two per release). Tests and e2e use
 self-hosted capacity by default. An account with no hosted minutes left still needs billing
 restored before it can run the complete pipeline.
+
+**Caches.** Actions caches don't count against Actions storage billing; the
+repository has its own 10 GB cache allowance and GitHub evicts the least
+recently used entries past it. `cache-cleanup.yml` deletes a pull request's
+caches when it closes (only that pull request could restore them). Dispatch
+it with `ref: all` to empty the cache, or a ref such as `refs/heads/master`
+for one branch; the next build after that runs cold.
