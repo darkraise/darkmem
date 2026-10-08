@@ -19,3 +19,8 @@ outputs are the `ds_*.json` files (paired run, 2026-10-08, DeepSeek peak window)
 `claude_trial.py <model> <off|low|medium|high> <ext gold.json|rerank [max_tokens]|summ>` runs the same
 three tests on any Claude model (Sonnet 5.5 and Opus 5.5 so far; `off` maps to each model's
 thinking-off mode). Outputs are `<model>_<think>_*.json`; `*_run2/3` are repeat runs for stability.
+
+`reason_trial.py <model> <think> <fullctx|qa>` tests the reasoning purpose: benchlib's full-context
+ranking arm (102 gold queries, retrieval scorer) and `MemoryService.reason`'s prompt on 30 gold
+questions with and without their answering memories. `judge.py <judge> <qa.json...>` grades the Q&A
+answers blind; it was run with `claude-opus-5-5` and `deepseek-v4-pro` (`judged_*.json`).

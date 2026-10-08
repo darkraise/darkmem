@@ -1,0 +1,3584 @@
+[
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0101",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0079",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 1,
+   "miscited": 0,
+   "complete": true,
+   "note": "The inference that the 62% reading was likely earlier is not supported by the memories."
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0013",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0094",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0061",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0089",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0113",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0116",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0008",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0090",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0092",
+  "kind": "neg",
+  "verdict": {
+   "correct": false,
+   "unsupported": 1,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer contradicts memory [1], which states deploys are triggered by the Jenkins pipeline on ci-01, so the deploy system is in the memories."
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0081",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0060",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0021",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0092",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0109",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0101",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0089",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0089",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0095",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0085",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0006",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0009",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0095",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0082",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 1,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer fails to state the current size from memory [6] as six engineers and instead concludes it cannot be determined."
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0085",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0019",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0002",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0024",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0060",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0112",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0025",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0118",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0118",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0002",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0013",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0058",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0008",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0094",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0024",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0019",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0021",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0112",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0101",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0116",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0013",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0009",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0082",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0058",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0002",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0118",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0006",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0101",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0090",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0008",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0089",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0092",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 1,
+   "miscited": 0,
+   "complete": true,
+   "note": "The claim that the memories conflict is unsupported."
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0081",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 1,
+   "miscited": 0,
+   "complete": false,
+   "note": "The answer incorrectly says memories don't contain enough information; memory [5] provides the headcount as four engineers."
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0002",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0039",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0090",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0079",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 1,
+   "miscited": 0,
+   "complete": false,
+   "note": "Memory [6] provides the answer of 71% capacity, but the response incorrectly says the memories lack enough information."
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0006",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0051",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0025",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0089",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0021",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0012",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0009",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0090",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0089",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0118",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0090",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0095",
+  "kind": "neg",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer should have stated the memories do not contain the answer instead of providing an answer."
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0051",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0025",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0008",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0008",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0051",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0039",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0024",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0051",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0058",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0090",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0112",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0094",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0081",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 2,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer incorrectly claims the memories lack enough information even though memory [5] provides the team size."
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0006",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0092",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 1,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer incorrectly says the memories conflict; they cover different roles, but the overall answer correctly states the needed information is not available."
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0116",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0019",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0013",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0051",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0019",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0101",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0082",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0082",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0118",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0006",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0012",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0002",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 1,
+   "complete": true,
+   "note": "Memory [5] does not state that Prometheus scrapes port 9100."
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0082",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0094",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0101",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0113",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0095",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0024",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0118",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0061",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0090",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0019",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0094",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0113",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0009",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0089",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0061",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0085",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0002",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0094",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0118",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 1,
+   "miscited": 0,
+   "complete": true,
+   "note": "The claim that a restart could interrupt or drop pending print jobs is not directly stated in the provided memories."
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0109",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0101",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0082",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0112",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0113",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0021",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0109",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0025",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 1,
+   "miscited": 0,
+   "complete": false,
+   "note": "Memory [4] identifies Vite as the bundler for the status dashboard (ops overview page), so the response should not say insufficient information."
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0101",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0085",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0081",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 1,
+   "miscited": 0,
+   "complete": true,
+   "note": "It correctly cites memory [5]'s four engineers but wrongly concludes the memories are insufficient to answer."
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0116",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0112",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0094",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0019",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0012",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0092",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0060",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0025",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0101",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0019",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0021",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0006",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0025",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0090",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0109",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0092",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0039",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0060",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0109",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0101",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0021",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0051",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0085",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0095",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0009",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0024",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0012",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0085",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0058",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0118",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer incorrectly says the memories are insufficient when memories 1 and 4 provide the likely reason: lp-relay restarts can interrupt label printing."
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0095",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 1,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer labels [2] as more recent and [3] as older without memory support."
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0024",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 1,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer adds that the Odroid boards are ARM devices, which the memories do not state."
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0039",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0021",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0089",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0095",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0021",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0009",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0082",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 1,
+   "miscited": 1,
+   "complete": true,
+   "note": "The claim 'up from four previously' is unsupported by [3], which says the team currently has four engineers, not previously four."
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0092",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0061",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0019",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0081",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0012",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0081",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0081",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0118",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0112",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0008",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0079",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "It claims insufficient information even though [6] holds the answer (71%)."
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0060",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0089",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0039",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0012",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0061",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0109",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0002",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0094",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0013",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0118",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0025",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0019",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0006",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0116",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0109",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0094",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0039",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0025",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0009",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0079",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0013",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0008",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0085",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0089",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0113",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0021",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0082",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0051",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0058",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0024",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0081",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0113",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0092",
+  "kind": "neg",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "Treats memory [1] as answering the question instead of saying the memories do not contain the answer."
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0012",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0061",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0013",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0061",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0061",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0116",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0006",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0012",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0113",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0079",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0116",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0116",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0009",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0090",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0058",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0058",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0081",
+  "kind": "pos",
+  "verdict": null
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0051",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0002",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0008",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0085",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0112",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0060",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0113",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0112",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0079",
+  "kind": "pos",
+  "verdict": null
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0109",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0058",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 1,
+   "complete": true,
+   "note": "Citation [5] does not support that podcast episodes are in arc-store; only [4] does."
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0002",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0112",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0009",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0113",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 1,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer adds a causal inference that is not explicitly stated in the memories."
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0019",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0013",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0024",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0109",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0024",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0039",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0012",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0008",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0006",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0039",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0116",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 1,
+   "miscited": 0,
+   "complete": true,
+   "note": "The causal link between failed bundle downloads and untranslated text is inferred, not stated in memories."
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0079",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0039",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0024",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0095",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 1,
+   "miscited": 0,
+   "complete": false,
+   "note": "The answer treats [2] as conflicting rather than as the answering memory and fails to state that the docs site builds with Astro per [2]."
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0082",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0090",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0095",
+  "kind": "neg",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "It provides an answer from memory 2 though the ground truth says no memory holds the answer."
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0095",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 1,
+   "miscited": 0,
+   "complete": true,
+   "note": "Assumes memory [2] supersedes [3] without a memory stating recency or current status."
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0013",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0092",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0092",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0006",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0051",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0085",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0058",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0060",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0116",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0051",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0079",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0012",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0061",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0112",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0039",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0094",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0013",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0021",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0060",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0081",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 2,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer incorrectly says memories lack the answer even though [5] supports four engineers."
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0002",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0082",
+  "kind": "pos",
+  "verdict": null
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0025",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0060",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0058",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0079",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "Memory [6] provides the storage pool capacity as 71%, so the answer should state that instead of saying the memories lack enough information."
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0009",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0061",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0109",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0060",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0008",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0025",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer fails to give the available answer Vite from memory [4] and instead says it cannot be confirmed."
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0113",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0085",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0079",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer should state the storage pool was at 71% capacity per memory 6 instead of saying the memories lack enough information."
+  }
+ }
+]

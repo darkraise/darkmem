@@ -1,0 +1,1242 @@
+[
+ {
+  "pair": "rg-0058",
+  "kind": "pos",
+  "query": "Which bucket holds the Terraform state?",
+  "ids": [
+   "60249037-7964-557d-a6d1-5ee795667aff",
+   "31fda8ef-9eb9-507d-ac2b-915e4f0f8a98",
+   "0ba49298-7814-590d-bd48-917e6505b347",
+   "8ece58ef-ebee-5453-a0c8-458bb2621455",
+   "db66a773-6873-59cd-b9a4-4942532fe0a6",
+   "c565d8a5-efb0-5c2e-b739-0d07c1812253"
+  ],
+  "relevant": [
+   "c565d8a5-efb0-5c2e-b739-0d07c1812253"
+  ],
+  "answer": "Terraform state is kept in the MinIO bucket named tf-state, which has locking enabled [6].",
+  "usage": {
+   "in": 546,
+   "out": 35
+  },
+  "latency": 1.643524408340454
+ },
+ {
+  "pair": "rg-0058",
+  "kind": "neg",
+  "query": "Which bucket holds the Terraform state?",
+  "ids": [
+   "db66a773-6873-59cd-b9a4-4942532fe0a6",
+   "0ba49298-7814-590d-bd48-917e6505b347",
+   "60249037-7964-557d-a6d1-5ee795667aff",
+   "8ece58ef-ebee-5453-a0c8-458bb2621455",
+   "31fda8ef-9eb9-507d-ac2b-915e4f0f8a98"
+  ],
+  "relevant": [],
+  "answer": "The stored memories do not contain enough information to answer this question. None of them mention Terraform state or which bucket holds it. They only cover pallet-02 backups going to parcel-logs [1], build artifacts in artifacts-prod [2], integration test reports uploaded to the artifacts bucket [3], and podcast episodes in arc-store [4][5].",
+  "usage": {
+   "in": 515,
+   "out": 116
+  },
+  "latency": 1.6473324298858643
+ },
+ {
+  "pair": "rg-0085",
+  "kind": "pos",
+  "query": "What was the sprint focus in early May 2026?",
+  "ids": [
+   "d09737c7-2b2c-5b86-8744-30ccccdbadc8",
+   "fda7e159-3fab-5a1f-9595-ac5d11f5725f",
+   "c565d8a5-efb0-5c2e-b739-0d07c1812253",
+   "efefa9eb-814a-53e9-a820-ba77281806c3",
+   "0ba49298-7814-590d-bd48-917e6505b347",
+   "fa63d628-6fde-5901-9174-24e81062ed83"
+  ],
+  "relevant": [
+   "fda7e159-3fab-5a1f-9595-ac5d11f5725f"
+  ],
+  "answer": "Memory [2] says \"This sprint's focus is the payments refactor,\" but it has no date. The memories do not say which sprint that is, so I can't tell whether it was the sprint in early May 2026. The stored memories do not contain enough information to confirm what the sprint focus was in early May 2026.",
+  "usage": {
+   "in": 532,
+   "out": 96
+  },
+  "latency": 1.581550121307373
+ },
+ {
+  "pair": "rg-0085",
+  "kind": "neg",
+  "query": "What was the sprint focus in early May 2026?",
+  "ids": [
+   "d09737c7-2b2c-5b86-8744-30ccccdbadc8",
+   "0ba49298-7814-590d-bd48-917e6505b347",
+   "fa63d628-6fde-5901-9174-24e81062ed83",
+   "c565d8a5-efb0-5c2e-b739-0d07c1812253",
+   "efefa9eb-814a-53e9-a820-ba77281806c3"
+  ],
+  "relevant": [],
+  "answer": "The stored memories do not contain enough information to answer this question. None of them mention sprint focus or anything about early May 2026. They cover only CI runners [1], MinIO buckets [2][4], the WireGuard VPN [3], and Kibana [5].",
+  "usage": {
+   "in": 513,
+   "out": 83
+  },
+  "latency": 1.4876456260681152
+ },
+ {
+  "pair": "rg-0116",
+  "kind": "pos",
+  "query": "Why does the mobile app sometimes show untranslated text?",
+  "ids": [
+   "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+   "b40ee9bb-a6a8-554e-a043-78afd9c05bd0",
+   "d0479f79-36c5-5042-83b8-b8629e68a305",
+   "7c78577f-ff05-5d87-a2fa-0a360d56d4e4",
+   "d5a9162a-9ea5-5053-8594-1150c547e99e",
+   "08d3feb3-dc46-59c1-b2ce-aa543a762f1b",
+   "93e6b3fc-c5f5-5553-b193-bfc70a4db731"
+  ],
+  "relevant": [
+   "d0479f79-36c5-5042-83b8-b8629e68a305",
+   "08d3feb3-dc46-59c1-b2ce-aa543a762f1b"
+  ],
+  "answer": "The memories don't state outright why the mobile app shows untranslated text, but they point to a likely cause. The app downloads its translation bundles from edge-cdn-4 [3], and edge-cdn-4 presents an expired TLS certificate to devices that validate strictly [6]. Devices that validate strictly may therefore fail to download the bundles, which could leave text untranslated. That link is an inference, because no memory says a failed download causes untranslated text.",
+  "usage": {
+   "in": 571,
+   "out": 148
+  },
+  "latency": 1.9966564178466797
+ },
+ {
+  "pair": "rg-0116",
+  "kind": "neg",
+  "query": "Why does the mobile app sometimes show untranslated text?",
+  "ids": [
+   "d5a9162a-9ea5-5053-8594-1150c547e99e",
+   "7c78577f-ff05-5d87-a2fa-0a360d56d4e4",
+   "93e6b3fc-c5f5-5553-b193-bfc70a4db731",
+   "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+   "b40ee9bb-a6a8-554e-a043-78afd9c05bd0"
+  ],
+  "relevant": [],
+  "answer": "The stored memories do not contain enough information to answer this question. The only related item is that this quarter's goal is shipping the mobile beta [1], but nothing in the memories covers translations, localization, or the cause of untranslated text in the mobile app.",
+  "usage": {
+   "in": 509,
+   "out": 79
+  },
+  "latency": 1.7293078899383545
+ },
+ {
+  "pair": "rg-0060",
+  "kind": "pos",
+  "query": "What is the IP address of the internal DNS server?",
+  "ids": [
+   "14fe0a84-d444-53ff-8bf4-97148e2e9b77",
+   "282f1d65-8748-5e91-8294-270567156806",
+   "fa63d628-6fde-5901-9174-24e81062ed83",
+   "f63bb43f-c662-5e8e-bc57-c082334f580d",
+   "b58795ae-3e47-5b88-a760-768074eef323",
+   "35d04f41-31cd-5c7c-ae05-565a9c27490f"
+  ],
+  "relevant": [
+   "282f1d65-8748-5e91-8294-270567156806"
+  ],
+  "answer": "The internal DNS server is Unbound at 192.168.20.53 [2].",
+  "usage": {
+   "in": 560,
+   "out": 27
+  },
+  "latency": 1.2606496810913086
+ },
+ {
+  "pair": "rg-0060",
+  "kind": "neg",
+  "query": "What is the IP address of the internal DNS server?",
+  "ids": [
+   "14fe0a84-d444-53ff-8bf4-97148e2e9b77",
+   "b58795ae-3e47-5b88-a760-768074eef323",
+   "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+   "fa63d628-6fde-5901-9174-24e81062ed83",
+   "f63bb43f-c662-5e8e-bc57-c082334f580d"
+  ],
+  "relevant": [],
+  "answer": "The stored memories do not contain enough information to answer this question. None of them mention an internal DNS server or its IP address. The closest detail is that the VPN hands peers addresses in 10.8.0.0/24 [4], but that does not identify a DNS server.",
+  "usage": {
+   "in": 520,
+   "out": 83
+  },
+  "latency": 1.3745481967926025
+ },
+ {
+  "pair": "rg-0118",
+  "kind": "pos",
+  "query": "Why do some shipping labels never come out of the printer?",
+  "ids": [
+   "b03bbc85-9576-5260-88d7-961a7371867b",
+   "48551b63-f37a-5037-919a-e1c077fbab1a",
+   "2c93598f-be9a-5eae-981a-8340dfbc35da",
+   "89333823-a2e6-506a-a0c4-06f8e4cc88a6",
+   "d5a9162a-9ea5-5053-8594-1150c547e99e",
+   "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+   "b58795ae-3e47-5b88-a760-768074eef323"
+  ],
+  "relevant": [
+   "b03bbc85-9576-5260-88d7-961a7371867b",
+   "89333823-a2e6-506a-a0c4-06f8e4cc88a6"
+  ],
+  "answer": "The memories don't directly explain why shipping labels fail to print, but they offer one possible lead. The office label printers get their jobs from the lp-relay service [1], and that service restarts every time the config management agent runs [4]. Jobs may be disrupted during those restarts, though the memories never say so explicitly.\n\nMissing: nothing here confirms that shipping labels specifically go through these printers, and nothing says that restarts cause lost jobs.",
+  "usage": {
+   "in": 549,
+   "out": 144
+  },
+  "latency": 2.1197590827941895
+ },
+ {
+  "pair": "rg-0118",
+  "kind": "neg",
+  "query": "Why do some shipping labels never come out of the printer?",
+  "ids": [
+   "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+   "48551b63-f37a-5037-919a-e1c077fbab1a",
+   "2c93598f-be9a-5eae-981a-8340dfbc35da",
+   "b58795ae-3e47-5b88-a760-768074eef323",
+   "d5a9162a-9ea5-5053-8594-1150c547e99e"
+  ],
+  "relevant": [],
+  "answer": "The stored memories do not contain enough information to answer this question. None of them mention shipping labels or printers. The only \"shipping\" reference is to the mobile beta goal [5], which is unrelated.",
+  "usage": {
+   "in": 502,
+   "out": 63
+  },
+  "latency": 1.0861289501190186
+ },
+ {
+  "pair": "rg-0079",
+  "kind": "pos",
+  "query": "How full was the storage pool in January 2026?",
+  "ids": [
+   "8a32fb9f-958a-5a2e-a3cc-fdf8885f6735",
+   "b940342b-3d54-5768-a67b-a98a8d5af24b",
+   "6d10a0dc-d884-5159-ab96-75909d411d54",
+   "49993106-c205-5e46-be96-a110c3eb0028",
+   "d09737c7-2b2c-5b86-8744-30ccccdbadc8",
+   "7f095a78-eb34-5967-9fc0-e2d0b8401633"
+  ],
+  "relevant": [
+   "7f095a78-eb34-5967-9fc0-e2d0b8401633"
+  ],
+  "answer": "The stored memories do not contain enough information to answer this question. They give three different storage pool capacity figures: 62% [1], 71% [6], and 83% after the video imports [2]. None of them has a date, so I can't tell which, if any, applies to January 2026.",
+  "usage": {
+   "in": 508,
+   "out": 85
+  },
+  "latency": 1.3917357921600342
+ },
+ {
+  "pair": "rg-0079",
+  "kind": "neg",
+  "query": "How full was the storage pool in January 2026?",
+  "ids": [
+   "6d10a0dc-d884-5159-ab96-75909d411d54",
+   "8a32fb9f-958a-5a2e-a3cc-fdf8885f6735",
+   "b940342b-3d54-5768-a67b-a98a8d5af24b",
+   "49993106-c205-5e46-be96-a110c3eb0028",
+   "d09737c7-2b2c-5b86-8744-30ccccdbadc8"
+  ],
+  "relevant": [],
+  "answer": "The memories give two different capacity figures for the storage pool: 62% [2] and 83% after the video imports [3]. Neither memory has a date, so I can't tell which one applies to January 2026. The stored memories do not contain enough information to answer this question.",
+  "usage": {
+   "in": 487,
+   "out": 82
+  },
+  "latency": 1.2579166889190674
+ },
+ {
+  "pair": "rg-0089",
+  "kind": "pos",
+  "query": "What do we use for portal session storage?",
+  "ids": [
+   "b94043b3-61ba-545f-926f-0cf70ae088eb",
+   "022e08d8-05d4-54cb-a3f2-f2b5fa3f23b7",
+   "e2d647bc-446c-53f2-8da6-489bda083db4",
+   "a1b72e41-3103-5b35-b241-441913cbc6aa",
+   "6d10a0dc-d884-5159-ab96-75909d411d54",
+   "4001d61d-1c72-5a01-9c49-cc3ee30af59d"
+  ],
+  "relevant": [
+   "a1b72e41-3103-5b35-b241-441913cbc6aa"
+  ],
+  "answer": "Portal session storage now uses Redis on cache-02. It moved there from Memcached, which is retired [4]. An earlier memory says Memcached on cache-02 [1], but [4] supersedes it.",
+  "usage": {
+   "in": 529,
+   "out": 68
+  },
+  "latency": 1.2388863563537598
+ },
+ {
+  "pair": "rg-0089",
+  "kind": "neg",
+  "query": "What do we use for portal session storage?",
+  "ids": [
+   "b94043b3-61ba-545f-926f-0cf70ae088eb",
+   "4001d61d-1c72-5a01-9c49-cc3ee30af59d",
+   "6d10a0dc-d884-5159-ab96-75909d411d54",
+   "e2d647bc-446c-53f2-8da6-489bda083db4",
+   "022e08d8-05d4-54cb-a3f2-f2b5fa3f23b7"
+  ],
+  "relevant": [],
+  "answer": "Portal session storage uses Memcached on cache-02 [1].",
+  "usage": {
+   "in": 494,
+   "out": 23
+  },
+  "latency": 0.8553891181945801
+ },
+ {
+  "pair": "rg-0025",
+  "kind": "pos",
+  "query": "Which bundler produces our ops overview page?",
+  "ids": [
+   "93e6b3fc-c5f5-5553-b193-bfc70a4db731",
+   "7c78577f-ff05-5d87-a2fa-0a360d56d4e4",
+   "85487b5c-d6b4-5c62-bc7e-c490ff1f8a56",
+   "f63bb43f-c662-5e8e-bc57-c082334f580d",
+   "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+   "ca6d5ba3-12e7-5ca5-a1da-4bbe88043d5a"
+  ],
+  "relevant": [
+   "f63bb43f-c662-5e8e-bc57-c082334f580d"
+  ],
+  "answer": "The memories don't mention an \"ops overview page\" by name. The closest match is the status dashboard frontend, which is built with Vite and shipped as static files [4]. If the status dashboard is your ops overview page, Vite is the tool that builds it. The memories don't confirm that the two are the same.",
+  "usage": {
+   "in": 541,
+   "out": 95
+  },
+  "latency": 1.5918197631835938
+ },
+ {
+  "pair": "rg-0025",
+  "kind": "neg",
+  "query": "Which bundler produces our ops overview page?",
+  "ids": [
+   "ca6d5ba3-12e7-5ca5-a1da-4bbe88043d5a",
+   "7c78577f-ff05-5d87-a2fa-0a360d56d4e4",
+   "93e6b3fc-c5f5-5553-b193-bfc70a4db731",
+   "85487b5c-d6b4-5c62-bc7e-c490ff1f8a56",
+   "4f366064-1277-5ed4-bd74-63ebdf4259ec"
+  ],
+  "relevant": [],
+  "answer": "The stored memories do not contain enough information to answer this question. None of them mention a bundler or an ops overview page.",
+  "usage": {
+   "in": 514,
+   "out": 37
+  },
+  "latency": 1.0359954833984375
+ },
+ {
+  "pair": "rg-0024",
+  "kind": "pos",
+  "query": "What lightweight orchestrator do the little ARM machines run?",
+  "ids": [
+   "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+   "48551b63-f37a-5037-919a-e1c077fbab1a",
+   "bd184bd9-de3d-51dc-b19e-7919a7419bf9",
+   "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+   "f931fdb8-3db1-5753-b183-94c2748f5978",
+   "b40ee9bb-a6a8-554e-a043-78afd9c05bd0"
+  ],
+  "relevant": [
+   "bd184bd9-de3d-51dc-b19e-7919a7419bf9"
+  ],
+  "answer": "The memories say the Kubernetes workers run k3s v1.29.4 on three Odroid boards [3]. k3s is the lightweight orchestrator in this setup. The memories do not explicitly describe the Odroid boards as ARM machines, so that link is inferred from your question rather than stated.",
+  "usage": {
+   "in": 557,
+   "out": 98
+  },
+  "latency": 1.4514739513397217
+ },
+ {
+  "pair": "rg-0024",
+  "kind": "neg",
+  "query": "What lightweight orchestrator do the little ARM machines run?",
+  "ids": [
+   "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+   "48551b63-f37a-5037-919a-e1c077fbab1a",
+   "f931fdb8-3db1-5753-b183-94c2748f5978",
+   "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+   "b40ee9bb-a6a8-554e-a043-78afd9c05bd0"
+  ],
+  "relevant": [],
+  "answer": "The stored memories do not contain enough information to answer this question. None of them mention a lightweight orchestrator or ARM machines. The closest, memory [3], only says that quire-03 depends on the QEMU hypervisor cluster for its virtual machines.",
+  "usage": {
+   "in": 524,
+   "out": 83
+  },
+  "latency": 1.4721918106079102
+ },
+ {
+  "pair": "rg-0112",
+  "kind": "pos",
+  "query": "Why are there gaps in the rooftop weather readings?",
+  "ids": [
+   "0ba49298-7814-590d-bd48-917e6505b347",
+   "05b752a0-aa7a-5a74-a543-b74684e79fa2",
+   "e33098f6-78d6-5469-87c0-e8fdbc508f10",
+   "e2d647bc-446c-53f2-8da6-489bda083db4",
+   "d09737c7-2b2c-5b86-8744-30ccccdbadc8",
+   "3189280d-399f-5888-92b5-ac00d63b3d84",
+   "fa63d628-6fde-5901-9174-24e81062ed83"
+  ],
+  "relevant": [
+   "e33098f6-78d6-5469-87c0-e8fdbc508f10",
+   "05b752a0-aa7a-5a74-a543-b74684e79fa2"
+  ],
+  "answer": "The memories don't state a cause for gaps, but they offer a possible link. The rooftop weather station reports through the iot-gw-1 gateway [3], and iot-gw-1 runs a nightly firmware check that reboots it whether or not an update was applied [2]. Gateway reboots could plausibly interrupt readings, but the memories don't confirm that this is the reason for the gaps, or say how long the reboots last.",
+  "usage": {
+   "in": 587,
+   "out": 138
+  },
+  "latency": 1.6198763847351074
+ },
+ {
+  "pair": "rg-0112",
+  "kind": "neg",
+  "query": "Why are there gaps in the rooftop weather readings?",
+  "ids": [
+   "d09737c7-2b2c-5b86-8744-30ccccdbadc8",
+   "0ba49298-7814-590d-bd48-917e6505b347",
+   "e2d647bc-446c-53f2-8da6-489bda083db4",
+   "3189280d-399f-5888-92b5-ac00d63b3d84",
+   "fa63d628-6fde-5901-9174-24e81062ed83"
+  ],
+  "relevant": [],
+  "answer": "The stored memories do not contain enough information to answer this question. None of them mention rooftop weather readings or any gaps in them. They cover only CI runners [1], build artifact storage [2], portal session token signing [3], Sentry error tracking [4], and the WireGuard VPN [5].",
+  "usage": {
+   "in": 519,
+   "out": 94
+  },
+  "latency": 1.1772205829620361
+ },
+ {
+  "pair": "rg-0061",
+  "kind": "pos",
+  "query": "At what time does the nightly integration suite start?",
+  "ids": [
+   "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+   "b58795ae-3e47-5b88-a760-768074eef323",
+   "2c93598f-be9a-5eae-981a-8340dfbc35da",
+   "48551b63-f37a-5037-919a-e1c077fbab1a",
+   "60249037-7964-557d-a6d1-5ee795667aff",
+   "d09737c7-2b2c-5b86-8744-30ccccdbadc8"
+  ],
+  "relevant": [
+   "60249037-7964-557d-a6d1-5ee795667aff"
+  ],
+  "answer": "The nightly integration suite starts at 03:15 [5].",
+  "usage": {
+   "in": 550,
+   "out": 21
+  },
+  "latency": 1.341468334197998
+ },
+ {
+  "pair": "rg-0061",
+  "kind": "neg",
+  "query": "At what time does the nightly integration suite start?",
+  "ids": [
+   "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+   "d09737c7-2b2c-5b86-8744-30ccccdbadc8",
+   "48551b63-f37a-5037-919a-e1c077fbab1a",
+   "2c93598f-be9a-5eae-981a-8340dfbc35da",
+   "b58795ae-3e47-5b88-a760-768074eef323"
+  ],
+  "relevant": [],
+  "answer": "The stored memories do not contain enough information to answer this question. None of them mention a nightly integration suite or its start time. The closest items are the nightly restic backups at 02:30 [1] and the CI runners' concurrency cap [2], but neither concerns an integration suite schedule.",
+  "usage": {
+   "in": 510,
+   "out": 91
+  },
+  "latency": 1.4949228763580322
+ },
+ {
+  "pair": "rg-0094",
+  "kind": "pos",
+  "query": "Which service collects our exception reports today?",
+  "ids": [
+   "3fbb7781-1891-5b97-8aeb-58ed402dfe5b",
+   "ceff1656-b957-5327-b577-6bddca185d7a",
+   "e33098f6-78d6-5469-87c0-e8fdbc508f10",
+   "ba6c5c9f-a49c-5fa7-afea-7c982e0f8cca",
+   "1ffca2a1-ed6a-5195-99ba-92ced36116f0",
+   "e25725bf-d3f6-5145-a9ac-943c5db5e13c"
+  ],
+  "relevant": [
+   "1ffca2a1-ed6a-5195-99ba-92ced36116f0"
+  ],
+  "answer": "According to the memories, error tracking moved from self-hosted Sentry to GlitchTip, and the old Sentry instance is now read-only [5]. This indicates GlitchTip is the service that collects exception reports today, though the memory refers to \"error tracking\" rather than explicitly saying \"exception reports.\"",
+  "usage": {
+   "in": 535,
+   "out": 100
+  },
+  "latency": 1.392307996749878
+ },
+ {
+  "pair": "rg-0094",
+  "kind": "neg",
+  "query": "Which service collects our exception reports today?",
+  "ids": [
+   "e25725bf-d3f6-5145-a9ac-943c5db5e13c",
+   "3fbb7781-1891-5b97-8aeb-58ed402dfe5b",
+   "e33098f6-78d6-5469-87c0-e8fdbc508f10",
+   "ba6c5c9f-a49c-5fa7-afea-7c982e0f8cca",
+   "ceff1656-b957-5327-b577-6bddca185d7a"
+  ],
+  "relevant": [],
+  "answer": "The stored memories do not contain enough information to answer this question. None of them mention a service that collects exception reports. They only cover Osquery fleet inventory reporting [1], billing-sync deployment [2], the rooftop weather station gateway [3], timesheet reminders from hook-runner [4], and hook-runner's outbound spool volume [5].",
+  "usage": {
+   "in": 497,
+   "out": 113
+  },
+  "latency": 1.6498422622680664
+ },
+ {
+  "pair": "rg-0092",
+  "kind": "pos",
+  "query": "Which CI system runs the deploy pipeline now?",
+  "ids": [
+   "57ab215e-243b-5926-b22a-26a193ccfe34",
+   "0219c208-1122-5c1e-8fbf-0996a051b4e7",
+   "84e01d06-a718-5192-9371-d907a92e5d3a",
+   "d09737c7-2b2c-5b86-8744-30ccccdbadc8",
+   "21e2b38f-4dd7-569a-8736-6b2b4b5afac4",
+   "8bb0fed2-3886-535f-9f48-5d96c574eb22"
+  ],
+  "relevant": [
+   "0219c208-1122-5c1e-8fbf-0996a051b4e7"
+  ],
+  "answer": "The memories point to GitHub Actions as the current deploy pipeline. One says the deploy pipeline moved from Jenkins to GitHub Actions, and that ci-01 is being wound down [2]. Another says deploys are triggered by the Jenkins pipeline on ci-01 [5], but that appears to be the older state, given the move described in [2].\n\nWoodpecker CI on tether-02 builds every push to the fulfillment monorepo [1]. The memories do not say it runs the deploy pipeline.",
+  "usage": {
+   "in": 558,
+   "out": 168
+  },
+  "latency": 1.6032097339630127
+ },
+ {
+  "pair": "rg-0092",
+  "kind": "neg",
+  "query": "Which CI system runs the deploy pipeline now?",
+  "ids": [
+   "21e2b38f-4dd7-569a-8736-6b2b4b5afac4",
+   "57ab215e-243b-5926-b22a-26a193ccfe34",
+   "8bb0fed2-3886-535f-9f48-5d96c574eb22",
+   "d09737c7-2b2c-5b86-8744-30ccccdbadc8",
+   "84e01d06-a718-5192-9371-d907a92e5d3a"
+  ],
+  "relevant": [],
+  "answer": "The memories conflict, and none of them says which is current. Memory [1] says deploys are triggered by the Jenkins pipeline on ci-01. Memory [2] says Woodpecker CI on tether-02 builds every push to the fulfillment monorepo, but it doesn't mention deploys. Neither memory has a date or says one system replaced the other, so the memories don't establish which CI system runs the deploy pipeline \"now.\" The only explicit link to deploys is Jenkins [1].",
+  "usage": {
+   "in": 518,
+   "out": 160
+  },
+  "latency": 1.8102164268493652
+ },
+ {
+  "pair": "rg-0109",
+  "kind": "pos",
+  "query": "Why does the payroll file sometimes never reach accounting?",
+  "ids": [
+   "3ebf47f0-fa86-5116-aeee-5202ff815ad6",
+   "8bb0fed2-3886-535f-9f48-5d96c574eb22",
+   "33062433-dd83-55ea-a6d9-4460dd337c12",
+   "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+   "79dc3c0b-a72e-5433-a3c1-b2c025c5081c",
+   "bb411aa9-0f79-59b5-ba6b-d5805bc57792",
+   "b40ee9bb-a6a8-554e-a043-78afd9c05bd0"
+  ],
+  "relevant": [
+   "33062433-dd83-55ea-a6d9-4460dd337c12",
+   "bb411aa9-0f79-59b5-ba6b-d5805bc57792"
+  ],
+  "answer": "The memories don't state a direct cause, but they suggest a possible link. The monthly payroll export is delivered through the transfer host sftp-02 [3]. The DNS record for sftp-02 has a day-long TTL and goes stale whenever the host fails over [6]. This implies that after a failover, the export could be sent to an outdated address and might not arrive.\n\nThe memories do not mention accounting, any actual failed deliveries, or confirm that this is the cause of the missing file.",
+  "usage": {
+   "in": 604,
+   "out": 155
+  },
+  "latency": 1.7420165538787842
+ },
+ {
+  "pair": "rg-0109",
+  "kind": "neg",
+  "query": "Why does the payroll file sometimes never reach accounting?",
+  "ids": [
+   "3ebf47f0-fa86-5116-aeee-5202ff815ad6",
+   "79dc3c0b-a72e-5433-a3c1-b2c025c5081c",
+   "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+   "b40ee9bb-a6a8-554e-a043-78afd9c05bd0",
+   "8bb0fed2-3886-535f-9f48-5d96c574eb22"
+  ],
+  "relevant": [],
+  "answer": "The stored memories do not contain enough information to answer this question. None of them mention a payroll file, accounting, or any file transfer process. The closest topics are network isolation of the guest Wi-Fi VLAN [1] and Tailscale access to the warehouse VLAN [2], but neither is connected to payroll or accounting delivery.",
+  "usage": {
+   "in": 536,
+   "out": 109
+  },
+  "latency": 1.4491982460021973
+ },
+ {
+  "pair": "rg-0013",
+  "kind": "pos",
+  "query": "What's the network endpoint for our metrics dashboard UI?",
+  "ids": [
+   "85487b5c-d6b4-5c62-bc7e-c490ff1f8a56",
+   "10e856b2-129d-597f-8be7-6ffc3282b621",
+   "a74539c3-903a-5e84-8f6f-3bdaac7f73a1",
+   "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+   "8be18fdb-2e49-505e-949e-3d826ba75fbe",
+   "a0ccc435-c6d4-52b5-9808-f1779c3be670"
+  ],
+  "relevant": [
+   "4f366064-1277-5ed4-bd74-63ebdf4259ec"
+  ],
+  "answer": "The memories only partly answer this. Grafana on the monitoring host listens on port 3000 behind the nginx reverse proxy [4]. Nothing states the hostname, the IP address, or the port nginx itself exposes, so the full endpoint cannot be given. The memories also never say that Grafana is the metrics dashboard UI, so that is an assumption.",
+  "usage": {
+   "in": 586,
+   "out": 118
+  },
+  "latency": 3.1771905422210693
+ },
+ {
+  "pair": "rg-0013",
+  "kind": "neg",
+  "query": "What's the network endpoint for our metrics dashboard UI?",
+  "ids": [
+   "8be18fdb-2e49-505e-949e-3d826ba75fbe",
+   "10e856b2-129d-597f-8be7-6ffc3282b621",
+   "a0ccc435-c6d4-52b5-9808-f1779c3be670",
+   "a74539c3-903a-5e84-8f6f-3bdaac7f73a1",
+   "85487b5c-d6b4-5c62-bc7e-c490ff1f8a56"
+  ],
+  "relevant": [],
+  "answer": "The stored memories do not contain enough information to answer this question. None of them mention a metrics dashboard UI or its network endpoint. The closest items are the public API on lb-01 at port 8443 [1] and the internal build UI behind Traefik on tether-02 [5], but neither is described as a metrics dashboard.",
+  "usage": {
+   "in": 550,
+   "out": 103
+  },
+  "latency": 1.3669404983520508
+ },
+ {
+  "pair": "rg-0113",
+  "kind": "pos",
+  "query": "What keeps interrupting the weather station's reporting?",
+  "ids": [
+   "d5a9162a-9ea5-5053-8594-1150c547e99e",
+   "bb411aa9-0f79-59b5-ba6b-d5805bc57792",
+   "b76b13e7-625b-5566-b64c-b66fcc28ed8d",
+   "fda7e159-3fab-5a1f-9595-ac5d11f5725f",
+   "d00a000f-f2d8-551e-bbcd-4776d8ec62d5",
+   "05b752a0-aa7a-5a74-a543-b74684e79fa2",
+   "e33098f6-78d6-5469-87c0-e8fdbc508f10"
+  ],
+  "relevant": [
+   "e33098f6-78d6-5469-87c0-e8fdbc508f10",
+   "05b752a0-aa7a-5a74-a543-b74684e79fa2"
+  ],
+  "answer": "The memories point to a likely cause, though none of them says outright that it interrupts the weather station. The rooftop weather station reports through the iot-gw-1 gateway [7], and iot-gw-1 runs a nightly firmware check that reboots it whether or not an update was applied [6]. Those nightly reboots would plausibly interrupt the station's reporting. The memories don't confirm that this is what actually happens.",
+  "usage": {
+   "in": 564,
+   "out": 135
+  },
+  "latency": 1.8129498958587646
+ },
+ {
+  "pair": "rg-0113",
+  "kind": "neg",
+  "query": "What keeps interrupting the weather station's reporting?",
+  "ids": [
+   "b76b13e7-625b-5566-b64c-b66fcc28ed8d",
+   "fda7e159-3fab-5a1f-9595-ac5d11f5725f",
+   "d5a9162a-9ea5-5053-8594-1150c547e99e",
+   "d00a000f-f2d8-551e-bbcd-4776d8ec62d5",
+   "bb411aa9-0f79-59b5-ba6b-d5805bc57792"
+  ],
+  "relevant": [],
+  "answer": "The stored memories do not contain enough information to answer this question. None of them mention a weather station or anything interrupting its reporting.",
+  "usage": {
+   "in": 496,
+   "out": 41
+  },
+  "latency": 2.303123712539673
+ },
+ {
+  "pair": "rg-0039",
+  "kind": "pos",
+  "query": "wiregaurd vpn on upd port 51820",
+  "ids": [
+   "8be18fdb-2e49-505e-949e-3d826ba75fbe",
+   "efefa9eb-814a-53e9-a820-ba77281806c3",
+   "cfd47cfe-0127-5b68-9a10-bbcade00c90f",
+   "022e08d8-05d4-54cb-a3f2-f2b5fa3f23b7",
+   "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+   "fa63d628-6fde-5901-9174-24e81062ed83"
+  ],
+  "relevant": [
+   "fa63d628-6fde-5901-9174-24e81062ed83"
+  ],
+  "answer": "Memory [6] says the VPN is WireGuard on UDP port 51820, and it hands peers addresses in the 10.8.0.0/24 range [6]. The memories contain nothing else about the VPN.",
+  "usage": {
+   "in": 545,
+   "out": 70
+  },
+  "latency": 2.192342758178711
+ },
+ {
+  "pair": "rg-0039",
+  "kind": "neg",
+  "query": "wiregaurd vpn on upd port 51820",
+  "ids": [
+   "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+   "efefa9eb-814a-53e9-a820-ba77281806c3",
+   "cfd47cfe-0127-5b68-9a10-bbcade00c90f",
+   "022e08d8-05d4-54cb-a3f2-f2b5fa3f23b7",
+   "8be18fdb-2e49-505e-949e-3d826ba75fbe"
+  ],
+  "relevant": [],
+  "answer": "The stored memories do not contain enough information to answer this question. None of them mention WireGuard, a VPN, or UDP port 51820. The memories only cover Grafana on port 3000 [1], Kibana on port 5601 [2], node exporters on port 9100 [3], Authelia on port 9091 [4], and HAProxy on port 8443 [5].",
+  "usage": {
+   "in": 503,
+   "out": 118
+  },
+  "latency": 1.5383195877075195
+ },
+ {
+  "pair": "rg-0019",
+  "kind": "pos",
+  "query": "Where do compiled outputs from the pipeline end up?",
+  "ids": [
+   "00c4e4d0-7539-590d-9c9b-af30d523ab5f",
+   "3215cb23-5d4e-5b10-b4f1-b2ea4049d864",
+   "0219c208-1122-5c1e-8fbf-0996a051b4e7",
+   "14fe0a84-d444-53ff-8bf4-97148e2e9b77",
+   "5ab45131-c6ef-59dd-a26f-9c236f503eb8",
+   "0ba49298-7814-590d-bd48-917e6505b347"
+  ],
+  "relevant": [
+   "0ba49298-7814-590d-bd48-917e6505b347"
+  ],
+  "answer": "Build artifacts are stored in the MinIO bucket named artifacts-prod [6]. The memories also say the deploy pipeline moved from Jenkins to GitHub Actions [3], but they do not say where GitHub Actions itself sends its outputs.",
+  "usage": {
+   "in": 547,
+   "out": 86
+  },
+  "latency": 1.311488151550293
+ },
+ {
+  "pair": "rg-0019",
+  "kind": "neg",
+  "query": "Where do compiled outputs from the pipeline end up?",
+  "ids": [
+   "0219c208-1122-5c1e-8fbf-0996a051b4e7",
+   "14fe0a84-d444-53ff-8bf4-97148e2e9b77",
+   "3215cb23-5d4e-5b10-b4f1-b2ea4049d864",
+   "5ab45131-c6ef-59dd-a26f-9c236f503eb8",
+   "00c4e4d0-7539-590d-9c9b-af30d523ab5f"
+  ],
+  "relevant": [],
+  "answer": "The stored memories do not contain enough information to answer this question. They say the deploy pipeline moved from Jenkins to GitHub Actions and that ci-01 is being wound down [1], but none of them say where compiled outputs or build artifacts from the pipeline are stored.",
+  "usage": {
+   "in": 516,
+   "out": 89
+  },
+  "latency": 1.2955901622772217
+ },
+ {
+  "pair": "rg-0012",
+  "kind": "pos",
+  "query": "k3s v1.29.4 on three Odroid boards",
+  "ids": [
+   "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+   "8bb0fed2-3886-535f-9f48-5d96c574eb22",
+   "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+   "84e01d06-a718-5192-9371-d907a92e5d3a",
+   "fa63d628-6fde-5901-9174-24e81062ed83",
+   "bd184bd9-de3d-51dc-b19e-7919a7419bf9"
+  ],
+  "relevant": [
+   "bd184bd9-de3d-51dc-b19e-7919a7419bf9"
+  ],
+  "answer": "Your memories say that the Kubernetes workers run k3s v1.29.4 on three Odroid boards [6]. They contain nothing further about this setup.",
+  "usage": {
+   "in": 566,
+   "out": 52
+  },
+  "latency": 1.2648513317108154
+ },
+ {
+  "pair": "rg-0012",
+  "kind": "neg",
+  "query": "k3s v1.29.4 on three Odroid boards",
+  "ids": [
+   "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+   "8bb0fed2-3886-535f-9f48-5d96c574eb22",
+   "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+   "84e01d06-a718-5192-9371-d907a92e5d3a",
+   "fa63d628-6fde-5901-9174-24e81062ed83"
+  ],
+  "relevant": [],
+  "answer": "The stored memories do not contain enough information to answer this question. None of them mention k3s, v1.29.4, or Odroid boards.",
+  "usage": {
+   "in": 533,
+   "out": 44
+  },
+  "latency": 1.3371646404266357
+ },
+ {
+  "pair": "rg-0082",
+  "kind": "pos",
+  "query": "How big is the platform team today?",
+  "ids": [
+   "3ebf47f0-fa86-5116-aeee-5202ff815ad6",
+   "14fe0a84-d444-53ff-8bf4-97148e2e9b77",
+   "40de4731-6596-5255-becd-0c6056ae5dce",
+   "fa63d628-6fde-5901-9174-24e81062ed83",
+   "f63bb43f-c662-5e8e-bc57-c082334f580d",
+   "65bdfcb6-642e-5651-b836-58c9706a2781"
+  ],
+  "relevant": [
+   "65bdfcb6-642e-5651-b836-58c9706a2781"
+  ],
+  "answer": "The memories give two conflicting figures. One says the platform team currently has four engineers [3], and another says it has grown to six engineers [6]. The wording \"has grown to\" suggests [6] is the more recent update, so the team is likely six engineers today. The memories do not include dates, though, so I can't confirm which is newer.",
+  "usage": {
+   "in": 524,
+   "out": 103
+  },
+  "latency": 1.4553515911102295
+ },
+ {
+  "pair": "rg-0082",
+  "kind": "neg",
+  "query": "How big is the platform team today?",
+  "ids": [
+   "40de4731-6596-5255-becd-0c6056ae5dce",
+   "fa63d628-6fde-5901-9174-24e81062ed83",
+   "14fe0a84-d444-53ff-8bf4-97148e2e9b77",
+   "f63bb43f-c662-5e8e-bc57-c082334f580d",
+   "3ebf47f0-fa86-5116-aeee-5202ff815ad6"
+  ],
+  "relevant": [],
+  "answer": "The platform team currently has four engineers [1].",
+  "usage": {
+   "in": 507,
+   "out": 16
+  },
+  "latency": 0.953984260559082
+ },
+ {
+  "pair": "rg-0095",
+  "kind": "pos",
+  "query": "What builds the docs site?",
+  "ids": [
+   "b40ee9bb-a6a8-554e-a043-78afd9c05bd0",
+   "f34c78e9-c53b-5a6e-8a47-51c74a3f4d7f",
+   "115c4f35-072d-5ef7-9f42-e3177a07fb3d",
+   "57ab215e-243b-5926-b22a-26a193ccfe34",
+   "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+   "9637a80e-4e23-5137-9cf8-14bd5c4f8b4d"
+  ],
+  "relevant": [
+   "f34c78e9-c53b-5a6e-8a47-51c74a3f4d7f"
+  ],
+  "answer": "The memories conflict, but the more recent-sounding one says the docs site now builds with Astro instead of MkDocs, and the MkDocs config was deleted [2]. An older memory says the site was generated with MkDocs on every push to main [3]. Since [2] says Astro replaced MkDocs, Astro is the current builder.\n\nThe memories don't say what triggers the Astro build. Memory [4] says Woodpecker CI builds every push to the fulfillment monorepo, but it doesn't link that to the docs site.",
+  "usage": {
+   "in": 532,
+   "out": 170
+  },
+  "latency": 2.2225749492645264
+ },
+ {
+  "pair": "rg-0095",
+  "kind": "neg",
+  "query": "What builds the docs site?",
+  "ids": [
+   "9637a80e-4e23-5137-9cf8-14bd5c4f8b4d",
+   "115c4f35-072d-5ef7-9f42-e3177a07fb3d",
+   "57ab215e-243b-5926-b22a-26a193ccfe34",
+   "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+   "b40ee9bb-a6a8-554e-a043-78afd9c05bd0"
+  ],
+  "relevant": [],
+  "answer": "The docs site is generated with MkDocs on every push to main [2]. The memories don't say which system runs that build. Woodpecker CI builds pushes to the fulfillment monorepo [3], but nothing links it to the docs site.",
+  "usage": {
+   "in": 496,
+   "out": 76
+  },
+  "latency": 1.283198595046997
+ },
+ {
+  "pair": "rg-0006",
+  "kind": "pos",
+  "query": "chose Caddy over nginx because it renews certificates automatically",
+  "ids": [
+   "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+   "4001d61d-1c72-5a01-9c49-cc3ee30af59d",
+   "9bd5bb38-3c7d-530b-b7b6-184a0862fadd",
+   "00c4e4d0-7539-590d-9c9b-af30d523ab5f",
+   "b4b901ed-ccbc-56b5-9bf2-48e6a0ffee06",
+   "4707347d-277f-566a-be59-c8a79505f259"
+  ],
+  "relevant": [
+   "4001d61d-1c72-5a01-9c49-cc3ee30af59d"
+  ],
+  "answer": "Memory [2] says Caddy was chosen over nginx for the public reverse proxy because it renews certificates automatically [2].\n\nRelated context: nginx is still used elsewhere. Grafana on the monitoring host sits behind an nginx reverse proxy [1], and internal-only tools sit behind an nginx proxy that requires client certificates [5].",
+  "usage": {
+   "in": 543,
+   "out": 116
+  },
+  "latency": 1.3593661785125732
+ },
+ {
+  "pair": "rg-0006",
+  "kind": "neg",
+  "query": "chose Caddy over nginx because it renews certificates automatically",
+  "ids": [
+   "b4b901ed-ccbc-56b5-9bf2-48e6a0ffee06",
+   "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+   "4707347d-277f-566a-be59-c8a79505f259",
+   "00c4e4d0-7539-590d-9c9b-af30d523ab5f",
+   "9bd5bb38-3c7d-530b-b7b6-184a0862fadd"
+  ],
+  "relevant": [],
+  "answer": "The stored memories do not contain enough information to answer this question. None of them mention Caddy or a decision to choose it over nginx, and none mention automatic certificate renewal.\n\nThe only related details are that internal-only tools sit behind an nginx proxy requiring client certificates [1], and that Grafana listens on port 3000 behind the nginx reverse proxy [2]. Neither gives a reason for choosing Caddy.",
+  "usage": {
+   "in": 508,
+   "out": 137
+  },
+  "latency": 1.6699271202087402
+ },
+ {
+  "pair": "rg-0090",
+  "kind": "pos",
+  "query": "Where are portal sessions kept these days?",
+  "ids": [
+   "0ba49298-7814-590d-bd48-917e6505b347",
+   "d09737c7-2b2c-5b86-8744-30ccccdbadc8",
+   "a1b72e41-3103-5b35-b241-441913cbc6aa",
+   "38b71b50-3a9d-5631-9d13-6c090c22faee",
+   "e2d647bc-446c-53f2-8da6-489bda083db4",
+   "b76b13e7-625b-5566-b64c-b66fcc28ed8d"
+  ],
+  "relevant": [
+   "a1b72e41-3103-5b35-b241-441913cbc6aa"
+  ],
+  "answer": "Portal sessions are now kept in Redis on cache-02. Session storage moved there from Memcached, which is retired [3].",
+  "usage": {
+   "in": 551,
+   "out": 42
+  },
+  "latency": 1.1504464149475098
+ },
+ {
+  "pair": "rg-0090",
+  "kind": "neg",
+  "query": "Where are portal sessions kept these days?",
+  "ids": [
+   "e2d647bc-446c-53f2-8da6-489bda083db4",
+   "d09737c7-2b2c-5b86-8744-30ccccdbadc8",
+   "0ba49298-7814-590d-bd48-917e6505b347",
+   "b76b13e7-625b-5566-b64c-b66fcc28ed8d",
+   "38b71b50-3a9d-5631-9d13-6c090c22faee"
+  ],
+  "relevant": [],
+  "answer": "The memories don't say where portal sessions are stored. The closest detail is that customer-portal session tokens are signed with a key kept in the vault namespace apps/portal [1]. That concerns the signing key, not where the sessions themselves are kept. The stored memories do not contain enough information to answer this question.",
+  "usage": {
+   "in": 516,
+   "out": 98
+  },
+  "latency": 1.3426122665405273
+ },
+ {
+  "pair": "rg-0051",
+  "kind": "pos",
+  "query": "What is the name of the MinIO bucket for build artifacts?",
+  "ids": [
+   "2e33e174-1cf8-501f-a6f6-7565a9418135",
+   "0ba49298-7814-590d-bd48-917e6505b347",
+   "0cb93017-59ea-535e-a250-ed8cf6d0e4e5",
+   "60249037-7964-557d-a6d1-5ee795667aff",
+   "c565d8a5-efb0-5c2e-b739-0d07c1812253",
+   "80464c7d-605f-5c47-815f-9da3843f2aaa"
+  ],
+  "relevant": [
+   "0ba49298-7814-590d-bd48-917e6505b347"
+  ],
+  "answer": "The MinIO bucket for build artifacts is named artifacts-prod [2].\n\nMemories [1] and [3] describe a separate bucket, forge-artifacts, which is on Garage rather than MinIO.",
+  "usage": {
+   "in": 593,
+   "out": 70
+  },
+  "latency": 1.2544150352478027
+ },
+ {
+  "pair": "rg-0051",
+  "kind": "neg",
+  "query": "What is the name of the MinIO bucket for build artifacts?",
+  "ids": [
+   "2e33e174-1cf8-501f-a6f6-7565a9418135",
+   "0cb93017-59ea-535e-a250-ed8cf6d0e4e5",
+   "c565d8a5-efb0-5c2e-b739-0d07c1812253",
+   "60249037-7964-557d-a6d1-5ee795667aff",
+   "80464c7d-605f-5c47-815f-9da3843f2aaa"
+  ],
+  "relevant": [],
+  "answer": "The memories do not mention a MinIO bucket for build artifacts. Build artifacts are stored in the forge-artifacts bucket, but that bucket is on Garage on files-01, not MinIO [2]. The only MinIO bucket mentioned is tf-state, which holds Terraform state, not build artifacts [3].\n\nThe stored memories do not contain enough information to name a MinIO bucket for build artifacts.",
+  "usage": {
+   "in": 562,
+   "out": 137
+  },
+  "latency": 1.6178512573242188
+ },
+ {
+  "pair": "rg-0101",
+  "kind": "pos",
+  "query": "Which issue tracker do we use?",
+  "ids": [
+   "a724ff64-e0db-556f-a85f-923079b61c5b",
+   "d09737c7-2b2c-5b86-8744-30ccccdbadc8",
+   "f5d3c481-3d98-534b-9b5e-e01a9563518e",
+   "5b815f89-99f7-5b1f-b0c1-0428f8371903",
+   "db541e5c-93c5-552a-a13c-7f241dc2ff49",
+   "4001d61d-1c72-5a01-9c49-cc3ee30af59d"
+  ],
+  "relevant": [
+   "db541e5c-93c5-552a-a13c-7f241dc2ff49"
+  ],
+  "answer": "The issue tracker is a self-hosted Gitea instance [5]. There is a possible future switch to Forgejo next quarter, but only if the migration tooling matures [1]. That is not a confirmed change.",
+  "usage": {
+   "in": 538,
+   "out": 69
+  },
+  "latency": 1.207704782485962
+ },
+ {
+  "pair": "rg-0101",
+  "kind": "neg",
+  "query": "Which issue tracker do we use?",
+  "ids": [
+   "a724ff64-e0db-556f-a85f-923079b61c5b",
+   "d09737c7-2b2c-5b86-8744-30ccccdbadc8",
+   "4001d61d-1c72-5a01-9c49-cc3ee30af59d",
+   "5b815f89-99f7-5b1f-b0c1-0428f8371903",
+   "f5d3c481-3d98-534b-9b5e-e01a9563518e"
+  ],
+  "relevant": [],
+  "answer": "The memories don't say which issue tracker is currently in use. They only mention that the team might switch the issue tracker to Forgejo next quarter if the migration tooling matures [1]. The current tracker is not identified.",
+  "usage": {
+   "in": 514,
+   "out": 69
+  },
+  "latency": 1.6421160697937012
+ },
+ {
+  "pair": "rg-0021",
+  "kind": "pos",
+  "query": "How do remote machines join the private network?",
+  "ids": [
+   "fa63d628-6fde-5901-9174-24e81062ed83",
+   "a74539c3-903a-5e84-8f6f-3bdaac7f73a1",
+   "b40ee9bb-a6a8-554e-a043-78afd9c05bd0",
+   "a0ccc435-c6d4-52b5-9808-f1779c3be670",
+   "f931fdb8-3db1-5753-b183-94c2748f5978",
+   "4f366064-1277-5ed4-bd74-63ebdf4259ec"
+  ],
+  "relevant": [
+   "fa63d628-6fde-5901-9174-24e81062ed83"
+  ],
+  "answer": "The memories only partly cover this. The VPN is WireGuard on UDP port 51820, and it hands peers addresses in 10.8.0.0/24 [1]. This suggests remote machines join as WireGuard peers and receive addresses from that range. The memories do not describe the setup steps, such as key exchange, client configuration, or authentication.",
+  "usage": {
+   "in": 560,
+   "out": 113
+  },
+  "latency": 1.6218478679656982
+ },
+ {
+  "pair": "rg-0021",
+  "kind": "neg",
+  "query": "How do remote machines join the private network?",
+  "ids": [
+   "a0ccc435-c6d4-52b5-9808-f1779c3be670",
+   "f931fdb8-3db1-5753-b183-94c2748f5978",
+   "a74539c3-903a-5e84-8f6f-3bdaac7f73a1",
+   "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+   "b40ee9bb-a6a8-554e-a043-78afd9c05bd0"
+  ],
+  "relevant": [],
+  "answer": "The stored memories do not contain enough information to answer this question. None of them describe how remote machines join the private network (for example, via a VPN or similar). The memories only cover PowerDNS serving the zone yard.lab on quire-03 [1], quire-03's dependence on the QEMU hypervisor cluster [2], Pi-hole on ridge-01 for the guest network [3], Grafana behind nginx on port 3000 [4], and Prometheus scraping node exporters every 15 seconds [5].",
+  "usage": {
+   "in": 518,
+   "out": 165
+  },
+  "latency": 1.7939448356628418
+ },
+ {
+  "pair": "rg-0002",
+  "kind": "pos",
+  "query": "prometheus scrapes the node exporters every 15 seconds",
+  "ids": [
+   "115c4f35-072d-5ef7-9f42-e3177a07fb3d",
+   "b40ee9bb-a6a8-554e-a043-78afd9c05bd0",
+   "8bb0fed2-3886-535f-9f48-5d96c574eb22",
+   "26cea26c-3123-5d87-836f-6269ec38e626",
+   "cfd47cfe-0127-5b68-9a10-bbcade00c90f",
+   "60249037-7964-557d-a6d1-5ee795667aff"
+  ],
+  "relevant": [
+   "b40ee9bb-a6a8-554e-a043-78afd9c05bd0"
+  ],
+  "answer": "Memory [2] says Prometheus scrapes the node exporters every 15 seconds, and describes that as double the default interval. Memory [5] adds that every host runs a node exporter listening on port 9100.",
+  "usage": {
+   "in": 527,
+   "out": 68
+  },
+  "latency": 1.2401773929595947
+ },
+ {
+  "pair": "rg-0002",
+  "kind": "neg",
+  "query": "prometheus scrapes the node exporters every 15 seconds",
+  "ids": [
+   "8bb0fed2-3886-535f-9f48-5d96c574eb22",
+   "60249037-7964-557d-a6d1-5ee795667aff",
+   "cfd47cfe-0127-5b68-9a10-bbcade00c90f",
+   "26cea26c-3123-5d87-836f-6269ec38e626",
+   "115c4f35-072d-5ef7-9f42-e3177a07fb3d"
+  ],
+  "relevant": [],
+  "answer": "The memories say nothing about Prometheus or its scrape interval, so the 15-second claim is neither confirmed nor contradicted. The only related fact is that every host runs a node exporter listening on port 9100 [3].\n\nThe stored memories do not contain enough information to say how often Prometheus scrapes the node exporters.",
+  "usage": {
+   "in": 495,
+   "out": 104
+  },
+  "latency": 1.2325284481048584
+ },
+ {
+  "pair": "rg-0081",
+  "kind": "pos",
+  "query": "How many engineers were on the platform team at the end of 2025?",
+  "ids": [
+   "48551b63-f37a-5037-919a-e1c077fbab1a",
+   "65bdfcb6-642e-5651-b836-58c9706a2781",
+   "a66e992b-7d1b-5432-9072-e552d17232af",
+   "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+   "40de4731-6596-5255-becd-0c6056ae5dce",
+   "2c93598f-be9a-5eae-981a-8340dfbc35da"
+  ],
+  "relevant": [
+   "40de4731-6596-5255-becd-0c6056ae5dce"
+  ],
+  "answer": "The memories give conflicting counts and no dates, so I can't tell which one applied at the end of 2025. One says the platform team \"has grown to six engineers\" [2], and another says it \"currently has four engineers\" [5]. Neither memory says when it was recorded, so the stored memories do not contain enough information to say how many engineers were on the team at the end of 2025.",
+  "usage": {
+   "in": 509,
+   "out": 116
+  },
+  "latency": 1.6006760597229004
+ },
+ {
+  "pair": "rg-0081",
+  "kind": "neg",
+  "query": "How many engineers were on the platform team at the end of 2025?",
+  "ids": [
+   "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+   "48551b63-f37a-5037-919a-e1c077fbab1a",
+   "65bdfcb6-642e-5651-b836-58c9706a2781",
+   "a66e992b-7d1b-5432-9072-e552d17232af",
+   "2c93598f-be9a-5eae-981a-8340dfbc35da"
+  ],
+  "relevant": [],
+  "answer": "The memories say the platform team \"has grown to six engineers\" [3], but they give no date for this. They do not say how many engineers there were at the end of 2025, so I can't confirm that six was the count at that time.",
+  "usage": {
+   "in": 493,
+   "out": 66
+  },
+  "latency": 1.2922990322113037
+ },
+ {
+  "pair": "rg-0009",
+  "kind": "pos",
+  "query": "WireGuard on UDP port 51820",
+  "ids": [
+   "efefa9eb-814a-53e9-a820-ba77281806c3",
+   "cfd47cfe-0127-5b68-9a10-bbcade00c90f",
+   "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+   "fa63d628-6fde-5901-9174-24e81062ed83",
+   "8be18fdb-2e49-505e-949e-3d826ba75fbe",
+   "022e08d8-05d4-54cb-a3f2-f2b5fa3f23b7"
+  ],
+  "relevant": [
+   "fa63d628-6fde-5901-9174-24e81062ed83"
+  ],
+  "answer": "The memories state that the VPN is WireGuard, running on UDP port 51820, and that it hands out peer addresses in the 10.8.0.0/24 range [4]. They give no other details about it, such as the host it runs on.",
+  "usage": {
+   "in": 542,
+   "out": 74
+  },
+  "latency": 1.5954630374908447
+ },
+ {
+  "pair": "rg-0009",
+  "kind": "neg",
+  "query": "WireGuard on UDP port 51820",
+  "ids": [
+   "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+   "efefa9eb-814a-53e9-a820-ba77281806c3",
+   "cfd47cfe-0127-5b68-9a10-bbcade00c90f",
+   "022e08d8-05d4-54cb-a3f2-f2b5fa3f23b7",
+   "8be18fdb-2e49-505e-949e-3d826ba75fbe"
+  ],
+  "relevant": [],
+  "answer": "The stored memories do not contain enough information to answer this question. None of them mention WireGuard or UDP port 51820. The memories only cover Grafana on port 3000 [1], Kibana on port 5601 [2], node exporters on port 9100 [3], Authelia on port 9091 [4], and HAProxy on port 8443 [5].",
+  "usage": {
+   "in": 500,
+   "out": 112
+  },
+  "latency": 1.3801605701446533
+ },
+ {
+  "pair": "rg-0008",
+  "kind": "pos",
+  "query": "redis maxmemory 2gb allkeys-lru eviction policy",
+  "ids": [
+   "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+   "a1b72e41-3103-5b35-b241-441913cbc6aa",
+   "8bb0fed2-3886-535f-9f48-5d96c574eb22",
+   "b40ee9bb-a6a8-554e-a043-78afd9c05bd0",
+   "84e01d06-a718-5192-9371-d907a92e5d3a",
+   "b1bfebf5-1e0f-5f4e-88e1-57ddd64848cb"
+  ],
+  "relevant": [
+   "84e01d06-a718-5192-9371-d907a92e5d3a"
+  ],
+  "answer": "Redis on cache-01 runs with maxmemory 2gb and the allkeys-lru eviction policy [5].\n\nOther Redis instances are mentioned, but they don't state these settings. Redis on cache-02 stores portal sessions [2]. Redis on queue-01 backs the job queue with AOF persistence [6].",
+  "usage": {
+   "in": 559,
+   "out": 108
+  },
+  "latency": 1.4337615966796875
+ },
+ {
+  "pair": "rg-0008",
+  "kind": "neg",
+  "query": "redis maxmemory 2gb allkeys-lru eviction policy",
+  "ids": [
+   "b1bfebf5-1e0f-5f4e-88e1-57ddd64848cb",
+   "a1b72e41-3103-5b35-b241-441913cbc6aa",
+   "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+   "b40ee9bb-a6a8-554e-a043-78afd9c05bd0",
+   "8bb0fed2-3886-535f-9f48-5d96c574eb22"
+  ],
+  "relevant": [],
+  "answer": "The stored memories do not contain enough information to answer this question. None of them mention a Redis maxmemory setting of 2gb or an allkeys-lru eviction policy.\n\nRedis is mentioned in two memories. Redis on queue-01 backs the job queue with AOF persistence enabled [1], and portal session storage moved from Memcached to Redis on cache-02 [2]. Neither memory gives any memory limit or eviction policy.",
+  "usage": {
+   "in": 519,
+   "out": 144
+  },
+  "latency": 1.5418541431427002
+ }
+]

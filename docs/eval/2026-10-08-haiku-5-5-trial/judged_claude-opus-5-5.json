@@ -1,0 +1,3602 @@
+[
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0101",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0079",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 1,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer correctly says the memories lack January 2026 data, but it adds an unsupported guess that the 62% reading came before the 83% one."
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0013",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0094",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0061",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0089",
+  "kind": "neg",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "Graded against the key, which lists no answering memory, so the answer should have said the memories lack the answer; however, memory [1] appears to state it directly, so the key itself looks questionable."
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0113",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0116",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0008",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0090",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0092",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer cites the related Jenkins and Woodpecker memories accurately and correctly concludes that which system runs deploys now cannot be determined."
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0081",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0060",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0021",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0092",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0109",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0101",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0089",
+  "kind": "neg",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "Graded against the key, which says no memory answers, so the answer fails for not declining; however, memory [1] states this fact verbatim and the citation is accurate, so the key itself looks mistaken."
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0089",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The label says no memory answers, but memory [1] states the answer verbatim, so the answer is accurate and properly cited; [4] is flagged as related only."
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0095",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0085",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0006",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0009",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0095",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0082",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "Memory [6] says the team 'has grown to' six, which marks it as the later state, yet the answer calls the memories unresolvable conflicting information and gives no size."
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0085",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0019",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0002",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0024",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0060",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0112",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer cites both relevant memories correctly but wrongly says they do not explain the gaps, when together they show the nightly iot-gw-1 reboot interrupts the weather station's readings."
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0025",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0118",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0118",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0002",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0013",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0058",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0008",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0094",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0024",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0019",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0021",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0112",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0101",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0116",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0013",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0009",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0082",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer reaches six engineers per [6] but hedges more than needed, since 'has grown to' already marks [6] as superseding [3]."
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0058",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0002",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0118",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0006",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0101",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0090",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0008",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0089",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0092",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "It says the memories don't establish which CI system runs deploys now, but its opening claim that they 'conflict' overstates things, since [2] never mentions deploys."
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0081",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": false,
+   "note": "The answer declines to answer, but memory [5] supports four engineers; it mentions that figure without committing to it as the answer."
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0002",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0039",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0090",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0079",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": false,
+   "note": "The answer declines to answer, even though memory [6] gives 71% as the January 2026 figure; it lists that value only as one of several undated figures."
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0006",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0051",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0025",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0089",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0021",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0012",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0009",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0090",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer correctly says the memories don't cover session storage and mentions memory 1 only as related context."
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0089",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0118",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0090",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0095",
+  "kind": "neg",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer presents MkDocs [2] as what builds the docs site instead of saying the memories don't identify what builds it; it only partly hedges by noting Woodpecker CI's role is unstated."
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0051",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0025",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0008",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0008",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0051",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0039",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0024",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0051",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0058",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0090",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0112",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0094",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0081",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": false,
+   "note": "The answer quotes memory [5] ('currently has four engineers') but wrongly concludes the memories cannot answer, instead of giving four engineers as the answer."
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0006",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0092",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 1,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer correctly declines to name the current deploy CI, but it wrongly says the memories conflict when [2] concerns builds rather than deploys."
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0116",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0019",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0013",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0051",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0019",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0101",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0082",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The provided label says no memory answers, but memory [1] directly states the team has four engineers, so the answer is accurate and properly cited."
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0082",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "I graded this correct despite the key saying no memory answers, because memory [1] states the team has four engineers and the answer reports that faithfully with an accurate citation."
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0118",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0006",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0012",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0002",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 1,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer infers that port 9100 is the endpoint Prometheus scrapes, but no memory explicitly links the two."
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0082",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer is accurately supported by memory [1], which directly states the team size, so the label saying no memory holds the answer appears to be wrong."
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0094",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0101",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0113",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0095",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "Leads with MkDocs as if it answers the question, but correctly states that the memories don't identify what CI system or host builds the docs site."
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0024",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0118",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer cites both relevant memories accurately but rejects the evident chain: printers depend on lp-relay, and lp-relay restarts every config-agent run. It wrongly concludes that the memories lack enough information."
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0061",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0090",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0019",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0094",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0113",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0009",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0089",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The 'no answering memory' label looks wrong: memory [1] states exactly what the answer says, so the answer is accurate and properly cited."
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0061",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0085",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0002",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0094",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "Correctly identifies GlitchTip from [5], though it hedges more than needed on the plain match between exception reports and error tracking."
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0118",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0109",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0101",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0082",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0112",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "It cites both relevant facts but wrongly concludes the cause isn't stated, instead of inferring the gaps come from the gateway's nightly reboot."
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0113",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0021",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0109",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0025",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": false,
+   "note": "The answer declined because of the wording mismatch, even though memory [4] (the status dashboard, built with Vite) answers the question."
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0101",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0085",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0081",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer declines to commit, when it should report the four engineers stated in memory [5] and not treat the distractor [2] as an equal conflict."
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0116",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0112",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0094",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0019",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0012",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0092",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0060",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0025",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0101",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0019",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0021",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0006",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0025",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0090",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0109",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0092",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0039",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0060",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0109",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0101",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0021",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0051",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0085",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "It accurately relays memory [2]'s payments-refactor focus but over-hedges by concluding the memories lack enough information to answer."
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0095",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0009",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0024",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0012",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0085",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0058",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0118",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer cites [1] and [4] accurately but wrongly says the question can't be answered. Together they explain it: label jobs flow through lp-relay, which restarts whenever the config management agent runs, so jobs in flight can be lost."
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0095",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0024",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer correctly names k3s v1.29.4 on the Odroid boards from memory [3]; linking 'ARM machines' to the Odroids is a reasonable inference, not a stated fact."
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0039",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0021",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0089",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0095",
+  "kind": "neg",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "No memory says what builds the docs site; the answer offers memory 2's MkDocs detail as the answer instead of saying the memories don't contain it."
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0021",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0009",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0082",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0092",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0061",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0019",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0081",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0012",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0081",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0081",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0118",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0112",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0008",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0079",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": false,
+   "note": "The answer declines to answer, but memory [6] (71% capacity) holds the answer; the answer lists that figure without identifying it as the January 2026 value."
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0060",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0089",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0039",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0012",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0061",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0109",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0002",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0094",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 5,
+   "complete": true,
+   "note": "The answer correctly says the information is missing, but it cites all five memories for an absence claim that none of them supports."
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0013",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0118",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0025",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0019",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0006",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0116",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0109",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0094",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0039",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0025",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer correctly gives Vite from [4] but needlessly hedges on whether the status dashboard is the ops overview page."
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0009",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0079",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0013",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0008",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0085",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "It accurately reports memory [2] but hedges unnecessarily about the date, even though [2] is the designated answer."
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0089",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "I was told no memory holds the answer, but memory [1] states it verbatim and the answer reports it accurately, so I graded it correct; the answer key appears to be wrong."
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0113",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0021",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0082",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The 'no answering memory' label looks wrong: memory 1 directly answers the question, and the answer reports and cites it accurately."
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0051",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0058",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0024",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0081",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0113",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0092",
+  "kind": "neg",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer leads with Jenkins as the deploy system, treating [1] as the answer, when the memories cannot establish what runs deploys now; its caveat about currency comes only after that claim."
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0012",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0061",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0013",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0061",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0061",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0116",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0006",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0012",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0113",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0079",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0116",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0116",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0009",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0090",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0058",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0058",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0081",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer treats [2] as an equal conflict and declines to answer, instead of giving the four engineers from [5]."
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0051",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0002",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0008",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0085",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0112",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0060",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0113",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0112",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0079",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": false,
+   "note": "The answer declines to answer, even though memory [6] gives the answer (71%); it lists that reading but treats it as undatable instead of giving it."
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0109",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0058",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 1,
+   "complete": true,
+   "note": "Memory [5] is cited for podcast episodes in arc-store, but it only describes the bucket's lifecycle rule."
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0002",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0112",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0009",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0113",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0019",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0013",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0024",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0109",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0024",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0039",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0012",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0008",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0006",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0039",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0116",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0079",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0039",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0024",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0095",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "Memory [2] explicitly supersedes [3] ('now', 'MkDocs config was deleted'), so Astro is the answer, but the response treats it as an unresolved conflict."
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0082",
+  "kind": "neg",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The key says no memory answers, so the answer should have said the memories lack the information; however, memory [1] does appear to state the team has four engineers, and the answer's citation of it is accurate, so the key itself may be wrong."
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0090",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0095",
+  "kind": "neg",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "No memory says what builds the docs site, but the answer presents memory 2's MkDocs generation detail as the answer instead of saying the information is missing."
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0095",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer over-hedges about which memory is current, even though [2] says 'now' and notes the MkDocs config was deleted."
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0013",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0092",
+  "kind": "neg",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer states Jenkins on ci-01 is the current deploy CI, but no memory establishes what runs deploys now (Woodpecker on tether-02 also appears), so it should have said the memories don't contain the answer."
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0092",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0006",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0051",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0085",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0058",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0060",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "Correctly says no memory gives the DNS server's IP; citing all five memories adds nothing but is harmless."
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0116",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0051",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0079",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0012",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0061",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0112",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0039",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0094",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0013",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer accurately reports port 3000 behind nginx on the monitoring host [4], with reasonable caveats about the missing hostname and the assumption that Grafana is the dashboard."
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0021",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0060",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0081",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer never gives four [5] as the end-of-2025 count; it calls the question unanswerable and leans toward six from [2]."
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0002",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0082",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer correctly concludes six engineers from [6] and treats the older four-engineer figure in [3] as superseded, though with some hedging."
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0025",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "Correctly gives Vite from [4], with a reasonable hedge that the status dashboard is assumed to be the ops overview page."
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0060",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0058",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0079",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": false,
+   "note": "The answer declines to answer even though memory [6] holds it (71%); it lists that figure only as one undated option among three."
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0009",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-v4-pro_x_qa.json",
+  "pair": "rg-0061",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0109",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0060",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0008",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "deepseek-reasoner_x_qa.json",
+  "pair": "rg-0025",
+  "kind": "pos",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": "The answer correctly reports Vite from [4] but hedges unnecessarily by refusing to accept the status dashboard as the ops overview page."
+  }
+ },
+ {
+  "file": "opus-5-5_low_qa.json",
+  "pair": "rg-0113",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "sonnet-5-5_medium_qa.json",
+  "pair": "rg-0085",
+  "kind": "neg",
+  "verdict": {
+   "correct": true,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": true,
+   "note": ""
+  }
+ },
+ {
+  "file": "haiku-5-5_off_qa.json",
+  "pair": "rg-0079",
+  "kind": "pos",
+  "verdict": {
+   "correct": false,
+   "unsupported": 0,
+   "miscited": 0,
+   "complete": false,
+   "note": "The answer declines to answer, even though memory [6] holds the answer (71%); it lists that figure only as one undated value among three."
+  }
+ }
+]
