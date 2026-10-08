@@ -1,0 +1,616 @@
+[
+ {
+  "id": "h1",
+  "raw": {
+   "entities": [
+    {
+     "name": "NATS",
+     "type": "tool",
+     "properties": {}
+    },
+    {
+     "name": "RabbitMQ",
+     "type": "tool",
+     "properties": {}
+    }
+   ],
+   "relationships": [
+    {
+     "source": "NATS",
+     "target": "RabbitMQ",
+     "type": "REPLACES",
+     "properties": {},
+     "weight": 0.9
+    }
+   ],
+   "memory_type": "decision",
+   "importance": 0.6,
+   "summary": "The team migrated the message bus from RabbitMQ to NATS to reduce tail latency.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "input_tokens": 461,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 13100,
+   "cache_creation": {
+    "ephemeral_5m_input_tokens": 0,
+    "ephemeral_1h_input_tokens": 0
+   },
+   "output_tokens": 182,
+   "output_tokens_details": {
+    "thinking_tokens": 0
+   },
+   "service_tier": "standard",
+   "inference_geo": "global"
+  },
+  "stop": "end_turn",
+  "summary": "The team migrated the message bus from RabbitMQ to NATS to reduce tail latency.",
+  "memory_type": "decision"
+ },
+ {
+  "id": "h2",
+  "raw": {
+   "entities": [
+    {
+     "name": "ClickHouse",
+     "type": "database",
+     "properties": {}
+    },
+    {
+     "name": "TimescaleDB",
+     "type": "database",
+     "properties": {}
+    }
+   ],
+   "relationships": [
+    {
+     "source": "ClickHouse",
+     "target": "TimescaleDB",
+     "type": "IMPROVES_ON",
+     "properties": {},
+     "weight": 0.6
+    }
+   ],
+   "memory_type": "decision",
+   "importance": 0.6,
+   "summary": "After a bake-off, ClickHouse was chosen over TimescaleDB as the analytics store.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "input_tokens": 463,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 13100,
+   "cache_creation": {
+    "ephemeral_5m_input_tokens": 0,
+    "ephemeral_1h_input_tokens": 0
+   },
+   "output_tokens": 192,
+   "output_tokens_details": {
+    "thinking_tokens": 0
+   },
+   "service_tier": "standard",
+   "inference_geo": "global"
+  },
+  "stop": "end_turn",
+  "summary": "After a bake-off, ClickHouse was chosen over TimescaleDB as the analytics store.",
+  "memory_type": "decision"
+ },
+ {
+  "id": "h3",
+  "raw": {
+   "entities": [
+    {
+     "name": "web app",
+     "type": "artifact",
+     "properties": {}
+    },
+    {
+     "name": "mobile app",
+     "type": "artifact",
+     "properties": {}
+    },
+    {
+     "name": "CLI",
+     "type": "artifact",
+     "properties": {}
+    },
+    {
+     "name": "Auth0",
+     "type": "service",
+     "properties": {}
+    },
+    {
+     "name": "Datadog",
+     "type": "service",
+     "properties": {}
+    }
+   ],
+   "relationships": [
+    {
+     "source": "web app",
+     "target": "Auth0",
+     "type": "USES",
+     "properties": {},
+     "weight": 0.9
+    },
+    {
+     "source": "mobile app",
+     "target": "Auth0",
+     "type": "USES",
+     "properties": {},
+     "weight": 0.9
+    },
+    {
+     "source": "CLI",
+     "target": "Auth0",
+     "type": "USES",
+     "properties": {},
+     "weight": 0.9
+    },
+    {
+     "source": "web app",
+     "target": "Datadog",
+     "type": "USES",
+     "properties": {},
+     "weight": 0.9
+    },
+    {
+     "source": "mobile app",
+     "target": "Datadog",
+     "type": "USES",
+     "properties": {},
+     "weight": 0.9
+    },
+    {
+     "source": "CLI",
+     "target": "Datadog",
+     "type": "USES",
+     "properties": {},
+     "weight": 0.9
+    }
+   ],
+   "memory_type": "architecture",
+   "importance": 0.5,
+   "summary": "The web app, mobile app, and CLI all authenticate via Auth0 and report metrics to Datadog.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "input_tokens": 469,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 13100,
+   "cache_creation": {
+    "ephemeral_5m_input_tokens": 0,
+    "ephemeral_1h_input_tokens": 0
+   },
+   "output_tokens": 463,
+   "output_tokens_details": {
+    "thinking_tokens": 0
+   },
+   "service_tier": "standard",
+   "inference_geo": "global"
+  },
+  "stop": "end_turn",
+  "summary": "The web app, mobile app, and CLI all authenticate via Auth0 and report metrics to Datadog.",
+  "memory_type": "architecture"
+ },
+ {
+  "id": "h4",
+  "raw": {
+   "entities": [
+    {
+     "name": "Grafana",
+     "type": "tool",
+     "properties": {}
+    },
+    {
+     "name": "Prometheus",
+     "type": "tool",
+     "properties": {}
+    },
+    {
+     "name": "Kubernetes",
+     "type": "tool",
+     "properties": {}
+    }
+   ],
+   "relationships": [
+    {
+     "source": "Grafana",
+     "target": "Prometheus",
+     "type": "DEPENDS_ON",
+     "properties": {},
+     "weight": 0.9
+    },
+    {
+     "source": "Grafana",
+     "target": "Kubernetes",
+     "type": "DEPLOYED_ON",
+     "properties": {},
+     "weight": 0.8
+    }
+   ],
+   "memory_type": "architecture",
+   "importance": 0.5,
+   "summary": "Grafana hard-depends on Prometheus and is deployed on a dedicated Kubernetes node.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "input_tokens": 461,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 13100,
+   "cache_creation": {
+    "ephemeral_5m_input_tokens": 0,
+    "ephemeral_1h_input_tokens": 0
+   },
+   "output_tokens": 269,
+   "output_tokens_details": {
+    "thinking_tokens": 0
+   },
+   "service_tier": "standard",
+   "inference_geo": "global"
+  },
+  "stop": "end_turn",
+  "summary": "Grafana hard-depends on Prometheus and is deployed on a dedicated Kubernetes node.",
+  "memory_type": "architecture"
+ },
+ {
+  "id": "h5",
+  "raw": {
+   "entities": [
+    {
+     "name": "RedisCache",
+     "type": "artifact",
+     "properties": {}
+    },
+    {
+     "name": "Cache",
+     "type": "concept",
+     "properties": {}
+    },
+    {
+     "name": "BaseStore",
+     "type": "artifact",
+     "properties": {}
+    }
+   ],
+   "relationships": [
+    {
+     "source": "RedisCache",
+     "target": "Cache",
+     "type": "IMPLEMENTS",
+     "properties": {},
+     "weight": 0.9
+    },
+    {
+     "source": "RedisCache",
+     "target": "BaseStore",
+     "type": "EXTENDS",
+     "properties": {},
+     "weight": 0.9
+    }
+   ],
+   "memory_type": "fact",
+   "importance": 0.5,
+   "summary": "RedisCache implements the Cache interface and extends BaseStore.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "input_tokens": 457,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 13100,
+   "cache_creation": {
+    "ephemeral_5m_input_tokens": 0,
+    "ephemeral_1h_input_tokens": 0
+   },
+   "output_tokens": 251,
+   "output_tokens_details": {
+    "thinking_tokens": 0
+   },
+   "service_tier": "standard",
+   "inference_geo": "global"
+  },
+  "stop": "end_turn",
+  "summary": "RedisCache implements the Cache interface and extends BaseStore.",
+  "memory_type": "fact"
+ },
+ {
+  "id": "h6",
+  "raw": {
+   "entities": [
+    {
+     "name": "Faiss",
+     "type": "tool",
+     "properties": {}
+    },
+    {
+     "name": "IVF",
+     "type": "algorithm",
+     "properties": {}
+    },
+    {
+     "name": "HNSW",
+     "type": "algorithm",
+     "properties": {}
+    }
+   ],
+   "relationships": [
+    {
+     "source": "Faiss",
+     "target": "IVF",
+     "type": "HAS_PART",
+     "properties": {},
+     "weight": 0.9
+    },
+    {
+     "source": "Faiss",
+     "target": "HNSW",
+     "type": "HAS_PART",
+     "properties": {},
+     "weight": 0.9
+    }
+   ],
+   "memory_type": "reference",
+   "importance": 0.5,
+   "summary": "Faiss offers IVF and HNSW index types for approximate nearest-neighbour search.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "input_tokens": 458,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 13100,
+   "cache_creation": {
+    "ephemeral_5m_input_tokens": 0,
+    "ephemeral_1h_input_tokens": 0
+   },
+   "output_tokens": 253,
+   "output_tokens_details": {
+    "thinking_tokens": 0
+   },
+   "service_tier": "standard",
+   "inference_geo": "global"
+  },
+  "stop": "end_turn",
+  "summary": "Faiss offers IVF and HNSW index types for approximate nearest-neighbour search.",
+  "memory_type": "reference"
+ },
+ {
+  "id": "h7",
+  "raw": {
+   "entities": [
+    {
+     "name": "cache stampede",
+     "type": "event",
+     "properties": {}
+    },
+    {
+     "name": "2026-05-12",
+     "type": "concept",
+     "properties": {}
+    },
+    {
+     "name": "postmortem",
+     "type": "artifact",
+     "properties": {}
+    },
+    {
+     "name": "Sam Park",
+     "type": "person",
+     "properties": {}
+    }
+   ],
+   "relationships": [
+    {
+     "source": "cache stampede",
+     "target": "2026-05-12",
+     "type": "HAPPENED_ON",
+     "properties": {},
+     "weight": 0.9
+    },
+    {
+     "source": "postmortem",
+     "target": "Sam Park",
+     "type": "AUTHORED_BY",
+     "properties": {},
+     "weight": 0.9
+    },
+    {
+     "source": "postmortem",
+     "target": "cache stampede",
+     "type": "MENTIONS",
+     "properties": {},
+     "weight": 0.8
+    }
+   ],
+   "memory_type": "episodic",
+   "importance": 0.6,
+   "summary": "A cache stampede on 2026-05-12 caused a 30-minute outage, documented in a postmortem written by Sam Park.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "input_tokens": 472,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 13100,
+   "cache_creation": {
+    "ephemeral_5m_input_tokens": 0,
+    "ephemeral_1h_input_tokens": 0
+   },
+   "output_tokens": 350,
+   "output_tokens_details": {
+    "thinking_tokens": 0
+   },
+   "service_tier": "standard",
+   "inference_geo": "global"
+  },
+  "stop": "end_turn",
+  "summary": "A cache stampede on 2026-05-12 caused a 30-minute outage, documented in a postmortem written by Sam Park.",
+  "memory_type": "episodic"
+ },
+ {
+  "id": "h8",
+  "raw": {
+   "entities": [
+    {
+     "name": "design doc",
+     "type": "artifact",
+     "properties": {}
+    },
+    {
+     "name": "RFC 9114",
+     "type": "paper",
+     "properties": {}
+    },
+    {
+     "name": "Raft paper",
+     "type": "paper",
+     "properties": {}
+    }
+   ],
+   "relationships": [
+    {
+     "source": "design doc",
+     "target": "RFC 9114",
+     "type": "CITES",
+     "properties": {},
+     "weight": 0.9
+    },
+    {
+     "source": "design doc",
+     "target": "Raft paper",
+     "type": "CITES",
+     "properties": {},
+     "weight": 0.9
+    }
+   ],
+   "memory_type": "reference",
+   "importance": 0.4,
+   "summary": "The design doc cites RFC 9114 and the Raft paper.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "input_tokens": 453,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 13100,
+   "cache_creation": {
+    "ephemeral_5m_input_tokens": 0,
+    "ephemeral_1h_input_tokens": 0
+   },
+   "output_tokens": 240,
+   "output_tokens_details": {
+    "thinking_tokens": 0
+   },
+   "service_tier": "standard",
+   "inference_geo": "global"
+  },
+  "stop": "end_turn",
+  "summary": "The design doc cites RFC 9114 and the Raft paper.",
+  "memory_type": "reference"
+ },
+ {
+  "id": "h9",
+  "raw": {
+   "entities": [
+    {
+     "name": "Ruff",
+     "type": "tool",
+     "properties": {}
+    },
+    {
+     "name": "mypy",
+     "type": "tool",
+     "properties": {}
+    }
+   ],
+   "relationships": [
+    {
+     "source": "Ruff",
+     "target": "mypy",
+     "type": "IMPROVES_ON",
+     "properties": {},
+     "weight": 0.3
+    }
+   ],
+   "memory_type": "preference",
+   "importance": 0.6,
+   "summary": "Pin Ruff to version 0.4, run Ruff before mypy, and never disable the line-length rule.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "input_tokens": 463,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 13100,
+   "cache_creation": {
+    "ephemeral_5m_input_tokens": 0,
+    "ephemeral_1h_input_tokens": 0
+   },
+   "output_tokens": 185,
+   "output_tokens_details": {
+    "thinking_tokens": 0
+   },
+   "service_tier": "standard",
+   "inference_geo": "global"
+  },
+  "stop": "end_turn",
+  "summary": "Pin Ruff to version 0.4, run Ruff before mypy, and never disable the line-length rule.",
+  "memory_type": "preference"
+ },
+ {
+  "id": "h10",
+  "raw": {
+   "entities": [
+    {
+     "name": "darkmem",
+     "type": "project",
+     "properties": {}
+    },
+    {
+     "name": "Kafka",
+     "type": "tool",
+     "properties": {}
+    }
+   ],
+   "relationships": [
+    {
+     "source": "darkmem",
+     "target": "Kafka",
+     "type": "MENTIONS",
+     "properties": {},
+     "weight": 0.4
+    }
+   ],
+   "memory_type": "milestone",
+   "importance": 0.4,
+   "summary": "darkmem plans to add a Kafka consumer in v4.",
+   "emotions": [],
+   "flags": [
+    "planned-future-work"
+   ]
+  },
+  "usage": {
+   "input_tokens": 464,
+   "cache_creation_input_tokens": 0,
+   "cache_read_input_tokens": 13100,
+   "cache_creation": {
+    "ephemeral_5m_input_tokens": 0,
+    "ephemeral_1h_input_tokens": 0
+   },
+   "output_tokens": 209,
+   "output_tokens_details": {
+    "thinking_tokens": 0
+   },
+   "service_tier": "standard",
+   "inference_geo": "global"
+  },
+  "stop": "end_turn",
+  "summary": "darkmem plans to add a Kafka consumer in v4.",
+  "memory_type": "milestone"
+ }
+]
