@@ -1,0 +1,2004 @@
+[
+ {
+  "q": "rg-0042",
+  "mem": "7c60d074-64b0-579b-8c04-517c3bd508f1",
+  "rel": 1,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0042",
+  "mem": "8bb0fed2-3886-535f-9f48-5d96c574eb22",
+  "rel": 0,
+  "score": 2.0,
+  "text": "{\"score\": 2}"
+ },
+ {
+  "q": "rg-0042",
+  "mem": "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0042",
+  "mem": "b40ee9bb-a6a8-554e-a043-78afd9c05bd0",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0042",
+  "mem": "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0042",
+  "mem": "d09737c7-2b2c-5b86-8744-30ccccdbadc8",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0042",
+  "mem": "4001d61d-1c72-5a01-9c49-cc3ee30af59d",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0020",
+  "mem": "84e01d06-a718-5192-9371-d907a92e5d3a",
+  "rel": 1,
+  "score": 6.0,
+  "text": "{\"score\": 6}"
+ },
+ {
+  "q": "rg-0020",
+  "mem": "48551b63-f37a-5037-919a-e1c077fbab1a",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0020",
+  "mem": "5d015ba3-3dc5-5120-ab98-6062b3da4f4a",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0020",
+  "mem": "99b8cde5-4aaa-5a0a-ae8c-2db704d2dbf3",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0020",
+  "mem": "10e856b2-129d-597f-8be7-6ffc3282b621",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0020",
+  "mem": "e3270f17-80d6-507e-8f50-f464443a974d",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0020",
+  "mem": "4001d61d-1c72-5a01-9c49-cc3ee30af59d",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0051",
+  "mem": "0ba49298-7814-590d-bd48-917e6505b347",
+  "rel": 1,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0051",
+  "mem": "2e33e174-1cf8-501f-a6f6-7565a9418135",
+  "rel": 0,
+  "score": 3.0,
+  "text": "{\"score\": 3}"
+ },
+ {
+  "q": "rg-0051",
+  "mem": "0cb93017-59ea-535e-a250-ed8cf6d0e4e5",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0051",
+  "mem": "c565d8a5-efb0-5c2e-b739-0d07c1812253",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0051",
+  "mem": "60249037-7964-557d-a6d1-5ee795667aff",
+  "rel": 0,
+  "score": 3.0,
+  "text": "{\"score\": 3}"
+ },
+ {
+  "q": "rg-0051",
+  "mem": "80464c7d-605f-5c47-815f-9da3843f2aaa",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0051",
+  "mem": "b58795ae-3e47-5b88-a760-768074eef323",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0097",
+  "mem": "6a99747f-58b0-5faf-886a-3129e6455b84",
+  "rel": 1,
+  "score": 9.0,
+  "text": "{\"score\": 9}"
+ },
+ {
+  "q": "rg-0097",
+  "mem": "98321d34-65bb-5413-889e-948fbc40d980",
+  "rel": 0,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0097",
+  "mem": "b03bbc85-9576-5260-88d7-961a7371867b",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0097",
+  "mem": "3d0bdc78-4e41-5455-9c60-cc397745ac3c",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0097",
+  "mem": "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0097",
+  "mem": "b40ee9bb-a6a8-554e-a043-78afd9c05bd0",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0097",
+  "mem": "8bb0fed2-3886-535f-9f48-5d96c574eb22",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0007",
+  "mem": "0ba49298-7814-590d-bd48-917e6505b347",
+  "rel": 1,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0007",
+  "mem": "0cb93017-59ea-535e-a250-ed8cf6d0e4e5",
+  "rel": 0,
+  "score": 3.0,
+  "text": "{\"score\": 3}"
+ },
+ {
+  "q": "rg-0007",
+  "mem": "c565d8a5-efb0-5c2e-b739-0d07c1812253",
+  "rel": 0,
+  "score": 2.0,
+  "text": "{\"score\": 2}"
+ },
+ {
+  "q": "rg-0007",
+  "mem": "60249037-7964-557d-a6d1-5ee795667aff",
+  "rel": 0,
+  "score": 4.0,
+  "text": "{\"score\": 4}"
+ },
+ {
+  "q": "rg-0007",
+  "mem": "8ece58ef-ebee-5453-a0c8-458bb2621455",
+  "rel": 0,
+  "score": 2.0,
+  "text": "{\"score\": 2}"
+ },
+ {
+  "q": "rg-0007",
+  "mem": "68eb0fbd-6b29-5a14-a91d-50b1da16922d",
+  "rel": 0,
+  "score": 3.0,
+  "text": "{\"score\": 3}"
+ },
+ {
+  "q": "rg-0007",
+  "mem": "2e33e174-1cf8-501f-a6f6-7565a9418135",
+  "rel": 0,
+  "score": 3.0,
+  "text": "{\"score\": 3}"
+ },
+ {
+  "q": "rg-0010",
+  "mem": "b76b13e7-625b-5566-b64c-b66fcc28ed8d",
+  "rel": 1,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0010",
+  "mem": "e96381b1-15c3-5794-aa24-a61898d5d973",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0010",
+  "mem": "bb411aa9-0f79-59b5-ba6b-d5805bc57792",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0010",
+  "mem": "2e33e174-1cf8-501f-a6f6-7565a9418135",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0010",
+  "mem": "f5d3c481-3d98-534b-9b5e-e01a9563518e",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0010",
+  "mem": "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0010",
+  "mem": "4001d61d-1c72-5a01-9c49-cc3ee30af59d",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0082",
+  "mem": "65bdfcb6-642e-5651-b836-58c9706a2781",
+  "rel": 1,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0082",
+  "mem": "40de4731-6596-5255-becd-0c6056ae5dce",
+  "rel": 0,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0082",
+  "mem": "fa63d628-6fde-5901-9174-24e81062ed83",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0082",
+  "mem": "14fe0a84-d444-53ff-8bf4-97148e2e9b77",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0082",
+  "mem": "f63bb43f-c662-5e8e-bc57-c082334f580d",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0082",
+  "mem": "3ebf47f0-fa86-5116-aeee-5202ff815ad6",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0082",
+  "mem": "3fbb7781-1891-5b97-8aeb-58ed402dfe5b",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0013",
+  "mem": "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+  "rel": 1,
+  "score": 8.0,
+  "text": "{\"score\": 8}"
+ },
+ {
+  "q": "rg-0013",
+  "mem": "8be18fdb-2e49-505e-949e-3d826ba75fbe",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0013",
+  "mem": "10e856b2-129d-597f-8be7-6ffc3282b621",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0013",
+  "mem": "a0ccc435-c6d4-52b5-9808-f1779c3be670",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0013",
+  "mem": "a74539c3-903a-5e84-8f6f-3bdaac7f73a1",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0013",
+  "mem": "85487b5c-d6b4-5c62-bc7e-c490ff1f8a56",
+  "rel": 0,
+  "score": 1.0,
+  "text": "{\"score\": 1}"
+ },
+ {
+  "q": "rg-0013",
+  "mem": "c68ce301-16ab-5187-88fa-5e9af9bf06a0",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0047",
+  "mem": "8bb0fed2-3886-535f-9f48-5d96c574eb22",
+  "rel": 1,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0047",
+  "mem": "7c60d074-64b0-579b-8c04-517c3bd508f1",
+  "rel": 0,
+  "score": 2.0,
+  "text": "{\"score\": 2}"
+ },
+ {
+  "q": "rg-0047",
+  "mem": "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0047",
+  "mem": "bd184bd9-de3d-51dc-b19e-7919a7419bf9",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0047",
+  "mem": "48551b63-f37a-5037-919a-e1c077fbab1a",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0047",
+  "mem": "914537ea-1045-5af4-9f59-bfd804c1197a",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0047",
+  "mem": "85487b5c-d6b4-5c62-bc7e-c490ff1f8a56",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0088",
+  "mem": "d5a9162a-9ea5-5053-8594-1150c547e99e",
+  "rel": 1,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0088",
+  "mem": "4ad1fca7-faef-5189-a107-c09b9da88f7e",
+  "rel": 0,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0088",
+  "mem": "fda7e159-3fab-5a1f-9595-ac5d11f5725f",
+  "rel": 0,
+  "score": 2.0,
+  "text": "{\"score\": 2}"
+ },
+ {
+  "q": "rg-0088",
+  "mem": "bc4de61a-cc77-5a75-910e-d8e601b8180b",
+  "rel": 0,
+  "score": 2.0,
+  "text": "{\"score\": 2}"
+ },
+ {
+  "q": "rg-0088",
+  "mem": "5097cdff-b1de-526b-94f7-fd1054f5d7c9",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0088",
+  "mem": "99f80c4e-5db9-5a84-96a0-383f9c86b569",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0088",
+  "mem": "c32f4418-3b4e-5239-a05e-a4d5800447e7",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0008",
+  "mem": "84e01d06-a718-5192-9371-d907a92e5d3a",
+  "rel": 1,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0008",
+  "mem": "b1bfebf5-1e0f-5f4e-88e1-57ddd64848cb",
+  "rel": 0,
+  "score": 1.0,
+  "text": "{\"score\": 1}"
+ },
+ {
+  "q": "rg-0008",
+  "mem": "a1b72e41-3103-5b35-b241-441913cbc6aa",
+  "rel": 0,
+  "score": 2.0,
+  "text": "{\"score\": 2}"
+ },
+ {
+  "q": "rg-0008",
+  "mem": "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0008",
+  "mem": "b40ee9bb-a6a8-554e-a043-78afd9c05bd0",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0008",
+  "mem": "8bb0fed2-3886-535f-9f48-5d96c574eb22",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0008",
+  "mem": "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0078",
+  "mem": "99f80c4e-5db9-5a84-96a0-383f9c86b569",
+  "rel": 1,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0078",
+  "mem": "5097cdff-b1de-526b-94f7-fd1054f5d7c9",
+  "rel": 0,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0078",
+  "mem": "fa63d628-6fde-5901-9174-24e81062ed83",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0078",
+  "mem": "14fe0a84-d444-53ff-8bf4-97148e2e9b77",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0078",
+  "mem": "3fbb7781-1891-5b97-8aeb-58ed402dfe5b",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0078",
+  "mem": "38d507a9-7fd0-54e2-9980-701e04df1cc3",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0078",
+  "mem": "9637a80e-4e23-5137-9cf8-14bd5c4f8b4d",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0028",
+  "mem": "282f1d65-8748-5e91-8294-270567156806",
+  "rel": 1,
+  "score": 9.0,
+  "text": "{\"score\": 9}"
+ },
+ {
+  "q": "rg-0028",
+  "mem": "a0ccc435-c6d4-52b5-9808-f1779c3be670",
+  "rel": 0,
+  "score": 7.0,
+  "text": "{\"score\": 7}"
+ },
+ {
+  "q": "rg-0028",
+  "mem": "f931fdb8-3db1-5753-b183-94c2748f5978",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0028",
+  "mem": "a74539c3-903a-5e84-8f6f-3bdaac7f73a1",
+  "rel": 0,
+  "score": 2.0,
+  "text": "{\"score\": 2}"
+ },
+ {
+  "q": "rg-0028",
+  "mem": "4001d61d-1c72-5a01-9c49-cc3ee30af59d",
+  "rel": 0,
+  "score": 1.0,
+  "text": "{\"score\": 1}"
+ },
+ {
+  "q": "rg-0028",
+  "mem": "b76b13e7-625b-5566-b64c-b66fcc28ed8d",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0028",
+  "mem": "6d10a0dc-d884-5159-ab96-75909d411d54",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0005",
+  "mem": "d09737c7-2b2c-5b86-8744-30ccccdbadc8",
+  "rel": 1,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0005",
+  "mem": "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0005",
+  "mem": "0ba49298-7814-590d-bd48-917e6505b347",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0005",
+  "mem": "fa63d628-6fde-5901-9174-24e81062ed83",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0005",
+  "mem": "c565d8a5-efb0-5c2e-b739-0d07c1812253",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0005",
+  "mem": "282f1d65-8748-5e91-8294-270567156806",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0005",
+  "mem": "60249037-7964-557d-a6d1-5ee795667aff",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0012",
+  "mem": "bd184bd9-de3d-51dc-b19e-7919a7419bf9",
+  "rel": 1,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0012",
+  "mem": "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0012",
+  "mem": "8bb0fed2-3886-535f-9f48-5d96c574eb22",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0012",
+  "mem": "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0012",
+  "mem": "84e01d06-a718-5192-9371-d907a92e5d3a",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0012",
+  "mem": "fa63d628-6fde-5901-9174-24e81062ed83",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0012",
+  "mem": "14fe0a84-d444-53ff-8bf4-97148e2e9b77",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0056",
+  "mem": "bd184bd9-de3d-51dc-b19e-7919a7419bf9",
+  "rel": 1,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0056",
+  "mem": "8bb0fed2-3886-535f-9f48-5d96c574eb22",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0056",
+  "mem": "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0056",
+  "mem": "7c60d074-64b0-579b-8c04-517c3bd508f1",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0056",
+  "mem": "48551b63-f37a-5037-919a-e1c077fbab1a",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0056",
+  "mem": "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0056",
+  "mem": "b40ee9bb-a6a8-554e-a043-78afd9c05bd0",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0054",
+  "mem": "b76b13e7-625b-5566-b64c-b66fcc28ed8d",
+  "rel": 1,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0054",
+  "mem": "bb411aa9-0f79-59b5-ba6b-d5805bc57792",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0054",
+  "mem": "1ed3ae10-8c9d-526f-a30b-1e9f19a0c56d",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0054",
+  "mem": "f5d3c481-3d98-534b-9b5e-e01a9563518e",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0054",
+  "mem": "db66a773-6873-59cd-b9a4-4942532fe0a6",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0054",
+  "mem": "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0054",
+  "mem": "b40ee9bb-a6a8-554e-a043-78afd9c05bd0",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0009",
+  "mem": "fa63d628-6fde-5901-9174-24e81062ed83",
+  "rel": 1,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0009",
+  "mem": "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0009",
+  "mem": "efefa9eb-814a-53e9-a820-ba77281806c3",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0009",
+  "mem": "cfd47cfe-0127-5b68-9a10-bbcade00c90f",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0009",
+  "mem": "022e08d8-05d4-54cb-a3f2-f2b5fa3f23b7",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0009",
+  "mem": "8be18fdb-2e49-505e-949e-3d826ba75fbe",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0009",
+  "mem": "586db5fe-2854-526f-bba6-107064713a88",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0031",
+  "mem": "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+  "rel": 1,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0031",
+  "mem": "8be18fdb-2e49-505e-949e-3d826ba75fbe",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0031",
+  "mem": "c32f4418-3b4e-5239-a05e-a4d5800447e7",
+  "rel": 0,
+  "score": 1.0,
+  "text": "{\"score\": 1}"
+ },
+ {
+  "q": "rg-0031",
+  "mem": "b8b2fbfe-404d-5c34-b2c7-b1d04adf118b",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0031",
+  "mem": "dee0d629-648b-5001-b6ad-8cef3f4c9004",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0031",
+  "mem": "e9044ccb-f1d8-5d65-af4c-485cc373fea7",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0031",
+  "mem": "c68ce301-16ab-5187-88fa-5e9af9bf06a0",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0102",
+  "mem": "db541e5c-93c5-552a-a13c-7f241dc2ff49",
+  "rel": 1,
+  "score": 2.0,
+  "text": "{\"score\": 2}"
+ },
+ {
+  "q": "rg-0102",
+  "mem": "a724ff64-e0db-556f-a85f-923079b61c5b",
+  "rel": 1,
+  "score": 2.0,
+  "text": "{\"score\": 2}"
+ },
+ {
+  "q": "rg-0102",
+  "mem": "5097cdff-b1de-526b-94f7-fd1054f5d7c9",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0102",
+  "mem": "99f80c4e-5db9-5a84-96a0-383f9c86b569",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0102",
+  "mem": "0219c208-1122-5c1e-8fbf-0996a051b4e7",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0102",
+  "mem": "1ffca2a1-ed6a-5195-99ba-92ced36116f0",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0102",
+  "mem": "115c4f35-072d-5ef7-9f42-e3177a07fb3d",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0102",
+  "mem": "fa63d628-6fde-5901-9174-24e81062ed83",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0084",
+  "mem": "e96381b1-15c3-5794-aa24-a61898d5d973",
+  "rel": 1,
+  "score": 5.0,
+  "text": "{\"score\": 5}"
+ },
+ {
+  "q": "rg-0084",
+  "mem": "0bf530e4-b080-5ba6-8eec-083e94146167",
+  "rel": 0,
+  "score": 4.0,
+  "text": "{\"score\": 4}"
+ },
+ {
+  "q": "rg-0084",
+  "mem": "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0084",
+  "mem": "48551b63-f37a-5037-919a-e1c077fbab1a",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0084",
+  "mem": "f34c78e9-c53b-5a6e-8a47-51c74a3f4d7f",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0084",
+  "mem": "d09737c7-2b2c-5b86-8744-30ccccdbadc8",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0084",
+  "mem": "282f1d65-8748-5e91-8294-270567156806",
+  "rel": 0,
+  "score": 1.0,
+  "text": "{\"score\": 1}"
+ },
+ {
+  "q": "rg-0055",
+  "mem": "14fe0a84-d444-53ff-8bf4-97148e2e9b77",
+  "rel": 1,
+  "score": 8.0,
+  "text": "{\"score\": 8}"
+ },
+ {
+  "q": "rg-0055",
+  "mem": "60249037-7964-557d-a6d1-5ee795667aff",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0055",
+  "mem": "48551b63-f37a-5037-919a-e1c077fbab1a",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0055",
+  "mem": "ca6d5ba3-12e7-5ca5-a1da-4bbe88043d5a",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0055",
+  "mem": "5097cdff-b1de-526b-94f7-fd1054f5d7c9",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0055",
+  "mem": "99f80c4e-5db9-5a84-96a0-383f9c86b569",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0055",
+  "mem": "7f095a78-eb34-5967-9fc0-e2d0b8401633",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0107",
+  "mem": "364b3d94-96cf-5163-af94-bb665dbe1486",
+  "rel": 1,
+  "score": 3.0,
+  "text": "{\"score\": 3}"
+ },
+ {
+  "q": "rg-0107",
+  "mem": "4a286983-385c-5ceb-b9e9-b09d36bb9497",
+  "rel": 1,
+  "score": 2.0,
+  "text": "{\"score\": 2}"
+ },
+ {
+  "q": "rg-0107",
+  "mem": "e96381b1-15c3-5794-aa24-a61898d5d973",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0107",
+  "mem": "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0107",
+  "mem": "b40ee9bb-a6a8-554e-a043-78afd9c05bd0",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0107",
+  "mem": "8bb0fed2-3886-535f-9f48-5d96c574eb22",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0107",
+  "mem": "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0107",
+  "mem": "d09737c7-2b2c-5b86-8744-30ccccdbadc8",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0086",
+  "mem": "bc4de61a-cc77-5a75-910e-d8e601b8180b",
+  "rel": 1,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0086",
+  "mem": "fa63d628-6fde-5901-9174-24e81062ed83",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0086",
+  "mem": "14fe0a84-d444-53ff-8bf4-97148e2e9b77",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0086",
+  "mem": "3fbb7781-1891-5b97-8aeb-58ed402dfe5b",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0086",
+  "mem": "38d507a9-7fd0-54e2-9980-701e04df1cc3",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0086",
+  "mem": "9637a80e-4e23-5137-9cf8-14bd5c4f8b4d",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0086",
+  "mem": "5097cdff-b1de-526b-94f7-fd1054f5d7c9",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0016",
+  "mem": "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+  "rel": 1,
+  "score": 7.0,
+  "text": "{\"score\": 7}"
+ },
+ {
+  "q": "rg-0016",
+  "mem": "7f095a78-eb34-5967-9fc0-e2d0b8401633",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0016",
+  "mem": "99b8cde5-4aaa-5a0a-ae8c-2db704d2dbf3",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0016",
+  "mem": "60249037-7964-557d-a6d1-5ee795667aff",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0016",
+  "mem": "48551b63-f37a-5037-919a-e1c077fbab1a",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0016",
+  "mem": "6d10a0dc-d884-5159-ab96-75909d411d54",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0016",
+  "mem": "ca6d5ba3-12e7-5ca5-a1da-4bbe88043d5a",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0029",
+  "mem": "60249037-7964-557d-a6d1-5ee795667aff",
+  "rel": 1,
+  "score": 7.0,
+  "text": "{\"score\": 7}"
+ },
+ {
+  "q": "rg-0029",
+  "mem": "5097cdff-b1de-526b-94f7-fd1054f5d7c9",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0029",
+  "mem": "99f80c4e-5db9-5a84-96a0-383f9c86b569",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0029",
+  "mem": "99b8cde5-4aaa-5a0a-ae8c-2db704d2dbf3",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0029",
+  "mem": "0cb93017-59ea-535e-a250-ed8cf6d0e4e5",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0029",
+  "mem": "5d015ba3-3dc5-5120-ab98-6062b3da4f4a",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0029",
+  "mem": "afa2689a-227c-562b-a56e-ecef521cd536",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0108",
+  "mem": "364b3d94-96cf-5163-af94-bb665dbe1486",
+  "rel": 1,
+  "score": 2.0,
+  "text": "{\"score\": 2}"
+ },
+ {
+  "q": "rg-0108",
+  "mem": "4a286983-385c-5ceb-b9e9-b09d36bb9497",
+  "rel": 1,
+  "score": 2.0,
+  "text": "{\"score\": 2}"
+ },
+ {
+  "q": "rg-0108",
+  "mem": "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0108",
+  "mem": "d09737c7-2b2c-5b86-8744-30ccccdbadc8",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0108",
+  "mem": "60249037-7964-557d-a6d1-5ee795667aff",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0108",
+  "mem": "48551b63-f37a-5037-919a-e1c077fbab1a",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0108",
+  "mem": "8a32fb9f-958a-5a2e-a3cc-fdf8885f6735",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0108",
+  "mem": "b940342b-3d54-5768-a67b-a98a8d5af24b",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0093",
+  "mem": "1ffca2a1-ed6a-5195-99ba-92ced36116f0",
+  "rel": 1,
+  "score": 8.0,
+  "text": "{\"score\": 8}"
+ },
+ {
+  "q": "rg-0093",
+  "mem": "3189280d-399f-5888-92b5-ac00d63b3d84",
+  "rel": 0,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0093",
+  "mem": "b03bbc85-9576-5260-88d7-961a7371867b",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0093",
+  "mem": "41fefc5c-1d3e-5c59-a585-0c015ec65f36",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0093",
+  "mem": "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+  "rel": 0,
+  "score": 1.0,
+  "text": "{\"score\": 1}"
+ },
+ {
+  "q": "rg-0093",
+  "mem": "b40ee9bb-a6a8-554e-a043-78afd9c05bd0",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0093",
+  "mem": "8bb0fed2-3886-535f-9f48-5d96c574eb22",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0087",
+  "mem": "4ad1fca7-faef-5189-a107-c09b9da88f7e",
+  "rel": 1,
+  "score": 3.0,
+  "text": "{\"score\": 3}"
+ },
+ {
+  "q": "rg-0087",
+  "mem": "e96381b1-15c3-5794-aa24-a61898d5d973",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0087",
+  "mem": "d5a9162a-9ea5-5053-8594-1150c547e99e",
+  "rel": 0,
+  "score": 2.0,
+  "text": "{\"score\": 2}"
+ },
+ {
+  "q": "rg-0087",
+  "mem": "f34c78e9-c53b-5a6e-8a47-51c74a3f4d7f",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0087",
+  "mem": "2e33e174-1cf8-501f-a6f6-7565a9418135",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0087",
+  "mem": "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0087",
+  "mem": "4001d61d-1c72-5a01-9c49-cc3ee30af59d",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0116",
+  "mem": "d0479f79-36c5-5042-83b8-b8629e68a305",
+  "rel": 1,
+  "score": 3.0,
+  "text": "{\"score\": 3}"
+ },
+ {
+  "q": "rg-0116",
+  "mem": "08d3feb3-dc46-59c1-b2ce-aa543a762f1b",
+  "rel": 1,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0116",
+  "mem": "d5a9162a-9ea5-5053-8594-1150c547e99e",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0116",
+  "mem": "7c78577f-ff05-5d87-a2fa-0a360d56d4e4",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0116",
+  "mem": "93e6b3fc-c5f5-5553-b193-bfc70a4db731",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0116",
+  "mem": "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0116",
+  "mem": "b40ee9bb-a6a8-554e-a043-78afd9c05bd0",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0116",
+  "mem": "8bb0fed2-3886-535f-9f48-5d96c574eb22",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0113",
+  "mem": "e33098f6-78d6-5469-87c0-e8fdbc508f10",
+  "rel": 1,
+  "score": 2.0,
+  "text": "{\"score\": 2}"
+ },
+ {
+  "q": "rg-0113",
+  "mem": "05b752a0-aa7a-5a74-a543-b74684e79fa2",
+  "rel": 1,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0113",
+  "mem": "b76b13e7-625b-5566-b64c-b66fcc28ed8d",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0113",
+  "mem": "fda7e159-3fab-5a1f-9595-ac5d11f5725f",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0113",
+  "mem": "d5a9162a-9ea5-5053-8594-1150c547e99e",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0113",
+  "mem": "d00a000f-f2d8-551e-bbcd-4776d8ec62d5",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0113",
+  "mem": "bb411aa9-0f79-59b5-ba6b-d5805bc57792",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0113",
+  "mem": "ceff1656-b957-5327-b577-6bddca185d7a",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0090",
+  "mem": "a1b72e41-3103-5b35-b241-441913cbc6aa",
+  "rel": 1,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0090",
+  "mem": "e2d647bc-446c-53f2-8da6-489bda083db4",
+  "rel": 0,
+  "score": 3.0,
+  "text": "{\"score\": 3}"
+ },
+ {
+  "q": "rg-0090",
+  "mem": "d09737c7-2b2c-5b86-8744-30ccccdbadc8",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0090",
+  "mem": "0ba49298-7814-590d-bd48-917e6505b347",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0090",
+  "mem": "b76b13e7-625b-5566-b64c-b66fcc28ed8d",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0090",
+  "mem": "38b71b50-3a9d-5631-9d13-6c090c22faee",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0090",
+  "mem": "4707347d-277f-566a-be59-c8a79505f259",
+  "rel": 0,
+  "score": 2.0,
+  "text": "{\"score\": 2}"
+ },
+ {
+  "q": "rg-0006",
+  "mem": "4001d61d-1c72-5a01-9c49-cc3ee30af59d",
+  "rel": 1,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0006",
+  "mem": "b4b901ed-ccbc-56b5-9bf2-48e6a0ffee06",
+  "rel": 0,
+  "score": 2.0,
+  "text": "{\"score\": 2}"
+ },
+ {
+  "q": "rg-0006",
+  "mem": "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+  "rel": 0,
+  "score": 1.0,
+  "text": "{\"score\": 1}"
+ },
+ {
+  "q": "rg-0006",
+  "mem": "4707347d-277f-566a-be59-c8a79505f259",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0006",
+  "mem": "00c4e4d0-7539-590d-9c9b-af30d523ab5f",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0006",
+  "mem": "9bd5bb38-3c7d-530b-b7b6-184a0862fadd",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0006",
+  "mem": "d00a000f-f2d8-551e-bbcd-4776d8ec62d5",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0018",
+  "mem": "4001d61d-1c72-5a01-9c49-cc3ee30af59d",
+  "rel": 1,
+  "score": 9.0,
+  "text": "{\"score\": 9}"
+ },
+ {
+  "q": "rg-0018",
+  "mem": "38d507a9-7fd0-54e2-9980-701e04df1cc3",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0018",
+  "mem": "ceff1656-b957-5327-b577-6bddca185d7a",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0018",
+  "mem": "5e176524-6d0f-5720-a3c6-1afe2cb6aeb9",
+  "rel": 0,
+  "score": 1.0,
+  "text": "{\"score\": 1}"
+ },
+ {
+  "q": "rg-0018",
+  "mem": "d0479f79-36c5-5042-83b8-b8629e68a305",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0018",
+  "mem": "08d3feb3-dc46-59c1-b2ce-aa543a762f1b",
+  "rel": 0,
+  "score": 2.0,
+  "text": "{\"score\": 2}"
+ },
+ {
+  "q": "rg-0018",
+  "mem": "022e08d8-05d4-54cb-a3f2-f2b5fa3f23b7",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0038",
+  "mem": "84e01d06-a718-5192-9371-d907a92e5d3a",
+  "rel": 1,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0038",
+  "mem": "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0038",
+  "mem": "b40ee9bb-a6a8-554e-a043-78afd9c05bd0",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0038",
+  "mem": "8bb0fed2-3886-535f-9f48-5d96c574eb22",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0038",
+  "mem": "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0038",
+  "mem": "d09737c7-2b2c-5b86-8744-30ccccdbadc8",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0038",
+  "mem": "4001d61d-1c72-5a01-9c49-cc3ee30af59d",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0100",
+  "mem": "aad9fa2a-1b75-5cd8-9c30-f7b3ca5c80fe",
+  "rel": 1,
+  "score": 3.0,
+  "text": "{\"score\": 3}"
+ },
+ {
+  "q": "rg-0100",
+  "mem": "5b815f89-99f7-5b1f-b0c1-0428f8371903",
+  "rel": 1,
+  "score": 3.0,
+  "text": "{\"score\": 3}"
+ },
+ {
+  "q": "rg-0100",
+  "mem": "7f095a78-eb34-5967-9fc0-e2d0b8401633",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0100",
+  "mem": "65bdfcb6-642e-5651-b836-58c9706a2781",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0100",
+  "mem": "0219c208-1122-5c1e-8fbf-0996a051b4e7",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0100",
+  "mem": "1ffca2a1-ed6a-5195-99ba-92ced36116f0",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0100",
+  "mem": "ac7ca90f-e58a-5aa8-bfa7-1d0384ffb5c4",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0100",
+  "mem": "b849588a-f28b-5615-9d40-4e9d058c59f6",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0019",
+  "mem": "0ba49298-7814-590d-bd48-917e6505b347",
+  "rel": 1,
+  "score": 9.0,
+  "text": "{\"score\": 9}"
+ },
+ {
+  "q": "rg-0019",
+  "mem": "0219c208-1122-5c1e-8fbf-0996a051b4e7",
+  "rel": 0,
+  "score": 2.0,
+  "text": "{\"score\": 2}"
+ },
+ {
+  "q": "rg-0019",
+  "mem": "14fe0a84-d444-53ff-8bf4-97148e2e9b77",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0019",
+  "mem": "3215cb23-5d4e-5b10-b4f1-b2ea4049d864",
+  "rel": 0,
+  "score": 1.0,
+  "text": "{\"score\": 1}"
+ },
+ {
+  "q": "rg-0019",
+  "mem": "5ab45131-c6ef-59dd-a26f-9c236f503eb8",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0019",
+  "mem": "00c4e4d0-7539-590d-9c9b-af30d523ab5f",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0019",
+  "mem": "21e2b38f-4dd7-569a-8736-6b2b4b5afac4",
+  "rel": 0,
+  "score": 2.0,
+  "text": "{\"score\": 2}"
+ },
+ {
+  "q": "rg-0091",
+  "mem": "0219c208-1122-5c1e-8fbf-0996a051b4e7",
+  "rel": 1,
+  "score": 3.0,
+  "text": "{\"score\": 3}"
+ },
+ {
+  "q": "rg-0091",
+  "mem": "21e2b38f-4dd7-569a-8736-6b2b4b5afac4",
+  "rel": 0,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0091",
+  "mem": "b03bbc85-9576-5260-88d7-961a7371867b",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0091",
+  "mem": "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0091",
+  "mem": "b40ee9bb-a6a8-554e-a043-78afd9c05bd0",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0091",
+  "mem": "8bb0fed2-3886-535f-9f48-5d96c574eb22",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0091",
+  "mem": "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0040",
+  "mem": "b76b13e7-625b-5566-b64c-b66fcc28ed8d",
+  "rel": 1,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0040",
+  "mem": "bb411aa9-0f79-59b5-ba6b-d5805bc57792",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0040",
+  "mem": "f5d3c481-3d98-534b-9b5e-e01a9563518e",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0040",
+  "mem": "35d04f41-31cd-5c7c-ae05-565a9c27490f",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0040",
+  "mem": "4001d61d-1c72-5a01-9c49-cc3ee30af59d",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0040",
+  "mem": "282f1d65-8748-5e91-8294-270567156806",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0040",
+  "mem": "6d10a0dc-d884-5159-ab96-75909d411d54",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0036",
+  "mem": "4001d61d-1c72-5a01-9c49-cc3ee30af59d",
+  "rel": 1,
+  "score": 10.0,
+  "text": "{\"score\": 10}"
+ },
+ {
+  "q": "rg-0036",
+  "mem": "bb411aa9-0f79-59b5-ba6b-d5805bc57792",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0036",
+  "mem": "8be18fdb-2e49-505e-949e-3d826ba75fbe",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0036",
+  "mem": "4f366064-1277-5ed4-bd74-63ebdf4259ec",
+  "rel": 0,
+  "score": 2.0,
+  "text": "{\"score\": 2}"
+ },
+ {
+  "q": "rg-0036",
+  "mem": "b76b13e7-625b-5566-b64c-b66fcc28ed8d",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0036",
+  "mem": "6d10a0dc-d884-5159-ab96-75909d411d54",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ },
+ {
+  "q": "rg-0036",
+  "mem": "80464c7d-605f-5c47-815f-9da3843f2aaa",
+  "rel": 0,
+  "score": 0.0,
+  "text": "{\"score\": 0}"
+ }
+]

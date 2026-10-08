@@ -1,0 +1,544 @@
+[
+ {
+  "id": "h1",
+  "raw": {
+   "entities": [
+    {
+     "name": "RabbitMQ",
+     "type": "service"
+    },
+    {
+     "name": "NATS",
+     "type": "service"
+    }
+   ],
+   "relationships": [
+    {
+     "source": "NATS",
+     "target": "RabbitMQ",
+     "type": "REPLACES",
+     "weight": 0.9
+    }
+   ],
+   "memory_type": "decision",
+   "importance": 0.7,
+   "summary": "The team migrated the message bus from RabbitMQ to NATS to reduce tail latency.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9101,
+   "completion_tokens": 115,
+   "total_tokens": 9216,
+   "prompt_tokens_details": {
+    "cached_tokens": 8832
+   },
+   "prompt_cache_hit_tokens": 8832,
+   "prompt_cache_miss_tokens": 269
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "h2",
+  "raw": {
+   "entities": [
+    {
+     "name": "ClickHouse",
+     "type": "database"
+    },
+    {
+     "name": "TimescaleDB",
+     "type": "database"
+    }
+   ],
+   "relationships": [
+    {
+     "source": "ClickHouse",
+     "target": "TimescaleDB",
+     "type": "IMPROVES_ON",
+     "weight": 0.8
+    }
+   ],
+   "memory_type": "decision",
+   "importance": 0.7,
+   "summary": "ClickHouse was chosen over TimescaleDB for the analytics store after a bake-off.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9102,
+   "completion_tokens": 116,
+   "total_tokens": 9218,
+   "prompt_tokens_details": {
+    "cached_tokens": 8832
+   },
+   "prompt_cache_hit_tokens": 8832,
+   "prompt_cache_miss_tokens": 270
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "h3",
+  "raw": {
+   "entities": [
+    {
+     "name": "web app",
+     "type": "artifact",
+     "properties": {}
+    },
+    {
+     "name": "mobile app",
+     "type": "artifact",
+     "properties": {}
+    },
+    {
+     "name": "CLI",
+     "type": "artifact",
+     "properties": {}
+    },
+    {
+     "name": "Auth0",
+     "type": "service",
+     "properties": {}
+    },
+    {
+     "name": "Datadog",
+     "type": "service",
+     "properties": {}
+    }
+   ],
+   "relationships": [
+    {
+     "source": "web app",
+     "target": "Auth0",
+     "type": "USES",
+     "properties": {},
+     "weight": 0.8
+    },
+    {
+     "source": "mobile app",
+     "target": "Auth0",
+     "type": "USES",
+     "properties": {},
+     "weight": 0.8
+    },
+    {
+     "source": "CLI",
+     "target": "Auth0",
+     "type": "USES",
+     "properties": {},
+     "weight": 0.8
+    },
+    {
+     "source": "web app",
+     "target": "Datadog",
+     "type": "USES",
+     "properties": {},
+     "weight": 0.8
+    },
+    {
+     "source": "mobile app",
+     "target": "Datadog",
+     "type": "USES",
+     "properties": {},
+     "weight": 0.8
+    },
+    {
+     "source": "CLI",
+     "target": "Datadog",
+     "type": "USES",
+     "properties": {},
+     "weight": 0.8
+    }
+   ],
+   "memory_type": "architecture",
+   "importance": 0.6,
+   "summary": "All three client surfaces (web app, mobile app, CLI) share Auth0 for authentication and Datadog for metrics reporting.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9108,
+   "completion_tokens": 357,
+   "total_tokens": 9465,
+   "prompt_tokens_details": {
+    "cached_tokens": 8832
+   },
+   "prompt_cache_hit_tokens": 8832,
+   "prompt_cache_miss_tokens": 276
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "h4",
+  "raw": {
+   "entities": [
+    {
+     "name": "Grafana",
+     "type": "service"
+    },
+    {
+     "name": "Prometheus",
+     "type": "service"
+    },
+    {
+     "name": "Kubernetes",
+     "type": "service"
+    }
+   ],
+   "relationships": [
+    {
+     "source": "Grafana",
+     "target": "Prometheus",
+     "type": "DEPENDS_ON",
+     "weight": 0.9
+    },
+    {
+     "source": "Grafana",
+     "target": "Kubernetes",
+     "type": "DEPLOYED_ON",
+     "weight": 0.8
+    }
+   ],
+   "memory_type": "fact",
+   "importance": 0.6,
+   "summary": "Grafana hard-depends on Prometheus and is deployed on a dedicated Kubernetes node.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9099,
+   "completion_tokens": 162,
+   "total_tokens": 9261,
+   "prompt_tokens_details": {
+    "cached_tokens": 8832
+   },
+   "prompt_cache_hit_tokens": 8832,
+   "prompt_cache_miss_tokens": 267
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "h5",
+  "raw": {
+   "entities": [
+    {
+     "name": "RedisCache",
+     "type": "artifact",
+     "properties": {}
+    },
+    {
+     "name": "Cache",
+     "type": "artifact",
+     "properties": {}
+    },
+    {
+     "name": "BaseStore",
+     "type": "artifact",
+     "properties": {}
+    }
+   ],
+   "relationships": [
+    {
+     "source": "RedisCache",
+     "target": "Cache",
+     "type": "IMPLEMENTS",
+     "properties": {},
+     "weight": 0.9
+    },
+    {
+     "source": "RedisCache",
+     "target": "BaseStore",
+     "type": "EXTENDS",
+     "properties": {},
+     "weight": 0.9
+    }
+   ],
+   "memory_type": "fact",
+   "importance": 0.5,
+   "summary": "RedisCache implements the Cache interface and extends BaseStore.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9098,
+   "completion_tokens": 169,
+   "total_tokens": 9267,
+   "prompt_tokens_details": {
+    "cached_tokens": 8832
+   },
+   "prompt_cache_hit_tokens": 8832,
+   "prompt_cache_miss_tokens": 266
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "h6",
+  "raw": {
+   "entities": [
+    {
+     "name": "Faiss",
+     "type": "tool"
+    },
+    {
+     "name": "IVF",
+     "type": "algorithm"
+    },
+    {
+     "name": "HNSW",
+     "type": "algorithm"
+    }
+   ],
+   "relationships": [
+    {
+     "source": "Faiss",
+     "target": "IVF",
+     "type": "HAS_PART",
+     "weight": 0.8
+    },
+    {
+     "source": "Faiss",
+     "target": "HNSW",
+     "type": "HAS_PART",
+     "weight": 0.8
+    }
+   ],
+   "memory_type": "fact",
+   "importance": 0.5,
+   "summary": "Faiss ships IVF and HNSW index types for approximate nearest-neighbor search.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9102,
+   "completion_tokens": 159,
+   "total_tokens": 9261,
+   "prompt_tokens_details": {
+    "cached_tokens": 8832
+   },
+   "prompt_cache_hit_tokens": 8832,
+   "prompt_cache_miss_tokens": 270
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "h7",
+  "raw": {
+   "entities": [
+    {
+     "name": "cache stampede",
+     "type": "concept"
+    },
+    {
+     "name": "2026-05-12",
+     "type": "concept"
+    },
+    {
+     "name": "outage",
+     "type": "event"
+    },
+    {
+     "name": "postmortem",
+     "type": "artifact"
+    },
+    {
+     "name": "Sam Park",
+     "type": "person"
+    }
+   ],
+   "relationships": [
+    {
+     "source": "cache stampede",
+     "target": "outage",
+     "type": "CAUSES",
+     "weight": 0.9
+    },
+    {
+     "source": "outage",
+     "target": "2026-05-12",
+     "type": "HAPPENED_ON",
+     "weight": 0.9
+    },
+    {
+     "source": "postmortem",
+     "target": "Sam Park",
+     "type": "AUTHORED_BY",
+     "weight": 0.9
+    },
+    {
+     "source": "postmortem",
+     "target": "outage",
+     "type": "MENTIONS",
+     "weight": 0.7
+    }
+   ],
+   "memory_type": "episodic",
+   "importance": 0.7,
+   "summary": "A cache stampede on 2026-05-12 caused a 30-minute outage, documented in a postmortem by Sam Park.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9111,
+   "completion_tokens": 273,
+   "total_tokens": 9384,
+   "prompt_tokens_details": {
+    "cached_tokens": 8832
+   },
+   "prompt_cache_hit_tokens": 8832,
+   "prompt_cache_miss_tokens": 279
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "h8",
+  "raw": {
+   "entities": [
+    {
+     "name": "design doc",
+     "type": "artifact"
+    },
+    {
+     "name": "RFC 9114",
+     "type": "paper"
+    },
+    {
+     "name": "Raft paper",
+     "type": "paper"
+    }
+   ],
+   "relationships": [
+    {
+     "source": "design doc",
+     "target": "RFC 9114",
+     "type": "CITES",
+     "weight": 0.9
+    },
+    {
+     "source": "design doc",
+     "target": "Raft paper",
+     "type": "CITES",
+     "weight": 0.9
+    }
+   ],
+   "memory_type": "reference",
+   "importance": 0.5,
+   "summary": "The design doc formally cites RFC 9114 and the Raft paper.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9098,
+   "completion_tokens": 157,
+   "total_tokens": 9255,
+   "prompt_tokens_details": {
+    "cached_tokens": 8832
+   },
+   "prompt_cache_hit_tokens": 8832,
+   "prompt_cache_miss_tokens": 266
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "h9",
+  "raw": {
+   "entities": [
+    {
+     "name": "Ruff",
+     "type": "tool"
+    },
+    {
+     "name": "mypy",
+     "type": "tool"
+    }
+   ],
+   "relationships": [
+    {
+     "source": "Ruff",
+     "target": "mypy",
+     "type": "RELATED_TO",
+     "weight": 0.4
+    }
+   ],
+   "memory_type": "preference",
+   "importance": 0.5,
+   "summary": "Pin Ruff to 0.4, run it before mypy, and never disable the line-length rule.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9105,
+   "completion_tokens": 120,
+   "total_tokens": 9225,
+   "prompt_tokens_details": {
+    "cached_tokens": 8832
+   },
+   "prompt_cache_hit_tokens": 8832,
+   "prompt_cache_miss_tokens": 273
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ },
+ {
+  "id": "h10",
+  "raw": {
+   "entities": [
+    {
+     "name": "darkmem",
+     "type": "project"
+    },
+    {
+     "name": "Kafka",
+     "type": "tool"
+    },
+    {
+     "name": "v4",
+     "type": "concept"
+    },
+    {
+     "name": "10.0.0.7",
+     "type": "place"
+    }
+   ],
+   "relationships": [
+    {
+     "source": "darkmem",
+     "target": "Kafka",
+     "type": "MENTIONS",
+     "weight": 0.5
+    },
+    {
+     "source": "darkmem",
+     "target": "v4",
+     "type": "MENTIONS",
+     "weight": 0.4
+    }
+   ],
+   "memory_type": "fact",
+   "importance": 0.4,
+   "summary": "darkmem plans to add a Kafka consumer in v4, with the staging box at 10.0.0.7.",
+   "emotions": [],
+   "flags": []
+  },
+  "usage": {
+   "prompt_tokens": 9108,
+   "completion_tokens": 181,
+   "total_tokens": 9289,
+   "prompt_tokens_details": {
+    "cached_tokens": 8832
+   },
+   "prompt_cache_hit_tokens": 8832,
+   "prompt_cache_miss_tokens": 276
+  },
+  "stop": "stop",
+  "model": "deepseek-flash"
+ }
+]

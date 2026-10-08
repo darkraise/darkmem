@@ -1,0 +1,212 @@
+[
+ {
+  "sym": "app/services/rank_fusion.py:dual_list_weight",
+  "text": "Returns the dual-level fusion weight from the given weights mapping as a float, yielding 0.0 when the \"dual_level_enabled\" flag is falsy and otherwise the value of \"w_dual\". No side effects.",
+  "usage": {
+   "prompt_tokens": 296,
+   "completion_tokens": 46,
+   "total_tokens": 342,
+   "prompt_tokens_details": {
+    "cached_tokens": 0
+   },
+   "prompt_cache_hit_tokens": 0,
+   "prompt_cache_miss_tokens": 296
+  },
+  "stop": "stop"
+ },
+ {
+  "sym": "app/services/worklog.py:list_workstreams",
+  "text": "Fetches up to `limit` workstreams for a given `project` (optionally filtered by `state` of \"open\" or \"closed\"), ordered newest-first and keyset-paginated via an opaque `before` cursor, returning a dict of serialized items plus a `next_before` cursor for the following page (or None when exhausted). It performs a read-only database query and raises ValueError for an invalid state value.",
+  "usage": {
+   "prompt_tokens": 500,
+   "completion_tokens": 91,
+   "total_tokens": 591,
+   "prompt_tokens_details": {
+    "cached_tokens": 0
+   },
+   "prompt_cache_hit_tokens": 0,
+   "prompt_cache_miss_tokens": 500
+  },
+  "stop": "stop"
+ },
+ {
+  "sym": "app/services/worklog.py:serialize_workstream",
+  "text": "Converts a Workstream object into a dictionary of its fields, with the ID stringified, timestamps rendered as ISO 8601 strings (or None for a missing closed_at), and properties defaulting to an empty dict. It is a pure read with no side effects.",
+  "usage": {
+   "prompt_tokens": 336,
+   "completion_tokens": 56,
+   "total_tokens": 392,
+   "prompt_tokens_details": {
+    "cached_tokens": 0
+   },
+   "prompt_cache_hit_tokens": 0,
+   "prompt_cache_miss_tokens": 336
+  },
+  "stop": "stop"
+ },
+ {
+  "sym": "app/services/llm_quirks.py:assert_reasoning_effort",
+  "text": "Validates that a `reasoning_effort` value is accepted by the vendor identified by `api_kind`, raising a `RuntimeError` with the vendor's supported values if the parameter is unsupported, retired, or outside the allowed set; returns `None` otherwise and has no side effects.",
+  "usage": {
+   "prompt_tokens": 489,
+   "completion_tokens": 62,
+   "total_tokens": 551,
+   "prompt_tokens_details": {
+    "cached_tokens": 0
+   },
+   "prompt_cache_hit_tokens": 0,
+   "prompt_cache_miss_tokens": 489
+  },
+  "stop": "stop"
+ },
+ {
+  "sym": "app/services/supersession.py:is_supersession_trigger",
+  "text": "Returns True if the given relation type string belongs to the REPLACES family (REPLACES, IMPROVES_ON, or legacy BUILDS_ON), and False otherwise, including when the input is None.",
+  "usage": {
+   "prompt_tokens": 302,
+   "completion_tokens": 46,
+   "total_tokens": 348,
+   "prompt_tokens_details": {
+    "cached_tokens": 0
+   },
+   "prompt_cache_hit_tokens": 0,
+   "prompt_cache_miss_tokens": 302
+  },
+  "stop": "stop"
+ },
+ {
+  "sym": "app/services/worklog.py:update_workstream",
+  "text": "Updates the workstream identified by `workstream_id` with any of the provided `state`, `retain`, `title`, or merged `properties` values, persisting the changes to the database and returning the refreshed `Workstream`. It raises `ValueError` for an invalid state, `WorkstreamNotFound` if the record is missing, or `WorklogRejected` on an integrity violation, and records a close/reopen event journal entry when the state transitions.",
+  "usage": {
+   "prompt_tokens": 702,
+   "completion_tokens": 96,
+   "total_tokens": 798,
+   "prompt_tokens_details": {
+    "cached_tokens": 0
+   },
+   "prompt_cache_hit_tokens": 0,
+   "prompt_cache_miss_tokens": 702
+  },
+  "stop": "stop"
+ },
+ {
+  "sym": "app/services/llm_quirks.py:native_root",
+  "text": "Given a base URL string, returns the URL with a trailing `/v1` or `/api` suffix removed (and any trailing slashes stripped), otherwise returns it unchanged; no side effects.",
+  "usage": {
+   "prompt_tokens": 286,
+   "completion_tokens": 39,
+   "total_tokens": 325,
+   "prompt_tokens_details": {
+    "cached_tokens": 0
+   },
+   "prompt_cache_hit_tokens": 0,
+   "prompt_cache_miss_tokens": 286
+  },
+  "stop": "stop"
+ },
+ {
+  "sym": "app/services/usage_pricing.py:normalise_price_overrides",
+  "text": "Validates an operator-supplied mapping of model names to rate dictionaries, returning a cleaned `dict[str, dict[str, int]]` with rates coerced to non-negative integers, or raising `ValueError` if any entry is malformed, contains unknown rate fields, or has negative or non-numeric values.",
+  "usage": {
+   "prompt_tokens": 479,
+   "completion_tokens": 63,
+   "total_tokens": 542,
+   "prompt_tokens_details": {
+    "cached_tokens": 0
+   },
+   "prompt_cache_hit_tokens": 0,
+   "prompt_cache_miss_tokens": 479
+  },
+  "stop": "stop"
+ },
+ {
+  "sym": "app/services/worklog.py:get_workstream_by_id",
+  "text": "Fetches the workstream matching the given UUID from the database, optionally acquiring a row-level lock when `for_update` is true, and returns it or `None` if no match exists.",
+  "usage": {
+   "prompt_tokens": 312,
+   "completion_tokens": 40,
+   "total_tokens": 352,
+   "prompt_tokens_details": {
+    "cached_tokens": 0
+   },
+   "prompt_cache_hit_tokens": 0,
+   "prompt_cache_miss_tokens": 312
+  },
+  "stop": "stop"
+ },
+ {
+  "sym": "app/services/supersession.py:demote_dependents",
+  "text": "Given an async database session and a sequence of memory IDs, this clears the `superseded_by` pointer on all memories referencing those IDs and sets their status to 'deprecated', performing a single bulk UPDATE within the caller's transaction. It returns nothing and must be invoked before any deletion of the referenced memories to avoid constraint violations.",
+  "usage": {
+   "prompt_tokens": 426,
+   "completion_tokens": 67,
+   "total_tokens": 493,
+   "prompt_tokens_details": {
+    "cached_tokens": 0
+   },
+   "prompt_cache_hit_tokens": 0,
+   "prompt_cache_miss_tokens": 426
+  },
+  "stop": "stop"
+ },
+ {
+  "sym": "app/services/worklog.py:list_entries",
+  "text": "Fetches up to `limit` worklog entries for a given `workstream_id`, optionally filtered by `kind`, a `since` timestamp, and a `seq` cursor (`after`), returning a dict with serialized entries and a `next_after` cursor for pagination. Raises `ValueError` for an invalid `kind`; performs a read-only database query with no mutations.",
+  "usage": {
+   "prompt_tokens": 458,
+   "completion_tokens": 83,
+   "total_tokens": 541,
+   "prompt_tokens_details": {
+    "cached_tokens": 0
+   },
+   "prompt_cache_hit_tokens": 0,
+   "prompt_cache_miss_tokens": 458
+  },
+  "stop": "stop"
+ },
+ {
+  "sym": "app/services/worklog.py:serialize_entry",
+  "text": "Converts a WorklogEntry object into a dictionary with string-serialized IDs, ISO-formatted timestamp, and defaulted properties. Returns the dictionary representation; no side effects.",
+  "usage": {
+   "prompt_tokens": 274,
+   "completion_tokens": 36,
+   "total_tokens": 310,
+   "prompt_tokens_details": {
+    "cached_tokens": 0
+   },
+   "prompt_cache_hit_tokens": 0,
+   "prompt_cache_miss_tokens": 274
+  },
+  "stop": "stop"
+ },
+ {
+  "sym": "app/services/rank_fusion.py:rank_fusion_factor",
+  "text": "Given per-arm signal values and weight configuration, returns the product of the individual arm multipliers as a single float representing the composed post-fusion scaling factor (where zero-weight arms contribute exactly 1.0). It has no side effects.",
+  "usage": {
+   "prompt_tokens": 315,
+   "completion_tokens": 47,
+   "total_tokens": 362,
+   "prompt_tokens_details": {
+    "cached_tokens": 0
+   },
+   "prompt_cache_hit_tokens": 0,
+   "prompt_cache_miss_tokens": 315
+  },
+  "stop": "stop"
+ },
+ {
+  "sym": "app/services/llm_quirks.py:assert_can_embed",
+  "text": "Raises a RuntimeError if the vendor identified by `api_kind` (with `model` named in the error) lacks an embeddings endpoint, otherwise returns None. Has no side effects beyond the exception.",
+  "usage": {
+   "prompt_tokens": 359,
+   "completion_tokens": 42,
+   "total_tokens": 401,
+   "prompt_tokens_details": {
+    "cached_tokens": 0
+   },
+   "prompt_cache_hit_tokens": 0,
+   "prompt_cache_miss_tokens": 359
+  },
+  "stop": "stop"
+ }
+]

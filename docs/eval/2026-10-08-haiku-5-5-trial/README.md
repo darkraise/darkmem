@@ -12,6 +12,6 @@ Run from this directory with `backend/.venv/bin/python`. Export `AK` (Anthropic 
 - `summ.py <nothink|default>`: `enrichment_worker.SUMMARY_PROMPT` on 14 functions sampled from
   six service modules (seed 3).
 
-DeepSeek was not run live: the cloud environment blocked api.deepseek.com. A paired run needs a
-DeepSeek twin of each script (OpenAI-compat, `temperature: 0`, `thinking: {type: disabled}`,
-`response_format: json_object`, the per-content seed).
+`ds_trial.py <ext gold.json|ext gold_heldout.json|rerank|summ>` is the DeepSeek twin of all three,
+with the seeded `deepseek-flash-*` profiles' request settings. Export `DK` (DeepSeek key). Its
+outputs are the `ds_*.json` files (paired run, 2026-10-08, DeepSeek peak window).
