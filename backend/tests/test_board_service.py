@@ -220,7 +220,10 @@ async def test_a_failing_source_reports_its_own_error_and_the_rest_renders(sessi
     monkeypatch.setattr(board_module, "parse_plan", boom)
     board = await load_board(session, PROJECT)
     assert _plan(board)["error"] == "RuntimeError: parser exploded"
-    assert len(board["registers"][0]["rows"]) == 2
+    first, second = board["registers"][0]["rows"]
+    # The row still names its plan, so the card can say why it shows no progress.
+    assert first["plan_uri"] == PLAN_URI and first["plan_progress"] is None
+    assert second["plan_uri"] is None
 
 
 async def test_a_block_first_register_reads_normally_and_says_so(session):

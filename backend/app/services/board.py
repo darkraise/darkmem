@@ -290,13 +290,16 @@ async def load_board(session: AsyncSession, project: str) -> dict[str, Any]:
         for plan in plans
         if plan["error"] is None
     }
+    plan_uris = {plan["uri"] for plan in plans}
     register_records = [_register_record(d) for d in registers]
     for register in register_records:
         for row in register["rows"]:
             uri = cell_uri(row["assigned"])
-            if uri in progress:
+            if uri in plan_uris:
+                # A plan that failed to read keeps the link and no progress, so
+                # the card can point at its `error` instead of looking unplanned.
                 row["plan_uri"] = uri
-                row["plan_progress"] = progress[uri]
+                row["plan_progress"] = progress.get(uri)
     return {"project": project, "registers": register_records, "plans": plans}
 
 
