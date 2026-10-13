@@ -32,10 +32,12 @@ from app.services.block_serializer import (
     reproduces_source,
     serialize_tree,
 )
+from app.services.board_parse import is_mirror_owned
 from app.services.document_door import (
     BLOCK_FIRST,
     MAX_BLOCKS,
     MAX_CONTENT_CHARS,
+    DocumentMirrorOwned,
     DocumentNotConvertible,
     DocumentTooLarge,
 )
@@ -167,7 +169,7 @@ _RESOLVE_BLOCK = text(
     "FROM blocks WHERE id = CAST(:id AS uuid)"
 )
 _DOC_META = text(
-    "SELECT project, content, content_hash, "
+    "SELECT project, uri, content, content_hash, "
     "       properties->>'ingest_direction' AS direction, "
     "       properties->>'frontmatter' AS frontmatter "
     "FROM documents WHERE id = CAST(:id AS uuid)"
@@ -418,6 +420,12 @@ async def _mutate(session, llm, *, document_id, apply, touched_embed, verb,
     meta = (await session.execute(owner.meta, {"id": document_id})).mappings().first()
     if meta is None:
         raise BlockTargetUnresolved(f"no {owner.noun} with id {document_id}")
+    if owner.kind == "document" and is_mirror_owned(meta["uri"]):
+        raise DocumentMirrorOwned(
+            f"{meta['uri']} is a register or plan the dr-forge mirror owns through "
+            "content puts; the block verbs would convert it to block-first and "
+            "refuse every later push. Edit it with document_put, or from the board."
+        )
     # After the lock, which is what makes this a compare-and-set rather than a
     # check-then-act: no writer can move content_hash between this read and
     # the write below, because both are inside one held row lock.

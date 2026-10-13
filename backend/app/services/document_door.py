@@ -48,6 +48,7 @@ __all__ = [
     "BlockRow",
     "DocumentIsBlockFirst",
     "DocumentJournalWriteFailed",
+    "DocumentMirrorOwned",
     "DocumentNothingToChange",
     "DocumentTargetUnresolved",
     "DocumentTooLarge",
@@ -223,6 +224,17 @@ class DocumentNotConvertible(ValueError):
     regenerated. Converting lossily would break both silently, on the corpus
     this programme exists to hold. Refusing is the honest outcome until the
     parser represents those shapes.
+    """
+
+
+class DocumentMirrorOwned(DocumentNotConvertible):
+    """block verb refused: the dr-forge mirror owns this document.
+
+    Registers and plans (`superpowers/registers/`, `superpowers/plans/`) reach
+    darkmem as content puts from the mirror, and the progress board edits
+    registers the same way. Converting one to block-first would refuse every
+    later put and strand the mirror (spec 2026-10-13 §2.5). A subclass, so
+    both doors already map it: REST to 422, MCP to `not_convertible`.
     """
 
 
