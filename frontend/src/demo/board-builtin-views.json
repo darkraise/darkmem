@@ -1,0 +1,82 @@
+[
+  {
+    "id": "builtin:open-register-items",
+    "name": "Open register items",
+    "builtin": true,
+    "position": 0,
+    "definition": {
+      "layout": "board",
+      "group_by": "state",
+      "filters": [
+        {
+          "property": "type",
+          "operator": "in",
+          "values": [
+            "register_row"
+          ]
+        },
+        {
+          "property": "state",
+          "operator": "not_in",
+          "values": [
+            "done",
+            "n/a"
+          ]
+        }
+      ],
+      "sort": {
+        "property": "number",
+        "direction": "asc"
+      },
+      "columns": [
+        "type",
+        "number",
+        "title",
+        "state",
+        "source",
+        "assigned",
+        "note"
+      ],
+      "show_untracked": false
+    }
+  },
+  {
+    "id": "builtin:plans-in-flight",
+    "name": "Plans in flight",
+    "builtin": true,
+    "position": 1,
+    "definition": {
+      "layout": "board",
+      "group_by": "plan",
+      "filters": [
+        {
+          "property": "type",
+          "operator": "in",
+          "values": [
+            "plan_task"
+          ]
+        },
+        {
+          "property": "workstream_state",
+          "operator": "in",
+          "values": [
+            "open"
+          ]
+        }
+      ],
+      "sort": {
+        "property": "number",
+        "direction": "asc"
+      },
+      "columns": [
+        "number",
+        "title",
+        "state",
+        "plan",
+        "commit",
+        "last_activity"
+      ],
+      "show_untracked": false
+    }
+  }
+]

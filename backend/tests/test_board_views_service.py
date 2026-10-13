@@ -104,3 +104,12 @@ async def test_a_definition_the_check_refuses_is_invalid_not_a_500(session, monk
     with pytest.raises(BoardRefusal) as refused:
         await create_view(session, project="p", name="Huge", definition=DEFINITION, position=None)
     assert (refused.value.status_code, refused.value.reason) == (422, "invalid_definition")
+
+
+def test_the_demo_builtin_views_match_the_server():
+    """The SPA's demo mode has no server, so it carries its own copy."""
+    import json
+    from pathlib import Path
+
+    demo = Path(__file__).resolve().parents[2] / "frontend/src/demo/board-builtin-views.json"
+    assert json.loads(demo.read_text()) == list(BUILTIN_VIEWS)

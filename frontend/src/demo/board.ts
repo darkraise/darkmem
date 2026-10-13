@@ -1,4 +1,5 @@
 import type { BoardRecords, BoardView } from "@/hooks/api/use-board-api"
+import builtinViews from "./board-builtin-views.json"
 
 const PLAN_URI = "superpowers/plans/2026-09-28-work-log-increment-6.md"
 const SPEC_URI = "superpowers/specs/2026-09-23-work-log-lane-design.md"
@@ -146,55 +147,12 @@ export function demoBoardRecords(project: string): BoardRecords {
     : { project, registers: [], plans: [] }
 }
 
-/** The server's two built-ins (`app/services/board_views.py`); the demo has
- *  no saved views. */
-export const DEMO_BOARD_VIEWS: BoardView[] = [
-  {
-    id: "builtin:open-register-items",
-    project: "darkmem",
-    name: "Open register items",
-    position: 0,
-    builtin: true,
-    created_at: null,
-    updated_at: null,
-    definition: {
-      layout: "board",
-      group_by: "state",
-      filters: [
-        { property: "type", operator: "in", values: ["register_row"] },
-        { property: "state", operator: "not_in", values: ["done", "n/a"] },
-      ],
-      sort: { property: "number", direction: "asc" },
-      columns: [
-        "type",
-        "number",
-        "title",
-        "state",
-        "source",
-        "assigned",
-        "note",
-      ],
-      show_untracked: false,
-    },
-  },
-  {
-    id: "builtin:plans-in-flight",
-    project: "darkmem",
-    name: "Plans in flight",
-    position: 1,
-    builtin: true,
-    created_at: null,
-    updated_at: null,
-    definition: {
-      layout: "board",
-      group_by: "plan",
-      filters: [
-        { property: "type", operator: "in", values: ["plan_task"] },
-        { property: "workstream_state", operator: "in", values: ["open"] },
-      ],
-      sort: { property: "number", direction: "asc" },
-      columns: ["number", "title", "state", "plan", "commit", "last_activity"],
-      show_untracked: false,
-    },
-  },
-]
+/** The server's two built-ins, read from the JSON that
+ *  `tests/test_board_views_service.py` compares with `BUILTIN_VIEWS`; the demo
+ *  has no saved views. */
+export const DEMO_BOARD_VIEWS: BoardView[] = builtinViews.map((view) => ({
+  ...view,
+  project: "darkmem",
+  created_at: null,
+  updated_at: null,
+})) as BoardView[]
