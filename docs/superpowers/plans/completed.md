@@ -73,3 +73,4 @@
 - 2026-09-08 `docs/superpowers/plans/2026-09-07-notes-increment-2-workspace-shell.md` — merged into `master` at 3a85d6bd
 - 2026-09-21 `docs/superpowers/plans/2026-09-20-notion-import-route.md` — merged into `master` at ddc92320
 - 2026-10-03 `docs/superpowers/plans/2026-10-03-comprehensive-review-fixes.md` — merged into `master` at a8284309
+- 2026-10-13 `docs/superpowers/plans/2026-10-13-notion-progress-board.md` — merged into `master` at a801ff65; Task 24 (deploy and the owner's review) still owed
