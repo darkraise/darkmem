@@ -512,7 +512,15 @@ async def put_document(
     source: str | None = None,
     expected_hash: str | None = None,
     force_reparse: bool = False,
+    embed_inline: bool = True,
 ) -> PutResult:
+    """File a document, commit, then embed its blocks.
+
+    With `embed_inline=False` it returns once the filing commits and embeds
+    nothing, so `llm` may be None: `block_embedding_refresh` embeds the new
+    blocks on its next pass, as it does for page writes (spec 2026-10-13
+    §2.4). An embedder failure then cannot fail an edit that already landed.
+    """
     if len(content) > MAX_CONTENT_CHARS:
         raise DocumentTooLarge(
             f"content is {len(content)} characters; the bound is "
@@ -576,6 +584,18 @@ async def put_document(
             )
 
     await session.commit()
+
+    if not embed_inline:
+        return PutResult(
+            document_id=str(filed.document_id),
+            outcome=filed.outcome,
+            blocks_filed=filed.blocks_written,
+            blocks_embedded=0,
+            title_applied=filed.outcome != UNCHANGED,
+            oversized_blocks=filed.oversized_blocks,
+            largest_block_chars=filed.largest_block_chars,
+            content_hash=filed.content_hash,
+        )
 
     if filed.outcome == UNCHANGED:
         # Resolved from a real embed call, never a data probe (T-doc-door.6
