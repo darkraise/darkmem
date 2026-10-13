@@ -19,7 +19,7 @@ const OPEN: Workstream = {
   project: "darkmem",
   key: "plan-a",
   title: "Plan A",
-  client: "dr-superpowers",
+  client: "dr-forge",
   state: "open",
   closed_at: null,
   retain: false,

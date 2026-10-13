@@ -44,12 +44,12 @@ async def test_append_creates_the_workstream_and_journals_it(session):
             {"kind": "ledger", "body": "Task 1: complete\n", "properties": {"task": 1}},
         ],
         title="Plan A",
-        client="dr-superpowers",
+        client="dr-forge",
         properties={"plan_uri": "superpowers/plans/a.md"},
     )
     ws = result.workstream
     assert (ws.project, ws.key, ws.title, ws.client, ws.state) == (
-        "proj", "plan-a", "Plan A", "dr-superpowers", "open",
+        "proj", "plan-a", "Plan A", "dr-forge", "open",
     )
     assert ws.properties == {"plan_uri": "superpowers/plans/a.md"}
     rows = (await session.execute(

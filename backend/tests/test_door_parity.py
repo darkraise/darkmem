@@ -137,7 +137,7 @@ _WRITE_WIRE_SHAPE = (
     "where the two doors differ in *authority* rather than in wire shape. "
     "POST /documents/delete sits behind ordinary login auth, while POST "
     "/documents on the same row also admits a capture-scoped key (spec "
-    "2026-09-23, the dr-superpowers mirror); the MCP twin "
+    "2026-09-23, the dr-forge mirror); the MCP twin "
     "`document_delete_subtree` is held at `admin`, the scope `code_reindex` "
     "and `worklog_purge` also hold. That is deliberate and not a parity gap: "
     "MCP scopes are per "
@@ -489,7 +489,7 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "admits a capture-scoped key and takes an optional expected_hash, "
             "the metadata twin of the filing's compare-and-set: a stale hash "
             "is a 409 against a `hash_conflict` envelope and moves nothing. "
-            "The dr-superpowers mirror archives a deleted document through it, "
+            "The dr-forge mirror archives a deleted document through it, "
             "which keeps the document's revisions; the REST subtree rename "
             "stays login-only (its MCP mode is capture-scoped, as the tool "
             "always was)."
@@ -510,7 +510,7 @@ PARITY_TABLE: tuple[Surface, ...] = (
             f"{_DOCUMENTS_RULING} {_RETRIEVAL_WIRE_SHAPE} The two addressing "
             "forms of the blocks read are not authorized alike: `GET "
             "/documents/by-uri` admits a read-scoped key, because the "
-            "dr-superpowers mirror reads through it, while `GET "
+            "dr-forge mirror reads through it, while `GET "
             "/documents/{document_id}`, both outline routes and search stay "
             "login-only. The tools need a read-scoped key for all three verbs."
         ),
@@ -597,7 +597,7 @@ PARITY_TABLE: tuple[Surface, ...] = (
         rest=(("GET", f"{V1}/documents/manifest"),),
         mcp=(),
         reason=(
-            "A sync read with one caller, the dr-superpowers mirror, which "
+            "A sync read with one caller, the dr-forge mirror, which "
             "speaks REST with a dmk_ key: it serves uri, content_hash and "
             "updated_at so a pull fetches only what changed. An agent reading a "
             "document already has document_get and document_outline; a "
@@ -615,7 +615,7 @@ PARITY_TABLE: tuple[Surface, ...] = (
         note=(
             "Both doors call one document_revisions service, so paging, the "
             "no-content page and the refusals cannot drift, and both admit a "
-            "read-scoped key: the dr-superpowers mirror reads history over REST. "
+            "read-scoped key: the dr-forge mirror reads history over REST. "
             "Stated wire asymmetries: the routes name the document by id while "
             "the tool also takes (project, uri); REST serves the page and the "
             "single revision at two paths where the tool dispatches on "

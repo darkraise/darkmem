@@ -41,7 +41,7 @@ Two consequences worth internalising:
 Working data — checkpoints, ledger text, notes to the next session — goes to
 the work log, never to `memory_add` (`backend/app/services/worklog.py`, module
 docstring). One workstream per piece of work, keyed by a name the client
-chooses; dr-superpowers uses the plan or design slug.
+chooses; dr-forge uses the plan or design slug.
 
 **Mint one run identity per process at boot, and declare it on every
 `worklog_append`**, as `run_key` or the `X-Darkmem-Origin` header. An

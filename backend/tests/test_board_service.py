@@ -101,13 +101,13 @@ async def test_a_ledger_without_properties_is_untracked_no_properties(session):
 async def test_the_newest_state_bearing_entry_wins_and_stateless_lines_do_not_move_it(session):
     await _file(session, PLAN_URI, PLAN)
     await _append(session, "sample", [
-        _ledger("Task 1: implementer dr-superpowers:impl-opus-medium (assigned; base 065871f)\n",
+        _ledger("Task 1: implementer dr-forge:impl-opus-medium (assigned; base 065871f)\n",
                 task=1, state="wip"),
         _ledger("Task 1: fix round 1/5 (1 addressed, 0 open; commits 535856b..70d319b)\n",
                 task=1, state="review", commit="70d319b"),
         _ledger("Task 1: minor (deferred): the reported RED run stashed an implementation\n",
                 task=1),
-        _ledger("Task 2: implementer dr-superpowers:impl-opus-low (assigned; base 70d319b)\n",
+        _ledger("Task 2: implementer dr-forge:impl-opus-low (assigned; base 70d319b)\n",
                 task=2, state="wip"),
         _ledger("Task 2: complete (commits 70d319b..9abc123, review clean)\n",
                 task=2, state="done", commit="9abc123"),

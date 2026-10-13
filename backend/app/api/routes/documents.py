@@ -114,7 +114,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
-# The routes a dr-superpowers mirror syncs through (spec 2026-09-23 §2) are the
+# The routes a dr-forge mirror syncs through (spec 2026-09-23 §2) are the
 # only document doors a `dmk_` key reaches: filing, the single-document
 # metadata PATCH, the by-uri read, the manifest and the two revision reads.
 # Every other document route stays login-only; widening one is a decision

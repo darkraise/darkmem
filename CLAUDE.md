@@ -950,7 +950,7 @@ Scopes don't imply one another. The subtree delete is a separate `admin`
 tool, not a mode on `document_delete`, because a mode would inherit
 `capture`. Its REST twin `POST /api/v1/documents/delete` sits behind
 ordinary login auth, like every document route except the six a
-dr-superpowers mirror syncs through (filing, the single-document metadata
+dr-forge mirror syncs through (filing, the single-document metadata
 PATCH, the by-uri read, the manifest and the two revision reads, which admit
 a scoped key). That asymmetry is
 deliberate and recorded on `docs/two-door-parity.md`'s `documents.write` row.
@@ -1134,7 +1134,7 @@ the same `document_door` functions; targets resolve through
   single-document mode takes an optional `expected_hash`, carried in the
   writer's own UPDATE (a stale hash answers 409, or a `hash_conflict`
   envelope, and moves nothing), and its PATCH admits a `capture` key: the
-  dr-superpowers mirror archives a deleted document that way. Tags
+  dr-forge mirror archives a deleted document that way. Tags
   are bounded by `validate_tag_lengths` before any write
   (`PostgresTagRepository.get_or_create` validates nothing); that validator's
   `ValueError` escapes the tool as a tool error, not an envelope.
