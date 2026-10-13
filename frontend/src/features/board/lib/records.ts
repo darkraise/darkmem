@@ -76,6 +76,8 @@ export interface BoardRecord {
   assigned: string | null
   acceptance: string | null
   planProgress: PlanProgress | null
+  /** Why a register row's plan could not be read; its progress is then null. */
+  planError: string | null
   plan: string | null
   spec: string | null
   workstreamKey: string | null
@@ -100,6 +102,7 @@ export function isBlankNote(note: string | null | undefined): boolean {
 
 export function flattenRecords(data: BoardRecords): BoardRecord[] {
   const records: BoardRecord[] = []
+  const planErrors = new Map(data.plans.map((plan) => [plan.uri, plan.error]))
   for (const register of data.registers) {
     for (const row of register.rows) {
       records.push({
@@ -120,6 +123,7 @@ export function flattenRecords(data: BoardRecords): BoardRecord[] {
         assigned: row.assigned,
         acceptance: row.acceptance,
         planProgress: row.plan_progress,
+        planError: row.plan_uri ? (planErrors.get(row.plan_uri) ?? null) : null,
         plan: row.plan_uri,
         spec: null,
         workstreamKey: null,
@@ -152,6 +156,7 @@ export function flattenRecords(data: BoardRecords): BoardRecord[] {
         assigned: null,
         acceptance: null,
         planProgress: null,
+        planError: null,
         plan: plan.uri,
         spec: plan.spec_uri,
         workstreamKey: plan.workstream?.key ?? null,

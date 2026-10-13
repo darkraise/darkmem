@@ -14,7 +14,10 @@ import {
 export const LEDGER_LOCK = "state comes from the plan's ledger"
 
 /** One register row or plan task (§3 Cards). Only a register card in the
- *  register lane of a State grouping is draggable. */
+ *  register lane of a State grouping is draggable. The title is the card's
+ *  button, so every card opens from the keyboard; a draggable card is a
+ *  `group` rather than dnd-kit's `button`, since it holds that button, and
+ *  keeps Space and Enter for picking it up. */
 export function RecordCard({
   record,
   draggable,
@@ -41,8 +44,8 @@ export function RecordCard({
       ref={setNodeRef}
       style={style}
       {...(draggable ? listeners : {})}
-      {...(draggable ? attributes : {})}
-      aria-label={`${record.label} ${record.title}`}
+      {...(draggable ? { ...attributes, role: "group" } : {})}
+      aria-label={isRow ? `${record.label} ${record.title}` : record.label}
       aria-busy={pending || undefined}
       onClick={() => onOpen(record)}
       className={cn(
@@ -69,7 +72,18 @@ export function RecordCard({
           </Lock>
         ) : null}
       </div>
-      <p className="font-medium">{record.title}</p>
+      <button
+        type="button"
+        className="focus-visible:ring-primary/40 block w-full rounded-sm text-left font-medium focus-visible:ring-2 focus-visible:outline-none"
+        onClick={(event) => {
+          event.stopPropagation()
+          onOpen(record)
+        }}
+        // Keeps Enter and Space from reaching the card's KeyboardSensor.
+        onKeyDown={(event) => event.stopPropagation()}
+      >
+        {record.title}
+      </button>
       {pending ? (
         <p className="text-muted-foreground text-xs">saving…</p>
       ) : null}
@@ -79,6 +93,14 @@ export function RecordCard({
         </p>
       ) : null}
       {isRow && progress ? <p className="text-xs">{progress}</p> : null}
+      {isRow && record.plan && !record.planProgress ? (
+        <p
+          className="text-destructive text-xs"
+          title={record.planError ?? undefined}
+        >
+          plan unreadable
+        </p>
+      ) : null}
       {isRow && NOTE_REQUIRED.has(record.state) && !record.noteBlank ? (
         <p className="text-muted-foreground text-xs">{record.note}</p>
       ) : null}

@@ -167,6 +167,17 @@ describe("flattenRecords", () => {
     expect(byTitle("One").workstreamKey).toBe("plan-key")
     expect(new Set(records.map((r) => r.id)).size).toBe(records.length)
   })
+
+  it("carries the error of a row's plan when the plan could not be read", () => {
+    const broken: BoardRecords = {
+      ...DATA,
+      plans: DATA.plans.map((plan) => ({ ...plan, tasks: [], error: "boom" })),
+    }
+    const beta = flattenRecords(broken).find((r) => r.title === "Beta")
+    expect(beta?.planError).toBe("boom")
+    expect(byTitle("Beta").planError).toBeNull()
+    expect(byTitle("Alpha").planError).toBeNull()
+  })
 })
 
 describe("applyView", () => {

@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 import { boardLanes, flattenRecords, type BoardRecord } from "../lib/records"
 import { BoardView, dropTarget } from "../components/board-view"
@@ -42,14 +43,58 @@ describe("BoardView", () => {
         onOpen={vi.fn()}
       />,
     )
-    const row = screen.getByRole("button", { name: /#1 Alpha/ })
+    const row = screen.getByRole("group", { name: /#1 Alpha/ })
     expect(row).toHaveAttribute("aria-roledescription", "draggable")
-    const task = screen.getByRole("article", { name: /Task 2: Two/ })
+    const task = screen.getByRole("article", { name: "Task 2: Two" })
     expect(task).not.toHaveAttribute("aria-roledescription")
     expect(
       within(task).getByLabelText("state comes from the plan's ledger"),
     ).toBeInTheDocument()
     expect(within(task).getByText("waiting on beta")).toBeInTheDocument()
+  })
+
+  it("opens any card from the keyboard, and Enter on a draggable card's title opens rather than drags", async () => {
+    const onOpen = vi.fn()
+    const onMove = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <BoardView
+        lanes={boardLanes(records, "state", false)}
+        pendingId={null}
+        onMove={onMove}
+        onOpen={onOpen}
+      />,
+    )
+    screen.getByRole("button", { name: "Alpha" }).focus()
+    await user.keyboard("{Enter}")
+    expect(onOpen).toHaveBeenLastCalledWith(byTitle("Alpha"))
+    screen.getByRole("button", { name: "Two" }).focus()
+    await user.keyboard(" ")
+    expect(onOpen).toHaveBeenLastCalledWith(byTitle("Two"))
+    expect(onOpen).toHaveBeenCalledTimes(2)
+    expect(onMove).not.toHaveBeenCalled()
+  })
+
+  it("says when a row's plan could not be read", () => {
+    const alpha = byTitle("Alpha")
+    const linked: BoardRecord = {
+      ...alpha,
+      plan: "superpowers/plans/p.md",
+      planProgress: null,
+      planError: "RuntimeError: parser exploded",
+    }
+    render(
+      <BoardView
+        lanes={boardLanes([linked], "state", false)}
+        pendingId={null}
+        onMove={vi.fn()}
+        onOpen={vi.fn()}
+      />,
+    )
+    expect(screen.getByText("plan unreadable")).toHaveAttribute(
+      "title",
+      "RuntimeError: parser exploded",
+    )
   })
 
   it("shows a pending card as saving", () => {
