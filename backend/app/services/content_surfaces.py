@@ -787,6 +787,13 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # project would report a fraction of the traffic as the traffic.
     "GET /api/v1/mcp-calls",
     "GET /api/v1/mcp-calls/summary",
+    # The progress board (spec 2026-10-13). Register and plan text crosses
+    # these -- a document's own rows and task headings, plus ledger entry
+    # properties -- but no `memories` row does: the board reads `documents`
+    # and the work log, both walled off from the memory side, and is
+    # REST-only (`board.reads` / `board.write` on docs/two-door-parity.md).
+    # Views are layout definitions and carry no content at all.
+    "GET /api/v1/board/records",
     "GET /health",
     "GET /api/v1/analytics/stats",
     "POST /api/v1/analytics/reprocess",

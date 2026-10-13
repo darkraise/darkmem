@@ -219,6 +219,7 @@ EXPECTED_STATUS = {
     ("DELETE", "/api/v1/pipeline-failures/{failure_id}"): 204,
     ("POST", "/api/v1/pipeline-failures/{failure_id}/retry"): 202,
     ("GET", "/api/v1/pipeline/metrics"): 200,
+    ("GET", "/api/v1/board/records"): 200,
     ("GET", "/api/v1/mcp-calls"): 200,
     ("GET", "/api/v1/mcp-calls/summary"): 200,
     ("GET", "/api/v1/usage/overview"): 200,

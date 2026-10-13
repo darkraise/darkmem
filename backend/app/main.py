@@ -19,7 +19,7 @@ from sqlalchemy import text
 
 from app.api.mcp.server import mcp as mcp_server, mcp_streamable_http_kwargs, set_pipeline
 from app.api.spa import mount_spa
-from app.api.routes import analytics, backups, api_keys as api_key_routes, git_accounts as git_account_routes, articles as articles_routes, auth, buffer as buffer_routes, chat, code, config, distribution as distribution_routes, documents as documents_routes, dream_digest as dream_digest_routes, events as events_routes, facts as facts_routes, graph, hygiene_queue, jobs, knowledge_search as knowledge_search_routes, llm_providers, mcp_calls as mcp_calls_routes, memories, overview as overview_routes, pages as pages_routes, page_attachments as page_attachments_routes, page_import as page_import_routes, pipeline as pipeline_routes, pipeline_failures, projects as projects_routes, ratification as ratification_routes, reembed, repos, review_queue, setup, system, tags, topics as topics_routes, usage as usage_routes, vectors, worklog as worklog_routes
+from app.api.routes import analytics, backups, board as board_routes, api_keys as api_key_routes, git_accounts as git_account_routes, articles as articles_routes, auth, buffer as buffer_routes, chat, code, config, distribution as distribution_routes, documents as documents_routes, dream_digest as dream_digest_routes, events as events_routes, facts as facts_routes, graph, hygiene_queue, jobs, knowledge_search as knowledge_search_routes, llm_providers, mcp_calls as mcp_calls_routes, memories, overview as overview_routes, pages as pages_routes, page_attachments as page_attachments_routes, page_import as page_import_routes, pipeline as pipeline_routes, pipeline_failures, projects as projects_routes, ratification as ratification_routes, reembed, repos, review_queue, setup, system, tags, topics as topics_routes, usage as usage_routes, vectors, worklog as worklog_routes
 from app.api.websocket import websocket_endpoint
 from sqlalchemy.exc import DBAPIError
 
@@ -1084,6 +1084,7 @@ app.include_router(dream_digest_routes.router)
 app.include_router(events_routes.router)
 app.include_router(buffer_routes.router)
 app.include_router(documents_routes.router)
+app.include_router(board_routes.router)
 # Before `pages_routes`: FastAPI matches in registration order, so a later
 # two-segment `POST /pages/{page_id}/x` would shadow `/pages/import/notion`.
 app.include_router(page_import_routes.router)

@@ -1653,6 +1653,24 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="board.reads",
+        status=REST_ONLY,
+        rest=(
+            ("GET", f"{V1}/board/records"),
+        ),
+        mcp=(),
+        reason=(
+            "The progress board is the operator's view of registers and plan "
+            "tasks, a projection of documents and ledger entries an agent "
+            "already reads over MCP: document_get serves a register's text and "
+            "worklog_entries its ledger. A board tool would add a second shape "
+            "of the same data, not a capability, and the saved views are the "
+            "operator's layout. Nothing here generates or labels content, so no "
+            "eval gate is in play; an MCP twin later is additive and an owner "
+            "decision (spec 2026-10-13 section 8)."
+        ),
+    ),
+    Surface(
         name="pages.reads",
         status=REST_ONLY,
         rest=(
