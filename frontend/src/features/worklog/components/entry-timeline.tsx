@@ -185,7 +185,11 @@ export function EntryTimeline({
   )
   // A task filter reads the whole ledger first: filtering only the loaded
   // pages would show a task's early entries and silently miss its later ones.
-  const ledger = useAllLedgerEntries(workstream.id, task !== null)
+  const ledger = useAllLedgerEntries(
+    workstream.id,
+    task !== null,
+    workstream.state === "open",
+  )
   const paged = useMemo(
     () => entries.data?.pages.flatMap((page) => page.items) ?? [],
     [entries.data],
@@ -267,8 +271,11 @@ export function EntryTimeline({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
+        {/* Only ledger entries carry a task, so a task filter holds the
+            control on Ledger; the chosen kind comes back when it clears. */}
         <SegmentGroup
-          value={kind}
+          value={task === null ? kind : "ledger"}
+          disabled={task !== null}
           onValueChange={(next) => {
             if (next) {
               setKind(next as KindFilter)

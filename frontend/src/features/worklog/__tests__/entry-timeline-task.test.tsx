@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -11,7 +11,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 }))
 
 import { apiFetch } from "@/lib/api"
-import type { WorklogEntry, Workstream } from "@/hooks/api"
+import { WORKLOG_LIVE_MS, type WorklogEntry, type Workstream } from "@/hooks/api"
 import { EntryTimeline } from "../components/entry-timeline"
 
 const WORKSTREAM: Workstream = {
@@ -83,6 +83,45 @@ beforeEach(() => {
 })
 
 describe("EntryTimeline's task filter", () => {
+  it("holds the kind control on Ledger while a task is set, since only the ledger carries tasks", async () => {
+    routeApi()
+    const user = userEvent.setup()
+    render(<EntryTimeline workstream={WORKSTREAM} />, { wrapper })
+    await screen.findByText("Task 1: implementer (assigned)")
+    const kinds = screen.getByRole("radiogroup", { name: "entry kind" })
+    await user.click(within(kinds).getByRole("radio", { name: "Notes" }))
+    await user.type(screen.getByLabelText("task"), "2")
+    expect(within(kinds).getByRole("radio", { name: "Ledger" })).toBeChecked()
+    expect(within(kinds).getByRole("radio", { name: "All" })).toBeDisabled()
+    await user.clear(screen.getByLabelText("task"))
+    expect(within(kinds).getByRole("radio", { name: "Notes" })).toBeChecked()
+  })
+
+  it("re-reads the whole ledger while an open workstream is filtered to a task", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      routeApi()
+      render(
+        <EntryTimeline
+          workstream={{ ...WORKSTREAM, state: "open", closed_at: null }}
+          initialTask={2}
+        />,
+        { wrapper },
+      )
+      await screen.findByText("Task 2: complete (commits a..9abc1234def)")
+      const ledgerReads = () =>
+        vi
+          .mocked(apiFetch)
+          .mock.calls.filter(([path]) => String(path).includes("limit=500"))
+          .length
+      const before = ledgerReads()
+      await vi.advanceTimersByTimeAsync(WORKLOG_LIVE_MS + 100)
+      await waitFor(() => expect(ledgerReads()).toBeGreaterThan(before))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("shows an entry's task, state and commit as badges", async () => {
     routeApi()
     render(<EntryTimeline workstream={WORKSTREAM} />, { wrapper })

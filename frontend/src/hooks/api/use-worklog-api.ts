@@ -196,7 +196,11 @@ export const LEDGER_PAGE = 500
 
 /** Every `ledger` entry of one workstream, paged to the end in one read, so a
  *  task filter never reflects only the pages a timeline happened to load. */
-export function useAllLedgerEntries(workstreamId: string, enabled: boolean) {
+export function useAllLedgerEntries(
+  workstreamId: string,
+  enabled: boolean,
+  live: boolean,
+) {
   return useQuery<WorklogEntry[]>({
     queryKey: ["worklogLedgerAll", workstreamId],
     queryFn: async () => {
@@ -214,6 +218,7 @@ export function useAllLedgerEntries(workstreamId: string, enabled: boolean) {
       return all
     },
     enabled: !DEMO && enabled,
+    refetchInterval: live && !DEMO ? WORKLOG_LIVE_MS : false,
     initialData: DEMO ? demoEntries(workstreamId, "ledger").items : undefined,
   })
 }
