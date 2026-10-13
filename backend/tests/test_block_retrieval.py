@@ -398,6 +398,9 @@ BLOCK_CHANNEL_MODULES = frozenset({
     # Reads the contents a document's filings wrote, which is document content
     # a vault writer must not reach any more than a block row.
     "app.services.document_revisions",
+    # The progress board reads documents' filed content to derive its records
+    # (spec 2026-10-13 §2.1), so it is classified with the other readers.
+    "app.services.board",
     # The document repository reads and writes block rows and revision
     # contents directly, so a vault writer importing it would reach both.
     "app.repositories.documents",

@@ -19,6 +19,8 @@ WORKLOG_MODULES = frozenset({
     "app.models.worklog",
     "app.schemas.worklog",
     "app.api.routes.worklog",
+    # Reads ledger entries for the progress board (spec 2026-10-13 §2.1).
+    "app.services.board",
 })
 
 MEMORY_SIDE = (
