@@ -14,6 +14,7 @@ vi.mock("darkraise-ui/components/sonner", () => ({
 }))
 
 import { toast } from "darkraise-ui/components/sonner"
+import { useBoardRecords } from "@/hooks/api"
 import { ApiError, apiFetch } from "@/lib/api"
 import { flattenRecords, type BoardRecord } from "../lib/records"
 import { NoteDialog } from "../components/note-dialog"
@@ -92,9 +93,110 @@ describe("NoteDialog", () => {
     )
     expect(screen.getByRole("button", { name: "Move" })).toBeDisabled()
   })
+
+  it("cannot be cancelled while its edit is in flight", async () => {
+    const onCancel = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <NoteDialog
+        prompt={{ record: byTitle("Alpha"), state: "deferred" }}
+        pending
+        onCancel={onCancel}
+        onConfirm={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled()
+    await user.keyboard("{Escape}")
+    expect(onCancel).not.toHaveBeenCalled()
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+  })
 })
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (error: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 describe("useRowEditor", () => {
+  it("sends the hash the last edit answered before the board re-reads", async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    qc.setQueryData(["boardRecords", "darkmem"], RECORDS)
+    const answers = ["h2", "h3"]
+    vi.mocked(apiFetch).mockImplementation((path: string) =>
+      path.startsWith("/board/records")
+        ? new Promise(() => {})
+        : Promise.resolve({
+            document_id: "reg",
+            content_hash: answers.shift(),
+            row: {},
+          }),
+    )
+    const { result } = renderHook(
+      () => ({
+        records: useBoardRecords("darkmem"),
+        editor: useRowEditor("darkmem"),
+      }),
+      {
+        wrapper: ({ children }) => (
+          <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+        ),
+      },
+    )
+    const alpha = () =>
+      flattenRecords(result.current.records.data!).find(
+        (r) => r.title === "Alpha",
+      ) as BoardRecord
+    act(() => result.current.editor.save(alpha(), { note: "first" }))
+    await vi.waitFor(() => expect(alpha().contentHash).toBe("h2"))
+    act(() => result.current.editor.save(alpha(), { note: "second" }))
+    await vi.waitFor(() => expect(alpha().contentHash).toBe("h3"))
+    const patches = vi
+      .mocked(apiFetch)
+      .mock.calls.filter(([, init]) => init?.method === "PATCH")
+      .map(([, init]) => JSON.parse(String(init?.body)).expected_hash)
+    expect(patches).toEqual(["h1", "h2"])
+  })
+
+  it("lets a late success close only the prompt it was sent for", async () => {
+    const landing = deferred<unknown>()
+    vi.mocked(apiFetch).mockReturnValueOnce(landing.promise as Promise<never>)
+    const { result } = renderHook(() => useRowEditor("darkmem"), { wrapper })
+    act(() => result.current.move(byTitle("Alpha"), "deferred"))
+    act(() => result.current.confirmPrompt("parked"))
+    await vi.waitFor(() => expect(result.current.promptPending).toBe(true))
+    act(() => result.current.cancelPrompt())
+    act(() => result.current.move(byTitle("Beta"), "deferred"))
+    expect(result.current.prompt?.record.title).toBe("Beta")
+    expect(result.current.promptPending).toBe(false)
+    await act(async () => {
+      landing.resolve({ document_id: "reg", content_hash: "h2", row: {} })
+      await landing.promise
+    })
+    expect(result.current.prompt?.record.title).toBe("Beta")
+  })
+
+  it("reports a refusal even when a later edit was sent before it answered", async () => {
+    const first = deferred<never>()
+    vi.mocked(apiFetch)
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValueOnce({ document_id: "reg", content_hash: "h2", row: {} })
+    const { result } = renderHook(() => useRowEditor("darkmem"), { wrapper })
+    const alpha = byTitle("Alpha")
+    act(() => result.current.save(alpha, { note: "x" }))
+    act(() => result.current.save(byTitle("Beta"), { note: "y" }))
+    await act(async () => {
+      first.reject(new ApiError("bad cell", 422, undefined, "invalid_cell"))
+      await first.promise.catch(() => {})
+    })
+    await vi.waitFor(() => expect(toast.error).toHaveBeenCalledWith("bad cell"))
+    expect(result.current.editEpoch(alpha.id)).toBe(1)
+  })
+
   it("asks for a Note before a move into deferred, and patches after it", async () => {
     vi.mocked(apiFetch).mockResolvedValue({
       document_id: "reg",

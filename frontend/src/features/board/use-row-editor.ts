@@ -19,6 +19,7 @@ export function useRowEditor(project: string) {
   const mutation = useRegisterRowEdit(project)
   const [prompt, setPrompt] = useState<NotePrompt | null>(null)
   const [refused, setRefused] = useState<Record<string, number>>({})
+  const [inFlight, setInFlight] = useState<Record<string, number>>({})
 
   const save = (
     record: BoardRecord,
@@ -27,16 +28,24 @@ export function useRowEditor(project: string) {
     onRefused?: (error: Error) => void,
   ) => {
     if (record.type !== "register_row" || !record.contentHash) return
-    mutation.mutate(
-      {
+    const count = (delta: number) =>
+      setInFlight((prev) => ({
+        ...prev,
+        [record.id]: (prev[record.id] ?? 0) + delta,
+      }))
+    count(1)
+    // mutateAsync, not mutate: mutate's per-call callbacks fire only for the
+    // latest call, so an earlier edit's refusal would never be reported.
+    mutation
+      .mutateAsync({
         documentId: record.documentId,
         number: record.number,
         expectedHash: record.contentHash,
         ...changes,
-      },
-      {
-        onSuccess: onSaved,
-        onError: (error) => {
+      })
+      .then(
+        () => onSaved?.(),
+        (error: Error) => {
           setRefused((prev) => ({
             ...prev,
             [record.id]: (prev[record.id] ?? 0) + 1,
@@ -48,8 +57,8 @@ export function useRowEditor(project: string) {
           )
           onRefused?.(error)
         },
-      },
-    )
+      )
+      .finally(() => count(-1))
   }
 
   const move = (record: BoardRecord, toState: string) => {
@@ -61,18 +70,15 @@ export function useRowEditor(project: string) {
   // A refusal keeps the prompt open so the typed Note survives. A hash
   // conflict closes it: the prompt holds the stale record, so every retry
   // would conflict again, and the user should see the reloaded row first.
+  // Each answer closes only the prompt it was sent for: by the time it lands
+  // the user may have opened another.
   const confirmPrompt = (note: string) => {
     if (!prompt) return
-    save(
-      prompt.record,
-      { state: prompt.state, note },
-      () => setPrompt(null),
-      (error) => {
-        if (error instanceof ApiError && error.code === "hash_conflict") {
-          setPrompt(null)
-        }
-      },
-    )
+    const sent = prompt
+    const close = () => setPrompt((open) => (open === sent ? null : open))
+    save(sent.record, { state: sent.state, note }, close, (error) => {
+      if (error instanceof ApiError && error.code === "hash_conflict") close()
+    })
   }
 
   const variables = mutation.isPending ? mutation.variables : undefined
@@ -87,7 +93,7 @@ export function useRowEditor(project: string) {
     confirmPrompt,
     cancelPrompt: () => setPrompt(null),
     pendingId,
-    promptPending: prompt !== null && mutation.isPending,
+    promptPending: prompt !== null && (inFlight[prompt.record.id] ?? 0) > 0,
     /** Changes whenever a record's edit is refused, so an uncontrolled cell
      *  keyed on it drops the text the server did not accept. */
     editEpoch: (id: string) => refused[id] ?? 0,

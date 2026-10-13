@@ -204,6 +204,21 @@ export function useRegisterRowEdit(project: string) {
               body: JSON.stringify({ expected_hash: expectedHash, ...changes }),
             },
           ),
+    // The answered hash goes into the cache at once, so an edit made before
+    // the re-read lands does not send the hash this one replaced.
+    onSuccess: (result) =>
+      qc.setQueryData<BoardRecords>(["boardRecords", project], (prev) =>
+        prev
+          ? {
+              ...prev,
+              registers: prev.registers.map((register) =>
+                register.document_id === result.document_id
+                  ? { ...register, content_hash: result.content_hash }
+                  : register,
+              ),
+            }
+          : prev,
+      ),
     onSettled: () => invalidate(qc, "boardRecords", project),
   })
 }

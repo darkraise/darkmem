@@ -46,7 +46,7 @@ function NoteForm({
         />
       </div>
       <DialogFooter>
-        <Button variant="outline" onClick={onCancel}>
+        <Button variant="outline" disabled={pending} onClick={onCancel}>
           Cancel
         </Button>
         <Button
@@ -74,7 +74,12 @@ export function NoteDialog({
   onConfirm: (note: string) => void
 }) {
   return (
-    <Dialog open={prompt !== null} onOpenChange={(open) => !open && onCancel()}>
+    // No dismissal while the edit is in flight: its answer belongs to this
+    // prompt, and the user should see it.
+    <Dialog
+      open={prompt !== null}
+      onOpenChange={(open) => !open && !pending && onCancel()}
+    >
       <DialogContent>
         {prompt ? (
           <NoteForm
