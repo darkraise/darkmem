@@ -125,6 +125,8 @@ describe("no-restricted-imports: src/demo/*", () => {
     // and the tab's test reads the same fixture.
     // Re-measured when the board hooks landed: 113 — `use-board-api.ts`
     // imports its fixtures for `initialData` in demo mode (the work-log shape).
-    expect(countByRule(results, "no-restricted-imports")).toBe(113)
+    // Re-measured when the board panel's test landed: 114 — it reads the
+    // built-in views fixture.
+    expect(countByRule(results, "no-restricted-imports")).toBe(114)
   })
 })
