@@ -4,7 +4,51 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
-## v1.16.0 — 2026-10-06
+## v1.17.0 — 2026-10-13
+
+**A Notion-style progress board.** The Progress tab shows dr-superpowers
+registers and plans filed as documents (`superpowers/registers/*.md`,
+`superpowers/plans/*.md`) as a board or a table, with saved views. The board
+is derived on every read and stores nothing of its own. Revision
+`0003_board_views` adds one table for saved views and upgrades a populated
+database in place.
+
+### Added
+
+- **The progress board.** Register rows and plan tasks lay out in state
+  swimlanes or a table, group and filter by any column, and open into a
+  detail sheet. Views can be saved, renamed and deleted; the two built-in
+  views cannot. Six login routes sit under `/api/v1/board`, and
+  `GET /api/v1/board/records` answers 304 while nothing changed.
+- **Editing register rows from the board.** Dragging a card or editing a cell
+  rewrites only that row's line in the register and files it with the hash
+  the board read, so a concurrent change answers "This register changed
+  since the board loaded it" instead of being overwritten. A move into a
+  state that needs a Note asks for one. Plan-task state is read-only: it
+  comes from the work log's ledger entries (`task`, `state`, `commit`).
+- **Work log entry properties.** Entries show their properties, the Work log
+  filters ledger entries by task, and a board card's "Show in Work log" opens
+  that workstream and task through the URL.
+
+### Changed
+
+- The Progress tab's earlier board, read from `planning/progress.md` and
+  `planning/tasks/`, is retired.
+- The block verbs refuse registers and plans (REST 422, MCP
+  `not_convertible`), and the document reader offers no edit mode for them,
+  because the dr-forge mirror owns those files through content puts.
+- A document put can skip the inline embed; `block_embedding_refresh` embeds
+  the new blocks within the hour. The board's edits use this, so an embedder
+  outage cannot fail one.
+
+### Fixed
+
+- Two article staleness anchors written in one transaction tied, and the
+  check read whichever sat first on disk. It now breaks the tie by id.
+- Board edits: a second edit made before the re-read no longer conflicts, a
+  refused edit is reported even when a later one was sent first, a row
+  numbered `01` can be edited, every card opens from the keyboard, and every
+  edit still in flight shows as saving.
 
 **A full pass over the web UI.** Every page was exercised end to end on a
 local stack, and what was broken, misleading or missing is fixed: 93
