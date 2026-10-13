@@ -50,6 +50,8 @@ database in place.
   numbered `01` can be edited, every card opens from the keyboard, and every
   edit still in flight shows as saving.
 
+## v1.16.0 — 2026-10-06
+
 **A full pass over the web UI.** Every page was exercised end to end on a
 local stack, and what was broken, misleading or missing is fixed: 93
 findings, each with before and after screenshots, in
