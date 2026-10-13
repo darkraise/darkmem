@@ -282,6 +282,38 @@ class TestTheDebounce:
             now=NOW + timedelta(hours=50),
         )
 
+    async def test_anchors_from_one_transaction_resolve_to_the_last_written(
+        self, session
+    ):
+        """`events.created_at` defaults to `now()`, the transaction's start, so
+        both anchors carry one timestamp, and a tie is otherwise broken by
+        physical row order, which a churned heap need not keep."""
+        article = await self._stale(session)
+        await ast_.staleness_settled(
+            session, article, project=PROJECT, debounce_hours=24, now=NOW
+        )
+        await _fact(session)
+        moved = (await ast_.stale_articles(session, project=PROJECT))[0]
+        await ast_.staleness_settled(
+            session, moved, project=PROJECT, debounce_hours=24,
+            now=NOW + timedelta(hours=25),
+        )
+        stamps = (
+            await session.execute(
+                text(
+                    "SELECT DISTINCT created_at FROM events "
+                    "WHERE object_id = CAST(:id AS uuid) AND event_type = :t"
+                ),
+                {"id": article.article_id, "t": ast_.ARTICLE_STALE},
+            )
+        ).all()
+        assert len(stamps) == 1
+
+        assert await ast_.staleness_settled(
+            session, moved, project=PROJECT, debounce_hours=24,
+            now=NOW + timedelta(hours=50),
+        )
+
 
 # ─────────────── re-synthesis supersedes, and keeps lineage ───────────────
 

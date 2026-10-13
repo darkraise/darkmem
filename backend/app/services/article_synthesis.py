@@ -1288,7 +1288,7 @@ _LAST_ANCHOR_SQL = text(
       AND object_id = CAST(:id AS uuid)
       AND event_type = CAST(:event_type AS text)
       AND created_at >= CAST(:since AS timestamptz)
-    ORDER BY created_at DESC
+    ORDER BY created_at DESC, id DESC
     LIMIT 1
     """
 )
