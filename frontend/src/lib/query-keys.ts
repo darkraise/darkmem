@@ -108,6 +108,11 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
     reason:
       "Addressed by workstream id and carrying no project param, the same shape as documentBlocks",
   },
+  worklogLedgerAll: {
+    kind: "global",
+    reason:
+      "Every ledger entry of one workstream, addressed by workstream id like worklogEntries",
+  },
   boardRecords: {
     kind: "manual",
     reason:

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
+import { Input } from "darkraise-ui/components/input"
 import {
   SegmentGroup,
   SegmentGroupIndicator,
@@ -15,6 +16,7 @@ import { cn } from "darkraise-ui/lib"
 import { EmptyState } from "@/components/darkmem"
 import { AppMarkdown } from "@/components/markdown"
 import {
+  useAllLedgerEntries,
   useWorklogEntries,
   type WorklogEntry,
   type WorklogKind,
@@ -61,6 +63,32 @@ function KindBadge({ kind }: { kind: WorklogKind }) {
   return <Badge variant={KIND_VARIANT[kind]}>{kind}</Badge>
 }
 
+/** An entry's integer `task` property, as dr-forge's push sends it. */
+export function entryTask(entry: WorklogEntry): number | null {
+  const task = entry.properties.task
+  return typeof task === "number" && Number.isInteger(task) ? task : null
+}
+
+/** The `task`, `state` and `commit` entry properties, when present. */
+function PropertyBadges({ entry }: { entry: WorklogEntry }) {
+  const task = entryTask(entry)
+  const state = entry.properties.state
+  const commit = entry.properties.commit
+  return (
+    <>
+      {task !== null ? <Badge variant="outline">task {task}</Badge> : null}
+      {typeof state === "string" ? (
+        <Badge variant="secondary">{state}</Badge>
+      ) : null}
+      {typeof commit === "string" ? (
+        <Badge variant="outline" className="font-mono">
+          {commit.slice(0, 7)}
+        </Badge>
+      ) : null}
+    </>
+  )
+}
+
 function EntryRow({
   entry,
   selected,
@@ -81,6 +109,7 @@ function EntryRow({
       )}
     >
       <KindBadge kind={entry.kind} />
+      <PropertyBadges entry={entry} />
       <span className="text-muted-foreground w-12 shrink-0 font-mono text-xs">
         {entry.created_at.slice(11, 16)}
       </span>
@@ -106,6 +135,7 @@ function EntryDetail({ entry }: { entry: WorklogEntry | null }) {
     >
       <div className="flex flex-wrap items-center gap-2">
         <KindBadge kind={entry.kind} />
+        <PropertyBadges entry={entry} />
         <span className="text-muted-foreground font-mono text-xs">
           #{entry.seq} · {entry.run_key} · {formatWhen(entry.created_at)}
         </span>
@@ -133,11 +163,18 @@ function EntryDetail({ entry }: { entry: WorklogEntry | null }) {
 export function EntryTimeline({
   workstream,
   initialEntryId,
+  initialTask,
 }: {
   workstream: Workstream
   initialEntryId?: string
+  /** Opens filtered to one plan task, as the board's "Show in Work log" does. */
+  initialTask?: number
 }) {
   const [kind, setKind] = useState<KindFilter>("all")
+  const [taskText, setTaskText] = useState(
+    initialTask === undefined ? "" : String(initialTask),
+  )
+  const task = /^\d+$/.test(taskText.trim()) ? Number(taskText.trim()) : null
   const [selectedId, setSelectedId] = useState<string | null>(
     initialEntryId ?? null,
   )
@@ -146,9 +183,19 @@ export function EntryTimeline({
     kind === "all" ? null : kind,
     workstream.state === "open",
   )
-  const items = useMemo(
+  // A task filter reads the whole ledger first: filtering only the loaded
+  // pages would show a task's early entries and silently miss its later ones.
+  const ledger = useAllLedgerEntries(workstream.id, task !== null)
+  const paged = useMemo(
     () => entries.data?.pages.flatMap((page) => page.items) ?? [],
     [entries.data],
+  )
+  const items = useMemo(
+    () =>
+      task === null
+        ? paged
+        : (ledger.data ?? []).filter((entry) => entryTask(entry) === task),
+    [task, paged, ledger.data],
   )
   const buckets = useMemo(() => bucketsByDay(items), [items])
   const selected = items.find((e) => e.id === selectedId) ?? null
@@ -164,7 +211,26 @@ export function EntryTimeline({
   }, [focusPending, hasNextPage, isFetchingNextPage, fetchNextPage])
 
   let body
-  if (entries.isError) {
+  if (task !== null && ledger.isError) {
+    body = (
+      <EmptyState
+        kind="failed"
+        title="Could not read this workstream's ledger"
+        description={ledger.error.message}
+      />
+    )
+  } else if (task !== null && ledger.isPending) {
+    body = (
+      <div className="space-y-2">
+        <p className="text-muted-foreground text-sm">Reading the whole ledger…</p>
+        <Skeleton className="h-64 w-full" />
+      </div>
+    )
+  } else if (task !== null && items.length === 0) {
+    body = (
+      <EmptyState kind="filtered" title={`No ledger entries for task ${task}`} />
+    )
+  } else if (entries.isError) {
     body = (
       <EmptyState
         kind="failed"
@@ -200,25 +266,38 @@ export function EntryTimeline({
 
   return (
     <div className="space-y-3">
-      <SegmentGroup
-        value={kind}
-        onValueChange={(next) => {
-          if (next) {
-            setKind(next as KindFilter)
+      <div className="flex flex-wrap items-center gap-2">
+        <SegmentGroup
+          value={kind}
+          onValueChange={(next) => {
+            if (next) {
+              setKind(next as KindFilter)
+              setSelectedId(null)
+            }
+          }}
+          variant="default"
+          aria-label="entry kind"
+        >
+          <SegmentGroupIndicator />
+          <SegmentGroupItem value="all">All</SegmentGroupItem>
+          <SegmentGroupItem value="checkpoint">Checkpoints</SegmentGroupItem>
+          <SegmentGroupItem value="ledger">Ledger</SegmentGroupItem>
+          <SegmentGroupItem value="note">Notes</SegmentGroupItem>
+        </SegmentGroup>
+        <Input
+          aria-label="task"
+          placeholder="Task #"
+          inputMode="numeric"
+          className="w-24"
+          value={taskText}
+          onChange={(event) => {
+            setTaskText(event.target.value)
             setSelectedId(null)
-          }
-        }}
-        variant="default"
-        aria-label="entry kind"
-      >
-        <SegmentGroupIndicator />
-        <SegmentGroupItem value="all">All</SegmentGroupItem>
-        <SegmentGroupItem value="checkpoint">Checkpoints</SegmentGroupItem>
-        <SegmentGroupItem value="ledger">Ledger</SegmentGroupItem>
-        <SegmentGroupItem value="note">Notes</SegmentGroupItem>
-      </SegmentGroup>
+          }}
+        />
+      </div>
       {body}
-      {entries.hasNextPage ? (
+      {task === null && entries.hasNextPage ? (
         <Button
           variant="outline"
           disabled={entries.isFetchingNextPage}

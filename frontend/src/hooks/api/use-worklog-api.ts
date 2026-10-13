@@ -191,6 +191,33 @@ export function useWorklogEntries(
   })
 }
 
+/** Page size of the full ledger read; the route's own ceiling. */
+export const LEDGER_PAGE = 500
+
+/** Every `ledger` entry of one workstream, paged to the end in one read, so a
+ *  task filter never reflects only the pages a timeline happened to load. */
+export function useAllLedgerEntries(workstreamId: string, enabled: boolean) {
+  return useQuery<WorklogEntry[]>({
+    queryKey: ["worklogLedgerAll", workstreamId],
+    queryFn: async () => {
+      const all: WorklogEntry[] = []
+      let after: number | null = null
+      do {
+        const qs = new URLSearchParams({ kind: "ledger", limit: String(LEDGER_PAGE) })
+        if (after !== null) qs.set("after", String(after))
+        const page: WorklogEntryPage = await apiFetch<WorklogEntryPage>(
+          `/worklog/workstreams/${workstreamId}/entries?${qs}`,
+        )
+        all.push(...page.items)
+        after = page.next_after
+      } while (after !== null)
+      return all
+    },
+    enabled: !DEMO && enabled,
+    initialData: DEMO ? demoEntries(workstreamId, "ledger").items : undefined,
+  })
+}
+
 /** What a new session would load for one workstream; `null` when the key names
  *  no workstream in that project, which the route answers with a 404. */
 export function useWorklogResume(project: string, key: string, enabled = true) {
@@ -225,7 +252,13 @@ export function useWorklogSearch() {
 function invalidateWorklog(qc: QueryClient, purgedId?: string) {
   // "projects" too: the Activity list picks which projects to ask from its
   // per-project workstream counts, and queries are otherwise fresh for 60 s.
-  for (const key of ["worklogWorkstreams", "worklogEntries", "worklogResume", "projects"]) {
+  for (const key of [
+    "worklogWorkstreams",
+    "worklogEntries",
+    "worklogLedgerAll",
+    "worklogResume",
+    "projects",
+  ]) {
     void qc.invalidateQueries({
       queryKey: [key],
       // A purged workstream's own reads would only answer 404 on refetch.
