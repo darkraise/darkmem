@@ -174,4 +174,21 @@ describe("apiUpload", () => {
     ).rejects.toMatchObject({ status: 0, message: "The upload was cancelled" })
     expect(FakeXhr.constructed).toBe(0)
   })
+
+  it("carries the error envelope's code and details, as apiFetch does", async () => {
+    FakeXhr.handler = (xhr) => {
+      xhr.status = 413
+      xhr.responseText = JSON.stringify({
+        detail: "too large",
+        error: { code: "payload_too_large", message: "too large", details: [{ limit: 1 }] },
+      })
+      xhr.onload?.()
+    }
+    await expect(apiUpload("/pages/p1/attachments", new Blob(["x"]))).rejects.toMatchObject({
+      status: 413,
+      code: "payload_too_large",
+      details: [{ limit: 1 }],
+      message: "too large",
+    })
+  })
 })

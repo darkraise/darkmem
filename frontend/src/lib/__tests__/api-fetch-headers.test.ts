@@ -67,3 +67,39 @@ describe("apiFetchWithHeaders", () => {
     await expect(apiFetch<{ ok: boolean }>("/pages")).resolves.toEqual({ ok: true })
   })
 })
+
+describe("ApiError from an error envelope", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn())
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it("carries the envelope's code and details beside the message", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      respond({
+        status: 409,
+        body: {
+          detail: "this register changed since it was loaded",
+          error: {
+            code: "hash_conflict",
+            message: "this register changed since it was loaded",
+            details: [{ current_hash: "h2" }],
+          },
+        },
+      }),
+    )
+    await expect(apiFetch("/board/registers/d/rows/1")).rejects.toMatchObject({
+      status: 409,
+      code: "hash_conflict",
+      details: [{ current_hash: "h2" }],
+      message: "this register changed since it was loaded",
+    })
+  })
+
+  it("leaves the code undefined when the body is not an envelope", async () => {
+    vi.mocked(fetch).mockResolvedValue(respond({ status: 500, body: { detail: "boom" } }))
+    await expect(apiFetch("/x")).rejects.toMatchObject({ status: 500, code: undefined })
+  })
+})

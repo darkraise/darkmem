@@ -34,12 +34,18 @@ export class ApiError extends Error {
   // the wire (app/main.py flattens a list `detail` to `error.details`, never
   // to the top-level `detail` string). Absent on every other error shape.
   details?: unknown[]
+  // `error.code` from the ErrorEnvelope: the generic status name
+  // (`not_found`, `conflict`) or a door's own reason (the board's
+  // `hash_conflict`, `note_required`). Absent when the body was not an
+  // envelope.
+  code?: string
 
-  constructor(message: string, status: number, details?: unknown[]) {
+  constructor(message: string, status: number, details?: unknown[], code?: string) {
     super(message)
     this.name = "ApiError"
     this.status = status
     this.details = details
+    this.code = code
   }
 }
 
@@ -86,11 +92,15 @@ export async function apiFetchWithHeaders<T>(
     const error = await response
       .json()
       .catch(() => ({ detail: response.statusText }))
-    const body = error as { detail?: string; error?: { details?: unknown[] } }
+    const body = error as {
+      detail?: string
+      error?: { details?: unknown[]; code?: string }
+    }
     throw new ApiError(
       body.detail || `API error: ${response.status}`,
       response.status,
       body.error?.details,
+      body.error?.code,
     )
   }
   if (response.status === 204) {
@@ -174,17 +184,19 @@ export function apiUpload<T>(
       }
       let message = `API error: ${xhr.status}`
       let details: unknown[] | undefined
+      let code: string | undefined
       try {
         const parsed = JSON.parse(xhr.responseText) as {
           detail?: string
-          error?: { details?: unknown[] }
+          error?: { details?: unknown[]; code?: string }
         }
         message = parsed.detail || message
         details = parsed.error?.details
+        code = parsed.error?.code
       } catch {
         // A non-JSON body (an nginx page, an empty 502) keeps the status text.
       }
-      reject(new ApiError(message, xhr.status, details))
+      reject(new ApiError(message, xhr.status, details, code))
     }
     xhr.onerror = () => {
       done()
