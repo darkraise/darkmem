@@ -240,3 +240,107 @@ def parse_plan(text: str) -> ParsedPlan:
     if current is not None:
         tasks.append(PlanTask(**current))
     return ParsedPlan(title=_first_title(lines, flags), tasks=tasks)
+
+
+# Cell index of each column inside a well-formed row's eight fields.
+_CELL_INDEX = {"item": 2, "assigned": 3, "acceptance": 4, "state": 5, "note": 6}
+EDITABLE_COLUMNS = frozenset({"state", "note", "assigned"})
+
+
+class RowEditRefused(ValueError):
+    """A register row edit the rewrite will not make; `reason` is the wire code."""
+
+    def __init__(self, reason: str, message: str):
+        self.reason = reason
+        super().__init__(message)
+
+
+def _boundaries(line: str) -> list[int]:
+    """Indexes of the `|` that split cells: a `|` after a backslash is text."""
+    return [i for i, ch in enumerate(line) if ch == "|" and (i == 0 or line[i - 1] != "\\")]
+
+
+def _splice_cell(segment: str, value: str) -> str:
+    core = segment.strip(" \t")
+    if not core:
+        return f" {value} " if value else segment
+    lead = segment[: len(segment) - len(segment.lstrip(" \t"))]
+    trail = segment[len(segment.rstrip(" \t")):]
+    return f"{lead}{value}{trail}"
+
+
+def rewrite_register_row(text: str, number: int, changes: dict[str, str]) -> str:
+    """Splice new cell values into row `number`, changing nothing else.
+
+    Never re-serialises: only each changed cell's trimmed text is replaced,
+    so padding, indentation, a trailing `\\r`, text after the last `|` and
+    every other line keep their bytes.
+    """
+    unknown = set(changes) - EDITABLE_COLUMNS
+    if unknown:
+        raise ValueError(f"not an editable column: {sorted(unknown)}")
+    values: dict[str, str] = {}
+    for column, raw in changes.items():
+        if "\n" in raw or "\r" in raw:
+            raise RowEditRefused("invalid_cell", f"the {column} may not contain a line break")
+        values[column] = raw.strip(" \t")
+    if "state" in values and values["state"] not in REGISTER_STATES:
+        raise RowEditRefused(
+            "unknown_state",
+            f"{values['state']!r} is not a register state; use one of {', '.join(REGISTER_STATES)}",
+        )
+
+    parsed = parse_register(text)
+    matches = [row for row in parsed.rows if row.number == number]
+    if not matches:
+        named = [m for m in parsed.malformed if m.number == number]
+        if any(m.reason.startswith("duplicate number") for m in named):
+            raise RowEditRefused("duplicate_row", f"two rows carry the number {number}")
+        if named:
+            raise RowEditRefused(
+                "malformed_row", f"row {number} is malformed; fix it in the register first",
+            )
+        raise RowEditRefused("not_found", f"no row {number} in this register")
+    row = matches[0]
+    state = values.get("state", row.state)
+    note = values.get("note", row.note)
+    if state in NOTE_REQUIRED_STATES and is_blank_note(note):
+        raise RowEditRefused("note_required", f"a row in {state!r} needs a Note")
+
+    raw_lines = text.split("\n")
+    original = raw_lines[row.line - 1]
+    pipes = _boundaries(original)
+    updated = original
+    for column in sorted(values, key=lambda c: _CELL_INDEX[c], reverse=True):
+        cell = _CELL_INDEX[column]
+        start, end = pipes[cell - 1] + 1, pipes[cell]
+        escaped = values[column].replace("|", "\\|")
+        updated = updated[:start] + _splice_cell(updated[start:end], escaped) + updated[end:]
+
+    check = _cells(updated.replace("\r", ""))
+    if (
+        check is None
+        or len(check) != 8
+        or check[1] != str(number)
+        or any(check[_CELL_INDEX[c]] != v for c, v in values.items())
+    ):
+        raise RowEditRefused(
+            "invalid_cell", "that value would change the row's shape; remove a trailing backslash",
+        )
+    raw_lines[row.line - 1] = updated
+    return "\n".join(raw_lines)
+
+
+class BoardRefusal(Exception):
+    """A refusal the board's REST door answers as `error.code` = `reason`.
+
+    `fields` ride `error.details[0]` (e.g. `current_hash` on a hash
+    conflict), so the SPA can tell causes apart without parsing prose.
+    """
+
+    def __init__(self, status_code: int, reason: str, message: str, **fields):
+        self.status_code = status_code
+        self.reason = reason
+        self.message = message
+        self.fields = fields
+        super().__init__(message)
