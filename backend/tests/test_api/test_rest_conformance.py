@@ -220,6 +220,7 @@ EXPECTED_STATUS = {
     ("POST", "/api/v1/pipeline-failures/{failure_id}/retry"): 202,
     ("GET", "/api/v1/pipeline/metrics"): 200,
     ("GET", "/api/v1/board/records"): 200,
+    ("PATCH", "/api/v1/board/registers/{document_id}/rows/{number}"): 200,
     ("GET", "/api/v1/mcp-calls"): 200,
     ("GET", "/api/v1/mcp-calls/summary"): 200,
     ("GET", "/api/v1/usage/overview"): 200,

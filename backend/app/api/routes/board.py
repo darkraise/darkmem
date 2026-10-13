@@ -2,18 +2,28 @@
 
 Provides:
   - GET    /api/v1/board/records
+  - PATCH  /api/v1/board/registers/{document_id}/rows/{number}
 
 REST-only behind login: no MCP tool, no scope, and a `dmk_` key is refused.
+Refusals raise `BoardRefusal`, which `app.main` answers with `error.code` set
+to the refusal's reason.
 """
 from __future__ import annotations
+
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import TokenPayload, require_auth
 from app.database import get_session
-from app.schemas.board import BoardRecordsResponse
+from app.schemas.board import (
+    BoardRecordsResponse,
+    RegisterRowEditRequest,
+    RegisterRowEditResponse,
+)
 from app.services.board import board_version, load_board
+from app.services.board_edit import edit_register_row
 
 router = APIRouter(prefix="/api/v1/board", tags=["board"])
 
@@ -44,3 +54,30 @@ async def board_records_route(
         return Response(status_code=304, headers=headers)
     response.headers.update(headers)
     return BoardRecordsResponse(**await load_board(session, project))
+
+
+@router.patch(
+    "/registers/{document_id}/rows/{number}", response_model=RegisterRowEditResponse,
+)
+async def edit_register_row_route(
+    document_id: UUID,
+    number: int,
+    body: RegisterRowEditRequest,
+    user: TokenPayload = Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+) -> RegisterRowEditResponse:
+    """Edit one register row's state, note or assigned, as a document revision."""
+    changes = {
+        column: value
+        for column, value in (("state", body.state), ("note", body.note), ("assigned", body.assigned))
+        if value is not None
+    }
+    result = await edit_register_row(
+        session,
+        document_id=str(document_id),
+        number=number,
+        expected_hash=body.expected_hash,
+        changes=changes,
+        actor=user.sub,
+    )
+    return RegisterRowEditResponse(**result)

@@ -92,3 +92,18 @@ class BoardRecordsResponse(BaseModel):
     project: str
     registers: list[BoardRegister]
     plans: list[BoardPlan]
+
+
+class RegisterRowEditRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_hash: str = Field(min_length=1)
+    state: str | None = None
+    note: str | None = None
+    assigned: str | None = None
+
+
+class RegisterRowEditResponse(BaseModel):
+    document_id: str
+    content_hash: str
+    row: RegisterRow

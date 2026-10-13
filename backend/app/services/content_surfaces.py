@@ -794,6 +794,7 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # REST-only (`board.reads` / `board.write` on docs/two-door-parity.md).
     # Views are layout definitions and carry no content at all.
     "GET /api/v1/board/records",
+    "PATCH /api/v1/board/registers/{document_id}/rows/{number}",
     "GET /health",
     "GET /api/v1/analytics/stats",
     "POST /api/v1/analytics/reprocess",

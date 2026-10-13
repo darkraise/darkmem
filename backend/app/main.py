@@ -13,6 +13,7 @@ from starlette.datastructures import Headers, MutableHeaders
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.services.git_accounts import GitAccountInUse
+from app.services.board_parse import BoardRefusal
 from starlette.middleware.gzip import GZipMiddleware
 
 from sqlalchemy import text
@@ -971,6 +972,19 @@ async def _http_exception_handler(_request, exc: StarletteHTTPException):
     details = detail if isinstance(detail, list) else None
     code = _HTTP_ERROR_CODES.get(exc.status_code, f"http_{exc.status_code}")
     return _error_response(exc.status_code, code, message, details, getattr(exc, "headers", None))
+
+
+@app.exception_handler(BoardRefusal)
+async def _board_refusal_handler(_request, exc: BoardRefusal):
+    """The board's refusals carry their reason as `error.code`.
+
+    Its own handler because a dict `detail` on the generic HTTPException path
+    is flattened to "Request failed"; the reason and its fields are what let
+    the SPA tell a hash conflict from a missing Note.
+    """
+    return _error_response(
+        exc.status_code, exc.reason, exc.message, [exc.fields] if exc.fields else None,
+    )
 
 
 @app.exception_handler(GitAccountInUse)

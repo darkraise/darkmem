@@ -1671,6 +1671,22 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="board.write",
+        status=REST_ONLY,
+        rest=(
+            ("PATCH", f"{V1}/board/registers/{{document_id}}/rows/{{number}}"),
+        ),
+        mcp=(),
+        reason=(
+            "A register row edit is the operator moving a card; an agent edits "
+            "the same register through document_put with expected_hash, which "
+            "is the write the row edit itself files, so a tool would duplicate "
+            "a door that already exists on MCP. Saved views are the operator's "
+            "layout and hold no data. Single-door by owner ruling (spec "
+            "2026-10-13 section 8: no MCP tool for the board or its views)."
+        ),
+    ),
+    Surface(
         name="pages.reads",
         status=REST_ONLY,
         rest=(
