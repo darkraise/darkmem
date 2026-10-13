@@ -73,7 +73,7 @@ test.describe("project workspace", () => {
     const lane = page.getByRole("region", { name: "Register rows" })
     const open = lane.getByRole("region", { name: "column open" })
     const planned = lane.getByRole("region", { name: "column planned" })
-    const card = open.getByRole("button", { name: /#1 Drag me to planned/ })
+    const card = open.getByRole("group", { name: /#1 Drag me to planned/ })
     await expect(card).toBeVisible()
 
     // Columns lay out side by side -- the assertion happy-dom cannot make.
@@ -96,7 +96,7 @@ test.describe("project workspace", () => {
     await page.mouse.up()
 
     await expect(
-      planned.getByRole("button", { name: /#1 Drag me to planned/ }),
+      planned.getByRole("group", { name: /#1 Drag me to planned/ }),
     ).toBeVisible()
     const read = await page.request.get(
       `/api/v1/documents/${documentId}?include_content=true`,
@@ -115,7 +115,7 @@ test.describe("project workspace", () => {
       .getByRole("region", { name: "Register rows" })
       .getByRole("region", { name: "column doing" })
     await expect(
-      doing.getByRole("button", { name: /#2 Stay where you are/ }),
+      doing.getByRole("group", { name: /#2 Stay where you are/ }),
     ).toBeVisible()
   })
 
