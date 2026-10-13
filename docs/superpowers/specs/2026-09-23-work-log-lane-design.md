@@ -525,6 +525,10 @@ Done means: the register's items 1, 2, 4 and the darkmem half of 3 and 5 are
 - **Merging work-log hits into `memory_search`**, in either direction.
 - **A task model, statuses per task, dependencies.** Still rejected (2026-08-31
   §7); `properties` carries what a client wants to record.
+  Amended 2026-10-13: narrowed by `2026-10-13-notion-progress-board-design.md`
+  §4 — a board reads the `task`/`state` entry properties a client sends; there
+  is still no task table, no server-side writer of task state and no
+  dependencies.
 - **Revisions for block-first documents and pages.** Stated limit (§3).
 - **A refusing memory gate.** Decision 8: warn, never lose a write.
 

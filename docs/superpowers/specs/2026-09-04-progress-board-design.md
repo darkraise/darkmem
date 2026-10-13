@@ -1,6 +1,7 @@
 # The Progress board — a projection of the ledger, never a second store
 
-**Date:** 2026-09-04. **Status:** increment 1 landed 2026-09-04 (parsers + golden tests); increments 2-4 open. **Scope:** the
+**Date:** 2026-09-04. **Status:** superseded 2026-10-13 by
+`2026-10-13-notion-progress-board-design.md`, which retires this board; increment 1 landed 2026-09-04 (parsers + golden tests). **Scope:** the
 Progress tab of `/projects/$project`, which the artifacts spec deliberately
 left out (`2026-09-03-artifacts-workspace-revamp-design.md` §10).
 
@@ -92,6 +93,11 @@ it is cheap under §4, not because the ledger is failing.
 
 ## 4. The decision that makes it cheap: projection, never a store
 
+**Amended 2026-10-13:** reversed for register rows only by
+`2026-10-13-notion-progress-board-design.md` §4: a register row edit is the
+write-through named below, landing as a darkmem document revision. Plan-task
+state stays read-only.
+
 **The board is read-only and derives entirely from the two files. It writes
 nothing.** `progress.md` stays canonical, stays hand-edited, stays the thing a
 merge commit touches.
@@ -182,6 +188,10 @@ measure — with the 806/17 measurement stated in the UI copy, so a reader
 cannot mistake an unchecked list for unfinished work.
 
 ## 7. What NOT to build
+
+**Amended 2026-10-13** (`2026-10-13-notion-progress-board-design.md` §4): "no
+writes" holds for plan tasks only and "no new backend route" is reversed; the
+other rulings here hold.
 
 - **No writes.** §4.
 - **No burndown, velocity, or estimate-vs-actual.** `Size` is S/M/L, there are
