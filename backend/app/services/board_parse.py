@@ -321,7 +321,8 @@ def rewrite_register_row(text: str, number: int, changes: dict[str, str]) -> str
     if (
         check is None
         or len(check) != 8
-        or check[1] != str(number)
+        or not check[1].isdigit()
+        or int(check[1]) != number
         or any(check[_CELL_INDEX[c]] != v for c, v in values.items())
     ):
         raise RowEditRefused(

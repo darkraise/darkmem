@@ -83,3 +83,9 @@ def test_a_note_and_a_state_change_together():
     assert rewrite_register_row(text, 1, {"state": "verify", "note": "check it"}) == _register(
         "| 1 | a | - | - | verify | check it |"
     )
+
+
+def test_a_zero_padded_row_number_still_edits():
+    text = _register("| 01 | a | - | - | open | - |")
+    changed = rewrite_register_row(text, 1, {"state": "planned"})
+    assert "| 01 | a | - | - | planned | - |" in changed
