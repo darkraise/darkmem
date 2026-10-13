@@ -1657,6 +1657,7 @@ PARITY_TABLE: tuple[Surface, ...] = (
         status=REST_ONLY,
         rest=(
             ("GET", f"{V1}/board/records"),
+            ("GET", f"{V1}/board/views"),
         ),
         mcp=(),
         reason=(
@@ -1675,6 +1676,9 @@ PARITY_TABLE: tuple[Surface, ...] = (
         status=REST_ONLY,
         rest=(
             ("PATCH", f"{V1}/board/registers/{{document_id}}/rows/{{number}}"),
+            ("POST", f"{V1}/board/views"),
+            ("PATCH", f"{V1}/board/views/{{view_id}}"),
+            ("DELETE", f"{V1}/board/views/{{view_id}}"),
         ),
         mcp=(),
         reason=(

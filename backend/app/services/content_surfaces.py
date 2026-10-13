@@ -795,6 +795,10 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # Views are layout definitions and carry no content at all.
     "GET /api/v1/board/records",
     "PATCH /api/v1/board/registers/{document_id}/rows/{number}",
+    "GET /api/v1/board/views",
+    "POST /api/v1/board/views",
+    "PATCH /api/v1/board/views/{view_id}",
+    "DELETE /api/v1/board/views/{view_id}",
     "GET /health",
     "GET /api/v1/analytics/stats",
     "POST /api/v1/analytics/reprocess",

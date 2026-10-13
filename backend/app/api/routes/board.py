@@ -3,6 +3,10 @@
 Provides:
   - GET    /api/v1/board/records
   - PATCH  /api/v1/board/registers/{document_id}/rows/{number}
+  - GET    /api/v1/board/views
+  - POST   /api/v1/board/views
+  - PATCH  /api/v1/board/views/{view_id}
+  - DELETE /api/v1/board/views/{view_id}
 
 REST-only behind login: no MCP tool, no scope, and a `dmk_` key is refused.
 Refusals raise `BoardRefusal`, which `app.main` answers with `error.code` set
@@ -12,18 +16,22 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import TokenPayload, require_auth
 from app.database import get_session
 from app.schemas.board import (
     BoardRecordsResponse,
+    BoardView,
+    BoardViewCreateRequest,
+    BoardViewUpdateRequest,
     RegisterRowEditRequest,
     RegisterRowEditResponse,
 )
 from app.services.board import board_version, load_board
 from app.services.board_edit import edit_register_row
+from app.services.board_views import create_view, delete_view, list_views, update_view
 
 router = APIRouter(prefix="/api/v1/board", tags=["board"])
 
@@ -81,3 +89,50 @@ async def edit_register_row_route(
         actor=user.sub,
     )
     return RegisterRowEditResponse(**result)
+
+
+@router.get("/views", response_model=list[BoardView])
+async def list_views_route(
+    project: str = Query(..., min_length=1),
+    _user: TokenPayload = Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+) -> list[BoardView]:
+    """The two built-in views, then the project's saved views by (position, name)."""
+    return [BoardView(**view) for view in await list_views(session, project)]
+
+
+@router.post("/views", response_model=BoardView, status_code=status.HTTP_201_CREATED)
+async def create_view_route(
+    body: BoardViewCreateRequest,
+    _user: TokenPayload = Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+) -> BoardView:
+    return BoardView(**await create_view(
+        session, project=body.project, name=body.name,
+        definition=body.definition, position=body.position,
+    ))
+
+
+@router.patch("/views/{view_id}", response_model=BoardView)
+async def update_view_route(
+    view_id: str,
+    body: BoardViewUpdateRequest,
+    _user: TokenPayload = Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+) -> BoardView:
+    # An explicit null changes nothing: every column it could name is NOT NULL.
+    changes = {
+        field: getattr(body, field)
+        for field in body.model_fields_set
+        if getattr(body, field) is not None
+    }
+    return BoardView(**await update_view(session, view_id, changes=changes))
+
+
+@router.delete("/views/{view_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_view_route(
+    view_id: str,
+    _user: TokenPayload = Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+) -> None:
+    await delete_view(session, view_id)

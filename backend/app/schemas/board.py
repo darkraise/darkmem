@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -107,3 +108,33 @@ class RegisterRowEditResponse(BaseModel):
     document_id: str
     content_hash: str
     row: RegisterRow
+
+
+class BoardView(BaseModel):
+    id: str
+    project: str
+    name: str
+    position: int
+    definition: dict[str, Any]
+    builtin: bool
+    created_at: datetime | None
+    updated_at: datetime | None
+
+
+class BoardViewCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    project: str = Field(min_length=1)
+    name: str = Field(min_length=1, max_length=100)
+    # Validated by `board_views.validate_definition`, which answers
+    # `invalid_definition` rather than FastAPI's generic 422.
+    definition: Any
+    position: int | None = Field(default=None, ge=0, le=1_000_000)
+
+
+class BoardViewUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    definition: Any = None
+    position: int | None = Field(default=None, ge=0, le=1_000_000)
