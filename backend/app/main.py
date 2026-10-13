@@ -13,7 +13,6 @@ from starlette.datastructures import Headers, MutableHeaders
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.services.git_accounts import GitAccountInUse
-from app.services.board_parse import BoardRefusal
 from starlette.middleware.gzip import GZipMiddleware
 
 from sqlalchemy import text
@@ -26,6 +25,7 @@ from sqlalchemy.exc import DBAPIError
 
 from app.config import settings
 from app.schemas.envelope import ErrorDetail, ErrorEnvelope
+from app.services.board_parse import BoardRefusal
 from app.services.events import reconcile_event_partitions
 from app.services.llm import LLMOrchestrator
 from app.services.llm_quirks import models_probe

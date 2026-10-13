@@ -60,8 +60,9 @@ async def edit_register_row(
     """Rewrite one row and file the register; answers the row and the new hash.
 
     The put takes the row lock and compares `expected_hash` inside its own
-    UPDATE, so a racing writer meets a conflict rather than an overwrite. It
-    passes no `properties` (ruling 8) and embeds nothing (§2.4).
+    UPDATE, so a racing writer meets a conflict rather than an overwrite. Like
+    the REST door and the mirror's own put, it passes no `properties` (spec
+    2026-10-13 decision 8), and it embeds nothing (§2.4).
     """
     # The rewrite raises a plain ValueError on an unknown column, which would
     # otherwise escape as an unmapped error indistinguishable from a refusal's

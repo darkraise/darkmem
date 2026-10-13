@@ -228,7 +228,7 @@ class DocumentNotConvertible(ValueError):
 
 
 class DocumentMirrorOwned(DocumentNotConvertible):
-    """block verb refused: the dr-forge mirror owns this document.
+    """Block verb refused: the dr-forge mirror owns this document.
 
     Registers and plans (`superpowers/registers/`, `superpowers/plans/`) reach
     darkmem as content puts from the mirror, and the progress board edits
