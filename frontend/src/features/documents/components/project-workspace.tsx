@@ -80,6 +80,7 @@ import {
   type QaCitation,
 } from "@/hooks/api"
 import { plainText } from "@/lib/plain-text"
+import { isMirrorOwned } from "@/lib/mirror-owned"
 
 export const TAB_VALUES = ["artifacts", "progress"] as const
 export type WorkspaceTab = (typeof TAB_VALUES)[number]
@@ -613,7 +614,7 @@ export function ProjectWorkspace({
                   <div className="flex gap-5">
                     <div className="min-w-0 flex-1">
                       <Card className="p-4">
-                        {mode === "read" ? (
+                        {mode === "read" || isMirrorOwned(selected.uri) ? (
                           <DocumentReader
                             documentId={selected.id}
                             focusBlockId={focusBlockId}

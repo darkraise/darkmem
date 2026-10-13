@@ -102,4 +102,13 @@ describe("DocumentActions", () => {
     await userEvent.click(screen.getByRole("button", { name: /summarize/i }))
     expect(summarize).toHaveBeenCalledTimes(1)
   })
+
+  it.each([
+    "superpowers/registers/2026-09-23-work-log-lane.md",
+    "superpowers/plans/2026-10-13-board.md",
+  ])("offers no edit mode on a mirror-owned document (%s)", (uri) => {
+    renderActions({ document: { ...DOC, uri } })
+    expect(screen.queryByRole("button", { name: /^edit$/i })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /delete/i })).toBeInTheDocument()
+  })
 })

@@ -37,6 +37,7 @@ import {
 import { DocumentDetailsDialog } from "./document-metadata"
 import { RevisionsSheet } from "./revisions-sheet"
 import { plainText } from "@/lib/plain-text"
+import { isMirrorOwned } from "@/lib/mirror-owned"
 
 export type ReaderMode = "read" | "edit"
 
@@ -73,13 +74,15 @@ export function DocumentActions({
 
   return (
     <div className="flex items-center gap-1">
-      <IconButton
-        icon={editing ? BookOpen : Pencil}
-        label={editing ? "Read" : "Edit"}
-        variant={editing ? "default" : "ghost"}
-        aria-pressed={editing}
-        onClick={() => onModeChange(editing ? "read" : "edit")}
-      />
+      {isMirrorOwned(document.uri) ? null : (
+        <IconButton
+          icon={editing ? BookOpen : Pencil}
+          label={editing ? "Read" : "Edit"}
+          variant={editing ? "default" : "ghost"}
+          aria-pressed={editing}
+          onClick={() => onModeChange(editing ? "read" : "edit")}
+        />
+      )}
 
       <IconButton
         icon={SlidersHorizontal}
