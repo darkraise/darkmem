@@ -792,8 +792,10 @@ DOCUMENT_DOOR = "app.services.document_door"
 # module the door reaches past it unscanned.
 # `block_verbs` seeds the closure too: it writes blocks, so it is a filing
 # path, and its own import graph must not reach the memory pipeline either.
+# `board_edit` files register edits through the door, so it seeds it as well.
 FILING_CLOSURE = import_closure(
-    BACKEND, "app.services.block_pipeline", DOCUMENT_DOOR, "app.services.block_verbs"
+    BACKEND, "app.services.block_pipeline", DOCUMENT_DOOR, "app.services.block_verbs",
+    "app.services.board_edit",
 )
 
 

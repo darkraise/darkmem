@@ -401,6 +401,8 @@ BLOCK_CHANNEL_MODULES = frozenset({
     # The progress board reads documents' filed content to derive its records
     # (spec 2026-10-13 §2.1), so it is classified with the other readers.
     "app.services.board",
+    # Reads a register's filed content to rewrite one row.
+    "app.services.board_edit",
     # The document repository reads and writes block rows and revision
     # contents directly, so a vault writer importing it would reach both.
     "app.repositories.documents",
