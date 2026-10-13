@@ -17,10 +17,21 @@ import {
 } from "@/features/documents/components/project-workspace"
 import { useProjects } from "@/hooks/api"
 
+function positiveInteger(value: unknown): number | undefined {
+  const n =
+    typeof value === "string" && /^\d+$/.test(value) ? Number(value) : value
+  return typeof n === "number" && Number.isInteger(n) && n > 0 ? n : undefined
+}
+
 export const Route = createFileRoute("/_authenticated/projects_/$project")({
   validateSearch: (
     search: Record<string, unknown>,
-  ): { tab?: WorkspaceTab; workstream?: string; view?: string } => ({
+  ): {
+    tab?: WorkspaceTab
+    workstream?: string
+    task?: number
+    view?: string
+  } => ({
     tab: TAB_VALUES.includes(search.tab as WorkspaceTab)
       ? (search.tab as WorkspaceTab)
       : undefined,
@@ -28,6 +39,7 @@ export const Route = createFileRoute("/_authenticated/projects_/$project")({
       typeof search.workstream === "string" && search.workstream
         ? search.workstream
         : undefined,
+    task: positiveInteger(search.task),
     view:
       typeof search.view === "string" && search.view ? search.view : undefined,
   }),
@@ -39,7 +51,7 @@ function ProjectWorkspacePage() {
   // replaces `createFileRoute` with a passthrough, so the route object it
   // gets back carries no methods (the notes route does the same).
   const { project } = useParams({ from: "/_authenticated/projects_/$project" })
-  const { tab, workstream, view } = useSearch({
+  const { tab, workstream, task, view } = useSearch({
     from: "/_authenticated/projects_/$project",
   })
   const navigate = useNavigate()
@@ -90,6 +102,17 @@ function ProjectWorkspacePage() {
           key={project}
           project={project}
           workstream={workstream}
+          task={task}
+          onShowInWorkLog={(nextWorkstream, nextTask) =>
+            navigate({
+              to: ".",
+              search: (prev) => ({
+                ...prev,
+                workstream: nextWorkstream,
+                task: nextTask,
+              }),
+            })
+          }
           view={view}
           onViewChange={(next) =>
             navigate({ to: ".", search: (prev) => ({ ...prev, view: next }) })

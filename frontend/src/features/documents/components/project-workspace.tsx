@@ -138,6 +138,8 @@ type QueryMode = "search" | "ask"
 export function ProjectWorkspace({
   project,
   workstream,
+  task,
+  onShowInWorkLog,
   view,
   onViewChange,
   emptyAction,
@@ -145,6 +147,11 @@ export function ProjectWorkspace({
 }: {
   project: string
   workstream?: string
+  /** The plan task the Work log opens filtered to (`?task=`). */
+  task?: number
+  /** A board task's "Show in Work log": the route writes it to the URL, which
+   *  hands it back as `workstream` and `task`. */
+  onShowInWorkLog?: (workstream: string, task: number) => void
   /** The board view the Progress tab shows (`?view=`). */
   view?: string
   onViewChange?: (view: string) => void
@@ -183,17 +190,13 @@ export function ProjectWorkspace({
   const [mode, setMode] = useState<ReaderMode>("read")
   const search = useDocumentSearch()
   const qa = useGroundedQa()
-  /** The workstream and task "Show in Work log" asked for; `n` remounts the
-   *  panel when the same task is asked for twice. */
-  const [logFocus, setLogFocus] = useState<{
-    key: string
-    task: number
-    n: number
-  } | null>(null)
+  /** Counts "Show in Work log" clicks: it remounts the panel when the same
+   *  task is asked for again, which leaves the URL unchanged. */
+  const [shown, setShown] = useState(0)
   const workLogRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    if (logFocus) workLogRef.current?.scrollIntoView?.({ behavior: "smooth" })
-  }, [logFocus])
+    if (shown) workLogRef.current?.scrollIntoView?.({ behavior: "smooth" })
+  }, [shown])
   // Below `lg` the split stacks: side by side at 26% a phone left the tree
   // ~90px wide, too narrow to show a single file name. Reads `false` in
   // tests, so the stacked branch is the fallback.
@@ -759,24 +762,21 @@ export function ProjectWorkspace({
             viewId={view}
             onViewChange={(next) => onViewChange?.(next)}
             onOpenDocument={openDocumentByUri}
-            onShowInWorkLog={(key, task) =>
-              setLogFocus((prev) => ({ key, task, n: (prev?.n ?? 0) + 1 }))
-            }
+            onShowInWorkLog={(key, taskNumber) => {
+              onShowInWorkLog?.(key, taskNumber)
+              setShown((n) => n + 1)
+            }}
           />
         </div>
         <div ref={workLogRef}>
           <RegionLabel>work log</RegionLabel>
           <WorkLogPanel
-            // Keyed on the requested workstream: the panel seeds its selection
-            // from it once, so a link to another workstream must remount it.
-            key={
-              logFocus
-                ? `${logFocus.key}:${logFocus.task}:${logFocus.n}`
-                : (workstream ?? "")
-            }
+            // Keyed on the requested workstream and task: the panel seeds its
+            // selection from them once, so a new link must remount it.
+            key={`${workstream ?? ""}:${task ?? ""}:${shown}`}
             project={project}
-            initialWorkstream={logFocus?.key ?? workstream}
-            initialTask={logFocus?.task}
+            initialWorkstream={workstream}
+            initialTask={task}
             onOpenDocument={openDocumentByUri}
           />
         </div>

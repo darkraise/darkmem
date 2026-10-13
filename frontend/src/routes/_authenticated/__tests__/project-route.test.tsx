@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import type { ComponentType, ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -7,6 +7,7 @@ vi.mock("@/lib/demo-flag", () => ({ DEMO: false }))
 vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
 const routerMocks = vi.hoisted(() => ({
   useParams: vi.fn(() => ({ project: "darkmem" })),
+  navigate: vi.fn(),
 }))
 vi.mock("@tanstack/react-router", async () => {
   const actual = await vi.importActual<Record<string, unknown>>(
@@ -17,7 +18,7 @@ vi.mock("@tanstack/react-router", async () => {
     createFileRoute: () => (opts: Record<string, unknown>) => opts,
     useParams: () => routerMocks.useParams(),
     useSearch: () => ({}),
-    useNavigate: () => vi.fn(),
+    useNavigate: () => routerMocks.navigate,
     Link: ({ children, to }: { children: ReactNode; to: string }) => (
       <a href={to}>{children}</a>
     ),
@@ -25,8 +26,19 @@ vi.mock("@tanstack/react-router", async () => {
 })
 vi.mock("@/features/documents/components/project-workspace", () => ({
   TAB_VALUES: ["artifacts", "progress"],
-  ProjectWorkspace: ({ project }: { project: string }) => (
-    <div data-testid="workspace">{project}</div>
+  ProjectWorkspace: ({
+    project,
+    onShowInWorkLog,
+  }: {
+    project: string
+    onShowInWorkLog?: (workstream: string, task: number) => void
+  }) => (
+    <div data-testid="workspace">
+      {project}
+      <button type="button" onClick={() => onShowInWorkLog?.("plan-key", 3)}>
+        show task 3
+      </button>
+    </div>
   ),
 }))
 
@@ -102,5 +114,36 @@ describe("/projects/$project — a name the catalogue does not hold", () => {
     renderRoute("darkmem")
 
     expect(await screen.findByTestId("workspace")).toHaveTextContent("darkmem")
+  })
+})
+
+describe("/projects/$project — the Work log's task in the URL", () => {
+  const validate = (search: Record<string, unknown>) =>
+    ((Route.options ?? Route) as unknown as {
+      validateSearch: (s: Record<string, unknown>) => Record<string, unknown>
+    }).validateSearch(search)
+
+  it("reads a positive integer task, from a number or its text", () => {
+    expect(validate({ task: 3 }).task).toBe(3)
+    expect(validate({ task: "4" }).task).toBe(4)
+    expect(validate({ task: 0 }).task).toBeUndefined()
+    expect(validate({ task: 2.5 }).task).toBeUndefined()
+    expect(validate({ task: "x" }).task).toBeUndefined()
+  })
+
+  it("writes the workstream and task Show in Work log asks for", async () => {
+    vi.mocked(apiFetch).mockResolvedValue([row("darkmem", "project")])
+    renderRoute("darkmem")
+    fireEvent.click(await screen.findByRole("button", { name: "show task 3" }))
+    const calls = routerMocks.navigate.mock.calls
+    const [{ search }] = calls[calls.length - 1] as [
+      { search: (prev: Record<string, unknown>) => Record<string, unknown> },
+    ]
+    expect(search({ tab: "progress", view: "v" })).toEqual({
+      tab: "progress",
+      view: "v",
+      workstream: "plan-key",
+      task: 3,
+    })
   })
 })

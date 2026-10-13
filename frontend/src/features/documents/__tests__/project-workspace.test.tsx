@@ -970,13 +970,34 @@ describe("project workspace — the corpus browser's own surface", () => {
     expect(onViewChange).toHaveBeenCalledWith("builtin:plans-in-flight")
   })
 
-  it("opens the Work log on a board task's workstream, filtered to it", async () => {
+  it("hands a board task's Show in Work log up, and opens the Work log the URL names", async () => {
     mockDocuments({ items: [DOC] })
-    renderWorkspace({ tab: "progress", workstream: "plan-a" })
+    const onShowInWorkLog = vi.fn()
+    const { rerender } = renderWorkspace({
+      tab: "progress",
+      workstream: "plan-a",
+      onShowInWorkLog,
+    })
     await screen.findByText("work-log-panel:plan-a")
 
     fireEvent.click(screen.getByRole("button", { name: "show task 3" }))
+    expect(onShowInWorkLog).toHaveBeenCalledWith("plan-key", 3)
+
+    const at = (workstream: string, task?: number) => (
+      <ProjectWorkspace
+        project="darkmem"
+        tab="progress"
+        onTabChange={vi.fn()}
+        workstream={workstream}
+        task={task}
+        onShowInWorkLog={onShowInWorkLog}
+      />
+    )
+    rerender(at("plan-key", 3))
     expect(await screen.findByText("work-log-panel:plan-key:task-3")).toBeInTheDocument()
+    // A later link (or Back) still moves the Work log.
+    rerender(at("plan-b"))
+    expect(await screen.findByText("work-log-panel:plan-b")).toBeInTheDocument()
   })
 
   // Rendered at `tab="progress"` on purpose: darkraise-ui's TabsContent wraps
