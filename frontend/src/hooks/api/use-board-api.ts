@@ -1,3 +1,13 @@
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query"
+import { apiFetch } from "@/lib/api"
+import { DEMO } from "@/lib/demo-flag"
+import { demoBoardRecords, DEMO_BOARD_VIEWS } from "@/demo/board"
+
 export type Untracked = "no_workstream" | "no_properties"
 
 export interface PlanProgress {
@@ -135,4 +145,114 @@ export interface RowEditResult {
   document_id: string
   content_hash: string
   row: RegisterRow
+}
+
+
+/** How often the board re-reads its records while the Progress tab is shown.
+ *  The server answers 304 from two aggregates when nothing changed. */
+export const BOARD_REFRESH_MS = 10_000
+
+const DEMO_REFUSAL = "The demo is read-only: its board cannot be changed."
+
+export function useBoardRecords(project: string) {
+  return useQuery<BoardRecords>({
+    queryKey: ["boardRecords", project],
+    queryFn: () =>
+      apiFetch<BoardRecords>(
+        `/board/records?${new URLSearchParams({ project })}`,
+      ),
+    enabled: !DEMO,
+    refetchInterval: DEMO ? false : BOARD_REFRESH_MS,
+    initialData: DEMO ? demoBoardRecords(project) : undefined,
+  })
+}
+
+export function useBoardViews(project: string) {
+  return useQuery<BoardView[]>({
+    queryKey: ["boardViews", project],
+    queryFn: () =>
+      apiFetch<BoardView[]>(`/board/views?${new URLSearchParams({ project })}`),
+    enabled: !DEMO,
+    initialData: DEMO
+      ? DEMO_BOARD_VIEWS.map((view) => ({ ...view, project }))
+      : undefined,
+  })
+}
+
+function invalidate(
+  qc: QueryClient,
+  key: "boardRecords" | "boardViews",
+  project: string,
+) {
+  void qc.invalidateQueries({ queryKey: [key, project] })
+}
+
+export function useRegisterRowEdit(project: string) {
+  const qc = useQueryClient()
+  return useMutation<
+    RowEditResult,
+    Error,
+    { documentId: string; number: number; expectedHash: string } & RowChanges
+  >({
+    mutationFn: ({ documentId, number, expectedHash, ...changes }) =>
+      DEMO
+        ? Promise.reject(new Error(DEMO_REFUSAL))
+        : apiFetch<RowEditResult>(
+            `/board/registers/${documentId}/rows/${number}`,
+            {
+              method: "PATCH",
+              body: JSON.stringify({ expected_hash: expectedHash, ...changes }),
+            },
+          ),
+    onSettled: () => invalidate(qc, "boardRecords", project),
+  })
+}
+
+export function useCreateBoardView(project: string) {
+  const qc = useQueryClient()
+  return useMutation<
+    BoardView,
+    Error,
+    { name: string; definition: ViewDefinition }
+  >({
+    mutationFn: ({ name, definition }) =>
+      DEMO
+        ? Promise.reject(new Error(DEMO_REFUSAL))
+        : apiFetch<BoardView>("/board/views", {
+            method: "POST",
+            body: JSON.stringify({ project, name, definition }),
+          }),
+    onSuccess: () => invalidate(qc, "boardViews", project),
+  })
+}
+
+export function useUpdateBoardView(project: string) {
+  const qc = useQueryClient()
+  return useMutation<
+    BoardView,
+    Error,
+    { id: string; name?: string; definition?: ViewDefinition }
+  >({
+    mutationFn: ({ id, ...changes }) =>
+      DEMO
+        ? Promise.reject(new Error(DEMO_REFUSAL))
+        : apiFetch<BoardView>(`/board/views/${encodeURIComponent(id)}`, {
+            method: "PATCH",
+            body: JSON.stringify(changes),
+          }),
+    onSuccess: () => invalidate(qc, "boardViews", project),
+  })
+}
+
+export function useDeleteBoardView(project: string) {
+  const qc = useQueryClient()
+  return useMutation<void, Error, string>({
+    mutationFn: (id) =>
+      DEMO
+        ? Promise.reject(new Error(DEMO_REFUSAL))
+        : apiFetch<void>(`/board/views/${encodeURIComponent(id)}`, {
+            method: "DELETE",
+          }),
+    onSuccess: () => invalidate(qc, "boardViews", project),
+  })
 }

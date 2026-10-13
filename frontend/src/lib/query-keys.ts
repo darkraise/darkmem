@@ -108,6 +108,16 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
     reason:
       "Addressed by workstream id and carrying no project param, the same shape as documentBlocks",
   },
+  boardRecords: {
+    kind: "manual",
+    reason:
+      "GET /board/records requires an explicit `project`; the Progress tab passes the workspace's route param",
+  },
+  boardViews: {
+    kind: "manual",
+    reason:
+      "GET /board/views requires an explicit `project`; the Progress tab passes the workspace's route param",
+  },
   worklogResume: {
     kind: "manual",
     reason:

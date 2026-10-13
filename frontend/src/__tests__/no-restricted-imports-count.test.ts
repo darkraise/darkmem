@@ -123,6 +123,8 @@ describe("no-restricted-imports: src/demo/*", () => {
     // Re-measured when the MCP calls tab landed: 112 — `use-mcp-calls-api.ts`
     // imports its fixture for `initialData` in demo mode (the usage shape),
     // and the tab's test reads the same fixture.
-    expect(countByRule(results, "no-restricted-imports")).toBe(112)
+    // Re-measured when the board hooks landed: 113 — `use-board-api.ts`
+    // imports its fixtures for `initialData` in demo mode (the work-log shape).
+    expect(countByRule(results, "no-restricted-imports")).toBe(113)
   })
 })
