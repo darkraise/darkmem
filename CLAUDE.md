@@ -65,7 +65,9 @@ table or column is dropped only once no released code reads it.
   individually: `tests/test_api/test_rest_conformance.py`,
   `scripts/benchlib/tests` (name the path), and `make generate` in `sdks/`
   plus both SDK suites. Re-run Playwright standalone through
-  `backend/scripts/e2e/run_playwright_e2e.py` before believing a red, and
+  `backend/scripts/e2e/run_playwright_e2e.py` before believing a red (its
+  arguments pass through to `playwright test`, so `run_playwright_e2e.py
+  tests/x.spec.ts --project=chromium` runs one spec), and
   **never run Playwright bare**: `npx playwright test` points `/api` at the
   live instance on `:8000`.
 - **`pyproject.toml` sets `testpaths = ["tests"]`, so plain `pytest -q` does
@@ -1193,6 +1195,10 @@ the same `document_door` functions; targets resolve through
   a vector under the **active** fingerprint, so re-pushing repairs a failed
   embed. Resolving the active fingerprint costs one real embed call per
   `unchanged` re-push, unconditionally.
+- **`embed_inline=False`** (the board's register edit) returns once the
+  filing commits and embeds nothing, so `llm` may be None and an embedder
+  outage cannot fail the write; `block_embedding_refresh` embeds the new
+  blocks within the hour.
 - Delete removes the row and cascades blocks and vectors. Nothing links a
   block to a fact, so there is no provenance to withdraw.
 
@@ -1219,7 +1225,11 @@ lost). Fixing it obliges a reparse.
 
 **Block verbs** (`app/services/block_verbs.py`): `block_update`,
 `block_insert`, `block_move`, `block_delete`, on both doors for documents
-and REST-only for pages (via a `BlockOwner` descriptor). Each runs one pass:
+and REST-only for pages (via a `BlockOwner` descriptor). They refuse
+registers and plans (`superpowers/registers/`, `superpowers/plans/`) after
+the row lock with `DocumentMirrorOwned`, a `DocumentNotConvertible` (REST
+422, MCP `not_convertible`): the dr-forge mirror owns those documents
+through content puts, and the SPA offers no edit mode for them. Each runs one pass:
 lock, load tree, mutate in memory, serialise, write placement and owner row
 in a SAVEPOINT, journal `blocks_edited` (no block text), commit, then embed
 **only** the touched block for a document. A page write embeds nothing
@@ -1390,6 +1400,29 @@ the whole body and an exact cosine arm over the first 8,000 characters
 (`worklog_embeddings__<slug>`, filled only by `block_embedding_refresh`).
 With no orchestrator, a read-only instance or a failed query embed the
 keyword arm answers alone and the answer says `semantic_ran: false`.
+
+## Progress board (`app/services/board*.py`)
+
+Spec `docs/superpowers/specs/2026-10-13-notion-progress-board-design.md`.
+The Progress tab's board is a **projection, never a store**: every read
+derives register rows (`superpowers/registers/*.md`) and plan tasks
+(`superpowers/plans/*.md`) from `documents.content` and the ledger entries'
+`task` / `state` / `commit` properties; a ledger without them reads as
+untracked. `board_parse` holds the pure parsers, which mirror dr-forge's
+`plan.sh` / `register.sh` (fences, escaped `\|` cells, `is_task`): change
+both sides together. `board` reads and sits inside the work-log wall, so it
+must never import `document_door` (its closure reaches a memory model).
+`board_edit` is the one write: a register row edit spliced into the original
+line, never re-serialised, and filed through `put_document` with the
+caller's `expected_hash`, no `properties` and `embed_inline=False`, so a
+racing writer gets 409 `hash_conflict` and no edit waits on an embedder.
+Plan-task state is read-only (the ledger is the plugin's). Refusals are
+`BoardRefusal`, answered with `error.code` = the reason. Six REST-only login
+routes under `/api/v1/board` (`board.reads` / `board.write` on the parity
+doc); `GET /records` serves a weak ETag with `Cache-Control: private,
+no-cache` and answers 304 from two aggregates. Saved views are `board_views`
+rows (revision `0003`); the two built-ins are code constants with `builtin:`
+ids and refuse writes.
 
 ## Cross-cutting invariants
 
