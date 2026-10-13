@@ -24,6 +24,7 @@ export function useRowEditor(project: string) {
     record: BoardRecord,
     changes: RowChanges,
     onSaved?: () => void,
+    onRefused?: (error: Error) => void,
   ) => {
     if (record.type !== "register_row" || !record.contentHash) return
     mutation.mutate(
@@ -45,6 +46,7 @@ export function useRowEditor(project: string) {
               ? CONFLICT_MESSAGE
               : error.message,
           )
+          onRefused?.(error)
         },
       },
     )
@@ -56,12 +58,21 @@ export function useRowEditor(project: string) {
     else if (intent === "patch") save(record, { state: toState })
   }
 
-  // The prompt stays open until the edit lands, so a refusal does not cost
-  // the user the Note they typed.
+  // A refusal keeps the prompt open so the typed Note survives. A hash
+  // conflict closes it: the prompt holds the stale record, so every retry
+  // would conflict again, and the user should see the reloaded row first.
   const confirmPrompt = (note: string) => {
-    if (prompt) {
-      save(prompt.record, { state: prompt.state, note }, () => setPrompt(null))
-    }
+    if (!prompt) return
+    save(
+      prompt.record,
+      { state: prompt.state, note },
+      () => setPrompt(null),
+      (error) => {
+        if (error instanceof ApiError && error.code === "hash_conflict") {
+          setPrompt(null)
+        }
+      },
+    )
   }
 
   const variables = mutation.isPending ? mutation.variables : undefined

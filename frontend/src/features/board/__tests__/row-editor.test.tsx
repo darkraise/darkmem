@@ -120,14 +120,16 @@ describe("useRowEditor", () => {
     ])
   })
 
-  it("keeps the Note prompt open when the edit is refused and closes it when it lands", async () => {
+  it("keeps the Note prompt open on a refusal and closes it when the edit lands", async () => {
     const { result } = renderHook(() => useRowEditor("darkmem"), { wrapper })
     vi.mocked(apiFetch).mockRejectedValueOnce(
-      new ApiError("stale", 409, [{ current_hash: "h9" }], "hash_conflict"),
+      new ApiError("bad cell", 422, undefined, "invalid_cell"),
     )
     act(() => result.current.move(byTitle("Alpha"), "deferred"))
     act(() => result.current.confirmPrompt("parked for now"))
-    await vi.waitFor(() => expect(toast.error).toHaveBeenCalled())
+    await vi.waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("bad cell"),
+    )
     expect(result.current.prompt?.state).toBe("deferred")
 
     vi.mocked(apiFetch).mockResolvedValueOnce({
@@ -136,6 +138,19 @@ describe("useRowEditor", () => {
       row: {},
     })
     act(() => result.current.confirmPrompt("parked for now"))
+    await vi.waitFor(() => expect(result.current.prompt).toBeNull())
+  })
+
+  it("closes the Note prompt on a hash conflict, since its record is stale", async () => {
+    const { result } = renderHook(() => useRowEditor("darkmem"), { wrapper })
+    vi.mocked(apiFetch).mockRejectedValueOnce(
+      new ApiError("stale", 409, [{ current_hash: "h9" }], "hash_conflict"),
+    )
+    act(() => result.current.move(byTitle("Alpha"), "deferred"))
+    act(() => result.current.confirmPrompt("parked for now"))
+    await vi.waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(CONFLICT_MESSAGE),
+    )
     await vi.waitFor(() => expect(result.current.prompt).toBeNull())
   })
 
