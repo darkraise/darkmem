@@ -189,11 +189,21 @@ The one list every view, filter and saved definition draws from:
 
 ## 2. Backend
 
-### 2.1 `app/services/board.py`
+### 2.1 `app/services/board.py`, `board_parse.py`, `board_edit.py`
 
-- `parse_register(text)`, `parse_plan(text)` and
-  `rewrite_register_row(text, number, changes)` are pure: text in, records or
-  text out.
+Amended 2026-10-13 (plan session): three modules, not one. `board.py`
+cannot import `document_door`: the door's import closure reaches
+`app.repositories.relational`, which imports a memory model, and the work-log
+wall's memory-model scan fails on it (measured, the increment-2 check below).
+
+- `board_parse.py` holds `parse_register(text)`, `parse_plan(text)` and
+  `rewrite_register_row(text, number, changes)`, pure, with no app imports:
+  text in, records or text out. It also holds the uri prefixes
+  `block_verbs` imports and the `BoardRefusal` the door answers.
+- `board.py` reads: `load_board` and `board_version` below. It restates
+  `document_door.BLOCK_FIRST` (a test holds the two equal).
+- `board_edit.py` writes: the register row edit through
+  `document_door.put_document`.
 - `load_board(session, project)` runs: the corpus documents (id, uri, title,
   content, content_hash); the project's workstreams with a `plan_uri`; per
   (workstream, task), the newest state-bearing ledger entry with its run of
@@ -201,18 +211,23 @@ The one list every view, filter and saved definition draws from:
   entry of any kind, for commit and last activity; per workstream, whether any
   ledger entry carries an integer `task`.
 - `board_version(session, project)` is two aggregate queries (the corpus
-  documents' count and greatest `updated_at`; the project's greatest entry
-  `seq` and workstream `updated_at`) and reads no content.
+  documents' count, greatest `updated_at` and an md5 over their
+  `content_hash` values; the project's workstream count, greatest workstream
+  `updated_at` and greatest entry `seq`) and reads no content. The hash
+  aggregate catches two edits inside one `now()`, which `updated_at` alone
+  misses.
 - It reads `documents.content`, never `blocks`, and imports neither
   `app.services.pipeline` nor any vault module.
 
 **Scan membership**, named so no implementer has to infer it: `board.py` joins
 `BLOCK_CHANNEL_MODULES` (`tests/test_block_retrieval.py`, as
-`document_revisions` did), `FILING_CLOSURE`'s subjects
-(`tests/test_block_pipeline.py`) and `WORKLOG_MODULES`
-(`tests/test_worklog_wall.py`, which also subjects it to the memory-table and
-fact-store scans). Increment 2 checks that `document_door`'s import closure
-passes the work-log service-layer scan once `board.py` is a member.
+`document_revisions` did) and `WORKLOG_MODULES` (`tests/test_worklog_wall.py`,
+which also subjects it to the memory-model and fact-store scans).
+`board_edit.py` joins `BLOCK_CHANNEL_MODULES` and seeds `FILING_CLOSURE`
+(`tests/test_block_pipeline.py`), and stays out of `WORKLOG_MODULES`: it
+touches no work-log table. The increment-2 check came back negative for a
+single module (`document_door`'s closure fails the work-log service-layer
+scan), which is why the edit lives apart.
 
 ### 2.2 Routes (`api/routes/board.py`)
 
@@ -221,8 +236,13 @@ REST-only behind login: no MCP tool, no scope, and a `dmk_` key is refused
 `PARITY_TABLE` (from which `docs/two-door-parity.md` is generated) and
 classified in `app/services/content_surfaces.py`'s inventory.
 
-**Errors** carry a structured `detail`, `{reason, message}` plus fields named
-per reason (the `reembed.py` precedent), so the UI can tell causes apart.
+**Errors** are raised as `BoardRefusal(status, reason, message, **fields)`
+and answered by their own handler in `app/main.py` through
+`_error_response`: `error.code` is the reason, `error.message` and the
+top-level `detail` the message, and `error.details` is `[fields]` when there
+are any (amended in the plan session: a dict `detail` on the generic
+`HTTPException` path is flattened to "Request failed"). The SPA's `ApiError`
+gains `code`.
 
 - `GET /api/v1/board/records?project=` — registers (rows, malformed rows,
   title, covers, `content_hash`, a per-register parse error if any) and plans
@@ -249,16 +269,20 @@ per reason (the `reembed.py` precedent), so the UI can tell causes apart.
   | 422 | `malformed_row` | the number exists only on a malformed row |
   | 422 | `unknown_state` | a state outside the register vocabulary |
   | 422 | `note_required` | the resulting state needs a Note and the resulting Note is blank |
-  | 422 | `invalid_cell` | a cell value containing `\n` or `\r` |
+  | 422 | `invalid_cell` | a cell value containing `\n` or `\r`, or one whose splice would change the row's shape (a trailing backslash escapes the next pipe) |
   | 422 | `no_change` | none of `state`, `note`, `assigned` given |
 
-  Refused by `refuse_when_read_only`.
+  Not behind `refuse_when_read_only` (amended in the plan session): that
+  guard is for doors that dial out or write a file (`api/deps.py`), and with
+  no inline embed this one writes rows only, which the viewer role's SQLSTATE
+  42501 handler already refuses on the backup worker.
 - `GET /api/v1/board/views?project=` — the two built-ins, then saved views by
   `(position, name)`.
 - `POST /api/v1/board/views` (201) with `{project, name, definition,
   position?}`; `position` defaults to one past the project's greatest.
 - `PATCH /api/v1/board/views/{id}` with any of `name`, `definition`,
-  `position`.
+  `position`; an explicit null changes nothing, and a body that changes
+  nothing is 422 `no_change`.
 - `DELETE /api/v1/board/views/{id}` (204).
 
   View errors: 404 `not_found` for an unknown id; 409 `name_taken` for a
@@ -294,11 +318,14 @@ register's search hits lag its last board edit by up to an hour.
 ### 2.5 No block verbs on registers and plans
 
 `block_verbs` refuses a document owner whose uri starts with
-`superpowers/registers/` or `superpowers/plans/`, before taking any lock or
-converting anything: REST answers 422 with the reason (the dr-forge mirror
-owns these documents through content puts), MCP `block_update`,
-`block_insert`, `block_move` and `block_delete` answer the same as a tool
-error. The SPA hides edit mode for those uris. A register converted before this
+`superpowers/registers/` or `superpowers/plans/`, in `_mutate` after the row
+lock and the owner's metadata read and before any conversion (amended in the
+plan session: the uri is only known once the row is read). The refusal is
+`DocumentMirrorOwned`, a subclass of `DocumentNotConvertible`, so both doors
+already map it: REST answers 422 with the reason (the dr-forge mirror owns
+these documents through content puts), and MCP `block_update`,
+`block_insert`, `block_move` and `block_delete` answer the existing
+`not_convertible` envelope carrying it. The SPA hides edit mode for those uris. A register converted before this
 lands is recovered by deleting and re-filing it; the board's cards for a
 block-first register say so.
 
@@ -360,7 +387,8 @@ SPA); the route still serves it, as every document route does.
   ledger".
 - **Table** (darkraise-ui `table`): column chooser, header-click sort; on
   register rows, State edits through a `select`, Note and Assigned through
-  `editable`, all through the same PATCH. No virtualisation until measured
+  `editable`, all through the same PATCH. (The text match over title and
+  Note is transient: a saved view stores filters, not the search box.) No virtualisation until measured
   (about 900 rows with untracked tasks hidden).
 - **Detail sheet** (darkraise-ui `sheet`): every property. A register row
   links to its register and its assigned plan in the Artifacts tab. A plan task
@@ -374,8 +402,9 @@ SPA); the route still serves it, as every document route does.
   changes.
 - **Artifacts.** Edit mode is hidden for `superpowers/registers/` and
   `superpowers/plans/` documents (§2.5).
-- **Refresh and demo.** Records refetch every 10 s while the tab is visible,
-  sending `If-None-Match`. Every new hook carries `enabled: !DEMO`, with demo
+- **Refresh and demo.** Records refetch every 10 s while the tab is visible;
+  the browser sends `If-None-Match` itself, because the route answers
+  `Cache-Control: private, no-cache` with a weak `ETag`. Every new hook carries `enabled: !DEMO`, with demo
   fixtures for records and views.
 
 ## 4. Rulings changed
@@ -444,7 +473,7 @@ re-read by hand, as `CLAUDE.md` requires.
 - **Routes:** REST conformance (PATCH, 201, 204); every row of §2.2's two error
   tables; a successful edit writes exactly one revision carrying the actor and
   embeds nothing inline; the ETag answers 304 when nothing changed and 200
-  after a document put or an append; read-only refusal; a `dmk_` key gets 401;
+  after a document put or an append; a `dmk_` key gets 401;
   content-surface classification; the scan memberships of §2.1, each with a
   negative control; the guards leg from `CLAUDE.md`.
 - **Block-verb refusal:** each of the four verbs, on both doors, refused for a
@@ -458,7 +487,8 @@ re-read by hand, as `CLAUDE.md` requires.
   cards, the Work log badges and the paging task filter, and hidden edit mode
   for registers and plans; `npm run typecheck`; `npm run build`. One
   Playwright spec drags a card, run through
-  `backend/scripts/e2e/run_playwright_e2e.py`, never bare.
+  `backend/scripts/e2e/run_playwright_e2e.py`, never bare; the runner passes
+  its arguments through to `playwright test` so that one spec can run alone.
 
 ## 7. Sequencing
 
