@@ -197,6 +197,32 @@ describe("useRowEditor", () => {
     expect(result.current.editEpoch(alpha.id)).toBe(1)
   })
 
+  it("marks every record with an edit in flight as pending, each until its own answer", async () => {
+    const first = deferred<unknown>()
+    const second = deferred<unknown>()
+    vi.mocked(apiFetch)
+      .mockReturnValueOnce(first.promise as Promise<never>)
+      .mockReturnValueOnce(second.promise as Promise<never>)
+    const { result } = renderHook(() => useRowEditor("darkmem"), { wrapper })
+    const alpha = byTitle("Alpha")
+    const beta = byTitle("Beta")
+    act(() => result.current.save(alpha, { note: "x" }))
+    act(() => result.current.save(beta, { note: "y" }))
+    expect(result.current.isPending(alpha.id)).toBe(true)
+    expect(result.current.isPending(beta.id)).toBe(true)
+    await act(async () => {
+      second.resolve({ document_id: "reg", content_hash: "h2", row: {} })
+      await second.promise
+    })
+    expect(result.current.isPending(alpha.id)).toBe(true)
+    expect(result.current.isPending(beta.id)).toBe(false)
+    await act(async () => {
+      first.resolve({ document_id: "reg", content_hash: "h3", row: {} })
+      await first.promise
+    })
+    expect(result.current.isPending(alpha.id)).toBe(false)
+  })
+
   it("asks for a Note before a move into deferred, and patches after it", async () => {
     vi.mocked(apiFetch).mockResolvedValue({
       document_id: "reg",

@@ -24,13 +24,13 @@ function Column({
   column,
   droppable,
   draggable,
-  pendingId,
+  isPending,
   onOpen,
 }: {
   column: BoardColumn
   droppable: boolean
   draggable: boolean
-  pendingId: string | null
+  isPending: (id: string) => boolean
   onOpen: (record: BoardRecord) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({
@@ -57,7 +57,7 @@ function Column({
           key={record.id}
           record={record}
           draggable={draggable && !record.blockFirst}
-          pending={record.id === pendingId}
+          pending={isPending(record.id)}
           onOpen={onOpen}
         />
       ))}
@@ -69,12 +69,12 @@ function Column({
  *  lane's state columns; nothing else is draggable or a drop target. */
 export function BoardView({
   lanes,
-  pendingId,
+  isPending,
   onMove,
   onOpen,
 }: {
   lanes: BoardLane[]
-  pendingId: string | null
+  isPending: (id: string) => boolean
   onMove: (record: BoardRecord, toState: string) => void
   onOpen: (record: BoardRecord) => void
 }) {
@@ -119,7 +119,7 @@ export function BoardView({
                     column={column}
                     droppable={registerLane && column.key !== "unrecognised"}
                     draggable={registerLane}
-                    pendingId={pendingId}
+                    isPending={isPending}
                     onOpen={onOpen}
                   />
                 ))}

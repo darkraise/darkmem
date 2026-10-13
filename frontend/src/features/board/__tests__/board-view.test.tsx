@@ -15,7 +15,7 @@ describe("BoardView", () => {
     render(
       <BoardView
         lanes={boardLanes(tracked, "state", false)}
-        pendingId={null}
+        isPending={() => false}
         onMove={vi.fn()}
         onOpen={vi.fn()}
       />,
@@ -38,7 +38,7 @@ describe("BoardView", () => {
     render(
       <BoardView
         lanes={boardLanes(records, "state", false)}
-        pendingId={null}
+        isPending={() => false}
         onMove={vi.fn()}
         onOpen={vi.fn()}
       />,
@@ -60,7 +60,7 @@ describe("BoardView", () => {
     render(
       <BoardView
         lanes={boardLanes(records, "state", false)}
-        pendingId={null}
+        isPending={() => false}
         onMove={onMove}
         onOpen={onOpen}
       />,
@@ -86,7 +86,7 @@ describe("BoardView", () => {
     render(
       <BoardView
         lanes={boardLanes([linked], "state", false)}
-        pendingId={null}
+        isPending={() => false}
         onMove={vi.fn()}
         onOpen={vi.fn()}
       />,
@@ -101,7 +101,7 @@ describe("BoardView", () => {
     render(
       <BoardView
         lanes={boardLanes(records, "state", false)}
-        pendingId={byTitle("Alpha").id}
+        isPending={(id) => id === byTitle("Alpha").id}
         onMove={vi.fn()}
         onOpen={vi.fn()}
       />,
@@ -128,7 +128,7 @@ describe("BoardView", () => {
     render(
       <BoardView
         lanes={boardLanes([loose, unpushed], "state", true)}
-        pendingId={null}
+        isPending={() => false}
         onMove={vi.fn()}
         onOpen={vi.fn()}
       />,

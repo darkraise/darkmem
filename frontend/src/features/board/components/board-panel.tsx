@@ -182,7 +182,7 @@ function PanelBody({
       ) : definition.layout === "board" ? (
         <BoardView
           lanes={lanes}
-          pendingId={editor.pendingId}
+          isPending={editor.isPending}
           onMove={editor.move}
           onOpen={(record) => setOpenId(record.id)}
         />

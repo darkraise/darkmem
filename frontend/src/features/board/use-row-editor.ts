@@ -81,10 +81,9 @@ export function useRowEditor(project: string) {
     })
   }
 
-  const variables = mutation.isPending ? mutation.variables : undefined
-  const pendingId = variables
-    ? `r:${variables.documentId}:${variables.number}`
-    : null
+  // From the per-record count, not mutation.variables: TanStack keeps only
+  // the latest call's variables, so an earlier in-flight edit would unmark.
+  const isPending = (id: string) => (inFlight[id] ?? 0) > 0
 
   return {
     save,
@@ -92,8 +91,8 @@ export function useRowEditor(project: string) {
     prompt,
     confirmPrompt,
     cancelPrompt: () => setPrompt(null),
-    pendingId,
-    promptPending: prompt !== null && (inFlight[prompt.record.id] ?? 0) > 0,
+    isPending,
+    promptPending: prompt !== null && isPending(prompt.record.id),
     /** Changes whenever a record's edit is refused, so an uncontrolled cell
      *  keyed on it drops the text the server did not accept. */
     editEpoch: (id: string) => refused[id] ?? 0,

@@ -27,7 +27,7 @@ function editor(): RowEditor {
     prompt: null,
     confirmPrompt: vi.fn(),
     cancelPrompt: vi.fn(),
-    pendingId: null,
+    isPending: () => false,
     promptPending: false,
     editEpoch: () => 0,
   }

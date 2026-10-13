@@ -71,7 +71,7 @@ function TextCell({
       // Remounts on a new server value, so a reload shows what the file holds.
       key={`${value}:${editor.editEpoch(record.id)}`}
       defaultValue={value}
-      disabled={record.blockFirst || record.id === editor.pendingId}
+      disabled={record.blockFirst || editor.isPending(record.id)}
       onValueCommit={({ value: next }) => {
         if (next !== value) editor.save(record, { [column]: next })
       }}
@@ -115,7 +115,7 @@ function Cell({
     return (
       <Select
         value={record.state}
-        disabled={record.id === editor.pendingId}
+        disabled={editor.isPending(record.id)}
         onValueChange={(next) => editor.move(record, next)}
       >
         <SelectTrigger
@@ -212,7 +212,7 @@ export function RecordsTable({
           {records.map((record) => (
             <TableRow
               key={record.id}
-              aria-busy={record.id === editor.pendingId || undefined}
+              aria-busy={editor.isPending(record.id) || undefined}
             >
               {columns.map((property) => (
                 <TableCell key={property}>
