@@ -57,8 +57,7 @@ import { DocumentOutline } from "@/features/documents/components/document-outlin
 import { DocumentReader } from "@/features/documents/components/document-reader"
 import { EditableDocument } from "@/features/documents/components/editable-document"
 import { GroundedAnswer } from "@/features/documents/components/grounded-answer"
-import { ProgressBoard } from "@/features/progress/components/progress-board"
-import { useProgressCorpus } from "@/features/progress/use-progress-corpus"
+import { BoardPanel } from "@/features/board/components/board-panel"
 import { DocumentTree } from "@/features/documents/components/document-tree"
 import {
   expansionStorageKey,
@@ -139,11 +138,16 @@ type QueryMode = "search" | "ask"
 export function ProjectWorkspace({
   project,
   workstream,
+  view,
+  onViewChange,
   emptyAction,
   ...tabs
 }: {
   project: string
   workstream?: string
+  /** The board view the Progress tab shows (`?view=`). */
+  view?: string
+  onViewChange?: (view: string) => void
   /** Offered in the empty state when the project holds no document -- the
    *  `/documents` route's way back to its project chooser. */
   emptyAction?: ReactNode
@@ -179,7 +183,17 @@ export function ProjectWorkspace({
   const [mode, setMode] = useState<ReaderMode>("read")
   const search = useDocumentSearch()
   const qa = useGroundedQa()
-  const corpus = useProgressCorpus(items)
+  /** The workstream and task "Show in Work log" asked for; `n` remounts the
+   *  panel when the same task is asked for twice. */
+  const [logFocus, setLogFocus] = useState<{
+    key: string
+    task: number
+    n: number
+  } | null>(null)
+  const workLogRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (logFocus) workLogRef.current?.scrollIntoView?.({ behavior: "smooth" })
+  }, [logFocus])
   // Below `lg` the split stacks: side by side at 26% a phone left the tree
   // ~90px wide, too narrow to show a single file name. Reads `false` in
   // tests, so the stacked branch is the fallback.
@@ -737,31 +751,32 @@ export function ProjectWorkspace({
       <TabsContent value="progress" className="space-y-5">
         <div>
           <RegionLabel>project board</RegionLabel>
-          {/* A projection of the ledger and the epic files, never a second
-              store: the board writes nothing, so `progress.md` stays the one
-              place task state lives. That is what keeps it cheap, and it is
-              also why the board fills only for a project whose corpus holds
-              those files. */}
-          {corpus.present ? (
-            <ProgressBoard corpus={corpus} />
-          ) : (
-            <EmptyState
-              kind="empty"
-              icon={FolderTree}
-              scope="panel"
-              title="No progress ledger"
-              description="The board is built from a progress.md ledger and epic files filed into this project. File them to see tasks here."
-            />
-          )}
+          {/* A projection of registers, plans and ledger entries, never a
+              second store: every card is derived on read, and the only write
+              is a register row edit filed as a document revision. */}
+          <BoardPanel
+            project={project}
+            viewId={view}
+            onViewChange={(next) => onViewChange?.(next)}
+            onOpenDocument={openDocumentByUri}
+            onShowInWorkLog={(key, task) =>
+              setLogFocus((prev) => ({ key, task, n: (prev?.n ?? 0) + 1 }))
+            }
+          />
         </div>
-        <div>
+        <div ref={workLogRef}>
           <RegionLabel>work log</RegionLabel>
           <WorkLogPanel
             // Keyed on the requested workstream: the panel seeds its selection
             // from it once, so a link to another workstream must remount it.
-            key={workstream ?? ""}
+            key={
+              logFocus
+                ? `${logFocus.key}:${logFocus.task}:${logFocus.n}`
+                : (workstream ?? "")
+            }
             project={project}
-            initialWorkstream={workstream}
+            initialWorkstream={logFocus?.key ?? workstream}
+            initialTask={logFocus?.task}
             onOpenDocument={openDocumentByUri}
           />
         </div>

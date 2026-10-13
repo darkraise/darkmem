@@ -84,10 +84,13 @@ function MoreButton({
 export function WorkLogPanel({
   project,
   initialWorkstream,
+  initialTask,
   onOpenDocument,
 }: {
   project: string
   initialWorkstream?: string
+  /** Filters the initial workstream's timeline to one plan task. */
+  initialTask?: number
   onOpenDocument?: (uri: string) => void
 }) {
   const open = useWorkstreams(project, "open")
@@ -236,6 +239,9 @@ export function WorkLogPanel({
               key={`${selected.id}:${focusEntryId ?? ""}`}
               workstream={selected}
               initialEntryId={focusEntryId}
+              initialTask={
+                selected.key === initialWorkstream ? initialTask : undefined
+              }
             />
           </section>
         ) : (

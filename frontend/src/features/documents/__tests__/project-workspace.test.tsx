@@ -50,16 +50,40 @@ vi.mock("darkraise-ui/components/sonner", () => ({
   toast: { error: vi.fn(), success: vi.fn() },
   Toaster: () => null,
 }))
+vi.mock("@/features/board/components/board-panel", () => ({
+  BoardPanel: ({
+    viewId,
+    onViewChange,
+    onShowInWorkLog,
+  }: {
+    viewId?: string
+    onViewChange: (id: string) => void
+    onShowInWorkLog: (key: string, task: number) => void
+  }) => (
+    <div>
+      board-panel:{viewId ?? "default"}
+      <button type="button" onClick={() => onViewChange("builtin:plans-in-flight")}>
+        pick plans view
+      </button>
+      <button type="button" onClick={() => onShowInWorkLog("plan-key", 3)}>
+        show task 3
+      </button>
+    </div>
+  ),
+}))
 vi.mock("@/features/worklog/components/work-log-panel", () => ({
   WorkLogPanel: ({
     initialWorkstream,
+    initialTask,
     onOpenDocument,
   }: {
     initialWorkstream?: string
+    initialTask?: number
     onOpenDocument?: (uri: string) => void
   }) => (
     <div>
       work-log-panel:{initialWorkstream ?? "none"}
+      {initialTask !== undefined ? `:task-${initialTask}` : ""}
       <button type="button" onClick={() => onOpenDocument?.("notes/design.md")}>
         open design
       </button>
@@ -932,35 +956,27 @@ describe("project workspace — the two scrollbars that used to overlap", () => 
   })
 })
 
-/** The ledger the progress corpus looks for. Its presence is what makes the
- *  corpus fetch document contents at all, so it is what lets a test tell an
- *  inert scan from a skipped one. */
-const LEDGER = {
-  id: "22222222-2222-2222-2222-222222222222",
-  title: "progress",
-  uri: "docs/planning/progress.md",
-  source_type: "note",
-  project: "darkmem",
-  block_count: 1,
-}
-
-function contentReads() {
-  return vi
-    .mocked(apiFetch)
-    .mock.calls.filter(([path]) =>
-      String(path).includes("include_content=true"),
-    )
-}
 
 describe("project workspace — the corpus browser's own surface", () => {
-  it("runs the progress corpus scan the Progress tab reads", async () => {
-    mockDocuments({ items: [DOC, LEDGER] })
-    renderWorkspace()
-    await screen.findByText("design.md")
+  it("hands the board its view and reports a view change", async () => {
+    mockDocuments({ items: [DOC] })
+    const onViewChange = vi.fn()
+    renderWorkspace({ tab: "progress", view: "builtin:open-register-items", onViewChange })
 
-    expect(screen.getByRole("tab", { name: /progress/i })).toBeInTheDocument()
-    // The corpus scan is the Progress tab's data layer.
-    await waitFor(() => expect(contentReads().length).toBeGreaterThan(0))
+    expect(
+      await screen.findByText("board-panel:builtin:open-register-items"),
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "pick plans view" }))
+    expect(onViewChange).toHaveBeenCalledWith("builtin:plans-in-flight")
+  })
+
+  it("opens the Work log on a board task's workstream, filtered to it", async () => {
+    mockDocuments({ items: [DOC] })
+    renderWorkspace({ tab: "progress", workstream: "plan-a" })
+    await screen.findByText("work-log-panel:plan-a")
+
+    fireEvent.click(screen.getByRole("button", { name: "show task 3" }))
+    expect(await screen.findByText("work-log-panel:plan-key:task-3")).toBeInTheDocument()
   })
 
   // Rendered at `tab="progress"` on purpose: darkraise-ui's TabsContent wraps

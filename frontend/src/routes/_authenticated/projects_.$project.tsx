@@ -20,7 +20,7 @@ import { useProjects } from "@/hooks/api"
 export const Route = createFileRoute("/_authenticated/projects_/$project")({
   validateSearch: (
     search: Record<string, unknown>,
-  ): { tab?: WorkspaceTab; workstream?: string } => ({
+  ): { tab?: WorkspaceTab; workstream?: string; view?: string } => ({
     tab: TAB_VALUES.includes(search.tab as WorkspaceTab)
       ? (search.tab as WorkspaceTab)
       : undefined,
@@ -28,6 +28,8 @@ export const Route = createFileRoute("/_authenticated/projects_/$project")({
       typeof search.workstream === "string" && search.workstream
         ? search.workstream
         : undefined,
+    view:
+      typeof search.view === "string" && search.view ? search.view : undefined,
   }),
   component: ProjectWorkspacePage,
 })
@@ -37,7 +39,7 @@ function ProjectWorkspacePage() {
   // replaces `createFileRoute` with a passthrough, so the route object it
   // gets back carries no methods (the notes route does the same).
   const { project } = useParams({ from: "/_authenticated/projects_/$project" })
-  const { tab, workstream } = useSearch({
+  const { tab, workstream, view } = useSearch({
     from: "/_authenticated/projects_/$project",
   })
   const navigate = useNavigate()
@@ -88,6 +90,10 @@ function ProjectWorkspacePage() {
           key={project}
           project={project}
           workstream={workstream}
+          view={view}
+          onViewChange={(next) =>
+            navigate({ to: ".", search: (prev) => ({ ...prev, view: next }) })
+          }
           tab={tab ?? "artifacts"}
           onTabChange={(next) =>
             // Merge rather than replace: `search: { tab }` dropped every
