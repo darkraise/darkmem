@@ -69,7 +69,7 @@ function TextCell({
   return (
     <Editable
       // Remounts on a new server value, so a reload shows what the file holds.
-      key={value}
+      key={`${value}:${editor.editEpoch(record.id)}`}
       defaultValue={value}
       disabled={record.blockFirst || record.id === editor.pendingId}
       onValueCommit={({ value: next }) => {

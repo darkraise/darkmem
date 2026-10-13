@@ -18,8 +18,13 @@ export interface NotePrompt {
 export function useRowEditor(project: string) {
   const mutation = useRegisterRowEdit(project)
   const [prompt, setPrompt] = useState<NotePrompt | null>(null)
+  const [refused, setRefused] = useState<Record<string, number>>({})
 
-  const save = (record: BoardRecord, changes: RowChanges) => {
+  const save = (
+    record: BoardRecord,
+    changes: RowChanges,
+    onSaved?: () => void,
+  ) => {
     if (record.type !== "register_row" || !record.contentHash) return
     mutation.mutate(
       {
@@ -29,12 +34,18 @@ export function useRowEditor(project: string) {
         ...changes,
       },
       {
-        onError: (error) =>
+        onSuccess: onSaved,
+        onError: (error) => {
+          setRefused((prev) => ({
+            ...prev,
+            [record.id]: (prev[record.id] ?? 0) + 1,
+          }))
           toast.error(
             error instanceof ApiError && error.code === "hash_conflict"
               ? CONFLICT_MESSAGE
               : error.message,
-          ),
+          )
+        },
       },
     )
   }
@@ -45,9 +56,12 @@ export function useRowEditor(project: string) {
     else if (intent === "patch") save(record, { state: toState })
   }
 
+  // The prompt stays open until the edit lands, so a refusal does not cost
+  // the user the Note they typed.
   const confirmPrompt = (note: string) => {
-    if (prompt) save(prompt.record, { state: prompt.state, note })
-    setPrompt(null)
+    if (prompt) {
+      save(prompt.record, { state: prompt.state, note }, () => setPrompt(null))
+    }
   }
 
   const variables = mutation.isPending ? mutation.variables : undefined
@@ -62,6 +76,10 @@ export function useRowEditor(project: string) {
     confirmPrompt,
     cancelPrompt: () => setPrompt(null),
     pendingId,
+    promptPending: prompt !== null && mutation.isPending,
+    /** Changes whenever a record's edit is refused, so an uncontrolled cell
+     *  keyed on it drops the text the server did not accept. */
+    editEpoch: (id: string) => refused[id] ?? 0,
   }
 }
 

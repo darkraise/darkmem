@@ -197,6 +197,7 @@ function PanelBody({
       )}
       <NoteDialog
         prompt={editor.prompt}
+        pending={editor.promptPending}
         onCancel={editor.cancelPrompt}
         onConfirm={editor.confirmPrompt}
       />

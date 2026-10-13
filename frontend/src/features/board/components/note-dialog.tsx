@@ -9,16 +9,18 @@ import {
   DialogTitle,
 } from "darkraise-ui/components/dialog"
 import { Label } from "darkraise-ui/components/label"
-import { Textarea } from "darkraise-ui/components/textarea"
+import { Input } from "darkraise-ui/components/input"
 import { isBlankNote } from "../lib/records"
 import type { NotePrompt } from "../use-row-editor"
 
 function NoteForm({
   prompt,
+  pending,
   onCancel,
   onConfirm,
 }: {
   prompt: NotePrompt
+  pending: boolean
   onCancel: () => void
   onConfirm: (note: string) => void
 }) {
@@ -36,11 +38,11 @@ function NoteForm({
       </DialogHeader>
       <div className="space-y-1.5">
         <Label htmlFor="board-note">Note</Label>
-        <Textarea
+        {/* One line: a register cell cannot hold a line break. */}
+        <Input
           id="board-note"
           value={note}
           onChange={(event) => setNote(event.target.value)}
-          rows={4}
         />
       </div>
       <DialogFooter>
@@ -48,7 +50,7 @@ function NoteForm({
           Cancel
         </Button>
         <Button
-          disabled={isBlankNote(note)}
+          disabled={pending || isBlankNote(note)}
           onClick={() => onConfirm(note.trim())}
         >
           Move
@@ -62,10 +64,12 @@ function NoteForm({
  *  disabled while the Note is blank, the rule the server enforces too. */
 export function NoteDialog({
   prompt,
+  pending = false,
   onCancel,
   onConfirm,
 }: {
   prompt: NotePrompt | null
+  pending?: boolean
   onCancel: () => void
   onConfirm: (note: string) => void
 }) {
@@ -76,6 +80,7 @@ export function NoteDialog({
           <NoteForm
             key={`${prompt.record.id}:${prompt.state}`}
             prompt={prompt}
+            pending={pending}
             onCancel={onCancel}
             onConfirm={onConfirm}
           />

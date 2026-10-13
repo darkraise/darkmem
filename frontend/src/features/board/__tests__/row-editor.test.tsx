@@ -55,6 +55,43 @@ describe("NoteDialog", () => {
     await user.click(screen.getByRole("button", { name: "Move" }))
     expect(onConfirm).toHaveBeenCalledWith("waiting on the owner")
   })
+
+  it("takes a single-line Note, so Enter cannot add the line break the server refuses", async () => {
+    const onConfirm = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <NoteDialog
+        prompt={{ record: byTitle("Alpha"), state: "deferred" }}
+        onCancel={vi.fn()}
+        onConfirm={onConfirm}
+      />,
+    )
+    const note = screen.getByLabelText("Note")
+    expect(note.tagName).toBe("INPUT")
+    await user.clear(note)
+    await user.type(note, "waiting{Enter}")
+    expect(note).toHaveValue("waiting")
+  })
+
+  it("disables Move while the edit is in flight", async () => {
+    const user = userEvent.setup()
+    const prompt = { record: byTitle("Alpha"), state: "deferred" }
+    const { rerender } = render(
+      <NoteDialog prompt={prompt} onCancel={vi.fn()} onConfirm={vi.fn()} />,
+    )
+    await user.clear(screen.getByLabelText("Note"))
+    await user.type(screen.getByLabelText("Note"), "waiting")
+    expect(screen.getByRole("button", { name: "Move" })).toBeEnabled()
+    rerender(
+      <NoteDialog
+        prompt={prompt}
+        pending
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole("button", { name: "Move" })).toBeDisabled()
+  })
 })
 
 describe("useRowEditor", () => {
@@ -81,6 +118,37 @@ describe("useRowEditor", () => {
         }),
       },
     ])
+  })
+
+  it("keeps the Note prompt open when the edit is refused and closes it when it lands", async () => {
+    const { result } = renderHook(() => useRowEditor("darkmem"), { wrapper })
+    vi.mocked(apiFetch).mockRejectedValueOnce(
+      new ApiError("stale", 409, [{ current_hash: "h9" }], "hash_conflict"),
+    )
+    act(() => result.current.move(byTitle("Alpha"), "deferred"))
+    act(() => result.current.confirmPrompt("parked for now"))
+    await vi.waitFor(() => expect(toast.error).toHaveBeenCalled())
+    expect(result.current.prompt?.state).toBe("deferred")
+
+    vi.mocked(apiFetch).mockResolvedValueOnce({
+      document_id: "reg",
+      content_hash: "h2",
+      row: {},
+    })
+    act(() => result.current.confirmPrompt("parked for now"))
+    await vi.waitFor(() => expect(result.current.prompt).toBeNull())
+  })
+
+  it("bumps a record's edit epoch only when its edit is refused", async () => {
+    const { result } = renderHook(() => useRowEditor("darkmem"), { wrapper })
+    const alpha = byTitle("Alpha")
+    expect(result.current.editEpoch(alpha.id)).toBe(0)
+    vi.mocked(apiFetch).mockRejectedValueOnce(
+      new ApiError("bad", 422, undefined, "invalid_cell"),
+    )
+    act(() => result.current.save(alpha, { note: "x" }))
+    await vi.waitFor(() => expect(result.current.editEpoch(alpha.id)).toBe(1))
+    expect(result.current.editEpoch(byTitle("Beta").id)).toBe(0)
   })
 
   it("never patches a plan task", () => {

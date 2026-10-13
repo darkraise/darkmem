@@ -28,6 +28,8 @@ function editor(): RowEditor {
     confirmPrompt: vi.fn(),
     cancelPrompt: vi.fn(),
     pendingId: null,
+    promptPending: false,
+    editEpoch: () => 0,
   }
 }
 
@@ -110,6 +112,31 @@ describe("RecordsTable", () => {
     expect(rows.save).toHaveBeenCalledWith(byTitle("Beta"), {
       note: "checked by hand",
     })
+  })
+
+  it("shows the stored Note again after its edit is refused", async () => {
+    const rows = editor()
+    const user = userEvent.setup()
+    const show = () => (
+      <RecordsTable
+        records={records}
+        definition={TABLE}
+        onDefinitionChange={vi.fn()}
+        editor={rows}
+        onOpen={vi.fn()}
+      />
+    )
+    const { rerender } = render(show())
+    const stored = screen.getByLabelText("Note of #2").textContent
+    await user.click(screen.getByLabelText("Note of #2"))
+    const input = screen.getByLabelText("Edit Note of #2")
+    await user.clear(input)
+    await user.type(input, "rejected text{Enter}")
+    expect(screen.getByLabelText("Note of #2")).toHaveTextContent("rejected text")
+
+    rows.editEpoch = () => 1
+    rerender(show())
+    expect(screen.getByLabelText("Note of #2").textContent).toBe(stored)
   })
 })
 
