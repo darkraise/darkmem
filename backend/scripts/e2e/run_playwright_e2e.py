@@ -103,8 +103,12 @@ def main() -> int:
         if handle.seeded_fact is not None:
             env["E2E_SEEDED_FACT_SUBJECT"] = handle.seeded_fact.subject_name
             env["E2E_SEEDED_FACT_TEXT"] = handle.seeded_fact.fact_text
+        # Arguments pass through to `playwright test`, so one spec runs
+        # against this stack (`run_playwright_e2e.py tests/x.spec.ts
+        # --project=chromium`); with none, the whole suite runs as before.
         result = subprocess.run(
-            ["npm", "run", "test:e2e"], cwd=str(FRONTEND_DIR), env=env,
+            ["npm", "run", "test:e2e", "--", *sys.argv[1:]],
+            cwd=str(FRONTEND_DIR), env=env,
         )
         return result.returncode
     finally:
