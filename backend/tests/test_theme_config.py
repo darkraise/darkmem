@@ -5,32 +5,36 @@ from app.api.routes.config import THEME_SETTINGS_KEY
 from app.models.config import Config
 
 VALID_SETTINGS = {
+    "version": 7,
+    "mode": "dark",
     "accentColor": "indigo",
     "surfaceColor": "slate",
-    "preset": "default",
+    "tintWithAccent": "on",
+    "signalColor": "none",
+    "style": "glass",
+    "preset": "mica-desk",
     "backgroundStyle": "solid",
     "backgroundIntensity": "balanced",
     "gradientPattern": "blobs",
-    "mode": "dark",
+    "glassTransparency": "medium",
+    "glassBlur": "low",
+    "font": "inter",
+    "headingFont": "body",
     "density": "cozy",
-    "elevation": "medium",
-    "buttonElevation": "flat",
+    "elevation": "standard",
     "radius": "rounded",
     "fontSize": "medium",
-    "surfaceIntensity": "balanced",
-    "accentIntensity": "balanced",
-    "controlDepth": "recessed",
+    "contrast": "low",
+    "darkAccentChroma": "vivid",
     "outerGlow": "none",
     "innerGlow": "none",
-    "presetAxisValues": {"glass": {"opacity": "medium", "blur": "low"}},
+    "sidebarSelection": "auto",
 }
 
-# The theme provider PUTs its whole settings object on every change, so an
-# axis missing from ThemeSettingsPayload 422s every save while localStorage
-# keeps the UI looking correct. Keep this in step with the switcher axes in
-# frontend/src/theme.config.ts.
-PROVIDER_AXES = frozenset(VALID_SETTINGS) - {"presetAxisValues"}
-
+# darkraise-ui 7's axis registry. An axis missing from ThemeSettingsPayload
+# 422s every save that carries it while localStorage keeps the UI looking
+# correct. Keep this in step with the axes in frontend/src/theme.config.ts.
+PROVIDER_AXES = frozenset(VALID_SETTINGS) - {"version"}
 
 @pytest.mark.asyncio
 async def test_get_theme_is_public_and_null_when_unset(client):
@@ -110,20 +114,37 @@ async def test_put_theme_rejects_malformed_values(client, auth_headers):
 
 
 @pytest.mark.asyncio
-async def test_put_theme_rejects_malformed_preset_axis_values(
-    client, auth_headers
-):
-    resp = await client.put(
-        "/api/v1/config/theme",
-        headers=auth_headers,
-        json={
-            "settings": {
-                **VALID_SETTINGS,
-                "presetAxisValues": {"glass": {"opacity": "NOT VALID"}},
-            }
-        },
+async def test_get_theme_serves_a_darkraise_ui_6_row(client, session):
+    # Saved before the 7 upgrade: its removed axes are dropped and the rest
+    # served, unversioned, so the provider migrates it and saves it back.
+    session.add(
+        Config(
+            key=THEME_SETTINGS_KEY,
+            value={
+                "accentColor": "rose",
+                "surfaceColor": "slate",
+                "preset": "default",
+                "backgroundStyle": "solid",
+                "mode": "light",
+                "buttonElevation": "flat",
+                "surfaceIntensity": "flat",
+                "accentIntensity": "vivid",
+                "controlDepth": "recessed",
+                "presetAxisValues": {"glass": {"opacity": "medium"}},
+            },
+        )
     )
-    assert resp.status_code == 422
+    await session.flush()
+
+    resp = await client.get("/api/v1/config/theme")
+    assert resp.status_code == 200
+    assert resp.json()["settings"] == {
+        "accentColor": "rose",
+        "surfaceColor": "slate",
+        "preset": "default",
+        "backgroundStyle": "solid",
+        "mode": "light",
+    }
 
 
 @pytest.mark.asyncio
@@ -142,13 +163,7 @@ async def test_get_theme_tolerates_incompatible_stored_row(client, session):
 async def test_put_theme_omits_null_optionals_from_stored_row(
     client, auth_headers, session
 ):
-    minimal = {
-        "accentColor": "indigo",
-        "surfaceColor": "slate",
-        "preset": "default",
-        "backgroundStyle": "solid",
-        "mode": "dark",
-    }
+    minimal = {"version": 7, "accentColor": "indigo"}
     resp = await client.put(
         "/api/v1/config/theme",
         headers=auth_headers,

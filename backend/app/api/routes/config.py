@@ -1,10 +1,15 @@
 import logging
-import re
 from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    model_serializer,
+)
 from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1218,79 +1223,59 @@ THEME_SETTINGS_KEY = "theme_settings"
 _AXIS_VALUE = r"^[a-z][a-z0-9-]{0,31}$"
 
 
+def _axis(alias: str | None = None):
+    return Field(default=None, alias=alias, pattern=_AXIS_VALUE)
+
+
 class ThemeSettingsPayload(BaseModel):
-    """Mirrors darkraise-ui's ThemeSettings; stored and served verbatim in
+    """Mirrors darkraise-ui 7's ThemeSettings; stored and served verbatim in
     its camelCase wire form so the frontend round-trips without mapping.
 
-    Every axis the theme provider can emit needs a field here: it sends the
-    whole settings object on each change and `extra="forbid"` turns one
-    missing axis into a 422 on every save, which localStorage then masks
-    into a silent loss of cross-browser persistence. That is what the v6
-    upgrade did with `fontSize`; keep this in step with the axis list in
+    Every axis is optional: the provider sends only the axes the user has
+    set, plus `version`. Every axis it can emit still needs a field here, or
+    `extra="forbid"` 422s every save that carries it while localStorage keeps
+    the UI looking correct. Keep this in step with the axis list in
     frontend/src/theme.config.ts.
     """
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
-    accent_color: str = Field(alias="accentColor", pattern=_AXIS_VALUE)
-    surface_color: str = Field(alias="surfaceColor", pattern=_AXIS_VALUE)
-    preset: str = Field(pattern=_AXIS_VALUE)
-    background_style: str = Field(alias="backgroundStyle", pattern=_AXIS_VALUE)
-    background_intensity: str | None = Field(
-        default=None, alias="backgroundIntensity", pattern=_AXIS_VALUE
-    )
-    gradient_pattern: str | None = Field(
-        default=None, alias="gradientPattern", pattern=_AXIS_VALUE
-    )
-    mode: str = Field(pattern=_AXIS_VALUE)
-    density: str | None = Field(default=None, pattern=_AXIS_VALUE)
-    elevation: str | None = Field(default=None, pattern=_AXIS_VALUE)
-    button_elevation: str | None = Field(
-        default=None, alias="buttonElevation", pattern=_AXIS_VALUE
-    )
-    radius: str | None = Field(default=None, pattern=_AXIS_VALUE)
-    font_size: str | None = Field(
-        default=None, alias="fontSize", pattern=_AXIS_VALUE
-    )
-    surface_intensity: str | None = Field(
-        default=None, alias="surfaceIntensity", pattern=_AXIS_VALUE
-    )
-    accent_intensity: str | None = Field(
-        default=None, alias="accentIntensity", pattern=_AXIS_VALUE
-    )
-    control_depth: str | None = Field(
-        default=None, alias="controlDepth", pattern=_AXIS_VALUE
-    )
-    outer_glow: str | None = Field(
-        default=None, alias="outerGlow", pattern=_AXIS_VALUE
-    )
-    inner_glow: str | None = Field(
-        default=None, alias="innerGlow", pattern=_AXIS_VALUE
-    )
-    preset_axis_values: dict[str, dict[str, str]] | None = Field(
-        default=None, alias="presetAxisValues"
-    )
+    version: int | None = Field(default=None, ge=1, le=1000)
+    mode: str | None = _axis()
+    accent_color: str | None = _axis("accentColor")
+    surface_color: str | None = _axis("surfaceColor")
+    tint_with_accent: str | None = _axis("tintWithAccent")
+    signal_color: str | None = _axis("signalColor")
+    style: str | None = _axis()
+    preset: str | None = _axis()
+    background_style: str | None = _axis("backgroundStyle")
+    background_intensity: str | None = _axis("backgroundIntensity")
+    gradient_pattern: str | None = _axis("gradientPattern")
+    glass_transparency: str | None = _axis("glassTransparency")
+    glass_blur: str | None = _axis("glassBlur")
+    font: str | None = _axis()
+    heading_font: str | None = _axis("headingFont")
+    density: str | None = _axis()
+    elevation: str | None = _axis()
+    radius: str | None = _axis()
+    font_size: str | None = _axis("fontSize")
+    contrast: str | None = _axis()
+    dark_accent_chroma: str | None = _axis("darkAccentChroma")
+    outer_glow: str | None = _axis("outerGlow")
+    inner_glow: str | None = _axis("innerGlow")
+    sidebar_selection: str | None = _axis("sidebarSelection")
 
-    @field_validator("preset_axis_values")
-    @classmethod
-    def _validate_preset_axis_values(
-        cls, value: dict[str, dict[str, str]] | None
-    ) -> dict[str, dict[str, str]] | None:
-        if value is None:
-            return value
-        if len(value) > 16:
-            raise ValueError("too many presets")
-        for preset_name, axes in value.items():
-            if not re.fullmatch(_AXIS_VALUE, preset_name):
-                raise ValueError(f"invalid preset name: {preset_name!r}")
-            if len(axes) > 16:
-                raise ValueError(f"too many axes for preset {preset_name!r}")
-            for axis_name, axis_value in axes.items():
-                if not re.fullmatch(_AXIS_VALUE, axis_name):
-                    raise ValueError(f"invalid axis name: {axis_name!r}")
-                if not re.fullmatch(_AXIS_VALUE, axis_value):
-                    raise ValueError(f"invalid axis value: {axis_value!r}")
-        return value
+    # An unset axis is absent, never null: the frontend spreads the loaded
+    # settings over its defaults, so a null would replace a default.
+    @model_serializer(mode="wrap")
+    def _omit_unset(self, handler):
+        return {k: v for k, v in handler(self).items() if v is not None}
+
+
+_THEME_WIRE_KEYS = frozenset(
+    field.alias or name
+    for name, field in ThemeSettingsPayload.model_fields.items()
+)
 
 
 class ThemeSettingsResponse(BaseModel):
@@ -1313,8 +1298,12 @@ async def get_theme_settings(
     )).scalar_one_or_none()
     if row is None or not isinstance(row.value, dict):
         return ThemeSettingsResponse(settings=None)
+    # A row saved by darkraise-ui 6 carries axes 7 removed. Serving what
+    # survives keeps the user's mode and colours; the provider migrates the
+    # unversioned payload and saves it back in the 7 shape.
+    known = {k: v for k, v in row.value.items() if k in _THEME_WIRE_KEYS}
     try:
-        settings = ThemeSettingsPayload.model_validate(row.value)
+        settings = ThemeSettingsPayload.model_validate(known)
     except ValidationError:
         # A row written under an older schema shouldn't break boot; the
         # client falls back to its defaults and the next save heals it.
