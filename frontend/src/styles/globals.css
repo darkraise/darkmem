@@ -487,28 +487,6 @@
   display: none;
 }
 
-/* darkraise-ui gap (SidebarLayout, 6.x): the collapsed rail shares one square
-   between the brand mark and the expand toggle, and the toggle paints only on
-   hover, so at rest nothing says the rail can be reopened. The two stack
-   instead, with the toggle always visible under the mark. */
-.dr-sidebar-layout-aside[data-collapsed="true"]
-  .dr-sidebar-layout-aside-header {
-  height: auto;
-  padding-block: 0.5rem;
-}
-.dr-sidebar-layout-aside[data-collapsed="true"] .dr-sidebar-layout-brand-slot {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.25rem;
-  height: auto;
-}
-.dr-sidebar-layout-aside[data-collapsed="true"]
-  .dr-sidebar-layout-brand-slot
-  > * {
-  opacity: 1;
-}
-
 /* The rail's nav scroller overflows at common desktop heights; the edge that
    still has items past it fades (`data-fade-*` set by ShellBehaviours). */
 .dr-sidebar-layout-nav-scroll[data-fade-end] {

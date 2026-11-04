@@ -28,6 +28,13 @@ describe("sidebar styling", () => {
     expect(shell).toMatch(/selection="pill"/)
   })
 
+  // darkraise-ui 7 cross-fades the mark and the expand toggle in one cell;
+  // overriding the slot's layout stacks the toggle under the mark instead.
+  it("leaves the collapsed rail's brand slot to the library", () => {
+    expect(css).not.toMatch(/\.dr-sidebar-layout-brand-slot\s*\{/)
+    expect(css).not.toMatch(/brand-slot\s*>\s*\*/)
+  })
+
   it("gives the search box the ordinary border until it has focus", () => {
     const search = rule(".dr-sidebar-layout-search .dr-search-command-trigger:not(:focus-visible)")
     expect(search).toContain("border-color: hsl(var(--border))")
