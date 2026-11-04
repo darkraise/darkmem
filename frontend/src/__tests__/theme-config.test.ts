@@ -59,7 +59,7 @@ describe("theme.config", () => {
       accentColor: "green",
       surfaceColor: "neutral",
       tintWithAccent: "off",
-      font: "inter",
+      font: "geist",
       density: "cozy",
       fontSize: "medium",
       darkAccentChroma: "vivid",

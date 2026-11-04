@@ -21,6 +21,10 @@ export const themeConfig: ThemeConfig = {
     surfaceColor: "neutral",
     tintWithAccent: "off",
     signalColor: "none",
+    // Quiet draws the app as a ledger: tint steps and 1px rules, no shadows.
+    // Flat reads as tool panels, Tactile's bevels and full-width bar are
+    // heavy for dense lists, and Glass's veiled top bar overlaps page
+    // headers while its blur taxes the graph views.
     style: "quiet",
     preset: "base",
     backgroundStyle: "solid",
@@ -28,8 +32,9 @@ export const themeConfig: ThemeConfig = {
     gradientPattern: "blobs",
     glassTransparency: "medium",
     glassBlur: "medium",
-    // 7.0's default face is Hanken Grotesk; Inter is the face darkmem shipped.
-    font: "inter",
+    // Geist holds up best at the 11-12px of tags and labels and sits closest
+    // to the JetBrains Mono that carries shas and timestamps.
+    font: "geist",
     headingFont: "body",
     mode: "dark",
     density: "cozy",
