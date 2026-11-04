@@ -3,6 +3,8 @@ import {
   BACKGROUND_STYLES,
   MODES,
   SURFACE_COLORS,
+  type AccentColor,
+  type SurfaceColor,
   type ThemePersistenceAdapter,
   type ThemeSettings,
 } from "darkraise-ui/theme"
@@ -28,7 +30,23 @@ function pick<T extends string>(
 // theme apply. The remaining axes only drive data attributes, and the
 // provider validates the style and preset names itself, so they pass through
 // as stored.
-function sanitize(stored: ThemeSettings): ThemeSettings {
+// A 6.x row (no `version`) may name an accent as its surface. The library
+// would migrate that to zinc plus the accent tint, but the per-field fallback
+// below runs first and would reset it to the default, losing the tint.
+function liftTintedSurface(stored: ThemeSettings): ThemeSettings {
+  const surface: unknown = stored.surfaceColor
+  if (
+    stored.version !== undefined ||
+    SURFACE_COLORS.includes(surface as SurfaceColor) ||
+    !ACCENT_COLORS.includes(surface as AccentColor)
+  ) {
+    return stored
+  }
+  return { ...stored, surfaceColor: "zinc", tintWithAccent: "on" }
+}
+
+function sanitize(raw: ThemeSettings): ThemeSettings {
+  const stored = liftTintedSurface(raw)
   const defaults = themeConfig.defaults ?? {}
   // Hidden axes are pinned last, so a row written while an axis was still
   // adjustable cannot outvote the config it is now hidden by.

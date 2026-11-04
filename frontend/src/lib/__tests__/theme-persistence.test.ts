@@ -88,6 +88,31 @@ describe("themePersistence.load", () => {
     })
   })
 
+  // 6.x offered accents as surfaces; 7.0 draws them as a neutral with the
+  // accent's tint, which is what the library's own migration produces.
+  it("turns a 6.x tinted surface into zinc with the tint on", async () => {
+    apiFetchMock.mockResolvedValue({
+      settings: { accentColor: "purple", surfaceColor: "indigo", mode: "dark" },
+    })
+    const loaded = await themePersistence.load()
+    expect(loaded).toMatchObject({
+      accentColor: "purple",
+      surfaceColor: "zinc",
+      tintWithAccent: "on",
+    })
+  })
+
+  it("leaves a versioned row's surface to the per-field fallback", async () => {
+    apiFetchMock.mockResolvedValue({
+      settings: { version: 7, surfaceColor: "indigo" },
+    })
+    const loaded = await themePersistence.load()
+    expect(loaded).toMatchObject({
+      surfaceColor: themeConfig.defaults.surfaceColor,
+      tintWithAccent: themeConfig.defaults.tintWithAccent,
+    })
+  })
+
   it("fills missing fields from defaults", async () => {
     apiFetchMock.mockResolvedValue({
       settings: { accentColor: "emerald" },
