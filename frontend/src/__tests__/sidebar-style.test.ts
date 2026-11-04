@@ -15,17 +15,11 @@ function rule(selectorStart: string): string {
 }
 
 describe("sidebar styling", () => {
-  it("tints the active item and leaves the library's ring and rail alone", () => {
-    const active = rule(
-      ".dr-sidebar-nav\n  .dr-sidebar-nav-item:is(.dr-sidebar-nav-current",
-    )
-    expect(active).not.toContain("box-shadow")
-    expect(active).toContain("background-color: hsl(var(--primary) / 0.1)")
-    expect(active).toContain("color: var(--primary-text)")
-  })
-
-  it("pins the active indicator to the pill", () => {
-    expect(shell).toMatch(/selection="pill"/)
+  // The library's `rule` look is the whole treatment; an app rule painting
+  // the current row would lay a fill over it.
+  it("leaves the active row to the library's rule look", () => {
+    expect(shell).toMatch(/selection="rule"/)
+    expect(css).not.toContain("dr-sidebar-nav-current")
   })
 
   // darkraise-ui 7 cross-fades the mark and the expand toggle in one cell;

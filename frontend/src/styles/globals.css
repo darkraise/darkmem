@@ -463,21 +463,6 @@
   }
 }
 
-/* Active sidebar item: an accent tint and text colour over the library's
-   `selection="pill"` look. It sets no box-shadow, since that is where the
-   pill is drawn; unlayered, so it beats the library's @layer components
-   background and colour at any specificity. */
-.dr-sidebar-nav
-  .dr-sidebar-nav-item:is(.dr-sidebar-nav-current, [data-status="active"]) {
-  background-color: hsl(var(--primary) / 0.1);
-  color: var(--primary-text);
-}
-.dr-sidebar-nav
-  .dr-sidebar-nav-item:is(.dr-sidebar-nav-current, [data-status="active"])
-  .dr-sidebar-nav-icon-svg {
-  color: var(--primary-text);
-}
-
 /* darkraise-ui gap (LayoutHeader, 6.x): the header always mounts a
    `NotificationBell` and no layout prop hides it. darkmem feeds it nothing,
    so it opened an empty "No new notifications" panel on every page — a dead

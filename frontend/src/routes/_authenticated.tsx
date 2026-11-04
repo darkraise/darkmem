@@ -253,10 +253,11 @@ function AuthenticatedLayout() {
     <UiLabelsProvider value={UI_LABELS}>
       <Shell
         nav={nav}
-        // Pinned rather than following the theme: `sidebarSelection` is a
-        // hidden axis, and `pill` is 7.0's spelling of 6.x's `both`. Ignored
-        // by the two sidebar-less layouts.
-        selection="pill"
+        // Pinned rather than following the theme (`sidebarSelection` is a
+        // hidden axis). `rule` marks the row with a full-height accent line
+        // and no fill, in keeping with Quiet's hairline ledger. Ignored by the
+        // two sidebar-less layouts.
+        selection="rule"
         // Off in favour of `MinimalThemeSwitcher` below. The shell's own
         // switcher renders every axis enabled in `themeConfig.switcher.axes`;
         // see `minimal-theme-switcher.tsx` for why the header uses its own.
