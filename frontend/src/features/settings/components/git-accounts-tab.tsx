@@ -96,7 +96,7 @@ export function GitAccountsTab() {
         {isError ? (
           // Not the empty state: "No git accounts" invites re-adding a
           // token the instance already holds.
-          <p className="text-destructive text-sm">
+          <p className="text-destructive-text text-sm">
             Git accounts could not be loaded.
           </p>
         ) : isLoading ? (

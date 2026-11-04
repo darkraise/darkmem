@@ -244,7 +244,7 @@ export function NotesWorkspace({
           <ScrollArea className="min-h-0 flex-1 pr-3">
             {list.isLoading ? <Skeleton className="h-64 w-full" /> : null}
             {list.isError ? (
-              <p className="text-destructive text-sm">
+              <p className="text-destructive-text text-sm">
                 The page tree could not be loaded.
               </p>
             ) : null}
@@ -330,7 +330,7 @@ export function NotesWorkspace({
               }
             />
           ) : page.isError ? (
-            <p className="text-destructive text-sm">
+            <p className="text-destructive-text text-sm">
               This page could not be loaded.
             </p>
           ) : page.isLoading || !page.data ? (

@@ -155,7 +155,7 @@ export function ChatSidebar({
               variant="ghost"
               size="icon"
               aria-label={`Delete conversation ${conv.title || "Untitled"}`}
-              className="text-muted-foreground hover:text-destructive h-8 w-8 shrink-0 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 max-lg:opacity-100"
+              className="text-muted-foreground hover:text-destructive-text h-8 w-8 shrink-0 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 max-lg:opacity-100"
               onClick={(e) => {
                 e.stopPropagation()
                 setPendingDelete(conv)

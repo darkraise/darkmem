@@ -216,7 +216,7 @@ export function PurposeDialog({
                   vendor that is briefly down cannot make a purpose
                   unconfigurable. */}
               {probe.data?.error && (
-                <span className="text-destructive text-sm">
+                <span className="text-destructive-text text-sm">
                   No model list from {draft.provider_name}:{" "}
                   {describeProbeError(probe.data.error)}
                 </span>
@@ -281,11 +281,11 @@ export function PurposeDialog({
                 onChange={(e) => patch({ params: e.target.value })}
                 className={cn(
                   "font-mono",
-                  !paramsCheck.ok && "border-destructive",
+                  !paramsCheck.ok && "border-destructive-edge",
                 )}
               />
               {!paramsCheck.ok && (
-                <span className="text-destructive text-sm">
+                <span className="text-destructive-text text-sm">
                   {paramsCheck.error}
                 </span>
               )}

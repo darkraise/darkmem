@@ -54,15 +54,15 @@ function keyState(key: ApiKeySummary, now: number): KeyState {
 const STATE_PILL: Record<KeyState, { label: string; className: string }> = {
   active: {
     label: "Active",
-    className: "border-success/50 bg-success/10 text-success-text",
+    className: "border-success-edge/50 bg-success-solid/10 text-success-text",
   },
   expiring: {
     label: "Expires soon",
-    className: "border-warning/55 bg-warning/10 text-warning-text",
+    className: "border-warning-edge/55 bg-warning-solid/10 text-warning-text",
   },
   expired: {
     label: "Expired",
-    className: "border-destructive/50 bg-destructive/8 text-destructive",
+    className: "border-destructive-edge/50 bg-destructive-solid/8 text-destructive-text",
   },
 }
 
@@ -191,7 +191,7 @@ function KeyTile({
           <Button
             size="sm"
             variant="ghost"
-            className="text-destructive hover:text-destructive"
+            className="text-destructive-text hover:text-destructive-text"
             onClick={() => onRevoke(apiKey)}
           >
             <Trash2 aria-hidden className="mr-1.5 size-3.5" />
@@ -265,7 +265,7 @@ export function ApiKeysCard() {
             ))}
           </div>
         ) : isError ? (
-          <p className="text-destructive text-sm">
+          <p className="text-destructive-text text-sm">
             The list of keys could not be loaded.
           </p>
         ) : live.length === 0 ? (

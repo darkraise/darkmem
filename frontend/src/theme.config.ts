@@ -2,32 +2,45 @@ import type { ThemeConfig } from "darkraise-ui/theme"
 import { scrubHiddenAxisStorage } from "@/lib/theme-hidden-axes"
 
 /**
- * The only adjustable axes: light/dark and the two colours. The header's
+ * The only adjustable axes: light/dark, the two colours and whether the
+ * surface takes the accent's tint. The header's
  * popover and Settings → Appearance both offer exactly these; every other axis
  * is a fixed part of darkmem's look, pinned to the default below and scrubbed
  * from storage by `pinHiddenAxes` / `scrubHiddenAxisStorage`.
  */
-export const SWITCHER_AXES = ["mode", "accentColor", "surfaceColor"] as const
+export const SWITCHER_AXES = [
+  "mode",
+  "accentColor",
+  "surfaceColor",
+  "tintWithAccent",
+] as const
 
 export const themeConfig: ThemeConfig = {
   defaults: {
     accentColor: "green",
     surfaceColor: "neutral",
-    preset: "default",
+    tintWithAccent: "off",
+    signalColor: "none",
+    style: "quiet",
+    preset: "base",
     backgroundStyle: "solid",
     backgroundIntensity: "neutral",
     gradientPattern: "blobs",
+    glassTransparency: "medium",
+    glassBlur: "medium",
+    // 7.0's default face is Hanken Grotesk; Inter is the face darkmem shipped.
+    font: "inter",
+    headingFont: "body",
     mode: "dark",
     density: "cozy",
-    elevation: "medium",
-    buttonElevation: "flat",
+    elevation: "standard",
     radius: "rounded",
     fontSize: "medium",
-    surfaceIntensity: "flat",
-    accentIntensity: "vivid",
-    controlDepth: "recessed",
+    contrast: "low",
+    darkAccentChroma: "vivid",
     outerGlow: "balanced",
     innerGlow: "balanced",
+    sidebarSelection: "auto",
   },
   switcher: {
     enabled: true,
@@ -36,9 +49,9 @@ export const themeConfig: ThemeConfig = {
     // `ThemeSettingsPanel` — so an axis off here is gone from the Appearance
     // tab too, which is the intent.
     //
-    // `gradientPattern` and `presetAxes` would be off regardless: a gradient
-    // pattern only paints when `backgroundStyle` is `gradient`, pinned to
-    // `solid`, and the pinned `default` preset declares no preset axes.
+    // `gradientPattern` and the two glass axes would be off regardless: a
+    // gradient pattern only paints when `backgroundStyle` is `gradient`,
+    // pinned to `solid`, and only the `glass` style reads the glass axes.
     //
     // `theme-config.test.ts` compares this key set against the library's own
     // default config, so an axis added by a future upgrade fails the build
@@ -52,21 +65,26 @@ export const themeConfig: ThemeConfig = {
       mode: true,
       accentColor: true,
       surfaceColor: true,
+      tintWithAccent: true,
+      signalColor: false,
+      style: false,
       preset: false,
       backgroundStyle: false,
       backgroundIntensity: false,
       gradientPattern: false,
+      glassTransparency: false,
+      glassBlur: false,
+      font: false,
+      headingFont: false,
       density: false,
       elevation: false,
-      buttonElevation: false,
       radius: false,
       fontSize: false,
-      surfaceIntensity: false,
-      accentIntensity: false,
-      controlDepth: false,
+      contrast: false,
+      darkAccentChroma: false,
       outerGlow: false,
       innerGlow: false,
-      presetAxes: false,
+      sidebarSelection: false,
     },
   },
 }

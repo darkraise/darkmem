@@ -66,7 +66,7 @@ export function MemoryPeekDialog({
         {memory.isLoading ? (
           <Skeleton className="h-24 w-full rounded-md" />
         ) : memory.isError ? (
-          <p className="text-destructive text-sm">
+          <p className="text-destructive-text text-sm">
             This memory could not be loaded.
           </p>
         ) : memory.data ? (

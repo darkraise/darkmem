@@ -76,7 +76,7 @@ describe("PageEditor", () => {
     const { container } = render(<PageEditor initialBlocks={blocks} editable />)
     await act(async () => {})
     const callout = container.querySelector('[data-variant="info"]')!
-    expect(callout.className).toMatch(/bg-info\/10/)
+    expect(callout.className).toMatch(/bg-info-solid\/10/)
     expect(callout.className).not.toMatch(/sky-/)
     expect(container.querySelector(".max-w-3xl")).not.toHaveClass("mx-auto")
   })

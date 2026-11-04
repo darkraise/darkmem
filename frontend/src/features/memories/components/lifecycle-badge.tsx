@@ -18,7 +18,7 @@ export function LifecycleBadge({
       variant="outline"
       size="sm"
       className={cn(
-        "border-warning/50 bg-warning/10 text-warning-text gap-1",
+        "border-warning-edge/50 bg-warning-solid/10 text-warning-text gap-1",
         className,
       )}
     >
@@ -51,7 +51,7 @@ export function LifecycleDot({
       aria-hidden
       className={cn(
         "inline-block h-1.5 w-1.5 shrink-0 rounded-full",
-        isCaution ? "bg-warning" : "bg-muted-foreground/40",
+        isCaution ? "bg-warning-solid" : "bg-muted-foreground/40",
         className,
       )}
     />

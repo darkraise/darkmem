@@ -93,7 +93,7 @@ function RungLabel({ value }: { value: string | null }) {
     <Badge
       variant="outline"
       size="sm"
-      className="border-warning/50 bg-warning/10 text-warning-text"
+      className="border-warning-edge/50 bg-warning-solid/10 text-warning-text"
     >
       {value}
     </Badge>
@@ -350,7 +350,7 @@ function MemoryDetailPage() {
                         key={flag}
                         variant="outline"
                         size="sm"
-                        className="border-warning/40 text-warning-text"
+                        className="border-warning-edge/40 text-warning-text"
                       >
                         {flag}
                       </Badge>

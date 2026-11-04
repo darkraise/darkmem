@@ -29,7 +29,7 @@ export function MiniGraph({
     // Not the empty state: "no entities extracted yet" tells the reader their
     // pipeline did not extract, on a read that merely failed.
     return (
-      <p className="text-destructive p-2 text-sm">
+      <p className="text-destructive-text p-2 text-sm">
         Context could not be loaded.
       </p>
     )

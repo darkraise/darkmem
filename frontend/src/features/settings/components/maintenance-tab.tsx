@@ -90,8 +90,8 @@ export function MaintenanceTab() {
           className={cn(
             "rounded-md border p-3 text-sm",
             m.lastOpFailed
-              ? "border-destructive/50 bg-destructive/8"
-              : "border-success/50 bg-success/8",
+              ? "border-destructive-edge/50 bg-destructive-solid/8"
+              : "border-success-edge/50 bg-success-solid/8",
           )}
         >
           <b className="font-semibold">Last operation:</b> {m.lastOpNote}
@@ -171,7 +171,7 @@ export function MaintenanceTab() {
               trigger={
                 <Button
                   variant="outline"
-                  className="border-destructive/60 text-destructive"
+                  className="border-destructive-edge/60 text-destructive-text"
                   disabled={m.cleanup.expired === 0}
                 >
                   <Trash2 className="mr-1.5 size-3.5" />
@@ -194,7 +194,7 @@ export function MaintenanceTab() {
               trigger={
                 <Button
                   variant="outline"
-                  className="border-warning/60 text-warning-text"
+                  className="border-warning-edge/60 text-warning-text"
                 >
                   Run now
                 </Button>
@@ -215,7 +215,7 @@ export function MaintenanceTab() {
               trigger={
                 <Button
                   variant="outline"
-                  className="border-warning/60 text-warning-text"
+                  className="border-warning-edge/60 text-warning-text"
                 >
                   Run now
                 </Button>
@@ -266,7 +266,7 @@ export function MaintenanceTab() {
               trigger={
                 <Button
                   variant="outline"
-                  className="border-destructive/60 text-destructive"
+                  className="border-destructive-edge/60 text-destructive-text"
                   disabled={m.dbops.retiredFingerprints?.length === 0}
                 >
                   <Trash2 className="mr-1.5 size-3.5" />

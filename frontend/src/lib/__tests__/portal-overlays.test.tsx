@@ -83,11 +83,30 @@ async function openSelect() {
 }
 
 describe("keepDialogOpenOnListEscape", () => {
-  it("without it, Escape on an open Select closes the whole dialog", async () => {
+  // 6.6 closed the whole dialog here; 7.0 closes only the list. While this
+  // and the Combobox twin hold, the helper is redundant and can be retired.
+  it("without it, the library itself closes only an open Select", async () => {
     render(<Harness guarded={false} />)
     const listbox = await openSelect()
     fireEvent.keyDown(listbox, { key: "Escape" })
-    expect(await screen.findByText("dialog closed")).toBeInTheDocument()
+    await act(async () => {})
+    expect(screen.getByText("dialog open")).toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "provider" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    )
+  })
+
+  it("without it, the library itself closes only an open Combobox", async () => {
+    render(<Harness guarded={false} />)
+    const input = screen.getByRole("combobox", { name: "model" })
+    fireEvent.focus(input)
+    fireEvent.click(input)
+    expect(input).toHaveAttribute("aria-expanded", "true")
+    fireEvent.keyDown(input, { key: "Escape" })
+    await act(async () => {})
+    expect(input).toHaveAttribute("aria-expanded", "false")
+    expect(screen.getByText("dialog open")).toBeInTheDocument()
   })
 
   it("closes only the Select, keeping the dialog and what was typed", async () => {

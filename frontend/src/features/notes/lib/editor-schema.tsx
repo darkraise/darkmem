@@ -12,10 +12,10 @@ import { cn } from "darkraise-ui/lib"
 import { CALLOUT_VARIANTS, type CalloutVariant } from "./block-properties"
 
 const CALLOUT_TONE: Record<CalloutVariant, string> = {
-  info: "border-info/40 bg-info/10 [&>svg]:text-info-text",
-  warning: "border-warning/40 bg-warning/10 [&>svg]:text-warning-text",
-  error: "border-destructive/40 bg-destructive/10 [&>svg]:text-destructive",
-  success: "border-success/40 bg-success/10 [&>svg]:text-success-text",
+  info: "border-info-edge/40 bg-info-solid/10 [&>svg]:text-info-text",
+  warning: "border-warning-edge/40 bg-warning-solid/10 [&>svg]:text-warning-text",
+  error: "border-destructive-edge/40 bg-destructive-solid/10 [&>svg]:text-destructive-text",
+  success: "border-success-edge/40 bg-success-solid/10 [&>svg]:text-success-text",
 }
 
 export const CALLOUT_ICON: Record<CalloutVariant, typeof Info> = {

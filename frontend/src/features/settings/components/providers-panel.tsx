@@ -78,7 +78,7 @@ export function ProvidersPanel() {
       {isError ? (
         // Not the empty state: "No providers configured" invites an operator
         // to re-add connections that already exist.
-        <p className="text-destructive text-sm">
+        <p className="text-destructive-text text-sm">
           Providers could not be loaded.
         </p>
       ) : providers.length === 0 ? (

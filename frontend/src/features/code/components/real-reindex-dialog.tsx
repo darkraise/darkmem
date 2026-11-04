@@ -118,7 +118,7 @@ export function RealReindexDialog({
             <p
               id="real-reindex-form-error"
               role="alert"
-              className="text-destructive text-sm"
+              className="text-destructive-text text-sm"
             >
               {wholeFormError}
             </p>

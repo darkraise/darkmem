@@ -217,7 +217,7 @@ export function ProviderDialog({
                 className="font-mono"
               />
               {nameError && (
-                <span className="text-destructive text-sm">{nameError}</span>
+                <span className="text-destructive-text text-sm">{nameError}</span>
               )}
             </Field>
           )}
@@ -243,7 +243,7 @@ export function ProviderDialog({
               className="font-mono"
             />
             {baseUrlError && (
-              <span className="text-destructive text-sm">{baseUrlError}</span>
+              <span className="text-destructive-text text-sm">{baseUrlError}</span>
             )}
           </Field>
           <Field label="api_key" span2>
@@ -291,7 +291,7 @@ export function ProviderDialog({
           </Field>
         </div>
 
-        {error && <p className="text-destructive text-sm">{error.message}</p>}
+        {error && <p className="text-destructive-text text-sm">{error.message}</p>}
         {update.data && update.data.no_embedding_purposes.length > 0 && (
           <p className="text-warning-text text-sm">
             {update.data.no_embedding_purposes.join(", ")} lost their embeddings

@@ -85,7 +85,7 @@ export function ChatContextPanel({
       ) : (
         <>
           {degraded && (
-            <div className="border-warning/55 bg-warning/12 flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm">
+            <div className="border-warning-edge/55 bg-warning-solid/12 flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm">
               <TriangleAlert
                 aria-hidden
                 className="text-warning-text h-3.5 w-3.5 shrink-0"

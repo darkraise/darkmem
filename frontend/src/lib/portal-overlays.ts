@@ -35,7 +35,8 @@ export function ignorePortaledOverlayPointerDown(event: PointerEvent) {
 // the event: a Select through its trigger, which toggles; a Combobox through
 // the mousedown-outside its click-outside hook listens for, dispatched on the
 // dialog itself, which the dialog's own pointerdown guard never sees.
-// Retire it once the library's layer stack orders portaled layers.
+// darkraise-ui 7.0 closes only the open list on its own (asserted unguarded
+// in portal-overlays.test.tsx), so this is now redundant and can be retired.
 export function keepDialogOpenOnListEscape(event: KeyboardEvent) {
   const target = event.target
   if (!(target instanceof Element)) return

@@ -20,19 +20,19 @@ const TERMINAL_STYLES: Record<
 > = {
   running: {
     icon: RefreshCw,
-    className: "border-info/50 bg-info/10 text-info-text",
+    className: "border-info-edge/50 bg-info-solid/10 text-info-text",
   },
   completed: {
     icon: Check,
-    className: "border-success/50 bg-success/10 text-success-text",
+    className: "border-success-edge/50 bg-success-solid/10 text-success-text",
   },
   partial: {
     icon: TriangleAlert,
-    className: "border-warning/50 bg-warning/10 text-warning-text",
+    className: "border-warning-edge/50 bg-warning-solid/10 text-warning-text",
   },
   failed: {
     icon: TriangleAlert,
-    className: "border-destructive/50 bg-destructive/10 text-destructive",
+    className: "border-destructive-edge/50 bg-destructive-solid/10 text-destructive-text",
   },
 }
 
@@ -83,8 +83,8 @@ function PipelineRow({
               className={cn(
                 "rounded-sm border px-1.5 py-0.5 font-mono text-sm",
                 failedStepSeverity(failedStep) === "warn"
-                  ? "border-warning/60 bg-warning/10 text-warning-text"
-                  : "border-destructive/60 bg-destructive/10 text-destructive",
+                  ? "border-warning-edge/60 bg-warning-solid/10 text-warning-text"
+                  : "border-destructive-edge/60 bg-destructive-solid/10 text-destructive-text",
               )}
             >
               {failedStep}

@@ -14,20 +14,20 @@ const STATE_STYLES: Record<
   SurfaceState,
   { icon: LucideIcon; className: string }
 > = {
-  populated: { icon: List, className: "text-success-text border-success/40" },
+  populated: { icon: List, className: "text-success-text border-success-edge/40" },
   empty: {
     icon: CircleDashed,
     className: "text-muted-foreground border-border border-dashed",
   },
   staged: {
     icon: Clock,
-    className: "text-warning-text border-warning/50 border-dashed",
+    className: "text-warning-text border-warning-edge/50 border-dashed",
   },
   // A failed read is not an empty one, and a surface that renders it as
   // `empty` asserts an absence it never observed (invariant 14).
   error: {
     icon: CircleAlert,
-    className: "text-destructive border-destructive/50",
+    className: "text-destructive-text border-destructive-edge/50",
   },
 }
 

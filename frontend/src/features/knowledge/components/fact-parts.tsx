@@ -64,7 +64,7 @@ export function StaleBadge({ className }: { className?: string }) {
     <Badge
       variant="outline"
       size="sm"
-      className={cn("border-warning/50 bg-warning/10 text-warning-text gap-1", className)}
+      className={cn("border-warning-edge/50 bg-warning-solid/10 text-warning-text gap-1", className)}
     >
       <RefreshCcw aria-hidden className="h-3 w-3" />
       stale
@@ -79,7 +79,7 @@ export function UnderSourcedBadge({ className }: { className?: string }) {
     <Badge
       variant="outline"
       size="sm"
-      className={cn("border-warning/50 bg-warning/10 text-warning-text gap-1", className)}
+      className={cn("border-warning-edge/50 bg-warning-solid/10 text-warning-text gap-1", className)}
     >
       <BatteryLow aria-hidden className="h-3 w-3" />
       under-sourced
@@ -188,7 +188,7 @@ export function RungLabel({ value }: { value: string | null }) {
     <Badge
       variant="outline"
       size="sm"
-      className="border-warning/50 bg-warning/10 text-warning-text"
+      className="border-warning-edge/50 bg-warning-solid/10 text-warning-text"
     >
       {value}
     </Badge>

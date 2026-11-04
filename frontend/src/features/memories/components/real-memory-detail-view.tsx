@@ -217,7 +217,7 @@ export function RealMemoryDetailView({ memoryId }: { memoryId: string }) {
             </Button>
             <Button
               variant="outline"
-              className="text-destructive"
+              className="text-destructive-text"
               onClick={() => setDeleteOpen(true)}
             >
               <Trash2 className="mr-2 size-4" />

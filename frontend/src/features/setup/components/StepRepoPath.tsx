@@ -72,7 +72,7 @@ export function StepRepoPath() {
         onConfirm={handleConfirm}
       />
       {showDefaultError && (
-        <p role="alert" className="text-destructive text-sm">
+        <p role="alert" className="text-destructive-text text-sm">
           Could not select the default folder: {defaultError}. Choose another
           folder or retry with “Use this folder”.
         </p>

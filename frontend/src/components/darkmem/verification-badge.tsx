@@ -27,15 +27,15 @@ const STYLES: Record<VerificationStatus, { icon: LucideIcon; className: string }
   },
   confirmed: {
     icon: CircleCheck,
-    className: "border-success/50 bg-success/10 text-success-text",
+    className: "border-success-edge/50 bg-success-solid/10 text-success-text",
   },
   disputed: {
     icon: CircleAlert,
-    className: "border-warning/50 bg-warning/10 text-warning-text",
+    className: "border-warning-edge/50 bg-warning-solid/10 text-warning-text",
   },
   superseded: {
     icon: History,
-    className: "border-warning/50 bg-warning/10 text-warning-text",
+    className: "border-warning-edge/50 bg-warning-solid/10 text-warning-text",
   },
 }
 

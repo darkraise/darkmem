@@ -266,8 +266,8 @@ interface MemoryDetailProps {
  *  what `superseded` actually means, which a dashed ring never could.
  */
 const STATUS_STYLES: Record<string, string> = {
-  active: "border-success/50 bg-success/10 text-success-text",
-  superseded: "border-warning/60 border-dashed bg-warning/5 text-warning-text",
+  active: "border-success-edge/50 bg-success-solid/10 text-success-text",
+  superseded: "border-warning-edge/60 border-dashed bg-warning-solid/5 text-warning-text",
   deprecated: "border-border border-dashed bg-muted/40 text-muted-foreground",
 }
 

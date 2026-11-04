@@ -108,8 +108,8 @@ export function PagePane({
       </div>
 
       {sync.status.kind === "stopped" ? (
-        <div className="border-destructive/50 flex items-center justify-between gap-3 rounded-md border border-dashed px-3 py-2">
-          <div className="text-destructive text-sm">
+        <div className="border-destructive-edge/50 flex items-center justify-between gap-3 rounded-md border border-dashed px-3 py-2">
+          <div className="text-destructive-text text-sm">
             <p>{bannerText(sync.status)}</p>
             <p>
               Your unsaved draft is kept in this tab. Copy it from the editor

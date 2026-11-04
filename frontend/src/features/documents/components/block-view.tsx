@@ -165,7 +165,9 @@ export function BlockView({
           <TableHeader>
             <TableRow>
               {header.map((cell, i) => (
-                <TableHead key={i}>{cell}</TableHead>
+                <TableHead key={i} className="whitespace-normal">
+                  {cell}
+                </TableHead>
               ))}
             </TableRow>
           </TableHeader>
@@ -177,7 +179,9 @@ export function BlockView({
                 return (
                   <TableRow key={row.block_id}>
                     {cells.map((cell, i) => (
-                      <TableCell key={i}>{cell}</TableCell>
+                      <TableCell key={i} className="whitespace-normal">
+                        {cell}
+                      </TableCell>
                     ))}
                   </TableRow>
                 )
@@ -201,7 +205,9 @@ export function BlockView({
           <TableBody>
             <TableRow>
               {cells.map((cell, i) => (
-                <TableCell key={i}>{cell}</TableCell>
+                <TableCell key={i} className="whitespace-normal">
+                        {cell}
+                      </TableCell>
               ))}
             </TableRow>
           </TableBody>

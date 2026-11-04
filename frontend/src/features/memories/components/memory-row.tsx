@@ -77,7 +77,7 @@ export function MemoryRow({
                 key={flag}
                 variant="outline"
                 size="sm"
-                className="border-warning/40 text-warning-text"
+                className="border-warning-edge/40 text-warning-text"
               >
                 {flag}
               </Badge>

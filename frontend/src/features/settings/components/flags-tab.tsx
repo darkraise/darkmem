@@ -243,7 +243,7 @@ function ClampedPill({ param }: { param: DemoLadderParam }) {
       <Tooltip>
         <TooltipTrigger
           aria-label="About the clamped state"
-          className="border-warning/60 bg-warning/10 text-warning-text inline-flex cursor-help items-center rounded-full border px-2.5 py-0.5 font-mono text-xs tracking-wide whitespace-nowrap uppercase"
+          className="border-warning-edge/60 bg-warning-solid/10 text-warning-text inline-flex cursor-help items-center rounded-full border px-2.5 py-0.5 font-mono text-xs tracking-wide whitespace-nowrap uppercase"
         >
           clamped
         </TooltipTrigger>
@@ -310,7 +310,7 @@ function armRangeError(arm: DemoRankArm, value: number): string | null {
  *  the draft leaves it. */
 function ArmRange({ arm, error }: { arm: DemoRankArm; error: string | null }) {
   if (error)
-    return <p className="text-destructive basis-full text-sm">{error}</p>
+    return <p className="text-destructive-text basis-full text-sm">{error}</p>
   if (arm.min === undefined || arm.max === undefined) return null
   return (
     <p className="text-muted-foreground basis-full text-right text-xs">
@@ -551,7 +551,7 @@ function TunableInput({
 }
 
 function LoadFailed({ children }: { children: ReactNode }) {
-  return <p className="text-destructive text-sm">{children}</p>
+  return <p className="text-destructive-text text-sm">{children}</p>
 }
 
 function RepoAllowlistSection({ binding }: { binding: FlagsTabBinding }) {

@@ -96,7 +96,7 @@ export function JobLastRun({ job }: { job: DemoJob }) {
   return (
     <span
       className={`inline-flex w-fit items-center gap-1.5 text-sm ${
-        ok ? "text-success-text" : "text-destructive"
+        ok ? "text-success-text" : "text-destructive-text"
       }`}
     >
       <Icon aria-hidden className="size-[var(--icon-size-sm)] shrink-0" />

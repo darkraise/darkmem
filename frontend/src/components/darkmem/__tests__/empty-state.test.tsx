@@ -22,7 +22,7 @@ describe("EmptyState", () => {
     ["empty", "text-muted-foreground"],
     ["filtered", "text-info-text"],
     ["missing", "text-warning-text"],
-    ["failed", "text-destructive"],
+    ["failed", "text-destructive-text"],
     ["resolved", "text-success-text"],
   ] as const)("paints %s with the %s token", (kind, token) => {
     const { container } = render(<EmptyState kind={kind} title="t" />)

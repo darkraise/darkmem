@@ -237,7 +237,7 @@ export const DocumentReader = memo(function DocumentReader({
   }
   if (blocks.isError) {
     return (
-      <p className="text-destructive text-sm">
+      <p className="text-destructive-text text-sm">
         This document could not be read.
       </p>
     )

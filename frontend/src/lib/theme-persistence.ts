@@ -12,23 +12,24 @@ import { pinHiddenAxes } from "@/lib/theme-hidden-axes"
 import { DEMO } from "@/lib/demo-flag"
 
 interface ThemeSettingsResponse {
-  settings: Partial<ThemeSettings> | null
+  settings: ThemeSettings | null
 }
 
 function pick<T extends string>(
   value: unknown,
   allowed: readonly T[],
-  fallback: T,
-): T {
+  fallback: T | undefined,
+): T | undefined {
   return allowed.includes(value as T) ? (value as T) : fallback
 }
 
 // generateTokens indexes color scales by accent/surface value, so an
 // out-of-range stored value must fall back per-field rather than crash the
 // theme apply. The remaining axes only drive data attributes, and the
-// provider validates the preset name itself, so they pass through as stored.
-function sanitize(stored: Partial<ThemeSettings>): ThemeSettings {
-  const defaults = themeConfig.defaults
+// provider validates the style and preset names itself, so they pass through
+// as stored.
+function sanitize(stored: ThemeSettings): ThemeSettings {
+  const defaults = themeConfig.defaults ?? {}
   // Hidden axes are pinned last, so a row written while an axis was still
   // adjustable cannot outvote the config it is now hidden by.
   return pinHiddenAxes(
@@ -61,10 +62,11 @@ export const apiThemePersistence: ThemePersistenceAdapter = {
     const { settings } = await apiFetch<ThemeSettingsResponse>("/config/theme")
     return settings ? sanitize(settings) : null
   },
-  async save(settings: ThemeSettings) {
+  async save(settings: ThemeSettings, options) {
     await apiFetch<ThemeSettingsResponse>("/config/theme", {
       method: "PUT",
       body: JSON.stringify({ settings }),
+      signal: options?.signal,
     })
   },
 }

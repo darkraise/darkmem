@@ -215,7 +215,7 @@ export function RecordsTable({
               aria-busy={editor.isPending(record.id) || undefined}
             >
               {columns.map((property) => (
-                <TableCell key={property}>
+                <TableCell key={property} className="whitespace-normal">
                   <Cell
                     record={record}
                     property={property}

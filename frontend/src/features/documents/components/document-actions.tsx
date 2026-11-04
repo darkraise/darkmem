@@ -119,7 +119,7 @@ export function DocumentActions({
         icon={Trash2}
         label="Delete"
         variant="ghost"
-        className="text-destructive hover:text-destructive"
+        className="text-destructive-text hover:text-destructive-text"
         onClick={() => setConfirmOpen(true)}
       />
 
@@ -235,7 +235,7 @@ export function DocumentDetail({
           {connections.isLoading ? (
             <Skeleton className="h-16 w-full rounded-md" />
           ) : connections.isError ? (
-            <p className="text-destructive text-sm italic">
+            <p className="text-destructive-text text-sm italic">
               connections could not be read
             </p>
           ) : connections.data?.comparable_documents === 0 ? (
@@ -367,7 +367,7 @@ function RelatedMemoriesCard({ documentId }: { documentId: string }) {
         {related.isLoading ? (
           <Skeleton className="h-16 w-full rounded-md" />
         ) : related.isError ? (
-          <p className="text-destructive text-sm italic">
+          <p className="text-destructive-text text-sm italic">
             related memories could not be read
           </p>
         ) : related.data?.comparable_memories === 0 ? (

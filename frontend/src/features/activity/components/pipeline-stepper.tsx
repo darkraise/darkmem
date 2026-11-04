@@ -31,17 +31,17 @@ function StepIcon({ state }: { state: PipelineStepState }) {
 }
 
 const DOT_STYLES: Record<PipelineStepState, string> = {
-  ok: "border-success text-success-text",
+  ok: "border-success-edge text-success-text",
   pending: "border-border text-muted-foreground/60",
-  error: "border-destructive text-destructive bg-destructive/10",
-  degraded: "border-warning border-dashed text-warning-text bg-warning/10",
+  error: "border-destructive-edge text-destructive-text bg-destructive-solid/10",
+  degraded: "border-warning-edge border-dashed text-warning-text bg-warning-solid/10",
   skipped: "border-border border-dashed text-muted-foreground/50 opacity-60",
 }
 
 const LABEL_STYLES: Record<PipelineStepState, string> = {
   ok: "text-foreground",
   pending: "text-muted-foreground",
-  error: "text-destructive font-semibold",
+  error: "text-destructive-text font-semibold",
   degraded: "text-warning-text font-semibold",
   skipped: "text-muted-foreground opacity-60",
 }
@@ -49,9 +49,9 @@ const LABEL_STYLES: Record<PipelineStepState, string> = {
 // Connector colour follows the step it feeds: red for a hard error, amber
 // for degraded-not-fatal (never reads as a hard failure), neutral otherwise.
 function connectorClass(next: PipelineStepState): string {
-  if (next === "error") return "bg-destructive/50"
-  if (next === "degraded") return "bg-warning/50"
-  if (next === "ok") return "bg-success"
+  if (next === "error") return "bg-destructive-solid/50"
+  if (next === "degraded") return "bg-warning-solid/50"
+  if (next === "ok") return "bg-success-solid"
   return "bg-border"
 }
 
@@ -66,8 +66,8 @@ function SubstepPill({
     <span
       className={cn(
         "rounded-full border px-1.5 font-mono text-xs",
-        state === "ok" && "border-success/60 text-success-text",
-        state === "error" && "border-destructive/60 text-destructive",
+        state === "ok" && "border-success-edge/60 text-success-text",
+        state === "error" && "border-destructive-edge/60 text-destructive-text",
         state === "skipped" && "border-border text-muted-foreground",
       )}
     >
@@ -96,7 +96,7 @@ function WriteDot({
         className="border-border flex h-7 w-7 flex-none items-center justify-center rounded-full border-2"
         style={{
           background:
-            "linear-gradient(90deg, hsl(var(--success) / 0.35) 50%, hsl(var(--destructive) / 0.45) 50%)",
+            "linear-gradient(90deg, hsl(var(--success-solid) / 0.35) 50%, hsl(var(--destructive-solid) / 0.45) 50%)",
         }}
       />
     )

@@ -74,7 +74,7 @@ function ProjectOpenWorkstreams({ project }: { project: string }) {
   )
   if (open.isError) {
     return (
-      <p className="text-destructive text-sm">
+      <p className="text-destructive-text text-sm">
         Could not read {project}'s work log: {open.error.message}
       </p>
     )

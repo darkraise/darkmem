@@ -241,7 +241,7 @@ export function RealMemoryGraphPage() {
         {isError && (
           // Not the empty state: "no graph yet" tells the operator their
           // ingest produced nothing, on a read that merely failed.
-          <p className="text-destructive p-3 text-sm">
+          <p className="text-destructive-text p-3 text-sm">
             The graph could not be loaded.
           </p>
         )}
@@ -317,7 +317,7 @@ export function RealMemoryGraphPage() {
               graphData3D.nodes.length >= LARGE_3D_NOTICE_NODES && (
                 <div
                   role="status"
-                  className="bg-warning/12 border-warning/55 text-warning-text absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-md border px-2.5 py-1 text-sm shadow-lg backdrop-blur-sm"
+                  className="bg-warning-solid/12 border-warning-edge/55 text-warning-text absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-md border px-2.5 py-1 text-sm shadow-lg backdrop-blur-sm"
                 >
                   Large graph: 3D is best-effort here. Switch to 2D for smooth
                   navigation.
@@ -405,7 +405,7 @@ export function RealMemoryGraphPage() {
                     below is a different thing and stays: it reports that this
                     view is missing data, which nothing else on the page says. */}
                 {data?.entities_truncated && (
-                  <p className="bg-warning/12 border-warning/55 text-warning-text rounded-md border px-2.5 py-1 text-sm shadow-lg backdrop-blur-sm">
+                  <p className="bg-warning-solid/12 border-warning-edge/55 text-warning-text rounded-md border px-2.5 py-1 text-sm shadow-lg backdrop-blur-sm">
                     Entity overlay truncated — showing a partial view.
                   </p>
                 )}

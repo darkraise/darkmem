@@ -11,7 +11,7 @@ export function EditableDocument({ documentId }: { documentId: string }) {
   if (blocks.isLoading) return <Skeleton className="h-24 w-full" />
   if (blocks.isError) {
     return (
-      <p className="text-destructive text-sm">
+      <p className="text-destructive-text text-sm">
         This document could not be read.
       </p>
     )

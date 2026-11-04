@@ -97,7 +97,7 @@ function ProviderRow({ provider }: { provider: WizardProvider }) {
         <Button
           size="icon"
           variant="ghost"
-          className="text-destructive ml-auto"
+          className="text-destructive-text ml-auto"
           aria-label={`Remove ${provider.name}`}
           onClick={() => remove(provider.name)}
         >
@@ -137,7 +137,7 @@ function ProviderRow({ provider }: { provider: WizardProvider }) {
             }
           />
           {baseUrlError && (
-            <p className="text-destructive text-sm">{baseUrlError}</p>
+            <p className="text-destructive-text text-sm">{baseUrlError}</p>
           )}
         </div>
         <div className="min-w-0 space-y-1 sm:col-span-2 lg:col-span-1">
@@ -169,7 +169,7 @@ function ProviderRow({ provider }: { provider: WizardProvider }) {
           </span>
         )}
         {!probe.isFetching && probeError && (
-          <span role="alert" className="text-destructive text-sm">
+          <span role="alert" className="text-destructive-text text-sm">
             {probeError}
           </span>
         )}
@@ -256,9 +256,9 @@ function NewProviderRow() {
             placeholder="e.g. my-openai"
           />
           {nameTaken && (
-            <p className="text-destructive text-sm">Name already in use</p>
+            <p className="text-destructive-text text-sm">Name already in use</p>
           )}
-          {nameError && <p className="text-destructive text-sm">{nameError}</p>}
+          {nameError && <p className="text-destructive-text text-sm">{nameError}</p>}
         </div>
         <div className="space-y-1">
           <Label>API kind</Label>
@@ -287,7 +287,7 @@ function NewProviderRow() {
             onChange={(e) => setBaseUrl(e.target.value)}
           />
           {baseUrlError && (
-            <p className="text-destructive text-sm">{baseUrlError}</p>
+            <p className="text-destructive-text text-sm">{baseUrlError}</p>
           )}
         </div>
         <div className="space-y-1">
@@ -335,7 +335,7 @@ function PurposeRow({ purpose }: { purpose: Purpose }) {
       <div className="flex items-center gap-1.5 sm:col-span-2 lg:col-span-1 lg:pt-2">
         <div className="text-sm font-medium capitalize">
           {purpose}
-          {required && <span className="text-destructive ml-1">*</span>}
+          {required && <span className="text-destructive-text ml-1">*</span>}
         </div>
         <HelpTip label={`About ${purpose}`}>{PURPOSE_HINT[purpose]}</HelpTip>
       </div>

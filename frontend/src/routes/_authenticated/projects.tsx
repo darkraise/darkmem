@@ -78,7 +78,7 @@ function ProjectsIndexPage() {
       {isError ? (
         // Not the empty state: "no project holds anything yet" is a claim
         // about the corpus, and on a failed read it is a false one.
-        <p className="text-destructive text-sm">
+        <p className="text-destructive-text text-sm">
           Projects could not be loaded.
         </p>
       ) : isLoading ? (

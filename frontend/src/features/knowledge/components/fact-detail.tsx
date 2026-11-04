@@ -147,7 +147,7 @@ function DemoFactDetail({ factId }: { factId: string }) {
           </p>
         )}
         {disputed && (
-          <div className="border-warning/55 bg-warning/8 flex max-w-[70ch] items-start gap-2 rounded-sm border border-dashed px-2.5 py-1.5 text-sm">
+          <div className="border-warning-edge/55 bg-warning-solid/8 flex max-w-[70ch] items-start gap-2 rounded-sm border border-dashed px-2.5 py-1.5 text-sm">
             <CircleAlert
               aria-hidden
               className="text-warning-text mt-0.5 h-4 w-4 shrink-0"
@@ -332,7 +332,7 @@ function LiveFactDetailBody({ fact }: { fact: LiveFactDetailData }) {
           </p>
         )}
         {disputed && (
-          <div className="border-warning/55 bg-warning/8 flex max-w-[70ch] items-start gap-2 rounded-sm border border-dashed px-2.5 py-1.5 text-sm">
+          <div className="border-warning-edge/55 bg-warning-solid/8 flex max-w-[70ch] items-start gap-2 rounded-sm border border-dashed px-2.5 py-1.5 text-sm">
             <CircleAlert
               aria-hidden
               className="text-warning-text mt-0.5 h-4 w-4 shrink-0"

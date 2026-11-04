@@ -11,7 +11,7 @@ import { SWITCHER_AXES, themeConfig } from "@/theme.config"
  *  exactly which axes are hidden rather than inheriting the live pin set. */
 function withHidden(...axes: string[]): ThemeConfig {
   const next = structuredClone(themeConfig) as ThemeConfig
-  const table = next.switcher.axes as unknown as Record<string, boolean>
+  const table = next.switcher.axes as Record<string, boolean>
   for (const axis of Object.keys(table)) table[axis] = true
   for (const axis of axes) table[axis] = false
   return next
@@ -30,13 +30,13 @@ describe("theme-hidden-axes", () => {
   })
 
   it("pins a hidden axis back to the configured default", () => {
-    const config = withHidden("density", "controlDepth")
-    const stored = {
+    const config = withHidden("density", "contrast")
+    const stored: ThemeSettings = {
       ...themeConfig.defaults,
       density: "compact",
-      controlDepth: "flat",
+      contrast: "high",
       accentColor: "rose",
-    } as unknown as ThemeSettings
+    }
 
     const pinned = pinHiddenAxes(stored, config) as unknown as Record<
       string,
@@ -44,35 +44,37 @@ describe("theme-hidden-axes", () => {
     >
 
     expect(pinned.density).toBe(themeConfig.defaults.density)
-    expect(pinned.controlDepth).toBe(themeConfig.defaults.controlDepth)
+    expect(pinned.contrast).toBe(themeConfig.defaults.contrast)
     // An adjustable axis is untouched — the pin is scoped, not a reset.
     expect(pinned.accentColor).toBe("rose")
   })
 
   it("scrubs persisted storage for a hidden axis and only that axis", () => {
-    window.localStorage.setItem("theme-control-depth", "flat")
+    window.localStorage.setItem("theme-density", "compact")
     window.localStorage.setItem("theme-accent", "rose")
 
-    scrubHiddenAxisStorage(withHidden("controlDepth"))
+    scrubHiddenAxisStorage(withHidden("density"))
 
-    expect(window.localStorage.getItem("theme-control-depth")).toBeNull()
+    expect(window.localStorage.getItem("theme-density")).toBeNull()
     expect(window.localStorage.getItem("theme-accent")).toBe("rose")
   })
 
-  it("scrubs the pre-rename accent-intensity spelling too", () => {
-    // The library migrates `theme-accent-vibrancy` forward, so leaving it
-    // would let the pre-rename value be re-applied over the pin.
-    window.localStorage.setItem("theme-accent-vibrancy", "calm")
+  it("scrubs the 6.x spellings the library migrates into a hidden axis", () => {
+    // The scrub runs before the library's migration, so leaving a 6.x key
+    // would let its value be migrated in over the pin.
+    window.localStorage.setItem("theme-dark-accent-chroma", "calm")
     window.localStorage.setItem("theme-accent-intensity", "calm")
+    window.localStorage.setItem("theme-accent-vibrancy", "calm")
 
-    scrubHiddenAxisStorage(withHidden("accentIntensity"))
+    scrubHiddenAxisStorage(withHidden("darkAccentChroma"))
 
-    expect(window.localStorage.getItem("theme-accent-vibrancy")).toBeNull()
+    expect(window.localStorage.getItem("theme-dark-accent-chroma")).toBeNull()
     expect(window.localStorage.getItem("theme-accent-intensity")).toBeNull()
+    expect(window.localStorage.getItem("theme-accent-vibrancy")).toBeNull()
   })
 
   it("pins every axis back to the defaults when all are hidden", () => {
-    const config = withHidden(...Object.keys(themeConfig.switcher.axes))
+    const config = withHidden(...Object.keys(themeConfig.switcher.axes ?? {}))
     const drifted = Object.fromEntries(
       Object.keys(themeConfig.defaults).map((axis) => [axis, "drifted"]),
     ) as unknown as ThemeSettings

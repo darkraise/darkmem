@@ -26,7 +26,7 @@ export function PhaseTicker({ phases }: { phases: DemoIndexPhase[] }) {
               "text-muted-foreground flex items-center gap-2.5 rounded-sm px-2.5 py-1 text-sm",
               phase.state === "done" && "text-foreground",
               phase.state === "current" &&
-                "border-info/40 bg-info/10 text-foreground border font-semibold",
+                "border-info-edge/40 bg-info-solid/10 text-foreground border font-semibold",
               phase.state === "skipped" && "italic",
             )}
           >

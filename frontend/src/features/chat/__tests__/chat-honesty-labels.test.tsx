@@ -125,7 +125,7 @@ describe("Inline citation chip (MemoryBadge, the third render site) honesty labe
     // the text a sighted-only tooltip carries.
     const dot = container.querySelector("span.rounded-full")
     expect(dot).not.toBeNull()
-    expect(dot).toHaveClass("bg-warning")
+    expect(dot).toHaveClass("bg-warning-solid")
   })
 
   it("carries the active status in the chip's tooltip too — never zero lifecycle signal", () => {

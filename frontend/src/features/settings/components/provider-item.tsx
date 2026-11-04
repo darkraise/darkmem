@@ -37,7 +37,7 @@ function ProbeResult({
   if (!result) return null
   if (result.error) {
     return (
-      <span className="text-destructive text-sm">
+      <span className="text-destructive-text text-sm">
         {describeProbeError(result.error)}
       </span>
     )
@@ -149,7 +149,7 @@ export function ProviderItem({
             <Button
               size="icon"
               variant="ghost"
-              className="text-destructive"
+              className="text-destructive-text"
               aria-label={`Delete ${provider.name}`}
               disabled={!canDelete || del.isPending}
               onClick={() => setConfirmingDelete(true)}
@@ -194,7 +194,7 @@ export function ProviderItem({
   )
 
   const failure = del.isError && (
-    <p className="text-destructive text-sm">{del.error.message}</p>
+    <p className="text-destructive-text text-sm">{del.error.message}</p>
   )
 
   if (layout === "list") {

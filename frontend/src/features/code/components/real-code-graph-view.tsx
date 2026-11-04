@@ -280,7 +280,7 @@ export function RealCodeGraphView({
         </SelectContent>
       </Select>
       {repo.status === "stale" && (
-        <span className="border-warning/60 bg-warning/10 text-warning-text inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-0.5 text-sm">
+        <span className="border-warning-edge/60 bg-warning-solid/10 text-warning-text inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-0.5 text-sm">
           stale — showing last good graph (
           {repo.last_indexed_commit ?? "unknown"})
         </span>
@@ -323,7 +323,7 @@ export function RealCodeGraphView({
         {graphError ? (
           // Not the empty state: it tells the operator this repo was never
           // indexed and sends them to reindex a graph that may well exist.
-          <p className="text-destructive p-3 text-sm">
+          <p className="text-destructive-text p-3 text-sm">
             The code graph could not be loaded.
           </p>
         ) : (
@@ -558,7 +558,7 @@ export function RealCodeGraphView({
                         className={cn(
                           "border-border bg-muted text-muted-foreground flex-1 rounded-sm border px-0.5 py-0.5 text-center font-mono text-xs uppercase",
                           blast.risk === bucket &&
-                            "border-destructive/55 bg-destructive/12 text-destructive font-semibold",
+                            "border-destructive-edge/55 bg-destructive-solid/12 text-destructive-text font-semibold",
                         )}
                       >
                         {bucket}
@@ -567,7 +567,7 @@ export function RealCodeGraphView({
                   )}
                 </div>
                 <p className="text-sm">
-                  <b className="text-destructive font-mono">{blast.total}</b>{" "}
+                  <b className="text-destructive-text font-mono">{blast.total}</b>{" "}
                   affected transitively
                 </p>
               </>

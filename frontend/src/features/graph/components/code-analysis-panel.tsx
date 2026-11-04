@@ -110,8 +110,8 @@ function normalizeRisk(raw: string): RiskLevel {
 const RISK_TEXT_CLASS: Record<RiskLevel, string> = {
   low: "text-muted-foreground",
   medium: "text-foreground",
-  high: "text-destructive",
-  critical: "text-destructive",
+  high: "text-destructive-text",
+  critical: "text-destructive-text",
 }
 
 function BlastDepthHistogram({
@@ -134,12 +134,12 @@ function BlastDepthHistogram({
       <div className="space-y-1">
         {buckets.map((b) => (
           <div key={b.label} className="flex items-center gap-2">
-            <span className="text-destructive/70 w-7 shrink-0 font-mono text-sm">
+            <span className="text-destructive-text/70 w-7 shrink-0 font-mono text-sm">
               {b.label}
             </span>
             <div className="bg-muted h-2 flex-1 overflow-hidden rounded-sm">
               <div
-                className="bg-destructive/70 h-full rounded-sm"
+                className="bg-destructive-solid/70 h-full rounded-sm"
                 style={{ width: `${(b.count / max) * 100}%` }}
               />
             </div>
@@ -301,7 +301,7 @@ export function CodeAnalysisPanel({
                         <StatLabel className="font-mono tracking-[0.2em] uppercase">
                           Affected
                         </StatLabel>
-                        <StatValue className="text-destructive font-mono">
+                        <StatValue className="text-destructive-text font-mono">
                           {blastRadiusData.total}
                         </StatValue>
                       </Stat>
@@ -334,7 +334,7 @@ export function CodeAnalysisPanel({
                               key={i}
                               className="flex items-center gap-2 rounded-sm px-2 py-1 font-mono text-sm"
                             >
-                              <span className="text-destructive/70 shrink-0">
+                              <span className="text-destructive-text/70 shrink-0">
                                 d{a.distance}
                               </span>
                               <span className="text-muted-foreground w-14 shrink-0 truncate">

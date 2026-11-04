@@ -52,8 +52,8 @@ export function LineDiff({ before, after }: { before: string; after: string }) {
             data-change={change}
             className={cn(
               "flex px-2 whitespace-pre-wrap",
-              part.added && "bg-success/15 text-success-text",
-              part.removed && "bg-destructive/15 text-destructive",
+              part.added && "bg-success-solid/15 text-success-text",
+              part.removed && "bg-destructive-solid/15 text-destructive-text",
             )}
           >
             <span aria-hidden className="text-muted-foreground w-4 shrink-0 select-none">

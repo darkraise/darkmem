@@ -95,7 +95,7 @@ export function RecordCard({
       {isRow && progress ? <p className="text-xs">{progress}</p> : null}
       {isRow && record.plan && !record.planProgress ? (
         <p
-          className="text-destructive text-xs"
+          className="text-destructive-text text-xs"
           title={record.planError ?? undefined}
         >
           plan unreadable
@@ -105,7 +105,7 @@ export function RecordCard({
         <p className="text-muted-foreground text-xs">{record.note}</p>
       ) : null}
       {isRow && record.blockFirst ? (
-        <p className="text-destructive text-xs">
+        <p className="text-destructive-text text-xs">
           block-first: delete and re-file this register to edit it here
         </p>
       ) : null}

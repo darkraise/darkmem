@@ -13,20 +13,23 @@ import { themeConfig } from "@/theme.config"
 const apiFetchMock = vi.mocked(apiFetch)
 
 const storedSettings: ThemeSettings = {
+  version: 7,
   accentColor: "rose",
-  surfaceColor: "teal",
-  preset: "glass",
+  surfaceColor: "stone",
+  tintWithAccent: "on",
+  style: "glass",
+  preset: "mica-desk",
   backgroundStyle: "gradient",
   backgroundIntensity: "vivid",
   gradientPattern: "aurora",
   mode: "light",
   density: "compact",
   elevation: "high",
-  buttonElevation: "high",
   radius: "pill",
   fontSize: "large",
-  surfaceIntensity: "bold",
-  accentIntensity: "intense",
+  contrast: "high",
+  darkAccentChroma: "calm",
+  font: "geist",
   outerGlow: "vivid",
   innerGlow: "subtle",
 }
@@ -42,12 +45,13 @@ describe("themePersistence.load", () => {
     expect(apiFetchMock).toHaveBeenCalledWith("/config/theme")
   })
 
-  it("keeps stored values for the three adjustable axes", async () => {
+  it("keeps stored values for the adjustable axes", async () => {
     apiFetchMock.mockResolvedValue({ settings: storedSettings })
     const loaded = await themePersistence.load()
     expect(loaded).toMatchObject({
       accentColor: "rose",
-      surfaceColor: "teal",
+      surfaceColor: "stone",
+      tintWithAccent: "on",
       mode: "light",
     })
   })
@@ -57,12 +61,14 @@ describe("themePersistence.load", () => {
   it("pins every hidden axis back to the default", async () => {
     apiFetchMock.mockResolvedValue({ settings: storedSettings })
     const loaded = await themePersistence.load()
-    for (const [axis, enabled] of Object.entries(themeConfig.switcher.axes)) {
-      if (enabled || axis === "presetAxes") continue
+    for (const [axis, enabled] of Object.entries(
+      themeConfig.switcher.axes ?? {},
+    )) {
+      if (enabled) continue
       expect(
         (loaded as unknown as Record<string, unknown>)[axis],
         `hidden axis ${axis} kept its stored value`,
-      ).toBe((themeConfig.defaults as unknown as Record<string, unknown>)[axis])
+      ).toBe((themeConfig.defaults as Record<string, unknown>)[axis])
     }
   })
 
@@ -78,7 +84,7 @@ describe("themePersistence.load", () => {
     expect(loaded).toMatchObject({
       accentColor: themeConfig.defaults.accentColor,
       mode: themeConfig.defaults.mode,
-      surfaceColor: "teal",
+      surfaceColor: "stone",
     })
   })
 
@@ -107,6 +113,19 @@ describe("themePersistence.save", () => {
     expect(apiFetchMock).toHaveBeenCalledWith("/config/theme", {
       method: "PUT",
       body: JSON.stringify({ settings: storedSettings }),
+      signal: undefined,
     })
+  })
+
+  // The provider abandons a save after 15 seconds; the signal lets the
+  // abandoned request stop rather than land after a newer one.
+  it("hands the provider's abort signal to the request", async () => {
+    apiFetchMock.mockResolvedValue({ settings: storedSettings })
+    const { signal } = new AbortController()
+    await themePersistence.save(storedSettings, { signal })
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      "/config/theme",
+      expect.objectContaining({ signal }),
+    )
   })
 })

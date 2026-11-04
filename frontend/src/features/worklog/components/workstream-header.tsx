@@ -99,7 +99,7 @@ export function WorkstreamHeader({
           icon={Trash2}
           label="Purge workstream"
           variant="ghost"
-          className="text-destructive hover:text-destructive"
+          className="text-destructive-text hover:text-destructive-text"
           onClick={() => setConfirmOpen(true)}
         />
       </div>

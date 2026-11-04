@@ -221,7 +221,7 @@ export function ModelPricesPanel({
           </Button>
         </form>
         {invalid ? (
-          <p role="alert" className="text-destructive text-sm">
+          <p role="alert" className="text-destructive-text text-sm">
             Every rate must be a number of dollars, zero or more.
           </p>
         ) : null}

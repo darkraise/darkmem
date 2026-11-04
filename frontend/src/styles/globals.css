@@ -34,27 +34,19 @@
   --text-4xl: 2.3125rem; /* 36px -> 37px */
 }
 
-/* Accent and success used as TEXT. In light mode the raw hues measure ~3:1
-   against the page, so text takes them darkened; dark mode keeps the hue.
-   Derived from --primary rather than pinned, so the Appearance accent picker
-   still drives it. Fills, borders and buttons keep the raw tokens. */
+/* The accent used as TEXT. In light mode the raw hue measures ~3:1 against
+   the page, so text takes it darkened; dark mode keeps the hue. Derived from
+   --primary rather than pinned, so the Appearance accent picker still drives
+   it. The status colours need no such shim: darkraise-ui ships
+   `--<status>-text`. */
 @theme inline {
   --color-primary-text: var(--primary-text);
-  --color-success-text: var(--success-text);
-  --color-warning-text: var(--warning-text);
-  --color-info-text: var(--info-text);
 }
 :root {
   --primary-text: color-mix(in oklch, hsl(var(--primary)) 70%, black);
-  --success-text: color-mix(in oklch, hsl(var(--success)) 70%, black);
-  --warning-text: color-mix(in oklch, hsl(var(--warning)) 60%, black);
-  --info-text: color-mix(in oklch, hsl(var(--info)) 70%, black);
 }
 [data-mode="dark"] {
   --primary-text: hsl(var(--primary));
-  --success-text: hsl(var(--success));
-  --warning-text: hsl(var(--warning));
-  --info-text: hsl(var(--info));
 }
 
 /* The app's one markdown treatment. Used by the chat transcript, the prompt
@@ -150,7 +142,7 @@
    intrinsic size it was authored at -- which in a document pane means a
    1200px screenshot pushing the whole column sideways. */
 .md-inline mark {
-  @apply bg-warning/25 text-foreground rounded-sm px-0.5;
+  @apply bg-warning-solid/25 text-foreground rounded-sm px-0.5;
 }
 .md-inline kbd {
   @apply border-border bg-muted text-foreground rounded border px-1 py-px font-mono text-[0.8em];
@@ -353,9 +345,8 @@
   }
 }
 
-/* Frosted surface base + opaque fallback. The app's "default" preset leaves
-   darkraise-ui's --backdrop-filter: none, so the glass relies entirely on the
-   utility classes below; without this fallback the card is illegible where
+/* Frosted surface base + opaque fallback. The glass relies entirely on the
+   app's own utility classes; without this fallback the card is illegible where
    backdrop-filter is unsupported/disabled (e.g. Firefox with the pref off,
    GPU-blocklisted contexts). Unlayered rule, so it wins over Card's bg-card. */
 .dm-glass {
@@ -472,16 +463,17 @@
   }
 }
 
-/* Active sidebar item: an accent tint and text colour under the library's
-   `activeBar="both"` ring and rail. It sets no box-shadow, since that is where
-   the ring and rail are drawn; unlayered, so it beats the library's
-   @layer components background and colour at any specificity. */
-.dr-sidebar-nav .dr-sidebar-nav-item:is(.active, [data-status="active"]) {
+/* Active sidebar item: an accent tint and text colour over the library's
+   `selection="pill"` look. It sets no box-shadow, since that is where the
+   pill is drawn; unlayered, so it beats the library's @layer components
+   background and colour at any specificity. */
+.dr-sidebar-nav
+  .dr-sidebar-nav-item:is(.dr-sidebar-nav-current, [data-status="active"]) {
   background-color: hsl(var(--primary) / 0.1);
   color: var(--primary-text);
 }
 .dr-sidebar-nav
-  .dr-sidebar-nav-item:is(.active, [data-status="active"])
+  .dr-sidebar-nav-item:is(.dr-sidebar-nav-current, [data-status="active"])
   .dr-sidebar-nav-icon-svg {
   color: var(--primary-text);
 }
@@ -624,11 +616,11 @@ body.content-full-bleed .dr-split-panel-layout-content {
   display: inline-block;
   flex: none;
 }
-/* The collapsed rail sizes the mark to the density cell, as the library does
-   for the image it replaces. */
+/* The collapsed rail sizes the mark to the control height, as the library
+   does for the image it replaces. */
 .dr-sidebar-layout-brand-slot .dr-brand-logo::before {
-  height: var(--density-cell);
-  width: var(--density-cell);
+  height: var(--control-height);
+  width: var(--control-height);
 }
 
 /* Horizontally scrolling tab strip (ScrollTabsList). The fade marks the edge

@@ -272,7 +272,7 @@ export function MemoryEditorDialog({
                 <p
                   id={contentErrorId}
                   role="alert"
-                  className="text-destructive text-sm"
+                  className="text-destructive-text text-sm"
                 >
                   Content is required.
                 </p>

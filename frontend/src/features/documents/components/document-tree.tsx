@@ -533,7 +533,7 @@ export const DocumentTree = memo(function DocumentTree({
   return (
     <div className="space-y-2">
       {truncated ? (
-        <p className="border-warning/50 text-muted-foreground rounded-md border border-dashed px-2.5 py-1.5 text-sm">
+        <p className="border-warning-edge/50 text-muted-foreground rounded-md border border-dashed px-2.5 py-1.5 text-sm">
           Showing the first {items.length} documents; the list is incomplete.
         </p>
       ) : null}

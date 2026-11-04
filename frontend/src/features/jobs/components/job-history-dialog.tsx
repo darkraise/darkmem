@@ -61,7 +61,7 @@ function RunRow({ run }: { run: JobRun }) {
       )}
 
       {run.error && (
-        <p className="text-destructive font-mono text-xs break-words">
+        <p className="text-destructive-text font-mono text-xs break-words">
           {run.error}
         </p>
       )}

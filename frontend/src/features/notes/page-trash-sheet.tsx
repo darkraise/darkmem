@@ -53,7 +53,7 @@ export function PageTrashSheet({
 
         {trash.isLoading ? <Skeleton className="h-24 w-full" /> : null}
         {trash.isError ? (
-          <p className="text-destructive text-sm">
+          <p className="text-destructive-text text-sm">
             The trash could not be read.
           </p>
         ) : null}

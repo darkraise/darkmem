@@ -126,7 +126,7 @@ function FolderBrowser({
             </Button>
           ))}
           {roots.isError && (
-            <span role="alert" className="text-destructive text-sm">
+            <span role="alert" className="text-destructive-text text-sm">
               Locations unavailable. Enter a path below.
             </span>
           )}
@@ -243,7 +243,7 @@ function FolderBrowser({
           </div>
         ) : error ? (
           <div className="space-y-3 p-5 text-center">
-            <p role="alert" className="text-destructive text-sm break-words">
+            <p role="alert" className="text-destructive-text text-sm break-words">
               {error}
             </p>
             <Button

@@ -8,6 +8,10 @@ const SELF = join(SRC, "__tests__", "text-color-tokens.test.ts")
 // prefix or an opacity suffix — never `text-primary-foreground` or the
 // `-text` tokens themselves.
 const RAW = /(?<![-\w])text-(?:primary|success|warning|info)(?![-\w])/
+// darkraise-ui 7.0 removed the bare status colours, and Tailwind drops an
+// unknown utility without a word: `bg-warning/10` would paint nothing.
+const REMOVED_STATUS =
+  /(?<![-\w])(?:bg|text|border|ring|outline|fill|stroke|divide|from|via|to)-(?:destructive|success|warning|info)(?![-\w])|var\(--(?:destructive|success|warning|info)(?:-foreground)?\)/
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
@@ -18,29 +22,37 @@ function walk(dir: string, out: string[] = []): string[] {
   return out
 }
 
+function offendersOf(pattern: RegExp): string[] {
+  return walk(SRC)
+    .filter((f) => f !== SELF)
+    .flatMap((f) =>
+      readFileSync(f, "utf8")
+        .split("\n")
+        .map((line, i) =>
+          pattern.test(line) ? `${relative(SRC, f)}:${i + 1}` : null,
+        )
+        .filter((hit): hit is string => hit !== null),
+    )
+}
+
 describe("semantic text colours use the contrast-safe tokens", () => {
   it("no source uses text-primary/-success/-warning/-info as a text colour", () => {
-    const offenders = walk(SRC)
-      .filter((f) => f !== SELF)
-      .flatMap((f) =>
-        readFileSync(f, "utf8")
-          .split("\n")
-          .map((line, i) =>
-            RAW.test(line) ? `${relative(SRC, f)}:${i + 1}` : null,
-          )
-          .filter((hit): hit is string => hit !== null),
-      )
     expect(
-      offenders,
+      offendersOf(RAW),
       "use the matching text-*-text token (light-mode contrast)",
     ).toEqual([])
   })
 
-  it("defines the four tokens and aliases them in dark mode", () => {
+  it("no source uses a status colour darkraise-ui 7.0 removed", () => {
+    expect(
+      offendersOf(REMOVED_STATUS),
+      "use the -solid, -edge, -subtle or -text status token",
+    ).toEqual([])
+  })
+
+  it("defines the primary text token and aliases it in dark mode", () => {
     const css = readFileSync(join(SRC, "styles", "globals.css"), "utf8")
-    for (const token of ["primary", "success", "warning", "info"]) {
-      expect(css).toContain(`--color-${token}-text: var(--${token}-text)`)
-    }
+    expect(css).toContain("--color-primary-text: var(--primary-text)")
     expect(css).toContain(
       "--primary-text: color-mix(in oklch, hsl(var(--primary)) 70%, black)",
     )

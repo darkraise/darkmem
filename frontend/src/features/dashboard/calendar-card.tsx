@@ -27,7 +27,7 @@ export function CalendarCard({ days, isLoading, isError }: CalendarCardProps) {
       </CardHeader>
       <CardContent>
         {isError ? (
-          <p className="text-destructive text-sm">
+          <p className="text-destructive-text text-sm">
             Couldn&apos;t load the contribution calendar. Try reloading the
             page.
           </p>

@@ -37,7 +37,7 @@ function FailureRow({
       className={listItemClass({
         className: cn(
           "flex flex-col gap-2 p-3",
-          poison && "border-warning/55 bg-warning/5",
+          poison && "border-warning-edge/55 bg-warning-solid/5",
         ),
       })}
     >
@@ -52,7 +52,7 @@ function FailureRow({
           {failure.pipeline}
         </span>
         {poison && (
-          <span className="border-warning/65 bg-warning/10 text-warning-text inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 font-mono text-xs uppercase">
+          <span className="border-warning-edge/65 bg-warning-solid/10 text-warning-text inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 font-mono text-xs uppercase">
             poison
           </span>
         )}
@@ -78,7 +78,7 @@ function FailureRow({
         <span>last attempt {failure.last_attempt}</span>
       </div>
       {poison && (
-        <p className="border-warning/50 bg-warning/5 rounded-md border border-dashed px-2.5 py-2 text-sm">
+        <p className="border-warning-edge/50 bg-warning-solid/5 rounded-md border border-dashed px-2.5 py-2 text-sm">
           Failed the same way on all {failure.attempts} attempts; retrying
           won&apos;t help until the cause is fixed.
         </p>
@@ -86,7 +86,7 @@ function FailureRow({
       <div className="flex flex-wrap items-center gap-2">
         <Button
           variant={poison ? "outline" : "default"}
-          className={cn(poison && "border-warning/60 text-warning-text")}
+          className={cn(poison && "border-warning-edge/60 text-warning-text")}
           disabled={failure.retry_queued}
           onClick={() => {
             retry(failure.id)

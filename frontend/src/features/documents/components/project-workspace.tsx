@@ -432,7 +432,7 @@ export function ProjectWorkspace({
       </form>
 
       {asking && qa.isError ? (
-        <p className="text-destructive text-sm">
+        <p className="text-destructive-text text-sm">
           The question could not be answered — {qa.error.message}
         </p>
       ) : null}
@@ -446,7 +446,7 @@ export function ProjectWorkspace({
       ) : null}
 
       {!asking && search.isError ? (
-        <p className="text-destructive text-sm">
+        <p className="text-destructive-text text-sm">
           Search failed — {search.error.message}
         </p>
       ) : null}
@@ -573,7 +573,7 @@ export function ProjectWorkspace({
                 </Button>
               </div>
               {documents.isError ? (
-                <p className="text-destructive text-sm">
+                <p className="text-destructive-text text-sm">
                   This project's documents could not be loaded.
                 </p>
               ) : documents.isLoading ? (

@@ -198,7 +198,7 @@ export function ApiKeyDialog({
             </fieldset>
 
             {createKey.isError && (
-              <p className="text-destructive text-sm">
+              <p className="text-destructive-text text-sm">
                 The key was not created — {createKey.error.message}
               </p>
             )}

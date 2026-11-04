@@ -1,56 +1,61 @@
-import type { ThemeConfig, ThemeSettings } from "darkraise-ui/theme"
+import type { AxisKey, ThemeConfig, ThemeSettings } from "darkraise-ui/theme"
 
 /**
- * Hiding an axis in `switcher.axes` removes its control and nothing else.
- *
- * The library's own `hiddenCommonAxes` neutralisation is a *preset* mechanism
- * (a preset that reinterprets a surface hides and neutralises the axis it
- * supersedes) and never reads the switcher config, so a value persisted while
- * an axis was still adjustable keeps applying after it is hidden — with no
- * control left to undo it. These helpers close that: a hidden axis is pinned
+ * Hiding an axis in `switcher.axes` removes its control and nothing else, so a
+ * value persisted while an axis was still adjustable keeps applying after it
+ * is hidden — with no control left to undo it. These helpers close that: a hidden axis is pinned
  * to the configured default on both paths a value can arrive by, the API row
  * and localStorage.
  */
 
 /**
- * Where the provider persists each axis. Mirrors the `LS_*` constants in
- * darkraise-ui's ThemeProvider, which are not exported; the spellings are not
- * mechanical (`accentColor` is `theme-accent`, `backgroundStyle` is
- * `theme-bg-style`), so this cannot be derived from the axis name.
+ * Where the provider persists each axis. Mirrors each axis's `storageKey` in
+ * darkraise-ui's axis registry, which the public entries do not export; the
+ * spellings are not mechanical (`accentColor` is `theme-accent`,
+ * `glassTransparency` is `theme-glass-opacity`), so this cannot be derived
+ * from the axis name.
  *
- * `accentIntensity` carries two keys because v6.3 renamed the axis and the
- * library still migrates the old spelling — scrubbing only the new one would
- * let the pre-rename value survive and be re-migrated over the pin.
- *
- * `presetAxes` is deliberately absent: its keys are `theme-<preset>-<axis>`,
- * and the pinned `default` preset declares no axes at all, so there is nothing
- * to scrub. A preset that owns axes would need its own entry here.
+ * Trailing keys are 6.x spellings the library migrates into the axis on first
+ * load. The scrub runs before that migration, so scrubbing only the 7.0 key
+ * would let the old value be migrated in over the pin. `preset` needs no
+ * legacy entry: 6.x stored the style under `theme-preset`, which is scrubbed
+ * as the preset's own key.
  */
-const AXIS_STORAGE_KEYS: Partial<Record<string, readonly string[]>> = {
+const AXIS_STORAGE_KEYS: Partial<Record<AxisKey, readonly string[]>> = {
+  mode: ["mode"],
   accentColor: ["theme-accent"],
   surfaceColor: ["theme-surface-color"],
+  tintWithAccent: ["theme-tint-with-accent"],
+  signalColor: ["theme-signal-color"],
+  style: ["theme-style"],
   preset: ["theme-preset"],
   backgroundStyle: ["theme-bg-style"],
-  backgroundIntensity: ["theme-bg-intensity"],
+  backgroundIntensity: ["theme-bg-intensity", "theme-canvas-tint"],
   gradientPattern: ["theme-gradient-pattern"],
-  mode: ["mode"],
+  glassTransparency: ["theme-glass-opacity", "theme-glassmorphism-opacity"],
+  glassBlur: ["theme-glass-blur", "theme-glassmorphism-blur"],
+  font: ["theme-font"],
+  headingFont: ["theme-heading-font"],
   density: ["theme-density"],
   elevation: ["theme-elevation"],
-  buttonElevation: ["theme-button-elevation"],
-  surfaceIntensity: ["theme-surface-intensity"],
   radius: ["theme-radius"],
   fontSize: ["theme-font-size"],
-  accentIntensity: ["theme-accent-intensity", "theme-accent-vibrancy"],
-  controlDepth: ["theme-control-depth"],
-  outerGlow: ["theme-outer-glow"],
+  contrast: ["theme-contrast", "theme-surface-intensity"],
+  darkAccentChroma: [
+    "theme-dark-accent-chroma",
+    "theme-accent-intensity",
+    "theme-accent-vibrancy",
+  ],
+  outerGlow: ["theme-outer-glow", "theme-glass-halo"],
   innerGlow: ["theme-inner-glow"],
+  sidebarSelection: ["theme-sidebar-selection", "theme-sidebar-active-bar"],
 }
 
 /** The axes whose switcher control is turned off, in config order. */
-export function hiddenAxes(config: ThemeConfig): string[] {
-  return Object.entries(config.switcher.axes)
+export function hiddenAxes(config: ThemeConfig): AxisKey[] {
+  return Object.entries(config.switcher.axes ?? {})
     .filter(([, enabled]) => !enabled)
-    .map(([axis]) => axis)
+    .map(([axis]) => axis as AxisKey)
 }
 
 /**
@@ -63,18 +68,12 @@ export function pinHiddenAxes(
   settings: ThemeSettings,
   config: ThemeConfig,
 ): ThemeSettings {
-  const defaults = config.defaults as unknown as Record<string, unknown>
+  const defaults: Record<string, unknown> = config.defaults ?? {}
   const pinned: Record<string, unknown> = { ...settings }
   for (const axis of hiddenAxes(config)) {
-    if (axis === "presetAxes") {
-      // No default to pin to — the config carries no preset-axis values, so
-      // dropping the stored ones is what hands each preset back its own.
-      delete pinned.presetAxisValues
-      continue
-    }
     if (axis in defaults) pinned[axis] = defaults[axis]
   }
-  return pinned as unknown as ThemeSettings
+  return pinned as ThemeSettings
 }
 
 /**

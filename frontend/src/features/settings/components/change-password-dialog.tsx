@@ -125,7 +125,7 @@ export function ChangePasswordDialog({
           </p>
         )}
         {password.error && (
-          <p className="text-destructive text-sm">{password.error}</p>
+          <p className="text-destructive-text text-sm">{password.error}</p>
         )}
         {password.success && (
           <p className="text-success-text text-sm">

@@ -44,15 +44,15 @@ export function ConfirmGate({
           className={cn(
             "flex gap-2.5 rounded-md border p-3",
             danger
-              ? "border-destructive/55 bg-destructive/8"
-              : "border-warning/55 bg-warning/10",
+              ? "border-destructive-edge/55 bg-destructive-solid/8"
+              : "border-warning-edge/55 bg-warning-solid/10",
           )}
         >
           <TriangleAlert
             aria-hidden
             className={cn(
               "h-4 w-4 shrink-0",
-              danger ? "text-destructive" : "text-warning-text",
+              danger ? "text-destructive-text" : "text-warning-text",
             )}
           />
           <div className="flex flex-col gap-1.5">
@@ -66,9 +66,9 @@ export function ConfirmGate({
                 variant="outline"
                 className={cn(
                   danger
-                    ? "border-destructive/60 text-destructive"
+                    ? "border-destructive-edge/60 text-destructive-text"
                     : tone === "caution"
-                      ? "border-warning/60 text-warning-text"
+                      ? "border-warning-edge/60 text-warning-text"
                       : "border-primary/60 text-primary-text",
                 )}
                 onClick={() => {

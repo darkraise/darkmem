@@ -218,7 +218,7 @@ function LiveDistribution() {
         // this a human who believes they stopped push has no signal that they
         // did not — on the one control whose whole purpose is "you can always
         // stop it".
-        <p className="border-destructive/55 text-destructive rounded-md border border-dashed px-2.5 py-1.5 text-sm">
+        <p className="border-destructive-edge/55 text-destructive-text rounded-md border border-dashed px-2.5 py-1.5 text-sm">
           The change was not saved.
         </p>
       )}
@@ -284,7 +284,7 @@ function LiveDistribution() {
                 className={cn(
                   "rounded-full border px-2 py-0.5 font-mono text-xs tracking-wide uppercase",
                   target.watched
-                    ? "border-info/55 text-info-text"
+                    ? "border-info-edge/55 text-info-text"
                     : "border-border text-muted-foreground",
                 )}
               >
@@ -306,7 +306,7 @@ function LiveDistribution() {
       </div>
 
       {rejected.length > 0 && (
-        <div className="border-warning/55 bg-warning/10 flex flex-col gap-1 rounded-md border border-dashed px-3 py-2.5 text-sm">
+        <div className="border-warning-edge/55 bg-warning-solid/10 flex flex-col gap-1 rounded-md border border-dashed px-3 py-2.5 text-sm">
           <b className="font-semibold">
             {rejected.length} configured{" "}
             {rejected.length === 1 ? "entry" : "entries"} did not take effect

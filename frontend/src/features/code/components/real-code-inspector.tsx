@@ -54,7 +54,7 @@ export function RealCodeInspector({
         <p className="text-muted-foreground p-3 text-sm">Loading source…</p>
       )}
       {isError && (
-        <p className="text-destructive p-3 text-sm">
+        <p className="text-destructive-text p-3 text-sm">
           Failed to load this symbol's source.
         </p>
       )}

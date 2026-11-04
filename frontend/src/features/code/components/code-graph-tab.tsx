@@ -84,10 +84,10 @@ const DEPTHS = ["all", "1", "2", "3"] as const
 type DepthValue = (typeof DEPTHS)[number]
 
 const STATUS_DOT: Record<DemoRepo["status"], string> = {
-  ready: "bg-success",
-  indexing: "bg-info",
-  stale: "bg-warning",
-  error: "bg-destructive",
+  ready: "bg-success-solid",
+  indexing: "bg-info-solid",
+  stale: "bg-warning-solid",
+  error: "bg-destructive-solid",
   registered: "bg-muted-foreground",
 }
 
@@ -330,7 +330,7 @@ export function CodeGraphTab({
         </SelectContent>
       </Select>
       {repo.status === "stale" && repo.stale && (
-        <span className="border-warning/60 bg-warning/10 text-warning-text inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-0.5 text-sm">
+        <span className="border-warning-edge/60 bg-warning-solid/10 text-warning-text inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-0.5 text-sm">
           stale — showing last good graph ({repo.stale.last_good_head})
         </span>
       )}
@@ -354,7 +354,7 @@ export function CodeGraphTab({
               : "starting…"}
             <span className="bg-muted h-1.5 w-56 overflow-hidden rounded-full">
               <span
-                className="bg-info block h-full rounded-full"
+                className="bg-info-solid block h-full rounded-full"
                 style={{ width: `${phaseProgressPercent(repo.phases)}%` }}
               />
             </span>
@@ -369,10 +369,10 @@ export function CodeGraphTab({
       <div className="flex min-h-0 flex-1 flex-col">
         {toolbar}
         <div className="flex-1 p-8">
-          <div className="border-destructive/50 bg-destructive/8 flex max-w-xl gap-2.5 rounded-md border p-3.5">
+          <div className="border-destructive-edge/50 bg-destructive-solid/8 flex max-w-xl gap-2.5 rounded-md border p-3.5">
             <TriangleAlert
               aria-hidden
-              className="text-destructive h-4.5 w-4.5 shrink-0"
+              className="text-destructive-text h-4.5 w-4.5 shrink-0"
             />
             <div className="space-y-1.5 text-sm">
               <p className="font-semibold">Failed to index {repo.name}</p>
@@ -780,7 +780,7 @@ export function CodeGraphTab({
               selected
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="border-destructive h-2.5 w-2.5 rounded-full border-[1.6px] border-dashed" />
+              <span className="border-destructive-edge h-2.5 w-2.5 rounded-full border-[1.6px] border-dashed" />
               blast-radius affected
             </span>
           </div>
@@ -842,7 +842,7 @@ export function CodeGraphTab({
                         className={cn(
                           "border-border bg-muted text-muted-foreground flex-1 rounded-sm border px-0.5 py-0.5 text-center font-mono text-xs uppercase",
                           blast.risk === bucket &&
-                            "border-destructive/55 bg-destructive/12 text-destructive font-semibold",
+                            "border-destructive-edge/55 bg-destructive-solid/12 text-destructive-text font-semibold",
                         )}
                       >
                         {bucket}
@@ -851,7 +851,7 @@ export function CodeGraphTab({
                   )}
                 </div>
                 <p className="text-sm">
-                  <b className="text-destructive font-mono">{blast.total}</b>{" "}
+                  <b className="text-destructive-text font-mono">{blast.total}</b>{" "}
                   affected transitively
                 </p>
                 {blast.depths.map((d) => {
@@ -864,7 +864,7 @@ export function CodeGraphTab({
                       <span className="w-7 shrink-0">{d.label}</span>
                       <span className="bg-muted h-1.5 flex-1 overflow-hidden rounded-full">
                         <span
-                          className="bg-destructive/65 block h-full"
+                          className="bg-destructive-solid/65 block h-full"
                           style={{ width: `${(d.count / max) * 100}%` }}
                         />
                       </span>

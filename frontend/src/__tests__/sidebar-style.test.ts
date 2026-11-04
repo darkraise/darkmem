@@ -16,14 +16,16 @@ function rule(selectorStart: string): string {
 
 describe("sidebar styling", () => {
   it("tints the active item and leaves the library's ring and rail alone", () => {
-    const active = rule(".dr-sidebar-nav .dr-sidebar-nav-item:is(.active")
+    const active = rule(
+      ".dr-sidebar-nav\n  .dr-sidebar-nav-item:is(.dr-sidebar-nav-current",
+    )
     expect(active).not.toContain("box-shadow")
     expect(active).toContain("background-color: hsl(var(--primary) / 0.1)")
     expect(active).toContain("color: var(--primary-text)")
   })
 
-  it("pins the active indicator to both the ring and the rail", () => {
-    expect(shell).toMatch(/activeBar="both"/)
+  it("pins the active indicator to the pill", () => {
+    expect(shell).toMatch(/selection="pill"/)
   })
 
   it("gives the search box the ordinary border until it has focus", () => {

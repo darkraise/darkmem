@@ -7,9 +7,10 @@ import {
   accentColors,
   useTheme,
 } from "darkraise-ui/theme"
-import type { AccentColor, SurfaceColor } from "darkraise-ui/theme"
+import type { SurfaceColor } from "darkraise-ui/theme"
 import { Button } from "darkraise-ui/components/button"
 import { Label } from "darkraise-ui/components/label"
+import { Switch } from "darkraise-ui/components/switch"
 import {
   Popover,
   PopoverContent,
@@ -27,7 +28,8 @@ const MODE_ICONS = { light: Sun, dark: Moon, system: Monitor } as const
 /**
  * The 500 stop of every surface that has no accent scale behind it.
  *
- * LIBRARY GAP (darkraise-ui 6.6.0): the library holds these scales in its own
+ * LIBRARY GAP (darkraise-ui 6.6.0, still open in 7.0.0): the library holds
+ * these scales in its own
  * `surfaceColors` map but exports only `accentColors`, so a swatch preview for
  * the neutral surfaces has no supported source. 6.4.0 shipped `slate` as the
  * only such surface and this was a single inline constant; 6.6.0 added eleven
@@ -53,30 +55,10 @@ const NEUTRAL_SURFACE_PREVIEW: Record<string, string> = {
   sepia: "26 12% 42%",
 }
 
-/** Total over `SURFACE_COLORS`: accent-backed surfaces read their own scale,
- *  neutrals read the table above, and anything the library adds later falls
- *  back to a visible grey instead of throwing on an undefined scale. */
+/** Total over `SURFACE_COLORS`: anything the library adds later falls back
+ *  to a visible grey instead of throwing on an undefined scale. */
 function surfacePreviewHsl(color: SurfaceColor): string {
-  const accent = accentColors[color as AccentColor & SurfaceColor]
-  if (accent) return accent[500]
   return NEUTRAL_SURFACE_PREVIEW[color] ?? "0 0% 50%"
-}
-
-function SurfaceGroup({
-  caption,
-  children,
-}: {
-  caption: string
-  children: ReactNode
-}) {
-  return (
-    <div className="flex flex-col gap-1">
-      <span aria-hidden className="text-muted-foreground text-xs">
-        {caption}
-      </span>
-      {children}
-    </div>
-  )
 }
 
 /** The library's own section shell, so this reads as the built-in popover. */
@@ -94,9 +76,6 @@ function titleCase(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
-/** The 18 accent-backed surfaces; every other surface is a neutral. */
-const TINTED_SURFACES = new Set<string>(ACCENT_COLORS)
-
 function SwatchGrid<T extends string>({
   values,
   active,
@@ -110,7 +89,7 @@ function SwatchGrid<T extends string>({
   onPick: (value: T) => void
   previewHsl: (value: T) => string
   /** Fixed column count, chosen so the grid fills whole rows. The library's
-   *  `auto-fill` packs 9 a row, which left 30 surfaces as 9/9/9/3. */
+   *  `auto-fill` packs 9 a row, which leaves ragged last rows. */
   columns?: number
   label?: string
 }) {
@@ -166,17 +145,14 @@ export function MinimalThemeSwitcher() {
     setMode,
     setAccentColor,
     setSurfaceColor,
-    activePreset,
+    tintWithAccent,
+    setTintWithAccent,
   } = useTheme()
-
-  // Mirrors the library's own `mode` gate: a preset supporting a single mode
-  // has already been switched to it, so the control offers no real choice.
-  const modeLocked = activePreset.supportedModes?.length === 1
 
   // Keyed by axis so `SWITCHER_AXES` drives what renders rather than merely
   // describing it — an axis moved out of that list leaves here with it.
   const sections: Record<(typeof SWITCHER_AXES)[number], ReactNode> = {
-    mode: modeLocked ? null : (
+    mode: (
       <Row label={labels.theme.axisLabels.mode}>
         <ToggleGroup
           type="single"
@@ -208,36 +184,38 @@ export function MinimalThemeSwitcher() {
           values={ACCENT_COLORS}
           active={accentColor}
           onPick={setAccentColor}
-          previewHsl={(color) => accentColors[color][500]}
+          // The neutral accent has no scale of its own: it reads the surface.
+          previewHsl={(color) =>
+            color === "neutral"
+              ? surfacePreviewHsl(surfaceColor)
+              : accentColors[color][500]
+          }
         />
       </Row>
     ),
     surfaceColor: (
       <Row label={labels.theme.axisLabels.surfaceColor}>
-        {/* Split by kind so neutral and tinted surfaces read as two choices
-            rather than one undifferentiated block of dots. */}
-        <div className="flex min-w-0 flex-col gap-2">
-          <SurfaceGroup caption="Neutral">
-            <SwatchGrid
-              label="Neutral surfaces"
-              values={SURFACE_COLORS.filter((c) => !TINTED_SURFACES.has(c))}
-              active={surfaceColor}
-              onPick={setSurfaceColor}
-              previewHsl={surfacePreviewHsl}
-              columns={6}
-            />
-          </SurfaceGroup>
-          <SurfaceGroup caption="Tinted">
-            <SwatchGrid
-              label="Tinted surfaces"
-              values={SURFACE_COLORS.filter((c) => TINTED_SURFACES.has(c))}
-              active={surfaceColor}
-              onPick={setSurfaceColor}
-              previewHsl={surfacePreviewHsl}
-              columns={9}
-            />
-          </SurfaceGroup>
-        </div>
+        <SwatchGrid
+          label={labels.theme.axisLabels.surfaceColor}
+          values={SURFACE_COLORS}
+          active={surfaceColor}
+          onPick={setSurfaceColor}
+          previewHsl={surfacePreviewHsl}
+          columns={6}
+        />
+      </Row>
+    ),
+    // 6.x offered the accents as tinted surfaces; 7.0 tints any neutral with
+    // the accent instead, and the library skips the tint under the neutral
+    // accent.
+    tintWithAccent: (
+      <Row label={labels.theme.axisLabels.tintWithAccent}>
+        <Switch
+          checked={tintWithAccent === "on"}
+          disabled={accentColor === "neutral"}
+          onCheckedChange={(on) => setTintWithAccent(on ? "on" : "off")}
+          aria-label={labels.theme.axisLabels.tintWithAccent}
+        />
       </Row>
     ),
   }

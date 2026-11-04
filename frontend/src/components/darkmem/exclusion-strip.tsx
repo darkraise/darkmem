@@ -26,7 +26,7 @@ export function ExclusionStrip({ items, className }: ExclusionStripProps) {
       {items.map((item, i) => (
         <div
           key={i}
-          className="border-warning/55 bg-warning/8 flex items-center gap-2 rounded-sm border border-dashed px-2.5 py-1.5 text-sm"
+          className="border-warning-edge/55 bg-warning-solid/8 flex items-center gap-2 rounded-sm border border-dashed px-2.5 py-1.5 text-sm"
         >
           <TriangleAlert aria-hidden className="text-warning-text h-4 w-4 shrink-0" />
           <span>

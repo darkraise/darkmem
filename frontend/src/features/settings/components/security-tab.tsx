@@ -167,7 +167,7 @@ function McpAccessCard({ binding }: { binding: SecurityTabBinding }) {
                 title={h.wild ? "* disables the Host allowlist" : undefined}
                 className={cn(
                   "border-inset bg-background rounded-full border px-2 py-0.5 font-mono text-sm",
-                  h.wild && "text-warning-text border-warning/55 border-dashed",
+                  h.wild && "text-warning-text border-warning-edge/55 border-dashed",
                 )}
               >
                 {h.host}

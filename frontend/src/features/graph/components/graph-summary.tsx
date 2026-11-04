@@ -28,8 +28,8 @@ const RELATION_TYPE_LIMIT = 4
  *  retired and dead, and reading them off the cluster hues would tie the
  *  meaning to whichever cluster ids happened to be on screen. */
 const STATUS_BAR_CLASS: Record<string, string> = {
-  active: "bg-success",
-  superseded: "bg-warning",
+  active: "bg-success-solid",
+  superseded: "bg-warning-solid",
   deprecated: "bg-muted-foreground",
 }
 const STATUS_FALLBACK_CLASS = "bg-border"

@@ -157,7 +157,7 @@ export function ResearchTab() {
         </Button>
 
         {update.isError && (
-          <p className="text-destructive text-sm">
+          <p className="text-destructive-text text-sm">
             not saved — {update.error.message}
           </p>
         )}
@@ -218,7 +218,7 @@ export function ResearchTab() {
           ))}
 
           {rerun.isError && (
-            <p className="text-destructive text-sm">
+            <p className="text-destructive-text text-sm">
               not re-derived — {rerun.error.message}
             </p>
           )}
@@ -249,7 +249,7 @@ function budgetError(value: number, max: number): string | null {
 // value leaves it, so the field never needs a second line for both.
 function BudgetHint({ error, max }: { error: string | null; max: number }) {
   return error ? (
-    <span className="text-destructive text-sm">{error}</span>
+    <span className="text-destructive-text text-sm">{error}</span>
   ) : (
     <span className="text-muted-foreground text-xs">
       1 to {max.toLocaleString()}

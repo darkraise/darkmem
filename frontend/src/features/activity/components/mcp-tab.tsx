@@ -43,9 +43,9 @@ const PAGE = 50
 const MAX_PAGE = 200
 
 const STATUS_TONE: Record<McpCallStatus, string> = {
-  ok: "text-success-text border-success/40",
-  error: "text-destructive border-destructive/50",
-  denied: "text-warning-text border-warning/50",
+  ok: "text-success-text border-success-edge/40",
+  error: "text-destructive-text border-destructive-edge/50",
+  denied: "text-warning-text border-warning-edge/50",
 }
 
 function StatusChip({ status }: { status: McpCallStatus }) {
@@ -279,7 +279,7 @@ function CallRow({ call }: { call: McpCallRow }) {
         </span>
       )}
       {call.error && (
-        <span className="text-destructive text-xs break-words">
+        <span className="text-destructive-text text-xs break-words">
           {call.error}
         </span>
       )}

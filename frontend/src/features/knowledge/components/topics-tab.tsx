@@ -198,7 +198,7 @@ function TopicsProjectChooser() {
   const { data, isLoading, isError } = useProjects()
   if (isError) {
     return (
-      <p className="text-destructive text-sm">
+      <p className="text-destructive-text text-sm">
         Projects could not be loaded.
       </p>
     )

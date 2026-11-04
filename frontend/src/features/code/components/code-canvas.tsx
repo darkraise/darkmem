@@ -237,7 +237,7 @@ export function CodeCanvas({
               <circle
                 r={12}
                 fill="none"
-                stroke="hsl(var(--destructive))"
+                stroke="hsl(var(--destructive-solid))"
                 strokeWidth={1.6}
                 strokeDasharray="3 2"
               />

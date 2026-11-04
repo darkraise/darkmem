@@ -23,7 +23,7 @@ function FeedRow({ event }: { event: FeedRowData }) {
       className={listItemClass({
         className: cn(
           "flex flex-wrap items-center gap-2.5 px-3 py-2",
-          event.toast && "border-destructive/45 bg-destructive/5",
+          event.toast && "border-destructive-edge/45 bg-destructive-solid/5",
         ),
       })}
     >
@@ -41,7 +41,7 @@ function FeedRow({ event }: { event: FeedRowData }) {
       {event.badge && <VerificationBadge status={event.badge} />}
       <span className="min-w-0 flex-1 basis-64 text-sm">{event.text}</span>
       {event.toast && (
-        <span className="border-destructive/55 bg-destructive/10 text-destructive inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 font-mono text-xs whitespace-nowrap">
+        <span className="border-destructive-edge/55 bg-destructive-solid/10 text-destructive-text inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 font-mono text-xs whitespace-nowrap">
           <Bell aria-hidden className="h-3 w-3" />
           toast shown
         </span>
@@ -66,7 +66,7 @@ export function FeedTab() {
         state="populated"
         actions={
           <span className="text-success-text inline-flex items-center gap-1.5 font-mono text-sm">
-            <span aria-hidden className="bg-success h-1.5 w-1.5 rounded-full" />
+            <span aria-hidden className="bg-success-solid h-1.5 w-1.5 rounded-full" />
             {DEMO ? "connected" : "polling every 5s"}
           </span>
         }

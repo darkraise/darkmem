@@ -169,7 +169,7 @@ export function BackupsTab() {
         </div>
 
         {rowError ? (
-          <p role="alert" className="text-destructive text-sm">
+          <p role="alert" className="text-destructive-text text-sm">
             {rowError}
           </p>
         ) : null}
@@ -178,7 +178,7 @@ export function BackupsTab() {
           // Not the empty state: "No destinations configured" tells an
           // operator their backups are not set up, which on a failed read is
           // both false and the most alarming thing this tab can say.
-          <p className="text-destructive text-sm">
+          <p className="text-destructive-text text-sm">
             Backup destinations could not be loaded.
           </p>
         ) : destinations.length === 0 && !isLoading ? (
@@ -334,7 +334,7 @@ function InventorySection({
             />
           </div>
           {row.error ? (
-            <p className="text-destructive text-sm">{row.error}</p>
+            <p className="text-destructive-text text-sm">{row.error}</p>
           ) : row.snapshots.length === 0 ? (
             <p className="text-muted-foreground text-sm">no snapshots yet</p>
           ) : (
@@ -486,7 +486,7 @@ function OutcomeLine({
     )
   }
   return (
-    <span className="text-destructive flex items-center gap-1 text-sm">
+    <span className="text-destructive-text flex items-center gap-1 text-sm">
       <ShieldAlert aria-hidden className="h-3.5 w-3.5" />
       {label}: {outcome.error ?? "not restorable"}
     </span>
@@ -812,7 +812,7 @@ function DestinationForm({
       ) : null}
 
       {error ? (
-        <p role="alert" className="text-destructive text-sm">
+        <p role="alert" className="text-destructive-text text-sm">
           {error}
         </p>
       ) : null}

@@ -38,7 +38,7 @@ const MARK: Record<EmptyStateKind, { icon: LucideIcon; tone: string }> = {
   empty: { icon: Inbox, tone: "text-muted-foreground" },
   filtered: { icon: SearchX, tone: "text-info-text" },
   missing: { icon: FileQuestion, tone: "text-warning-text" },
-  failed: { icon: CircleAlert, tone: "text-destructive" },
+  failed: { icon: CircleAlert, tone: "text-destructive-text" },
   resolved: { icon: CircleCheck, tone: "text-success-text" },
 }
 

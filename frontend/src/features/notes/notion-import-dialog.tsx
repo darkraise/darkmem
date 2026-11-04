@@ -158,7 +158,7 @@ export function NotionImportDialog({
         ) : null}
 
         {phase.kind === "failed" ? (
-          <p className="text-destructive text-sm">{phase.message}</p>
+          <p className="text-destructive-text text-sm">{phase.message}</p>
         ) : null}
 
         {phase.kind === "done" ? (

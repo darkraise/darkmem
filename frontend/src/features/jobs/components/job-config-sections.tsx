@@ -55,12 +55,12 @@ export function ScheduleSection({
               setSaved(false)
               setRefusal(null)
             }}
-            className={cn("w-60 font-mono", !info.ok && "border-destructive")}
+            className={cn("w-60 font-mono", !info.ok && "border-destructive-edge")}
           />
           {info.ok ? (
             <span className="text-muted-foreground text-sm">{info.hint}</span>
           ) : (
-            <span className="text-destructive text-sm">{info.error}</span>
+            <span className="text-destructive-text text-sm">{info.error}</span>
           )}
         </div>
         <Button
@@ -83,7 +83,7 @@ export function ScheduleSection({
           </span>
         )}
         {refusal && (
-          <span role="alert" className="text-destructive text-sm">
+          <span role="alert" className="text-destructive-text text-sm">
             Not saved: {refusal}
           </span>
         )}
@@ -169,7 +169,7 @@ export function ConfigSchemaSection({
                   setValues((v) => ({ ...v, [field.key]: next }))
                   setSaved(false)
                 }}
-                className={cn("w-28", error && "border-destructive")}
+                className={cn("w-28", error && "border-destructive-edge")}
               />
               {(field.min !== undefined || field.max !== undefined) && (
                 <span className="text-muted-foreground font-mono text-xs">
@@ -179,7 +179,7 @@ export function ConfigSchemaSection({
                 </span>
               )}
               {error && (
-                <span className="text-destructive text-sm">{error}</span>
+                <span className="text-destructive-text text-sm">{error}</span>
               )}
             </div>
           )
@@ -204,7 +204,7 @@ export function ConfigSchemaSection({
           <span className="text-success-text font-mono text-sm">saved</span>
         )}
         {refusal && (
-          <span role="alert" className="text-destructive text-sm">
+          <span role="alert" className="text-destructive-text text-sm">
             Not saved: {refusal}
           </span>
         )}

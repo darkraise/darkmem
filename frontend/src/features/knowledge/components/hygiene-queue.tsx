@@ -164,7 +164,7 @@ function ActionNotice({
   const applied = result.results.filter((r) => r.applied).length
   const refused = result.results.filter((r) => !r.applied)
   return (
-    <div className="border-success/40 bg-success/5 flex flex-col gap-1.5 rounded-md border border-dashed p-2 text-sm">
+    <div className="border-success-edge/40 bg-success-solid/5 flex flex-col gap-1.5 rounded-md border border-dashed p-2 text-sm">
       <div className="flex flex-wrap items-center gap-2">
         <Check aria-hidden className="text-success-text h-3.5 w-3.5 shrink-0" />
         <span>
@@ -252,7 +252,7 @@ function CategoryShell({
       </div>
       <div className="flex flex-col gap-2.5 p-4">
         {isError ? (
-          <p className="text-destructive flex items-center gap-2 text-sm">
+          <p className="text-destructive-text flex items-center gap-2 text-sm">
             <SearchX aria-hidden className="h-3.5 w-3.5 shrink-0" />
             {errorLine}
           </p>
@@ -722,7 +722,7 @@ export function HygieneQueue({ project }: { project?: string }) {
             <SelectionCount n={lowSel.selected.size} unit="row" />
             <Button
               variant="outline"
-              className="border-destructive/55 text-destructive"
+              className="border-destructive-edge/55 text-destructive-text"
               disabled={lowSel.selected.size === 0}
               onClick={() =>
                 setPending({ kind: "prune-low", ids: [...lowSel.selected] })
@@ -787,7 +787,7 @@ export function HygieneQueue({ project }: { project?: string }) {
             <SelectionCount n={expSel.selected.size} unit="row" />
             <Button
               variant="outline"
-              className="border-destructive/55 text-destructive"
+              className="border-destructive-edge/55 text-destructive-text"
               disabled={expSel.selected.size === 0}
               onClick={() =>
                 setPending({

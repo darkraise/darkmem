@@ -42,7 +42,7 @@ function NotesPage() {
       ) : isError ? (
         // Never the empty state: "there is no personal space" is a claim
         // about the catalogue, and on a failed read it is an unfounded one.
-        <p className="text-destructive text-sm">
+        <p className="text-destructive-text text-sm">
           Notes could not be loaded.
         </p>
       ) : isLoading ? (

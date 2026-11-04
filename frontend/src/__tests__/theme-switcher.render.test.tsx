@@ -12,20 +12,26 @@ const AXIS_HEADINGS: Record<string, string> = {
   mode: "Mode",
   accentColor: "Accent Color",
   surfaceColor: "Surface Color",
+  tintWithAccent: "Tint With Accent",
+  signalColor: "Signal Color",
+  style: "Style",
   preset: "Preset",
   backgroundStyle: "Background",
   backgroundIntensity: "Background Intensity",
   gradientPattern: "Gradient Pattern",
+  glassTransparency: "Transparency",
+  glassBlur: "Backdrop Blur",
+  font: "Font",
+  headingFont: "Heading Font",
   density: "Density",
   elevation: "Elevation",
-  buttonElevation: "Button Elevation",
-  surfaceIntensity: "Surface Intensity",
-  controlDepth: "Control Depth",
   radius: "Radius",
   fontSize: "Font Size",
-  accentIntensity: "Accent Intensity",
+  contrast: "Contrast",
+  darkAccentChroma: "Dark Accent Chroma",
   outerGlow: "Outer Glow",
   innerGlow: "Inner Glow",
+  sidebarSelection: "Sidebar Selection",
 }
 
 /** Fails loudly rather than silently asserting `undefined` is absent. */
@@ -51,7 +57,7 @@ describe("header theme switcher", () => {
     window.localStorage.clear()
   })
 
-  it("renders a control for each of its three axes", async () => {
+  it("renders a control for each of its axes", async () => {
     await openSwitcher()
     for (const axis of SWITCHER_AXES) {
       expect(
@@ -62,7 +68,7 @@ describe("header theme switcher", () => {
   })
 
   // The other half of the claim: this component's own section list, not only
-  // the config, keeps the popover to three axes.
+  // the config, keeps the popover to its own axes.
   it("renders no control for any other axis", async () => {
     await openSwitcher()
     const headerAxes = new Set<string>(SWITCHER_AXES)
@@ -76,12 +82,9 @@ describe("header theme switcher", () => {
   })
 
   // The heading table above is only a proof of coverage while it names every
-  // axis the config knows about; `presetAxes` is excluded because it is a
-  // master toggle for per-preset controls, not an axis with a heading.
+  // axis the config knows about.
   it("covers every configured axis", () => {
-    const configured = Object.keys(themeConfig.switcher.axes).filter(
-      (axis) => axis !== "presetAxes",
-    )
+    const configured = Object.keys(themeConfig.switcher.axes ?? {})
     expect(configured.sort()).toEqual(Object.keys(AXIS_HEADINGS).sort())
   })
 })

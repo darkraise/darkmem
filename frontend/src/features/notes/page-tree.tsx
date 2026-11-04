@@ -145,7 +145,7 @@ function RowActions({
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            className="text-destructive focus:text-destructive data-[highlighted]:text-destructive"
+            className="text-destructive-text focus:text-destructive-text data-[highlighted]:text-destructive-text"
             onSelect={() => onDelete(node)}
           >
             <Trash2 aria-hidden className="mr-2 size-3.5" />

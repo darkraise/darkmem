@@ -157,7 +157,7 @@ export function SystemPromptDialog({
                     onChange={(e) => setDraft(e.target.value)}
                     className={cn(
                       "min-h-64 flex-1 resize-none font-mono text-sm",
-                      tooLong && "border-destructive",
+                      tooLong && "border-destructive-edge",
                     )}
                   />
                 )}
@@ -180,14 +180,14 @@ export function SystemPromptDialog({
                 <span
                   className={cn(
                     "text-muted-foreground text-sm",
-                    tooLong && "text-destructive",
+                    tooLong && "text-destructive-text",
                   )}
                 >
                   {value.length.toLocaleString()} /{" "}
                   {MAX_PROMPT_LENGTH.toLocaleString()} characters
                 </span>
                 {update.isError && (
-                  <span className="text-destructive text-sm">
+                  <span className="text-destructive-text text-sm">
                     {update.error.message}
                   </span>
                 )}

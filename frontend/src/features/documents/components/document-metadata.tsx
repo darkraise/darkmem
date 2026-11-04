@@ -253,7 +253,7 @@ function DetailsForm({
         <TagsField labelId={ids.tags} tags={tags} onChange={setTags} />
       </div>
       {problem ? (
-        <p role="alert" className="text-destructive text-sm">
+        <p role="alert" className="text-destructive-text text-sm">
           {problem}
         </p>
       ) : null}
@@ -416,7 +416,7 @@ function NewDocumentForm({
         />
       </div>
       {problem ? (
-        <p role="alert" className="text-destructive text-sm">
+        <p role="alert" className="text-destructive-text text-sm">
           {problem}
         </p>
       ) : null}
@@ -470,7 +470,7 @@ export function FolderActions({
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            className="text-destructive focus:text-destructive data-[highlighted]:text-destructive"
+            className="text-destructive-text focus:text-destructive-text data-[highlighted]:text-destructive-text"
             onSelect={() => onDelete(node)}
           >
             <Trash2 aria-hidden className="mr-2 size-3.5" />
@@ -580,7 +580,7 @@ function RenameFolderForm({
         disabled={!check.ok}
       />
       {problem ? (
-        <p role="alert" className="text-destructive text-sm">
+        <p role="alert" className="text-destructive-text text-sm">
           {problem}
         </p>
       ) : null}

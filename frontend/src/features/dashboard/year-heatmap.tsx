@@ -212,7 +212,7 @@ export function YearHeatmap({ days }: { days: ContributionDay[] }) {
                           "hover:ring-ring focus-visible:ring-ring outline-none hover:ring-1 focus-visible:ring-1",
                           day.date === todayKey && "ring-primary/60 ring-1",
                           day.injects > 0 &&
-                            "ring-info/70 ring-1 ring-offset-0",
+                            "ring-info-edge/70 ring-1 ring-offset-0",
                         )}
                       />
                     </HoverCardTrigger>

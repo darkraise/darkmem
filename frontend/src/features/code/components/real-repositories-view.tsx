@@ -67,7 +67,7 @@ function staleCause(statusMessage: string | null): string {
 function StaleBanner({ repo }: { repo: Repo }) {
   if (repo.status !== "stale") return null
   return (
-    <div className="border-warning/50 bg-warning/8 flex gap-2.5 rounded-md border p-3">
+    <div className="border-warning-edge/50 bg-warning-solid/8 flex gap-2.5 rounded-md border p-3">
       <Clock aria-hidden className="text-warning-text h-4.5 w-4.5 shrink-0" />
       <div className="space-y-1 text-sm">
         <p className="font-semibold">
@@ -84,7 +84,7 @@ function StaleBanner({ repo }: { repo: Repo }) {
 
 function ErrorReason({ repo }: { repo: Repo }) {
   if (repo.status !== "error" || !repo.status_message) return null
-  return <p className="text-destructive text-sm">{repo.status_message}</p>
+  return <p className="text-destructive-text text-sm">{repo.status_message}</p>
 }
 
 // T1.39: the queued count alone cannot say whether the debt is draining or
@@ -97,7 +97,7 @@ function IndexDebtIndicator({ repo }: { repo: Repo }) {
 
   return (
     <div className="space-y-1">
-      <span className="border-warning/55 bg-warning/8 text-warning-text inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-0.5 text-sm">
+      <span className="border-warning-edge/55 bg-warning-solid/8 text-warning-text inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-0.5 text-sm">
         <Layers aria-hidden className="h-3.5 w-3.5" />
         {debt.queued} dependent {debt.queued === 1 ? "file" : "files"} queued
         for reindex
@@ -190,7 +190,7 @@ function RepoTaskList({ repo }: { repo: Repo }) {
           <Button
             variant="ghost"
             size="icon"
-            className="text-muted-foreground hover:text-destructive h-7 w-7 shrink-0"
+            className="text-muted-foreground hover:text-destructive-text h-7 w-7 shrink-0"
             aria-label={`Cancel ${task.kind} task`}
             onClick={() =>
               cancelTask.mutate(
@@ -437,7 +437,7 @@ function RepoRow({
       className={listItemClass({
         className: cn(
           "space-y-2 p-3",
-          repo.status === "stale" && "border-warning/40 bg-warning/3",
+          repo.status === "stale" && "border-warning-edge/40 bg-warning-solid/3",
         ),
       })}
     >
@@ -453,9 +453,9 @@ function RepoRow({
           className={cn(
             "gap-1 font-mono uppercase",
             repo.status === "stale" &&
-              "border-warning/60 bg-warning/10 text-warning-text border-dashed",
+              "border-warning-edge/60 bg-warning-solid/10 text-warning-text border-dashed",
             repo.status === "error" &&
-              "border-destructive/50 bg-destructive/10 text-destructive",
+              "border-destructive-edge/50 bg-destructive-solid/10 text-destructive-text",
           )}
         >
           {repo.status}
@@ -481,7 +481,7 @@ function RepoRow({
           </Button>
           <Button
             variant="ghost"
-            className="text-destructive hover:text-destructive"
+            className="text-destructive-text hover:text-destructive-text"
             onClick={() => onDelete(repo)}
           >
             Delete
@@ -533,7 +533,7 @@ export function RealRepositoriesView() {
       {isError ? (
         // Not the empty state: it invites the operator to add a repository
         // they already have, on a read that merely failed.
-        <p className="text-destructive p-3 text-sm">
+        <p className="text-destructive-text p-3 text-sm">
           Repositories could not be loaded.
         </p>
       ) : isLoading ? (

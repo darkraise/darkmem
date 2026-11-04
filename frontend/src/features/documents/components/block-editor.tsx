@@ -295,7 +295,7 @@ export function BlockEditor({
             </p>
           ) : null}
           {failure?.id === block.block_id ? (
-            <p role="alert" className="text-destructive text-sm">
+            <p role="alert" className="text-destructive-text text-sm">
               the edit was not saved — {failure.message}
             </p>
           ) : null}

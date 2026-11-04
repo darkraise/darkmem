@@ -72,7 +72,7 @@ function StepPill({
         className,
         state === "active" &&
           "border-primary/55 text-primary-text bg-primary/10",
-        state === "done" && "border-success/50 text-success-text bg-success/8",
+        state === "done" && "border-success-edge/50 text-success-text bg-success-solid/8",
         state === "upcoming" && "border-border text-muted-foreground",
       )}
     >
@@ -209,7 +209,7 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
               safe.
             </span>
             {passwordError && (
-              <span role="alert" className="text-destructive text-sm">
+              <span role="alert" className="text-destructive-text text-sm">
                 {passwordError}
               </span>
             )}
@@ -227,7 +227,7 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
               }
             />
             {confirm !== "" && confirm !== password && (
-              <span role="alert" className="text-destructive text-sm">
+              <span role="alert" className="text-destructive-text text-sm">
                 Passwords do not match.
               </span>
             )}
@@ -318,7 +318,7 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
               <span className="text-sm font-semibold">
                 embedding
                 {fixture.supports_embedding && (
-                  <span className="text-destructive">*</span>
+                  <span className="text-destructive-text">*</span>
                 )}
               </span>
               <Input
@@ -339,7 +339,7 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
                 <div key={purpose} className="contents">
                   <span className="text-sm font-semibold capitalize">
                     {purpose}
-                    <span className="text-destructive">*</span>
+                    <span className="text-destructive-text">*</span>
                   </span>
                   <Input
                     value={llm.models[purpose] ?? ""}
@@ -442,7 +442,7 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
                       className="text-muted-foreground h-3.5 w-3.5"
                     />
                     {dir.name}
-                    <span className="border-success/60 text-success-text ml-auto inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-mono text-xs">
+                    <span className="border-success-edge/60 text-success-text ml-auto inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-mono text-xs">
                       <GitBranch aria-hidden className="h-2.5 w-2.5" />
                       git
                     </span>

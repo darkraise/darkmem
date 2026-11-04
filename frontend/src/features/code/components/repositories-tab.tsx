@@ -27,7 +27,7 @@ import { ReindexDialog } from "./reindex-dialog"
 export function StaleBanner({ repo }: { repo: DemoRepo }) {
   if (!repo.stale) return null
   return (
-    <div className="border-warning/50 bg-warning/8 flex gap-2.5 rounded-md border p-3">
+    <div className="border-warning-edge/50 bg-warning-solid/8 flex gap-2.5 rounded-md border p-3">
       <Clock aria-hidden className="text-warning-text h-4.5 w-4.5 shrink-0" />
       <div className="min-w-0 space-y-1 text-sm">
         <p className="font-semibold">
@@ -43,17 +43,17 @@ export function StaleBanner({ repo }: { repo: DemoRepo }) {
 export function ErrorBanner({ repo }: { repo: DemoRepo }) {
   if (!repo.error) return null
   return (
-    <div className="border-destructive/50 bg-destructive/8 flex gap-2.5 rounded-md border p-3">
+    <div className="border-destructive-edge/50 bg-destructive-solid/8 flex gap-2.5 rounded-md border p-3">
       <TriangleAlert
         aria-hidden
-        className="text-destructive h-4.5 w-4.5 shrink-0"
+        className="text-destructive-text h-4.5 w-4.5 shrink-0"
       />
       {/* `min-w-0` + `overflow-wrap:anywhere`: an unbreakable git URL in the mono line
           must wrap inside the banner, not push the column past its border. */}
       <div className="min-w-0 space-y-1 text-sm">
         <p className="font-semibold">{repo.error.headline}</p>
         <p className="text-muted-foreground break-words">{repo.error.detail}</p>
-        <p className="text-destructive font-mono text-sm [overflow-wrap:anywhere]">
+        <p className="text-destructive-text font-mono text-sm [overflow-wrap:anywhere]">
           {repo.error.message}
         </p>
       </div>
@@ -120,7 +120,7 @@ function RepoRow({
       )}
 
       {repo.debt && (
-        <span className="border-warning/55 bg-warning/8 text-warning-text inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-0.5 text-sm">
+        <span className="border-warning-edge/55 bg-warning-solid/8 text-warning-text inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-0.5 text-sm">
           <Layers aria-hidden className="h-3.5 w-3.5" />
           {repo.debt.queued_files} {repo.debt.note}
         </span>
@@ -128,7 +128,7 @@ function RepoRow({
 
       {repo.auto_provisioned && (
         <div className="space-y-1">
-          <span className="border-info/50 bg-info/10 text-info-text inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-sm">
+          <span className="border-info-edge/50 bg-info-solid/10 text-info-text inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-sm">
             <Zap aria-hidden className="h-3 w-3" />
             auto-provisioned {repo.auto_provisioned.on}
           </span>
@@ -204,7 +204,7 @@ function RepoRow({
             className={cn(
               "rounded-full",
               repo.stale || repo.error
-                ? "border-warning/60 text-warning-text bg-warning/8"
+                ? "border-warning-edge/60 text-warning-text bg-warning-solid/8"
                 : "border-primary/60 text-primary-text bg-primary/8",
             )}
             onClick={() => onReindex(repo.id)}

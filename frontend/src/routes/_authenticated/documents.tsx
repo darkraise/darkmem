@@ -35,7 +35,7 @@ function DocumentsPage() {
         title="Documents"
       />
       {isError ? (
-        <p className="text-destructive text-sm">
+        <p className="text-destructive-text text-sm">
           Projects could not be loaded.
         </p>
       ) : isLoading ? (
