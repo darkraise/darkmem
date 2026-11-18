@@ -148,6 +148,14 @@ function prefersReducedMotion(): boolean {
   return typeof window.matchMedia === "function" && window.matchMedia(REDUCED_MOTION_QUERY).matches
 }
 
+function centreOn(sigma: Sigma, id: string) {
+  const d = sigma.getNodeDisplayData(id)
+  if (!d) return
+  const target = { x: d.x, y: d.y, ratio: SELECTED_RATIO }
+  if (prefersReducedMotion()) sigma.getCamera().setState(target)
+  else void sigma.getCamera().animate(target, { duration: CAMERA_MS })
+}
+
 function drawOutlinedText(
   ctx: CanvasRenderingContext2D,
   text: string,
@@ -182,6 +190,11 @@ export function CodeGlowCanvas({
   const containerRef = useRef<HTMLDivElement | null>(null)
   const sigmaRef = useRef<Sigma | null>(null)
   const clockRef = useRef<GlowClock>({ time: 0 })
+  const runnerRef = useRef<ConstellationRunner | null>(null)
+  // A node chosen while the core still settles keeps moving, so the camera
+  // follows it until the run ends or the reader moves the camera.
+  const followRef = useRef(false)
+  const zoomRef = useRef(zoom)
   const [webglFailed, setWebglFailed] = useState(false)
 
   const tokensRef = useRef(tokens)
@@ -237,6 +250,9 @@ export function CodeGlowCanvas({
     const scale = scaleSettings(g.order, g.size)
     const runner: ConstellationRunner = createConstellationRunner(g, {
       layoutMs: scale.layoutMs,
+      onStop: () => {
+        followRef.current = false
+      },
       fa2Settings: constellationFa2Settings(g, scale),
     })
 
@@ -377,6 +393,22 @@ export function CodeGlowCanvas({
         sigma.scheduleRender()
       },
     })
+    sigma.on("beforeRender", () => {
+      const id = emphasisRef.current.selectedId
+      const camera = sigma.getCamera()
+      if (!followRef.current || !id || !g.hasNode(id) || camera.isAnimated()) return
+      const d = sigma.getNodeDisplayData(id)
+      if (d && (Math.abs(d.x - camera.x) > 1e-6 || Math.abs(d.y - camera.y) > 1e-6)) {
+        camera.setState({ x: d.x, y: d.y })
+      }
+    })
+    const stopFollowing = () => {
+      followRef.current = false
+    }
+    for (const event of ["wheelStage", "downStage", "wheelNode", "downNode"] as const) {
+      sigma.on(event, stopFollowing)
+    }
+    runnerRef.current = runner
     runner.start()
 
     return () => {
@@ -399,16 +431,16 @@ export function CodeGlowCanvas({
     if (!sigma) return
     sigma.refresh()
     if (!selectedId || !sigma.getGraph().hasNode(selectedId)) return
-    const d = sigma.getNodeDisplayData(selectedId)
-    if (!d) return
-    const target = { x: d.x, y: d.y, ratio: SELECTED_RATIO }
-    if (prefersReducedMotion()) sigma.getCamera().setState(target)
-    else void sigma.getCamera().animate(target, { duration: CAMERA_MS })
+    centreOn(sigma, selectedId)
+    followRef.current = runnerRef.current?.isRunning() ?? false
   }, [selectedId])
 
   useEffect(() => {
     const sigma = sigmaRef.current
-    if (!sigma) return
+    // Only a change moves the camera: on mount this would cancel the move to
+    // a node selected from the start.
+    if (!sigma || zoomRef.current === zoom) return
+    zoomRef.current = zoom
     const target = { ratio: 1 / zoom }
     if (prefersReducedMotion()) sigma.getCamera().setState(target)
     else void sigma.getCamera().animate(target, { duration: CAMERA_MS })
@@ -418,6 +450,7 @@ export function CodeGlowCanvas({
     const action = canvasKeyAction(event.key)
     if (!action) return
     event.preventDefault()
+    followRef.current = false
     if (action.type === "clear") {
       onSelect(null)
       return
