@@ -36,19 +36,24 @@ export function densityStyle(
   nodeRadiusPx: number,
   spacingPx: number,
   maxOverlap: number,
+  floor = GAIN_FLOOR,
 ): { gain: number; scale: number } {
   if (spacingPx <= 0 || nodeRadiusPx <= 0) return { gain: 1, scale: 1 }
   const coverage = (r: number) => Math.min(maxOverlap, (r * r) / (spacingPx * spacingPx))
   const gainFor = (c: number) => (c <= COVERAGE_TARGET ? 1 : COVERAGE_TARGET / c)
-  if (gainFor(coverage(nodeRadiusPx)) >= GAIN_FLOOR) {
+  if (gainFor(coverage(nodeRadiusPx)) >= floor) {
     return { gain: gainFor(coverage(nodeRadiusPx)), scale: 1 }
   }
   const shrunk = Math.min(
     nodeRadiusPx,
-    Math.max(MIN_RADIUS_PX, spacingPx * Math.sqrt(COVERAGE_TARGET / GAIN_FLOOR)),
+    Math.max(MIN_RADIUS_PX, spacingPx * Math.sqrt(COVERAGE_TARGET / floor)),
   )
-  return { gain: gainFor(coverage(shrunk)), scale: shrunk / nodeRadiusPx }
+  return { gain: Math.max(floor, gainFor(coverage(shrunk))), scale: shrunk / nodeRadiusPx }
 }
+
+/** Satellites never drop below the halo's 0.45 against their own 0.8, so the
+ *  contract's core > satellite > halo order survives dimming. */
+export const SATELLITE_GAIN_FLOOR = 0.45 / 0.8
 
 interface SizedGraph {
   getNodeAttribute(id: string, name: string): unknown
@@ -81,7 +86,12 @@ export function trackDensityGain(
       CORE_K * pxPerUnit,
       classification.core.length,
     )
-    const satellite = densityStyle(sigma.scaleSize(satelliteSize), CLUMP_R0 * pxPerUnit, clump)
+    const satellite = densityStyle(
+      sigma.scaleSize(satelliteSize),
+      CLUMP_R0 * pxPerUnit,
+      clump,
+      SATELLITE_GAIN_FLOOR,
+    )
     clock.coreGain = core.gain
     clock.coreScale = core.scale
     clock.satelliteGain = satellite.gain

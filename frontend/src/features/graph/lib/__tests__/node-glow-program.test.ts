@@ -124,6 +124,13 @@ describe("densityStyle", () => {
     expect(scale).toBeLessThan(0.2)
   })
 
+  it("keeps a floored role at its floor, shrinking instead", async () => {
+    const { densityStyle, SATELLITE_GAIN_FLOOR } = await import("../node-glow-program")
+    const { gain, scale } = densityStyle(6, 1, 7, SATELLITE_GAIN_FLOOR)
+    expect(gain).toBeCloseTo(SATELLITE_GAIN_FLOOR)
+    expect(scale).toBeLessThan(1)
+  })
+
   it("never shrinks a disc below one pixel", async () => {
     const { scale } = await style(10, 0.1, 19000)
     expect(scale * 10).toBeCloseTo(1)
