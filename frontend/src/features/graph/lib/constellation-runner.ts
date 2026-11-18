@@ -8,6 +8,7 @@ import {
   coreRadius as computeCoreRadius,
   fitCore,
   fitCoreToFarthest,
+  HALO_SIZE,
   placeOuter,
   placeOuterRing,
   ROLE_BRIGHTNESS,
@@ -97,6 +98,20 @@ export function createConstellationRunner(
   }
   const fittedCore = fit(currentCore(), R)
 
+  const attached = new Set(roles?.attachments.map((a) => a.id) ?? [])
+  const coreSizes = classification.core
+    .filter((id) => !attached.has(id))
+    .map((id) => graph.getNodeAttribute(id, "size") as number)
+    .sort((a, b) => a - b)
+  const mid = coreSizes.length >> 1
+  const medianCore =
+    coreSizes.length === 0
+      ? 0
+      : coreSizes.length % 2
+        ? coreSizes[mid]!
+        : (coreSizes[mid - 1]! + coreSizes[mid]!) / 2
+  const haloSize = coreSizes.length === 0 ? HALO_SIZE : Math.min(HALO_SIZE, 0.4 * medianCore)
+
   graph.updateEachNodeAttributes((id, attrs) => {
     const role = classification.role.get(id)!
     const p = coreSet.has(id) ? fittedCore.get(id)! : outer.positions.get(id)!
@@ -105,6 +120,7 @@ export function createConstellationRunner(
       _role: role,
       brightness: ROLE_BRIGHTNESS[role],
       phase: seededUnit(id, 7),
+      ...(role === "halo" && !attached.has(id) ? { size: haloSize } : {}),
       x: p.x,
       y: p.y,
     }

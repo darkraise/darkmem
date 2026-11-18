@@ -4,6 +4,7 @@ export type ConstellationRole = "core" | "satellite" | "halo"
 
 export const CORE_MIN = 8
 export const CORE_SHARE = 0.45
+export const HALO_SIZE = 1.5
 export const SATELLITE_RING_START = 1.15
 export const HALO_MIN_OUTER = 3.0
 export const SATELLITE_BAND = 2.0

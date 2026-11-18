@@ -628,6 +628,7 @@ function Scene(props: {
   edges: SimilarityEdge[]
   entities?: GraphEntity[]
   entityLayer?: boolean
+  sizeMode?: RendererProps["sizeMode"]
 }) {
   const { tokens, palette } = useMemoryGraphTheme()
   return (
@@ -638,7 +639,7 @@ function Scene(props: {
         selectedNodeId={null}
         onNodeSelect={noopSelect}
         onReady={noop}
-        sizeMode={"connections" as RendererProps["sizeMode"]}
+        sizeMode={(props.sizeMode ?? "connections") as RendererProps["sizeMode"]}
         colorMode="cluster"
         hullMode="none"
         entityLayerEnabled={props.entityLayer ?? false}
@@ -666,6 +667,33 @@ const advance = (ms: number) =>
   })
 
 describe("memory 2D renderer", () => {
+  it("A9: halo nodes take one small size whatever their importance", () => {
+    const ring = ids("c", 8).map((id) => memory(id))
+    const loud = { ...memory("h0"), importance: 1 }
+    const quiet = { ...memory("h1"), importance: 0 }
+    const memories = [...ring, loud, quiet, ...ids("z", 10).map((id) => memory(id))]
+    const edges = path([...ids("c", 8), "c0"]).map((e) => edge(e.source, e.target))
+    render(<Scene memories={memories} edges={edges} sizeMode={"importance" as RendererProps["sizeMode"]} />)
+    advance(50)
+    const g = lastSigma().graph
+    const core = ids("c", 8).map((id) => g.getNodeAttribute(id, "size") as number).sort((a, b) => a - b)
+    const median = (core[3]! + core[4]!) / 2
+    expect(g.getNodeAttribute("h0", "size")).toBe(g.getNodeAttribute("h1", "size"))
+    expect(g.getNodeAttribute("h0", "size") as number).toBeLessThanOrEqual(0.4 * median + 1e-9)
+  })
+
+  it("A10: at the fit view with nothing hovered or selected, no memory carries a label, hubs included", () => {
+    const star = ["c0", ...ids("x", 9)].map((id) => memory(id))
+    const edges = ids("x", 9).map((id) => edge("c0", id))
+    render(<Scene memories={star} edges={edges} />)
+    advance(50)
+    const sigma = lastSigma()
+    for (const id of sigma.graph.nodes()) {
+      const out = sigma.settings.nodeReducer(id, sigma.graph.getNodeAttributes(id))
+      expect(out.label ?? "").toBe("")
+    }
+  })
+
   it("UX-1: memory edges carry their score, and roles follow the cut rather than every drawn edge", () => {
     const ring = ids("c", 8).map((id) => memory(id))
     const rest = ["s0", "s1", ...ids("h", 9)].map((id) => memory(id))

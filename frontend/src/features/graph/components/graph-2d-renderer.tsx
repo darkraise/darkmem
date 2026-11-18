@@ -37,6 +37,7 @@ import {
   type ConstellationRunner,
 } from "@/features/graph/lib/constellation-runner"
 import type { Attachment, ScoredEdge } from "@/features/graph/lib/constellation-layout"
+import { topHubs } from "@/features/graph/lib/hubs"
 import {
   createNodeGlowProgram,
   trackDensityGain,
@@ -123,6 +124,7 @@ const ENTITY_NODE_SIZE = 6
 
 /** Degree at or above which a node's label survives at any zoom. */
 const HUB_DEGREE = 5
+const MEMORY_SIZE_SCALE = 0.25
 
 /** Sigma's camera ratio counts down as you move in, so *below* this is
  *  closer. 0.72 is the 1.4x of the spec, inverted. */
@@ -209,6 +211,7 @@ export function Graph2DRenderer({
   // below the threshold is closer. Read in the node reducer to gate the
   // ordinary label tier.
   const zoomRatioRef = useRef(1)
+  const hubsRef = useRef<Set<string>>(new Set())
 
   // An entity puts its type colour on its border and keeps a shared neutral
   // body, so it is never read as a memory that happens to carry that colour.
@@ -336,7 +339,7 @@ export function Graph2DRenderer({
       graph.addNode(m.id, {
         ...place(m.id, m.cluster),
         label: m.content.slice(0, 30) + (m.content.length > 30 ? "…" : ""),
-        size: size * 0.5,
+        size: size * MEMORY_SIZE_SCALE,
         type: "glow",
         _degree: conns,
         color,
@@ -463,6 +466,14 @@ export function Graph2DRenderer({
         }
       }
     }
+
+    const memoryDegrees = new Map<string, number>()
+    for (const id of allNodeIds) memoryDegrees.set(id, 0)
+    for (const e of roleEdges) {
+      memoryDegrees.set(e.source, memoryDegrees.get(e.source)! + 1)
+      memoryDegrees.set(e.target, memoryDegrees.get(e.target)! + 1)
+    }
+    hubsRef.current = topHubs(memoryDegrees, 0.02, HUB_DEGREE)
 
     const scale = scaleSettings(graph.order, graph.size)
     const runner = createConstellationRunner(graph, {
@@ -611,8 +622,8 @@ export function Graph2DRenderer({
         if (
           !labelVisible({
             tier,
-            isHub: (data._degree ?? 0) >= HUB_DEGREE,
-            zoomedIn: zoomRatioRef.current < LABEL_ZOOM_RATIO,
+            isHub: hubsRef.current.has(node) && zoomRatioRef.current < LABEL_ZOOM_RATIO,
+            zoomedIn: false,
             isHovered: hov === node,
           })
         ) {
