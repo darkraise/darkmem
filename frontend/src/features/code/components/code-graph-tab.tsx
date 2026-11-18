@@ -5,12 +5,9 @@ import {
   Crosshair,
   FileCode2,
   FolderGit2,
-  ListTree,
   Maximize,
-  Orbit,
   PanelLeftClose,
   PanelLeftOpen,
-  Pause,
   Play,
   Search,
   Share2,
@@ -60,16 +57,14 @@ import { phaseProgressLabel, phaseProgressPercent } from "../lib/phase-progress"
 import { useDemoCodeRepos, useDemoCodeGraph } from "@/demo/hooks"
 import {
   computeBlastRadius,
-  layoutGraph,
   mermaidForProcess,
   neighborhoodWithin,
   type BlastRadius,
-  type GraphLayoutMode,
-  type Point,
 } from "@/demo/explore"
 import type { CodeNodeKind } from "@/features/code/types"
 import type { DemoRepo } from "@/demo/types"
-import { CANVAS_H, CANVAS_W, chartVar, CodeCanvas } from "./code-canvas"
+import { chartVar } from "./code-canvas"
+import { CodeGlowCanvas } from "./code-glow-canvas"
 import { CodeExplorer } from "./code-explorer"
 import { CodeFilters } from "./code-filters"
 import {
@@ -79,7 +74,6 @@ import {
 } from "./code-inspector"
 import { RepoStatusChip } from "./repo-status-chip"
 
-const LAYOUTS: GraphLayoutMode[] = ["force", "tree", "circles"]
 const DEPTHS = ["all", "1", "2", "3"] as const
 type DepthValue = (typeof DEPTHS)[number]
 
@@ -129,12 +123,9 @@ export function CodeGraphTab({
   const graph = useDemoCodeGraph(repo?.id)
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [layout, setLayout] = useState<GraphLayoutMode>("force")
   const [colorBy, setColorBy] = useState<"community" | "kind">("community")
   const [depth, setDepth] = useState<DepthValue>("all")
-  const [playing, setPlaying] = useState(true)
   const [zoom, setZoom] = useState(1)
-  const [center, setCenter] = useState<Point | null>(null)
   const [blast, setBlast] = useState<BlastRadius | null>(null)
   const [activeCommunity, setActiveCommunity] = useState<string | null>(null)
   const [activeProcess, setActiveProcess] = useState<string | null>(null)
@@ -187,7 +178,6 @@ export function CodeGraphTab({
     setActiveCommunity(null)
     setActiveProcess(null)
     setZoom(1)
-    setCenter(null)
     setDepth("all")
     setOpenFiles([])
     setHiddenKinds(new Set())
@@ -210,20 +200,6 @@ export function CodeGraphTab({
         : [...prev, { path, pinned: true, collapsed: false }],
     )
   }, [graph, focusSymbolId, focusFile])
-
-  const positions = useMemo(
-    () =>
-      graph
-        ? layoutGraph(
-            graph.nodes.map((n) => ({ id: n.id, group: n.community })),
-            graph.edges,
-            layout,
-            CANVAS_W,
-            CANVAS_H,
-          )
-        : {},
-    [graph, layout],
-  )
 
   const visibleIds = useMemo(() => {
     if (!graph || !selectedId || depth === "all") return null
@@ -278,13 +254,9 @@ export function CodeGraphTab({
       prev.map((f) => (f.path === path ? { ...f, ...patch } : f)),
     )
 
+  // The canvas centres on the selected node itself; focusing only zooms in.
   const focusSelected = () => {
-    if (!selectedId) return
-    const pos = positions[selectedId]
-    if (pos) {
-      setCenter(pos)
-      setZoom(1.6)
-    }
+    if (selectedId) setZoom(1.6)
   }
 
   const copyMermaid = (text: string) => {
@@ -428,31 +400,6 @@ export function CodeGraphTab({
         />
         <div className="flex flex-col gap-0.5">
           <span className="text-muted-foreground font-mono text-xs uppercase">
-            layout
-          </span>
-          <ToggleGroup
-            type="single"
-            size="sm"
-            value={layout}
-            onValueChange={(value) => {
-              if (LAYOUTS.includes(value as GraphLayoutMode))
-                setLayout(value as GraphLayoutMode)
-            }}
-            aria-label="Graph layout"
-          >
-            <ToggleGroupItem value="force" aria-label="Force layout">
-              <Share2 aria-hidden className="h-3.5 w-3.5" />
-            </ToggleGroupItem>
-            <ToggleGroupItem value="tree" aria-label="Tree layout">
-              <ListTree aria-hidden className="h-3.5 w-3.5" />
-            </ToggleGroupItem>
-            <ToggleGroupItem value="circles" aria-label="Circles layout">
-              <Orbit aria-hidden className="h-3.5 w-3.5" />
-            </ToggleGroupItem>
-          </ToggleGroup>
-        </div>
-        <div className="flex flex-col gap-0.5">
-          <span className="text-muted-foreground font-mono text-xs uppercase">
             colour by
           </span>
           <ToggleGroup
@@ -500,10 +447,7 @@ export function CodeGraphTab({
               size="icon"
               className="h-7 w-7"
               aria-label="Fit to view"
-              onClick={() => {
-                setZoom(1)
-                setCenter(null)
-              }}
+              onClick={() => setZoom(1)}
             >
               <Maximize aria-hidden className="h-3.5 w-3.5" />
             </Button>
@@ -526,23 +470,6 @@ export function CodeGraphTab({
               onClick={() => selectNode(null)}
             >
               <X aria-hidden className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              className={cn(
-                "h-7 w-7",
-                playing && "border-primary/50 text-primary-text bg-primary/10",
-              )}
-              aria-label={playing ? "Pause layout" : "Play layout"}
-              aria-pressed={playing}
-              onClick={() => setPlaying((v) => !v)}
-            >
-              {playing ? (
-                <Pause aria-hidden className="h-3.5 w-3.5" />
-              ) : (
-                <Play aria-hidden className="h-3.5 w-3.5" />
-              )}
             </Button>
           </div>
         </div>
@@ -702,10 +629,9 @@ export function CodeGraphTab({
           ref={setCanvasEl}
           className="relative flex h-[min(70vh,30rem)] min-w-0 shrink-0 flex-col overflow-hidden lg:h-auto lg:min-h-0 lg:flex-1 lg:shrink"
         >
-          <div className="min-h-0 min-w-0 flex-1 lg:min-h-64">
-            <CodeCanvas
+          <div className="relative min-h-0 min-w-0 flex-1 lg:min-h-64">
+            <CodeGlowCanvas
               graph={graph}
-              layout={layout}
               colorBy={colorBy}
               selectedId={selectedId}
               onSelect={selectNode}
@@ -714,9 +640,7 @@ export function CodeGraphTab({
               blastIds={blast ? new Set(blast.affected.map((a) => a.id)) : null}
               highlightCommunity={activeCommunity}
               processIds={processIds}
-              playing={playing}
               zoom={zoom}
-              center={center}
             />
           </div>
           {openFiles

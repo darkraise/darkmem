@@ -1,5 +1,13 @@
 import { fireEvent, render, screen } from "@testing-library/react"
 import { describe, it, expect, vi } from "vitest"
+import { CodeGlowCanvasStub } from "@/test/code-glow-canvas-stub"
+import type { CodeGlowCanvasProps } from "@/features/code/components/code-glow-canvas"
+
+vi.hoisted(() => {
+  const g = globalThis as Record<string, unknown>
+  g.WebGL2RenderingContext ??= class {}
+  g.WebGLRenderingContext ??= class {}
+})
 
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tanstack/react-router")>()),
@@ -12,6 +20,13 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
       {children}
     </a>
   ),
+}))
+// The stub imports drawnGraph from the mocked module, so the factory must not
+// import the stub itself (it would wait on its own mock); the component looks
+// the stub up at render time instead.
+vi.mock("@/features/code/components/code-glow-canvas", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/features/code/components/code-glow-canvas")>()),
+  CodeGlowCanvas: (props: CodeGlowCanvasProps) => <CodeGlowCanvasStub {...props} />,
 }))
 
 import { RepositoriesTab } from "../components/repositories-tab"
@@ -60,6 +75,19 @@ describe("RepositoriesTab", () => {
 })
 
 describe("CodeGraphTab", () => {
+  it("offers one layout: no Layout switch and no Play/Pause", () => {
+    render(
+      <CodeGraphTab
+        repoId="repo-backend"
+        onRepoChange={vi.fn()}
+        onOpenRepositories={vi.fn()}
+      />,
+    )
+    expect(screen.queryByRole("group", { name: "Graph layout" })).toBeNull()
+    expect(screen.queryByRole("button", { name: /Play layout|Pause layout/ })).toBeNull()
+    expect(screen.getByRole("group", { name: /^Code graph — \d+ nodes, \d+ edges$/ })).toBeInTheDocument()
+  })
+
   it("renders chrome, the explorer/filters rail, and analysis panels for a ready repo", () => {
     render(
       <CodeGraphTab

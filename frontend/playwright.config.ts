@@ -40,6 +40,7 @@ const DEMO_FIXTURE_SPECS = [
   "demo-makes-no-api-calls.spec.ts",
   "activity-pipeline.spec.ts",
   "code-index-debt.spec.ts",
+  "code-graph-keyboard.spec.ts",
   "dashboard.spec.ts",
   "knowledge.spec.ts",
   "memories-command-palette.spec.ts",

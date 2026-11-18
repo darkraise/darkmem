@@ -105,7 +105,7 @@ function asCodeNodeKind(kind: string): CodeNodeKind {
 }
 
 /**
- * Builds the full DemoCodeGraph-shaped value CodeCanvas/CodeExplorer/
+ * Builds the full DemoCodeGraph-shaped value CodeGlowCanvas/CodeExplorer/
  * CodeFilters already know how to render, from the raw REST response.
  * Community/process pseudo-nodes are pulled out into their own derived
  * lists (matching the demo's own separate `communities`/`processes`

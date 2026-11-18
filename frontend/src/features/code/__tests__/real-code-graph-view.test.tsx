@@ -1,11 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import { CodeGlowCanvasStub } from "@/test/code-glow-canvas-stub"
+import type { CodeGlowCanvasProps } from "@/features/code/components/code-glow-canvas"
 import { render, screen, fireEvent } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 
+vi.hoisted(() => {
+  const g = globalThis as Record<string, unknown>
+  g.WebGL2RenderingContext ??= class {}
+  g.WebGLRenderingContext ??= class {}
+})
+
 vi.mock("@/lib/demo-flag", () => ({ DEMO: false }))
 vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
+// The stub imports drawnGraph from the mocked module, so the factory must not
+// import the stub itself (it would wait on its own mock); the component looks
+// the stub up at render time instead.
+vi.mock("@/features/code/components/code-glow-canvas", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/features/code/components/code-glow-canvas")>()),
+  CodeGlowCanvas: (props: CodeGlowCanvasProps) => <CodeGlowCanvasStub {...props} />,
+}))
 
 import { apiFetch } from "@/lib/api"
 import { RealCodeGraphView } from "../components/real-code-graph-view"
@@ -249,7 +264,8 @@ describe("RealCodeGraphView", () => {
     )
     await screen.findByText("ingestion")
     expect(screen.getByText(/^\d+ nodes · \d+ edges$/)).toBeInTheDocument()
-    expect(screen.getByText("Layout")).toBeInTheDocument()
+    expect(screen.queryByText("Layout")).toBeNull()
+    expect(screen.queryByRole("group", { name: "Graph layout" })).toBeNull()
     expect(screen.getByText("Colour by")).toBeInTheDocument()
     const heading = screen.getByText("Selected symbol")
     expect(heading.closest("span")).not.toHaveClass("uppercase")

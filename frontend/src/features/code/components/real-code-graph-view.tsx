@@ -3,8 +3,6 @@ import {
   Boxes,
   Copy,
   FolderGit2,
-  ListTree,
-  Orbit,
   Search,
   Share2,
   Workflow,
@@ -37,7 +35,7 @@ import {
 } from "darkraise-ui/components/toggle-group"
 import { EmptyState } from "@/components/darkmem"
 import { cn } from "darkraise-ui/lib"
-import { mermaidForProcess, type GraphLayoutMode } from "@/demo/explore"
+import { mermaidForProcess } from "@/demo/explore"
 import type { CodeNodeKind } from "@/features/code/types"
 import {
   useBlastRadius,
@@ -46,14 +44,14 @@ import {
   useRepos,
 } from "@/hooks/api"
 import type { BlastRadiusResult } from "@/hooks/api"
-import { chartVar, CodeCanvas } from "./code-canvas"
+import { chartVar } from "./code-canvas"
+import { CodeGlowCanvas } from "./code-glow-canvas"
 import { CodeExplorer } from "./code-explorer"
 import { CodeFilters } from "./code-filters"
 import { CodeGraphLodBanner } from "./code-graph-lod-banner"
 import { RealCodeInspector } from "./real-code-inspector"
 import { deriveCodeGraph, fileOfGraphKey } from "../lib/graph-derive"
 
-const LAYOUTS: GraphLayoutMode[] = ["force", "tree", "circles"]
 const LEGEND_LIMIT = 12
 
 function SectionTitle({
@@ -75,7 +73,7 @@ function SectionTitle({
 // Community colouring and the Processes panel with Mermaid export ship in
 // real mode too — GET /code/graph/{repo_id} already serves the substrate
 // (T1.59 plan §3); graph-derive.ts is the client-side derivation into the
-// shape CodeCanvas/CodeExplorer/CodeFilters already render.
+// shape CodeGlowCanvas/CodeExplorer/CodeFilters already render.
 export function RealCodeGraphView({
   repoId,
   onRepoChange,
@@ -116,7 +114,6 @@ export function RealCodeGraphView({
   )
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [layout, setLayout] = useState<GraphLayoutMode>("force")
   const [colorBy, setColorBy] = useState<"community" | "kind">("community")
   const [activeCommunity, setActiveCommunity] = useState<string | null>(null)
   const [activeProcess, setActiveProcess] = useState<string | null>(null)
@@ -357,29 +354,6 @@ export function RealCodeGraphView({
           aria-label="Filter the graph and explorer by file or symbol name"
         />
         <div className="flex flex-col gap-0.5">
-          <span className="text-muted-foreground text-xs">Layout</span>
-          <ToggleGroup
-            type="single"
-            size="sm"
-            value={layout}
-            onValueChange={(value) => {
-              if (LAYOUTS.includes(value as GraphLayoutMode))
-                setLayout(value as GraphLayoutMode)
-            }}
-            aria-label="Graph layout"
-          >
-            <ToggleGroupItem value="force" aria-label="Force layout">
-              <Share2 aria-hidden className="h-3.5 w-3.5" />
-            </ToggleGroupItem>
-            <ToggleGroupItem value="tree" aria-label="Tree layout">
-              <ListTree aria-hidden className="h-3.5 w-3.5" />
-            </ToggleGroupItem>
-            <ToggleGroupItem value="circles" aria-label="Circles layout">
-              <Orbit aria-hidden className="h-3.5 w-3.5" />
-            </ToggleGroupItem>
-          </ToggleGroup>
-        </div>
-        <div className="flex flex-col gap-0.5">
           <span className="text-muted-foreground text-xs">Colour by</span>
           <ToggleGroup
             type="single"
@@ -464,10 +438,9 @@ export function RealCodeGraphView({
         <RealCodeInspector selectedNode={selectedNode} />
 
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="min-h-64 min-w-0 flex-1">
-            <CodeCanvas
+          <div className="relative min-h-64 min-w-0 flex-1">
+            <CodeGlowCanvas
               graph={shown ?? graph}
-              layout={layout}
               colorBy={colorBy}
               selectedId={selectedId}
               onSelect={selectNode}
@@ -480,9 +453,7 @@ export function RealCodeGraphView({
               }
               highlightCommunity={activeCommunity}
               processIds={processIds}
-              playing={false}
               zoom={1}
-              center={null}
             />
           </div>
           {colorBy === "community" && (
