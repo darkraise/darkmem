@@ -190,6 +190,7 @@ import { loadRealCorpus, type RealCorpusSize } from "@/features/graph/fixtures/r
 import {
   classify,
   classifyWithCut,
+  CORE_K,
   coreRadius,
   CORE_MIN,
   fitCore,
@@ -844,7 +845,10 @@ interface FakeSigmaView {
   graph: Graph
   camera: { setState: (s: { ratio?: number }) => void }
   emit: (event: string, ...args: unknown[]) => void
-  settings: { nodeReducer: (id: string, data: Record<string, unknown>) => Record<string, unknown> }
+  settings: {
+    nodeReducer: (id: string, data: Record<string, unknown>) => Record<string, unknown>
+    edgeReducer: (id: string, data: Record<string, unknown>) => Record<string, unknown>
+  }
 }
 const lastSigma = () => h.sigmas[h.sigmas.length - 1] as FakeSigmaView
 const advance = (ms: number) =>
@@ -895,6 +899,65 @@ describe("memory 2D renderer on the real corpus", () => {
     note(`A4 entity roles: ${JSON.stringify(tally)}`)
     expect(tally.core! + tally.satellite! + tally.halo!).toBeGreaterThan(100)
     expect(tally.core).toBeGreaterThan(0)
+  })
+
+  it("UI-1: at rest an edge shows only inside the core or one clump, and hovering a node lights its others", () => {
+    const { result } = realRoles(1000)
+    const group = new Map<string, string>()
+    for (const id of result.core) group.set(id, "core")
+    result.satellites.forEach((members, i) => members.forEach((id) => group.set(id, `clump:${i}`)))
+    render(<Scene size={1000} />)
+    advance(50)
+    const s = lastSigma()
+    const g = s.graph
+    const hidden = (e: string) => !!s.settings.edgeReducer(e, g.getEdgeAttributes(e)).hidden
+    let inside = 0
+    let across = 0
+    for (const e of g.edges()) {
+      const a = group.get(g.source(e))
+      const sameGroup = a !== undefined && a === group.get(g.target(e))
+      expect(hidden(e), e).toBe(!sameGroup)
+      if (sameGroup) inside++
+      else across++
+    }
+    note(`UI-1 rest edges: ${inside} drawn inside a group, ${across} hidden across groups`)
+    expect(inside).toBeGreaterThan(0)
+    expect(across).toBeGreaterThan(0)
+
+    const halo = result.halo.find((id) => g.degree(id) > 0)!
+    act(() => s.emit("enterNode", { node: halo }))
+    advance(50)
+    for (const e of g.edges(halo)) expect(hidden(e), e).toBe(false)
+  })
+
+  it("UX-5: the entity layer leaves every core memory where it was, and a core entity sits among its memories", () => {
+    const { result, corpus } = realRoles(1000)
+    const off = render(<Scene size={1000} entityLayer={false} />)
+    advance(50)
+    const gOff = lastSigma().graph
+    const before = new Map(result.core.map((id) => [id, { x: gOff.getNodeAttribute(id, "x"), y: gOff.getNodeAttribute(id, "y") }]))
+    off.unmount()
+
+    render(<Scene size={1000} entityLayer={true} />)
+    advance(50)
+    const g = lastSigma().graph
+    for (const id of result.core) {
+      expect(g.getNodeAttribute(id, "x"), id).toBeCloseTo(before.get(id)!.x as number, 6)
+      expect(g.getNodeAttribute(id, "y"), id).toBeCloseTo(before.get(id)!.y as number, 6)
+    }
+    const coreSet = new Set(result.core)
+    let checked = 0
+    for (const ent of corpus.entities) {
+      const id = `entity:${ent.id}`
+      if (!g.hasNode(id) || g.getNodeAttribute(id, "_role") !== "core") continue
+      const linked = ent.memory_ids.filter((m) => coreSet.has(m))
+      const cx = linked.reduce((t, m) => t + (g.getNodeAttribute(m, "x") as number), 0) / linked.length
+      const cy = linked.reduce((t, m) => t + (g.getNodeAttribute(m, "y") as number), 0) / linked.length
+      const d = Math.hypot((g.getNodeAttribute(id, "x") as number) - cx, (g.getNodeAttribute(id, "y") as number) - cy)
+      expect(d, id).toBeLessThanOrEqual(0.25 * CORE_K)
+      checked++
+    }
+    expect(checked).toBeGreaterThan(100)
   })
 
   for (const sizeMode of ["importance", "connections", "uniform"]) {

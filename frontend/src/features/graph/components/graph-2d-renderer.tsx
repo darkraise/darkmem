@@ -122,6 +122,7 @@ const ENTITY_NODE_SIZE = 3
 /** Fewest memory-to-memory edges a hub carries. */
 const HUB_DEGREE = 5
 const MEMORY_SIZE_SCALE = 0.25
+const LIGHT_REST_EDGE_FADE = 0.4
 
 /** Sigma's camera ratio counts down as you move in, so *below* this is
  *  closer. 0.72 is the 1.4x of the spec, inverted. */
@@ -486,6 +487,14 @@ export function Graph2DRenderer({
     // Roles follow edges, so an Edges-threshold change can move memories into
     // or out of the core with the id set unchanged; the core then has to
     // settle again around its new members.
+    // The reference draws no lines across its halo: at rest an edge shows only
+    // inside one group (the core, or one clump), and hover or selection lights
+    // the rest of a node's links.
+    const restGroup = new Map<string, string>()
+    for (const id of runner.classification.core) restGroup.set(id, "core")
+    runner.classification.satellites.forEach((members, i) => {
+      for (const id of members) restGroup.set(id, `clump:${i}`)
+    })
     const coreSig = [...runner.classification.core].sort().join("\n")
     const coreChanged = coreSigRef.current !== coreSig
     coreSigRef.current = coreSig
@@ -651,7 +660,15 @@ export function Graph2DRenderer({
         // repainting it the selection colour threw that away exactly when the
         // neighbourhood mattered most.
         const { zIndex, ground, lit } = edgeEmphasis(src, tgt, sel, hov)
+        const group = restGroup.get(src)
+        if (!lit && (group === undefined || group !== restGroup.get(tgt))) {
+          res.hidden = true
+          return res
+        }
         if (lit && typeof data._fullColor === "string") res.color = data._fullColor
+        // On the light canvas a dense core's mesh of grey lines outweighs its
+        // small points; at rest it sits further back than in the dark theme.
+        else if (!t.isDark && !ground) res.color = fade(data.color || t.border, LIGHT_REST_EDGE_FADE)
 
         if (sel && (src === sel || tgt === sel)) res.size = SELECTED_EDGE_SIZE
         if (hov && (src === hov || tgt === hov)) {
