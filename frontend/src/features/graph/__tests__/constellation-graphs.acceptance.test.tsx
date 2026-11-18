@@ -666,6 +666,57 @@ const advance = (ms: number) =>
   })
 
 describe("memory 2D renderer", () => {
+  it("UX-1: memory edges carry their score, and roles follow the cut rather than every drawn edge", () => {
+    const ring = ids("c", 8).map((id) => memory(id))
+    const rest = ["s0", "s1", ...ids("h", 9)].map((id) => memory(id))
+    const memories = [...ring, ...rest]
+    const edges = [
+      ...path([...ids("c", 8), "c0"]).map((e) => edge(e.source, e.target, 0.9)),
+      edge("s0", "s1", 0.9),
+      edge("h0", "c0", 0.6),
+    ]
+    render(<Scene memories={memories} edges={edges} />)
+    advance(50)
+    const g = lastSigma().graph
+    expect(g.getEdgeAttribute(g.edge("c0", "c1")!, "score")).toBe(0.9)
+    expect(g.getNodeAttribute("c0", "_role")).toBe("core")
+    expect(g.getNodeAttribute("h0", "_role")).toBe("halo")
+  })
+
+  it("A4: with the entity layer on, an entity takes its memories' highest role and memory roles do not change", () => {
+    const ring = ids("c", 8).map((id) => memory(id))
+    const rest = ["s0", "s1", ...ids("h", 10)].map((id) => memory(id))
+    const memories = [...ring, ...rest]
+    const edges = [...path([...ids("c", 8), "c0"]).map((e) => edge(e.source, e.target)), edge("s0", "s1")]
+    const entity = (id: string, memory_ids: string[]): GraphEntity => ({
+      id,
+      name: id,
+      entity_type: "tool",
+      properties: {},
+      memory_ids,
+    })
+    const roles = (layer: boolean) => {
+      render(
+        <Scene
+          memories={memories}
+          edges={edges}
+          entityLayer={layer}
+          entities={[entity("x", ["s1", "h1"]), entity("y", ["c2", "h2"]), entity("z", ["h3", "h4"])]}
+        />,
+      )
+      advance(50)
+      const g = lastSigma().graph
+      return (id: string) => g.getNodeAttribute(id, "_role")
+    }
+    const off = roles(false)
+    const offRoles = memories.map((m) => off(m.id))
+    const on = roles(true)
+    expect(on("entity:x")).toBe("satellite")
+    expect(on("entity:y")).toBe("core")
+    expect(on("entity:z")).toBe("halo")
+    expect(memories.map((m) => on(m.id))).toEqual(offRoles)
+  })
+
   beforeEach(() => {
     h.sigmas.length = 0
     h.workers.length = 0
@@ -726,7 +777,7 @@ describe("memory 2D renderer", () => {
 
   it("A12: raising the Edges threshold so a memory loses its last edge makes it halo on the next build", () => {
     const x = memory("x")
-    const memories = [...coreMemories, x]
+    const memories = [...coreMemories, x, ...ids("o", 16).map((id) => memory(id))]
     const edgesAll = [...coreEdges, edge("x", "c0", 0.6)]
     const atThreshold = (t: number) => edgesAll.filter((e) => e.score >= t)
 
@@ -750,7 +801,7 @@ describe("memory 2D renderer", () => {
 
   it("UX-3: a core-membership change at an unchanged node set re-runs the core layout", () => {
     const x = memory("x")
-    const memories = [...coreMemories, x]
+    const memories = [...coreMemories, x, ...ids("o", 16).map((id) => memory(id))]
     const edgesAll = [...coreEdges, edge("x", "c0", 0.6)]
     const atThreshold = (t: number) => edgesAll.filter((e) => e.score >= t)
 

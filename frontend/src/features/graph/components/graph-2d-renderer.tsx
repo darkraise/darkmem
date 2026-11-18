@@ -36,6 +36,7 @@ import {
   createConstellationRunner,
   type ConstellationRunner,
 } from "@/features/graph/lib/constellation-runner"
+import type { Attachment, ScoredEdge } from "@/features/graph/lib/constellation-layout"
 import {
   createNodeGlowProgram,
   trackDensityGain,
@@ -345,6 +346,8 @@ export function Graph2DRenderer({
       })
     }
 
+    const roleEdges: ScoredEdge[] = []
+    const attachments: Attachment[] = []
     for (const e of filteredEdges) {
       if (graph.hasNode(e.source) && graph.hasNode(e.target)) {
         try {
@@ -353,8 +356,10 @@ export function Graph2DRenderer({
           graph.addEdge(e.source, e.target, {
             ...edgeColors("memory", srcColor),
             size: 2.5,
+            score: e.score,
             _edgeKind: "memory",
           })
+          roleEdges.push({ source: e.source, target: e.target, score: e.score })
         } catch {
           /* duplicate */
         }
@@ -405,6 +410,10 @@ export function Graph2DRenderer({
           type: "diamond",
           _kind: "entity",
           _entityData: ent,
+        })
+        attachments.push({
+          id: `entity:${ent.id}`,
+          linked: ent.memory_ids.filter((mid) => allNodeIds.has(mid)),
         })
       }
 
@@ -459,6 +468,7 @@ export function Graph2DRenderer({
     const runner = createConstellationRunner(graph, {
       layoutMs: scale.layoutMs,
       fa2Settings: constellationFa2Settings(graph, scale),
+      roles: { nodeIds: [...allNodeIds], edges: roleEdges, attachments },
       onStop: () => {
         hullCache.invalidate()
         sigmaRef.current?.refresh()
