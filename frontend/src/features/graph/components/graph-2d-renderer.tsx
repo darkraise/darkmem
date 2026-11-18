@@ -26,6 +26,7 @@ import {
   edgeEmphasis,
   litByHover,
   labelVisible,
+  fade,
   recede,
 } from "@/features/graph/lib/focus-model"
 import { useGraphPrefs } from "@/features/graph/lib/graph-prefs"
@@ -561,12 +562,12 @@ export function Graph2DRenderer({
         // does below: an entity dimmed to the background but still wearing a
         // full-strength outline reads as picked out, not as receded.
         const dim = (alpha: number) => {
-          res.color = recede(data.color || t.mutedForeground, t.background, alpha)
+          res.color = recede(data.color || t.mutedForeground, t.canvas, alpha)
           res.borderColor = recede(
             (data as { borderColor?: string }).borderColor ||
               data.color ||
               t.mutedForeground,
-            t.background,
+            t.canvas,
             alpha,
           )
         }
@@ -586,13 +587,13 @@ export function Graph2DRenderer({
         if (tier === "ground" && !litNode) {
           res.labelColor = recede(
             t.foreground,
-            t.background,
+            t.canvas,
             groundNodeAlpha(dimUnrelated),
           )
         } else if (hoverGround) {
           res.labelColor = recede(
             t.foreground,
-            t.background,
+            t.canvas,
             hoverGroundAlpha(dimUnrelated),
           )
         }
@@ -636,9 +637,8 @@ export function Graph2DRenderer({
         }
 
         if (ground === "selection" || (ground === "hover" && scale.hoverDims)) {
-          res.color = recede(
+          res.color = fade(
             data.color || t.border,
-            t.background,
             ground === "selection"
               ? groundEdgeAlpha(dimUnrelated)
               : hoverGroundEdgeAlpha(dimUnrelated),

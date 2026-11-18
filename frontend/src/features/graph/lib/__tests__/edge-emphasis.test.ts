@@ -99,3 +99,12 @@ describe("litByHover", () => {
     expect(litByHover("c", "a", false)).toBe(false)
   })
 })
+
+describe("fade", () => {
+  it("keeps the colour and scales its alpha, so a ground edge stays translucent", async () => {
+    const { fade } = await import("../focus-model")
+    expect(fade("#ff8000", 0.25)).toBe("rgba(255, 128, 0, 0.25)")
+    expect(fade("rgba(10, 20, 30, 0.5)", 0.5)).toBe("rgba(10, 20, 30, 0.25)")
+    expect(fade("not a colour", 0.5)).toBe("not a colour")
+  })
+})

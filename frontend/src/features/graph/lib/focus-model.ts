@@ -139,6 +139,19 @@ export function recede(color: string, background: string, strength: number): str
     .join("")}`
 }
 
+/**
+ * An edge's ground: the same colour at `strength` of its alpha. Edges blend
+ * their straight alpha (straight-alpha.ts), so a translucent edge recedes
+ * over the nebula backdrop where an opaque one pushed toward the flat canvas
+ * colour would draw a dark line across it.
+ */
+export function fade(color: string, strength: number): string {
+  const src = parseChannels(color)
+  if (!src) return color
+  const a = Math.max(0, Math.min(1, src.a * strength))
+  return `rgba(${src.r}, ${src.g}, ${src.b}, ${Number(a.toFixed(4))})`
+}
+
 interface Channels {
   r: number
   g: number
