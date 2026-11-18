@@ -17,6 +17,13 @@ export const ROLE_BRIGHTNESS: Record<ConstellationRole, number> = {
 
 export const CORE_K = 10
 export const CLUMP_R0 = 3
+/** The memory canvas packs its clumps this far apart, so a clump of a few
+ *  memories reads as a group of points rather than one speck. The code
+ *  canvas keeps CLUMP_R0. */
+export const MEMORY_CLUMP_R0 = 6
+/** spreadCore's minimum distance between core nodes, as a share of the
+ *  spacing an even disc of the same count would give. */
+export const CORE_GAP = 0.8
 const HALO_GAP = 0.25
 const HALO_C = 6
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
@@ -53,6 +60,8 @@ export interface Classification {
 
 export interface OuterLayout {
   positions: Map<string, Point>
+  /** Distance between neighbouring members of a clump. */
+  clumpSpacing: number
   satelliteOuter: number
   haloInner: number
   haloOuter: number
@@ -291,16 +300,17 @@ export function coreRadius(coreCount: number): number {
   return coreCount === 0 ? 0 : CORE_K * Math.sqrt(coreCount)
 }
 
-const clumpRadiusOf = (count: number) => CLUMP_R0 * Math.sqrt(count - 1) + CLUMP_R0
+const clumpRadiusOf = (count: number, r0 = CLUMP_R0) => r0 * Math.sqrt(count - 1) + r0
 
 function packClump(
   members: readonly string[],
   cx: number,
   cy: number,
   positions: Map<string, Point>,
+  r0 = CLUMP_R0,
 ) {
   members.forEach((id, i) => {
-    const r = CLUMP_R0 * Math.sqrt(i)
+    const r = r0 * Math.sqrt(i)
     const a = i * GOLDEN_ANGLE
     positions.set(id, { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) })
   })
@@ -314,13 +324,14 @@ const minOf = (ids: readonly string[]) => {
 
 export function placeOuter(c: Classification, R: number): OuterLayout {
   const positions = new Map<string, Point>()
+  const r0 = MEMORY_CLUMP_R0
   const clumps = c.satellites
-    .map((members) => ({ members, cr: clumpRadiusOf(members.length), minId: minOf(members) }))
+    .map((members) => ({ members, cr: clumpRadiusOf(members.length, r0), minId: minOf(members) }))
     .sort((a, b) => b.members.length - a.members.length)
 
   let maxCr = 0
   for (const k of clumps) maxCr = Math.max(maxCr, k.cr)
-  const cell = 2 * maxCr + CLUMP_R0
+  const cell = 2 * maxCr + r0
   const grid = new Map<string, { x: number; y: number; cr: number }[]>()
   const keyOf = (ix: number, iy: number) => `${ix},${iy}`
   const clear = (x: number, y: number, cr: number) => {
@@ -329,7 +340,7 @@ export function placeOuter(c: Classification, R: number): OuterLayout {
     for (let dx = -1; dx <= 1; dx++) {
       for (let dy = -1; dy <= 1; dy++) {
         for (const o of grid.get(keyOf(ix + dx, iy + dy)) ?? []) {
-          if (Math.hypot(o.x - x, o.y - y) < cr + o.cr + CLUMP_R0) return false
+          if (Math.hypot(o.x - x, o.y - y) < cr + o.cr + r0) return false
         }
       }
     }
@@ -349,7 +360,7 @@ export function placeOuter(c: Classification, R: number): OuterLayout {
       placed = clear(rho * Math.cos(angle), rho * Math.sin(angle), cr)
     }
     while (!placed) {
-      rho += CLUMP_R0
+      rho += r0
       placed = clear(rho * Math.cos(angle), rho * Math.sin(angle), cr)
     }
     const x = rho * Math.cos(angle)
@@ -359,7 +370,7 @@ export function placeOuter(c: Classification, R: number): OuterLayout {
     if (bucket) bucket.push({ x, y, cr })
     else grid.set(key, [{ x, y, cr }])
     satelliteOuter = Math.max(satelliteOuter, rho + cr)
-    packClump(members, x, y, positions)
+    packClump(members, x, y, positions, r0)
   })
 
   const haloInner = R === 0 && c.satellites.length === 0 ? 0 : SATELLITE_RING_START * R
@@ -377,7 +388,7 @@ export function placeOuter(c: Classification, R: number): OuterLayout {
         : haloInner + u * (haloOuter - haloInner)
     positions.set(id, { x: r * Math.cos(a), y: r * Math.sin(a) })
   }
-  return { positions, satelliteOuter, haloInner, haloOuter }
+  return { positions, clumpSpacing: r0, satelliteOuter, haloInner, haloOuter }
 }
 
 export function placeOuterRing(c: Classification, R: number): OuterLayout {
@@ -421,7 +432,7 @@ export function placeOuterRing(c: Classification, R: number): OuterLayout {
     const r = Math.sqrt(inner2 + seededUnit(id, 2) * span2)
     positions.set(id, { x: r * Math.cos(a), y: r * Math.sin(a) })
   }
-  return { positions, satelliteOuter, haloInner, haloOuter }
+  return { positions, clumpSpacing: CLUMP_R0, satelliteOuter, haloInner, haloOuter }
 }
 
 const centroidOf = (positions: ReadonlyMap<string, Point>) => {
@@ -475,5 +486,98 @@ export function fitCoreToFarthest(
   for (const [id, p] of positions) {
     out.set(id, { x: (p.x - cx) * scale, y: (p.y - cy) * scale })
   }
+  return out
+}
+
+/**
+ * Pushes core nodes apart until none sits closer than CORE_GAP of an even
+ * disc's spacing. A force layout keeps contracting each community toward a
+ * point for as long as it runs, and the percentile fit then stacks a whole
+ * community on a few pixels, which the additive glow sums to white. `offsets`
+ * carries each node's last correction, so a caller re-fitting every frame
+ * starts from where the previous frame settled and needs few iterations.
+ */
+export function spreadCore(
+  fitted: ReadonlyMap<string, Point>,
+  R: number,
+  offsets: Map<string, Point>,
+  iterations: number,
+): Map<string, Point> {
+  const ids = [...fitted.keys()]
+  const n = ids.length
+  const xs = new Float64Array(n)
+  const ys = new Float64Array(n)
+  ids.forEach((id, i) => {
+    const p = fitted.get(id)!
+    const o = offsets.get(id)
+    xs[i] = p.x + (o?.x ?? 0)
+    ys[i] = p.y + (o?.y ?? 0)
+  })
+  const gap = n > 1 && R > 0 ? CORE_GAP * R * Math.sqrt(Math.PI / n) : 0
+  const limit = 0.995 * R
+  const dx = new Float64Array(n)
+  const dy = new Float64Array(n)
+  const keyOf = (ix: number, iy: number) => ix * 1_000_003 + iy
+  for (let it = 0; it < iterations && gap > 0; it++) {
+    const cells = new Map<number, number[]>()
+    for (let i = 0; i < n; i++) {
+      const k = keyOf(Math.floor(xs[i]! / gap), Math.floor(ys[i]! / gap))
+      const bucket = cells.get(k)
+      if (bucket) bucket.push(i)
+      else cells.set(k, [i])
+    }
+    dx.fill(0)
+    dy.fill(0)
+    let moved = false
+    for (let i = 0; i < n; i++) {
+      const ix = Math.floor(xs[i]! / gap)
+      const iy = Math.floor(ys[i]! / gap)
+      for (let a = -1; a <= 1; a++) {
+        for (let b = -1; b <= 1; b++) {
+          for (const j of cells.get(keyOf(ix + a, iy + b)) ?? []) {
+            if (j <= i) continue
+            const ex = xs[j]! - xs[i]!
+            const ey = ys[j]! - ys[i]!
+            const d = Math.hypot(ex, ey)
+            if (d >= gap) continue
+            let ux: number
+            let uy: number
+            if (d < 1e-9) {
+              // Coincident: split along a direction fixed by the pair's ids.
+              const t = seededUnit(`${ids[i]}|${ids[j]}`, 5) * TAU
+              ux = Math.cos(t)
+              uy = Math.sin(t)
+            } else {
+              ux = ex / d
+              uy = ey / d
+            }
+            const push = (gap - d) / 2
+            dx[i] = dx[i]! - ux * push
+            dy[i] = dy[i]! - uy * push
+            dx[j] = dx[j]! + ux * push
+            dy[j] = dy[j]! + uy * push
+            moved = true
+          }
+        }
+      }
+    }
+    if (!moved) break
+    for (let i = 0; i < n; i++) {
+      // Half steps: a node pushed by several neighbours at once overshoots.
+      xs[i] = xs[i]! + dx[i]! * 0.5
+      ys[i] = ys[i]! + dy[i]! * 0.5
+      const r = Math.hypot(xs[i]!, ys[i]!)
+      if (r > limit) {
+        xs[i] = xs[i]! * limit / r
+        ys[i] = ys[i]! * limit / r
+      }
+    }
+  }
+  const out = new Map<string, Point>()
+  ids.forEach((id, i) => {
+    const p = fitted.get(id)!
+    offsets.set(id, { x: xs[i]! - p.x, y: ys[i]! - p.y })
+    out.set(id, { x: xs[i]!, y: ys[i]! })
+  })
   return out
 }

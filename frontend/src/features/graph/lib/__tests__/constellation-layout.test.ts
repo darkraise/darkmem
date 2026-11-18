@@ -1,4 +1,7 @@
 import { describe, it, expect } from "vitest"
+import Graph from "graphology"
+import forceAtlas2, { inferSettings } from "graphology-layout-forceatlas2"
+import { seededUnit } from "../code-graph-theme"
 import { loadRealCorpus, type RealCorpusSize } from "../../fixtures/real-corpus"
 import {
   classify,
@@ -10,6 +13,8 @@ import {
   roleCut,
   classifyWithCut,
   CORE_MIN,
+  CORE_GAP,
+  spreadCore,
   SATELLITE_RING_START,
   SATELLITE_BAND,
   type ConstellationEdge,
@@ -428,5 +433,61 @@ describe("placement on the real corpus", () => {
     }
     runs.sort((a, b) => a - b)
     expect(runs[2]!).toBeLessThanOrEqual(50)
+  })
+})
+
+describe("spreadCore", () => {
+  // The 1,000-memory core after a long run of the runner's force layout, which
+  // contracts each community toward a point the longer it runs.
+  const settledCore = () => {
+    const c = loadRealCorpus(1000)
+    const r = classifyWithCut(c.memories.map((m) => m.id), c.edges)
+    const R = coreRadius(r.core.length)
+    const set = new Set(r.core)
+    const g = new Graph({ type: "undirected" })
+    for (const id of r.core) g.addNode(id, { x: (seededUnit(id, 0) - 0.5) * 100, y: (seededUnit(id, 1) - 0.5) * 100 })
+    for (const e of c.edges) if (set.has(e.source) && set.has(e.target) && e.source !== e.target) g.mergeEdge(e.source, e.target)
+    forceAtlas2.assign(g, {
+      iterations: 2000,
+      settings: { ...inferSettings(g), linLogMode: true, outboundAttractionDistribution: false, strongGravityMode: false, gravity: 0.05, scalingRatio: 10, slowDown: 12 },
+    })
+    const pos = new Map<string, Point>()
+    g.forEachNode((id, a) => pos.set(id, { x: a.x as number, y: a.y as number }))
+    return { fitted: fitCore(pos, R), R, gap: CORE_GAP * R * Math.sqrt(Math.PI / r.core.length) }
+  }
+  const nearest = (pos: Map<string, Point>) => {
+    const p = [...pos.values()]
+    return p
+      .map((a, i) => Math.min(...p.map((b, j) => (i === j ? Infinity : Math.hypot(a.x - b.x, a.y - b.y)))))
+      .sort((a, b) => a - b)
+  }
+
+  it("spreads a settled real core from stacks to near CORE_GAP, inside R, deterministically", () => {
+    const { fitted, R, gap } = settledCore()
+    expect(nearest(fitted)[Math.floor(0.1 * fitted.size)]!).toBeLessThan(0.3 * gap)
+    const out = spreadCore(fitted, R, new Map(), 40)
+    const nn = nearest(out)
+    expect(nn[0]!).toBeGreaterThan(0.7 * gap)
+    expect(nn[Math.floor(0.02 * nn.length)]!).toBeGreaterThan(0.75 * gap)
+    for (const p of out.values()) expect(Math.hypot(p.x, p.y)).toBeLessThan(R)
+    expect(spreadCore(fitted, R, new Map(), 40)).toEqual(out)
+  })
+
+  it("warm-starts from its offsets, so two passes a frame converge as the layout runs", () => {
+    const { fitted, R, gap } = settledCore()
+    const offsets = new Map<string, Point>()
+    let out = fitted
+    for (let frame = 0; frame < 100; frame++) out = spreadCore(fitted, R, offsets, 2)
+    expect(nearest(out)[0]!).toBeGreaterThan(0.85 * gap)
+  })
+
+  it("splits coincident nodes and keeps every node inside R", () => {
+    const pts = new Map<string, Point>()
+    for (let i = 0; i < 50; i++) pts.set(`n${i}`, { x: 0, y: 0 })
+    const R = coreRadius(50)
+    const out = spreadCore(pts, R, new Map(), 200)
+    const nn = nearest(out)
+    expect(nn[0]!).toBeGreaterThan(0)
+    for (const p of out.values()) expect(Math.hypot(p.x, p.y)).toBeLessThan(R)
   })
 })
