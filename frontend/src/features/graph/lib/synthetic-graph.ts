@@ -71,3 +71,90 @@ export function syntheticMemoryGraph(
   for (const cluster of members.keys()) clusterNames[String(cluster)] = `Topic ${cluster}`
   return { memories, edges, clusterNames }
 }
+
+export type SyntheticShape =
+  | "one-component"
+  | "all-orphans"
+  | "no-orphans"
+  | "many-satellites"
+  | "mixed"
+
+/**
+ * A deterministic memory graph with a chosen component distribution, for the
+ * constellation boards. Each component is a chain (so it stays connected)
+ * with a few extra chords; satellites have 2-7 members, below CORE_MIN.
+ */
+export function syntheticShape(shape: SyntheticShape, n: number, seed = 1): SyntheticGraph {
+  const rand = mulberry32(seed)
+  const memories: UnifiedMemory[] = []
+  const edges: SimilarityEdge[] = []
+  const seen = new Set<string>()
+  const clusterNames: Record<string, string> = {}
+  let next = 0
+  let cluster = 0
+
+  const link = (a: string, b: string) => {
+    const key = a < b ? `${a}|${b}` : `${b}|${a}`
+    if (a === b || seen.has(key)) return
+    seen.add(key)
+    edges.push({ source: a, target: b, score: 0.5 + rand() * 0.5 })
+  }
+  const add = (c: number) => {
+    const i = next++
+    memories.push({
+      id: `m${i}`,
+      content: `Synthetic memory ${i} about topic ${c}`,
+      source: "synthetic",
+      tags: [`topic-${c}`],
+      memory_type: MEMORY_TYPES[i % MEMORY_TYPES.length]!,
+      importance: rand(),
+      cluster: c,
+      status: "active",
+    })
+    return `m${i}`
+  }
+  const component = (size: number) => {
+    const c = cluster++
+    clusterNames[String(c)] = `Topic ${c}`
+    const ids = Array.from({ length: size }, () => add(c))
+    for (let i = 1; i < ids.length; i++) link(ids[i - 1]!, ids[i]!)
+    for (let k = 0; k < Math.floor(size / 2); k++) {
+      link(ids[Math.floor(rand() * size)]!, ids[Math.floor(rand() * size)]!)
+    }
+  }
+  // Never leaves a remainder of one, which would be a lone halo node.
+  const satellites = (count: number) => {
+    let remaining = count
+    while (remaining > 0) {
+      let size = 2 + Math.floor(rand() * 6)
+      if (remaining - size === 1) size = size < 7 ? size + 1 : size - 1
+      if (size > remaining) size = remaining
+      component(size)
+      remaining -= size
+    }
+  }
+  const orphans = (count: number) => {
+    for (let i = 0; i < count; i++) add(-1)
+  }
+
+  if (shape === "one-component") {
+    component(n)
+  } else if (shape === "all-orphans") {
+    orphans(n)
+  } else if (shape === "no-orphans") {
+    const core = Math.floor(n / 4)
+    for (let i = 0; i < 3; i++) component(core)
+    satellites(n - 3 * core)
+  } else if (shape === "many-satellites") {
+    const core = Math.floor(n * 0.4)
+    component(core)
+    satellites(n - core)
+  } else {
+    const core = Math.floor(n * 0.5)
+    const sats = Math.floor(n * 0.2)
+    component(core)
+    satellites(sats)
+    orphans(n - core - sats)
+  }
+  return { memories, edges, clusterNames }
+}

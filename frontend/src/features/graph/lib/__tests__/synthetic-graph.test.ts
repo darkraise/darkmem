@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest"
-import { syntheticMemoryGraph } from "../synthetic-graph"
+import { syntheticMemoryGraph, syntheticShape } from "../synthetic-graph"
+import { classify } from "../constellation-layout"
 
 describe("syntheticMemoryGraph", () => {
   it("is deterministic for a seed", () => {
@@ -21,5 +22,23 @@ describe("syntheticMemoryGraph", () => {
     expect(g.edges.length).toBeGreaterThan(2000 * 4)
     expect(g.edges.length).toBeLessThanOrEqual(2000 * 5)
     expect(Object.keys(g.clusterNames)).toHaveLength(20)
+  })
+})
+
+describe("syntheticShape", () => {
+  const roles = (shape: Parameters<typeof syntheticShape>[0]) => {
+    const g = syntheticShape(shape, 300)
+    const c = classify(g.memories.map((m) => m.id), g.edges)
+    return { core: c.core.length, sats: c.satellites.length, halo: c.halo.length, n: g.memories.length }
+  }
+
+  it.each([
+    ["one-component", (r: ReturnType<typeof roles>) => r.core === r.n],
+    ["all-orphans", (r: ReturnType<typeof roles>) => r.halo === r.n],
+    ["no-orphans", (r: ReturnType<typeof roles>) => r.halo === 0 && r.core > 0],
+    ["many-satellites", (r: ReturnType<typeof roles>) => r.sats >= 20],
+    ["mixed", (r: ReturnType<typeof roles>) => r.core > 0 && r.sats > 0 && r.halo > 0],
+  ] as const)("%s", (shape, holds) => {
+    expect(holds(roles(shape))).toBe(true)
   })
 })
