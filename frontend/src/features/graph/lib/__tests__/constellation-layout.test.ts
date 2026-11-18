@@ -1,14 +1,17 @@
 import { describe, it, expect } from "vitest"
+import { loadRealCorpus, type RealCorpusSize } from "../../fixtures/real-corpus"
 import {
   classify,
   coreRadius,
   fitCore,
   placeOuter,
+  placeOuterRing,
+  fitCoreToFarthest,
   roleCut,
   classifyWithCut,
   CORE_MIN,
-  HALO_MIN_OUTER,
   SATELLITE_RING_START,
+  SATELLITE_BAND,
   type ConstellationEdge,
   type Point,
 } from "../constellation-layout"
@@ -126,104 +129,106 @@ describe("placeOuter", () => {
     return { c, sats, halo, R: coreRadius(c.core.length) }
   }
 
-  it("keeps every satellite and halo node beyond the satellite ring start", () => {
+  it("placeOuterRing: keeps every satellite and halo node beyond the satellite ring start", () => {
     const { c, sats, halo, R } = scene()
-    const out = placeOuter(c, R)
+    const out = placeOuterRing(c, R)
     for (const id of [...sats.flat(), ...halo]) {
       expect(dist(out.positions.get(id)!)).toBeGreaterThan(SATELLITE_RING_START * R)
     }
-    expect(out.haloOuter).toBeGreaterThanOrEqual(HALO_MIN_OUTER * R)
+    expect(out.haloOuter).toBeGreaterThanOrEqual(2.6 * R)
     expect(out.haloInner).toBeGreaterThanOrEqual(out.satelliteOuter)
   })
 
-  it("never overlaps two satellite clumps", () => {
-    const { c, R } = scene()
-    const out = placeOuter(c, R)
-    const discs = c.satellites.map((members) => {
-      const pts = members.map((id) => out.positions.get(id)!)
-      const cx = pts.reduce((t, p) => t + p.x, 0) / pts.length
-      const cy = pts.reduce((t, p) => t + p.y, 0) / pts.length
-      const r = Math.max(...pts.map((p) => Math.hypot(p.x - cx, p.y - cy)))
-      return { cx, cy, r }
-    })
-    for (let i = 0; i < discs.length; i++) {
-      for (let j = i + 1; j < discs.length; j++) {
-        const a = discs[i]!
-        const b = discs[j]!
-        expect(Math.hypot(a.cx - b.cx, a.cy - b.cy)).toBeGreaterThan(a.r + b.r)
+  for (const place of [placeOuter, placeOuterRing]) {
+    it(`${place.name}: never overlaps two satellite clumps`, () => {
+      const { c, R } = scene()
+      const out = place(c, R)
+      const discs = c.satellites.map((members) => {
+        const pts = members.map((id) => out.positions.get(id)!)
+        const cx = pts.reduce((t, p) => t + p.x, 0) / pts.length
+        const cy = pts.reduce((t, p) => t + p.y, 0) / pts.length
+        const r = Math.max(...pts.map((p) => Math.hypot(p.x - cx, p.y - cy)))
+        return { cx, cy, r }
+      })
+      for (let i = 0; i < discs.length; i++) {
+        for (let j = i + 1; j < discs.length; j++) {
+          const a = discs[i]!
+          const b = discs[j]!
+          expect(Math.hypot(a.cx - b.cx, a.cy - b.cy)).toBeGreaterThan(a.r + b.r)
+        }
       }
-    }
-  })
+    })
 
-  it("places a halo node by its id alone", () => {
-    const core = ids("c", 20)
-    const a = classify([...core, "h1", "h2", "h3"], chain(core))
-    const b = classify([...core, "h1", "h9"], chain(core))
-    const R = coreRadius(core.length)
-    const pa = placeOuter(a, R)
-    const pb = placeOuter(b, R)
-    expect(pa.haloInner).toBe(pb.haloInner)
-    expect(pa.haloOuter).toBe(pb.haloOuter)
-    expect(pa.positions.get("h1")).toEqual(pb.positions.get("h1"))
-  })
+    it(`${place.name}: places a halo node by its id alone`, () => {
+      const core = ids("c", 20)
+      const a = classify([...core, "h1", "h2", "h3"], chain(core))
+      const b = classify([...core, "h1", "h9"], chain(core))
+      const R = coreRadius(core.length)
+      const pa = place(a, R)
+      const pb = place(b, R)
+      expect(pa.haloInner).toBe(pb.haloInner)
+      expect(pa.haloOuter).toBe(pb.haloOuter)
+      expect(pa.positions.get("h1")).toEqual(pb.positions.get("h1"))
+    })
 
-  it("fills a full disc from the centre when there is no core", () => {
-    const c = classify(ids("n", 50), [])
-    const out = placeOuter(c, coreRadius(0))
-    expect(coreRadius(0)).toBe(0)
-    expect(out.haloInner).toBe(0)
-    expect(out.positions.size).toBe(50)
-    for (const p of out.positions.values()) {
-      expect(Number.isFinite(p.x) && Number.isFinite(p.y)).toBe(true)
-      expect(dist(p)).toBeLessThanOrEqual(out.haloOuter)
-    }
-  })
+    it(`${place.name}: fills a full disc from the centre when there is no core`, () => {
+      const c = classify(ids("n", 50), [])
+      const out = place(c, coreRadius(0))
+      expect(coreRadius(0)).toBe(0)
+      expect(out.haloInner).toBe(0)
+      expect(out.positions.size).toBe(50)
+      for (const p of out.positions.values()) {
+        expect(Number.isFinite(p.x) && Number.isFinite(p.y)).toBe(true)
+        expect(dist(p)).toBeLessThanOrEqual(out.haloOuter)
+      }
+    })
 
-  it("keeps every other clump in place when the last-placed clump goes", () => {
-    const core = ids("c", 30)
-    const sats = Array.from({ length: 12 }, (_, k) => ids(`s${k}_`, 7 - (k % 5)))
-    const withAll = classify([...core, ...sats.flat()], [...chain(core), ...sats.flatMap(chain)])
-    const last = withAll.satellites[withAll.satellites.length - 1]!
-    const keptSats = sats.filter((s) => !s.some((id) => last.includes(id)))
-    const without = classify([...core, ...keptSats.flat()], [...chain(core), ...keptSats.flatMap(chain)])
-    const R = coreRadius(core.length)
-    const a = placeOuter(withAll, R)
-    const b = placeOuter(without, R)
-    for (const id of keptSats.flat()) expect(b.positions.get(id)).toEqual(a.positions.get(id))
-  })
+    it(`${place.name}: keeps every other clump in place when the last-placed clump goes`, () => {
+      const core = ids("c", 30)
+      const sats = Array.from({ length: 12 }, (_, k) => ids(`s${k}_`, 7 - (k % 5)))
+      const withAll = classify([...core, ...sats.flat()], [...chain(core), ...sats.flatMap(chain)])
+      const last = withAll.satellites[withAll.satellites.length - 1]!
+      const keptSats = sats.filter((s) => !s.some((id) => last.includes(id)))
+      const without = classify([...core, ...keptSats.flat()], [...chain(core), ...keptSats.flatMap(chain)])
+      const R = coreRadius(core.length)
+      const a = place(withAll, R)
+      const b = place(without, R)
+      for (const id of keptSats.flat()) expect(b.positions.get(id)).toEqual(a.positions.get(id))
+    })
 
-  it("is deterministic", () => {
-    const { c, R } = scene()
-    expect([...placeOuter(c, R).positions]).toEqual([...placeOuter(c, R).positions])
-  })
+    it(`${place.name}: is deterministic`, () => {
+      const { c, R } = scene()
+      expect([...place(c, R).positions]).toEqual([...place(c, R).positions])
+    })
 
-  it("classifies and places 20,000 nodes and 110,000 edges within 50 ms", () => {
-    const rand = rng(11)
-    const n = 20_000
-    const nodeIds = ids("n", n)
-    const edges: ConstellationEdge[] = []
-    for (let i = 0; i < 110_000; i++) {
-      edges.push({ source: nodeIds[Math.floor(rand() * 12_000)]!, target: nodeIds[Math.floor(rand() * 12_000)]! })
-    }
-    const run = () => {
-      const t0 = performance.now()
-      const c = classify(nodeIds, edges)
-      placeOuter(c, coreRadius(c.core.length))
-      return performance.now() - t0
-    }
-    run()
-    expect(Math.min(run(), run(), run())).toBeLessThanOrEqual(50)
-  })
+    it(`${place.name}: classifies and places 20,000 nodes and 110,000 edges within 50 ms`, () => {
+      const rand = rng(11)
+      const n = 20_000
+      const nodeIds = ids("n", n)
+      const edges: ConstellationEdge[] = []
+      for (let i = 0; i < 110_000; i++) {
+        edges.push({ source: nodeIds[Math.floor(rand() * 12_000)]!, target: nodeIds[Math.floor(rand() * 12_000)]! })
+      }
+      const run = () => {
+        const t0 = performance.now()
+        const c = classify(nodeIds, edges)
+        place(c, coreRadius(c.core.length))
+        return performance.now() - t0
+      }
+      run()
+      expect(Math.min(run(), run(), run())).toBeLessThanOrEqual(50)
+    })
+  }
 })
 
 describe("fitCore", () => {
-  it("centres the core on the origin with its farthest node at R", () => {
+  it("fitCoreToFarthest: centres the core on the origin with its farthest node at R", () => {
     const pos = new Map<string, Point>([
       ["a", { x: 100, y: 100 }],
       ["b", { x: 300, y: -50 }],
       ["c", { x: -20, y: 400 }],
     ])
-    const fitted = [...fitCore(pos, 10).values()]
+    const fitted = [...fitCoreToFarthest(pos, 10).values()]
     const cx = fitted.reduce((t, p) => t + p.x, 0) / fitted.length
     const cy = fitted.reduce((t, p) => t + p.y, 0) / fitted.length
     expect(Math.abs(cx)).toBeLessThan(1e-9)
@@ -288,5 +293,110 @@ describe("roleCut", () => {
     expect(c.role.get("e:halo")).toBe("halo")
     expect(c.role.get("e:none")).toBe("halo")
     for (const id of ids) expect(c.role.get(id)).toBe(plain.role.get(id))
+  })
+})
+
+const layoutOf = (size: RealCorpusSize) => {
+  const c = loadRealCorpus(size)
+  const cls = classifyWithCut(c.memories.map((m) => m.id), c.edges)
+  const R = coreRadius(cls.core.length)
+  return { cls, R, out: placeOuter(cls, R) }
+}
+
+describe("placement on the real corpus", () => {
+  it("A5: clumps never overlap, sit beyond 1.15R plus their radius, stay within 2R and spread around the core", () => {
+    for (const size of [200, 1000, "all"] as RealCorpusSize[]) {
+      const { cls, R, out } = layoutOf(size)
+      const clumps = cls.satellites.map((g) => {
+        const c = out.positions.get(g[0]!)!
+        const r = Math.max(...g.map((id) => {
+          const p = out.positions.get(id)!
+          return Math.hypot(p.x - c.x, p.y - c.y)
+        }))
+        return { x: c.x, y: c.y, r }
+      })
+      for (let i = 0; i < clumps.length; i++) {
+        const a = clumps[i]!
+        const d = Math.hypot(a.x, a.y)
+        expect(d).toBeGreaterThanOrEqual(1.15 * R + a.r - 1e-6)
+        expect(d).toBeLessThanOrEqual(SATELLITE_BAND * R + 1e-6)
+        for (let j = i + 1; j < clumps.length; j++) {
+          const b = clumps[j]!
+          expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThanOrEqual(a.r + b.r)
+        }
+      }
+      expect(clumps.length).toBeGreaterThanOrEqual(8)
+      const angles = clumps.map((c) => (Math.atan2(c.y, c.x) + 2 * Math.PI) % (2 * Math.PI))
+      for (let k = 0; k < 24; k++) {
+        const start = (k * Math.PI) / 12
+        const inSector = angles.filter((a) => ((a - start + 2 * Math.PI) % (2 * Math.PI)) < Math.PI / 2).length
+        expect(inSector).toBeLessThanOrEqual(clumps.length / 2)
+      }
+    }
+  })
+
+  it("A6: the halo fills 1.15R to its outer radius, thins outward, and depends only on id and radii", () => {
+    const { cls, R, out } = layoutOf(1000)
+    expect(out.haloInner).toBeCloseTo(1.15 * R)
+    expect(out.haloOuter).toBeGreaterThanOrEqual(3 * R)
+    const mid = (out.haloInner + out.haloOuter) / 2
+    let inner = 0
+    let outer = 0
+    for (const id of cls.halo) {
+      const p = out.positions.get(id)!
+      const d = Math.hypot(p.x, p.y)
+      expect(d).toBeGreaterThanOrEqual(out.haloInner - 1e-6)
+      expect(d).toBeLessThanOrEqual(out.haloOuter + 1e-6)
+      if (d < mid) inner++
+      else outer++
+    }
+    const ring = (a: number, b: number) => Math.PI * (b * b - a * a)
+    expect(inner / ring(out.haloInner, mid)).toBeGreaterThan(outer / ring(mid, out.haloOuter))
+    // Same halo count and R, other halo ids and no satellites: shared ids do not move.
+    const kept = cls.halo.slice(0, Math.floor(cls.halo.length / 2))
+    const swapped = { ...cls, satellites: [], halo: [...kept, ...cls.halo.slice(kept.length).map((id) => `x${id}`)] }
+    const again = placeOuter(swapped, R)
+    expect(again.haloOuter).toBeCloseTo(out.haloOuter)
+    for (const id of kept) expect(again.positions.get(id)).toEqual(out.positions.get(id))
+  })
+
+  it("A7: fitCore puts the 90th percentile at 0.85R and softens the tail inside R", () => {
+    const pts = new Map<string, { x: number; y: number }>()
+    for (let i = 0; i < 450; i++) pts.set(`n${i}`, { x: Math.cos(i), y: Math.sin(i * 1.3) })
+    for (let i = 0; i < 50; i++) pts.set(`f${i}`, { x: 50 * Math.cos(i), y: 50 * Math.sin(i) })
+    const all = [...pts.values()]
+    const cx = all.reduce((s, p) => s + p.x, 0) / all.length
+    const cy = all.reduce((s, p) => s + p.y, 0) / all.length
+    const raw = [...pts.keys()].map((id) => Math.hypot(pts.get(id)!.x - cx, pts.get(id)!.y - cy))
+    const p90 = [...raw].sort((a, b) => a - b)[449]!
+    const out = fitCore(pts, 100)
+    const d = [...pts.keys()].map((id) => Math.hypot(out.get(id)!.x, out.get(id)!.y))
+    expect(Math.max(...d)).toBeLessThan(100)
+    expect(d.filter((x) => x > 85 + 1e-9).length).toBeLessThanOrEqual(50)
+    raw.forEach((r, i) => {
+      const scaled = (r * 85) / p90
+      const want = scaled <= 85 ? scaled : 85 + 15 * Math.tanh((scaled - 85) / 15)
+      expect(d[i]!).toBeCloseTo(want, 6)
+    })
+  })
+
+  it("A14: roleCut + classify + placeOuter take 50 ms or less for 20,000 nodes and 110,000 scored edges", () => {
+    const ids = named("n", 20000)
+    let seed = 7
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648)
+    const edges = Array.from({ length: 110000 }, () => ({
+      source: ids[Math.floor(rnd() * ids.length)]!,
+      target: ids[Math.floor(rnd() * ids.length)]!,
+      score: Math.round((0.5 + rnd() * 0.45) * 1000) / 1000,
+    }))
+    const runs: number[] = []
+    for (let i = 0; i < 5; i++) {
+      const t0 = performance.now()
+      const cls = classifyWithCut(ids, edges)
+      placeOuter(cls, coreRadius(cls.core.length))
+      runs.push(performance.now() - t0)
+    }
+    runs.sort((a, b) => a - b)
+    expect(runs[2]!).toBeLessThanOrEqual(50)
   })
 })

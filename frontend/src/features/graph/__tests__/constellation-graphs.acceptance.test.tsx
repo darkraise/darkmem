@@ -211,6 +211,7 @@ import {
   CORE_MIN,
   fitCore,
   placeOuter,
+  placeOuterRing,
   type ConstellationEdge,
   type Point,
 } from "@/features/graph/lib/constellation-layout"
@@ -348,8 +349,8 @@ describe("placeOuter", () => {
     const B = shapedGraph({ coreIds: coreB, sats: satsB, halo: [...kept, ...ids("newB", 11)] })
     const R = coreRadius(40)
     expect(coreRadius(B.core.length)).toBe(R)
-    const pa = placeOuter(A, R)
-    const pb = placeOuter(B, R)
+    const pa = placeOuterRing(A, R)
+    const pb = placeOuterRing(B, R)
     expect(pa.satelliteOuter).toBeCloseTo(pb.satelliteOuter, 9)
     for (const id of kept) expect(pb.positions.get(id)).toEqual(pa.positions.get(id))
   })

@@ -5,7 +5,9 @@ export type ConstellationRole = "core" | "satellite" | "halo"
 export const CORE_MIN = 8
 export const CORE_SHARE = 0.45
 export const SATELLITE_RING_START = 1.15
-export const HALO_MIN_OUTER = 2.6
+export const HALO_MIN_OUTER = 3.0
+export const SATELLITE_BAND = 2.0
+const RING_HALO_MIN_OUTER = 2.6
 export const ROLE_BRIGHTNESS: Record<ConstellationRole, number> = {
   core: 1,
   satellite: 0.8,
@@ -178,10 +180,8 @@ export function roleCut(
   }
   const big = (s: number) => (s >= CORE_MIN ? s : 0)
   let inCore = 0
-  const union = (source: string, target: string) => {
-    const a = index.get(source)
-    const b = index.get(target)
-    if (a === undefined || b === undefined || a === b) return
+  const union = (a: number, b: number) => {
+    if (a < 0 || b < 0 || a === b) return
     const ra = find(a)
     const rb = find(b)
     if (ra === rb) return
@@ -191,26 +191,61 @@ export function roleCut(
     inCore += big(size[rb]!)
   }
 
-  const scored: { source: string; target: string; score: number }[] = []
+  let m = 0
+  for (const e of edges) if (typeof e.score === "number") m++
+  if (m === 0) return -Infinity
+  const ends = new Int32Array(2 * m)
+  const score = new Float64Array(m)
+  let hi = -Infinity
+  let lo = Infinity
+  let k = 0
   for (const e of edges) {
-    if (typeof e.score === "number") scored.push(e as { source: string; target: string; score: number })
-    else union(e.source, e.target)
+    const a = index.get(e.source) ?? -1
+    const b = index.get(e.target) ?? -1
+    if (typeof e.score !== "number") {
+      union(a, b)
+      continue
+    }
+    ends[2 * k] = a
+    ends[2 * k + 1] = b
+    score[k] = e.score
+    if (e.score > hi) hi = e.score
+    if (e.score < lo) lo = e.score
+    k++
   }
-  if (scored.length === 0) return -Infinity
-  scored.sort((a, b) => b.score - a.score)
+
+  // A bucket pass orders 110k edges well inside the 50 ms layout budget, where
+  // a comparator sort over edge objects alone takes most of it.
+  const buckets = new Int32Array(m + 1)
+  const bucketOf = (s: number) =>
+    hi > lo ? Math.min(m - 1, Math.floor(((hi - s) / (hi - lo)) * m)) : 0
+  for (let e = 0; e < m; e++) buckets[bucketOf(score[e]!) + 1]!++
+  for (let i = 0; i < m; i++) buckets[i + 1]! += buckets[i]!
+  const fill = buckets.slice(0, m)
+  const order = new Int32Array(m)
+  for (let e = 0; e < m; e++) order[fill[bucketOf(score[e]!)]!++] = e
+  for (let i = 0; i < m; i++) {
+    const from = buckets[i]!
+    const to = buckets[i + 1]!
+    if (to - from < 2) continue
+    let mixed = false
+    for (let j = from + 1; j < to && !mixed; j++) mixed = score[order[j]!] !== score[order[from]!]
+    if (mixed) order.subarray(from, to).sort((x, y) => score[y]! - score[x]!)
+  }
 
   const limit = share * nodeIds.length
-  let cut = scored[0]!.score
+  let cut = score[order[0]!]!
   let i = 0
-  while (i < scored.length) {
-    const score = scored[i]!.score
+  while (i < m) {
+    const s = score[order[i]!]!
     let j = i
-    while (j < scored.length && scored[j]!.score === score) {
-      union(scored[j]!.source, scored[j]!.target)
+    while (j < m && score[order[j]!] === s) {
+      const e = order[j]!
+      union(ends[2 * e]!, ends[2 * e + 1]!)
       j++
     }
     if (i > 0 && inCore > limit) break
-    cut = score
+    cut = s
     i = j
   }
   return cut
@@ -252,7 +287,96 @@ export function coreRadius(coreCount: number): number {
   return coreCount === 0 ? 0 : CORE_K * Math.sqrt(coreCount)
 }
 
+const clumpRadiusOf = (count: number) => CLUMP_R0 * Math.sqrt(count - 1) + CLUMP_R0
+
+function packClump(
+  members: readonly string[],
+  cx: number,
+  cy: number,
+  positions: Map<string, Point>,
+) {
+  members.forEach((id, i) => {
+    const r = CLUMP_R0 * Math.sqrt(i)
+    const a = i * GOLDEN_ANGLE
+    positions.set(id, { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) })
+  })
+}
+
+const minOf = (ids: readonly string[]) => {
+  let m = ids[0]!
+  for (const id of ids) if (id < m) m = id
+  return m
+}
+
 export function placeOuter(c: Classification, R: number): OuterLayout {
+  const positions = new Map<string, Point>()
+  const clumps = c.satellites
+    .map((members) => ({ members, cr: clumpRadiusOf(members.length), minId: minOf(members) }))
+    .sort((a, b) => b.members.length - a.members.length)
+
+  let maxCr = 0
+  for (const k of clumps) maxCr = Math.max(maxCr, k.cr)
+  const cell = 2 * maxCr + CLUMP_R0
+  const grid = new Map<string, { x: number; y: number; cr: number }[]>()
+  const keyOf = (ix: number, iy: number) => `${ix},${iy}`
+  const clear = (x: number, y: number, cr: number) => {
+    const ix = Math.floor(x / cell)
+    const iy = Math.floor(y / cell)
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        for (const o of grid.get(keyOf(ix + dx, iy + dy)) ?? []) {
+          if (Math.hypot(o.x - x, o.y - y) < cr + o.cr + CLUMP_R0) return false
+        }
+      }
+    }
+    return true
+  }
+
+  let satelliteOuter = 0
+  clumps.forEach(({ members, cr, minId }, j) => {
+    const lo = SATELLITE_RING_START * R + cr
+    const hi = Math.max(lo, SATELLITE_BAND * R)
+    let angle = 0
+    let rho = lo
+    let placed = false
+    for (let k = 0; k < 24 && !placed; k++) {
+      angle = (j * GOLDEN_ANGLE + (k * TAU) / 24) % TAU
+      rho = lo + seededUnit(minId, 11 + 2 * k) * (hi - lo)
+      placed = clear(rho * Math.cos(angle), rho * Math.sin(angle), cr)
+    }
+    while (!placed) {
+      rho += CLUMP_R0
+      placed = clear(rho * Math.cos(angle), rho * Math.sin(angle), cr)
+    }
+    const x = rho * Math.cos(angle)
+    const y = rho * Math.sin(angle)
+    const key = keyOf(Math.floor(x / cell), Math.floor(y / cell))
+    const bucket = grid.get(key)
+    if (bucket) bucket.push({ x, y, cr })
+    else grid.set(key, [{ x, y, cr }])
+    satelliteOuter = Math.max(satelliteOuter, rho + cr)
+    packClump(members, x, y, positions)
+  })
+
+  const haloInner = R === 0 && c.satellites.length === 0 ? 0 : SATELLITE_RING_START * R
+  const haloOuter = Math.max(
+    HALO_MIN_OUTER * R,
+    SATELLITE_BAND * R + HALO_C * Math.sqrt(c.halo.length),
+  )
+  for (const id of c.halo) {
+    const a = seededUnit(id, 1) * TAU
+    const u = seededUnit(id, 2)
+    // With no core the spec keeps the old full disc of even area density.
+    const r =
+      haloInner === 0
+        ? haloOuter * Math.sqrt(u)
+        : haloInner + u * (haloOuter - haloInner)
+    positions.set(id, { x: r * Math.cos(a), y: r * Math.sin(a) })
+  }
+  return { positions, satelliteOuter, haloInner, haloOuter }
+}
+
+export function placeOuterRing(c: Classification, R: number): OuterLayout {
   const positions = new Map<string, Point>()
   let satelliteOuter = SATELLITE_RING_START * R
 
@@ -261,7 +385,7 @@ export function placeOuter(c: Classification, R: number): OuterLayout {
   let angle = 0
   let prevHalf = 0
   for (const members of c.satellites) {
-    const clumpRadius = CLUMP_R0 * Math.sqrt(members.length - 1) + CLUMP_R0
+    const clumpRadius = clumpRadiusOf(members.length)
     const halfWidth = (rho: number) => Math.asin((clumpRadius + CLUMP_R0 / 2) / rho)
     let half = ring ? halfWidth(ring.rho) : 0
     if (ring && angle + prevHalf + 2 * half > TAU) {
@@ -277,19 +401,13 @@ export function placeOuter(c: Classification, R: number): OuterLayout {
     }
     prevHalf = half
     satelliteOuter = ring.rho + ring.rOpen
-    const cx = ring.rho * Math.cos(angle)
-    const cy = ring.rho * Math.sin(angle)
-    members.forEach((id, i) => {
-      const r = CLUMP_R0 * Math.sqrt(i)
-      const a = i * GOLDEN_ANGLE
-      positions.set(id, { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) })
-    })
+    packClump(members, ring.rho * Math.cos(angle), ring.rho * Math.sin(angle), positions)
   }
 
   const haloInner =
     R === 0 && c.satellites.length === 0 ? 0 : satelliteOuter + HALO_GAP * R
   const haloOuter = Math.max(
-    HALO_MIN_OUTER * R,
+    RING_HALO_MIN_OUTER * R,
     haloInner + HALO_C * Math.sqrt(c.halo.length),
   )
   const inner2 = haloInner * haloInner
@@ -302,10 +420,7 @@ export function placeOuter(c: Classification, R: number): OuterLayout {
   return { positions, satelliteOuter, haloInner, haloOuter }
 }
 
-export function fitCore(
-  positions: ReadonlyMap<string, Point>,
-  R: number,
-): Map<string, Point> {
+const centroidOf = (positions: ReadonlyMap<string, Point>) => {
   let cx = 0
   let cy = 0
   for (const p of positions.values()) {
@@ -313,8 +428,42 @@ export function fitCore(
     cy += p.y
   }
   const count = positions.size || 1
-  cx /= count
-  cy /= count
+  return { cx: cx / count, cy: cy / count }
+}
+
+export function fitCore(
+  positions: ReadonlyMap<string, Point>,
+  R: number,
+): Map<string, Point> {
+  const { cx, cy } = centroidOf(positions)
+  const dists = [...positions.values()]
+    .map((p) => Math.hypot(p.x - cx, p.y - cy))
+    .sort((a, b) => a - b)
+  const p90 = dists.length > 0 ? dists[Math.ceil(0.9 * dists.length) - 1]! : 0
+  const knee = 0.85 * R
+  const tail = 0.15 * R
+  const scale = p90 > 0 ? knee / p90 : 0
+  const out = new Map<string, Point>()
+  for (const [id, p] of positions) {
+    const x = (p.x - cx) * scale
+    const y = (p.y - cy) * scale
+    const d = Math.hypot(x, y)
+    if (d > knee) {
+      // Math.tanh returns exactly 1 past about 19, which would land a node on R.
+      const k = (knee + tail * Math.min(Math.tanh((d - knee) / tail), 1 - 1e-9)) / d
+      out.set(id, { x: x * k, y: y * k })
+    } else {
+      out.set(id, { x, y })
+    }
+  }
+  return out
+}
+
+export function fitCoreToFarthest(
+  positions: ReadonlyMap<string, Point>,
+  R: number,
+): Map<string, Point> {
+  const { cx, cy } = centroidOf(positions)
   let far = 0
   for (const p of positions.values()) far = Math.max(far, Math.hypot(p.x - cx, p.y - cy))
   const scale = far > 0 ? R / far : 0
