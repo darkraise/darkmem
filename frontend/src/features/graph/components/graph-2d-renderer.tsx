@@ -838,7 +838,13 @@ export function Graph2DRenderer({
       return
     }
 
-    runner.start()
+    // Sigma has drawn the first frame, but the browser shows it only once
+    // this task ends, and the core copy in start() costs ~180 ms at 20k
+    // nodes. This callback already runs in a frame, so a nested request
+    // lands on the next one, after the first paint.
+    requestAnimationFrame(() => {
+      if (runnerRef.current === runner) runner.start()
+    })
 
     onReady()
     // dispatchers read refs; listing them would rebuild + resettle every render
