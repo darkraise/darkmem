@@ -13,6 +13,8 @@ export interface BackdropHost {
     off(event: "updated", fn: () => void): unknown
   }
   getDimensions(): { width: number; height: number }
+  /** sigma's own emitter: a container resize changes no camera state. */
+  on?(event: "resize", fn: () => void): unknown
 }
 
 export function nebulaGeometry(
@@ -53,10 +55,14 @@ export function attachBackdrop(
     if (!ctx) return
     const { width, height } = host.getDimensions()
     const dpr = window.devicePixelRatio || 1
-    canvas.width = Math.round(width * dpr)
-    canvas.height = Math.round(height * dpr)
-    canvas.style.width = `${width}px`
-    canvas.style.height = `${height}px`
+    // Assigning width or height reallocates the backing store, which is
+    // wasted on every camera frame when the size has not changed.
+    if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)) {
+      canvas.width = Math.round(width * dpr)
+      canvas.height = Math.round(height * dpr)
+      canvas.style.width = `${width}px`
+      canvas.style.height = `${height}px`
+    }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, width, height)
     ctx.fillStyle = colors.canvas
@@ -73,6 +79,7 @@ export function attachBackdrop(
 
   const camera = host.getCamera()
   camera.on("updated", paint)
+  host.on?.("resize", paint)
   paint()
 
   return () => {

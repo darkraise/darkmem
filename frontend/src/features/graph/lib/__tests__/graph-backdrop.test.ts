@@ -101,6 +101,29 @@ describe("attachBackdrop", () => {
     expect(container.querySelectorAll("canvas")).toHaveLength(1)
   })
 
+  it("repaints at the new size when the container resizes", () => {
+    const { ctx } = fakeCtx()
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(ctx as never)
+    const { host } = fakeHost()
+    let dims = { width: 300, height: 200 }
+    let onResize: (() => void) | undefined
+    const resizing = {
+      ...host,
+      getDimensions: () => dims,
+      on: (_: "resize", fn: () => void) => (onResize = fn),
+    }
+    attachBackdrop(resizing, () => ({ centre: { x: 0, y: 0 }, radiusPx: 10 }), {
+      canvas: "#000000",
+      nebula: "#5533aa",
+      isDark: true,
+    })
+    const canvas = host.getContainer().querySelector("canvas[aria-hidden]") as HTMLCanvasElement
+    dims = { width: 640, height: 480 }
+    onResize!()
+    expect(canvas.style.width).toBe("640px")
+    expect(canvas.style.height).toBe("480px")
+  })
+
   it("does nothing harmful where 2D canvas is unavailable", () => {
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null)
     const { host } = fakeHost()
