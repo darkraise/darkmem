@@ -281,10 +281,14 @@ every memory sits in one component, there is no halo. If nearly every memory
 is an orphan, the picture is just a starfield. The fallbacks in A2 keep both
 cases drawable, but not attractive. The demo snapshot
 (`demo/data/graph-snapshot.json`) is empty, so there is no in-repo evidence.
-**Unverified — the plan's first task verifies it**, by computing component
-sizes from a `/graph/unified` response of your instance (read-only, through
-your session or a JSON you save from the browser) before the renderers are
-built on it.
+**Unverified, and not verifiable in the unattended run** (ruling 2026-11-18,
+`.dforge/rulings-preexec-1-report.md`): this host's production database holds
+no memories (empty `memories` block in the 2026-11-18 nightly dump), and the
+corpus on 192.168.0.199 (4,837 memories) exposes no vectors to this host. The
+plan's first task proves the fallbacks and the placement invariants on
+synthetic shapes only; that is not evidence of how the real corpus splits.
+Measuring it and tuning `CORE_MIN`, `CORE_K`, `CLUMP_R0`, `HALO_GAP` and
+`HALO_C` is deferred to register row 3.
 
 ## Testing
 
