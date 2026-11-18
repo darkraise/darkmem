@@ -126,7 +126,9 @@ describe("no-restricted-imports: src/demo/*", () => {
     // Re-measured when the board hooks landed: 113 — `use-board-api.ts`
     // imports its fixtures for `initialData` in demo mode (the work-log shape).
     // Re-measured when the board panel's test landed: 114 — it reads the
-    // built-in views fixture.
-    expect(countByRule(results, "no-restricted-imports")).toBe(114)
+    // built-in views fixture. Re-measured when the code graph moved to the
+    // WebGL canvas: 113 — the SVG canvas's `@/demo/explore` layout import went
+    // with it.
+    expect(countByRule(results, "no-restricted-imports")).toBe(113)
   })
 })
