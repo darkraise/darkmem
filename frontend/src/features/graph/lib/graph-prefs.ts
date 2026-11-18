@@ -25,7 +25,7 @@ export const DIM_MAX = 50
 export const DIM_STEP = 5
 
 /** How many memories the graph asks for. The ceiling is the server's. */
-export const NODE_LIMIT_DEFAULT = 200
+export const NODE_LIMIT_DEFAULT = 1000
 export const NODE_LIMIT_MIN = 50
 export const NODE_LIMIT_MAX = 50_000
 export const NODE_LIMIT_STEP = 100
@@ -82,6 +82,15 @@ export const useGraphPrefs = create<GraphPrefsState>()(
 
       setAllNodes: (allNodes) => set({ allNodes }),
     }),
-    { name: "darkmem-graph-prefs" },
+    {
+      name: "darkmem-graph-prefs",
+      version: 1,
+      // 200 was the old default, so a stored 200 is almost always untouched.
+      migrate: (persisted, version) => {
+        const state = persisted as { nodeLimit?: number } | undefined
+        if (version < 1 && state?.nodeLimit === 200) return { ...state, nodeLimit: 1000 }
+        return state
+      },
+    },
   ),
 )

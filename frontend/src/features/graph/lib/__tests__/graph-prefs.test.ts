@@ -5,6 +5,7 @@ import {
   DIM_MAX,
   DEFAULT_SELECTION_COLOR,
   DEFAULT_DIM,
+  NODE_LIMIT_DEFAULT,
 } from "../graph-prefs"
 
 describe("graphPrefs", () => {
@@ -49,5 +50,17 @@ describe("graphPrefs", () => {
     const stored = JSON.parse(localStorage.getItem("darkmem-graph-prefs") ?? "{}")
     expect(stored.state.selectionColor).toBe("inverted")
     expect(stored.state.dimUnrelated).toBe(25)
+  })
+
+  it("A11: defaults to 1,000 memories", () => {
+    expect(NODE_LIMIT_DEFAULT).toBe(1000)
+  })
+
+  it("A11: a stored 200 from before version 1 loads as 1,000, and any other stored value is kept", async () => {
+    for (const [stored, expected] of [[200, 1000], [500, 500], [50000, 50000]] as const) {
+      localStorage.setItem("darkmem-graph-prefs", JSON.stringify({ state: { nodeLimit: stored }, version: 0 }))
+      await useGraphPrefs.persist.rehydrate()
+      expect(useGraphPrefs.getState().nodeLimit).toBe(expected)
+    }
   })
 })
