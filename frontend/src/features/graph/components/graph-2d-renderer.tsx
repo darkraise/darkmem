@@ -516,6 +516,7 @@ export function Graph2DRenderer({
         glow: createNodeGlowProgram({
           additive: tokensRef.current.isDark,
           clock: clockRef.current,
+          memoryCanvas: true,
         }),
       },
       // Sigma replaces its default program map with this one, so the
@@ -856,14 +857,19 @@ export function Graph2DRenderer({
     sigma.on("afterRender", drawHulls)
     sigma.on("kill", () => hullCanvas.remove())
 
-    // Entity diamonds draw through their own program, not the glow pass.
+    // Entity diamonds draw through their own program, not the glow pass, so
+    // counting them in any role's density misreads how dense its glows are.
     const attached = new Set(attachments.map((a) => a.id))
+    const glowOnly = (ids: readonly string[]) => ids.filter((id) => !attached.has(id))
     trackDensityGain(
       sigma,
       graph,
       {
-        ...runner.classification,
-        halo: runner.classification.halo.filter((id) => !attached.has(id)),
+        core: glowOnly(runner.classification.core),
+        satellites: runner.classification.satellites
+          .map(glowOnly)
+          .filter((members) => members.length > 0),
+        halo: glowOnly(runner.classification.halo),
       },
       clockRef.current,
       runner.outer,

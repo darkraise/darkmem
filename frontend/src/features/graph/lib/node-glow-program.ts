@@ -106,15 +106,35 @@ function meanSize(graph: SizedGraph, ids: readonly string[]): number {
   return ids.length ? sum / ids.length : 0
 }
 
+/** A memory-canvas disc in the core or a clump is drawn no wider than this
+ *  share of its spacing on screen (and no narrower than CRISP_MIN_PX), so
+ *  neighbouring points stay separate at a wide view instead of merging into
+ *  one glowing blob. Zooming in widens the spacing and lifts the cap. */
+export const CRISP_RATIO = 0.3
+export const CRISP_MIN_PX = 1.5
+
+export function crispStyle(
+  nodeRadiusPx: number,
+  spacingPx: number,
+  maxOverlap: number,
+  floor = GAIN_FLOOR,
+): { gain: number; scale: number } {
+  if (nodeRadiusPx <= 0) return { gain: 1, scale: 1 }
+  const r = Math.min(nodeRadiusPx, Math.max(CRISP_MIN_PX, CRISP_RATIO * spacingPx))
+  const style = densityStyle(r, spacingPx, maxOverlap, floor)
+  return { gain: style.gain, scale: (style.scale * r) / nodeRadiusPx }
+}
+
 /** Keeps the clock's per-role style current: sigma emits beforeRender ahead
- *  of every draw, after any camera move. */
+ *  of every draw, after any camera move. `memoryCanvas` measures the core's
+ *  spacing from its positions and draws core and clump points crisp. */
 export function trackDensityGain(
   sigma: Pick<Sigma, "on" | "graphToViewport" | "scaleSize">,
   graph: SizedGraph,
   classification: Pick<Classification, "core" | "satellites" | "halo">,
   clock: GlowClock,
-  outer?: Pick<OuterLayout, "haloInner" | "haloOuter">,
-  measureCore = false,
+  outer?: Pick<OuterLayout, "haloInner" | "haloOuter"> & Partial<Pick<OuterLayout, "clumpSpacing">>,
+  memoryCanvas = false,
 ): void {
   const coreSize = meanSize(graph, classification.core)
   const satelliteMembers = classification.satellites.flat()
@@ -131,17 +151,18 @@ export function trackDensityGain(
     const e = sigma.graphToViewport({ x: 1000, y: 0 })
     const pxPerUnit = Math.hypot(e.x - o.x, e.y - o.y) / 1000
     const coreRadiusPx = sigma.scaleSize(coreSize)
-    const coreSpacing = measureCore
+    const coreSpacing = memoryCanvas
       ? localSpacing(graph, classification.core, (2 * coreRadiusPx) / pxPerUnit)
       : CORE_K
-    const core = densityStyle(
+    const style = memoryCanvas ? crispStyle : densityStyle
+    const core = style(
       coreRadiusPx,
       coreSpacing * pxPerUnit,
       classification.core.length,
     )
-    const satellite = densityStyle(
+    const satellite = style(
       sigma.scaleSize(satelliteSize),
-      CLUMP_R0 * pxPerUnit,
+      (outer?.clumpSpacing ?? CLUMP_R0) * pxPerUnit,
       clump,
       SATELLITE_GAIN_FLOOR,
     )
@@ -186,6 +207,7 @@ varying float v_alpha;
 const float bias = 255.0 / 254.0;
 const float SPREAD = ${GLOW_SPREAD.toFixed(1)};
 const float TAU = 6.283185307179586;
+const float LIGHT_CRISP = 1.5;
 
 void main() {
   float radius = a_size * u_correctionRatio / u_sizeRatio * 2.0;
@@ -193,6 +215,10 @@ void main() {
   if (a_brightness > 0.9) radius *= u_coreScale;
   else if (a_brightness > 0.5) radius *= u_satelliteScale;
   else if (a_brightness < 0.5) radius *= u_haloScale;
+  #elif defined(CRISP_LIGHT)
+  // No glow surrounds a light-theme disc, so it may take more of its spacing.
+  if (a_brightness > 0.9) radius *= min(1.0, LIGHT_CRISP * u_coreScale);
+  else if (a_brightness > 0.5) radius *= min(1.0, LIGHT_CRISP * u_satelliteScale);
   #endif
   float outer = radius * SPREAD;
   // The triangle's incircle is half its circumradius, so the vertices sit at
@@ -274,9 +300,15 @@ type GlowDisplayData = NodeDisplayData & { brightness?: number; phase?: number }
 export function createNodeGlowProgram(opts: {
   additive: boolean
   clock: GlowClock
+  /** The memory canvas screen-blends its light instead of summing it (an
+   *  overlap brightens but never passes its brighter colour, so a glow over
+   *  another glow or an entity outline cannot clip to white), and keeps its
+   *  core and clump points crisp in the light theme too. */
+  memoryCanvas?: boolean
 }): NodeProgramType {
-  const { additive, clock } = opts
-  const prefix = additive ? "" : "#define LIGHT_MODE\n"
+  const { additive, clock, memoryCanvas = false } = opts
+  const prefix =
+    (additive ? "" : "#define LIGHT_MODE\n") + (memoryCanvas ? "#define CRISP_LIGHT\n" : "")
 
   return class NodeGlowProgram extends NodeCircleProgram {
     getDefinition() {
@@ -331,7 +363,7 @@ export function createNodeGlowProgram(opts: {
         return
       }
       const gl = info.gl
-      gl.blendFunc(gl.ONE, gl.ONE)
+      gl.blendFunc(gl.ONE, memoryCanvas ? gl.ONE_MINUS_SRC_COLOR : gl.ONE)
       super.renderProgram(params, info)
       // sigma sets this once per context and every other program relies on it.
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA)

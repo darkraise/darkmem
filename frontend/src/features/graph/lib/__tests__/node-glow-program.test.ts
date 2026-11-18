@@ -8,6 +8,7 @@ const GL = {
   TRIANGLES: 0x0004,
   ONE: 1,
   ONE_MINUS_SRC_ALPHA: 0x0303,
+  ONE_MINUS_SRC_COLOR: 0x0301,
   BLEND: 0x0be2,
 }
 Object.assign(globalThis, { WebGLRenderingContext: GL, WebGL2RenderingContext: GL })
@@ -51,6 +52,29 @@ describe("node glow program", () => {
     const draw = self.drawWebGL.mock.invocationCallOrder[0]!
     expect(first!).toBeLessThan(draw)
     expect(draw).toBeLessThan(second!)
+  })
+
+  it("UI-2: screen-blends the memory canvas's light so an overlap never passes its brighter colour", async () => {
+    const { createNodeGlowProgram } = await import("../node-glow-program")
+    const proto = createNodeGlowProgram({ additive: true, clock: { time: 0 }, memoryCanvas: true })
+      .prototype as unknown as Proto
+    const gl = fakeGl()
+    proto.renderProgram.call(fakeThis(), {}, { gl, program: {}, isPicking: false })
+    expect(gl.blendFunc.mock.calls).toEqual([
+      [GL.ONE, GL.ONE_MINUS_SRC_COLOR],
+      [GL.ONE, GL.ONE_MINUS_SRC_ALPHA],
+    ])
+  })
+
+  it("UI-4: only the memory canvas caps its core and clump discs in the light theme", async () => {
+    const { createNodeGlowProgram } = await import("../node-glow-program")
+    const src = (memoryCanvas: boolean) => {
+      const proto = createNodeGlowProgram({ additive: false, clock: { time: 0 }, memoryCanvas })
+        .prototype as unknown as Proto
+      return (proto.getDefinition.call(proto) as unknown as { VERTEX_SHADER_SOURCE: string }).VERTEX_SHADER_SOURCE
+    }
+    expect(src(true)).toMatch(/^#define LIGHT_MODE\n#define CRISP_LIGHT\n/)
+    expect(src(false)).not.toMatch(/#define CRISP_LIGHT/)
   })
 
   it("never touches the blend function on the picking pass", async () => {
@@ -172,12 +196,12 @@ describe("core density", () => {
     expect(localSpacing(graphOf(pos), [...pos.keys()], 12)).toBeLessThanOrEqual(12 / Math.sqrt(8))
   })
 
-  it("dims a packed core by its measured spacing only when asked to", async () => {
-    const { trackDensityGain, densityStyle, localSpacing } = await import("../node-glow-program")
-    const { coreRadius } = await import("../constellation-layout")
+  it("draws a packed memory core crisp at its measured spacing, and leaves the code canvas at CORE_K", async () => {
+    const { trackDensityGain, densityStyle, localSpacing, CRISP_RATIO, CRISP_MIN_PX } = await import("../node-glow-program")
+    const { CORE_K, coreRadius } = await import("../constellation-layout")
     const lobe = points(400, coreRadius(400) / 4)
     const ids = [...lobe.keys()]
-    const gainOf = (measure: boolean) => {
+    const styleOf = (memoryCanvas: boolean) => {
       let onRender = () => {}
       const sigma = {
         on: (_e: string, f: () => void) => {
@@ -186,13 +210,25 @@ describe("core density", () => {
         graphToViewport: (p: { x: number; y: number }) => p,
         scaleSize: (s: number) => s,
       }
-      const clock: { time: number; coreGain?: number } = { time: 0 }
-      trackDensityGain(sigma as never, graphOf(lobe), { core: ids, satellites: [], halo: [] }, clock, undefined, measure)
+      const clock: { time: number; coreGain?: number; coreScale?: number } = { time: 0 }
+      trackDensityGain(sigma as never, graphOf(lobe), { core: ids, satellites: [], halo: [] }, clock, undefined, memoryCanvas)
       onRender()
-      return clock.coreGain!
+      return { gain: clock.coreGain!, radius: 6 * clock.coreScale! }
     }
-    expect(gainOf(true)).toBeCloseTo(densityStyle(6, localSpacing(graphOf(lobe), ids, 12), 400).gain)
-    expect(gainOf(true)).toBeLessThan(gainOf(false) / 4)
+    const spacing = localSpacing(graphOf(lobe), ids, 12)
+    const crisp = styleOf(true)
+    expect(crisp.radius).toBeCloseTo(Math.max(CRISP_MIN_PX, CRISP_RATIO * spacing))
+    expect(crisp.radius).toBeLessThan(0.5 * spacing)
+    expect(crisp.gain).toBe(1)
+    const code = densityStyle(6, CORE_K, 400)
+    expect(styleOf(false)).toEqual({ gain: code.gain, radius: 6 * code.scale })
+  })
+
+  it("crispStyle lifts its cap once zooming in widens the spacing", async () => {
+    const { crispStyle, CRISP_RATIO, CRISP_MIN_PX } = await import("../node-glow-program")
+    expect(crispStyle(6, 100, 400)).toEqual({ gain: 1, scale: 1 })
+    expect(crispStyle(6, 10, 400).scale * 6).toBeCloseTo(CRISP_RATIO * 10)
+    expect(crispStyle(6, 1, 400).scale * 6).toBeGreaterThanOrEqual(CRISP_MIN_PX - 1e-9)
   })
 })
 
