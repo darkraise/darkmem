@@ -28,6 +28,7 @@ vi.mock("graphology-layout-forceatlas2/worker", () => ({
 }))
 
 import {
+  edgeSize,
   canvasKeyAction,
   codeNodeColor,
   CodeGlowCanvas,
@@ -119,6 +120,16 @@ describe("isDimmed", () => {
     [null, "c1", false],
   ])("visible %o, community %s → %s", (visible, community, dimmed) => {
     expect(isDimmed(GRAPH.nodes[0]!, visible, community)).toBe(dimmed)
+  })
+})
+
+describe("edgeSize", () => {
+  it("draws a folded file edge thicker the more symbol edges it carries", () => {
+    expect(edgeSize(undefined)).toBe(1)
+    expect(edgeSize(1)).toBe(1)
+    expect(edgeSize(4)).toBe(2)
+    expect(edgeSize(64)).toBe(4)
+    expect(edgeSize(4096)).toBe(4)
   })
 })
 

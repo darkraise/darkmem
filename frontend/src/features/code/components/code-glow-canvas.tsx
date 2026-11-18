@@ -135,6 +135,12 @@ export function isDimmed(
   return false
 }
 
+/** A folded file → file edge carries the count of symbol edges it stands
+ *  for; it thickens with that count, logarithmically, up to 4 px. */
+export function edgeSize(weight?: number): number {
+  return weight ? Math.min(4, 1 + Math.log2(weight) * 0.5) : 1
+}
+
 export function showsLabel(o: {
   selected: boolean
   blast: boolean
@@ -246,7 +252,11 @@ export function CodeGlowCanvas({
       const sameCommunity =
         g.getNodeAttribute(e.source, "community") === g.getNodeAttribute(e.target, "community")
       const full = sameCommunity ? (g.getNodeAttribute(e.source, "color") as string) : t.border
-      g.addEdge(e.source, e.target, { _fullColor: full, color: restEdgeColor(full, t.isDark) })
+      g.addEdge(e.source, e.target, {
+        _fullColor: full,
+        color: restEdgeColor(full, t.isDark),
+        size: edgeSize(e.weight),
+      })
     }
 
     const scale = scaleSettings(g.order, g.size)
