@@ -2,13 +2,20 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import Graph from "graphology"
 
 const fa2 = vi.hoisted(() => ({
-  instances: [] as Array<{ graph: import("graphology").default; running: boolean }>,
+  instances: [] as Array<{
+    graph: import("graphology").default
+    running: boolean
+    params?: { settings?: Record<string, unknown> }
+  }>,
 }))
 
 vi.mock("graphology-layout-forceatlas2/worker", () => ({
   default: class {
     running = false
-    constructor(public graph: import("graphology").default) {
+    constructor(
+      public graph: import("graphology").default,
+      public params?: { settings?: Record<string, unknown> },
+    ) {
       fa2.instances.push(this)
     }
     start() {
@@ -27,7 +34,7 @@ vi.mock("graphology-layout-forceatlas2/worker", () => ({
 }))
 
 import { constellationFa2Settings, createConstellationRunner } from "../constellation-runner"
-import { CORE_MIN, ROLE_BRIGHTNESS } from "../constellation-layout"
+import { classify, CORE_MIN, placeOuterRing, ROLE_BRIGHTNESS } from "../constellation-layout"
 
 function buildGraph() {
   const g = new Graph()
@@ -151,3 +158,70 @@ describe("createConstellationRunner", () => {
   })
 })
 
+
+describe("runner roles", () => {
+  const build = (withScores: boolean) => {
+    const g = new Graph({ type: "undirected" })
+    const ids = [...Array.from({ length: 8 }, (_, i) => `c${i}`), "s0", "s1", ...Array.from({ length: 9 }, (_, i) => `h${i}`)]
+    for (const id of ids) g.addNode(id, { x: 0, y: 0, size: 6 })
+    g.addNode("entity:e1", { x: 0, y: 0, size: 6 })
+    const add = (a: string, b: string, score: number) => g.addEdge(a, b, withScores ? { score } : {})
+    for (let i = 0; i < 8; i++) add(`c${i}`, `c${(i + 1) % 8}`, 0.9)
+    add("s0", "s1", 0.9)
+    add("h0", "c0", 0.6)
+    g.addEdge("entity:e1", "s1", {})
+    return { g, ids }
+  }
+
+  it("A12: without roles the runner classifies over every drawn edge, as before", () => {
+    const { g } = build(false)
+    const edges: { source: string; target: string }[] = []
+    g.forEachEdge((_e, _a, source, target) => edges.push({ source, target }))
+    const runner = createConstellationRunner(g, { layoutMs: 10, fa2Settings: {} })
+    const plain = classify(g.nodes(), edges)
+    expect([...runner.classification.role.entries()]).toEqual([...plain.role.entries()])
+    expect(g.getNodeAttribute("h0", "_role")).toBe("core")
+  })
+
+  it("UX-1: with roles the runner classifies by the cut and gives attachments their linked role", () => {
+    const { g, ids } = build(true)
+    const edges: { source: string; target: string; score?: number }[] = []
+    g.forEachEdge((_e, a, source, target) => {
+      if (!source.startsWith("entity:") && !target.startsWith("entity:")) edges.push({ source, target, score: a.score as number })
+    })
+    createConstellationRunner(g, {
+      layoutMs: 10,
+      fa2Settings: {},
+      roles: { nodeIds: ids, edges, attachments: [{ id: "entity:e1", linked: ["s1"] }] },
+    })
+    expect(g.getNodeAttribute("c0", "_role")).toBe("core")
+    expect(g.getNodeAttribute("h0", "_role")).toBe("halo")
+    expect(g.getNodeAttribute("entity:e1", "_role")).toBe("satellite")
+  })
+
+  it("A12: without roles the runner keeps today's ring placement", () => {
+    const { g } = build(false)
+    const edges: { source: string; target: string }[] = []
+    g.forEachEdge((_e, _a, source, target) => edges.push({ source, target }))
+    const runner = createConstellationRunner(g, { layoutMs: 10, fa2Settings: {} })
+    expect(runner.outer).toEqual(placeOuterRing(classify(g.nodes(), edges), runner.coreRadius))
+  })
+
+  it("UX-1: the memory core runs LinLog without strong gravity; the code canvas keeps its forces", () => {
+    const base = constellationFa2Settings(build(false).g, { slowDown: 1, barnesHutOptimize: false })
+    const scored = build(true)
+    const edges: { source: string; target: string; score?: number }[] = []
+    scored.g.forEachEdge((_e, a, source, target) => {
+      if (!source.startsWith("entity:") && !target.startsWith("entity:")) edges.push({ source, target, score: a.score as number })
+    })
+    createConstellationRunner(scored.g, {
+      layoutMs: 10,
+      fa2Settings: base,
+      roles: { nodeIds: scored.ids, edges, attachments: [] },
+    }).start()
+    createConstellationRunner(build(false).g, { layoutMs: 10, fa2Settings: base }).start()
+    const [memory, code] = fa2.instances.map((w) => w.params?.settings)
+    expect(memory).toMatchObject({ linLogMode: true, strongGravityMode: false, gravity: 0.05 })
+    expect(code).toEqual(base)
+  })
+})

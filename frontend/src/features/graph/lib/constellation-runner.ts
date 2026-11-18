@@ -4,14 +4,19 @@ import { inferSettings } from "graphology-layout-forceatlas2"
 import { seededUnit } from "./code-graph-theme"
 import {
   classify,
+  classifyWithCut,
   coreRadius as computeCoreRadius,
   fitCore,
+  fitCoreToFarthest,
   placeOuter,
+  placeOuterRing,
   ROLE_BRIGHTNESS,
+  type Attachment,
   type Classification,
   type ConstellationEdge,
   type OuterLayout,
   type Point,
+  type ScoredEdge,
 } from "./constellation-layout"
 
 export interface ConstellationRunner {
@@ -42,13 +47,42 @@ export function constellationFa2Settings(
 
 export function createConstellationRunner(
   graph: Graph,
-  opts: { layoutMs: number; fa2Settings: Record<string, unknown>; onStop?: () => void },
+  opts: {
+    layoutMs: number
+    fa2Settings: Record<string, unknown>
+    onStop?: () => void
+    roles?: {
+      nodeIds: readonly string[]
+      edges: readonly ScoredEdge[]
+      attachments: readonly Attachment[]
+    }
+  },
 ): ConstellationRunner {
-  const edges: ConstellationEdge[] = []
-  graph.forEachEdge((_e, _a, source, target) => edges.push({ source, target }))
-  const classification = classify(graph.nodes(), edges)
+  const { roles } = opts
+  let classification: Classification
+  if (roles) {
+    classification = classifyWithCut(roles.nodeIds, roles.edges, roles.attachments)
+    graph.forEachNode((id) => {
+      if (!classification.role.has(id)) {
+        classification.role.set(id, "halo")
+        classification.halo.push(id)
+        classification.degree.set(id, graph.degree(id))
+      }
+    })
+  } else {
+    const edges: ConstellationEdge[] = []
+    graph.forEachEdge((_e, _a, source, target) => edges.push({ source, target }))
+    classification = classify(graph.nodes(), edges)
+  }
+  // The code canvas passes no roles and keeps its ring, farthest-node fit and
+  // strong gravity; only the memory canvas takes the scattered arrangement.
+  const place = roles ? placeOuter : placeOuterRing
+  const fit = roles ? fitCore : fitCoreToFarthest
+  const fa2Settings = roles
+    ? { ...opts.fa2Settings, strongGravityMode: false, gravity: 0.05 }
+    : opts.fa2Settings
   const R = computeCoreRadius(classification.core.length)
-  const outer = placeOuter(classification, R)
+  const outer = place(classification, R)
   const coreSet = new Set(classification.core)
 
   const currentCore = () => {
@@ -61,7 +95,7 @@ export function createConstellationRunner(
     }
     return pos
   }
-  const fittedCore = fitCore(currentCore(), R)
+  const fittedCore = fit(currentCore(), R)
 
   graph.updateEachNodeAttributes((id, attrs) => {
     const role = classification.role.get(id)!
@@ -86,7 +120,7 @@ export function createConstellationRunner(
     if (!coreGraph) return
     const pos = new Map<string, Point>()
     coreGraph.forEachNode((id, a) => pos.set(id, { x: a.x as number, y: a.y as number }))
-    const fitted = fitCore(pos, R)
+    const fitted = fit(pos, R)
     graph.updateEachNodeAttributes(
       (id, attrs) => {
         const p = fitted.get(id)
@@ -132,7 +166,7 @@ export function createConstellationRunner(
         }
       })
       worker?.kill()
-      worker = new FA2Layout(coreGraph, { settings: opts.fa2Settings })
+      worker = new FA2Layout(coreGraph, { settings: fa2Settings })
       worker.start()
       running = true
       frame = requestAnimationFrame(loop)
