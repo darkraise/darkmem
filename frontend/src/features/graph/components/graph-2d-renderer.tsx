@@ -116,13 +116,10 @@ const FOCUS_SCALE = 1.22
 const HOVER_SCALE = 1.08
 
 /** Entity nodes are the overlay, so they must not outweigh the memories they
- *  annotate. A diamond's half-diagonal is `size * sqrt(2)` in px, so 6 renders
- *  ~8.5px against a memory disc's 6-13px radius. Not lower: sigma's
- *  `labelRenderedSizeThreshold` (6) culls labels before the node reducer is
- *  consulted, so a smaller entity could never be labelled on selection. */
-const ENTITY_NODE_SIZE = 6
+ *  annotate: 3 sits at the low end of the memories' 3-10 size range. */
+const ENTITY_NODE_SIZE = 3
 
-/** Degree at or above which a node's label survives at any zoom. */
+/** Fewest memory-to-memory edges a hub carries. */
 const HUB_DEGREE = 5
 const MEMORY_SIZE_SCALE = 0.25
 
@@ -542,7 +539,9 @@ export function Graph2DRenderer({
         }
       },
       stagePadding: 40,
-      labelRenderedSizeThreshold: 6,
+      // Memories and the halo draw under sigma's 6px label cull, which runs
+      // before the reducer is consulted; the reducer alone decides labels.
+      labelRenderedSizeThreshold: 0,
       defaultDrawNodeLabel: drawNodeLabel,
       defaultNodeColor: mutedColor,
       nodeReducer(node, data) {
@@ -623,7 +622,8 @@ export function Graph2DRenderer({
           !labelVisible({
             tier,
             isHub: hubsRef.current.has(node) && zoomRatioRef.current < LABEL_ZOOM_RATIO,
-            zoomedIn: false,
+            // Hubs are memories only; entity names keep the zoomed-in rule.
+            zoomedIn: data._kind === "entity" && zoomRatioRef.current < LABEL_ZOOM_RATIO,
             isHovered: hov === node,
           })
         ) {
