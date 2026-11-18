@@ -50,6 +50,9 @@ const DARK_TOKENS: Record<string, string> = {
   "--chart-4": "hsl(38 92% 50%)",
   "--chart-5": "hsl(258 90% 66%)",
   "--font-mono": '"JetBrains Mono", ui-monospace, monospace',
+  "--graph-canvas": "258 35% 4%",
+  "--graph-nebula": "266 75% 42%",
+  "--destructive-solid": "0 72% 51%",
 }
 
 const LIGHT_TOKENS: Record<string, string> = {
@@ -101,6 +104,9 @@ describe("resolveGraphTokens", () => {
     expect(t.primaryHue).toBe(217)
     expect(t.isDark).toBe(true)
     expect(t.fontMono).toBe('"JetBrains Mono", ui-monospace, monospace')
+    expect(t.canvas).toBe(hslToHex(258, 35, 4))
+    expect(t.nebula).toBe(hslToHex(266, 75, 42))
+    expect(t.destructiveSolid).toBe(hslToHex(0, 72, 51))
   })
 
   it("reports light mode when background lightness is high", () => {
@@ -118,6 +124,9 @@ describe("resolveGraphTokens", () => {
     t.chart.forEach((c) => expect(c).toMatch(HEX))
     expect(Number.isNaN(t.primaryHue)).toBe(false)
     expect(t.fontMono.length).toBeGreaterThan(0)
+    expect(t.canvas).toMatch(HEX)
+    expect(t.nebula).toMatch(HEX)
+    expect(t.destructiveSolid).toMatch(HEX)
   })
 })
 

@@ -16,6 +16,9 @@ export interface GraphThemeTokens {
   primary: string
   ring: string
   destructive: string
+  destructiveSolid: string
+  canvas: string
+  nebula: string
   chart: string[]
   primaryHue: number
   isDark: boolean
@@ -37,6 +40,8 @@ const FALLBACK = {
   primary: { h: 217, s: 91, l: 60 },
   ring: { h: 217, s: 91, l: 60 },
   destructive: { h: 0, s: 84, l: 60 },
+  canvas: { h: 40, s: 33, l: 98 },
+  nebula: { h: 262, s: 70, l: 88 },
   chart: [
     { h: 217, s: 91, l: 60 },
     { h: 142, s: 71, l: 45 },
@@ -128,6 +133,9 @@ export function resolveGraphTokens(rootEl: HTMLElement): GraphThemeTokens {
     primary: primary.hex,
     ring: triplet("--ring", FALLBACK.ring).hex,
     destructive: triplet("--destructive", FALLBACK.destructive).hex,
+    destructiveSolid: triplet("--destructive-solid", FALLBACK.destructive).hex,
+    canvas: triplet("--graph-canvas", FALLBACK.canvas).hex,
+    nebula: triplet("--graph-nebula", FALLBACK.nebula).hex,
     chart,
     primaryHue: primary.hsl.h,
     isDark: background.hsl.l < 50,
@@ -295,6 +303,13 @@ const FALLBACK_TOKENS: GraphThemeTokens = {
   primary: hslToHex(FALLBACK.primary.h, FALLBACK.primary.s, FALLBACK.primary.l),
   ring: hslToHex(FALLBACK.ring.h, FALLBACK.ring.s, FALLBACK.ring.l),
   destructive: hslToHex(FALLBACK.destructive.h, FALLBACK.destructive.s, FALLBACK.destructive.l),
+  destructiveSolid: hslToHex(
+    FALLBACK.destructive.h,
+    FALLBACK.destructive.s,
+    FALLBACK.destructive.l,
+  ),
+  canvas: hslToHex(FALLBACK.canvas.h, FALLBACK.canvas.s, FALLBACK.canvas.l),
+  nebula: hslToHex(FALLBACK.nebula.h, FALLBACK.nebula.s, FALLBACK.nebula.l),
   chart: FALLBACK.chart.map((c) => hslToHex(c.h, c.s, c.l)),
   primaryHue: FALLBACK.primary.h,
   isDark: FALLBACK.background.l < 50,

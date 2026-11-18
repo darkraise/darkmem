@@ -48,6 +48,14 @@
 [data-mode="dark"] {
   --primary-text: hsl(var(--primary));
 }
+:root {
+  --graph-canvas: 40 33% 98%;
+  --graph-nebula: 262 70% 88%;
+}
+[data-mode="dark"] {
+  --graph-canvas: 258 35% 4%;
+  --graph-nebula: 266 75% 42%;
+}
 
 /* The app's one markdown treatment. Used by the chat transcript, the prompt
    viewer and the document reader through `components/markdown`.
