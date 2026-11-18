@@ -5,8 +5,8 @@
 
 | # | Item | Assigned | Acceptance | State | Note |
 |---|---|---|---|---|---|
-| 1 | change the memory graph layout and render | docs/dforge/plans/2026-11-18-constellation-graphs.md | A1-A13, A15-A17, A21-A24 | doing | - |
-| 2 | also code layout | docs/dforge/plans/2026-11-18-constellation-graphs.md | A1-A9, A11, A14, A18-A20 | doing | - |
+| 1 | change the memory graph layout and render | docs/dforge/plans/2026-11-18-constellation-graphs.md | A1-A13, A15-A17, A21-A24 | done | plan complete 2026-11-18: final review clean, UI proof ship 51698444ee69244a (0e27bc8a), acceptance 30/30 green at HEAD |
+| 2 | also code layout | docs/dforge/plans/2026-11-18-constellation-graphs.md | A1-A9, A11, A14, A18-A20 | done | plan complete 2026-11-18: final review clean, UI proof ship 51698444ee69244a (0e27bc8a), acceptance 30/30 green at HEAD |
 | 3 | measure the core/satellite/halo split on the 192.168.0.199 corpus and tune CORE_MIN, CORE_K and HALO_C | - | - | deferred | no vectors reachable from this host; local prod holds 0 memories (dump 2026-11-18) |
 | 4 | owner ruling on UI-2's density deviation: in the dark theme, a role whose discs overlap past what the additive pass can sum is dimmed and, below a floor, drawn smaller | - | - | deferred | final review 2026-11-18: shipped to keep community colour visible at 20k nodes (proof UI-2 row); the contract still states fixed role brightness; the owner rules, and the 20k halo brightness goes with register row 3 |
 | 5 | final review residual: no test asserts the memory renderer's one-frame deferred runner.start() (graph-2d-renderer.tsx); the acceptance harness's fake requestAnimationFrame could assert no new FA2 worker before the next frame | - | - | deferred | final review residual (ruling fr-2): plan ruling A8 accepted the coverage loss; A23 measures the deferral's effect |
