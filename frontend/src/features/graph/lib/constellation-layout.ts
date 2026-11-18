@@ -3,6 +3,7 @@ import { seededUnit } from "./code-graph-theme"
 export type ConstellationRole = "core" | "satellite" | "halo"
 
 export const CORE_MIN = 8
+export const CORE_SHARE = 0.45
 export const SATELLITE_RING_START = 1.15
 export const HALO_MIN_OUTER = 2.6
 export const ROLE_BRIGHTNESS: Record<ConstellationRole, number> = {
@@ -21,6 +22,17 @@ const TAU = Math.PI * 2
 export interface ConstellationEdge {
   source: string
   target: string
+}
+
+export interface ScoredEdge {
+  source: string
+  target: string
+  score?: number
+}
+
+export interface Attachment {
+  id: string
+  linked: readonly string[]
 }
 
 export interface Point {
@@ -141,6 +153,99 @@ export function classify(
       .map((i) => ids[i]!),
   )
   return { role, core, satellites, halo, degree }
+}
+
+export function roleCut(
+  nodeIds: readonly string[],
+  edges: readonly ScoredEdge[],
+  share: number = CORE_SHARE,
+): number {
+  const index = new Map<string, number>()
+  for (const id of nodeIds) if (!index.has(id)) index.set(id, index.size)
+  const n = index.size
+  const parent = new Int32Array(n)
+  const size = new Int32Array(n)
+  for (let i = 0; i < n; i++) {
+    parent[i] = i
+    size[i] = 1
+  }
+  const find = (i: number): number => {
+    while (parent[i] !== i) {
+      parent[i] = parent[parent[i]!]!
+      i = parent[i]!
+    }
+    return i
+  }
+  const big = (s: number) => (s >= CORE_MIN ? s : 0)
+  let inCore = 0
+  const union = (source: string, target: string) => {
+    const a = index.get(source)
+    const b = index.get(target)
+    if (a === undefined || b === undefined || a === b) return
+    const ra = find(a)
+    const rb = find(b)
+    if (ra === rb) return
+    inCore -= big(size[ra]!) + big(size[rb]!)
+    parent[ra] = rb
+    size[rb]! += size[ra]!
+    inCore += big(size[rb]!)
+  }
+
+  const scored: { source: string; target: string; score: number }[] = []
+  for (const e of edges) {
+    if (typeof e.score === "number") scored.push(e as { source: string; target: string; score: number })
+    else union(e.source, e.target)
+  }
+  if (scored.length === 0) return -Infinity
+  scored.sort((a, b) => b.score - a.score)
+
+  const limit = share * nodeIds.length
+  let cut = scored[0]!.score
+  let i = 0
+  while (i < scored.length) {
+    const score = scored[i]!.score
+    let j = i
+    while (j < scored.length && scored[j]!.score === score) {
+      union(scored[j]!.source, scored[j]!.target)
+      j++
+    }
+    if (i > 0 && inCore > limit) break
+    cut = score
+    i = j
+  }
+  return cut
+}
+
+export function classifyWithCut(
+  nodeIds: readonly string[],
+  edges: readonly ScoredEdge[],
+  attachments: readonly Attachment[] = [],
+  share: number = CORE_SHARE,
+): Classification & { cut: number } {
+  const cut = roleCut(nodeIds, edges, share)
+  const kept = edges.filter((e) => typeof e.score !== "number" || e.score >= cut)
+  const c = classify(nodeIds, kept)
+  const satelliteGroup = new Map<string, string[]>()
+  for (const g of c.satellites) for (const id of g) satelliteGroup.set(id, g)
+  const memberRole = new Map(c.role)
+  for (const a of attachments) {
+    let best: ConstellationRole = "halo"
+    let anchor: string | null = null
+    for (const id of a.linked) {
+      const r = memberRole.get(id)
+      if (r === "core") best = "core"
+      else if (r === "satellite" && best !== "core") {
+        best = "satellite"
+        if (anchor === null || id < anchor) anchor = id
+      }
+    }
+    c.role.set(a.id, best)
+    c.degree.set(a.id, a.linked.length)
+    if (best === "core") c.core.push(a.id)
+    else if (best === "satellite") satelliteGroup.get(anchor!)!.push(a.id)
+    else c.halo.push(a.id)
+  }
+  return { ...c, cut }
 }
 
 export function coreRadius(coreCount: number): number {

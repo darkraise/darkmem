@@ -4,6 +4,8 @@ import {
   coreRadius,
   fitCore,
   placeOuter,
+  roleCut,
+  classifyWithCut,
   CORE_MIN,
   HALO_MIN_OUTER,
   SATELLITE_RING_START,
@@ -235,3 +237,56 @@ describe("fitCore", () => {
   })
 })
 
+
+const ring = (p: string, n: number, score: number) =>
+  Array.from({ length: n }, (_, i) => ({ source: `${p}${i}`, target: `${p}${(i + 1) % n}`, score }))
+const named = (p: string, n: number) => Array.from({ length: n }, (_, i) => `${p}${i}`)
+
+describe("roleCut", () => {
+  it("A1: returns the lowest score that keeps 8+ components at or below 45% of nodes", () => {
+    const ids = [...named("a", 9), ...named("b", 11)]
+    const edges = [...ring("a", 9, 0.9), ...ring("b", 11, 0.8), { source: "a0", target: "b0", score: 0.7 }]
+    expect(roleCut(ids, edges)).toBe(0.9)
+  })
+  it("A1: adds equal scores together", () => {
+    const ids = [...named("a", 8), ...named("b", 8), ...named("z", 14)]
+    const edges = [...ring("a", 8, 0.85), ...ring("b", 8, 0.85), { source: "z0", target: "z1", score: 0.95 }]
+    expect(roleCut(ids, edges)).toBe(0.95)
+  })
+  it("A1: is the lowest score when every edge keeps the core at or below 45%", () => {
+    const ids = named("n", 40)
+    expect(roleCut(ids, [...ring("n", 8, 0.9), { source: "n20", target: "n21", score: 0.55 }])).toBe(0.55)
+  })
+  it("A1: keeps the highest score group even when it alone passes 45%", () => {
+    const ids = named("a", 10)
+    expect(roleCut(ids, [...ring("a", 9, 0.9), { source: "a8", target: "a9", score: 0.5 }])).toBe(0.9)
+  })
+  it("A1: is -Infinity when no edge carries a score", () => {
+    expect(roleCut(named("n", 4), [{ source: "n0", target: "n1" }])).toBe(-Infinity)
+  })
+  it("an edge without a score counts at every cut", () => {
+    const c = classifyWithCut(named("n", 20), [{ source: "n18", target: "n19" }, ...ring("n", 8, 0.9)])
+    expect(c.role.get("n18")).toBe("satellite")
+    expect(c.cut).toBe(0.9)
+  })
+  it("A4: an attachment takes the highest linked role and never changes a memory's role", () => {
+    const ids = [...named("c", 8), "s0", "s1", "h0", ...named("z", 10)]
+    const edges = [...ring("c", 8, 0.9), { source: "s0", target: "s1", score: 0.9 }]
+    const attachments = [
+      { id: "e:core", linked: ["h0", "c3"] },
+      { id: "e:sat", linked: ["s1", "h0"] },
+      { id: "e:halo", linked: ["h0"] },
+      { id: "e:bridge", linked: ["s0", "h0", "z1"] },
+      { id: "e:none", linked: ["missing"] },
+    ]
+    const c = classifyWithCut(ids, edges, attachments)
+    const plain = classifyWithCut(ids, edges)
+    expect(c.role.get("e:core")).toBe("core")
+    expect(c.core).toContain("e:core")
+    expect(c.role.get("e:sat")).toBe("satellite")
+    expect(c.satellites.find((g) => g.includes("s1"))).toContain("e:sat")
+    expect(c.role.get("e:halo")).toBe("halo")
+    expect(c.role.get("e:none")).toBe("halo")
+    for (const id of ids) expect(c.role.get(id)).toBe(plain.role.get(id))
+  })
+})
