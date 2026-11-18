@@ -453,7 +453,6 @@ export function RealCodeGraphView({
               }
               highlightCommunity={activeCommunity}
               processIds={processIds}
-              zoom={1}
             />
           </div>
           {colorBy === "community" && (

@@ -950,7 +950,6 @@ describe("code canvas keyboard", () => {
         blastIds={null}
         highlightCommunity={null}
         processIds={null}
-        zoom={1}
       />,
     )
     const group = screen.getByRole("group", { name: "Code graph — 3 nodes, 2 edges" })

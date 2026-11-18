@@ -160,7 +160,6 @@ function Harness({
         blastIds={blastIds}
         highlightCommunity={community}
         processIds={processIds}
-        zoom={1}
       />
     </div>
   )

@@ -61,7 +61,6 @@ const renderCanvas = (onSelect = vi.fn(), hiddenKinds?: ReadonlySet<"file">) =>
       blastIds={null}
       highlightCommunity={null}
       processIds={null}
-      zoom={1}
     />,
   )
 

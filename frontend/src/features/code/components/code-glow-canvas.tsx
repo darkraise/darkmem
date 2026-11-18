@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from
 import Graph from "graphology"
 import Sigma from "sigma"
 import { EdgeRectangleProgram } from "sigma/rendering"
-import type { NodeDisplayData } from "sigma/types"
+import type { CameraState, NodeDisplayData } from "sigma/types"
 import { EmptyState } from "@/components/darkmem"
 import type {
   CodeNodeKind,
@@ -46,14 +46,22 @@ export interface CodeGlowCanvasProps {
   blastIds: Set<string> | null
   highlightCommunity: string | null
   processIds: Set<string> | null
-  zoom: number // 1 = fitted view
+  /** A camera move asked for from outside the canvas (the demo host's zoom
+   *  buttons). A new object runs it once, against the live camera. */
+  cameraCommand?: CameraCommand | null
 }
 
-export type CanvasKeyAction =
+export type CameraAction =
   | { type: "zoom"; factor: number }
   | { type: "pan"; dx: number; dy: number }
   | { type: "fit" }
-  | { type: "clear" }
+  | { type: "focus" }
+
+export type CanvasKeyAction = Exclude<CameraAction, { type: "focus" }> | { type: "clear" }
+
+export interface CameraCommand {
+  action: CameraAction
+}
 
 const KEY_ACTIONS: Record<string, CanvasKeyAction> = {
   "+": { type: "zoom", factor: 1.25 },
@@ -164,6 +172,37 @@ function centreOn(sigma: Sigma, id: string) {
   else void sigma.getCamera().animate(target, { duration: CAMERA_MS })
 }
 
+/** Moves the live camera: keys and the host's buttons share this, so a
+ *  button always acts on where the reader is now. */
+function applyCameraAction(sigma: Sigma, action: CameraAction, selectedId: string | null) {
+  if (action.type === "focus") {
+    if (selectedId && sigma.getGraph().hasNode(selectedId)) centreOn(sigma, selectedId)
+    return
+  }
+  const camera = sigma.getCamera()
+  // sigma's animate divides by the duration, so 0 would yield NaN; reduced
+  // motion sets the end state directly instead.
+  const instant = prefersReducedMotion()
+  if (action.type === "zoom") {
+    if (instant) camera.setState({ ratio: camera.ratio / action.factor })
+    else if (action.factor > 1)
+      void camera.animatedZoom({ factor: action.factor, duration: CAMERA_MS })
+    else void camera.animatedUnzoom({ factor: 1 / action.factor, duration: CAMERA_MS })
+  } else if (action.type === "pan") {
+    const { width, height } = sigma.getDimensions()
+    const centre = sigma.viewportToFramedGraph({
+      x: width / 2 + action.dx * PAN_FRACTION * width,
+      y: height / 2 + action.dy * PAN_FRACTION * height,
+    })
+    if (instant) camera.setState({ x: centre.x, y: centre.y })
+    else void camera.animate({ x: centre.x, y: centre.y }, { duration: CAMERA_MS })
+  } else if (instant) {
+    camera.setState({ x: 0.5, y: 0.5, ratio: 1, angle: 0 })
+  } else {
+    void camera.animatedReset({ duration: CAMERA_MS })
+  }
+}
+
 function drawOutlinedText(
   ctx: CanvasRenderingContext2D,
   text: string,
@@ -192,7 +231,7 @@ export function CodeGlowCanvas({
   blastIds,
   highlightCommunity,
   processIds,
-  zoom,
+  cameraCommand,
 }: CodeGlowCanvasProps) {
   const tokens = useGraphThemeTokens()
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -202,7 +241,14 @@ export function CodeGlowCanvas({
   // A node chosen while the core still settles keeps moving, so the camera
   // follows it until the run ends or the reader moves the camera.
   const followRef = useRef(false)
-  const zoomRef = useRef(zoom)
+  // A canvas click already has the node under the pointer; only a pick made
+  // elsewhere (explorer, deep link) moves the camera to it.
+  const clickedRef = useRef<string | null>(null)
+  // Settled positions and the camera survive a rebuild (recolour, theme,
+  // hidden kinds, a narrowed search), so nodes still drawn stay put.
+  const positionsRef = useRef(new Map<string, { x: number; y: number }>())
+  const cameraStateRef = useRef<{ nodes: string; state: CameraState } | null>(null)
+  const settledRef = useRef(false)
   const [webglFailed, setWebglFailed] = useState(false)
 
   const tokensRef = useRef(tokens)
@@ -231,11 +277,13 @@ export function CodeGlowCanvas({
       degree.set(e.source, (degree.get(e.source) ?? 0) + 1)
       degree.set(e.target, (degree.get(e.target) ?? 0) + 1)
     }
+    const settled = positionsRef.current
     for (const n of nodes) {
       if (g.hasNode(n.id)) continue
+      const seen = settled.get(n.id)
       g.addNode(n.id, {
-        x: seededUnit(n.id, 1) * 100,
-        y: seededUnit(n.id, 2) * 100,
+        x: seen?.x ?? seededUnit(n.id, 1) * 100,
+        y: seen?.y ?? seededUnit(n.id, 2) * 100,
         size: 3 + 0.5 * Math.min(degree.get(n.id) ?? 0, 12),
         color: codeNodeColor(n, colorBy, graph.communities, t.chart),
         type: "glow",
@@ -264,6 +312,7 @@ export function CodeGlowCanvas({
       layoutMs: scale.layoutMs,
       onStop: () => {
         followRef.current = false
+        settledRef.current = true
       },
       fa2Settings: constellationFa2Settings(g, scale),
     })
@@ -355,7 +404,10 @@ export function CodeGlowCanvas({
       sigma.refresh()
     }
     sigma.getCamera().on("updated", onCameraUpdated)
-    sigma.on("clickNode", ({ node }) => onSelectRef.current(node))
+    sigma.on("clickNode", ({ node }) => {
+      clickedRef.current = node
+      onSelectRef.current(node)
+    })
     sigma.on("clickStage", () => onSelectRef.current(null))
 
     const overlay = document.createElement("canvas")
@@ -427,9 +479,25 @@ export function CodeGlowCanvas({
       sigma.on(event, stopFollowing)
     }
     runnerRef.current = runner
-    runner.start()
+    const nodeSig = g.nodes().sort().join("\n")
+    const kept = cameraStateRef.current
+    if (kept && kept.nodes === nodeSig && settledRef.current) {
+      // The same nodes, already settled: nothing to arrange, and the reader's
+      // view stays where it was.
+      sigma.getCamera().setState(kept.state)
+    } else {
+      settledRef.current = false
+      runner.start()
+    }
 
     return () => {
+      g.forEachNode((id, attrs) => {
+        const x = attrs.x as number
+        const y = attrs.y as number
+        if (Number.isFinite(x) && Number.isFinite(y)) settled.set(id, { x, y })
+      })
+      const c = sigma.getCamera()
+      cameraStateRef.current = { nodes: nodeSig, state: { x: c.x, y: c.y, ratio: c.ratio, angle: c.angle } }
       stopMotion()
       detachBackdrop()
       runner.kill()
@@ -451,21 +519,19 @@ export function CodeGlowCanvas({
     const sigma = sigmaRef.current
     if (!sigma) return
     sigma.refresh()
-    if (!selectedId || !sigma.getGraph().hasNode(selectedId)) return
+    const clicked = clickedRef.current
+    clickedRef.current = null
+    if (!selectedId || !sigma.getGraph().hasNode(selectedId) || clicked === selectedId) return
     centreOn(sigma, selectedId)
     followRef.current = runnerRef.current?.isRunning() ?? false
   }, [selectedId])
 
   useEffect(() => {
     const sigma = sigmaRef.current
-    // Only a change moves the camera: on mount this would cancel the move to
-    // a node selected from the start.
-    if (!sigma || zoomRef.current === zoom) return
-    zoomRef.current = zoom
-    const target = { ratio: 1 / zoom }
-    if (prefersReducedMotion()) sigma.getCamera().setState(target)
-    else void sigma.getCamera().animate(target, { duration: CAMERA_MS })
-  }, [zoom])
+    if (!sigma || !cameraCommand) return
+    followRef.current = false
+    applyCameraAction(sigma, cameraCommand.action, emphasisRef.current.selectedId)
+  }, [cameraCommand])
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const action = canvasKeyAction(event.key)
@@ -478,31 +544,7 @@ export function CodeGlowCanvas({
     }
     const sigma = sigmaRef.current
     if (!sigma) return
-    const camera = sigma.getCamera()
-    // sigma's animate divides by the duration, so 0 would yield NaN; reduced
-    // motion sets the end state directly instead.
-    const instant = prefersReducedMotion()
-    const move = (state: { x?: number; y?: number; ratio?: number; angle?: number }) => {
-      if (instant) camera.setState(state)
-      else void camera.animate(state, { duration: CAMERA_MS })
-    }
-    if (action.type === "zoom") {
-      if (instant) camera.setState({ ratio: camera.ratio / action.factor })
-      else if (action.factor > 1)
-        void camera.animatedZoom({ factor: action.factor, duration: CAMERA_MS })
-      else void camera.animatedUnzoom({ factor: 1 / action.factor, duration: CAMERA_MS })
-    } else if (action.type === "pan") {
-      const { width, height } = sigma.getDimensions()
-      const centre = sigma.viewportToFramedGraph({
-        x: width / 2 + action.dx * PAN_FRACTION * width,
-        y: height / 2 + action.dy * PAN_FRACTION * height,
-      })
-      move({ x: centre.x, y: centre.y })
-    } else if (instant) {
-      camera.setState({ x: 0.5, y: 0.5, ratio: 1, angle: 0 })
-    } else {
-      void camera.animatedReset({ duration: CAMERA_MS })
-    }
+    applyCameraAction(sigma, action, selectedId)
   }
 
   return (

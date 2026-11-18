@@ -64,7 +64,7 @@ import {
 import type { CodeNodeKind } from "@/features/code/types"
 import type { DemoRepo } from "@/demo/types"
 import { chartVar } from "./code-canvas"
-import { CodeGlowCanvas } from "./code-glow-canvas"
+import { CodeGlowCanvas, type CameraAction, type CameraCommand } from "./code-glow-canvas"
 import { CodeExplorer } from "./code-explorer"
 import { CodeFilters } from "./code-filters"
 import {
@@ -125,7 +125,7 @@ export function CodeGraphTab({
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [colorBy, setColorBy] = useState<"community" | "kind">("community")
   const [depth, setDepth] = useState<DepthValue>("all")
-  const [zoom, setZoom] = useState(1)
+  const [cameraCommand, setCameraCommand] = useState<CameraCommand | null>(null)
   const [blast, setBlast] = useState<BlastRadius | null>(null)
   const [activeCommunity, setActiveCommunity] = useState<string | null>(null)
   const [activeProcess, setActiveProcess] = useState<string | null>(null)
@@ -177,7 +177,7 @@ export function CodeGraphTab({
     setBlast(null)
     setActiveCommunity(null)
     setActiveProcess(null)
-    setZoom(1)
+    setCameraCommand(null)
     setDepth("all")
     setOpenFiles([])
     setHiddenKinds(new Set())
@@ -256,9 +256,9 @@ export function CodeGraphTab({
       prev.map((f) => (f.path === path ? { ...f, ...patch } : f)),
     )
 
-  // The canvas centres on the selected node itself; focusing only zooms in.
+  const moveCamera = (action: CameraAction) => setCameraCommand({ action })
   const focusSelected = () => {
-    if (selectedId) setZoom(1.6)
+    if (selectedId) moveCamera({ type: "focus" })
   }
 
   const copyMermaid = (text: string) => {
@@ -431,7 +431,7 @@ export function CodeGraphTab({
               size="icon"
               className="h-7 w-7"
               aria-label="Zoom in"
-              onClick={() => setZoom((z) => Math.min(z * 1.25, 3))}
+              onClick={() => moveCamera({ type: "zoom", factor: 1.25 })}
             >
               <ZoomIn aria-hidden className="h-3.5 w-3.5" />
             </Button>
@@ -440,7 +440,7 @@ export function CodeGraphTab({
               size="icon"
               className="h-7 w-7"
               aria-label="Zoom out"
-              onClick={() => setZoom((z) => Math.max(z / 1.25, 0.6))}
+              onClick={() => moveCamera({ type: "zoom", factor: 0.8 })}
             >
               <ZoomOut aria-hidden className="h-3.5 w-3.5" />
             </Button>
@@ -449,7 +449,7 @@ export function CodeGraphTab({
               size="icon"
               className="h-7 w-7"
               aria-label="Fit to view"
-              onClick={() => setZoom(1)}
+              onClick={() => moveCamera({ type: "fit" })}
             >
               <Maximize aria-hidden className="h-3.5 w-3.5" />
             </Button>
@@ -642,7 +642,7 @@ export function CodeGraphTab({
               blastIds={blast ? new Set(blast.affected.map((a) => a.id)) : null}
               highlightCommunity={activeCommunity}
               processIds={processIds}
-              zoom={zoom}
+              cameraCommand={cameraCommand}
             />
           </div>
           {openFiles
