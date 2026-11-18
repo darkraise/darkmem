@@ -34,7 +34,7 @@ vi.mock("graphology-layout-forceatlas2/worker", () => ({
 }))
 
 import { constellationFa2Settings, createConstellationRunner } from "../constellation-runner"
-import { classify, CORE_MIN, placeOuterRing, ROLE_BRIGHTNESS } from "../constellation-layout"
+import { classify, CORE_MIN, HALO_SIZE, placeOuterRing, ROLE_BRIGHTNESS } from "../constellation-layout"
 
 function buildGraph() {
   const g = new Graph()
@@ -205,6 +205,24 @@ describe("runner roles", () => {
     g.forEachEdge((_e, _a, source, target) => edges.push({ source, target }))
     const runner = createConstellationRunner(g, { layoutMs: 10, fa2Settings: {} })
     expect(runner.outer).toEqual(placeOuterRing(classify(g.nodes(), edges), runner.coreRadius))
+  })
+
+  it("UI-3: the code canvas's halo shrinks to 40% of the median core size", () => {
+    const { g } = build(false)
+    for (let i = 0; i < 8; i++) g.setNodeAttribute(`c${i}`, "size", 2)
+    createConstellationRunner(g, { layoutMs: 10, fa2Settings: {} })
+    for (let i = 1; i < 9; i++) expect(g.getNodeAttribute(`h${i}`, "size")).toBeCloseTo(0.8)
+    expect(g.getNodeAttribute("c0", "size")).toBe(2)
+  })
+
+  it("UI-3: with no core the halo takes HALO_SIZE", () => {
+    const { g, ids } = build(true)
+    createConstellationRunner(g, {
+      layoutMs: 10,
+      fa2Settings: {},
+      roles: { nodeIds: ids, edges: [], attachments: [] },
+    })
+    for (const id of ids) expect(g.getNodeAttribute(id, "size")).toBe(HALO_SIZE)
   })
 
   it("UX-1: the memory core runs LinLog without strong gravity; the code canvas keeps its forces", () => {

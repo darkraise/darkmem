@@ -139,6 +139,29 @@ describe("placeOuter", () => {
     expect(out.haloInner).toBeGreaterThanOrEqual(out.satelliteOuter)
   })
 
+  it("placeOuter: steps a clump outward when every candidate in the band is taken", () => {
+    const core = ids("c", 8)
+    const sats = Array.from({ length: 60 }, (_, k) => ids(`s${k}_`, 7))
+    const c = classify([...core, ...sats.flat()], [...chain(core), ...sats.flatMap(chain)])
+    const R = coreRadius(c.core.length)
+    const out = placeOuter(c, R)
+    expect(out.satelliteOuter).toBeGreaterThan(SATELLITE_BAND * R)
+    const discs = c.satellites.map((members) => {
+      const pts = members.map((id) => out.positions.get(id)!)
+      for (const p of pts) expect(dist(p)).toBeGreaterThan(SATELLITE_RING_START * R)
+      const cx = pts.reduce((t, p) => t + p.x, 0) / pts.length
+      const cy = pts.reduce((t, p) => t + p.y, 0) / pts.length
+      return { cx, cy, r: Math.max(...pts.map((p) => Math.hypot(p.x - cx, p.y - cy))) }
+    })
+    for (let i = 0; i < discs.length; i++) {
+      for (let j = i + 1; j < discs.length; j++) {
+        const a = discs[i]!
+        const b = discs[j]!
+        expect(Math.hypot(a.cx - b.cx, a.cy - b.cy)).toBeGreaterThan(a.r + b.r)
+      }
+    }
+  })
+
   for (const place of [placeOuter, placeOuterRing]) {
     it(`${place.name}: never overlaps two satellite clumps`, () => {
       const { c, R } = scene()
