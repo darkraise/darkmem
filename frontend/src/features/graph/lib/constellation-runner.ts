@@ -90,7 +90,12 @@ export function createConstellationRunner(
     graph.updateEachNodeAttributes(
       (id, attrs) => {
         const p = fitted.get(id)
-        return p ? { ...attrs, x: p.x, y: p.y } : attrs
+        // In place: a copy per core node per frame is garbage at 20k nodes.
+        if (p) {
+          attrs.x = p.x
+          attrs.y = p.y
+        }
+        return attrs
       },
       { attributes: ["x", "y"] },
     )
