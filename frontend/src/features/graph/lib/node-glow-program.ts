@@ -2,11 +2,91 @@ import { NodeCircleProgram } from "sigma/rendering"
 import type { NodeProgramType, ProgramInfo } from "sigma/rendering"
 import { floatColor } from "sigma/utils"
 import type { NodeDisplayData, RenderParams } from "sigma/types"
+import type Sigma from "sigma"
+import { CLUMP_R0, CORE_K, type Classification } from "./constellation-layout"
 
 export const GLOW_SPREAD = 3
 
 export interface GlowClock {
   time: number
+  /** Per-role light and disc-size multipliers for the additive pass. */
+  coreGain?: number
+  coreScale?: number
+  satelliteGain?: number
+  satelliteScale?: number
+}
+
+/** Discs covering each pixel, on average, that the additive pass can sum
+ *  before colour clips toward white. */
+export const COVERAGE_TARGET = 0.45
+/** Below this a fragment's light rounds away in an 8-bit framebuffer while
+ *  thousands of overlapping glows still sum to white. */
+export const GAIN_FLOOR = 0.1
+const MIN_RADIUS_PX = 1
+
+/**
+ * The additive pass sums every overlapping disc and glow, so a wide view of a
+ * dense role clips to white and loses its community colours. Coverage is the
+ * disc radius over the role's node spacing, never deeper than the role's
+ * group. The role's light is scaled to keep the sum near its colours; where
+ * that would take it below GAIN_FLOOR, its discs shrink (all alike, so
+ * relative sizes hold) until the floor suffices. Zooming in restores both.
+ */
+export function densityStyle(
+  nodeRadiusPx: number,
+  spacingPx: number,
+  maxOverlap: number,
+): { gain: number; scale: number } {
+  if (spacingPx <= 0 || nodeRadiusPx <= 0) return { gain: 1, scale: 1 }
+  const coverage = (r: number) => Math.min(maxOverlap, (r * r) / (spacingPx * spacingPx))
+  const gainFor = (c: number) => (c <= COVERAGE_TARGET ? 1 : COVERAGE_TARGET / c)
+  if (gainFor(coverage(nodeRadiusPx)) >= GAIN_FLOOR) {
+    return { gain: gainFor(coverage(nodeRadiusPx)), scale: 1 }
+  }
+  const shrunk = Math.min(
+    nodeRadiusPx,
+    Math.max(MIN_RADIUS_PX, spacingPx * Math.sqrt(COVERAGE_TARGET / GAIN_FLOOR)),
+  )
+  return { gain: gainFor(coverage(shrunk)), scale: shrunk / nodeRadiusPx }
+}
+
+interface SizedGraph {
+  getNodeAttribute(id: string, name: string): unknown
+}
+
+function meanSize(graph: SizedGraph, ids: readonly string[]): number {
+  let sum = 0
+  for (const id of ids) sum += graph.getNodeAttribute(id, "size") as number
+  return ids.length ? sum / ids.length : 0
+}
+
+/** Keeps the clock's per-role style current: sigma emits beforeRender ahead
+ *  of every draw, after any camera move. */
+export function trackDensityGain(
+  sigma: Pick<Sigma, "on" | "graphToViewport" | "scaleSize">,
+  graph: SizedGraph,
+  classification: Pick<Classification, "core" | "satellites">,
+  clock: GlowClock,
+): void {
+  const coreSize = meanSize(graph, classification.core)
+  const satelliteMembers = classification.satellites.flat()
+  const satelliteSize = meanSize(graph, satelliteMembers)
+  const clump = satelliteMembers.length / Math.max(1, classification.satellites.length)
+  sigma.on("beforeRender", () => {
+    const o = sigma.graphToViewport({ x: 0, y: 0 })
+    const e = sigma.graphToViewport({ x: 1000, y: 0 })
+    const pxPerUnit = Math.hypot(e.x - o.x, e.y - o.y) / 1000
+    const core = densityStyle(
+      sigma.scaleSize(coreSize),
+      CORE_K * pxPerUnit,
+      classification.core.length,
+    )
+    const satellite = densityStyle(sigma.scaleSize(satelliteSize), CLUMP_R0 * pxPerUnit, clump)
+    clock.coreGain = core.gain
+    clock.coreScale = core.scale
+    clock.satelliteGain = satellite.gain
+    clock.satelliteScale = satellite.scale
+  })
 }
 
 const VERTEX_SHADER = /* glsl */ `
@@ -22,6 +102,10 @@ uniform mat3 u_matrix;
 uniform float u_sizeRatio;
 uniform float u_correctionRatio;
 uniform float u_time;
+uniform float u_coreGain;
+uniform float u_coreScale;
+uniform float u_satelliteGain;
+uniform float u_satelliteScale;
 
 varying vec4 v_color;
 varying vec2 v_diffVector;
@@ -35,6 +119,10 @@ const float TAU = 6.283185307179586;
 
 void main() {
   float radius = a_size * u_correctionRatio / u_sizeRatio * 2.0;
+  #ifndef LIGHT_MODE
+  if (a_brightness > 0.9) radius *= u_coreScale;
+  else if (a_brightness > 0.5) radius *= u_satelliteScale;
+  #endif
   float outer = radius * SPREAD;
   // The triangle's incircle is half its circumradius, so the vertices sit at
   // twice the glow radius for the whole falloff to fit inside it.
@@ -49,6 +137,9 @@ void main() {
   float brightness = a_brightness;
   #ifdef LIGHT_MODE
   if (a_brightness < 0.5) brightness = 0.55;
+  #else
+  if (a_brightness > 0.9) brightness *= u_coreGain;
+  else if (a_brightness > 0.5) brightness *= u_satelliteGain;
   #endif
   if (a_brightness < 0.5) {
     float period = 3.0 + 4.0 * a_phase;
@@ -124,7 +215,7 @@ export function createNodeGlowProgram(opts: {
         FRAGMENT_SHADER_SOURCE: prefix + FRAGMENT_SHADER,
         // The base class pins its uniform list as a tuple type; sigma reads the
         // array at runtime, so the extra entry only needs to get past the type.
-        UNIFORMS: [...def.UNIFORMS, "u_time"] as unknown as typeof def.UNIFORMS,
+        UNIFORMS: [...def.UNIFORMS, "u_time", "u_coreGain", "u_coreScale", "u_satelliteGain", "u_satelliteScale"] as unknown as typeof def.UNIFORMS,
         // processVisibleItem writes the interleaved array in exactly this order.
         ATTRIBUTES: [
           { name: "a_position", size: 2, type: FLOAT },
@@ -154,6 +245,10 @@ export function createNodeGlowProgram(opts: {
       super.setUniforms(params, info)
       const locations = info.uniformLocations as Record<string, WebGLUniformLocation>
       info.gl.uniform1f(locations.u_time!, clock.time)
+      info.gl.uniform1f(locations.u_coreGain!, clock.coreGain ?? 1)
+      info.gl.uniform1f(locations.u_satelliteGain!, clock.satelliteGain ?? 1)
+      info.gl.uniform1f(locations.u_coreScale!, clock.coreScale ?? 1)
+      info.gl.uniform1f(locations.u_satelliteScale!, clock.satelliteScale ?? 1)
     }
 
     renderProgram(params: RenderParams, info: ProgramInfo) {

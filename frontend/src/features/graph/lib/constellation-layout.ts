@@ -11,8 +11,8 @@ export const ROLE_BRIGHTNESS: Record<ConstellationRole, number> = {
   halo: 0.45,
 }
 
-const CORE_K = 10
-const CLUMP_R0 = 3
+export const CORE_K = 10
+export const CLUMP_R0 = 3
 const HALO_GAP = 0.25
 const HALO_C = 6
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))

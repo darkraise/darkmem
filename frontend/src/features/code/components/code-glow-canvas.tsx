@@ -22,7 +22,11 @@ import {
   createConstellationRunner,
   type ConstellationRunner,
 } from "@/features/graph/lib/constellation-runner"
-import { createNodeGlowProgram, type GlowClock } from "@/features/graph/lib/node-glow-program"
+import {
+  createNodeGlowProgram,
+  trackDensityGain,
+  type GlowClock,
+} from "@/features/graph/lib/node-glow-program"
 import {
   attachBackdrop,
   coreOnScreen,
@@ -357,6 +361,10 @@ export function CodeGlowCanvas({
       canvas: t.canvas,
       nebula: t.nebula,
       isDark: t.isDark,
+    trackDensityGain(sigma, g, runner.classification, clockRef.current)
+    // The constructor's synchronous first frame ran before this handler.
+    sigma.scheduleRender()
+
     })
     const stopMotion = startAmbientMotion({
       nodeCount: g.order,

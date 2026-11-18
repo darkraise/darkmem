@@ -35,7 +35,11 @@ import {
   createConstellationRunner,
   type ConstellationRunner,
 } from "@/features/graph/lib/constellation-runner"
-import { createNodeGlowProgram, type GlowClock } from "@/features/graph/lib/node-glow-program"
+import {
+  createNodeGlowProgram,
+  trackDensityGain,
+  type GlowClock,
+} from "@/features/graph/lib/node-glow-program"
 import {
   attachBackdrop,
   coreOnScreen,
@@ -811,6 +815,10 @@ export function Graph2DRenderer({
 
     sigma.on("afterRender", drawHulls)
     sigma.on("kill", () => hullCanvas.remove())
+
+    trackDensityGain(sigma, graph, runner.classification, clockRef.current)
+    // The constructor's synchronous first frame ran before this handler.
+    sigma.scheduleRender()
 
     const detachBackdrop = attachBackdrop(
       sigma,

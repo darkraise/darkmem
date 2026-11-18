@@ -96,3 +96,36 @@ describe("node glow program", () => {
   })
 })
 
+
+describe("densityStyle", () => {
+  const style = async (r: number, s: number, max: number) =>
+    (await import("../node-glow-program")).densityStyle(r, s, max)
+
+  it("leaves a sparse role at full light and size", async () => {
+    expect(await style(2, 10, 500)).toEqual({ gain: 1, scale: 1 })
+  })
+
+  it("dims a dense role so its summed coverage stays at the target", async () => {
+    const { COVERAGE_TARGET } = await import("../node-glow-program")
+    const { gain, scale } = await style(4, 2, 500)
+    expect(scale).toBe(1)
+    expect(gain * 4).toBeCloseTo(COVERAGE_TARGET)
+  })
+
+  it("never assumes more overlap than the role's group holds", async () => {
+    const { COVERAGE_TARGET } = await import("../node-glow-program")
+    expect((await style(40, 1, 3)).gain).toBeCloseTo(COVERAGE_TARGET / 3)
+  })
+
+  it("shrinks the discs rather than dimming below the floor", async () => {
+    const { GAIN_FLOOR } = await import("../node-glow-program")
+    const { gain, scale } = await style(12, 0.76, 19000)
+    expect(gain).toBeCloseTo(GAIN_FLOOR)
+    expect(scale).toBeLessThan(0.2)
+  })
+
+  it("never shrinks a disc below one pixel", async () => {
+    const { scale } = await style(10, 0.1, 19000)
+    expect(scale * 10).toBeCloseTo(1)
+  })
+})
