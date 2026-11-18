@@ -61,6 +61,45 @@ interface SizedGraph {
   getNodeAttribute(id: string, name: string): unknown
 }
 
+/**
+ * The spacing, in graph units, that the densest 2% of nodes see, never above
+ * CORE_K. The memory core's weak gravity and percentile fit pack it into
+ * lobes and near-coincident stacks far denser than an even disc, and the
+ * additive pass clips to white wherever they are densest. Cells are sized to
+ * the disc, and a second grid offset by half a cell keeps a stack on a cell
+ * edge from being split.
+ */
+export function localSpacing(graph: SizedGraph, ids: readonly string[], cell: number): number {
+  if (ids.length === 0 || !(cell > 0)) return CORE_K
+  const xs = new Float64Array(ids.length)
+  const ys = new Float64Array(ids.length)
+  ids.forEach((id, i) => {
+    xs[i] = graph.getNodeAttribute(id, "x") as number
+    ys[i] = graph.getNodeAttribute(id, "y") as number
+  })
+  let dense = 1
+  for (const shift of [0, cell / 2]) {
+    const cells = new Map<string, number>()
+    for (let i = 0; i < ids.length; i++) {
+      const key = `${Math.floor((xs[i]! + shift) / cell)},${Math.floor((ys[i]! + shift) / cell)}`
+      cells.set(key, (cells.get(key) ?? 0) + 1)
+    }
+    // Nodes per occupancy, read from the top until 2% of nodes are covered.
+    const byCount = new Map<number, number>()
+    for (const c of cells.values()) byCount.set(c, (byCount.get(c) ?? 0) + c)
+    const target = 0.02 * ids.length
+    let seen = 0
+    for (const c of [...byCount.keys()].sort((a, b) => b - a)) {
+      seen += byCount.get(c)!
+      if (seen >= target) {
+        dense = Math.max(dense, c)
+        break
+      }
+    }
+  }
+  return dense <= 1 ? CORE_K : Math.min(CORE_K, cell / Math.sqrt(dense))
+}
+
 function meanSize(graph: SizedGraph, ids: readonly string[]): number {
   let sum = 0
   for (const id of ids) sum += graph.getNodeAttribute(id, "size") as number
@@ -75,6 +114,7 @@ export function trackDensityGain(
   classification: Pick<Classification, "core" | "satellites" | "halo">,
   clock: GlowClock,
   outer?: Pick<OuterLayout, "haloInner" | "haloOuter">,
+  measureCore = false,
 ): void {
   const coreSize = meanSize(graph, classification.core)
   const satelliteMembers = classification.satellites.flat()
@@ -90,9 +130,13 @@ export function trackDensityGain(
     const o = sigma.graphToViewport({ x: 0, y: 0 })
     const e = sigma.graphToViewport({ x: 1000, y: 0 })
     const pxPerUnit = Math.hypot(e.x - o.x, e.y - o.y) / 1000
+    const coreRadiusPx = sigma.scaleSize(coreSize)
+    const coreSpacing = measureCore
+      ? localSpacing(graph, classification.core, (2 * coreRadiusPx) / pxPerUnit)
+      : CORE_K
     const core = densityStyle(
-      sigma.scaleSize(coreSize),
-      CORE_K * pxPerUnit,
+      coreRadiusPx,
+      coreSpacing * pxPerUnit,
       classification.core.length,
     )
     const satellite = densityStyle(
@@ -106,7 +150,7 @@ export function trackDensityGain(
     clock.satelliteGain = satellite.gain
     clock.satelliteScale = satellite.scale
     if (haloSpacing > 0) {
-      const halo = densityStyle(sigma.scaleSize(haloSize), haloSpacing * pxPerUnit, 1)
+      const halo = densityStyle(sigma.scaleSize(haloSize), haloSpacing * pxPerUnit, haloCount)
       clock.haloGain = halo.gain
       clock.haloScale = halo.scale
     }

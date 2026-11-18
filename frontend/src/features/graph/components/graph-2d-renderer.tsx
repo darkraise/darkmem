@@ -856,7 +856,19 @@ export function Graph2DRenderer({
     sigma.on("afterRender", drawHulls)
     sigma.on("kill", () => hullCanvas.remove())
 
-    trackDensityGain(sigma, graph, runner.classification, clockRef.current, runner.outer)
+    // Entity diamonds draw through their own program, not the glow pass.
+    const attached = new Set(attachments.map((a) => a.id))
+    trackDensityGain(
+      sigma,
+      graph,
+      {
+        ...runner.classification,
+        halo: runner.classification.halo.filter((id) => !attached.has(id)),
+      },
+      clockRef.current,
+      runner.outer,
+      true,
+    )
     // The constructor's synchronous first frame ran before this handler.
     sigma.scheduleRender()
 

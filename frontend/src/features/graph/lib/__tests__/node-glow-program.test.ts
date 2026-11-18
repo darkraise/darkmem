@@ -137,6 +137,65 @@ describe("densityStyle", () => {
   })
 })
 
+describe("core density", () => {
+  const points = (n: number, spread: number) => {
+    const pos = new Map<string, { x: number; y: number }>()
+    for (let i = 0; i < n; i++) {
+      const a = i * 2.399963
+      const r = spread * Math.sqrt((i + 0.5) / n)
+      pos.set(`c${i}`, { x: r * Math.cos(a), y: r * Math.sin(a) })
+    }
+    return pos
+  }
+  const graphOf = (pos: Map<string, { x: number; y: number }>) => ({
+    getNodeAttribute: (id: string, name: string) =>
+      name === "size" ? 6 : pos.get(id)![name as "x" | "y"],
+  })
+
+  it("reads an even core at CORE_K and a packed lobe at its own spacing", async () => {
+    const { localSpacing } = await import("../node-glow-program")
+    const { CORE_K, coreRadius } = await import("../constellation-layout")
+    const even = points(400, coreRadius(400))
+    expect(localSpacing(graphOf(even), [...even.keys()], 12)).toBe(CORE_K)
+    const lobe = points(400, coreRadius(400) / 4)
+    const trueSpacing = Math.sqrt((Math.PI * (coreRadius(400) / 4) ** 2) / 400)
+    const measured = localSpacing(graphOf(lobe), [...lobe.keys()], 12)
+    expect(measured).toBeGreaterThan(0.6 * trueSpacing)
+    expect(measured).toBeLessThanOrEqual(trueSpacing)
+  })
+
+  it("reads a stack of near-coincident nodes in an even core, even on a cell edge", async () => {
+    const { localSpacing } = await import("../node-glow-program")
+    const { coreRadius } = await import("../constellation-layout")
+    const pos = points(400, coreRadius(400))
+    for (let i = 0; i < 8; i++) pos.set(`stack${i}`, { x: 12 + (i % 2 ? 0.2 : -0.2), y: 12 + (i % 2 ? 0.2 : -0.2) })
+    expect(localSpacing(graphOf(pos), [...pos.keys()], 12)).toBeLessThanOrEqual(12 / Math.sqrt(8))
+  })
+
+  it("dims a packed core by its measured spacing only when asked to", async () => {
+    const { trackDensityGain, densityStyle, localSpacing } = await import("../node-glow-program")
+    const { coreRadius } = await import("../constellation-layout")
+    const lobe = points(400, coreRadius(400) / 4)
+    const ids = [...lobe.keys()]
+    const gainOf = (measure: boolean) => {
+      let onRender = () => {}
+      const sigma = {
+        on: (_e: string, f: () => void) => {
+          onRender = f
+        },
+        graphToViewport: (p: { x: number; y: number }) => p,
+        scaleSize: (s: number) => s,
+      }
+      const clock: { time: number; coreGain?: number } = { time: 0 }
+      trackDensityGain(sigma as never, graphOf(lobe), { core: ids, satellites: [], halo: [] }, clock, undefined, measure)
+      onRender()
+      return clock.coreGain!
+    }
+    expect(gainOf(true)).toBeCloseTo(densityStyle(6, localSpacing(graphOf(lobe), ids, 12), 400).gain)
+    expect(gainOf(true)).toBeLessThan(gainOf(false) / 4)
+  })
+})
+
 describe("halo density", () => {
   it("A8: halo gain times coverage stays at or below the target at the fit view, for small and large halo sizes", async () => {
     const { trackDensityGain, COVERAGE_TARGET } = await import("../node-glow-program")
@@ -164,7 +223,7 @@ describe("halo density", () => {
       const spacing =
         Math.sqrt((Math.PI * (outer.haloOuter ** 2 - outer.haloInner ** 2)) / cls.halo.length) * scale
       const radius = haloSize * (clock.haloScale ?? 1)
-      const coverage = Math.min(1, (radius * radius) / (spacing * spacing))
+      const coverage = (radius * radius) / (spacing * spacing)
       expect((clock.haloGain ?? 1) * coverage).toBeLessThanOrEqual(COVERAGE_TARGET + 1e-9)
     }
   })
