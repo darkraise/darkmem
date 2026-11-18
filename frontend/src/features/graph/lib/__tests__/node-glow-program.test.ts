@@ -136,3 +136,54 @@ describe("densityStyle", () => {
     expect(scale * 10).toBeCloseTo(1)
   })
 })
+
+describe("halo density", () => {
+  it("A8: halo gain times coverage stays at or below the target at the fit view, for small and large halo sizes", async () => {
+    const { trackDensityGain, COVERAGE_TARGET } = await import("../node-glow-program")
+    const { loadRealCorpus } = await import("../../fixtures/real-corpus")
+    const { classifyWithCut, coreRadius, placeOuter } = await import("../constellation-layout")
+    const c = loadRealCorpus("all")
+    const cls = classifyWithCut(c.memories.map((m) => m.id), c.edges)
+    const outer = placeOuter(cls, coreRadius(cls.core.length))
+    const scale = 800 / outer.haloOuter
+    for (const haloSize of [1.5, 20, 40]) {
+      let onRender = () => {}
+      const sigma = {
+        on: (_e: string, f: () => void) => {
+          onRender = f
+        },
+        graphToViewport: (p: { x: number; y: number }) => ({ x: p.x * scale, y: p.y * scale }),
+        scaleSize: (s: number) => s,
+      }
+      const graph = {
+        getNodeAttribute: (id: string) => (cls.role.get(id) === "halo" ? haloSize : 6),
+      }
+      const clock: { time: number; haloGain?: number; haloScale?: number } = { time: 0 }
+      trackDensityGain(sigma as never, graph, cls, clock, outer)
+      onRender()
+      const spacing =
+        Math.sqrt((Math.PI * (outer.haloOuter ** 2 - outer.haloInner ** 2)) / cls.halo.length) * scale
+      const radius = haloSize * (clock.haloScale ?? 1)
+      const coverage = Math.min(1, (radius * radius) / (spacing * spacing))
+      expect((clock.haloGain ?? 1) * coverage).toBeLessThanOrEqual(COVERAGE_TARGET + 1e-9)
+    }
+  })
+
+  it("A8: feeds u_haloGain and u_haloScale from the clock and applies them in the dark-theme shader", async () => {
+    const { createNodeGlowProgram } = await import("../node-glow-program")
+    const Program = createNodeGlowProgram({ additive: true, clock: { time: 0, haloGain: 0.3, haloScale: 0.6 } })
+    const proto = Program.prototype as unknown as Proto
+    const def = proto.getDefinition.call(proto) as unknown as { VERTEX_SHADER_SOURCE: string; UNIFORMS: string[] }
+    expect(def.UNIFORMS).toEqual(expect.arrayContaining(["u_haloGain", "u_haloScale"]))
+    expect(def.VERTEX_SHADER_SOURCE).toMatch(/a_brightness < 0\.5\)[^;]*radius \*= u_haloScale/)
+    expect(def.VERTEX_SHADER_SOURCE).toMatch(/brightness \*= u_haloGain/)
+    const gl = fakeGl()
+    proto.setUniforms.call(
+      {},
+      { matrix: new Float32Array(9), sizeRatio: 1, correctionRatio: 1, pixelRatio: 1, zoomRatio: 1, width: 10, height: 10, downSizingRatio: 1 },
+      { gl, uniformLocations: { u_time: "T", u_haloGain: "HG", u_haloScale: "HS", u_matrix: "M", u_sizeRatio: "S", u_correctionRatio: "C" } },
+    )
+    expect(gl.uniform1f).toHaveBeenCalledWith("HG", 0.3)
+    expect(gl.uniform1f).toHaveBeenCalledWith("HS", 0.6)
+  })
+})

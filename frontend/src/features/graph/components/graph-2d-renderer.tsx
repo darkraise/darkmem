@@ -835,7 +835,7 @@ export function Graph2DRenderer({
     sigma.on("afterRender", drawHulls)
     sigma.on("kill", () => hullCanvas.remove())
 
-    trackDensityGain(sigma, graph, runner.classification, clockRef.current)
+    trackDensityGain(sigma, graph, runner.classification, clockRef.current, runner.outer)
     // The constructor's synchronous first frame ran before this handler.
     sigma.scheduleRender()
 

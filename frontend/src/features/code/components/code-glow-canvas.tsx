@@ -447,7 +447,7 @@ export function CodeGlowCanvas({
     sigma.on("afterRender", drawChrome)
     sigma.on("kill", () => overlay.remove())
 
-    trackDensityGain(sigma, g, runner.classification, clockRef.current)
+    trackDensityGain(sigma, g, runner.classification, clockRef.current, runner.outer)
     // The constructor's synchronous first frame ran before this handler.
     sigma.scheduleRender()
 

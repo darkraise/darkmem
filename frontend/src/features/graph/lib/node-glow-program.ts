@@ -3,7 +3,7 @@ import type { NodeProgramType, ProgramInfo } from "sigma/rendering"
 import { floatColor } from "sigma/utils"
 import type { NodeDisplayData, RenderParams } from "sigma/types"
 import type Sigma from "sigma"
-import { CLUMP_R0, CORE_K, type Classification } from "./constellation-layout"
+import { CLUMP_R0, CORE_K, type Classification, type OuterLayout } from "./constellation-layout"
 
 export const GLOW_SPREAD = 3
 
@@ -14,6 +14,8 @@ export interface GlowClock {
   coreScale?: number
   satelliteGain?: number
   satelliteScale?: number
+  haloGain?: number
+  haloScale?: number
 }
 
 /** Discs covering each pixel, on average, that the additive pass can sum
@@ -70,13 +72,20 @@ function meanSize(graph: SizedGraph, ids: readonly string[]): number {
 export function trackDensityGain(
   sigma: Pick<Sigma, "on" | "graphToViewport" | "scaleSize">,
   graph: SizedGraph,
-  classification: Pick<Classification, "core" | "satellites">,
+  classification: Pick<Classification, "core" | "satellites" | "halo">,
   clock: GlowClock,
+  outer?: Pick<OuterLayout, "haloInner" | "haloOuter">,
 ): void {
   const coreSize = meanSize(graph, classification.core)
   const satelliteMembers = classification.satellites.flat()
   const satelliteSize = meanSize(graph, satelliteMembers)
   const clump = satelliteMembers.length / Math.max(1, classification.satellites.length)
+  const haloCount = classification.halo.length
+  const haloSize = meanSize(graph, classification.halo)
+  const haloSpacing =
+    outer && haloCount > 0
+      ? Math.sqrt((Math.PI * (outer.haloOuter ** 2 - outer.haloInner ** 2)) / haloCount)
+      : 0
   sigma.on("beforeRender", () => {
     const o = sigma.graphToViewport({ x: 0, y: 0 })
     const e = sigma.graphToViewport({ x: 1000, y: 0 })
@@ -96,6 +105,11 @@ export function trackDensityGain(
     clock.coreScale = core.scale
     clock.satelliteGain = satellite.gain
     clock.satelliteScale = satellite.scale
+    if (haloSpacing > 0) {
+      const halo = densityStyle(sigma.scaleSize(haloSize), haloSpacing * pxPerUnit, 1)
+      clock.haloGain = halo.gain
+      clock.haloScale = halo.scale
+    }
   })
 }
 
@@ -116,6 +130,8 @@ uniform float u_coreGain;
 uniform float u_coreScale;
 uniform float u_satelliteGain;
 uniform float u_satelliteScale;
+uniform float u_haloGain;
+uniform float u_haloScale;
 
 varying vec4 v_color;
 varying vec2 v_diffVector;
@@ -132,6 +148,7 @@ void main() {
   #ifndef LIGHT_MODE
   if (a_brightness > 0.9) radius *= u_coreScale;
   else if (a_brightness > 0.5) radius *= u_satelliteScale;
+  else if (a_brightness < 0.5) radius *= u_haloScale;
   #endif
   float outer = radius * SPREAD;
   // The triangle's incircle is half its circumradius, so the vertices sit at
@@ -150,6 +167,7 @@ void main() {
   #else
   if (a_brightness > 0.9) brightness *= u_coreGain;
   else if (a_brightness > 0.5) brightness *= u_satelliteGain;
+  else if (a_brightness < 0.5) brightness *= u_haloGain;
   #endif
   if (a_brightness < 0.5) {
     float period = 3.0 + 4.0 * a_phase;
@@ -225,7 +243,7 @@ export function createNodeGlowProgram(opts: {
         FRAGMENT_SHADER_SOURCE: prefix + FRAGMENT_SHADER,
         // The base class pins its uniform list as a tuple type; sigma reads the
         // array at runtime, so the extra entry only needs to get past the type.
-        UNIFORMS: [...def.UNIFORMS, "u_time", "u_coreGain", "u_coreScale", "u_satelliteGain", "u_satelliteScale"] as unknown as typeof def.UNIFORMS,
+        UNIFORMS: [...def.UNIFORMS, "u_time", "u_coreGain", "u_coreScale", "u_satelliteGain", "u_satelliteScale", "u_haloGain", "u_haloScale"] as unknown as typeof def.UNIFORMS,
         // processVisibleItem writes the interleaved array in exactly this order.
         ATTRIBUTES: [
           { name: "a_position", size: 2, type: FLOAT },
@@ -259,6 +277,8 @@ export function createNodeGlowProgram(opts: {
       info.gl.uniform1f(locations.u_satelliteGain!, clock.satelliteGain ?? 1)
       info.gl.uniform1f(locations.u_coreScale!, clock.coreScale ?? 1)
       info.gl.uniform1f(locations.u_satelliteScale!, clock.satelliteScale ?? 1)
+      info.gl.uniform1f(locations.u_haloGain!, clock.haloGain ?? 1)
+      info.gl.uniform1f(locations.u_haloScale!, clock.haloScale ?? 1)
     }
 
     renderProgram(params: RenderParams, info: ProgramInfo) {
