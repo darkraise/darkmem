@@ -12,3 +12,5 @@
 | 5 | labels on nearly every node | docs/dforge/plans/2026-11-18-constellation-real-data.md | A10 | doing | - |
 | 6 | show 1,000 memories by default | docs/dforge/plans/2026-11-18-constellation-real-data.md | A11 | doing | - |
 | 7 | prove it on the real data: anonymised fixture in Storybook plus the live page on this machine | docs/dforge/plans/2026-11-18-constellation-real-data.md | A13, A18 | doing | - |
+| 8 | A15-A18: prove the arrangement on the live memory graph page (OP-1, OP-2 live half) once this branch is deployed | - | A15, A16, A17, A18 | deferred | final review: the auto run never deploys; deploy per CLAUDE.md, then re-run the live half of the ui-proof in both themes |
+| 9 | the placeOuter iteration of the 20,000-node timing loop (constellation-layout.test.ts) is covered by A14 | - | - | deferred | final review: for dforge:test-simplifier |
