@@ -87,7 +87,7 @@ Worktree: in-place
    scores together), tracking how many nodes sit in components of at least
    `CORE_MIN`. The cut is the lowest score whose addition keeps that count at
    or below `share` of the nodes. When every edge keeps it at or below, the
-   cut is the lowest edge score, so every drawn edge counts. The highest score group is always kept, so when it alone passes `share` the cut is the highest score and a small graph keeps a core. `CORE_SHARE` is
+   cut is the lowest edge score, so every drawn edge counts. The highest score group is always kept, so when it alone passes `share` the cut is the highest score. Under about 18 nodes, where `share` of the nodes is fewer than `CORE_MIN`, groups are kept until the first core forms, so a small graph keeps a core. `CORE_SHARE` is
    0.45. `classify` then runs, unchanged, on the edges at or above the cut.
    Because the server sends only edges at or above the Edges threshold, the
    effective cut is never below the slider.
@@ -125,12 +125,16 @@ Worktree: in-place
 6. **Sizes.** On the memory 2D canvas a memory's `size` is
    `computeSize(...) × MEMORY_SIZE_SCALE` (0.25, from today's 0.5). Halo
    nodes ignore size mode, importance and degree and take `HALO_SIZE`, at
-   most 40% of the median core size. The code canvas keeps its sizes.
+   most 40% of the median core size. The code canvas's halo takes the same size (UI-3, OP-5); its other sizes are unchanged.
 7. **Density control on the halo.** `trackDensityGain` adds a halo style.
    Spacing is the mean distance between halo points over the annulus
-   (`√(π·(outer² − inner²)/count)` in pixels), the overlap ceiling 1, the
-   gain floor 0.1. The glow program applies `u_haloGain` and `u_haloScale` to
-   halo fragments before the twinkle, in the dark theme. Every role is then
+   (`√(π·(outer² − inner²)/count)` in pixels), the overlap ceiling the halo's
+   count, the gain floor 0.1. The glow program applies `u_haloGain` and
+   `u_haloScale` to halo fragments before the twinkle, in the dark theme. On
+   the memory canvas the core's spacing is measured from its fitted positions
+   (`localSpacing`: the spacing its densest 5% of nodes see, at most
+   `CORE_K`), because weak gravity and the percentile fit pack it into lobes
+   denser than an even disc. Every role is then
    held under `COVERAGE_TARGET`, so no part of the canvas sums to white at
    the fit view.
 8. **Labels.** Hubs are the top 2% of drawn memories (rounded down, at least
