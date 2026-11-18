@@ -1,5 +1,5 @@
 import type { Decorator, Meta, StoryObj } from "@storybook/react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { Graph2DRenderer } from "./graph-2d-renderer"
 import { useMemoryGraphTheme } from "@/features/graph/lib/memory-graph-theme"
 import {
@@ -20,7 +20,7 @@ const WEBGL_CONTEXTS = new Set(["webgl", "webgl2", "experimental-webgl"])
 /** Makes every WebGL context request fail while mounted, as on a browser with
  *  WebGL turned off. Patched during render: the canvas builds before a
  *  decorator's effect would run. */
-const withoutWebGL: Decorator = (Story) => {
+function WebGLOff({ children }: { children: ReactNode }) {
   const [original] = useState(() => {
     const getContext = HTMLCanvasElement.prototype.getContext
     HTMLCanvasElement.prototype.getContext = function (
@@ -39,8 +39,14 @@ const withoutWebGL: Decorator = (Story) => {
     },
     [original],
   )
-  return <Story />
+  return children
 }
+
+const withoutWebGL: Decorator = (Story) => (
+  <WebGLOff>
+    <Story />
+  </WebGLOff>
+)
 
 type GraphSource = { shape: SyntheticShape; n: number } | { scale: number }
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react"
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react"
 import Graph from "graphology"
 import Sigma from "sigma"
 import type { NodeDisplayData } from "sigma/types"
@@ -185,11 +185,15 @@ export function CodeGlowCanvas({
   const [webglFailed, setWebglFailed] = useState(false)
 
   const tokensRef = useRef(tokens)
-  tokensRef.current = tokens
   const onSelectRef = useRef(onSelect)
-  onSelectRef.current = onSelect
   const emphasisRef = useRef({ selectedId, visibleIds, blastIds, highlightCommunity, processIds })
-  emphasisRef.current = { selectedId, visibleIds, blastIds, highlightCommunity, processIds }
+  // Layout effects run before this commit's passive effects, so the build and
+  // the refresh below read current values.
+  useLayoutEffect(() => {
+    tokensRef.current = tokens
+    onSelectRef.current = onSelect
+    emphasisRef.current = { selectedId, visibleIds, blastIds, highlightCommunity, processIds }
+  })
 
   const drawn = drawnGraph(graph, hiddenKinds)
   const themeKey = `${tokens.isDark}:${tokens.canvas}:${tokens.nebula}:${tokens.border}:${tokens.chart.join(",")}`
@@ -357,14 +361,14 @@ export function CodeGlowCanvas({
     sigma.on("afterRender", drawChrome)
     sigma.on("kill", () => overlay.remove())
 
-    const detachBackdrop = attachBackdrop(sigma, () => coreOnScreen(sigma, runner.coreRadius), {
-      canvas: t.canvas,
-      nebula: t.nebula,
-      isDark: t.isDark,
     trackDensityGain(sigma, g, runner.classification, clockRef.current)
     // The constructor's synchronous first frame ran before this handler.
     sigma.scheduleRender()
 
+    const detachBackdrop = attachBackdrop(sigma, () => coreOnScreen(sigma, runner.coreRadius), {
+      canvas: t.canvas,
+      nebula: t.nebula,
+      isDark: t.isDark,
     })
     const stopMotion = startAmbientMotion({
       nodeCount: g.order,
@@ -384,7 +388,6 @@ export function CodeGlowCanvas({
     }
     // Theme is keyed on its primitives: the tokens object is fresh on every
     // style mutation the theme observer sees.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graph, colorBy, hiddenKinds, themeKey])
 
   useEffect(() => {

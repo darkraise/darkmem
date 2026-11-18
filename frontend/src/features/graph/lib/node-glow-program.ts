@@ -238,7 +238,7 @@ export function createNodeGlowProgram(opts: {
       array[i++] = floatColor(d.color)
       array[i++] = nodeIndex
       array[i++] = d.brightness ?? 1
-      array[i++] = d.phase ?? 0
+      array[i] = d.phase ?? 0
     }
 
     setUniforms(params: RenderParams, info: ProgramInfo) {

@@ -1,5 +1,5 @@
 import type { Decorator, Meta, StoryObj } from "@storybook/react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { CodeGlowCanvas } from "./code-glow-canvas"
 import type {
   CodeNodeKind,
@@ -13,7 +13,7 @@ const WEBGL_CONTEXTS = new Set(["webgl", "webgl2", "experimental-webgl"])
 /** Makes every WebGL context request fail while mounted, as on a browser with
  *  WebGL turned off. Patched during render: the canvas builds in its own
  *  effect, before a decorator's effect would run. */
-const withoutWebGL: Decorator = (Story) => {
+function WebGLOff({ children }: { children: ReactNode }) {
   const [original] = useState(() => {
     const getContext = HTMLCanvasElement.prototype.getContext
     HTMLCanvasElement.prototype.getContext = function (
@@ -32,8 +32,14 @@ const withoutWebGL: Decorator = (Story) => {
     },
     [original],
   )
-  return <Story />
+  return children
 }
+
+const withoutWebGL: Decorator = (Story) => (
+  <WebGLOff>
+    <Story />
+  </WebGLOff>
+)
 
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0
