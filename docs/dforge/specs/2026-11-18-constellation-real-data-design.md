@@ -39,6 +39,14 @@ Against `GET /api/v1/graph/unified` on this host's cloned data:
   and the median memory has 6 edges.
 - Load time of `/graph/unified` here: 200 in 1.3 s, 1,000 in 2.6 s, 4,759 in
   5.0 s.
+- Re-measured 2026-11-19, after the first fix wave: the core's force layout
+  keeps contracting each community toward a point for as long as it runs.
+  On the 1,000-memory core the median nearest-neighbour distance after the
+  fit falls from 10.4 to 3.8 units between 100 and 2,000 iterations, against
+  17.7 for an even disc, under every FA2 setting tried. The look therefore
+  depended on how long the layout ran: a loaded host showed lobes, a quiet
+  one a few white-hot stacks. With the entity layer on, entities in the
+  core's simulation pulled the memories sharing them into tighter stacks.
 
 ## Decisions
 
@@ -69,6 +77,12 @@ Against `GET /api/v1/graph/unified` on this host's cloned data:
   here; row 4 (the dark theme's density dimming) is settled by UI-2, which
   states the dimming in the contract.
 
+- **Fix wave (2026-11-19)** (my calls, under the owner's "continue to
+  resolve all remaining items"): the UI proof's judge found the boards
+  differing from `graph.jpg` in three ways (a blob-like core, speck clumps,
+  a web of rest edges across the halo) and the entity layer summing to
+  white. These are fixed rather than recorded as deviations: Architecture
+  §2, §3, §5, §7 and §11.
 - **Spec review (2026-11-18):** A9 and A10 confirmed by the owner ("Right"
   to each); early CI declined ("No early run (Recommended)"); approved with
   "Approve and run unattended".
@@ -95,17 +109,24 @@ Worktree: in-place
    similarity edges feed `roleCut` and `classify`; the renderer keeps each
    one's `score` as an edge attribute. With the entity layer on, an entity
    takes the highest role among the memories it links to
-   (core > satellite > halo). A core entity joins the core layout; a
+   (core > satellite > halo). A core entity rides on the core: it stays out
+   of the core's simulation and of `R`, and sits at the centre of its linked
+   core memories, offset by at most a quarter of `CORE_K` on each axis, so
+   toggling the entity layer never moves a core memory; a
    satellite entity joins the clump of its first linked satellite memory (by
    id); an entity linking only halo memories is halo. Membership and
    relation edges never merge two memory groups. The code canvas passes
    unscored edges and keeps today's classification.
-3. **Satellite placement.** Each clump keeps its sunflower packing. Clump
+3. **Satellite placement.** Each clump keeps its sunflower packing, at
+   `MEMORY_CLUMP_R0` (6) between neighbours on the memory canvas, twice the
+   code canvas's `CLUMP_R0`, so a clump of a few memories reads as a group
+   of points rather than a speck. Clump
    centres are scattered rather than ringed: clumps are taken largest first,
    and each tries up to 24 candidate centres, angle and radius from
    `seededUnit` hashes of the clump's smallest member id, radius within
    `[1.15·R + clump radius, SATELLITE_BAND·R]` (`SATELLITE_BAND` 2.0). It
-   takes the first candidate that clears every placed clump by `CLUMP_R0`.
+   takes the first candidate that clears every placed clump by
+   `MEMORY_CLUMP_R0`.
    When all 24 fail, it takes the clear position nearest the band's outer
    edge, found by stepping outward from the last candidate.
 4. **Halo placement.** Angle from a `seededUnit` hash; radius uniform in
@@ -121,7 +142,12 @@ Worktree: in-place
    90th-percentile node distance lands at `0.85·R`. A node whose scaled
    distance `d` exceeds `0.85·R` moves radially to
    `0.85·R + 0.15·R·tanh((d − 0.85·R) / (0.15·R))`, so the edge stays soft
-   and no node passes `R`.
+   and no node passes `R`. On the memory canvas `spreadCore` then pushes
+   apart any two core nodes closer than `CORE_GAP` (0.8) of an even disc's
+   spacing, `R·√(π/n)`, keeping each inside `R`. It is warm-started from the
+   previous frame's corrections and runs 2 passes per frame and 40 when the
+   layout stops: about 3 ms a frame for the 2,115-node all-memories core and
+   10 ms at 9,000, measured in vitest on this host.
 6. **Sizes.** On the memory 2D canvas a memory's `size` is
    `computeSize(...) × MEMORY_SIZE_SCALE` (0.25, from today's 0.5). Halo
    nodes ignore size mode, importance and degree and take `HALO_SIZE`, at
@@ -132,11 +158,18 @@ Worktree: in-place
    count, the gain floor 0.1. The glow program applies `u_haloGain` and
    `u_haloScale` to halo fragments before the twinkle, in the dark theme. On
    the memory canvas the core's spacing is measured from its fitted positions
-   (`localSpacing`: the spacing its densest 5% of nodes see, at most
+   (`localSpacing`: the spacing its densest 2% of nodes see, at most
    `CORE_K`), because weak gravity and the percentile fit pack it into lobes
    denser than an even disc. Every role is then
    held under `COVERAGE_TARGET`, so no part of the canvas sums to white at
-   the fit view.
+   the fit view. On the memory canvas a core or clump disc is also drawn no
+   wider than `CRISP_RATIO` (0.3) of its role's spacing on screen and no
+   narrower than 1.5 px (`crispStyle`), so neighbours stay separate points;
+   the light theme, which draws no glow, allows 1.5 times that. Zooming in
+   widens the spacing and lifts the cap. The memory canvas's glow pass
+   screen-blends (`ONE, ONE_MINUS_SRC_COLOR`) instead of summing, so an
+   overlap never passes its brighter colour, a glow drawn over an entity
+   outline included. Entity diamonds count in no role's density.
 8. **Labels.** Hubs are the top 2% of drawn memories (rounded down, at least
    one when any memory has `HUB_DEGREE` or more edges), ranked by degree then
    id, and only among memories with at least `HUB_DEGREE` edges. In the rest
@@ -159,12 +192,18 @@ Worktree: in-place
     `importance`, order and edge scores (rounded to 3 places) are kept. The
     boards (`Graph/Constellation/RealCorpus`) render these through the real
     `Graph2DRenderer`.
+11. **Rest edges.** With nothing hovered or selected, the memory canvas
+    draws an edge only when both its ends sit in the core or in one clump;
+    hover or selection lights every edge of its node. Light-theme rest edges
+    draw at 0.4 of their alpha, so the core's mesh does not outweigh its
+    points.
 
 **Data flow.** `/graph/unified` → page filters → renderer builds the
 graphology graph with memory edges carrying `score` → runner: `roleCut` over
 memory edges → `classify` over edges ≥ cut → entity roles → `placeOuter`
-(scattered clumps, falling halo) → FA2 on the core, mirrored through the new
-`fitCore` → sigma draws with per-role density control.
+(scattered clumps, falling halo) → FA2 on the core's memories, mirrored
+through `fitCore` and `spreadCore`, core entities placed on their memories →
+sigma draws with per-role density control and the rest-edge rule.
 
 **Error handling.** A memory edge without a numeric score counts as above
 every cut, so the graph never loses an edge silently. Nothing else changes:
@@ -178,17 +217,21 @@ shipped.
 ### UI
 
 - **UI-1** — Memory 2D canvas at rest, dark theme, on the real corpus: a
-  multi-coloured core with a soft, irregular edge; small clumps scattered
-  around it at varying distances; a sparse field of faint, cluster-tinted
-  halo points thinning outward. Board: `Graph/Constellation/RealCorpus`.
-- **UI-2** — Density, dark theme: core, satellite and halo glows are dimmed,
-  and below the gain floor shrunk, so overlapping discs never sum to white
+  multi-coloured core of crisp, separate points with a soft, irregular edge;
+  small clumps scattered around it at varying distances; a sparse field of
+  faint, cluster-tinted halo points thinning outward; no lines cross the
+  halo at rest. Board: `Graph/Constellation/RealCorpus`.
+- **UI-2** — Density, dark theme: core and clump points are drawn no wider
+  than a share of their spacing, the glow pass screen-blends, and core,
+  satellite and halo glows are dimmed, and below the gain floor shrunk, so
+  overlapping discs never sum to white
   at the fit view (the camera after load or "Reset graph view"). Zooming in restores full brightness and size. Role order
   holds: core ≥ satellite ≥ halo brightness.
 - **UI-3** — Halo points are small and uniform: `HALO_SIZE` regardless of
   importance or degree, on both canvases.
 - **UI-4** — Light theme: crisp saturated points, halo at 55% opacity, as
-  shipped, with the new arrangement and sizes.
+  shipped, with the new arrangement and sizes; the core's rest edges recede
+  behind its points.
 - **UI-5** — Labels: none at the fit view except hovered or selected nodes;
   hub labels (top 2% of memories by degree) appear once zoomed in.
 
@@ -246,6 +289,11 @@ A16. [demo, high] UI-2, UX-5: The live page with all 4,759 memories and with 200
 A17. [demo, high] UI-4, UI-5: In the light theme the live page shows crisp points and a 55% halo; at the fit view no labels show until a node is hovered.
 A18. [demo, high] UX-5: The `Graph/Constellation/RealCorpus` boards match the live page's arrangement for 200, 1,000, all memories, Edges 0.8 and the entity layer.
 A19. [demo, neg, high] OP-5: The 3D memory view and the demo memory explorer look and behave as before; the code canvas differs only in halo size and dimming.
+
+A20. [test, high] UI-1: At rest an edge of the 1,000-memory board is hidden exactly when its ends are not both in the core or both in one clump; hovering a halo memory shows every edge it has.
+A21. [test, high] UX-5: Turning the entity layer on leaves every core memory's position unchanged, and every core entity lies within `0.25·CORE_K` of its linked core memories' centre.
+A22. [test, high] UI-1, UI-2: After a 2,000-iteration run of the core's force layout on the 1,000-memory fixture, `spreadCore`'s 40 settle passes leave no two core nodes closer than 0.7 of the `CORE_GAP` distance and every node inside `R`; 100 frames of 2 warm-started passes reach 0.85.
+A23. [test, high] UI-2, UI-4: On the memory canvas a packed core's discs are drawn at `max(1.5 px, CRISP_RATIO × spacing)` at full gain, the glow pass screen-blends, and only the memory canvas applies the cap in the light theme; the code canvas keeps `densityStyle` at `CORE_K` and additive blending.
 
 ## Riskiest assumption
 
