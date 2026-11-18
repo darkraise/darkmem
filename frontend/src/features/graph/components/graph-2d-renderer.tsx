@@ -182,6 +182,7 @@ export function Graph2DRenderer({
   // lurch, which is what toggling the entity layer used to do -- twice, once
   // on the switch and again when the new data landed.
   const positionsRef = useRef<Map<string, { x: number; y: number }>>(new Map())
+  const coreSigRef = useRef<string | null>(null)
   // What the last layout was computed for. ForceAtlas2 only needs to re-run
   // when this changes; adding or dropping an overlay does not change it.
   const layoutSigRef = useRef<string | null>(null)
@@ -463,6 +464,12 @@ export function Graph2DRenderer({
       },
     })
     runnerRef.current = runner
+    // Roles follow edges, so an Edges-threshold change can move memories into
+    // or out of the core with the id set unchanged; the core then has to
+    // settle again around its new members.
+    const coreSig = [...runner.classification.core].sort().join("\n")
+    const coreChanged = coreSigRef.current !== coreSig
+    coreSigRef.current = coreSig
     const sigmaSettings: Partial<Settings> = {
       antiAliasingFeather: 2,
       // Sorts each program's items by the `zIndex` the reducers emit. Only the
@@ -845,7 +852,7 @@ export function Graph2DRenderer({
     // Nothing new to arrange -- this is the render that happens while a fetch
     // is in flight, drawing the same nodes as the last one. Re-simulating here
     // is what scattered the canvas the moment the switch was touched.
-    if (!layoutChanged) {
+    if (!layoutChanged && !coreChanged) {
       onReady()
       return
     }
