@@ -76,8 +76,6 @@ interface Graph2DRendererProps {
   onReady: () => void
   sizeMode: SizeMode
   colorMode: ColorMode
-  spacing: number
-  clusterTightness: number
   hullMode: HullMode
   entityLayerEnabled: boolean
   entities: GraphEntity[]
@@ -145,8 +143,6 @@ export function Graph2DRenderer({
   onReady,
   sizeMode,
   colorMode,
-  spacing,
-  clusterTightness,
   hullMode,
   entityLayerEnabled,
   entities,
@@ -266,8 +262,6 @@ export function Graph2DRenderer({
     }
 
     const layoutSig = layoutSignature(
-      spacing,
-      clusterTightness,
       filteredMemories.map((m) => m.id),
       entitiesKey === "" ? [] : entities.map((e) => e.id),
     )
@@ -778,12 +772,8 @@ export function Graph2DRenderer({
         linLogMode: true,
         outboundAttractionDistribution: false,
         strongGravityMode: true,
-        // Drive the two toolbar sliders: higher spacing spreads nodes out
-        // (scalingRatio), higher tightness pulls them to the centre (gravity).
-        // Defaults (spacing 100, tightness 300) reproduce the previous
-        // hardcoded gravity:1 / scalingRatio:10.
-        gravity: Math.max(0.1, clusterTightness / 300),
-        scalingRatio: Math.max(1, spacing / 10),
+        gravity: 1,
+        scalingRatio: 10,
         slowDown: scale.slowDown,
         barnesHutOptimize: scale.barnesHutOptimize,
       },
@@ -805,8 +795,6 @@ export function Graph2DRenderer({
     filteredEdges,
     sizeMode,
     colorMode,
-    spacing,
-    clusterTightness,
     // The keys, not the arrays: `filteredEntities` is a fresh array on every
     // data change, and its identity moving is not a reason to rebuild.
     entitiesKey,

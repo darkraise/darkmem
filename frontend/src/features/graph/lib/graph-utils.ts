@@ -282,7 +282,7 @@ export function transformToGraphData(
 /**
  * What a ForceAtlas2 run is computed for.
  *
- * The node set actually being drawn, plus the two force sliders. Adding or
+ * The node set actually being drawn. Adding or
  * dropping the entity overlay genuinely changes the graph, so it belongs here
  * and the simulation should re-settle around it.
  *
@@ -292,16 +292,12 @@ export function transformToGraphData(
  * the data lands, which is when there is something new to arrange.
  */
 export function layoutSignature(
-  spacing: number,
-  clusterTightness: number,
   memoryIds: string[],
   entityIds: string[] = [],
 ): string {
   // Sorted, because the server may return the same set in a different order
   // and that is not a reason to re-simulate.
   return [
-    spacing,
-    clusterTightness,
     ...[...memoryIds].sort(),
     "|entities|",
     ...[...entityIds].sort(),

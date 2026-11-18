@@ -267,8 +267,6 @@ export function RealMemoryGraphPage() {
                   onReady={handleGraphReady}
                   sizeMode={layout.sizeMode}
                   colorMode={colorMode}
-                  spacing={layout.debouncedSpacing2D}
-                  clusterTightness={layout.debouncedTightness}
                   hullMode={layout.hullMode}
                   entityLayerEnabled={entityLayerEnabled}
                   entities={filters.filteredEntities}

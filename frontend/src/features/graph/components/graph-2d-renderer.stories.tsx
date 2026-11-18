@@ -6,7 +6,7 @@ import { syntheticMemoryGraph } from "@/features/graph/lib/synthetic-graph"
 
 // Stable identities: the renderer rebuilds its whole graph when a callback
 // prop changes, which would restart the layout being measured.
-const noop = () => {}
+const markReady = () => performance.mark("graph-ready")
 const noopSelect = (_id: string | null) => {}
 
 function ScaleHarness({ nodes }: { nodes: number }) {
@@ -24,11 +24,9 @@ function ScaleHarness({ nodes }: { nodes: number }) {
         filteredEdges={graph.edges}
         selectedNodeId={null}
         onNodeSelect={noopSelect}
-        onReady={noop}
+        onReady={markReady}
         sizeMode="connections"
         colorMode="cluster"
-        spacing={100}
-        clusterTightness={300}
         hullMode="cluster"
         entityLayerEnabled={false}
         entities={[]}
