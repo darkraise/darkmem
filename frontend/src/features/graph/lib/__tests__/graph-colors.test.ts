@@ -8,6 +8,7 @@ import {
   entityTypeColor,
   clusterColor,
   hslToHex,
+  restEdgeColor,
 } from "../graph-colors"
 import type { GraphThemeTokens } from "../code-graph-theme"
 
@@ -204,5 +205,12 @@ describe("hslToHex", () => {
   it("matches known conversions", () => {
     expect(hslToHex(0, 100, 50)).toBe("#ff0000")
     expect(hslToHex(0, 0, 0)).toBe("#000000")
+  })
+})
+
+describe("restEdgeColor", () => {
+  it("fades an edge to 8% on a dark canvas and 12% on a light one", () => {
+    expect(restEdgeColor("#ff0000", true)).toBe("rgba(255,0,0,0.08)")
+    expect(restEdgeColor("#00ff00", false)).toBe("rgba(0,255,0,0.12)")
   })
 })

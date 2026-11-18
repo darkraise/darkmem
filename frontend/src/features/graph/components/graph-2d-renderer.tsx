@@ -1,8 +1,9 @@
-import { useRef, useEffect, useCallback } from "react"
+import { useRef, useEffect, useCallback, useState } from "react"
 import Graph from "graphology"
 import Sigma from "sigma"
 import EdgeCurveProgram from "@sigma/edge-curve"
-import { EdgeRectangleProgram, NodeCircleProgram } from "sigma/rendering"
+import { EdgeRectangleProgram } from "sigma/rendering"
+import { EmptyState } from "darkraise-ui/components/empty-state"
 import {
   clusterAnchors,
   scaleSettings,
@@ -15,6 +16,7 @@ import {
 import { drawNodeLabel, drawThemedDiscNodeHover } from "@/features/graph/lib/node-hover"
 import type { ChromeKind } from "@/features/graph/lib/node-hover"
 import type { NodeDisplayData } from "sigma/types"
+import type { Settings } from "sigma/settings"
 import {
   focusTier,
   groundEdgeAlpha,
@@ -28,8 +30,18 @@ import {
 } from "@/features/graph/lib/focus-model"
 import { useGraphPrefs } from "@/features/graph/lib/graph-prefs"
 import { hoverRepaintSet } from "@/features/graph/lib/hover-repaint"
-import FA2Layout from "graphology-layout-forceatlas2/worker"
-import { inferSettings } from "graphology-layout-forceatlas2"
+import {
+  constellationFa2Settings,
+  createConstellationRunner,
+  type ConstellationRunner,
+} from "@/features/graph/lib/constellation-runner"
+import { createNodeGlowProgram, type GlowClock } from "@/features/graph/lib/node-glow-program"
+import {
+  attachBackdrop,
+  coreOnScreen,
+  WEBGL_UNAVAILABLE_MESSAGE,
+} from "@/features/graph/lib/graph-backdrop"
+import { startAmbientMotion } from "@/features/graph/lib/ambient-motion"
 import {
   computeSize,
   entityRenderKey,
@@ -55,6 +67,7 @@ import {
   memoryEdgeColor,
   relationEdgeColor,
   membershipEdgeColor,
+  restEdgeColor,
   type ColorMode,
   type MemoryPalette,
 } from "@/features/graph/lib/graph-colors"
@@ -155,8 +168,10 @@ export function Graph2DRenderer({
   const containerRef = useRef<HTMLDivElement>(null)
   const sigmaRef = useRef<Sigma | null>(null)
   const graphRef = useRef<Graph | null>(null)
-  const fa2Ref = useRef<FA2Layout | null>(null)
-  const fa2StopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const runnerRef = useRef<ConstellationRunner | null>(null)
+  const clockRef = useRef<GlowClock>({ time: 0 })
+  const stopMotionRef = useRef<(() => void) | null>(null)
+  const [webglFailed, setWebglFailed] = useState(false)
   // Where every node had settled when the last graph was torn down. A rebuild
   // that re-seeds from scratch throws the layout away and makes the canvas
   // lurch, which is what toggling the entity layer used to do -- twice, once
@@ -223,6 +238,20 @@ export function Graph2DRenderer({
       return membershipEdgeColor(tokensRef.current, srcHex)
     return memoryEdgeColor(srcHex, tokensRef.current)
   }
+  // An edge rests faded and lifts to its full colour only inside the selected
+  // or hovered neighbourhood, so the constellation reads as points, not mesh.
+  const edgeColors = (
+    kind: string,
+    srcHex: string,
+  ): { color: string; _fullColor: string } => {
+    const full = edgeBaseColor(kind, srcHex)
+    const hex = full.startsWith("#")
+      ? full.slice(0, 7)
+      : srcHex.startsWith("#")
+        ? srcHex.slice(0, 7)
+        : tokensRef.current.mutedForeground
+    return { color: restEdgeColor(hex, tokensRef.current.isDark), _fullColor: full }
+  }
 
   // Empty whenever there is nothing to overlay -- layer off, or layer on with
   // the fetch still in flight. Two renders that would draw the same entities
@@ -234,13 +263,11 @@ export function Graph2DRenderer({
   const buildGraph = useCallback(() => {
     if (!containerRef.current) return
 
-    if (fa2StopTimerRef.current !== null) {
-      clearTimeout(fa2StopTimerRef.current)
-      fa2StopTimerRef.current = null
-    }
-    if (fa2Ref.current) {
-      fa2Ref.current.kill()
-      fa2Ref.current = null
+    stopMotionRef.current?.()
+    stopMotionRef.current = null
+    if (runnerRef.current) {
+      runnerRef.current.kill()
+      runnerRef.current = null
     }
     if (sigmaRef.current) {
       sigmaRef.current.kill()
@@ -302,7 +329,7 @@ export function Graph2DRenderer({
         ...place(m.id, m.cluster),
         label: m.content.slice(0, 30) + (m.content.length > 30 ? "…" : ""),
         size: size * 0.5,
-        type: "disc",
+        type: "glow",
         _degree: conns,
         color,
         borderColor,
@@ -316,9 +343,8 @@ export function Graph2DRenderer({
         try {
           const srcColor =
             graph.getNodeAttribute(e.source, "color") || mutedColor
-          const edgeColor = edgeBaseColor("memory", srcColor)
           graph.addEdge(e.source, e.target, {
-            color: edgeColor,
+            ...edgeColors("memory", srcColor),
             size: 2.5,
             _edgeKind: "memory",
           })
@@ -384,7 +410,7 @@ export function Graph2DRenderer({
                 "borderColor",
               ) as string) || ""
             graph.addEdge(`entity:${r.source}`, `entity:${r.target}`, {
-              color: edgeBaseColor("relation", relSrc),
+              ...edgeColors("relation", relSrc),
               size: 2.5,
               label: r.type,
               _edgeKind: "relation",
@@ -403,7 +429,7 @@ export function Graph2DRenderer({
               // the thing the current colour mode is actually encoding, and
               // an entity's tint says only what type of entity it is.
               graph.addEdge(`entity:${ent.id}`, mid, {
-                color: edgeBaseColor(
+                ...edgeColors(
                   "membership",
                   graph.getNodeAttribute(mid, "color") ||
                     (graph.getNodeAttribute(
@@ -423,7 +449,16 @@ export function Graph2DRenderer({
     }
 
     const scale = scaleSettings(graph.order, graph.size)
-    const sigma = new Sigma(graph, containerRef.current, {
+    const runner = createConstellationRunner(graph, {
+      layoutMs: scale.layoutMs,
+      fa2Settings: constellationFa2Settings(graph, scale),
+      onStop: () => {
+        hullCache.invalidate()
+        sigmaRef.current?.refresh()
+      },
+    })
+    runnerRef.current = runner
+    const sigmaSettings: Partial<Settings> = {
       antiAliasingFeather: 2,
       // Sorts each program's items by the `zIndex` the reducers emit. Only the
       // edge reducer sets one, so node paint order is unchanged: sigma skips
@@ -445,7 +480,13 @@ export function Graph2DRenderer({
       // in registration order, and zIndex only sorts WITHIN a program. Giving
       // memories their own key after "diamond" is what puts the subject on top
       // of the overlay where they overlap.
-      nodeProgramClasses: { diamond: NodeDiamondProgram, disc: NodeCircleProgram },
+      nodeProgramClasses: {
+        diamond: NodeDiamondProgram,
+        glow: createNodeGlowProgram({
+          additive: tokensRef.current.isDark,
+          clock: clockRef.current,
+        }),
+      },
       // Sigma replaces its default program map with this one, so the
       // straight program must be registered here to be usable at all.
       edgeProgramClasses: { curve: EdgeCurveProgram, line: EdgeRectangleProgram },
@@ -571,7 +612,8 @@ export function Graph2DRenderer({
         // Emphasis never recolours an edge: its colour is its endpoints', and
         // repainting it the selection colour threw that away exactly when the
         // neighbourhood mattered most.
-        const { zIndex, ground } = edgeEmphasis(src, tgt, sel, hov)
+        const { zIndex, ground, lit } = edgeEmphasis(src, tgt, sel, hov)
+        if (lit && typeof data._fullColor === "string") res.color = data._fullColor
 
         if (sel && (src === sel || tgt === sel)) res.size = SELECTED_EDGE_SIZE
         if (hov && (src === hov || tgt === hov)) {
@@ -595,7 +637,19 @@ export function Graph2DRenderer({
 
         return res
       },
-    })
+    }
+    let sigma: Sigma
+    try {
+      sigma = new Sigma(graph, containerRef.current, sigmaSettings)
+    } catch {
+      runner.kill()
+      runnerRef.current = null
+      graphRef.current = null
+      setWebglFailed(true)
+      onReady()
+      return
+    }
+    setWebglFailed(false)
 
     // Label tiers gate on zoom, so a camera move has to re-run the reducers.
     zoomRatioRef.current = sigma.getCamera().ratio
@@ -685,7 +739,7 @@ export function Graph2DRenderer({
         filteredMemoriesRef.current,
         hullModeRef.current,
         sigmaRef.current,
-        fa2Ref.current?.isRunning() ?? false,
+        runnerRef.current?.isRunning() ?? false,
         performance.now(),
       )
       let idx = 0
@@ -758,6 +812,24 @@ export function Graph2DRenderer({
     sigma.on("afterRender", drawHulls)
     sigma.on("kill", () => hullCanvas.remove())
 
+    const detachBackdrop = attachBackdrop(
+      sigma,
+      () => coreOnScreen(sigma, runner.coreRadius),
+      {
+        canvas: tokensRef.current.canvas,
+        nebula: tokensRef.current.nebula,
+        isDark: tokensRef.current.isDark,
+      },
+    )
+    sigma.on("kill", detachBackdrop)
+    stopMotionRef.current = startAmbientMotion({
+      nodeCount: graph.order,
+      onFrame: (sec) => {
+        clockRef.current.time = sec
+        sigma.scheduleRender()
+      },
+    })
+
     // Nothing new to arrange -- this is the render that happens while a fetch
     // is in flight, drawing the same nodes as the last one. Re-simulating here
     // is what scattered the canvas the moment the switch was touched.
@@ -766,26 +838,7 @@ export function Graph2DRenderer({
       return
     }
 
-    const fa2 = new FA2Layout(graph, {
-      settings: {
-        ...inferSettings(graph),
-        linLogMode: true,
-        outboundAttractionDistribution: false,
-        strongGravityMode: true,
-        gravity: 1,
-        scalingRatio: 10,
-        slowDown: scale.slowDown,
-        barnesHutOptimize: scale.barnesHutOptimize,
-      },
-    })
-    fa2Ref.current = fa2
-    fa2.start()
-    fa2StopTimerRef.current = setTimeout(() => {
-      fa2StopTimerRef.current = null
-      if (fa2Ref.current) fa2Ref.current.stop()
-      hullCache.invalidate()
-      sigmaRef.current?.refresh()
-    }, scale.layoutMs)
+    runner.start()
 
     onReady()
     // dispatchers read refs; listing them would rebuild + resettle every render
@@ -802,6 +855,12 @@ export function Graph2DRenderer({
     onNodeSelect,
     onEntitySelect,
     onReady,
+    // The glow program's blending and the backdrop's colours are fixed when
+    // sigma is built, so a theme switch has to rebuild; the layout signature
+    // is unchanged, so nothing re-simulates.
+    tokens.isDark,
+    tokens.canvas,
+    tokens.nebula,
   ])
 
   useEffect(() => {
@@ -819,13 +878,11 @@ export function Graph2DRenderer({
           if (Number.isFinite(x) && Number.isFinite(y)) settled.set(id, { x, y })
         })
       }
-      if (fa2StopTimerRef.current !== null) {
-        clearTimeout(fa2StopTimerRef.current)
-        fa2StopTimerRef.current = null
-      }
-      if (fa2Ref.current) {
-        fa2Ref.current.kill()
-        fa2Ref.current = null
+      stopMotionRef.current?.()
+      stopMotionRef.current = null
+      if (runnerRef.current) {
+        runnerRef.current.kill()
+        runnerRef.current = null
       }
       if (sigmaRef.current) {
         sigmaRef.current.kill()
@@ -873,10 +930,9 @@ export function Graph2DRenderer({
         kind === "membership" && tAttrs._kind !== "entity"
           ? endpointTint(tAttrs)
           : endpointTint(sAttrs)
-      graph.setEdgeAttribute(
+      graph.mergeEdgeAttributes(
         edge,
-        "color",
-        edgeBaseColor(kind, tint ?? tokensRef.current.mutedForeground),
+        edgeColors(kind, tint ?? tokensRef.current.mutedForeground),
       )
     })
     // Keeps the attribute form: a plain `{ color }` here would silently undo
@@ -894,5 +950,14 @@ export function Graph2DRenderer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [`${tokens.background}:${tokens.isDark}:${tokens.primary}:${tokens.border}`])
 
-  return <div ref={containerRef} className="absolute inset-0" />
+  return (
+    <>
+      <div ref={containerRef} className="absolute inset-0 bg-transparent" />
+      {webglFailed && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <EmptyState title={WEBGL_UNAVAILABLE_MESSAGE} />
+        </div>
+      )}
+    </>
+  )
 }

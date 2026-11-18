@@ -227,6 +227,10 @@ export function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`
 }
 
+export function restEdgeColor(hex: string, isDark: boolean): string {
+  return hexToRgba(hex, isDark ? 0.08 : 0.12)
+}
+
 export function lightenHex(hex: string, amount = 0.35): string {
   const r = Math.min(
     255,
