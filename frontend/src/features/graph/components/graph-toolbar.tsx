@@ -45,8 +45,6 @@ interface GraphToolbarProps {
   onMinClusterSizeChange: (v: number) => void
   spacing: number
   onSpacingChange: (v: number) => void
-  clusterTightness: number
-  onClusterTightnessChange: (v: number) => void
   onReset: () => void
   /** The node budget control, shown first because it decides what every
    *  other setting acts on. */
@@ -98,8 +96,6 @@ export function GraphToolbar({
   onMinClusterSizeChange,
   spacing,
   onSpacingChange,
-  clusterTightness,
-  onClusterTightnessChange,
   onReset,
   nodes,
   trailing,
@@ -124,8 +120,8 @@ export function GraphToolbar({
           className="bg-card/95 border-border max-h-[min(70vh,32rem)] w-[384px] overflow-y-auto rounded-lg border p-3 shadow-xl backdrop-blur-sm"
         >
           {/* Grouped by the kind of decision each control is, not by where
-              it happens to be read. Render gates the rest (Tightness is
-              2D-only), encodings say what a mark means, and the layout
+              it happens to be read. Render gates the rest (Spacing is
+              3D-only), encodings say what a mark means, and the layout
               sliders drive the force simulation. */}
           {nodes && <Section title="Nodes">{nodes}</Section>}
           <Section title="Render" divided={!!nodes}>
@@ -238,24 +234,16 @@ export function GraphToolbar({
               onChange={onMinClusterSizeChange}
               ariaLabel="Minimum cluster size"
             />
-            {viewMode === "2d" && (
+            {viewMode === "3d" && (
               <SliderRow
-                label="Tightness"
+                label="Spacing"
                 min={30}
-                max={300}
+                max={200}
                 step={10}
-                value={clusterTightness}
-                onChange={onClusterTightnessChange}
+                value={spacing}
+                onChange={onSpacingChange}
               />
             )}
-            <SliderRow
-              label="Spacing"
-              min={viewMode === "2d" ? 100 : 30}
-              max={viewMode === "2d" ? 500 : 200}
-              step={viewMode === "2d" ? 25 : 10}
-              value={spacing}
-              onChange={onSpacingChange}
-            />
           </Section>
 
           <Section title="Selection" divided>

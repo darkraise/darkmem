@@ -40,8 +40,6 @@ const defaultArgs = {
   onMinClusterSizeChange: () => {},
   spacing: 200,
   onSpacingChange: () => {},
-  clusterTightness: 120,
-  onClusterTightnessChange: () => {},
   onReset: () => {},
 }
 
@@ -79,7 +77,6 @@ function InteractiveToolbar() {
   const [threshold, setThreshold] = useState(0.65)
   const [minCluster, setMinCluster] = useState(3)
   const [spacing, setSpacing] = useState(200)
-  const [tightness, setTightness] = useState(120)
 
   return (
     <div className="bg-background relative h-[300px]">
@@ -102,8 +99,6 @@ function InteractiveToolbar() {
         onMinClusterSizeChange={setMinCluster}
         spacing={spacing}
         onSpacingChange={setSpacing}
-        clusterTightness={tightness}
-        onClusterTightnessChange={setTightness}
         onReset={() => {
           setViewMode("2d")
           setColorMode("type")
@@ -113,7 +108,6 @@ function InteractiveToolbar() {
           setThreshold(0.65)
           setMinCluster(3)
           setSpacing(200)
-          setTightness(120)
         }}
     />
   </div>

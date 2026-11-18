@@ -168,8 +168,6 @@ export function RealMemoryGraphPage() {
   function handleReset() {
     setSimilarityThreshold(0.5)
     setMinClusterSize(3)
-    layout.setClusterTightness(300)
-    layout.setNodeSpacing(100)
     layout.setSpacing3D(50)
     layout.setSizeMode(DEFAULT_SIZE_MODE)
     setColorMode(DEFAULT_COLOR_MODE)
@@ -360,14 +358,8 @@ export function RealMemoryGraphPage() {
               onSimilarityChange={setSimilarityThreshold}
               minClusterSize={minClusterSize}
               onMinClusterSizeChange={setMinClusterSize}
-              spacing={
-                viewMode === "2d" ? layout.nodeSpacing : layout.spacing3D
-              }
-              onSpacingChange={
-                viewMode === "2d" ? layout.setNodeSpacing : layout.setSpacing3D
-              }
-              clusterTightness={layout.clusterTightness}
-              onClusterTightnessChange={layout.setClusterTightness}
+              spacing={layout.spacing3D}
+              onSpacingChange={layout.setSpacing3D}
               onReset={handleReset}
               nodes={
                 <NodeCountRow
