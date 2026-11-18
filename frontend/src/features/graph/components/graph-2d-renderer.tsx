@@ -3,7 +3,7 @@ import Graph from "graphology"
 import Sigma from "sigma"
 import EdgeCurveProgram from "@sigma/edge-curve"
 import { EdgeRectangleProgram } from "sigma/rendering"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import {
   clusterAnchors,
   scaleSettings,
@@ -969,7 +969,7 @@ export function Graph2DRenderer({
       <div ref={containerRef} className="absolute inset-0 bg-transparent" />
       {webglFailed && (
         <div className="absolute inset-0 flex items-center justify-center">
-          <EmptyState title={WEBGL_UNAVAILABLE_MESSAGE} />
+          <EmptyState kind="failed" title={WEBGL_UNAVAILABLE_MESSAGE} />
         </div>
       )}
     </>

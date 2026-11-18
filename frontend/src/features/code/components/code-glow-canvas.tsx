@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react"
 import Graph from "graphology"
 import Sigma from "sigma"
 import type { NodeDisplayData } from "sigma/types"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import type {
   CodeNodeKind,
   DemoCodeCommunity,
@@ -459,7 +459,7 @@ export function CodeGlowCanvas({
       <div ref={containerRef} className="absolute inset-0 bg-transparent" />
       {webglFailed && (
         <div className="absolute inset-0 flex items-center justify-center">
-          <EmptyState title={WEBGL_UNAVAILABLE_MESSAGE} />
+          <EmptyState kind="failed" title={WEBGL_UNAVAILABLE_MESSAGE} />
         </div>
       )}
     </div>
