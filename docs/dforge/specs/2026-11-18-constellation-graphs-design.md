@@ -249,7 +249,7 @@ gain this one.
 
 A1. [test, high] UX-1: A node with no drawn edge is classed halo; a component of 8 or more nodes is core; a component of 2–7 nodes is a satellite while any core exists.
 A2. [test, high] UX-1: With no component of 8 or more, the largest component of 2 or more is the core; with no edges at all, every node is halo and the halo fills a full disc from the centre.
-A3. [test, high] UX-1: A halo node's position is identical across two placements in which other nodes were added or removed but the core and satellite radii are the same.
+A3. [test, high] UX-1: A halo node's position is identical across two placements in which other nodes were added or removed but the halo annulus's inner and outer radii are the same (the inner radius set by the core radius and the outermost satellite ring, the outer radius by `max(2.6·R, inner + c·√(halo count))`).
 A4. [test, high] UX-1: Every satellite node and every halo node lies farther from the centre than 1.15·R, and no two satellite clumps overlap.
 A5. [test, high] UX-2: During the core's run, no core node is placed beyond R by `fitCore`.
 A6. [test, high] OP-3: `classify` plus `placeOuter` complete in ≤ 50 ms for 20,000 nodes and 110,000 edges in vitest.

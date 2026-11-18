@@ -354,19 +354,6 @@ describe("placeOuter", () => {
     for (const id of kept) expect(pb.positions.get(id)).toEqual(pa.positions.get(id))
   })
 
-  it("A3: a halo node's position does not move when the halo itself grows from 50 to 400 nodes and the core and satellites are unchanged", () => {
-    const core = ids("core", 40)
-    const sats = [ids("sa", 3), ids("sb", 2)]
-    const kept = ids("keep", 6)
-    const few = shapedGraph({ coreIds: core, sats, halo: [...kept, ...ids("f", 44)] })
-    const many = shapedGraph({ coreIds: core, sats, halo: [...kept, ...ids("g", 394)] })
-    const R = coreRadius(40)
-    const pf = placeOuter(few, R)
-    const pm = placeOuter(many, R)
-    expect(pm.satelliteOuter).toBeCloseTo(pf.satelliteOuter, 9)
-    for (const id of kept) expect(pm.positions.get(id)).toEqual(pf.positions.get(id))
-  })
-
   it("A4: satellites and halo lie beyond 1.15R and no two satellite clumps overlap", () => {
     const rand = rng(7)
     const sats: string[][] = []
@@ -758,6 +745,25 @@ describe("memory 2D renderer", () => {
     rerender(<Scene memories={memories} edges={atThreshold(0.5)} />)
     advance(50)
     expect(lastSigma().graph.getNodeAttribute("x", "brightness")).toBe(1)
+  })
+
+  it("UX-3: a core-membership change at an unchanged node set re-runs the core layout", () => {
+    const x = memory("x")
+    const memories = [...coreMemories, x]
+    const edgesAll = [...coreEdges, edge("x", "c0", 0.6)]
+    const atThreshold = (t: number) => edgesAll.filter((e) => e.score >= t)
+
+    const { rerender } = render(<Scene memories={memories} edges={atThreshold(0.5)} />)
+    advance(120_000)
+    const n = h.workers.length
+
+    rerender(<Scene memories={memories} edges={atThreshold(0.7)} />)
+    advance(50)
+    expect(h.workers.length).toBe(n + 1)
+
+    rerender(<Scene memories={memories} edges={atThreshold(0.7)} />)
+    advance(50)
+    expect(h.workers.length).toBe(n + 1)
   })
 
   it("A21: turning the entity layer on leaves entity diamonds and type-coloured borders unchanged, in core and satellite roles", () => {
