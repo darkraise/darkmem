@@ -498,7 +498,7 @@ export function CodeGlowCanvas({
       tabIndex={0}
       aria-label={`Code graph — ${drawn.nodes.length} nodes, ${drawn.edges.length} edges`}
       onKeyDown={onKeyDown}
-      className="focus-visible:ring-ring relative h-full w-full outline-none focus-visible:ring-2"
+      className="relative h-full w-full outline-none after:pointer-events-none after:absolute after:inset-0 after:z-10 after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring"
     >
       <div ref={containerRef} className="absolute inset-0 bg-transparent" />
       {webglFailed && (
