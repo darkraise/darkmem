@@ -325,7 +325,10 @@ export function CodeGlowCanvas({
           return res
         },
       })
-    } catch {
+    } catch (error) {
+      // Also how a shader that fails to compile surfaces; log it so it is not
+      // mistaken for a browser setting.
+      console.error("Code graph: WebGL renderer failed to start", error)
       runner.kill()
       sigmaRef.current = null
       setWebglFailed(true)

@@ -656,7 +656,10 @@ export function Graph2DRenderer({
     let sigma: Sigma
     try {
       sigma = new Sigma(graph, containerRef.current, sigmaSettings)
-    } catch {
+    } catch (error) {
+      // Also how a shader that fails to compile surfaces; log it so it is not
+      // mistaken for a browser setting.
+      console.error("Memory graph: WebGL renderer failed to start", error)
       runner.kill()
       runnerRef.current = null
       graphRef.current = null

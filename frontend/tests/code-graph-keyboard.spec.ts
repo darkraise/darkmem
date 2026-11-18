@@ -5,6 +5,10 @@ test("the code graph canvas is one keyboard stop, and node choice goes through t
   const canvas = page.getByRole("group", { name: /^Code graph — \d+ nodes, \d+ edges$/ })
   await expect(canvas).toBeVisible()
   await expect(canvas.getByRole("button")).toHaveCount(0)
+  // A glow shader that fails to compile throws from sigma's constructor and
+  // lands on the WebGL fallback; a real browser must draw instead.
+  await expect(canvas.getByText(/needs WebGL/)).toHaveCount(0)
+  await expect(canvas.locator("canvas.sigma-nodes")).toHaveCount(1)
 
   await canvas.focus()
   await expect(canvas).toBeFocused()
