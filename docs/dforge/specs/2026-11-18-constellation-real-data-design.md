@@ -87,7 +87,7 @@ Worktree: in-place
    scores together), tracking how many nodes sit in components of at least
    `CORE_MIN`. The cut is the lowest score whose addition keeps that count at
    or below `share` of the nodes. When every edge keeps it at or below, the
-   cut is the lowest edge score, so every drawn edge counts. `CORE_SHARE` is
+   cut is the lowest edge score, so every drawn edge counts. The highest score group is always kept, so when it alone passes `share` the cut is the highest score and a small graph keeps a core. `CORE_SHARE` is
    0.45. `classify` then runs, unchanged, on the edges at or above the cut.
    Because the server sends only edges at or above the Edges threshold, the
    effective cut is never below the slider.
@@ -135,9 +135,13 @@ Worktree: in-place
    the fit view.
 8. **Labels.** Hubs are the top 2% of drawn memories (rounded down, at least
    one when any memory has `HUB_DEGREE` or more edges), ranked by degree then
-   id, and only among memories with at least `HUB_DEGREE` edges. Labels otherwise
-   follow `labelVisible` as today: hovered or selected nodes always, hubs
-   once zoomed past `LABEL_ZOOM_RATIO`.
+   id, and only among memories with at least `HUB_DEGREE` edges. In the rest
+   tier (nothing selected) a memory's label shows only when it is hovered, or
+   when it is a hub and the camera is zoomed past `LABEL_ZOOM_RATIO`; the
+   focus and adjacent tiers of a selection keep their labels. The memory
+   renderer applies this itself. The shared `labelVisible`
+   (`features/graph/lib/focus-model.ts`), which today labels every node once
+   zoomed in and hubs at rest, is unchanged, because the code canvas uses it.
 9. **Default node limit.** `NODE_LIMIT_DEFAULT` becomes 1,000.
    `darkmem-graph-prefs` gains persist `version: 1` with a `migrate` that
    turns a stored `nodeLimit` of exactly 200 (the old default) into 1,000 and
@@ -219,14 +223,14 @@ shipped.
 
 ## Acceptance
 
-A1. [test, high] UX-1: `roleCut` returns the lowest edge score at which components of `CORE_MIN` or more hold at most 45% of the nodes, adding equal scores together; when every edge keeps them at or below 45%, it returns the lowest edge score.
+A1. [test, high] UX-1: `roleCut` returns the lowest edge score at which components of `CORE_MIN` or more hold at most 45% of the nodes, adding equal scores together; when every edge keeps them at or below 45%, it returns the lowest edge score; when the highest score group alone passes 45%, it returns the highest score.
 A2. [test, high] UX-1: On the real-corpus fixtures at 200, 1,000 and all memories, the core holds 35–50%, satellites 10–25% and the halo 25–45% of the memories.
 A3. [test, high] UX-2: On the 1,000-memory fixture, raising the Edges threshold from 0.5 to 0.8 in steps of 0.05 never moves a memory from halo to satellite or core, or from satellite to core, while a component of `CORE_MIN` or more remains.
 A4. [test, high] UX-1: With the entity layer on, an entity takes the highest role among its linked memories, and adding membership and relation edges never changes any memory's role.
 A5. [test, high] UX-1: No two satellite clumps overlap, every clump centre lies at least `1.15·R` plus its radius from the centre, and on the real-corpus fixtures every clump centre lies within `2.0·R` and no 90° sector holds more than half of the clumps.
-A6. [test, high] UX-1: Every halo node lies between `1.15·R` and the halo's outer radius; the inner half of that span holds more halo nodes than the outer half; a halo node's position is identical across placements with equal radii.
+A6. [test, high] UX-1: Every halo node lies between `1.15·R` and the halo's outer radius; halo nodes per unit area are denser in the inner half of that span than in the outer half; a halo node's position is identical across placements with equal radii.
 A7. [test, high] UX-1: `fitCore` places no core node beyond `R` and at most 10% of core nodes beyond `0.85·R`.
-A8. [test, high] UI-2: `trackDensityGain` sets a halo gain below 1 for the all-memories fixture's halo at the fit view, and the glow program's dark-theme shader scales halo brightness by `u_haloGain` and halo radius by `u_haloScale`.
+A8. [test, high] UI-2: For the all-memories fixture's halo at the fit view, `trackDensityGain`'s halo gain times the halo's coverage (scaled disc radius squared over spacing squared) stays at or below `COVERAGE_TARGET` for halo sizes of 1.5 and 20; the program feeds `u_haloGain` and `u_haloScale` from the clock, and its dark-theme shader scales halo brightness and radius by them.
 A9. [test, confirmed] UI-3: Every halo node's `size` equals `HALO_SIZE`, at most 40% of the median core size, whatever its importance or degree.
 A10. [test, confirmed] UI-5: On the 1,000-memory fixture at most 2% of memories are hubs, and at the fit view only hovered or selected nodes carry a label.
 A11. [test, high] UX-3: The default node limit is 1,000; a stored preference of 200 from before this change loads as 1,000, and any other stored value loads unchanged.
@@ -245,9 +249,10 @@ That arrangement plus per-role density control is what makes the reference
 read as it does, so the live page will look like `graph.jpg` once A1–A10
 hold. The role split is evidenced (the cut measurements above, run against
 `/graph/unified` on 2026-11-18). How the rendered result looks is
-unverified — the plan's first task builds the cut, the placement and the
-halo density on the real-corpus fixture and screenshots the 1,000-memory
-board beside `graph.jpg` before anything else is built on it.
+unverified — the plan's first task that can render the real-corpus board
+(after the cut, the placement, the halo density and the renderer wiring)
+screenshots the 1,000-memory board beside `graph.jpg`, before sizes,
+labels and the default limit are built on it.
 
 ## Testing
 
