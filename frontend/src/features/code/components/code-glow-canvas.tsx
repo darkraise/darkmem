@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react"
 import Graph from "graphology"
 import Sigma from "sigma"
+import { EdgeRectangleProgram } from "sigma/rendering"
 import type { NodeDisplayData } from "sigma/types"
 import { EmptyState } from "@/components/darkmem"
 import type {
@@ -27,6 +28,7 @@ import {
   trackDensityGain,
   type GlowClock,
 } from "@/features/graph/lib/node-glow-program"
+import { withStraightAlpha } from "@/features/graph/lib/straight-alpha"
 import {
   attachBackdrop,
   coreOnScreen,
@@ -270,6 +272,8 @@ export function CodeGlowCanvas({
         nodeProgramClasses: {
           glow: createNodeGlowProgram({ additive: t.isDark, clock: clockRef.current }),
         },
+        edgeProgramClasses: { line: withStraightAlpha(EdgeRectangleProgram) },
+        defaultEdgeType: "line",
         defaultNodeType: "glow",
         renderEdgeLabels: false,
         labelFont: t.fontMono,

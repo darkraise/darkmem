@@ -40,6 +40,7 @@ import {
   trackDensityGain,
   type GlowClock,
 } from "@/features/graph/lib/node-glow-program"
+import { withStraightAlpha } from "@/features/graph/lib/straight-alpha"
 import {
   attachBackdrop,
   coreOnScreen,
@@ -493,7 +494,10 @@ export function Graph2DRenderer({
       },
       // Sigma replaces its default program map with this one, so the
       // straight program must be registered here to be usable at all.
-      edgeProgramClasses: { curve: EdgeCurveProgram, line: EdgeRectangleProgram },
+      edgeProgramClasses: {
+        curve: withStraightAlpha(EdgeCurveProgram),
+        line: withStraightAlpha(EdgeRectangleProgram),
+      },
       defaultDrawNodeHover: (context, data, settings) => {
         // `_chromeKind` rides the reducer output: sigma mutates the reduced
         // object in place through applyNodeDefaults, so custom keys survive
