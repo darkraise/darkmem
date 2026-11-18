@@ -266,6 +266,13 @@ describe("roleCut", () => {
     const ids = named("a", 10)
     expect(roleCut(ids, [...ring("a", 9, 0.9), { source: "a8", target: "a9", score: 0.5 }])).toBe(0.9)
   })
+  it("keeps a core on a graph too small for 45% to hold CORE_MIN nodes", () => {
+    const ids = named("c", 15)
+    const chain = ids.slice(1).map((id, i) => ({ source: ids[i]!, target: id, score: 0.9 - i * 0.01 }))
+    const cut = roleCut(ids, chain)
+    expect(cut).toBeCloseTo(0.84)
+    expect(classifyWithCut(ids, chain).core).toHaveLength(8)
+  })
   it("A1: is -Infinity when no edge carries a score", () => {
     expect(roleCut(named("n", 4), [{ source: "n0", target: "n1" }])).toBe(-Infinity)
   })

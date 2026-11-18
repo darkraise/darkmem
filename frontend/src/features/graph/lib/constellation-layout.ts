@@ -239,13 +239,16 @@ export function roleCut(
   let i = 0
   while (i < m) {
     const s = score[order[i]!]!
+    const hadCore = inCore > 0
     let j = i
     while (j < m && score[order[j]!] === s) {
       const e = order[j]!
       union(ends[2 * e]!, ends[2 * e + 1]!)
       j++
     }
-    if (i > 0 && inCore > limit) break
+    // Under ~18 nodes share × n is below CORE_MIN, so any core overflows it:
+    // there, groups are kept until the first core forms.
+    if (i > 0 && inCore > limit && (hadCore || limit >= CORE_MIN)) break
     cut = s
     i = j
   }
