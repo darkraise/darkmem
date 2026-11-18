@@ -668,7 +668,7 @@ export function Graph2DRenderer({
 
     // Label tiers gate on zoom, so a camera move has to re-run the reducers.
     zoomRatioRef.current = sigma.getCamera().ratio
-    sigma.getCamera().on("updated", () => {
+    const onCameraUpdated = () => {
       const next = sigma.getCamera().ratio
       const crossed =
         next < LABEL_ZOOM_RATIO !== zoomRatioRef.current < LABEL_ZOOM_RATIO
@@ -683,7 +683,12 @@ export function Graph2DRenderer({
           schedule: true,
         })
       }
-    })
+    }
+    const camera = sigma.getCamera()
+    camera.on("updated", onCameraUpdated)
+    // kill() leaves the camera, and an animation still in flight keeps
+    // emitting updates to listeners that would refresh a dead instance.
+    sigma.on("kill", () => camera.removeListener("updated", onCameraUpdated))
 
     const setHovered = (next: string | null) => {
       const previous = hoveredNodeRef.current
