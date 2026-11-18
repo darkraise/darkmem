@@ -331,12 +331,13 @@ export function CodeGlowCanvas({
     sigmaRef.current = sigma
 
     let belowLabelRatio = sigma.getCamera().ratio < LABEL_ZOOM_RATIO
-    sigma.getCamera().on("updated", () => {
+    const onCameraUpdated = () => {
       const below = sigma.getCamera().ratio < LABEL_ZOOM_RATIO
       if (below === belowLabelRatio) return
       belowLabelRatio = below
       sigma.refresh()
-    })
+    }
+    sigma.getCamera().on("updated", onCameraUpdated)
     sigma.on("clickNode", ({ node }) => onSelectRef.current(node))
     sigma.on("clickStage", () => onSelectRef.current(null))
 
@@ -415,6 +416,9 @@ export function CodeGlowCanvas({
       stopMotion()
       detachBackdrop()
       runner.kill()
+      // kill() leaves the camera, and an animation still in flight keeps
+      // emitting updates to listeners that would refresh a dead instance.
+      sigma.getCamera().removeListener("updated", onCameraUpdated)
       sigma.kill()
       sigmaRef.current = null
     }
