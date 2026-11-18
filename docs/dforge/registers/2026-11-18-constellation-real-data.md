@@ -5,10 +5,10 @@
 
 | # | Item | Assigned | Acceptance | State | Note |
 |---|---|---|---|---|---|
-| 1 | at the default Edges threshold every memory is one connected group, so everything is core | docs/dforge/plans/2026-11-18-constellation-real-data.md | A1-A4 | planned | - |
-| 2 | the halo is a thick ring of large, overexposed white blobs | docs/dforge/plans/2026-11-18-constellation-real-data.md | A6, A8, A9 | planned | - |
-| 3 | the core is a hard-edged, tightly packed disc | docs/dforge/plans/2026-11-18-constellation-real-data.md | A7 | planned | - |
-| 4 | satellites collapse into a thin dotted arc instead of separate clusters | docs/dforge/plans/2026-11-18-constellation-real-data.md | A5 | planned | - |
-| 5 | labels on nearly every node | docs/dforge/plans/2026-11-18-constellation-real-data.md | A10 | planned | - |
-| 6 | show 1,000 memories by default | docs/dforge/plans/2026-11-18-constellation-real-data.md | A11 | planned | - |
-| 7 | prove it on the real data: anonymised fixture in Storybook plus the live page on this machine | docs/dforge/plans/2026-11-18-constellation-real-data.md | A13, A18 | planned | - |
+| 1 | at the default Edges threshold every memory is one connected group, so everything is core | docs/dforge/plans/2026-11-18-constellation-real-data.md | A1-A4 | doing | - |
+| 2 | the halo is a thick ring of large, overexposed white blobs | docs/dforge/plans/2026-11-18-constellation-real-data.md | A6, A8, A9 | doing | - |
+| 3 | the core is a hard-edged, tightly packed disc | docs/dforge/plans/2026-11-18-constellation-real-data.md | A7 | doing | - |
+| 4 | satellites collapse into a thin dotted arc instead of separate clusters | docs/dforge/plans/2026-11-18-constellation-real-data.md | A5 | doing | - |
+| 5 | labels on nearly every node | docs/dforge/plans/2026-11-18-constellation-real-data.md | A10 | doing | - |
+| 6 | show 1,000 memories by default | docs/dforge/plans/2026-11-18-constellation-real-data.md | A11 | doing | - |
+| 7 | prove it on the real data: anonymised fixture in Storybook plus the live page on this machine | docs/dforge/plans/2026-11-18-constellation-real-data.md | A13, A18 | doing | - |
