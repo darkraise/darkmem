@@ -88,6 +88,20 @@ describe("CodeGraphTab", () => {
     expect(screen.getByRole("group", { name: /^Code graph — \d+ nodes, \d+ edges$/ })).toBeInTheDocument()
   })
 
+  it("selects the linked file's node on a ?file= deep link", () => {
+    render(
+      <CodeGraphTab
+        repoId="repo-backend"
+        focusFile="api/mcp/mcp_tools.py"
+        onRepoChange={vi.fn()}
+        onOpenRepositories={vi.fn()}
+      />,
+    )
+    const panel = screen.getByText("Selected symbol", { exact: true }).parentElement!.parentElement!
+    expect(panel).toHaveTextContent("mcp_tools.py")
+    expect(panel).toHaveTextContent("file · api/mcp/mcp_tools.py")
+  })
+
   it("renders chrome, the explorer/filters rail, and analysis panels for a ready repo", () => {
     render(
       <CodeGraphTab

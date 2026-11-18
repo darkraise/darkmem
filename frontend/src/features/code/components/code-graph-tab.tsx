@@ -189,7 +189,9 @@ export function CodeGraphTab({
     if (!graph) return
     const node = focusSymbolId
       ? graph.nodes.find((n) => n.id === focusSymbolId)
-      : undefined
+      : focusFile
+        ? graph.nodes.find((n) => n.kind === "file" && n.file === focusFile)
+        : undefined
     const path = node?.file ?? focusFile
     if (!path) return
     setSelectedId(node?.id ?? null)
