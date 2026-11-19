@@ -114,6 +114,7 @@ export function GraphToolbar({
 }: GraphToolbarProps) {
   const triggerRef = useRef<HTMLButtonElement>(null)
   const resetRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   // darkraise-ui 7.0.0's non-modal PopoverContent portals to the end of
   // <body> with no focus guards, so Tab past its last control fell to <body>.
   // Route the edges back as if the panel sat right after its trigger.
@@ -127,6 +128,14 @@ export function GraphToolbar({
     e.preventDefault()
     target.focus()
   }
+  const enterOpenPanel = (fromEnd: boolean) => (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key !== "Tab" || e.shiftKey !== fromEnd || !panelRef.current) return
+    const stops = tabbables(panelRef.current)
+    const target = fromEnd ? stops[stops.length - 1] : stops[0]
+    if (!target) return
+    e.preventDefault()
+    target.focus()
+  }
   return (
     // Top-right, not centred: the graph is the page, and a bar across its
     // middle competes with the thing it controls. Two buttons is all that
@@ -136,6 +145,7 @@ export function GraphToolbar({
         <PopoverTrigger asChild>
           <Toggle
             ref={triggerRef}
+            onKeyDown={enterOpenPanel(false)}
             aria-label="Toggle graph settings"
             className="bg-card/80 border-border data-[pressed]:bg-primary/20 data-[pressed]:text-primary-text pointer-events-auto h-8 w-8 rounded-md border p-0 shadow-lg backdrop-blur-sm"
           >
@@ -145,6 +155,7 @@ export function GraphToolbar({
         <PopoverContent
           side="bottom"
           align="end"
+          ref={panelRef}
           onKeyDown={keepFocusInToolbar}
           className="bg-card/95 border-border max-h-[min(70vh,32rem)] w-[384px] overflow-y-auto rounded-lg border p-3 shadow-xl backdrop-blur-sm"
         >
@@ -285,6 +296,7 @@ export function GraphToolbar({
 
       <Button
         ref={resetRef}
+        onKeyDown={enterOpenPanel(true)}
         variant="ghost"
         size="icon"
         type="button"
