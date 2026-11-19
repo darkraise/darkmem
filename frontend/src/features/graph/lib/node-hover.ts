@@ -1,6 +1,7 @@
 import type { Settings } from "sigma/settings"
 import type { NodeDisplayData, PartialButFor } from "sigma/types"
 import type { GraphThemeTokens } from "./code-graph-theme"
+import { recede } from "./focus-model"
 import type { SelectionColor } from "./graph-prefs"
 
 /** Focus is what you clicked; hover is what the pointer is over. They must
@@ -30,12 +31,18 @@ export interface HoverChrome {
  *  LABEL_CLEARANCE below is derived from it: a ring widened in one place and a
  *  label offset left in another is how the text ended up under the ring. */
 const RING = {
-  hover: { width: 1.5, gap: 2.5 },
-  focus: { width: 3, gap: 4 },
+  hover: { width: 1, gap: 2 },
+  focus: { width: 2, gap: 2.5 },
 } as const
 
-/** Breathing room between the ring's outer edge and the start of the text. */
-const LABEL_TEXT_GAP = 3
+/** Clear space between the focus ring's outer edge and the label plate. */
+const PLATE_GAP = 3
+/** Inner padding of the label plate. */
+const PLATE_PAD_X = 6
+const PLATE_PAD_Y = 3
+const PLATE_CORNER = 4
+/** Share of the ring colour tinting a selected node's label plate. */
+const FOCUS_TINT = 0.24
 
 /**
  * Clear space between a node's edge and the left edge of its label.
@@ -47,10 +54,10 @@ const LABEL_TEXT_GAP = 3
  * inside both rings, so the renderers pass `drawNodeLabel` below instead.
  */
 export const LABEL_CLEARANCE =
-  RING.focus.gap + RING.focus.width + LABEL_TEXT_GAP
+  RING.focus.gap + RING.focus.width + PLATE_GAP + PLATE_PAD_X
 
-/** Left edge of the label plate: where the focus ring ends. */
-export const PLATE_INSET = RING.focus.gap + RING.focus.width
+/** Left edge of the label plate: just clear of the focus ring. */
+export const PLATE_INSET = RING.focus.gap + RING.focus.width + PLATE_GAP
 
 function channel(hex: string, at: number): number {
   const c = parseInt(hex.slice(at, at + 2), 16) / 255
@@ -90,7 +97,9 @@ function readableOn(plate: string, tokens: GraphThemeTokens): string {
  *
  * Every treatment rings the node rather than repainting it: sigma redraws
  * highlighted nodes on the `hoverNodes` layer above this one, so the node
- * keeps its own fill and the ring reads as an addition to it.
+ * keeps its own fill and the ring reads as an addition to it. The plate holds
+ * only the label; a plate filled round the node as well reads as a solid disc
+ * of the ring colour with the node lost inside it.
  */
 export function hoverChrome(
   tokens: GraphThemeTokens,
@@ -117,10 +126,13 @@ export function hoverChrome(
     }
   }
 
+  // A tint of the ring over the page, outlined in the ring: it reads as the
+  // selection's own tag without a slab of full accent beside the node.
+  const fill = recede(ring, tokens.background, FOCUS_TINT)
   return {
-    fill: ring,
-    text: readableOn(ring, tokens),
-    plateStroke: null,
+    fill,
+    text: readableOn(fill, tokens),
+    plateStroke: ring,
     ring,
     ringWidth: RING.focus.width,
     ringGap: RING.focus.gap,
@@ -215,7 +227,56 @@ export function drawFocusRing(
   context.restore()
 }
 
-/** Themed replacement for sigma's `drawDiscNodeHover`, geometry unchanged. */
+/**
+ * The label plate: a rounded tag to the right of the ring, holding the label
+ * in the chrome's text colour. Nothing is painted over or around the node.
+ */
+export function drawLabelPlate(
+  context: CanvasRenderingContext2D,
+  data: PartialButFor<NodeDisplayData, "x" | "y" | "size" | "label" | "color">,
+  settings: Settings,
+  chrome: HoverChrome,
+): void {
+  if (!data.label) return
+  const size = settings.labelSize
+  context.font = `${settings.labelWeight} ${size}px ${settings.labelFont}`
+  const textWidth = context.measureText(data.label).width
+  const x0 = data.x + data.size + PLATE_INSET
+  const x1 = x0 + PLATE_PAD_X + textWidth + PLATE_PAD_X
+  const y0 = data.y - size / 2 - PLATE_PAD_Y
+  const y1 = data.y + size / 2 + PLATE_PAD_Y
+  const r = Math.min(PLATE_CORNER, (y1 - y0) / 2)
+
+  context.save()
+  context.beginPath()
+  context.moveTo(x0 + r, y0)
+  context.lineTo(x1 - r, y0)
+  context.arc(x1 - r, y0 + r, r, -Math.PI / 2, 0)
+  context.lineTo(x1, y1 - r)
+  context.arc(x1 - r, y1 - r, r, 0, Math.PI / 2)
+  context.lineTo(x0 + r, y1)
+  context.arc(x0 + r, y1 - r, r, Math.PI / 2, Math.PI)
+  context.lineTo(x0, y0 + r)
+  context.arc(x0 + r, y0 + r, r, Math.PI, (3 * Math.PI) / 2)
+  context.closePath()
+  context.fillStyle = chrome.fill
+  context.shadowOffsetX = 0
+  context.shadowOffsetY = 0
+  context.shadowBlur = 6
+  context.shadowColor = chrome.shadow
+  context.fill()
+  context.shadowBlur = 0
+  if (chrome.plateStroke) {
+    context.strokeStyle = chrome.plateStroke
+    context.lineWidth = 1
+    context.stroke()
+  }
+  context.restore()
+  drawPlatedLabel(context, data, settings, chrome.text)
+}
+
+/** Themed replacement for sigma's `drawDiscNodeHover`: a ring round the node
+ *  and the label on its own plate. */
 export function drawThemedDiscNodeHover(
   context: CanvasRenderingContext2D,
   data: PartialButFor<NodeDisplayData, "x" | "y" | "size" | "label" | "color">,
@@ -224,49 +285,7 @@ export function drawThemedDiscNodeHover(
   color: SelectionColor,
   kind: ChromeKind,
 ): void {
-  const size = settings.labelSize
   const chrome = hoverChrome(tokens, color, kind, data.color)
-  context.font = `${settings.labelWeight} ${size}px ${settings.labelFont}`
-
-  context.fillStyle = chrome.fill
-  context.shadowOffsetX = 0
-  context.shadowOffsetY = 0
-  context.shadowBlur = 8
-  context.shadowColor = chrome.shadow
-
-  const PADDING = 2
-  if (typeof data.label === "string") {
-    const textWidth = context.measureText(data.label).width
-    const boxWidth = Math.round(textWidth + 5)
-    const boxHeight = Math.round(size + 2 * PADDING)
-    const radius = Math.max(data.size + PLATE_INSET, size / 2 + PADDING)
-    const angleRadian = Math.asin(boxHeight / 2 / radius)
-    const xDeltaCoord = Math.sqrt(
-      Math.abs(Math.pow(radius, 2) - Math.pow(boxHeight / 2, 2)),
-    )
-
-    context.beginPath()
-    context.moveTo(data.x + xDeltaCoord, data.y + boxHeight / 2)
-    context.lineTo(data.x + radius + boxWidth, data.y + boxHeight / 2)
-    context.lineTo(data.x + radius + boxWidth, data.y - boxHeight / 2)
-    context.lineTo(data.x + xDeltaCoord, data.y - boxHeight / 2)
-    context.arc(data.x, data.y, radius, angleRadian, -angleRadian)
-    context.closePath()
-    context.fill()
-  } else {
-    context.beginPath()
-    context.arc(data.x, data.y, data.size + PADDING, 0, Math.PI * 2)
-    context.closePath()
-    context.fill()
-  }
-
-  context.shadowBlur = 0
-  if (chrome.plateStroke) {
-    context.strokeStyle = chrome.plateStroke
-    context.lineWidth = 1
-    context.stroke()
-  }
-
+  drawLabelPlate(context, data, settings, chrome)
   drawFocusRing(context, data.x, data.y, data.size, chrome, "circle")
-  drawPlatedLabel(context, data, settings, chrome.text)
 }

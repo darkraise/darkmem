@@ -207,6 +207,7 @@ varying float v_alpha;
 const float bias = 255.0 / 254.0;
 const float SPREAD = ${GLOW_SPREAD.toFixed(1)};
 const float TAU = 6.283185307179586;
+// glowDiscScale mirrors LIGHT_CRISP and the role branches below.
 const float LIGHT_CRISP = 1.5;
 
 void main() {
@@ -296,6 +297,30 @@ void main(void) {
 const { UNSIGNED_BYTE, FLOAT } = WebGLRenderingContext
 
 type GlowDisplayData = NodeDisplayData & { brightness?: number; phase?: number }
+
+/**
+ * The scale the vertex shader applies to a node's disc this frame, mirrored
+ * for the canvas layers: hover and selection chrome must ring the disc as
+ * drawn, not the unscaled `size`, which on a dense view is several times
+ * wider. Keep it in step with the shader's role branches above.
+ */
+export function glowDiscScale(
+  brightness: number | undefined,
+  clock: GlowClock,
+  opts: { additive: boolean; memoryCanvas?: boolean },
+): number {
+  const b = brightness ?? 1
+  if (opts.additive) {
+    if (b > 0.9) return clock.coreScale ?? 1
+    if (b > 0.5) return clock.satelliteScale ?? 1
+    if (b < 0.5) return clock.haloScale ?? 1
+    return 1
+  }
+  if (!opts.memoryCanvas) return 1
+  if (b > 0.9) return Math.min(1, 1.5 * (clock.coreScale ?? 1))
+  if (b > 0.5) return Math.min(1, 1.5 * (clock.satelliteScale ?? 1))
+  return 1
+}
 
 export function createNodeGlowProgram(opts: {
   additive: boolean

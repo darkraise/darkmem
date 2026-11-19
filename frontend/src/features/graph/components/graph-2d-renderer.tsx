@@ -31,8 +31,10 @@ import { constellationFa2Settings } from "@/features/graph/lib/constellation-run
 import { createClusterRunner, type ClusterRunner } from "@/features/graph/lib/cluster-runner"
 import type { Attachment, ScoredEdge } from "@/features/graph/lib/constellation-layout"
 import { topHubs } from "@/features/graph/lib/hubs"
+import { memoryEdgeSize, restEdgeSize } from "@/features/graph/lib/memory-edge-width"
 import {
   createNodeGlowProgram,
+  glowDiscScale,
   trackDensityGain,
   type GlowClock,
 } from "@/features/graph/lib/node-glow-program"
@@ -127,29 +129,6 @@ const HULL_REFRESH_MS = 250
 
 /** The backdrop draws its glow at 2.2x this share of the islands' extent. */
 const NEBULA_SHARE = 0.5
-
-/** A connected edge must be unmistakably heavier than its neighbours -- that
- *  emphasis is most of what makes a selection legible. Both are scaled off
- *  each kind's own weight so the relation/similarity/membership hierarchy
- *  survives the emphasis, and hovering stays lighter than selecting so the
- *  two remain distinguishable while a selection is held. */
-/** Emphasis is a flat width, not a per-kind multiple. Scaling each kind by
- *  the same factor made connected relation edges visibly heavier than
- *  connected similarity ones, which reads as "some of these matter more"
- *  rather than as one highlight. The hierarchy still holds at rest. */
-const HOVER_EDGE_SIZE = 4.5
-const SELECTED_EDGE_SIZE = 6.5
-
-/** The edge hierarchy: relation over similarity over membership. */
-/** Memory-to-memory similarity is what this page is about, so it carries the
- *  heaviest line; the entity overlay's own edges sit under it. The knowledge
- *  graph keeps the opposite order on purpose -- there entities ARE the
- *  subject -- so its copy of this function is not the same function. */
-function edgeWeight(kind: unknown): number {
-  if (kind === "relation") return 2.4
-  if (kind === "membership") return 1.6
-  return 3.4
-}
 
 export function Graph2DRenderer({
   filteredMemories,
@@ -499,6 +478,17 @@ export function Graph2DRenderer({
       .join("\n")
     const islandsChanged = islandSigRef.current !== islandSig
     islandSigRef.current = islandSig
+    // The glow program shrinks dense roles' discs on the GPU; the canvas
+    // chrome and labels are placed off the disc as drawn.
+    const drawnDisc = <T extends { size: number }>(data: T): T => ({
+      ...data,
+      size:
+        data.size *
+        glowDiscScale((data as { brightness?: number }).brightness, clockRef.current, {
+          additive: tokensRef.current.isDark,
+          memoryCanvas: true,
+        }),
+    })
     const sigmaSettings: Partial<Settings> = {
       antiAliasingFeather: 2,
       // Sorts each program's items by the `zIndex` the reducers emit. Only the
@@ -546,16 +536,17 @@ export function Graph2DRenderer({
         if (data.type === "diamond") {
           drawDiamondNodeHover(context, data, settings, tokensRef.current, color, kind)
         } else {
-          drawThemedDiscNodeHover(context, data, settings, tokensRef.current, color, kind)
+          drawThemedDiscNodeHover(context, drawnDisc(data), settings, tokensRef.current, color, kind)
         }
       },
-      // Islands fill the corners of the frame, where the toolbar buttons sit
-      // up to 44px in from the top edge.
+      // Keeps the islands clear of the toolbar buttons, which sit up to 44px
+      // in from the top edge.
       stagePadding: 64,
       // Memories and the halo draw under sigma's 6px label cull, which runs
       // before the reducer is consulted; the reducer alone decides labels.
       labelRenderedSizeThreshold: 0,
-      defaultDrawNodeLabel: drawNodeLabel,
+      defaultDrawNodeLabel: (context, data, settings) =>
+        drawNodeLabel(context, data.type === "diamond" ? data : drawnDisc(data), settings),
       defaultNodeColor: mutedColor,
       nodeReducer(node, data) {
         const t = tokensRef.current
@@ -657,7 +648,7 @@ export function Graph2DRenderer({
         // A similarity edge, a typed relation and a membership link are three
         // different claims and carry three different weights. The eye follows
         // the heaviest line, so the heaviest line is the most meaningful one.
-        res.size = edgeWeight(data._edgeKind)
+        res.size = restEdgeSize(data._edgeKind)
 
         // Emphasis never recolours an edge: its colour is its endpoints', and
         // repainting it the selection colour threw that away exactly when the
@@ -673,10 +664,10 @@ export function Graph2DRenderer({
         // small points; at rest it sits further back than in the dark theme.
         else if (!t.isDark && !ground) res.color = fade(data.color || t.border, LIGHT_REST_EDGE_FADE)
 
-        if (sel && (src === sel || tgt === sel)) res.size = SELECTED_EDGE_SIZE
-        if (hov && (src === hov || tgt === hov)) {
-          res.size = Math.max(res.size ?? 0, HOVER_EDGE_SIZE)
-        }
+        res.size = memoryEdgeSize(data._edgeKind, {
+          selected: !!sel && (src === sel || tgt === sel),
+          hovered: !!hov && (src === hov || tgt === hov),
+        })
 
         if (ground === "selection" || (ground === "hover" && scale.hoverDims)) {
           res.color = fade(

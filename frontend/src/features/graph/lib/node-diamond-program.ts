@@ -3,12 +3,7 @@ import { floatColor } from "sigma/utils"
 import type { Settings } from "sigma/settings"
 import type { NodeDisplayData, PartialButFor } from "sigma/types"
 import type { GraphThemeTokens } from "./code-graph-theme"
-import {
-  PLATE_INSET,
-  drawFocusRing,
-  drawPlatedLabel,
-  hoverChrome,
-} from "./node-hover"
+import { drawFocusRing, drawLabelPlate, hoverChrome } from "./node-hover"
 import type { ChromeKind } from "./node-hover"
 import type { SelectionColor } from "./graph-prefs"
 
@@ -114,57 +109,9 @@ export function drawDiamondNodeHover(
   color: SelectionColor,
   kind: ChromeKind,
 ): void {
-  const size = settings.labelSize
-  const font = settings.labelFont
-  const weight = settings.labelWeight
-  context.font = `${weight} ${size}px ${font}`
-
-  const PADDING = 2
-  const r = data.size + PLATE_INSET
   const chrome = hoverChrome(tokens, color, kind, data.color)
-
-  context.fillStyle = chrome.fill
-  context.shadowOffsetX = 0
-  context.shadowOffsetY = 0
-  context.shadowBlur = 8
-  context.shadowColor = chrome.shadow
-
-  if (typeof data.label === "string") {
-    const textWidth = context.measureText(data.label).width
-    const boxWidth = Math.round(textWidth + 5)
-    const boxHeight = Math.round(size + 2 * PADDING)
-
-    context.beginPath()
-    context.moveTo(data.x, data.y - r)
-    context.lineTo(data.x + r, data.y)
-    context.lineTo(data.x + r, data.y + boxHeight / 2)
-    context.lineTo(data.x + r + boxWidth, data.y + boxHeight / 2)
-    context.lineTo(data.x + r + boxWidth, data.y - boxHeight / 2)
-    context.lineTo(data.x + r, data.y - boxHeight / 2)
-    context.lineTo(data.x + r, data.y)
-    context.lineTo(data.x, data.y + r)
-    context.lineTo(data.x - r, data.y)
-    context.closePath()
-    context.fill()
-  } else {
-    context.beginPath()
-    context.moveTo(data.x, data.y - r)
-    context.lineTo(data.x + r, data.y)
-    context.lineTo(data.x, data.y + r)
-    context.lineTo(data.x - r, data.y)
-    context.closePath()
-    context.fill()
-  }
-
-  context.shadowBlur = 0
-  if (chrome.plateStroke) {
-    context.strokeStyle = chrome.plateStroke
-    context.lineWidth = 1
-    context.stroke()
-  }
-
+  drawLabelPlate(context, data, settings, chrome)
   drawFocusRing(context, data.x, data.y, data.size, chrome, "diamond")
-  drawPlatedLabel(context, data, settings, chrome.text)
 }
 
 const { UNSIGNED_BYTE, FLOAT } = WebGLRenderingContext

@@ -89,8 +89,11 @@ describe("hoverChrome", () => {
   it("picks the text colour by contrast, not by theme polarity", () => {
     const pale = tokens({ primary: hslToHex(217, 91, 88) })
     const deep = tokens({ primary: hslToHex(217, 91, 22) })
-    expect(hoverChrome(pale, "accent", "focus", NODE_COLOR).text).toBe(pale.background)
-    expect(hoverChrome(deep, "accent", "focus", NODE_COLOR).text).toBe(deep.foreground)
+    for (const t of [pale, deep, LIGHT]) {
+      const c = hoverChrome(t, "accent", "focus", NODE_COLOR)
+      const other = c.text === t.background ? t.foreground : t.background
+      expect(contrast(c.text, c.fill)).toBeGreaterThanOrEqual(contrast(other, c.fill))
+    }
   })
 
   it("rings in the accent, or inverts against the page", () => {
@@ -159,6 +162,27 @@ describe("drawThemedDiscNodeHover", () => {
     const chrome = hoverChrome(DARK, "accent", "focus", NODE_COLOR)
     expect(painted.find((p) => p.op === "fill")?.style).toBe(chrome.fill)
     expect(painted.find((p) => p.op === "fillText")?.style).toBe(chrome.text)
+  })
+
+  // The selected node read as a solid disc of the accent: the plate was
+  // filled round the node as well as behind the label.
+  it.each(["focus", "hover"] as const)("fills no shape round the node under %s", (kind) => {
+    let aroundNode = false
+    const filled: boolean[] = []
+    const { ctx } = recordingContext()
+    const spy = {
+      ...ctx,
+      beginPath: () => {
+        aroundNode = false
+      },
+      arc: (x: number, y: number) => {
+        if (x === NODE.x && y === NODE.y) aroundNode = true
+      },
+      fill: () => filled.push(aroundNode),
+    }
+    drawThemedDiscNodeHover(spy as never, NODE as never, SETTINGS, DARK, "accent", kind)
+    expect(filled.length).toBeGreaterThan(0)
+    expect(filled).not.toContain(true)
   })
 
   // The regression this replaces: the plate was painted in a surface token,
