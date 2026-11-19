@@ -3,6 +3,7 @@ import { useMemo } from "react"
 import { Graph2DRenderer } from "./graph-2d-renderer"
 import { useMemoryGraphTheme } from "@/features/graph/lib/memory-graph-theme"
 import { loadRealCorpus, type RealCorpusSize } from "@/features/graph/fixtures/real-corpus"
+import { entityVisible } from "@/features/graph/hooks/use-graph-filters"
 
 // Stable identities: the renderer rebuilds its whole graph when a callback
 // prop changes.
@@ -30,11 +31,14 @@ function Board({
   size,
   minScore = 0,
   withEntities = false,
+  sharedEntitiesOnly = true,
   selectTopHub = false,
 }: {
   size: RealCorpusSize
   minScore?: number
   withEntities?: boolean
+  /** The page's default: only entities two or more drawn memories assert. */
+  sharedEntitiesOnly?: boolean
   selectTopHub?: boolean
 }) {
   const { tokens, palette } = useMemoryGraphTheme()
@@ -43,6 +47,15 @@ function Board({
     () => corpus.edges.filter((e) => e.score >= minScore),
     [corpus, minScore],
   )
+  const entities = useMemo(() => {
+    if (!withEntities) return []
+    const memoryIds = new Set(corpus.memories.map((m) => m.id))
+    return corpus.entities.filter((e) => entityVisible(e, memoryIds, sharedEntitiesOnly))
+  }, [corpus, withEntities, sharedEntitiesOnly])
+  const entityRelations = useMemo(() => {
+    const ids = new Set(entities.map((e) => e.id))
+    return corpus.entityRelations.filter((r) => ids.has(r.source) && ids.has(r.target))
+  }, [corpus, entities])
   const selected = useMemo(
     () => (selectTopHub ? highestDegree(corpus.edges) : null),
     [corpus, selectTopHub],
@@ -59,8 +72,8 @@ function Board({
         colorMode="cluster"
         hullMode="none"
         entityLayerEnabled={withEntities}
-        entities={withEntities ? corpus.entities : []}
-        entityRelations={withEntities ? corpus.entityRelations : []}
+        entities={entities}
+        entityRelations={entityRelations}
         tokens={tokens}
         palette={palette}
         clusterNames={corpus.clusterNames}
@@ -83,4 +96,5 @@ export const All: S = { args: { size: "all" } }
 export const Small200: S = { args: { size: 200 } }
 export const HighEdges: S = { args: { size: 1000, minScore: 0.8 } }
 export const EntityLayer: S = { args: { size: 1000, withEntities: true } }
+export const EntityLayerAll: S = { args: { size: 1000, withEntities: true, sharedEntitiesOnly: false } }
 export const Selected: S = { args: { size: 1000, selectTopHub: true } }

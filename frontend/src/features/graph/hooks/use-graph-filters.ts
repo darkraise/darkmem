@@ -2,6 +2,19 @@ import { useState, useMemo } from "react"
 import { useDebouncedValue } from "./use-debounced-value"
 import type { UnifiedGraphData, GraphEntity, EntityRelation } from "@/hooks/api"
 
+// Counted against the memories actually on screen, not the entity's whole
+// memory_ids: an entity joining two memories of which one is filtered out is
+// not bridging anything you can see.
+export function entityVisible(
+  entity: Pick<GraphEntity, "memory_ids">,
+  memoryIds: ReadonlySet<string>,
+  sharedOnly: boolean,
+): boolean {
+  let visible = 0
+  for (const mid of entity.memory_ids) if (memoryIds.has(mid)) visible++
+  return sharedOnly ? visible >= 2 : visible > 0
+}
+
 export function useGraphFilters(
   data: UnifiedGraphData | undefined,
   entityLayerEnabled: boolean,
@@ -87,12 +100,7 @@ export function useGraphFilters(
         !selectedEntityTypes.has(e.entity_type)
       )
         return false
-      // Counted against the memories actually on screen, not the entity's
-      // whole memory_ids: an entity joining two memories of which one is
-      // filtered out is not bridging anything you can see.
-      let visible = 0
-      for (const mid of e.memory_ids) if (memoryIdSet.has(mid)) visible++
-      return sharedEntitiesOnly ? visible >= 2 : visible > 0
+      return entityVisible(e, memoryIdSet, sharedEntitiesOnly)
     })
   }, [
     data,
