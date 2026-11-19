@@ -21,6 +21,7 @@ const h = vi.hoisted(() => {
     GL,
     sigmas: [] as unknown[],
     workers: [] as unknown[],
+    densityClassifications: [] as unknown[],
   }
 })
 
@@ -199,6 +200,18 @@ vi.mock("@/features/code/components/code-glow-canvas", async (importOriginal) =>
           aria-label={`Code graph — ${nodes.length} nodes, ${edges.length} edges`}
         />
       )
+    },
+  }
+})
+
+// Records what each renderer hands the density pass; the real pass still runs.
+vi.mock("@/features/graph/lib/node-glow-program", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/features/graph/lib/node-glow-program")>()
+  return {
+    ...actual,
+    trackDensityGain: (...args: Parameters<typeof actual.trackDensityGain>) => {
+      h.densityClassifications.push(args[2])
+      return actual.trackDensityGain(...args)
     },
   }
 })
@@ -745,9 +758,43 @@ describe("memory 2D renderer", () => {
     expect(memories.map((m) => on(m.id))).toEqual(offRoles)
   })
 
+  it("A4: entity diamonds take roles but stay out of every role's glow density", () => {
+    const ring = ids("c", 8).map((id) => memory(id))
+    const rest = ["s0", "s1", ...ids("h", 10)].map((id) => memory(id))
+    const edges = [...path([...ids("c", 8), "c0"]).map((e) => edge(e.source, e.target)), edge("s0", "s1")]
+    const entity = (id: string, memory_ids: string[]): GraphEntity => ({
+      id,
+      name: id,
+      entity_type: "tool",
+      properties: {},
+      memory_ids,
+    })
+    render(
+      <Scene
+        memories={[...ring, ...rest]}
+        edges={edges}
+        entityLayer
+        entities={[entity("x", ["s1", "h1"]), entity("y", ["c2", "h2"]), entity("z", ["h3", "h4"])]}
+      />,
+    )
+    advance(50)
+    const g = lastSigma().graph
+    expect(["entity:y", "entity:x", "entity:z"].map((id) => g.getNodeAttribute(id, "_role"))).toEqual([
+      "core",
+      "satellite",
+      "halo",
+    ])
+    const passed = h.densityClassifications[h.densityClassifications.length - 1] as { core: string[]; satellites: string[][]; halo: string[] }
+    expect(passed.core).toContain("c0")
+    expect(passed.halo).toContain("h0")
+    const counted = [...passed.core, ...passed.satellites.flat(), ...passed.halo]
+    expect(counted.filter((id) => id.startsWith("entity:"))).toEqual([])
+  })
+
   beforeEach(() => {
     h.sigmas.length = 0
     h.workers.length = 0
+    h.densityClassifications.length = 0
     vi.useFakeTimers({
       toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame", "cancelAnimationFrame", "performance"],
     })
