@@ -152,3 +152,20 @@ describe("RealMemoryGraphPage: node budget", () => {
     expect(await screen.findByTestId("node-count-summary")).toHaveTextContent("Showing 1 of 4,580")
   })
 })
+
+describe("RealMemoryGraphPage: filter panel", () => {
+  beforeEach(() => {
+    mockUseUnifiedGraph.mockReset()
+    mockUseUnifiedGraph.mockReturnValue({ data: ONE_MEMORY, isLoading: false })
+  })
+
+  it("keeps the collapsed panel's controls out of the tab order until Filters opens it", async () => {
+    const user = userEvent.setup()
+    render(<RealMemoryGraphPage />, { wrapper })
+    const contentFilter = screen.getByPlaceholderText(/filter by content/i)
+    expect(contentFilter.closest("[inert]")).not.toBeNull()
+
+    await user.click(screen.getByRole("button", { name: "Filters" }))
+    expect(contentFilter.closest("[inert]")).toBeNull()
+  })
+})

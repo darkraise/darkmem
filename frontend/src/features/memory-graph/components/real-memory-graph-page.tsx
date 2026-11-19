@@ -405,6 +405,8 @@ export function RealMemoryGraphPage() {
             <div
               className={`border-border bg-card absolute top-14 left-3 z-[25] flex origin-top flex-col overflow-clip rounded-lg border shadow-xl transition-all duration-200 ease-out ${filters.showFilters ? "scale-y-100 opacity-100" : "pointer-events-none scale-y-0 opacity-0"}`}
               style={{ maxHeight: "calc(100% - 68px)" }}
+              // Scaled to zero height, its controls would still take Tab focus.
+              inert={!filters.showFilters}
             >
               <GraphFilterPanel
                 colorMode={colorMode}
