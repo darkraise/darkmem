@@ -59,7 +59,7 @@ Proven on the uncommitted working tree on top of 1ae36947, on 2026-11-19, before
 
 ## Not proven here
 
-- The deployed image: the live page was served by Vite dev against the live backend. After the deploy one live capture should be re-taken on `:8000`.
+- The deployed image beyond one state pair: after the deploy of c36827ce (image `darkraise/darkmem:c36827ce`), the live page on `:8000` was re-captured once, dark 1920x1080, default and All (`.dforge/ui-ux/cluster-islands/deployed/`): the same wide arrangement, 0 errors, 0 attempted writes. The other states were proven on Vite dev against the same backend.
 - The first-toggle delay's cause, and its size on a GPU, a second viewport and the light theme.
 - A loose island on real data: no real or live state contains an unclustered memory (see UI-3).
 
