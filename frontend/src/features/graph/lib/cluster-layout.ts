@@ -9,8 +9,8 @@ export const ISLAND_K = 12
 export const LOOSE_K = 22
 /** Clear space between two islands, as a share of the smaller one's radius,
  *  with a floor so two small islands never touch. */
-export const ISLAND_GAP = 0.25
-const ISLAND_GAP_MIN = 12
+export const ISLAND_GAP = 0.1
+const ISLAND_GAP_MIN = 6
 /** Minimum distance between two memories, as a share of an island's even
  *  spacing. Below 1 so linked memories can still sit closer than unlinked. */
 export const NODE_GAP = 0.4
@@ -18,13 +18,16 @@ export const NODE_GAP = 0.4
  *  radius; the rest taper softly to SOFT_EDGE, never to a hard rim. */
 const FIT_P85 = 0.8
 const SOFT_EDGE = 1.15
+/** Islands collide at this share of their radii. Below SOFT_EDGE, so two
+ *  neighbours' tapered stragglers may meet while their bodies (inside
+ *  FIT_P85) keep a clear gap; at SOFT_EDGE the bodies sat far apart. */
+export const ISLAND_REACH = 1
 const LOOSE_GROUP = "loose"
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
 const PLACE_ITERATIONS = 300
-/** Width over height of the rectangle the islands are packed into. */
-const PACK_ASPECT = 1.6
-/** Share of that rectangle the island footprints cover. */
-const PACK_FILL = 0.55
+/** Share of the seeding disc the island footprints cover. It only spaces the
+ *  seed slots; the simulation holds no rim. */
+const PACK_FILL = 0.62
 /** Distance between two islands' simulation spots per square-rooted member of
  *  the largest island: about a hundred times an island's simulated width, so
  *  ForceAtlas2's all-pairs repulsion from one island cannot stretch another. */
@@ -184,12 +187,11 @@ const islandGap = (a: IslandGroup, b: IslandGroup) =>
   Math.max(ISLAND_GAP_MIN, ISLAND_GAP * Math.min(a.radius, b.radius))
 
 /**
- * Island centres from a small deterministic simulation: islands start on a
- * serpentine grid inside a PACK_ASPECT rectangle, in an order that puts
- * strongly linked islands in neighbouring cells; islands sharing edges pull
- * toward touching, collisions keep a gap, and a containment force holds each
- * island inside the rectangle. There is no pull toward a centre, so the
- * arrangement never gathers into a disc around one island.
+ * Island centres from a small deterministic simulation: islands start on the
+ * slots of a sunflower inside a disc, each taking the free slot nearest the
+ * islands it links to (the largest island takes the middle, the loose island
+ * the rim); islands sharing edges pull toward touching, a pull toward the
+ * centre keeps the whole round and compact, and collisions keep a gap.
  */
 export function placeIslands(
   groups: readonly IslandGroup[],
@@ -242,31 +244,20 @@ function placeIndexed(
 
   const rad = Float64Array.from(groups, (g) => g.radius)
   const area = Float64Array.from(rad, (r) => r * r)
-  const foot = Float64Array.from(rad, (r) => SOFT_EDGE * r + ISLAND_GAP_MIN / 2)
+  const foot = Float64Array.from(rad, (r) => ISLAND_REACH * r + ISLAND_GAP_MIN / 2)
   let footArea = 0
   for (let i = 0; i < n; i++) footArea += Math.PI * foot[i]! * foot[i]!
-  const boxH = Math.sqrt(footArea / PACK_FILL / PACK_ASPECT)
-  const boxW = PACK_ASPECT * boxH
+  const discR = Math.sqrt(footArea / PACK_FILL / Math.PI)
 
-  const order = linkageOrder(groups, pairs)
-  const cols = Math.max(1, Math.min(n, Math.round(Math.sqrt(n * PACK_ASPECT))))
-  const rows = Math.ceil(n / cols)
   const xs = new Float64Array(n)
   const ys = new Float64Array(n)
-  order.forEach((i, k) => {
-    const row = Math.floor(k / cols)
-    const col = row % 2 === 0 ? k % cols : cols - 1 - (k % cols)
-    // A fixed jitter per island, or unlinked equal islands stay a grid.
-    const key = groups[i]!.key
-    xs[i] = ((col + 0.5 + 0.6 * (seededUnit(key, 5) - 0.5)) / cols - 0.5) * boxW
-    ys[i] = ((row + 0.5 + 0.6 * (seededUnit(key, 6) - 0.5)) / rows - 0.5) * boxH
-  })
+  seedSlots(groups, pairs, rad, discR, xs, ys)
   const collide = () => {
     for (let i = 0; i < n; i++) {
       const ri = rad[i]!
       for (let j = i + 1; j < n; j++) {
         const rj = rad[j]!
-        const want = SOFT_EDGE * (ri + rj) + Math.max(ISLAND_GAP_MIN, ISLAND_GAP * Math.min(ri, rj))
+        const want = ISLAND_REACH * (ri + rj) + Math.max(ISLAND_GAP_MIN, ISLAND_GAP * Math.min(ri, rj))
         let dx = xs[j]! - xs[i]!
         let dy = ys[j]! - ys[i]!
         if (dx * dx + dy * dy >= want * want) continue
@@ -294,7 +285,7 @@ function placeIndexed(
   const pairB = Int32Array.from(pairs, (p) => p.b)
   const pairRest = Float64Array.from(
     pairs,
-    (p) => SOFT_EDGE * (rad[p.a]! + rad[p.b]!) + islandGap(groups[p.a]!, groups[p.b]!),
+    (p) => ISLAND_REACH * (rad[p.a]! + rad[p.b]!) + islandGap(groups[p.a]!, groups[p.b]!),
   )
   const pairPull = Float64Array.from(pairs, (p) => (0.04 * p.w) / wMax)
   for (let it = 0; it < PLACE_ITERATIONS; it++) {
@@ -313,20 +304,16 @@ function placeIndexed(
       xs[b] = xs[b]! - (dx / d) * pull
       ys[b] = ys[b]! - (dy / d) * pull
     }
+    // A gather toward the centre closes the gaps and rounds the clump; a hard
+    // rim would fight the collisions and squeeze small sets into a ring.
+    const gather = 1 - 0.03 * alpha
     for (let i = 0; i < n; i++) {
-      const hx = Math.max(0, boxW / 2 - foot[i]!)
-      const hy = Math.max(0, boxH / 2 - foot[i]!)
-      const x = xs[i]!
-      const y = ys[i]!
-      if (x > hx) xs[i] = x - 0.2 * (x - hx)
-      else if (x < -hx) xs[i] = x - 0.2 * (x + hx)
-      if (y > hy) ys[i] = y - 0.2 * (y - hy)
-      else if (y < -hy) ys[i] = y - 0.2 * (y + hy)
+      xs[i] = xs[i]! * gather
+      ys[i] = ys[i]! * gather
     }
     collide()
   }
   for (let it = 0; it < 50; it++) collide()
-  stretchToAspect(xs, ys, foot)
 
   let cx = 0
   let cy = 0
@@ -344,38 +331,80 @@ function placeIndexed(
 }
 
 /**
- * Spreads the centres along the short axis until the islands' bounding box is
- * PACK_ASPECT wide. Linked islands pull the packing into a compact clump; this
- * only moves islands apart, so it cannot create an overlap.
+ * Seeds the island centres on sunflower slots, visited in linkage order: each
+ * island takes the free slot closest to the weighted centroid of the placed
+ * islands it links to, or the innermost free slot when it links to none.
+ * Slots are spaced by area, so the seed is already a round, even packing.
  */
-function stretchToAspect(xs: Float64Array, ys: Float64Array, foot: Float64Array) {
-  const span = (v: Float64Array, k: number) => {
-    let lo = Infinity
-    let hi = -Infinity
-    for (let i = 0; i < v.length; i++) {
-      lo = Math.min(lo, k * v[i]! - foot[i]!)
-      hi = Math.max(hi, k * v[i]! + foot[i]!)
+function seedSlots(
+  groups: readonly IslandGroup[],
+  pairs: readonly { a: number; b: number; w: number }[],
+  rad: Float64Array,
+  discR: number,
+  xs: Float64Array,
+  ys: Float64Array,
+) {
+  const n = groups.length
+  const order = linkageOrder(groups, pairs)
+  // The first island takes the centre; slot k sits at the radius enclosing
+  // the islands before it, so the large islands placed first get the middle.
+  let total = 0
+  for (let i = 0; i < n; i++) total += rad[i]! * rad[i]!
+  const slotX = new Float64Array(n)
+  const slotY = new Float64Array(n)
+  let acc = 0
+  order.forEach((i, k) => {
+    const share = rad[i]! * rad[i]!
+    const r = k === 0 ? 0 : discR * Math.sqrt((acc + share / 2) / (total || 1))
+    acc += share
+    const a = k * GOLDEN_ANGLE
+    slotX[k] = r * Math.cos(a)
+    slotY[k] = r * Math.sin(a)
+  })
+  const linked: Map<number, number>[] = Array.from({ length: n }, () => new Map())
+  for (const { a, b, w } of pairs) {
+    linked[a]!.set(b, w)
+    linked[b]!.set(a, w)
+  }
+  const taken = new Uint8Array(n)
+  const placed = new Uint8Array(n)
+  for (const i of order) {
+    let wx = 0
+    let wy = 0
+    let wt = 0
+    for (const [j, w] of linked[i]!) {
+      if (!placed[j]) continue
+      wx += xs[j]! * w
+      wy += ys[j]! * w
+      wt += w
     }
-    return hi - lo
+    let best = -1
+    let bestD = Infinity
+    for (let k = 0; k < n; k++) {
+      if (taken[k]) continue
+      // Unlinked islands fill inward-out, so the next free slot wins.
+      if (wt === 0 || groups[i]!.loose) {
+        best = k
+        break
+      }
+      const d = Math.hypot(slotX[k]! - wx / wt, slotY[k]! - wy / wt)
+      if (d < bestD) {
+        bestD = d
+        best = k
+      }
+    }
+    taken[best] = 1
+    placed[i] = 1
+    // A fixed jitter per island, or equal unlinked islands read as a spiral.
+    const key = groups[i]!.key
+    const j = 0.15 * rad[i]!
+    xs[i] = slotX[best]! + j * (seededUnit(key, 5) - 0.5)
+    ys[i] = slotY[best]! + j * (seededUnit(key, 6) - 0.5)
   }
-  const w = span(xs, 1)
-  const h = span(ys, 1)
-  if (w === 0 || h === 0 || w / h === PACK_ASPECT) return
-  const [axis, other, want] = w / h < PACK_ASPECT ? [xs, h, PACK_ASPECT] : [ys, w, 1 / PACK_ASPECT]
-  if (span(axis, 1) >= want * other) return
-  let lo = 1
-  let hi = 2
-  while (span(axis, hi) < want * other && hi < 1e6) hi *= 2
-  for (let it = 0; it < 40; it++) {
-    const mid = (lo + hi) / 2
-    if (span(axis, mid) < want * other) lo = mid
-    else hi = mid
-  }
-  for (let i = 0; i < axis.length; i++) axis[i] = axis[i]! * hi
 }
 
 /**
- * Visiting order for the packing grid: the largest island first, then each
+ * Visiting order for the packing slots: the largest island first, then each
  * time the unplaced island most strongly linked to the one just placed (else
  * to any placed island, else the largest left), with the loose island last.
  */

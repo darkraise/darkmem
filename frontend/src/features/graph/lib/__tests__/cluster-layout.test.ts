@@ -4,6 +4,7 @@ import forceAtlas2, { inferSettings } from "graphology-layout-forceatlas2"
 import { seededUnit } from "../code-graph-theme"
 import { loadRealCorpus, type RealCorpusSize } from "../../fixtures/real-corpus"
 import {
+  ISLAND_REACH,
   clusterKey,
   fitIsland,
   groupMemories,
@@ -37,7 +38,7 @@ function expectNoOverlap(groups: readonly IslandGroup[], centres: Map<string, Po
       const pa = centres.get(a.key)!
       const pb = centres.get(b.key)!
       expect(Math.hypot(pa.x - pb.x, pa.y - pb.y), `${a.key}|${b.key}`).toBeGreaterThanOrEqual(
-        SOFT_EDGE * (a.radius + b.radius) - 1e-6,
+        ISLAND_REACH * (a.radius + b.radius) - 1e-6,
       )
     }
   }
@@ -84,7 +85,7 @@ describe("groupMemories", () => {
 
 describe("placeIslands", () => {
   for (const size of [200, 1000, "all"] as RealCorpusSize[]) {
-    it(`A2: on the ${size} fixture no two islands come closer than 1.15 times their summed radii`, () => {
+    it(`A2: on the ${size} fixture no two islands come closer than their summed radii`, () => {
       const c = loadRealCorpus(size)
       const layout = layoutIslands(c.memories, c.edges)
       expect(layout.groups.length).toBeGreaterThan(5)
@@ -103,15 +104,10 @@ describe("placeIslands", () => {
     expectNoOverlap(layout.groups, layout.centres)
   })
 
-  it("A3: an island sharing many edges with another sits closer to it than to one sharing none", () => {
-    const memories = [
-      ...ids("a", 30).map((id) => mem(id, 0)),
-      ...ids("b", 30).map((id) => mem(id, 1)),
-      ...ids("c", 30).map((id) => mem(id, 2)),
-      ...ids("d", 30).map((id) => mem(id, 3)),
-      ...ids("e", 30).map((id) => mem(id, 4)),
-    ]
-    const edges: ScoredEdge[] = ids("x", 25).map((_x, i) => ({ source: `a${i}`, target: `c${i}`, score: 0.8 }))
+  it("A3: an island sharing many edges with another touches it, closer than the islands sharing none on average", () => {
+    // Twelve equal islands, so most pairs cannot touch; 0 and 7 share edges.
+    const memories = Array.from({ length: 12 }, (_, k) => ids(`c${k}-`, 30).map((id) => mem(id, k))).flat()
+    const edges: ScoredEdge[] = ids("x", 25).map((_x, i) => ({ source: `c0-${i}`, target: `c7-${i}`, score: 0.8 }))
     const { groups, groupOf } = groupMemories(memories, edges)
     const centres = placeIslands(groups, groupOf, edges)
     const d = (p: number, q: number) => {
@@ -119,13 +115,16 @@ describe("placeIslands", () => {
       const b = centres.get(clusterKey(q))!
       return Math.hypot(a.x - b.x, a.y - b.y)
     }
-    expect(d(0, 2)).toBeLessThan(d(0, 1))
-    expect(d(0, 2)).toBeLessThan(d(0, 3))
-    expect(d(0, 2)).toBeLessThan(d(0, 4))
+    // Packed into a disc, unlinked neighbours touch too; the linked pair must
+    // touch, and sit closer than the unlinked islands do on average.
+    const rest = ISLAND_REACH * 2 * groups[0]!.radius + 0.1 * groups[0]!.radius
+    expect(d(0, 7)).toBeLessThanOrEqual(rest * 1.01)
+    const unlinked = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11].map((k) => d(0, k))
+    expect(d(0, 7)).toBeLessThan(unlinked.reduce((t, v) => t + v, 0) / unlinked.length)
   })
 
   for (const size of [200, 1000, "all", "60 equal islands"] as const) {
-    it(`UX-1: on ${size === "60 equal islands" ? size : `the ${size} fixture`} the islands fill a wide rectangle, not a disc`, () => {
+    it(`UX-1: on ${size === "60 equal islands" ? size : `the ${size} fixture`} the islands pack into a round, compact disc`, () => {
       const layout =
         size === "60 equal islands"
           ? layoutIslands(Array.from({ length: 6000 }, (_, i) => mem(`m${i}`, i % 60)), [])
@@ -137,6 +136,8 @@ describe("placeIslands", () => {
       let x1 = -Infinity
       let y0 = Infinity
       let y1 = -Infinity
+      let enclosing = 0
+      let footprint = 0
       for (const g of layout.groups) {
         const p = layout.centres.get(g.key)!
         const r = SOFT_EDGE * g.radius
@@ -144,11 +145,17 @@ describe("placeIslands", () => {
         x1 = Math.max(x1, p.x + r)
         y0 = Math.min(y0, p.y - r)
         y1 = Math.max(y1, p.y + r)
+        enclosing = Math.max(enclosing, Math.hypot(p.x, p.y) + r)
+        footprint += r * r
       }
       const aspect = (x1 - x0) / (y1 - y0)
-      process.stdout.write(`UX-1 ${size} bounding aspect: ${aspect.toFixed(2)}\n`)
-      expect(aspect).toBeGreaterThanOrEqual(1.3)
-      expect(aspect).toBeLessThanOrEqual(2.1)
+      const fill = footprint / (enclosing * enclosing)
+      process.stdout.write(`UX-1 ${size} bounding aspect ${aspect.toFixed(2)}, disc fill ${fill.toFixed(2)}\n`)
+      expect(aspect).toBeGreaterThanOrEqual(0.8)
+      expect(aspect).toBeLessThanOrEqual(1.25)
+      // Island discs cover most of the disc enclosing them: neighbours sit
+      // close, with no wide channels of open space between them.
+      expect(fill).toBeGreaterThanOrEqual(0.58)
     })
   }
 
