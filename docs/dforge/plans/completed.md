@@ -1,0 +1,1 @@
+- 2026-11-19 `docs/dforge/plans/2026-11-18-constellation-real-data.md` — merged into `auto/constellation-real-data` at 50324b5e
