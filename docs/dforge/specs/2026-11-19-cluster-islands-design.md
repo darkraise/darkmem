@@ -25,6 +25,11 @@ the code canvas's ring layout are unchanged.
   joins a single sparse "loose" island, drawn dim and small as the halo was.
 - **Region colour** is the cluster's colour in every colour mode, since a
   region is always a cluster now.
+- **Island arrangement (owner ruling 2026-11-19):** the first build packed
+  islands round a centre island and stretched them along the radius, a
+  sunburst; asked to accept it, fix only the stretch, or fix both, the owner
+  chose "Fix both": a wide rectangle with no centre anchor, linked islands
+  still neighbours, and every island keeping its own shape.
 - **Code canvas:** unchanged; it keeps `classify`, `placeOuterRing` and
   `fitCoreToFarthest`. The memory-only score-cut path is deleted.
 
@@ -32,16 +37,23 @@ the code canvas's ring layout are unchanged.
 
 1. `features/graph/lib/cluster-layout.ts` (pure). `groupMemories` assigns
    islands as above. `placeIslands` runs a deterministic simulation over
-   island discs (radius `ISLAND_K·√n`, loose `LOOSE_K·√n`): spiral start,
-   pull between islands proportional to their shared edges normalised by
-   `√(nₐ·n_b)`, weak gravity (a third for the loose island), collisions at
-   `1.15·(rₐ+r_b)` plus a gap. `fitIsland` maps one island's simulated
+   island discs (radius `ISLAND_K·√n`, loose `LOOSE_K·√n`): a serpentine
+   grid start inside a 16:10 rectangle, ordered so strongly linked islands
+   are neighbours (largest first, loose last); pull between islands
+   proportional to their shared edges normalised by `√(nₐ·n_b)`; a
+   containment force at the rectangle's edge and no pull toward a centre;
+   collisions at `1.15·(rₐ+r_b)` plus a gap; then the short axis is
+   stretched until the islands' bounding box is 16:10. `simulationCentres`
+   gives each island a separate spot in the force simulation, far enough
+   apart that one island's repulsion cannot stretch another (the drawn
+   centres are unaffected). `fitIsland` maps one island's simulated
    positions onto its disc (85th percentile at 0.8r, soft taper to 1.15r).
    `spreadPoints` enforces a minimum memory gap of `NODE_GAP` (0.4) of the
    even spacing, unbounded.
 2. `features/graph/lib/cluster-runner.ts`. ForceAtlas2 over every clustered
    or riding memory with only intra-island edges, weighted by score from
-   0.15 (weakest) to 1 (strongest); each frame refits every island and
+   0.15 (weakest) to 1 (strongest), each island started at its
+   `simulationCentres` spot; each frame refits every island and
    spreads. The loose island is placed once by sunflower and never
    simulated. Entities ride on the centroid of their memories.
 3. Regions: `HullMode` is `"none" | "cluster"`; the toolbar shows a switch.
@@ -97,3 +109,5 @@ A10. [test, high] UX-4: with the entity layer on, no memory moves or changes rol
 A11. [test, high] UX-3: an island-membership change at an unchanged memory set starts a new layout run; an identical rebuild does not.
 A12. [test, high] OP-2: `layoutIslands` at 20,000 memories and 110,000 edges takes ≤ 50 ms (median of 5).
 A13. [demo, high] OP-1: screenshots of each UI and UX item in Storybook and on the live page, both themes, both viewports.
+A14. [test, high] UX-1: on the 200, 1,000 and full fixtures and on 60 equal islands, the islands' bounding box is 1.3 to 2.1 times as wide as it is tall.
+A15. [test, high] UX-1: on the full fixture an island's elongation in the shared force run is, on average, within 15% of its elongation when simulated alone, and no island's exceeds it by more than 50%.
