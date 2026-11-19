@@ -1,8 +1,8 @@
 # UI proof: Constellation real data
 
 **Contract:** docs/dforge/specs/2026-11-18-constellation-real-data-design.md
-**Fingerprint:** 1b80fcaade5ed8da
-**Judge:** ship 1b80fcaade5ed8da — docs/dforge/ui-ux/proofs/2026-11-18-constellation-real-data.judge.md
+**Fingerprint:** 002efcbdac9135e3
+**Judge:** ship 002efcbdac9135e3 — docs/dforge/ui-ux/proofs/2026-11-18-constellation-real-data.judge.md
 **Platform:** web
 **Viewports:** 1280x800, 1920x1080
 **Themes:** light, dark
@@ -26,6 +26,12 @@ The scripts are under `.dforge/ui-ux/constellation-real-data/scripts/` and the l
 Role split on the fixtures (A2 test output at c04859e0), as core / satellites / halo shares: 200: 43.5% / 21.5% / 35.0%, 15 clumps. 1,000: 44.5% / 17.3% / 38.2%, 63 clumps. All 4,759: 44.4% / 15.0% / 40.5%, 271 clumps.
 
 Storybook's preview renders a "Not Found" line in a 24-pixel strip at the top of every board. It comes from the preview's own TanStack router and is harness noise, not product.
+
+**Re-stamp, f2cd2d25 (2026-11-19).** Register rows 11-13 changed two UI source files after this proof was stamped: `graph-toolbar.tsx` (Tab and Shift+Tab handlers on the settings trigger, the settings panel and Reset graph view, plus refs) and `real-memory-graph-page.tsx` (`inert` on the collapsed filter panel). The other three UI files in `git diff 50324b5e f2cd2d25 -- frontend/src` are tests. No canvas file changed: the renderer, layout, runner, glow program, preferences, hooks and fixtures are byte-identical, so every canvas row below stands from its capture. The rows these two files could reach:
+
+- **UX-3** (1,000 by default) renders in the settings panel. Re-evidenced on the live page at image `f2cd2d25`: `.dforge/ui-ux/graph-keyboard-focus/ui-1-first-control-after-tab-from-trigger-1280x800-dark.png` and `-1920x1080-light.png` show the Nodes field at 1000 and "Showing 1,000 of 4,…"; `.dforge/ui-ux/graph-keyboard-focus/walk-1280x800-dark.json` and `walk-1920x1080-light.json` reach "Node limit", "All nodes" and the Edges slider by Tab in the same order as the keyboard walk below. The A11 tests pass at f2cd2d25 (integration check `cd frontend && npm run typecheck && npm test && npm run build`, suite-run pass).
+- **Keyboard walk.** Its "Panel exit drops focus" and "Focus enters a hidden panel" adjacent findings are fixed and proven in `docs/dforge/ui-ux/proofs/2026-11-19-graph-keyboard-focus.md` (judge: ship 002efcbdac9135e3). The in-panel order, Escape behaviour and canvas keys are unchanged.
+- **The live canvas** renders on that build at both viewports and themes: `.dforge/ui-ux/graph-keyboard-focus/ux-1-1280x800-dark.png`, `.dforge/ui-ux/graph-keyboard-focus/ux-1-1920x1080-light.png`; 0 page and console errors, 0 axe violations, 0 attempted writes in both runs.
 
 ## Results
 
@@ -117,8 +123,8 @@ The between-build differences are close to the load-to-load noise of the same bu
 - The canvas's own keys (+/− zoom, arrows pan, 0 fits, Escape clears selection) are proven by the A18 tests.
 
 **Adjacent findings** (pre-existing; no file involved changed on this branch):
-- **Focus enters a hidden panel.** With the filter panel collapsed, Tab after "Show details panel" lands on three controls the operator cannot see: the content filter input, the "Any tag" button and a tag checkbox. Each measures 0 px high at x = 281, y = 112 (`scripts/keys3.mjs`).
-- **Panel exit drops focus.** Tabbing past the last control in the open settings panel ("Dim unrelated nodes, percent") moves focus to `<body>`, then to the top of the page, not back to the toolbar. The panel appears to be rendered outside the toolbar's DOM order.
+- **Focus enters a hidden panel.** With the filter panel collapsed, Tab after "Show details panel" lands on three controls the operator cannot see: the content filter input, the "Any tag" button and a tag checkbox. Each measures 0 px high at x = 281, y = 112 (`scripts/keys3.mjs`). (Fixed in 9127019c and 621bf691/f2cd2d25, proven in `docs/dforge/ui-ux/proofs/2026-11-19-graph-keyboard-focus.md`.)
+- **Panel exit drops focus.** Tabbing past the last control in the open settings panel ("Dim unrelated nodes, percent") moves focus to `<body>`, then to the top of the page, not back to the toolbar. The panel appears to be rendered outside the toolbar's DOM order. (Fixed in 9127019c and 621bf691/f2cd2d25, proven in `docs/dforge/ui-ux/proofs/2026-11-19-graph-keyboard-focus.md`.)
 
 ## Automated checks
 
