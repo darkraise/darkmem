@@ -45,3 +45,37 @@ describe("GraphToolbar layout rows", () => {
     expect(screen.queryByText("Tightness")).toBeNull()
   })
 })
+
+describe("GraphToolbar settings panel focus", () => {
+  it("Tab past the panel's last control moves to the next toolbar button and leaves the panel open", async () => {
+    const user = userEvent.setup()
+    render(<GraphToolbar {...base} />)
+    await user.click(screen.getByRole("button", { name: "Toggle graph settings" }))
+    screen.getByRole("slider", { name: "Dim unrelated nodes, percent" }).focus()
+    await user.tab()
+    expect(screen.getByRole("button", { name: "Reset graph view" })).toHaveFocus()
+    expect(screen.getByRole("slider", { name: "Dim unrelated nodes, percent" })).toBeInTheDocument()
+  })
+
+  it("Shift+Tab from the panel's first control returns to the settings trigger", async () => {
+    const user = userEvent.setup()
+    render(<GraphToolbar {...base} />)
+    const trigger = screen.getByRole("button", { name: "Toggle graph settings" })
+    await user.click(trigger)
+    screen.getByRole("radio", { name: "2D" }).focus()
+    await user.tab({ shift: true })
+    expect(trigger).toHaveFocus()
+  })
+
+  it("Tab between the panel's own controls stays in the panel", async () => {
+    const user = userEvent.setup()
+    render(<GraphToolbar {...base} />)
+    const trigger = screen.getByRole("button", { name: "Toggle graph settings" })
+    await user.click(trigger)
+    screen.getByRole("radio", { name: "2D" }).focus()
+    await user.tab()
+    expect(screen.getByRole("button", { name: "Reset graph view" })).not.toHaveFocus()
+    expect(trigger).not.toHaveFocus()
+    expect(document.body).not.toHaveFocus()
+  })
+})

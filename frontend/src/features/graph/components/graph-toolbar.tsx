@@ -9,6 +9,7 @@ import {
 import { Button } from "darkraise-ui/components/button"
 import { Settings, RotateCcw } from "lucide-react"
 import { cn } from "darkraise-ui/lib"
+import { useRef } from "react"
 import type React from "react"
 import type { SizeMode } from "@/features/graph/lib/graph-utils"
 import type { ColorMode } from "@/features/graph/lib/graph-colors"
@@ -57,6 +58,17 @@ interface GraphToolbarProps {
   trailing?: React.ReactNode
 }
 
+const TABBABLE =
+  'button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])'
+
+/** The panel's controls in Tab order, skipping disabled ones and roving-tabindex
+ *  items that are not the group's current stop. */
+function tabbables(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(TABBABLE)).filter(
+    (el) => el.tabIndex >= 0 && !el.hasAttribute("disabled") && !el.closest("[inert]"),
+  )
+}
+
 /** A titled group of rows. `divided` draws the hairline that separates it
  *  from the group above -- headings alone read as one long list. */
 function Section({
@@ -100,6 +112,21 @@ export function GraphToolbar({
   nodes,
   trailing,
 }: GraphToolbarProps) {
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const resetRef = useRef<HTMLButtonElement>(null)
+  // darkraise-ui 7.0.0's non-modal PopoverContent portals to the end of
+  // <body> with no focus guards, so Tab past its last control fell to <body>.
+  // Route the edges back as if the panel sat right after its trigger.
+  const keepFocusInToolbar = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Tab") return
+    const stops = tabbables(e.currentTarget)
+    const edge = e.shiftKey ? stops[0] : stops[stops.length - 1]
+    if (!edge || document.activeElement !== edge) return
+    const target = e.shiftKey ? triggerRef.current : resetRef.current
+    if (!target) return
+    e.preventDefault()
+    target.focus()
+  }
   return (
     // Top-right, not centred: the graph is the page, and a bar across its
     // middle competes with the thing it controls. Two buttons is all that
@@ -108,6 +135,7 @@ export function GraphToolbar({
       <Popover>
         <PopoverTrigger asChild>
           <Toggle
+            ref={triggerRef}
             aria-label="Toggle graph settings"
             className="bg-card/80 border-border data-[pressed]:bg-primary/20 data-[pressed]:text-primary-text pointer-events-auto h-8 w-8 rounded-md border p-0 shadow-lg backdrop-blur-sm"
           >
@@ -117,6 +145,7 @@ export function GraphToolbar({
         <PopoverContent
           side="bottom"
           align="end"
+          onKeyDown={keepFocusInToolbar}
           className="bg-card/95 border-border max-h-[min(70vh,32rem)] w-[384px] overflow-y-auto rounded-lg border p-3 shadow-xl backdrop-blur-sm"
         >
           {/* Grouped by the kind of decision each control is, not by where
@@ -255,6 +284,7 @@ export function GraphToolbar({
       </Popover>
 
       <Button
+        ref={resetRef}
         variant="ghost"
         size="icon"
         type="button"
