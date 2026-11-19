@@ -59,7 +59,7 @@ export const TagColor: S = {
   args: {
     ...defaultArgs,
     colorMode: "tag",
-    hullMode: "tag",
+    hullMode: "none",
   },
 }
 

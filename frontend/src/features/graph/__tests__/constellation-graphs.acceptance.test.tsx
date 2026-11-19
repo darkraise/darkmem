@@ -222,8 +222,7 @@ import {
   classify,
   coreRadius,
   CORE_MIN,
-  fitCore,
-  placeOuter,
+  fitCoreToFarthest,
   placeOuterRing,
   type ConstellationEdge,
   type Point,
@@ -306,7 +305,7 @@ describe("classify", () => {
     expect(c.core).toEqual([])
     expect(c.satellites).toEqual([])
     for (const id of nodes) expect(c.role.get(id)).toBe("halo")
-    const outer = placeOuter(c, 0)
+    const outer = placeOuterRing(c, 0)
     const radii = nodes.map((id) => radius(outer.positions.get(id)!))
     const maxR = Math.max(...radii)
     expect(maxR).toBeGreaterThan(0)
@@ -351,7 +350,7 @@ function shapedGraph(opts: { coreIds: string[]; sats: string[][]; halo: string[]
   return classify(nodes, edges)
 }
 
-describe("placeOuter", () => {
+describe("placeOuterRing (code canvas)", () => {
   it("A3: a halo node's position does not move when other nodes are added or removed and the radii are unchanged", () => {
     const coreA = ids("coreA", 40)
     const coreB = ids("coreB", 40)
@@ -375,7 +374,7 @@ describe("placeOuter", () => {
     const c = shapedGraph({ coreIds: ids("core", 60), sats, halo: ids("halo", 600) })
     const R = coreRadius(c.core.length)
     expect(R).toBeGreaterThan(0)
-    const { positions } = placeOuter(c, R)
+    const { positions } = placeOuterRing(c, R)
     for (const id of [...c.satellites.flat(), ...c.halo]) {
       expect(radius(positions.get(id)!)).toBeGreaterThan(1.15 * R)
     }
@@ -399,7 +398,7 @@ describe("placeOuter", () => {
 // ---------------------------------------------------------------------------
 // A5: fitCore
 
-describe("fitCore", () => {
+describe("fitCoreToFarthest (code canvas)", () => {
   it("A5: no core node is placed beyond R, however far the simulation threw it", () => {
     const R = 60
     const rand = rng(3)
@@ -408,7 +407,7 @@ describe("fitCore", () => {
       for (const id of ids("n", 50)) {
         pos.set(id, { x: (rand() - 0.2) * spread, y: (rand() - 0.7) * spread })
       }
-      for (const p of fitCore(pos, R).values()) expect(radius(p)).toBeLessThanOrEqual(R + 1e-6)
+      for (const p of fitCoreToFarthest(pos, R).values()) expect(radius(p)).toBeLessThanOrEqual(R + 1e-6)
     }
   })
 
@@ -447,7 +446,7 @@ describe("fitCore", () => {
 // ---------------------------------------------------------------------------
 // A6: speed
 
-describe("classify + placeOuter at scale", () => {
+describe("classify + placeOuterRing at scale", () => {
   it("A6: 20,000 nodes and 110,000 edges complete in 50 ms or less", () => {
     const rand = rng(11)
     const nodes = ids("m", 20000)
@@ -467,7 +466,7 @@ describe("classify + placeOuter at scale", () => {
     const run = () => {
       const t0 = performance.now()
       const c = classify(nodes, edges)
-      placeOuter(c, coreRadius(c.core.length))
+      placeOuterRing(c, coreRadius(c.core.length))
       return performance.now() - t0
     }
     const times = [run(), run(), run(), run(), run()]
@@ -680,17 +679,18 @@ const advance = (ms: number) =>
   })
 
 describe("memory 2D renderer", () => {
-  it("A9: halo nodes take one small size whatever their importance", () => {
+  it("islands A9 (UI-3): loose memories take one small size whatever their importance", () => {
     const ring = ids("c", 8).map((id) => memory(id))
-    const loud = { ...memory("h0"), importance: 1 }
-    const quiet = { ...memory("h1"), importance: 0 }
-    const memories = [...ring, loud, quiet, ...ids("z", 10).map((id) => memory(id))]
+    const loud = { ...memory("h0", -1), importance: 1 }
+    const quiet = { ...memory("h1", -1), importance: 0 }
+    const memories = [...ring, loud, quiet, ...ids("z", 10).map((id) => memory(id, -1))]
     const edges = path([...ids("c", 8), "c0"]).map((e) => edge(e.source, e.target))
     render(<Scene memories={memories} edges={edges} sizeMode={"importance" as RendererProps["sizeMode"]} />)
     advance(50)
     const g = lastSigma().graph
-    const core = ids("c", 8).map((id) => g.getNodeAttribute(id, "size") as number).sort((a, b) => a - b)
-    const median = (core[3]! + core[4]!) / 2
+    const island = ids("c", 8).map((id) => g.getNodeAttribute(id, "size") as number).sort((a, b) => a - b)
+    const median = (island[3]! + island[4]!) / 2
+    expect(g.getNodeAttribute("h0", "_role")).toBe("halo")
     expect(g.getNodeAttribute("h0", "size")).toBe(g.getNodeAttribute("h1", "size"))
     expect(g.getNodeAttribute("h0", "size") as number).toBeLessThanOrEqual(0.4 * median + 1e-9)
   })
@@ -707,28 +707,28 @@ describe("memory 2D renderer", () => {
     }
   })
 
-  it("UX-1: memory edges carry their score, and roles follow the cut rather than every drawn edge", () => {
+  it("islands A1 (UX-1): edges carry their score; a clustered memory is on its island, a linked unclustered one rides it, an unlinked one is loose", () => {
     const ring = ids("c", 8).map((id) => memory(id))
-    const rest = ["s0", "s1", ...ids("h", 9)].map((id) => memory(id))
-    const memories = [...ring, ...rest]
+    const rest = [memory("s0", -1), ...ids("h", 9).map((id) => memory(id, -1))]
     const edges = [
       ...path([...ids("c", 8), "c0"]).map((e) => edge(e.source, e.target, 0.9)),
-      edge("s0", "s1", 0.9),
-      edge("h0", "c0", 0.6),
+      edge("s0", "c3", 0.6),
     ]
-    render(<Scene memories={memories} edges={edges} />)
+    render(<Scene memories={[...ring, ...rest]} edges={edges} />)
     advance(50)
     const g = lastSigma().graph
     expect(g.getEdgeAttribute(g.edge("c0", "c1")!, "score")).toBe(0.9)
     expect(g.getNodeAttribute("c0", "_role")).toBe("core")
+    expect(g.getNodeAttribute("s0", "_role")).toBe("satellite")
     expect(g.getNodeAttribute("h0", "_role")).toBe("halo")
+    expect([g.getNodeAttribute("c0", "brightness"), g.getNodeAttribute("s0", "brightness"), g.getNodeAttribute("h0", "brightness")]).toEqual([1, 0.8, 0.45])
   })
 
-  it("A4: with the entity layer on, an entity takes its memories' highest role and memory roles do not change", () => {
+  it("islands A10 (UX-4): with the entity layer on, an entity takes its memories' highest role and no memory moves or changes role", () => {
     const ring = ids("c", 8).map((id) => memory(id))
-    const rest = ["s0", "s1", ...ids("h", 10)].map((id) => memory(id))
+    const rest = [memory("s0", -1), ...ids("h", 10).map((id) => memory(id, -1))]
     const memories = [...ring, ...rest]
-    const edges = [...path([...ids("c", 8), "c0"]).map((e) => edge(e.source, e.target)), edge("s0", "s1")]
+    const edges = [...path([...ids("c", 8), "c0"]).map((e) => edge(e.source, e.target)), edge("s0", "c3")]
     const entity = (id: string, memory_ids: string[]): GraphEntity => ({
       id,
       name: id,
@@ -736,32 +736,59 @@ describe("memory 2D renderer", () => {
       properties: {},
       memory_ids,
     })
-    const roles = (layer: boolean) => {
+    const layout = (layer: boolean) => {
       render(
         <Scene
           memories={memories}
           edges={edges}
           entityLayer={layer}
-          entities={[entity("x", ["s1", "h1"]), entity("y", ["c2", "h2"]), entity("z", ["h3", "h4"])]}
+          entities={[entity("x", ["s0", "h1"]), entity("y", ["c2", "h2"]), entity("z", ["h3", "h4"])]}
         />,
       )
       advance(50)
       const g = lastSigma().graph
-      return (id: string) => g.getNodeAttribute(id, "_role")
+      return (id: string) => [g.getNodeAttribute(id, "_role"), g.getNodeAttribute(id, "x"), g.getNodeAttribute(id, "y")]
     }
-    const off = roles(false)
-    const offRoles = memories.map((m) => off(m.id))
-    const on = roles(true)
-    expect(on("entity:x")).toBe("satellite")
-    expect(on("entity:y")).toBe("core")
-    expect(on("entity:z")).toBe("halo")
-    expect(memories.map((m) => on(m.id))).toEqual(offRoles)
+    const off = layout(false)
+    const before = memories.map((m) => off(m.id))
+    const on = layout(true)
+    expect(on("entity:x")[0]).toBe("satellite")
+    expect(on("entity:y")[0]).toBe("core")
+    expect(on("entity:z")[0]).toBe("halo")
+    expect(memories.map((m) => on(m.id))).toEqual(before)
   })
 
-  it("A4: entity diamonds take roles but stay out of every role's glow density", () => {
+  it("islands A10 (UX-4): turning the entity layer on after the layout settles starts no layout run and moves no memory", () => {
+    const memories = [...coreMemories, memory("s0", -1)]
+    const edges = [...coreEdges, edge("s0", "c5")]
+    const entities: GraphEntity[] = [
+      { id: "e1", name: "e1", entity_type: "tool", properties: {}, memory_ids: ["c0", "c1"] },
+      { id: "e2", name: "e2", entity_type: "tool", properties: {}, memory_ids: ["s0"] },
+    ]
+    const { rerender } = render(<Scene memories={memories} edges={edges} entities={entities} entityLayer={false} />)
+    advance(120_000)
+    const runs = h.workers.length
+    const settled = lastSigma().graph
+    const before = memories.map((m) => [settled.getNodeAttribute(m.id, "x"), settled.getNodeAttribute(m.id, "y")])
+
+    rerender(<Scene memories={memories} edges={edges} entities={entities} entityLayer={true} />)
+    advance(120_000)
+    const g = lastSigma().graph
+    expect(g.hasNode("entity:e1")).toBe(true)
+    expect(h.workers.length).toBe(runs)
+    // Every rebuild refits and spreads the settled points once, which shifts
+    // them by under a hundredth of a pixel; a layout run moves them by units.
+    memories.forEach((m, i) => {
+      expect(g.getNodeAttribute(m.id, "x"), m.id).toBeCloseTo(before[i]![0], 2)
+      expect(g.getNodeAttribute(m.id, "y"), m.id).toBeCloseTo(before[i]![1], 2)
+    })
+  })
+
+  it("islands A10 (UX-4): entity diamonds take roles but stay out of every role's glow density", () => {
     const ring = ids("c", 8).map((id) => memory(id))
-    const rest = ["s0", "s1", ...ids("h", 10)].map((id) => memory(id))
-    const edges = [...path([...ids("c", 8), "c0"]).map((e) => edge(e.source, e.target)), edge("s0", "s1")]
+    const rest = [memory("s0", -1), ...ids("h", 10).map((id) => memory(id, -1))]
+    const memories = [...ring, ...rest]
+    const edges = [...path([...ids("c", 8), "c0"]).map((e) => edge(e.source, e.target)), edge("s0", "c3")]
     const entity = (id: string, memory_ids: string[]): GraphEntity => ({
       id,
       name: id,
@@ -771,10 +798,10 @@ describe("memory 2D renderer", () => {
     })
     render(
       <Scene
-        memories={[...ring, ...rest]}
+        memories={memories}
         edges={edges}
         entityLayer
-        entities={[entity("x", ["s1", "h1"]), entity("y", ["c2", "h2"]), entity("z", ["h3", "h4"])]}
+        entities={[entity("x", ["s0", "h1"]), entity("y", ["c2", "h2"]), entity("z", ["h3", "h4"])]}
       />,
     )
     advance(50)
@@ -786,6 +813,7 @@ describe("memory 2D renderer", () => {
     ])
     const passed = h.densityClassifications[h.densityClassifications.length - 1] as { core: string[]; satellites: string[][]; halo: string[] }
     expect(passed.core).toContain("c0")
+    expect(passed.satellites.flat()).toContain("s0")
     expect(passed.halo).toContain("h0")
     const counted = [...passed.core, ...passed.satellites.flat(), ...passed.halo]
     expect(counted.filter((id) => id.startsWith("entity:"))).toEqual([])
@@ -850,16 +878,16 @@ describe("memory 2D renderer", () => {
     expect(second.renders).toBe(s)
   })
 
-  it("A12: raising the Edges threshold so a memory loses its last edge makes it halo on the next build", () => {
-    const x = memory("x")
-    const memories = [...coreMemories, x, ...ids("o", 16).map((id) => memory(id))]
+  it("islands A11 (UX-3): raising the Edges threshold so an unclustered memory loses its last edge moves it to the loose island", () => {
+    const x = memory("x", -1)
+    const memories = [...coreMemories, x, ...ids("o", 16).map((id) => memory(id, -1))]
     const edgesAll = [...coreEdges, edge("x", "c0", 0.6)]
     const atThreshold = (t: number) => edgesAll.filter((e) => e.score >= t)
 
     const { rerender } = render(<Scene memories={memories} edges={atThreshold(0.5)} />)
     advance(50)
     let g = lastSigma().graph
-    expect(g.getNodeAttribute("x", "brightness")).toBe(1)
+    expect(g.getNodeAttribute("x", "brightness")).toBe(0.8)
     expect(g.getNodeAttribute("c0", "brightness")).toBe(1)
 
     rerender(<Scene memories={memories} edges={atThreshold(0.7)} />)
@@ -871,12 +899,12 @@ describe("memory 2D renderer", () => {
 
     rerender(<Scene memories={memories} edges={atThreshold(0.5)} />)
     advance(50)
-    expect(lastSigma().graph.getNodeAttribute("x", "brightness")).toBe(1)
+    expect(lastSigma().graph.getNodeAttribute("x", "brightness")).toBe(0.8)
   })
 
-  it("UX-3: a core-membership change at an unchanged node set re-runs the core layout", () => {
-    const x = memory("x")
-    const memories = [...coreMemories, x, ...ids("o", 16).map((id) => memory(id))]
+  it("islands A11 (UX-3): an island-membership change at an unchanged memory set re-runs the layout; an identical rebuild does not", () => {
+    const x = memory("x", -1)
+    const memories = [...coreMemories, x, ...ids("o", 16).map((id) => memory(id, -1))]
     const edgesAll = [...coreEdges, edge("x", "c0", 0.6)]
     const atThreshold = (t: number) => edgesAll.filter((e) => e.score >= t)
 
@@ -894,9 +922,9 @@ describe("memory 2D renderer", () => {
   })
 
   it("A21: turning the entity layer on leaves entity diamonds and type-coloured borders unchanged, in core and satellite roles", () => {
-    const sats = [memory("s0"), memory("s1")]
+    const sats = [memory("s0", -1)]
     const memories = [...coreMemories, ...sats]
-    const edges = [...coreEdges, edge("s0", "s1")]
+    const edges = [...coreEdges, edge("s0", "c5")]
     const entities: GraphEntity[] = [
       { id: "e-core", name: "Postgres", entity_type: "database", properties: {}, memory_ids: ["c0", "c1"] },
       { id: "e-sat", name: "Redis", entity_type: "tool", properties: {}, memory_ids: ["s0"] },

@@ -46,6 +46,25 @@ describe("GraphToolbar layout rows", () => {
   })
 })
 
+describe("GraphToolbar regions switch", () => {
+  it("islands A6 (UI-1): renders a Cluster regions switch and no Regions radiogroup; toggling reports cluster and none", async () => {
+    const onHullModeChange = vi.fn()
+    const { rerender } = render(<GraphToolbar {...base} hullMode="none" onHullModeChange={onHullModeChange} />)
+    await openSettings()
+    expect(screen.queryByRole("radiogroup", { name: "Regions" })).toBeNull()
+    const sw = screen.getByRole("switch", { name: "Cluster regions" })
+    expect(sw).not.toBeChecked()
+    await userEvent.click(sw)
+    expect(onHullModeChange).toHaveBeenLastCalledWith("cluster")
+
+    rerender(<GraphToolbar {...base} hullMode="cluster" onHullModeChange={onHullModeChange} />)
+    const on = screen.getByRole("switch", { name: "Cluster regions" })
+    expect(on).toBeChecked()
+    await userEvent.click(on)
+    expect(onHullModeChange).toHaveBeenLastCalledWith("none")
+  })
+})
+
 describe("GraphToolbar settings panel focus", () => {
   it("Tab past the panel's last control moves to the next toolbar button and leaves the panel open", async () => {
     const user = userEvent.setup()

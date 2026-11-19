@@ -7,7 +7,8 @@ type Network = {
   getPosition: (id: string) => { x: number; y: number } | null
 }
 
-export type HullMode = "none" | "cluster" | "tag" | "source"
+/** The Regions switch: off, or one region per cluster. */
+export type HullMode = "none" | "cluster"
 
 /** No regions by default: a hull per cluster over a dense graph hides the
  *  edges the canvas exists to show. */
@@ -319,44 +320,17 @@ export function drawRegionChip(
 }
 
 export function computeHullGroups(
-  memories: { id: string; cluster: number; tags: string[]; source: string }[],
+  memories: { id: string; cluster: number }[],
   hullMode: HullMode,
 ): Map<string, string[]> {
   const groups = new Map<string, string[]>()
   if (hullMode === "none") return groups
-
   for (const m of memories) {
-    switch (hullMode) {
-      case "cluster": {
-        if (m.cluster < 0) break
-        const key = String(m.cluster)
-        const arr = groups.get(key) ?? []
-        arr.push(m.id)
-        groups.set(key, arr)
-        break
-      }
-      case "tag": {
-        for (const tag of m.tags) {
-          const arr = groups.get(tag) ?? []
-          arr.push(m.id)
-          groups.set(tag, arr)
-        }
-        break
-      }
-      case "source": {
-        const arr = groups.get(m.source) ?? []
-        arr.push(m.id)
-        groups.set(m.source, arr)
-        break
-      }
-    }
+    if (m.cluster < 0) continue
+    const key = String(m.cluster)
+    const arr = groups.get(key)
+    if (arr) arr.push(m.id)
+    else groups.set(key, [m.id])
   }
-
-  if (hullMode === "tag" || hullMode === "source") {
-    for (const [key, members] of groups) {
-      if (members.length < 2) groups.delete(key)
-    }
-  }
-
   return groups
 }

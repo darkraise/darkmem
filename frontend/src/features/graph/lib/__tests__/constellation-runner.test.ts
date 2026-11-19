@@ -34,7 +34,7 @@ vi.mock("graphology-layout-forceatlas2/worker", () => ({
 }))
 
 import { constellationFa2Settings, createConstellationRunner } from "../constellation-runner"
-import { classify, CORE_MIN, HALO_SIZE, placeOuterRing, ROLE_BRIGHTNESS } from "../constellation-layout"
+import { classify, CORE_MIN, placeOuterRing, ROLE_BRIGHTNESS } from "../constellation-layout"
 
 function buildGraph() {
   const g = new Graph()
@@ -158,7 +158,6 @@ describe("createConstellationRunner", () => {
   })
 })
 
-
 describe("runner roles", () => {
   const build = (withScores: boolean) => {
     const g = new Graph({ type: "undirected" })
@@ -183,22 +182,6 @@ describe("runner roles", () => {
     expect(g.getNodeAttribute("h0", "_role")).toBe("core")
   })
 
-  it("UX-1: with roles the runner classifies by the cut and gives attachments their linked role", () => {
-    const { g, ids } = build(true)
-    const edges: { source: string; target: string; score?: number }[] = []
-    g.forEachEdge((_e, a, source, target) => {
-      if (!source.startsWith("entity:") && !target.startsWith("entity:")) edges.push({ source, target, score: a.score as number })
-    })
-    createConstellationRunner(g, {
-      layoutMs: 10,
-      fa2Settings: {},
-      roles: { nodeIds: ids, edges, attachments: [{ id: "entity:e1", linked: ["s1"] }] },
-    })
-    expect(g.getNodeAttribute("c0", "_role")).toBe("core")
-    expect(g.getNodeAttribute("h0", "_role")).toBe("halo")
-    expect(g.getNodeAttribute("entity:e1", "_role")).toBe("satellite")
-  })
-
   it("A12: without roles the runner keeps today's ring placement", () => {
     const { g } = build(false)
     const edges: { source: string; target: string }[] = []
@@ -213,33 +196,5 @@ describe("runner roles", () => {
     createConstellationRunner(g, { layoutMs: 10, fa2Settings: {} })
     for (let i = 1; i < 9; i++) expect(g.getNodeAttribute(`h${i}`, "size")).toBeCloseTo(0.8)
     expect(g.getNodeAttribute("c0", "size")).toBe(2)
-  })
-
-  it("UI-3: with no core the halo takes HALO_SIZE", () => {
-    const { g, ids } = build(true)
-    createConstellationRunner(g, {
-      layoutMs: 10,
-      fa2Settings: {},
-      roles: { nodeIds: ids, edges: [], attachments: [] },
-    })
-    for (const id of ids) expect(g.getNodeAttribute(id, "size")).toBe(HALO_SIZE)
-  })
-
-  it("UX-1: the memory core runs LinLog without strong gravity; the code canvas keeps its forces", () => {
-    const base = constellationFa2Settings(build(false).g, { slowDown: 1, barnesHutOptimize: false })
-    const scored = build(true)
-    const edges: { source: string; target: string; score?: number }[] = []
-    scored.g.forEachEdge((_e, a, source, target) => {
-      if (!source.startsWith("entity:") && !target.startsWith("entity:")) edges.push({ source, target, score: a.score as number })
-    })
-    createConstellationRunner(scored.g, {
-      layoutMs: 10,
-      fa2Settings: base,
-      roles: { nodeIds: scored.ids, edges, attachments: [] },
-    }).start()
-    createConstellationRunner(build(false).g, { layoutMs: 10, fa2Settings: base }).start()
-    const [memory, code] = fa2.instances.map((w) => w.params?.settings)
-    expect(memory).toMatchObject({ linLogMode: true, strongGravityMode: false, gravity: 0.05 })
-    expect(code).toEqual(base)
   })
 })

@@ -1,22 +1,11 @@
 import { describe, it, expect } from "vitest"
-import Graph from "graphology"
-import forceAtlas2, { inferSettings } from "graphology-layout-forceatlas2"
-import { seededUnit } from "../code-graph-theme"
-import { loadRealCorpus, type RealCorpusSize } from "../../fixtures/real-corpus"
 import {
   classify,
   coreRadius,
-  fitCore,
-  placeOuter,
   placeOuterRing,
   fitCoreToFarthest,
-  roleCut,
-  classifyWithCut,
   CORE_MIN,
-  CORE_GAP,
-  spreadCore,
   SATELLITE_RING_START,
-  SATELLITE_BAND,
   type ConstellationEdge,
   type Point,
 } from "../constellation-layout"
@@ -125,7 +114,7 @@ describe("classify", () => {
   })
 })
 
-describe("placeOuter", () => {
+describe("placeOuterRing", () => {
   const scene = () => {
     const core = ids("c", 40)
     const sats = Array.from({ length: 40 }, (_, k) => ids(`s${k}_`, 2 + (k % 6)))
@@ -144,30 +133,7 @@ describe("placeOuter", () => {
     expect(out.haloInner).toBeGreaterThanOrEqual(out.satelliteOuter)
   })
 
-  it("placeOuter: steps a clump outward when every candidate in the band is taken", () => {
-    const core = ids("c", 8)
-    const sats = Array.from({ length: 60 }, (_, k) => ids(`s${k}_`, 7))
-    const c = classify([...core, ...sats.flat()], [...chain(core), ...sats.flatMap(chain)])
-    const R = coreRadius(c.core.length)
-    const out = placeOuter(c, R)
-    expect(out.satelliteOuter).toBeGreaterThan(SATELLITE_BAND * R)
-    const discs = c.satellites.map((members) => {
-      const pts = members.map((id) => out.positions.get(id)!)
-      for (const p of pts) expect(dist(p)).toBeGreaterThan(SATELLITE_RING_START * R)
-      const cx = pts.reduce((t, p) => t + p.x, 0) / pts.length
-      const cy = pts.reduce((t, p) => t + p.y, 0) / pts.length
-      return { cx, cy, r: Math.max(...pts.map((p) => Math.hypot(p.x - cx, p.y - cy))) }
-    })
-    for (let i = 0; i < discs.length; i++) {
-      for (let j = i + 1; j < discs.length; j++) {
-        const a = discs[i]!
-        const b = discs[j]!
-        expect(Math.hypot(a.cx - b.cx, a.cy - b.cy)).toBeGreaterThan(a.r + b.r)
-      }
-    }
-  })
-
-  for (const place of [placeOuter, placeOuterRing]) {
+  for (const place of [placeOuterRing]) {
     it(`${place.name}: never overlaps two satellite clumps`, () => {
       const { c, R } = scene()
       const out = place(c, R)
@@ -266,228 +232,6 @@ describe("fitCore", () => {
   })
 
   it("leaves a single node at the origin", () => {
-    expect(fitCore(new Map([["a", { x: 5, y: 9 }]]), 10).get("a")).toEqual({ x: 0, y: 0 })
-  })
-})
-
-
-const ring = (p: string, n: number, score: number) =>
-  Array.from({ length: n }, (_, i) => ({ source: `${p}${i}`, target: `${p}${(i + 1) % n}`, score }))
-const named = (p: string, n: number) => Array.from({ length: n }, (_, i) => `${p}${i}`)
-
-describe("roleCut", () => {
-  it("A1: returns the lowest score that keeps 8+ components at or below 45% of nodes", () => {
-    const ids = [...named("a", 9), ...named("b", 11)]
-    const edges = [...ring("a", 9, 0.9), ...ring("b", 11, 0.8), { source: "a0", target: "b0", score: 0.7 }]
-    expect(roleCut(ids, edges)).toBe(0.9)
-  })
-  it("A1: adds equal scores together", () => {
-    const ids = [...named("a", 8), ...named("b", 8), ...named("z", 14)]
-    const edges = [...ring("a", 8, 0.85), ...ring("b", 8, 0.85), { source: "z0", target: "z1", score: 0.95 }]
-    expect(roleCut(ids, edges)).toBe(0.95)
-  })
-  it("A1: is the lowest score when every edge keeps the core at or below 45%", () => {
-    const ids = named("n", 40)
-    expect(roleCut(ids, [...ring("n", 8, 0.9), { source: "n20", target: "n21", score: 0.55 }])).toBe(0.55)
-  })
-  it("A1: keeps the highest score group even when it alone passes 45%", () => {
-    const ids = named("a", 10)
-    expect(roleCut(ids, [...ring("a", 9, 0.9), { source: "a8", target: "a9", score: 0.5 }])).toBe(0.9)
-  })
-  it("keeps a core on a graph too small for 45% to hold CORE_MIN nodes", () => {
-    const ids = named("c", 15)
-    const chain = ids.slice(1).map((id, i) => ({ source: ids[i]!, target: id, score: 0.9 - i * 0.01 }))
-    const cut = roleCut(ids, chain)
-    expect(cut).toBeCloseTo(0.84)
-    expect(classifyWithCut(ids, chain).core).toHaveLength(8)
-  })
-  it("A1: is -Infinity when no edge carries a score", () => {
-    expect(roleCut(named("n", 4), [{ source: "n0", target: "n1" }])).toBe(-Infinity)
-  })
-  it("an edge without a score counts at every cut", () => {
-    const c = classifyWithCut(named("n", 20), [{ source: "n18", target: "n19" }, ...ring("n", 8, 0.9)])
-    expect(c.role.get("n18")).toBe("satellite")
-    expect(c.cut).toBe(0.9)
-  })
-  it("A4: an attachment takes the highest linked role and never changes a memory's role", () => {
-    const ids = [...named("c", 8), "s0", "s1", "h0", ...named("z", 10)]
-    const edges = [...ring("c", 8, 0.9), { source: "s0", target: "s1", score: 0.9 }]
-    const attachments = [
-      { id: "e:core", linked: ["h0", "c3"] },
-      { id: "e:sat", linked: ["s1", "h0"] },
-      { id: "e:halo", linked: ["h0"] },
-      { id: "e:bridge", linked: ["s0", "h0", "z1"] },
-      { id: "e:none", linked: ["missing"] },
-    ]
-    const c = classifyWithCut(ids, edges, attachments)
-    const plain = classifyWithCut(ids, edges)
-    expect(c.role.get("e:core")).toBe("core")
-    expect(c.core).toContain("e:core")
-    expect(c.role.get("e:sat")).toBe("satellite")
-    expect(c.satellites.find((g) => g.includes("s1"))).toContain("e:sat")
-    expect(c.role.get("e:halo")).toBe("halo")
-    expect(c.role.get("e:none")).toBe("halo")
-    for (const id of ids) expect(c.role.get(id)).toBe(plain.role.get(id))
-  })
-})
-
-const layoutOf = (size: RealCorpusSize) => {
-  const c = loadRealCorpus(size)
-  const cls = classifyWithCut(c.memories.map((m) => m.id), c.edges)
-  const R = coreRadius(cls.core.length)
-  return { cls, R, out: placeOuter(cls, R) }
-}
-
-describe("placement on the real corpus", () => {
-  it("A5: clumps never overlap, sit beyond 1.15R plus their radius, stay within 2R and spread around the core", () => {
-    for (const size of [200, 1000, "all"] as RealCorpusSize[]) {
-      const { cls, R, out } = layoutOf(size)
-      const clumps = cls.satellites.map((g) => {
-        const c = out.positions.get(g[0]!)!
-        const r = Math.max(...g.map((id) => {
-          const p = out.positions.get(id)!
-          return Math.hypot(p.x - c.x, p.y - c.y)
-        }))
-        return { x: c.x, y: c.y, r }
-      })
-      for (let i = 0; i < clumps.length; i++) {
-        const a = clumps[i]!
-        const d = Math.hypot(a.x, a.y)
-        expect(d).toBeGreaterThanOrEqual(1.15 * R + a.r - 1e-6)
-        expect(d).toBeLessThanOrEqual(SATELLITE_BAND * R + 1e-6)
-        for (let j = i + 1; j < clumps.length; j++) {
-          const b = clumps[j]!
-          expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThanOrEqual(a.r + b.r)
-        }
-      }
-      expect(clumps.length).toBeGreaterThanOrEqual(8)
-      const angles = clumps.map((c) => (Math.atan2(c.y, c.x) + 2 * Math.PI) % (2 * Math.PI))
-      for (let k = 0; k < 24; k++) {
-        const start = (k * Math.PI) / 12
-        const inSector = angles.filter((a) => ((a - start + 2 * Math.PI) % (2 * Math.PI)) < Math.PI / 2).length
-        expect(inSector).toBeLessThanOrEqual(clumps.length / 2)
-      }
-    }
-  })
-
-  it("A6: the halo fills 1.15R to its outer radius, thins outward, and depends only on id and radii", () => {
-    const { cls, R, out } = layoutOf(1000)
-    expect(out.haloInner).toBeCloseTo(1.15 * R)
-    expect(out.haloOuter).toBeGreaterThanOrEqual(3 * R)
-    const mid = (out.haloInner + out.haloOuter) / 2
-    let inner = 0
-    let outer = 0
-    for (const id of cls.halo) {
-      const p = out.positions.get(id)!
-      const d = Math.hypot(p.x, p.y)
-      expect(d).toBeGreaterThanOrEqual(out.haloInner - 1e-6)
-      expect(d).toBeLessThanOrEqual(out.haloOuter + 1e-6)
-      if (d < mid) inner++
-      else outer++
-    }
-    const ring = (a: number, b: number) => Math.PI * (b * b - a * a)
-    expect(inner / ring(out.haloInner, mid)).toBeGreaterThan(outer / ring(mid, out.haloOuter))
-    // Same halo count and R, other halo ids and no satellites: shared ids do not move.
-    const kept = cls.halo.slice(0, Math.floor(cls.halo.length / 2))
-    const swapped = { ...cls, satellites: [], halo: [...kept, ...cls.halo.slice(kept.length).map((id) => `x${id}`)] }
-    const again = placeOuter(swapped, R)
-    expect(again.haloOuter).toBeCloseTo(out.haloOuter)
-    for (const id of kept) expect(again.positions.get(id)).toEqual(out.positions.get(id))
-  })
-
-  it("A7: fitCore puts the 90th percentile at 0.85R and softens the tail inside R", () => {
-    const pts = new Map<string, { x: number; y: number }>()
-    for (let i = 0; i < 450; i++) pts.set(`n${i}`, { x: Math.cos(i), y: Math.sin(i * 1.3) })
-    for (let i = 0; i < 50; i++) pts.set(`f${i}`, { x: 50 * Math.cos(i), y: 50 * Math.sin(i) })
-    const all = [...pts.values()]
-    const cx = all.reduce((s, p) => s + p.x, 0) / all.length
-    const cy = all.reduce((s, p) => s + p.y, 0) / all.length
-    const raw = [...pts.keys()].map((id) => Math.hypot(pts.get(id)!.x - cx, pts.get(id)!.y - cy))
-    const p90 = [...raw].sort((a, b) => a - b)[449]!
-    const out = fitCore(pts, 100)
-    const d = [...pts.keys()].map((id) => Math.hypot(out.get(id)!.x, out.get(id)!.y))
-    expect(Math.max(...d)).toBeLessThan(100)
-    expect(d.filter((x) => x > 85 + 1e-9).length).toBeLessThanOrEqual(50)
-    raw.forEach((r, i) => {
-      const scaled = (r * 85) / p90
-      const want = scaled <= 85 ? scaled : 85 + 15 * Math.tanh((scaled - 85) / 15)
-      expect(d[i]!).toBeCloseTo(want, 6)
-    })
-  })
-
-  it("A14: roleCut + classify + placeOuter take 50 ms or less for 20,000 nodes and 110,000 scored edges", () => {
-    const ids = named("n", 20000)
-    let seed = 7
-    const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648)
-    const edges = Array.from({ length: 110000 }, () => ({
-      source: ids[Math.floor(rnd() * ids.length)]!,
-      target: ids[Math.floor(rnd() * ids.length)]!,
-      score: Math.round((0.5 + rnd() * 0.45) * 1000) / 1000,
-    }))
-    const runs: number[] = []
-    for (let i = 0; i < 5; i++) {
-      const t0 = performance.now()
-      const cls = classifyWithCut(ids, edges)
-      placeOuter(cls, coreRadius(cls.core.length))
-      runs.push(performance.now() - t0)
-    }
-    runs.sort((a, b) => a - b)
-    expect(runs[2]!).toBeLessThanOrEqual(50)
-  })
-})
-
-describe("spreadCore", () => {
-  // The 1,000-memory core after a long run of the runner's force layout, which
-  // contracts each community toward a point the longer it runs.
-  const settledCore = () => {
-    const c = loadRealCorpus(1000)
-    const r = classifyWithCut(c.memories.map((m) => m.id), c.edges)
-    const R = coreRadius(r.core.length)
-    const set = new Set(r.core)
-    const g = new Graph({ type: "undirected" })
-    for (const id of r.core) g.addNode(id, { x: (seededUnit(id, 0) - 0.5) * 100, y: (seededUnit(id, 1) - 0.5) * 100 })
-    for (const e of c.edges) if (set.has(e.source) && set.has(e.target) && e.source !== e.target) g.mergeEdge(e.source, e.target)
-    forceAtlas2.assign(g, {
-      iterations: 2000,
-      settings: { ...inferSettings(g), linLogMode: true, outboundAttractionDistribution: false, strongGravityMode: false, gravity: 0.05, scalingRatio: 10, slowDown: 12 },
-    })
-    const pos = new Map<string, Point>()
-    g.forEachNode((id, a) => pos.set(id, { x: a.x as number, y: a.y as number }))
-    return { fitted: fitCore(pos, R), R, gap: CORE_GAP * R * Math.sqrt(Math.PI / r.core.length) }
-  }
-  const nearest = (pos: Map<string, Point>) => {
-    const p = [...pos.values()]
-    return p
-      .map((a, i) => Math.min(...p.map((b, j) => (i === j ? Infinity : Math.hypot(a.x - b.x, a.y - b.y)))))
-      .sort((a, b) => a - b)
-  }
-
-  it("spreads a settled real core from stacks to near CORE_GAP, inside R, deterministically", () => {
-    const { fitted, R, gap } = settledCore()
-    expect(nearest(fitted)[Math.floor(0.1 * fitted.size)]!).toBeLessThan(0.3 * gap)
-    const out = spreadCore(fitted, R, new Map(), 40)
-    const nn = nearest(out)
-    expect(nn[0]!).toBeGreaterThan(0.7 * gap)
-    expect(nn[Math.floor(0.02 * nn.length)]!).toBeGreaterThan(0.75 * gap)
-    for (const p of out.values()) expect(Math.hypot(p.x, p.y)).toBeLessThan(R)
-    expect(spreadCore(fitted, R, new Map(), 40)).toEqual(out)
-  })
-
-  it("warm-starts from its offsets, so two passes a frame converge as the layout runs", () => {
-    const { fitted, R, gap } = settledCore()
-    const offsets = new Map<string, Point>()
-    let out = fitted
-    for (let frame = 0; frame < 100; frame++) out = spreadCore(fitted, R, offsets, 2)
-    expect(nearest(out)[0]!).toBeGreaterThan(0.85 * gap)
-  })
-
-  it("splits coincident nodes and keeps every node inside R", () => {
-    const pts = new Map<string, Point>()
-    for (let i = 0; i < 50; i++) pts.set(`n${i}`, { x: 0, y: 0 })
-    const R = coreRadius(50)
-    const out = spreadCore(pts, R, new Map(), 200)
-    const nn = nearest(out)
-    expect(nn[0]!).toBeGreaterThan(0)
-    for (const p of out.values()) expect(Math.hypot(p.x, p.y)).toBeLessThan(R)
+    expect(fitCoreToFarthest(new Map([["a", { x: 5, y: 9 }]]), 10).get("a")).toEqual({ x: 0, y: 0 })
   })
 })

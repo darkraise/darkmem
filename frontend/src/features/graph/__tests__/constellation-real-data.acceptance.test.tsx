@@ -187,21 +187,8 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
 // The code hosts get an inert canvas; the real one is imported with
 
 import { loadRealCorpus, type RealCorpusSize } from "@/features/graph/fixtures/real-corpus"
-import {
-  classify,
-  classifyWithCut,
-  CORE_K,
-  coreRadius,
-  CORE_MIN,
-  fitCore,
-  HALO_SIZE,
-  placeOuter,
-  roleCut,
-  type Classification,
-  type ConstellationRole,
-  type Point,
-  type ScoredEdge,
-} from "@/features/graph/lib/constellation-layout"
+import { HALO_SIZE, type ConstellationRole } from "@/features/graph/lib/constellation-layout"
+import { ISLAND_K, layoutIslands } from "@/features/graph/lib/cluster-layout"
 import { createConstellationRunner } from "@/features/graph/lib/constellation-runner"
 import {
   COVERAGE_TARGET,
@@ -220,348 +207,39 @@ import { Graph2DRenderer } from "@/features/graph/components/graph-2d-renderer"
 const note = (line: string) => process.stdout.write(`${line}\n`)
 const SIZES: RealCorpusSize[] = [200, 1000, "all"]
 const RANK: Record<ConstellationRole, number> = { halo: 0, satellite: 1, core: 2 }
-const radius = (p: Point) => Math.hypot(p.x, p.y)
-const round3 = (x: number) => Math.round(x * 1000) / 1000
 const ids = (prefix: string, n: number) => Array.from({ length: n }, (_, i) => `${prefix}${i}`)
-const chain = (nodes: string[], scoreOf: (i: number) => number): ScoredEdge[] =>
-  nodes.slice(1).map((t, i) => ({ source: nodes[i]!, target: t, score: scoreOf(i) }))
 
-function rng(seed: number) {
-  let a = seed >>> 0
-  return () => {
-    a = (Math.imul(a, 1664525) + 1013904223) >>> 0
-    return a / 4294967296
-  }
-}
-function shuffled<T>(xs: T[], seed: number): T[] {
-  const r = rng(seed)
-  const out = xs.slice()
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(r() * (i + 1))
-    ;[out[i], out[j]] = [out[j]!, out[i]!]
-  }
-  return out
-}
-
-function realRoles(size: RealCorpusSize) {
+function realIslands(size: RealCorpusSize) {
   const c = loadRealCorpus(size)
   const nodeIds = c.memories.map((m) => m.id)
-  return { corpus: c, nodeIds, result: classifyWithCut(nodeIds, c.edges) }
+  return { corpus: c, nodeIds, layout: layoutIslands(c.memories, c.edges) }
 }
 
-// ---------------------------------------------------------------------------
-// A14 runs first, before any rendering test has allocated.
-
-describe("performance", () => {
-  it("A14: roleCut + classify + placeOuter take 50 ms or less at 20,000 nodes and 110,000 scored edges (median of 5)", () => {
-    const N = 20_000
-    const E = 110_000
-    const BLOCK = 50
-    const r = rng(14)
-    const nodeIds = Array.from({ length: N }, (_, i) => `n${i}`)
-    const edges: ScoredEdge[] = []
-    for (let k = 0; k < E; k++) {
-      const a = Math.floor(r() * N)
-      const intra = r() < 0.8
-      let b = intra ? Math.floor(a / BLOCK) * BLOCK + Math.floor(r() * BLOCK) : Math.floor(r() * N)
-      if (b === a) b = (a + 1) % N
-      edges.push({
-        source: nodeIds[a]!,
-        target: nodeIds[b]!,
-        score: round3(intra ? 0.6 + 0.4 * r() : 0.5 + 0.2 * r()),
-      })
-    }
-    expect(edges).toHaveLength(110_000)
-
-    const timings: number[] = []
-    let last: Classification | null = null
-    for (let run = 0; run < 5; run++) {
-      const t0 = performance.now()
-      const cut = roleCut(nodeIds, edges)
-      const kept = edges.filter((e) => typeof e.score !== "number" || e.score >= cut)
-      const c = classify(nodeIds, kept)
-      placeOuter(c, coreRadius(c.core.length))
-      timings.push(performance.now() - t0)
-      last = c
-    }
-    const median = timings.slice().sort((x, y) => x - y)[2]!
-    note(`A14 timings ms: ${timings.map((t) => t.toFixed(1)).join(", ")} median ${median.toFixed(1)}`)
-    expect(last!.core.length + last!.satellites.flat().length + last!.halo.length).toBe(N)
-    expect(last!.core.length).toBeGreaterThan(0)
-    expect(median).toBeLessThanOrEqual(50)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// A1: roleCut
-
-describe("roleCut", () => {
-  it("A1: returns the lowest score at which 8+ node components hold at most 45% of the nodes", () => {
-    const nodes = ids("p", 101)
-    const edges = chain(nodes, (i) => round3(0.99 - 0.005 * i))
-    // Through edge i the path holds i + 2 nodes; 45% of 101 is 45.45, so edge 43 is the last that fits.
-    expect(roleCut(nodes, shuffled(edges, 1))).toBe(0.775)
-    expect(roleCut(nodes, edges)).toBe(0.775)
-    expect(roleCut(nodes, edges, 0.45)).toBe(0.775)
-  })
-
-  it("A1: adds equal scores together, never half a score group", () => {
-    const nodes = ids("p", 101)
-    // Triples of equal scores: group g ends with 3g + 4 nodes. g = 13 gives 43, g = 14 gives 46 (> 45.45).
-    const edges = chain(nodes, (i) => round3(0.9 - 0.01 * Math.floor(i / 3)))
-    expect(roleCut(nodes, shuffled(edges, 2))).toBe(0.77)
-  })
-
-  it("A1: components below CORE_MIN do not count toward the share", () => {
-    expect(CORE_MIN).toBe(8)
-    const pairs = Array.from({ length: 40 }, (_, k) => ({
-      source: `q${k}a`,
-      target: `q${k}b`,
-      score: 0.9,
-    }))
-    const nodes = [...pairs.flatMap((e) => [e.source, e.target]), ...ids("w", 30), ...ids("iso", 10)]
-    const edges = [...pairs, ...chain(ids("w", 30), () => 0.6)]
-    // 30 of 120 nodes sit in an 8+ component at most, so every edge is kept.
-    expect(roleCut(nodes, edges)).toBe(0.6)
-  })
-
-  it("A1: when every edge keeps the 8+ components at or below 45%, returns the lowest edge score", () => {
-    const body = ids("m", 10)
-    const nodes = [...body, "x0", "x1", ...ids("iso", 88)]
-    const edges = [...chain(body, (i) => round3(0.8 - 0.02 * i)), { source: "x0", target: "x1", score: 0.3 }]
-    expect(roleCut(nodes, edges)).toBe(0.3)
-    expect(roleCut(nodes, shuffled(edges, 3))).toBe(0.3)
-  })
-
-  it("A1: when the highest score group alone passes 45%, returns the highest score", () => {
-    const body = ids("m", 15)
-    const nodes = [...body, ...ids("t", 3), ...ids("iso", 2)]
-    const edges = [...chain(body, () => 0.9), ...chain(ids("t", 3), () => 0.5)]
-    expect(roleCut(nodes, edges)).toBe(0.9)
-    expect(roleCut(nodes, shuffled(edges, 4))).toBe(0.9)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// A2, A3: roles on the real corpus
-
-describe("roles on the real corpus", () => {
-  for (const size of SIZES) {
-    it(`A2: the ${size} fixture holds 35-50% core, 10-25% satellites and 25-45% halo`, () => {
-      const { nodeIds, result } = realRoles(size)
-      const n = nodeIds.length
-      const core = result.core.length / n
-      const sat = result.satellites.flat().length / n
-      const halo = result.halo.length / n
-      note(`A2 ${size}: n=${n} core=${core.toFixed(3)} sat=${sat.toFixed(3)} halo=${halo.toFixed(3)}`)
-      expect(result.core.length + result.satellites.flat().length + result.halo.length).toBe(n)
-      expect(core).toBeGreaterThanOrEqual(0.35)
-      expect(core).toBeLessThanOrEqual(0.5)
-      expect(sat).toBeGreaterThanOrEqual(0.1)
-      expect(sat).toBeLessThanOrEqual(0.25)
-      expect(halo).toBeGreaterThanOrEqual(0.25)
-      expect(halo).toBeLessThanOrEqual(0.45)
-    })
+/** The real corpus clusters every memory, so a quarter is made unclustered
+ *  and unlinked to load the loose island the way the halo was loaded. */
+function looseIslandScene() {
+  const c = loadRealCorpus("all")
+  const unlinked = new Set(c.memories.filter((_m, i) => i % 4 === 0).map((m) => m.id))
+  const layout = layoutIslands(
+    c.memories.map((m) => (unlinked.has(m.id) ? { ...m, cluster: -1 } : m)),
+    c.edges.filter((e) => !unlinked.has(e.source) && !unlinked.has(e.target)),
+  )
+  const loose = layout.groups.find((g) => g.loose)!
+  const cls = {
+    core: layout.groups.filter((g) => !g.loose).flatMap((g) => g.members),
+    satellites: [] as string[][],
+    halo: loose.members,
   }
-
-  it("A3: raising Edges from 0.5 to 0.8 in steps of 0.05 never pulls a memory inward while an 8+ component remains", () => {
-    const { corpus, nodeIds } = realRoles(1000)
-    const thresholds = [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8]
-    const roles = thresholds.map((t) => {
-      const kept = corpus.edges.filter((e) => e.score >= t)
-      const r = classifyWithCut(nodeIds, kept)
-      // Largest component of the drawn edges, to know whether an 8+ component remains.
-      const parent = new Map(nodeIds.map((id) => [id, id]))
-      const find = (x: string): string => {
-        while (parent.get(x) !== x) {
-          parent.set(x, parent.get(parent.get(x)!)!)
-          x = parent.get(x)!
-        }
-        return x
-      }
-      for (const e of kept) parent.set(find(e.source), find(e.target))
-      const sizes = new Map<string, number>()
-      for (const id of nodeIds) sizes.set(find(id), (sizes.get(find(id)) ?? 0) + 1)
-      return { r, largest: Math.max(...sizes.values()), edges: kept.length }
-    })
-    note(`A3 largest components: ${roles.map((x) => x.largest).join(", ")}; edges: ${roles.map((x) => x.edges).join(", ")}`)
-    let checked = 0
-    for (let k = 1; k < thresholds.length; k++) {
-      if (roles[k]!.largest < CORE_MIN) continue
-      checked++
-      for (const id of nodeIds) {
-        const before = RANK[roles[k - 1]!.r.role.get(id)!]
-        const after = RANK[roles[k]!.r.role.get(id)!]
-        expect(after, `memory ${id} at ${thresholds[k]}`).toBeLessThanOrEqual(before)
-      }
-    }
-    expect(checked).toBe(thresholds.length - 1)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// A5, A6, A7: placement and core fit
-
-function clumpDiscs(c: Classification, positions: Map<string, Point>) {
-  return c.satellites.map((members) => {
-    // A clump is packed outward from its first member, which sits at its centre.
-    const pts = members.map((id) => positions.get(id)!)
-    const { x: cx, y: cy } = pts[0]!
-    return { cx, cy, r: Math.max(...pts.map((p) => Math.hypot(p.x - cx, p.y - cy))), n: members.length }
-  })
+  return { layout, cls, outer: { haloInner: 0, haloOuter: loose.radius } }
 }
-
-function syntheticClassification(clumps: number, haloCount: number, coreCount = 60): Classification {
-  const r = rng(5)
-  const nodes: string[] = [...ids("core", coreCount)]
-  const edges: { source: string; target: string }[] = []
-  for (let i = 1; i < coreCount; i++) edges.push({ source: `core${i - 1}`, target: `core${i}` })
-  for (let k = 0; k < clumps; k++) {
-    const size = 2 + Math.floor(r() * 6)
-    const m = ids(`k${k}_`, size)
-    nodes.push(...m)
-    for (let i = 1; i < size; i++) edges.push({ source: m[i - 1]!, target: m[i]! })
-  }
-  nodes.push(...ids("halo", haloCount))
-  return classify(nodes, edges)
-}
-
-describe("placeOuter", () => {
-  const sectorShare = (discs: { cx: number; cy: number }[]) => {
-    const angles = discs.map((d) => Math.atan2(d.cy, d.cx)).sort((a, b) => a - b)
-    let worst = 0
-    for (const a of angles) {
-      const inWindow = angles.filter((b) => {
-        let d = b - a
-        while (d < 0) d += 2 * Math.PI
-        return d < Math.PI / 2
-      }).length
-      worst = Math.max(worst, inWindow)
-    }
-    return worst / angles.length
-  }
-
-  it("A5: on a synthetic graph no two clumps overlap and every clump centre clears 1.15R plus its radius", () => {
-    const c = syntheticClassification(70, 600)
-    const R = coreRadius(c.core.length)
-    const { positions } = placeOuter(c, R)
-    const discs = clumpDiscs(c, positions)
-    expect(discs).toHaveLength(70)
-    for (const d of discs) expect(Math.hypot(d.cx, d.cy)).toBeGreaterThanOrEqual(1.15 * R + d.r)
-    for (let i = 0; i < discs.length; i++) {
-      for (let j = i + 1; j < discs.length; j++) {
-        const a = discs[i]!
-        const b = discs[j]!
-        expect(Math.hypot(a.cx - b.cx, a.cy - b.cy)).toBeGreaterThan(a.r + b.r)
-      }
-    }
-  })
-
-  for (const size of SIZES) {
-    it(`A5: on the ${size} fixture clumps do not overlap, clear 1.15R plus radius, sit within 2.0R and no 90 degree sector holds over half`, () => {
-      const { result } = realRoles(size)
-      const R = coreRadius(result.core.length)
-      const { positions } = placeOuter(result, R)
-      const discs = clumpDiscs(result, positions)
-      expect(discs.length).toBeGreaterThan(4)
-      const quadrants = [0, 0, 0, 0]
-      for (const d of discs) {
-        quadrants[(d.cx >= 0 ? 0 : 1) + (d.cy >= 0 ? 0 : 2)]!++
-      }
-      note(
-        `A5 ${size}: clumps=${discs.length} R=${R.toFixed(1)} maxCentre/R=${(Math.max(...discs.map((d) => Math.hypot(d.cx, d.cy))) / R).toFixed(3)} ` +
-          `slidingSector=${sectorShare(discs).toFixed(3)} quadrants=${quadrants.join("/")}`,
-      )
-      for (const d of discs) {
-        expect(Math.hypot(d.cx, d.cy)).toBeGreaterThanOrEqual(1.15 * R + d.r)
-        expect(Math.hypot(d.cx, d.cy)).toBeLessThanOrEqual(2.0 * R)
-      }
-      for (let i = 0; i < discs.length; i++) {
-        for (let j = i + 1; j < discs.length; j++) {
-          const a = discs[i]!
-          const b = discs[j]!
-          expect(Math.hypot(a.cx - b.cx, a.cy - b.cy)).toBeGreaterThan(a.r + b.r)
-        }
-      }
-      expect(sectorShare(discs)).toBeLessThanOrEqual(0.5)
-    })
-  }
-
-  it("A6: every halo node lies between 1.15R and the halo's outer radius, denser in the inner half of that span", () => {
-    for (const c of [syntheticClassification(40, 3000), realRoles("all").result]) {
-      const R = coreRadius(c.core.length)
-      const outer = placeOuter(c, R)
-      const inner = 1.15 * R
-      expect(outer.haloOuter).toBeGreaterThan(inner)
-      const mid = (inner + outer.haloOuter) / 2
-      let innerCount = 0
-      let outerCount = 0
-      for (const id of c.halo) {
-        const d = radius(outer.positions.get(id)!)
-        expect(d).toBeGreaterThanOrEqual(inner - 1e-9)
-        expect(d).toBeLessThanOrEqual(outer.haloOuter + 1e-9)
-        if (d < mid) innerCount++
-        else outerCount++
-      }
-      const innerDensity = innerCount / (Math.PI * (mid ** 2 - inner ** 2))
-      const outerDensity = outerCount / (Math.PI * (outer.haloOuter ** 2 - mid ** 2))
-      note(`A6: halo=${c.halo.length} inner/outer density ${(innerDensity / outerDensity).toFixed(2)}`)
-      expect(c.halo.length).toBeGreaterThan(1000)
-      expect(innerDensity).toBeGreaterThan(outerDensity)
-    }
-  })
-
-  it("A6: a halo node's position is identical across placements with equal radii", () => {
-    const base = realRoles("all").result
-    const R = coreRadius(base.core.length)
-    // Same core count and halo ids; the satellites are other nodes entirely.
-    const other: Classification = {
-      ...base,
-      satellites: base.satellites.map((g) => g.map((id) => `renamed:${id}`)),
-    }
-    const a = placeOuter(base, R)
-    const b = placeOuter(other, R)
-    expect(b.haloInner).toBe(a.haloInner)
-    expect(b.haloOuter).toBe(a.haloOuter)
-    for (const id of base.halo) expect(b.positions.get(id)).toEqual(a.positions.get(id))
-    const again = placeOuter(base, R)
-    for (const id of base.halo) expect(again.positions.get(id)).toEqual(a.positions.get(id))
-  })
-})
-
-describe("fitCore", () => {
-  const cases: [string, (r: () => number) => Point][] = [
-    ["uniform square", (r) => ({ x: (r() - 0.5) * 100, y: (r() - 0.5) * 100 })],
-    ["gaussian blob far from the origin", (r) => ({ x: 5000 + Math.sqrt(-2 * Math.log(r() + 1e-12)) * Math.cos(6.283 * r()) * 40, y: -3000 + Math.sqrt(-2 * Math.log(r() + 1e-12)) * Math.sin(6.283 * r()) * 40 })],
-    ["heavy tail", (r) => { const d = 1 / (r() + 1e-6) ** 1.5; const a = 6.283 * r(); return { x: d * Math.cos(a), y: d * Math.sin(a) } }],
-    ["tiny spread", (r) => ({ x: r() * 0.001, y: r() * 0.001 })],
-    ["huge spread", (r) => ({ x: (r() - 0.3) * 1e6, y: (r() - 0.8) * 1e6 })],
-  ]
-  for (const [name, gen] of cases) {
-    it(`A7: ${name}: no core node beyond R and at most 10% beyond 0.85R`, () => {
-      for (const R of [60, 316.2]) {
-        const r = rng(77)
-        const pos = new Map<string, Point>()
-        for (let i = 0; i < 1000; i++) pos.set(`n${i}`, gen(r))
-        const fitted = [...fitCore(pos, R).values()]
-        expect(fitted).toHaveLength(1000)
-        expect(fitted.filter((p) => radius(p) > R).length).toBe(0)
-        const beyondKnee = fitted.filter((p) => radius(p) > 0.85 * R + 1e-9).length
-        expect(beyondKnee).toBeLessThanOrEqual(100)
-      }
-    })
-  }
-})
 
 // ---------------------------------------------------------------------------
 // A8: halo density control
 
 describe("halo density", () => {
   function fitViewGain(haloSize: number, viewport: { w: number; h: number }) {
-    const { result: c } = realRoles("all")
-    const R = coreRadius(c.core.length)
-    const outer = placeOuter(c, R)
-    const pxPerUnit = Math.min(viewport.w, viewport.h) / (2 * outer.haloOuter)
+    const { layout, cls: c, outer } = looseIslandScene()
+    const pxPerUnit = Math.min(viewport.w, viewport.h) / (2 * layout.extent)
     const handlers: (() => void)[] = []
     const sigma = {
       on: (event: string, fn: () => void) => {
@@ -816,14 +494,19 @@ function Scene(props: {
   entityLayer?: boolean
   sizeMode?: string
   selectedNodeId?: string | null
+  /** Make every fourth memory unclustered and unlinked: the loose island. */
+  withLoose?: boolean
 }) {
   const { tokens, palette } = useMemoryGraphTheme()
   const c = loadRealCorpus(props.size)
+  const loose = new Set(props.withLoose ? c.memories.filter((_m, i) => i % 4 === 0).map((m) => m.id) : [])
+  const memories = c.memories.map((m) => (loose.has(m.id) ? { ...m, cluster: -1 } : m))
+  const edges = c.edges.filter((e) => !loose.has(e.source) && !loose.has(e.target))
   return (
     <div style={{ position: "relative", width: 800, height: 600 }}>
       <Graph2DRenderer
-        filteredMemories={c.memories}
-        filteredEdges={c.edges}
+        filteredMemories={memories}
+        filteredEdges={edges}
         selectedNodeId={props.selectedNodeId ?? null}
         onNodeSelect={() => {}}
         onReady={() => {}}
@@ -871,41 +554,46 @@ describe("memory 2D renderer on the real corpus", () => {
     vi.restoreAllMocks()
   })
 
-  it("A4: with the entity layer on, an entity takes the highest role of its memories and no memory role changes", () => {
-    const { corpus, nodeIds } = realRoles(1000)
+  it("islands A10 (UX-4): on the real corpus the entity layer moves no memory and changes no role; an entity takes its memories' highest role and sits by their centroid", () => {
+    const { corpus, nodeIds } = realIslands(1000)
     const memoryIds = new Set(nodeIds)
     const off = render(<Scene size={1000} entityLayer={false} />)
     advance(50)
     const gOff = lastSigma().graph
-    const offRoles = new Map(nodeIds.map((id) => [id, gOff.getNodeAttribute(id, "_role") as ConstellationRole]))
+    const before = new Map(
+      nodeIds.map((id) => [id, [gOff.getNodeAttribute(id, "_role"), gOff.getNodeAttribute(id, "x"), gOff.getNodeAttribute(id, "y")]]),
+    )
     off.unmount()
 
     render(<Scene size={1000} entityLayer={true} />)
     advance(50)
     const g = lastSigma().graph
-    for (const id of nodeIds) expect(g.getNodeAttribute(id, "_role"), id).toBe(offRoles.get(id))
-    expect(g.edges().some((e) => g.getEdgeAttribute(e, "_edgeKind") === "membership")).toBe(true)
-    expect(g.edges().some((e) => g.getEdgeAttribute(e, "_edgeKind") === "relation")).toBe(true)
-
-    const tally: Record<string, number> = { core: 0, satellite: 0, halo: 0 }
-    for (const ent of corpus.entities) {
-      const linked = ent.memory_ids.filter((m) => memoryIds.has(m))
-      if (linked.length === 0 || !g.hasNode(`entity:${ent.id}`)) continue
-      const best = Math.max(...linked.map((m) => RANK[offRoles.get(m)!]))
-      const role = g.getNodeAttribute(`entity:${ent.id}`, "_role") as ConstellationRole
-      expect(RANK[role], `entity ${ent.id}`).toBe(best)
-      tally[role]!++
+    for (const id of nodeIds) {
+      const [role, x, y] = before.get(id)!
+      expect(g.getNodeAttribute(id, "_role"), id).toBe(role)
+      expect(g.getNodeAttribute(id, "x"), id).toBeCloseTo(x as number, 6)
+      expect(g.getNodeAttribute(id, "y"), id).toBeCloseTo(y as number, 6)
     }
-    note(`A4 entity roles: ${JSON.stringify(tally)}`)
-    expect(tally.core! + tally.satellite! + tally.halo!).toBeGreaterThan(100)
-    expect(tally.core).toBeGreaterThan(0)
+    expect(g.edges().some((e) => g.getEdgeAttribute(e, "_edgeKind") === "membership")).toBe(true)
+
+    let checked = 0
+    for (const ent of corpus.entities) {
+      const id = `entity:${ent.id}`
+      const linked = ent.memory_ids.filter((m) => memoryIds.has(m))
+      if (linked.length === 0 || !g.hasNode(id)) continue
+      const best = Math.max(...linked.map((m) => RANK[before.get(m)![0] as ConstellationRole]))
+      expect(RANK[g.getNodeAttribute(id, "_role") as ConstellationRole], id).toBe(best)
+      const cx = linked.reduce((t, m) => t + (g.getNodeAttribute(m, "x") as number), 0) / linked.length
+      const cy = linked.reduce((t, m) => t + (g.getNodeAttribute(m, "y") as number), 0) / linked.length
+      const d = Math.hypot((g.getNodeAttribute(id, "x") as number) - cx, (g.getNodeAttribute(id, "y") as number) - cy)
+      expect(d, id).toBeLessThanOrEqual(0.25 * ISLAND_K)
+      checked++
+    }
+    expect(checked).toBeGreaterThan(100)
   })
 
-  it("UI-1: at rest an edge shows only inside the core or one clump, and hovering a node lights its others", () => {
-    const { result } = realRoles(1000)
-    const group = new Map<string, string>()
-    for (const id of result.core) group.set(id, "core")
-    result.satellites.forEach((members, i) => members.forEach((id) => group.set(id, `clump:${i}`)))
+  it("islands A8 (UI-2): an edge is hidden at rest exactly when its endpoints are on different islands, and hovering a node lights its edges", () => {
+    const { layout } = realIslands(1000)
     render(<Scene size={1000} />)
     advance(50)
     const s = lastSigma()
@@ -914,73 +602,43 @@ describe("memory 2D renderer on the real corpus", () => {
     let inside = 0
     let across = 0
     for (const e of g.edges()) {
-      const a = group.get(g.source(e))
-      const sameGroup = a !== undefined && a === group.get(g.target(e))
-      expect(hidden(e), e).toBe(!sameGroup)
-      if (sameGroup) inside++
+      const same = layout.groupOf.get(g.source(e)) === layout.groupOf.get(g.target(e))
+      expect(hidden(e), e).toBe(!same)
+      if (same) inside++
       else across++
     }
-    note(`UI-1 rest edges: ${inside} drawn inside a group, ${across} hidden across groups`)
+    note(`islands A8 rest edges: ${inside} drawn inside an island, ${across} hidden across islands`)
     expect(inside).toBeGreaterThan(0)
     expect(across).toBeGreaterThan(0)
 
-    const halo = result.halo.find((id) => g.degree(id) > 0)!
-    act(() => s.emit("enterNode", { node: halo }))
+    const bridge = g.nodes().find((id) =>
+      g.edges(id).some((e) => layout.groupOf.get(g.source(e)) !== layout.groupOf.get(g.target(e))),
+    )!
+    act(() => s.emit("enterNode", { node: bridge }))
     advance(50)
-    for (const e of g.edges(halo)) expect(hidden(e), e).toBe(false)
-  })
-
-  it("UX-5: the entity layer leaves every core memory where it was, and a core entity sits among its memories", () => {
-    const { result, corpus } = realRoles(1000)
-    const off = render(<Scene size={1000} entityLayer={false} />)
-    advance(50)
-    const gOff = lastSigma().graph
-    const before = new Map(result.core.map((id) => [id, { x: gOff.getNodeAttribute(id, "x"), y: gOff.getNodeAttribute(id, "y") }]))
-    off.unmount()
-
-    render(<Scene size={1000} entityLayer={true} />)
-    advance(50)
-    const g = lastSigma().graph
-    for (const id of result.core) {
-      expect(g.getNodeAttribute(id, "x"), id).toBeCloseTo(before.get(id)!.x as number, 6)
-      expect(g.getNodeAttribute(id, "y"), id).toBeCloseTo(before.get(id)!.y as number, 6)
-    }
-    const coreSet = new Set(result.core)
-    let checked = 0
-    for (const ent of corpus.entities) {
-      const id = `entity:${ent.id}`
-      if (!g.hasNode(id) || g.getNodeAttribute(id, "_role") !== "core") continue
-      const linked = ent.memory_ids.filter((m) => coreSet.has(m))
-      const cx = linked.reduce((t, m) => t + (g.getNodeAttribute(m, "x") as number), 0) / linked.length
-      const cy = linked.reduce((t, m) => t + (g.getNodeAttribute(m, "y") as number), 0) / linked.length
-      const d = Math.hypot((g.getNodeAttribute(id, "x") as number) - cx, (g.getNodeAttribute(id, "y") as number) - cy)
-      expect(d, id).toBeLessThanOrEqual(0.25 * CORE_K)
-      checked++
-    }
-    expect(checked).toBeGreaterThan(100)
+    for (const e of g.edges(bridge)) expect(hidden(e), e).toBe(false)
   })
 
   for (const sizeMode of ["importance", "connections", "uniform"]) {
-    it(`A9: every halo node's size equals HALO_SIZE, at most 40% of the median core size (size mode ${sizeMode})`, () => {
-      render(<Scene size={1000} sizeMode={sizeMode} />)
+    it(`islands A9 (UI-3): every loose memory's size equals HALO_SIZE, at most 40% of the median island size (size mode ${sizeMode})`, () => {
+      render(<Scene size={1000} sizeMode={sizeMode} withLoose />)
       advance(50)
       const g = lastSigma().graph
-      const halo = g.filterNodes((_id, a) => a._role === "halo")
-      const core = g
+      const loose = g.filterNodes((_id, a) => a._role === "halo")
+      const island = g
         .filterNodes((_id, a) => a._role === "core")
         .map((id) => g.getNodeAttribute(id, "size") as number)
         .sort((a, b) => a - b)
-      expect(halo.length).toBeGreaterThan(100)
-      expect(core.length).toBeGreaterThan(100)
-      const median = core.length % 2 ? core[core.length >> 1]! : (core[core.length / 2 - 1]! + core[core.length / 2]!) / 2
-      for (const id of halo) expect(g.getNodeAttribute(id, "size"), id).toBe(HALO_SIZE)
+      expect(loose.length).toBeGreaterThan(100)
+      expect(island.length).toBeGreaterThan(100)
+      const median = island.length % 2 ? island[island.length >> 1]! : (island[island.length / 2 - 1]! + island[island.length / 2]!) / 2
+      for (const id of loose) expect(g.getNodeAttribute(id, "size"), id).toBe(HALO_SIZE)
       expect(HALO_SIZE).toBeLessThanOrEqual(0.4 * median)
-      expect(new Set(halo.map((id) => g.getNodeAttribute(id, "_degree"))).size).toBeGreaterThan(1)
     })
   }
 
   it("A10: at most 2% of the 1,000 memories are hubs", () => {
-    const { corpus, nodeIds } = realRoles(1000)
+    const { corpus, nodeIds } = realIslands(1000)
     const degrees = new Map(nodeIds.map((id) => [id, 0]))
     for (const e of corpus.edges) {
       degrees.set(e.source, degrees.get(e.source)! + 1)

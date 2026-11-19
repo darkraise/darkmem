@@ -236,11 +236,24 @@ describe("halo density", () => {
   it("A8: halo gain times coverage stays at or below the target at the fit view, for small and large halo sizes", async () => {
     const { trackDensityGain, COVERAGE_TARGET } = await import("../node-glow-program")
     const { loadRealCorpus } = await import("../../fixtures/real-corpus")
-    const { classifyWithCut, coreRadius, placeOuter } = await import("../constellation-layout")
+    const { layoutIslands } = await import("../cluster-layout")
+    // The real corpus clusters every memory, so a quarter is unclustered and
+    // unlinked here to give the loose island the halo treatment's load.
     const c = loadRealCorpus("all")
-    const cls = classifyWithCut(c.memories.map((m) => m.id), c.edges)
-    const outer = placeOuter(cls, coreRadius(cls.core.length))
-    const scale = 800 / outer.haloOuter
+    const unlinked = new Set(c.memories.filter((_m, i) => i % 4 === 0).map((m) => m.id))
+    const layout = layoutIslands(
+      c.memories.map((m) => (unlinked.has(m.id) ? { ...m, cluster: -1 } : m)),
+      c.edges.filter((e) => !unlinked.has(e.source) && !unlinked.has(e.target)),
+    )
+    const loose = layout.groups.find((g) => g.loose)!
+    const cls = {
+      core: layout.groups.filter((g) => !g.loose).flatMap((g) => g.members),
+      satellites: [] as string[][],
+      halo: loose.members,
+    }
+    const outer = { haloInner: 0, haloOuter: loose.radius }
+    const isHalo = new Set(loose.members)
+    const scale = 800 / layout.extent
     for (const haloSize of [1.5, 20, 40]) {
       let onRender = () => {}
       const sigma = {
@@ -251,7 +264,7 @@ describe("halo density", () => {
         scaleSize: (s: number) => s,
       }
       const graph = {
-        getNodeAttribute: (id: string) => (cls.role.get(id) === "halo" ? haloSize : 6),
+        getNodeAttribute: (id: string) => (isHalo.has(id) ? haloSize : 6),
       }
       const clock: { time: number; haloGain?: number; haloScale?: number } = { time: 0 }
       trackDensityGain(sigma as never, graph, cls, clock, outer)

@@ -166,23 +166,10 @@ export function resolveNodeColor(
   return palette.palette[stableHash(prefix) % 51] ?? palette.unclustered
 }
 
-export function resolveGroupColor(
-  groupKey: string,
-  groupIndex: number,
-  colorMode: ColorMode,
-  hullMode: string,
-  palette: MemoryPalette,
-): string {
-  if (colorMode === hullMode && colorMode === "cluster") {
-    const id = parseInt(groupKey, 10)
-    if (!isNaN(id) && id >= 0) return palette.palette[id % 51] ?? palette.unclustered
-    return palette.unclustered
-  }
-  if (colorMode === hullMode && colorMode === "tag") {
-    const prefix = groupKey.split("/")[0] ?? ""
-    return palette.palette[stableHash(prefix) % 51] ?? palette.unclustered
-  }
-  return palette.palette[groupIndex % 51] ?? palette.unclustered
+/** A region is always a cluster, so it wears that cluster's colour whatever
+ *  the nodes are coloured by. */
+export function resolveGroupColor(groupKey: string, palette: MemoryPalette): string {
+  return clusterColor(palette, parseInt(groupKey, 10))
 }
 
 export function entityTypeColor(entityType: string, palette: MemoryPalette): string {

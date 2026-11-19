@@ -4,11 +4,7 @@ import Sigma from "sigma"
 import EdgeCurveProgram from "@sigma/edge-curve"
 import { EdgeRectangleProgram } from "sigma/rendering"
 import { EmptyState } from "@/components/darkmem"
-import {
-  clusterAnchors,
-  scaleSettings,
-  seedAroundAnchor,
-} from "@/features/graph/lib/graph-scale"
+import { scaleSettings } from "@/features/graph/lib/graph-scale"
 import {
   NodeDiamondProgram,
   drawDiamondNodeHover,
@@ -31,11 +27,8 @@ import {
 } from "@/features/graph/lib/focus-model"
 import { useGraphPrefs } from "@/features/graph/lib/graph-prefs"
 import { hoverRepaintSet } from "@/features/graph/lib/hover-repaint"
-import {
-  constellationFa2Settings,
-  createConstellationRunner,
-  type ConstellationRunner,
-} from "@/features/graph/lib/constellation-runner"
+import { constellationFa2Settings } from "@/features/graph/lib/constellation-runner"
+import { createClusterRunner, type ClusterRunner } from "@/features/graph/lib/cluster-runner"
 import type { Attachment, ScoredEdge } from "@/features/graph/lib/constellation-layout"
 import { topHubs } from "@/features/graph/lib/hubs"
 import {
@@ -132,6 +125,9 @@ const LABEL_ZOOM_RATIO = 0.72
  *  moves never recompute them. */
 const HULL_REFRESH_MS = 250
 
+/** The backdrop draws its glow at 2.2x this share of the islands' extent. */
+const NEBULA_SHARE = 0.5
+
 /** A connected edge must be unmistakably heavier than its neighbours -- that
  *  emphasis is most of what makes a selection legible. Both are scaled off
  *  each kind's own weight so the relation/similarity/membership hierarchy
@@ -175,7 +171,7 @@ export function Graph2DRenderer({
   const containerRef = useRef<HTMLDivElement>(null)
   const sigmaRef = useRef<Sigma | null>(null)
   const graphRef = useRef<Graph | null>(null)
-  const runnerRef = useRef<ConstellationRunner | null>(null)
+  const runnerRef = useRef<ClusterRunner | null>(null)
   const clockRef = useRef<GlowClock>({ time: 0 })
   const stopMotionRef = useRef<(() => void) | null>(null)
   const [webglFailed, setWebglFailed] = useState(false)
@@ -184,7 +180,7 @@ export function Graph2DRenderer({
   // lurch, which is what toggling the entity layer used to do -- twice, once
   // on the switch and again when the new data landed.
   const positionsRef = useRef<Map<string, { x: number; y: number }>>(new Map())
-  const coreSigRef = useRef<string | null>(null)
+  const islandSigRef = useRef<string | null>(null)
   // What the last layout was computed for. ForceAtlas2 only needs to re-run
   // when this changes; adding or dropping an overlay does not change it.
   const layoutSigRef = useRef<string | null>(null)
@@ -297,10 +293,9 @@ export function Graph2DRenderer({
       connMap.set(e.target, (connMap.get(e.target) ?? 0) + 1)
     }
 
-    const layoutSig = layoutSignature(
-      filteredMemories.map((m) => m.id),
-      entitiesKey === "" ? [] : entities.map((e) => e.id),
-    )
+    // Memories only: entities ride on their memories' centroid and never enter
+    // the simulation, so the entity layer arriving is no reason to re-run it.
+    const layoutSig = layoutSignature(filteredMemories.map((m) => m.id))
     const layoutChanged = layoutSigRef.current !== layoutSig
     layoutSigRef.current = layoutSig
 
@@ -313,16 +308,13 @@ export function Graph2DRenderer({
       x: (seededUnit(id, 0) - 0.5) * 10,
       y: (seededUnit(id, 1) - 0.5) * 10,
     })
-    // A never-seen memory starts beside its cluster's anchor, so the layout
-    // begins near a clustered arrangement instead of untangling noise.
-    const anchors = clusterAnchors(filteredMemories)
-    const place = (id: string, cluster: number) => {
+    // A never-seen memory is placed on its island by the runner.
+    const fresh = new Set<string>()
+    const place = (id: string) => {
       const known = settled.get(id)
       if (known) return known
-      const anchor = anchors.get(cluster)
-      return anchor
-        ? seedAroundAnchor(anchor, seededUnit(id, 0), seededUnit(id, 1))
-        : placeSeeded(id)
+      fresh.add(id)
+      return placeSeeded(id)
     }
 
     const allNodeIds = new Set<string>()
@@ -335,7 +327,7 @@ export function Graph2DRenderer({
       const size = computeSize(sizeMode, conns, m.importance)
       allNodeIds.add(m.id)
       graph.addNode(m.id, {
-        ...place(m.id, m.cluster),
+        ...place(m.id),
         label: m.content.slice(0, 30) + (m.content.length > 30 ? "…" : ""),
         size: size * MEMORY_SIZE_SCALE,
         type: "glow",
@@ -474,30 +466,39 @@ export function Graph2DRenderer({
     hubsRef.current = topHubs(memoryDegrees, 0.02, HUB_DEGREE)
 
     const scale = scaleSettings(graph.order, graph.size)
-    const runner = createConstellationRunner(graph, {
+    const runner = createClusterRunner(graph, {
       layoutMs: scale.layoutMs,
-      fa2Settings: constellationFa2Settings(graph, scale),
-      roles: { nodeIds: [...allNodeIds], edges: roleEdges, attachments },
+      // Each island is its own component in the simulation; a weak gravity
+      // only stops them drifting apart, since every frame refits them.
+      fa2Settings: {
+        ...constellationFa2Settings(graph, scale),
+        strongGravityMode: false,
+        gravity: 0.05,
+        edgeWeightInfluence: 1,
+      },
+      memories: filteredMemories,
+      edges: roleEdges,
+      attachments,
+      fresh,
       onStop: () => {
         hullCache.invalidate()
         sigmaRef.current?.refresh()
       },
     })
     runnerRef.current = runner
-    // Roles follow edges, so an Edges-threshold change can move memories into
-    // or out of the core with the id set unchanged; the core then has to
-    // settle again around its new members.
-    // The reference draws no lines across its halo: at rest an edge shows only
-    // inside one group (the core, or one clump), and hover or selection lights
-    // the rest of a node's links.
-    const restGroup = new Map<string, string>()
-    for (const id of runner.classification.core) restGroup.set(id, "core")
-    runner.classification.satellites.forEach((members, i) => {
-      for (const id of members) restGroup.set(id, `clump:${i}`)
-    })
-    const coreSig = [...runner.classification.core].sort().join("\n")
-    const coreChanged = coreSigRef.current !== coreSig
-    coreSigRef.current = coreSig
+    // Islands follow the clusters and edges, so an Edges-threshold change can
+    // move memories between islands with the id set unchanged; the islands
+    // then have to settle again around their new members.
+    // The reference draws no lines across open space: at rest an edge shows
+    // only inside one island, and hover or selection lights the rest of a
+    // node's links.
+    const restGroup = runner.groupOf
+    const islandSig = filteredMemories
+      .map((m) => `${m.id}=${restGroup.get(m.id)}`)
+      .sort()
+      .join("\n")
+    const islandsChanged = islandSigRef.current !== islandSig
+    islandSigRef.current = islandSig
     const sigmaSettings: Partial<Settings> = {
       antiAliasingFeather: 2,
       // Sorts each program's items by the `zIndex` the reducers emit. Only the
@@ -548,7 +549,9 @@ export function Graph2DRenderer({
           drawThemedDiscNodeHover(context, data, settings, tokensRef.current, color, kind)
         }
       },
-      stagePadding: 40,
+      // Islands fill the corners of the frame, where the toolbar buttons sit
+      // up to 44px in from the top edge.
+      stagePadding: 64,
       // Memories and the halo draw under sigma's 6px label cull, which runs
       // before the reducer is consulted; the reducer alone decides labels.
       labelRenderedSizeThreshold: 0,
@@ -804,15 +807,8 @@ export function Graph2DRenderer({
         runnerRef.current?.isRunning() ?? false,
         performance.now(),
       )
-      let idx = 0
       for (const [groupKey, members] of hullGroups) {
-        const color = resolveGroupColor(
-          groupKey,
-          idx,
-          colorModeRef.current,
-          hullModeRef.current,
-          paletteRef.current,
-        )
+        const color = resolveGroupColor(groupKey, paletteRef.current)
         const hull = drawFramedHull(
           hullCtx,
           sigmaRef.current,
@@ -842,7 +838,6 @@ export function Graph2DRenderer({
             )
           }
         }
-        idx++
       }
 
       const borderTargets = new Set<string>()
@@ -897,7 +892,8 @@ export function Graph2DRenderer({
 
     const detachBackdrop = attachBackdrop(
       sigma,
-      () => coreOnScreen(sigma, runner.coreRadius),
+      // The nebula spans the islands rather than one core.
+      () => coreOnScreen(sigma, NEBULA_SHARE * runner.layout.extent),
       {
         canvas: tokensRef.current.canvas,
         nebula: tokensRef.current.nebula,
@@ -916,7 +912,7 @@ export function Graph2DRenderer({
     // Nothing new to arrange -- this is the render that happens while a fetch
     // is in flight, drawing the same nodes as the last one. Re-simulating here
     // is what scattered the canvas the moment the switch was touched.
-    if (!layoutChanged && !coreChanged) {
+    if (!layoutChanged && !islandsChanged) {
       onReady()
       return
     }

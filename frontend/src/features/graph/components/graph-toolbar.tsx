@@ -190,18 +190,13 @@ export function GraphToolbar({
                 { value: "tag", label: "Tag" },
               ]}
             />
-            <SegmentRow
-              label="Regions"
-              value={hullMode}
-              onChange={(v) => onHullModeChange(v as HullMode)}
-              size="sm"
-              options={[
-                { value: "none", label: "None" },
-                { value: "cluster", label: "Cluster" },
-                { value: "tag", label: "Tag" },
-                { value: "source", label: "Source" },
-              ]}
-            />
+            <SwitchRow label="Regions">
+              <Switch
+                checked={hullMode === "cluster"}
+                onCheckedChange={(on) => onHullModeChange(on ? "cluster" : "none")}
+                aria-label="Cluster regions"
+              />
+            </SwitchRow>
             {/* Node size is an encoding, not a layout parameter: it answers
                 the same question Colour and Regions do. */}
             <SegmentRow

@@ -208,7 +208,6 @@ export function Graph3DRenderer({
 
     const nodeMap = new Map(graphData.nodes.map((n) => [n.id, n]))
 
-    let groupIdx = 0
     for (const [groupKey, memberIds] of hullGroups) {
       const positions: THREE.Vector3[] = []
       for (const id of memberIds) {
@@ -217,10 +216,7 @@ export function Graph3DRenderer({
           positions.push(new THREE.Vector3(node.x!, node.y!, node.z!))
         }
       }
-      if (positions.length < 4) {
-        groupIdx++
-        continue
-      }
+      if (positions.length < 4) continue
 
       const centroid = new THREE.Vector3()
       positions.forEach((p) => centroid.add(p))
@@ -244,13 +240,7 @@ export function Graph3DRenderer({
         geometry.computeVertexNormals()
         // paletteRef keeps buildHulls deps stable ([graphData, colorMode, hullMode])
         // while always reading the latest palette when hulls are rebuilt on a theme flip.
-        const hullColor = resolveGroupColor(
-          groupKey,
-          groupIdx,
-          colorMode,
-          hullMode,
-          paletteRef.current,
-        )
+        const hullColor = resolveGroupColor(groupKey, paletteRef.current)
         const material = new THREE.MeshPhongMaterial({
           color: hullColor,
           transparent: true,
@@ -265,7 +255,6 @@ export function Graph3DRenderer({
       } catch {
         // ConvexGeometry can throw if points are coplanar
       }
-      groupIdx++
     }
   }, [graphData, colorMode, hullMode])
 

@@ -33,6 +33,7 @@ function Board({
   withEntities = false,
   sharedEntitiesOnly = true,
   selectTopHub = false,
+  regions = false,
 }: {
   size: RealCorpusSize
   minScore?: number
@@ -40,6 +41,7 @@ function Board({
   /** The page's default: only entities two or more drawn memories assert. */
   sharedEntitiesOnly?: boolean
   selectTopHub?: boolean
+  regions?: boolean
 }) {
   const { tokens, palette } = useMemoryGraphTheme()
   const corpus = useMemo(() => loadRealCorpus(size), [size])
@@ -70,7 +72,7 @@ function Board({
         onReady={markReady}
         sizeMode="connections"
         colorMode="cluster"
-        hullMode="none"
+        hullMode={regions ? "cluster" : "none"}
         entityLayerEnabled={withEntities}
         entities={entities}
         entityRelations={entityRelations}
@@ -98,3 +100,4 @@ export const HighEdges: S = { args: { size: 1000, minScore: 0.8 } }
 export const EntityLayer: S = { args: { size: 1000, withEntities: true } }
 export const EntityLayerAll: S = { args: { size: 1000, withEntities: true, sharedEntitiesOnly: false } }
 export const Selected: S = { args: { size: 1000, selectTopHub: true } }
+export const Regions: S = { args: { size: 1000, regions: true } }

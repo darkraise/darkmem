@@ -67,12 +67,7 @@ const SIZE_LABELS: Record<SizeMode, string> = {
   importance: "Weight",
   uniform: "Equal",
 }
-const HULL_LABELS: Record<HullMode, string> = {
-  none: "None",
-  cluster: "Cluster",
-  tag: "Tag",
-  source: "Source",
-}
+const REGIONS_ON: Record<HullMode, string> = { none: "false", cluster: "true" }
 
 // "Reset graph view" must land the encodings on the same defaults the page
 // boots into (features/graph/hooks/__tests__/graph-defaults.test.ts pins
@@ -92,15 +87,13 @@ describe("RealMemoryGraphPage: reset graph view", () => {
 
     const colourGroup = screen.getByRole("radiogroup", { name: "Colour" })
     const sizeGroup = screen.getByRole("radiogroup", { name: "Node size" })
-    const regionsGroup = screen.getByRole("radiogroup", { name: "Regions" })
+    const regions = screen.getByRole("switch", { name: "Cluster regions" })
 
     // Move every encoding away from the page's own defaults first, so a
     // reset that merely leaves the current value untouched cannot pass.
     await user.click(within(colourGroup).getByRole("radio", { name: "Type" }))
     await user.click(within(sizeGroup).getByRole("radio", { name: "Links" }))
-    await user.click(
-      within(regionsGroup).getByRole("radio", { name: "Cluster" }),
-    )
+    await user.click(regions)
 
     expect(
       within(colourGroup).getByRole("radio", { name: "Type" }),
@@ -108,9 +101,7 @@ describe("RealMemoryGraphPage: reset graph view", () => {
     expect(
       within(sizeGroup).getByRole("radio", { name: "Links" }),
     ).toHaveAttribute("aria-checked", "true")
-    expect(
-      within(regionsGroup).getByRole("radio", { name: "Cluster" }),
-    ).toHaveAttribute("aria-checked", "true")
+    expect(regions).toHaveAttribute("aria-checked", "true")
 
     await user.click(
       screen.getByRole("button", { name: /reset graph view/i }),
@@ -123,9 +114,7 @@ describe("RealMemoryGraphPage: reset graph view", () => {
     }
     const colourGroupAfter = screen.getByRole("radiogroup", { name: "Colour" })
     const sizeGroupAfter = screen.getByRole("radiogroup", { name: "Node size" })
-    const regionsGroupAfter = screen.getByRole("radiogroup", {
-      name: "Regions",
-    })
+    const regionsAfter = screen.getByRole("switch", { name: "Cluster regions" })
 
     expect(
       within(colourGroupAfter).getByRole("radio", {
@@ -137,10 +126,9 @@ describe("RealMemoryGraphPage: reset graph view", () => {
         name: SIZE_LABELS[DEFAULT_SIZE_MODE],
       }),
     ).toHaveAttribute("aria-checked", "true")
-    expect(
-      within(regionsGroupAfter).getByRole("radio", {
-        name: HULL_LABELS[DEFAULT_HULL_MODE],
-      }),
-    ).toHaveAttribute("aria-checked", "true")
+    expect(regionsAfter).toHaveAttribute(
+      "aria-checked",
+      REGIONS_ON[DEFAULT_HULL_MODE],
+    )
   })
 })

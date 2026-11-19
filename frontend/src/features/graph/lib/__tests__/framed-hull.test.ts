@@ -1,6 +1,12 @@
 import { describe, it, expect, vi } from "vitest"
 import type Sigma from "sigma"
-import { createHullShapeCache, drawFramedHull, framedHullVertices, type HullMode } from "../graph-geometry"
+import {
+  computeHullGroups,
+  createHullShapeCache,
+  drawFramedHull,
+  framedHullVertices,
+  type HullMode,
+} from "../graph-geometry"
 
 const POSITIONS: Record<string, { x: number; y: number }> = {
   a: { x: 0, y: 0 },
@@ -81,8 +87,26 @@ describe("createHullShapeCache", () => {
     const next = [...memories]
     cache.update(next, "cluster", sigma, false, 2000)
     expect(compute).toHaveBeenCalledTimes(2)
-    cache.update(next, "tag", sigma, false, 3000)
+    cache.update(next, "none", sigma, false, 3000)
     expect(compute).toHaveBeenCalledTimes(3)
+  })
+
+  it("islands UI-1: turning the mode off leaves no group and no shape to draw, and on again restores them", () => {
+    const { sigma } = fakeSigma()
+    const cache = createHullShapeCache(computeHullGroups, 250)
+    const memories = [
+      { id: "a", cluster: 0 },
+      { id: "b", cluster: 0 },
+      { id: "c", cluster: 0 },
+      { id: "d", cluster: 0 },
+      { id: "inner", cluster: -1 },
+    ]
+    expect([...cache.update(memories, "cluster", sigma, false, 0).keys()]).toEqual(["0"])
+    expect(cache.shape("0").length).toBeGreaterThan(2)
+    expect(cache.update(memories, "none", sigma, false, 1).size).toBe(0)
+    expect(cache.shape("0")).toEqual([])
+    expect([...cache.update(memories, "cluster", sigma, false, 2).keys()]).toEqual(["0"])
+    expect(cache.shape("0").length).toBeGreaterThan(2)
   })
 
   it("reshapes at most every refreshMs while the layout runs, and once after invalidate", () => {
