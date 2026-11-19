@@ -28,8 +28,11 @@ the code canvas's ring layout are unchanged.
 - **Island arrangement (owner ruling 2026-11-19):** the first build packed
   islands round a centre island and stretched them along the radius, a
   sunburst; asked to accept it, fix only the stretch, or fix both, the owner
-  chose "Fix both": a wide rectangle with no centre anchor, linked islands
-  still neighbours, and every island keeping its own shape.
+  chose "Fix both", and every island keeps its own shape. A later ruling
+  the same day ("make them likely to around a circle", with islands
+  "isolated from another cluster") replaced the wide rectangle with a round,
+  compact disc: islands pack close, linked islands touch, and the radial
+  stretch stays fixed by `simulationCentres`.
 - **Code canvas:** unchanged; it keeps `classify`, `placeOuterRing` and
   `fitCoreToFarthest`. The memory-only score-cut path is deleted.
 
@@ -37,13 +40,13 @@ the code canvas's ring layout are unchanged.
 
 1. `features/graph/lib/cluster-layout.ts` (pure). `groupMemories` assigns
    islands as above. `placeIslands` runs a deterministic simulation over
-   island discs (radius `ISLAND_K·√n`, loose `LOOSE_K·√n`): a serpentine
-   grid start inside a 16:10 rectangle, ordered so strongly linked islands
-   are neighbours (largest first, loose last); pull between islands
-   proportional to their shared edges normalised by `√(nₐ·n_b)`; a
-   containment force at the rectangle's edge and no pull toward a centre;
-   collisions at `1.15·(rₐ+r_b)` plus a gap; then the short axis is
-   stretched until the islands' bounding box is 16:10. `simulationCentres`
+   island discs (radius `ISLAND_K·√n`, loose `LOOSE_K·√n`): islands start
+   on sunflower slots in a disc, in linkage order (largest at the centre,
+   loose last, on the rim), each taking the free slot nearest the islands it
+   links to; pull between islands proportional to their shared edges
+   normalised by `√(nₐ·n_b)`; a pull toward the centre and no hard rim;
+   collisions at `ISLAND_REACH·(rₐ+r_b)` (1.0) plus a gap of `0.1·min r`,
+   at least 6. `simulationCentres`
    gives each island a separate spot in the force simulation, far enough
    apart that one island's repulsion cannot stretch another (the drawn
    centres are unaffected). `fitIsland` maps one island's simulated
@@ -76,8 +79,8 @@ the code canvas's ring layout are unchanged.
 ### UX
 
 - **UX-1** — Arrangement: one island per cluster; islands sharing more
-  edges sit closer; islands never overlap; no ring, annulus or circular
-  silhouette is imposed.
+  edges touch; islands never overlap; together they pack into one round,
+  compact disc (no ring, annulus or empty centre).
 - **UX-2** — Inside an island linked memories gather (a weighted force
   layout) but no two memories sit closer than the minimum gap.
 - **UX-3** — Settling: islands are in place on the first frame; members
@@ -97,8 +100,8 @@ the code canvas's ring layout are unchanged.
 ## Acceptance
 
 A1. [test, high] UX-1: a clustered memory is on its cluster's island; an unclustered one joins its highest-scored clustered neighbour's island, else the loose island.
-A2. [test, high] UX-1: on the 200, 1,000 and full fixtures no two islands come closer than 1.15·(rₐ+r_b).
-A3. [test, medium] UX-1: an island sharing many edges with another sits closer to it than to one sharing none.
+A2. [test, high] UX-1: on the 200, 1,000 and full fixtures no two islands come closer than rₐ+r_b.
+A3. [test, medium] UX-1: among twelve equal islands, two sharing many edges touch, and sit closer than the unlinked islands do on average.
 A4. [test, high] UX-2: `fitIsland` keeps every member within 1.15r of the centre, and `spreadPoints` leaves no pair closer than 90% of the gap.
 A5. [test, medium] UX-2: on the 1,000 fixture after a ForceAtlas2 run and fit, linked memories of an island are on average closer than random member pairs of that island.
 A6. [test, high] UI-1: the toolbar renders the "Cluster regions" switch and no Regions radiogroup; toggling reports "cluster" and "none"; Reset returns it off.
@@ -109,5 +112,5 @@ A10. [test, high] UX-4: with the entity layer on, no memory moves or changes rol
 A11. [test, high] UX-3: an island-membership change at an unchanged memory set starts a new layout run; an identical rebuild does not.
 A12. [test, high] OP-2: `layoutIslands` at 20,000 memories and 110,000 edges takes ≤ 50 ms (median of 5).
 A13. [demo, high] OP-1: screenshots of each UI and UX item in Storybook and on the live page, both themes, both viewports.
-A14. [test, high] UX-1: on the 200, 1,000 and full fixtures and on 60 equal islands, the islands' bounding box is 1.3 to 2.1 times as wide as it is tall.
+A14. [test, high] UX-1: on the 200, 1,000 and full fixtures and on 60 equal islands, the islands' bounding box is 0.8 to 1.25 times as wide as it is tall, and their discs cover at least 58% of the disc enclosing them.
 A15. [test, high] UX-1: on the full fixture an island's elongation in the shared force run is, on average, within 15% of its elongation when simulated alone, and no island's exceeds it by more than 50%.
