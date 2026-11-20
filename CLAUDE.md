@@ -1163,7 +1163,11 @@ off**: `fetch_enabled` (`fetch_interval_seconds`, default 300s, floor 30s),
 and `index_uncommitted`. `HEAD` is the single indexing trigger; fetching is a
 separate lane whose only job is moving `HEAD`, and the recurring index lane
 never fetches (`CodePipeline.run(..., pull=False)`), so it can't
-fast-forward the operator's branch or reset over drift.
+fast-forward the operator's branch or reset over drift. A failed fetch never
+deletes a managed clone: only a clone git cannot read (`git rev-parse HEAD`
+fails) is re-cloned, and the fetch lane holds the claim as `cloning` for the
+whole re-clone. On a local checkout a fetch fast-forwards only when the
+checked-out branch is the repository's `default_branch`.
 `index_uncommitted` has no lane of its own: it only widens the commit-poll
 tick (`job_runners.make_repo_sync_runner` checks `index_on_commit_enabled`
 first), so it does nothing while that switch is off. **Manual reindex, the

@@ -101,12 +101,12 @@ def make_repo_sync_runner(
                             continue
 
                         # The index lane below takes claim_for_indexing; this lane
-                        # takes nothing, so it has to refuse on the same statuses
-                        # that claim refuses on -- otherwise a tick landing inside
-                        # an in-flight clone, webhook or manual reindex fetches and
-                        # `reset --hard`s the working tree that run owns, and a
-                        # fetch failing against a half-written clone rmtree's the
-                        # directory the clone is still writing into. The status is
+                        # takes a claim only to re-clone an unreadable checkout
+                        # (pull_repo does that itself), so it has to refuse on the
+                        # same statuses that claim refuses on -- otherwise a tick
+                        # landing inside an in-flight clone, webhook or manual
+                        # reindex fetches and `reset --hard`s the working tree
+                        # that run owns. The status is
                         # read BEFORE _claim_due so a refused tick does not burn the
                         # interval: the interval bounds how often a fetch happens,
                         # not how often one is skipped, and a repo that goes idle
@@ -127,7 +127,7 @@ def make_repo_sync_runner(
                             # operator chose, for a fault that has nothing to do
                             # with it. Noticing a local commit needs no network.
                             try:
-                                await manager.pull_repo(repo)
+                                await manager.pull_repo(repo, take_claim=True)
                             except Exception as fetch_exc:
                                 logger.warning(
                                     "Fetch failed for %s: %s", repo_name, fetch_exc,

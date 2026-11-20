@@ -62,9 +62,12 @@ class TaskRegistry:
         cls._tasks.pop(task_id, None)
 
     @classmethod
-    def cancel(cls, task_id: str) -> bool:
+    def cancel(cls, task_id: str, repo_id: UUID | None = None) -> bool:
+        """Cancel a running task; with ``repo_id``, only one of that repository."""
         info = cls._tasks.get(task_id)
         if not info or not info.task or info.task.done():
+            return False
+        if repo_id is not None and info.repo_id != str(repo_id):
             return False
         info.task.cancel()
         info.status = "cancelled"

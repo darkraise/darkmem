@@ -644,7 +644,7 @@ async def cancel_repo_task(
     manager: RepoManager = Depends(get_repo_manager),
 ):
     from app.services.task_registry import TaskRegistry
-    cancelled = TaskRegistry.cancel(task_id)
+    cancelled = TaskRegistry.cancel(task_id, repo_id)
     if not cancelled:
         raise HTTPException(status_code=404, detail="Task not found or already completed")
 

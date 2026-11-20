@@ -486,7 +486,15 @@ class RepoManager:
                     return token, repo.provider
         return None
 
-    async def pull_repo(self, repo: Repository) -> str | None:
+    async def pull_repo(
+        self, repo: Repository, *, take_claim: bool = False,
+    ) -> str | None:
+        """Fetch the default branch and return the new HEAD, or None when the
+        tree was left as it is (the caller then reads HEAD itself).
+
+        A caller that does not already own the repository's indexing claim
+        passes ``take_claim``, so a re-clone takes it as ``cloning`` first.
+        """
         cwd = self.repo_working_dir(repo)
         # local_path repos point at the operator's OWN checkout; that working
         # tree must never be rmtree'd, re-cloned (the reclone fallback below)
@@ -517,7 +525,11 @@ class RepoManager:
                     # and any commit they have not pushed. `--ff-only` advances or
                     # refuses; a refusal lands in the RuntimeError branch below,
                     # which leaves the tree alone and lets the caller read HEAD.
-                    await self._run_git(cwd, ["git", "merge", "--ff-only", "FETCH_HEAD"], env=env)
+                    # Only the default branch follows the remote: a branch the
+                    # operator is working on is theirs, even when it could be
+                    # fast-forwarded.
+                    if await self._current_branch(cwd) == repo.default_branch:
+                        await self._run_git(cwd, ["git", "merge", "--ff-only", "FETCH_HEAD"], env=env)
                 else:
                     await self._run_git(cwd, ["git", "reset", "--hard", "FETCH_HEAD"], env=env)
 
@@ -529,18 +541,73 @@ class RepoManager:
                     # HEAD from the existing checkout.
                     logger.warning("Pull failed for local repo %s (working tree left intact): %s", repo.name, e)
                     return None
-                logger.warning("Pull failed for %s, will re-clone: %s", repo.name, e)
+                if await self._tree_is_readable(cwd):
+                    # A network or remote fault says nothing about the clone;
+                    # deleting it would turn a blip into a full re-download.
+                    logger.warning("Fetch failed for %s (clone kept): %s", repo.name, e)
+                    return None
+                logger.warning("Clone of %s is unreadable, will re-clone: %s", repo.name, e)
                 needs_clone = True
 
         if needs_clone and repo.url and not is_local:
-            if cwd.exists():
-                shutil.rmtree(cwd, onexc=_force_remove)
-            await self._clone_repo(repo)
-            cwd = self._clone_path(repo)
-            result = await self._run_git(cwd, ["git", "rev-parse", "HEAD"])
-            return result.strip() if result else None
+            return await self._reclone(repo, cwd, take_claim=take_claim)
 
         return None
+
+    async def _current_branch(self, cwd: Path) -> str | None:
+        try:
+            return (await self._run_git(cwd, ["git", "symbolic-ref", "--short", "HEAD"])).strip()
+        except RuntimeError:
+            return None  # detached HEAD
+
+    async def _tree_is_readable(self, cwd: Path) -> bool:
+        try:
+            await self._run_git(cwd, ["git", "rev-parse", "HEAD"])
+        except RuntimeError:
+            return False
+        return True
+
+    async def _reclone(
+        self, repo: Repository, cwd: Path, *, take_claim: bool,
+    ) -> str | None:
+        if not take_claim:
+            return await self._replace_clone(repo, cwd)
+
+        prior_status, prior_message = repo.status, repo.status_message
+        claimed = (await self.session.execute(
+            update(Repository)
+            .where(
+                Repository.id == repo.id,
+                Repository.status.notin_(self.BUSY_STATUSES),
+            )
+            .values(status="cloning", status_message="Re-cloning an unreadable checkout")
+            .returning(Repository.id)
+        )).scalar_one_or_none()
+        await self.session.commit()
+        if claimed is None:
+            logger.info("Re-clone of %s skipped: another run holds the repository", repo.name)
+            return None
+        try:
+            return await self._replace_clone(repo, cwd)
+        except BaseException:
+            await self.session.rollback()
+            raise
+        finally:
+            # Reached on cancellation too, so the claim never outlives the
+            # re-clone that took it.
+            await self.session.execute(
+                update(Repository)
+                .where(Repository.id == repo.id, Repository.status == "cloning")
+                .values(status=prior_status, status_message=prior_message)
+            )
+            await self.session.commit()
+
+    async def _replace_clone(self, repo: Repository, cwd: Path) -> str | None:
+        if cwd.exists():
+            shutil.rmtree(cwd, onexc=_force_remove)
+        await self._clone_repo(repo)
+        result = await self._run_git(self._clone_path(repo), ["git", "rev-parse", "HEAD"])
+        return result.strip() if result else None
 
     def repo_working_dir(self, repo: Repository) -> Path:
         if repo.local_path:

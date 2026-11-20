@@ -83,7 +83,7 @@ def spy(monkeypatch):
         runs.indexed.append((repo_id, kwargs.get("forced_files")))
         return {"status": "indexed"}
 
-    async def fake_pull(self, repo):
+    async def fake_pull(self, repo, **_kwargs):
         runs.fetched.append(repo.id)
         return None
 
@@ -223,7 +223,7 @@ async def test_the_index_lane_never_fetches(session, session_factory, indexed_re
     managed clone `reset --hard`-ing away the drift forced_files names."""
     pulls: list = []
 
-    async def fake_pull(self, repo):
+    async def fake_pull(self, repo, **_kwargs):
         pulls.append(repo.id)
         return None
 
@@ -260,7 +260,7 @@ async def test_a_fetch_failure_leaves_the_index_switch_alone(
     the guarantee this test exists to pin."""
     from app.services.repo_manager import RepoManager
 
-    async def boom(self, repo):
+    async def boom(self, repo, **_kwargs):
         raise RuntimeError("network down")
 
     disable_calls: list = []
@@ -330,7 +330,7 @@ async def test_a_fetch_error_rolls_back_and_rereads_before_the_index_lane(
         get_calls.append(repo_id)
         return await orig_get(self, repo_id)
 
-    async def boom(self, repo):
+    async def boom(self, repo, **_kwargs):
         raise RuntimeError("db fault inside pull_repo")
 
     monkeypatch.setattr(SAAsyncSession, "rollback", tracking_rollback)
