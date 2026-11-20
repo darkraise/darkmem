@@ -75,16 +75,6 @@ export function computeNodeVal(
   return 1 + Math.min(5, Math.log1p(connectionCount) * 1.5)
 }
 
-export function computeSize(
-  mode: SizeMode,
-  connections: number,
-  importance: number,
-): number {
-  if (mode === "uniform") return 18
-  if (mode === "importance") return 12 + importance * 28
-  return 12 + Math.min(28, Math.log1p(connections) * 8)
-}
-
 function matchesFilter(memory: UnifiedMemory, filters: FilterState): boolean {
   if (filters.searchText) {
     const term = filters.searchText.toLowerCase()

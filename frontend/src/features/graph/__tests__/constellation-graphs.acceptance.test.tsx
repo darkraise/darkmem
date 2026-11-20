@@ -110,6 +110,11 @@ vi.mock("sigma", () => {
     getContainer() {
       return this.container
     }
+    createCanvas() {
+      const canvas = document.createElement("canvas")
+      this.container.appendChild(canvas)
+      return canvas
+    }
     getGraph() {
       return this.graph
     }

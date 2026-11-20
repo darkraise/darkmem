@@ -45,8 +45,13 @@ import {
   WEBGL_UNAVAILABLE_MESSAGE,
 } from "@/features/graph/lib/graph-backdrop"
 import { startAmbientMotion } from "@/features/graph/lib/ambient-motion"
+import { memorySizes } from "@/features/graph/lib/memory-size"
 import {
-  computeSize,
+  islandLabelAlpha,
+  islandLabelInputs,
+  placeIslandLabels,
+} from "@/features/graph/lib/island-labels"
+import {
   entityRenderKey,
   layoutSignature,
   relationRenderKey,
@@ -111,7 +116,7 @@ const FOCUS_SCALE = 1.22
 const HOVER_SCALE = 1.08
 
 /** Entity nodes are the overlay, so they must not outweigh the memories they
- *  annotate: 3 sits at the low end of the memories' 3-10 size range. */
+ *  annotate: 3 sits at the low end of the memories' 2.5-11.5 size range. */
 const ENTITY_NODE_SIZE = 3
 
 /** Fewest memory-to-memory edges a hub carries. */
@@ -122,6 +127,12 @@ const LIGHT_REST_EDGE_FADE = 0.4
 /** Sigma's camera ratio counts down as you move in, so *below* this is
  *  closer. 0.72 is the 1.4x of the spec, inverted. */
 const LABEL_ZOOM_RATIO = 0.72
+
+const LABEL_FONT = "Inter, sans-serif"
+
+/** The toolbar row floats over the canvas's top edge (top-3, 32 px buttons);
+ *  island names stay below it. */
+const TOOLBAR_BAND_PX = 48
 
 /** While the layout runs, hull shapes refresh at most this often; camera
  *  moves never recompute them. */
@@ -296,6 +307,7 @@ export function Graph2DRenderer({
       return placeSeeded(id)
     }
 
+    const sizes = memorySizes(sizeMode, filteredMemories, connMap)
     const allNodeIds = new Set<string>()
     for (const m of filteredMemories) {
       const { color, borderColor } = nodeColors({
@@ -303,7 +315,7 @@ export function Graph2DRenderer({
         _mem: { cluster: m.cluster, memory_type: m.memory_type, tags: m.tags },
       })
       const conns = connMap.get(m.id) ?? 0
-      const size = computeSize(sizeMode, conns, m.importance)
+      const size = sizes.get(m.id)!
       allNodeIds.add(m.id)
       graph.addNode(m.id, {
         ...place(m.id),
@@ -505,7 +517,7 @@ export function Graph2DRenderer({
       // Per-node so a grounded label can recede with its node; sigma's
       // label renderer reads this attribute and falls back to `color`.
       labelColor: { attribute: "labelColor", color: labelColorToken },
-      labelFont: "Inter, sans-serif",
+      labelFont: LABEL_FONT,
       defaultEdgeType: scale.curvedEdges ? "curve" : "line",
       // Order matters and is the whole point: sigma draws program by program
       // in registration order, and zIndex only sorts WITHIN a program. Giving
@@ -857,7 +869,73 @@ export function Graph2DRenderer({
       }
     }
 
+    // Above the nodes, under sigma's own labels and hover tags, so a memory's
+    // name always reads over its island's.
+    const islandCanvas = sigma.createCanvas("islandLabels", { beforeLayer: "labels" })
+    const islandCtx = islandCanvas.getContext("2d")!
+    const textWidths = new Map<string, number>()
+    // Widths measured before the label font loaded are a fallback font's.
+    const clearTextWidths = () => {
+      textWidths.clear()
+      sigma.scheduleRender()
+    }
+    document.fonts?.addEventListener("loadingdone", clearTextWidths)
+    sigma.on("kill", () => document.fonts?.removeEventListener("loadingdone", clearTextWidths))
+    const measureText = (text: string, fontPx: number) => {
+      const key = `${fontPx}|${text}`
+      let w = textWidths.get(key)
+      if (w === undefined) {
+        islandCtx.font = `600 ${fontPx}px ${LABEL_FONT}`
+        w = islandCtx.measureText(text).width
+        textWidths.set(key, w)
+      }
+      return w
+    }
+
+    function drawIslandLabels() {
+      const s = sigmaRef.current
+      const r = runnerRef.current
+      if (!s || !r) return
+      const { width, height } = s.getDimensions()
+      const dpr = window.devicePixelRatio || 1
+      if (islandCanvas.width !== width * dpr || islandCanvas.height !== height * dpr) {
+        islandCanvas.width = width * dpr
+        islandCanvas.height = height * dpr
+        islandCanvas.style.width = width + "px"
+        islandCanvas.style.height = height + "px"
+      }
+      islandCtx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      islandCtx.clearRect(0, 0, width, height)
+      const alpha = islandLabelAlpha(selectedNodeIdRef.current !== null)
+      const islands = islandLabelInputs(
+        r.layout.groups,
+        r.layout.centres,
+        clusterNamesRef.current,
+        (p) => s.graphToViewport(p),
+      )
+      const tk = tokensRef.current
+      islandCtx.save()
+      islandCtx.globalAlpha = alpha
+      islandCtx.textAlign = "center"
+      islandCtx.textBaseline = "middle"
+      islandCtx.lineJoin = "round"
+      islandCtx.lineWidth = 4
+      islandCtx.strokeStyle = hexToRgba(tk.canvas, 0.9)
+      islandCtx.fillStyle = tk.foreground
+      for (const label of placeIslandLabels(islands, measureText, {
+        width,
+        height,
+        top: TOOLBAR_BAND_PX,
+      })) {
+        islandCtx.font = `600 ${label.fontPx}px ${LABEL_FONT}`
+        islandCtx.strokeText(label.text, label.x, label.y)
+        islandCtx.fillText(label.text, label.x, label.y)
+      }
+      islandCtx.restore()
+    }
+
     sigma.on("afterRender", drawHulls)
+    sigma.on("afterRender", drawIslandLabels)
     sigma.on("kill", () => hullCanvas.remove())
 
     // Entity diamonds draw through their own program, not the glow pass, so
