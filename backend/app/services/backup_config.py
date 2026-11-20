@@ -96,9 +96,12 @@ _SSH_HOST = re.compile(r"[A-Za-z0-9_\[][A-Za-z0-9._:\[\]%-]*")
 # The fields a stored secret is bound to: a masked secret is kept only while
 # every one of them is unchanged, so a session cannot send a stored secret to a
 # new endpoint without entering it again.
+# The bucket and the access key id are bound too: a bucket elsewhere can grant
+# the stored key write access. So is `age_recipient`, which decides who can
+# read what the stored secret ships.
 CONNECTION_FIELDS: dict[str, tuple[str, ...]] = {
     "ssh": ("host", "port", "user"),
-    "s3": ("endpoint_url",),
+    "s3": ("endpoint_url", "bucket", "access_key_id"),
     "worker": ("url",),
 }
 
@@ -204,6 +207,8 @@ async def save_destinations(
                     c for c in CONNECTION_FIELDS.get(group, ())
                     if getattr(sub, c, None) != getattr(prev_sub, c, None)
                 ]
+                if d.age_recipient != prev.age_recipient:
+                    moved.append("age_recipient")
                 if moved:
                     raise DestinationInvalid(
                         f"{d.name}: {', '.join(moved)} changed, so enter {f} again"

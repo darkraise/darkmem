@@ -109,3 +109,33 @@ async def test_stored_failure_text_is_sanitised(session, tmp_path, monkeypatch):
     assert repo.status_message and "tok123" not in repo.status_message
     assert stored and all("tok123" not in m for m in stored)
     assert sent and all("tok123" not in repr(data) for _t, data in sent)
+
+
+@pytest.mark.asyncio
+async def test_stale_failure_text_is_sanitised(session, tmp_path, monkeypatch):
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    repo = Repository(
+        name=f"repo-{uuid.uuid4().hex[:8]}", local_path=str(tmp_path),
+        last_indexed_commit="sha-good",
+    )
+    session.add(repo)
+    await session.flush()
+    manager = RepoManager(session)
+
+    async def _pull(_repo):
+        return "sha-2"
+
+    manager.pull_repo = _pull
+    pipe = CodePipeline(session=session, llm=None, vector_repo=None, repo_manager=manager)
+
+    async def _git_step():
+        raise RuntimeError("fatal: https://user:tok123@host/x.git not found")
+
+    monkeypatch.setattr(pipe, "phase_06_call_tracing", _git_step)
+
+    with pytest.raises(RuntimeError):
+        await pipe.run(repo.id, full=True)
+
+    await session.refresh(repo)
+    assert repo.status == "stale"
+    assert "tok123" not in repo.status_message

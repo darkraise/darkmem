@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 from app.services import backup_config as bc
-from tests.test_backup_config import SSH, WORKER
+from tests.test_backup_config import S3, SSH, WORKER
 
 pytestmark = pytest.mark.asyncio
 
@@ -16,6 +16,8 @@ pytestmark = pytest.mark.asyncio
         (SSH, "ssh", "private_key", "host", "203.0.113.9"),
         (SSH, "ssh", "private_key", "port", 2222),
         (SSH, "ssh", "private_key", "user", "other"),
+        (S3, "s3", "secret_access_key", "endpoint_url", "https://elsewhere.example"),
+        (S3, "s3", "secret_access_key", "bucket", "someone-elses-bucket"),
     ],
 )
 async def test_destination_host_change_needs_the_secret_again(
@@ -64,3 +66,18 @@ async def test_provider_url_change_needs_the_key_again(client, auth_headers, cha
         json={**body, "api_key": "real"}, headers=auth_headers,
     )
     assert reentered.status_code == 200
+
+
+async def test_recipient_change_needs_the_secret_again(client, auth_headers, session):
+    await bc.save_destinations(session, {"destinations": [WORKER]})
+    moved = {
+        **WORKER,
+        "age_recipient": "age1someoneelsesrecipient",
+        "worker": {**WORKER["worker"], "token": bc.MASKED},
+    }
+    r = await client.put(
+        "/api/v1/config/backup-destinations",
+        json={"destinations": [moved]}, headers=auth_headers,
+    )
+    assert r.status_code == 422
+    assert "token" in r.json()["detail"]

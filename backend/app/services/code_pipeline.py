@@ -540,7 +540,7 @@ class CodePipeline:
             # rolling back first raises PendingRollbackError and masks the real
             # exception. Roll back so the cleanup runs in a clean transaction.
             await self.session.rollback()
-            cause = f"{type(exc).__name__}: {exc}"[:400]
+            cause = _sanitize_url(f"{type(exc).__name__}: {exc}")[:400]
 
             # `rollback()` expires every object this session holds, `repo`
             # included, so re-fetching rather than trusting the in-memory
