@@ -413,18 +413,12 @@ async def _seed_tagged(session, *, tagged: bool = True) -> list[Memory]:
 
 
 @pytest.mark.asyncio
-async def test_arm_names_come_from_the_namer_and_never_call_the_llm(session):
+@pytest.mark.parametrize("read_only", [False, True])
+async def test_arm_names_come_from_the_namer_and_never_call_the_llm(
+    session, monkeypatch, read_only
+):
     await _seed_tagged(session)
-    result = await _service(session, llm=_NoChatLLM()).get_unified_graph(
-        project="alpha", similarity_threshold=0.5,
-    )
-    assert result["cluster_names"] == {"0": "retrieval · lexical"}
-
-
-@pytest.mark.asyncio
-async def test_read_only_graph_makes_no_llm_call(session, monkeypatch):
-    await _seed_tagged(session)
-    monkeypatch.setattr(settings, "read_only", True)
+    monkeypatch.setattr(settings, "read_only", read_only)
     result = await _service(session, llm=_NoChatLLM()).get_unified_graph(
         project="alpha", similarity_threshold=0.5,
     )

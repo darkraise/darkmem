@@ -219,7 +219,7 @@ async def test_entity_terms_for_memories_filters_types_and_ids(session):
     await session.flush()
     graph = PostgresGraphRepository(session)
     for name, entity_type, asserting in (
-        ("DarkFoto", "project", (a, b)),
+        ("DarkFoto", "project", (a, b, c)),
         ("pgvector", "tool", (a,)),
         ("some idea", "concept", (a,)),
         ("git", "tool", (c,)),
