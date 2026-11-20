@@ -249,6 +249,11 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
   overview: { kind: "global" },
   pipelineFailures: { kind: "global" },
   pipelineFailureCounts: { kind: "global" },
+  memoryBuffer: {
+    kind: "global",
+    reason:
+      "the failed-capture triage queue spans every project, and each row names its own",
+  },
   retryBatchProgress: { kind: "global" },
   obsoleteCounts: { kind: "global" },
   reembedBatchProgress: { kind: "global" },
