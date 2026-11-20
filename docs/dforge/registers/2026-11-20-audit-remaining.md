@@ -195,15 +195,15 @@
 | 188 | F3-9h: the facts list's filter options cover only the pages already loaded | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 62/63 contracts | doing | - |
 | 189 | F3 mirror note: no test pins the TypeScript copy of block_verbs.py's refusals to the Python one | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 64 contracts | doing | - |
 | 190 | P1-1 (high): the extension's auto-capture stores every partial state of a streaming reply as its own memory | docs/dforge/plans/2026-11-20-audit-remaining.md | A5 (Task 65) | doing | - |
-| 191 | P1-2 (high): pull requests can run code on the self-hosted LAN runner; check the fork-approval setting | docs/dforge/plans/2026-11-20-audit-remaining.md | A6 (Task 4) | doing | - |
+| 191 | P1-2 (high): pull requests can run code on the self-hosted LAN runner; check the fork-approval setting | docs/dforge/plans/2026-11-20-audit-remaining.md | A6 (Task 4) | done | f0b79c0 |
 | 192 | P1-3: a cancelled tag job still lets github-release create the tag on master's tip | docs/dforge/plans/2026-11-20-audit-remaining.md | A49 (Task 66) | doing | - |
 | 193 | P1-4: numpy is imported but not declared | docs/dforge/plans/2026-11-20-audit-remaining.md | A50 (Task 66) | doing | - |
-| 194 | P1-5: third-party actions are pinned to movable tags, not commit SHAs; the trivy job writes the cache publish reads | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 4 contracts | doing | - |
+| 194 | P1-5: third-party actions are pinned to movable tags, not commit SHAs; the trivy job writes the cache publish reads | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 4 contracts | done | f0b79c0 |
 | 195 | P1-6: CONTRIBUTING.md describes the old release model | docs/dforge/plans/2026-11-20-audit-remaining.md | A51 (Task 69) | doing | - |
 | 196 | P1-7: release.sh cannot finish on this host (it runs gate.sh --full) | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 66 contracts | doing | - |
-| 197 | P1-8: the e2e database reset bypasses the destructive-SQL guard on a false premise | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 4 contracts | doing | - |
+| 197 | P1-8: the e2e database reset bypasses the destructive-SQL guard on a false premise | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 4 contracts | done | f0b79c0 |
 | 198 | P1-9: the worker's restore loop treats every migrate failure as an old-baseline snapshot and exits 0 | docs/dforge/plans/2026-11-20-audit-remaining.md | A49 (Task 67) | doing | - |
-| 199 | P1-10: start_dev_server.sh calls bare python and by default migrates localhost:5432, which is production on this host | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 4 contracts | doing | - |
+| 199 | P1-10: start_dev_server.sh calls bare python and by default migrates localhost:5432, which is production on this host | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 4 contracts | done | f0b79c0 |
 | 200 | P1-11: five seed and test scripts are broken and unreferenced | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 68 contracts | doing | - |
 | 201 | P1-12 remainder: publish_production_models.sh changes into the deleted fine-tuning directory | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 68 contracts | doing | - |
 | 202 | P1-13: the cutover package is the one-time 0006-to-baseline loader and only its own tests use it (llm_providers_transition.py stays) | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 68 contracts | doing | - |
