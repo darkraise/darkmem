@@ -815,8 +815,9 @@ class TestEventReadbackIsScopedToTheBatch:
             actor="tester",
         )
 
-        assert results[0].applied is True
-        assert (await memory_status(session, stale_older))["status"] == "superseded"
+        assert results[0].applied is False
+        assert results[0].reason == hygiene_queue.JOURNAL_FAILED
+        assert (await memory_status(session, stale_older))["status"] == "active"
         assert results[0].event_id is None, (
             "the readback returned a stale event id from an unrelated prior "
             f"action instead of reporting the degraded journal honestly: "

@@ -454,6 +454,16 @@ async def counts(
 # ── bulk actions ─────────────────────────────────────────────────────────
 
 
+class HygieneJournalWriteFailed(RuntimeError):
+    """An action's ``consolidated`` row did not land; raised inside the item's
+    savepoint so the action rolls back with it instead of committing
+    un-undoable and invisible to the digest."""
+
+
+# The per-item reason a hygiene action reports when its journal write failed.
+JOURNAL_FAILED = "journal_failed"
+
+
 @dataclass(frozen=True)
 class HygieneActionResult:
     """One item's outcome — never a batch summary (R2)."""
@@ -479,24 +489,19 @@ _EDGE_BY_ID = text(
 )
 
 # Read-your-own-write within the same session/transaction: `record_event`
-# reports nothing back, and it is the one writer (CLAUDE.md), so this reads
-# the row it just committed to its own SAVEPOINT rather than inserting a
-# second time through a different path.
+# returns whether its row landed, not the row's id, and it is the one writer
+# (CLAUDE.md), so this reads the row it just wrote to its own SAVEPOINT rather
+# than inserting a second time through a different path.
 #
 # **Scoped by `cycle_id` and a `created_at` floor, not by `object_id` alone.**
-# `record_event` degrades loudly and never raises (CLAUDE.md): if its own
-# insert fails, this module's caller sees nothing wrong and moves on believing
-# the action journalled. An `object_id`-only readback would then return the
-# id of whatever *prior* `consolidated` event that memory carries — a
-# supersession from an earlier cycle, say — reporting it as this action's
-# `event_id`. That is silent false attribution on the wire (a caller trusts a
-# stale id as its own) and a silently unjournalled, un-undoable action. The
-# `cycle_id` this batch just minted cannot collide with any event from a
-# different batch or an automated tick, so scoping on it is what makes "no
-# row" mean "the write did not land" rather than "an old row happened to
-# match". The floor is the same discipline `dream_undo`'s by-id lookups use
-# (CLAUDE.md: "every undo lookup carries a created_at bound and prunes to one
-# or two [partitions]") — a correctness backstop is not a reason to scan every
+# An `object_id`-only readback could return the id of whatever *prior*
+# `consolidated` event that memory carries — a supersession from an earlier
+# cycle, say — reporting it as this action's `event_id`: silent false
+# attribution on the wire. The `cycle_id` this batch just minted cannot
+# collide with any event from a different batch or an automated tick. The
+# floor is the same discipline `dream_undo`'s by-id lookups use (CLAUDE.md:
+# "every undo lookup carries a created_at bound and prunes to one or two
+# [partitions]") — a correctness backstop is not a reason to scan every
 # monthly child.
 _LAST_EVENT = text(
     "SELECT id FROM events "
@@ -565,7 +570,7 @@ async def _journal_subsume(
     """The same ``consolidated``/``subsume`` shape ``memory_dream.apply_subsume``
     writes, so ``dream_undo``/``dream_digest`` need no new code to see it.
     """
-    await record_event(
+    landed = await record_event(
         session,
         event_type=journal.EVENT_TYPE,
         object_type=journal.OBJECT_TYPE,
@@ -585,6 +590,8 @@ async def _journal_subsume(
             "hygiene_reason": hygiene_reason,
         },
     )
+    if not landed:
+        raise HygieneJournalWriteFailed(memory_id)
     return await _last_event_id(
         session, object_id=memory_id, cycle_id=cycle_id, floor=batch_floor
     )
@@ -605,45 +612,54 @@ async def bulk_supersede(
     for item in items:
         memory_id = str(item["memory_id"])
         successor_id = str(item["superseded_by"])
-        async with session.begin_nested():
-            before_state = await _memory_state(session, memory_id)
-            if before_state is None:
-                results.append(
-                    HygieneActionResult(
-                        item_id=memory_id, applied=False, event_id=None,
-                        reason="not_found",
+        try:
+            async with session.begin_nested():
+                before_state = await _memory_state(session, memory_id)
+                if before_state is None:
+                    results.append(
+                        HygieneActionResult(
+                            item_id=memory_id, applied=False, event_id=None,
+                            reason="not_found",
+                        )
                     )
+                    continue
+                result = await supersede(
+                    session,
+                    memory_id=memory_id,
+                    superseded_by=successor_id,
+                    reason=f"{ORIGIN_HYGIENE}:supersede",
                 )
-                continue
-            result = await supersede(
-                session,
-                memory_id=memory_id,
-                superseded_by=successor_id,
-                reason=f"{ORIGIN_HYGIENE}:supersede",
-            )
-            if not result.applied:
-                results.append(
-                    HygieneActionResult(
-                        item_id=memory_id, applied=False, event_id=None,
-                        reason=result.reason,
+                if not result.applied:
+                    results.append(
+                        HygieneActionResult(
+                            item_id=memory_id, applied=False, event_id=None,
+                            reason=result.reason,
+                        )
                     )
+                    continue
+                event_id = await _journal_subsume(
+                    session,
+                    memory_id=memory_id,
+                    project=before_state["project"],
+                    before={
+                        "status": before_state["status"],
+                        "superseded_by": before_state["superseded_by"],
+                    },
+                    after={"status": result.status, "superseded_by": result.superseded_by},
+                    pair={"older": memory_id, "newer": successor_id},
+                    cycle_id=batch_cycle_id,
+                    batch_floor=batch_floor,
+                    actor=actor,
+                    hygiene_reason="supersede",
                 )
-                continue
-            event_id = await _journal_subsume(
-                session,
-                memory_id=memory_id,
-                project=before_state["project"],
-                before={
-                    "status": before_state["status"],
-                    "superseded_by": before_state["superseded_by"],
-                },
-                after={"status": result.status, "superseded_by": result.superseded_by},
-                pair={"older": memory_id, "newer": successor_id},
-                cycle_id=batch_cycle_id,
-                batch_floor=batch_floor,
-                actor=actor,
-                hygiene_reason="supersede",
+        except HygieneJournalWriteFailed:
+            results.append(
+                HygieneActionResult(
+                    item_id=memory_id, applied=False, event_id=None,
+                    reason=JOURNAL_FAILED,
+                )
             )
+            continue
         results.append(
             HygieneActionResult(
                 item_id=memory_id, applied=True, event_id=event_id, reason=None
@@ -668,42 +684,51 @@ async def bulk_prune(
     results: list[HygieneActionResult] = []
     for raw_id in memory_ids:
         memory_id = str(raw_id)
-        async with session.begin_nested():
-            before_state = await _memory_state(session, memory_id)
-            if before_state is None:
-                results.append(
-                    HygieneActionResult(
-                        item_id=memory_id, applied=False, event_id=None,
-                        reason="not_found",
+        try:
+            async with session.begin_nested():
+                before_state = await _memory_state(session, memory_id)
+                if before_state is None:
+                    results.append(
+                        HygieneActionResult(
+                            item_id=memory_id, applied=False, event_id=None,
+                            reason="not_found",
+                        )
                     )
+                    continue
+                result = await deprecate(
+                    session, memory_id=memory_id, reason=f"{ORIGIN_HYGIENE}:prune"
                 )
-                continue
-            result = await deprecate(
-                session, memory_id=memory_id, reason=f"{ORIGIN_HYGIENE}:prune"
-            )
-            if not result.applied:
-                results.append(
-                    HygieneActionResult(
-                        item_id=memory_id, applied=False, event_id=None,
-                        reason=result.reason,
+                if not result.applied:
+                    results.append(
+                        HygieneActionResult(
+                            item_id=memory_id, applied=False, event_id=None,
+                            reason=result.reason,
+                        )
                     )
+                    continue
+                event_id = await _journal_subsume(
+                    session,
+                    memory_id=memory_id,
+                    project=before_state["project"],
+                    before={
+                        "status": before_state["status"],
+                        "superseded_by": before_state["superseded_by"],
+                    },
+                    after={"status": result.status, "superseded_by": result.superseded_by},
+                    pair={"older": memory_id, "newer": None},
+                    cycle_id=batch_cycle_id,
+                    batch_floor=batch_floor,
+                    actor=actor,
+                    hygiene_reason="prune",
                 )
-                continue
-            event_id = await _journal_subsume(
-                session,
-                memory_id=memory_id,
-                project=before_state["project"],
-                before={
-                    "status": before_state["status"],
-                    "superseded_by": before_state["superseded_by"],
-                },
-                after={"status": result.status, "superseded_by": result.superseded_by},
-                pair={"older": memory_id, "newer": None},
-                cycle_id=batch_cycle_id,
-                batch_floor=batch_floor,
-                actor=actor,
-                hygiene_reason="prune",
+        except HygieneJournalWriteFailed:
+            results.append(
+                HygieneActionResult(
+                    item_id=memory_id, applied=False, event_id=None,
+                    reason=JOURNAL_FAILED,
+                )
             )
+            continue
         results.append(
             HygieneActionResult(
                 item_id=memory_id, applied=True, event_id=event_id, reason=None
@@ -731,92 +756,103 @@ async def bulk_confirm_dedup(
     results: list[HygieneActionResult] = []
     for raw_id in relation_ids:
         relation_id = str(raw_id)
-        async with session.begin_nested():
-            edge = await _read_edge_by_id(session, relation_id)
-            if edge is None:
-                results.append(
-                    HygieneActionResult(
-                        item_id=relation_id, applied=False, event_id=None,
-                        reason="not_found",
+        try:
+            async with session.begin_nested():
+                edge = await _read_edge_by_id(session, relation_id)
+                if edge is None:
+                    results.append(
+                        HygieneActionResult(
+                            item_id=relation_id, applied=False, event_id=None,
+                            reason="not_found",
+                        )
                     )
-                )
-                continue
-            existing_block = pass_block_of(edge, journal.NEAR_DUPLICATE_PASS)
-            if existing_block is None:
-                results.append(
-                    HygieneActionResult(
-                        item_id=relation_id, applied=False, event_id=None,
-                        reason="not_a_duplicate_candidate",
+                    continue
+                existing_block = pass_block_of(edge, journal.NEAR_DUPLICATE_PASS)
+                if existing_block is None:
+                    results.append(
+                        HygieneActionResult(
+                            item_id=relation_id, applied=False, event_id=None,
+                            reason="not_a_duplicate_candidate",
+                        )
                     )
-                )
-                continue
-            src_state = await _memory_state(session, edge["source_memory_id"])
-            tgt_state = await _memory_state(session, edge["target_memory_id"])
-            if (
-                src_state is None or tgt_state is None
-                or src_state["status"] != "active" or tgt_state["status"] != "active"
-            ):
-                results.append(
-                    HygieneActionResult(
-                        item_id=relation_id, applied=False, event_id=None,
-                        reason="stale",
+                    continue
+                src_state = await _memory_state(session, edge["source_memory_id"])
+                tgt_state = await _memory_state(session, edge["target_memory_id"])
+                if (
+                    src_state is None or tgt_state is None
+                    or src_state["status"] != "active" or tgt_state["status"] != "active"
+                ):
+                    results.append(
+                        HygieneActionResult(
+                            item_id=relation_id, applied=False, event_id=None,
+                            reason="stale",
+                        )
                     )
-                )
-                continue
-            if existing_block.get("hygiene_state") == HYGIENE_STATE_CONFIRMED:
-                results.append(
-                    HygieneActionResult(
-                        item_id=relation_id, applied=False, event_id=None,
-                        reason="unchanged",
+                    continue
+                if existing_block.get("hygiene_state") == HYGIENE_STATE_CONFIRMED:
+                    results.append(
+                        HygieneActionResult(
+                            item_id=relation_id, applied=False, event_id=None,
+                            reason="unchanged",
+                        )
                     )
-                )
-                continue
+                    continue
 
-            new_block = {**existing_block, "hygiene_state": HYGIENE_STATE_CONFIRMED}
-            write = await upsert_edge(
-                session,
-                source_memory_id=edge["source_memory_id"],
-                target_memory_id=edge["target_memory_id"],
-                rel_type=edge["rel_type"],
-                project=edge["project"],
-                pass_key=journal.NEAR_DUPLICATE_PASS,
-                block=new_block,
-            )
-            object_id = edge["source_memory_id"]
-            await record_event(
-                session,
-                event_type=journal.EVENT_TYPE,
-                object_type=journal.OBJECT_TYPE,
-                object_id=UUID(object_id),
-                project=edge["project"],
-                actor=actor,
-                payload={
-                    "action": journal.ACTION_ASSOCIATE,
-                    "before": {"edge": existing_block},
-                    "after": {
-                        "edge": {
-                            "source": edge["source_memory_id"],
-                            "target": edge["target_memory_id"],
-                            "rel_type": edge["rel_type"],
-                            "properties": {journal.NEAR_DUPLICATE_PASS: new_block},
-                        }
+                new_block = {**existing_block, "hygiene_state": HYGIENE_STATE_CONFIRMED}
+                write = await upsert_edge(
+                    session,
+                    source_memory_id=edge["source_memory_id"],
+                    target_memory_id=edge["target_memory_id"],
+                    rel_type=edge["rel_type"],
+                    project=edge["project"],
+                    pass_key=journal.NEAR_DUPLICATE_PASS,
+                    block=new_block,
+                )
+                object_id = edge["source_memory_id"]
+                landed = await record_event(
+                    session,
+                    event_type=journal.EVENT_TYPE,
+                    object_type=journal.OBJECT_TYPE,
+                    object_id=UUID(object_id),
+                    project=edge["project"],
+                    actor=actor,
+                    payload={
+                        "action": journal.ACTION_ASSOCIATE,
+                        "before": {"edge": existing_block},
+                        "after": {
+                            "edge": {
+                                "source": edge["source_memory_id"],
+                                "target": edge["target_memory_id"],
+                                "rel_type": edge["rel_type"],
+                                "properties": {journal.NEAR_DUPLICATE_PASS: new_block},
+                            }
+                        },
+                        "created": write.created,
+                        "pair": {
+                            "older": edge["target_memory_id"],
+                            "newer": edge["source_memory_id"],
+                        },
+                        "detector": journal.DETECTOR,
+                        "verdict": existing_block.get("verdict"),
+                        "score": existing_block.get("score"),
+                        "cycle_id": batch_cycle_id,
+                        "origin": ORIGIN_HYGIENE,
+                        "hygiene_reason": "confirm_dedup",
                     },
-                    "created": write.created,
-                    "pair": {
-                        "older": edge["target_memory_id"],
-                        "newer": edge["source_memory_id"],
-                    },
-                    "detector": journal.DETECTOR,
-                    "verdict": existing_block.get("verdict"),
-                    "score": existing_block.get("score"),
-                    "cycle_id": batch_cycle_id,
-                    "origin": ORIGIN_HYGIENE,
-                    "hygiene_reason": "confirm_dedup",
-                },
+                )
+                if not landed:
+                    raise HygieneJournalWriteFailed(object_id)
+                event_id = await _last_event_id(
+                    session, object_id=object_id, cycle_id=batch_cycle_id, floor=batch_floor
+                )
+        except HygieneJournalWriteFailed:
+            results.append(
+                HygieneActionResult(
+                    item_id=relation_id, applied=False, event_id=None,
+                    reason=JOURNAL_FAILED,
+                )
             )
-            event_id = await _last_event_id(
-                session, object_id=object_id, cycle_id=batch_cycle_id, floor=batch_floor
-            )
+            continue
         results.append(
             HygieneActionResult(
                 item_id=relation_id, applied=True, event_id=event_id, reason=None

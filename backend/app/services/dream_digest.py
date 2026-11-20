@@ -76,6 +76,9 @@ class DreamActionView:
     # one that has.
     restored: tuple[str, ...] = ()
     not_restored: tuple[str, ...] = ()
+    # Which pass's block an `associate` wrote; `annotate_undoability` hands it to
+    # the undo door's check, which otherwise reads the near-duplicate block.
+    pass_key: str | None = None
     undoable: bool = False
     undo_blocked_reason: str | None = None
 
@@ -369,6 +372,7 @@ async def read_cycle_actions(
                 before=payload.get("before") or {},
                 after=payload.get("after") or {},
                 detail=action_detail(payload),
+                pass_key=payload.get("pass_key"),
                 undone=undo is not None,
                 undone_at=undo["at"] if undo else None,
                 undone_by=undo["by"] if undo else None,
@@ -416,6 +420,7 @@ async def annotate_undoability(
                 "after": view.after,
                 "created": view.detail.get("created"),
                 "fields": view.detail.get("fields"),
+                "pass_key": view.pass_key,
             },
         )
         for view in actions

@@ -801,6 +801,10 @@ async def _locked(session: AsyncSession, memory_id: str) -> dict | None:
     return dict(row) if row is not None else None
 
 
+class DreamJournalWriteFailed(RuntimeError):
+    """A dream action's ``consolidated`` row did not land."""
+
+
 async def _journal(
     session: AsyncSession,
     *,
@@ -813,8 +817,11 @@ async def _journal(
     ``events`` is append-only, so a phantom transition row can never be removed
     once written. Skips, refusals and unchanged edges are counted in the run
     outcome and logged; they journal nothing.
+
+    Strict: a row that did not land raises inside the action's savepoint, so
+    the action rolls back with it rather than committing un-undoable.
     """
-    await record_event(
+    landed = await record_event(
         session,
         event_type=EVENT_TYPE,
         object_type=OBJECT_TYPE,
@@ -822,6 +829,8 @@ async def _journal(
         project=project,
         payload=payload,
     )
+    if not landed:
+        raise DreamJournalWriteFailed(memory_id)
 
 
 async def apply_subsume(
@@ -1642,6 +1651,37 @@ async def write_derived_edge(
     return True
 
 
+async def _still_proximate(
+    session: AsyncSession,
+    *,
+    fingerprint: str,
+    source: str,
+    target: str,
+    threshold: float,
+) -> bool:
+    """The pair's own cosine, under the probe's filters (both active, one
+    project). The probe is a top-N per seed, so a pair one endpoint's slice
+    produces can be absent from the other's while the two are as close as
+    ever."""
+    table = child_table("memory_embeddings", fingerprint)
+    score = (
+        await session.execute(
+            text(
+                f"SELECT 1 - (a.embedding <=> b.embedding) AS score "
+                f"FROM {table} a "
+                f"JOIN {table} b ON b.memory_id = CAST(:target AS uuid) "
+                f"JOIN memories ma ON ma.id = a.memory_id "
+                f"JOIN memories mb ON mb.id = b.memory_id "
+                f"WHERE a.memory_id = CAST(:source AS uuid) "
+                f"  AND ma.status = 'active' AND mb.status = 'active' "
+                f"  AND ma.project = mb.project"
+            ),
+            {"source": source, "target": target},
+        )
+    ).scalar_one_or_none()
+    return score is not None and float(score) >= threshold
+
+
 async def strip_stale_edges(
     session: AsyncSession,
     *,
@@ -1650,6 +1690,8 @@ async def strip_stale_edges(
     kept: set[tuple[str, str, str]],
     unmeasured_signals: frozenset[str],
     outcome: DerivationOutcome,
+    fingerprint: str | None = None,
+    proximity_threshold: float | None = None,
 ) -> None:
     """Retire this pass's blocks on triples it re-evaluated and no longer asserts.
 
@@ -1662,6 +1704,10 @@ async def strip_stale_edges(
     nothing, and the original write's undo is CAS-refused once its block is
     gone. `unmeasured_signals` is what keeps D9's actual principle — retire
     only what this run re-evaluated — true of the arms as well as the pairs.
+    For the same reason a proximity edge absent from `kept` is re-measured
+    before it goes: the probe is a top-N per seed, and a strip from the slice
+    that missed it, followed by a rewrite from the slice that finds it, would
+    journal a fresh `associate` row every rotation.
 
     **`clear_pass_block`, then `delete_edge` only on `exclusive is True`.** A
     `delete_edge`-based strip would take T2.12's near-duplicate block and
@@ -1690,8 +1736,23 @@ async def strip_stale_edges(
         triple = (row["source"], row["target"], row["rel_type"])
         if triple in kept:
             continue
-        if unmeasured_signals & _block_signal_names(row["block"]):
+        signals = _block_signal_names(row["block"])
+        if unmeasured_signals & signals:
             outcome.spared_unmeasured += 1
+            continue
+        if (
+            SIGNAL_EMBEDDING_PROXIMITY in signals
+            and fingerprint is not None
+            and proximity_threshold is not None
+            and await _still_proximate(
+                session,
+                fingerprint=fingerprint,
+                source=row["source"],
+                target=row["target"],
+                threshold=proximity_threshold,
+            )
+        ):
+            outcome.unchanged += 1
             continue
         exclusive = await clear_pass_block(
             session,
@@ -1836,6 +1897,8 @@ async def run_derivation_pass(
                 kept=kept,
                 unmeasured_signals=unmeasured_signals,
                 outcome=outcome,
+                fingerprint=fingerprint,
+                proximity_threshold=proximity_threshold,
             )
     except Exception:
         logger.warning(

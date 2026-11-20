@@ -22,6 +22,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
@@ -52,6 +53,24 @@ def _blocked_detail(refusal: dream_undo.UndoRefused) -> list[dict]:
     ]
 
 
+# SQLSTATE 55P03: the undo's row lock waited out its `lock_timeout`.
+_LOCK_NOT_AVAILABLE = "55P03"
+
+
+class UndoLocked(HTTPException):
+    error_code = "locked"
+
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=409,
+            detail=(
+                "a memory or edge this undo needs is locked by another writer; "
+                "nothing was undone, retry shortly"
+            ),
+            headers={"Retry-After": "5"},
+        )
+
+
 async def _undo(session: AsyncSession, event_ids: list[int], *, actor: str) -> dict:
     try:
         batch = await dream_undo.undo(session, event_ids=event_ids, actor=actor)
@@ -68,6 +87,12 @@ async def _undo(session: AsyncSession, event_ids: list[int], *, actor: str) -> d
         # safe to convert into a response instead of letting the session's
         # rollback handle it.
         raise HTTPException(status_code=409, detail=_blocked_detail(refusal))
+    except DBAPIError as exc:
+        # The request session's rollback discards whatever the undo restored
+        # before the lock wait gave out, so nothing was written.
+        if getattr(exc.orig, "sqlstate", None) == _LOCK_NOT_AVAILABLE:
+            raise UndoLocked() from exc
+        raise
     return {
         "undo_batch_id": batch.undo_batch_id,
         "undone": [

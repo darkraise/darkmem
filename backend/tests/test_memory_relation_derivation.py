@@ -450,6 +450,49 @@ class TestProximityIsFingerprintPinned:
 
 
 class TestStrip:
+    async def test_asymmetric_proximity_writes_no_phantom_row(
+        self, committing, project
+    ):
+        """A's top-1 neighbour is B (cosine 0.8) while B's is C (0.96), so the
+        pair is produced from A's slice only. B's slice must not strip an edge
+        still above threshold, or each rotation strips it unjournalled and the
+        next rewrites it with a fresh `associate` row."""
+        async with committing() as session:
+            await seed_partition(session, FP)
+            ids = {}
+            for label, vector in (
+                ("a", [1.0, 0.0, 0.0, 0.0]),
+                ("b", [0.8, 0.6, 0.0, 0.0]),
+                ("c", [0.6, 0.8, 0.0, 0.0]),
+            ):
+                ids[label] = await seed_memory(
+                    session, project=project, content=f"asym-{label}",
+                    created_at=NOW + timedelta(hours=len(ids)),
+                )
+                await put_vector(session, ids[label], vector)
+            await session.commit()
+        knobs = {"neighbours": 1, "proximity_threshold": 0.7}
+
+        for _ in range(2):
+            for label in ("a", "b"):
+                await derive(
+                    committing, await read_seeds(committing, [ids[label]]), **knobs
+                )
+
+        pair = {str(ids["a"]), str(ids["b"])}
+        rows = [
+            event for event in await derivation_events(committing, project)
+            if {
+                event["payload"]["pair"]["older"],
+                event["payload"]["pair"]["newer"],
+            } == pair
+        ]
+        assert len(rows) == 1
+        assert any(
+            {edge["source"], edge["target"]} == pair
+            for edge in await pass_edges(committing, project)
+        )
+
     async def test_a_siblings_block_survives_this_passs_strip(
         self, committing, project
     ):

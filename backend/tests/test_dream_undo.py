@@ -2135,6 +2135,29 @@ class TestDoors:
             response = await getattr(client, method)(path)
             assert response.status_code == 401, path
 
+    async def test_lock_timeout_answers_a_retryable_conflict(
+        self, api, committing, project
+    ):
+        client, _, headers = api
+        older, _, event_id = await produce_subsume(
+            committing, project, cycle_id=str(new_id())
+        )
+
+        async with committing() as holder:
+            await holder.execute(
+                text("SELECT id FROM memories WHERE id = CAST(:id AS uuid) FOR UPDATE"),
+                {"id": str(older)},
+            )
+            response = await client.post(
+                f"/api/v1/dream-digest/actions/{event_id}/undo", headers=headers
+            )
+            await holder.rollback()
+
+        assert response.status_code == 409
+        assert response.json()["error"]["code"] == "locked"
+        assert (await memory_row(committing, older))["status"] == "superseded"
+        assert await journal_rows(committing, project, event_type="undone") == []
+
     async def test_the_cycle_list_and_digest_render(self, api, project):
         client, session, headers = api
         cycle = str(new_id())

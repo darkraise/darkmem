@@ -803,19 +803,23 @@ per job rather than once per tick; every run still gets its `job_runs` row.
 through `record_event` (`app/services/events.py`), which never raises into
 its caller and **returns whether the row landed**.
 
-**Strict callers.** Seven callers read that return and raise on `False`,
+**Strict callers.** Nine callers read that return and raise on `False`,
 making the write and its row atomic: `set_verification_status`, `ratify`,
 `record_human_verdict` and `dismiss_contradiction_suspicion` (raise the
 vault's `JournalWriteFailed`); `document_door.delete_documents`
 (`DocumentJournalWriteFailed`); `page_door._journal_each`, behind page
-trash/restore/purge (`PageJournalWriteFailed`); and
+trash/restore/purge (`PageJournalWriteFailed`);
 `worklog._journal_then_delete`, behind the purge verb and the
-`worklog_cleanup` retention sweep (`WorklogJournalWriteFailed`). The
-contract is a shape, not a shared type: block-channel modules are
-firewalled from the vault and mint their own exception.
+`worklog_cleanup` retention sweep (`WorklogJournalWriteFailed`);
+`memory_dream._journal`, behind every dream subsume, associate, refine and
+derived edge (`DreamJournalWriteFailed`, inside the action's savepoint, so
+the tick counts it failed and goes on); and `hygiene_queue`'s three bulk
+actions (`HygieneJournalWriteFailed`, reported per item as
+`journal_failed`). The contract is a shape, not a shared type: block-channel
+modules are firewalled from the vault and mint their own exception.
 `contradiction_scan._journal` (reads its
 row back) and `dream_undo` (counts `undone` rows back) hold the same posture
-by other means and are not in the seven. Why strict: verification metrics
+by other means and are not in the nine. Why strict: verification metrics
 are SQL over this table, so a lost transition leaves the denominator; a lost
 human verdict deletes the audit's only `rejected_after` numerator; a
 subtree, page or workstream erase is unrecoverable. `record_event` itself

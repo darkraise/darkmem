@@ -20,9 +20,26 @@ exercises. No `WHERE id = :id` by-id scan is introduced.
 """
 from __future__ import annotations
 
+from datetime import timedelta
+
+import pytest
+
+from app.repositories import memory_relations as edges
 from app.services import dream_digest as digest
+from app.services import dream_journal as journal
+from app.services import dream_undo as undo
+from app.services import memory_dream as dream
 from app.utils.ids import new_id
-from tests.test_dream_undo import committing, produce_refine, produce_subsume, project, undo_ids
+from tests.test_dream_undo import (
+    NOW,
+    committing,
+    memory_row_of,
+    produce_refine,
+    produce_subsume,
+    project,
+    seed_memory,
+    undo_ids,
+)
 
 __all__ = ["committing", "project"]  # re-exported fixtures, used by pytest
 
@@ -100,3 +117,71 @@ class TestRestoredRoundTrip:
         assert set(by_action["subsume"].restored) == {"status", "superseded_by"}
         assert set(by_action["refine"].restored) == {"summary", "tags"}
         assert by_action["subsume"].restored != by_action["refine"].restored
+
+
+async def _derived_edge(factory, project, *, cycle_id, label):
+    async with factory() as session:
+        older = await seed_memory(
+            session, project=project, content=f"{label} a", created_at=NOW
+        )
+        newer = await seed_memory(
+            session, project=project, content=f"{label} b",
+            created_at=NOW + timedelta(hours=1),
+        )
+        await session.commit()
+    signal = dream.SIGNAL_EMBEDDING_PROXIMITY
+    edge = dream.DerivedEdge(
+        source=memory_row_of(
+            newer, project=project, content=f"{label} b",
+            created_at=NOW + timedelta(hours=1),
+        ),
+        target=memory_row_of(older, project=project, content=f"{label} a"),
+        signal=signal,
+        scores={signal: 0.95},
+    )
+    async with factory() as session:
+        assert await dream.write_derived_edge(
+            session, edge, cycle_id=cycle_id, outcome=dream.DerivationOutcome()
+        )
+        await session.commit()
+    return str(newer), str(older), edge.rel_type
+
+
+async def test_derivation_associate_is_undoable_exactly_when_undo_succeeds(
+    committing, project
+):
+    """The flag must read the derivation pass's block, not the near-duplicate
+    one: a sibling block on the same row leaves the action undoable, and a
+    rewrite of this pass's own block makes it not."""
+    cycle = str(new_id())
+    shared = await _derived_edge(committing, project, cycle_id=cycle, label="shared")
+    rewritten = await _derived_edge(committing, project, cycle_id=cycle, label="moved")
+    async with committing() as session:
+        await edges.upsert_edge(
+            session, source_memory_id=shared[0], target_memory_id=shared[1],
+            rel_type=shared[2], project=project,
+            pass_key=journal.NEAR_DUPLICATE_PASS,
+            block={"kind": "duplicate_candidate", "score": 0.99},
+        )
+        signal = dream.SIGNAL_EMBEDDING_PROXIMITY
+        await edges.upsert_edge(
+            session, source_memory_id=rewritten[0], target_memory_id=rewritten[1],
+            rel_type=rewritten[2], project=project,
+            pass_key=journal.DERIVATION_PASS,
+            block=dream.derived_block(
+                signal=signal, scores={signal: 0.91}, derived_at="later"
+            ),
+        )
+        await session.commit()
+
+    async with committing() as session:
+        views = await digest.annotate_undoability(
+            session, await digest.read_cycle_actions(session, cycle)
+        )
+    by_source = {view.object_id: view for view in views}
+
+    assert by_source[shared[0]].undoable is True
+    assert by_source[rewritten[0]].undoable is False
+    await undo_ids(committing, by_source[shared[0]].event_id)
+    with pytest.raises(undo.UndoRefused):
+        await undo_ids(committing, by_source[rewritten[0]].event_id)
