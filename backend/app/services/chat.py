@@ -807,12 +807,16 @@ class ChatService:
         )
         history = list(reversed((await self.session.execute(stmt)).scalars().all()))
 
+        # Newest first, so a conversation that outgrows the budget loses its
+        # oldest turns rather than the ones the question most likely refers to.
         budget = MAX_PROMPT_CHARS - len(system_content) - len(current_message)
-        for msg in history[:-1]:
+        kept: list[dict] = []
+        for msg in reversed(history[:-1]):
             if budget <= 0:
                 break
-            messages.append({"role": msg.role, "content": msg.content[:budget]})
+            kept.append({"role": msg.role, "content": msg.content[:budget]})
             budget -= len(msg.content)
+        messages.extend(reversed(kept))
 
         messages.append({"role": "user", "content": current_message})
         return messages
