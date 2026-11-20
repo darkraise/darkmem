@@ -1373,17 +1373,6 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
-        name="vectors.projection",
-        status=REST_ONLY,
-        rest=(("GET", f"{V1}/vectors/projection"),),
-        reason=(
-            "A 2-D projection computed purely for the UI's scatter plot. It "
-            "is a rendering aid over embeddings an agent already reaches as "
-            "ranked results through memory_search, so a twin would ship "
-            "coordinates no agent has a use for."
-        ),
-    ),
-    Surface(
         name="chat.console",
         status=REST_ONLY,
         rest=(

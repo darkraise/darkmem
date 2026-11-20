@@ -57,9 +57,9 @@ Collections are plural nouns; sub-resources nest (`/repos/{id}/tasks`).
   `prune-cache`, `retry-all`, `blast-radius`). No snake_case or camelCase appears
   in any path. New segments must follow this.
 - **Pluralization:** collections are plural (`memories`, `repos`, `tags`,
-  `jobs`, `vectors`, `conversations`, `pipeline-failures`); a sub-resource that
-  is one-per-parent is singular (`code/graph/{id}`, `code/wiki/{id}`,
-  `vectors/projection`, `config/*`).
+  `jobs`, `conversations`, `pipeline-failures`); a sub-resource that is
+  one-per-parent is singular (`code/graph/{id}`, `code/wiki/{id}`,
+  `config/*`).
 - **Nouns for resources, verbs only on action sub-resources** (see the action
   pattern above).
 

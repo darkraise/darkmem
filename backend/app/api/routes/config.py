@@ -52,12 +52,7 @@ from app.services.llm_provider_guard import (
     assert_not_verification_provider,
     verification_provider,
 )
-from app.services.feature_flags import (
-    FEATURE_FLAGS_KEY,
-    MEASURABLE_FLAGS,
-    get_feature_flags_dict,
-    get_measured_flags,
-)
+from app.services.feature_flags import FEATURE_FLAGS_KEY, get_feature_flags_dict
 from app.services.rank_fusion import GRAPH_CHANNELS, RANK_ARMS
 # The verification ladder's thresholds, imported from the config module
 # rather than from `verification_ladder` itself. Invariant 15's tree-wide scan
@@ -410,10 +405,6 @@ class FeatureFlagsResponse(BaseModel):
     # looks at the enabled areas. A surface that renders 11 area checkboxes
     # without saying so is offering controls that do nothing.
     classification_areas_apply: bool = False
-    # Which of these are subject to the gate-ledger's "flip only on a
-    # measured win" rule, and which of those have actually cleared one.
-    measurable_flags: list[str] = Field(default_factory=list)
-    measured_flags: list[str] = Field(default_factory=list)
     # The range the PUT accepts for every numeric flag, read off
     # FeatureFlagsUpdate's own Field(ge=, le=) so the form shows and enforces
     # the bounds the server applies rather than a copy of them.
@@ -484,9 +475,7 @@ async def _lock_config_row(session: AsyncSession, key: str) -> None:
     )
 
 
-def _flags_response(
-    flags: dict, measured: list[str]
-) -> FeatureFlagsResponse:
+def _flags_response(flags: dict) -> FeatureFlagsResponse:
     """Build the wire response from a resolved flags dict.
 
     One builder for both verbs. GET and PUT used to assemble this twice, and
@@ -545,8 +534,6 @@ def _flags_response(
                 list(AREAS), mode
             )
         ),
-        measurable_flags=list(MEASURABLE_FLAGS),
-        measured_flags=measured,
         numeric_bounds=_numeric_flag_bounds(),
     )
 
@@ -557,8 +544,7 @@ async def get_feature_flags(
     session: AsyncSession = Depends(get_session),
 ):
     flags = await get_feature_flags_dict(session)
-    measured = await get_measured_flags(session)
-    return _flags_response(flags, measured)
+    return _flags_response(flags)
 
 
 @router.put("/feature-flags", response_model=FeatureFlagsResponse)
@@ -595,7 +581,6 @@ async def update_feature_flags(
         session.add(Config(key=FEATURE_FLAGS_KEY, value=stored))
     await session.flush()
 
-    measured = await get_measured_flags(session)
     # Commit before answering, rather than leaving it to the session
     # dependency's teardown. The teardown runs after the response is on its
     # way, so a client that re-reads the moment it sees the 200 can open its
@@ -605,7 +590,7 @@ async def update_feature_flags(
     # classification_mode control read as completely dead while writing
     # correctly every time.
     await session.commit()
-    return _flags_response(stored, measured)
+    return _flags_response(stored)
 
 
 # ── Verification ladder thresholds (doc 08 §4.1, T2.03) ───────────────

@@ -3,11 +3,10 @@
 T1.29a-c scoped the channels doc 07 §9 names. This module covers the ones it
 does not, found by re-deriving the inventory from the code:
 
-* **The projection / clustering bulk read** (``get_all_vectors``). Authenticated,
-  up to 5000 rows, each carrying a content snippet. It had no project, status or
-  archived predicate at all, and it is reached from two front doors — the vector
-  projection and the unified graph — so it is the largest memory-content surface
-  in the codebase.
+* **The clustering bulk read** (``get_all_vectors``). Authenticated, up to 5000
+  rows, each carrying a content snippet. It had no project, status or archived
+  predicate at all, and the unified graph reaches it, so it is the largest
+  memory-content surface in the codebase.
 * **The duplicates probe** (``find_similar``). Called with no filters while
   serving a REST route and an MCP tool, and its rows carry the payload content.
 * **The graph neighbour expansion**. Scoped project and archived but never
@@ -32,7 +31,6 @@ import numpy as np
 import pytest
 from sqlalchemy import select, text
 
-from app.main import app
 from app.models.memory import Memory
 from app.repositories.graph import PostgresGraphRepository
 from app.repositories.vector import MemoryFilter, PostgresVectorRepository
@@ -165,7 +163,7 @@ async def _seed_twins(session) -> dict:
     }
 
 
-# ── the bulk partition read: projection and clustering ───────────────
+# ── the bulk partition read: clustering ──────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -213,117 +211,6 @@ async def test_bulk_read_applies_the_scope_before_the_limit(session):
 
     assert len(points) == 3
     assert {p["project"] for p in points} == {"alpha"}
-
-
-@pytest.mark.asyncio
-async def test_projection_route_default_admits_no_dead_row(session, client, auth_headers):
-    """``project=None`` is "every project", matching ``MemorySearchRequest`` — a
-    default that silently narrowed further than its sibling channel would be
-    discovered as missing results rather than as policy. What the default must
-    never admit is a row the lifecycle has retired, and every row it does admit
-    arrives carrying the project that produced it."""
-    rows = await _seed_twins(session)
-    original = getattr(app.state, "llm", None)
-    app.state.llm = _FakeLLM()
-    try:
-        response = await client.get("/api/v1/vectors/projection", headers=auth_headers)
-    finally:
-        app.state.llm = original
-
-    assert response.status_code == 200
-    points = {p["memory_id"]: (p["project"], p["status"]) for p in response.json()["points"]}
-    assert points == {
-        str(rows["mine"].id): ("alpha", "active"),
-        str(rows["foreign"].id): ("beta", "active"),
-    }
-
-
-@pytest.mark.asyncio
-async def test_projection_route_project_scope_excludes_the_foreign_row(
-    session, client, auth_headers,
-):
-    rows = await _seed_twins(session)
-    original = getattr(app.state, "llm", None)
-    app.state.llm = _FakeLLM()
-    try:
-        response = await client.get(
-            "/api/v1/vectors/projection?project=alpha", headers=auth_headers,
-        )
-    finally:
-        app.state.llm = original
-
-    assert response.status_code == 200
-    assert {p["memory_id"] for p in response.json()["points"]} == {str(rows["mine"].id)}
-
-
-@pytest.mark.asyncio
-async def test_projection_route_scope_is_reachable_from_the_front_door(
-    session, client, auth_headers,
-):
-    """A scope the repository accepts and no caller can set is a leak that is
-    merely harder to reach."""
-    rows = await _seed_twins(session)
-    original = getattr(app.state, "llm", None)
-    app.state.llm = _FakeLLM()
-    try:
-        response = await client.get(
-            "/api/v1/vectors/projection?project=beta", headers=auth_headers,
-        )
-    finally:
-        app.state.llm = original
-
-    assert response.status_code == 200
-    assert {p["memory_id"] for p in response.json()["points"]} == {str(rows["foreign"].id)}
-
-
-@pytest.mark.asyncio
-async def test_projection_route_labels_a_status_opt_in(session, client, auth_headers):
-    """Widening the status set is allowed, but every row it admits arrives
-    carrying the status that admitted it."""
-    rows = await _seed_twins(session)
-    original = getattr(app.state, "llm", None)
-    app.state.llm = _FakeLLM()
-    try:
-        response = await client.get(
-            "/api/v1/vectors/projection?project=alpha&status=active&status=superseded",
-            headers=auth_headers,
-        )
-    finally:
-        app.state.llm = original
-
-    assert response.status_code == 200
-    points = {p["memory_id"]: p["status"] for p in response.json()["points"]}
-    assert points == {
-        str(rows["mine"].id): "active",
-        str(rows["superseded"].id): "superseded",
-    }
-
-
-@pytest.mark.asyncio
-async def test_projection_route_keeps_its_single_fingerprint_constraint(
-    session, client, auth_headers,
-):
-    """Scoping must not have widened the partition. An in-project, active memory
-    embedded only under an inactive fingerprint lives in another embedding space,
-    where its coordinates would be meaningless."""
-    rows = await _seed_twins(session)
-    await _seed_partition(session, OTHER_FINGERPRINT)
-    other = await _add_memory(
-        session, vector=[1.0, 0.0, 0.0, 0.0], fingerprint=OTHER_FINGERPRINT,
-    )
-
-    original = getattr(app.state, "llm", None)
-    app.state.llm = _FakeLLM()
-    try:
-        response = await client.get(
-            "/api/v1/vectors/projection?project=alpha", headers=auth_headers,
-        )
-    finally:
-        app.state.llm = original
-
-    ids = {p["memory_id"] for p in response.json()["points"]}
-    assert ids == {str(rows["mine"].id)}
-    assert str(other.id) not in ids
 
 
 @pytest.mark.asyncio

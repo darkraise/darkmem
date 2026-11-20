@@ -140,7 +140,7 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
     ContentSurface(
         key="bulk_partition_read",
         kind=_R,
-        front_doors=("GET /api/v1/vectors/projection", "GET /api/v1/graph/unified"),
+        front_doors=("GET /api/v1/graph/unified",),
         crosses=("content",),
         scoping=Scoping.SCOPED,
         labels=("project", "status"),

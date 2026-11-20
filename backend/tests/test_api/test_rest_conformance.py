@@ -316,7 +316,6 @@ EXPECTED_STATUS = {
     ("GET", "/api/v1/system/fs/roots"): 200,
     ("GET", "/api/v1/projects"): 200,
     ("GET", "/api/v1/tags"): 200,
-    ("GET", "/api/v1/vectors/projection"): 200,
     ("GET", "/health"): 200,
     ("POST", "/api/v1/worklog/entries"): 201,
     ("GET", "/api/v1/worklog/resume"): 200,
@@ -550,8 +549,8 @@ async def test_paginated_list_shapes_are_uniform(client, auth_headers, session):
     """Every list surface that accepts *both* `limit` and `offset` answers
     with `items` + `total` + `limit` + `offset`, so a client can tell what
     page it was actually served without re-deriving it from the request it
-    sent. Bounded-but-unpaginated reads (tags, repos, vectors/projection —
-    accept at most a cap, never an offset) are out of scope by construction:
+    sent. Bounded-but-unpaginated reads (tags, repos — accept at most a
+    cap, never an offset) are out of scope by construction:
     a caller of those cannot ask for a page in the first place."""
     paginated_gets = [
         "/api/v1/memory-buffer",

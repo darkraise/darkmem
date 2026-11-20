@@ -15,7 +15,6 @@ from __future__ import annotations
 import pytest
 
 from app.config import FEATURE_FLAGS_DEFAULTS
-from app.services.feature_flags import MEASURABLE_FLAGS
 from app.services.rank_fusion import RANK_ARMS
 
 
@@ -84,50 +83,16 @@ async def test_put_rejects_out_of_range_future_arm(client, auth_headers):
     assert resp.status_code == 422
 
 
-# ── Ruling 3 — "visibly unmeasured" reads from a durable config row ────
-
-
 @pytest.mark.asyncio
-async def test_measurable_flags_are_advertised_and_none_are_measured_yet(
-    client, auth_headers
-):
-    # docs/planning/gate-ledger.md's "Arm activation log" has never recorded
-    # an entry, so a fresh deploy must report every measurable flag as
-    # unmeasured — never a hardcoded frontend guess.
-    resp = await client.get("/api/v1/config/feature-flags", headers=auth_headers)
-    body = resp.json()
-    assert set(body["measurable_flags"]) == set(MEASURABLE_FLAGS)
-    assert body["measured_flags"] == []
-
-
-@pytest.mark.asyncio
-async def test_measured_flags_come_from_the_config_row_not_a_guess(
-    client, auth_headers, session
-):
-    from sqlalchemy import select
-
+async def test_flags_answer_carries_no_flag_measurements(client, auth_headers, session):
     from app.models.config import Config
-    from app.services.feature_flags import FLAG_MEASUREMENTS_KEY
 
-    session.add(
-        Config(key=FLAG_MEASUREMENTS_KEY, value={"measured": ["reranker_enabled"]})
-    )
-    await session.commit()
+    session.add(Config(key="flag_measurements", value={"measured": ["reranker_enabled"]}))
+    await session.flush()
 
-    resp = await client.get("/api/v1/config/feature-flags", headers=auth_headers)
-    assert resp.json()["measured_flags"] == ["reranker_enabled"]
+    body = (await client.get("/api/v1/config/feature-flags", headers=auth_headers)).json()
 
-    # A name outside MEASURABLE_FLAGS in the row is filtered, not trusted
-    # verbatim — the row is a marker, not a free-form claim surface.
-    result = await session.execute(
-        select(Config).where(Config.key == FLAG_MEASUREMENTS_KEY)
-    )
-    row = result.scalar_one()
-    row.value = {"measured": ["reranker_enabled", "not_a_real_flag"]}
-    await session.commit()
-
-    resp = await client.get("/api/v1/config/feature-flags", headers=auth_headers)
-    assert resp.json()["measured_flags"] == ["reranker_enabled"]
+    assert {"flag_measurements", "measured_flags", "measurable_flags"}.isdisjoint(body)
 
 
 async def test_the_response_serves_the_ranges_the_put_enforces(client, auth_headers):

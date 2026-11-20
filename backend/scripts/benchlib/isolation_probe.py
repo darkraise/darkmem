@@ -1160,38 +1160,6 @@ async def _drive_bulk_partition_read(ctx: ProbeContext) -> list[Sighting]:
     out: list[Sighting] = []
     ids_to_fx = {str(mid): FIXTURES_BY_KEY[key] for key, mid in ctx.memory_ids.items()}
 
-    async def projection_case(params: str, case: str, req_p, req_s):
-        door = "GET /api/v1/vectors/projection"
-        response = await ctx.client.get(
-            f"/api/v1/vectors/projection{params}", headers=ctx.headers,
-        )
-        response.raise_for_status()
-        accounted: set[str] = set()
-        for point in response.json()["points"]:
-            fx = ids_to_fx.get(str(point["memory_id"]))
-            if fx is None:
-                continue
-            accounted.add(fx.key)
-            forced = None
-            if fx.embed == "old":
-                forced = "row served out of an inactive fingerprint partition"
-            out.append(_mem(
-                surface, door, case, fx, kind="preview",
-                req_p=req_p, req_s=req_s,
-                lp=point.get("project") == fx.project,
-                ls=point.get("status") == fx.status,
-                forced=forced,
-            ))
-        out.extend(_account_body(surface, door, case, response.text, accounted))
-
-    await projection_case(f"?project={OBSERVER}", "scoped project, default statuses",
-                          OBSERVER, ACTIVE_STATUSES)
-    await projection_case("", "wide project, default statuses", None, ACTIVE_STATUSES)
-    await projection_case(
-        "?status=active&status=superseded", "wide project, superseded requested",
-        None, ("active", "superseded"),
-    )
-
     async def unified_case(params: str, case: str, req_p):
         door = "GET /api/v1/graph/unified"
         response = await ctx.client.get(

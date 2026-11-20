@@ -10,9 +10,9 @@ syntactically valid one for the second, since a positive number passes the
 only check registration runs. Reading either keyed fingerprint directly either
 raises ``UndefinedTable`` (nothing was ever registered under it) or, worse,
 silently returns zero rows forever with no error at all — both worse than a
-named refusal. These tests pin ``PostgresVectorRepository.resolve_read_fingerprint``
-and the ``/api/v1/vectors/projection`` route that must use it instead of the
-bare ``llm_fingerprint()`` read, for both shapes of the same class.
+named refusal. These tests pin ``PostgresVectorRepository.resolve_read_fingerprint``,
+which every bulk read must use instead of the bare ``llm_fingerprint()`` read,
+for both shapes of the same class.
 """
 from __future__ import annotations
 
@@ -21,11 +21,9 @@ import uuid
 import pytest
 from sqlalchemy import text
 
-from app.api.routes.vectors import get_vector_projection
 from app.models.memory import Memory
 from app.repositories.vector import EmbedderFingerprintUnresolved, PostgresVectorRepository
 from app.services.embedder_registry import child_table
-from fastapi import HTTPException
 
 pytestmark = pytest.mark.asyncio
 
@@ -54,21 +52,6 @@ class _WrongDimsLLM:
 
     def llm_fingerprint(self) -> str:
         return WRONG_FINGERPRINT
-
-
-class _FakeAppState:
-    def __init__(self, llm):
-        self.llm = llm
-
-
-class _FakeApp:
-    def __init__(self, llm):
-        self.state = _FakeAppState(llm)
-
-
-class _FakeRequest:
-    def __init__(self, llm):
-        self.app = _FakeApp(llm)
 
 
 async def _register_real_fingerprint(session) -> None:
@@ -385,44 +368,3 @@ async def test_unmodified_bare_sentinel_read_raises_undefined_table(session):
     with pytest.raises(Exception) as exc_info:
         await repo.get_all_vectors(fingerprint=SENTINEL_FINGERPRINT, limit=10)
     assert "does not exist" in str(exc_info.value) or "UndefinedTable" in str(exc_info.value)
-
-
-# ── the route ─────────────────────────────────────────────────────────────
-
-
-async def test_projection_route_refuses_loudly_under_an_unresolved_sentinel(session):
-    with pytest.raises(HTTPException) as exc_info:
-        await get_vector_projection(
-            limit=500, project=None, status=["active"], _user=None,
-            request=_FakeRequest(_SentinelLLM()), session=session,
-        )
-    assert exc_info.value.status_code == 503
-    assert MODEL_ID in exc_info.value.detail
-
-
-async def test_projection_route_serves_real_points_when_the_sentinel_resolves(session):
-    await _register_real_fingerprint(session)
-    memory_id = await _add_memory_with_vector(session)
-
-    result = await get_vector_projection(
-        limit=500, project=None, status=["active"], _user=None,
-        request=_FakeRequest(_SentinelLLM()), session=session,
-    )
-
-    assert [str(p["memory_id"]) for p in result["points"]] == [str(memory_id)]
-
-
-async def test_projection_route_serves_real_points_behind_a_wrong_nonzero_dims_config(session):
-    """T2.83: 768 configured, 1024 real. Boot already created the empty
-    ``model|8`` partition; the route must not read it and hand back an
-    empty, well-formed 200 — it must find the real data instead."""
-    await _register_real_fingerprint(session)
-    memory_id = await _add_memory_with_vector(session)
-    await _register_wrong_fingerprint_empty(session)
-
-    result = await get_vector_projection(
-        limit=500, project=None, status=["active"], _user=None,
-        request=_FakeRequest(_WrongDimsLLM()), session=session,
-    )
-
-    assert [str(p["memory_id"]) for p in result["points"]] == [str(memory_id)]

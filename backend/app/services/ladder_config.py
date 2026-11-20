@@ -129,9 +129,9 @@ class LadderReport:
 async def get_ladder_measurements(session: AsyncSession) -> frozenset[str]:
     """Which ladder parameters carry a recorded G-C measurement.
 
-    Modelled on ``feature_flags.get_measured_flags``: a ``config`` row that
-    nothing in this codebase writes, whose only intended writer is the
-    gate-clearing process recording a ledger entry. Empty by default.
+    A ``config`` row that nothing in this codebase writes, whose only intended
+    writer is the gate-clearing process recording a ledger entry. Empty by
+    default.
 
     Permission is **per parameter**, never blanket. A row that merely exists
     unlocks nothing; only the parameters it names by name are honoured below

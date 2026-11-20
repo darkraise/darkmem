@@ -26,7 +26,6 @@ from app.repositories.fact_sources import (
     CORROBORATION_N_DIVERSE,
     CORROBORATION_TIME_GAP_DAYS,
 )
-from app.services.feature_flags import MEASURABLE_FLAGS
 from app.services.feature_flags import FEATURE_FLAGS_KEY
 from app.services.ladder_config import LADDER_CONFIG_KEY, LADDER_MEASUREMENTS_KEY
 from app.services.rank_fusion import GRAPH_CHANNELS, LIST_WEIGHT_KEYS
@@ -96,18 +95,6 @@ async def test_graph_channels_carry_their_activation_task_id(client, auth_header
     resp = await client.get("/api/v1/config/feature-flags", headers=auth_headers)
     for channel in resp.json()["graph_channels"]:
         assert channel["activation"] == "T2.50"
-
-
-@pytest.mark.asyncio
-async def test_every_graph_flag_is_measurable(client, auth_headers):
-    """Doc 07 §4: all three land inert and T2.50 measures them before any moves.
-
-    A flippable control with no `unmeasured` badge reads as proven.
-    """
-    resp = await client.get("/api/v1/config/feature-flags", headers=auth_headers)
-    advertised = set(resp.json()["measurable_flags"])
-    assert set(GRAPH_FLAGS) <= advertised
-    assert set(GRAPH_FLAGS) <= set(MEASURABLE_FLAGS)
 
 
 @pytest.mark.asyncio
