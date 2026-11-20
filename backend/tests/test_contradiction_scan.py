@@ -8,10 +8,12 @@ Organised by the Done-when clause each group discharges:
 * G4  a verdict reaches the veto, and stops reaching it when it should
 * Inv the scan never writes a status, and never feeds its own input
 
-**Every test here runs against a judge that refuses**, because no qualification
-record exists on this branch and `VerificationJudge.judge` raises without one.
-The three tests that need adjudication to actually happen take the
-``qualified_judge_record`` fixture explicitly. It is **not autouse** on purpose:
+**Every test here runs against a judge that refuses**, because no
+contradiction-role record exists on this branch, so a scan tick skips at its
+qualification check and `VerificationJudge.judge` raises. The tests that need
+a drain or an adjudication take the ``qualified_judge_record`` fixture
+explicitly, and the in-run refusal tests take
+``qualification_lapses_mid_run``. It is **not autouse** on purpose:
 an autouse version would open the gate for the whole module and the refusal
 path — the property that makes this job safe to ship inert — would be untested
 everywhere at once.
@@ -29,7 +31,7 @@ from uuid import uuid4
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import text
+from sqlalchemy import event, text
 
 from app.models.config import Config
 from app.repositories.fact_sources import FactSourceRepository
@@ -51,6 +53,7 @@ from app.services.contradiction_veto import (
 from app.services.events import CONTRADICTION_SCANNED, record_event
 from app.services.verification_judge import JUDGE_VERDICTS
 from app.services.verification_ladder import recompute_fact
+from tests.conftest import test_engine
 
 BACKEND = Path(__file__).resolve().parent.parent
 
@@ -147,6 +150,17 @@ async def qualified_judge_record(session, tmp_path, monkeypatch):
     session.add(Config(key="contradiction_recall_bar", value={"value": 0.9}))
     await session.commit()
     return record
+
+
+@pytest.fixture
+def qualification_lapses_mid_run(monkeypatch):
+    """The run-start check sees a qualified role, then every judge call
+    refuses — a record that stopped qualifying between the two (a config save
+    moving the served identity), which is the in-run refusal path."""
+    async def _qualified(session, llm_config, *, role, record_path=None):
+        return vj.QualificationState(True, (), None)
+
+    monkeypatch.setattr(scan_module, "qualification_state", _qualified)
 
 
 def _factory(session):
@@ -613,9 +627,69 @@ class TestOnlyTheQualifiedJudgeAdjudicates:
         assert "set_verification_status" not in attrs
         assert "recompute_fact" not in attrs
 
-    async def test_a_refusing_judge_adjudicates_nothing(self, session):
-        """The default state of this branch, and the whole reason the body can
-        ship before the qualification run happens."""
+    async def test_unqualified_role_drains_nothing(self, session):
+        """The default state in production: the run asks the judge's predicate
+        first and spends no drain, candidate query or journal row on a role
+        that cannot answer."""
+        for index in range(5):
+            fact_id = await _fact(
+                session, subject=f"svc-{index}", obj="postgres",
+                fact=f"svc-{index} stores its vault in postgres",
+            )
+            await _source(session, fact_id, f"sess-{index}")
+            for _ in range(5):
+                await _enqueue(session, fact_id)
+
+        drains = []
+
+        def _count(conn, cursor, statement, parameters, context, executemany):
+            if "sources_changed" in statement:
+                drains.append(statement)
+
+        engine = test_engine.sync_engine
+        event.listen(engine, "before_cursor_execute", _count)
+        try:
+            llm = StubLLM([])
+            outcome = await _run(session, llm)
+        finally:
+            event.remove(engine, "before_cursor_execute", _count)
+
+        assert drains == []
+        assert outcome.skipped_reason == "contradiction role unqualified"
+        assert outcome.events_scanned == 0
+        assert outcome.watermark_advanced is False
+        assert llm.calls == []
+        verdicts = await session.execute(
+            text("SELECT count(*) FROM events WHERE event_type = :kind"),
+            {"kind": CONTRADICTION_SCANNED},
+        )
+        assert verdicts.scalar_one() == 0
+        state = await session.execute(
+            text("SELECT count(*) FROM config WHERE key = 'contradiction_scan_state'")
+        )
+        assert state.scalar_one() == 0
+
+    async def test_qualified_role_still_scans(self, session, qualified_judge_record):
+        for index in range(5):
+            fact_id = await _fact(
+                session, subject=f"svc-{index}", obj="postgres",
+                fact=f"svc-{index} stores its vault in postgres",
+            )
+            await _source(session, fact_id, f"sess-{index}")
+            for _ in range(5):
+                await _enqueue(session, fact_id)
+
+        outcome = await _run(session, StubLLM([]))
+
+        assert outcome.skipped_reason is None
+        assert outcome.events_scanned == scan_module.DEFAULT_SCAN_BATCH
+        assert outcome.watermark_advanced is True
+        assert outcome.clears_recorded == outcome.facts_checked > 0
+
+    async def test_a_refusing_judge_adjudicates_nothing(
+        self, session, qualification_lapses_mid_run
+    ):
+        """A refusal inside the run, after the run-start check passed."""
         subject = await _fact(
             session, subject="darkmem", obj="postgres",
             fact="darkmem stores its vault in postgres",
@@ -637,7 +711,9 @@ class TestOnlyTheQualifiedJudgeAdjudicates:
         assert llm.calls == [], "the refusal must precede any model dispatch"
         assert await _scan_verdicts(session, subject) == []
 
-    async def test_a_refusal_holds_the_watermark_for_the_next_run(self, session):
+    async def test_a_refusal_holds_the_watermark_for_the_next_run(
+        self, session, qualification_lapses_mid_run
+    ):
         """A refusal is a global precondition failure, not a poisonous row.
 
         Advancing past the drained events would silently discard a backlog that
@@ -1159,7 +1235,9 @@ class TestMissesAreCounted:
         # the run said so rather than reading the first row as its own.
         assert len(await _scan_verdicts(session, subject)) == 1
 
-    async def test_a_refusal_counts_the_facts_it_never_reached(self, session):
+    async def test_a_refusal_counts_the_facts_it_never_reached(
+        self, session, qualification_lapses_mid_run
+    ):
         for index in range(3):
             subject = await _fact(
                 session, subject=f"svc-{index}", obj="postgres",
@@ -1179,7 +1257,7 @@ class TestMissesAreCounted:
         assert outcome.judge_refused == 1
 
     async def test_an_unservable_fact_is_reported_apart_from_the_misses(
-        self, session
+        self, session, qualified_judge_record
     ):
         """Not a miss: a disputed or expired fact is correctly out of scope,
         and folding it into the miss count would overstate the gap."""

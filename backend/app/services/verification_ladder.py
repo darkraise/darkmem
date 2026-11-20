@@ -924,8 +924,8 @@ async def recompute_fact(
     # holds, and the applier journals `disputed -> corroborated` — the
     # contradiction-resolved transition doc 08 §4 reserves for T2.04, emitted by
     # a machine with no detector. Locking from read through write is what makes
-    # the decision-layer disputed-hold survive concurrency; today no production
-    # caller of either side exists, but T2.04 and T2.09 will run concurrently.
+    # the decision-layer disputed-hold survive concurrency: the recompute job
+    # calls this while human verdicts and ratification write the same row.
     row = await session.execute(
         text(
             "SELECT verification_status, demotion_pending_since, "
@@ -994,8 +994,9 @@ async def recompute_fact(
     # status back (the repository refuses it before any read), and a status
     # write that changes nothing would only risk a phantom journal row. The
     # repository still journals on `contradiction_blocked` alone (a reconfirmed
-    # `disputed -> disputed` hold), so the evidence rides every call regardless
-    # of whether this particular decision carries a status change.
+    # `disputed -> disputed` hold) whenever its evidence differs from the
+    # latest row, so the evidence rides every call regardless of whether this
+    # particular decision carries a status change.
     status_to_write = (
         decision.target_status if decision.target_status != decision.current_status else None
     )
@@ -1025,7 +1026,9 @@ async def recompute_fact(
             UNSET_SUSPICION
             if contradiction_suspected is not None
             else _suspicion_marker(
-                suspicion_finding,
+                # `decide` suppresses the suspicion on a ratified fact, so its
+                # marker columns stay clear with it.
+                suspicion_finding if current != "confirmed" else None,
                 opened_at=locked["contradiction_suspected_at"],
                 now=now or datetime.now(timezone.utc),
             )

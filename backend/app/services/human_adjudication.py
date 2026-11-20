@@ -379,7 +379,7 @@ async def dismiss_contradiction_suspicion(
             "counterpart_id": str(row["contradiction_counterpart_id"])
             if row["contradiction_counterpart_id"] else None,
             "suspected_at": row["contradiction_suspected_at"],
-            "note": note,
+            "note": note[:NOTE_MAX_LENGTH] if note is not None else None,
         },
     )
     if not journalled:

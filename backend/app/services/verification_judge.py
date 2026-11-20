@@ -381,11 +381,9 @@ def is_retired_pair_set(value: object) -> bool:
     return value[:RETIRED_PREFIX_LENGTH].lower() in _RETIRED_PREFIXES
 
 
-# One record per role, minted only by a cleared run for that role. Both are
-# absent on this branch and a test pins that: the contradiction role is
-# unqualified because its bar was missed and stays missed, and the entailment
-# role is unqualified because its record is owed to a fresh gold (T2.124/T2.125)
-# and was NOT minted from the spent run's artifact.
+# One record per role, minted only by a cleared run for that role. The
+# entailment and faithfulness records are minted; the contradiction record is
+# absent because its bar was missed and stays missed.
 QUALIFICATION_RECORD_PATHS: dict[str, Path] = {
     role: Path(__file__).resolve().parent / f"verification_qualification.{role}.json"
     for role in JUDGE_ROLES
@@ -497,10 +495,9 @@ async def article_claim_gate(
     Now minting a cleared qualification record opens it with no edit anywhere,
     exactly as minting the promotion record lights a fact's.
 
-    It lands **inert**, by two independent constructions: no qualification
-    record exists (G-D is not cleared), and even with one, T3.02 writes only
-    `candidate` articles — the only path that could raise one is T3.03's
-    coverage routing, itself behind G-E.
+    The entailment record is minted, so this gate can open; T3.02 still
+    writes only `candidate` articles — the only path that could raise one is
+    T3.03's coverage routing, itself behind G-E.
     """
     from app.services.claim_gates import ClaimGate, REASON_NO_QUALIFICATION_RECORD
 

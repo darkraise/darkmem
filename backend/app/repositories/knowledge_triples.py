@@ -865,6 +865,11 @@ class KnowledgeTripleRepository:
         ``None`` (unchanged): a fact the veto is *still* holding in
         ``disputed`` across a recompute cycle is not a status transition, but
         it is exactly the ongoing-veto evidence doc 08 §4.2's audit needs.
+        A blocked hold journals only when its payload differs from the fact's
+        latest ``verified`` row: the slow arm revisits every live fact many
+        times a day, and an identical hold per visit grew the append-only
+        journal and pushed the fact's own transitions out of its ladder read
+        without telling anyone anything new.
 
         ``supersession_blocked=True`` journals on the same terms and is the
         **second** such hold (T2.60). Its status is unchanged by construction —
@@ -890,10 +895,9 @@ class KnowledgeTripleRepository:
         because the periodic contradiction scan (T2.11) re-adjudicates every
         standing dispute independently of ``sources_changed``, and each such
         pass is the only durable record that the veto is still active --
-        which is the evidence this method exists to preserve. (One volume
-        consequence worth naming for that job's owner: every scan pass over
-        a standing dispute journals one row, so a long-lived dispute
-        accumulates one blocked-hold event per pass, not per source change.)
+        which is the evidence this method exists to preserve. A pass that
+        finds the same counterpart as the latest row adds nothing to it, so a
+        long-lived dispute journals once per change of evidence, not per pass.
 
         Guarding on ``status is None and confidence is None`` above happens
         *before* this journal branch, so a call carrying
@@ -919,9 +923,8 @@ class KnowledgeTripleRepository:
         for the same reason. Every movement this path can produce today already
         coincides with a row the existing trigger writes — an open rides either
         a ``dispute`` transition or a ``contradiction_blocked`` hold, a clear
-        rides a ``recover`` transition — with one exception that has no
-        producer: a ``confirmed`` fact's clear, which cannot occur until T2.05
-        lands a ratification path, and which that path journals itself.
+        rides a ``recover`` transition — with one exception: a ``confirmed``
+        fact's clear, which ``ratify`` journals itself.
 
         The promotion decision's applier is this module's sole caller into
         the verification axis, which is what makes the event count here
@@ -1058,6 +1061,8 @@ class KnowledgeTripleRepository:
                 payload["confidence"] = confidence
             if contradiction is not None:
                 payload["contradiction"] = dict(contradiction)
+            if not changed and await self._repeats_latest_verified(triple_id, payload):
+                return
             journalled = await record_event(
                 self.session,
                 event_type="verified",
@@ -1086,6 +1091,22 @@ class KnowledgeTripleRepository:
                     "journalled; refusing to leave an unrecorded transition on "
                     "a substrate the promotion metrics read as complete"
                 )
+
+    async def _repeats_latest_verified(
+        self, triple_id: UUID | str, payload: dict[str, Any]
+    ) -> bool:
+        latest = (await self.session.execute(
+            text(
+                "SELECT payload FROM events "
+                "WHERE object_type = 'fact' AND event_type = 'verified' "
+                "AND object_id = CAST(:id AS uuid) "
+                "ORDER BY created_at DESC, id DESC LIMIT 1"
+            ),
+            {"id": str(triple_id)},
+        )).scalar_one_or_none()
+        # Round-tripped through the encoder `record_event` writes with, so a
+        # stored payload compares equal to the one that would replace it.
+        return latest == json.loads(json.dumps(payload, default=str))
 
     async def ratify(self, triple_id: UUID | str) -> dict | None:
         """Write ``confirmed``. The only method in the tree that can (doc 08 §4.4).

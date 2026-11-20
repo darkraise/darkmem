@@ -905,7 +905,9 @@ is **not** a veto input: its verdict reaches the ladder on the separate
 `LadderDecision.contradiction_suspected`, and flags the fact for a human
 while it keeps its rung, badge and retrieval place. Never route it into
 `open_contradiction`. It dead-ends on the unqualified contradiction judge,
-so today it produces nothing.
+so today it produces nothing: each tick asks the judge's qualification
+predicate first and, while the role is unqualified, skips without draining
+`sources_changed` or moving its watermark.
 
 **`review_state`: four openers, one derivation.**
 `verification_ladder.REVIEW_OPENERS` (disputed, under-sourced,

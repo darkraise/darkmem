@@ -34,13 +34,18 @@ against each other so the copy cannot drift silently.
 **Adjudication has exactly one door.** ``VerificationJudge.judge`` is the only
 thing in this module that can produce a verdict — no similarity floor stands in
 for one, no string comparison, no fallback when the judge refuses. That refusal
-is the safety property rather than an obstacle: while no qualification record
-exists the judge raises unconditionally, and this module's response is to abort
-the run *without advancing its watermark*, so nothing is silently consumed and
-nothing is adjudicated on an unqualified judge. The refusal is a global
-precondition failure, not a poisonous row, which is why it is one of the two
-failures this module declines to skip past — the opposite of the per-fact
-isolation the verification recompute's arms use, and deliberately so.
+is the safety property rather than an obstacle. A run first asks the judge's
+own predicate (``qualification_state``) whether the ``contradiction`` role is
+qualified at the served identity, and when it is not the tick skips before
+draining: no event is read, no candidate query runs, no verdict is journalled
+and the watermark stays where it was, so the backlog waits intact for the
+record. A refusal that still arrives inside a run (the identity moved between
+the check and a call) aborts it *without advancing its watermark*, so nothing
+is silently consumed and nothing is adjudicated on an unqualified judge. The
+refusal is a global precondition failure, not a poisonous row, which is why it
+is one of the two failures this module declines to skip past — the opposite of
+the per-fact isolation the verification recompute's arms use, and deliberately
+so.
 
 **A verdict that did not reach the journal did not happen** — the second such
 failure. ``record_event`` degrades loudly and never raises, which is right for
@@ -85,6 +90,7 @@ from app.services.verification_judge import (
     CONTRADICTION_ROLE,
     JudgeNotQualifiedError,
     VerificationJudge,
+    qualification_state,
 )
 
 logger = logging.getLogger(__name__)
@@ -95,8 +101,8 @@ logger = logging.getLogger(__name__)
 #
 # It is also the whole of this module's discrimination, which is why the scan
 # asks the judge as the `contradiction` role: `entailed` and `unsupported` are
-# one bucket here, and that role is unqualified and stays so, so every call
-# below still refuses (doc 17 §6, amended 2026-08-12).
+# one bucket here, and that role is unqualified and stays so, so every tick
+# skips at its qualification check (doc 17 §6, amended 2026-08-12).
 CONTRADICTED_VERDICT = "contradicted"
 
 # ── config (operator-facing, validated by JobRegistry.set_config) ─────────
@@ -146,6 +152,8 @@ CONTRADICTION_SCAN_CONFIG_SCHEMA: list[FieldDescriptor] = [
 _STATE_CONFIG_KEY = "contradiction_scan_state"
 
 _EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+SKIPPED_UNQUALIFIED = "contradiction role unqualified"
 
 # The commit-skew margin, for the identical reason verification_recompute
 # carries one: `created_at` is transaction *start* time, so an earlier-started,
@@ -674,6 +682,13 @@ async def run_contradiction_scan(
             return ScanOutcome(skipped_reason="no LLM orchestrator configured")
 
         async with session_factory() as session:
+            qualification = await qualification_state(
+                session, llm.config, role=CONTRADICTION_ROLE,
+            )
+            if not qualification.qualified:
+                return ScanOutcome(
+                    judge_refused=1, skipped_reason=SKIPPED_UNQUALIFIED,
+                )
             state = await _load_state(session)
             rows = (await session.execute(
                 _DRAIN_EVENTS,
@@ -694,8 +709,7 @@ async def run_contradiction_scan(
                 fact_id = (row["payload"] or {}).get("fact_id")
                 if not fact_id:
                     # Unreachable from any producer — `fact_lift`,
-                    # `fact_provenance`, `document_door`, the Tier-C citation
-                    # re-verifier (named in words: a tree-wide scan owns its
+                    # `fact_provenance`, the Tier-C citation re-verifier (named in words: a tree-wide scan owns its
                     # module basename) and the repository entity merge's fact
                     # fold all write the key — so this is a guard,
                     # not a counter: a bucket that can only ever read zero would
@@ -837,8 +851,8 @@ async def run_contradiction_scan(
         tally.add("facts_checked", checked)
 
         # The watermark stands still on a refusal, and on a lost verdict. A refusal
-        # is a global precondition failure — no qualification record exists — not a
-        # poisonous row, so advancing past the drained events would silently
+        # is a global precondition failure — the role stopped qualifying after
+        # the run-start check — not a poisonous row, so advancing past the drained events would silently
         # discard a whole backlog that becomes checkable the moment the record is
         # minted. A journal insert that failed is the same class: it cannot have
         # failed because of this one fact's content, so it will fail for the rest

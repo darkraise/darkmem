@@ -12,8 +12,8 @@ scope here. This module owns only *which* facts get called with it and *when*
 The **fast arm** (``_drain_sources_changed``) drains ``sources_changed``
 events — emitted by ``fact_lift`` (birth), ``fact_provenance`` (a memory
 withdrawn), the Tier-C citation re-verifier (a code citation going stale or
-resolving again) and ``document_door`` (a document deleted, taking its
-blocks' provenance with it) whenever a fact's evidence actually changed —
+resolving again) and the repository entity merge's fact fold (sources moved
+onto the surviving fact) whenever a fact's evidence actually changed —
 past a watermark,
 dedups the affected ``fact_id``s, and calls ``recompute_fact`` on each. This
 is the doc 08 §4.3 path and is O(evidence churn), not O(vault size).
@@ -100,8 +100,8 @@ four producers actually does in one transaction, since the bound rests on
 the count and not on the intent:
 
 - ``fact_lift`` and ``fact_provenance`` write single-digit rows per savepoint.
-- ``document_door``'s delete is set-based SQL plus one event per fact that
-  lost a source.
+- the entity merge's fact fold moves one pair's sources and writes one event
+  for the keeper inside that pair's savepoint.
 - the **citation re-verifier is the one whose transaction scales with a
   configurable knob**, and an earlier revision of this paragraph got its
   quantity wrong by naming "one row per stale citation" — it issues one
