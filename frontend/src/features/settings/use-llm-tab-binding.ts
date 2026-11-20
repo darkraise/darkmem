@@ -138,6 +138,12 @@ function announceSave(purpose: string, fields: string[]) {
   })
 }
 
+function announceFailure(purpose: string, error: Error) {
+  toast.error(`Couldn’t save the ${purpose} purpose`, {
+    description: error.message,
+  })
+}
+
 export function useLLMTabBinding(): LLMTabBinding {
   const demo = useDemoLLM()
   const saveDemoPurpose = useDemoStore((s) => s.saveLLMPurpose)
@@ -193,12 +199,22 @@ export function useLLMTabBinding(): LLMTabBinding {
     classifierKind,
     buckets: null,
     savePurpose: (purpose, patch) => {
-      update.mutate({ [purpose]: toWirePatch(patch) })
-      announceSave(purpose, Object.keys(patch))
+      update.mutate(
+        { [purpose]: toWirePatch(patch) },
+        {
+          onSuccess: () => announceSave(purpose, Object.keys(patch)),
+          onError: (error) => announceFailure(purpose, error),
+        },
+      )
     },
     setClassifierKind: (kind) => {
-      update.mutate({ classification: { classifier_kind: kind } })
-      announceSave("classification", ["classifier_kind"])
+      update.mutate(
+        { classification: { classifier_kind: kind } },
+        {
+          onSuccess: () => announceSave("classification", ["classifier_kind"]),
+          onError: (error) => announceFailure("classification", error),
+        },
+      )
     },
     saveCodeBucket: null,
     isLoading: query.isLoading,

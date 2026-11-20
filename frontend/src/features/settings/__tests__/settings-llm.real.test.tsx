@@ -5,7 +5,11 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/demo-flag", () => ({ DEMO: false }))
 vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
+vi.mock("darkraise-ui/components/sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}))
 
+import { toast } from "darkraise-ui/components/sonner"
 import { apiFetch } from "@/lib/api"
 import { useLLMTabBinding } from "../use-llm-tab-binding"
 
@@ -53,6 +57,36 @@ describe("useLLMTabBinding (DEMO off — real /config/llm)", () => {
     // No backend table for the code-summarization sub-buckets yet.
     expect(result.current.buckets).toBeNull()
     expect(result.current.saveCodeBucket).toBeNull()
+  })
+
+  it("reports a refused save as a failure and never as saved", async () => {
+    vi.mocked(apiFetch).mockImplementation(async (_path, options) => {
+      if (options?.method === "POST") {
+        throw new Error("verification-judge serves the verification purpose only")
+      }
+      return {}
+    })
+    const { result } = renderHook(() => useLLMTabBinding(), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    result.current.savePurpose("reasoning", { provider_name: "verification-judge" })
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(toast.error).mock.calls[0]?.[1]).toEqual({
+      description: "verification-judge serves the verification purpose only",
+    })
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it("announces a save only once the server has accepted it", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({})
+    const { result } = renderHook(() => useLLMTabBinding(), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    result.current.setClassifierKind("llm")
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(toast.error).not.toHaveBeenCalled()
   })
 
   it("save posts a wire patch to /config/llm, not to the demo store", async () => {
