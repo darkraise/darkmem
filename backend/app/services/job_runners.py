@@ -478,6 +478,10 @@ def make_expired_memory_cleanup_runner(session_factory: async_sessionmaker[Async
     return run
 
 
+class BufferFlushFailed(RuntimeError):
+    """Every capture a flush tick claimed failed to process."""
+
+
 def make_buffer_flush_runner(app, session_factory: async_sessionmaker[AsyncSession]):
     """Claim one batch of buffered captures and replay them (doc 05 §3).
 
@@ -504,6 +508,15 @@ def make_buffer_flush_runner(app, session_factory: async_sessionmaker[AsyncSessi
                 stats["claimed"], stats["done"], stats["failed"],
                 stats["rejected"], stats["reclaimed"], stats["swept"],
             )
+            # The rows are already settled or returned to the queue; raising
+            # only makes the run say what happened. A tick that processed
+            # nothing it claimed used to record `ok`, which is how an embedder
+            # outage ran for weeks with no failed job to show for it.
+            if stats["claimed"] and stats["failed"] == stats["claimed"]:
+                raise BufferFlushFailed(
+                    f"all {stats['claimed']} claimed captures failed; "
+                    "see the buffer triage list for each row's error"
+                )
             return stats
         # Empty queue. This runs every five seconds, so saying so is what
         # keeps an idle instance from writing ~17k rows a day.
