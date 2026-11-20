@@ -18,7 +18,7 @@ from app.models.memory import Memory
 from app.schemas.memory import CapturedMemoryResponse, MemoryBatchCreate, MemoryBulkDelete, MemoryBulkDeleteResponse, MemoryCreate, MemoryLineageEntry, MemoryMergeRequest, MemoryResponse, MemorySearchRequest, MemoryUpdate, PaginatedMemoryResponse
 from app.schemas.reason import ReasonRequest, ReasonResponse
 from app.schemas.retrieval_trace import MemoryResultTrace
-from app.services.memory import MemoryService
+from app.services.memory import MemoryService, SelfMergeError
 from app.services.usage_recorder import UsageSubject, subject_scope
 
 router = APIRouter(prefix="/api/v1/memories", tags=["memories"])
@@ -368,9 +368,12 @@ async def merge_memory(
     user=Depends(require_auth),
     service: MemoryService = Depends(get_memory_service),
 ):
-    memory = await service.merge_memories(
-        memory_id, body.target_id, api_key_id=None, actor=user.sub,
-    )
+    try:
+        memory = await service.merge_memories(
+            memory_id, body.target_id, api_key_id=None, actor=user.sub,
+        )
+    except SelfMergeError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     if not memory:
         raise HTTPException(status_code=404, detail="One or both memories not found")
     return _to_response(memory)

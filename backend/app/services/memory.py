@@ -110,6 +110,10 @@ def _fit_context(
     return kept, sources[: len(kept)]
 
 
+class SelfMergeError(ValueError):
+    """A merge named the same memory as source and target."""
+
+
 class MemoryService:
     def __init__(self, session: AsyncSession, pipeline: ProcessingPipeline | None = None):
         self.memory_repo = PostgresMemoryRepository(session)
@@ -923,6 +927,8 @@ limit=params.limit, offset=params.offset,
         *,
         actor: str | None = None,
     ) -> Memory | None:
+        if source_id == target_id:
+            raise SelfMergeError("a memory cannot be merged into itself")
         source = await self.memory_repo.get(source_id)
         target = await self.memory_repo.get(target_id)
         if not source or not target:
@@ -938,6 +944,7 @@ limit=params.limit, offset=params.offset,
             "delete", source_id, api_key_id, {"merged_into": str(target_id)}, actor=actor,
             project=source.project,
         )
+        await demote_dependents(self.session, [source_id])
         await self.memory_repo.delete(source_id)
         await self.session.commit()
 
