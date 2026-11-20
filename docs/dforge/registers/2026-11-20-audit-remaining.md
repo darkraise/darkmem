@@ -62,19 +62,19 @@
 | 55 | B3b-3: no distinct or duplicate verdict is remembered, so the same top-scoring pairs are re-judged every rotation and later pairs starve | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 23 contracts | done | e352460 |
 | 56 | B3b-4, B3b-R2 and B3b-R5: refine replaces caller-supplied tags (including project/ tags) with the model's list, with no length validation | docs/dforge/plans/2026-11-20-audit-remaining.md | A20 (Task 21) | done | bb80816 |
 | 57 | B3b-5: CLAUDE.md says groundedness_gate stays closed, but the article surfaces gate on article_claim_gate; stale docstring | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 25 contracts | doing | - |
-| 58 | B3b-6: article gather, hash and staleness key on the subject name only while eligibility keys on name and entity_type | docs/dforge/plans/2026-11-20-audit-remaining.md | A23 (Task 24) | doing | - |
-| 59 | B3b-7: pinned subjects with zero facts fill synthesis_budget on every tick | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 24 contracts | doing | - |
+| 58 | B3b-6: article gather, hash and staleness key on the subject name only while eligibility keys on name and entity_type | docs/dforge/plans/2026-11-20-audit-remaining.md | A23 (Task 24) | done | 0b1ab1a |
+| 59 | B3b-7: pinned subjects with zero facts fill synthesis_budget on every tick | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 24 contracts | done | 0b1ab1a |
 | 60 | B3b-8: dream and hygiene actions ignore record_event's False return | docs/dforge/plans/2026-11-20-audit-remaining.md | A22 (Task 22) | done | b17e7fb |
 | 61 | B3b-9: asymmetric top-N proximity appends a phantom associate journal row each rotation | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 22 contracts | done | b17e7fb |
 | 62 | B3b-10 and B3b-R1: the derivation contradiction arm is unreachable because EXCLUSIVE_RELATION_FAMILIES ships empty | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 23 contracts | done | e352460 |
-| 63 | B3b-12: re-synthesis attempts every settled stale article with no per-tick budget | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 24 contracts | doing | - |
+| 63 | B3b-12: re-synthesis attempts every settled stale article with no per-tick budget | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 24 contracts | done | 0b1ab1a |
 | 64 | B3b-13: a lock_timeout during undo surfaces as a 500 rather than a retryable conflict | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 22 contracts | done | b17e7fb |
 | 65 | B3b-14 and B3b-R4: undo's all-or-nothing holds only because the single HTTP caller rolls back; wrap the write phase in one begin_nested() | - | - | deferred | declined in the spec: CLAUDE.md records the no-savepoint shape as contract and an AST scan enforces it |
 | 66 | B3b-15: cursor helpers, the article-gate resolver, the locked memory projection and the fact-set hash queries are each duplicated | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 25 contracts | doing | - |
 | 67 | B3b-16 and B3b-R3: the ResearchGatherer Protocol has one implementation that returns a supplied list; server.py wrongly calls the authenticated door unauthenticated | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 25 contracts | doing | - |
 | 68 | B3b-18: stale docstrings and annotations in article_synthesis, review_queue, hygiene_queue and verification_judge | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 25 contracts | doing | - |
-| 69 | B3b-19: the article runner discards both outcomes and logs nothing | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 24 contracts | doing | - |
-| 70 | B3b-20: the dispute-onset lateral on events has no created_at bound | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 24 contracts | doing | - |
+| 69 | B3b-19: the article runner discards both outcomes and logs nothing | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 24 contracts | done | 0b1ab1a |
+| 70 | B3b-20: the dispute-onset lateral on events has no created_at bound | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 24 contracts | done | 0b1ab1a |
 | 71 | B3b-17 and B3b-R6: research_rerun is a 320-line wrapper, live through the Settings Research UI | - | - | deferred | kept: the reviewer's own remedy is to keep it while the UI button exists |
 | 72 | B3b-R7: review_ranking has one consumer and could be folded into review_queue (optional) | - | - | deferred | declined in the spec: saves no lines |
 | 73 | B4-4: the working-tree drift scan hashes every file synchronously on the event loop | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 30 contracts | doing | - |
