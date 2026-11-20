@@ -252,12 +252,14 @@ ROW_LOCK_WRITERS = {
     "services/buffer_flush.py",
     "services/buffer_monitor.py",
     "services/document_door.py",
+    # Holds the dream actions' locked memory read; memory_dream and
+    # dream_undo, both writers, are the only modules that execute it.
+    "services/dream_journal.py",
     "services/dream_undo.py",
     "services/entity_merge.py",
     "services/fact_lift.py",
     "services/fact_provenance.py",
     "services/human_adjudication.py",
-    "services/memory_dream.py",
     "services/page_door.py",
     "services/pipeline.py",
     "services/supersede.py",
