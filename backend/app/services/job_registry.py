@@ -12,21 +12,20 @@ Scheduling shape: each job runs on a cron expression. Five-field
 expressions (``*/5 * * * *``) carry the standard minute-precision
 semantics. Six-field expressions put the seconds field first
 (``*/10 * * * * *`` = every ten seconds), matching the Quartz
-convention. ``min_interval_seconds`` is a per-job floor that
+convention. ``Job.min_interval_seconds`` is a per-job floor that
 protects against runaway expressions; the loop will not fire more
-often than this regardless of what the cron computes.
+often than this regardless of what the cron computes. It is read from
+the code, never stored, so raising it reaches an existing install.
 
-Persistence shape — each job has a ``config`` row keyed
-``job:<key>`` with JSON value::
+Persistence shape — each job has a ``config`` row keyed ``job:<key>``
+holding the operator's choices only::
 
-    {
-        "enabled": bool,
-        "cron": "*/5 * * * *",
-        "min_interval_seconds": int,
-        "last_run_at": "ISO8601 string" | null,
-        "last_status": "ok" | "error" | null,
-        "last_error": "<short message>" | null,
-    }
+    {"enabled": bool, "cron": "*/5 * * * *", "config": {...}}
+
+Run state (``last_run_at`` / ``last_status`` / ``last_error``) is this
+process's latest run, else the job's newest ``job_runs`` row; a run
+writes no config row. Keys an older build stored in the row are
+ignored and dropped on the next save.
 
 Manual trigger semantics: ``trigger(key)`` schedules an out-of-band
 run that does NOT wait for the next tick and does NOT conflict with
@@ -43,7 +42,7 @@ from typing import Awaitable, Callable
 
 from croniter import croniter
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.config import Config
@@ -108,6 +107,10 @@ class JobConfig:
     last_error: str | None = None
     config: dict = field(default_factory=dict)
 
+    def to_row(self) -> dict:
+        """What the `job:<key>` row stores: the operator's choices, nothing else."""
+        return {"enabled": self.enabled, "cron": self.cron, "config": self.config}
+
     def to_dict(self) -> dict:
         return {
             "enabled": self.enabled,
@@ -120,8 +123,10 @@ class JobConfig:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "JobConfig":
-        last_run = data.get("last_run_at")
+    def from_dict(cls, data: dict, *, min_interval_seconds: int) -> "JobConfig":
+        # A row written by an older build may still carry `min_interval_seconds`
+        # and `last_*`; neither is read. The floor is the code's, so raising it
+        # takes effect on an existing install, and run state comes from runs.
         return cls(
             # Default True to match the install-enabled intent and the
             # synthesized defaults in ``load_config`` / ``list_with_config`` —
@@ -129,12 +134,23 @@ class JobConfig:
             # silently disabled.
             enabled=bool(data.get("enabled", True)),
             cron=str(data.get("cron", "*/5 * * * *")),
-            min_interval_seconds=int(data.get("min_interval_seconds", 1)),
-            last_run_at=datetime.fromisoformat(last_run) if last_run else None,
-            last_status=data.get("last_status"),
-            last_error=data.get("last_error"),
+            min_interval_seconds=min_interval_seconds,
             config=data.get("config") or {},
         )
+
+
+@dataclass(frozen=True)
+class RunState:
+    started_at: datetime
+    status: str
+    error: str | None
+
+
+_NEWEST_RUNS = text(
+    "SELECT DISTINCT ON (job_key) job_key, started_at, outcome, error "
+    "FROM job_runs WHERE job_key = ANY(CAST(:keys AS text[])) "
+    "ORDER BY job_key, started_at DESC, id DESC"
+)
 
 
 @dataclass
@@ -154,6 +170,11 @@ class Job:
     task: asyncio.Task | None = field(default=None, init=False, repr=False)
     wakeup: asyncio.Event = field(default_factory=asyncio.Event, init=False, repr=False)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
+    # Guards the row's read-modify-write only, so a save never waits on a run.
+    config_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
+    # This process's latest run, no-op runs included (they write no
+    # `job_runs` row). Single worker, so one process sees every run.
+    last_run: RunState | None = field(default=None, init=False, repr=False)
 
     @property
     def default_config(self) -> dict:
@@ -201,33 +222,49 @@ class JobRegistry:
     def _config_key(job_key: str) -> str:
         return f"job:{job_key}"
 
+    async def _run_states(self, session: AsyncSession, keys: list[str]) -> dict[str, RunState]:
+        """Each job's latest run: this process's own, else its newest `job_runs` row."""
+        states = {k: self._jobs[k].last_run for k in keys if self._jobs[k].last_run}
+        missing = [k for k in keys if k not in states]
+        if missing:
+            rows = (await session.execute(_NEWEST_RUNS, {"keys": missing})).all()
+            for row in rows:
+                states[row.job_key] = RunState(row.started_at, row.outcome, row.error)
+        return states
+
+    def _config_from(self, key: str, value, state: RunState | None) -> JobConfig:
+        job = self._jobs.get(key)
+        floor = job.min_interval_seconds if job else 1
+        if isinstance(value, dict) and "cron" in value:
+            cfg = JobConfig.from_dict(value, min_interval_seconds=floor)
+        else:
+            # Synthesize a default if the row is missing or pre-cron — keeps
+            # tests and fresh installs happy without forcing the migration to
+            # be the only path that creates these rows.
+            cfg = JobConfig(
+                enabled=True,
+                cron=job.default_cron if job else "*/5 * * * *",
+                min_interval_seconds=floor,
+            )
+        if state is not None:
+            cfg.last_run_at = state.started_at
+            cfg.last_status = state.status
+            cfg.last_error = state.error
+        return cfg
+
     async def load_config(self, key: str) -> JobConfig:
         async with self._session_factory() as session:
             row = (await session.execute(
                 select(Config).where(Config.key == self._config_key(key))
             )).scalar_one_or_none()
-        job = self._jobs.get(key)
-        if row and isinstance(row.value, dict) and "cron" in row.value:
-            return JobConfig.from_dict(row.value)
-        # Synthesize a default if the row is missing or pre-cron — keeps
-        # tests and fresh installs happy without forcing the migration to
-        # be the only path that creates these rows.
-        return JobConfig(
-            enabled=True,
-            cron=job.default_cron if job else "*/5 * * * *",
-            min_interval_seconds=job.min_interval_seconds if job else 1,
-        )
+            states = await self._run_states(session, [key]) if key in self._jobs else {}
+        return self._config_from(key, row.value if row else None, states.get(key))
 
     async def save_config(self, key: str, cfg: JobConfig) -> None:
+        from app.services.config import patch_config_row
+
         async with self._session_factory() as session:
-            row = (await session.execute(
-                select(Config).where(Config.key == self._config_key(key))
-            )).scalar_one_or_none()
-            if row is None:
-                session.add(Config(key=self._config_key(key), value=cfg.to_dict()))
-            else:
-                row.value = cfg.to_dict()
-            await session.commit()
+            await patch_config_row(session, self._config_key(key), lambda _: cfg.to_row())
 
     async def list_with_config(self) -> list[dict]:
         keys = [self._config_key(k) for k in self._jobs]
@@ -235,19 +272,12 @@ class JobRegistry:
             rows = (await session.execute(
                 select(Config).where(Config.key.in_(keys))
             )).scalars().all()
-        by_key = {row.key: row.value for row in rows if isinstance(row.value, dict)}
+            states = await self._run_states(session, list(self._jobs))
+        by_key = {row.key: row.value for row in rows}
 
         out: list[dict] = []
         for key, job in self._jobs.items():
-            value = by_key.get(self._config_key(key))
-            if value and "cron" in value:
-                cfg = JobConfig.from_dict(value)
-            else:
-                cfg = JobConfig(
-                    enabled=True,
-                    cron=job.default_cron,
-                    min_interval_seconds=job.min_interval_seconds,
-                )
+            cfg = self._config_from(key, by_key.get(self._config_key(key)), states.get(key))
             # `job.task` is the *scheduling loop*, alive for the whole
             # process once start() runs, so it reported every registered job
             # as permanently running. The per-job lock is what a run actually
@@ -258,7 +288,6 @@ class JobRegistry:
                 "display_name": job.display_name,
                 "description": job.description,
                 "default_cron": job.default_cron,
-                "min_interval_seconds": job.min_interval_seconds,
                 "running": running,
                 "config_schema": [fd.model_dump() for fd in job.config_schema],
                 **cfg.to_dict(),
@@ -366,7 +395,7 @@ class JobRegistry:
             logger.info("Job %s loop cancelled", key)
             raise
 
-    async def _run_once(self, key: str) -> None:
+    async def _run_once(self, key: str, *, trigger: str = "schedule") -> None:
         job = self._jobs[key]
         async with job.lock:
             try:
@@ -413,20 +442,15 @@ class JobRegistry:
                 cfg.last_status = "error"
                 cfg.last_error = str(exc)[:500]
                 logger.exception("Job %s runner raised", key)
-            try:
-                await self.save_config(key, cfg)
-            except Exception:
-                # Persisting the outcome failed (DB blip). The loop must survive
-                # so the job keeps firing on its next tick; the prior copy of
-                # this write outside the try is what could kill the loop forever.
-                logger.exception("Job %s save_config failed after run", key)
+            job.last_run = RunState(started_at, cfg.last_status, cfg.last_error)
             await self._record_run(
-                key, cfg, started_at, result,
+                key, cfg, started_at, result, trigger=trigger,
                 repeated=cfg.last_status == "error" and cfg.last_error == previous_error,
             )
 
     async def _record_run(
-        self, key: str, cfg, started_at, result, *, repeated: bool = False,
+        self, key: str, cfg, started_at, result, *, trigger: str = "schedule",
+        repeated: bool = False,
     ) -> None:
         """One `job_runs` row per run that had something to say.
 
@@ -468,6 +492,7 @@ class JobRegistry:
                     duration_seconds=round(duration, 3),
                     error=cfg.last_error,
                     detail=detail,
+                    trigger=trigger,
                 ))
                 await session.commit()
         except Exception:
@@ -508,10 +533,9 @@ class JobRegistry:
                 raise ValueError(
                     f"Cron {cron!r} is not a valid 5- or 6-field expression"
                 )
-        # Share the per-job lock with _run_once / set_config so this
-        # read-modify-write can't be clobbered by (or clobber) a concurrent
-        # scheduled run's last_run_at/status write.
-        async with job.lock:
+        # The config lock, not the run lock: a run writes nothing to the row,
+        # so disabling a job answers at once even while it runs.
+        async with job.config_lock:
             cfg = await self.load_config(key)
             prev_enabled = cfg.enabled
             if enabled is not None:
@@ -526,7 +550,6 @@ class JobRegistry:
         # we deliberately do not nudge the wakeup for a pure cron edit.
         if prev_enabled != cfg.enabled:
             await self._restart_loop(key)
-        _ = job  # used above; satisfy linter
         return cfg
 
     async def set_config(self, key: str, partial: dict) -> JobConfig:
@@ -545,9 +568,7 @@ class JobRegistry:
                     raise ValueError(f"Config {field_key!r} must be >= {fd.min}")
                 if fd.max is not None and value > fd.max:
                     raise ValueError(f"Config {field_key!r} must be <= {fd.max}")
-        # Share the per-job lock with _run_once so a save can't be clobbered
-        # by a concurrent scheduled run.
-        async with job.lock:
+        async with job.config_lock:
             cfg = await self.load_config(key)
             cfg.config = {**cfg.config, **partial}
             await self.save_config(key, cfg)
@@ -563,7 +584,7 @@ class JobRegistry:
         # act window the route's pre-check leaves open.
         if job.lock.locked():
             raise JobBusyError(key)
-        await self._run_once(key)
+        await self._run_once(key, trigger="manual")
         return await self.load_config(key)
 
     def wakeup(self, key: str) -> None:

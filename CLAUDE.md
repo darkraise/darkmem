@@ -713,12 +713,16 @@ undercounts.
 
 **Scheduling.** Five-field cron is minute-precision; six-field puts seconds
 first (Quartz-style). `min_interval_seconds` is a per-job floor the loop
-never undercuts. State lives in `config` rows `job:<key>`. Manual
+never undercuts and is read from the code, never stored. Operator settings
+(enabled, cron, `config`) live in `config` rows `job:<key>`; run state
+(`last_*`) is the process's latest run, else the job's newest `job_runs` row,
+which `job_run_cleanup` always keeps, and a run writes no config row. Manual
 `trigger(key)` takes the **same** per-job `asyncio.Lock` as the loop; a
 trigger while it's held returns 409. `set_config`
 (`PUT /api/v1/jobs/{key}/config`) validates partial updates against the
-job's `config_schema` (type, min/max, unknown keys rejected) under that
-lock. A failed run sends the job-failure notification only when its
+job's `config_schema` (type, min/max, unknown keys rejected) under a
+per-job config lock separate from the run lock, so a save or a disable
+answers while the job runs; a manual trigger records `trigger = manual`. A failed run sends the job-failure notification only when its
 error differs from the previous run's, so an outage announces itself once
 per job rather than once per tick; every run still gets its `job_runs` row.
 

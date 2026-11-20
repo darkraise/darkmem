@@ -383,6 +383,9 @@ async def record_maintenance_run(
 ) -> None:
     """Journal one Settings -> Maintenance / Jobs -> cleanup operation run.
 
+    The hourly cleanup jobs call it only on an error or a run that did work;
+    an idle run leaves its zero counts on its ``job_runs`` row alone.
+
     The one writer for the ``maintenance_run`` event type, shared by
     ``job_runners.py``'s cleanup runners and ``reembed.py``'s background
     tasks, so the two call sites can never drift into their own vocabulary

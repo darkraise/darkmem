@@ -17,6 +17,7 @@ this run's own.
 """
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -65,6 +66,16 @@ async def test_graph_orphan_cleanup_journals_its_outcome():
     factory, engine = _fresh_session_factory()
     try:
         since = datetime.now(timezone.utc)
+        # An idle run journals nothing, so give this one an orphan to prune.
+        async with factory() as session:
+            await session.execute(
+                text(
+                    "INSERT INTO entities (id, name, entity_type, properties, memory_ids, repo_ids) "
+                    "VALUES (gen_random_uuid(), :n, 'concept', '{}', '{}', '{}')"
+                ),
+                {"n": f"orphan-{uuid.uuid4().hex[:8]}"},
+            )
+            await session.commit()
         runner = make_graph_orphan_cleanup_runner(factory)
         await runner()
 
@@ -85,6 +96,13 @@ async def test_tag_orphan_cleanup_journals_its_outcome():
     factory, engine = _fresh_session_factory()
     try:
         since = datetime.now(timezone.utc)
+        # An idle run journals nothing, so give this one an orphan to prune.
+        async with factory() as session:
+            await session.execute(
+                text("INSERT INTO tags (name) VALUES (:n)"),
+                {"n": f"orphan-{uuid.uuid4().hex[:8]}"},
+            )
+            await session.commit()
         runner = make_tag_orphan_cleanup_runner(factory)
         await runner()
 
@@ -92,27 +110,6 @@ async def test_tag_orphan_cleanup_journals_its_outcome():
         assert rows, "tag_orphan_cleanup did not journal a maintenance_run event"
         assert rows[-1]["outcome"] == "ok"
         assert "tags_removed" in rows[-1]["detail"]
-    finally:
-        await engine.dispose()
-
-
-@pytest.mark.asyncio
-async def test_expired_memory_cleanup_journals_even_when_nothing_expired():
-    """Ruling 2's own text: an operation that journals nothing is invisible
-    to the timeline. A no-op run (nothing past TTL) must still journal --
-    "ran, found nothing" is honest evidence, not a reason to stay silent."""
-    from app.services.job_runners import make_expired_memory_cleanup_runner
-
-    factory, engine = _fresh_session_factory()
-    try:
-        since = datetime.now(timezone.utc)
-        runner = make_expired_memory_cleanup_runner(factory)
-        await runner()
-
-        rows = await _maintenance_rows_since(factory, "expired_memory_cleanup", since)
-        assert rows, "expired_memory_cleanup did not journal a no-op run"
-        assert rows[-1]["outcome"] == "ok"
-        assert rows[-1]["detail"]["deleted"] == 0
     finally:
         await engine.dispose()
 

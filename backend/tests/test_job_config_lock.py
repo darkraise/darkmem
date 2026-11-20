@@ -1,10 +1,7 @@
-"""update_config must take the per-job lock for its read-modify-write.
+"""update_config must take the per-job config lock for its read-modify-write.
 
-set_config and _run_once both wrap load_config + save_config in job.lock so a
-save can't be clobbered by a concurrent scheduled run. update_config performed
-the identical read-modify-write unlocked, reintroducing the lost-update race the
-lock was added to close (a concurrent _run_once's last_run_at/status is
-overwritten by update_config's stale snapshot).
+set_config and update_config both read, patch and write the `job:<key>` row;
+unlocked, two concurrent saves would each overwrite the other's change.
 """
 from __future__ import annotations
 
@@ -33,7 +30,7 @@ def _registry(key: str):
 
 
 @pytest.mark.asyncio
-async def test_update_config_acquires_job_lock():
+async def test_update_config_acquires_the_config_lock():
     reg, engine = _registry("cfg_lock")
     try:
         # Warm the connection pool so the timing below isolates the lock, not a
@@ -42,13 +39,13 @@ async def test_update_config_acquires_job_lock():
         assert baseline != "*/2 * * * *"
 
         job = reg._jobs["cfg_lock"]
-        async with job.lock:
+        async with job.config_lock:
             task = asyncio.create_task(reg.update_config("cfg_lock", cron="*/2 * * * *"))
             await asyncio.sleep(0.3)  # ample time for an UNLOCKED save to land
             # If update_config respects the lock it is still blocked here, so the
             # cron change has not been persisted yet.
             during = (await reg.load_config("cfg_lock")).cron
-            assert during == baseline, "update_config wrote while the job lock was held"
+            assert during == baseline, "update_config wrote while the config lock was held"
 
         await task
         assert (await reg.load_config("cfg_lock")).cron == "*/2 * * * *"

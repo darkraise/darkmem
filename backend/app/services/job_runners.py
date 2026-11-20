@@ -353,7 +353,7 @@ def make_graph_orphan_cleanup_runner(session_factory: async_sessionmaker[AsyncSe
     Backstops the per-delete cleanup against swallowed errors and historical
     accumulation, so the Phase-4 dedup never collapses fresh entities onto a
     stale ghost left by an earlier deleted memory."""
-    async def run() -> None:
+    async def run() -> dict:
         from app.repositories.graph import PostgresGraphRepository
         from app.services.events import record_maintenance_run
         try:
@@ -366,18 +366,20 @@ def make_graph_orphan_cleanup_runner(session_factory: async_sessionmaker[AsyncSe
                 session_factory, operation="graph_orphan_cleanup", outcome="error",
             )
             raise
-        if stats["entities_pruned"] or stats["relations_pruned"]:
+        counts = {
+            "entities_pruned": stats["entities_pruned"],
+            "relations_pruned": stats["relations_pruned"],
+        }
+        if any(counts.values()):
             logger.info(
                 "Graph orphan cleanup: entities=%s relations=%s",
-                stats["entities_pruned"], stats["relations_pruned"],
+                counts["entities_pruned"], counts["relations_pruned"],
             )
-        await record_maintenance_run(
-            session_factory, operation="graph_orphan_cleanup", outcome="ok",
-            detail={
-                "entities_pruned": stats["entities_pruned"],
-                "relations_pruned": stats["relations_pruned"],
-            },
-        )
+            await record_maintenance_run(
+                session_factory, operation="graph_orphan_cleanup", outcome="ok",
+                detail=counts,
+            )
+        return counts
     return run
 
 
@@ -390,7 +392,7 @@ def make_tag_orphan_cleanup_runner(session_factory: async_sessionmaker[AsyncSess
     ``MemoryService.delete_memory`` covers new deletes; this backstops
     historical orphans and any delete path that skipped it, so the dashboard
     tag count and the tag filter never show tags nothing uses."""
-    async def run() -> None:
+    async def run() -> dict:
         from app.repositories.relational import PostgresTagRepository
         from app.services.events import record_maintenance_run
         try:
@@ -405,10 +407,11 @@ def make_tag_orphan_cleanup_runner(session_factory: async_sessionmaker[AsyncSess
             raise
         if removed:
             logger.info("Tag orphan cleanup: tags=%s", removed)
-        await record_maintenance_run(
-            session_factory, operation="tag_orphan_cleanup", outcome="ok",
-            detail={"tags_removed": removed},
-        )
+            await record_maintenance_run(
+                session_factory, operation="tag_orphan_cleanup", outcome="ok",
+                detail={"tags_removed": removed},
+            )
+        return {"tags_removed": removed}
     return run
 
 
@@ -437,7 +440,7 @@ def make_expired_memory_cleanup_runner(session_factory: async_sessionmaker[Async
     # the backstop's work instead. Attribute lookup cannot drift that way.
     from app.services import fact_provenance
     from app.services.supersession import demote_dependents
-    async def run() -> None:
+    async def run() -> dict:
         from app.services.events import record_maintenance_run
         deleted = 0
         reaped = 0
@@ -487,15 +490,17 @@ def make_expired_memory_cleanup_runner(session_factory: async_sessionmaker[Async
                 session_factory, operation="expired_memory_cleanup", outcome="error",
             )
             raise
+        counts = {"deleted": deleted, "provenance_reaped": reaped}
         if deleted or reaped:
             logger.info(
                 "Expired memory cleanup: deleted=%s provenance_reaped=%s",
                 deleted, reaped,
             )
-        await record_maintenance_run(
-            session_factory, operation="expired_memory_cleanup", outcome="ok",
-            detail={"deleted": deleted, "provenance_reaped": reaped},
-        )
+            await record_maintenance_run(
+                session_factory, operation="expired_memory_cleanup", outcome="ok",
+                detail=counts,
+            )
+        return counts
     return run
 
 
@@ -994,14 +999,18 @@ def make_job_run_cleanup_runner(app, session_factory: async_sessionmaker[AsyncSe
 
         async with session_factory() as session:
             # One statement: keep the newest `retain` by (started_at, id) and
-            # delete the rest. The id tie-break keeps the cut deterministic
-            # when several runs share a timestamp.
+            # delete the rest, except each job's own newest row, which is that
+            # job's run state on the Jobs screen. The id tie-break keeps the cut
+            # deterministic when several runs share a timestamp.
             deleted = (await session.execute(
                 sa_text(
                     "DELETE FROM job_runs WHERE id IN ("
                     "  SELECT id FROM job_runs"
                     "  ORDER BY started_at DESC, id DESC"
                     "  OFFSET :retain"
+                    ") AND id NOT IN ("
+                    "  SELECT DISTINCT ON (job_key) id FROM job_runs"
+                    "  ORDER BY job_key, started_at DESC, id DESC"
                     ")"
                 ),
                 {"retain": retain},

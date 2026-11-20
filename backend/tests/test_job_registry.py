@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import settings
 from app.services.job_registry import (
+    FieldDescriptor,
     Job,
     JobConfig,
     is_valid_cron,
@@ -105,15 +106,16 @@ def test_job_config_round_trip():
         cron="*/5 * * * *",
         min_interval_seconds=30,
     )
-    serialised = cfg.to_dict()
-    restored = JobConfig.from_dict(serialised)
+    row = cfg.to_row()
+    assert set(row) == {"enabled", "cron", "config"}
+    restored = JobConfig.from_dict(row, min_interval_seconds=30)
     assert restored.enabled is True
     assert restored.cron == "*/5 * * * *"
     assert restored.min_interval_seconds == 30
 
 
 def test_job_config_from_dict_supplies_defaults():
-    restored = JobConfig.from_dict({})
+    restored = JobConfig.from_dict({}, min_interval_seconds=1)
     assert restored.cron == "*/5 * * * *"
     assert restored.min_interval_seconds == 1
 
@@ -124,14 +126,14 @@ def test_job_config_round_trips_config_dict():
     cfg = JobConfig(enabled=True, cron="*/5 * * * *", min_interval_seconds=1,
                     config={"batch_size": 17})
     assert cfg.to_dict()["config"] == {"batch_size": 17}
-    assert JobConfig.from_dict(cfg.to_dict()).config == {"batch_size": 17}
+    assert JobConfig.from_dict(cfg.to_row(), min_interval_seconds=1).config == {"batch_size": 17}
 
 
 def test_job_config_from_dict_defaults_config_to_empty():
     from app.services.job_registry import JobConfig
 
-    cfg = JobConfig.from_dict({"enabled": True, "cron": "*/5 * * * *",
-                               "min_interval_seconds": 1})
+    cfg = JobConfig.from_dict({"enabled": True, "cron": "*/5 * * * *"},
+                              min_interval_seconds=1)
     assert cfg.config == {}
 
 
@@ -446,5 +448,306 @@ async def test_a_repeating_failure_notifies_once_until_its_error_changes(
         failure[0] = "disk full"
         await reg._run_once("repeating_failure")
         assert sent == ["embedder unreachable", "disk full"]
+    finally:
+        await engine.dispose()
+
+
+# ── run state, floors and run records ────────────────────────────────
+
+
+def _committed_registry(*jobs):
+    from app.services.job_registry import JobRegistry
+
+    engine = create_async_engine(settings.test_database_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    reg = JobRegistry(factory)
+    for job in jobs:
+        reg.register(job)
+    return reg, factory, engine
+
+
+def _job(key, runner=None, *, floor=1):
+    async def _noop():
+        return None
+
+    return Job(key=key, display_name=key, description="d", default_cron="*/5 * * * *",
+               min_interval_seconds=floor, runner=runner or _noop)
+
+
+def _key(prefix):
+    import uuid
+
+    return f"{prefix}_{uuid.uuid4().hex[:8]}"
+
+
+async def _store_row(factory, key, value):
+    from app.services.config import patch_config_row
+
+    async with factory() as session:
+        await patch_config_row(session, f"job:{key}", lambda _: value)
+
+
+async def _row(factory, key):
+    from sqlalchemy import text as sa_text
+
+    async with factory() as session:
+        return (await session.execute(
+            sa_text("SELECT value FROM config WHERE key = :k"), {"k": f"job:{key}"},
+        )).scalar_one_or_none()
+
+
+@pytest.mark.asyncio
+async def test_code_floor_applies_to_a_stored_row(setup_database):
+    key = _key("floor")
+    reg, factory, engine = _committed_registry(_job(key, floor=30))
+    try:
+        await _store_row(factory, key, {
+            "enabled": True, "cron": "* * * * * *", "min_interval_seconds": 5,
+        })
+        cfg = await reg.load_config(key)
+        assert cfg.min_interval_seconds == 30
+        delta = next_fire_delta_seconds(
+            cfg.cron, datetime.now(timezone.utc), floor=cfg.min_interval_seconds,
+        )
+        assert delta >= 30
+        [item] = [i for i in await reg.list_with_config() if i["key"] == key]
+        assert item["min_interval_seconds"] == 30
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_disable_answers_while_the_job_runs(client, auth_headers):
+    import asyncio
+
+    from app.main import app
+
+    key = _key("busy")
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def _held():
+        entered.set()
+        await release.wait()
+
+    registry = app.state.job_registry
+    job = _job(key, _held)
+    job.config_schema = [FieldDescriptor(key="batch_size", label="B", default=5, min=1, max=100)]
+    registry.register(job)
+    try:
+        run = asyncio.create_task(registry._run_once(key))
+        await asyncio.wait_for(entered.wait(), 5)
+        disabled = await asyncio.wait_for(client.put(
+            f"/api/v1/jobs/{key}", json={"enabled": False}, headers=auth_headers,
+        ), 1)
+        assert disabled.status_code == 200, disabled.text
+        configured = await asyncio.wait_for(client.put(
+            f"/api/v1/jobs/{key}/config", json={"config": {"batch_size": 9}},
+            headers=auth_headers,
+        ), 1)
+        assert configured.status_code == 200, configured.text
+        busy = await client.post(f"/api/v1/jobs/{key}/trigger", headers=auth_headers)
+        assert busy.status_code == 409
+        release.set()
+        await asyncio.wait_for(run, 5)
+        stored = await _row(registry.session_factory, key)
+        assert stored["enabled"] is False
+        assert stored["config"] == {"batch_size": 9}
+    finally:
+        release.set()
+        registry._jobs.pop(key, None)
+
+
+@pytest.mark.asyncio
+async def test_last_run_comes_from_job_runs(setup_database):
+    from types import SimpleNamespace
+
+    from sqlalchemy import text as sa_text
+
+    from app.services.job_runners import make_job_run_cleanup_runner
+
+    key, noise = _key("old_run"), _key("noise")
+    reg, factory, engine = _committed_registry(_job(key))
+
+    class _Cleanup:
+        async def load_config(self, _key):
+            return JobConfig(enabled=True, cron="0 * * * *", min_interval_seconds=1,
+                             config={"max_rows": 1000})
+
+    try:
+        async with factory() as session:
+            await session.execute(sa_text(
+                "INSERT INTO job_runs (job_key, outcome, started_at, duration_seconds, "
+                "error, detail) VALUES (:k, 'error', now() - interval '1 day', 1, "
+                "'it broke', '{}')"
+            ), {"k": key})
+            await session.execute(sa_text(
+                "INSERT INTO job_runs (job_key, outcome, started_at, duration_seconds, detail) "
+                "SELECT :k, 'ok', now() - make_interval(secs => n), 0, '{}' "
+                "FROM generate_series(1, 5000) AS n"
+            ), {"k": noise})
+            await session.commit()
+        cleanup = make_job_run_cleanup_runner(
+            SimpleNamespace(state=SimpleNamespace(job_registry=_Cleanup())), factory,
+        )
+        assert (await cleanup())["deleted"] > 0
+        [item] = [i for i in await reg.list_with_config() if i["key"] == key]
+        assert item["last_status"] == "error"
+        assert item["last_error"] == "it broke"
+        assert item["last_run_at"] is not None
+    finally:
+        async with factory() as session:
+            await session.execute(
+                sa_text("DELETE FROM job_runs WHERE job_key IN (:a, :b)"), {"a": key, "b": noise},
+            )
+            await session.commit()
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_tick_writes_no_config_row(setup_database):
+    from sqlalchemy import event
+    from sqlalchemy.engine import Engine
+
+    key = _key("tick")
+    reg, factory, engine = _committed_registry(_job(key))
+    written: list[str] = []
+
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        head = statement.lstrip().upper()
+        if head.startswith(("INSERT INTO CONFIG", "UPDATE CONFIG")):
+            written.append(statement)
+
+    event.listen(Engine, "before_cursor_execute", capture)
+    try:
+        for _ in range(3):
+            await reg._run_once(key)
+    finally:
+        event.remove(Engine, "before_cursor_execute", capture)
+        await engine.dispose()
+    assert written == []
+
+
+@pytest.mark.asyncio
+async def test_stored_last_keys_are_ignored_and_dropped(setup_database):
+    key = _key("legacy_row")
+    reg, factory, engine = _committed_registry(_job(key))
+    try:
+        await _store_row(factory, key, {
+            "enabled": True, "cron": "*/5 * * * *", "min_interval_seconds": 5,
+            "last_run_at": "2020-01-01T00:00:00+00:00", "last_status": "error",
+            "last_error": "from an older build", "config": {},
+        })
+        await reg._run_once(key)
+        fresh, _, fresh_engine = _committed_registry(_job(key))
+        try:
+            cfg = await fresh.load_config(key)
+            assert cfg.last_status == "ok"
+            assert cfg.last_error is None
+            assert cfg.last_run_at.year > 2020
+            await fresh.update_config(key, cron="*/7 * * * *")
+        finally:
+            await fresh_engine.dispose()
+        assert await _row(factory, key) == {
+            "enabled": True, "cron": "*/7 * * * *", "config": {},
+        }
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_failure_notification_dedupes_on_the_previous_run(setup_database, monkeypatch):
+    import app.services.notifications as notif
+
+    key = _key("dedupe")
+    sent: list[str | None] = []
+    failure = ["embedder unreachable"]
+
+    async def _spy(session_factory, *, job_key, error, duration_seconds):
+        sent.append(error)
+
+    async def _boom():
+        raise RuntimeError(failure[0])
+
+    monkeypatch.setattr(notif, "notify_job_failure", _spy)
+    first, _, first_engine = _committed_registry(_job(key, _boom))
+    try:
+        await first._run_once(key)
+    finally:
+        await first_engine.dispose()
+    # A restarted process reads the previous run from `job_runs`.
+    second, _, second_engine = _committed_registry(_job(key, _boom))
+    try:
+        await second._run_once(key)
+        assert sent == ["embedder unreachable"]
+        failure[0] = "disk full"
+        await second._run_once(key)
+        assert sent == ["embedder unreachable", "disk full"]
+    finally:
+        await second_engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_manual_trigger_is_recorded(setup_database):
+    from sqlalchemy import text as sa_text
+
+    key = _key("manual")
+    reg, factory, engine = _committed_registry(_job(key))
+    try:
+        await reg.trigger(key)
+        await reg._run_once(key)
+        async with factory() as session:
+            triggers = (await session.execute(sa_text(
+                "SELECT trigger FROM job_runs WHERE job_key = :k ORDER BY started_at"
+            ), {"k": key})).scalars().all()
+        assert triggers == ["manual", "schedule"]
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_idle_cleanup_journals_nothing(setup_database):
+    from sqlalchemy import text as sa_text
+
+    from app.services import job_runners
+
+    reg, factory, engine = _committed_registry()
+
+    async def journalled(operation):
+        async with factory() as session:
+            return (await session.execute(sa_text(
+                "SELECT payload FROM events WHERE event_type = 'maintenance_run' "
+                "AND payload->>'operation' = :op ORDER BY created_at, id"
+            ), {"op": operation})).scalars().all()
+
+    makers = {
+        "graph_orphan_cleanup": job_runners.make_graph_orphan_cleanup_runner,
+        "tag_orphan_cleanup": job_runners.make_tag_orphan_cleanup_runner,
+        "expired_memory_cleanup": job_runners.make_expired_memory_cleanup_runner,
+    }
+    try:
+        for operation, make in makers.items():
+            key = _key(operation)
+            reg.register(_job(key, make(factory)))
+            await reg._run_once(key)
+            before = await journalled(operation)
+            await reg._run_once(key)
+            assert await journalled(operation) == before, operation
+            async with factory() as session:
+                detail = (await session.execute(sa_text(
+                    "SELECT detail FROM job_runs WHERE job_key = :k "
+                    "ORDER BY started_at DESC, id DESC LIMIT 1"
+                ), {"k": key})).scalar_one()
+            assert detail and not any(detail.values()), (operation, detail)
+
+        async with factory() as session:
+            await session.execute(
+                sa_text("INSERT INTO tags (name) VALUES (:n)"), {"n": _key("orphan-tag")},
+            )
+            await session.commit()
+        before = await journalled("tag_orphan_cleanup")
+        await job_runners.make_tag_orphan_cleanup_runner(factory)()
+        after = await journalled("tag_orphan_cleanup")
+        assert len(after) == len(before) + 1
+        assert after[-1]["detail"]["tags_removed"] >= 1
     finally:
         await engine.dispose()
