@@ -42,8 +42,8 @@
 | 35 | B2-21: with hybrid search off, the pure-vector and read-only branches never call _record_access | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 6 contracts | done | d9337ef |
 | 36 | B2-22: the hand-maintained route inventory trips on every new route or tool (owner decision) | - | - | deferred | declined in the spec: the inventory is the enumeration guard; moving it onto route metadata is its own design |
 | 37 | B3a-1 (high): fact_lift and re-extraction can interleave so a fact keeps a source the memory no longer asserts; needs a two-session test | docs/dforge/plans/2026-11-20-audit-remaining.md | A1 (Task 18) | done | 635ebff |
-| 38 | B3a-2 and B3b-11: while the judge refuses, the contradiction scan re-drains the same 20 events every 6 hours and re-commits duplicate clean verdicts | docs/dforge/plans/2026-11-20-audit-remaining.md | A24 (Task 19) | doing | - |
-| 39 | B3a-3: the slow arm re-journals an identical blocked hold on every visit | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 19 contracts | doing | - |
+| 38 | B3a-2 and B3b-11: while the judge refuses, the contradiction scan re-drains the same 20 events every 6 hours and re-commits duplicate clean verdicts | docs/dforge/plans/2026-11-20-audit-remaining.md | A24 (Task 19) | done | f5f8bdbe |
+| 39 | B3a-3: the slow arm re-journals an identical blocked hold on every visit | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 19 contracts | done | f5f8bdbe |
 | 40 | B3a-4: knowledge_triples.stated_expiry has no production writer, so the every-2-minute close arm, its partial index and the merge's LEAST logic are dead (owner ruling 2026-11-20: remove and drop) | docs/dforge/plans/2026-11-20-audit-remaining.md | A47 (Task 47) | doing | - |
 | 41 | B3a-6: Tier-C ticks hold fact row locks until the tick commits, so withdrawal and memory delete block with no lock timeout | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 20 contracts | doing | - |
 | 42 | B3a-7: no index on events serves the sources_changed drain, and an idle drain never advances the watermark | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 20 contracts | doing | - |
@@ -51,11 +51,11 @@
 | 44 | B3a-9: every 15-minute tick re-reads all code provenance and repo assertions even when no repository changed | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 20 contracts | doing | - |
 | 45 | B3a-10: recompute_fact reads three config rows per fact rather than once per tick | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 20 contracts | doing | - |
 | 46 | B3a-11 and B3a-D4: the promotion record JSON is opened and parsed from disk for every corroborated row served | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 20 contracts | doing | - |
-| 47 | B3a-12: the suspicion marker columns are written onto confirmed facts | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 19 contracts | doing | - |
+| 47 | B3a-12: the suspicion marker columns are written onto confirmed facts | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 19 contracts | done | f5f8bdbe |
 | 48 | B3a-13: get_fact queries the latest verified event twice | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 20 contracts | doing | - |
 | 49 | B3a-14: count_distinct_origins, facts_for_source and OriginProfile.required_origin_count are referenced only by tests and prose | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 20 contracts | doing | - |
-| 50 | B3a-15 and B3a-16: stale prose and comments in verification_recompute, contradiction_scan, verification_judge, knowledge_triples and verification_ladder | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 19 contracts | doing | - |
-| 51 | B3a-17: the dismissal journal payload stores note untruncated | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 19 contracts | doing | - |
+| 50 | B3a-15 and B3a-16: stale prose and comments in verification_recompute, contradiction_scan, verification_judge, knowledge_triples and verification_ladder | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 19 contracts | done | f5f8bdbe |
+| 51 | B3a-17: the dismissal journal payload stores note untruncated | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 19 contracts | done | f5f8bdbe |
 | 52 | B3a-18: the merge fold moves sources onto the keeper fact without emitting sources_changed | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 18 contracts | done | 635ebff |
 | 53 | B3a-19: _FACTS_ON_LOSER filters on subject_id/object_id, which have no index (add if merge volume grows) | - | - | deferred | declined in the spec: the reviewer's own condition (merge volume grows) does not hold |
 | 54 | B3b-2: annotate_undoability rebuilds the payload without pass_key, so the digest shows the wrong undoable state | docs/dforge/plans/2026-11-20-audit-remaining.md | A21 (Task 22) | doing | - |
