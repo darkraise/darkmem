@@ -76,8 +76,16 @@ def _igraph(graph: KnnGraph, n: int):
 
 
 def _louvain_r1(graph: KnnGraph, n: int) -> list[int]:
+    import igraph
+
+    # Seeding the global module seeds igraph only while it is igraph's generator.
+    state = random.getstate()
+    igraph.set_random_number_generator(random)
     random.seed(3)
-    return _igraph(graph, n).community_multilevel(weights="weight", resolution=1).membership
+    try:
+        return _igraph(graph, n).community_multilevel(weights="weight", resolution=1).membership
+    finally:
+        random.setstate(state)
 
 
 def _leiden(graph: KnnGraph, n: int, resolution: float, seed: int = 0) -> list[int]:
@@ -85,10 +93,13 @@ def _leiden(graph: KnnGraph, n: int, resolution: float, seed: int = 0) -> list[i
 
     g = _igraph(graph, n)
     igraph.set_random_number_generator(random.Random(seed))
-    return g.community_leiden(
-        objective_function="modularity", weights="weight",
-        resolution=resolution, n_iterations=-1,
-    ).membership
+    try:
+        return g.community_leiden(
+            objective_function="modularity", weights="weight",
+            resolution=resolution, n_iterations=-1,
+        ).membership
+    finally:
+        igraph.set_random_number_generator(random)
 
 
 def _coverage(membership: list[int], n: int, min_size: int) -> float:
