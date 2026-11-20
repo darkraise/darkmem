@@ -13,6 +13,7 @@ from app.repositories.graph import PostgresGraphRepository
 from app.repositories.vector import EmbedderFingerprintUnresolved, MemoryFilter, PostgresVectorRepository
 from app.services.llm import LLMOrchestrator
 from app.services import prompt
+from app.utils.cluster_names import name_clusters
 
 logger = logging.getLogger(__name__)
 
@@ -116,9 +117,8 @@ class GraphService:
                         fingerprint, scope, similarity_threshold, min_cluster_size,
                         effective_limit, total,
                     )
-                    # A degraded arm carries fallback names for clusters whose
-                    # naming call failed; caching it would pin them until the
-                    # corpus next changes.
+                    # A degraded arm's names were built without entity terms;
+                    # caching it would pin them until the corpus next changes.
                     if not degraded:
                         _result_cache[key] = memory_arm
                         while len(_result_cache) > _RESULT_CACHE_SIZE:
@@ -187,7 +187,23 @@ class GraphService:
             if cluster_id >= 0:
                 clusters.setdefault(cluster_id, []).append(mid)
 
-        cluster_names, degraded = await self._generate_cluster_names(clusters, memory_nodes)
+        tags = {m["id"]: m["tags"] or [] for m in memory_nodes}
+        projects = {m["id"]: m["project"] for m in memory_nodes}
+        entity_terms: dict[str, set[str]] = {}
+        degraded = False
+        if self.graph_repo:
+            try:
+                # The repository shares the request session: a failed statement
+                # outside a savepoint would abort the request's transaction.
+                async with self.session.begin_nested():
+                    entity_terms = await self.graph_repo.entity_terms_for_memories(
+                        [m["id"] for m in memory_nodes]
+                    )
+            except Exception:
+                logger.exception("Failed to fetch entity terms for cluster names")
+                entity_terms = {}
+                degraded = True
+        cluster_names = name_clusters(clusters, tags, projects, entity_terms)
         return {
             "memories": memory_nodes,
             "clusters": {str(k): v for k, v in clusters.items()},

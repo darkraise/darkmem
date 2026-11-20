@@ -1,6 +1,7 @@
 """The unified graph at scale: selection order, counts, clustering and cache."""
 from __future__ import annotations
 
+import json
 import threading
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -13,6 +14,7 @@ import app.services.graph as graph_module
 import app.utils.graph_knn as graph_knn_module
 from app.models.memory import Memory
 from app.repositories.graph import PostgresGraphRepository
+from app.config import settings
 from app.repositories.vector import MemoryFilter, PostgresVectorRepository
 from app.services.embedder_registry import child_table
 from app.services.graph import GraphService
@@ -43,7 +45,9 @@ async def _seed_partition(session) -> None:
     ))
 
 
-async def _add_memory(session, *, vector: list[float] | None = None, **fields) -> Memory:
+async def _add_memory(
+    session, *, vector: list[float] | None = None, tags: list[str] | None = None, **fields,
+) -> Memory:
     base = dict(
         id=uuid.uuid4(),
         content="graph scale memory",
@@ -70,7 +74,9 @@ async def _add_memory(session, *, vector: list[float] | None = None, **fields) -
                 "mid": base["id"],
                 "fp": FINGERPRINT,
                 "vec": str(vector),
-                "payload": '{"content": "%s", "source": "test", "tags": []}' % base["content"],
+                "payload": json.dumps(
+                    {"content": base["content"], "source": "test", "tags": tags or []}
+                ),
             },
         )
         await session.flush()
@@ -392,24 +398,88 @@ async def test_entity_overlay_is_added_to_a_cached_arm(session, monkeypatch):
     assert [e["name"] for e in overlaid["entities"]] == ["scale-cached"]
 
 
+class _NoChatLLM:
+    def llm_fingerprint(self) -> str:
+        return FINGERPRINT
+
+    async def chat_completion(self, purpose, **kwargs):
+        raise AssertionError("graph route called the LLM")
+
+
+async def _seed_tagged(session, *, tagged: bool = True) -> list[Memory]:
+    await _seed_partition(session)
+    return [
+        await _add_memory(
+            session,
+            vector=[1.0, 0.01 * i, 0.0, 0.0],
+            created_at=BASE + timedelta(days=i),
+            tags=(["retrieval", "lexical"] if i < 3 else ["retrieval"]) if tagged else None,
+        )
+        for i in range(5)
+    ]
+
+
 @pytest.mark.asyncio
-async def test_degraded_naming_is_not_cached(session, monkeypatch):
-    await _seed_five(session)
-    calls = 0
-    original = PostgresVectorRepository.get_louvain_clustered_vectors
+async def test_arm_names_come_from_the_namer_and_never_call_the_llm(session):
+    await _seed_tagged(session)
+    result = await _service(session, llm=_NoChatLLM()).get_unified_graph(
+        project="alpha", similarity_threshold=0.5,
+    )
+    assert result["cluster_names"] == {"0": "retrieval · lexical"}
 
-    async def counting(self, *args, **kwargs):
-        nonlocal calls
-        calls += 1
-        return await original(self, *args, **kwargs)
 
-    monkeypatch.setattr(PostgresVectorRepository, "get_louvain_clustered_vectors", counting)
-    svc = _service(session, llm=_FakeLLM(fail=True))
+@pytest.mark.asyncio
+async def test_read_only_graph_makes_no_llm_call(session, monkeypatch):
+    await _seed_tagged(session)
+    monkeypatch.setattr(settings, "read_only", True)
+    result = await _service(session, llm=_NoChatLLM()).get_unified_graph(
+        project="alpha", similarity_threshold=0.5,
+    )
+    assert result["cluster_names"] == {"0": "retrieval · lexical"}
 
-    await svc.get_unified_graph(project="alpha", similarity_threshold=0.5)
-    await svc.get_unified_graph(project="alpha", similarity_threshold=0.5)
 
-    assert calls == 2
+@pytest.mark.asyncio
+async def test_entity_terms_feed_the_names(session):
+    rows = await _seed_tagged(session, tagged=False)
+    graph_repo = PostgresGraphRepository(session)
+    for row in rows:
+        await graph_repo.create_entity("darkfoto", "project", {}, row.id)
+    svc = GraphService(
+        session,
+        vector_repo=PostgresVectorRepository(session),
+        graph_repo=graph_repo,
+        llm=_NoChatLLM(),
+    )
+    result = await svc.get_unified_graph(project="alpha", similarity_threshold=0.5)
+    assert result["cluster_names"] == {"0": "darkfoto"}
+
+
+class _BrokenEntityTerms:
+    def __init__(self, session):
+        self.session = session
+
+    async def entity_terms_for_memories(self, memory_ids):
+        await self.session.execute(text("SELECT CAST('not-a-uuid' AS uuid)"))
+        return {}
+
+
+@pytest.mark.asyncio
+async def test_failed_entity_terms_are_not_cached(session, monkeypatch):
+    await _seed_tagged(session)
+    calls = _count_builds(monkeypatch)
+    svc = GraphService(
+        session,
+        vector_repo=PostgresVectorRepository(session),
+        graph_repo=_BrokenEntityTerms(session),
+        llm=_FakeLLM(),
+    )
+
+    first = await svc.get_unified_graph(project="alpha", similarity_threshold=0.5)
+    second = await svc.get_unified_graph(project="alpha", similarity_threshold=0.5)
+
+    assert calls[0] == 2
+    assert first["cluster_names"] == {"0": "retrieval · lexical"}
+    assert second["cluster_names"] == {"0": "retrieval · lexical"}
 
 
 @pytest.mark.asyncio
@@ -422,6 +492,24 @@ async def test_similarity_edges_come_from_the_knn_pass(session):
     assert result["similarity_edges"]
     assert all(e["source"] in ids and e["target"] in ids for e in result["similarity_edges"])
     assert all(e["score"] >= 0.9 for e in result["similarity_edges"])
+
+    assert set(result) == {
+        "memories", "clusters", "cluster_names", "similarity_edges",
+        "total_memories", "memories_truncated", "fingerprint_unresolved",
+    }
+    assert isinstance(result["memories"], list)
+    assert isinstance(result["similarity_edges"], list)
+    assert isinstance(result["clusters"], dict)
+    assert all(
+        isinstance(k, str) and isinstance(v, list) and all(isinstance(m, str) for m in v)
+        for k, v in result["clusters"].items()
+    )
+    assert isinstance(result["cluster_names"], dict)
+    assert set(result["cluster_names"]) == set(result["clusters"])
+    assert all(isinstance(v, str) and v for v in result["cluster_names"].values())
+    assert type(result["total_memories"]) is int
+    assert isinstance(result["memories_truncated"], bool)
+    assert isinstance(result["fingerprint_unresolved"], bool)
 
 
 @pytest.mark.asyncio
