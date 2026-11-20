@@ -1,7 +1,16 @@
+import random
+
 import numpy as np
 import pytest
 
-from app.utils.graph_knn import _auto_chunk, cluster_labels, knn_graph, similarity_edges
+from app.utils import graph_knn
+from app.utils.graph_knn import (
+    KnnGraph,
+    _auto_chunk,
+    cluster_labels,
+    knn_graph,
+    similarity_edges,
+)
 
 
 def _normalized(x: np.ndarray) -> np.ndarray:
@@ -95,7 +104,7 @@ def test_cluster_labels_separate_blobs_and_drop_small_communities():
     b = np.array([0.0, 1.0, 0.0]) + rng.normal(scale=0.01, size=(10, 3))
     loner = np.array([[0.0, 0.0, 1.0]])
     vectors = np.vstack([a, b, loner]).astype(np.float32)
-    # k=9 makes each blob a complete graph, which Louvain keeps whole.
+    # k=9 makes each blob a complete graph, which the clustering keeps whole.
     graph = knn_graph(vectors, k=9, threshold=0.9)
     labels = cluster_labels(graph, len(vectors), min_cluster_size=3)
     assert len(set(labels[:10])) == 1
@@ -111,6 +120,92 @@ def test_cluster_labels_without_edges_are_all_unclustered():
     graph = knn_graph(vectors, k=2, threshold=0.9)
     assert cluster_labels(graph, 3, min_cluster_size=2) == [-1, -1, -1]
     assert cluster_labels(graph, 0, min_cluster_size=2) == []
+
+
+def _hand_graph(edges: list[tuple[int, int, float]]) -> KnnGraph:
+    edges = sorted((min(a, b), max(a, b), w) for a, b, w in edges)
+    return KnnGraph(
+        np.array([a for a, _, _ in edges], dtype=np.int32),
+        np.array([b for _, b, _ in edges], dtype=np.int32),
+        np.array([w for _, _, w in edges], dtype=np.float32),
+        np.zeros(len(edges), dtype=np.int16),
+    )
+
+
+def _ring_of_cliques(cliques: int = 30, size: int = 5) -> KnnGraph:
+    edges = []
+    for c in range(cliques):
+        base = c * size
+        for i in range(size):
+            for j in range(i + 1, size):
+                edges.append((base + i, base + j, 0.9))
+        edges.append((base + size - 1, ((c + 1) % cliques) * size, 0.9))
+    return _hand_graph(edges)
+
+
+def _joined_triangles_and_loners() -> KnnGraph:
+    edges = [
+        (0, 1, 0.9), (1, 2, 0.9), (0, 2, 0.9),
+        (3, 4, 0.9), (4, 5, 0.9), (3, 5, 0.9),
+        (2, 3, 0.5),
+    ]
+    return _hand_graph(edges)
+
+
+def test_cluster_labels_are_deterministic():
+    pytest.importorskip("igraph")
+    rng = np.random.default_rng(21)
+    centres = np.eye(3, 6)
+    vectors = np.vstack(
+        [c + rng.normal(scale=0.2, size=(20, 6)) for c in centres]
+    ).astype(np.float32)
+    graph = knn_graph(vectors, k=9, threshold=0.0)
+
+    random.seed(1)
+    random.random()
+    before = random.getstate()
+    first = cluster_labels(graph, 60, 3)
+    assert random.getstate() == before
+
+    random.seed(999)
+    before = random.getstate()
+    second = cluster_labels(graph, 60, 3)
+    assert random.getstate() == before
+    assert first == second
+
+
+def test_cluster_labels_split_a_ring_of_cliques():
+    pytest.importorskip("igraph")
+    labels = cluster_labels(_ring_of_cliques(), 150, 3)
+    per_clique = [set(labels[c * 5:(c + 1) * 5]) for c in range(30)]
+    assert all(len(s) == 1 for s in per_clique)
+    flat = [next(iter(s)) for s in per_clique]
+    assert all(flat[c] != flat[(c + 1) % 30] for c in range(30))
+    assert len(set(flat)) == 30
+    assert -1 not in flat
+
+
+def test_near_duplicate_view_falls_back_to_one_cluster():
+    pytest.importorskip("igraph")
+    vectors = np.array([[1.0, 0.01 * i, 0.0, 0.0] for i in range(5)], dtype=np.float32)
+    graph = knn_graph(vectors, k=15, threshold=0.5)
+    assert len(graph) == 10
+    assert cluster_labels(graph, 5, 3) == [0, 0, 0, 0, 0]
+
+
+def test_fallback_keeps_the_fine_result_unless_coarse_labels_more(monkeypatch):
+    pytest.importorskip("igraph")
+    monkeypatch.setattr(graph_knn, "FALLBACK_RESOLUTION", 0.0)
+
+    ring = cluster_labels(_ring_of_cliques(), 150, 3)
+    assert len(set(ring)) == 30
+
+    labels = cluster_labels(_joined_triangles_and_loners(), 10, 3)
+    assert labels[6:] == [-1, -1, -1, -1]
+    assert len(set(labels[:3])) == 1
+    assert len(set(labels[3:6])) == 1
+    assert labels[0] != labels[3]
+    assert sorted({labels[0], labels[3]}) == [0, 1]
 
 
 def test_similarity_edges_keep_only_top_ranks_and_map_ids():

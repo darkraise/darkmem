@@ -7,12 +7,17 @@ and only its top k survive.
 """
 from __future__ import annotations
 
+import random
 from collections import Counter
 from dataclasses import dataclass
 
 import numpy as np
 
 CLUSTER_K = 15
+CLUSTER_RESOLUTION = 2.0
+FALLBACK_RESOLUTION = 1.0
+MIN_CLUSTERED_SHARE = 0.9
+CLUSTER_SEED = 42
 EDGE_K = 5
 # Scratch per chunk is a float32 similarity block plus argpartition's int64
 # index, 12 bytes per cell; this keeps it near 128 MB at any corpus size.
@@ -93,28 +98,54 @@ def knn_graph(vectors, k: int, threshold: float, chunk_size: int | None = None) 
     return KnnGraph(lo[first], hi[first], sim[first], rank[first])
 
 
-def cluster_labels(graph: KnnGraph, n: int, min_cluster_size: int) -> list[int]:
-    import igraph
-
-    if n == 0:
-        return []
-    if len(graph) == 0:
-        membership = list(range(n))
-    else:
-        g = igraph.Graph(
-            n=n,
-            edges=np.column_stack((graph.src, graph.dst)).tolist(),
-            directed=False,
-        )
-        g.es["weight"] = graph.sim.astype(float).tolist()
-        membership = g.community_multilevel(weights="weight").membership
-
+def _drop_small(membership: list[int], min_cluster_size: int) -> list[int]:
     sizes = Counter(membership)
     renumbered: dict[int, int] = {}
     for community in sorted(sizes):
         if sizes[community] >= min_cluster_size:
             renumbered[community] = len(renumbered)
     return [renumbered.get(community, -1) for community in membership]
+
+
+def _leiden(g, resolution: float, min_cluster_size: int) -> list[int]:
+    import igraph
+
+    # A private Random leaves Python's global state alone. igraph's generator
+    # is process-global, which is safe only because the kNN executor runs one
+    # job at a time.
+    igraph.set_random_number_generator(random.Random(CLUSTER_SEED))
+    membership = g.community_leiden(
+        objective_function="modularity",
+        weights="weight",
+        resolution=resolution,
+        n_iterations=-1,
+    ).membership
+    return _drop_small(membership, min_cluster_size)
+
+
+def cluster_labels(graph: KnnGraph, n: int, min_cluster_size: int) -> list[int]:
+    import igraph
+
+    if n == 0:
+        return []
+    if len(graph) == 0:
+        return _drop_small(list(range(n)), min_cluster_size)
+
+    g = igraph.Graph(
+        n=n,
+        edges=np.column_stack((graph.src, graph.dst)).tolist(),
+        directed=False,
+    )
+    g.es["weight"] = graph.sim.astype(float).tolist()
+    labels = _leiden(g, CLUSTER_RESOLUTION, min_cluster_size)
+    labelled = sum(1 for label in labels if label >= 0)
+    if labelled < MIN_CLUSTERED_SHARE * n:
+        # Modularity at the fine resolution scores a small near-duplicate view
+        # best as singletons, which the size floor then drops.
+        coarse = _leiden(g, FALLBACK_RESOLUTION, min_cluster_size)
+        if sum(1 for label in coarse if label >= 0) > labelled:
+            return coarse
+    return labels
 
 
 def similarity_edges(graph: KnnGraph, ids: list[str], edge_k: int = EDGE_K) -> list[dict]:
