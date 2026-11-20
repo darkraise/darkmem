@@ -94,13 +94,13 @@
 | 87 | B4-18: property nodes are keyed by bare name and deleted together with the first owner's file | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 31 contracts | done | 6bb6606 |
 | 88 | B4-19: failure paths store unsanitised exception text; tokens sit in the git argv | docs/dforge/plans/2026-11-20-audit-remaining.md | A36 (Task 29) | done | 9124abd |
 | 89 | B4-20: a local checkout's fetch lane fast-forwards whichever branch is checked out | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 3 contracts | done | 4a02245 |
-| 90 | B4-21 and removal 5: the wiki config row is orphaned on repo delete, and the cache check is dead | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 32 contracts | doing | - |
+| 90 | B4-21 and removal 5: the wiki config row is orphaned on repo delete, and the cache check is dead | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 32 contracts | done | e48b9f1 |
 | 91 | B4-22: process_tracer reads a signature property nothing writes | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 31 contracts | done | 6bb6606 |
 | 92 | B4-23: code_deriver strips and rewrites every repo's assertions hourly, whether or not HEAD moved | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 30 contracts | done | 25029ab |
 | 93 | B4-24: cancel_repo_task does not check that the task belongs to the repository in the URL | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 29 contracts | done | 4a02245 |
-| 94 | B4-25: doc and comment drift in code_pipeline and repo_allowlist; CodeFile.last_commit_sha is served but never written | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 32 contracts | doing | - |
-| 95 | B4 removals 3, 4, 6, 7: TaskRegistry.get_all_running and cleanup_completed, the CallResolver named_imports/wildcard_imports arguments, RepoManager.get_auth_token, _implements_split's discarded return value | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 32 contracts | doing | - |
-| 96 | B4 removal 8: the CodeFile.last_commit_sha column | docs/dforge/plans/2026-11-20-audit-remaining.md | A47 (Task 32) | doing | - |
+| 94 | B4-25: doc and comment drift in code_pipeline and repo_allowlist; CodeFile.last_commit_sha is served but never written | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 32 contracts | done | e48b9f1 |
+| 95 | B4 removals 3, 4, 6, 7: TaskRegistry.get_all_running and cleanup_completed, the CallResolver named_imports/wildcard_imports arguments, RepoManager.get_auth_token, _implements_split's discarded return value | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 32 contracts | done | e48b9f1 |
+| 96 | B4 removal 8: the CodeFile.last_commit_sha column | docs/dforge/plans/2026-11-20-audit-remaining.md | A47 (Task 32) | done | e48b9f1 |
 | 97 | B5-2: a document block edit drops no vectors, so a failed embed after commit leaves the old-text vector forever and the route answers 500 for a write that landed | docs/dforge/plans/2026-11-20-audit-remaining.md | A25 (Task 33) | doing | - |
 | 98 | B5-3: upload streams up to 50 MB inside the global attachment lock and an open transaction; the Notion import holds the same lock for up to 900 s | docs/dforge/plans/2026-11-20-audit-remaining.md | A26 (Task 34) | doing | - |
 | 99 | B5-4: any content change re-embeds every block inline, and every unchanged re-push spends a real embed call | docs/dforge/plans/2026-11-20-audit-remaining.md | A28 (Task 33) | doing | - |
