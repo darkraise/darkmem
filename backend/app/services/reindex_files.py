@@ -22,7 +22,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from app.services.code_pipeline import is_discoverable_path
+from app.services.code_pipeline import git_visible_files, is_discoverable_path
 from app.services.code_reconcile import _file_hash
 
 # Bounds the caller's list, not the repository walk canonicalisation performs.
@@ -99,6 +99,7 @@ def classify_union_files(
     one the system can never index, present or not.
     """
     buckets = UnionBuckets()
+    visible = git_visible_files(work_dir)
 
     for name in names:
         path = work_dir / name
@@ -113,6 +114,9 @@ def classify_union_files(
             continue
         if not path.is_file():
             buckets.skipped_missing.append(name)
+            continue
+        if visible is not None and name not in visible:
+            buckets.skipped_unindexable.append(name)
             continue
         live = _file_hash(path)
         if live is None:

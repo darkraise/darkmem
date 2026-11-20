@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from app.services.reindex_files import (
     canonicalise_paths,
     classify_union_files,
@@ -189,3 +191,80 @@ def test_a_named_minified_file_lands_in_unindexable(tmp_path):
     assert buckets.skipped_unindexable == ["vendor/jquery.min.js"]
     assert buckets.accepted == []
 
+
+
+def _git(repo, *args):
+    import subprocess
+
+    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+
+
+def _ignoring_repo(tmp_path):
+    """A work tree with an ignored secret, an ignored directory, a tracked file
+    that matches an ignore pattern, and an untracked file nothing ignores."""
+    _git(tmp_path, "init", "-q")
+    _write(tmp_path, ".gitignore", ".env\nsecrets/\n*.log\n")
+    _write(tmp_path, "src/a.py", "x = 1\n")
+    _write(tmp_path, ".env", "API_KEY=not-for-the-index\n")
+    _write(tmp_path, "secrets/key.txt", "private\n")
+    _write(tmp_path, "kept.log", "tracked on purpose\n")
+    _write(tmp_path, "notes.md", "untracked, not ignored\n")
+    _git(tmp_path, "add", "src/a.py", ".gitignore")
+    _git(tmp_path, "add", "-f", "kept.log")
+    return tmp_path
+
+
+def test_discovery_leaves_out_what_git_ignores(tmp_path):
+    """A checkout registered by path holds more than its tracked files: `.env`,
+    credential notes, dumps. Walking the directory indexed all of it, sent it
+    to the embedding provider and served it through code search. What git
+    ignores is the owner's own statement of what does not belong to the code."""
+    from app.services.code_pipeline import _list_all_files
+
+    repo = _ignoring_repo(tmp_path)
+
+    assert set(_list_all_files(repo)) == {".gitignore", "src/a.py", "kept.log", "notes.md"}
+
+
+def test_discovery_walks_a_directory_that_is_not_a_work_tree(tmp_path):
+    """No repository, no ignore rules: the walk is all there is."""
+    from app.services.code_pipeline import _list_all_files
+
+    _write(tmp_path, "src/a.py", "x = 1\n")
+    _write(tmp_path, ".env", "PLAIN=1\n")
+
+    assert set(_list_all_files(tmp_path)) == {"src/a.py", ".env"}
+
+
+def test_discovery_skips_a_tracked_file_deleted_from_the_tree(tmp_path):
+    from app.services.code_pipeline import _list_all_files
+
+    repo = _ignoring_repo(tmp_path)
+    (repo / "src" / "a.py").unlink()
+
+    assert "src/a.py" not in _list_all_files(repo)
+
+
+def test_discovery_fails_rather_than_fall_back_when_git_cannot_read_the_tree(tmp_path):
+    """Falling back to the walk here would index exactly what the rules exclude."""
+    from app.services.code_pipeline import _list_all_files
+
+    _write(tmp_path, "src/a.py", "x = 1\n")
+    _write(tmp_path, ".git", "not a gitfile\n")
+
+    with pytest.raises(RuntimeError, match="git could not list"):
+        _list_all_files(tmp_path)
+
+
+def test_naming_an_ignored_file_does_not_index_it(tmp_path):
+    """The door decides membership by discovery's own rule, so an explicit
+    request cannot index what a full run would leave out."""
+    repo = _ignoring_repo(tmp_path)
+
+    buckets = classify_union_files(
+        repo, [".env", "secrets/key.txt", "src/a.py", "kept.log", "notes.md", "gone.py"], {},
+    )
+
+    assert buckets.skipped_unindexable == [".env", "secrets/key.txt"]
+    assert buckets.accepted == ["src/a.py", "kept.log", "notes.md"]
+    assert buckets.skipped_missing == ["gone.py"]

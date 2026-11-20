@@ -4,7 +4,9 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import re
+import subprocess
 import time
 from collections import deque, namedtuple
 from pathlib import Path, PurePosixPath
@@ -2071,16 +2073,54 @@ def is_discoverable_path(rel_path: str) -> bool:
     return not any(name.endswith(ext) for ext in IGNORED_EXTENSIONS)
 
 
+_GIT_LIST_TIMEOUT_SECONDS = 120
+
+
+def git_visible_files(work_dir: Path) -> frozenset[str] | None:
+    """The paths git counts as part of this work tree, or ``None`` outside one.
+
+    Tracked files plus untracked ones no ignore rule excludes: what
+    ``git status`` would show as tracked or untracked. A checkout registered by
+    path also holds what its owner deliberately keeps out of the repository
+    (``.env``, credential notes, dumps), and indexing those embeds them and
+    serves them through code search.
+
+    A tree git cannot read raises instead of returning ``None``: falling back
+    to a walk there would index exactly what the rules exclude. Only "not a
+    git repository" means there are no rules to honour.
+    """
+    try:
+        done = subprocess.run(
+            ["git", "-C", str(work_dir), "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            capture_output=True, timeout=_GIT_LIST_TIMEOUT_SECONDS,
+            env={**os.environ, "LC_ALL": "C"},
+        )
+    except FileNotFoundError:
+        return None
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(
+            f"git could not list {work_dir.name}: timed out after {_GIT_LIST_TIMEOUT_SECONDS}s"
+        ) from None
+    if done.returncode != 0:
+        reason = done.stderr.decode(errors="replace").strip()
+        if "not a git repository" in reason.lower():
+            return None
+        raise RuntimeError(f"git could not list {work_dir.name}: {reason[:300]}")
+    return frozenset(os.fsdecode(name) for name in done.stdout.split(b"\0") if name)
+
+
 def _list_all_files(work_dir: Path) -> list[str]:
-    files: list[str] = []
-    for path in work_dir.rglob("*"):
-        if not path.is_file():
-            continue
-        rel = path.relative_to(work_dir).as_posix()
-        if not is_discoverable_path(rel):
-            continue
-        files.append(rel)
-    return files
+    visible = git_visible_files(work_dir)
+    if visible is None:
+        candidates = [
+            path.relative_to(work_dir).as_posix()
+            for path in work_dir.rglob("*") if path.is_file()
+        ]
+    else:
+        # The index also lists a tracked file deleted from the tree, a
+        # submodule's gitlink and a nested repository's directory.
+        candidates = [rel for rel in sorted(visible) if (work_dir / rel).is_file()]
+    return [rel for rel in candidates if is_discoverable_path(rel)]
 
 
 # Cap on dependent caller files re-traced per incremental run, so a change to a
