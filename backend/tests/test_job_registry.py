@@ -410,3 +410,41 @@ async def test_runs_endpoint_paginates_newest_first(client, auth_headers, sessio
 async def test_runs_endpoint_404s_an_unknown_job(client, auth_headers):
     r = await client.get("/api/v1/jobs/not_a_job/runs", headers=auth_headers)
     assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_a_repeating_failure_notifies_once_until_its_error_changes(
+    setup_database, monkeypatch,
+):
+    """An outage fails the same job the same way on every tick. One message
+    says so; a message per tick buries it, and a job on a five-second cron
+    would send seventeen thousand a day."""
+    import app.services.notifications as notif
+    from app.services.job_registry import Job, JobRegistry
+
+    engine = create_async_engine(settings.test_database_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    reg = JobRegistry(factory)
+    sent: list[str | None] = []
+    failure = ["embedder unreachable"]
+
+    async def _spy(session_factory, *, job_key, error, duration_seconds):
+        sent.append(error)
+
+    async def _boom():
+        raise RuntimeError(failure[0])
+
+    monkeypatch.setattr(notif, "notify_job_failure", _spy)
+    reg.register(Job(key="repeating_failure", display_name="R", description="d",
+                     default_cron="*/5 * * * *", min_interval_seconds=1,
+                     runner=_boom))
+    try:
+        await reg._run_once("repeating_failure")
+        await reg._run_once("repeating_failure")
+        assert sent == ["embedder unreachable"]
+
+        failure[0] = "disk full"
+        await reg._run_once("repeating_failure")
+        assert sent == ["embedder unreachable", "disk full"]
+    finally:
+        await engine.dispose()

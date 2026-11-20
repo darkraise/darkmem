@@ -377,6 +377,7 @@ class JobRegistry:
                 # next tick retry.
                 logger.exception("Job %s load_config failed; skipping run", key)
                 return
+            previous_error = cfg.last_error if cfg.last_status == "error" else None
             cfg.last_run_at = datetime.now(timezone.utc)
             started_at = cfg.last_run_at
             result = None
@@ -419,9 +420,14 @@ class JobRegistry:
                 # so the job keeps firing on its next tick; the prior copy of
                 # this write outside the try is what could kill the loop forever.
                 logger.exception("Job %s save_config failed after run", key)
-            await self._record_run(key, cfg, started_at, result)
+            await self._record_run(
+                key, cfg, started_at, result,
+                repeated=cfg.last_status == "error" and cfg.last_error == previous_error,
+            )
 
-    async def _record_run(self, key: str, cfg, started_at, result) -> None:
+    async def _record_run(
+        self, key: str, cfg, started_at, result, *, repeated: bool = False,
+    ) -> None:
         """One `job_runs` row per run that had something to say.
 
         **The no-op rule.** A runner's return value is its work signal:
@@ -467,13 +473,15 @@ class JobRegistry:
         except Exception:
             logger.error("Job %s: failed to record run", key, exc_info=True)
 
-        if failed:
-            from app.services.notifications import notify_job_failure
+        # A failure repeating its previous run's error has already been
+        # announced. Every run still gets its `job_runs` row above.
+        if failed and not repeated:
+            from app.services import notifications
 
             # Outside the recording try/except on purpose: a notifier that
             # cannot reach Telegram must not look like a failure to record,
             # and neither may take the scheduling loop down.
-            await notify_job_failure(
+            await notifications.notify_job_failure(
                 self._session_factory,
                 job_key=key,
                 error=cfg.last_error,

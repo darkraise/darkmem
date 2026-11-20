@@ -88,3 +88,37 @@ async def test_notify_is_silent_when_the_channel_is_off(session_factory_for_test
         assert called is False
     finally:
         notif.send_telegram = original
+
+
+@pytest.mark.asyncio
+async def test_a_failure_message_escapes_the_error_text(monkeypatch):
+    """The message is sent in HTML mode, and an error is arbitrary text: an
+    unescaped ``<`` or ``&`` makes Telegram reject the whole message, so the
+    failures most worth reading are the ones that never arrive."""
+    from contextlib import asynccontextmanager
+
+    import app.services.notifications as notif
+
+    texts: list[str] = []
+
+    async def _settings(_session):
+        return {"telegram": {"enabled": True}, "notify_on": {"job_failure": True}}
+
+    async def _spy(_settings, text):
+        texts.append(text)
+        return True, None
+
+    @asynccontextmanager
+    async def _factory():
+        yield None
+
+    monkeypatch.setattr(notif, "get_settings", _settings)
+    monkeypatch.setattr(notif, "send_telegram", _spy)
+
+    await notif.notify_job_failure(
+        _factory, job_key="a<b", error="<Response [503]> for a & b", duration_seconds=1.0,
+    )
+
+    assert len(texts) == 1
+    assert "&lt;Response [503]&gt; for a &amp; b" in texts[0]
+    assert "<code>a&lt;b</code>" in texts[0]

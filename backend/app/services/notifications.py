@@ -10,6 +10,7 @@ alone" rather than "set it to three asterisks".
 """
 from __future__ import annotations
 
+import html
 import logging
 
 import httpx
@@ -125,10 +126,12 @@ async def notify_job_failure(
         if not settings.get("telegram", {}).get("enabled"):
             return
 
+        # Escaped because the message is sent in HTML mode and an error is
+        # arbitrary text: a bare `<` or `&` makes Telegram reject all of it.
         text = (
             f"<b>darkmem — job failed</b>\n"
-            f"<code>{job_key}</code> after {duration_seconds:.2f}s\n\n"
-            f"{(error or 'no error recorded')[:600]}"
+            f"<code>{html.escape(job_key)}</code> after {duration_seconds:.2f}s\n\n"
+            f"{html.escape((error or 'no error recorded')[:600])}"
         )
         sent, why = await send_telegram(settings, text)
         if not sent:
