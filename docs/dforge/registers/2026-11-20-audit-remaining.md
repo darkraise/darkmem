@@ -58,17 +58,17 @@
 | 51 | B3a-17: the dismissal journal payload stores note untruncated | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 19 contracts | done | f5f8bdbe |
 | 52 | B3a-18: the merge fold moves sources onto the keeper fact without emitting sources_changed | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 18 contracts | done | 635ebff |
 | 53 | B3a-19: _FACTS_ON_LOSER filters on subject_id/object_id, which have no index (add if merge volume grows) | - | - | deferred | declined in the spec: the reviewer's own condition (merge volume grows) does not hold |
-| 54 | B3b-2: annotate_undoability rebuilds the payload without pass_key, so the digest shows the wrong undoable state | docs/dforge/plans/2026-11-20-audit-remaining.md | A21 (Task 22) | doing | - |
+| 54 | B3b-2: annotate_undoability rebuilds the payload without pass_key, so the digest shows the wrong undoable state | docs/dforge/plans/2026-11-20-audit-remaining.md | A21 (Task 22) | done | b17e7fb |
 | 55 | B3b-3: no distinct or duplicate verdict is remembered, so the same top-scoring pairs are re-judged every rotation and later pairs starve | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 23 contracts | doing | - |
 | 56 | B3b-4, B3b-R2 and B3b-R5: refine replaces caller-supplied tags (including project/ tags) with the model's list, with no length validation | docs/dforge/plans/2026-11-20-audit-remaining.md | A20 (Task 21) | done | bb80816 |
 | 57 | B3b-5: CLAUDE.md says groundedness_gate stays closed, but the article surfaces gate on article_claim_gate; stale docstring | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 25 contracts | doing | - |
 | 58 | B3b-6: article gather, hash and staleness key on the subject name only while eligibility keys on name and entity_type | docs/dforge/plans/2026-11-20-audit-remaining.md | A23 (Task 24) | doing | - |
 | 59 | B3b-7: pinned subjects with zero facts fill synthesis_budget on every tick | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 24 contracts | doing | - |
-| 60 | B3b-8: dream and hygiene actions ignore record_event's False return | docs/dforge/plans/2026-11-20-audit-remaining.md | A22 (Task 22) | doing | - |
-| 61 | B3b-9: asymmetric top-N proximity appends a phantom associate journal row each rotation | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 22 contracts | doing | - |
+| 60 | B3b-8: dream and hygiene actions ignore record_event's False return | docs/dforge/plans/2026-11-20-audit-remaining.md | A22 (Task 22) | done | b17e7fb |
+| 61 | B3b-9: asymmetric top-N proximity appends a phantom associate journal row each rotation | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 22 contracts | done | b17e7fb |
 | 62 | B3b-10 and B3b-R1: the derivation contradiction arm is unreachable because EXCLUSIVE_RELATION_FAMILIES ships empty | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 23 contracts | doing | - |
 | 63 | B3b-12: re-synthesis attempts every settled stale article with no per-tick budget | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 24 contracts | doing | - |
-| 64 | B3b-13: a lock_timeout during undo surfaces as a 500 rather than a retryable conflict | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 22 contracts | doing | - |
+| 64 | B3b-13: a lock_timeout during undo surfaces as a 500 rather than a retryable conflict | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 22 contracts | done | b17e7fb |
 | 65 | B3b-14 and B3b-R4: undo's all-or-nothing holds only because the single HTTP caller rolls back; wrap the write phase in one begin_nested() | - | - | deferred | declined in the spec: CLAUDE.md records the no-savepoint shape as contract and an AST scan enforces it |
 | 66 | B3b-15: cursor helpers, the article-gate resolver, the locked memory projection and the fact-set hash queries are each duplicated | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 25 contracts | doing | - |
 | 67 | B3b-16 and B3b-R3: the ResearchGatherer Protocol has one implementation that returns a supplied list; server.py wrongly calls the authenticated door unauthenticated | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 25 contracts | doing | - |
