@@ -86,6 +86,7 @@ Each fix has a test that failed before the change.
 | An embedding failure's reason reaches the failure row instead of "Unknown error" | `services/pipeline.py` | `tests/test_pipeline_phase1.py` |
 | Job-failure notifications escape the error text and are sent once per repeating failure (B6-11) | `services/notifications.py`, `services/job_registry.py` | `tests/test_notifications.py`, `tests/test_job_registry.py` |
 | `ppr_snapshot` and `relation_embedding_refresh` skip their tick while their rank arm is off (B2-5) | `services/job_runners.py` | `tests/test_graph_arm_jobs.py` |
+| The code indexer lists files through git, so ignored files are no longer indexed, embedded or served by code search (B4-3) | `services/code_pipeline.py`, `services/reindex_files.py` | `tests/test_reindex_files.py` |
 | Mermaid export stays valid past 26 steps and escapes names (F1-3) | `frontend/src/demo/explore.ts` | `demo/__tests__/explore.test.ts` |
 | Saving LLM settings reports a refused save instead of "Saved" (F2-1) | `frontend/src/features/settings/use-llm-tab-binding.ts` | `settings-llm.real.test.tsx` |
 
@@ -131,15 +132,10 @@ Notes on three of them:
 
 The reviewers graded 15 findings high, 83 medium and 122 low; two of the
 highs are one finding seen from two tracks, so 14 distinct. Section 2 fixed
-seven of those and several mediums. The seven open highs follow.
+eight of those and several mediums. The six open highs follow.
 
 ### High
 
-- **B4-3, security.** The code indexer walks every file and ignores
-  `.gitignore`. A repository registered by `local_path` has its `.env`,
-  credential notes and SQL dumps chunked, sent to the embedding provider
-  and served through `code_search` to any `read` key. Remedy: build the
-  file list from `git ls-files --cached --others --exclude-standard`.
 - **F3-1, bug.** Sending in a second chat conversation aborts the first
   one's stream, and the server saves an answer only when its stream
   completes, so the first answer is lost.

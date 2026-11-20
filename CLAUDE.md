@@ -1079,6 +1079,15 @@ hashing. Git diagnostics redact URL userinfo for every forge, including
 checkout warnings and formatted timeout tracebacks. This is not a
 descriptor-based sandbox against concurrent hostile filesystem mutation.
 
+**Discovery is git's file list, not a directory walk.** `git_visible_files`
+(`code_pipeline.py`) lists tracked files plus untracked ones no ignore rule
+excludes, and `_list_all_files`, the drift scan and the explicit-file door
+all decide membership by it, so a checkout registered by path cannot index
+its `.env`, credential notes or dumps. A directory that is not a work tree is
+walked as before. A tree git cannot read fails the run; it never falls back
+to the walk. Files indexed before this rule leave the index on the next full
+reindex or drift scan.
+
 Incremental import resolution uses every surviving indexed repository file,
 while parsing, rewriting, embedding and phase-08 benefit accounting retain
 their incremental work subset. Direct binding metadata persists on file
