@@ -8,7 +8,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.repositories.graph import PostgresGraphRepository
-from app.services.fact_lift import reconcile_code_sources, run_lift
+from app.services.fact_lift import (
+    DEFAULT_LIFT_BATCH,
+    _lift_one,
+    _pending_candidates,
+    reconcile_code_sources,
+    run_lift,
+)
 from app.services.fact_provenance import withdraw_memory_sources
 from tests.conftest import test_engine
 from tests.test_fact_lift import assert_relation, facts, seed_memory, sources
@@ -33,7 +39,16 @@ async def test_withdrawal_waits_for_lift_before_counting_surviving_sources(setup
     async with factory() as lifting, factory() as withdrawing, factory() as observer:
         withdrawal = None
         try:
-            lifted = await run_lift(lifting)
+            # One candidate held uncommitted inside its batch: the lift keeps
+            # the fact's lock until that batch commits.
+            (candidate,) = [
+                c for c in await _pending_candidates(
+                    lifting, batch_size=DEFAULT_LIFT_BATCH, min_asserting_memories=1,
+                )
+                if c.project == project
+            ]
+            async with lifting.begin_nested():
+                lifted = await _lift_one(lifting, candidate)
             assert lifted.sources_added == 1
             withdrawing_pid = (await withdrawing.execute(text("SELECT pg_backend_pid()"))).scalar_one()
             withdrawal = asyncio.create_task(

@@ -76,6 +76,7 @@ from app.services.fact_provenance import memory_source_ref
 from app.services.job_runners import make_citation_reverify_runner
 from app.services.triple_key import compute_triple_key
 from app.services.verification_recompute import run_recompute
+from tests.test_deriver_lift import _next_parse
 
 BACKEND = Path(__file__).resolve().parents[1]
 
@@ -776,6 +777,7 @@ async def test_sole_source_removal_invalidates_without_deleting(session):
 
     await _set_imports(session, repo_id, ["httpx"])
     await assert_repo_graph(session, repo_id)
+    await _next_parse(session)
     await run_code_lift(session)
 
     after = await _fact_for(session, "drop-repo", "DEPENDS_ON", "fastapi")
@@ -806,6 +808,7 @@ async def test_a_fact_a_memory_also_sources_is_not_invalidated(session):
 
     await _set_imports(session, repo_id, ["httpx"])
     await assert_repo_graph(session, repo_id)
+    await _next_parse(session)
     await run_code_lift(session)
 
     after = await _fact_for(session, "shared-repo", "DEPENDS_ON", "fastapi")

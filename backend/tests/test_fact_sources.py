@@ -30,6 +30,14 @@ PROJECT = "t202-fact-sources"
 NOW = datetime(2026, 7, 29, 12, 0, 0, tzinfo=timezone.utc)
 
 
+def _required(profile) -> int:
+    return profile.required_origin_count_for(
+        n_diverse=CORROBORATION_N_DIVERSE,
+        n_default=CORROBORATION_N_DEFAULT,
+        time_gap_days=CORROBORATION_TIME_GAP_DAYS,
+    )
+
+
 async def _fact(session, *, subject: str = "postgres", project: str = PROJECT) -> str:
     row = await KnowledgeTripleRepository(session).insert_open(
         triple_key=compute_triple_key(project, subject, "RUNS_ON", "linux"),
@@ -414,7 +422,7 @@ async def test_diverse_kinds_lower_the_threshold_to_two(session):
     profile = await repo.origin_profile(fact_id)
     assert profile.kinds_are_diverse is True
     assert profile.origin_count == 2
-    assert profile.required_origin_count == CORROBORATION_N_DIVERSE == 2
+    assert _required(profile) == CORROBORATION_N_DIVERSE == 2
 
 
 async def test_same_kind_within_the_gap_needs_three(session):
@@ -428,7 +436,7 @@ async def test_same_kind_within_the_gap_needs_three(session):
     profile = await repo.origin_profile(fact_id)
     assert profile.kinds_are_diverse is False
     assert profile.max_cross_origin_gap == timedelta(days=3)
-    assert profile.required_origin_count == CORROBORATION_N_DEFAULT == 3
+    assert _required(profile) == CORROBORATION_N_DEFAULT == 3
 
 
 async def test_same_kind_across_the_gap_drops_back_to_two(session):
@@ -441,7 +449,7 @@ async def test_same_kind_across_the_gap_drops_back_to_two(session):
     profile = await repo.origin_profile(fact_id)
     assert profile.kinds_are_diverse is False
     assert profile.max_cross_origin_gap == gap
-    assert profile.required_origin_count == CORROBORATION_N_DIVERSE == 2
+    assert _required(profile) == CORROBORATION_N_DIVERSE == 2
 
 
 async def test_the_gap_is_inclusive_at_seven_days_and_open_below_it(session):
@@ -451,10 +459,10 @@ async def test_the_gap_is_inclusive_at_seven_days_and_open_below_it(session):
     await _add(repo, fact_id, ref="memory-a", origin="mcp:run-1", at=NOW)
     row = await _add(repo, fact_id, ref="memory-b", origin="mcp:run-2", at=NOW + just_under)
 
-    assert (await repo.origin_profile(fact_id)).required_origin_count == 3
+    assert _required(await repo.origin_profile(fact_id)) == 3
 
     await _backdate(session, row["id"], NOW + timedelta(days=CORROBORATION_TIME_GAP_DAYS))
-    assert (await repo.origin_profile(fact_id)).required_origin_count == 2
+    assert _required(await repo.origin_profile(fact_id)) == 2
 
 
 async def test_one_origin_talking_to_itself_for_a_month_cannot_lower_n(session):
@@ -469,7 +477,7 @@ async def test_one_origin_talking_to_itself_for_a_month_cannot_lower_n(session):
     profile = await repo.origin_profile(fact_id)
     assert profile.origin_count == 1
     assert profile.max_cross_origin_gap == timedelta(0)
-    assert profile.required_origin_count == CORROBORATION_N_DEFAULT
+    assert _required(profile) == CORROBORATION_N_DEFAULT
 
 
 async def test_one_origin_asserting_under_two_kinds_is_not_diverse(session):
@@ -483,7 +491,7 @@ async def test_one_origin_asserting_under_two_kinds_is_not_diverse(session):
     assert profile.origin_count == 1
     assert profile.origins[0].source_kinds == ("code", "memory")
     assert profile.kinds_are_diverse is False
-    assert profile.required_origin_count == CORROBORATION_N_DEFAULT
+    assert _required(profile) == CORROBORATION_N_DEFAULT
 
 
 async def test_the_unknown_bucket_cannot_lower_n_by_itself(session):
@@ -504,7 +512,7 @@ async def test_the_unknown_bucket_cannot_lower_n_by_itself(session):
     assert profile.origin_count == 1
     assert profile.kinds_are_diverse is False
     assert profile.max_cross_origin_gap == timedelta(0)
-    assert profile.required_origin_count == CORROBORATION_N_DEFAULT
+    assert _required(profile) == CORROBORATION_N_DEFAULT
 
 
 async def test_an_anonymous_row_cannot_supply_the_kind_diversity(session):
@@ -525,7 +533,7 @@ async def test_an_anonymous_row_cannot_supply_the_kind_diversity(session):
     assert profile.has_unknown_origin is True
     assert profile.source_kinds == ("code", "memory")
     assert profile.kinds_are_diverse is False
-    assert profile.required_origin_count == CORROBORATION_N_DEFAULT
+    assert _required(profile) == CORROBORATION_N_DEFAULT
 
 
 async def test_an_anonymous_row_cannot_supply_the_time_gap(session):
@@ -539,7 +547,7 @@ async def test_an_anonymous_row_cannot_supply_the_time_gap(session):
     profile = await repo.origin_profile(fact_id)
     assert profile.origin_count == 2
     assert profile.max_cross_origin_gap == timedelta(0)
-    assert profile.required_origin_count == CORROBORATION_N_DEFAULT
+    assert _required(profile) == CORROBORATION_N_DEFAULT
 
 
 async def test_anonymous_rows_do_not_disarm_a_gate_two_real_origins_supply(session):
@@ -558,7 +566,7 @@ async def test_anonymous_rows_do_not_disarm_a_gate_two_real_origins_supply(sessi
     profile = await repo.origin_profile(fact_id)
     assert profile.origin_count == 3
     assert profile.kinds_are_diverse is True
-    assert profile.required_origin_count == CORROBORATION_N_DIVERSE
+    assert _required(profile) == CORROBORATION_N_DIVERSE
 
     gapped = await _fact(session, subject="redis")
     await _add(repo, gapped, ref="memory-a", origin="mcp:run-1", at=NOW)
@@ -570,7 +578,7 @@ async def test_anonymous_rows_do_not_disarm_a_gate_two_real_origins_supply(sessi
     gapped_profile = await repo.origin_profile(gapped)
     assert gapped_profile.origin_count == 3
     assert gapped_profile.max_cross_origin_gap == timedelta(days=9)
-    assert gapped_profile.required_origin_count == CORROBORATION_N_DIVERSE
+    assert _required(gapped_profile) == CORROBORATION_N_DIVERSE
 
 
 async def test_the_widest_cross_origin_gap_wins(session):
@@ -588,7 +596,7 @@ async def test_the_widest_cross_origin_gap_wins(session):
     profile = await repo.origin_profile(fact_id)
     assert profile.origin_count == 2
     assert profile.max_cross_origin_gap == timedelta(days=18)
-    assert profile.required_origin_count == CORROBORATION_N_DIVERSE
+    assert _required(profile) == CORROBORATION_N_DIVERSE
 
 
 async def test_a_fact_with_no_sources_profiles_empty(session):
@@ -599,60 +607,11 @@ async def test_a_fact_with_no_sources_profiles_empty(session):
     assert profile.origin_count == 0
     assert profile.source_kinds == ()
     assert profile.max_cross_origin_gap == timedelta(0)
-    assert profile.required_origin_count == CORROBORATION_N_DEFAULT
+    assert _required(profile) == CORROBORATION_N_DEFAULT
     assert await repo.count_distinct_origins(fact_id) == 0
 
 
 # ── The reverse lookup ──────────────────────────────────────────────
-
-
-async def test_facts_for_source_returns_what_a_source_asserts(session):
-    repo = FactSourceRepository(session)
-    first = await _fact(session, subject="postgres")
-    second = await _fact(session, subject="redis")
-    third = await _fact(session, subject="valkey")
-    await _add(repo, first, ref="memory-a", origin="mcp:run-1")
-    await _add(repo, second, ref="memory-a", origin="mcp:run-1")
-    await _add(repo, third, ref="memory-b", origin="mcp:run-1")
-
-    found = await repo.facts_for_source("memory", "memory-a", project=PROJECT)
-
-    assert sorted(found) == sorted([first, second])
-    assert third not in found
-
-
-async def test_facts_for_source_does_not_cross_projects(session):
-    """One human reviewer is the same source_ref in every project."""
-    repo = FactSourceRepository(session)
-    mine = await _fact(session, subject="postgres", project=PROJECT)
-    theirs = await _fact(session, subject="postgres", project="t202-other-project")
-    await _add(repo, mine, kind="human", ref="user-7", origin="human:user-7")
-    await _add(repo, theirs, kind="human", ref="user-7", origin="human:user-7")
-
-    assert await repo.facts_for_source("human", "user-7", project=PROJECT) == [mine]
-    assert await repo.facts_for_source(
-        "human", "user-7", project="t202-other-project"
-    ) == [theirs]
-
-
-# `block` is back on this list: the bridge that made it writable is retired,
-# so a withdrawal sweep for one would sweep a kind nothing ever wrote.
-@pytest.mark.parametrize("kind", ["article", "document", "block", "memories"])
-async def test_facts_for_source_refuses_a_kind_add_source_could_not_write(session, kind):
-    """A typo must raise, not answer "nothing to withdraw" with an empty list."""
-    repo = FactSourceRepository(session)
-
-    with pytest.raises(ValueError):
-        await repo.facts_for_source(kind, "memory-a", project=PROJECT)
-
-
-async def test_facts_for_source_is_empty_for_an_unknown_source(session):
-    repo = FactSourceRepository(session)
-    fact_id = await _fact(session)
-    await _add(repo, fact_id, ref="memory-a", origin="mcp:run-1")
-
-    assert await repo.facts_for_source("memory", "memory-zzz", project=PROJECT) == []
-    assert await repo.facts_for_source("code", "memory-a", project=PROJECT) == []
 
 
 def test_block_is_not_a_source_kind():

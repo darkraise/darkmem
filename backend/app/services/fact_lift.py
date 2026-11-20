@@ -136,15 +136,18 @@ fact into two groups, and the damage is not cosmetic — see ``_canon``.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.config import Config
 from app.repositories.fact_sources import CODE_SOURCE_KIND, FactSourceRepository
 from app.repositories.knowledge_triples import (
     BORN_RUNG_PRECONDITION,
@@ -155,7 +158,7 @@ from app.services.code_deriver import (
     dependency_name,
     is_internal_import,
 )
-from app.services.contradiction_veto import adjudicate_contradiction
+from app.services.code_deriver_job import CODE_DERIVER_JOB_KEY
 from app.services.events import record_event
 from app.services.fact_provenance import MEMORY_SOURCE_KIND, lock_facts_for_withdrawal, memory_source_ref
 from app.services.job_registry import FieldDescriptor
@@ -169,6 +172,7 @@ logger = logging.getLogger(__name__)
 # bounded; the scan below selects only groups with outstanding work, so
 # successive ticks make progress instead of re-walking the same prefix.
 DEFAULT_LIFT_BATCH = 50
+LIFT_COMMIT_BATCH = 10
 MAX_LIFT_BATCH = 1000
 DEFAULT_MIN_ASSERTING_MEMORIES = 1
 MAX_MIN_ASSERTING_MEMORIES = 10
@@ -647,11 +651,13 @@ async def run_lift(
     batch_size: int = DEFAULT_LIFT_BATCH,
     min_asserting_memories: int = DEFAULT_MIN_ASSERTING_MEMORIES,
 ) -> LiftOutcome:
-    """One lift tick. Does not commit — transaction control is the caller's.
+    """One lift tick, committed after every ``LIFT_COMMIT_BATCH`` candidates.
 
     Each candidate is written inside its own savepoint so a poisonous one
     settles alone: a provenance failure rolls back the fact row it was meant to
     justify, rather than leaving an unfalsifiable fact behind or aborting the
+    whole tick. The commits release the fact and memory locks a batch took, so
+    a re-extraction or a memory delete waits for one batch rather than for the
     whole tick.
     """
     candidates = await _pending_candidates(
@@ -660,11 +666,15 @@ async def run_lift(
         min_asserting_memories=min_asserting_memories,
     )
     created = added = 0
-    # One wait budget for the whole tick, not one per candidate: every share
-    # lock taken so far is held until the caller commits, so a re-extraction
-    # blocked on one of them waits out every later candidate's retries too.
-    lock_deadline = _memory_lock_deadline()
-    for candidate in candidates:
+    for index, candidate in enumerate(candidates):
+        if index % LIFT_COMMIT_BATCH == 0:
+            if index:
+                await session.commit()
+            # One wait budget per batch, not one per candidate: every share
+            # lock the batch took so far is held until its commit, so a
+            # re-extraction blocked on one of them waits out every later
+            # candidate's retries too.
+            lock_deadline = _memory_lock_deadline()
         try:
             async with session.begin_nested():
                 lifted = await _lift_one(session, candidate, lock_deadline)
@@ -700,6 +710,8 @@ async def run_lift(
             )
         created += int(lifted.minted)
         added += lifted.sources_added
+    if candidates:
+        await session.commit()
     return LiftOutcome(
         candidates=len(candidates),
         facts_created=created,
@@ -1101,33 +1113,17 @@ async def _restore_born_rungs(session: AsyncSession, *, rows: list[dict]) -> int
     Runs after the withdrawal rather than before it, so a fact that lost a
     source this tick is judged on the provenance it has now.
 
-    **The veto is consulted here, and it is the whole reason this pass composes
-    two questions instead of one** (fix round 2). ``restore_born_rung``'s WHERE
-    refuses a ``disputed`` row, which covers a dispute the recompute has already
-    *applied* — but the verdict and the status write are two steps and the
-    recompute is the second one, so between them a vetoed fact still reads
-    ``candidate``. Restoring inside that window is an upward move at the one
-    moment the ladder itself would refuse one, undone by the next recompute. The
-    consult runs only over rows already at the rung's precondition, and it can
-    only decline a restore — never grant one — so the producer still does not
-    grade its own output.
-
-    **Inert today, and kept for the day it is not** (T2.109). Doc 08 §4.2's
-    2026-08-08 amendment took the model scan off the veto, which was the only
-    detector that could have fired on this population: what is left reaches
-    ``REPLACES_FAMILY`` over an empty ``SINGLE_VALUED_RELATIONS``, and the
-    deriver mints only ``USES`` and ``DEPENDS_ON``. The consult is therefore a
-    guard nothing currently trips rather than a guard that does nothing —
-    admitting one single-valued relation makes it live again, and a suspected
-    contradiction deliberately does *not* trip it, because withholding a label
-    on a model's say-so is the same instrument the amendment removed, pointed
-    the other way.
+    No contradiction veto is consulted. ``restore_born_rung``'s WHERE refuses
+    a ``disputed`` row, which covers every dispute the recompute has applied;
+    the deterministic detector cannot fire on this population (the deriver
+    mints only ``USES`` and ``DEPENDS_ON`` and ``SINGLE_VALUED_RELATIONS`` is
+    empty), and the model scan is not a veto input. Admitting a single-valued
+    relation would open a window between a verdict and the recompute applying
+    it in which a restore is undone by that recompute.
     """
     restored = 0
     for row in rows:
         if row["verification_status"] != BORN_RUNG_PRECONDITION:
-            continue
-        if await adjudicate_contradiction(session, str(row["fact_id"])):
             continue
         if await restore_born_rung(session, fact_id=str(row["fact_id"])):
             restored += 1
@@ -1252,6 +1248,34 @@ async def _withdraw_code_sources(
     return len(rows), invalidated
 
 
+# What the code reconcile compares against moves only when a repository's
+# indexed commit moves, a repository comes or goes, or the deriver rewrites
+# the repositories' assertions (it runs on its own cadence, after the index).
+# Its job run row lands after its writes commit, so a stamp that has not moved
+# means the stored provenance was last reconciled against the current graph.
+_LIFT_STATE_CONFIG_KEY = "fact_lift_state"
+_CODE_GRAPH_STAMP = "code_graph_stamp"
+_REPOSITORY_COMMITS = text(
+    "SELECT CAST(id AS text), last_indexed_commit FROM repositories ORDER BY id"
+)
+_LAST_DERIVATION = text("""
+    SELECT CAST(id AS text) FROM job_runs
+    WHERE job_key = CAST(:key AS text)
+    ORDER BY started_at DESC, id DESC
+    LIMIT 1
+""")
+
+
+async def _code_graph_stamp(session: AsyncSession) -> str:
+    repositories = [list(row) for row in (await session.execute(_REPOSITORY_COMMITS)).all()]
+    derivation = (
+        await session.execute(_LAST_DERIVATION, {"key": CODE_DERIVER_JOB_KEY})
+    ).scalar_one_or_none()
+    return hashlib.sha256(
+        json.dumps([repositories, derivation]).encode("utf-8")
+    ).hexdigest()
+
+
 async def reconcile_code_sources(session: AsyncSession) -> tuple[int, int, int]:
     """Reconcile stored code provenance against what the repositories assert.
 
@@ -1330,7 +1354,18 @@ async def run_code_lift(
     per candidate — a repository asserts tens to hundreds of relations and they
     all read the same two code-side tables.
     """
-    withdrawn, invalidated, restored = await reconcile_code_sources(session)
+    stamp = await _code_graph_stamp(session)
+    state = (
+        await session.execute(select(Config).where(Config.key == _LIFT_STATE_CONFIG_KEY))
+    ).scalar_one_or_none()
+    if state is not None and (state.value or {}).get(_CODE_GRAPH_STAMP) == stamp:
+        withdrawn = invalidated = restored = 0
+    else:
+        withdrawn, invalidated, restored = await reconcile_code_sources(session)
+        if state is None:
+            session.add(Config(key=_LIFT_STATE_CONFIG_KEY, value={_CODE_GRAPH_STAMP: stamp}))
+        else:
+            state.value = {**(state.value or {}), _CODE_GRAPH_STAMP: stamp}
 
     candidates = await _code_candidates(session, batch_size=batch_size)
     witnesses_by_repo: dict[str, tuple[str | None, dict[str, _CodeWitness]]] = {}

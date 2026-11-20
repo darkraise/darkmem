@@ -120,10 +120,23 @@ class ClaimGate:
         return self.open
 
 
+# Every served corroborated row asks the gate, so the parsed record is kept
+# per path until the file's mtime or size moves. A module-level cache is the
+# whole cache only because one worker serves every request (invariant 13).
+_RECORD_CACHE: dict[Path, tuple[tuple[int, int], dict | None]] = {}
+
+
 def _load_record(path: Path) -> dict | None:
     path = Path(path)
-    if not path.exists():
+    try:
+        stat = path.stat()
+    except OSError:
+        _RECORD_CACHE.pop(path, None)
         return None
+    version = (stat.st_mtime_ns, stat.st_size)
+    cached = _RECORD_CACHE.get(path)
+    if cached is not None and cached[0] == version:
+        return cached[1]
     try:
         with open(path, encoding="utf-8") as fh:
             record = json.load(fh)
@@ -133,8 +146,10 @@ def _load_record(path: Path) -> dict | None:
     # row, candidate rows included, 500ing because the gate file was corrupt.
     except (OSError, ValueError):
         logger.warning("claim-gate record %s is unreadable; treating as absent", path)
-        return None
-    return record if isinstance(record, dict) else None
+        record = None
+    record = record if isinstance(record, dict) else None
+    _RECORD_CACHE[path] = (version, record)
+    return record
 
 
 def corroboration_gate(path: Path | None = None) -> ClaimGate:

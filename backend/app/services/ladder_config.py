@@ -62,10 +62,9 @@ MEASUREMENT_TASK = "T2.40"
 class LadderConfig:
     """The three numbers the threshold rule needs, already validated.
 
-    The defaults are the *same* values ``fact_sources`` computes
-    ``required_origin_count`` from -- imported, never re-typed -- so the
-    ladder's floor and the repository's constant cannot drift apart into two
-    spellings of N.
+    The defaults are the *same* values ``fact_sources`` declares -- imported,
+    never re-typed -- so the ladder's floor and the repository's constant
+    cannot drift apart into two spellings of N.
     """
 
     n_default: int = CORROBORATION_N_DEFAULT

@@ -580,7 +580,10 @@ async def checked_by_recompute(
 
 
 async def badges_for_facts(
-    session: AsyncSession, rows: Sequence[Mapping[str, Any]]
+    session: AsyncSession,
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    evidence: Mapping[str, Any] | None = None,
 ) -> dict[str, Badge]:
     """One badge per fact row, in at most four batched queries however long
     the page.
@@ -589,14 +592,16 @@ async def badges_for_facts(
     fact, the recompute's progress (Degradation 1), and — only when something
     on the page is disputed — the profiles of the counterparts those disputes
     name. A per-row fan-out would put a page's worth of round trips behind a
-    browsing list.
+    browsing list. A caller that already read the ``verified`` evidence for
+    these rows passes it as ``evidence``.
     """
     if not rows:
         return {}
     fact_ids = [str(row["id"]) for row in rows]
     sources = FactSourceRepository(session)
     profiles = await sources.origin_profiles(fact_ids)
-    evidence = await latest_verified_evidence(session, fact_ids)
+    if evidence is None:
+        evidence = await latest_verified_evidence(session, fact_ids)
     checked = await checked_by_recompute(session, fact_ids)
 
     counterpart_by_fact: dict[str, tuple[str | None, str | None]] = {}

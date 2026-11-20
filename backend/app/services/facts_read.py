@@ -185,8 +185,10 @@ async def get_fact(session: AsyncSession, fact_id: UUID | str) -> dict | None:
     row = await repo.get(fact_id)
     if row is None:
         return None
-    badges = await badges_for_facts(session, [row])
-    item = _base_item(row, badges[str(row["id"])])
+    fid = str(row["id"])
+    evidence = await latest_verified_evidence(session, [fid])
+    badges = await badges_for_facts(session, [row], evidence=evidence)
+    item = _base_item(row, badges[fid])
 
     groups = await FactSourceRepository(session).sources_by_origin(row["id"])
     item["sources"] = [_source_group(group) for group in groups]
@@ -195,8 +197,6 @@ async def get_fact(session: AsyncSession, fact_id: UUID | str) -> dict | None:
     item["source_file"] = row["source_file"]
     item["reference_time"] = row["reference_time"]
 
-    fid = str(row["id"])
-    evidence = await latest_verified_evidence(session, [fid])
     item["dispute"] = dispute_label(row, evidence.get(fid))
 
     # `newest_first=True`: a fact's ladder is read to understand how it got

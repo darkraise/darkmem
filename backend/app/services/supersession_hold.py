@@ -167,7 +167,10 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.fact_provenance import MEMORY_SOURCE_KIND
+from app.services.fact_provenance import (
+    _CANONICAL_REF as CANONICAL_MEMORY_REF,
+    MEMORY_SOURCE_KIND,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +183,10 @@ _SUPERSEDED_SOURCE_SQL = text("""
     SELECT fs.source_ref AS memory_ref,
            CAST(m.superseded_by AS text) AS superseder_ref
     FROM fact_sources fs
-    JOIN memories m ON CAST(m.id AS text) = fs.source_ref
+    JOIN memories m ON m.id = CASE
+        WHEN fs.source_ref ~ CAST(:canonical AS text)
+        THEN CAST(fs.source_ref AS uuid)
+    END
     JOIN memories sup ON sup.id = m.superseded_by
     WHERE fs.fact_id = CAST(:fact_id AS uuid)
       AND fs.source_kind = CAST(:kind AS text)
@@ -238,7 +244,11 @@ async def detect_supersession_hold(
     """
     result = await session.execute(
         _SUPERSEDED_SOURCE_SQL,
-        {"fact_id": str(fact_id), "kind": MEMORY_SOURCE_KIND},
+        {
+            "fact_id": str(fact_id),
+            "kind": MEMORY_SOURCE_KIND,
+            "canonical": CANONICAL_MEMORY_REF,
+        },
     )
     row = result.mappings().first()
     if row is None:

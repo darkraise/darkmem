@@ -68,8 +68,27 @@ async def _prime_slow_arm(session) -> None:
     `slow_arm_last_run_at` far enough in the future that a later call
     anchored to a *real*, un-inflated timestamp (an event's own recorded
     `created_at`, for instance) reads as comfortably not-yet-due.
+
+    The priming tick's drain is short, so it would stand the watermark at its
+    future `safe_until` and hide every event the test writes afterwards; the
+    watermark is put at the real tail of `sources_changed` instead, the
+    "nothing outstanding" baseline `_reset_recompute_state` also seeds.
     """
+    from dataclasses import replace
+
+    from app.services.verification_recompute import _load_state, _save_state
+
     await run_recompute(session, now=_safe_now())
+    tail_ts, tail_id = await _tail(
+        session,
+        "SELECT created_at, id FROM events WHERE event_type = 'sources_changed' "
+        "ORDER BY created_at DESC, id DESC LIMIT 1",
+    )
+    await _save_state(session, replace(
+        await _load_state(session),
+        watermark_created_at=tail_ts,
+        watermark_id=tail_id,
+    ))
     await session.commit()
 
 

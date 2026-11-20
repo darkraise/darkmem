@@ -14,9 +14,9 @@ Four rules, all enforced here rather than left to callers:
 1. **Distinct origins, never rows** — ``count_distinct_origins`` and every count
    inside ``origin_profile`` group by origin.
 2. **The threshold N is diversity-sensitive** — ``OriginProfile`` exposes
-   ``required_origin_count``: ``CORROBORATION_N_DIVERSE`` when the origins
-   differ in ``source_kind`` or lie ``CORROBORATION_TIME_GAP_DAYS`` apart across
-   two distinct origins, else ``CORROBORATION_N_DEFAULT``. Both gates need two
+   ``required_origin_count_for``: ``n_diverse`` when the origins
+   differ in ``source_kind`` or lie ``time_gap_days`` apart across two
+   distinct origins, else ``n_default``. Both gates need two
    *distinct* origins, so one origin can never lower its own bar. This module
    computes N; it never compares it to anything and never writes
    ``verification_status`` — the ladder is T2.03's.
@@ -90,7 +90,11 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.knowledge_triples import OPEN_BELIEF_PREDICATE
-from app.services.fact_provenance import MEMORY_SOURCE_KIND, memory_source_ref
+from app.services.fact_provenance import (
+    _CANONICAL_REF as CANONICAL_MEMORY_REF,
+    MEMORY_SOURCE_KIND,
+    memory_source_ref,
+)
 from app.utils.ids import new_id
 
 logger = logging.getLogger(__name__)
@@ -122,6 +126,19 @@ CODE_SOURCE_KIND = "code"
 # content is not among them — nothing mints a source from a block, so the two
 # spellings a caller might reach for are reserved below rather than writable.
 SOURCE_KINDS = frozenset({MEMORY_SOURCE_KIND, CODE_SOURCE_KIND, "human"})
+
+_MEMORY_SOURCES_FOR_FACT = text("""
+    SELECT DISTINCT CAST(m.id AS text) AS memory_id,
+           m.project, m.status, m.created_at
+    FROM fact_sources fs
+    JOIN memories m ON m.id = CASE
+        WHEN fs.source_ref ~ CAST(:canonical AS text)
+        THEN CAST(fs.source_ref AS uuid)
+    END
+    WHERE fs.fact_id = CAST(:fact_id AS uuid)
+      AND fs.source_kind = CAST(:kind AS text)
+    ORDER BY 1
+""")
 
 _RESERVED_SOURCE_KINDS = {
     # Doc 08 §4.1 names a `document` origin ("document -> document_id") and
@@ -327,9 +344,8 @@ class OriginProfile:
 
         The rule itself lives here — one spelling, next to the
         ``attributable_origins`` semantics it depends on — while the three
-        numbers come from the caller. T2.03's ladder passes values merged from
-        the ``verification_ladder`` config row; ``required_origin_count`` below
-        passes this module's constants. Neither restates the rule.
+        numbers come from the caller: the ladder passes values merged from the
+        ``verification_ladder`` config row.
         """
         if self.kinds_are_diverse:
             return n_diverse
@@ -350,15 +366,6 @@ class OriginProfile:
         if self.max_cross_origin_gap >= timedelta(days=time_gap_days):
             return "time_gap"
         return "none"
-
-    @property
-    def required_origin_count(self) -> int:
-        """N — the distinct-origin count promotion would require."""
-        return self.required_origin_count_for(
-            n_diverse=CORROBORATION_N_DIVERSE,
-            n_default=CORROBORATION_N_DEFAULT,
-            time_gap_days=CORROBORATION_TIME_GAP_DAYS,
-        )
 
 
 @dataclass(frozen=True)
@@ -670,22 +677,19 @@ class FactSourceRepository:
         record — the lineage reads walk pointers status-blind, and the self-FK
         requires existence and nothing else.
 
-        The join casts ``memories.id`` to text rather than the ref to uuid:
-        ``source_ref`` holds every kind's spelling, and a planner free to hoist
-        ``CAST(source_ref AS uuid)`` above the kind filter would abort on the
-        first non-uuid ref.
+        The ref is cast to uuid only inside a ``CASE`` that first matches the
+        canonical spelling: ``source_ref`` holds every kind's spelling, and a
+        bare ``CAST(source_ref AS uuid)`` the planner hoisted above the kind
+        filter would abort on the first non-uuid ref. Casting ``memories.id``
+        to text instead would be safe and would scan ``memories`` per call.
         """
         result = await self.session.execute(
-            text("""
-                SELECT DISTINCT CAST(m.id AS text) AS memory_id,
-                       m.project, m.status, m.created_at
-                FROM fact_sources fs
-                JOIN memories m ON CAST(m.id AS text) = fs.source_ref
-                WHERE fs.fact_id = CAST(:fact_id AS uuid)
-                  AND fs.source_kind = CAST(:kind AS text)
-                ORDER BY 1
-            """),
-            {"fact_id": str(fact_id), "kind": MEMORY_SOURCE_KIND},
+            _MEMORY_SOURCES_FOR_FACT,
+            {
+                "fact_id": str(fact_id),
+                "kind": MEMORY_SOURCE_KIND,
+                "canonical": CANONICAL_MEMORY_REF,
+            },
         )
         return tuple(
             MemorySource(
@@ -775,41 +779,3 @@ class FactSourceRepository:
         )
         row = result.mappings().one()
         return int(row["total"]), int(row["open"])
-
-    async def facts_for_source(
-        self,
-        source_kind: str,
-        source_ref: str,
-        *,
-        project: str,
-    ) -> list[str]:
-        """Which facts a given source asserts — the reverse lookup.
-
-        ``project`` is required, not an optional filter, for the reason T2.01
-        made ``get_live`` and ``as_of`` require it: the scope belongs in the
-        repository, not at the front door. It is load-bearing here rather than
-        merely tidy, because ``source_ref`` is a **soft** reference with no FK —
-        one human reviewer, or one repository shared between projects, is the
-        same ``source_ref`` across several project scopes.
-
-        Deliberately unbounded and not filtered by the belief axis: the callers
-        are the withdrawal sweep and the recompute enqueue, and a truncated or
-        liveness-filtered answer would silently leave provenance behind. The
-        kind is validated for the same reason: a kind no ``add_source`` could
-        have written would return an empty list, and a withdrawal sweep with a
-        typo would find nothing to withdraw and report no error.
-        """
-        kind = _validate_source_kind(source_kind)
-        result = await self.session.execute(
-            text("""
-                SELECT DISTINCT fs.fact_id
-                FROM fact_sources fs
-                JOIN knowledge_triples kt ON kt.id = fs.fact_id
-                WHERE fs.source_kind = CAST(:source_kind AS text)
-                  AND fs.source_ref = CAST(:source_ref AS text)
-                  AND kt.project = CAST(:project AS text)
-                ORDER BY fs.fact_id
-            """),
-            {"source_kind": kind, "source_ref": source_ref, "project": project},
-        )
-        return [str(row["fact_id"]) for row in result.mappings().all()]

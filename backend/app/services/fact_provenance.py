@@ -32,10 +32,10 @@ minted the fact. The asserted set is read back from ``entity_relations`` after
 Phase 5's strip-and-write rather than from the extraction payload, so what is
 compared is what landed on disk.
 
-**Withdrawal is not scoped by project, deliberately.** ``facts_for_source``
-requires a project because ``source_ref`` is a soft reference and one human
-reviewer or one shared repository is the same ref across several scopes. A
-memory id is not: it is globally unique and names exactly one row, so every
+**Withdrawal is not scoped by project, deliberately.** ``source_ref`` is a
+soft reference, and one human reviewer or one shared repository is the same
+ref across several scopes, so a by-source read of those kinds needs a project.
+A memory id is not: it is globally unique and names exactly one row, so every
 ``('memory', id)`` provenance row belongs to this memory whatever project the
 fact carries. Scoping the sweep to the memory's *current* project would silently
 strand provenance behind a memory that had since been moved between projects.
@@ -184,6 +184,11 @@ _STILL_SOURCED = text("""
 """)
 
 
+WITHDRAWAL_LOCK_TIMEOUT = "5s"
+_CURRENT_LOCK_TIMEOUT = text("SELECT current_setting('lock_timeout')")
+_SET_LOCK_TIMEOUT = text("SELECT set_config('lock_timeout', CAST(:value AS text), true)")
+
+
 async def lock_facts_for_withdrawal(session: AsyncSession, fact_ids: list[str]) -> None:
     await session.execute(
         text("SELECT id FROM knowledge_triples WHERE id = ANY(CAST(:ids AS uuid[])) ORDER BY id FOR UPDATE"),
@@ -304,7 +309,18 @@ async def reconcile_memory_sources(
     withdrawn = [
         row for row in rows if row["triple_key"] not in retained(row["project"])
     ]
-    return await _withdraw(session, rows=withdrawn)
+    if not withdrawn:
+        return []
+    # A Tier-C tick can hold these fact locks for a whole batch; waiting past
+    # the bound fails savepoint B, which the buffer retries, instead of
+    # stalling the batch. A set_config that is local to the transaction
+    # outlives a released savepoint, so the caller's value is put back once
+    # the withdrawal has run; a failure restores it by rolling back.
+    previous = (await session.execute(_CURRENT_LOCK_TIMEOUT)).scalar_one()
+    await session.execute(_SET_LOCK_TIMEOUT, {"value": WITHDRAWAL_LOCK_TIMEOUT})
+    affected = await _withdraw(session, rows=withdrawn)
+    await session.execute(_SET_LOCK_TIMEOUT, {"value": previous})
+    return affected
 
 
 async def withdraw_memory_sources(

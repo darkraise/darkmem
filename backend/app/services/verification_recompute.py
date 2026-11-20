@@ -260,7 +260,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.config import Config
 from app.services.job_registry import FieldDescriptor
-from app.services.verification_ladder import recompute_fact
+from app.services.ladder_config import LadderConfig, get_ladder_config
+from app.services.verification_ladder import get_demote_grace_cycles, recompute_fact
 
 logger = logging.getLogger(__name__)
 
@@ -509,8 +510,21 @@ class DrainOutcome:
     recomputed_ids: frozenset[str] = frozenset()
 
 
+@dataclass(frozen=True)
+class _LadderInputs:
+    """The ladder's config rows, read once per tick for every fact it touches."""
+
+    config: LadderConfig
+    grace_cycles: int
+
+
 async def _drain_sources_changed(
-    session: AsyncSession, state: _State, *, batch_size: int, moment: datetime
+    session: AsyncSession,
+    state: _State,
+    *,
+    batch_size: int,
+    moment: datetime,
+    ladder: _LadderInputs,
 ) -> tuple[DrainOutcome, _State]:
     wm_ts = state.watermark_created_at or _EPOCH
     wm_id = state.watermark_id if state.watermark_id is not None else -1
@@ -520,8 +534,26 @@ async def _drain_sources_changed(
         {"wm_ts": wm_ts, "wm_id": wm_id, "batch": batch_size, "safe_until": safe_until},
     )
     rows = result.mappings().all()
+    if len(rows) < batch_size and (
+        state.watermark_created_at is None or safe_until > state.watermark_created_at
+    ):
+        # A short read saw every event up to `safe_until`, so the watermark can
+        # stand there: otherwise an idle drain re-scans every monthly partition
+        # from the last event onward on every tick. Its id half is the last
+        # row read at exactly that instant, so none is read twice. It only
+        # moves forward: a clock stepped back must not re-expose drained rows.
+        idle_state = replace(
+            state,
+            watermark_created_at=safe_until,
+            watermark_id=max(
+                (int(row["id"]) for row in rows if row["created_at"] == safe_until),
+                default=-1,
+            ),
+        )
+    else:
+        idle_state = None
     if not rows:
-        return DrainOutcome(), state
+        return DrainOutcome(), idle_state or state
 
     fact_ids: list[str] = []
     seen: set[str] = set()
@@ -541,7 +573,9 @@ async def _drain_sources_changed(
                 if not await _still_live(session, fact_id):
                     skipped_expired += 1
                     continue
-                decision = await recompute_fact(session, fact_id)
+                decision = await recompute_fact(
+                    session, fact_id, config=ladder.config, grace_cycles=ladder.grace_cycles,
+                )
         except Exception:
             failed += 1
             logger.exception(
@@ -555,7 +589,7 @@ async def _drain_sources_changed(
             transitions += 1
 
     last = rows[-1]
-    new_state = replace(
+    new_state = idle_state or replace(
         state,
         watermark_created_at=last["created_at"],
         watermark_id=int(last["id"]),
@@ -641,6 +675,7 @@ async def _reconcile_from_fact_sources(
     state: _State,
     *,
     batch_size: int,
+    ladder: _LadderInputs,
     already_recomputed: frozenset[str] = frozenset(),
 ) -> tuple[ReconcileOutcome, _State]:
     cur_ts = state.slow_cursor_created_at or _EPOCH
@@ -662,7 +697,9 @@ async def _reconcile_from_fact_sources(
                 if not await _still_live(session, fact_id):
                     skipped_expired += 1
                     continue
-                decision = await recompute_fact(session, fact_id)
+                decision = await recompute_fact(
+                    session, fact_id, config=ladder.config, grace_cycles=ladder.grace_cycles,
+                )
         except Exception:
             logger.exception(
                 "verification_recompute: slow-arm recompute failed for fact %s",
@@ -774,8 +811,12 @@ async def run_recompute(
     moment = now or datetime.now(timezone.utc)
     state = await _load_state(session)
 
+    ladder = _LadderInputs(
+        config=await get_ladder_config(session),
+        grace_cycles=await get_demote_grace_cycles(session),
+    )
     drain_outcome, state = await _drain_sources_changed(
-        session, state, batch_size=batch_size, moment=moment
+        session, state, batch_size=batch_size, moment=moment, ladder=ladder,
     )
 
     due = (
@@ -788,6 +829,7 @@ async def run_recompute(
             session,
             state,
             batch_size=slow_arm_batch_size,
+            ladder=ladder,
             already_recomputed=drain_outcome.recomputed_ids,
         )
         state = replace(state, slow_arm_last_run_at=moment)

@@ -849,6 +849,8 @@ async def recompute_fact(
     supersession_blocked: bool | None = None,
     contradiction_suspected: bool | None = None,
     now: datetime | None = None,
+    config: LadderConfig | None = None,
+    grace_cycles: int | None = None,
 ) -> LadderDecision:
     """Recompute one fact's verification status, and return why.
 
@@ -909,12 +911,18 @@ async def recompute_fact(
     replay or a test; nothing compares it, so supplying it changes what the
     row records and never what the ladder decides.
 
+    ``config`` and ``grace_cycles`` are the ladder's three config rows,
+    resolved by a caller recomputing many facts so it reads them once per
+    tick; left ``None`` they are read here.
+
     A ``fact_id`` with no row returns a hold that writes nothing. The drain
     that will call this races deletion by construction, so raising would turn
     an ordinary race into a failed job.
     """
-    config = await get_ladder_config(session)
-    grace_cycles = await get_demote_grace_cycles(session)
+    if config is None:
+        config = await get_ladder_config(session)
+    if grace_cycles is None:
+        grace_cycles = await get_demote_grace_cycles(session)
     profile = await FactSourceRepository(session).origin_profile(fact_id)
 
     # FOR UPDATE, and it is load-bearing rather than defensive. Without it the
