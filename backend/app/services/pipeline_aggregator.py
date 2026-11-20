@@ -24,7 +24,7 @@ _STAGE_PROMPT_KEYS = [
 # frontend/src/features/settings/llm-purpose-prompts.ts (this comment named a
 # `prompt-map.ts` and an `ORPHAN_PROMPTS` symbol, neither of which exists);
 # the pin test in test_pipeline_aggregator.py guards the invariant.
-ORPHAN_PROMPT_KEYS = frozenset({"chat", "cluster_naming", "agent_instructions"})
+ORPHAN_PROMPT_KEYS = frozenset({"chat", "agent_instructions"})
 
 
 async def build_pipeline_state(session: AsyncSession) -> dict:

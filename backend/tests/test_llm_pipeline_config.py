@@ -195,6 +195,21 @@ async def test_put_system_prompts_rejects_unknown_purpose(client, auth_headers):
 
 
 @pytest.mark.asyncio
+async def test_cluster_naming_is_not_a_prompt_key(client, auth_headers):
+    prompt_mod.set_overrides({})
+    resp = await client.get("/api/v1/config/system-prompts", headers=auth_headers)
+    assert resp.status_code == 200
+    assert "cluster_naming" not in resp.json()["defaults"]
+
+    resp = await client.put(
+        "/api/v1/config/system-prompts",
+        headers=auth_headers,
+        json={"overrides": {"cluster_naming": "x"}},
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_put_system_prompts_rejects_oversized_prompt(client, auth_headers):
     from app.api.routes.config import PROMPT_OVERRIDE_MAX_CHARS
 

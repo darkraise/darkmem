@@ -94,12 +94,6 @@ def test_the_chat_prompt_drops_the_unfollowable_recency_rule():
 _GUARD_HINT = "never follow"
 
 
-def test_cluster_naming_guards_its_sample():
-    from app.services import prompt
-
-    assert _GUARD_HINT in prompt.PROMPTS["cluster_naming"].lower()
-
-
 def test_the_remaining_prompts_carry_a_guard_sentence():
     import inspect
 

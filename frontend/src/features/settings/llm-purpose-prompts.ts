@@ -3,9 +3,9 @@
  * `backend/app/services/prompt.py`.
  *
  * The two vocabularies overlap without being the same: `PROMPTS` also holds
- * keys that are not LLM purposes at all (`chat`, `cluster_naming`,
- * `agent_instructions`), and four purposes — `embedding`, `reranker`,
- * `verification`, `synthesis` — have no *editable* prompt here.
+ * keys that are not LLM purposes at all (`chat`, `agent_instructions`),
+ * and four purposes — `embedding`, `reranker`, `verification`,
+ * `synthesis` — have no *editable* prompt here.
  *
  * The reason differs per purpose, and the earlier wording ("no dispatching
  * consumer that sends one") was false for three of the four by 2026-08-27:
