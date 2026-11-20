@@ -304,21 +304,35 @@ export function computeBlastRadius(
   }
 }
 
+// Mermaid reads node text as HTML entities; quotes and brackets would
+// otherwise end the `["..."]` node syntax early.
+function escapeMermaid(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\[/g, "#91;")
+    .replace(/\]/g, "#93;")
+    .replace(/\{/g, "#123;")
+    .replace(/\}/g, "#125;")
+    .replace(/[\r\n]+/g, " ")
+}
+
 export function mermaidForProcess(
   process: DemoCodeProcess,
   graph: DemoCodeGraph,
 ): string {
-  const letter = (i: number) => String.fromCharCode(65 + i)
   // A step the graph does not draw (a symbol step on a file-level graph)
   // still names its symbol, never its whole `name::file` key.
   const name = (id: string) =>
     graph.nodes.find((n) => n.id === id)?.name ?? (id.split("::")[0] || id)
   const lines = ["flowchart TD"]
+  process.steps.forEach((step, i) => {
+    lines.push(`  n${i}["${escapeMermaid(name(step))}"]`)
+  })
   for (let i = 0; i + 1 < process.steps.length; i++) {
-    const from = process.steps[i]
-    const to = process.steps[i + 1]
-    if (from === undefined || to === undefined) continue
-    lines.push(`  ${letter(i)}[${name(from)}] --> ${letter(i + 1)}[${name(to)}]`)
+    lines.push(`  n${i} --> n${i + 1}`)
   }
   return lines.join("\n")
 }

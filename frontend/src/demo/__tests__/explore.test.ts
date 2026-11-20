@@ -119,8 +119,39 @@ describe("mermaidForProcess", () => {
     expect(process).toBeDefined()
     const mermaid = mermaidForProcess(process!, backendGraph)
     expect(mermaid.startsWith("flowchart TD")).toBe(true)
-    expect(mermaid).toContain("A[process_batch] --> B[extract_and_classify]")
-    expect(mermaid.split("\n")).toHaveLength(process!.steps.length)
+    expect(mermaid).toContain('n0["process_batch"]')
+    expect(mermaid).toContain('n1["extract_and_classify"]')
+    expect(mermaid).toContain("n0 --> n1")
+    expect(mermaid.split("\n")).toHaveLength(process!.steps.length * 2)
+  })
+
+  it("keeps node ids valid past twenty-six steps", () => {
+    const steps = Array.from({ length: 40 }, (_, i) => `step_${i}::flow.py`)
+    const mermaid = mermaidForProcess(
+      { ...backendGraph.processes[0]!, steps },
+      { ...backendGraph, nodes: [] },
+    )
+    const ids = [...mermaid.matchAll(/^ {2}(\S+)\[/gm)].map((m) => m[1])
+    expect(ids).toHaveLength(40)
+    expect(ids.every((id) => /^n\d+$/.test(id!))).toBe(true)
+    expect(mermaid).toContain("n38 --> n39")
+  })
+
+  it("escapes names that would break the node syntax", () => {
+    const mermaid = mermaidForProcess(
+      { ...backendGraph.processes[0]!, steps: ['get["x"]::a.ts', "Map<K>::a.ts"] },
+      { ...backendGraph, nodes: [] },
+    )
+    expect(mermaid).toContain('n0["get#91;&quot;x&quot;#93;"]')
+    expect(mermaid).toContain('n1["Map&lt;K&gt;"]')
+  })
+
+  it("draws a one-step process as its single node", () => {
+    const mermaid = mermaidForProcess(
+      { ...backendGraph.processes[0]!, steps: ["main::app.py"] },
+      { ...backendGraph, nodes: [] },
+    )
+    expect(mermaid).toBe('flowchart TD\n  n0["main"]')
   })
 })
 
