@@ -489,8 +489,9 @@ class RepoManager:
     async def pull_repo(
         self, repo: Repository, *, take_claim: bool = False,
     ) -> str | None:
-        """Fetch the default branch and return the new HEAD, or None when the
-        tree was left as it is (the caller then reads HEAD itself).
+        """Fetch the default branch and return the new HEAD, or None when a
+        local checkout was left as it is (the caller then reads HEAD itself).
+        A failed fetch on a readable managed clone raises and keeps the clone.
 
         A caller that does not already own the repository's indexing claim
         passes ``take_claim``, so a re-clone takes it as ``cloning`` first.
@@ -544,8 +545,11 @@ class RepoManager:
                 if await self._tree_is_readable(cwd):
                     # A network or remote fault says nothing about the clone;
                     # deleting it would turn a blip into a full re-download.
-                    logger.warning("Fetch failed for %s (clone kept): %s", repo.name, e)
-                    return None
+                    # It still fails the caller, so a reindex never reports
+                    # the old commit as freshly indexed.
+                    raise RuntimeError(
+                        f"fetch failed for {repo.name} (clone kept): {e}"
+                    ) from e
                 logger.warning("Clone of %s is unreadable, will re-clone: %s", repo.name, e)
                 needs_clone = True
 

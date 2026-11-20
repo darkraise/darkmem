@@ -12,6 +12,7 @@ from sqlalchemy import select
 
 import app.services.repo_manager as repo_manager_module
 from app.models.code import Repository
+from app.services.code_pipeline import CodePipeline
 from app.services.repo_manager import RepoManager
 from app.services.task_registry import TaskRegistry
 
@@ -67,7 +68,8 @@ async def test_failed_fetch_keeps_a_healthy_clone(session, tmp_path, monkeypatch
 
     monkeypatch.setattr(RepoManager, "_clone_repo", _spy_clone)
 
-    await RepoManager(session).pull_repo(repo, take_claim=True)
+    with pytest.raises(RuntimeError, match="clone kept"):
+        await RepoManager(session).pull_repo(repo, take_claim=True)
 
     assert clones == []
     assert (clone / ".git").is_dir() and (clone / "a.py").is_file()
@@ -93,6 +95,35 @@ async def test_corrupt_clone_is_recloned_under_a_claim(session, tmp_path, monkey
 
     assert seen == {"status": "cloning", "concurrent_claim": False}
     assert head == _git(upstream, "rev-parse", "HEAD")
+    assert await _status(session, repo.id) == "ready"
+
+
+async def test_reindex_surfaces_a_failed_fetch(session, tmp_path, monkeypatch):
+    repo, clone = await _managed_clone(session, tmp_path, monkeypatch)
+    _git(clone, "remote", "set-url", "origin", str(tmp_path / "unreachable"))
+    pipeline = CodePipeline(
+        session=session, llm=None, vector_repo=None,
+        repo_manager=RepoManager(session),
+    )
+
+    with pytest.raises(RuntimeError, match="fetch failed"):
+        await pipeline.run(repo.id)
+
+    assert (clone / ".git").is_dir()
+
+
+async def test_a_failed_reclone_releases_its_claim(session, tmp_path, monkeypatch):
+    repo, clone = await _managed_clone(session, tmp_path, monkeypatch)
+    (clone / ".git" / "HEAD").unlink()
+
+    async def _failing_clone(self, _repo):
+        raise RuntimeError("clone failed")
+
+    monkeypatch.setattr(RepoManager, "_clone_repo", _failing_clone)
+
+    with pytest.raises(RuntimeError, match="clone failed"):
+        await RepoManager(session).pull_repo(repo, take_claim=True)
+
     assert await _status(session, repo.id) == "ready"
 
 
