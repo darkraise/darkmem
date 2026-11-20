@@ -1,17 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Without DATABASE_URL the app derives localhost:5432, which on the
+# production host is the production database: migrating it from a dev
+# checkout is never wanted, so the database must be named.
+if [ -z "${DATABASE_URL:-}" ]; then
+    echo "DATABASE_URL is not set; export the dev database URL (for example the dev Postgres on 127.0.0.1:5433) and run again." >&2
+    exit 1
+fi
+
 cd "$(dirname "$0")/../backend"
 
-# Install dependencies if needed
-if [ ! -d ".venv" ] && ! python -c "import fastapi" 2>/dev/null; then
-    echo "Installing dependencies..."
-    pip install -e ".[dev]"
+PYTHON="$PWD/.venv/bin/python"
+if [ ! -x "$PYTHON" ]; then
+    echo "Creating backend/.venv and installing dependencies..."
+    python3 -m venv .venv
+    "$PYTHON" -m pip install -e ".[dev]"
 fi
 
 # Run migrations (requires Postgres)
 echo "Running migrations..."
-python -m alembic upgrade head
+"$PYTHON" -m alembic upgrade head
 
 # Start server with hot-reload.
 # --timeout-keep-alive 75 keeps backend keep-alive sockets open longer than
@@ -19,6 +28,6 @@ python -m alembic upgrade head
 # socket (otherwise users see sporadic 502 Bad Gateway on the first request
 # after a quiet pause, e.g. the Fetch Models click in the setup wizard).
 echo "Starting darkmem API server..."
-exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload \
+exec "$PYTHON" -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload \
     --reload-include "*.py" --reload-dir app \
     --timeout-keep-alive 75 --no-proxy-headers

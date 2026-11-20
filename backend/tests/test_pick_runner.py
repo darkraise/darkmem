@@ -261,3 +261,16 @@ def test_default_falls_back_to_hosted_when_the_listing_fails(tmp_path):
     out = _outputs(tmp_path)
     assert out["runs-on"] == HOSTED
     assert out["reason"].startswith("runner listing failed (HTTPError")
+
+
+def test_picker_routes_a_fork_to_hosted(tmp_path):
+    def fetch(url, token):
+        raise AssertionError("a fork pull request must not list runners")
+
+    for requested in ("fallback", "auto", "self-hosted", "hosted"):
+        for token in ("t", ""):
+            out = tmp_path / f"{requested}-{token or 'none'}"
+            out.mkdir()
+            env = _env(out, REQUESTED=requested, GH_TOKEN=token, FORK_PULL_REQUEST="true")
+            assert pick.main(env, fetch=fetch, sleep=lambda s: None) == 0
+            assert _outputs(out)["runs-on"] == HOSTED, (requested, token)

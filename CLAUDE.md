@@ -115,7 +115,8 @@ table or column is dropped only once no released code reads it.
 
 ### Dev servers, migrations, schema
 
-- Dev servers: `./scripts/start_dev_server.sh` runs alembic upgrade, then
+- Dev servers: `./scripts/start_dev_server.sh` refuses to start without
+  `DATABASE_URL`, then runs alembic upgrade through `backend/.venv`, then
   uvicorn :8000 `--reload --timeout-keep-alive 75` (the 75 prevents sporadic
   502s through the vite proxy); `cd frontend && npm run dev` runs vite :3636
   proxying `/api`, `/health`, `/ws`, `/mcp` to :8000. On this host `:8000` is
@@ -193,7 +194,10 @@ table or column is dropped only once no released code reads it.
   while a labelled runner is online (queuing when busy) and to `ubuntu-latest` when none is online. Seeing the runners needs
   the `RUNNER_PICKER_TOKEN` secret (fine-grained PAT, Administration:
   Read-only); without it the picker queues on self-hosted. Manual dispatch
-  can select `self-hosted`, `hosted` or `auto` for those checks. API and Playwright e2e always
+  can select `self-hosted`, `hosted` or `auto` for those checks. A pull
+  request from a fork never reaches self-hosted: the picker sends its checks
+  to `ubuntu-latest` in every mode and the e2e jobs skip it. Otherwise API and
+  Playwright e2e always
   run on `darkmem-linux` in isolated job containers with their own Postgres,
   using the LAN model endpoint (`vars.DARKMEM_OLLAMA_BASE_URL`). Image builds,
   scans and the image boot smoke (one job, so CI stores no image artifact),

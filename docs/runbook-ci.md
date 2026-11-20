@@ -106,7 +106,10 @@ runners cannot reach this LAN endpoint.
 **Trust.** Docker access is root-equivalent; use a dedicated trusted machine
 and separate OS users per runner. Firewall it off from untrusted networks:
 the image smoke check publishes a random loopback port while it runs. The
-repository is private, so only collaborators' code runs here. Before making
+repository is private, so only collaborators' code runs here. A pull request
+whose head repository is not this one never reaches the runner through these
+workflows: both e2e jobs skip it and the picker sends its checks to
+`ubuntu-latest` in every mode, token or not. Before making
 it public, remove the runner or require approval for all outside contributors'
 workflow runs: a fork can name `[self-hosted, darkmem-linux]` directly.
 Prune Docker resources only when all runners on that host are idle; Docker

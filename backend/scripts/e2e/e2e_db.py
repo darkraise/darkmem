@@ -11,9 +11,11 @@ Create the database once:
   psql -h localhost -p 5433 -U darkmem -d darkmem -c "CREATE DATABASE darkmem_test;"
 """
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
@@ -31,7 +33,35 @@ engine = create_async_engine(TEST_DATABASE_URL)
 session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
 
+DISPOSABLE_NAME = re.compile(r"darkmem_(test|e2e)(_[a-z0-9_]+)?")
+LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1", ""}
+
+
+class NotADisposableDatabase(RuntimeError):
+    pass
+
+
+def assert_disposable_target(url: str) -> None:
+    """Refuse a reset of anything but a suite database off the production port.
+
+    The CI service container answers on its own host's 5432, so the port is
+    refused only on a loopback host, where 5432 is this host's production.
+    """
+    parts = urlsplit(url)
+    name = parts.path.lstrip("/")
+    if not DISPOSABLE_NAME.fullmatch(name):
+        raise NotADisposableDatabase(
+            f"refusing to reset {name!r}: the e2e reset only drops a darkmem_test* or darkmem_e2e* database"
+        )
+    host = (parts.hostname or "").lower()
+    if host in LOOPBACK_HOSTS and (parts.port or 5432) == 5432:
+        raise NotADisposableDatabase(
+            f"refusing to reset {name!r} on {host or 'localhost'}:5432, the production port on this host"
+        )
+
+
 async def _reset_schema() -> None:
+    assert_disposable_target(TEST_DATABASE_URL)
     async with engine.begin() as conn:
         await conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
         await conn.execute(text("CREATE SCHEMA public"))

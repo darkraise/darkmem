@@ -100,3 +100,102 @@ def test_the_ci_image_tag_is_per_run():
         if tags is not None:
             assert "${{" in tags, f"fixed image tag {tags!r}"
 
+
+
+TRUSTED_HEAD = (
+    "github.event_name != 'pull_request' || "
+    "github.event.pull_request.head.repo.full_name == github.repository"
+)
+SELF_HOSTED_LABELS = {"self-hosted", "darkmem-linux"}
+
+
+def _evaluate(expression: str, context: dict) -> bool:
+    """Evaluate the small GitHub expression subset the fork condition uses."""
+    body = expression.strip()
+    if body.startswith("${{") and body.endswith("}}"):
+        body = body[3:-2]
+    names = sorted(context, key=len, reverse=True)
+    for i, name in enumerate(names):
+        body = body.replace(name, f"_v{i}")
+    body = re.sub(r"!(?!=)", " not ", body).replace("||", " or ").replace("&&", " and ")
+    residue = re.sub(r"'[^']*'|_v\d+|\bnot\b|\bor\b|\band\b|==|!=|[()\s]", "", body)
+    assert not residue, f"unsupported expression text {residue!r}"
+    return bool(eval(body, {"__builtins__": {}}, {f"_v{i}": context[n] for i, n in enumerate(names)}))
+
+
+def _events() -> list[tuple[str, dict, bool]]:
+    def ctx(event, head=None):
+        return {
+            "github.event.pull_request.head.repo.full_name": head,
+            "github.event_name": event,
+            "github.repository": "darkraise/darkmem",
+        }
+
+    return [
+        ("fork pull request", ctx("pull_request", "someone/darkmem"), False),
+        ("same-repository pull request", ctx("pull_request", "darkraise/darkmem"), True),
+        ("push to master", ctx("push"), True),
+        ("workflow_dispatch", ctx("workflow_dispatch"), True),
+    ]
+
+
+def _literal_labels(runs_on) -> set[str]:
+    labels = runs_on if isinstance(runs_on, list) else [runs_on]
+    return {label for label in labels if isinstance(label, str) and "${{" not in label}
+
+
+def test_fork_pull_request_never_reaches_self_hosted():
+    for workflow in ("ci.yml", "release.yml", "cache-cleanup.yml"):
+        for key, job in _jobs(workflow).items():
+            if not _literal_labels(job.get("runs-on", "")) & SELF_HOSTED_LABELS:
+                continue
+            condition = job.get("if")
+            assert condition, f"{workflow}:{key} runs on a self-hosted label with no fork guard"
+            for label, context, expected in _events():
+                assert _evaluate(condition, context) is expected, f"{workflow}:{key}: {label}"
+
+    jobs = _jobs("ci.yml")
+    for key in ("backend", "frontend", "frontend-tests"):
+        assert "if" not in jobs[key], f"ci.yml:{key} runs on a picked runner and must still run for forks"
+    pick_env = next(s for s in jobs["pick-runner"]["steps"] if s.get("id") == "pick")["env"]
+    marker = pick_env["FORK_PULL_REQUEST"]
+    for label, context, trusted in _events():
+        assert _evaluate(marker, context) is (not trusted), f"fork marker: {label}"
+
+
+def _third_party_uses() -> list[tuple[str, str, str]]:
+    found = []
+    for path in sorted(WORKFLOWS.glob("*.yml")):
+        for line in path.read_text().splitlines():
+            match = re.match(r"\s*(?:-\s*)?uses:\s*(\S+)(.*)$", line)
+            if not match or match.group(1).startswith("./"):
+                continue
+            action = match.group(1)
+            if action.split("/", 1)[0] in {"actions", "github"}:
+                continue
+            found.append((path.name, action, match.group(2)))
+    return found
+
+
+def test_third_party_actions_are_pinned_to_shas():
+    uses = _third_party_uses()
+    assert uses
+    for workflow, action, rest in uses:
+        ref = action.rsplit("@", 1)[1]
+        assert re.fullmatch(r"[0-9a-f]{40}", ref), f"{workflow}: {action} is not pinned to a commit sha"
+        assert re.fullmatch(r"\s*#\s*v\d[\w.-]*\s*", rest), f"{workflow}: {action} names no tag comment"
+
+
+def _gha_scope(value: str | None) -> str | None:
+    if not value:
+        return None
+    fields = dict(part.split("=", 1) for part in value.split(",") if "=" in part)
+    return fields.get("scope", "buildkit")
+
+
+def test_scan_job_does_not_write_the_publish_cache():
+    scan = next(s for s in _jobs("ci.yml")["images"]["steps"] if s.get("name") == "Build image")
+    publish = next(s for s in _jobs("release.yml")["publish"]["steps"] if s.get("name") == "Build and push")
+    written = _gha_scope(scan["with"].get("cache-to"))
+    read = _gha_scope(publish["with"].get("cache-from"))
+    assert written is None or written != read

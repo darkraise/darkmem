@@ -35,6 +35,8 @@ jobs:
   # RUNNER_PICKER_TOKEN; without it, queue on self-hosted). Under release.yml
   # the choice passes through.
   # Image builds stay hosted and LAN-dependent e2e stays self-hosted.
+  # A pull request from a fork is routed hosted before any of that, so code
+  # from outside the repository never runs on the LAN runner.
   pick-runner:
     name: Pick runner
     runs-on: ubuntu-latest
@@ -50,6 +52,7 @@ jobs:
         id: pick
         env:
           CALLER_PICK: ${{ inputs.runs-on }}
+          FORK_PULL_REQUEST: ${{ !(github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
           REQUESTED: ${{ inputs.runner || 'fallback' }}
           GH_TOKEN: ${{ secrets.RUNNER_PICKER_TOKEN }}
         run: |
@@ -223,9 +226,9 @@ jobs:
           --health-interval 5s --health-timeout 3s --health-retries 10
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - name: Build image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         env:
           # The build record is a 90-day artifact per build; with storage
           # full its upload only warns, but it still counts.
@@ -235,11 +238,13 @@ jobs:
           push: false
           load: true
           tags: ${{ env.IMAGE }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Its own scope: this job builds pull request code, and the publish
+          # job in release.yml reads the default scope.
+          cache-from: type=gha,scope=ci-image
+          cache-to: type=gha,mode=max,scope=ci-image
 
       - name: Scan image (Trivy)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ env.IMAGE }}
           severity: HIGH,CRITICAL
@@ -292,8 +297,11 @@ jobs:
 
   # These suites need the LAN model endpoint, so never fall back to hosted.
   # Job containers isolate the harness's fixed API/Vite ports per runner job.
+  # A pull request from a fork skips them: it would run outside code on the
+  # LAN runner.
   e2e:
     name: E2E (${{ matrix.suite }})
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, linux, x64, darkmem-linux]
     timeout-minutes: 35
     strategy:

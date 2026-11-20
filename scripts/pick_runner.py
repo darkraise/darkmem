@@ -8,7 +8,9 @@ it cannot see the runners, so it queues on self-hosted as before.
 
 An explicit `auto` request prefers an idle runner and falls back to hosted,
 also when the token is missing. Explicit self-hosted and hosted modes need no
-token or API call. Every path exits 0. Stdlib only, so the picker job needs no
+token or API call. A pull request from a fork (`FORK_PULL_REQUEST=true`) is
+sent hosted before any of that, whatever the mode, so outside code never
+reaches the LAN runner. Every path exits 0. Stdlib only, so the picker job needs no
 install step.
 """
 from __future__ import annotations
@@ -123,11 +125,14 @@ def _pick(env, requested: str, token: str, fetch) -> tuple[str, str]:
 def main(env=os.environ, fetch=_fetch, sleep=time.sleep) -> int:
     requested = (env.get("REQUESTED") or "fallback").strip()
     token = (env.get("GH_TOKEN") or "").strip()
-    runs_on, reason = _pick(env, requested, token, fetch)
-    if requested == "fallback" and token and runs_on == HOSTED:
-        sleep(RECHECK_SECONDS)
+    if (env.get("FORK_PULL_REQUEST") or "").strip().lower() == "true":
+        runs_on, reason = HOSTED, "pull request from a fork"
+    else:
         runs_on, reason = _pick(env, requested, token, fetch)
-        reason = f"{reason} (rechecked after {RECHECK_SECONDS}s)"
+        if requested == "fallback" and token and runs_on == HOSTED:
+            sleep(RECHECK_SECONDS)
+            runs_on, reason = _pick(env, requested, token, fetch)
+            reason = f"{reason} (rechecked after {RECHECK_SECONDS}s)"
     reason = " ".join(reason.split())
     _append(env.get("GITHUB_OUTPUT"), f"runs-on={runs_on}\nreason={reason}\n")
     _append(env.get("GITHUB_STEP_SUMMARY"), f"Runner: `{runs_on}` ({reason})\n")

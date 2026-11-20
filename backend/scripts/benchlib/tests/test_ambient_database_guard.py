@@ -63,12 +63,11 @@ EXEMPT = {
     # bench_db owns the guard's other side: it calls assert_destructive_target_allowed
     # itself before DROP SCHEMA, and re-checking it here would assert the guard twice.
     "benchlib/bench_db.py": "calls the guard directly before DROP SCHEMA",
-    # The e2e stack builds and tears down its own disposable database by
-    # name, and deliberately never darkmem_test -- guarding it with
-    # assert_destructive_target_allowed would refuse its own
-    # darkmem_test_1/darkmem_test_N target, since LANE_TEST_PREFIX forbids
-    # that prefix too, and break the e2e suite.
-    "e2e/e2e_db.py": "creates and drops the database it names, never an ambient one",
+    # The e2e stack resets whatever TEST_DATABASE_URL names, so it carries
+    # its own check rather than assert_destructive_target_allowed, which
+    # would refuse its darkmem_test/darkmem_test_N targets (LANE_TEST_PREFIX
+    # forbids that prefix) and break the e2e suite.
+    "e2e/e2e_db.py": "drops only after assert_disposable_target accepts a darkmem_test*/darkmem_e2e* name off the loopback 5432 port",
     # db_target.py is the guard itself: the matched "DROP SCHEMA" is its own
     # docstring quoting bench_db.reset_bench_db's behaviour, not SQL this
     # module issues.
