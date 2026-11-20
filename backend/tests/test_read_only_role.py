@@ -259,6 +259,7 @@ ROW_LOCK_WRITERS = {
     "services/human_adjudication.py",
     "services/memory_dream.py",
     "services/page_door.py",
+    "services/pipeline.py",
     "services/supersede.py",
     "services/verification_ladder.py",
     "services/verification_recompute.py",
