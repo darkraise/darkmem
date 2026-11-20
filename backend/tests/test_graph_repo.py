@@ -239,11 +239,13 @@ async def test_memory_id_predicates_use_the_gin_index(session):
 
     mid = uuid4()
     await _mk_memory(session, mid)
+    # Enough tech-typed filler that the entity_type btree never undercuts the
+    # GIN index, whatever other test files left in this database.
     await session.execute(text("""
         INSERT INTO entities (id, name, entity_type, properties, memory_ids)
         SELECT gen_random_uuid(), 'gin-filler-' || n, 'tool', '{}'::jsonb,
                ARRAY[gen_random_uuid()]
-        FROM generate_series(1, 200) AS n
+        FROM generate_series(1, 3000) AS n
     """))
     await session.execute(text("""
         INSERT INTO entity_relations

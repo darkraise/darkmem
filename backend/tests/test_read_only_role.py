@@ -250,6 +250,7 @@ ROW_LOCK_WRITERS = {
     "services/block_verbs.py",
     "services/block_embeddings.py",
     "services/buffer_flush.py",
+    "services/buffer_monitor.py",
     "services/document_door.py",
     "services/dream_undo.py",
     "services/entity_merge.py",
