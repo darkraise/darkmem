@@ -337,7 +337,6 @@ export interface CodeFile {
   id: string
   file_path: string
   language: string | null
-  last_commit_sha: string | null
   indexed_at: string
 }
 

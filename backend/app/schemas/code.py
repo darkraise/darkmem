@@ -177,7 +177,6 @@ class CodeFileResponse(BaseModel):
     id: uuid.UUID
     file_path: str
     language: str | None
-    last_commit_sha: str | None
     indexed_at: datetime
 
 

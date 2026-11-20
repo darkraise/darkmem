@@ -105,10 +105,10 @@ def _implements_split(
     class_key: str,
     parent_map: dict[str, list[str]],
     edge_types: dict[str, dict[str, str]],
-) -> tuple[list[str], list[str]]:
-    """Java/C#/Kotlin: single extends chain + multiple implements."""
+) -> list[str]:
+    """Java/C#/Kotlin: the single extends chain; implements parents are
+    skipped."""
     extends_chain: list[str] = [class_key]
-    implements_list: list[str] = []
     visited: set[str] = {class_key}
 
     current = class_key
@@ -117,9 +117,7 @@ def _implements_split(
         types = edge_types.get(current, {})
         extends_parent = None
         for p in parents:
-            if types.get(p) == "implements":
-                implements_list.append(p)
-            else:
+            if types.get(p) != "implements":
                 extends_parent = p
         if extends_parent:
             if extends_parent in visited:
@@ -130,7 +128,7 @@ def _implements_split(
         else:
             break
 
-    return extends_chain, implements_list
+    return extends_chain
 
 
 def _qualified_syntax(class_key: str, parent_map: dict[str, list[str]]) -> list[str]:
@@ -235,7 +233,7 @@ class HeritageResolver:
         elif strategy == "leftmost-base":
             return _leftmost_base(class_key, parent_map)
         elif strategy == "implements-split":
-            extends, _ = _implements_split(class_key, parent_map, edge_types)
+            extends = _implements_split(class_key, parent_map, edge_types)
             return extends
         elif strategy == "qualified-syntax":
             return _qualified_syntax(class_key, parent_map)

@@ -38,8 +38,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Plain scalar snapshot of a CodeSymbol, cached across the phase 06 -> 08 commit
-# boundary. Holding the ORM row instead would expire on commit (production uses
-# expire_on_commit=True) and trigger a lazy load on an AsyncSession — a crash.
+# boundary. The app's sessions use expire_on_commit=False, but an ORM row held
+# here would still lazy-load (a crash on an AsyncSession) under any session
+# that expires on commit; the snapshot needs no session at all.
 _SymbolData = namedtuple("_SymbolData", ["name", "parent_symbol_id"])
 
 IGNORED_DIRS = {
@@ -88,7 +89,7 @@ SIZE_BUDGET_BYTES = 20 * 1024 * 1024
 PARALLEL_MIN_FILES = 15
 # How often a phase that knows its count rewrites the status label
 # ("Parsing files... 1,200/3,996 files"); each rewrite is a commit and a
-# Repositories refetch.
+# broadcast progress event carrying the label.
 PROGRESS_INTERVAL_SECONDS = 1.0
 PARALLEL_MIN_BYTES = 512 * 1024
 CROSS_FILE_SKIP_THRESHOLD = 0.03
@@ -730,7 +731,8 @@ class CodePipeline:
         """Put a count on the phase label ("Parsing files... 1,200/3,996
         files") where a phase knows one. At most once a second, plus the
         last tick: each one commits the status message and broadcasts a
-        progress event the Repositories page refetches on.
+        progress event carrying it, which the Repositories page shows
+        without refetching.
 
         Called only where the main session holds no pending write (parsing
         reads files; embedding waits on the provider before it writes), so
@@ -2170,7 +2172,7 @@ class CodePipeline:
 
         try:
             generator = WikiGenerator(self.session, self.llm)
-            await generator.generate(repo_id, force=True)
+            await generator.generate(repo_id)
             await self.session.commit()
         except Exception as exc:
             logger.warning("Wiki generation failed for repo %s: %s", repo_id, exc)

@@ -37,8 +37,6 @@ class CallResolver:
         symbol_table: SymbolTable,
         import_map: dict[str, set[str]],
         type_envs=None,
-        named_imports=None,
-        wildcard_imports=None,
         named_import_map: dict[str, dict[str, tuple[str, str]]] | None = None,
         wildcard_import_map: dict[str, set[str]] | None = None,
         topological_order: list[str] | None = None,
@@ -46,8 +44,8 @@ class CallResolver:
         self.symbols = symbol_table
         self.import_map = import_map
         self.type_envs = type_envs or {}
-        self.named_imports = named_import_map or named_imports or {}
-        self.wildcard_imports = wildcard_import_map or wildcard_imports or {}
+        self.named_imports = named_import_map or {}
+        self.wildcard_imports = wildcard_import_map or {}
         self.topological_order = topological_order
         self._cache: dict[
             tuple[str, str, str | None, str | None, int | None], tuple[str, float] | None

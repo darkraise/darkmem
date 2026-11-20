@@ -363,7 +363,7 @@ async def test_a_custom_token_bypasses_the_default(session):
         )
     )
     assert repo.git_account_id is None
-    assert await manager.get_auth_token(repo) == "ghp_repo_local"
+    assert (await manager.get_credential(repo))[0] == "ghp_repo_local"
 
 
 async def test_resolution_prefers_the_account_over_a_stale_config_row(session):
@@ -377,7 +377,7 @@ async def test_resolution_prefers_the_account_over_a_stale_config_row(session):
     session.add(Config(key="git_token_stale", value={"token": "ghp_stale"}))
     await session.flush()
 
-    assert await RepoManager(session).get_auth_token(repo) == "ghp_from_account"
+    assert (await RepoManager(session).get_credential(repo))[0] == "ghp_from_account"
 
 
 async def test_selecting_an_account_retires_the_repos_own_token(session):
@@ -396,7 +396,7 @@ async def test_selecting_an_account_retires_the_repos_own_token(session):
 
     assert updated.auth_token_ref is None
     assert await session.get(Config, token_key) is None
-    assert await manager.get_auth_token(updated) == "ghp_from_account"
+    assert (await manager.get_credential(updated))[0] == "ghp_from_account"
 
 
 async def test_get_credential_reports_the_accounts_provider(session):

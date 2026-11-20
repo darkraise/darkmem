@@ -51,7 +51,6 @@ class CodeFile(Base):
     repo_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False)
     file_path: Mapped[str] = mapped_column(String(1024), nullable=False)
     language: Mapped[str | None] = mapped_column(String(50))
-    last_commit_sha: Mapped[str | None] = mapped_column(String(64))
     content_hash: Mapped[str | None] = mapped_column(String(64))
     indexed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

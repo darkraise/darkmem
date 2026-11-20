@@ -136,30 +136,26 @@ class TestImplementsSplit:
     def test_single_extends(self):
         parent_map = {"B": ["A"]}
         edge_types = {"B": {"A": "extends"}}
-        extends, impls = _implements_split("B", parent_map, edge_types)
+        extends = _implements_split("B", parent_map, edge_types)
         assert extends == ["B", "A"]
-        assert impls == []
 
     def test_extends_plus_implements(self):
         parent_map = {"C": ["A", "I1", "I2"]}
         edge_types = {"C": {"A": "extends", "I1": "implements", "I2": "implements"}}
-        extends, impls = _implements_split("C", parent_map, edge_types)
+        extends = _implements_split("C", parent_map, edge_types)
         assert extends == ["C", "A"]
-        assert set(impls) == {"I1", "I2"}
 
     def test_deep_extends_chain(self):
         parent_map = {"C": ["B", "I"], "B": ["A"]}
         edge_types = {"C": {"B": "extends", "I": "implements"}, "B": {"A": "extends"}}
-        extends, impls = _implements_split("C", parent_map, edge_types)
+        extends = _implements_split("C", parent_map, edge_types)
         assert extends == ["C", "B", "A"]
-        assert impls == ["I"]
 
     def test_no_extends_only_implements(self):
         parent_map = {"C": ["I1", "I2"]}
         edge_types = {"C": {"I1": "implements", "I2": "implements"}}
-        extends, impls = _implements_split("C", parent_map, edge_types)
+        extends = _implements_split("C", parent_map, edge_types)
         assert extends == ["C"]
-        assert set(impls) == {"I1", "I2"}
 
 
 class TestQualifiedSyntax:

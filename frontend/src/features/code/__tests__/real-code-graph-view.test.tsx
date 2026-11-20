@@ -100,7 +100,7 @@ function mockApi() {
     if (path.startsWith("/code/graph/r1")) return Promise.resolve(GRAPH)
     if (path === "/code/files/r1")
       return Promise.resolve([
-        { id: "f1", file_path: "main.py", language: "python", last_commit_sha: "abc", indexed_at: "2026-07-27T00:00:00Z" },
+        { id: "f1", file_path: "main.py", language: "python", indexed_at: "2026-07-27T00:00:00Z" },
       ])
     if (path.startsWith("/code/symbols/lookup"))
       return Promise.resolve({
@@ -334,7 +334,7 @@ describe("RealCodeGraphView", () => {
         if (path === "/code/files/r1")
           return Promise.resolve(
             ["pkg/a.py", "pkg/b.py", "web/c.ts", "README.md"].map((file_path, i) => ({
-              id: `f${i}`, file_path, language: null, last_commit_sha: "abc", indexed_at: "2026-07-27T00:00:00Z",
+              id: `f${i}`, file_path, language: null, indexed_at: "2026-07-27T00:00:00Z",
             })),
           )
         return Promise.resolve({})

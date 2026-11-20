@@ -23,8 +23,6 @@ class TaskRegistry:
 
     @classmethod
     def register(cls, repo_id: UUID, kind: str, task: asyncio.Task, message: str = "") -> str:
-        if len(cls._tasks) > 100:
-            cls.cleanup_completed()
         task_id = str(uuid4())[:8]
         info = TaskInfo(
             id=task_id,
@@ -55,10 +53,9 @@ class TaskRegistry:
                 logger.error(
                     "Background task %s (%s) crashed", task_id, kind, exc_info=exc,
                 )
-        # Readers (get_repo_tasks / get_all_running) only ever surface 'running'
-        # tasks, so a finished task has no further use; drop it immediately
-        # instead of leaving a 'completed' entry that the >100-gated cleanup may
-        # never reach (unbounded growth on low-volume deployments).
+        # get_repo_tasks only ever surfaces 'running' tasks, so a finished task
+        # has no further use; dropping it here is what keeps the registry
+        # bounded.
         cls._tasks.pop(task_id, None)
 
     @classmethod
@@ -90,20 +87,6 @@ class TaskRegistry:
                 })
         return result
 
-    @classmethod
-    def get_all_running(cls) -> list[dict]:
-        return [
-            {
-                "id": info.id,
-                "repo_id": info.repo_id,
-                "kind": info.kind,
-                "status": info.status,
-                "message": info.message,
-                "created_at": info.created_at.isoformat(),
-            }
-            for info in cls._tasks.values()
-            if info.status == "running"
-        ]
 
     @classmethod
     def cancel_all(cls) -> None:
@@ -114,8 +97,3 @@ class TaskRegistry:
                 info.task = None
         cls._tasks.clear()
 
-    @classmethod
-    def cleanup_completed(cls) -> None:
-        to_remove = [tid for tid, info in cls._tasks.items() if info.status != "running"]
-        for tid in to_remove:
-            del cls._tasks[tid]

@@ -1137,10 +1137,10 @@ _INSERT_REPO = text("""
 """)
 
 _INSERT_FILE = text("""
-    INSERT INTO code_files (id, repo_id, file_path, language, last_commit_sha)
+    INSERT INTO code_files (id, repo_id, file_path, language)
     VALUES (
         CAST(:id AS uuid), CAST(:repo_id AS uuid), CAST(:file_path AS varchar),
-        CAST(:language AS varchar), CAST(:commit AS varchar)
+        CAST(:language AS varchar)
     )
 """)
 
@@ -1187,7 +1187,6 @@ async def install_repo_fixtures(session_factory, fixtures: list[dict]) -> dict[s
                     "repo_id": repo_id,
                     "file_path": entry["file_path"],
                     "language": entry.get("language"),
-                    "commit": commit,
                 })
             for edge in fixture.get("imports", ()):
                 await session.execute(_INSERT_EDGE, {

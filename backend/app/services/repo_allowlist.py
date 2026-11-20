@@ -5,7 +5,7 @@ capture hook calls it and doc 10's Tier-C execution runs only past it.
 Neither may re-implement or relax what is decided here.
 
 **Allowlist, never blocklist.** A repository hint is caller-supplied text
-that arrives over the unauthenticated MCP door, and `git clone` of an
+that arrives over an MCP door any keyed agent can call, and `git clone` of an
 arbitrary remote makes this box issue requests wherever the caller points
 it. The rejected alternative — default-open with a blocklist of private
 address ranges — loses to decimal-encoded addresses, IPv6-mapped IPv4,

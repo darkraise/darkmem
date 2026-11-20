@@ -38,7 +38,7 @@ class WikiGenerator:
             return None
         return {k: v for k, v in cached.value.items() if not k.startswith("_")}
 
-    async def generate(self, repo_id: UUID, force: bool = False) -> dict:
+    async def generate(self, repo_id: UUID) -> dict:
         """Generate wiki documentation for a repository."""
         repo = (await self.session.execute(
             select(Repository).where(Repository.id == repo_id)
@@ -47,18 +47,6 @@ class WikiGenerator:
             return {"error": "Repository not found"}
 
         cache_key = f"wiki_{repo_id}"
-
-        if not force:
-            cached = (await self.session.execute(
-                select(Config).where(Config.key == cache_key)
-            )).scalar_one_or_none()
-            if cached:
-                cache_data = cached.value
-                cached_at = cache_data.get("_cached_at")
-                repo_indexed = repo.last_indexed_at.isoformat() if repo.last_indexed_at else None
-                if cached_at and cached_at == repo_indexed:
-                    result = {k: v for k, v in cache_data.items() if not k.startswith("_")}
-                    return result
 
         files = (await self.session.execute(
             select(CodeFile).where(CodeFile.repo_id == repo_id).order_by(CodeFile.file_path)

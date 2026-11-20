@@ -402,6 +402,9 @@ class RepoManager:
             config = await self.session.get(Config, repo.auth_token_ref)
             if config:
                 await self.session.delete(config)
+        wiki = await self.session.get(Config, f"wiki_{repo_id}")
+        if wiki:
+            await self.session.delete(wiki)
 
         clone_dir = self._clone_path(repo)
         if clone_dir.exists():
@@ -461,10 +464,6 @@ class RepoManager:
             await self.session.execute(select(GitAccount.id, GitAccount.label))
         ).all()
         return {row[0]: row[1] for row in rows}
-
-    async def get_auth_token(self, repo: Repository) -> str | None:
-        credential = await self.get_credential(repo)
-        return credential[0] if credential else None
 
     async def get_credential(self, repo: Repository) -> tuple[str, str] | None:
         """``(token, provider)`` for this repo, or None.

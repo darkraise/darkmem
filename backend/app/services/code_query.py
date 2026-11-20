@@ -413,7 +413,7 @@ class CodeQueryService:
         return [
             {
                 "id": f.id, "file_path": f.file_path, "language": f.language,
-                "last_commit_sha": f.last_commit_sha, "indexed_at": f.indexed_at,
+                "indexed_at": f.indexed_at,
             }
             for f in rows
         ]
