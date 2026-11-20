@@ -17,6 +17,7 @@ from app.api.auth import (
     verify_password,
     validate_password_bytes,
 )
+from app.api.websocket import session_revocations
 from app.config import settings
 from app.database import SessionDep, async_session_factory
 from app.models.config import Config
@@ -152,6 +153,7 @@ async def auth_logout(
             payload={"sub": payload.sub},
         )
         await session.commit()
+        session_revocations.revoke(payload.jti, float(payload.exp))
 
     response = JSONResponse(content={"ok": True}, status_code=status.HTTP_200_OK)
     return clear_auth_cookie(response)
@@ -209,6 +211,9 @@ async def auth_change_password(
         jti=payload.jti,
         expires_at=datetime.fromtimestamp(payload.exp, tz=timezone.utc),
     ))
+    await session.commit()
+    session_revocations.set_epoch(changed_at)
+    session_revocations.revoke(payload.jti, float(payload.exp))
 
     response = JSONResponse(content={"ok": True})
     # The caller's own current token predates changed_at and would be rejected
@@ -237,6 +242,7 @@ async def auth_refresh(
             expires_at=datetime.fromtimestamp(payload.exp, tz=timezone.utc),
         ))
         await session.commit()
+        session_revocations.revoke(payload.jti, float(payload.exp))
 
     token = create_access_token({"sub": payload.sub})
     response = JSONResponse(content={"ok": True})

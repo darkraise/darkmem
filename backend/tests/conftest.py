@@ -240,10 +240,13 @@ def _reset_login_rate_limiter():
     """Login rate-limiter state is a process-global singleton; clear it between
     tests so failed-login attempts from the shared test-client IP don't
     accumulate across tests and trip a spurious lockout."""
+    from app.api.websocket import session_revocations
     from app.services.login_rate_limit import login_rate_limiter
     login_rate_limiter.reset()
+    session_revocations.reset()
     yield
     login_rate_limiter.reset()
+    session_revocations.reset()
 
 
 @pytest.fixture(autouse=True)

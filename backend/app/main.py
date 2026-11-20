@@ -244,6 +244,14 @@ async def lifespan(app: FastAPI):
     from app.api.mcp.server import refresh_mcp_instructions
     refresh_mcp_instructions()
 
+    # The socket revalidation cache; a socket's handshake retries the load
+    # when this one could not read the database.
+    from app.api.websocket import session_revocations
+    try:
+        await session_revocations.load(async_session_factory)
+    except Exception:
+        logger.exception("Could not load the session revocation cache at boot")
+
     # ── Job registry: replaces the previous four bare asyncio loops ──
     from app.services.buffer_flush import (
         BUFFER_FLUSH_CONFIG_SCHEMA,

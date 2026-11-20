@@ -10,7 +10,15 @@ aggregate questions the Activity page's MCP tab asks of it.
 in-process buffer; one background task drains it in batches on its own session,
 the same posture ``access_stats`` takes for read counters. A log miss must never
 slow or fail the tool call it describes, so every failure here is swallowed and
-logged. A buffer that outgrows ``_BUFFER_MAX`` drops its oldest entries.
+logged. A buffer that outgrows ``_BUFFER_MAX`` drops its oldest entries and
+counts them (``dropped_calls``, served by the summary route). A failed flush
+puts its batch back at the front and the next attempt waits, doubling up to
+``_BACKOFF_MAX_SECONDS``; an entry that has failed ``_MAX_FLUSH_ATTEMPTS``
+flushes is dropped and counted, so one row the database refuses cannot hold
+the log back for good.
+
+A validation error is stored as its error type and field location only: the
+text pydantic produces repeats the offending argument's value.
 
 **Write-time minimisation** (CLAUDE.md, events journal). Content arguments
 (``content``, ``entries``, ``findings``, ``text``, ``properties``) are never
@@ -28,6 +36,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 import uuid
 from collections import deque
@@ -76,6 +85,8 @@ _MAX_PARSE_CHARS = 2_000_000
 _BUFFER_MAX = 5_000
 _FLUSH_DELAY_SECONDS = 0.5
 _FLUSH_BATCH = 500
+_BACKOFF_MAX_SECONDS = 60
+_MAX_FLUSH_ATTEMPTS = 5
 _CONFIG_TTL_SECONDS = 30.0
 
 # Keys whose value names a returned object, in preference order: a section hit
@@ -100,6 +111,7 @@ class _Pending:
     arguments: dict = field(default_factory=dict)
     result: Any = None
     error: str | None = None
+    attempts: int = 0
 
 
 _buffer: deque[_Pending] = deque()
@@ -108,6 +120,8 @@ _buffer: deque[_Pending] = deque()
 _auto_flush = True
 _flusher: asyncio.Task | None = None
 _dropped = 0
+_dropped_logged = 0
+_backoff_seconds = 0
 _config_cache: tuple[float, bool] | None = None
 
 
@@ -140,14 +154,65 @@ def record_call(
             client=client,
             arguments=dict(arguments) if isinstance(arguments, dict) else {},
             result=result,
-            error=(error or None) and str(error)[:_MAX_ERROR],
+            error=(error or None) and minimise_error(str(error))[:_MAX_ERROR],
         ))
-        while len(_buffer) > _BUFFER_MAX:
-            _buffer.popleft()
-            _dropped += 1
+        _trim()
         _ensure_flusher()
     except Exception:
         logger.warning("mcp_call_log: could not queue a call", exc_info=True)
+
+
+_VALIDATION_HEAD = re.compile(r"\d+ validation errors? for \S+")
+_VALIDATION_TYPE = re.compile(r"\[type=([\w.]+)")
+
+
+def minimise_error(error: str) -> str:
+    """Reduce a pydantic validation error to its type and field locations.
+
+    Any other text is kept as it is.
+    """
+    head = _VALIDATION_HEAD.search(error)
+    if head is None:
+        return error
+    fields = []
+    location = None
+    for line in error[head.end():].splitlines():
+        if not line.strip():
+            continue
+        if not line.startswith(" "):
+            location = line.strip()
+            continue
+        kind = _VALIDATION_TYPE.search(line)
+        if kind and location is not None:
+            fields.append(f"{location} ({kind.group(1)})")
+            location = None
+    return f"{error[:head.end()]}: {'; '.join(fields) or 'unparsed'}"
+
+
+def _trim() -> None:
+    global _dropped
+    while len(_buffer) > _BUFFER_MAX:
+        _buffer.popleft()
+        _dropped += 1
+
+
+def _requeue(batch: list[_Pending]) -> None:
+    """Put a batch that failed to write back at the front of the buffer."""
+    global _dropped
+    kept = []
+    for pending in batch:
+        pending.attempts += 1
+        if pending.attempts >= _MAX_FLUSH_ATTEMPTS:
+            _dropped += 1
+        else:
+            kept.append(pending)
+    _buffer.extendleft(reversed(kept))
+    _trim()
+
+
+def dropped_calls() -> int:
+    """Calls this process dropped from the log since it started."""
+    return _dropped
 
 
 def _ensure_flusher() -> None:
@@ -167,11 +232,13 @@ async def _flush_loop() -> None:
     await asyncio.sleep(_FLUSH_DELAY_SECONDS)
     while _buffer:
         await flush_once()
+        if _backoff_seconds:
+            await asyncio.sleep(_backoff_seconds)
 
 
 async def flush_once(session_factory=None) -> int:
     """Write up to one batch from the buffer. Returns rows written."""
-    global _dropped
+    global _backoff_seconds, _dropped_logged
     if not _buffer:
         return 0
     batch = [_buffer.popleft() for _ in range(min(len(_buffer), _FLUSH_BATCH))]
@@ -183,13 +250,19 @@ async def flush_once(session_factory=None) -> int:
             rows = [_to_row(p, log_query_text=log_query_text) for p in batch]
             await session.execute(_INSERT_SQL, rows)
             await session.commit()
-        if _dropped:
-            logger.warning("mcp_call_log: dropped %s call(s) under backlog", _dropped)
-            _dropped = 0
+        _backoff_seconds = 0
+        if _dropped > _dropped_logged:
+            logger.warning(
+                "mcp_call_log: dropped %s call(s) under backlog", _dropped - _dropped_logged,
+            )
+            _dropped_logged = _dropped
         return len(rows)
     except Exception:
+        _requeue(batch)
+        _backoff_seconds = min(_BACKOFF_MAX_SECONDS, _backoff_seconds * 2 or 1)
         logger.warning(
-            "mcp_call_log: could not write %s call(s)", len(batch), exc_info=True,
+            "mcp_call_log: could not write %s call(s); retrying in %ss",
+            len(batch), _backoff_seconds, exc_info=True,
         )
         return 0
 
@@ -202,10 +275,12 @@ async def drain(session_factory=None) -> None:
 
 
 def _reset_for_tests() -> None:
-    global _config_cache, _dropped
+    global _backoff_seconds, _config_cache, _dropped, _dropped_logged
     _buffer.clear()
     _config_cache = None
     _dropped = 0
+    _dropped_logged = 0
+    _backoff_seconds = 0
 
 
 async def _log_query_text(session) -> bool:

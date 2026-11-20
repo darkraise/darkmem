@@ -27,6 +27,7 @@ from app.schemas.mcp_calls import (
     McpObjectStat,
     McpToolStat,
 )
+from app.services import mcp_call_log
 from app.services.mcp_call_log import MCP_CALL_CLEANUP_JOB_KEY
 
 router = APIRouter(prefix="/api/v1/mcp-calls", tags=["mcp-calls"])
@@ -224,4 +225,5 @@ async def summarise_mcp_calls(
         top_objects=[McpObjectStat(**dict(r)) for r in objects],
         series=[McpCallBucket(**dict(r)) for r in series],
         query_text_logged=query_text_logged,
+        dropped_calls=mcp_call_log.dropped_calls(),
     )

@@ -1024,7 +1024,10 @@ deliberate and recorded on `docs/two-door-parity.md`'s `documents.write` row.
 **Call log.** `ToolScopeMiddleware` hands every `tools/call` (allowed,
 errored or scope-denied) to `app/services/mcp_call_log.py`, which buffers
 in-process and writes `mcp_tool_calls` rows from one background task; a log
-failure never reaches the call, and read-only mode records nothing. Arguments
+failure never reaches the call, a failed flush puts its batch back and backs
+off up to 60 s, dropped calls are counted on `/summary`, a validation error
+is stored as its type and field location only, and read-only mode records
+nothing. Arguments
 are minimised at write time: `CONTENT_ARGS` become sizes, `QUERY_ARGS` are
 kept only while `mcp_call_cleanup`'s `log_query_text` is 1, and results reduce
 to a count plus up to 50 ids. It is not `events` (read traffic needs age
@@ -1072,7 +1075,11 @@ the tool's own body.
   truncating existing hashes. Oversized login inputs fail normally and
   participate in failed-attempt handling. REST and WebSocket handshakes
   share session validation; established sockets revalidate before sending
-  and at one-second idle intervals for expiry, epoch change and revocation.
+  and at one-second idle intervals for expiry, epoch change and revocation,
+  from an in-process copy of the blocklist and the password-change epoch
+  (`websocket.session_revocations`) that logout, refresh and change-password
+  update after their commit, so an idle socket costs no query and a
+  broadcast validates outside its send lock.
 - `DATABASE_URL` is derived from the `DB_*` vars (percent-encoded); an
   explicit `DATABASE_URL` overrides. There are no `LLM_*` env vars; LLM
   config lives in the database via the setup wizard.

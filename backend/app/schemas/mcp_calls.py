@@ -81,3 +81,6 @@ class McpCallSummaryResponse(BaseModel):
     #: Whether search queries are currently stored (the retention job's
     #: ``log_query_text``), so the page can say why a query reads as a length.
     query_text_logged: bool
+    #: Calls this process dropped from the log buffer since it started (a
+    #: backlog past the buffer bound, or a row the database kept refusing).
+    dropped_calls: int = 0

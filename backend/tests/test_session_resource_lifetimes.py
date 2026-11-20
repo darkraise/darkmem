@@ -202,11 +202,18 @@ async def test_websocket_password_epoch_and_connected_revocation(monkeypatch, re
     monkeypatch.setattr(websocket, "AUTH_CHECK_INTERVAL_SECONDS", 0.01, raising=False)
     manager = websocket.EventManager()
     monkeypatch.setattr(websocket, "event_manager", manager)
+    # Connected sockets revalidate from the in-process cache the auth routes
+    # update after their commit; the handshake still reads the database.
+    revocations = websocket.SessionRevocations()
+    monkeypatch.setattr(revocations, "load", AsyncMock())
+    monkeypatch.setattr(websocket, "session_revocations", revocations)
+    token = create_access_token({"sub": "admin"})
+    claims = jwt.decode(token, options={"verify_signature": False})
     accepted = asyncio.Event()
     closed = asyncio.Event()
 
     class Socket:
-        cookies = {COOKIE_NAME: create_access_token({"sub": "admin"})}
+        cookies = {COOKIE_NAME: token}
 
         async def accept(self):
             accepted.set()
@@ -223,6 +230,10 @@ async def test_websocket_password_epoch_and_connected_revocation(monkeypatch, re
         if not revoked_at_handshake:
             await asyncio.wait_for(accepted.wait(), 1)
             revoked = True
+            if revocation == "epoch":
+                revocations.set_epoch(claims["iat"] + 1)
+            elif revocation == "blocklist":
+                revocations.revoke(claims["jti"], float(claims["exp"]))
         await asyncio.wait_for(closed.wait(), 0.3)
         await asyncio.wait_for(task, 0.3)
         assert not manager.connections
