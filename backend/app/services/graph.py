@@ -1,18 +1,14 @@
-import asyncio
-import hashlib
 import logging
-from collections import Counter, OrderedDict
+from collections import OrderedDict
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.config import settings
 
 from app.models.memory import Memory
 from app.repositories.graph import PostgresGraphRepository
 from app.repositories.vector import EmbedderFingerprintUnresolved, MemoryFilter, PostgresVectorRepository
 from app.services.llm import LLMOrchestrator
-from app.services import prompt
 from app.utils.cluster_names import name_clusters
 
 logger = logging.getLogger(__name__)
@@ -26,9 +22,7 @@ GRAPH_MEMORY_STATUSES: tuple[str, ...] = ("active",)
 
 GRAPH_MAX_NODES = 50_000
 GRAPH_MAX_ENTITIES = 20_000
-CLUSTER_NAME_LLM_CAP = 40
 _RESULT_CACHE_SIZE = 4
-_CLUSTER_NAME_CACHE_SIZE = 1024
 
 # The assembled memory arm, keyed on everything that decides it. Module-level
 # state is sound only because invariant 13 pins one process. A hit hands out
@@ -36,28 +30,10 @@ _CLUSTER_NAME_CACHE_SIZE = 1024
 # later hit.
 _result_cache: OrderedDict[tuple, dict] = OrderedDict()
 
-# LLM cluster names keyed on a hash of the prompt and the naming sample, so a
-# name is reused while the memories it was made from are unchanged.
-_cluster_name_cache: OrderedDict[str, str] = OrderedDict()
-
 
 def reset_graph_caches() -> None:
-    """Test hook: forget every cached memory arm and cluster name."""
+    """Test hook: forget every cached memory arm."""
     _result_cache.clear()
-    _cluster_name_cache.clear()
-
-
-def _tag_cluster_name(members: list[dict], cid: int) -> str:
-    counts = Counter(
-        tag
-        for m in members
-        for tag in (m.get("tags") or [])
-        if not tag.startswith("project/")
-    )
-    if not counts:
-        return f"Cluster {cid}"
-    tag, _ = min(counts.items(), key=lambda item: (-item[1], item[0]))
-    return tag[:40]
 
 
 def _empty_memory_arm() -> dict:
@@ -241,62 +217,6 @@ class GraphService:
             "relations": relations,
             "neighbors": neighbors,
         }
-
-    async def _generate_cluster_names(
-        self, clusters: dict[int, list[str]], memory_nodes: list[dict]
-    ) -> tuple[dict[str, str], bool]:
-        """Name every cluster; answers the names and whether any call failed.
-
-        Only the ``CLUSTER_NAME_LLM_CAP`` largest clusters cost an LLM call,
-        and a name is reused while its naming sample is unchanged. The rest
-        are named after their most frequent non-project tag.
-        """
-        members: dict[int, list[dict]] = {}
-        for m in memory_nodes:
-            cid = m.get("cluster", -1)
-            if cid >= 0:
-                members.setdefault(cid, []).append(m)
-
-        names = {str(cid): _tag_cluster_name(members.get(cid, []), cid) for cid in clusters}
-        if settings.read_only or not self.llm or not clusters:
-            return names, False
-
-        by_size = sorted(members, key=lambda cid: (-len(members[cid]), cid))
-        to_name = [cid for cid in by_size[:CLUSTER_NAME_LLM_CAP] if cid in clusters]
-        system_prompt = prompt.get("cluster_naming")
-        sem = asyncio.Semaphore(3)
-
-        async def _name_one(cid: int) -> tuple[int, str, bool]:
-            contents = [m["content"][:100] for m in members[cid][:8]]
-            key = hashlib.sha256("\x1f".join([system_prompt, *contents]).encode()).hexdigest()
-            cached = _cluster_name_cache.get(key)
-            if cached is not None:
-                _cluster_name_cache.move_to_end(key)
-                return cid, cached, False
-            async with sem:
-                try:
-                    joined = "\n".join(contents).replace("</memories>", "")
-                    sample = f"<memories>\n{joined}\n</memories>"
-                    raw = await self.llm.chat_completion(
-                        "summarization",
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": sample},
-                        ],
-                    )
-                    name = raw.strip().strip('"').strip("'")[:40]
-                except Exception:
-                    return cid, f"Cluster {cid}", True
-            _cluster_name_cache[key] = name
-            while len(_cluster_name_cache) > _CLUSTER_NAME_CACHE_SIZE:
-                _cluster_name_cache.popitem(last=False)
-            return cid, name, False
-
-        degraded = False
-        for cid, name, failed in await asyncio.gather(*[_name_one(cid) for cid in to_name]):
-            names[str(cid)] = name
-            degraded = degraded or failed
-        return names, degraded
 
     async def _fetch_entity_overlay(
         self, memory_nodes: list[dict]

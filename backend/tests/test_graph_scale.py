@@ -230,17 +230,10 @@ async def test_knn_pass_runs_off_the_event_loop(session, monkeypatch):
 
 
 class _FakeLLM:
-    def __init__(self, fail: bool = False):
-        self.fail = fail
-        self.calls = 0
-
     def llm_fingerprint(self) -> str:
         return FINGERPRINT
 
     async def chat_completion(self, purpose, **kwargs):
-        self.calls += 1
-        if self.fail:
-            raise RuntimeError("naming down")
         return "named cluster"
 
 

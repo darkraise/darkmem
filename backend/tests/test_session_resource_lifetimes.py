@@ -233,20 +233,6 @@ async def test_websocket_password_epoch_and_connected_revocation(monkeypatch, re
 
 
 @pytest.mark.asyncio
-async def test_read_only_graph_cluster_names_are_local(monkeypatch):
-    from app.config import settings
-    from app.services.graph import GraphService
-
-    monkeypatch.setattr(settings, "read_only", True)
-    llm = SimpleNamespace(chat_completion=AsyncMock(side_effect=AssertionError("egress")))
-    service = GraphService(None, None, None, llm)
-    names, degraded = await service._generate_cluster_names({0: ["one"]}, [{"id": "one", "cluster": 0, "content": "sample", "tags": ["local"]}])
-    assert names
-    assert not degraded
-    llm.chat_completion.assert_not_called()
-
-
-@pytest.mark.asyncio
 async def test_broadcast_revalidates_before_delivering_private_events():
     from fastapi import HTTPException
     from app.api.websocket import EventManager
