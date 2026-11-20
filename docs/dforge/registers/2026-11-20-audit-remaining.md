@@ -122,7 +122,7 @@
 | 115 | B6-5: get_session commits after the response is sent, so routes without an explicit commit return 200 before the write is durable | docs/dforge/plans/2026-11-20-audit-remaining.md | A29 (Task 38) | doing | - |
 | 116 | B6-6: the CORS fallback grants credentialed cross-origin access to localhost:3000 and :5173 | docs/dforge/plans/2026-11-20-audit-remaining.md | A8 (Task 1) | done | 1d02a7c |
 | 117 | B6-7: SSH destination user/host go unvalidated into the ssh/scp argv | docs/dforge/plans/2026-11-20-audit-remaining.md | A9 (Task 3) | doing | - |
-| 118 | B6-8: every MCP request and every keyed REST call pays a fresh bcrypt | docs/dforge/plans/2026-11-20-audit-remaining.md | A11 (Task 2) | doing | - |
+| 118 | B6-8: every MCP request and every keyed REST call pays a fresh bcrypt | docs/dforge/plans/2026-11-20-audit-remaining.md | A11 (Task 2) | done | 6eb3cde |
 | 119 | B6-9: min_interval_seconds is persisted into the job row on first save, so raising a floor in code never takes effect | docs/dforge/plans/2026-11-20-audit-remaining.md | A30 (Task 40) | doing | - |
 | 120 | B6-10: PUT /jobs/{key} and its config twin wait on the per-job run lock | docs/dforge/plans/2026-11-20-audit-remaining.md | A30 (Task 40) | doing | - |
 | 121 | B6-12: job_runs.trigger is never written, so the UI's manual badge never renders | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 40 contracts | doing | - |
