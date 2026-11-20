@@ -19,10 +19,11 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
+from app.api.deps import get_memory_service
 from app.database import get_session
 from app.schemas.buffer import (
     BufferListResponse,
@@ -31,6 +32,7 @@ from app.schemas.buffer import (
 )
 from app.services import buffer_monitor
 from app.services.buffer_monitor import BufferState
+from app.services.memory import MemoryService
 
 router = APIRouter(prefix="/api/v1/memory-buffer", tags=["memory-buffer"])
 
@@ -88,11 +90,19 @@ async def requeue_buffer_row(
 async def discard_buffer_row(
     buffer_id: UUID,
     project: str | None = None,
-    _user=Depends(require_auth),
+    user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
+    memory_service: MemoryService = Depends(get_memory_service),
 ):
+    """Discard a poison row, and the memory its replay materialised.
+
+    `X-Memory-Deleted` says whether that memory existed and was deleted with
+    the row.
+    """
     try:
-        await buffer_monitor.discard(session, buffer_id, project=project)
+        memory_deleted = await buffer_monitor.discard(
+            session, buffer_id, memory_service, project=project, actor=user.sub,
+        )
     except buffer_monitor.BufferRowNotFound:
         raise HTTPException(status_code=404, detail="Buffer row not found")
     except buffer_monitor.BufferRowNotActionable as exc:
@@ -101,3 +111,7 @@ async def discard_buffer_row(
             detail=f"only a poison row can be discarded; this one is {exc}",
         )
     await session.commit()
+    return Response(
+        status_code=status.HTTP_204_NO_CONTENT,
+        headers={"X-Memory-Deleted": "true" if memory_deleted else "false"},
+    )

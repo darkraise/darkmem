@@ -23,7 +23,7 @@ would be a fresh leak with nothing behind it.
 from __future__ import annotations
 
 import uuid
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +35,9 @@ from app.services.buffer_flush import (
     count_stale_claims,
 )
 from app.services.events import record_event
+
+if TYPE_CHECKING:
+    from app.services.memory import MemoryService
 
 BufferState = Literal["pending", "claimed", "stale", "done", "poison"]
 
@@ -68,7 +71,11 @@ _ROW_COLUMNS = f"""
     token_size,
     LEFT(content, {CONTENT_PREVIEW_CHARS}) AS content_preview,
     LENGTH(content) AS content_length,
-    ({STALE_CLAIM_PREDICATE}) AS is_stale
+    ({STALE_CLAIM_PREDICATE}) AS is_stale,
+    EXISTS (
+        SELECT 1 FROM memories
+        WHERE memories.id = CAST(memory_buffer.metadata ->> 'memory_id' AS uuid)
+    ) AS memory_exists
 """
 
 _PROJECT_PREDICATE = (
@@ -194,6 +201,10 @@ _REQUEUE_SQL = text(
     """
 )
 
+_LOCK_MEMORY_SQL = text(
+    "SELECT id FROM memories WHERE id = CAST(:id AS uuid) FOR UPDATE"
+)
+
 _DISCARD_SQL = text(
     "DELETE FROM memory_buffer "
     "WHERE id = CAST(:id AS uuid) AND status = 'error' "
@@ -254,14 +265,27 @@ async def requeue(
 
 
 async def discard(
-    session: AsyncSession, buffer_id: uuid.UUID, *, project: str | None = None,
-) -> None:
-    """Delete a poison row the operator has decided not to keep. Does not commit.
+    session: AsyncSession,
+    buffer_id: uuid.UUID,
+    memory_service: MemoryService,
+    *,
+    project: str | None = None,
+    actor: str | None = None,
+) -> bool:
+    """Delete a poison row the operator has decided not to keep, and the memory
+    its replay materialised, if any. Returns whether a memory was deleted.
 
     The one place this surface deletes anything, and it is always a row a human
     named: the retention contract is unchanged, so `done` rows still leave only
     through the flush's own sweep and `error` rows still leave only through
     here. The journal entry is what survives the row.
+
+    A replay that wrote the memory row and then failed leaves that memory live
+    with no vector or graph, and discarding the buffer row removes the only
+    thing that would retry it. The memory row is locked before the journal
+    write so the journalled `memory_deleted` cannot be raced, and
+    `delete_memory`'s commit lands the buffer delete, the journal row and the
+    memory delete together.
     """
     settings = await buffer_settings(as_session_factory(session))
     before = await _load(
@@ -275,11 +299,15 @@ async def discard(
     )).scalar_one_or_none()
     if deleted is None:
         raise BufferRowNotActionable(before["status"])
+    memory_id = before["memory_id"]
+    memory_exists = memory_id is not None and (await session.execute(
+        _LOCK_MEMORY_SQL, {"id": str(memory_id)}
+    )).scalar_one_or_none() is not None
     await record_event(
         session,
         event_type="buffer_discarded",
         object_type="memory",
-        object_id=before["memory_id"],
+        object_id=memory_id,
         project=before["project"],
         source=before["source"],
         payload={
@@ -287,5 +315,9 @@ async def discard(
             "attempts": before["attempts"],
             "last_error": before["last_error"],
             "content_preview": before["content_preview"],
+            "memory_deleted": memory_exists,
         },
     )
+    if memory_exists:
+        await memory_service.delete_memory(memory_id, api_key_id=None, actor=actor)
+    return memory_exists

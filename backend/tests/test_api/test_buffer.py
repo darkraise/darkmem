@@ -23,6 +23,7 @@ import uuid
 import pytest
 from sqlalchemy import text
 
+from app.models.memory import Memory
 from app.services.buffer_flush import stale_claims
 from app.services.memory_buffer import buffered_memory_id, enqueue
 
@@ -323,6 +324,83 @@ async def test_discard_deletes_the_poison_row(client, auth_headers, session):
         {"i": str(buffer_id)},
     )).scalar_one()
     assert remaining == 0
+
+
+async def _materialise(session, buffer_id: uuid.UUID, **fields) -> uuid.UUID:
+    """Write the memory row a replay materialised before the row errored."""
+    memory_id = uuid.UUID((await session.execute(
+        text("SELECT metadata ->> 'memory_id' FROM memory_buffer "
+             "WHERE id = CAST(:i AS uuid)"),
+        {"i": str(buffer_id)},
+    )).scalar_one())
+    session.add(Memory(
+        id=memory_id, content="materialised capture", source="api",
+        importance=0.5, metadata_={}, **fields,
+    ))
+    await session.commit()
+    return memory_id
+
+
+async def _memory_status(session, memory_id: uuid.UUID):
+    return (await session.execute(
+        text("SELECT status, superseded_by FROM memories WHERE id = CAST(:i AS uuid)"),
+        {"i": str(memory_id)},
+    )).one_or_none()
+
+
+async def test_buffer_items_report_their_memory(client, auth_headers, session):
+    materialised = await seed(session, status="error", attempts=5)
+    memory_id = await _materialise(session, materialised)
+    stranded = await seed(session, status="error", attempts=5)
+
+    response = await client.get(BASE, headers=auth_headers)
+    assert response.status_code == 200
+    items = {row["id"]: row for row in response.json()["items"]}
+    assert items[str(materialised)]["memory_id"] == str(memory_id)
+    assert items[str(materialised)]["memory_exists"] is True
+    assert items[str(stranded)]["memory_id"] is not None
+    assert items[str(stranded)]["memory_exists"] is False
+
+
+async def test_discard_deletes_the_materialised_memory(client, auth_headers, session):
+    materialised = await seed(session, status="error", attempts=5)
+    memory_id = await _materialise(session, materialised)
+    stranded = await seed(session, status="error", attempts=5)
+
+    response = await client.delete(f"{BASE}/{materialised}", headers=auth_headers)
+    assert response.status_code == 204
+    assert response.headers["X-Memory-Deleted"] == "true"
+    assert await _memory_status(session, memory_id) is None
+
+    response = await client.delete(f"{BASE}/{stranded}", headers=auth_headers)
+    assert response.status_code == 204
+    assert response.headers["X-Memory-Deleted"] == "false"
+
+    journal = {
+        row["payload"]["buffer_id"]: row["payload"]
+        for row in await _events(session, "buffer_discarded")
+    }
+    assert journal[str(materialised)]["memory_deleted"] is True
+    assert journal[str(stranded)]["memory_deleted"] is False
+
+
+async def test_discard_demotes_dependents_first(client, auth_headers, session):
+    buffer_id = await seed(session, status="error", attempts=5)
+    memory_id = await _materialise(session, buffer_id)
+    dependent = uuid.uuid4()
+    session.add(Memory(
+        id=dependent, content="the older memory it superseded", source="api",
+        importance=0.5, metadata_={}, status="superseded", superseded_by=memory_id,
+    ))
+    await session.commit()
+
+    response = await client.delete(f"{BASE}/{buffer_id}", headers=auth_headers)
+    assert response.status_code == 204
+    assert response.headers["X-Memory-Deleted"] == "true"
+    assert await _memory_status(session, memory_id) is None
+    status_value, superseded_by = await _memory_status(session, dependent)
+    assert status_value == "deprecated"
+    assert superseded_by is None
 
 
 async def test_both_actions_journal_to_events(client, auth_headers, session):

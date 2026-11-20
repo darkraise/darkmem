@@ -389,10 +389,11 @@ written, no graph and an `extraction` failure row. A flush overrunning
 its deadline returns the batch to `pending`, refunds the attempt and shrinks
 the next claim. `error` rows are kept until resolved (the sweep deletes only
 `done`) and are triaged over `GET /api/v1/memory-buffer` (REST only; requeue
-resets attempts and journals `buffer_requeued`, discard journals
-`buffer_discarded`). The claim SQL bounds its batch with a `WITH ... AS
-MATERIALIZED` CTE: a plain sub-select lets the planner re-execute it per row
-and claim the whole backlog. Don't "simplify" it.
+resets attempts and journals `buffer_requeued`; discard deletes the row and,
+through `MemoryService.delete_memory`, the memory its replay materialised,
+answers `X-Memory-Deleted` and journals `buffer_discarded`). The claim SQL
+bounds its batch with a `WITH ... AS MATERIALIZED` CTE: a plain sub-select
+lets the planner re-execute it per row and claim the whole backlog. Don't "simplify" it.
 A tick whose every claimed row failed raises `BufferFlushFailed` after the
 rows are settled, so the run records `error` instead of `ok`; a tick with
 any success reports its counts.
