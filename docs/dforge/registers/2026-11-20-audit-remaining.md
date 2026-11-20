@@ -102,7 +102,7 @@
 | 95 | B4 removals 3, 4, 6, 7: TaskRegistry.get_all_running and cleanup_completed, the CallResolver named_imports/wildcard_imports arguments, RepoManager.get_auth_token, _implements_split's discarded return value | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 32 contracts | done | e48b9f1 |
 | 96 | B4 removal 8: the CodeFile.last_commit_sha column | docs/dforge/plans/2026-11-20-audit-remaining.md | A47 (Task 32) | done | e48b9f1 |
 | 97 | B5-2: a document block edit drops no vectors, so a failed embed after commit leaves the old-text vector forever and the route answers 500 for a write that landed | docs/dforge/plans/2026-11-20-audit-remaining.md | A25 (Task 33) | done | 6877a10 |
-| 98 | B5-3: upload streams up to 50 MB inside the global attachment lock and an open transaction; the Notion import holds the same lock for up to 900 s | docs/dforge/plans/2026-11-20-audit-remaining.md | A26 (Task 34) | doing | - |
+| 98 | B5-3: upload streams up to 50 MB inside the global attachment lock and an open transaction; the Notion import holds the same lock for up to 900 s | docs/dforge/plans/2026-11-20-audit-remaining.md | A26 (Task 34) | done | 5787a38 |
 | 99 | B5-4: any content change re-embeds every block inline, and every unchanged re-push spends a real embed call | docs/dforge/plans/2026-11-20-audit-remaining.md | A28 (Task 33) | done | 6877a10 |
 | 100 | B5-5: _PLACE rewrites every block row of the tree on every verb | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 36 contracts | doing | - |
 | 101 | B5-6: blocks.search_vector and ix_blocks_search_vector have no reader (owner ruling 2026-11-20: drop) | docs/dforge/plans/2026-11-20-audit-remaining.md | A46 (Task 48) | doing | - |
