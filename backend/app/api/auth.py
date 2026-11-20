@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.database import get_session
+from app.database import SessionDep, get_session
 from app.services.api_key_scopes import API_KEY_SCOPES, FORBIDDEN_SCOPES
 from app.services.api_keys import authenticate, looks_like_credential, mark_key_used
 
@@ -119,12 +119,21 @@ def _extract_token(request: Request) -> str | None:
 
 async def require_auth(
     request: Request,
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> TokenPayload:
     token = _extract_token(request)
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     return await validate_session_token(token, session)
+
+
+async def require_auth_for_stream(
+    request: Request,
+    session: AsyncSession = Depends(get_session, scope="request"),
+) -> TokenPayload:
+    """`require_auth` on a streaming route's request-scoped session, so the
+    route holds one session rather than a second one closed before it streams."""
+    return await require_auth(request, session)
 
 
 async def validate_session_token(token: str, session: AsyncSession) -> TokenPayload:
@@ -194,7 +203,7 @@ def require_scope(scope: str):
 
     async def _require_scope(
         request: Request,
-        session: AsyncSession = Depends(get_session),
+        session: AsyncSession = SessionDep,
     ) -> Principal:
         # Cookie first, matching `_extract_token`: a browser session wins over
         # anything in the Authorization header, exactly as it does today.
@@ -235,7 +244,7 @@ def require_scope(scope: str):
 
 
 async def require_uninitialized(
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> None:
     """Gate wizard-only endpoints to a fresh-install state.
 

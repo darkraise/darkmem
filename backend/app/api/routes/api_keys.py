@@ -26,7 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
-from app.database import get_session
+from app.database import SessionDep
 from app.models.api_key import ApiKey
 from app.schemas.api_keys import ApiKeyCreate, ApiKeyCreated, ApiKeyResponse
 from app.services.api_key_scopes import ScopeRejected
@@ -39,7 +39,7 @@ router = APIRouter(prefix="/api/v1/api-keys", tags=["api-keys"])
 async def create_api_key(
     body: ApiKeyCreate,
     user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> ApiKeyCreated:
     try:
         row, token = await issue_key(
@@ -70,7 +70,7 @@ async def create_api_key(
 @router.get("", response_model=list[ApiKeyResponse])
 async def list_api_keys(
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> list[ApiKeyResponse]:
     rows = (
         await session.execute(select(ApiKey).order_by(ApiKey.created_at.desc()))
@@ -94,7 +94,7 @@ async def list_api_keys(
 async def revoke_api_key(
     key_id: UUID,
     user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> None:
     if not await revoke_key(session, key_id, actor=user.sub):
         raise HTTPException(

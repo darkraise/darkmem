@@ -32,7 +32,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
-from app.database import get_session
+from app.database import SessionDep
 from app.repositories.knowledge_triples import HumanSourceRequired
 from app.schemas.facts import FactRatifyRequest
 from app.services import human_adjudication
@@ -45,7 +45,7 @@ async def ratify_fact(
     fact_id: UUID,
     body: FactRatifyRequest | None = None,
     user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     """Ratify a fact: write the human source row, then confirm it.
 

@@ -21,7 +21,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
-from app.database import get_session
+from app.database import SessionDep
 from app.schemas.hygiene_queue import (
     BulkConfirmDedupRequest,
     BulkPruneRequest,
@@ -57,7 +57,7 @@ async def list_duplicates(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     items, total = await hygiene_queue_service.list_duplicates(
         session, project=project, limit=limit, offset=offset,
@@ -74,7 +74,7 @@ async def list_low_confidence(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     items, total = await hygiene_queue_service.list_low_confidence(
         session, project=project, threshold=threshold, limit=limit, offset=offset,
@@ -91,7 +91,7 @@ async def list_expiring_soon(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     items, total = await hygiene_queue_service.list_expiring_soon(
         session, project=project, within_days=within_days, limit=limit, offset=offset,
@@ -105,7 +105,7 @@ async def list_superseded(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     items, total = await hygiene_queue_service.list_superseded(
         session, project=project, limit=limit, offset=offset,
@@ -123,7 +123,7 @@ async def counts(
         default=hygiene_queue_service.DEFAULT_EXPIRING_SOON_DAYS, ge=0, le=365,
     ),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     return await hygiene_queue_service.counts(
         session, project=project,
@@ -135,7 +135,7 @@ async def counts(
 async def bulk_supersede(
     body: BulkSupersedeRequest,
     user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     cycle_id, results = await hygiene_queue_service.bulk_supersede(
         session,
@@ -153,7 +153,7 @@ async def bulk_supersede(
 async def bulk_prune(
     body: BulkPruneRequest,
     user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     cycle_id, results = await hygiene_queue_service.bulk_prune(
         session, [str(memory_id) for memory_id in body.memory_ids], actor=user.sub,
@@ -166,7 +166,7 @@ async def bulk_prune(
 async def bulk_confirm_dedup(
     body: BulkConfirmDedupRequest,
     user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     cycle_id, results = await hygiene_queue_service.bulk_confirm_dedup(
         session,

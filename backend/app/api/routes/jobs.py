@@ -20,7 +20,7 @@ from app.api.auth import require_auth
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.database import get_session
+from app.database import SessionDep
 from app.models.job_run import JobRun
 from app.services.job_registry import FieldDescriptor, JobBusyError
 
@@ -101,7 +101,7 @@ async def list_job_runs(
     limit: int = Query(20, ge=1, le=200),
     offset: int = Query(0, ge=0),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> JobRunsResponse:
     """One job's run history, newest first, server-paginated.
 

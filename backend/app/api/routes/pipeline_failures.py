@@ -21,7 +21,7 @@ from app.api.auth import require_auth
 from app.api.deps import refuse_when_read_only
 from app.api.websocket import event_manager
 from app.utils.background import spawn
-from app.database import async_session_factory, get_session
+from app.database import SessionDep, async_session_factory
 from app.services.pipeline import load_pipeline_entry
 from app.services.pipeline_failures import (
     PipelineFailureService,
@@ -41,7 +41,7 @@ async def list_failures(
     limit: int = 100,
     offset: int = 0,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     svc = PipelineFailureService(session)
     items, total = await svc.list_unresolved(
@@ -54,7 +54,7 @@ async def list_failures(
 @router.get("/counts")
 async def counts(
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     svc = PipelineFailureService(session)
     return await svc.counts_by_pipeline()
@@ -64,7 +64,7 @@ async def counts(
 async def get_failure(
     failure_id: UUID,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     svc = PipelineFailureService(session)
     failure = await svc.get(failure_id)
@@ -78,7 +78,7 @@ async def retry_failure(
     failure_id: UUID,
     _read_only=Depends(refuse_when_read_only),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     svc = PipelineFailureService(session, broadcast=event_manager.broadcast)
     failure = await svc.get(failure_id)
@@ -128,7 +128,7 @@ async def retry_all(
     pipeline_name: str | None = None,
     _read_only=Depends(refuse_when_read_only),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
     request: Request = None,
 ):
     svc = PipelineFailureService(session)
@@ -239,7 +239,7 @@ async def retry_all(
 async def forget_failure(
     failure_id: UUID,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     svc = PipelineFailureService(session, broadcast=event_manager.broadcast)
     deleted = await svc.forget_by_id(failure_id)

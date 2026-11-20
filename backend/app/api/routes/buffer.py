@@ -23,8 +23,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
-from app.api.deps import get_memory_service
-from app.database import get_session
+from app.api.deps import MemoryServiceDep
+from app.database import SessionDep
 from app.schemas.buffer import (
     BufferListResponse,
     BufferRowResponse,
@@ -44,7 +44,7 @@ async def list_buffer_rows(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     rows, total, _ = await buffer_monitor.list_rows(
         session, state=state, project=project, limit=limit, offset=offset,
@@ -61,7 +61,7 @@ async def list_buffer_rows(
 async def buffer_stats(
     project: str | None = None,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     return BufferStatsResponse(**await buffer_monitor.stats(session, project=project))
 
@@ -71,7 +71,7 @@ async def requeue_buffer_row(
     buffer_id: UUID,
     project: str | None = None,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     try:
         row = await buffer_monitor.requeue(session, buffer_id, project=project)
@@ -91,8 +91,8 @@ async def discard_buffer_row(
     buffer_id: UUID,
     project: str | None = None,
     user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
-    memory_service: MemoryService = Depends(get_memory_service),
+    session: AsyncSession = SessionDep,
+    memory_service: MemoryService = MemoryServiceDep,
 ):
     """Discard a poison row, and the memory its replay materialised.
 

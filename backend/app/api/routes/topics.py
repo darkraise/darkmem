@@ -52,7 +52,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
-from app.database import get_session
+from app.database import SessionDep
 from app.repositories import memory_communities as communities_repo
 from app.repositories.pinned_subjects import get_subject_lists
 from app.schemas.topics import (
@@ -86,7 +86,7 @@ def _topic_item(project: str, view: browsing.TopicView) -> TopicItem:
 async def list_topics(
     project: str = "default",
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     topics = await browsing.browse_topics(session, project)
     return TopicListResponse(items=[_topic_item(project, t) for t in topics])
@@ -96,7 +96,7 @@ async def list_topics(
 async def list_pin_suggestions(
     project: str = "default",
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     current = await communities_repo.list_with_members(session, project)
     prior = await pins.load_topic_prior(session, project)
@@ -140,7 +140,7 @@ async def list_pin_suggestions(
 async def accept_pin_suggestion(
     body: PinDecisionRequest,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     await pins.accept_pin_suggestion(
         session, body.project, body.subject_key, label=body.label
@@ -154,7 +154,7 @@ async def accept_pin_suggestion(
 async def dismiss_pin_suggestion(
     body: PinDecisionRequest,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     await pins.dismiss_pin_suggestion(
         session, body.project, body.subject_key, label=body.label
@@ -167,7 +167,7 @@ async def get_topic(
     label: str,
     project: str = "default",
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     topic = await browsing.get_topic(session, project, label)
     if topic is None:

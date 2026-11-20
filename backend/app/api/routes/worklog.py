@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.llm import lease_llm
 from app.api.auth import Principal, require_scope
 from app.api.mcp.client_identity import ORIGIN_HEADER, resolve_client_source
-from app.database import get_session
+from app.database import SessionDep
 from app.schemas.worklog import (
     Kind,
     State,
@@ -46,7 +46,7 @@ async def append_entries(
     body: WorklogAppendRequest,
     request: Request,
     principal: Principal = Depends(_require_capture),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     source = resolve_client_source(None, headers=request.headers, fallback=worklog.DOOR_SOURCE)
     try:
@@ -89,7 +89,7 @@ async def resume(
     project: str = Query(min_length=1),
     workstream: str = Query(min_length=1),
     _principal: Principal = Depends(_require_read),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     answer = await worklog.resume(session, project=project, key=workstream)
     if answer is None:
@@ -104,7 +104,7 @@ async def list_workstreams(
     before: str | None = Query(default=None),
     limit: int = Query(50, ge=1, le=200),
     _principal: Principal = Depends(_require_read),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     try:
         return await worklog.list_workstreams(
@@ -122,7 +122,7 @@ async def list_entries(
     after: int | None = Query(default=None, ge=0),
     limit: int = Query(100, ge=1, le=500),
     _principal: Principal = Depends(_require_read),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     if await worklog.get_workstream_by_id(session, workstream_id) is None:
         raise HTTPException(status_code=404, detail="No such workstream")
@@ -136,7 +136,7 @@ async def search_entries(
     body: WorklogSearchRequest,
     request: Request,
     _principal: Principal = Depends(_require_read),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     # Not `get_llm`: it answers 503 without an orchestrator, and search still
     # has an answer then -- the keyword arm, with semantic_ran false.
@@ -161,7 +161,7 @@ async def update_workstream(
     workstream_id: UUID,
     body: WorkstreamUpdateRequest,
     principal: Principal = Depends(_require_capture),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     try:
         workstream = await worklog.update_workstream(
@@ -187,7 +187,7 @@ async def update_workstream(
 async def purge_workstream(
     workstream_id: UUID,
     principal: Principal = Depends(_require_admin),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     try:
         await worklog.purge_workstream(

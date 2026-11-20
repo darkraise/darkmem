@@ -40,7 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.llm import lease_llm
 from app.api.auth import require_auth
-from app.database import get_session
+from app.database import SessionDep
 from app.schemas.envelope import ErrorDetail, ErrorEnvelope
 from app.schemas.knowledge import (
     KnowledgeSearchRequest,
@@ -65,7 +65,7 @@ async def search_knowledge(
     body: KnowledgeSearchRequest,
     request: Request,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     # Whatever the app holds, including None, exactly as the twin passes
     # whatever the pipeline holds. A 503 here on a missing orchestrator would

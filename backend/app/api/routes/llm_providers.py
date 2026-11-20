@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.auth import require_auth
 from app.api.deps import refuse_when_read_only
 from app.config import LLMApiKind
-from app.database import get_session
+from app.database import SessionDep
 from app.models.llm_config import LLMPurposeConfigRow
 from app.models.llm_provider import LLMProviderRow
 from app.schemas.config import LLMProviderModelsResponse, ProviderBaseUrl, ProviderName
@@ -143,7 +143,7 @@ async def _probe(api_kind: str, base_url: str, api_key: str | None) -> LLMProvid
 @router.get("", response_model=ProviderListResponse)
 async def list_providers(
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     rows = (await session.execute(select(LLMProviderRow))).scalars().all()
     by_provider: dict[str, list[str]] = {}
@@ -161,7 +161,7 @@ async def create_provider(
     body: ProviderCreate,
     request: Request,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     async with request.app.state.llm_config_lock:
         existing = (await session.execute(
@@ -187,7 +187,7 @@ async def update_provider(
     body: ProviderUpdate,
     request: Request,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     async with request.app.state.llm_config_lock:
         row = (await session.execute(
@@ -243,7 +243,7 @@ async def delete_provider(
     name: str,
     request: Request,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     async with request.app.state.llm_config_lock:
         row = (await session.execute(
@@ -279,7 +279,7 @@ async def probe_draft_provider(
 async def probe_saved_provider(
     name: str,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     row = (await session.execute(
         select(LLMProviderRow).where(LLMProviderRow.name == name)

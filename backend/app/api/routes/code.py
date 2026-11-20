@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
 from app.services.llm import lease_llm
-from app.database import get_session
+from app.database import SessionDep
 from app.schemas.code import (
     BlastRadiusRequest,
     CodeFileResponse,
@@ -44,7 +44,7 @@ async def search_code(
     body: CodeSearchRequest,
     _user=Depends(require_auth),
     request: Request = None,
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     svc = _get_service(request, session)
     with lease_llm(svc.llm):
@@ -74,7 +74,7 @@ async def list_symbols(
     limit: int = Query(50, ge=1, le=200),
     _user=Depends(require_auth),
     request: Request = None,
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     svc = _get_service(request, session)
     with lease_llm(svc.llm):
@@ -93,7 +93,7 @@ async def lookup_symbol(
     repo_id: UUID | None = Query(None),
     _user=Depends(require_auth),
     request: Request = None,
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     svc = _get_service(request, session)
     with lease_llm(svc.llm):
@@ -112,7 +112,7 @@ async def get_symbol(
     symbol_id: UUID,
     _user=Depends(require_auth),
     request: Request = None,
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     svc = _get_service(request, session)
     with lease_llm(svc.llm):
@@ -129,7 +129,7 @@ async def list_files(
     language: str | None = None,
     _user=Depends(require_auth),
     request: Request = None,
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     svc = _get_service(request, session)
     with lease_llm(svc.llm):
@@ -155,7 +155,7 @@ async def code_graph(
     ),
     _user=Depends(require_auth),
     request: Request = None,
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     svc = _get_service(request, session)
     with lease_llm(svc.llm):
@@ -166,7 +166,7 @@ async def code_graph(
 async def get_wiki(
     repo_id: UUID,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     """Read-only: returns the cached wiki, or null if none has been generated.
     Generating the wiki is an explicit, state-changing action — reindex the repo
@@ -181,7 +181,7 @@ async def blast_radius(
     body: BlastRadiusRequest,
     _user=Depends(require_auth),
     request: Request = None,
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     svc = _get_service(request, session)
     with lease_llm(svc.llm):

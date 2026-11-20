@@ -18,7 +18,7 @@ from app.api.auth import (
     validate_password_bytes,
 )
 from app.config import settings
-from app.database import async_session_factory, get_session
+from app.database import SessionDep, async_session_factory
 from app.models.config import Config
 from app.models.token_blocklist import TokenBlocklist
 from app.services.events import record_event
@@ -33,7 +33,7 @@ PASSWORD_CHANGED_AT_KEY = "admin_password_changed_at"
 async def _record_audit(action: str, details: dict) -> None:
     """Persist an audit row in its own committed session.
 
-    The request-scoped session from ``get_session`` rolls back whenever the
+    The request's session from ``get_session`` rolls back whenever the
     handler raises (e.g. a failed login raising 401), which silently discards
     audit rows merely flushed into it. Writing through a fresh session commits
     the audit trail independently of the request outcome.
@@ -84,7 +84,7 @@ def _client_ip(request: Request) -> str:
 async def auth_login(
     body: PasswordRequest,
     request: Request,
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     ip = _client_ip(request)
     limiter = login_rate_limiter
@@ -137,7 +137,7 @@ async def auth_login(
 @router.post("/logout")
 async def auth_logout(
     payload: TokenPayload = Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     # C2 (increment 7): the cookie is cleared either way. Under the worker's
     # read-only posture the blocklist insert would be refused by the viewer
@@ -162,7 +162,7 @@ async def auth_change_password(
     body: ChangePasswordRequest,
     request: Request,
     payload: TokenPayload = Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     # C3 (increment 7): refused before the session is touched. Changing a
     # snapshot's password is meaningless -- the next restore overwrites it --
@@ -220,7 +220,7 @@ async def auth_change_password(
 @router.post("/refresh")
 async def auth_refresh(
     payload: TokenPayload = Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     # Rotating refresh: blocklist the presented jti before issuing a new token
     # so a captured pre-refresh token can't keep working until its 24h exp.
@@ -312,7 +312,7 @@ async def auth_audit(
     offset: int = Query(0, ge=0),
     action: str | None = Query(None),
     _payload: TokenPayload = Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     """Admin read surface for the security audit trail (auth_*/setup_* rows).
 

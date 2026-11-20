@@ -9,8 +9,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.auth import require_auth, require_scope
-from app.api.deps import refuse_when_read_only, get_code_pipeline, get_repo_manager, get_session_factory
-from app.database import get_session
+from app.api.deps import CodePipelineDep, get_repo_manager, get_session_factory, refuse_when_read_only
+from app.database import SessionDep
 from app.models.code import CodeFile, CodeSymbol, Repository
 from app.schemas.code import (
     IndexDebtStatus, ReindexFilesRequest, ReindexFilesResponse, ReindexRequest,
@@ -89,7 +89,7 @@ async def create_repo(
     _read_only=Depends(refuse_when_read_only),
     _user=Depends(require_auth),
     manager: RepoManager = Depends(get_repo_manager),
-    pipeline: CodePipeline = Depends(get_code_pipeline),
+    pipeline: CodePipeline = CodePipelineDep,
     session_factory: async_sessionmaker[AsyncSession] = Depends(get_session_factory),
 ):
     def _index_after_clone(repo_id: UUID) -> None:
@@ -202,7 +202,7 @@ async def list_repos(
 @router.get("/stats")
 async def repo_stats(
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     total_repos = (await session.execute(select(func.count()).select_from(Repository))).scalar() or 0
     total_files = (await session.execute(select(func.count()).select_from(CodeFile))).scalar() or 0
@@ -406,7 +406,7 @@ async def reindex_repo(
     _read_only=Depends(refuse_when_read_only),
     body: ReindexRequest = ReindexRequest(),
     _user=Depends(require_auth),
-    pipeline: CodePipeline = Depends(get_code_pipeline),
+    pipeline: CodePipeline = CodePipelineDep,
     manager: RepoManager = Depends(get_repo_manager),
     session_factory: async_sessionmaker[AsyncSession] = Depends(get_session_factory),
 ):
@@ -458,7 +458,7 @@ async def reindex_repo_files(
     body: ReindexFilesRequest,
     _read_only=Depends(refuse_when_read_only),
     principal=Depends(_require_repo_admin),
-    pipeline: CodePipeline = Depends(get_code_pipeline),
+    pipeline: CodePipeline = CodePipelineDep,
     manager: RepoManager = Depends(get_repo_manager),
     session_factory: async_sessionmaker[AsyncSession] = Depends(get_session_factory),
 ):
@@ -556,7 +556,7 @@ async def repo_push_webhook(
     repo_id: UUID,
     _read_only=Depends(refuse_when_read_only),
     principal=Depends(_require_repo_admin),
-    pipeline: CodePipeline = Depends(get_code_pipeline),
+    pipeline: CodePipeline = CodePipelineDep,
     manager: RepoManager = Depends(get_repo_manager),
     session_factory: async_sessionmaker[AsyncSession] = Depends(get_session_factory),
 ):

@@ -1,3 +1,4 @@
+from fastapi import Depends
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -33,3 +34,10 @@ async def get_session():
         except Exception:
             await session.rollback()
             raise
+
+
+# Function scope: the commit runs when the handler returns, before the response
+# is sent, so a client that refetches on a 2xx reads its own write. A streaming
+# route needs its session past the handler and takes
+# `Depends(get_session, scope="request")` instead.
+SessionDep = Depends(get_session, scope="function")

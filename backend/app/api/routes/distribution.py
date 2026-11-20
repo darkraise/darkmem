@@ -30,7 +30,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
-from app.database import get_session
+from app.database import SessionDep
 from app.models.config import Config
 from app.services.inject_adapters import REFRESH_WATCH, get_registry
 from app.services.inject_journal import record_inject_curbed
@@ -103,7 +103,7 @@ async def _policy(session: AsyncSession) -> DistributionPolicy:
 @router.get("", response_model=DistributionState)
 async def get_distribution(
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     """Every target's block path, and the policy in force.
 
@@ -136,7 +136,7 @@ async def get_distribution(
 async def put_policy(
     body: DistributionPolicy,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     """Write the policy. 200 with the effective value, not 204.
 

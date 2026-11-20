@@ -5,7 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 
 from app.api.auth import require_auth, require_scope
-from app.api.deps import refuse_when_read_only, get_memory_service
+from app.api.deps import MemoryServiceDep, refuse_when_read_only
 from app.api.mcp.client_identity import (
     ORIGIN_HEADER,
     REST_FALLBACK_SOURCE,
@@ -122,7 +122,7 @@ async def create_memory(
     response: Response,
     wait_process: bool = False,
     user=Depends(_require_capture),
-    service: MemoryService = Depends(get_memory_service),
+    service: MemoryService = MemoryServiceDep,
 ):
     """Tier-A buffered accept (doc 05 §2): durably buffers the capture and
     hands back its pre-minted memory id — a 202 accept by default. Pass
@@ -161,7 +161,7 @@ async def reason(
     body: ReasonRequest,
     _read_only=Depends(refuse_when_read_only),
     _user=Depends(require_auth),
-    service: MemoryService = Depends(get_memory_service),
+    service: MemoryService = MemoryServiceDep,
 ):
     result = await service.reason(body.question, limit=body.limit, project=body.project)
     return ReasonResponse(**result)
@@ -171,7 +171,7 @@ async def reason(
 async def get_memory(
     memory_id: UUID,
     _user=Depends(require_auth),
-    service: MemoryService = Depends(get_memory_service),
+    service: MemoryService = MemoryServiceDep,
 ):
     memory = await service.get_memory(memory_id)
     if not memory:
@@ -200,7 +200,7 @@ async def update_memory(
     memory_id: UUID,
     body: MemoryUpdate,
     user=Depends(require_auth),
-    service: MemoryService = Depends(get_memory_service),
+    service: MemoryService = MemoryServiceDep,
 ):
     # 'superseded' requires an atomically-set superseded_by (enforced by
     # chk_superseded_has_pointer) and is only ever produced by the pipeline's
@@ -221,7 +221,7 @@ async def update_memory(
 async def delete_memory(
     memory_id: UUID,
     user=Depends(require_auth),
-    service: MemoryService = Depends(get_memory_service),
+    service: MemoryService = MemoryServiceDep,
 ):
     """Delete a memory row. **This is not a content purge** (T2.59, ruled
     2026-08-06: accept and document).
@@ -254,7 +254,7 @@ async def delete_memory(
 async def bulk_delete(
     body: MemoryBulkDelete,
     user=Depends(require_auth),
-    service: MemoryService = Depends(get_memory_service),
+    service: MemoryService = MemoryServiceDep,
 ):
     """Delete multiple memories in one request (processed server-side in series
     to avoid the deadlock that concurrent per-row deletes hit on shared graph
@@ -267,7 +267,7 @@ async def bulk_delete(
 async def search_memories(
     body: MemorySearchRequest,
     _user=Depends(require_auth),
-    service: MemoryService = Depends(get_memory_service),
+    service: MemoryService = MemoryServiceDep,
 ):
     # A search spends tokens twice over -- the query embed, and the reranker
     # when it is on -- and neither has a memory to charge. The request is the
@@ -282,7 +282,7 @@ async def search_memories_paginated(
     body: MemorySearchRequest,
     request: Request,
     _user=Depends(_require_read),
-    service: MemoryService = Depends(get_memory_service),
+    service: MemoryService = MemoryServiceDep,
 ):
     with subject_scope(UsageSubject("search", str(uuid4()), body.project)):
         result = await service.search_memories_paginated(body, headers=request.headers)
@@ -317,7 +317,7 @@ async def batch_create(
     response: Response,
     wait_process: bool = False,
     user=Depends(_require_capture),
-    service: MemoryService = Depends(get_memory_service),
+    service: MemoryService = MemoryServiceDep,
 ):
     """Batch counterpart of ``POST /memories`` — one 202-buffered accept per
     entry by default; ``wait_process=true`` drives the whole batch's flush
@@ -366,7 +366,7 @@ async def merge_memory(
     memory_id: UUID,
     body: MemoryMergeRequest,
     user=Depends(require_auth),
-    service: MemoryService = Depends(get_memory_service),
+    service: MemoryService = MemoryServiceDep,
 ):
     try:
         memory = await service.merge_memories(
@@ -384,7 +384,7 @@ async def find_duplicates(
     memory_id: UUID,
     threshold: float = 0.9,
     _user=Depends(require_auth),
-    service: MemoryService = Depends(get_memory_service),
+    service: MemoryService = MemoryServiceDep,
 ):
     duplicates = await service.find_duplicates(memory_id, threshold)
     return duplicates

@@ -343,3 +343,74 @@ async def test_reembed_capture_await_handoff_and_cancel_before_start(monkeypatch
     await asyncio.gather(*tasks, return_exceptions=True)
     await asyncio.wait_for(retired, 1)
     assert not reembed.reembed_locks.is_locked("memories")
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_keeps_its_lease_until_the_stream_ends(client, auth_headers, monkeypatch):
+    import json
+
+    from app.main import app
+    from app.services import hybrid_search
+    from app.services.llm import LLMOrchestrator
+
+    async def _no_rows(self, query, **kwargs):
+        return hybrid_search.ChannelTrace(results=[])
+
+    monkeypatch.setattr(hybrid_search.HybridSearchService, "search_with_trace", _no_rows)
+    llm = LLMOrchestrator({})
+    llm.embed = AsyncMock(return_value=([0.0], "fp"))
+    held_while_streaming: list[int] = []
+    first_token = asyncio.Event()
+    never = asyncio.Event()
+    leave_early = False
+
+    async def _stream(purpose, messages, usage_subject=None):
+        held_while_streaming.append(llm._leases)
+        first_token.set()
+        yield "an "
+        if leave_early:
+            await never.wait()
+        held_while_streaming.append(llm._leases)
+        yield "answer"
+
+    llm.chat_completion_stream = _stream
+    monkeypatch.setattr(app.state, "llm", llm, raising=False)
+    body = {"content": "what runs the cache?"}
+
+    response = await client.post("/api/v1/chat/completions", json=body, headers=auth_headers)
+    assert response.status_code == 200
+    assert '"type": "done"' in response.text
+    assert held_while_streaming == [1, 1]
+    assert llm._leases == 0
+
+    held_while_streaming.clear()
+    first_token.clear()
+    leave_early = True
+    sent_body = False
+
+    async def receive():
+        nonlocal sent_body
+        if not sent_body:
+            sent_body = True
+            return {"type": "http.request", "body": json.dumps(body).encode(), "more_body": False}
+        await first_token.wait()
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        return None
+
+    scope = {
+        "type": "http", "asgi": {"version": "3.0", "spec_version": "2.3"},
+        "http_version": "1.1", "method": "POST", "scheme": "http",
+        "path": "/api/v1/chat/completions", "raw_path": b"/api/v1/chat/completions",
+        "query_string": b"", "root_path": "", "client": ("127.0.0.1", 50000),
+        "server": ("test", 80),
+        "headers": [
+            (b"host", b"test"), (b"content-type", b"application/json"),
+            (b"authorization", auth_headers["Authorization"].encode()),
+        ],
+    }
+    await asyncio.wait_for(app(scope, receive, send), 5)
+    assert held_while_streaming == [1]
+    assert llm._leases == 0
+    await asyncio.wait_for(llm.close(), 1)

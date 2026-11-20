@@ -30,7 +30,7 @@ from app.api.auth import (
     validate_password_bytes,
 )
 from app.api.deps import refuse_when_read_only
-from app.database import get_session
+from app.database import SessionDep
 from app.models.code import Repository
 from app.models.config import Config
 from app.services.events import record_event
@@ -62,7 +62,7 @@ class StatusResponse(BaseModel):
 
 
 @router.get("/status", response_model=StatusResponse)
-async def setup_status(session: AsyncSession = Depends(get_session)) -> StatusResponse:
+async def setup_status(session: AsyncSession = SessionDep) -> StatusResponse:
     result = await session.execute(
         select(Config).where(Config.key == ADMIN_PASSWORD_KEY)
     )
@@ -369,7 +369,7 @@ async def _assert_llm_block_admissible(session: AsyncSession, llm: SetupLLM) -> 
 async def setup_finalize(
     body: SetupRequest,
     request: Request,
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     """Finalize the wizard.
 

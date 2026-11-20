@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
-from app.database import get_session
+from app.database import SessionDep
 from app.schemas.event_log import (
     EventCalendarResponse,
     EventListResponse,
@@ -39,7 +39,7 @@ async def get_events(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     items, total = await list_events(
         session,
@@ -63,7 +63,7 @@ async def get_events_calendar(
     event_type: str | None = None,
     object_type: str | None = None,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     buckets = await calendar_counts(
         session,
@@ -84,7 +84,7 @@ async def get_events_timeline(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     items, total = await object_timeline(
         session,

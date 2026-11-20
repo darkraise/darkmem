@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
 from app.api.deps import refuse_when_read_only
-from app.database import get_session
+from app.database import SessionDep
 from app.services.notion_archive import NotionArchiveInvalid, NotionArchiveTooLarge
 from app.services.notion_tree import NotionExportInvalid
 from app.services.page_import import (
@@ -61,7 +61,7 @@ async def import_notion_route(
     project: str = Query(..., min_length=1),
     _user=Depends(require_auth),
     _read_only=Depends(refuse_when_read_only),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> ImportReportResponse:
     known = (
         await session.execute(_PROJECT_EXISTS, {"name": project})

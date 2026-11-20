@@ -28,7 +28,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
-from app.database import get_session
+from app.database import SessionDep
 from app.schemas.review_queue import (
     ReviewQueueArticleListResponse,
     ReviewQueueCountsResponse,
@@ -46,7 +46,7 @@ async def list_facts(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     items, total = await review_queue_service.list_open_facts(
         session, project=project, limit=limit, offset=offset,
@@ -60,7 +60,7 @@ async def list_articles(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     items, total = await review_queue_service.list_open_articles(
         session, project=project, limit=limit, offset=offset,
@@ -72,7 +72,7 @@ async def list_articles(
 async def counts(
     project: str | None = None,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     return await review_queue_service.counts(session, project=project)
 
@@ -82,7 +82,7 @@ async def reject_fact(
     fact_id: UUID,
     body: ReviewQueueRejectRequest | None = None,
     user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     """Record a human rejection of a fact and withdraw belief in it.
 
@@ -109,7 +109,7 @@ async def dismiss_suspicion(
     fact_id: UUID,
     body: ReviewQueueRejectRequest | None = None,
     user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     """Dismiss the model scan's contradiction flag on a fact (T2.112).
 

@@ -29,7 +29,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
-from app.database import get_session
+from app.database import SessionDep
 from app.schemas.facts import FactDetailResponse, FactListResponse
 from app.services import facts_read
 
@@ -46,7 +46,7 @@ async def list_facts(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     items, total = await facts_read.list_facts(
         session,
@@ -65,7 +65,7 @@ async def list_facts(
 async def get_fact(
     fact_id: UUID,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     item = await facts_read.get_fact(session, fact_id)
     if item is None:

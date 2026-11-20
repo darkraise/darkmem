@@ -25,7 +25,7 @@ from app.api.auth import require_auth
 from app.api.websocket import event_manager
 from app.utils.background import spawn
 from app.services.llm import lease_llm, spawn_with_llm
-from app.database import async_session_factory, get_session
+from app.database import SessionDep, async_session_factory
 from app.services.feature_flags import get_feature_flags_dict
 from app.services.usage_recorder import UsageSubject, subject_scope
 from app.services.reembed import (
@@ -112,7 +112,7 @@ def _pipeline_llm(request: Request):
 async def get_obsolete_counts(
     request: Request,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     pipeline = getattr(request.app.state, "pipeline", None)
     if pipeline is None or pipeline.llm is None:
@@ -135,7 +135,7 @@ async def list_obsolete_memories(
     limit: int = 100,
     offset: int = 0,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     fingerprint = await _read_fingerprint(_pipeline_llm(request), session)
     svc = ReembedService(session)
@@ -154,7 +154,7 @@ async def list_obsolete_code_chunks(
     limit: int = 100,
     offset: int = 0,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     fingerprint = await _read_fingerprint(_pipeline_llm(request), session)
     svc = ReembedService(session)
@@ -173,7 +173,7 @@ async def list_obsolete_entities(
     limit: int = 100,
     offset: int = 0,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     fingerprint = await _read_fingerprint(_pipeline_llm(request), session)
     svc = ReembedService(session)
@@ -272,7 +272,7 @@ async def reembed_memories(
     request: Request,
     _read_only=Depends(refuse_when_read_only),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     pipeline = getattr(request.app.state, "pipeline", None)
     if pipeline is None:
@@ -285,7 +285,7 @@ async def reembed_code_chunks(
     request: Request,
     _read_only=Depends(refuse_when_read_only),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     pipeline = getattr(request.app.state, "pipeline", None)
     if pipeline is None:
@@ -298,7 +298,7 @@ async def reembed_entities(
     request: Request,
     _read_only=Depends(refuse_when_read_only),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     pipeline = getattr(request.app.state, "pipeline", None)
     if pipeline is None:
@@ -311,7 +311,7 @@ async def reembed_all(
     request: Request,
     _read_only=Depends(refuse_when_read_only),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     pipeline = getattr(request.app.state, "pipeline", None)
     if pipeline is None:
@@ -402,7 +402,7 @@ async def reembed_all(
 async def prune_cache(
     request: Request,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     from app.services.events import record_event
 

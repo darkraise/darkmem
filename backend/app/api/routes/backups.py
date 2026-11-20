@@ -19,7 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
-from app.database import get_session
+from app.database import SessionDep
 from app.services.attachment_archive import ATTACHMENTS, DUMPS
 from app.services.backup_config import load_destinations
 from app.services.backup_ship import build_destination
@@ -124,7 +124,7 @@ async def _last_outcomes(session: AsyncSession) -> dict[tuple[str, str], Outcome
 @router.get("/inventory", response_model=InventoryResponse)
 async def backup_inventory(
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> InventoryResponse:
     """Every configured destination, what it holds, and how its last run went."""
     configured = await load_destinations(session, masked=True)

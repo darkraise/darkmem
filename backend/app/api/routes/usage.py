@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
-from app.database import get_session
+from app.database import SessionDep
 from app.models.llm_usage import LLMUsage
 from app.repositories.usage_repository import UsageRepository, window_start
 from app.services.usage_pricing import (
@@ -62,7 +62,7 @@ async def usage_overview(
     window: str = Query(default="30d"),
     project: str | None = None,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     start = _start(window)
     repo = UsageRepository(session)
@@ -93,7 +93,7 @@ async def usage_series(
     bucket: str = Query(default="day"),
     project: str | None = None,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     if bucket not in _BUCKETS:
         raise HTTPException(status_code=422, detail=f"unrecognised bucket {bucket!r}")
@@ -109,7 +109,7 @@ async def usage_by_subject(
     subject_id: str,
     limit: int = Query(default=200, ge=1, le=1000),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     repo = UsageRepository(session)
     calls = await repo.subject_calls(subject_type, subject_id, limit)
@@ -158,7 +158,7 @@ async def usage_by_subject(
 async def usage_subject_totals(
     body: SubjectTotalsRequest,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     """Totals for a page that already knows which subjects it is drawing.
 
@@ -181,7 +181,7 @@ async def usage_by_job(
     window: str = Query(default="30d"),
     project: str | None = None,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     """What each job has spent over the window, keyed by job rather than run."""
     rows = await UsageRepository(session).totals_by_job(_start(window), project)
@@ -196,7 +196,7 @@ async def usage_top(
     project: str | None = None,
     limit: int = Query(default=20, ge=1, le=200),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     if by not in _TOP_BY:
         raise HTTPException(status_code=422, detail=f"unrecognised ordering {by!r}")
@@ -209,7 +209,7 @@ async def usage_top(
 @router.get("/prices", response_model=ModelPricesResponse)
 async def get_model_prices(
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     """The effective price table: shipped defaults with the config row merged
     over them, plus every model the operator priced that ships no default."""
@@ -240,7 +240,7 @@ async def get_model_prices(
 async def put_model_prices(
     body: ModelPricesUpdate,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     """Replace the override layer wholesale, on the config-singleton pattern.
 

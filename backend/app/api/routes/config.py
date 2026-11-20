@@ -15,10 +15,10 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
-from app.api.deps import get_analytics_service, refuse_when_read_only
+from app.api.deps import AnalyticsServiceDep, refuse_when_read_only
 from app.utils.background import spawn
 from app.config import FEATURE_FLAGS_DEFAULTS
-from app.database import get_session
+from app.database import SessionDep
 from app.models.config import Config
 from app.models.llm_config import LLMPurposeConfigRow
 from app.models.llm_provider import LLMProviderRow
@@ -200,7 +200,7 @@ async def apply_llm_config_change(
 @router.get("/llm", response_model=LLMConfigResponse)
 async def get_llm_config(
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     config = await fetch_llm_config(session)
     return LLMConfigResponse(**{p: cfg_to_schema(c) for p, c in config.items()})
@@ -216,7 +216,7 @@ async def update_llm_config(
     body: LLMConfigUpdate,
     request: Request,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     # Serialise concurrent config swaps so two admins saving at once can't
     # leave ``app.state.llm`` and ``app.state.pipeline`` wired to different
@@ -541,7 +541,7 @@ def _flags_response(flags: dict) -> FeatureFlagsResponse:
 @router.get("/feature-flags", response_model=FeatureFlagsResponse)
 async def get_feature_flags(
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     flags = await get_feature_flags_dict(session)
     return _flags_response(flags)
@@ -551,7 +551,7 @@ async def get_feature_flags(
 async def update_feature_flags(
     body: FeatureFlagsUpdate,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     await _lock_config_row(session, FEATURE_FLAGS_KEY)
     current = await get_feature_flags_dict(session)
@@ -581,14 +581,6 @@ async def update_feature_flags(
         session.add(Config(key=FEATURE_FLAGS_KEY, value=stored))
     await session.flush()
 
-    # Commit before answering, rather than leaving it to the session
-    # dependency's teardown. The teardown runs after the response is on its
-    # way, so a client that re-reads the moment it sees the 200 can open its
-    # transaction before this one commits and get the pre-write snapshot back.
-    # Measured on the Flags tab: every save landed in the database, and the
-    # invalidation refetch that followed painted the OLD value over it -- the
-    # classification_mode control read as completely dead while writing
-    # correctly every time.
     await session.commit()
     return _flags_response(stored)
 
@@ -674,7 +666,7 @@ def _ladder_response(report) -> VerificationLadderResponse:
 @router.get("/verification-ladder", response_model=VerificationLadderResponse)
 async def get_verification_ladder(
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     return _ladder_response(await resolve_ladder(session))
 
@@ -683,7 +675,7 @@ async def get_verification_ladder(
 async def update_verification_ladder(
     body: VerificationLadderUpdate,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     """Write the committed thresholds, then answer with what they resolve to.
 
@@ -774,7 +766,7 @@ class AutoResearchUpdate(BaseModel):
 @router.get("/auto-research", response_model=AutoResearchResponse)
 async def get_auto_research(
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     """The live budget. A never-configured install reads disarmed, which is an
     honest state rather than an error — the loop refuses every run until an
@@ -791,7 +783,7 @@ async def get_auto_research(
 async def update_auto_research(
     body: AutoResearchUpdate,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     patch = {k: v for k, v in body.model_dump().items() if v is not None}
     try:
@@ -824,7 +816,7 @@ class BackupDestinationsUpdate(BaseModel):
 @router.get("/backup-destinations", response_model=BackupDestinationsResponse)
 async def get_backup_destinations(
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     """Where this instance ships its own encrypted snapshots. A never-configured
     install reads empty, which is honest rather than an error -- the job simply
@@ -838,7 +830,7 @@ async def get_backup_destinations(
 async def update_backup_destinations(
     body: BackupDestinationsUpdate,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     await _lock_config_row(session, BACKUP_DESTINATIONS_KEY)
     try:
@@ -895,7 +887,7 @@ async def list_auto_research_runs(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     """Research runs already filed. Read-only, and available whether or not the
     loop is armed — what a past run did is history, not a switch."""
@@ -924,8 +916,8 @@ async def rerun_auto_research_run(
     event_id: int,
     body: ResearchRerunRequest,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
-    analytics: AnalyticsService = Depends(get_analytics_service),
+    session: AsyncSession = SessionDep,
+    analytics: AnalyticsService = AnalyticsServiceDep,
 ):
     """Re-derive the run's surviving evidence.
 
@@ -968,7 +960,7 @@ async def rerun_auto_research_run(
 @router.get("/repo-allowlist", response_model=RepoAllowlistResponse)
 async def get_repo_allowlist(
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     return RepoAllowlistResponse(patterns=await load_allowlist(session))
 
@@ -977,7 +969,7 @@ async def get_repo_allowlist(
 async def update_repo_allowlist(
     body: RepoAllowlistUpdate,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     cleaned: list[str] = []
     invalid: list[str] = []
@@ -1051,7 +1043,7 @@ class NotificationsUpdate(BaseModel):
 @router.get("/notifications")
 async def get_notifications(
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     """Current notification settings, with the bot token masked.
 
@@ -1067,7 +1059,7 @@ async def get_notifications(
 async def update_notifications(
     body: NotificationsUpdate,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     from app.services.notifications import masked, save_settings
 
@@ -1079,7 +1071,7 @@ async def update_notifications(
 @router.post("/notifications/test", dependencies=[Depends(refuse_when_read_only)])
 async def test_notification(
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     """Send one message with the stored settings and report what happened.
 
@@ -1098,7 +1090,7 @@ async def test_notification(
 @router.get("/system-prompts", response_model=SystemPromptsResponse)
 async def get_system_prompts(
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     from app.services import prompt as _prompt_mod  # noqa: PLC0415
 
@@ -1113,7 +1105,7 @@ async def get_system_prompts(
 async def update_system_prompts(
     body: SystemPromptsUpdate,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     from app.services import prompt as _prompt_mod  # noqa: PLC0415
 
@@ -1148,7 +1140,9 @@ async def update_system_prompts(
         row.value = stored
     else:
         session.add(Config(key=_prompt_mod.SYSTEM_PROMPTS_KEY, value=stored))
-    await session.flush()
+    # The in-process cache follows the committed row, never a write that may
+    # still roll back.
+    await session.commit()
 
     await _prompt_mod.refresh_from_db(session)
 
@@ -1174,7 +1168,7 @@ class ReposPathUpdate(BaseModel):
 @router.get("/repos-path", response_model=ReposPathResponse)
 async def get_repos_path(
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     row = (await session.execute(
         select(Config).where(Config.key == "repos_default_local_path")
@@ -1188,7 +1182,7 @@ async def get_repos_path(
 async def update_repos_path(
     body: ReposPathUpdate,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     from app.services.repo_manager import validate_local_path
 
@@ -1284,7 +1278,7 @@ class ThemeSettingsUpdate(BaseModel):
 
 @router.get("/theme", response_model=ThemeSettingsResponse)
 async def get_theme_settings(
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     """Deliberately unauthenticated: the ThemeProvider loads once at app
     boot (above the router, possibly on the login screen), and the payload
@@ -1311,7 +1305,7 @@ async def get_theme_settings(
 async def update_theme_settings(
     body: ThemeSettingsUpdate,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     stored = body.settings.model_dump(by_alias=True, exclude_none=True)
     # Saves are debounce-fired by every browser session, so concurrent

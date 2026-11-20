@@ -4,8 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
-from app.api.deps import get_graph_service
-from app.database import get_session
+from app.api.deps import GraphServiceDep
+from app.database import SessionDep
 from app.repositories.graph import PostgresGraphRepository
 from app.schemas.graph import EntityResponse, FullGraphResponse, NeighborsResponse, RelationResponse
 from app.services.graph import GRAPH_MAX_NODES, GraphService
@@ -22,7 +22,7 @@ async def get_full_graph(
     limit: int = Query(200, ge=1, le=1000),
     _user=Depends(require_auth),
     request: Request = None,
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     repo = _get_graph_repo(request, session)
     result = await repo.get_full_graph(limit=limit)
@@ -39,7 +39,7 @@ async def list_entities(
     limit: int = Query(50, ge=1, le=500),
     _user=Depends(require_auth),
     request: Request = None,
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     repo = _get_graph_repo(request, session)
     entities = await repo.get_entities(entity_type=entity_type, name_query=name, limit=limit)
@@ -59,7 +59,7 @@ async def get_unified_graph(
     include_entities: bool = Query(False),
     project: str | None = Query(None),
     _user=Depends(require_auth),
-    service: GraphService = Depends(get_graph_service),
+    service: GraphService = GraphServiceDep,
 ):
     return await service.get_unified_graph(
         limit=limit,
@@ -75,7 +75,7 @@ async def get_unified_graph(
 async def get_memory_context(
     memory_id: UUID,
     _user=Depends(require_auth),
-    service: GraphService = Depends(get_graph_service),
+    service: GraphService = GraphServiceDep,
 ):
     return await service.get_memory_context(memory_id)
 
@@ -85,7 +85,7 @@ async def get_neighbors(
     entity_id: UUID,
     _user=Depends(require_auth),
     request: Request = None,
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     repo = _get_graph_repo(request, session)
     result = await repo.get_neighbors_by_id(entity_id)

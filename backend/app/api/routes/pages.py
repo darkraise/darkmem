@@ -29,8 +29,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
-from app.api.deps import get_llm
-from app.database import get_session
+from app.api.deps import LlmDep
+from app.database import SessionDep
 from app.schemas.page import (
     PageBlockBatchInsertRequest,
     PageBlockInsertRequest,
@@ -105,8 +105,8 @@ def _str(value: UUID | None) -> str | None:
 async def create_page_route(
     body: PageCreateRequest,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
-    llm=Depends(get_llm),
+    session: AsyncSession = SessionDep,
+    llm=LlmDep,
 ) -> PageCreateResponse:
     try:
         result = await create_page(
@@ -127,7 +127,7 @@ async def create_page_route(
 async def list_pages_route(
     project: str = Query(..., min_length=1),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> list[PageListItem]:
     """Every live page in `project`, flat.
 
@@ -142,7 +142,7 @@ async def list_pages_route(
 async def list_trash_route(
     project: str = Query(..., min_length=1),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> list[PageTrashItem]:
     """The roots of the project's trashed subtrees, newest first. Declared
     above `/{page_id}` so `trash` is never parsed as a page id."""
@@ -153,7 +153,7 @@ async def list_trash_route(
 async def empty_trash_route(
     project: str = Query(..., min_length=1),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> PageTrashEmptyResponse:
     return PageTrashEmptyResponse(purged=await purge_trash(session, project))
 
@@ -163,7 +163,7 @@ async def get_page_route(
     page_id: UUID,
     include_content: bool = Query(False),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> PageResponse:
     try:
         view = await get_page(session, str(page_id), include_content=include_content)
@@ -177,7 +177,7 @@ async def patch_page_route(
     page_id: UUID,
     body: PagePatchRequest,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> PagePatchResponse:
     """Move when `parent_id` is present, then rename when `title` is present.
 
@@ -213,7 +213,7 @@ async def patch_page_route(
 async def delete_page_route(
     page_id: UUID,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> None:
     try:
         await delete_page(session, str(page_id))
@@ -225,7 +225,7 @@ async def delete_page_route(
 async def restore_page_route(
     page_id: UUID,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> PageRestoreResponse:
     try:
         restored = await restore_page(session, str(page_id))
@@ -293,8 +293,8 @@ async def insert_page_block_route(
     page_id: UUID,
     body: PageBlockInsertRequest,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
-    llm=Depends(get_llm),
+    session: AsyncSession = SessionDep,
+    llm=LlmDep,
 ) -> PageBlockWriteResponse:
     """First child of `parent_id` by default, or after `after_block_id` among
     that parent's children."""
@@ -329,8 +329,8 @@ async def insert_page_blocks_route(
     page_id: UUID,
     body: PageBlockBatchInsertRequest,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
-    llm=Depends(get_llm),
+    session: AsyncSession = SessionDep,
+    llm=LlmDep,
 ) -> PageBlockBatchWriteResponse:
     """Every item in one pass, applied in order: an item may name an earlier
     item's `block_id` as its parent or `after_block_id`, and the first refusal
@@ -363,8 +363,8 @@ async def update_page_block_route(
     block_id: UUID,
     body: PageBlockUpdateRequest,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
-    llm=Depends(get_llm),
+    session: AsyncSession = SessionDep,
+    llm=LlmDep,
 ) -> PageBlockWriteResponse:
     await _assert_block_is_in(session, page_id, block_id)
     try:
@@ -386,8 +386,8 @@ async def move_page_block_route(
     block_id: UUID,
     body: PageBlockMoveRequest,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
-    llm=Depends(get_llm),
+    session: AsyncSession = SessionDep,
+    llm=LlmDep,
 ) -> PageBlockWriteResponse:
     await _assert_block_is_in(session, page_id, block_id)
     try:
@@ -411,8 +411,8 @@ async def delete_page_block_route(
         None, description="Refuse unless the page's content_hash matches."
     ),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
-    llm=Depends(get_llm),
+    session: AsyncSession = SessionDep,
+    llm=LlmDep,
 ) -> None:
     """The subtree goes with it. `expected_hash` rides the query string because
     a DELETE carries no body here, and the page's new hash rides the

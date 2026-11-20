@@ -26,7 +26,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
-from app.database import get_session
+from app.database import SessionDep
 from app.schemas.dream_digest import (
     DreamCycleDigest,
     DreamCycleListResponse,
@@ -116,7 +116,7 @@ async def list_cycles(
     limit: int = Query(default=50, ge=1, le=dream_digest.MAX_CYCLE_LIMIT),
     offset: int = Query(default=0, ge=0),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     items, total = await dream_digest.list_cycles(
         session, project=project, since=since, until=until,
@@ -131,7 +131,7 @@ async def read_cycle(
     since: datetime | None = None,
     until: datetime | None = None,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     actions = await dream_digest.read_cycle_actions(
         session, cycle_id, since=since, until=until
@@ -147,7 +147,7 @@ async def read_cycle(
 async def undo_action(
     event_id: int,
     user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     """The batch of one. There is no single-action code path behind it."""
     return await _undo(session, [event_id], actor=user.sub)
@@ -158,7 +158,7 @@ async def undo_cycle(
     cycle_id: str,
     body: UndoRequest | None = None,
     user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     """Undo a cycle, or a named subset of it.
 

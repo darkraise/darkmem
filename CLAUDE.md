@@ -1538,7 +1538,14 @@ ids and refuse writes.
   supersession trigger. A new replacement relation goes into
   `REPLACES_FAMILY`.
 - **Async session lifetime.** Never open a fresh session while the request
-  transaction holds locks on the same rows; commit first.
+  transaction holds locks on the same rows; commit first. The request's
+  session is function-scoped (`database.SessionDep`, and `deps`'s six
+  `*Dep` providers holding it or an LLM lease), so it commits before the
+  response is sent. Only the two streaming routes, `POST /chat/completions`
+  and `POST /analytics/reprocess/stream`, use request-scoped twins
+  (`require_auth_for_stream`, `get_*_service_for_stream`) that hold the
+  session and lease through the stream, and they commit as they go;
+  `tests/test_session_scope.py` scans the app for both rules.
 - **asyncpg needs CAST on raw-SQL params** whose type Postgres can't infer
   (`CAST(:vec AS vector)`, `CAST(:id AS uuid)`, `CAST(:props AS jsonb)`),
   especially with variadic ANY / unnest / jsonb_build_object, or you get

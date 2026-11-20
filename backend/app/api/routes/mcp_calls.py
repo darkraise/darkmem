@@ -17,7 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
-from app.database import get_session
+from app.database import SessionDep
 from app.schemas.mcp_calls import (
     McpCallBucket,
     McpCallerStat,
@@ -95,7 +95,7 @@ async def list_mcp_calls(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     where, params = _filters(
         tool=tool, status=status, api_key_id=api_key_id, client=client,
@@ -127,7 +127,7 @@ async def summarise_mcp_calls(
     since: datetime | None = None,
     until: datetime | None = None,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     end = _aware(until) if until else datetime.now(timezone.utc)
     start = _aware(since) if since else end - _DEFAULT_WINDOW

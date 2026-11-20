@@ -73,8 +73,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import Principal, TokenPayload, require_auth, require_scope
-from app.api.deps import refuse_when_read_only, get_llm
-from app.database import get_session
+from app.api.deps import LlmDep, refuse_when_read_only
+from app.database import SessionDep
 from app.services.block_pipeline import UnsupportedSource
 from app.services.document_connections import connections_for_document
 from app.services.document_related import related_memories_for_document
@@ -538,7 +538,7 @@ async def document_manifest(
     after: str | None = Query(None),
     limit: int = Query(500, ge=1, le=1000),
     _principal: Principal = Depends(_require_read),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> DocumentManifestResponse:
     """`{id, uri, content_hash, updated_at}` for a project's documents under a prefix, no content.
 
@@ -584,7 +584,7 @@ async def list_document_revisions_route(
         document_revisions.DEFAULT_LIMIT, ge=1, le=document_revisions.MAX_LIMIT
     ),
     _principal: Principal = Depends(_require_read),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> DocumentRevisionListResponse:
     """A document's revisions newest first, without content; page back with
     `next_before`. 404 when the document does not exist or `before` names no
@@ -608,7 +608,7 @@ async def get_document_revision_route(
     document_id: UUID,
     revision_id: UUID,
     _principal: Principal = Depends(_require_read),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> DocumentRevisionResponse:
     """One revision with the content it filed. 404 when the document does not
     exist or the revision is not one of its own."""
@@ -629,7 +629,7 @@ async def list_documents(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> DocumentListResponse:
     rows = (await session.execute(
         _LIST_SQL, {"project": project, "limit": limit, "offset": offset}
@@ -648,8 +648,8 @@ async def create_document_summary(
     document_id: UUID,
     _read_only=Depends(refuse_when_read_only),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
-    llm=Depends(get_llm),
+    session: AsyncSession = SessionDep,
+    llm=LlmDep,
 ) -> DocumentSummaryResponse:
     """Generate this document's summary and store it. 201, because it creates
     the summary the GET twin reads.
@@ -696,7 +696,7 @@ async def create_document_summary(
 async def get_document_summary(
     document_id: UUID,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> DocumentSummaryResponse:
     """404 when no summary has been generated.
 
@@ -725,7 +725,7 @@ async def get_document_connections(
     document_id: UUID,
     limit: int = Query(20, ge=1, le=100),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> DocumentConnectionsResponse:
     """Documents nearest this one, with the passage pair that matched.
 
@@ -761,7 +761,7 @@ async def get_related_memories(
     document_id: UUID,
     limit: int = Query(20, ge=1, le=100),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> RelatedMemoriesResponse:
     """Memories nearest this document, with the passage that matched.
 
@@ -799,8 +799,8 @@ async def grounded_qa(
     body: QaRequest,
     _read_only=Depends(refuse_when_read_only),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
-    llm=Depends(get_llm),
+    session: AsyncSession = SessionDep,
+    llm=LlmDep,
 ) -> QaResponse:
     """Retrieve, generate, gate — in that order, and the gate decides.
 
@@ -850,8 +850,8 @@ async def grounded_qa(
 async def put_document_route(
     body: DocumentPutRequest,
     principal: Principal = Depends(_require_capture),
-    session: AsyncSession = Depends(get_session),
-    llm=Depends(get_llm),
+    session: AsyncSession = SessionDep,
+    llm=LlmDep,
 ) -> DocumentPutResponse:
     """File one document, then embed its blocks.
 
@@ -905,7 +905,7 @@ async def put_document_route(
 async def rename_documents_route(
     body: DocumentRenameRequest,
     user: TokenPayload = Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> DocumentRenameResponse:
     """Rewrite a uri prefix across a subtree.
 
@@ -935,7 +935,7 @@ async def rename_documents_route(
 async def delete_subtree_route(
     body: DocumentSubtreeDeleteRequest,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> DocumentSubtreeDeleteResponse:
     """Delete every document under a uri prefix.
 
@@ -960,7 +960,7 @@ async def patch_document_route(
     document_id: UUID,
     body: DocumentPatchRequest,
     principal: Principal = Depends(_require_capture),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> DocumentPatchResponse:
     """Write only the metadata fields the caller named.
 
@@ -1010,7 +1010,7 @@ async def delete_document_route(
     project: str | None = Query(None),
     uri: str | None = Query(None),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> None:
     """Remove a document, its block subtree and its vectors.
 
@@ -1046,8 +1046,8 @@ async def search_documents_route(
     body: DocumentSearchRequest,
     _read_only=Depends(refuse_when_read_only),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
-    llm=Depends(get_llm),
+    session: AsyncSession = SessionDep,
+    llm=LlmDep,
 ) -> DocumentSearchResponse:
     """Rank this project's blocks and resolve each hit's heading path.
 
@@ -1079,7 +1079,7 @@ async def document_outline_route(
     project: str | None = Query(None),
     uri: str | None = Query(None),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> DocumentOutlineResponse:
     """The heading tree, no body text -- the map before an agent decides
     what to pull with `GET /{document_id}` below. Read-only, same as
@@ -1111,7 +1111,7 @@ async def document_blocks_by_uri_route(
     uri: str | None = Query(None),
     include_content: bool = Query(False),
     _principal: Principal = Depends(_require_read),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> DocumentBlocksResponse:
     """The keyed twin of `GET /{document_id}`: same read, reachable by a read key.
 
@@ -1131,7 +1131,7 @@ async def document_blocks_route(
     uri: str | None = Query(None),
     include_content: bool = Query(False),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> DocumentBlocksResponse:
     """The whole document's blocks in order, or only the ones named in
     `block_ids` -- the drill-down after an outline. Read-only, same as
@@ -1231,8 +1231,8 @@ async def insert_block_route(
     document_id: UUID,
     body: BlockInsertRequest,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
-    llm=Depends(get_llm),
+    session: AsyncSession = SessionDep,
+    llm=LlmDep,
 ) -> BlockWriteResponse:
     """Insert a block. First child of `parent_id` by default, or after
     `after_block_id` among that parent's children."""
@@ -1254,8 +1254,8 @@ async def update_block_route(
     block_id: UUID,
     body: BlockUpdateRequest,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
-    llm=Depends(get_llm),
+    session: AsyncSession = SessionDep,
+    llm=LlmDep,
 ) -> BlockWriteResponse:
     await _assert_block_is_in(session, document_id, block_id)
     try:
@@ -1275,8 +1275,8 @@ async def move_block_route(
     block_id: UUID,
     body: BlockMoveRequest,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
-    llm=Depends(get_llm),
+    session: AsyncSession = SessionDep,
+    llm=LlmDep,
 ) -> BlockWriteResponse:
     """Verb-shaped POST rather than a PATCH: a move is not a partial update
     of the block's own fields, it is a repositioning within the tree."""
@@ -1303,8 +1303,8 @@ async def delete_block_route(
         None, description="Refuse unless the document's content_hash matches."
     ),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
-    llm=Depends(get_llm),
+    session: AsyncSession = SessionDep,
+    llm=LlmDep,
 ) -> None:
     """204 with no body, per the REST conventions. The subtree goes with it.
 

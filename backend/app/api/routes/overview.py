@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.llm import lease_llm
 from app.api.auth import require_auth
-from app.database import get_session
+from app.database import SessionDep
 from app.schemas.overview import OverviewResponse
 from app.services.memory_overview import OverviewUnavailable, get_overview
 
@@ -30,7 +30,7 @@ async def project_overview(
     request: Request,
     project: str = "default",
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     llm = getattr(request.app.state, "llm", None)
     with lease_llm(llm):

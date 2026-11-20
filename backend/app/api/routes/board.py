@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import TokenPayload, require_auth
-from app.database import get_session
+from app.database import SessionDep
 from app.schemas.board import (
     BoardRecordsResponse,
     BoardView,
@@ -53,7 +53,7 @@ async def board_records_route(
     response: Response,
     project: str = Query(..., min_length=1),
     _user: TokenPayload = Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     """Every register row and plan task of `project`, derived on read."""
     etag = f'W/"{await board_version(session, project)}"'
@@ -72,7 +72,7 @@ async def edit_register_row_route(
     number: int,
     body: RegisterRowEditRequest,
     user: TokenPayload = Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> RegisterRowEditResponse:
     """Edit one register row's state, note or assigned, as a document revision."""
     changes = {
@@ -95,7 +95,7 @@ async def edit_register_row_route(
 async def list_views_route(
     project: str = Query(..., min_length=1),
     _user: TokenPayload = Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> list[BoardView]:
     """The two built-in views, then the project's saved views by (position, name)."""
     return [BoardView(**view) for view in await list_views(session, project)]
@@ -105,7 +105,7 @@ async def list_views_route(
 async def create_view_route(
     body: BoardViewCreateRequest,
     _user: TokenPayload = Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> BoardView:
     return BoardView(**await create_view(
         session, project=body.project, name=body.name,
@@ -118,7 +118,7 @@ async def update_view_route(
     view_id: str,
     body: BoardViewUpdateRequest,
     _user: TokenPayload = Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> BoardView:
     # An explicit null changes nothing: every column it could name is NOT NULL.
     changes = {
@@ -133,6 +133,6 @@ async def update_view_route(
 async def delete_view_route(
     view_id: str,
     _user: TokenPayload = Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> None:
     await delete_view(session, view_id)

@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
-from app.database import get_session
+from app.database import SessionDep
 from app.schemas.articles import ArticleDetailResponse, ArticleListResponse
 from app.services import articles_read
 
@@ -37,7 +37,7 @@ async def list_articles(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     items, total = await articles_read.list_articles(
         session, project=project, limit=limit, offset=offset
@@ -49,7 +49,7 @@ async def list_articles(
 async def get_article(
     article_id: UUID,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     item = await articles_read.get_article(session, article_id)
     if item is None:

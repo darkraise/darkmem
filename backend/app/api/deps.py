@@ -4,7 +4,7 @@ from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import settings
-from app.database import async_session_factory, get_session
+from app.database import SessionDep, async_session_factory, get_session
 from app.repositories.graph import PostgresGraphRepository
 from app.repositories.relational import PostgresTagRepository
 from app.repositories.vector import PostgresVectorRepository
@@ -18,7 +18,7 @@ from app.services.llm import lease_llm
 from app.services.repo_manager import RepoManager
 
 
-async def get_memory_service(request: Request, session: AsyncSession = Depends(get_session)) -> MemoryService:
+async def get_memory_service(request: Request, session: AsyncSession = SessionDep) -> MemoryService:
     pipeline = getattr(request.app.state, "pipeline", None)
     with pipeline._pinned() if isinstance(pipeline, ProcessingPipeline) else nullcontext(pipeline) as pinned:
         yield MemoryService(session, pipeline=pinned)
@@ -32,17 +32,40 @@ async def get_memory_service(request: Request, session: AsyncSession = Depends(g
 #     that work without the LLM; the LLM-requiring paths inside those services
 #     guard llm themselves and surface their own 503. Do not add a blanket
 #     503 here without auditing every read path those services serve.
-async def get_chat_service(request: Request, session: AsyncSession = Depends(get_session)) -> ChatService:
+def _chat_llm(request: Request):
     llm = getattr(request.app.state, "llm", None)
     if not llm:
-        from fastapi import HTTPException
         raise HTTPException(status_code=503, detail="LLM service unavailable")
-    graph_repo = PostgresGraphRepository(session)
+    return llm
+
+
+async def get_chat_service(request: Request, session: AsyncSession = SessionDep) -> ChatService:
+    llm = _chat_llm(request)
     with lease_llm(llm):
-        yield ChatService(session, llm, graph_repo)
+        yield ChatService(session, llm, PostgresGraphRepository(session))
 
 
-async def get_analytics_service(request: Request, session: AsyncSession = Depends(get_session)) -> AnalyticsService:
+async def get_analytics_service(request: Request, session: AsyncSession = SessionDep) -> AnalyticsService:
+    pipeline = getattr(request.app.state, "pipeline", None)
+    graph_repo = PostgresGraphRepository(session)
+    with pipeline._pinned() if isinstance(pipeline, ProcessingPipeline) else nullcontext(pipeline) as pinned:
+        yield AnalyticsService(session, pinned, graph_repo)
+
+
+# The streaming routes' twins: request-scoped, so the session and the LLM lease
+# outlive the handler and last until the body has streamed or the client left.
+# A route using one commits its own writes as it streams.
+async def get_chat_service_for_stream(
+    request: Request, session: AsyncSession = Depends(get_session, scope="request"),
+) -> ChatService:
+    llm = _chat_llm(request)
+    with lease_llm(llm):
+        yield ChatService(session, llm, PostgresGraphRepository(session))
+
+
+async def get_analytics_service_for_stream(
+    request: Request, session: AsyncSession = Depends(get_session, scope="request"),
+) -> AnalyticsService:
     pipeline = getattr(request.app.state, "pipeline", None)
     graph_repo = PostgresGraphRepository(session)
     with pipeline._pinned() if isinstance(pipeline, ProcessingPipeline) else nullcontext(pipeline) as pinned:
@@ -67,7 +90,7 @@ async def get_llm(request: Request):
         yield llm
 
 
-async def get_graph_service(request: Request, session: AsyncSession = Depends(get_session)) -> GraphService:
+async def get_graph_service(request: Request, session: AsyncSession = SessionDep) -> GraphService:
     llm = getattr(request.app.state, "llm", None)
     vector_repo = PostgresVectorRepository(session)
     graph_repo = PostgresGraphRepository(session)
@@ -75,7 +98,7 @@ async def get_graph_service(request: Request, session: AsyncSession = Depends(ge
         yield GraphService(session, vector_repo, graph_repo, llm)
 
 
-async def get_code_pipeline(request: Request, session: AsyncSession = Depends(get_session)) -> CodePipeline:
+async def get_code_pipeline(request: Request, session: AsyncSession = SessionDep) -> CodePipeline:
     llm = getattr(request.app.state, "llm", None)
     vector_repo = PostgresVectorRepository(session, "code_chunks")
     repo_manager = RepoManager(session)
@@ -83,19 +106,29 @@ async def get_code_pipeline(request: Request, session: AsyncSession = Depends(ge
         yield CodePipeline(session=session, llm=llm, vector_repo=vector_repo, repo_manager=repo_manager)
 
 
-async def get_repo_manager(session: AsyncSession = Depends(get_session)) -> RepoManager:
+# Function scope for every provider holding the session or an LLM lease: its
+# teardown runs before the response is sent (see `SessionDep`).
+MemoryServiceDep = Depends(get_memory_service, scope="function")
+ChatServiceDep = Depends(get_chat_service, scope="function")
+AnalyticsServiceDep = Depends(get_analytics_service, scope="function")
+LlmDep = Depends(get_llm, scope="function")
+GraphServiceDep = Depends(get_graph_service, scope="function")
+CodePipelineDep = Depends(get_code_pipeline, scope="function")
+
+
+async def get_repo_manager(session: AsyncSession = SessionDep) -> RepoManager:
     return RepoManager(session)
 
 
 def get_session_factory() -> async_sessionmaker[AsyncSession]:
     """The sessionmaker a detached background task opens its own session
-    from — never the request-scoped ``session`` above, which closes when the
-    request returns. A dependency (not a hardcoded import) so a test can
+    from — never the request's ``session`` above, which closes when the
+    handler returns. A dependency (not a hardcoded import) so a test can
     substitute a factory bound to its own engine."""
     return async_session_factory
 
 
-async def get_tag_repository(session: AsyncSession = Depends(get_session)) -> PostgresTagRepository:
+async def get_tag_repository(session: AsyncSession = SessionDep) -> PostgresTagRepository:
     return PostgresTagRepository(session)
 
 

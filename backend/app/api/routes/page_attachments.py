@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.auth import require_auth
 from app.api.deps import refuse_when_read_only
 from app.config import settings
-from app.database import get_session
+from app.database import SessionDep
 from app.services.page_attachments import (
     AttachmentTooLarge,
     attachment_path,
@@ -68,7 +68,7 @@ async def upload_attachment_route(
     x_filename: str | None = Header(default=None),
     _user=Depends(require_auth),
     _read_only=Depends(refuse_when_read_only),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> AttachmentResponse:
     declared = request.headers.get("content-length")
     if declared is not None and declared.isdigit() and int(declared) > settings.attachment_max_bytes:
@@ -105,7 +105,7 @@ async def upload_attachment_route(
 async def get_attachment_route(
     attachment_id: UUID,
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ) -> FileResponse:
     row = await get_attachment(session, attachment_id)
     path = attachment_path(attachment_id)

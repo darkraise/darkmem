@@ -4,8 +4,8 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
-from app.api.auth import require_auth
-from app.api.deps import get_chat_service, refuse_when_read_only
+from app.api.auth import require_auth, require_auth_for_stream
+from app.api.deps import ChatServiceDep, get_chat_service_for_stream, refuse_when_read_only
 from app.schemas.chat import (
     CompletionRequest,
     ConversationCreate,
@@ -28,7 +28,7 @@ async def list_conversations(
     offset: int = Query(0, ge=0),
     archived: bool = False,
     _user=Depends(require_auth),
-    service: ChatService = Depends(get_chat_service),
+    service: ChatService = ChatServiceDep,
 ):
     rows = await service.list_conversations(limit=limit, offset=offset, archived=archived)
     return ConversationListResponse(
@@ -50,7 +50,7 @@ async def list_conversations(
 async def create_conversation(
     body: ConversationCreate,
     _user=Depends(require_auth),
-    service: ChatService = Depends(get_chat_service),
+    service: ChatService = ChatServiceDep,
 ):
     conv = await service.create_conversation(title=body.title)
     return ConversationResponse(
@@ -66,7 +66,7 @@ async def create_conversation(
 async def get_conversation(
     conversation_id: uuid.UUID,
     _user=Depends(require_auth),
-    service: ChatService = Depends(get_chat_service),
+    service: ChatService = ChatServiceDep,
 ):
     conv = await service.get_conversation(conversation_id)
     if not conv:
@@ -94,7 +94,7 @@ async def update_conversation(
     conversation_id: uuid.UUID,
     body: ConversationUpdate,
     _user=Depends(require_auth),
-    service: ChatService = Depends(get_chat_service),
+    service: ChatService = ChatServiceDep,
 ):
     conv = await service.update_conversation(
         conversation_id, title=body.title, is_archived=body.is_archived
@@ -114,7 +114,7 @@ async def update_conversation(
 async def delete_conversation(
     conversation_id: uuid.UUID,
     _user=Depends(require_auth),
-    service: ChatService = Depends(get_chat_service),
+    service: ChatService = ChatServiceDep,
 ):
     deleted = await service.delete_conversation(conversation_id)
     if not deleted:
@@ -126,9 +126,9 @@ async def delete_conversation(
 @router.post("/completions")
 async def chat_completion(
     body: CompletionRequest,
-    _user=Depends(require_auth),
+    _user=Depends(require_auth_for_stream),
     _read_only=Depends(refuse_when_read_only),
-    service: ChatService = Depends(get_chat_service),
+    service: ChatService = Depends(get_chat_service_for_stream),
 ):
     context = body.context.model_dump(exclude_none=True) if body.context else None
 

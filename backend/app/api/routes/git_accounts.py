@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
 from app.api.deps import refuse_when_read_only
-from app.database import get_session
+from app.database import SessionDep
 from app.schemas.git_account import (
     GitAccountCreate,
     GitAccountListResponse,
@@ -43,7 +43,7 @@ def _raise(exc: GitAccountError) -> None:
 
 @router.get("", response_model=GitAccountListResponse)
 async def list_git_accounts(
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
     _: dict = Depends(require_auth),
 ) -> GitAccountListResponse:
     return GitAccountListResponse(accounts=await GitAccountService(session).list())
@@ -67,7 +67,7 @@ async def verify_git_token(
 @router.post("", response_model=GitAccountOut, status_code=status.HTTP_201_CREATED)
 async def create_git_account(
     data: GitAccountCreate,
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
     _: dict = Depends(require_auth),
 ) -> GitAccountOut:
     service = GitAccountService(session)
@@ -82,7 +82,7 @@ async def create_git_account(
 async def update_git_account(
     account_id: uuid.UUID,
     data: GitAccountUpdate,
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
     _: dict = Depends(require_auth),
 ) -> GitAccountOut:
     service = GitAccountService(session)
@@ -103,7 +103,7 @@ async def delete_git_account(
         default=None,
         description="Move repos using this account onto this one instead of refusing.",
     ),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
     _: dict = Depends(require_auth),
 ) -> None:
     try:

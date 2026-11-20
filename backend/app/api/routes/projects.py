@@ -6,7 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
-from app.api.deps import get_session
+from app.database import SessionDep
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
@@ -95,7 +95,7 @@ _UNION_SQL = text(
 @router.get("", response_model=list[ProjectSummary])
 async def list_projects(
     _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = SessionDep,
 ):
     """Every distinct project across memories, documents, workstreams and
     pages, busiest first.
