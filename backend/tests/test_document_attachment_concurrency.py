@@ -8,10 +8,14 @@ from uuid import uuid4
 
 import pytest
 import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from app.api.auth import create_access_token
 from app.config import settings
+from app.database import get_session
+from app.main import app
 from app.services import block_embeddings, block_verbs, page_attachment_cleanup, page_import
 from app.services.block_embedding_refresh import refresh_block_embeddings
 from app.services.embedder_registry import ensure_registered
@@ -21,7 +25,7 @@ from app.services.page_attachments import attachment_path, attachment_url, store
 from app.services.page_door import create_page
 from app.services.page_import import import_notion_export
 from tests.conftest import test_engine
-from tests.fixtures.notion.builder import Entry, FLAT_EXPORT, build_fixture
+from tests.fixtures.notion.builder import Entry, FLAT_EXPORT, PNG, build_fixture
 
 
 FINGERPRINT = "review-block-freshness|3"
@@ -381,7 +385,12 @@ async def test_rowless_collection_waits_for_imported_files_to_commit(isolated, t
 
         @asynccontextmanager
         async def cleanup_factory():
-            yield collecting
+            # As closing a factory session does: the transaction-scoped lock
+            # goes with the transaction, and the import locks again after it.
+            try:
+                yield collecting
+            finally:
+                await collecting.rollback()
 
         importing_task = asyncio.create_task(import_notion_export(importing, project=project, body=body(), declared_length=None, actor=None))
         await asyncio.wait_for(entered.wait(), 5)
@@ -482,3 +491,242 @@ async def test_import_waits_for_rowless_scan_and_unlink(isolated, tmp_path, monk
         assert len(attachment_ids) == 2
         assert all(attachment_path(attachment_id).is_file() for attachment_id in attachment_ids)
         assert was_blocked
+
+
+TWO_FILE_EXPORT = [
+    Entry(
+        "Pics 00000000000000000000000000000001.md",
+        b"# Pics\n\n![a](a.png)\n\n![b](b.png)\n",
+    ),
+    Entry("a.png", PNG),
+    Entry("b.png", PNG + b"b"),
+]
+
+
+@asynccontextmanager
+async def _route_client(factory):
+    """The real app over committed sessions, so a lock the route takes is one
+    other connections can see, and each request's session is kept to inspect."""
+    sessions = []
+
+    async def session_per_request():
+        async with factory() as session:
+            sessions.append(session)
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
+    app.dependency_overrides[get_session] = session_per_request
+    headers = {"Authorization": f"Bearer {create_access_token({'sub': 'admin'})}"}
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            yield client, sessions, headers
+    finally:
+        app.dependency_overrides.pop(get_session, None)
+
+
+def _paused_body(entered, release, *, fail=False):
+    async def body():
+        yield PNG
+        entered.set()
+        await release.wait()
+        if fail:
+            raise ConnectionError("client went away mid-upload")
+        yield b"tail"
+    return body()
+
+
+async def _other_project_page(factory):
+    other = f"other-{uuid4()}"
+    async with factory() as session:
+        page = await create_page(session, None, project=other, title="elsewhere", content="text")
+    return other, str(page.id)
+
+
+async def _write_within(factory, page_id, seconds=2):
+    async with factory() as session:
+        await asyncio.wait_for(block_verbs.insert_block(
+            session, None, document_id=page_id, type="paragraph", text="written", owner=PAGE_OWNER,
+        ), seconds)
+
+
+async def _drop_project(factory, project):
+    async with factory() as session:
+        await session.execute(text("DELETE FROM pages WHERE project = :project"), {"project": project})
+        await session.commit()
+
+
+def _final_files(root):
+    return [p for p in root.glob("*/*") if p.is_file() and p.parent.name != ".staging"]
+
+
+async def test_upload_in_progress_does_not_block_a_page_write(isolated):
+    factory, project = isolated
+    page_id, _ = await _seed_owner(factory, project, PAGE_OWNER)
+    other, other_page = await _other_project_page(factory)
+    entered, release = asyncio.Event(), asyncio.Event()
+    try:
+        async with _route_client(factory) as (client, _, headers):
+            upload = asyncio.create_task(client.post(
+                f"/api/v1/pages/{page_id}/attachments",
+                content=_paused_body(entered, release), headers=headers,
+            ))
+            try:
+                await asyncio.wait_for(entered.wait(), 5)
+                cleanup = asyncio.create_task(page_attachment_cleanup.run_cleanup(
+                    factory, grace_hours=168, staging_max_age_hours=6,
+                ))
+                await asyncio.sleep(0.2)
+                await _write_within(factory, other_page)
+            finally:
+                release.set()
+            response = await asyncio.wait_for(upload, 5)
+            await asyncio.wait_for(cleanup, 5)
+        assert response.status_code == 201, response.text
+        assert attachment_path(response.json()["id"]).is_file()
+    finally:
+        await _drop_project(factory, other)
+
+
+async def test_upload_holds_no_transaction_while_streaming(isolated):
+    factory, project = isolated
+    page_id, _ = await _seed_owner(factory, project, PAGE_OWNER)
+    entered, release = asyncio.Event(), asyncio.Event()
+    async with _route_client(factory) as (client, sessions, headers):
+        upload = asyncio.create_task(client.post(
+            f"/api/v1/pages/{page_id}/attachments",
+            content=_paused_body(entered, release), headers=headers,
+        ))
+        try:
+            await asyncio.wait_for(entered.wait(), 5)
+            streaming = sessions[-1].in_transaction()
+        finally:
+            release.set()
+        response = await asyncio.wait_for(upload, 5)
+    assert response.status_code == 201, response.text
+    assert streaming is False
+
+
+async def test_interrupted_upload_leaves_no_row_and_no_file(isolated, tmp_path):
+    factory, project = isolated
+    page_id, _ = await _seed_owner(factory, project, PAGE_OWNER)
+    entered, release = asyncio.Event(), asyncio.Event()
+    release.set()
+    async with _route_client(factory) as (client, _, headers):
+        with pytest.raises(ConnectionError):
+            await client.post(
+                f"/api/v1/pages/{page_id}/attachments",
+                content=_paused_body(entered, release, fail=True), headers=headers,
+            )
+    async with factory() as checking:
+        rows = (await checking.execute(text(
+            "SELECT count(*) FROM page_attachments WHERE project = :project"
+        ), {"project": project})).scalar_one()
+    assert rows == 0
+    assert [p for p in tmp_path.rglob("*") if p.is_file()] == []
+
+
+async def test_collected_reference_is_still_refused(isolated, tmp_path):
+    factory, project = isolated
+    _, _, attachment_id = await _seed_attachment(factory, project)
+    archive = build_fixture([
+        Entry("Reference 00000000000000000000000000000001.md", (
+            f"# Reference\n\n![asset](https://example.test{attachment_url(attachment_id)})\n"
+        ).encode()),
+    ], tmp_path / "reference.zip")
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def body():
+        data = archive.read_bytes()
+        yield data[:10]
+        entered.set()
+        await release.wait()
+        yield data[10:]
+
+    async with factory() as importing:
+        importing_task = asyncio.create_task(import_notion_export(
+            importing, project=project, body=body(), declared_length=None, actor=None,
+        ))
+        try:
+            await asyncio.wait_for(entered.wait(), 5)
+            collected = await asyncio.wait_for(page_attachment_cleanup.run_cleanup(
+                factory, grace_hours=168, staging_max_age_hours=6,
+            ), 5)
+        finally:
+            release.set()
+        with pytest.raises(ValueError):
+            await asyncio.wait_for(importing_task, 5)
+    assert collected.rows_deleted == 1
+    async with factory() as checking:
+        saved = (await checking.execute(text(
+            "SELECT count(*) FROM blocks WHERE text LIKE :url"
+        ), {"url": f"%{attachment_id}%"})).scalar_one()
+    assert saved == 0
+
+
+async def test_notion_import_takes_the_lock_per_file(isolated, tmp_path, monkeypatch):
+    factory, project = isolated
+    other, other_page = await _other_project_page(factory)
+    archive = build_fixture(TWO_FILE_EXPORT, tmp_path / "two.zip")
+    entered, release = asyncio.Event(), asyncio.Event()
+    calls = 0
+    original_lock = page_import.lock_attachments
+
+    async def lock_second_file_late(session, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            entered.set()
+            await release.wait()
+        return await original_lock(session, **kwargs)
+
+    monkeypatch.setattr(page_import, "lock_attachments", lock_second_file_late)
+
+    async def body():
+        yield archive.read_bytes()
+
+    try:
+        async with factory() as importing:
+            importing_task = asyncio.create_task(import_notion_export(
+                importing, project=project, body=body(), declared_length=None, actor=None,
+            ))
+            try:
+                await asyncio.wait_for(entered.wait(), 5)
+                cleanup = asyncio.create_task(page_attachment_cleanup.run_cleanup(
+                    factory, grace_hours=168, staging_max_age_hours=6,
+                ))
+                await asyncio.sleep(0.2)
+                await _write_within(factory, other_page)
+            finally:
+                release.set()
+            report = await asyncio.wait_for(importing_task, 5)
+            await asyncio.wait_for(cleanup, 5)
+        assert report.attachments_stored == 2
+    finally:
+        await _drop_project(factory, other)
+
+
+async def test_failed_import_withdraws_its_committed_attachments(isolated, tmp_path, monkeypatch):
+    factory, project = isolated
+    archive = build_fixture(TWO_FILE_EXPORT, tmp_path / "two.zip")
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError("page write failed")
+
+    monkeypatch.setattr(page_import, "_insert_page", boom)
+
+    async def body():
+        yield archive.read_bytes()
+
+    async with factory() as importing:
+        with pytest.raises(RuntimeError):
+            await import_notion_export(importing, project=project, body=body(), declared_length=None, actor=None)
+    async with factory() as checking:
+        rows = (await checking.execute(text(
+            "SELECT count(*) FROM page_attachments WHERE project = :project"
+        ), {"project": project})).scalar_one()
+    assert rows == 0
+    assert _final_files(tmp_path) == []

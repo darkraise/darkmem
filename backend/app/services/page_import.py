@@ -1,14 +1,18 @@
 """Importing a Notion export into one project's page tree.
 
 Three phases: the body streams to staging, the plan is built off the event loop
-with no database access, and one transaction writes everything. Exactly one
-import runs at a time and a second is refused before its bytes are read, so a
-caller learns it is queued without first uploading a gigabyte.
+with no database access, and the writes run. Each attachment is placed and its
+row committed in a transaction of its own, so the attachment lifecycle lock is
+held per file rather than for the import; the pages and the journal row are
+one transaction after them. Exactly one import runs at a time and a second is
+refused before its bytes are read, so a caller learns it is queued without
+first uploading a gigabyte.
 """
 from __future__ import annotations
 
 import asyncio
 import errno
+import logging
 import shutil
 import time
 from collections.abc import AsyncIterator, Callable
@@ -19,6 +23,7 @@ from pathlib import Path
 from urllib.parse import unquote
 from uuid import UUID, uuid4
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -50,7 +55,12 @@ from app.services.page_door import (
     root_lock_key,
 )
 
+logger = logging.getLogger(__name__)
+
 MAX_WARNINGS = 500
+_DELETE_ATTACHMENTS = text(
+    "DELETE FROM page_attachments WHERE id = ANY(CAST(:ids AS uuid[]))"
+)
 PAGES_IMPORTED_EVENT = "pages_imported"
 # Staging may hold the zip, a Part export's extracted members, and each
 # referenced attachment at once. Text expands further but is never staged as a
@@ -245,6 +255,22 @@ def _build_plan(
     return archive, _Plan(tree=tree, assets=assets, blocks=blocks)
 
 
+async def _withdraw_attachments(session: AsyncSession, ids: list[UUID]) -> None:
+    try:
+        await lock_attachments(session)
+        await session.execute(_DELETE_ATTACHMENTS, {"ids": [str(i) for i in ids]})
+        await session.commit()
+    except Exception:
+        logger.warning(
+            "notion import: could not withdraw %d committed attachment(s); "
+            "the cleanup job collects them", len(ids), exc_info=True,
+        )
+        await session.rollback()
+        return
+    for attachment_id in ids:
+        await asyncio.to_thread(attachment_path(attachment_id).unlink, True)
+
+
 async def import_notion_export(
     session: AsyncSession,
     *,
@@ -272,10 +298,16 @@ async def _run_import(
     declared_length: int | None,
     actor: str | None,
 ) -> ImportReport:
-    """Keep placed bytes unless rollback succeeds before COMMIT is attempted."""
+    """Keep placed bytes unless rollback succeeds before COMMIT is attempted.
+
+    A failure before the pages' COMMIT also deletes the attachments this
+    import already committed, rows first under the lock, since nothing can
+    refer to them yet; if that delete fails they wait for the cleanup job.
+    """
     warnings = _Warnings()
     staging = attachments_root() / STAGING_DIRNAME / str(uuid4())
     placed: list[UUID] = []
+    committed: list[UUID] = []
     archive: NotionArchive | None = None
     planned = False
     commit_started = False
@@ -306,17 +338,14 @@ async def _run_import(
         planned = True
         zip_path.unlink(missing_ok=True)
 
-        await lock_attachments(session)
-        await session.execute(_LOCK_ROOT, {"key": root_lock_key(project)})
-
         # Files BEFORE rows: a file with no row is swept by the cleanup job,
         # while a row with no file is a permanent 404 nothing repairs.
         for staged in plan.assets.values():
+            await lock_attachments(session)
             await asyncio.to_thread(
                 place_staged, staged.staged_path, staged.attachment_id
             )
             placed.append(staged.attachment_id)
-        for staged in plan.assets.values():
             await insert_attachment_row(
                 session,
                 attachment_id=staged.attachment_id,
@@ -327,6 +356,13 @@ async def _run_import(
                 size_bytes=staged.size_bytes,
                 sha256=staged.sha256,
             )
+            commit_started = True
+            await session.commit()
+            committed.append(placed.pop())
+            commit_started = False
+
+        await lock_attachments(session)
+        await session.execute(_LOCK_ROOT, {"key": root_lock_key(project)})
 
         stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         root = await _insert_page(
@@ -381,6 +417,8 @@ async def _run_import(
         if not commit_started:
             for attachment_id in placed:
                 await asyncio.to_thread(attachment_path(attachment_id).unlink, True)
+            if committed:
+                await _withdraw_attachments(session, committed)
         # Staging and extraction are the only phases that write bytes the disk
         # can refuse; past them a full disk is not the explanation and saying so
         # would be a guess.

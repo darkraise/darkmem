@@ -105,8 +105,10 @@ class AttachmentRow:
 
 
 @dataclass(frozen=True)
-class _Written:
+class StagedUpload:
+    """Bytes streamed to ``part``, not yet placed under their final name."""
     id: UUID
+    part: Path
     size_bytes: int
     sha256: str
     content_type: str
@@ -169,7 +171,11 @@ def serving_headers(row: AttachmentRow) -> dict[str, str]:
     }
 
 
-async def _write_file(chunks: AsyncIterator[bytes], *, max_bytes: int) -> _Written:
+async def stage_upload(chunks: AsyncIterator[bytes], *, max_bytes: int) -> StagedUpload:
+    """Stream the body to ``<final>.part`` with no lock and no transaction.
+
+    A body that fails or passes `max_bytes` midway removes its own ``.part``.
+    """
     attachment_id = uuid4()
     final = attachment_path(attachment_id)
     part = final.with_name(final.name + ".part")
@@ -191,11 +197,57 @@ async def _write_file(chunks: AsyncIterator[bytes], *, max_bytes: int) -> _Writt
                     head += chunk[: _SNIFF_BYTES - len(head)]
                 digest.update(chunk)
                 fh.write(chunk)
-        os.replace(part, final)
     except BaseException:
         part.unlink(missing_ok=True)
         raise
-    return _Written(attachment_id, size, digest.hexdigest(), sniff_content_type(head))
+    return StagedUpload(attachment_id, part, size, digest.hexdigest(), sniff_content_type(head))
+
+
+def discard_upload(staged: StagedUpload) -> None:
+    staged.part.unlink(missing_ok=True)
+
+
+async def place_upload(
+    session: AsyncSession,
+    staged: StagedUpload,
+    *,
+    page_id: UUID,
+    project: str,
+    filename: str,
+) -> StoredAttachment:
+    """Rename staged bytes into place and commit their row, under the
+    lifecycle lock for exactly that long.
+
+    An insert failure precedes any COMMIT, so its file can be removed. Once
+    COMMIT is attempted, every error preserves the bytes: a lost response is
+    not proof the database rolled back.
+    """
+    await lock_attachments(session)
+    final = attachment_path(staged.id)
+    try:
+        os.replace(staged.part, final)
+        await session.execute(_INSERT, {
+            "id": str(staged.id),
+            "project": project,
+            "page": str(page_id),
+            "filename": filename,
+            "content_type": staged.content_type,
+            "size_bytes": staged.size_bytes,
+            "sha256": staged.sha256,
+        })
+    except Exception:
+        final.unlink(missing_ok=True)
+        discard_upload(staged)
+        raise
+    await session.commit()
+    return StoredAttachment(
+        id=staged.id,
+        url=attachment_url(staged.id),
+        filename=filename,
+        content_type=staged.content_type,
+        size_bytes=staged.size_bytes,
+        sha256=staged.sha256,
+    )
 
 
 async def store_upload(
@@ -207,35 +259,10 @@ async def store_upload(
     chunks: AsyncIterator[bytes],
     max_bytes: int,
 ) -> StoredAttachment:
-    """Place bytes under the lifecycle lock and commit their row.
-
-    An insert failure precedes any COMMIT, so its file can be removed. Once
-    COMMIT is attempted, every error preserves the bytes: a lost response is
-    not proof the database rolled back.
-    """
-    await lock_attachments(session)
-    written = await _write_file(chunks, max_bytes=max_bytes)
-    try:
-        await session.execute(_INSERT, {
-            "id": str(written.id),
-            "project": project,
-            "page": str(page_id),
-            "filename": filename,
-            "content_type": written.content_type,
-            "size_bytes": written.size_bytes,
-            "sha256": written.sha256,
-        })
-    except Exception:
-        attachment_path(written.id).unlink(missing_ok=True)
-        raise
-    await session.commit()
-    return StoredAttachment(
-        id=written.id,
-        url=attachment_url(written.id),
-        filename=filename,
-        content_type=written.content_type,
-        size_bytes=written.size_bytes,
-        sha256=written.sha256,
+    """Stream, then place: the lock is held only around the placement."""
+    staged = await stage_upload(chunks, max_bytes=max_bytes)
+    return await place_upload(
+        session, staged, page_id=page_id, project=project, filename=filename,
     )
 
 
@@ -264,7 +291,7 @@ async def insert_attachment_row(
 ) -> None:
     """Insert one row and DO NOT commit.
 
-    `store_upload` commits because its file is already on disk and its caller
+    `place_upload` commits because its file is already on disk and its caller
     has nothing else to write. An import writes its attachment rows, its pages
     and its journal row in one transaction, so it needs the insert without the
     commit.

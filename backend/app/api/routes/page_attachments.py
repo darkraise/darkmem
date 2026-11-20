@@ -28,9 +28,11 @@ from app.services.page_attachments import (
     AttachmentTooLarge,
     attachment_path,
     clean_filename,
+    discard_upload,
     get_attachment,
+    place_upload,
     serving_headers,
-    store_upload,
+    stage_upload,
 )
 
 router = APIRouter(prefix="/api/v1/pages", tags=["pages"])
@@ -71,22 +73,28 @@ async def upload_attachment_route(
     declared = request.headers.get("content-length")
     if declared is not None and declared.isdigit() and int(declared) > settings.attachment_max_bytes:
         raise _too_large()
-    project = (
-        await session.execute(_LIVE_PAGE_PROJECT, {"id": str(page_id)})
-    ).scalar_one_or_none()
-    if project is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no live page with id {page_id}")
+    # Authentication read on this session; ending its transaction here means
+    # a slow body holds no transaction and no lock while it streams.
+    await session.commit()
     try:
-        stored = await store_upload(
-            session,
-            page_id=page_id,
-            project=project,
-            filename=clean_filename(x_filename),
-            chunks=request.stream(),
-            max_bytes=settings.attachment_max_bytes,
+        staged = await stage_upload(
+            request.stream(), max_bytes=settings.attachment_max_bytes,
         )
     except AttachmentTooLarge as exc:
         raise _too_large() from exc
+    try:
+        project = (
+            await session.execute(_LIVE_PAGE_PROJECT, {"id": str(page_id)})
+        ).scalar_one_or_none()
+        if project is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, f"no live page with id {page_id}")
+        stored = await place_upload(
+            session, staged, page_id=page_id, project=project,
+            filename=clean_filename(x_filename),
+        )
+    except BaseException:
+        discard_upload(staged)
+        raise
     return AttachmentResponse(
         id=stored.id, url=stored.url, filename=stored.filename,
         content_type=stored.content_type, size_bytes=stored.size_bytes,

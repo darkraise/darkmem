@@ -1358,7 +1358,12 @@ of the post-filtered HNSW stream).
 
 Attachment reference writers and placement acquire a global shared
 transaction lifecycle lock before root/owner locks; collection acquires
-the exclusive form. Writers revalidate attachment URLs under that lock,
+the exclusive form. Placement holds it only around the rename, the row
+insert and the commit: an upload streams its body to a `.part` file with
+no lock and no open transaction, and a Notion import places each
+attachment in a transaction of its own before writing its pages under the
+lock, withdrawing the attachments it committed if it fails before that
+commit. Writers revalidate attachment URLs under that lock,
 refusing already-collected references. Collection's filesystem phase and
 rowless scan/unlink cannot invalidate a committed reference. Import/upload
 cleanup preserves placed bytes when commit or rollback outcome is
