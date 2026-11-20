@@ -287,9 +287,12 @@ def test_both_doors_derive_the_weight_through_one_helper():
     from pathlib import Path
 
     backend = Path(__file__).resolve().parents[1]
-    for name in ("hybrid_search.py", "layer_composition.py"):
+    # The composition's memory channel is `search_ranked`, so it inherits the
+    # one derivation rather than holding a second call to the helper.
+    required = {"hybrid_search.py": "dual_list_weight", "layer_composition.py": "search_ranked"}
+    for name, needle in required.items():
         source = (backend / "app" / "services" / name).read_text()
-        assert "dual_list_weight" in source, f"{name} does not use the helper"
+        assert needle in source, f"{name} does not derive the weight through {needle}"
         tree = ast.parse(source)
         # No door may read the flag pair directly; that is the helper's job.
         literals = {
