@@ -105,15 +105,7 @@ from app.services.facts_channel import (
 from app.services.feature_flags import get_feature_flags_dict
 from app.services.hybrid_search import HybridSearchService
 
-from app.services.rank_fusion import (
-    RRF_K,
-    ContextOutcome,
-    DeclaredContext,
-    RowContext,
-    match_context,
-    rank_fusion_factor,
-    row_context_from_applies_when,
-)
+from app.services.rank_fusion import RRF_K, rank_fusion_factor
 from app.services.verified_evidence import (
     CONTRADICTION_EVIDENCE_KEY,
     latest_verified_evidence,
@@ -347,7 +339,6 @@ class LayerCandidate:
     row: Mapping[str, object]
     verification_status: str | None = None
     signals: Mapping[str, float] = field(default_factory=dict)
-    row_context: RowContext | None = None
     key: str = field(init=False, default="")
 
     def __post_init__(self) -> None:
@@ -456,7 +447,6 @@ def memory_candidate(
         row=row,
         verification_status=None,
         signals={} if arms_spent else _signals(row),
-        row_context=row_context_from_applies_when(row.get("applies_when")),
     )
 
 
@@ -470,7 +460,6 @@ def fact_candidate(row: Mapping, *, channel_rank: int) -> LayerCandidate:
         row=row,
         verification_status=unserved_status(row.get("verification_status")),
         signals=_signals(row),
-        row_context=row_context_from_applies_when(row.get("applies_when")),
     )
 
 
@@ -490,7 +479,6 @@ def article_candidate(row: Mapping, *, channel_rank: int) -> LayerCandidate:
         row=row,
         verification_status=unserved_status(row.get("verification_status")),
         signals=_signals(row),
-        row_context=row_context_from_applies_when(row.get("applies_when")),
     )
 
 
@@ -602,7 +590,6 @@ class ComposedRow:
     cross_layer_rrf: float
     rank_fusion_factor: float
     weighted_score: float
-    context: ContextOutcome
     labels: Mapping[str, object]
     dispute: Mapping[str, object] | None
     row: Mapping[str, object]
@@ -613,10 +600,6 @@ class ComposedRow:
 @dataclass(frozen=True)
 class CompositionResult:
     """``compose()``'s ordered output plus the counts the envelope owes.
-
-    ``excluded_by_context_conflict`` is doc 07 §8's ``by_context_conflict``
-    and is reported unconditionally, including when it is zero — a suppressed
-    count hides exactly the case a reader needs.
 
     ``rows`` is the **top level only** once grouping has run: a nested memory
     lives under its fact and nowhere else, so ``len(rows)`` counts a group as
@@ -635,7 +618,6 @@ class CompositionResult:
     """
 
     rows: list[ComposedRow]
-    excluded_by_context_conflict: int = 0
     excluded_by_result_limit: int = 0
     reranked: bool = False
     grouped: bool = False
@@ -670,17 +652,15 @@ def _reband_within_channels(rows: list[ComposedRow]) -> list[ComposedRow]:
     than score authority**. A band is unique within a channel, so a
     ``(band, tier)`` cell holds at most one row per channel — a per-row scalar
     sitting *beside* the band could therefore never move a row past a
-    same-channel neighbour at any magnitude, which would leave every arm and
-    the context boost order-inert on the default path and repeal doc 07 §6's
-    rank boost. Re-ranking the channel by the weighted score implements the
-    word §6 actually uses.
+    same-channel neighbour at any magnitude, which would leave every arm
+    order-inert on the default path. Re-ranking the channel by the weighted
+    score gives the arms rank authority.
 
     The re-rank happens **inside one channel**, where the magnitudes are
-    commensurable; the cross-channel comparison stays rank and only rank. Gaps
-    left by an exclusion close here, so a channel that lost its rank-2 row
-    does not leave a hole. The sort is **stable on the channel's prior
-    order**, so rows with equal weighted scores — every row at the no-op
-    default — keep the order their channel's own fusion gave them.
+    commensurable; the cross-channel comparison stays rank and only rank. The
+    sort is **stable on the channel's prior order**, so rows with equal
+    weighted scores — every row at the no-op default — keep the order their
+    channel's own fusion gave them.
     """
     out: list[ComposedRow] = []
     by_channel: dict[str, list[ComposedRow]] = {}
@@ -869,7 +849,6 @@ def compose(
     candidates,
     *,
     weights: Mapping[str, object] | None = None,
-    declared_context: DeclaredContext | None = None,
     evidence: Mapping[str, Mapping] | None = None,
     rerank_scores: Mapping[str, float] | None = None,
     fact_sources: Mapping[str, frozenset[str]] | None = None,
@@ -942,24 +921,8 @@ def compose(
             "names one object in one space, and the grouping map keys on it"
         )
 
-    # The context map is keyed by the **namespaced** key, which is why
-    # ``rank_fusion.partition_by_context`` cannot be reused here: it looks a
-    # row's context up through ``normalize_row_id``, the bare-id key, so
-    # handed cross-layer rows it would resolve a fact's context from a
-    # memory's entry the moment the two ids coincided.
-    row_contexts = {candidate.key: candidate.row_context for candidate in candidates}
-
-    kept: list[tuple[LayerCandidate, ContextOutcome]] = []
-    excluded_by_context_conflict = 0
-    for candidate in candidates:
-        outcome = match_context(declared_context, row_contexts.get(candidate.key), weights)
-        if outcome.excluded:
-            excluded_by_context_conflict += 1
-            continue
-        kept.append((candidate, outcome))
-
     rows: list[ComposedRow] = []
-    for candidate, outcome in kept:
+    for candidate in candidates:
         factor = rank_fusion_factor(candidate.signals, weights)
         base = CHANNEL_LIST_WEIGHTS[candidate.id_kind] * cross_layer_rrf(candidate.channel_rank)
         rows.append(
@@ -974,13 +937,7 @@ def compose(
                 band=candidate.channel_rank,
                 cross_layer_rrf=cross_layer_rrf(candidate.channel_rank),
                 rank_fusion_factor=factor,
-                # The boost is read off the stamped outcome and folded in
-                # here, once. ``rank_fusion.apply_context_boost`` is not
-                # called: it would multiply the same boost in a second time,
-                # and it sorts on ``rrf_score``/``score``, keys this module
-                # does not order by.
-                weighted_score=base * factor * outcome.boost,
-                context=outcome,
+                weighted_score=base * factor,
                 labels=(
                     _labels(candidate)
                     if badges is None
@@ -1030,7 +987,6 @@ def compose(
 
     return CompositionResult(
         rows=ordered,
-        excluded_by_context_conflict=excluded_by_context_conflict,
         excluded_by_result_limit=len(rows) - len(served),
         reranked=reranked,
         grouped=grouped,
@@ -1183,8 +1139,8 @@ class LayerCompositionService:
     **It deliberately takes no ``with_trace``**, which is a correction to the
     seam rather than an omission. On ``memory.py`` that flag chooses between
     two parallel paths and the off position returns no envelope at all. Here
-    the envelope carries ``partial`` and doc 07 §8's unconditional
-    ``by_context_conflict`` tally, so an off position would either return a
+    the envelope carries ``partial`` and the unconditional
+    ``by_result_limit`` tally, so an off position would either return a
     result whose degradation cannot be seen — the one thing invariant 14
     forbids — or be a knob with no observable effect. Neither is worth
     shipping for symmetry with a method whose analogy does not hold, so
@@ -1300,7 +1256,6 @@ class LayerCompositionService:
         project: str | None,
         limit: int = 20,
         statuses: tuple[str, ...] | None = None,
-        declared_context: DeclaredContext | None = None,
         weights: Mapping[str, object] | None = None,
     ) -> ComposedResult:
         """The composed read, scoped by the two axes a memory row carries.
@@ -1459,7 +1414,6 @@ class LayerCompositionService:
         result = compose(
             candidates,
             weights=weights,
-            declared_context=declared_context,
             evidence=evidence,
             fact_sources=await self.derive_support_map(fact_ids),
             badges=badges,
@@ -1489,15 +1443,12 @@ class LayerCompositionService:
                 for key, value in weights.items()
                 if isinstance(value, (int, float)) and not isinstance(value, bool)
             },
-            # Both tallies unconditionally, including at zero. ``by_result_limit``
-            # is the answer budget's own: the number of rows this request
-            # composed, ordered and then did not serve anywhere. It is bounded
-            # by the over-fetch and says nothing about how many further matches
-            # the corpus holds — no channel looked past its own ``limit``.
-            excluded={
-                "by_context_conflict": result.excluded_by_context_conflict,
-                "by_result_limit": result.excluded_by_result_limit,
-            },
+            # Unconditionally, including at zero. ``by_result_limit`` is the
+            # answer budget's own: the number of rows this request composed,
+            # ordered and then did not serve anywhere. It is bounded by the
+            # over-fetch and says nothing about how many further matches the
+            # corpus holds — no channel looked past its own ``limit``.
+            excluded={"by_result_limit": result.excluded_by_result_limit},
         )
         return ComposedResult(
             rows=result.rows, envelope=envelope, channel_scores=channel_scores,

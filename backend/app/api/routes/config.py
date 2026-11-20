@@ -359,15 +359,14 @@ class GraphChannelInfo(BaseModel):
     Same discipline as ``RankArmInfo``: the "activated by T2.50" label and the
     enabled/weight pairing come off the backend's own registry, so a settings
     surface cannot pair a flag with the wrong weight or outlive a renumbered
-    task. ``weight_flag`` is null for a channel that injects context rather
-    than a ranked list — the UI renders the absence, never a zero it invented.
+    task.
     """
 
     name: str
     flag: str
     enabled: bool
-    weight_flag: str | None = None
-    weight: float | None = None
+    weight_flag: str
+    weight: float
     activation: str | None = None
 
 
@@ -387,7 +386,6 @@ class FeatureFlagsResponse(BaseModel):
     w_importance: float = 0.0
     w_heat: float = 0.0
     w_recency: float = 0.0
-    w_context_boost: float = 0.0
     # Doc 07 §4's graph arms, in FEATURE_FLAGS_DEFAULTS since T2.32 but absent
     # from this response model until the Flags tab wiring — which is why the UI
     # rendered them as "no config row exists yet". The row existed; the field
@@ -396,7 +394,6 @@ class FeatureFlagsResponse(BaseModel):
     w_ppr: float = 0.0
     dual_level_enabled: bool = False
     w_dual: float = 0.0
-    community_injection_enabled: bool = False
     rank_arms: list[RankArmInfo] = Field(default_factory=list)
     graph_channels: list[GraphChannelInfo] = Field(default_factory=list)
     # The label space the classifier actually works in, resolved by
@@ -422,6 +419,8 @@ class FlagBound(BaseModel):
 
 
 class FeatureFlagsUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     hybrid_search_enabled: bool | None = None
     reranker_enabled: bool | None = None
     pipeline_concurrency: int | None = Field(default=None, ge=1, le=20)
@@ -435,7 +434,6 @@ class FeatureFlagsUpdate(BaseModel):
     w_importance: float | None = Field(default=None, ge=0, le=5)
     w_heat: float | None = Field(default=None, ge=0, le=5)
     w_recency: float | None = Field(default=None, ge=0, le=5)
-    w_context_boost: float | None = Field(default=None, ge=0, le=5)
     ppr_enabled: bool | None = None
     # `w_ppr` / `w_dual` are RRF *list* weights, not per-row multipliers, but
     # they share the arms' 0..5 range: 0 is the today-equivalent no-op and the
@@ -443,7 +441,6 @@ class FeatureFlagsUpdate(BaseModel):
     w_ppr: float | None = Field(default=None, ge=0, le=5)
     dual_level_enabled: bool | None = None
     w_dual: float | None = Field(default=None, ge=0, le=5)
-    community_injection_enabled: bool | None = None
 
 
 def _numeric_flag_bounds() -> dict[str, FlagBound]:
@@ -492,11 +489,7 @@ def _flags_response(flags: dict) -> FeatureFlagsResponse:
             flag=channel.flag,
             enabled=bool(flags.get(channel.flag, False)),
             weight_flag=channel.weight_flag,
-            weight=(
-                None
-                if channel.weight_flag is None
-                else float(flags.get(channel.weight_flag, 0.0) or 0.0)
-            ),
+            weight=float(flags.get(channel.weight_flag, 0.0) or 0.0),
             activation=channel.activation,
         )
         for channel in GRAPH_CHANNELS

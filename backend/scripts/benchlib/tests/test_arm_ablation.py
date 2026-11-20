@@ -428,12 +428,12 @@ async def test_run_arm_ablation_rejects_an_unknown_arm_before_touching_the_db(tm
         )
 
 
-# ── the other two signal classes, and the vacuity guard ─────────────────
+# ── the list-weight class, and the vacuity guard ────────────────────────
 #
-# `RANK_ARMS` covers only the post-fusion multipliers, so the two tasks that
-# own the other classes (T2.35's context boost, T2.50's list weights) could
-# not run their own stated Verify line: `resolve_arm` rejected every flag they
-# name. `resolve_ablatable` covers all three classes, and the guard below is
+# `RANK_ARMS` covers only the post-fusion multipliers, so the task that owns
+# the list weights (T2.50) could not run its own stated Verify line:
+# `resolve_arm` rejected every flag it names. `resolve_ablatable` covers both
+# classes, and the guard below is
 # what keeps that coverage honest — an arm whose signal cannot be present
 # refuses rather than reporting the exact zero that reads like a verdict.
 
@@ -446,16 +446,13 @@ def test_every_rank_arm_still_resolves_through_the_wider_resolver():
         assert resolved.activation == arm.activation
 
 
-def test_the_list_weights_and_the_context_boost_now_resolve():
+def test_the_list_weights_now_resolve():
     ppr = arm_ablation.resolve_ablatable("w_ppr")
     assert ppr.kind == arm_ablation.KIND_LIST
     assert ppr.project_scoped is True
 
     dual = arm_ablation.resolve_ablatable("w_dual")
     assert dual.kind == arm_ablation.KIND_LIST
-
-    boost = arm_ablation.resolve_ablatable("w_context_boost")
-    assert boost.kind == arm_ablation.KIND_BOOST
 
 
 def test_semantic_weight_is_not_an_ablatable_arm():

@@ -568,23 +568,22 @@ the separate chat-versus-search retrieval-quality measurements.
 ## Feature flags
 
 Source of truth: the `config` row `feature_flags`. `get_feature_flags_dict`
-merges DB values **over** `FEATURE_FLAGS_DEFAULTS` (`app/config.py`). The
+merges DB values **over** `FEATURE_FLAGS_DEFAULTS` (`app/config.py`), reading
+only the keys declared there, so a stored retired flag reaches nothing. The
 pipeline reads through a 5-second TTL single-flight cache
 (`_get_feature_flags_cached`); `_flag_cache_reset` is a test hook only.
 
 Behavioural flags: `hybrid_search_enabled`, `reranker_enabled`,
 `relation_rescue`, `confidence_rank_gamma`. Graph arms are inert:
-`ppr_enabled` / `dual_level_enabled` / `community_injection_enabled` off and
-`w_ppr` / `w_dual` at 0. Those two are RRF **list** weights
+`ppr_enabled` / `dual_level_enabled` off and `w_ppr` / `w_dual` at 0. Those two are RRF **list** weights
 (`rank_fusion.LIST_WEIGHT_KEYS`), never `RankArm` multipliers, and both doors
 derive the PPR weight through `rank_fusion.ppr_list_weight`. The dual-level
 channel is built (`HybridSearchService._dual_level_search`) and inert behind
 its flag. Each arm's artefact job skips its tick while the arm is off:
 `ppr_snapshot` on `ppr_enabled`, `relation_embedding_refresh` on
 `dual_level_enabled`. Arming a flag takes effect on the job's next tick, or
-at once through a manual trigger. The ranking arms
-`w_importance` / `w_heat` / `w_recency` / `w_context_boost` sit at weight 0
-and are provably inert there (`rank_fusion.RANK_ARMS`); each flips only on a
+at once through a manual trigger. The three ranking arms
+`w_importance` / `w_heat` / `w_recency` sit at weight 0 and are provably inert there (`rank_fusion.RANK_ARMS`); each flips only on a
 measured retrieval win reported with its latency/cost twin and recorded in
 the gate ledger's arm activation log.
 

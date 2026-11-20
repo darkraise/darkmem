@@ -79,12 +79,7 @@ from app.models.config import Config
 from app.services.config import get_llm_config
 from app.services.feature_flags import FEATURE_FLAGS_KEY
 from app.services.pipeline import _flag_cache_reset
-from app.services.rank_fusion import (
-    CONTEXT_BOOST_FLAG,
-    LIST_WEIGHT_KEYS,
-    RANK_ARMS,
-    RankArm,
-)
+from app.services.rank_fusion import LIST_WEIGHT_KEYS, RANK_ARMS, RankArm
 
 # Pinned to match run_retrieval_eval.py's own K/MIN_PAIRS: both runners
 # measure over the same corpus/gold under the same scoring protocol. These
@@ -391,13 +386,13 @@ class ArmNotMeasurable(RuntimeError):
 
 @dataclass(frozen=True)
 class AblatableArm:
-    """One flag the harness can ablate, across all three signal classes.
+    """One flag the harness can ablate, across both signal classes.
 
-    `RANK_ARMS` covers only the post-fusion multipliers. The read path has two
-    other classes doc 07 §3 keeps deliberately separate — the RRF **list**
-    weights (`LIST_WEIGHT_KEYS`) and the `applies_when` context boost — and
-    both were rejected outright by the original resolver, so the tasks that
-    own them (T2.35, T2.50) could not run their own stated Verify line.
+    `RANK_ARMS` covers only the post-fusion multipliers. The read path has a
+    second class doc 07 §3 keeps deliberately separate — the RRF **list**
+    weights (`LIST_WEIGHT_KEYS`) — which the original resolver rejected
+    outright, so the task that owns them (T2.50) could not run its own stated
+    Verify line.
 
     ``companions`` is what makes a list arm ablatable at all: `w_ppr` alone
     does nothing, because `ppr_list_weight` returns zero unless `ppr_enabled`
@@ -422,7 +417,6 @@ class AblatableArm:
 
 KIND_FACTOR = "factor"
 KIND_LIST = "list"
-KIND_BOOST = "boost"
 
 
 def _blocked_reasons() -> dict[str, str]:
@@ -435,22 +429,14 @@ def _blocked_reasons() -> dict[str, str]:
     `w_dual` was here until T2.94 landed the reader; its entry was removed
     rather than left stale, which is that task's own last Done-when.
     """
-    return {
-        CONTEXT_BOOST_FLAG: (
-            "the retrieval runner declares no context. `match_context` needs "
-            "a DeclaredContext to produce anything but the neutral outcome, "
-            "and the gold pairs carry no env/version/situation axis, so the "
-            "boost is structurally inert at every magnitude. Needs a context "
-            "axis on the gold set — gold-authoring work, not harness work."
-        ),
-    }
+    return {}
 
 
 def resolve_ablatable(flag: str) -> AblatableArm:
-    """The one ablatable signal named ``flag``, across all three classes.
+    """The one ablatable signal named ``flag``, across both classes.
 
     Every class is derived at call time from the module that defines it —
-    ``RANK_ARMS``, ``LIST_WEIGHT_KEYS``, ``CONTEXT_BOOST_FLAG`` — never a
+    ``RANK_ARMS``, ``LIST_WEIGHT_KEYS`` — never a
     hand-written second list, which is the same discipline `resolve_arm` was
     written under and the drift `code_query.py`'s duplicate ``RRF_K`` was.
     """
@@ -476,17 +462,9 @@ def resolve_ablatable(flag: str) -> AblatableArm:
             needs_artifact="ppr_snapshot" if flag == "w_ppr" else "relation_embeddings",
             blocked=blocked.get(flag),
         )
-    if flag == CONTEXT_BOOST_FLAG:
-        return AblatableArm(
-            flag=flag, name="context_boost", kind=KIND_BOOST,
-            activation="T2.35",
-            blocked=blocked.get(flag),
-        )
-
     valid = sorted(
         {arm.flag for arm in RANK_ARMS}
         | {f for f in LIST_WEIGHT_KEYS if f != "semantic_weight"}
-        | {CONTEXT_BOOST_FLAG}
     )
     raise ValueError(f"unknown --arm {flag!r}; valid arms are {valid}")
 

@@ -530,9 +530,8 @@ async def test_a_turn_carries_the_envelope_and_its_exclusion_counts(session):
     assert envelope["channels"]["memory.semantic"] == {"ran": True, "failed": False}
     assert envelope["channels"]["memory.keyword"] == {"ran": True, "failed": False}
     assert envelope["partial"] is False
-    # Both tallies are present at zero: a suppressed count reads as "no check
+    # The tally is present at zero: a suppressed count reads as "no check
     # ran", which is the case a reader most needs to tell apart.
-    assert envelope["excluded"]["by_context_conflict"] == 0
     assert envelope["excluded"]["by_result_limit"] == 0
     assert envelope["excluded"]["not_found"] == 0
 

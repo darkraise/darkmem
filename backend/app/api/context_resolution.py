@@ -1,10 +1,7 @@
 """Doc 12 §5's declared-context precedence chain: arg > header > project > none.
 
-This module resolves **precedence** and nothing else. Turning the winning
-raw mapping into the value matching consumes is
-``rank_fusion.declared_context_from_wire``'s job (T1.34), and normalisation,
-the axis vocabulary and the conflict rules all live there. Re-deriving any
-of it here would give the system two answers to the same question.
+The memory search door echoes the winner on its traced envelope. Nothing
+ranks by it: no retrieval path matches a row's ``applies_when`` against it.
 
 Two properties the chain owes its terminal seam, both load-bearing:
 
@@ -12,9 +9,6 @@ Two properties the chain owes its terminal seam, both load-bearing:
 ``{"env": null}``, and never the project name. ``DeclaredContext`` raises on
 an empty axis set precisely so a vacuous declaration cannot exist: an
 undeclared context that renders as a default is what T1.65 exists to catch.
-"Declared and matched nothing" is a *different* fact — a real
-``DeclaredContext`` with every row neutral — and the tier this module
-returns alongside it is how a reader tells the two apart.
 
 ``project`` is never emitted. The chain reads it to find the tier-3 default,
 but the isolation boundary and the context hint are different axes;
@@ -26,17 +20,13 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from typing import Any, Mapping
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.project_registry import get_applies_when_default
 from app.schemas.envelope import ContextEcho, DeclaredByTier
-from app.services.rank_fusion import (
-    ContextProvenance,
-    DeclaredContext,
-    declared_context_from_wire,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +35,34 @@ DECLARED_CONTEXT_HEADER = "x-darkmem-context"
 # Never emitted into the declaration, however a caller spells it: `project`
 # is the isolation boundary, not a context axis.
 _NON_AXIS_KEYS = frozenset({"project"})
+
+
+def normalize_axes(raw: Mapping[str, object] | None) -> dict[str, str]:
+    if not raw:
+        return {}
+    normalized: dict[str, str] = {}
+    for key, value in raw.items():
+        if value is None:
+            continue
+        text_value = str(value).strip().lower()
+        if not text_value:
+            continue
+        normalized[str(key).strip().lower()] = text_value
+    return normalized
+
+
+@dataclass(frozen=True)
+class DeclaredContext:
+    """The caller's declared context — never derived from ``project``."""
+
+    axes: Mapping[str, str]
+
+    def __post_init__(self) -> None:
+        # An all-empty declaration would be indistinguishable from no
+        # declaration at all while still being a live object; ``None`` is the
+        # one representation of undeclared.
+        if not self.axes:
+            raise ValueError("a context with no stated axis is undeclared; use None")
 
 
 def _clean(raw: Any) -> dict[str, Any] | None:
@@ -92,7 +110,7 @@ def resolve_declared_context(
     headers: Mapping[str, str] | None = None,
     project_default: Mapping[str, Any] | None = None,
 ) -> tuple[DeclaredContext | None, DeclaredByTier | None]:
-    """Run the precedence chain and hand the winner to T1.34's seam.
+    """Run the precedence chain and normalise the winner.
 
     A tier yielding nothing falls through to the next; a tier yielding a
     non-empty mapping wins outright and lower tiers are **not** merged into
@@ -100,10 +118,7 @@ def resolve_declared_context(
     declaration.
 
     ``provenance`` is not a parameter. The declared caller context is
-    trusted human input by definition (doc 12 §5); ``llm_guessed`` is a
-    property of a *row's* ``applies_when``, which E2 writes. A caller able
-    to self-declare ``llm_guessed`` would be handing itself a declaration
-    that can never exclude — a behaviour switch with no owner.
+    trusted human input by definition (doc 12 §5).
     """
     tiers: tuple[tuple[DeclaredByTier, Mapping[str, Any] | None], ...] = (
         ("arg", _clean(explicit)),
@@ -113,9 +128,9 @@ def resolve_declared_context(
     for tier, raw in tiers:
         if not raw:
             continue
-        declared = declared_context_from_wire(raw, ContextProvenance.HUMAN)
-        if declared is not None:
-            return declared, tier
+        axes = normalize_axes(raw)
+        if axes:
+            return DeclaredContext(axes), tier
     return None, None
 
 
@@ -153,5 +168,5 @@ def context_echo(
     return ContextEcho(
         declared=dict(declared.axes),
         declared_by=declared_by,
-        provenance=ContextProvenance.HUMAN.value,
+        provenance="human",
     )

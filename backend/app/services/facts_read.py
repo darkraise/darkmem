@@ -48,7 +48,6 @@ from app.services.claim_gates import gated_journal_payload, raw_statuses_for_ser
 from app.services.events import object_timeline
 from app.services.fact_badge import badges_for_facts, row_labels
 from app.services.layer_composition import dispute_label
-from app.services.rank_fusion import row_context_from_applies_when
 from app.services.verified_evidence import latest_verified_evidence
 
 FACT_ID_KIND = "fact"
@@ -60,19 +59,14 @@ LADDER_LIMIT = 50
 
 
 def applies_when_labels(applies_when: Mapping[str, Any] | None) -> list[dict[str, str]]:
-    """``applies_when`` as the labels doc 13 §5.1 renders.
-
-    Normalised through ``row_context_from_applies_when`` rather than read off
-    the column, so the axes a human sees on a row are the axes retrieval
-    matches that row on. A label showing ``Prod`` beside a matcher keyed on
-    ``prod`` is the shape in which a context mismatch becomes invisible.
-    """
-    context = row_context_from_applies_when(applies_when)
-    if context is None:
-        return []
-    return [
-        {"axis": axis, "value": value} for axis, value in sorted(context.axes.items())
-    ]
+    """``applies_when`` as the labels doc 13 §5.1 renders, axes and values
+    trimmed and lowercased, empty ones dropped."""
+    axes = {
+        str(axis).strip().lower(): str(value).strip().lower()
+        for axis, value in (applies_when or {}).items()
+        if value is not None and str(value).strip()
+    }
+    return [{"axis": axis, "value": value} for axis, value in sorted(axes.items())]
 
 
 def _belief_window(row: Mapping[str, Any]) -> dict[str, Any]:

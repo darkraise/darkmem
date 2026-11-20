@@ -263,22 +263,16 @@ FEATURE_FLAGS_DEFAULTS: dict[str, object] = {
     "w_importance": 0.0,
     "w_heat": 0.0,
     "w_recency": 0.0,
-    # Doc 07 §6: the magnitude of the `applies_when` context boost. Zero is
-    # the today-equivalent no-op — matching still labels every row and still
-    # counts conflicts at zero, only the multiplier goes quiet. Tuned in
-    # Phase 2 against the retrieval harness, never by intuition.
-    "w_context_boost": 0.0,
     # Doc 07 §4: the graph arms. Each is the today-equivalent off, so with
     # them at these values retrieval is byte-identical to the vector+FTS
     # hybrid and the built entity graph stays unspent (invariant 23). The
     # `*_enabled` flags gate ranked-list producers; `w_ppr` / `w_dual` are
     # their RRF **list** weights, never per-row multipliers. T2.50 measures
-    # all three before any of them moves. The dual-level channel itself is
+    # both before either moves. The dual-level channel itself is
     # T2.49's — its writer owns `relation_embeddings`, and its flag is
     # registered here so activation is one surface rather than two.
     "ppr_enabled": False,
     "w_ppr": 0.0,
     "dual_level_enabled": False,
     "w_dual": 0.0,
-    "community_injection_enabled": False,
 }

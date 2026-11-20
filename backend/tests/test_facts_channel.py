@@ -278,16 +278,12 @@ async def test_the_shared_fusion_can_key_a_fact_row(session):
 
 
 @pytest.mark.asyncio
-async def test_applies_when_arrives_as_a_mapping_the_context_matcher_can_read(session):
-    from app.services.rank_fusion import row_context_from_applies_when
-
+async def test_applies_when_arrives_as_a_mapping(session):
     await _open_fact(session, applies_when={"env": "prod"})
 
     (row,) = (await FactsChannel(session).search_with_trace(RARE_TERM, project=PROJECT)).results
-    context = row_context_from_applies_when(row["applies_when"])
 
-    assert context is not None
-    assert context.value("env") == "prod"
+    assert row["applies_when"] == {"env": "prod"}
 
 
 # ── disputed facts are returned, never filtered ──────────────────────

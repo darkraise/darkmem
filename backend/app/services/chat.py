@@ -480,7 +480,6 @@ class ChatService:
             "scores": None,
             "rank_fusion_factor": None,
             "channel_rank": None,
-            "context_match": None,
             "grouped_under": None,
             "selected": True,
             **scope_labels(memory),
@@ -562,7 +561,6 @@ class ChatService:
                 "scores": self._row_scores(row, scores),
                 "rank_fusion_factor": row.rank_fusion_factor,
                 "channel_rank": row.channel_rank,
-                "context_match": row.context.match.value,
                 "grouped_under": grouped_under.get(row.id),
                 **scope_labels(memory),
             })
@@ -593,7 +591,6 @@ class ChatService:
                 "scores": self._row_scores(row, scores),
                 "rank_fusion_factor": row.rank_fusion_factor,
                 "channel_rank": row.channel_rank,
-                "context_match": row.context.match.value,
                 "supports": [
                     nested.id for nested in row.supported_by if nested.id in by_memory_id
                 ],

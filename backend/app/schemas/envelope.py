@@ -10,15 +10,12 @@ build if another model in ``app.schemas`` redeclares one of those fields.
 Two deliberate shapes a reader will want explained:
 
 ``excluded`` is an **open** ``dict[str, int]`` keyed by reason name. Doc 12
-§4 fixed a ``{by_project, by_status, by_context_conflict}`` triple and was
-**amended to match this shape on 2026-07-28**, with those three kept as
-*reserved names*: a reason that becomes constructible must use the doc's
-name for it. The T1.29-series pushdown scopes project and status in SQL, so
-a foreign row is never fetched to be counted. ``by_context_conflict`` is
-subtler than "unimplemented": ``rank_fusion.partition_by_context`` computes
-it and is tested, but **no production path calls it** — the four-layer
-composition that would is E2's. An always-zero honesty counter is worse
-than an absent one: it reads as evidence that a check ran.
+§4 fixed a ``{by_project, by_status}`` pair and was **amended to match this
+shape on 2026-07-28**, with those kept as *reserved names*: a reason that
+becomes constructible must use the doc's name for it. The T1.29-series
+pushdown scopes project and status in SQL, so a foreign row is never fetched
+to be counted. An always-zero honesty counter is worse than an absent one:
+it reads as evidence that a check ran.
 
 ``detail`` on :class:`ErrorEnvelope` is a **string mirror** of
 ``error.message``. ``frontend/src/lib/api.ts`` interpolates ``detail``
@@ -69,13 +66,9 @@ class ContextEcho(BaseModel):
     axis set. Undeclared is represented by ``ResponseEnvelope.context`` being
     ``None``, never by an echo carrying ``{}``, and never by the project
     name: an undeclared context that renders as a default is the exact
-    confusion T1.65 exists to guard against. A declaration that matched no
-    row is a *different* fact — a real echo, with every row neutral.
+    confusion T1.65 exists to guard against.
 
     ``provenance`` is always ``human`` and is not settable from the request.
-    ``llm_guessed`` is a property of a **row's** ``applies_when`` (doc 01
-    §3.4), never of a caller's declaration; letting a caller self-declare it
-    would hand that caller a declaration that can never exclude.
     """
 
     declared: dict[str, str]

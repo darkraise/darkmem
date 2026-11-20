@@ -854,7 +854,7 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "drawn from L0 memories and L2 facts at once, every row labelled "
             "and every fact badged, the memories that source a fact nested "
             "under it, and an envelope naming which channels ran and how many "
-            "rows a context conflict excluded. T2.72 shipped the tool and "
+            "composed rows the answer budget left out. T2.72 shipped the tool and "
             "filed the surface MCP-single-door as an agent-shaped projection, "
             "recording rather than resolving the fact that doc 12 section 2 "
             "assigns the twin; T2.80 built it. The filing was honest and it "

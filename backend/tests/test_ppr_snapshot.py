@@ -466,7 +466,6 @@ async def test_the_arm_ranks_against_the_cached_snapshot(session):
 def test_the_graph_flags_ship_off():
     assert FEATURE_FLAGS_DEFAULTS["ppr_enabled"] is False
     assert FEATURE_FLAGS_DEFAULTS["dual_level_enabled"] is False
-    assert FEATURE_FLAGS_DEFAULTS["community_injection_enabled"] is False
     assert FEATURE_FLAGS_DEFAULTS["w_ppr"] == 0.0
     assert FEATURE_FLAGS_DEFAULTS["w_dual"] == 0.0
 

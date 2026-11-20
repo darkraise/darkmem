@@ -91,11 +91,6 @@ class ComposedRowLabels(BaseModel):
     label_suppressed: str | None = None
 
 
-class ComposedRowContext(BaseModel):
-    match: str
-    boost: float
-
-
 class ComposedRowResponse(BaseModel):
     """One composed row on the wire.
 
@@ -122,7 +117,6 @@ class ComposedRowResponse(BaseModel):
     score: float
     rank_fusion_factor: float
     labels: ComposedRowLabels
-    context: ComposedRowContext
     dispute: dict[str, Any] | None = None
     grouping: dict[str, Any] | None = None
     supported_by: list["ComposedRowResponse"] = Field(default_factory=list)
@@ -131,8 +125,8 @@ class ComposedRowResponse(BaseModel):
 class KnowledgeSearchRequest(BaseModel):
     """The composed read's three axes, and deliberately only those.
 
-    ``LayerCompositionService.search`` takes four more — ``statuses``,
-    ``declared_context``, ``weights`` and a wide ``project=None`` — and none of
+    ``LayerCompositionService.search`` takes three more — ``statuses``,
+    ``weights`` and a wide ``project=None`` — and none of
     them is offered here, because the MCP twin offers none of them either. A
     door that accepted a scope the other cannot express would be a capability
     asymmetry wearing a parameter's clothes: the same query would be answerable
@@ -236,8 +230,8 @@ class KnowledgeSearchResponse(BaseModel):
     exclusivity from the schema itself without this.
 
     The envelope is not decoration otherwise: it carries which channels ran,
-    which failed, and doc 07 §8's unconditional ``by_context_conflict`` tally,
-    so a degraded answer can never be read as a complete one (invariant 14).
+    which failed, and the unconditional ``by_result_limit`` tally, so a
+    degraded answer can never be read as a complete one (invariant 14).
     """
 
     rows: list[ComposedRowResponse] | None = None
@@ -272,9 +266,6 @@ def composed_row_response(row: "ComposedRow") -> ComposedRowResponse:
         score=row.weighted_score,
         rank_fusion_factor=row.rank_fusion_factor,
         labels=ComposedRowLabels(**dict(row.labels)),
-        context=ComposedRowContext(
-            match=row.context.match.value, boost=row.context.boost
-        ),
         dispute=None if row.dispute is None else dict(ungated_mapping(row.dispute)),
         grouping=None if row.grouping is None else dict(ungated_mapping(row.grouping)),
         supported_by=[composed_row_response(nested) for nested in row.supported_by],

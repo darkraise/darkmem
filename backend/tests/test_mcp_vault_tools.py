@@ -312,7 +312,7 @@ async def test_the_envelope_reports_a_one_sided_outage(session, monkeypatch):
     assert body["envelope"]["partial"] is True
     assert body["envelope"]["channels"]["memory.semantic"]["failed"] is True
     assert body["envelope"]["channels"]["article.semantic"]["ran"] is False
-    assert body["envelope"]["excluded"]["by_context_conflict"] == 0
+    assert body["envelope"]["excluded"]["by_result_limit"] == 0
     assert len(body["rows"]) == 1
 
 

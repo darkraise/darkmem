@@ -300,7 +300,7 @@ async def test_the_route_answers_the_composed_read(client, auth_headers, session
     assert fact_row["labels"]["badge"]["claim"]
     assert body["envelope"]["query"] == QUERY
     assert body["envelope"]["channels"]["memory.keyword"] == {"ran": True, "failed": False}
-    assert body["envelope"]["excluded"]["by_context_conflict"] == 0
+    assert body["envelope"]["excluded"]["by_result_limit"] == 0
 
 
 async def test_both_doors_serve_the_same_document(client, auth_headers, session):

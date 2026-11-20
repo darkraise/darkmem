@@ -20,7 +20,6 @@ import pytest
 from app.services.fact_badge import Badge, row_labels
 from app.services.inject_fill import HEADER_RESERVE, estimate_tokens, fill
 from app.services.layer_composition import ComposedResult, ComposedRow
-from app.services.rank_fusion import ContextMatch, ContextOutcome
 
 AS_OF = datetime(2026, 8, 11, tzinfo=timezone.utc)
 WIDE = 10_000
@@ -78,7 +77,6 @@ def _row(
         cross_layer_rrf=0.0,
         rank_fusion_factor=1.0,
         weighted_score=1.0,
-        context=ContextOutcome(match=ContextMatch.NEUTRAL),
         labels=labels,
         dispute=None,
         row=row or {},

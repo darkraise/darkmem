@@ -23,7 +23,7 @@ async def test_feature_flags_exposes_the_three_future_arms(client, auth_headers)
     resp = await client.get("/api/v1/config/feature-flags", headers=auth_headers)
     assert resp.status_code == 200
     body = resp.json()
-    for flag in ("w_importance", "w_heat", "w_recency", "w_context_boost"):
+    for flag in ("w_importance", "w_heat", "w_recency"):
         assert flag in body, f"feature-flags missing {flag!r}: {body}"
         assert body[flag] == FEATURE_FLAGS_DEFAULTS[flag]
 
@@ -101,7 +101,7 @@ async def test_the_response_serves_the_ranges_the_put_enforces(client, auth_head
     body = (await client.get("/api/v1/config/feature-flags", headers=auth_headers)).json()
     bounds = body["numeric_bounds"]
     for key in ("confidence_rank_gamma", "w_importance", "w_heat", "w_recency",
-                "w_context_boost", "w_ppr", "w_dual"):
+                "w_ppr", "w_dual"):
         assert bounds[key] == {"min": 0, "max": 5}, key
     assert bounds["pipeline_concurrency"] == {"min": 1, "max": 20}
 

@@ -562,8 +562,8 @@ class MemoryService:
         """Doc 12 §5's chain, run on the read paths that can report it.
 
         Resolved in the service rather than per route so no two surfaces can
-        answer the same request differently. Wiring the winner into ranking
-        is the E2/E3 four-layer composition task's, not this one's.
+        answer the same request differently. The winner is echoed on the
+        envelope only; nothing ranks by it.
 
         Deliberately **not** called from ``search_memories``: that route
         returns a bare list with nowhere to put an envelope, so resolving

@@ -1415,7 +1415,7 @@ async def test_a_composition_without_badges_serves_the_withheld_rung_too(session
     from app.services.layer_composition import compose, fact_candidate
 
     candidate = fact_candidate(_fact_channel_row(str(uuid.uuid4())), channel_rank=1)
-    result = compose([candidate], declared_context={})
+    result = compose([candidate])
 
     labels = result.rows[0].labels
     assert labels["verification_status"] == SUPPRESSED

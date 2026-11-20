@@ -698,31 +698,34 @@ def test_project_is_never_a_context_axis():
 
 
 def test_every_declaration_comes_from_the_shared_seam(monkeypatch):
-    """The chain resolves precedence; ``declared_context_from_wire`` owns
-    everything after it. A declaration built any other way would re-derive
-    normalisation the seam already owns."""
+    """The chain resolves precedence; ``normalize_axes`` owns everything after
+    it, and an empty normalised set is undeclared, never a live object."""
+    import pytest
+
     import app.api.context_resolution as module
 
     calls = []
-    original = module.declared_context_from_wire
+    original = module.normalize_axes
 
-    def _spy(raw, provenance=None):
+    def _spy(raw):
         calls.append(dict(raw))
-        return original(raw) if provenance is None else original(raw, provenance)
+        return original(raw)
 
-    monkeypatch.setattr(module, "declared_context_from_wire", _spy)
+    monkeypatch.setattr(module, "normalize_axes", _spy)
 
     declared, _ = module.resolve_declared_context({"env": "PROD", "project": "x"})
-    assert declared is not None
+    assert declared == module.DeclaredContext({"env": "prod"})
     assert calls == [{"env": "PROD"}]
+
+    assert module.resolve_declared_context({"env": "  "}) == (None, None)
+    with pytest.raises(ValueError):
+        module.DeclaredContext({})
 
 
 def test_declaration_provenance_is_not_caller_settable():
-    """Doc 01 §3.4: an LLM-guessed context is displayed provenance, never an
-    exclusion basis. A caller able to self-declare it would hold a
-    declaration that can never exclude — a behaviour switch with no owner."""
+    """Doc 01 §3.4: a declaration is human input by definition, so a caller
+    cannot self-declare ``llm_guessed``."""
     from app.api.context_resolution import context_echo, resolve_declared_context
-    from app.services.rank_fusion import ContextProvenance, row_context_from_applies_when
 
     declared, tier = resolve_declared_context(
         {"env": "prod", "provenance": "llm_guessed"},
@@ -735,12 +738,6 @@ def test_declaration_provenance_is_not_caller_settable():
         None, headers={"x-darkmem-context": json.dumps({"env": "prod", "provenance": "llm_guessed"})},
     )
     assert context_echo(declared, tier).provenance == "human"
-
-    # The row side keeps both, which is where the marker belongs.
-    row = row_context_from_applies_when({"env": "prod"})
-    assert row.provenance is ContextProvenance.HUMAN
-    guessed = row_context_from_applies_when({"env": "prod"}, ContextProvenance.LLM_GUESSED)
-    assert guessed.provenance is ContextProvenance.LLM_GUESSED
 
 
 def test_an_undeclared_context_cannot_be_echoed_as_a_declaration():

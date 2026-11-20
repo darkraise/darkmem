@@ -35,7 +35,6 @@ GRAPH_FLAGS = (
     "w_ppr",
     "dual_level_enabled",
     "w_dual",
-    "community_injection_enabled",
 )
 
 
@@ -67,10 +66,6 @@ async def test_graph_channels_pair_each_flag_with_its_own_weight(
     assert set(by_flag) == {c.flag for c in GRAPH_CHANNELS}
     assert by_flag["ppr_enabled"]["weight_flag"] == "w_ppr"
     assert by_flag["dual_level_enabled"]["weight_flag"] == "w_dual"
-    # Context augmentation, not a ranked list: there is no weight to serve, and
-    # a 0.0 here would invent a knob the fusion does not read.
-    assert by_flag["community_injection_enabled"]["weight_flag"] is None
-    assert by_flag["community_injection_enabled"]["weight"] is None
 
 
 @pytest.mark.asyncio
@@ -102,13 +97,13 @@ async def test_put_roundtrips_the_graph_flags(client, auth_headers):
     resp = await client.put(
         "/api/v1/config/feature-flags",
         headers=auth_headers,
-        json={"ppr_enabled": True, "w_ppr": 0.2, "community_injection_enabled": True},
+        json={"ppr_enabled": True, "w_ppr": 0.2, "dual_level_enabled": True},
     )
     assert resp.status_code == 200
     body = resp.json()
     assert body["ppr_enabled"] is True
     assert body["w_ppr"] == 0.2
-    assert body["community_injection_enabled"] is True
+    assert body["dual_level_enabled"] is True
     # The PUT response is built by the same builder as the GET, so the channel
     # list reflects the write rather than the pre-write state.
     by_flag = {c["flag"]: c for c in body["graph_channels"]}
