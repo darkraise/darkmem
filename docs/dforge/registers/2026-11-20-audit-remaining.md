@@ -23,7 +23,7 @@
 | 16 | B1-20: EXTRACTION_SCHEMA is used by one eval script only | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 13 contracts | doing | - |
 | 17 | B1-21: _MAX_CONTENT_CHARS = 6000 is declared twice and is also reused as the reasoning context budget | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 13 contracts | doing | - |
 | 18 | B1-22: buffer_wait_timeout_seconds is a flag the API cannot set and nothing bounds | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 9 contracts | doing | - |
-| 19 | B2-2: chat and knowledge_search ignore hybrid_search_enabled and reranker_enabled, and no memory row carries confidence/importance | docs/dforge/plans/2026-11-20-audit-remaining.md | A13 (Task 6) | doing | - |
+| 19 | B2-2: chat and knowledge_search ignore hybrid_search_enabled and reranker_enabled, and no memory row carries confidence/importance | docs/dforge/plans/2026-11-20-audit-remaining.md | A13 (Task 6) | done | d9337ef |
 | 20 | B2-4: no door passes a declared context, so w_context_boost never fires and community_injection_enabled has no reader (owner ruling 2026-11-20: remove) | docs/dforge/plans/2026-11-20-audit-remaining.md | A45 (Task 43/45) | doing | - |
 | 21 | B2-6: chat leaves a transaction open, holding a pooled connection for the whole LLM stream | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 14 contracts | doing | - |
 | 22 | B2-7: on client disconnect the finally usage write is cancelled, so the row is lost | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 14 contracts | doing | - |
@@ -39,7 +39,7 @@
 | 32 | B2-18: flag_measurements is read but nothing writes it, so every flag shows unmeasured forever | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 17/45 contracts | doing | - |
 | 33 | B2-19: chat content has no length limit, and an untyped context with a non-string mention raises mid-stream | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 14 contracts | doing | - |
 | 34 | B2-20: CLUSTER_RE is unused, and the cluster: filter can never match | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 14 contracts | doing | - |
-| 35 | B2-21: with hybrid search off, the pure-vector and read-only branches never call _record_access | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 6 contracts | doing | - |
+| 35 | B2-21: with hybrid search off, the pure-vector and read-only branches never call _record_access | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 6 contracts | done | d9337ef |
 | 36 | B2-22: the hand-maintained route inventory trips on every new route or tool (owner decision) | - | - | deferred | declined in the spec: the inventory is the enumeration guard; moving it onto route metadata is its own design |
 | 37 | B3a-1 (high): fact_lift and re-extraction can interleave so a fact keeps a source the memory no longer asserts; needs a two-session test | docs/dforge/plans/2026-11-20-audit-remaining.md | A1 (Task 18) | doing | - |
 | 38 | B3a-2 and B3b-11: while the judge refuses, the contradiction scan re-drains the same 20 events every 6 hours and re-commits duplicate clean verdicts | docs/dforge/plans/2026-11-20-audit-remaining.md | A24 (Task 19) | doing | - |
