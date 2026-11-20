@@ -5,20 +5,20 @@
 
 | # | Item | Assigned | Acceptance | State | Note |
 |---|---|---|---|---|---|
-| 1 | B1-1 remainder: split transient from deterministic extraction failures and make transient ones a hard step the buffer retries | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 8 contracts | doing | - |
+| 1 | B1-1 remainder: split transient from deterministic extraction failures and make transient ones a hard step the buffer retries | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 8 contracts | done | af32cc0 |
 | 2 | B1-3: Phase 5 sessions upsert shared entity and relation rows in extraction order and hold the locks until commit (deadlock class) | docs/dforge/plans/2026-11-20-audit-remaining.md | A16 (Task 7) | done | 9e0f324 |
 | 3 | B1-4: the supersession UPDATE has no status='active' predicate, so two concurrent writers re-point an already-superseded memory | docs/dforge/plans/2026-11-20-audit-remaining.md | A15 (Task 7) | done | 9e0f324 |
 | 4 | B1-5: predicates written as :mid = ANY(memory_ids) cannot use the GIN index | docs/dforge/plans/2026-11-20-audit-remaining.md | A17 (Task 7) | done | 9e0f324 |
 | 5 | B1-6: at its 10-second deadline wait_process cancels the in-flight flush, leaving the row claimed and discarding the LLM spend | docs/dforge/plans/2026-11-20-audit-remaining.md | A18 (Task 9) | doing | - |
 | 6 | B1-7: the reprocess and pipeline-failure retry routes are not refused in read-only mode | docs/dforge/plans/2026-11-20-audit-remaining.md | A12 (Task 5) | done | 7d6e56b |
-| 7 | B1-8: if the same-batch reconciliation raises, the backstop overwrites every already-committed status with vector and graph errors | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 8 contracts | doing | - |
+| 7 | B1-8: if the same-batch reconciliation raises, the backstop overwrites every already-committed status with vector and graph errors | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 8 contracts | done | af32cc0 |
 | 8 | B1-9: wait_process returns 201 with an unprocessed memory for a capture whose replay hard-failed | docs/dforge/plans/2026-11-20-audit-remaining.md | A18 (Task 9) | doing | - |
 | 9 | B1-10: discarding an error buffer row leaves its already-materialized memory live with no vector or graph | docs/dforge/plans/2026-11-20-audit-remaining.md | A55 (Task 10/12) | doing | - |
 | 10 | B1-11: the retry/reprocess entry dict is built in three places, and two of them omit project | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 13 contracts | doing | - |
 | 11 | B1-12: pipeline._get_feature_flags duplicates feature_flags.get_feature_flags_dict | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 13 contracts | doing | - |
 | 12 | B1-13: a caller-supplied importance is always overwritten by the extractor's value | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 13 contracts | doing | - |
 | 13 | B1-15: classifier_kind=local silently falls back to the LLM classifier in every shipped image; stale pyproject comment (owner ruling 2026-11-20: keep it, fail loudly) | docs/dforge/plans/2026-11-20-audit-remaining.md | A19 (Task 11/12) | doing | - |
-| 14 | B1-18: the isinstance(extraction, Exception) branch and the except in run_extract cannot be reached | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 8 contracts | doing | - |
+| 14 | B1-18: the isinstance(extraction, Exception) branch and the except in run_extract cannot be reached | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 8 contracts | done | af32cc0 |
 | 15 | B1-19: a 116-name __all__ plus a star re-export exist only so tests and scripts can import private pass helpers | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 13 contracts | doing | - |
 | 16 | B1-20: EXTRACTION_SCHEMA is used by one eval script only | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 13 contracts | doing | - |
 | 17 | B1-21: _MAX_CONTENT_CHARS = 6000 is declared twice and is also reused as the reasoning context budget | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 13 contracts | doing | - |
