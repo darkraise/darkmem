@@ -1397,34 +1397,6 @@ class ProcessingPipeline:
             logger.error(f"Semantic search failed: {e}")
             raise
 
-    async def _apply_rank_fusion_factor(
-        self,
-        session,
-        results: list[dict],
-        flags: dict,
-        preserve_order: bool = False,
-    ) -> list[dict]:
-        """Apply the deterministic post-fusion multiplier to retrieval scores.
-
-        ``final = base * rank_fusion_factor(signals, flags)``. Confidence and
-        importance are read off the memory row in the same query; heat and
-        recency ride **on the row**, stamped by the shared channel
-        (`HybridSearchService._attach_access_signals`) rather than re-derived
-        here, so this door and the chat door spend one set of numbers instead
-        of two. An arm whose signal is absent contributes exactly 1.0, as does
-        any arm at weight zero, so the composed factor stays bit-identical to
-        the spent arms' one.
-
-        When ``preserve_order`` is set (the reranker has already imposed a
-        ranking), scores are still rescaled but the input order is kept — the
-        reranker's order is authoritative and must not be sorted away.
-        """
-        from app.services.hybrid_search import HybridSearchService
-
-        return await HybridSearchService(self.llm, session).apply_rank_fusion_factor(
-            results, flags, preserve_order=preserve_order,
-        )
-
     async def find_duplicates(self, memory_id: UUID, threshold: float = 0.9) -> list[dict]:
         """Find memories whose vectors are above ``threshold`` against this one.
 

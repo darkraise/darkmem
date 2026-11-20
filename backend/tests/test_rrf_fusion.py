@@ -344,13 +344,13 @@ async def test_weighting_reorders_when_no_rerank_ran(session):
     low = await _seed_memory(session, content="low confidence row", confidence=0.5)
     high = await _seed_memory(session, content="high confidence row", confidence=0.9)
 
-    pipe = ProcessingPipeline(_StubLLM(), _SingleSessionFactory(session))
+    search = HybridSearchService(_StubLLM(), session)
     rows = [
         {"memory_id": str(low), "rrf_score": 0.010},
         {"memory_id": str(high), "rrf_score": 0.009},
     ]
-    out = await pipe._apply_rank_fusion_factor(
-        session, rows, {"confidence_rank_gamma": 2.0}, preserve_order=False,
+    out = await search.apply_rank_fusion_factor(
+        rows, {"confidence_rank_gamma": 2.0}, preserve_order=False,
     )
 
     # 0.010 * 0.5 = 0.005 vs 0.009 * 1.3 = 0.0117 — the high-confidence row
@@ -365,13 +365,13 @@ async def test_weighting_preserves_a_reranked_order_while_rescaling(session):
     low = await _seed_memory(session, content="low confidence row", confidence=0.5)
     high = await _seed_memory(session, content="high confidence row", confidence=0.9)
 
-    pipe = ProcessingPipeline(_StubLLM(), _SingleSessionFactory(session))
+    search = HybridSearchService(_StubLLM(), session)
     rows = [
         {"memory_id": str(low), "rrf_score": 0.010},
         {"memory_id": str(high), "rrf_score": 0.009},
     ]
-    out = await pipe._apply_rank_fusion_factor(
-        session, rows, {"confidence_rank_gamma": 2.0}, preserve_order=True,
+    out = await search.apply_rank_fusion_factor(
+        rows, {"confidence_rank_gamma": 2.0}, preserve_order=True,
     )
 
     assert [r["memory_id"] for r in out] == [str(low), str(high)]
@@ -400,13 +400,13 @@ async def test_importance_signal_reorders_when_w_importance_is_on(session):
         session, content="vital row", confidence=0.75, importance=0.9,
     )
 
-    pipe = ProcessingPipeline(_StubLLM(), _SingleSessionFactory(session))
+    search = HybridSearchService(_StubLLM(), session)
     rows = [
         {"memory_id": str(dull), "rrf_score": 0.010},
         {"memory_id": str(vital), "rrf_score": 0.009},
     ]
-    out = await pipe._apply_rank_fusion_factor(
-        session, rows, {"w_importance": 1.0}, preserve_order=False,
+    out = await search.apply_rank_fusion_factor(
+        rows, {"w_importance": 1.0}, preserve_order=False,
     )
 
     # 0.010 * (1 + 1.0*(0.2-0.5)) = 0.0070 vs 0.009 * (1 + 1.0*(0.9-0.5))
@@ -433,7 +433,7 @@ async def test_importance_wiring_is_bit_identical_at_weight_zero(session):
         session, content="vital row", confidence=0.9, importance=0.9,
     )
 
-    pipe = ProcessingPipeline(_StubLLM(), _SingleSessionFactory(session))
+    search = HybridSearchService(_StubLLM(), session)
 
     def rows():
         return [
@@ -441,11 +441,11 @@ async def test_importance_wiring_is_bit_identical_at_weight_zero(session):
             {"memory_id": str(vital), "rrf_score": 0.009},
         ]
 
-    weighted = await pipe._apply_rank_fusion_factor(
-        session, rows(), {"confidence_rank_gamma": 2.0, "w_importance": 0.0},
+    weighted = await search.apply_rank_fusion_factor(
+        rows(), {"confidence_rank_gamma": 2.0, "w_importance": 0.0},
     )
-    confidence_only = await pipe._apply_rank_fusion_factor(
-        session, rows(), {"confidence_rank_gamma": 2.0},
+    confidence_only = await search.apply_rank_fusion_factor(
+        rows(), {"confidence_rank_gamma": 2.0},
     )
 
     by_id_weighted = {r["memory_id"]: r["rrf_score"] for r in weighted}
