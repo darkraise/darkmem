@@ -1,7 +1,10 @@
 # Codebase audit — 2026-11-20
 
-Audited at `6db8cb5d` (master). Changes made during the audit sit uncommitted
-on branch `audit/2026-11-20-review`. Scope was the whole tree: `backend/`,
+Audited at `6db8cb5d` (master). The changes made during the audit are the
+commits from there to `0088e850`, merged into local `master` and deployed to
+this host on 2026-11-20. They are not pushed: `master` was already 118
+commits ahead of the last release, so a push releases all of that as
+v1.18.0. Scope was the whole tree: `backend/`,
 `frontend/`, `extension/`, `sdks/`, `scripts/`, CI and the deployment
 artefacts.
 
