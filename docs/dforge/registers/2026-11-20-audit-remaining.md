@@ -85,7 +85,7 @@
 | 78 | B4-9 and F1-4 backend half: blast radius and symbol lookup ignore repository and owner | docs/dforge/plans/2026-11-20-audit-remaining.md | A35 (Task 26) | done | eddcc5e |
 | 79 | B4-10 and B6-4: MCP code_symbol probably raises MissingGreenlet on any hit; no result limit | docs/dforge/plans/2026-11-20-audit-remaining.md | A35 (Task 26) | done | eddcc5e |
 | 80 | B4-11: unchanged dependent and debt files are re-embedded on every incremental run | docs/dforge/plans/2026-11-20-audit-remaining.md | A33 (Task 28) | doing | - |
-| 81 | B4-12: MCP code_search returns nothing without an embedder, while REST answers from the keyword arm | docs/dforge/plans/2026-11-20-audit-remaining.md | A14 (Task 27) | doing | - |
+| 81 | B4-12: MCP code_search returns nothing without an embedder, while REST answers from the keyword arm | docs/dforge/plans/2026-11-20-audit-remaining.md | A14 (Task 27) | done | cf10951 |
 | 82 | B4-13: a transient fetch failure deletes the managed clone and re-clones it, with no claim held | docs/dforge/plans/2026-11-20-audit-remaining.md | A36 (Task 29) | doing | - |
 | 83 | B4-14: a file whose parse times out or raises is re-detected as drift on every tick | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 30 contracts | doing | - |
 | 84 | B4-15: query-per-item loops in phases 03, 05 and 06 | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 30 contracts | doing | - |
@@ -128,7 +128,7 @@
 | 121 | B6-12: job_runs.trigger is never written, so the UI's manual badge never renders | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 40 contracts | doing | - |
 | 122 | B6-13: three hourly cleanup jobs write a maintenance_run row into the permanent journal even when they do nothing | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 40 contracts | doing | - |
 | 123 | B6-14: any boot exception in the LLM try leaves pipeline=None for the life of the process while /health returns 200 | docs/dforge/plans/2026-11-20-audit-remaining.md | A31 (Task 41) | doing | - |
-| 124 | B6-15: code_rename matches with an unescaped LIKE | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 27 contracts | doing | - |
+| 124 | B6-15: code_rename matches with an unescaped LIKE | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 27 contracts | done | cf10951 |
 | 125 | B6-16: several MCP code tools call scalar_one_or_none() on Repository.name, which is not unique | docs/dforge/plans/2026-11-20-audit-remaining.md | A35 (Task 26) | done | eddcc5e |
 | 126 | B6-17: a failed MCP call-log flush discards its popped batch uncounted, and validation-error text may echo content | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 42 contracts | doing | - |
 | 127 | B6-18: a masked secret is resolved by name even when the URL or host changes | docs/dforge/plans/2026-11-20-audit-remaining.md | A10 (Task 3) | done | 9124abd |
@@ -137,7 +137,7 @@
 | 130 | B6-21: each open WebSocket runs 2 database queries per second for revalidation, serially inside the send lock | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 42 contracts | doing | - |
 | 131 | B6-22: stale statements: 48 tools, dream jobs called placeholders, the curb row's reader, and LLM_* env vars in CLAUDE.md | docs/dforge/plans/2026-11-20-audit-remaining.md | A51 (Task 69) | doing | - |
 | 132 | B6-D1: the lifespan carries boot steps for states that no longer occur | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 41 contracts | doing | - |
-| 133 | B6-D2: about 830 lines of MCP code tools run raw SQL in the transport instead of CodeQueryService | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 27 contracts | doing | - |
+| 133 | B6-D2: about 830 lines of MCP code tools run raw SQL in the transport instead of CodeQueryService | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 27 contracts | done | cf10951 |
 | 134 | B6-D4: job last_* state is rewritten into config on every tick | docs/dforge/plans/2026-11-20-audit-remaining.md | A30 (Task 40) | doing | - |
 | 135 | B6-D5: inject_* and client_connect live under app/services but are reached at runtime only by a CLI script | docs/dforge/plans/2026-11-20-audit-remaining.md | A51 (Task 69) | doing | - |
 | 136 | B6-D6: per-socket, per-second revalidation is a heavy polling contract; close sockets directly and drop the polling | - | - | deferred | declined in the spec: CLAUDE.md records the one-second revalidation as contract; B6-21 removes its cost |
