@@ -639,10 +639,16 @@ class ProcessingPipeline:
                     async with session.begin_nested():
                         # Loaded before the upsert so a vector-write failure
                         # still leaves the journal below with a real project.
+                        # Locked, and held to the batch commit: the fact lift
+                        # share-locks a memory before reading its graph, and an
+                        # unchanged enrichment flushes no UPDATE that would
+                        # otherwise hold the row while savepoint B rewrites it.
                         from sqlalchemy import select as sa_select
                         from app.models.memory import Memory
                         mem_result = await session.execute(
-                            sa_select(Memory).where(Memory.id == memory_id)
+                            sa_select(Memory)
+                            .where(Memory.id == memory_id)
+                            .with_for_update(key_share=True)
                         )
                         mem_record = mem_result.scalar_one_or_none()
                         if mem_record:

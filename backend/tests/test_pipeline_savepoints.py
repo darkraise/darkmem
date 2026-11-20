@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 import httpx
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.repositories.graph import PostgresGraphRepository
@@ -329,6 +330,53 @@ async def test_strip_failure_fails_the_graph_step(setup_database, monkeypatch):
         assert status["vector"] == "ok"
         assert status["graph"] == "error"
         assert await bed.entity_names() == {"pgvector", "faiss"}
+
+
+@pytest.mark.asyncio
+async def test_the_graph_rewrite_holds_the_memory_row_lock(setup_database, monkeypatch):
+    """A re-extraction whose enrichment comes out unchanged flushes no UPDATE,
+    so only an explicit lock keeps the fact lift from reading the graph while
+    this savepoint strips and rewrites it. Confidence is pinned to a value
+    REAL holds exactly; any other value reads back different and flushes an
+    UPDATE, which would take the lock by accident."""
+    monkeypatch.setattr(
+        "app.services.pipeline.estimate_confidence", lambda content, memory_type: 0.75,
+    )
+    extraction = {
+        "entities": [{"name": "rowlockdb", "type": "tool"}],
+        "relationships": [],
+        "memory_type": "fact",
+    }
+    async with savepoint_bed(
+        ["row lock"], "savepoint-rowlock|4", ("rowlockdb",), extraction,
+    ) as bed:
+        first = (await bed.pipe.process_batch([bed.entry()]))[0]
+        assert first["graph"] == "ok"
+
+        probed: list[str | None] = []
+        strip = PostgresGraphRepository.delete_by_memory_id
+
+        async def _probe_then_strip(self, memory_id):
+            async with bed.factory() as probe:
+                try:
+                    await probe.execute(
+                        text("SELECT id FROM memories WHERE id = CAST(:id AS uuid) "
+                             "FOR SHARE NOWAIT"),
+                        {"id": str(memory_id)},
+                    )
+                    probed.append(None)
+                except DBAPIError as exc:
+                    probed.append(getattr(exc.orig, "sqlstate", None))
+                finally:
+                    await probe.rollback()
+            return await strip(self, memory_id)
+
+        monkeypatch.setattr(PostgresGraphRepository, "delete_by_memory_id", _probe_then_strip)
+
+        status = (await bed.pipe.process_batch([bed.entry()]))[0]
+
+        assert status["graph"] == "ok"
+        assert probed == ["55P03"]
 
 
 @pytest.mark.asyncio
