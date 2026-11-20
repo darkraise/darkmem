@@ -216,4 +216,5 @@ class CodeSearchResult(BaseModel):
 
 class BlastRadiusRequest(BaseModel):
     symbol_id: str
+    repo_id: uuid.UUID
     max_depth: int = Field(default=10, ge=1, le=25)

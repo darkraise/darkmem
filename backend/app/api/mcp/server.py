@@ -29,7 +29,7 @@ from app.schemas.memory import MemoryBatchCreate, MemoryCreate, MemorySearchRequ
 from app.schemas.research import MAX_FINDINGS_CEILING, ResearchFindingInput
 from app.services.document_door import SEARCH_DEFAULT_LIMIT, SEARCH_MAX_LIMIT
 from app.services.memory import MemoryService
-from app.utils.graph_keys import compose_key, decompose_key
+from app.utils.graph_keys import decompose_key
 
 logger = logging.getLogger(__name__)
 
@@ -1407,6 +1407,37 @@ async def _code_service_context():
             raise
 
 
+def _ambiguous(reason: str, candidates: list[dict]) -> str:
+    """A reference that names more than one row: the caller picks a candidate."""
+    return json.dumps({
+        "schema_version": ENVELOPE_SCHEMA_VERSION,
+        "status": "ambiguous",
+        "reason": reason,
+        "candidates": candidates,
+    })
+
+
+async def _resolve_repo_or_refusal(service, repo_name: str):
+    """``(repository, None)``, or ``(None, envelope)`` when the name is shared.
+
+    An unknown name raises, since that is the caller's mistake.
+    """
+    from app.services.code_query import RepoAmbiguous, RepoNotFound
+
+    try:
+        return await service.resolve_repo(repo_name), None
+    except RepoNotFound:
+        raise ToolInputError(f"Repository not found: {repo_name}") from None
+    except RepoAmbiguous as exc:
+        return None, _ambiguous(
+            str(exc),
+            [
+                {"id": str(repo.id), "name": repo.name, "local_path": repo.local_path}
+                for repo in exc.candidates
+            ],
+        )
+
+
 @mcp.tool(
     description="List all indexed code repositories with name, URL, file count, and symbol count."
 )
@@ -1656,34 +1687,38 @@ async def code_symbol(
         name: The symbol name to look up (function, class, method, etc.).
         repo_name: Optional repository name to narrow the search.
     """
-    from app.models.code import CodeFile, CodeSymbol, Repository
+    from app.services.code_query import CodeQueryService
 
     async with _code_service_context() as session:
-        query = select(CodeSymbol).join(CodeFile, CodeSymbol.file_id == CodeFile.id)
+        service = CodeQueryService(session)
+        repo_id = None
         if repo_name:
-            query = query.join(Repository, CodeFile.repo_id == Repository.id).where(Repository.name == repo_name)
-        query = query.where(CodeSymbol.name == name)
-        rows = (await session.execute(query)).scalars().all()
+            repo, refusal = await _resolve_repo_or_refusal(service, repo_name)
+            if refusal is not None:
+                return refusal
+            repo_id = repo.id
+        rows = await service.lookup_symbol(repo_id, name)
 
-        if not rows:
-            raise ToolInputError(f"Symbol not found: {name}")
-
-        return json.dumps([
-            {
-                "id": str(s.id),
-                "name": s.name,
-                "kind": s.kind,
-                "file_path": s.file.file_path if s.file else "",
-                "line_start": s.line_start,
-                "line_end": s.line_end,
-                "signature": s.signature,
-                "docstring": s.docstring,
-                "source_code": s.source_code,
-                "summary": s.summary,
-                "visibility": s.visibility,
-            }
-            for s in rows
-        ])
+    if not rows:
+        raise ToolInputError(f"Symbol not found: {name}")
+    return json.dumps([
+        {
+            "id": str(row["id"]),
+            "name": row["name"],
+            "kind": row["kind"],
+            "file_path": row["file_path"],
+            "key": row["key"],
+            "repo_id": str(row["repo_id"]),
+            "line_start": row["line_start"],
+            "line_end": row["line_end"],
+            "signature": row["signature"],
+            "docstring": row["docstring"],
+            "source_code": row["source_code"],
+            "summary": row["summary"],
+            "visibility": row["visibility"],
+        }
+        for row in rows
+    ])
 
 
 @mcp.tool(
@@ -1703,31 +1738,14 @@ async def code_file_symbols(
         repo_name: The repository name.
         file_path: The file path within the repository.
     """
-    from app.models.code import CodeFile, CodeSymbol, Repository
+    from app.services.code_query import CodeQueryService
 
     async with _code_service_context() as session:
-        query = (
-            select(CodeSymbol)
-            .join(CodeFile, CodeSymbol.file_id == CodeFile.id)
-            .join(Repository, CodeFile.repo_id == Repository.id)
-            .where(Repository.name == repo_name, CodeFile.file_path == file_path)
-            .order_by(CodeSymbol.line_start)
-        )
-        rows = (await session.execute(query)).scalars().all()
-
-        return json.dumps([
-            {
-                "id": str(s.id),
-                "name": s.name,
-                "kind": s.kind,
-                "line_start": s.line_start,
-                "line_end": s.line_end,
-                "signature": s.signature,
-                "summary": s.summary,
-                "visibility": s.visibility,
-            }
-            for s in rows
-        ])
+        service = CodeQueryService(session)
+        repo, refusal = await _resolve_repo_or_refusal(service, repo_name)
+        if refusal is not None:
+            return refusal
+        return json.dumps(await service.symbols_in_file(repo.id, file_path))
 
 
 @mcp.tool(
@@ -1744,25 +1762,22 @@ async def code_blast_radius(
         repo_name: Optional repository name to restrict the search.
         max_depth: Maximum call-chain depth to traverse (default: 10).
     """
-    from app.models.code import CodeFile, CodeSymbol, Repository
-    from app.services.code_query import CodeQueryService
+    from app.services.code_query import CodeQueryService, SymbolAmbiguous
 
     async with _code_service_context() as session:
-        # Only the name-to-id resolution lives here; the traversal itself is the
-        # REST twin's. Keeping a second copy of the recursive CTE is how this
-        # tool silently lost the owner-qualified `key` the graph nodes are
-        # addressed by while the REST door kept emitting it.
-        query = select(CodeSymbol.id).join(CodeFile, CodeSymbol.file_id == CodeFile.id)
+        service = CodeQueryService(session)
+        repo_id = None
         if repo_name:
-            query = query.join(Repository, CodeFile.repo_id == Repository.id).where(Repository.name == repo_name)
-        query = query.where(CodeSymbol.name == symbol_name)
-        symbol_id = (await session.execute(query)).scalars().first()
-        if symbol_id is None:
-            raise ToolInputError(f"Symbol not found: {symbol_name}")
-
-        result = await CodeQueryService(session).calculate_blast_radius(
-            str(symbol_id), max_depth,
-        )
+            repo, refusal = await _resolve_repo_or_refusal(service, repo_name)
+            if refusal is not None:
+                return refusal
+            repo_id = repo.id
+        try:
+            result = await service.calculate_blast_radius(
+                symbol_name, max_depth, repo_id=repo_id,
+            )
+        except SymbolAmbiguous as exc:
+            return _ambiguous(str(exc), exc.candidates)
 
     if result is None:
         raise ToolInputError(f"Symbol not found: {symbol_name}")
@@ -1781,14 +1796,14 @@ async def code_dependencies(
         repo_name: The repository name.
         file_path: Optional file path to get dependencies for a single file.
     """
-    from app.models.code import Repository
+    from app.services.code_query import CodeQueryService
 
     async with _code_service_context() as session:
-        repo = (await session.execute(
-            select(Repository).where(Repository.name == repo_name)
-        )).scalar_one_or_none()
-        if not repo:
-            raise ToolInputError(f"Repository not found: {repo_name}")
+        repo, refusal = await _resolve_repo_or_refusal(
+            CodeQueryService(session), repo_name,
+        )
+        if refusal is not None:
+            return refusal
 
         params: dict = {"repo_id": str(repo.id)}
         extra_filter = ""
@@ -1820,139 +1835,23 @@ async def code_context(
         symbol_name: Name of the function, class, or method.
         repo_name: Optional repository name filter.
     """
-    from app.models.code import CodeFile, CodeSymbol, Repository
+    from app.services.code_query import CodeQueryService, SymbolAmbiguous
 
     async with _code_service_context() as session:
-        stmt = select(CodeSymbol, CodeFile.file_path).join(CodeFile).where(CodeSymbol.name == symbol_name)
+        service = CodeQueryService(session)
+        repo_id = None
         if repo_name:
-            stmt = stmt.join(Repository, CodeFile.repo_id == Repository.id).where(Repository.name == repo_name)
-        row = (await session.execute(stmt.limit(1))).first()
-        if not row:
-            raise ToolInputError(f"Symbol '{symbol_name}' not found")
+            repo, refusal = await _resolve_repo_or_refusal(service, repo_name)
+            if refusal is not None:
+                return refusal
+            repo_id = repo.id
+        try:
+            context = await service.symbol_context(symbol_name, repo_id)
+        except SymbolAmbiguous as exc:
+            return _ambiguous(str(exc), exc.candidates)
 
-        sym, file_path = row
-        file = (await session.execute(select(CodeFile).where(CodeFile.id == sym.file_id))).scalar_one_or_none()
-        repo_id_str = str(file.repo_id) if file else ""
-        owner = None
-        if sym.parent_symbol_id:
-            owner = (await session.execute(
-                select(CodeSymbol.name).where(CodeSymbol.id == sym.parent_symbol_id)
-            )).scalar_one_or_none()
-        symbol_key = compose_key("symbol", sym.name, file_path, owner=owner)
-
-        context: dict = {
-            "symbol": {
-                "name": sym.name,
-                "kind": sym.kind,
-                "file_path": file_path,
-                "signature": sym.signature,
-                "summary": sym.summary,
-            },
-            "callers": [],
-            "callees": [],
-            "heritage": {"extends": [], "extended_by": [], "implements": []},
-            "accesses": [],
-            "processes": [],
-            "community": None,
-        }
-
-        # Callers: symbols with an edge targeting this symbol_key via calls
-        callers_rows = (await session.execute(
-            text("""
-                SELECT source_key
-                FROM code_edges
-                WHERE repo_id = :repo_id
-                  AND target_key = :symbol_key
-                  AND edge_type = 'calls'
-            """),
-            {"repo_id": repo_id_str, "symbol_key": symbol_key},
-        )).mappings().all()
-        for r in callers_rows:
-            name_val = r["source_key"]
-            fp_val = None
-            if "::" in (name_val or ""):
-                name_val, fp_val = decompose_key("symbol", name_val)
-            context["callers"].append({"name": name_val, "file_path": fp_val})
-
-        # Callees: symbols this symbol calls
-        callees_rows = (await session.execute(
-            text("""
-                SELECT target_key
-                FROM code_edges
-                WHERE repo_id = :repo_id
-                  AND source_key = :symbol_key
-                  AND edge_type = 'calls'
-            """),
-            {"repo_id": repo_id_str, "symbol_key": symbol_key},
-        )).mappings().all()
-        for r in callees_rows:
-            name_val = r["target_key"]
-            fp_val = None
-            if "::" in (name_val or ""):
-                name_val, fp_val = decompose_key("symbol", name_val)
-            context["callees"].append({"name": name_val, "file_path": fp_val})
-
-        # Heritage: extends
-        extends_rows = (await session.execute(
-            text("""
-                SELECT target_key FROM code_edges
-                WHERE repo_id = :repo_id AND source_key = :symbol_key AND edge_type = 'extends'
-            """),
-            {"repo_id": repo_id_str, "symbol_key": symbol_key},
-        )).mappings().all()
-        context["heritage"]["extends"] = [r["target_key"].split("::")[0] for r in extends_rows]
-
-        extended_by_rows = (await session.execute(
-            text("""
-                SELECT source_key FROM code_edges
-                WHERE repo_id = :repo_id AND target_key = :symbol_key AND edge_type = 'extends'
-            """),
-            {"repo_id": repo_id_str, "symbol_key": symbol_key},
-        )).mappings().all()
-        context["heritage"]["extended_by"] = [r["source_key"].split("::")[0] for r in extended_by_rows]
-
-        implements_rows = (await session.execute(
-            text("""
-                SELECT target_key FROM code_edges
-                WHERE repo_id = :repo_id AND source_key = :symbol_key AND edge_type = 'implements'
-            """),
-            {"repo_id": repo_id_str, "symbol_key": symbol_key},
-        )).mappings().all()
-        context["heritage"]["implements"] = [r["target_key"].split("::")[0] for r in implements_rows]
-
-        # Community membership
-        community_row = (await session.execute(
-            text("""
-                SELECT n.key, n.label
-                FROM code_edges e
-                JOIN code_graph_nodes n ON n.key = e.target_key AND n.repo_id = e.repo_id
-                WHERE e.repo_id = :repo_id
-                  AND e.source_key = :symbol_key
-                  AND e.edge_type = 'member_of'
-                  AND n.kind = 'community'
-                LIMIT 1
-            """),
-            {"repo_id": repo_id_str, "symbol_key": symbol_key},
-        )).mappings().first()
-        if community_row:
-            context["community"] = {"label": community_row["label"], "key": community_row["key"]}
-
-        # Processes
-        process_rows = (await session.execute(
-            text("""
-                SELECT n.label
-                FROM code_edges e
-                JOIN code_graph_nodes n ON n.key = e.target_key AND n.repo_id = e.repo_id
-                WHERE e.repo_id = :repo_id
-                  AND e.source_key = :symbol_key
-                  AND e.edge_type = 'step_in_process'
-                  AND n.kind = 'process'
-            """),
-            {"repo_id": repo_id_str, "symbol_key": symbol_key},
-        )).mappings().all()
-        from app.services.process_tracer import process_display_label
-        context["processes"] = [process_display_label(r["label"]) for r in process_rows]
-
+    if context is None:
+        raise ToolInputError(f"Symbol '{symbol_name}' not found")
     return json.dumps(context)
 
 
@@ -2026,12 +1925,14 @@ async def code_changes(
     )
 )
 async def code_communities(repo_name: str) -> str:
-    from app.models.code import Repository
+    from app.services.code_query import CodeQueryService
 
     async with _code_service_context() as session:
-        repo = (await session.execute(select(Repository).where(Repository.name == repo_name))).scalar_one_or_none()
-        if not repo:
-            raise ToolInputError(f"Repository '{repo_name}' not found")
+        repo, refusal = await _resolve_repo_or_refusal(
+            CodeQueryService(session), repo_name,
+        )
+        if refusal is not None:
+            return refusal
 
         rows = (await session.execute(
             text("""
@@ -2063,13 +1964,15 @@ async def code_communities(repo_name: str) -> str:
     )
 )
 async def code_processes(repo_name: str) -> str:
-    from app.models.code import Repository
+    from app.services.code_query import CodeQueryService
     from app.services.process_tracer import process_display_label
 
     async with _code_service_context() as session:
-        repo = (await session.execute(select(Repository).where(Repository.name == repo_name))).scalar_one_or_none()
-        if not repo:
-            raise ToolInputError(f"Repository '{repo_name}' not found")
+        repo, refusal = await _resolve_repo_or_refusal(
+            CodeQueryService(session), repo_name,
+        )
+        if refusal is not None:
+            return refusal
 
         process_rows = (await session.execute(
             text("""

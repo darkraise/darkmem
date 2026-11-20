@@ -6,7 +6,7 @@ from sqlalchemy import case, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
-from app.models.code import CodeFile, CodeSymbol
+from app.models.code import CodeFile, CodeSymbol, Repository
 from app.config import settings
 from app.repositories.vector import PostgresVectorRepository
 from app.services.community_detector import label_communities
@@ -16,6 +16,62 @@ from app.services.rank_fusion import RankedList, rrf_fuse
 from app.utils.graph_keys import compose_key, decompose_key, split_symbol_key
 
 logger = logging.getLogger(__name__)
+
+# How many same-named symbols a lookup reads at most; the candidate list of an
+# ambiguous reference is bounded by the same number.
+SYMBOL_LOOKUP_LIMIT = 50
+
+
+class RepoNotFound(LookupError):
+    """No repository carries this id or name."""
+
+
+class RepoAmbiguous(LookupError):
+    """More than one repository carries this name; `name` is not unique."""
+
+    def __init__(self, reference: str, candidates: list[Repository]):
+        super().__init__(f"repository reference {reference!r} is ambiguous")
+        self.candidates = candidates
+
+
+class SymbolAmbiguous(LookupError):
+    """More than one symbol matches a reference that should name one."""
+
+    def __init__(self, reference: str, candidates: list[dict]):
+        super().__init__(
+            f"symbol reference {reference!r} matches {len(candidates)} symbols; "
+            "pass one of the candidate keys"
+        )
+        self.candidates = candidates
+
+
+def _symbol_fields(sym: CodeSymbol, file_path: str) -> dict:
+    return {
+        "id": sym.id, "name": sym.name, "kind": sym.kind,
+        "file_path": file_path, "line_start": sym.line_start, "line_end": sym.line_end,
+        "signature": sym.signature, "docstring": sym.docstring,
+        "visibility": sym.visibility, "source_code": sym.source_code,
+        "summary": sym.summary, "enrichment_status": sym.enrichment_status,
+    }
+
+
+def _symbol_select():
+    """Symbols with their file path, repository and owner name, one statement."""
+    parent = aliased(CodeSymbol)
+    stmt = (
+        select(CodeSymbol, CodeFile.file_path, CodeFile.repo_id, parent.name)
+        .join(CodeFile, CodeSymbol.file_id == CodeFile.id)
+        .outerjoin(parent, CodeSymbol.parent_symbol_id == parent.id)
+    )
+    return stmt, parent
+
+
+def symbol_candidate(row: dict) -> dict:
+    return {
+        "id": str(row["id"]), "key": row["key"], "name": row["name"],
+        "kind": row["kind"], "file_path": row["file_path"],
+        "repo_id": str(row["repo_id"]),
+    }
 
 
 @dataclass(frozen=True)
@@ -198,36 +254,122 @@ class CodeQueryService:
             })
         return {"items": items, "total": total}
 
+    async def resolve_repo(self, name_or_id: str) -> Repository:
+        try:
+            repo_id = UUID(str(name_or_id))
+        except ValueError:
+            repo_id = None
+        if repo_id is not None:
+            repo = await self.session.get(Repository, repo_id)
+            if repo is not None:
+                return repo
+        rows = (await self.session.execute(
+            select(Repository)
+            .where(Repository.name == name_or_id)
+            .order_by(Repository.created_at, Repository.id)
+        )).scalars().all()
+        if not rows:
+            raise RepoNotFound(name_or_id)
+        if len(rows) > 1:
+            raise RepoAmbiguous(name_or_id, list(rows))
+        return rows[0]
+
     async def lookup_symbol(
-        self, name: str, file_path: str, owner: str | None = None
-    ) -> dict | None:
-        stmt = select(CodeSymbol).join(CodeFile).where(
-            CodeSymbol.name == name, CodeFile.file_path == file_path,
-        )
+        self,
+        repo_id: UUID | None,
+        name: str,
+        file_path: str | None = None,
+        owner: str | None = None,
+        limit: int = SYMBOL_LOOKUP_LIMIT,
+    ) -> list[dict]:
+        """Symbols named ``name``, each with its file path, repository and
+        owner-qualified graph ``key``, read in one statement."""
+        stmt, parent = _symbol_select()
+        stmt = stmt.where(CodeSymbol.name == name)
+        if repo_id is not None:
+            stmt = stmt.where(CodeFile.repo_id == repo_id)
+        if file_path is not None:
+            stmt = stmt.where(CodeFile.file_path == file_path)
         if owner:
             # Same-named methods under different classes in one file are only
             # distinguishable by their parent symbol (the owner segment of
             # the graph node key).
-            parent = aliased(CodeSymbol)
-            stmt = stmt.join(
-                parent, CodeSymbol.parent_symbol_id == parent.id
-            ).where(parent.name == owner)
-        sym = (await self.session.execute(stmt)).scalars().first()
-        if not sym:
+            stmt = stmt.where(parent.name == owner)
+        return await self._symbol_rows(
+            stmt.order_by(
+                CodeFile.file_path, CodeSymbol.line_start, CodeSymbol.id,
+            ).limit(max(1, limit))
+        )
+
+    async def _symbol_rows(self, stmt) -> list[dict]:
+        return [
+            {
+                **_symbol_fields(sym, file_path_value),
+                "repo_id": row_repo_id,
+                "owner": owner_name,
+                "key": compose_key(
+                    "symbol", sym.name, file_path_value, owner=owner_name,
+                ),
+            }
+            for sym, file_path_value, row_repo_id, owner_name in (
+                await self.session.execute(stmt)
+            ).all()
+        ]
+
+    async def symbols_in_file(self, repo_id: UUID, file_path: str) -> list[dict]:
+        rows = (await self.session.execute(
+            select(CodeSymbol)
+            .join(CodeFile, CodeSymbol.file_id == CodeFile.id)
+            .where(CodeFile.repo_id == repo_id, CodeFile.file_path == file_path)
+            .order_by(CodeSymbol.line_start, CodeSymbol.id)
+        )).scalars().all()
+        return [
+            {
+                "id": str(sym.id), "name": sym.name, "kind": sym.kind,
+                "line_start": sym.line_start, "line_end": sym.line_end,
+                "signature": sym.signature, "summary": sym.summary,
+                "visibility": sym.visibility,
+            }
+            for sym in rows
+        ]
+
+    async def resolve_symbol(
+        self, reference: str, repo_id: UUID | None = None,
+    ) -> dict | None:
+        """One symbol from an id, a graph key or a bare name.
+
+        A key without an owner segment names a top-level symbol when exactly
+        one such symbol exists; otherwise every match is a candidate. More
+        than one candidate raises :class:`SymbolAmbiguous`.
+        """
+        if "::" in reference:
+            name, file_path, owner = split_symbol_key(reference)
+            rows = await self.lookup_symbol(repo_id, name, file_path, owner)
+            if not owner:
+                top_level = [row for row in rows if row["owner"] is None]
+                if len(top_level) == 1:
+                    rows = top_level
+        else:
+            try:
+                symbol_id = UUID(reference)
+            except ValueError:
+                rows = await self.lookup_symbol(repo_id, reference)
+            else:
+                rows = await self._symbol_by_id(symbol_id, repo_id)
+        if not rows:
             return None
+        if len(rows) > 1:
+            raise SymbolAmbiguous(reference, [symbol_candidate(row) for row in rows])
+        return rows[0]
 
-        file = (await self.session.execute(
-            select(CodeFile).where(CodeFile.id == sym.file_id)
-        )).scalar_one_or_none()
-
-        return {
-            "id": sym.id, "name": sym.name, "kind": sym.kind,
-            "file_path": file.file_path if file else "",
-            "line_start": sym.line_start, "line_end": sym.line_end,
-            "signature": sym.signature, "docstring": sym.docstring,
-            "visibility": sym.visibility, "source_code": sym.source_code,
-            "summary": sym.summary, "enrichment_status": sym.enrichment_status,
-        }
+    async def _symbol_by_id(
+        self, symbol_id: UUID, repo_id: UUID | None,
+    ) -> list[dict]:
+        stmt, _parent = _symbol_select()
+        stmt = stmt.where(CodeSymbol.id == symbol_id)
+        if repo_id is not None:
+            stmt = stmt.where(CodeFile.repo_id == repo_id)
+        return await self._symbol_rows(stmt)
 
     async def get_symbol(self, symbol_id: UUID) -> dict | None:
         sym = (await self.session.execute(
@@ -624,43 +766,21 @@ class CodeQueryService:
             },
         }
 
-    async def calculate_blast_radius(self, symbol_id: str, max_depth: int = 10) -> dict | None:
-        sym = None
-        file = None
-        if "::" in symbol_id:
-            name, file_path, _owner = split_symbol_key(symbol_id)
-            sym = (await self.session.execute(
-                select(CodeSymbol).join(CodeFile).where(
-                    CodeSymbol.name == name, CodeFile.file_path == file_path,
-                )
-            )).scalars().first()
-            if sym:
-                file = (await self.session.execute(
-                    select(CodeFile).where(CodeFile.id == sym.file_id)
-                )).scalar_one_or_none()
-        else:
-            try:
-                uid = UUID(symbol_id)
-                sym = (await self.session.execute(
-                    select(CodeSymbol).where(CodeSymbol.id == uid)
-                )).scalar_one_or_none()
-                if sym:
-                    file = (await self.session.execute(
-                        select(CodeFile).where(CodeFile.id == sym.file_id)
-                    )).scalar_one_or_none()
-            except ValueError:
-                pass
+    async def calculate_blast_radius(
+        self, symbol_id: str, max_depth: int = 10, repo_id: UUID | None = None,
+    ) -> dict | None:
+        """Every symbol that transitively reaches ``symbol_id``.
 
-        if not sym:
+        ``symbol_id`` is an id, a graph key or a bare name; it resolves inside
+        ``repo_id`` when one is given and raises :class:`SymbolAmbiguous` when
+        it names more than one symbol.
+        """
+        sym = await self.resolve_symbol(symbol_id, repo_id)
+        if sym is None:
             return None
 
-        repo_id_str = str(file.repo_id) if file else ""
-        owner = None
-        if file and sym.parent_symbol_id:
-            owner = (await self.session.execute(
-                select(CodeSymbol.name).where(CodeSymbol.id == sym.parent_symbol_id)
-            )).scalar_one_or_none()
-        symbol_key = compose_key("symbol", sym.name, file.file_path if file else None, owner=owner)
+        repo_id_str = str(sym["repo_id"])
+        symbol_key = sym["key"]
         clamped_depth = max(1, min(max_depth, 50))
 
         rows = (await self.session.execute(
@@ -718,9 +838,97 @@ class CodeQueryService:
             risk = "MEDIUM"
 
         return {
-            "symbol": {"id": str(sym.id), "name": sym.name, "file_path": file.file_path if file else ""},
+            "symbol": {"id": str(sym["id"]), "name": sym["name"], "file_path": sym["file_path"]},
             "affected": affected,
             "by_depth": by_depth,
             "risk": risk,
             "total": len(affected),
+        }
+
+    async def symbol_context(
+        self, symbol_name: str, repo_id: UUID | None = None,
+    ) -> dict | None:
+        """Callers, callees, heritage, community and processes of one symbol."""
+        sym = await self.resolve_symbol(symbol_name, repo_id)
+        if sym is None:
+            return None
+        params = {"repo_id": str(sym["repo_id"]), "symbol_key": sym["key"]}
+
+        async def keys(column: str, match: str, edge_type: str) -> list[str]:
+            rows = (await self.session.execute(
+                text(f"""
+                    SELECT {column} AS key FROM code_edges
+                    WHERE repo_id = :repo_id
+                      AND {match} = :symbol_key
+                      AND edge_type = :edge_type
+                """),
+                {**params, "edge_type": edge_type},
+            )).mappings().all()
+            return [row["key"] for row in rows]
+
+        def named(raw_keys: list[str]) -> list[dict]:
+            out = []
+            for raw in raw_keys:
+                name_val, fp_val = raw, None
+                if "::" in (raw or ""):
+                    name_val, fp_val = decompose_key("symbol", raw)
+                out.append({"name": name_val, "file_path": fp_val})
+            return out
+
+        community_row = (await self.session.execute(
+            text("""
+                SELECT n.key, n.label
+                FROM code_edges e
+                JOIN code_graph_nodes n ON n.key = e.target_key AND n.repo_id = e.repo_id
+                WHERE e.repo_id = :repo_id
+                  AND e.source_key = :symbol_key
+                  AND e.edge_type = 'member_of'
+                  AND n.kind = 'community'
+                LIMIT 1
+            """),
+            params,
+        )).mappings().first()
+        process_rows = (await self.session.execute(
+            text("""
+                SELECT n.label
+                FROM code_edges e
+                JOIN code_graph_nodes n ON n.key = e.target_key AND n.repo_id = e.repo_id
+                WHERE e.repo_id = :repo_id
+                  AND e.source_key = :symbol_key
+                  AND e.edge_type = 'step_in_process'
+                  AND n.kind = 'process'
+            """),
+            params,
+        )).mappings().all()
+
+        return {
+            "symbol": {
+                "name": sym["name"],
+                "kind": sym["kind"],
+                "file_path": sym["file_path"],
+                "signature": sym["signature"],
+                "summary": sym["summary"],
+            },
+            "callers": named(await keys("source_key", "target_key", "calls")),
+            "callees": named(await keys("target_key", "source_key", "calls")),
+            "heritage": {
+                "extends": [
+                    key.split("::")[0]
+                    for key in await keys("target_key", "source_key", "extends")
+                ],
+                "extended_by": [
+                    key.split("::")[0]
+                    for key in await keys("source_key", "target_key", "extends")
+                ],
+                "implements": [
+                    key.split("::")[0]
+                    for key in await keys("target_key", "source_key", "implements")
+                ],
+            },
+            "accesses": [],
+            "processes": [process_display_label(row["label"]) for row in process_rows],
+            "community": (
+                {"label": community_row["label"], "key": community_row["key"]}
+                if community_row else None
+            ),
         }

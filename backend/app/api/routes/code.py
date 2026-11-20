@@ -15,11 +15,23 @@ from app.schemas.code import (
     CodeSearchResult,
     CodeSymbolResponse,
 )
-from app.services.code_query import CodeQueryService
+from app.schemas.envelope import ErrorDetail, ErrorEnvelope
+from app.services.code_query import CodeQueryService, SymbolAmbiguous, symbol_candidate
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/code", tags=["code"])
+
+
+def _symbol_ambiguous(exc: SymbolAmbiguous):
+    from fastapi.responses import JSONResponse
+
+    body = ErrorEnvelope(
+        error=ErrorDetail(code="symbol_ambiguous", message=str(exc)),
+        detail=str(exc),
+    ).model_dump()
+    body["error"]["candidates"] = exc.candidates
+    return JSONResponse(status_code=409, content=body)
 
 
 def _get_service(request: Request, session: AsyncSession) -> CodeQueryService:
@@ -78,16 +90,21 @@ async def lookup_symbol(
     name: str = Query(...),
     file_path: str = Query(...),
     owner: str | None = Query(None),
+    repo_id: UUID | None = Query(None),
     _user=Depends(require_auth),
     request: Request = None,
     session: AsyncSession = Depends(get_session),
 ):
     svc = _get_service(request, session)
     with lease_llm(svc.llm):
-        result = await svc.lookup_symbol(name, file_path, owner)
-        if not result:
+        rows = await svc.lookup_symbol(repo_id, name, file_path, owner)
+        if not rows:
             raise HTTPException(status_code=404, detail="Symbol not found")
-        return CodeSymbolResponse(**result)
+        if len(rows) > 1:
+            return _symbol_ambiguous(SymbolAmbiguous(
+                name, [symbol_candidate(row) for row in rows],
+            ))
+        return CodeSymbolResponse(**rows[0])
 
 
 @router.get("/symbols/{symbol_id}", response_model=CodeSymbolResponse)
@@ -168,7 +185,12 @@ async def blast_radius(
 ):
     svc = _get_service(request, session)
     with lease_llm(svc.llm):
-        result = await svc.calculate_blast_radius(body.symbol_id, body.max_depth)
+        try:
+            result = await svc.calculate_blast_radius(
+                body.symbol_id, body.max_depth, repo_id=body.repo_id,
+            )
+        except SymbolAmbiguous as exc:
+            return _symbol_ambiguous(exc)
         if not result:
             raise HTTPException(status_code=404, detail="Symbol not found")
         return result

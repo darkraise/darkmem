@@ -742,8 +742,12 @@ PARITY_TABLE: tuple[Surface, ...] = (
         rest=(("POST", f"{V1}/code/blast-radius"),),
         mcp=("code_blast_radius",),
         note=(
-            "Only the name-to-id resolution is the tool's; the recursive "
-            "traversal is the service's (T1.42c)."
+            "Both doors resolve the symbol and run the traversal in "
+            "CodeQueryService.calculate_blast_radius (T1.42c); the tool only "
+            "resolves a repository name through resolve_repo. The route takes "
+            "a required repo_id and answers a reference naming several symbols "
+            "with 409 symbol_ambiguous and error.candidates; the tool answers "
+            "an ambiguous envelope listing the same candidates."
         ),
     ),
     Surface(
@@ -756,14 +760,13 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
         mcp=("code_symbol", "code_file_symbols"),
         note=(
-            "Two doors, two implementations: both tools build their own "
-            "SQLAlchemy query instead of spending "
-            "CodeQueryService.list_symbols. Not yet observably divergent -- "
-            "the tools emit a subset of the service's keys and no row differs "
-            "-- but it is the same latent drift T1.42c found already realised "
-            "on code_search and code_blast_radius. Delegating is not a "
-            "no-behaviour-change edit (the service caps at limit=50 and the "
-            "tools are uncapped), so it needs an owner, not a one-liner."
+            "Both tools read through CodeQueryService: code_symbol through "
+            "lookup_symbol (the route's lookup, capped at 50 rows, each with "
+            "its file path and graph key) and code_file_symbols through "
+            "symbols_in_file. A repository name shared by several "
+            "repositories answers an ambiguous envelope listing their ids; "
+            "the lookup route takes an optional repo_id and answers 409 "
+            "symbol_ambiguous when several symbols match."
         ),
     ),
     Surface(

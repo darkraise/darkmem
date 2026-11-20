@@ -83,8 +83,8 @@ the test rather than quietly joining the surface.
 | `project.catalog` | `GET /api/v1/projects` | — | REST single-door | The scope picker's list, for a human choosing which project the UI is looking at. An MCP caller never browses for its scope: it passes `project` explicitly on every capture and recall tool, because the agent is the thing that decides which project its work belongs to. Its sibling tag.histogram above is two-door for the opposite reason -- tags are a retrieval filter an agent picks from, so it has to be able to see which ones exist. Revisit this if an agent ever needs to recall across a corpus whose projects it did not author. |
 | `repo.list` | `GET /api/v1/repos` | `list_repos` | two-door | — |
 | `code.search` | `POST /api/v1/code/search` | `code_search` | two-door | Both doors fuse through CodeQueryService.search_code and publish the same rrf_score under the same score key (T1.42c). With no embedder configured the doors answer differently on purpose: the tool returns doc 12 section 3's typed degradation envelope, the route degrades to the keyword arm. |
-| `code.blast_radius` | `POST /api/v1/code/blast-radius` | `code_blast_radius` | two-door | Only the name-to-id resolution is the tool's; the recursive traversal is the service's (T1.42c). |
-| `code.symbols` | `GET /api/v1/code/symbols`<br>`GET /api/v1/code/symbols/lookup`<br>`GET /api/v1/code/symbols/{symbol_id}` | `code_symbol`<br>`code_file_symbols` | two-door | Two doors, two implementations: both tools build their own SQLAlchemy query instead of spending CodeQueryService.list_symbols. Not yet observably divergent -- the tools emit a subset of the service's keys and no row differs -- but it is the same latent drift T1.42c found already realised on code_search and code_blast_radius. Delegating is not a no-behaviour-change edit (the service caps at limit=50 and the tools are uncapped), so it needs an owner, not a one-liner. |
+| `code.blast_radius` | `POST /api/v1/code/blast-radius` | `code_blast_radius` | two-door | Both doors resolve the symbol and run the traversal in CodeQueryService.calculate_blast_radius (T1.42c); the tool only resolves a repository name through resolve_repo. The route takes a required repo_id and answers a reference naming several symbols with 409 symbol_ambiguous and error.candidates; the tool answers an ambiguous envelope listing the same candidates. |
+| `code.symbols` | `GET /api/v1/code/symbols`<br>`GET /api/v1/code/symbols/lookup`<br>`GET /api/v1/code/symbols/{symbol_id}` | `code_symbol`<br>`code_file_symbols` | two-door | Both tools read through CodeQueryService: code_symbol through lookup_symbol (the route's lookup, capped at 50 rows, each with its file path and graph key) and code_file_symbols through symbols_in_file. A repository name shared by several repositories answers an ambiguous envelope listing their ids; the lookup route takes an optional repo_id and answers 409 symbol_ambiguous when several symbols match. |
 | `knowledge.overview` | `GET /api/v1/knowledge/overview` | `memory_overview` | two-door | Doc 12 section 3's tool table pairs the tool with this route, and both doors call memory_overview.get_overview -- the map selection, the single summarization reduce, the community-set cache and the declared drops are the service's, so neither door can answer a partial overview the other reports as complete. Both doors now authenticate the caller -- REST by session, the tool by a per-tool-scoped bearer key -- the same posture every two-door read on this table carries: a key is a credential, not a session, not an absence of gating. |
 | `knowledge.fact_detail` | `GET /api/v1/knowledge/facts/{fact_id}` | `fact_get` | two-door | Doc 12 section 2's route table assigns fact_get a REST twin at exactly this path and section 3 puts the agent-facing single-object vault read on the tool, so T2.72 built the tool rather than leaving the route filed single-door on a posture argument. Both doors call facts_read.get_fact and both serialise through FactDetailResponse -- the tool does not reshape the dict, so a field the model does not declare is dropped on both doors and the badge's claim sentence crosses byte for byte (test_fact_detail_doors_serve_the_same_row). Both doors now authenticate the caller -- REST by session, the tool by a per-tool-scoped bearer key -- the same posture every two-door read on this table carries: a key is a credential, not a session, not an absence of gating. |
 | `knowledge.article_detail` | `GET /api/v1/knowledge/articles/{article_id}` | `article_get` | two-door | Doc 12 section 2's route table assigns article_get a REST twin at exactly this path, and section 3 puts the single-object vault reads on tools. Built as its sibling was rather than filed single-door: both doors call articles_read.get_article and both serialise through ArticleDetailResponse, so the coverage number, the citations and the stale label cross byte for byte. Both doors now authenticate the caller -- REST by session, the tool by a per-tool-scoped bearer key -- the same posture every two-door read here carries: a key is a credential, not a session, not an absence of gating. |
@@ -172,15 +172,13 @@ design doc asserting a shipped twin that does not exist is an invariant-23
 (scaffolding-not-substrate) problem, and correcting a design doc is a Tier-3
 amendment. **This audit records the divergence and does not edit doc 12.**
 
-### 3. `code_symbol` / `code_file_symbols` are a latent repeat of the T1.42c defect
+### 3. `code_symbol` / `code_file_symbols` read through the service
 
-Marked two-door, and genuinely reachable from both doors — but each tool builds
-its own SQLAlchemy query instead of spending `CodeQueryService.list_symbols`.
-No row differs today, so this is not yet a divergence; it is the same
-parallel-implementation setup T1.42c found *already realised* on `code_search`
-and `code_blast_radius`. Delegating is not a behaviour-preserving one-liner
-(the service caps at `limit=50`; the tools are uncapped), so it needs an owner
-rather than an opportunistic edit.
+Each tool once built its own SQLAlchemy query, the same parallel-implementation
+setup T1.42c found realised on `code_search` and `code_blast_radius`. Both now
+read through `CodeQueryService` (`lookup_symbol`, capped at 50 rows like the
+lookup route, and `symbols_in_file`), and resolve a repository name through
+`resolve_repo`.
 
 ### 4. No capability was found sequenced MCP-behind-REST
 

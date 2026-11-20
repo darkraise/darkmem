@@ -150,7 +150,7 @@ async def test_code_search_runs_the_rest_twins_composition(mcp_session, monkeypa
 
 
 async def test_code_blast_radius_runs_the_rest_twins_traversal(mcp_session, monkeypatch):
-    """The traversal is the service's; only the name-to-id lookup is the tool's.
+    """The traversal is the service's; the tool resolves only the repository.
 
     A verbatim second copy of the recursive CTE lived here and had already
     drifted from the one behind ``POST /code/blast-radius``: the service emits
@@ -176,9 +176,9 @@ async def test_code_blast_radius_runs_the_rest_twins_traversal(mcp_session, monk
     calls: list = []
     real = CodeQueryService.calculate_blast_radius
 
-    async def _spy(self, symbol_id, max_depth=10):
-        calls.append((symbol_id, max_depth))
-        return await real(self, symbol_id, max_depth)
+    async def _spy(self, symbol_id, max_depth=10, repo_id=None):
+        calls.append((symbol_id, max_depth, repo_id))
+        return await real(self, symbol_id, max_depth, repo_id=repo_id)
 
     monkeypatch.setattr(CodeQueryService, "calculate_blast_radius", _spy)
 
@@ -186,7 +186,7 @@ async def test_code_blast_radius_runs_the_rest_twins_traversal(mcp_session, monk
         "target", repo_name="parity-repo", max_depth=4,
     ))
 
-    assert calls == [(str(symbol.id), 4)]
+    assert calls == [("target", 4, repo.id)]
     assert payload["symbol"]["id"] == str(symbol.id)
     assert payload["symbol"]["file_path"] == "pkg/mod.py"
     assert payload["risk"] == "LOW"
@@ -198,7 +198,7 @@ async def test_code_blast_radius_publishes_the_graph_key_of_each_caller(
 ):
     calls: list = []
 
-    async def _fake(self, symbol_id, max_depth=10):
+    async def _fake(self, symbol_id, max_depth=10, repo_id=None):
         calls.append(symbol_id)
         return {
             "symbol": {"id": symbol_id, "name": "target", "file_path": "pkg/mod.py"},
