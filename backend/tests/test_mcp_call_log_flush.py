@@ -45,32 +45,60 @@ async def committed(setup_database):
     await _clean()
 
 
+class _InsertFailsOnce:
+    """A factory whose session's call-log INSERT raises the first time."""
+
+    def __init__(self, factory):
+        self.factory = factory
+        self.failed = False
+
+    def __call__(self):
+        session = self.factory()
+        real_execute = session.execute
+
+        async def execute(statement, *args, **kwargs):
+            if statement is mcp_call_log._INSERT_SQL and not self.failed:
+                self.failed = True
+                raise ConnectionResetError("database unreachable")
+            return await real_execute(statement, *args, **kwargs)
+
+        session.execute = execute
+        return session
+
+
+async def _count(factory, tool: str) -> int:
+    async with factory() as s:
+        return (await s.execute(
+            text("SELECT count(*) FROM mcp_tool_calls WHERE tool = :t"), {"t": tool},
+        )).scalar_one()
+
+
 @pytest.mark.asyncio
 async def test_failed_flush_keeps_its_batch(committed, monkeypatch):
     tool = f"flush-probe-{uuid.uuid4().hex[:8]}"
     _queue(10, tool=tool)
-    real_insert = mcp_call_log._INSERT_SQL
-    calls = {"n": 0}
+    factory = _InsertFailsOnce(committed)
 
-    class FailOnce:
-        def __init__(self):
-            self.real = committed
-
-        def __call__(self):
-            calls["n"] += 1
-            if calls["n"] == 1:
-                raise RuntimeError("database unreachable")
-            return self.real()
-
-    assert await mcp_call_log.flush_once(FailOnce()) == 0
+    assert await mcp_call_log.flush_once(factory) == 0
+    assert factory.failed
     assert len(mcp_call_log._buffer) == 10
-    assert await mcp_call_log.flush_once(FailOnce()) == 10
-    async with committed() as s:
-        count = (await s.execute(
-            text("SELECT count(*) FROM mcp_tool_calls WHERE tool = :t"), {"t": tool},
-        )).scalar_one()
-    assert count == 10
-    assert mcp_call_log._INSERT_SQL is real_insert
+    assert await mcp_call_log.flush_once(factory) == 10
+    assert await _count(committed, tool) == 10
+    assert mcp_call_log.dropped_calls() == 0
+
+
+@pytest.mark.asyncio
+async def test_a_row_the_database_refuses_is_dropped_alone(committed):
+    tool = f"flush-probe-{uuid.uuid4().hex[:8]}"
+    _queue(4, tool=tool)
+    _queue(1, tool="refused\x00tool")
+    _queue(5, tool=tool)
+
+    await mcp_call_log.flush_once(committed)
+
+    assert await _count(committed, tool) == 9
+    assert not mcp_call_log._buffer
+    assert mcp_call_log.dropped_calls() == 1
 
 
 def test_buffer_overflow_is_counted(monkeypatch):
@@ -94,6 +122,8 @@ async def test_failed_flush_backs_off(monkeypatch):
         await mcp_call_log.flush_once(broken)
         delays.append(mcp_call_log._backoff_seconds)
     assert delays == [1, 2, 4, 8, 16, 32, 60, 60]
+    assert len(mcp_call_log._buffer) == 8
+    assert mcp_call_log.dropped_calls() == 0
 
     slept: list[float] = []
     outcomes = iter([0, 0, 1])

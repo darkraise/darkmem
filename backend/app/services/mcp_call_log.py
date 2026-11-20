@@ -13,9 +13,10 @@ slow or fail the tool call it describes, so every failure here is swallowed and
 logged. A buffer that outgrows ``_BUFFER_MAX`` drops its oldest entries and
 counts them (``dropped_calls``, served by the summary route). A failed flush
 puts its batch back at the front and the next attempt waits, doubling up to
-``_BACKOFF_MAX_SECONDS``; an entry that has failed ``_MAX_FLUSH_ATTEMPTS``
-flushes is dropped and counted, so one row the database refuses cannot hold
-the log back for good.
+``_BACKOFF_MAX_SECONDS``. A batch the database refuses while it is reachable
+is written row by row, and only a row refused on its own is dropped and
+counted, so one bad row can neither hold the log back nor take its
+neighbours with it.
 
 A validation error is stored as its error type and field location only: the
 text pydantic produces repeats the offending argument's value.
@@ -86,7 +87,6 @@ _BUFFER_MAX = 5_000
 _FLUSH_DELAY_SECONDS = 0.5
 _FLUSH_BATCH = 500
 _BACKOFF_MAX_SECONDS = 60
-_MAX_FLUSH_ATTEMPTS = 5
 _CONFIG_TTL_SECONDS = 30.0
 
 # Keys whose value names a returned object, in preference order: a section hit
@@ -111,7 +111,6 @@ class _Pending:
     arguments: dict = field(default_factory=dict)
     result: Any = None
     error: str | None = None
-    attempts: int = 0
 
 
 _buffer: deque[_Pending] = deque()
@@ -198,15 +197,7 @@ def _trim() -> None:
 
 def _requeue(batch: list[_Pending]) -> None:
     """Put a batch that failed to write back at the front of the buffer."""
-    global _dropped
-    kept = []
-    for pending in batch:
-        pending.attempts += 1
-        if pending.attempts >= _MAX_FLUSH_ATTEMPTS:
-            _dropped += 1
-        else:
-            kept.append(pending)
-    _buffer.extendleft(reversed(kept))
+    _buffer.extendleft(reversed(batch))
     _trim()
 
 
@@ -248,8 +239,14 @@ async def flush_once(session_factory=None) -> int:
         async with session_factory() as session:
             log_query_text = await _log_query_text(session)
             rows = [_to_row(p, log_query_text=log_query_text) for p in batch]
-            await session.execute(_INSERT_SQL, rows)
-            await session.commit()
+            try:
+                await session.execute(_INSERT_SQL, rows)
+                await session.commit()
+            except Exception as exc:
+                if _is_outage(exc):
+                    raise
+                await session.rollback()
+                await _write_row_by_row(session, rows)
         _backoff_seconds = 0
         if _dropped > _dropped_logged:
             logger.warning(
@@ -265,6 +262,38 @@ async def flush_once(session_factory=None) -> int:
             len(batch), _backoff_seconds, exc_info=True,
         )
         return 0
+
+
+def _is_outage(exc: BaseException) -> bool:
+    """True unless the database answered and refused the statement itself."""
+    from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
+
+    if not isinstance(exc, DBAPIError):
+        return True
+    return isinstance(exc, (OperationalError, InterfaceError)) or exc.connection_invalidated
+
+
+async def _write_row_by_row(session, rows: list[dict]) -> None:
+    """Write each row in its own savepoint and drop the ones refused alone.
+
+    An outage (the connection failing, or a savepoint that cannot roll back)
+    raises, so the caller puts the whole batch back; nothing is committed
+    before the end.
+    """
+    global _dropped
+    for row in rows:
+        try:
+            async with session.begin_nested():
+                await session.execute(_INSERT_SQL, [row])
+        except Exception as exc:
+            if _is_outage(exc):
+                raise
+            _dropped += 1
+            logger.warning(
+                "mcp_call_log: dropped one %s call the database refused", row.get("tool"),
+                exc_info=True,
+            )
+    await session.commit()
 
 
 async def drain(session_factory=None) -> None:

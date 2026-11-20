@@ -159,6 +159,17 @@ class EventManager:
                 dead.append(ws)
             for ws in targets:
                 try:
+                    # Again under the lock: a revocation can land while this
+                    # broadcast waits for another one's sends, and a cached
+                    # check costs nothing.
+                    validator = self._validators.get(ws)
+                    if validator is not None and not inspect.iscoroutinefunction(validator):
+                        try:
+                            validator()
+                        except HTTPException:
+                            await ws.close(code=1008, reason="Session expired or revoked")
+                            dead.append(ws)
+                            continue
                     await asyncio.wait_for(ws.send_text(message), timeout=SEND_TIMEOUT_SECONDS)
                 except Exception:
                     dead.append(ws)

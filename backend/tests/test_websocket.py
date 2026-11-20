@@ -185,8 +185,26 @@ async def test_broadcast_does_not_wait_on_revalidation(manager, monkeypatch):
     monkeypatch.setattr(auth_module, "_password_changed_after", slow)
     try:
         started = time.monotonic()
-        await asyncio.wait_for(manager.broadcast("unknown.test", {"n": 1}), 0.5)
+        with _statements() as seen:
+            await asyncio.wait_for(manager.broadcast("unknown.test", {"n": 1}), 0.5)
         assert time.monotonic() - started < 0.5
+        assert seen == []
         assert all(len(socket.sent) == 1 for socket, _ in opened)
     finally:
         await _shut(*(task for _, task in opened))
+
+
+async def test_a_socket_revoked_while_the_broadcast_waits_gets_nothing(manager):
+    token = _token()
+    socket, task = await _open(token)
+    claims = jwt.decode(token, options={"verify_signature": False})
+    try:
+        async with manager._send_lock:
+            pending = asyncio.create_task(manager.broadcast("unknown.test", {"n": 1}))
+            await asyncio.sleep(0.01)
+            websocket.session_revocations.revoke(claims["jti"], float(claims["exp"]))
+        await asyncio.wait_for(pending, 1)
+        assert socket.sent == []
+        assert socket.close_reason == "Session expired or revoked"
+    finally:
+        await _shut(task)
