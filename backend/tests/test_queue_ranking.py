@@ -1320,3 +1320,54 @@ async def test_the_ranking_never_writes_the_two_forbidden_columns():
             f"{statement} in review_ranking.py — the decay changes priority "
             "and nothing else (doc 08 §6, invariant 14)"
         )
+
+
+def _events_scans(plan: dict) -> list[dict]:
+    found = []
+    stack = [plan]
+    while stack:
+        node = stack.pop()
+        if str(node.get("Relation Name", "")).startswith("events_"):
+            found.append(node)
+        stack.extend(node.get("Plans", []))
+    return found
+
+
+async def test_dispute_onset_lookup_is_bounded_by_time(session):
+    for months_ago in (3, 6, 9, 12):
+        await session.execute(
+            text(
+                "SELECT events_ensure_partition(CAST(date_trunc('month', "
+                "now() - CAST(:m AS int) * INTERVAL '1 month') AS date))"
+            ),
+            {"m": months_ago},
+        )
+    # No journalled onset: an unbounded backward scan finds nothing to stop on
+    # and probes every monthly child, while the fact's own creation bounds the
+    # lookup to this month and later.
+    fact = await _fact(session, subject="onset-bound", obj="o", created_days_ago=0.0)
+    await _mark_disputed(session, fact)
+    children = (
+        await session.execute(
+            text(
+                "SELECT count(*) FROM pg_inherits "
+                "WHERE inhparent = CAST('events' AS regclass)"
+            )
+        )
+    ).scalar_one()
+
+    items_sql, _ = build_facts_query(PROJECT, order=ReviewQueueOrder.CONSEQUENCE)
+    plan = (
+        await session.execute(
+            text(f"EXPLAIN (ANALYZE, FORMAT JSON) {items_sql}"),
+            {"project": PROJECT, "limit": 50, "offset": 0},
+        )
+    ).scalar_one()[0]["Plan"]
+
+    scanned = {
+        node["Relation Name"]
+        for node in _events_scans(plan)
+        if node.get("Actual Loops", 0) > 0
+    }
+    assert scanned, "the dispute lookup scanned no events child at all"
+    assert len(scanned) < children, (scanned, children)

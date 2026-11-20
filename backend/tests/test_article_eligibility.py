@@ -534,3 +534,24 @@ class TestPriorityOrdering:
         ordered = ae.order_for_budget(candidates, ae.SynthesisConfig(synthesis_budget=2))
 
         assert [c.priority for c in ordered] == [4.0, 3.0]
+
+
+async def test_zero_fact_pinned_subject_is_not_selected(session):
+    await _config(session, {"synthesis_budget": 2, "min_verified_facts": 3})
+    pinned_keys = []
+    for name in ("pinned-empty-a", "pinned-empty-b"):
+        hub = await _entity(session, name)
+        await _neighbours(session, hub, 30)
+        key = ae.subject_soft_key(name, "concept")
+        await append_subject(session, PROJECT, PINNED_KEY, key)
+        pinned_keys.append(key)
+    for name in ("real-a", "real-b"):
+        await _subject_with(session, name, verified=3)
+    await session.flush()
+
+    selected = await ae.select_for_synthesis(session, project=PROJECT)
+
+    assert sorted(c.subject_key for c in selected) == [
+        ae.subject_soft_key("real-a", "concept"),
+        ae.subject_soft_key("real-b", "concept"),
+    ]

@@ -66,10 +66,12 @@ from app.services.llm import lease_llm
 from app.services.article_eligibility import (
     SUPPORTING_BELIEF_PREDICATE,
     VERIFIED_STATUSES,
+    get_synthesis_config,
     select_for_synthesis,
+    subject_key_parts,
+    subject_type_predicate,
 )
 from app.services.articles_channel import ARTICLE_EMBEDDINGS_PARENT
-from app.services.articles_read import subject_name_of
 from app.services.embedder_registry import child_table
 from app.services.events import ARTICLE_STALE, RESYNTHESIS_HELD, record_event
 from app.services.pin_suggestions import decode_subject_soft_key
@@ -237,6 +239,7 @@ _FACTS_SQL = text(
       AND lower(t.subject_name) = CAST(:subject AS text)
       AND t.verification_status = ANY(CAST(:statuses AS text[]))
       AND {SUPPORTING_BELIEF_PREDICATE}
+      AND {subject_type_predicate("CAST(:entity_type AS text)")}
     ORDER BY salience DESC, t.id
     LIMIT :cap
     """
@@ -250,6 +253,7 @@ async def gather_facts(
     project: str = "default",
     cap: int = DEFAULT_HUB_CAP,
     now: datetime | None = None,
+    entity_type: str | None = None,
 ) -> list[GatheredFact]:
     """The subject's verified facts, ranked by §4.2's salience and capped.
 
@@ -274,6 +278,7 @@ async def gather_facts(
             {
                 "project": project,
                 "subject": subject.lower(),
+                "entity_type": entity_type,
                 "statuses": list(VERIFIED_STATUSES),
                 "cap": max(0, cap),
                 "now": stamp,
@@ -795,6 +800,7 @@ _ALL_VERIFIED_IDS_SQL = text(
       AND lower(t.subject_name) = CAST(:subject AS text)
       AND t.verification_status = ANY(CAST(:statuses AS text[]))
       AND {SUPPORTING_BELIEF_PREDICATE}
+      AND {subject_type_predicate("CAST(:entity_type AS text)")}
     """
 )
 
@@ -815,7 +821,11 @@ _NEXT_PROJECTS_SQL = text(
 
 
 async def all_verified_fact_ids(
-    session: AsyncSession, *, subject: str, project: str
+    session: AsyncSession,
+    *,
+    subject: str,
+    project: str,
+    entity_type: str | None = None,
 ) -> list[str]:
     """Every verified fact id for the subject — the hash's basis, uncapped.
 
@@ -829,6 +839,7 @@ async def all_verified_fact_ids(
         {
             "project": project,
             "subject": subject.lower(),
+            "entity_type": entity_type,
             "statuses": list(VERIFIED_STATUSES),
         },
     )
@@ -849,8 +860,9 @@ async def synthesise_subject(
 
     ``subject_key`` is the **soft key** ``name::entity_type`` that
     ``select_for_synthesis`` hands back, and the two halves go to different
-    places: the *name* is what the fact queries match on
-    (``lower(subject_name)``), and the *whole key* is what
+    places: the *name* and *type* are what the fact queries match on
+    (``lower(subject_name)`` and the subject entity's type), and the *whole
+    key* is what
     ``knowledge_articles.subject_key`` stores and what
     ``ux_knowledge_articles_live`` is unique on.
 
@@ -861,16 +873,19 @@ async def synthesise_subject(
     Raises on anything that is not a refusal, so the caller can tell an outage
     from an unusable draft.
     """
-    name, _entity_type = decode_subject_soft_key(subject_key)
+    name, entity_type = decode_subject_soft_key(subject_key)
     facts = await gather_facts(
-        session, subject=name, project=project, cap=cap, now=now
+        session, subject=name, project=project, cap=cap, now=now,
+        entity_type=entity_type,
     )
     if not facts:
         return None
     draft = await synthesise_draft(
         llm, subject=name, facts=facts, budget_words=budget_words
     )
-    all_ids = await all_verified_fact_ids(session, subject=name, project=project)
+    all_ids = await all_verified_fact_ids(
+        session, subject=name, project=project, entity_type=entity_type
+    )
     article_id = await store_article(
         session,
         subject=subject_key,
@@ -1386,9 +1401,11 @@ async def stale_articles(
         # its first odd row is a sweep that silently stops sweeping. The
         # fallback name matches no fact set, so such an article reads stale —
         # a re-synthesis attempt, never a false claim of currency.
-        name = subject_name_of(row["subject_key"])
+        name, entity_type = subject_key_parts(row["subject_key"])
         current = fact_set_hash(
-            await all_verified_fact_ids(session, subject=name, project=project)
+            await all_verified_fact_ids(
+                session, subject=name, project=project, entity_type=entity_type
+            )
         )
         if current != row["fact_set_hash"]:
             stale.append(
@@ -1497,6 +1514,8 @@ class ResynthesisOutcome:
     # number that used to be a daily draft-plus-entailment bill per chronically
     # ungroundable subject.
     held_suppressed: int = 0
+    # Settled stale articles left for a later tick by `synthesis_budget`.
+    over_budget: int = 0
     # Held markers retired because their subject stopped being stale.
     cleared: int = 0
     protected: int = 0
@@ -1663,9 +1682,10 @@ async def resynthesise_subject(
     """
     from app.services.claim_entailment import CoverageOutcome, measure_coverage
 
-    name, _entity_type = decode_subject_soft_key(article.subject_key)
+    name, entity_type = decode_subject_soft_key(article.subject_key)
     facts = await gather_facts(
-        session, subject=name, project=project, cap=cap, now=now
+        session, subject=name, project=project, cap=cap, now=now,
+        entity_type=entity_type,
     )
     if not facts:
         return None, "no_facts"
@@ -1706,7 +1726,9 @@ async def resynthesise_subject(
     ):
         return None, "standing_measured"
 
-    all_ids = await all_verified_fact_ids(session, subject=name, project=project)
+    all_ids = await all_verified_fact_ids(
+        session, subject=name, project=project, entity_type=entity_type
+    )
     await session.execute(_SUPERSEDE_SQL, {"id": article.article_id})
     new_id = await store_article(
         session,
@@ -1763,6 +1785,9 @@ async def run_article_resynthesis(
 ) -> ResynthesisOutcome:
     """One re-synthesis pass over an already-chosen batch of projects.
 
+    Attempts are capped per tick by the same ``synthesis_budget`` the first
+    pass spends; settled articles past it stay stale for the next tick.
+
     Takes the project list rather than rotating its own cursor: the tick's
     rotation is `run_article_synthesis`'s, and a second cursor would let the two
     passes drift onto different projects — a subject could then be re-eligible
@@ -1775,6 +1800,8 @@ async def run_article_resynthesis(
     it, so a crash mid-batch loses at most one tick of the window.
     """
     outcome = ResynthesisOutcome()
+    async with session_factory() as session:
+        budget = (await get_synthesis_config(session)).synthesis_budget
     llm = llm_provider() if callable(llm_provider) else llm_provider
     with lease_llm(llm):
         judge = judge_for(llm)
@@ -1822,7 +1849,10 @@ async def run_article_resynthesis(
                         outcome.debounced += 1
                 await session.commit()
 
-            for article in ready:
+            for index, article in enumerate(ready):
+                if outcome.attempted >= budget:
+                    outcome.over_budget += len(ready) - index
+                    break
                 outcome.attempted += 1
                 if llm is None:
                     # No orchestrator is the job having nothing to run with, not a

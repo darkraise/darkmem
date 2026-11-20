@@ -472,6 +472,9 @@ dispute AS (
         FROM events e
         WHERE e.object_type = 'fact'
           AND e.object_id = o.id
+          -- No onset predates its fact; without this bound a fact with no
+          -- journalled onset probes every monthly child.
+          AND e.created_at >= o.created_at
           AND e.event_type = 'verified'
           AND e.payload->'after'->>'verification_status' = 'disputed'
           AND COALESCE(e.payload->'before'->>'verification_status', '') <> 'disputed'
@@ -523,7 +526,10 @@ def build_ranked_facts_sql(
     to ``knowledge_triples`` inside the leading CTE, unwidened — the ranking
     changes the ``ORDER BY`` and the projection, never which rows are members.
     """
-    inner_columns = ", ".join((*column_names, "subject_id"))
+    extra = tuple(
+        name for name in ("subject_id", "created_at") if name not in column_names
+    )
+    inner_columns = ", ".join((*column_names, *extra))
     outer_columns = ", ".join(f"o.{name}" for name in column_names)
     return _RANKED_FACTS_TEMPLATE.format(
         inner_columns=inner_columns,

@@ -114,6 +114,29 @@ VERIFIED_STATUSES: tuple[str, ...] = ("corroborated", "confirmed")
 # fails the build here rather than silently leaving L3 on the old one.
 SUPPORTING_BELIEF_PREDICATE = "t.expired_at IS NULL AND t.invalid_at IS NULL"
 
+
+def subject_type_predicate(type_sql: str) -> str:
+    """The type half of a subject key, for the four L3 fact queries.
+
+    A fact is excluded only when its subject entity carries a different type,
+    so a fact whose ``subject_id`` is NULL or dangling keeps matching by name,
+    and a NULL ``type_sql`` (a key with no type half) matches by name alone.
+    """
+    return (
+        f"({type_sql} IS NULL OR NOT EXISTS ("
+        "SELECT 1 FROM entities se WHERE se.id = t.subject_id "
+        f"AND se.entity_type <> {type_sql}))"
+    )
+
+
+def subject_key_parts(subject_key: str) -> tuple[str, str | None]:
+    """``(name, entity_type)`` of a soft key, tolerating a key with no type
+    half, which matches by name alone."""
+    name, separator, entity_type = subject_key.rpartition("::")
+    if not separator:
+        return subject_key.lower(), None
+    return name, entity_type
+
 DEFAULT_MIN_VERIFIED_FACTS = 3
 DEFAULT_SYNTHESIS_BUDGET = 5
 
@@ -472,9 +495,13 @@ async def select_for_synthesis(
         )).all()
     }
 
+    # A pinned subject with no verified fact gathers nothing and never gets an
+    # article, so it would hold its budget slot on every run.
     eligible = [
         c for c in candidates
-        if c.eligible and c.subject_key not in existing
+        if c.eligible
+        and c.verified_fact_count > 0
+        and c.subject_key not in existing
     ]
     return order_for_budget(eligible, config)
 

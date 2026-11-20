@@ -990,7 +990,7 @@ async def test_the_article_rotation_wraps_at_the_last_project(monkeypatch):
     visits nothing on every later tick while still recording ``ok``.
     """
     from app.services import dream_jobs
-    from app.services.article_synthesis import SynthesisOutcome
+    from app.services.article_synthesis import ResynthesisOutcome, SynthesisOutcome
 
     registry, engine = _fresh_registry()
     seen: list[str | None] = []
@@ -1005,7 +1005,7 @@ async def test_the_article_rotation_wraps_at_the_last_project(monkeypatch):
         )
 
     async def fake_resynthesis(session_factory, llm_provider=None, **knobs):
-        return None
+        return ResynthesisOutcome()
 
     try:
         monkeypatch.setattr(dream_jobs, "run_article_synthesis", fake_synthesis)
@@ -1143,3 +1143,38 @@ async def test_the_family_holds_no_placeholders_left():
             assert not isinstance(registry.get(key).runner, PlaceholderJobRunner)
     finally:
         await registry.stop_all()
+
+
+@pytest.mark.asyncio
+async def test_article_runner_logs_both_outcomes(monkeypatch, caplog):
+    import logging
+
+    from app.services import dream_jobs
+    from app.services.article_synthesis import ResynthesisOutcome, SynthesisOutcome
+
+    registry, engine = _fresh_registry()
+
+    async def fake_synthesis(session_factory, llm_provider=None, **knobs):
+        return SynthesisOutcome(projects=1, attempted=3, written=2, visited=["p"])
+
+    async def fake_resynthesis(session_factory, llm_provider=None, **knobs):
+        return ResynthesisOutcome(projects=1, stale=4, attempted=2, resynthesised=1)
+
+    try:
+        monkeypatch.setattr(dream_jobs, "run_article_synthesis", fake_synthesis)
+        monkeypatch.setattr(dream_jobs, "run_article_resynthesis", fake_resynthesis)
+        with caplog.at_level(logging.INFO, logger=dream_jobs.__name__):
+            result = await registry.get(ARTICLE_SYNTHESIS_JOB_KEY).runner()
+    finally:
+        await registry.stop_all()
+        await engine.dispose()
+
+    assert result["synthesis"]["written"] == 2
+    assert result["resynthesis"]["stale"] == 4
+    assert result["resynthesis"]["resynthesised"] == 1
+    message = next(
+        record.getMessage() for record in caplog.records
+        if record.getMessage().startswith("article_synthesis:")
+    )
+    assert "written=2" in message
+    assert "stale=4" in message and "resynthesised=1" in message

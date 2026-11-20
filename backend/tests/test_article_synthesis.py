@@ -44,6 +44,7 @@ async def _fact(
     rel_type: str = "RELATED_TO",
     applies_when: str | None = None,
     project: str = PROJECT,
+    subject_id: UUID | None = None,
 ) -> str:
     repo = KnowledgeTripleRepository(session)
     row = await repo.insert_open(
@@ -54,6 +55,7 @@ async def _fact(
         fact=f"{subject_name} relates",
         reference_time=reference_time,
         project=project,
+        subject_id=subject_id,
     )
     # Raw, following `test_article_eligibility`'s fixture: routing seeding
     # through the ladder's writer would journal transitions this suite makes no
@@ -1136,3 +1138,117 @@ class TestTheReviewQueue:
         )).mappings().one()
         assert stored["confidence"] is None, "unmeasured, not zero"
         assert stored["status"] == "candidate"
+
+
+class _CitingLLM:
+    """Drafts from whatever fact ids the prompt listed, and records them."""
+
+    def __init__(self):
+        self.prompted: list[frozenset[str]] = []
+
+    async def chat_completion(self, purpose, *, messages, response_format=None, seed=None):
+        ids = _ids_in(messages)
+        self.prompted.append(frozenset(ids))
+        return _draft_payload(ids[:1])
+
+    async def embed(self, text_body):
+        raise RuntimeError("no embedder in this suite")
+
+
+async def _selection_config(session, value: dict) -> None:
+    await session.execute(
+        text(
+            "INSERT INTO config (key, value) VALUES "
+            "('article_selection', CAST(:v AS jsonb)) "
+            "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
+        ),
+        {"v": json.dumps(value)},
+    )
+
+
+async def test_same_name_subjects_get_their_own_facts(session, factory):
+    project = f"{PROJECT}-{uuid4().hex[:6]}"
+    typed: dict[str, tuple[UUID, list[str]]] = {}
+    for entity_type in ("tool", "concept"):
+        entity = uuid4()
+        await session.execute(
+            text(
+                "INSERT INTO entities (id, name, entity_type, memory_ids) "
+                "VALUES (CAST(:id AS uuid), 'mercury', CAST(:t AS text), "
+                "'{}'::uuid[])"
+            ),
+            {"id": str(entity), "t": entity_type},
+        )
+        facts = [
+            str(await _fact(
+                session, subject_name="mercury", subject_id=entity, project=project
+            ))
+            for _ in range(3)
+        ]
+        typed[entity_type] = (entity, facts)
+    await _selection_config(session, {"synthesis_budget": 5, "min_verified_facts": 3})
+    await session.commit()
+
+    llm = _CitingLLM()
+    await asyn.run_article_synthesis(factory, lambda: llm, batch_size=50)
+
+    tool_ids, concept_ids = typed["tool"][1], typed["concept"][1]
+    assert set(llm.prompted) == {frozenset(tool_ids), frozenset(concept_ids)}
+    articles = {
+        row["subject_key"]: row["fact_set_hash"]
+        for row in (
+            await session.execute(
+                text(
+                    "SELECT subject_key, fact_set_hash FROM knowledge_articles "
+                    "WHERE project = CAST(:p AS text)"
+                ),
+                {"p": project},
+            )
+        ).mappings()
+    }
+    assert articles == {
+        "mercury::tool": asyn.fact_set_hash(tool_ids),
+        "mercury::concept": asyn.fact_set_hash(concept_ids),
+    }
+
+    await _fact(
+        session, subject_name="mercury", subject_id=typed["tool"][0], project=project
+    )
+    stale = await asyn.stale_articles(session, project=project)
+
+    assert [article.subject_key for article in stale] == ["mercury::tool"]
+
+
+async def test_resynthesis_is_capped_per_tick(session, factory):
+    project = f"{PROJECT}-{uuid4().hex[:6]}"
+    for n in range(5):
+        for _ in range(3):
+            await _fact(session, subject_name=f"r{n}", project=project)
+        await session.execute(
+            text(
+                "INSERT INTO knowledge_articles "
+                "(id, subject_key, project, title, content, status, review_state, "
+                " fact_set_hash, synthesized_at) "
+                "VALUES (CAST(:id AS uuid), CAST(:k AS text), CAST(:p AS text), "
+                "CAST(:k AS text), 'standing body', 'corroborated', NULL, "
+                "'a-hash-from-before', CAST(:at AS timestamptz))"
+            ),
+            {"id": str(uuid4()), "k": f"r{n}::concept", "p": project, "at": T0},
+        )
+    await _selection_config(session, {"synthesis_budget": 2})
+    await session.commit()
+    llm = _CitingLLM()
+    now = datetime.now(timezone.utc)
+
+    labelled = await asyn.run_article_resynthesis(
+        factory, lambda: llm, projects=[project], debounce_hours=1, now=now
+    )
+    assert labelled.debounced == 5
+
+    tick = await asyn.run_article_resynthesis(
+        factory, lambda: llm, projects=[project], debounce_hours=1,
+        now=now + timedelta(hours=2),
+    )
+
+    assert (tick.attempted, tick.resynthesised, tick.over_budget) == (2, 2, 3)
+    assert len(await asyn.stale_articles(session, project=project)) == 3

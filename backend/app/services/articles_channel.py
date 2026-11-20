@@ -38,9 +38,10 @@ from app.schemas.retrieval_trace import ChannelStatus
 from app.services.article_eligibility import (
     SUPPORTING_BELIEF_PREDICATE,
     VERIFIED_STATUSES,
+    subject_key_parts,
+    subject_type_predicate,
 )
 from app.services.embedder_registry import child_table
-from app.services.pin_suggestions import decode_subject_soft_key
 
 __all__ = [
     "ARTICLE_EMBEDDINGS_PARENT",
@@ -138,14 +139,17 @@ _SEARCH_SQL = """
 # shape that turns a cheap label into a per-result cost.
 _LIVE_HASHES_SQL = text(
     f"""
-    SELECT lower(t.subject_name) AS name_lower,
+    SELECT k.subject_key,
            array_agg(CAST(t.id AS text) ORDER BY CAST(t.id AS text)) AS fact_ids
-    FROM knowledge_triples t
+    FROM unnest(
+             CAST(:keys AS text[]), CAST(:names AS text[]), CAST(:types AS text[])
+         ) AS k(subject_key, name_lower, entity_type)
+    JOIN knowledge_triples t ON lower(t.subject_name) = k.name_lower
     WHERE t.project = CAST(:project AS text)
-      AND lower(t.subject_name) = ANY(CAST(:names AS text[]))
       AND t.verification_status = ANY(CAST(:statuses AS text[]))
       AND {SUPPORTING_BELIEF_PREDICATE}
-    GROUP BY lower(t.subject_name)
+      AND {subject_type_predicate("k.entity_type")}
+    GROUP BY k.subject_key
     """
 )
 
@@ -248,9 +252,9 @@ class ArticlesChannel:
 
     @staticmethod
     async def live_fact_set_hashes(
-        session: AsyncSession, *, project: str, names: list[str]
+        session: AsyncSession, *, project: str, subject_keys: list[str]
     ) -> dict[str, str]:
-        """Each named subject's current fact-set digest, one statement.
+        """Each subject key's current fact-set digest, one statement.
 
         Public because the articles read door (T3.06) needs exactly this and a
         second copy of the query is how two surfaces start disagreeing about
@@ -258,16 +262,20 @@ class ArticlesChannel:
         ``stale_articles``: that lives in the synthesis module, and a read
         surface importing it is what invariant 15's scan fails the build on.
         """
-        if not names:
+        if not subject_keys:
             return {}
+        keys = sorted(set(subject_keys))
+        parts = [subject_key_parts(key) for key in keys]
         return {
-            row["name_lower"]: article_fact_set_hash(list(row["fact_ids"]))
+            row["subject_key"]: article_fact_set_hash(list(row["fact_ids"]))
             for row in (
                 await session.execute(
                     _LIVE_HASHES_SQL,
                     {
                         "project": project,
-                        "names": sorted(set(names)),
+                        "keys": keys,
+                        "names": [name for name, _ in parts],
+                        "types": [entity_type for _, entity_type in parts],
                         "statuses": list(VERIFIED_STATUSES),
                     },
                 )
@@ -291,17 +299,14 @@ class ArticlesChannel:
         if not rows:
             return {}
 
-        names = {}
-        for row in rows:
-            name, _type = decode_subject_soft_key(row["subject_key"])
-            names[row["subject_key"]] = name
-
         live = await self.live_fact_set_hashes(
-            self.session, project=project, names=list(names.values())
+            self.session,
+            project=project,
+            subject_keys=[row["subject_key"] for row in rows],
         )
 
         out: dict[str, bool] = {}
         for row in rows:
-            current = live.get(names[row["subject_key"]])
+            current = live.get(row["subject_key"])
             out[row["subject_key"]] = current != row["fact_set_hash"]
         return out

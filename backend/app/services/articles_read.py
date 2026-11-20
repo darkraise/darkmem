@@ -50,7 +50,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.articles_channel import ArticlesChannel
 from app.services.fact_badge import row_labels
-from app.services.pin_suggestions import decode_subject_soft_key
 
 logger = logging.getLogger(__name__)
 
@@ -175,29 +174,6 @@ async def _gate(session: AsyncSession):
         return groundedness_gate()
 
 
-def subject_name_of(subject_key: str) -> str:
-    """The subject half of a soft key, tolerating a key that has no type half.
-
-    ``decode_subject_soft_key`` raises on a key without ``::``, which is right
-    for a caller that minted the key itself. It is wrong for a *read* over
-    whatever the table holds: one row written by an older path — or by hand —
-    would take down the whole page with a 500, and a browsing surface that
-    cannot render its list is strictly worse than one that renders a row
-    conservatively.
-
-    Conservatively means stale: the fallback name will not match any grouped
-    hash, so the article reads as "its knowledge moved" rather than as current.
-    Labelling an article stale when it may not be costs a re-synthesis;
-    labelling it current when it is not is the claim this layer exists to
-    avoid making.
-    """
-    try:
-        name, _entity_type = decode_subject_soft_key(subject_key)
-    except ValueError:
-        return subject_key.lower()
-    return name
-
-
 async def _stale_flags(
     session: AsyncSession, rows: list[Any]
 ) -> dict[str, bool]:
@@ -208,21 +184,19 @@ async def _stale_flags(
     article against another project's knowledge.
     """
     by_project: dict[str, list[str]] = {}
-    names: dict[str, str] = {}
     for row in rows:
-        names[str(row["id"])] = subject_name_of(row["subject_key"])
-        by_project.setdefault(row["project"], []).append(names[str(row["id"])])
+        by_project.setdefault(row["project"], []).append(row["subject_key"])
 
     live: dict[tuple[str, str], str] = {}
-    for project, project_names in by_project.items():
+    for project, subject_keys in by_project.items():
         hashes = await ArticlesChannel.live_fact_set_hashes(
-            session, project=project, names=project_names
+            session, project=project, subject_keys=subject_keys
         )
-        for name, digest in hashes.items():
-            live[(project, name)] = digest
+        for subject_key, digest in hashes.items():
+            live[(project, subject_key)] = digest
 
     return {
-        str(row["id"]): live.get((row["project"], names[str(row["id"])]))
+        str(row["id"]): live.get((row["project"], row["subject_key"]))
         != row["fact_set_hash"]
         for row in rows
     }

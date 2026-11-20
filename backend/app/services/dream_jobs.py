@@ -62,7 +62,7 @@ four additional fields are additions rather than renames.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 
 from app.services.article_synthesis import (
@@ -552,7 +552,7 @@ def _make_article_runner(registry: JobRegistry, key: str, llm_provider) -> JobRu
     deterministically would otherwise pin the rotation and starve every project
     behind it.
     """
-    async def run() -> None:
+    async def run() -> dict:
         cfg = await registry.load_config(key)
         settings_ = {**registry.get(key).default_config, **cfg.config}
         async with registry.session_factory() as session:
@@ -572,7 +572,7 @@ def _make_article_runner(registry: JobRegistry, key: str, llm_provider) -> JobRu
         # order matters only in that a subject cannot be in both: the selector
         # excludes subjects holding a live article, and this pass reads only
         # subjects that hold one.
-        await run_article_resynthesis(
+        resynthesis = await run_article_resynthesis(
             registry.session_factory,
             llm_provider,
             projects=outcome.visited,
@@ -588,10 +588,16 @@ def _make_article_runner(registry: JobRegistry, key: str, llm_provider) -> JobRu
             await _save_article_cursor(session, None if wrapped else outcome.last_project)
             await session.commit()
         logger.info(
-            "article_synthesis: projects=%d attempted=%d written=%d refused=%d%s",
+            "article_synthesis: projects=%d attempted=%d written=%d refused=%d; "
+            "resynthesis: stale=%d debounced=%d attempted=%d resynthesised=%d "
+            "held=%d over_budget=%d failed=%d%s",
             outcome.projects, outcome.attempted, outcome.written, outcome.refused,
+            resynthesis.stale, resynthesis.debounced, resynthesis.attempted,
+            resynthesis.resynthesised, resynthesis.held, resynthesis.over_budget,
+            resynthesis.failed,
             ", rotation wrapped" if wrapped else "",
         )
+        return {"synthesis": asdict(outcome), "resynthesis": asdict(resynthesis)}
 
     return run
 
