@@ -411,6 +411,10 @@ Five phases, each a hard checkpoint:
    classification purpose's inline `classifier_kind`: `local` selects the
    in-process classifier, otherwise the LLM-backed one; both expose
    `classify(content, areas, prompt, mode) → {hall, summary, emotions, flags}`.
+   Saving `local` is refused (422) while torch and transformers (the `[ml]`
+   extra, absent from the shipped image) cannot be imported; a `local` row
+   already stored classifies through the LLM-backed classifier, logs one
+   error per process and reports `classifier_unavailable: true` on `/health`.
    **Single-call merge:** with the LLM-backed classifier and
    `classification_mode == 'simple'`, classification folds into the one
    extraction call (`extract(..., with_classification=True)`); the merged

@@ -18,6 +18,7 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import event, select, text
 
+import app.services.ml_runtime as ml_runtime
 from app.models.llm_config import LLMPurposeConfigRow
 from app.models.llm_provider import LLMProviderRow
 from app.schemas.config import (
@@ -409,7 +410,7 @@ async def test_config_llm_serves_classifier_kind_on_the_classification_purpose(
 
 @pytest.mark.asyncio
 async def test_config_llm_persists_a_classifier_kind_write(
-    client, auth_headers, session
+    client, auth_headers, session, monkeypatch
 ):
     """`config.py`'s write loop already listed the field, but
     `LLMPurposeConfigUpdate` did not declare it, so it could never appear in
@@ -428,6 +429,7 @@ async def test_config_llm_persists_a_classifier_kind_write(
         provider_name="classification-vendor",
     ))
     await session.flush()
+    monkeypatch.setattr(ml_runtime, "ml_extra_available", lambda: True)
 
     response = await client.post(
         "/api/v1/config/llm",

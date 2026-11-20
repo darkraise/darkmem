@@ -23,14 +23,16 @@ Concurrency:
 * The eviction watchdog is one task per loaded model; it cancels
   cleanly on ``shutdown_all``.
 
-If torch / transformers aren't installed (tests, lightweight images),
-the manager raises ``MLRuntimeUnavailable`` on first use with a
-clear message. The classifier service catches this and degrades to
-the regex fallback.
+If torch / transformers aren't installed (the shipped image, tests),
+``ml_extra_available`` says so: the purpose write refuses
+``classifier_kind=local`` and the pipeline keeps the LLM-backed
+classifier. The manager still raises ``MLRuntimeUnavailable`` on first
+use if it is reached anyway.
 """
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 import time
 from dataclasses import dataclass
@@ -44,6 +46,18 @@ logger = logging.getLogger(__name__)
 # inference.
 _MODEL_LOAD_TIMEOUT = 300.0
 _CLASSIFY_TIMEOUT = 30.0
+
+
+@functools.cache
+def ml_extra_available() -> bool:
+    """Whether the optional CPU-only ``[ml]`` extra (torch + transformers) is
+    importable. Imports the packages, never loads a model."""
+    try:
+        import torch  # noqa: F401
+        import transformers  # noqa: F401
+    except ImportError:
+        return False
+    return True
 
 
 class MLRuntimeUnavailable(RuntimeError):

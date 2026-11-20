@@ -5,7 +5,8 @@ import math
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
+from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,6 +25,7 @@ from app.api.websocket import websocket_endpoint
 from sqlalchemy.exc import DBAPIError
 
 from app.config import settings
+from app.database import get_session
 from app.schemas.envelope import ErrorDetail, ErrorEnvelope
 from app.services.board_parse import BoardRefusal
 from app.services.events import reconcile_event_partitions
@@ -1133,10 +1135,11 @@ app.mount("/mcp", _mcp_app)
 
 
 @app.get("/health")
-async def health():
+async def health(session: AsyncSession = Depends(get_session)):
     import httpx
     from starlette.responses import JSONResponse
     from app.database import async_session_factory
+    from app.services import ml_runtime
 
     pipeline = getattr(app.state, "pipeline", None)
     llm = getattr(app.state, "llm", None)
@@ -1177,6 +1180,22 @@ async def health():
         except Exception:
             return False
 
+    async def check_classifier_unavailable() -> bool:
+        """A stored `local` classifier this install cannot load."""
+        if ml_runtime.ml_extra_available():
+            return False
+        try:
+            kind = (await session.execute(text(
+                "SELECT classifier_kind FROM llm_purpose_configs "
+                "WHERE purpose = 'classification'"
+            ))).scalar_one_or_none()
+        except Exception:
+            await session.rollback()
+            return False
+        return kind == "local"
+
+    classifier_unavailable = await check_classifier_unavailable()
+
     if settings.read_only:
         pgvector_ok, llm_ok = await check_pgvector(), False
     else:
@@ -1206,6 +1225,7 @@ async def health():
                 "pgvector": pgvector_ok,
                 "llm": llm_ok,
             },
+            "classifier_unavailable": classifier_unavailable,
         },
         status_code=status_code,
     )

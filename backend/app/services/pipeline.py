@@ -27,7 +27,7 @@ from app.services.fact_provenance import (
 )
 from app.services.relations import names_distinct
 from app.services.supersession import detect_supersessions, is_supersession_trigger
-from app.services import prompt
+from app.services import ml_runtime, prompt
 from app.taxonomy import normalize_memory_type
 
 logger = logging.getLogger(__name__)
@@ -109,16 +109,20 @@ _ENTITY_EMBED_ROTATION_ATTEMPTS = 3
 DUPLICATE_STATUSES: tuple[str, ...] = ("active",)
 
 
-def _ml_extra_available() -> bool:
-    """Whether the optional CPU-only ``[ml]`` extra (torch + transformers) is
-    importable here. Only imports the packages — never loads a model — so
-    this is cheap enough to call on every classifier resolution."""
-    try:
-        import torch  # noqa: F401
-        import transformers  # noqa: F401
-    except ImportError:
-        return False
-    return True
+# A stored `local` row on an install without the `[ml]` extra classifies
+# through the LLM-backed classifier; one error per process says so.
+_local_classifier_unavailable_logged = False
+
+
+def _log_local_classifier_unavailable() -> None:
+    global _local_classifier_unavailable_logged
+    if _local_classifier_unavailable_logged:
+        return
+    _local_classifier_unavailable_logged = True
+    logger.error(
+        "classifier_kind=local is stored but torch and transformers (the [ml] "
+        "extra) are not installed; classifying with the LLM-backed classifier"
+    )
 
 
 @dataclass
@@ -255,7 +259,7 @@ class ProcessingPipeline:
             classifier_cfg = live_cfg.get("classification")
             classifier_kind = getattr(classifier_cfg, "classifier_kind", None) if classifier_cfg else None
             if classifier_kind == "local":
-                if _ml_extra_available():
+                if ml_runtime.ml_extra_available():
                     from app.services.classification_ml import MLClassificationService
                     from app.services.ml_runtime import ml_model_manager
                     resolved = MLClassificationService(
@@ -264,10 +268,7 @@ class ProcessingPipeline:
                         _LOCAL_CLASSIFIER_TTL_SECONDS,
                     )
                 else:
-                    logger.info(
-                        "classifier_kind=local but the [ml] extra is not "
-                        "installed; using the LLM-backed classifier"
-                    )
+                    _log_local_classifier_unavailable()
         except Exception:
             logger.exception("Failed to resolve classifier; falling back to LLM service")
             resolved = None

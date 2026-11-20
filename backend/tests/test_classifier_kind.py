@@ -23,7 +23,7 @@ from app.models.llm_config import LLMPurposeConfigRow
 from app.models.llm_provider import LLMProviderRow
 from app.models.memory import Memory
 from app.services.classification_ml import MLClassificationService
-import app.services.pipeline as pipeline_mod
+import app.services.ml_runtime as ml_runtime
 from app.services.pipeline import ProcessingPipeline, _flag_cache_reset
 from tests.conftest import test_engine
 
@@ -97,7 +97,7 @@ async def test_resolve_classifier_uses_local_when_ml_available(setup_database, m
     factory = _factory()
     try:
         await _set_classifier_kind(factory, "local")
-        monkeypatch.setattr(pipeline_mod, "_ml_extra_available", lambda: True)
+        monkeypatch.setattr(ml_runtime, "ml_extra_available", lambda: True)
         pipe = ProcessingPipeline(_FakeLLM("resolve-local|4"), factory)
 
         resolved = await pipe._resolve_classifier()
@@ -115,7 +115,7 @@ async def test_resolve_classifier_falls_back_to_llm_when_ml_unavailable(setup_da
     factory = _factory()
     try:
         await _set_classifier_kind(factory, "local")
-        monkeypatch.setattr(pipeline_mod, "_ml_extra_available", lambda: False)
+        monkeypatch.setattr(ml_runtime, "ml_extra_available", lambda: False)
         pipe = ProcessingPipeline(_FakeLLM("resolve-no-ml|4"), factory)
 
         resolved = await pipe._resolve_classifier()
@@ -141,7 +141,7 @@ async def test_resolve_classifier_is_cached_within_ttl(setup_database, monkeypat
         # to the default, so flip to 'local' underneath the cache instead —
         # a cache-bypassing bug would then return the local classifier.
         await _set_classifier_kind(factory, "local")
-        monkeypatch.setattr(pipeline_mod, "_ml_extra_available", lambda: True)
+        monkeypatch.setattr(ml_runtime, "ml_extra_available", lambda: True)
         second = await pipe._resolve_classifier()
 
         assert first is pipe.classification
@@ -178,7 +178,7 @@ async def test_classifier_kind_local_skips_the_llm_classification_call(setup_dat
 
     try:
         await _set_classifier_kind(factory, "local")
-        monkeypatch.setattr(pipeline_mod, "_ml_extra_available", lambda: True)
+        monkeypatch.setattr(ml_runtime, "ml_extra_available", lambda: True)
         await _seed_memory(factory, mem_id, "the payments worker kept restarting")
 
         pipe = ProcessingPipeline(_FakeLLM("kind-local|4"), factory)

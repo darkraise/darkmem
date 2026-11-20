@@ -31,7 +31,7 @@ from app.models.llm_provider import LLMProviderRow
 from app.models.memory import Memory
 from app.services.classification_ml import MLClassificationService
 from app.services.extraction import ExtractionService
-import app.services.pipeline as pipeline_mod
+import app.services.ml_runtime as ml_runtime
 from app.services.pipeline import ProcessingPipeline, _flag_cache_reset
 from tests.conftest import test_engine
 
@@ -131,7 +131,7 @@ async def test_classifier_kind_local_extraction_request_omits_classification_fie
 
     try:
         await _set_classifier_kind(factory, "local")
-        monkeypatch.setattr(pipeline_mod, "_ml_extra_available", lambda: True)
+        monkeypatch.setattr(ml_runtime, "ml_extra_available", lambda: True)
         monkeypatch.setattr(
             "app.services.ml_runtime.ml_model_manager",
             _StubModelManager("problem"),
@@ -195,7 +195,7 @@ async def test_both_classifier_kinds_still_resolve_to_distinct_implementations(
     factory = _factory()
     try:
         await _set_classifier_kind(factory, "local")
-        monkeypatch.setattr(pipeline_mod, "_ml_extra_available", lambda: True)
+        monkeypatch.setattr(ml_runtime, "ml_extra_available", lambda: True)
         pipe_local = ProcessingPipeline(_FakeLLM("both-local|4"), factory)
         local_resolved = await pipe_local._resolve_classifier()
         assert isinstance(local_resolved, MLClassificationService)

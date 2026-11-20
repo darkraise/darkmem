@@ -31,7 +31,7 @@ from app.services.config import (
     PURPOSES,
     cfg_to_schema,
 )
-from app.services import research_rerun
+from app.services import ml_runtime, research_rerun
 from app.services.backup_config import (
     BACKUP_DESTINATIONS_KEY,
     DestinationConfig,
@@ -242,6 +242,17 @@ async def update_llm_config(
                 for k, v in update_data[purpose].items()
                 if k in purpose_update.model_fields_set
             }
+            if (
+                incoming.get("classifier_kind") == "local"
+                and not ml_runtime.ml_extra_available()
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "classifier_kind 'local' needs torch and transformers "
+                        "(the backend's [ml] extra), which this install lacks"
+                    ),
+                )
             # The FK would refuse an unknown provider with an IntegrityError,
             # which reaches the caller as a 500 naming a constraint; a bad name
             # in a settings form is a client error, so say so.
