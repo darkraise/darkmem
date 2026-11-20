@@ -211,7 +211,7 @@ def _clamp_limit(limit: int, default: int, maximum: int = _MAX_LIMIT) -> int:
 
 
 @mcp.tool(
-    description="Store a new memory in the knowledge system. Use this to save facts, decisions, preferences, debugging insights, infrastructure details, or any information worth remembering across sessions. One memory holds ONE fact, in 1-3 sentences: several facts belong in several entries via memory_batch_add, and a long write-up belongs in document_put. A memory is not a log: store the durable fact, never commit hashes or ranges, test or commit counts, task progress, file:line references, stack traces, raw command output or session narrative. Content that looks like a log is still stored, and the answer's warnings name the signals it matched. The origin tool is auto-detected and recorded in 'source'. Buffered by default (Tier-A accept, doc 05 §2): returns immediately with the memory's final id while extraction/classification runs asynchronously. Pass wait_process=true to drive that processing inline instead, bounded by buffer_wait_timeout_seconds — the fully processed memory is returned when it settles in time, otherwise the same buffered ack."
+    description="Store a new memory in the knowledge system. Use this to save facts, decisions, preferences, debugging insights, infrastructure details, or any information worth remembering across sessions. One memory holds ONE fact, in 1-3 sentences: several facts belong in several entries via memory_batch_add, and a long write-up belongs in document_put. A memory is not a log: store the durable fact, never commit hashes or ranges, test or commit counts, task progress, file:line references, stack traces, raw command output or session narrative. Content that looks like a log is still stored, and the answer's warnings name the signals it matched. The origin tool is auto-detected and recorded in 'source'. Buffered by default (Tier-A accept, doc 05 §2): returns immediately with the memory's final id while extraction/classification runs asynchronously. Pass wait_process=true to drive that processing inline instead, for up to 10 seconds — the fully processed memory is returned when it finishes in time, otherwise the same buffered ack."
 )
 async def memory_add(
     content: Annotated[str, Field(
@@ -235,7 +235,7 @@ async def memory_add(
         source_agent: Optional agent/session identifier; defaults to the caller's raw User-Agent.
         memory_type: One of fact, decision, preference, problem, architecture, reference, milestone, episodic, procedural. Aliases (e.g. "debug"→"problem") are normalized; unknown values fall back to "fact".
         project: Supersession scope (default "default"). Set this so REPLACES-based supersession can fire within the intended project; tags do NOT feed this.
-        wait_process: If true, drive this capture's flush inline (bounded by buffer_wait_timeout_seconds) instead of only buffering it. Use when you need the memory queryable immediately; the default leaves extraction to run asynchronously.
+        wait_process: If true, drive this capture's flush inline (for up to 10 seconds) instead of only buffering it. Use when you need the memory queryable immediately; the default leaves extraction to run asynchronously.
     """
     async with _memory_service_context() as service:
         resolved_source = resolve_client_source(source, ctx)
@@ -402,7 +402,7 @@ async def memory_delete(memory_id: str, ctx: Context | None = None) -> str:
 
 
 @mcp.tool(
-    description="Create multiple memories in a single operation - the right shape whenever a session produced several facts, which are several entries rather than one long memory. Each entry follows the same format as memory_add, one fact each, and is not a log: no commit hashes, test counts, task progress, file:line references or stack traces (a log-like entry is still stored, with warnings naming what it matched); entries without 'source' get the auto-detected origin tool. Buffered by default (one 202-style accept per entry, doc 05 §2); pass wait_process=true to drive the whole batch's flush inline as a single pipeline pass, bounded by buffer_wait_timeout_seconds."
+    description="Create multiple memories in a single operation - the right shape whenever a session produced several facts, which are several entries rather than one long memory. Each entry follows the same format as memory_add, one fact each, and is not a log: no commit hashes, test counts, task progress, file:line references or stack traces (a log-like entry is still stored, with warnings naming what it matched); entries without 'source' get the auto-detected origin tool. Buffered by default (one 202-style accept per entry, doc 05 §2); pass wait_process=true to drive the whole batch's flush inline as a single pipeline pass, for up to 10 seconds."
 )
 async def memory_batch_add(
     entries: list[dict], wait_process: bool = False, ctx: Context | None = None,

@@ -39,6 +39,7 @@ from app.schemas.memory import MemoryCreate
 from app.services import wait_process
 from app.services.buffer_flush import (
     _mark_done,
+    as_session_factory,
     claim_batch,
     claim_specific,
     detach,
@@ -56,11 +57,19 @@ from tests.test_buffer_flush import (
 pytestmark = pytest.mark.asyncio
 
 
+def _pipeline(session, **kwargs) -> RecordingPipeline:
+    """A recording pipeline whose own sessions share the test's connection, so
+    the flush sees the fixture's uncommitted buffer rows."""
+    pipeline = RecordingPipeline(**kwargs)
+    pipeline.session_factory = as_session_factory(session)
+    return pipeline
+
+
 # ── Done-when 1: writes the buffer row, then drives THAT row's flush ───
 
 
 async def test_wait_process_writes_the_buffer_row_then_drives_that_rows_flush(session):
-    pipeline = RecordingPipeline()
+    pipeline = _pipeline(session)
     svc = MemoryService(session, pipeline=pipeline)
 
     result = await svc.create_memory(
@@ -85,7 +94,7 @@ async def test_wait_process_writes_the_buffer_row_then_drives_that_rows_flush(se
 async def test_wait_process_batch_runs_one_process_batch_call_not_per_entry(session):
     """Done-when 3, batch shape: the bypass reuses process_batch's own
     batching rather than looping a synchronous call per entry."""
-    pipeline = RecordingPipeline()
+    pipeline = _pipeline(session)
     svc = MemoryService(session, pipeline=pipeline)
     entries = [MemoryCreate(content=f"batch item {i}", source="test") for i in range(3)]
 
@@ -122,7 +131,7 @@ async def test_wait_process_rest_and_mcp_both_support_the_bypass(client, auth_he
     from app.main import app
     import app.api.mcp.server as mcp_server
 
-    pipeline = RecordingPipeline()
+    pipeline = _pipeline(session)
     app.state.pipeline = pipeline
     try:
         rest_response = await client.post(
@@ -174,19 +183,13 @@ async def test_wait_process_rest_and_mcp_default_to_the_plain_ack(client, auth_h
 # ── Done-when 2: bounded, and honestly degrades — never hangs, never lies ──
 
 
-async def test_wait_process_reads_its_timeout_from_config_and_degrades_on_expiry(
-    session, monkeypatch,
-):
-    """`buffer_wait_timeout_seconds` is a real config row, not a hardcoded
-    constant, and a `drive()` that settles nothing degrades to the plain
-    buffered ack — captured through a monkeypatched `drive` rather than a real
-    timing race, so this proves the wiring without depending on wall time."""
-    session.add(Config(key="feature_flags", value={"buffer_wait_timeout_seconds": 42}))
-    await session.flush()
-
+async def test_wait_process_degrades_to_the_ack_on_expiry(session, monkeypatch):
+    """A `drive()` that settles nothing degrades to the plain buffered ack,
+    bounded by the module constant — captured through a monkeypatched `drive`
+    rather than a real timing race."""
     captured: dict = {}
 
-    async def _fake_drive(session_, pipeline_, *, buffer_ids, timeout_seconds, max_attempts, **kw):
+    async def _fake_drive(factory_, pipeline_, *, buffer_ids, timeout_seconds, max_attempts, **kw):
         captured["timeout_seconds"] = timeout_seconds
         captured["buffer_ids"] = buffer_ids
         return frozenset()  # nothing settled: simulates an expired deadline
@@ -194,21 +197,27 @@ async def test_wait_process_reads_its_timeout_from_config_and_degrades_on_expiry
     import app.services.memory as memory_module
     monkeypatch.setattr(memory_module, "_drive_wait_process_flush", _fake_drive)
 
-    svc = MemoryService(session, pipeline=RecordingPipeline())
+    svc = MemoryService(session, pipeline=_pipeline(session))
     result = await svc.create_memory(
         MemoryCreate(content="config wiring probe", source="test"),
         api_key_id=None, wait_process=True,
     )
 
-    assert captured["timeout_seconds"] == 42
+    assert captured["timeout_seconds"] == memory_module.BUFFER_WAIT_TIMEOUT_SECONDS
     assert len(captured["buffer_ids"]) == 1
-    # The degrade: never an error, never a hang — the same plain ack the
-    # default path returns, because the row really is durably buffered.
     assert result.memory is None
     assert result.ack.status == "accepted"
 
     rows = (await session.execute(select(MemoryBuffer))).scalars().all()
     assert len(rows) == 1  # the buffer write itself was never in question
+
+
+async def test_wait_timeout_is_a_module_constant():
+    import app.services.memory as memory_module
+    from app.config import FEATURE_FLAGS_DEFAULTS
+
+    assert memory_module.BUFFER_WAIT_TIMEOUT_SECONDS == 10
+    assert "buffer_wait_timeout_seconds" not in FEATURE_FLAGS_DEFAULTS
 
 
 async def test_wait_process_times_out_deterministically_without_a_real_sleep(setup_database):
@@ -244,20 +253,18 @@ async def test_wait_process_times_out_deterministically_without_a_real_sleep(set
 
     memory_id = None
     try:
-        async with factory()() as session:
-            settled = await wait_process.drive(
-                session, hang_pipeline, buffer_ids=buffer_ids,
-                timeout_seconds=1.0, max_attempts=5,
-                poll_interval_seconds=0.1, clock=fake_clock, sleep=fake_sleep,
-            )
+        settled = await wait_process.drive(
+            factory(), hang_pipeline, buffer_ids=buffer_ids,
+            timeout_seconds=1.0, max_attempts=5,
+            poll_interval_seconds=0.1, clock=fake_clock, sleep=fake_sleep,
+        )
         assert settled == frozenset()
         assert virtual_time["t"] >= 1.0
 
         rows = await buffer_rows(buffer_ids)
         row = rows[buffer_ids[0]]
-        # Claimed (materialize ran before the hang point) but not settled —
-        # never lost, never double-counted: the next stale-claim sweep
-        # recovers it exactly like a crashed worker.
+        # Claimed (materialize ran before the hang point) and still being
+        # flushed: the deadline answered the caller, it did not stop the work.
         assert row["status"] == "claimed"
         memory_id = uuid.UUID(row["metadata"]["memory_id"])
 
@@ -268,7 +275,7 @@ async def test_wait_process_times_out_deterministically_without_a_real_sleep(set
         assert exists == 1, "materialize commits before the pipeline call, timeout or not"
     finally:
         release.set()
-        await asyncio.sleep(0)
+        await asyncio.gather(*wait_process.continuing_flushes(), return_exceptions=True)
         if memory_id is not None:
             async with factory()() as s:
                 await s.execute(
@@ -328,11 +335,10 @@ async def test_wait_process_never_reprocesses_a_row_a_concurrent_flush_already_c
             # holder has NOT committed: the row is locked right now, exactly
             # like a scheduled flush that has claimed but not yet replayed.
 
-            async with factory()() as wp_session:
-                settled = await wait_process.drive(
-                    wp_session, pipeline, buffer_ids=buffer_ids,
-                    timeout_seconds=0.3, max_attempts=5, poll_interval_seconds=0.02,
-                )
+            settled = await wait_process.drive(
+                factory(), pipeline, buffer_ids=buffer_ids,
+                timeout_seconds=0.3, max_attempts=5, poll_interval_seconds=0.02,
+            )
             # Raced away, not reprocessed: wait_process's own claim found
             # nothing (SKIP LOCKED), so its poll ran out the bound while the
             # row was still held elsewhere.
@@ -364,3 +370,136 @@ async def test_wait_process_never_reprocesses_a_row_a_concurrent_flush_already_c
                 )
                 await s.commit()
         await drop_buffer(buffer_ids)
+
+
+# ── The deadline answers the caller; it never stops the flush ──────────
+
+
+async def test_deadline_returns_ack_and_flush_finishes(client, auth_headers, session, monkeypatch):
+    import app.services.memory as memory_module
+    from app.main import app
+    from app.services.embedder_registry import child_table
+    from app.services.pipeline import ProcessingPipeline, _flag_cache_reset
+    from tests.test_buffer_flush import EXTRACTION
+    from tests.test_pipeline_phase1 import FakeEmbedder
+
+    gate = asyncio.Event()
+
+    class SlowExtractionLLM:
+        calls = 0
+
+        async def chat_completion(self, purpose, **kwargs):
+            SlowExtractionLLM.calls += 1
+            await gate.wait()
+            return json.dumps(EXTRACTION)
+
+    fingerprint = "wait-deadline|4"
+    _flag_cache_reset()
+    pipeline = ProcessingPipeline(FakeEmbedder([fingerprint]), as_session_factory(session))
+    pipeline.extraction.llm = SlowExtractionLLM()
+    monkeypatch.setattr(memory_module, "BUFFER_WAIT_TIMEOUT_SECONDS", 0.5)
+    app.state.pipeline = pipeline
+    try:
+        response = await client.post(
+            "/api/v1/memories?wait_process=true",
+            json={"content": "a slow inline flush"},
+            headers=auth_headers,
+        )
+    finally:
+        app.state.pipeline = None
+    assert response.status_code == 202
+    assert response.json()["status"] == "accepted"
+    memory_id = response.json()["id"]
+
+    gate.set()
+    await asyncio.gather(*wait_process.continuing_flushes())
+
+    row = (await session.execute(
+        select(MemoryBuffer).where(MemoryBuffer.metadata_["memory_id"].astext == memory_id)
+        .execution_options(populate_existing=True)
+    )).scalar_one()
+    assert row.status == "done"
+    assert row.attempts == 1
+    vectors = (await session.execute(
+        text(f"SELECT count(*) FROM {child_table('memory_embeddings', fingerprint)} "
+             "WHERE memory_id = CAST(:m AS uuid)"),
+        {"m": memory_id},
+    )).scalar_one()
+    assert vectors == 1
+    assert SlowExtractionLLM.calls == 1
+
+
+async def test_background_flush_is_tracked_and_cancelled_at_shutdown(setup_database):
+    import inspect
+
+    import app.main as main_module
+
+    buffer_ids = await seed_buffer(1)
+    pipeline = RecordingPipeline()
+    started = asyncio.Event()
+
+    async def _hangs(entries):
+        pipeline.batches.append(list(entries))
+        started.set()
+        await asyncio.Event().wait()
+
+    pipeline.process_batch = _hangs
+    opened: list[object] = []
+    real_factory = factory()
+
+    @asynccontextmanager
+    async def recording_factory():
+        async with real_factory() as s:
+            opened.append(s)
+            yield s
+
+    memory_id = None
+    try:
+        settled = await wait_process.drive(
+            recording_factory, pipeline, buffer_ids=buffer_ids,
+            timeout_seconds=0.2, max_attempts=5, poll_interval_seconds=0.02,
+        )
+        assert settled == frozenset()
+        await asyncio.wait_for(started.wait(), 5)
+        continuing = wait_process.continuing_flushes()
+        assert len(continuing) == 1
+        assert opened, "the flush runs on a session the factory opened for it"
+        row = (await buffer_rows(buffer_ids))[buffer_ids[0]]
+        assert row["status"] == "claimed"
+        memory_id = uuid.UUID(row["metadata"]["memory_id"])
+
+        await wait_process.drain_continuing_flushes(grace_seconds=0.1)
+
+        assert all(task.cancelled() for task in continuing)
+        assert wait_process.continuing_flushes() == frozenset()
+        row = (await buffer_rows(buffer_ids))[buffer_ids[0]]
+        assert row["status"] == "pending"
+        assert row["attempts"] == 0
+        assert row["claimed_by"] is None
+        assert "drain_continuing_flushes" in inspect.getsource(main_module.lifespan)
+    finally:
+        if memory_id is not None:
+            async with factory()() as s:
+                await s.execute(
+                    text("DELETE FROM memories WHERE id = CAST(:i AS uuid)"), {"i": str(memory_id)},
+                )
+                await s.commit()
+        await drop_buffer(buffer_ids)
+
+
+async def test_hard_failed_replay_answers_the_ack(client, auth_headers, session):
+    from app.main import app
+
+    pipeline = _pipeline(session, fail=True)
+    app.state.pipeline = pipeline
+    try:
+        response = await client.post(
+            "/api/v1/memories?wait_process=true",
+            json={"content": "a replay that hard-fails"},
+            headers=auth_headers,
+        )
+    finally:
+        app.state.pipeline = None
+    assert len(pipeline.batches) == 1
+    assert response.status_code == 202
+    assert response.json()["status"] == "accepted"

@@ -127,10 +127,10 @@ async def create_memory(
     """Tier-A buffered accept (doc 05 §2): durably buffers the capture and
     hands back its pre-minted memory id — a 202 accept by default. Pass
     ``wait_process=true`` to drive that row's flush inline instead, bounded by
-    ``buffer_wait_timeout_seconds`` (doc 05 §2.2, T1.14); on settling in time
-    this returns the fully processed memory (201) rather than the ack, and on
-    timeout it degrades to the plain 202 — the row is already durably
-    buffered either way."""
+    ``BUFFER_WAIT_TIMEOUT_SECONDS`` (10 s, doc 05 §2.2); when the replay
+    finishes in time this returns the fully processed memory (201) rather than
+    the ack, and otherwise (still running, or failed and requeued) it answers
+    the plain 202 — the row is already durably buffered either way."""
     project = body.project or "default"
     source = resolve_client_source(
         body.source, headers=request.headers, fallback=REST_FALLBACK_SOURCE,

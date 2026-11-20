@@ -703,6 +703,29 @@ async def _requeue_timed_out(
     )
 
 
+async def release_interrupted_claims(
+    session: AsyncSession, buffer_ids: list[uuid.UUID], *, worker: str, message: str,
+) -> None:
+    """Return the rows ``worker`` still holds to `pending`, refunding the attempt.
+
+    An interrupted flush (the process shutting down under it) says nothing
+    about the rows it held, so it must not walk them towards `error`.
+    """
+    if not buffer_ids:
+        return
+    await session.execute(
+        text(
+            "UPDATE memory_buffer SET status = 'pending', "
+            "attempts = GREATEST(attempts - 1, 0), "
+            "last_error = CAST(:message AS text), "
+            "claimed_at = NULL, claimed_by = NULL "
+            "WHERE id = ANY(CAST(:ids AS uuid[])) "
+            "AND status = 'claimed' AND claimed_by = CAST(:worker AS text)"
+        ),
+        {"ids": [str(i) for i in buffer_ids], "worker": worker, "message": message[:2000]},
+    )
+
+
 async def _fail_permanently(
     session: AsyncSession, rejected: list[tuple[uuid.UUID, str]],
 ) -> None:

@@ -665,6 +665,9 @@ async def lifespan(app: FastAPI):
 
     await job_registry.stop_all()
 
+    from app.services.wait_process import drain_continuing_flushes
+    await drain_continuing_flushes()
+
     # Write whatever MCP calls are still buffered; a log miss is tolerable,
     # but a clean shutdown has no reason to cause one.
     from app.services.mcp_call_log import drain as drain_mcp_call_log

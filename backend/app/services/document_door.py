@@ -73,7 +73,7 @@ __all__ = [
 # An order of magnitude above any plan or ledger. These exist to refuse a
 # pathological input, not to shape usage: an unbounded document drives a
 # synchronous parse and embed before the call returns, with no analogue of
-# `buffer_wait_timeout_seconds` to degrade against.
+# `wait_process`'s ten-second bound to degrade against.
 MAX_CONTENT_CHARS = 1_000_000
 MAX_BLOCKS = 5_000
 

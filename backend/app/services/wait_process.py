@@ -16,23 +16,80 @@ someone else; this polls for it to settle rather than reprocessing it itself.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 import uuid
 from typing import Awaitable, Callable
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.memory import MemoryBuffer
-from app.services.buffer_flush import flush_claimed
+from app.services.buffer_flush import (
+    ClaimedFlushResult,
+    flush_claimed,
+    release_interrupted_claims,
+    worker_identity,
+)
+from app.services.llm import spawn_with_llm
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_POLL_INTERVAL_SECONDS = 0.05
+SHUTDOWN_GRACE_SECONDS = 5.0
 
 _SETTLED_BUFFER_STATUSES = ("done", "error")
 
+# Flushes that outlived their request. In-process tracking is enough because
+# the app runs one worker (invariant 13).
+_continuing: set[asyncio.Task] = set()
+
+
+def continuing_flushes() -> frozenset[asyncio.Task]:
+    return frozenset(_continuing)
+
+
+async def drain_continuing_flushes(grace_seconds: float = SHUTDOWN_GRACE_SECONDS) -> None:
+    """Shutdown: let continuing flushes finish within the grace, cancel the rest.
+
+    A cancelled flush returns the rows it still holds to `pending` before it
+    ends, so awaiting it here is what makes that release land.
+    """
+    tasks = list(_continuing)
+    if not tasks:
+        return
+    _finished, unfinished = await asyncio.wait(tasks, timeout=grace_seconds)
+    for task in unfinished:
+        task.cancel()
+    await asyncio.gather(*unfinished, return_exceptions=True)
+
+
+async def _flush_on_own_session(
+    session_factory, pipeline, *, buffer_ids: list[uuid.UUID], worker: str, max_attempts: int,
+) -> ClaimedFlushResult:
+    try:
+        async with session_factory() as session:
+            return await flush_claimed(
+                session, pipeline, buffer_ids=buffer_ids, worker=worker,
+                max_attempts=max_attempts,
+            )
+    except asyncio.CancelledError:
+        async with session_factory() as session:
+            await release_interrupted_claims(
+                session, buffer_ids, worker=worker,
+                message="flush interrupted by shutdown",
+            )
+            await session.commit()
+        raise
+
+
+def _forget(task: asyncio.Task) -> None:
+    _continuing.discard(task)
+    if not task.cancelled() and task.exception() is not None:
+        logger.error("wait_process flush failed", exc_info=task.exception())
+
 
 async def drive(
-    session: AsyncSession,
+    session_factory,
     pipeline,
     *,
     buffer_ids: list[uuid.UUID],
@@ -45,60 +102,62 @@ async def drive(
 ) -> frozenset[uuid.UUID]:
     """Drive `buffer_ids` through their flush, bounded by `timeout_seconds`.
 
-    Returns the subset that settled (their `memories` row exists and any
-    pipeline replay has finished) before the deadline. Anything missing from
-    the return value is still safely buffered — durably written, possibly
-    mid-flush elsewhere — and the caller degrades to the plain 202 for it
-    rather than waiting past the bound (Ruling 2: never hang, never claim loss
-    of a capture that is merely still processing).
+    Returns the subset whose replay finished `done` before the deadline. A row
+    whose replay hard-failed and went back to `pending`, or landed in
+    `error`, is not in it, and neither is anything still in flight: the
+    caller answers the plain 202 ack for those (Ruling 2: never hang, never
+    claim loss of a capture that is merely still processing).
 
     Two phases, both bounded by the same deadline:
 
-    1. Our own claim attempt (`flush_claimed`, over `buffer_ids`). If it is
-       still running when the deadline passes, it is cancelled — the row(s)
-       it claimed stay `claimed`, exactly the state a crashed worker leaves,
-       so the next scheduled flush's stale-claim sweep recovers them rather
-       than this call reprocessing or losing anything.
+    1. Our own claim attempt (`flush_claimed`, over `buffer_ids`), run as a
+       tracked task on a session of its own from `session_factory`, holding
+       the pipeline's LLM lease. If it is still running at the deadline it is
+       left to finish, never cancelled: cancelling would strand its claim
+       until the stale sweep and throw away the model spend already made.
     2. A read-only poll for whatever we did NOT claim ourselves — raced away
        by a concurrent claimer (most likely the scheduled job, Ruling 3) —
        to catch it settling before the same deadline without this call ever
        running the pipeline on it a second time.
 
     `clock`/`sleep` are injectable so the timeout path is testable without a
-    real wall-clock wait (Ruling 2): a fake pair can advance a virtual clock
-    on every `sleep` call so the deadline is reached deterministically, with
-    no actual waiting.
+    real wall-clock wait (Ruling 2).
     """
     if not buffer_ids:
         return frozenset()
 
     deadline = clock() + timeout_seconds
-    settled: set[uuid.UUID] = set()
-
-    task = asyncio.ensure_future(
-        flush_claimed(session, pipeline, buffer_ids=buffer_ids, worker=worker, max_attempts=max_attempts)
+    worker = worker or f"{worker_identity()}:wait:{uuid.uuid4().hex[:8]}"
+    task = spawn_with_llm(
+        getattr(pipeline, "llm", None),
+        _flush_on_own_session(
+            session_factory, pipeline, buffer_ids=buffer_ids, worker=worker,
+            max_attempts=max_attempts,
+        ),
     )
+    _continuing.add(task)
+    task.add_done_callback(_forget)
+
     while not task.done() and clock() < deadline:
         await sleep(poll_interval_seconds)
+    if not task.done():
+        return frozenset()
 
-    if task.done():
-        settled |= set(task.result().settled)
-    else:
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+    result = task.result()
+    done = set(result.done)
+    pending = set(buffer_ids) - result.settled
+    if not pending:
+        return frozenset(done)
 
-    pending = set(buffer_ids) - settled
-    while pending and clock() < deadline:
-        await sleep(poll_interval_seconds)
-        rows = (await session.execute(
-            select(MemoryBuffer.id, MemoryBuffer.status).where(MemoryBuffer.id.in_(pending))
-        )).all()
-        for buffer_id, status in rows:
-            if status in _SETTLED_BUFFER_STATUSES:
-                settled.add(buffer_id)
-        pending = set(buffer_ids) - settled
-
-    return frozenset(settled)
+    async with session_factory() as session:
+        while pending and clock() < deadline:
+            await sleep(poll_interval_seconds)
+            rows = (await session.execute(
+                select(MemoryBuffer.id, MemoryBuffer.status).where(MemoryBuffer.id.in_(pending))
+            )).all()
+            for buffer_id, status in rows:
+                if status in _SETTLED_BUFFER_STATUSES:
+                    pending.discard(buffer_id)
+                    if status == "done":
+                        done.add(buffer_id)
+    return frozenset(done)

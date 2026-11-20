@@ -367,8 +367,11 @@ the **pre-minted memory id**, carried in the buffer row's `metadata_`; the
 buffer row's own id is a separate tracking handle. Never conflate the two.
 `wait_process=true` drives that row's flush inline through the same `FOR
 UPDATE SKIP LOCKED` claim as the scheduled job and returns the processed
-memory (201), degrading to the plain ack after
-`buffer_wait_timeout_seconds`. Every capture runs through `capture_lint` (a
+memory (201) only when that row's replay finished `done` within
+`BUFFER_WAIT_TIMEOUT_SECONDS` (10 s, `app/services/memory.py`); otherwise it
+answers the plain ack, and a flush still running at the deadline finishes as a
+tracked background task on its own session (`wait_process.drive`), drained at
+shutdown with any row it still holds returned to `pending`. Every capture runs through `capture_lint` (a
 pure function: named signals, two or more of them or over 1,500 characters
 flags). **A flag never refuses**: the ack carries `warnings`, the 201 path
 answers `CapturedMemoryResponse` (`MemoryResponse` plus `warnings`, served

@@ -40,6 +40,9 @@ from app.utils.scope_labels import scope_labels
 
 logger = logging.getLogger(__name__)
 
+# How long `wait_process` waits for its flush before answering the plain ack.
+BUFFER_WAIT_TIMEOUT_SECONDS = 10
+
 # `reason` has no lineage-labelling surface yet, so its default scope is the
 # live view only; a caller asking for superseded rows must say so explicitly.
 REASON_DEFAULT_STATUSES = ("active",)
@@ -50,7 +53,7 @@ class CaptureResult:
     """One capture's outcome behind the buffered contract (doc 05 §2/§2.2).
 
     `memory` is populated only when `wait_process` was set on the call AND
-    the row settled before `buffer_wait_timeout_seconds` expired; the default
+    its replay finished `done` within `BUFFER_WAIT_TIMEOUT_SECONDS`; the default
     path, and a timed-out `wait_process`, leave it `None` and the caller reads
     `ack` — the plain buffered accept, exactly as if `wait_process` had never
     been set (Ruling 2: a timeout must never look like anything worse than
@@ -170,7 +173,7 @@ class MemoryService:
         drives the just-written row(s) through the buffer's own claim and
         replay (``buffer_flush.flush_claimed`` / ``wait_process.drive``) —
         the exact machinery the scheduled job uses, bounded by
-        ``buffer_wait_timeout_seconds`` — rather than re-running the pipeline
+        ``BUFFER_WAIT_TIMEOUT_SECONDS`` — rather than re-running the pipeline
         through a second path. On timeout, or by default, the caller gets
         back the plain buffered ack; nothing about the buffer write itself
         changes either way.
@@ -313,16 +316,19 @@ class MemoryService:
             )
 
     async def _drive_wait_process(self, buffer_ids: list[UUID]) -> frozenset[UUID]:
-        flags = await get_feature_flags_dict(self.session)
-        timeout_seconds = float(flags.get("buffer_wait_timeout_seconds", 10))
         settings = await buffer_flush.buffer_settings(
             buffer_flush.as_session_factory(self.session)
         )
+        # The pipeline's own factory, not this request's session: a flush that
+        # outlives the deadline keeps running after the request has closed.
+        # With no pipeline configured the flush can only claim and requeue,
+        # which finishes inside the request, so the request's session serves.
+        session_factory = getattr(self.pipeline, "session_factory", None)
         return await _drive_wait_process_flush(
-            self.session,
+            session_factory or buffer_flush.as_session_factory(self.session),
             self.pipeline,
             buffer_ids=buffer_ids,
-            timeout_seconds=timeout_seconds,
+            timeout_seconds=BUFFER_WAIT_TIMEOUT_SECONDS,
             max_attempts=settings["buffer_max_attempts"],
         )
 
