@@ -106,7 +106,7 @@
 | 99 | B5-4: any content change re-embeds every block inline, and every unchanged re-push spends a real embed call | docs/dforge/plans/2026-11-20-audit-remaining.md | A28 (Task 33) | done | 6877a10 |
 | 100 | B5-5: _PLACE rewrites every block row of the tree on every verb | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 36 contracts | doing | - |
 | 101 | B5-6: blocks.search_vector and ix_blocks_search_vector have no reader (owner ruling 2026-11-20: drop) | docs/dforge/plans/2026-11-20-audit-remaining.md | A46 (Task 48) | doing | - |
-| 102 | B5-7: document_revisions stores a full content copy on every hash-changing put, with no prune | docs/dforge/plans/2026-11-20-audit-remaining.md | A27 (Task 35) | doing | - |
+| 102 | B5-7: document_revisions stores a full content copy on every hash-changing put, with no prune | docs/dforge/plans/2026-11-20-audit-remaining.md | A27 (Task 35) | done | d11e188 |
 | 103 | B5-8: substring(content ...) runs once per joined block row over a TOASTed content | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 36 contracts | doing | - |
 | 104 | B5-9: markdown-it parses up to 1M characters on the event loop, and MAX_BLOCKS is enforced only after every block row is inserted | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 36 contracts | doing | - |
 | 105 | B5-10: rename_documents takes no actor/api_key_id, so subtree renames journal with no attribution | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 37 contracts | doing | - |
