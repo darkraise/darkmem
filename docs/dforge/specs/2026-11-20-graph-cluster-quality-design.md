@@ -107,8 +107,9 @@ clusters again at `FALLBACK_RESOLUTION = 1.0` and keeps that result only
 when it labels strictly more memories; otherwise the 2.0 result stands.
 `CLUSTER_SEED = 42` and the three constants sit beside `CLUSTER_K`.
 Renumbering, the `min_cluster_size` drop and the no-edges branch are
-unchanged. No other caller of igraph community detection exists in
-`backend/app`.
+unchanged. The other community detection in `backend/app` is
+`app/utils/leiden.py` (leidenalg, for code-graph communities and topics),
+which this change leaves alone; its docstring names this separate call.
 
 ### Naming (`backend/app/utils/cluster_names.py`, new, pure)
 

@@ -12,6 +12,12 @@ rather than using `rank_fusion.py`'s, and the two constants sat free to drift
 until a build-failing scan closed it. Two independent
 `find_partition(..., seed=0, timeout=60)` call sites are that defect in advance.
 
+The unified graph view's display clustering (`app/utils/graph_knn.py`) is a
+separate call on purpose: it runs python-igraph's own weighted-modularity
+Leiden synchronously inside the kNN executor, where this async
+`RBConfigurationVertexPartition` helper does not fit, and it is bounded by the
+view's node cap rather than a timeout.
+
 **The timeout bounds the await, not the work.** `asyncio.wait_for` around
 `loop.run_in_executor` does not cancel the running thread: `leidenalg` keeps
 burning CPU to completion after the await returns. The real bound on runaway
