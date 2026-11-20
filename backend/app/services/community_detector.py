@@ -92,6 +92,7 @@ class CommunityDetector:
                 WHERE repo_id = :repo_id
                   AND kind = 'symbol'
                   AND properties->>'kind' IN ('function', 'method', 'class', 'interface', 'struct', 'trait')
+                ORDER BY key
             """),
             {"repo_id": self.repo_id},
         )
@@ -121,6 +122,7 @@ class CommunityDetector:
                       AND src.properties->>'kind' IN ('function', 'method', 'class', 'interface', 'struct', 'trait')
                       AND tgt.kind = 'symbol'
                       AND tgt.properties->>'kind' IN ('function', 'method', 'class', 'interface', 'struct', 'trait')
+                    ORDER BY e.source_key, e.target_key
                 """),
                 {"repo_id": self.repo_id},
             )
@@ -137,6 +139,7 @@ class CommunityDetector:
                       AND src.properties->>'kind' IN ('function', 'method', 'class', 'interface', 'struct', 'trait')
                       AND tgt.kind = 'symbol'
                       AND tgt.properties->>'kind' IN ('function', 'method', 'class', 'interface', 'struct', 'trait')
+                    ORDER BY e.source_key, e.target_key
                 """),
                 {"repo_id": self.repo_id},
             )
@@ -174,10 +177,9 @@ class CommunityDetector:
             resolution=resolution,
             n_iterations=max_iterations,
         )
-        # Before the deletes below, not after: a missing clustering library
-        # means nothing was computed, and deleting the previous run's
-        # communities to write nothing in their place is strictly worse than
-        # leaving them.
+        # A missing clustering library means nothing was computed, and
+        # replacing the previous run's communities with nothing in their place
+        # is strictly worse than leaving them.
         if result.outcome == "unavailable":
             return 0
         if result.outcome == "timeout":
@@ -188,103 +190,126 @@ class CommunityDetector:
             )
         membership = result.membership
 
-        await self.session.execute(
-            text("DELETE FROM code_edges WHERE repo_id = :repo_id AND edge_type = 'member_of'"),
-            {"repo_id": self.repo_id},
-        )
-        await self.session.execute(
-            text("DELETE FROM code_graph_nodes WHERE repo_id = :repo_id AND kind = 'community'"),
-            {"repo_id": self.repo_id},
-        )
-
         if membership is None:
-            return await self._store_single_community(node_list)
+            groups = [list(range(len(node_list)))]
+            keys = [compose_key("community", "all")]
+            labels = {0: keys[0]}
+        else:
+            by_comm: dict[int, list[int]] = {}
+            for node_idx, comm_id in enumerate(membership):
+                by_comm.setdefault(comm_id, []).append(node_idx)
+            groups = [members for members in by_comm.values() if len(members) >= 2]
+            # Named after the smallest member key: Leiden's community ids are
+            # not stable across runs, and each symbol belongs to one community,
+            # so that key is unique and moves only when the membership does.
+            keys = [
+                compose_key("community", "community:" + min(node_list[i]["id"] for i in members))
+                for members in groups
+            ]
+            # Only the communities stored here compete for a label, so the
+            # labels written match the ones the code graph route derives.
+            labels = label_communities({
+                n: [node_list[i]["file_path"] for i in members]
+                for n, members in enumerate(groups)
+            })
 
-        communities: dict[int, list[int]] = {}
-        for node_idx, comm_id in enumerate(membership):
-            communities.setdefault(comm_id, []).append(node_idx)
+        desired_nodes = {
+            key: {
+                "key": key,
+                "label": labels[n],
+                "properties": {"size": len(members)},
+            }
+            for n, (key, members) in enumerate(zip(keys, groups))
+        }
+        desired_members = {
+            (node_list[i]["id"], key)
+            for key, members in zip(keys, groups)
+            for i in members
+        }
+        await self._write_layer(desired_nodes, desired_members)
+        logger.info(
+            "Detected %d communities with %d members for repo %s",
+            len(desired_nodes), len(desired_members), self.repo_id,
+        )
+        return len(desired_members)
 
-        # Only the communities stored below compete for a label, so the
-        # labels written here match the ones the code graph route derives.
-        comm_labels = label_communities({
-            comm_id: [node_list[idx]["file_path"] for idx in members]
-            for comm_id, members in communities.items()
-            if len(members) >= 2
-        })
+    async def _write_layer(
+        self, desired_nodes: dict[str, dict], desired_members: set[tuple[str, str]],
+    ) -> None:
+        """Write only what differs from the stored layer, so an unchanged
+        partition costs two reads and no row churn."""
+        stored_members = {
+            (row[0], row[1])
+            for row in (await self.session.execute(
+                text("""
+                    SELECT source_key, target_key FROM code_edges
+                    WHERE repo_id = :repo_id AND edge_type = 'member_of'
+                """),
+                {"repo_id": self.repo_id},
+            )).all()
+        }
+        stored_nodes = {
+            row[0]: (row[1], row[2])
+            for row in (await self.session.execute(
+                text("""
+                    SELECT key, label, properties FROM code_graph_nodes
+                    WHERE repo_id = :repo_id AND kind = 'community'
+                """),
+                {"repo_id": self.repo_id},
+            )).all()
+        }
 
-        total_members = 0
-        for comm_id, members in communities.items():
-            if len(members) < 2:
-                continue
-
-            label = comm_labels.get(comm_id, f"community_{comm_id}")
-            # Key must be unique per Leiden community; the directory-derived label
-            # is not (two communities can share a dominant directory), and an
-            # ON CONFLICT DO UPDATE on a colliding key silently merges them.
-            comm_key = compose_key("community", f"{label}_{comm_id}")
-            comm_props = json.dumps({"community_id": comm_id, "size": len(members)})
-
+        gone_members = stored_members - desired_members
+        if gone_members:
+            await self.session.execute(
+                text("""
+                    DELETE FROM code_edges e
+                    USING jsonb_to_recordset(CAST(:rows AS jsonb)) AS d(source_key text, target_key text)
+                    WHERE e.repo_id = :repo_id AND e.edge_type = 'member_of'
+                      AND e.source_kind = 'symbol' AND e.source_key = d.source_key
+                      AND e.target_kind = 'community' AND e.target_key = d.target_key
+                """),
+                {"repo_id": self.repo_id, "rows": json.dumps([
+                    {"source_key": src, "target_key": tgt} for src, tgt in sorted(gone_members)
+                ])},
+            )
+        gone_nodes = sorted(set(stored_nodes) - set(desired_nodes))
+        if gone_nodes:
+            await self.session.execute(
+                text("""
+                    DELETE FROM code_graph_nodes
+                    WHERE repo_id = :repo_id AND kind = 'community'
+                      AND key = ANY(CAST(:keys AS text[]))
+                """),
+                {"repo_id": self.repo_id, "keys": gone_nodes},
+            )
+        changed_nodes = [
+            node for key, node in sorted(desired_nodes.items())
+            if stored_nodes.get(key) != (node["label"], node["properties"])
+        ]
+        if changed_nodes:
             await self.session.execute(
                 text("""
                     INSERT INTO code_graph_nodes (repo_id, kind, key, label, properties)
-                    VALUES (:repo_id, 'community', :key, :label, CAST(:props AS jsonb))
+                    SELECT :repo_id, 'community', n.key, n.label, n.properties
+                    FROM jsonb_to_recordset(CAST(:rows AS jsonb))
+                        AS n(key text, label text, properties jsonb)
                     ON CONFLICT (repo_id, kind, key) DO UPDATE
-                        SET properties = EXCLUDED.properties
+                        SET label = EXCLUDED.label, properties = EXCLUDED.properties
                 """),
-                {
-                    "repo_id": self.repo_id,
-                    "key": comm_key,
-                    "label": label,
-                    "props": comm_props,
-                },
+                {"repo_id": self.repo_id, "rows": json.dumps(changed_nodes)},
             )
-
-            member_rows = json.dumps([
-                {"member_key": node_list[idx]["id"]}
-                for idx in members
-            ])
+        new_members = desired_members - stored_members
+        if new_members:
             await self.session.execute(
                 text("""
                     INSERT INTO code_edges (repo_id, source_kind, source_key, target_kind, target_key, edge_type, properties)
-                    SELECT :repo_id, 'symbol', d.member_key, 'community', :comm_key, 'member_of', '{}'
-                    FROM jsonb_to_recordset(CAST(:rows AS jsonb)) AS d(member_key text)
+                    SELECT :repo_id, 'symbol', d.source_key, 'community', d.target_key, 'member_of', '{}'
+                    FROM jsonb_to_recordset(CAST(:rows AS jsonb)) AS d(source_key text, target_key text)
                     ON CONFLICT (repo_id, source_kind, source_key, target_kind, target_key, edge_type) DO NOTHING
                 """),
-                {"repo_id": self.repo_id, "comm_key": comm_key, "rows": member_rows},
+                {"repo_id": self.repo_id, "rows": json.dumps([
+                    {"source_key": src, "target_key": tgt} for src, tgt in sorted(new_members)
+                ])},
             )
-
-            total_members += len(members)
-
         await self.session.flush()
-        logger.info(
-            "Detected %d communities with %d members for repo %s",
-            len(communities), total_members, self.repo_id,
-        )
-        return total_members
-
-    async def _store_single_community(self, node_list: list[dict]) -> int:
-        if not node_list:
-            return 0
-        comm_key = compose_key("community", "all")
-        comm_props = json.dumps({"community_id": 0, "size": len(node_list)})
-        await self.session.execute(
-            text("""
-                INSERT INTO code_graph_nodes (repo_id, kind, key, label, properties)
-                VALUES (:repo_id, 'community', :key, :key, CAST(:props AS jsonb))
-                ON CONFLICT (repo_id, kind, key) DO UPDATE
-                    SET properties = EXCLUDED.properties
-            """),
-            {"repo_id": self.repo_id, "key": comm_key, "props": comm_props},
-        )
-        member_rows = json.dumps([{"member_key": n["id"]} for n in node_list])
-        await self.session.execute(
-            text("""
-                INSERT INTO code_edges (repo_id, source_kind, source_key, target_kind, target_key, edge_type, properties)
-                SELECT :repo_id, 'symbol', d.member_key, 'community', :comm_key, 'member_of', '{}'
-                FROM jsonb_to_recordset(CAST(:rows AS jsonb)) AS d(member_key text)
-                ON CONFLICT (repo_id, source_kind, source_key, target_kind, target_key, edge_type) DO NOTHING
-            """),
-            {"repo_id": self.repo_id, "comm_key": comm_key, "rows": member_rows},
-        )
-        await self.session.flush()
-        return len(node_list)

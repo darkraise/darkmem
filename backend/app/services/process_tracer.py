@@ -42,24 +42,17 @@ ENTRY_POINT_NAME_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 
-FRAMEWORK_DECORATOR_PATTERNS = re.compile(
-    r"@(app|router|blueprint|click|celery|task|cron|schedule|on_event|asynccontextmanager|contextmanager)",
-    re.IGNORECASE,
-)
-
 
 def _compute_entry_score(
     callers: int,
     callees: int,
     func_name: str,
     is_exported: bool,
-    decorator_text: str | None,
 ) -> float:
     export_multiplier = 1.3 if is_exported else 1.0
     name_multiplier = 1.5 if ENTRY_POINT_NAME_PATTERNS.match(func_name) else 1.0
-    framework_multiplier = 1.4 if decorator_text and FRAMEWORK_DECORATOR_PATTERNS.search(decorator_text) else 1.0
     ratio = min(callees / (callers + 1), 10.0)
-    return ratio * export_multiplier * name_multiplier * framework_multiplier
+    return ratio * export_multiplier * name_multiplier
 
 
 class ProcessTracer:
@@ -135,8 +128,7 @@ class ProcessTracer:
             text("""
                 SELECT n.key AS name, n.properties->>'file_path' AS file_path,
                        n.properties->>'kind' AS sym_kind,
-                       n.properties->>'visibility' AS visibility,
-                       n.properties->>'signature' AS sig
+                       n.properties->>'visibility' AS visibility
                 FROM code_graph_nodes n
                 WHERE n.repo_id = :repo_id
                   AND n.kind = 'symbol'
@@ -163,7 +155,7 @@ class ProcessTracer:
 
             is_exported = sym.get("visibility") not in ("private", "protected")
             func_name = decompose_key("symbol", sym_key)[0]
-            score = _compute_entry_score(callers, callees, func_name, is_exported, sym.get("sig"))
+            score = _compute_entry_score(callers, callees, func_name, is_exported)
 
             if callers == 0:
                 scored_entries.append((score, sym_key, file_path))

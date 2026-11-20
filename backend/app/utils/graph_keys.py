@@ -4,16 +4,18 @@ Format by kind:
   symbol  → "name::file_path" (top-level) or "name::file_path::owner" (a symbol
             nested under an owner — the owner segment disambiguates same-named
             methods of different classes in one file)
+  property → "name::file_path::owner", owned like a method, so two classes'
+            same-named fields are two nodes and each leaves with its own file
   file    → "file_path"
   module  → "name"
-  property, route, tool, community, process → "name"
+  route, tool, community, process → "name"
 
 Invariant relied on by SQL (heritage split_part, dependent-file lookup): the name
 is always segment 1 and the file path always segment 2, so the optional owner
 segment is appended LAST and never shifts those two.
 """
 
-_COMPOSITE_KINDS = frozenset({"symbol"})
+_COMPOSITE_KINDS = frozenset({"symbol", "property"})
 
 
 def compose_key(

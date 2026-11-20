@@ -97,6 +97,10 @@ CROSS_FILE_HARD_CAP = 2000
 # Every edge touching a file: its own file node's edges and every edge whose
 # symbol key names it. The split_part arms use ix_code_edges_source_file and
 # ix_code_edges_target_file.
+#
+# The community and process layers are left out: phases 09 and 10 own them
+# and rewrite them whenever the call graph moved, and a run that skips those
+# phases must not lose a rewritten file's memberships.
 _EDGE_DELETE_SQL = """
     DELETE FROM code_edges
     WHERE repo_id = :repo_id
@@ -106,6 +110,7 @@ _EDGE_DELETE_SQL = """
           OR split_part(source_key, '::', 2) = ANY(CAST(:files AS text[]))
           OR split_part(target_key, '::', 2) = ANY(CAST(:files AS text[]))
       )
+      AND edge_type NOT IN ('member_of', 'step_in_process', 'entry_point_of')
 """
 
 _NODE_DELETE_SQL = """
@@ -113,6 +118,23 @@ _NODE_DELETE_SQL = """
     WHERE repo_id = :repo_id
       AND (properties->>'file_path' = ANY(CAST(:files AS text[]))
            OR split_part(key, '::', 2) = ANY(CAST(:files AS text[])))
+      AND kind NOT IN ('community', 'process')
+"""
+
+# What phases 09 and 10 read, as an order-free digest. A call edge below the
+# confidence phase 11 prunes is left out: it exists only between phases 06
+# and 11 of a run, so counting it would make every run look changed.
+_CALL_GRAPH_DIGEST_SQL = """
+    SELECT count(*) AS edges,
+           COALESCE(sum(hashtextextended(
+               edge_type || '|' || source_key || '|' || target_key || '|'
+               || COALESCE(properties->>'confidence', ''), 0)), 0) AS digest
+    FROM code_edges
+    WHERE repo_id = :repo_id
+      AND edge_type IN ('calls', 'extends', 'implements', 'imports',
+                        'handles_route', 'handles_tool')
+      AND NOT (edge_type = 'calls'
+               AND COALESCE((properties->>'confidence')::float, 1.0) < 0.3)
 """
 
 # Route/tool nodes have bare keys and no file_path property, so the node
@@ -217,6 +239,11 @@ class CodePipeline:
         # to bypass its unchanged-file skip so a `full` reindex actually
         # rebuilds everything instead of silently no-op'ing on matching hashes.
         self._force_full: bool = False
+
+        # The call graph's digest before this run touched it; None means
+        # unknown, and phases 09 and 10 then run.
+        self._call_graph_before: tuple | None = None
+        self._call_graph_moved: bool = True
 
         # Re-trace overflow this run deferred, and the debt batch it claimed.
         # The batch is only removed from the queue once the run succeeds.
@@ -405,6 +432,7 @@ class CodePipeline:
         await self.session.commit()
 
         try:
+            self._call_graph_before = await self._call_graph_digest()
             await self.phase_01_file_discovery(old_sha, new_sha, full, forced_files)
 
             if self._union_buckets is not None:
@@ -1420,12 +1448,12 @@ class CodePipeline:
         """Load every symbol and derive the call-resolution structures once.
 
         Returns ``(symbol_table, symbol_by_id, id_to_name, enclosing_index,
-        type_bindings)`` and caches them on the instance. Phases 06 and 08 both
+        return_types)`` and caches them on the instance. Phases 06 and 08 both
         consume this and each previously ran the identical ``CodeSymbol`` SELECT
         and rebuilt everything. ``symbol_by_id`` holds a plain ``_SymbolData``
         snapshot rather than the ORM row so it stays valid across the commits
-        between the two phases. ``type_bindings`` (name -> return type) is used
-        only by phase 08 to seed its type envs.
+        between the two phases. ``return_types`` (file -> top-level name ->
+        return type) is used only by phase 08 to seed its type envs.
         """
         if self._symbol_index is not None:
             return self._symbol_index
@@ -1440,7 +1468,7 @@ class CodePipeline:
 
         symbol_table = SymbolTable()
         symbol_by_id: dict[str, tuple] = {}
-        type_bindings: dict[str, str] = {}
+        return_types: dict[str, dict[str, str]] = {}
         id_to_name: dict[str, str] = {str(sym.id): sym.name for sym, _fp in rows}
 
         for sym, fp in rows:
@@ -1462,8 +1490,8 @@ class CodePipeline:
                 return_type=return_type,
             ))
             symbol_by_id[str(sym.id)] = (_SymbolData(sym.name, parent_id), fp)
-            if return_type:
-                type_bindings[sym.name] = return_type
+            if return_type and not parent_id:
+                return_types.setdefault(fp, {})[sym.name] = return_type
 
         # (line_start, line_end, name, owner) — owner disambiguates the caller's
         # key so a call edge's source matches the owner-qualified method node.
@@ -1478,7 +1506,7 @@ class CodePipeline:
             enclosing_index[fp].sort(key=lambda x: x[0], reverse=True)
 
         self._symbol_index = (
-            symbol_table, symbol_by_id, id_to_name, enclosing_index, type_bindings,
+            symbol_table, symbol_by_id, id_to_name, enclosing_index, return_types,
         )
         return self._symbol_index
 
@@ -1728,14 +1756,16 @@ class CodePipeline:
 
         from app.services.call_resolver import CallResolver
 
-        symbol_table, symbol_by_id, id_to_name, enclosing_index, type_bindings = (
+        symbol_table, symbol_by_id, id_to_name, enclosing_index, return_types = (
             await self._load_symbol_index()
         )
 
         type_envs: dict[str, TypeEnvironment] = {}
         for fp in self._all_file_paths:
             env = TypeEnvironment(fp)
-            for name, type_name in type_bindings.items():
+            for name, type_name in _file_type_seed(
+                fp, return_types, self._named_import_map.get(fp, {}),
+            ).items():
                 env.add(name, type_name, "seeded", "file")
             type_envs[fp] = env
 
@@ -1810,8 +1840,23 @@ class CodePipeline:
         logger.info("Phase 08 added %d new cross-file call edges", added)
         self._phase_done("08_cross_file_binding", t0)
 
+    async def _call_graph_digest(self) -> tuple:
+        row = (await self.session.execute(
+            text(_CALL_GRAPH_DIGEST_SQL), {"repo_id": self._repo_id_str},
+        )).one()
+        return (row.edges, row.digest)
+
     async def phase_09_community_detection(self) -> None:
         t0 = await self._phase_log("09_community_detection")
+        self._call_graph_moved = (
+            self._force_full
+            or self._call_graph_before is None
+            or await self._call_graph_digest() != self._call_graph_before
+        )
+        if not self._call_graph_moved:
+            logger.info("Phases 09-10 skipped: the call graph did not change")
+            self._phase_done("09_community_detection", t0)
+            return
         detector = CommunityDetector(self.session, self._repo_id_str)
         self._stats["communities"] = await detector.detect()
         await self.session.commit()
@@ -1819,6 +1864,9 @@ class CodePipeline:
 
     async def phase_10_process_detection(self) -> None:
         t0 = await self._phase_log("10_process_detection")
+        if not self._call_graph_moved:
+            self._phase_done("10_process_detection", t0)
+            return
         tracer = ProcessTracer(self.session, self._repo_id_str)
         self._stats["processes"] = await tracer.trace()
         await self.session.commit()
@@ -2301,6 +2349,22 @@ _EMPTY_CONTENT_HASH = hashlib.sha256(b"").hexdigest()
 _FINGERPRINT_PROBE_TEXT = "darkmem code_chunk_embeddings active-fingerprint probe"
 
 
+def _file_type_seed(
+    file_path: str,
+    return_types: dict[str, dict[str, str]],
+    named_imports: dict[str, tuple[str, str]],
+) -> dict[str, str]:
+    """The return types a file can name: the functions it defines and the
+    names it imports, under the name the file uses. A name the file neither
+    defines nor imports is a local that only shares a function's name."""
+    seed = dict(return_types.get(file_path, {}))
+    for local_name, (source_file, exported_name) in named_imports.items():
+        type_name = return_types.get(source_file, {}).get(exported_name)
+        if type_name:
+            seed[local_name] = type_name
+    return seed
+
+
 def _cross_file_benefit(total_calls: int, resolved_calls: int) -> float:
     """Estimated benefit (fraction of unresolved calls) of running phase 08.
 
@@ -2530,8 +2594,8 @@ async def _store_graph(
         edge("symbol", child_key, "symbol", parent_key, h.relation)
 
     for prop in properties or []:
-        prop_key = compose_key("property", prop.name)
-        keep_node("property", prop_key, prop_key, {
+        prop_key = compose_key("property", prop.name, file_path, owner=prop.owner_name)
+        keep_node("property", prop_key, prop.name, {
             "type_annotation": prop.type_annotation,
             "line": prop.line,
             "visibility": prop.visibility,
