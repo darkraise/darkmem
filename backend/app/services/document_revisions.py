@@ -1,10 +1,11 @@
-"""A document's revisions, newest first: every content a filing wrote.
+"""A document's revisions, newest first: every content a filing kept.
 
-The writer is `document_ingest`'s filing body; this module only reads, and
-both doors call it (`GET /api/v1/documents/{id}/revisions` and its
-`/{revision_id}` read, and the MCP `document_revisions` tool). A page carries
-no content because one revision can be a megabyte; a caller fetches the
-revision it wants by id and computes any diff itself. Neither function
+The writer is `document_ingest`'s filing body, which also prunes by the
+retention constants below; this module only reads, and both doors call it
+(`GET /api/v1/documents/{id}/revisions` and its `/{revision_id}` read, and
+the MCP `document_revisions` tool). A page carries no content because one
+revision can be a megabyte; a caller fetches the revision it wants by id and
+computes any diff itself. Neither function
 confirms the document exists: the doors resolve it first, through
 `document_door.resolve_document_target`.
 """
@@ -16,10 +17,29 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-__all__ = ["DEFAULT_LIMIT", "MAX_LIMIT", "get_revision", "list_revisions"]
+__all__ = [
+    "DEFAULT_LIMIT",
+    "MAX_LIMIT",
+    "REVISION_KEEP_DAYS",
+    "REVISION_KEEP_NEWEST",
+    "RevisionNotFound",
+    "get_revision",
+    "list_revisions",
+]
 
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 200
+
+# A filing that writes a revision deletes the earlier ones that are both past
+# the newest REVISION_KEEP_NEWEST and older than REVISION_KEEP_DAYS days.
+REVISION_KEEP_NEWEST = 50
+REVISION_KEEP_DAYS = 90
+
+
+class RevisionNotFound(LookupError):
+    """A `before` cursor naming no revision of the document, including one
+    the retention prune has deleted."""
+
 
 _CURSOR = text(
     "SELECT created_at, id FROM document_revisions "
@@ -72,8 +92,9 @@ async def list_revisions(
     """One page of revisions without content, newest first.
 
     `before` is the last revision of the previous page (its `next_before`).
-    Raises `ValueError` for a limit outside 1-`MAX_LIMIT`, or for a `before`
-    that names no revision of this document.
+    Raises `ValueError` for a limit outside 1-`MAX_LIMIT` or a malformed
+    `before`, and `RevisionNotFound` for a `before` that names no revision of
+    this document.
     """
     if not 1 <= limit <= MAX_LIMIT:
         raise ValueError(f"limit must be between 1 and {MAX_LIMIT}, not {limit}")
@@ -84,7 +105,7 @@ async def list_revisions(
             {"id": str(_uuid(before, "before")), "document_id": str(document_id)},
         )).first()
         if cursor is None:
-            raise ValueError(f"before names no revision of this document: {before}")
+            raise RevisionNotFound(f"before names no revision of this document: {before}")
         before_at, before_id = cursor.created_at, str(cursor.id)
     rows = (await session.execute(
         _PAGE,

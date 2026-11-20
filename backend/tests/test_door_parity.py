@@ -620,7 +620,9 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "the tool also takes (project, uri); REST serves the page and the "
             "single revision at two paths where the tool dispatches on "
             "revision_id; a revision the document does not own is a 404 on the "
-            "route and null from the tool; and the route refuses a limit above "
+            "route and null from the tool, and a before cursor naming none "
+            "(a pruned one included) a 404 on the route and an unresolved "
+            "envelope from the tool; and the route refuses a limit above "
             "200 with a 422 while the tool clamps it."
         ),
     ),

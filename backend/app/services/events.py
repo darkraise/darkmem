@@ -182,6 +182,9 @@ EVENT_TYPES: list[str] = [
     # bulk delete is unrecoverable and, over MCP, the event's `api_key_id` is
     # the only record of who ran it. Carries ids and the prefix, no content.
     "documents_deleted",
+    # A filing's revision retention: one row per prune, journalled before the
+    # delete and carrying only the count -- a revision is a whole content.
+    "document_revisions_pruned",
     # The page tree's lifecycle. `page_updated` is a title or property edit;
     # a block edit journals `blocks_edited` like a document's does. Deletion
     # is a `deleted_at` stamp, so `page_deleted` and `page_purged` are

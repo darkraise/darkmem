@@ -155,6 +155,23 @@ _LATEST_REVISION_HASH = text(
     "ORDER BY created_at DESC, id DESC LIMIT 1"
 )
 
+_PRUNABLE_REVISIONS = text(
+    """
+    SELECT CAST(id AS text) FROM (
+        SELECT id, created_at,
+               row_number() OVER (ORDER BY created_at DESC, id DESC) AS position
+        FROM document_revisions
+        WHERE document_id = CAST(:document_id AS uuid)
+    ) ranked
+    WHERE position > CAST(:keep_newest AS integer)
+      AND created_at < now() - make_interval(days => CAST(:keep_days AS integer))
+    """
+)
+
+_DELETE_REVISIONS = text(
+    "DELETE FROM document_revisions WHERE id = ANY(CAST(:ids AS uuid[]))"
+)
+
 # The `char_span` bind is cast twice on purpose. A single `CAST(:char_span AS
 # int4range)` — which is the form doc 16 §2 names — makes asyncpg infer the
 # parameter as int4range and then refuse the string: "list, tuple or Range
@@ -339,6 +356,22 @@ async def latest_revision_hash(session: AsyncSession, document_id: UUID) -> str 
     return (await session.execute(
         _LATEST_REVISION_HASH, {"document_id": str(document_id)}
     )).scalar_one_or_none()
+
+
+async def prunable_revision_ids(
+    session: AsyncSession, document_id: UUID, *, keep_newest: int, keep_days: int
+) -> list[str]:
+    """The document's revisions beyond its newest `keep_newest` that are also
+    older than `keep_days` days."""
+    rows = await session.execute(
+        _PRUNABLE_REVISIONS,
+        {"document_id": str(document_id), "keep_newest": keep_newest, "keep_days": keep_days},
+    )
+    return [row[0] for row in rows]
+
+
+async def delete_revisions(session: AsyncSession, revision_ids: list[str]) -> None:
+    await session.execute(_DELETE_REVISIONS, {"ids": revision_ids})
 
 
 def _span_literal(span: tuple[int, int] | None) -> str | None:

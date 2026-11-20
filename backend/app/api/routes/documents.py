@@ -582,13 +582,15 @@ async def list_document_revisions_route(
     session: AsyncSession = Depends(get_session),
 ) -> DocumentRevisionListResponse:
     """A document's revisions newest first, without content; page back with
-    `next_before`. 404 when the document does not exist, 422 when `before`
-    names no revision of it."""
+    `next_before`. 404 when the document does not exist or `before` names no
+    revision of it, a pruned one included."""
     target = await _resolve_target(session, document_id=document_id, project=None, uri=None)
     try:
         page = await document_revisions.list_revisions(
             session, document_id=target, before=before, limit=limit,
         )
+    except document_revisions.RevisionNotFound as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     return DocumentRevisionListResponse(**page)

@@ -1065,8 +1065,9 @@ async def document_get(
         "fetch one with its content by revision_id. Page back by passing the "
         "answer's next_before as before; limit 1-200. Name the document by "
         "document_id, or by the project and uri it was filed under. null when "
-        "revision_id names no revision of that document. revision_id takes "
-        "neither before nor limit."
+        "revision_id names no revision of that document, and an unresolved "
+        "status when before does (revisions past the newest 50 and older than "
+        "90 days are pruned). revision_id takes neither before nor limit."
     )
 )
 async def document_revisions(
@@ -1106,14 +1107,17 @@ async def document_revisions(
                 session, document_id=target, revision_id=revision_id,
             )
             return json.dumps(found)
-        page = await revisions.list_revisions(
-            session,
-            document_id=target,
-            before=before,
-            limit=max(1, min(
-                revisions.DEFAULT_LIMIT if limit is None else limit, revisions.MAX_LIMIT,
-            )),
-        )
+        try:
+            page = await revisions.list_revisions(
+                session,
+                document_id=target,
+                before=before,
+                limit=max(1, min(
+                    revisions.DEFAULT_LIMIT if limit is None else limit, revisions.MAX_LIMIT,
+                )),
+            )
+        except revisions.RevisionNotFound as exc:
+            return json.dumps({"status": "unresolved", "reason": str(exc)})
     return json.dumps(page)
 
 

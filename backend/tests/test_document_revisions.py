@@ -279,12 +279,12 @@ async def test_a_full_last_page_answers_no_cursor(session):
 
 
 async def test_a_cursor_from_another_document_is_refused(session):
-    from app.services.document_revisions import list_revisions
+    from app.services.document_revisions import RevisionNotFound, list_revisions
 
     a = await _put(session, "# A\n\nA.\n")
     b = await _put(session, "# B\n\nB.\n", uri="superpowers/specs/b.md")
     other = (await list_revisions(session, document_id=b.document_id))["items"][0]["id"]
-    with pytest.raises(ValueError, match="names no revision"):
+    with pytest.raises(RevisionNotFound, match="names no revision"):
         await list_revisions(session, document_id=a.document_id, before=other)
     with pytest.raises(ValueError, match="not a revision id"):
         await list_revisions(session, document_id=a.document_id, before="nope")
@@ -385,10 +385,11 @@ async def test_the_tool_refuses_a_cursor_from_another_document(session, mcp_serv
     a = await _put(session, "# A\n\nOne.\n")
     b = await _put(session, "# B\n\nB.\n", uri="superpowers/specs/b.md")
     foreign = json.loads(await mcp_server.document_revisions(document_id=b.document_id))
-    with pytest.raises(ValueError, match="names no revision of this document"):
-        await mcp_server.document_revisions(
-            document_id=a.document_id, before=foreign["items"][0]["id"],
-        )
+    answer = json.loads(await mcp_server.document_revisions(
+        document_id=a.document_id, before=foreign["items"][0]["id"],
+    ))
+    assert answer["status"] == "unresolved"
+    assert "names no revision of this document" in answer["reason"]
 
 
 async def test_the_tool_clamps_a_limit_below_one_to_one(session, mcp_server):
@@ -413,3 +414,194 @@ async def test_both_doors_serve_the_same_page(client, auth_headers, session, mcp
     assert [i["id"] for i in rest["items"]] == [i["id"] for i in tool["items"]]
     assert [i["actor"] for i in rest["items"]] == [None, "k-probe"]
     assert rest["next_before"] == tool["next_before"] is None
+
+
+# Retention: a filing that writes a revision prunes the document's earlier
+# revisions that are both beyond its newest 50 and older than 90 days.
+async def _history(session, document_id, ages_in_days):
+    """Replace the document's revisions with one per age, oldest first."""
+    await session.execute(
+        text("DELETE FROM document_revisions WHERE document_id = CAST(:d AS uuid)"),
+        {"d": str(document_id)},
+    )
+    count = len(ages_in_days)
+    for position, age in enumerate(ages_in_days):
+        await session.execute(
+            text(
+                "INSERT INTO document_revisions (id, document_id, content, content_hash) "
+                "VALUES (CAST(:id AS uuid), CAST(:d AS uuid), CAST(:content AS text), "
+                "md5(CAST(:content AS text)))"
+            ),
+            {"id": str(uuid.uuid4()), "d": str(document_id), "content": f"old {position}"},
+        )
+        await session.execute(
+            text(
+                "UPDATE document_revisions SET created_at = now() "
+                "- make_interval(days => CAST(:age AS integer)) "
+                "- make_interval(secs => CAST(:back AS integer)) "
+                "WHERE document_id = CAST(:d AS uuid) AND content = CAST(:content AS text)"
+            ),
+            {"age": age, "back": count - position, "d": str(document_id),
+             "content": f"old {position}"},
+        )
+
+
+async def _revision_ids(session, document_id):
+    rows = await session.execute(
+        text(
+            "SELECT CAST(id AS text) FROM document_revisions "
+            "WHERE document_id = CAST(:d AS uuid) ORDER BY created_at, id"
+        ),
+        {"d": str(document_id)},
+    )
+    return [row[0] for row in rows]
+
+
+async def _pruned_events(session, document_id):
+    rows = await session.execute(
+        text(
+            "SELECT object_type, payload FROM events "
+            "WHERE event_type = 'document_revisions_pruned' AND object_id = CAST(:d AS uuid)"
+        ),
+        {"d": str(document_id)},
+    )
+    return [tuple(row) for row in rows]
+
+
+async def test_prune_needs_both_conditions(session):
+    mixed = await _put(session, "# A\n\nFirst.\n", uri="mixed.md")
+    await _history(session, mixed.document_id, [100] * 20 + [10] * 40)
+    before = await _revision_ids(session, mixed.document_id)
+    await _put(session, "# A\n\nSecond.\n", uri="mixed.md")
+    after = await _revision_ids(session, mixed.document_id)
+    assert after[:-1] == before[10:]
+    assert len(after) == 51
+
+    young = await _put(session, "# Y\n\nFirst.\n", uri="young.md")
+    await _history(session, young.document_id, [10] * 60)
+    await _put(session, "# Y\n\nSecond.\n", uri="young.md")
+    assert len(await _revision_ids(session, young.document_id)) == 61
+
+    few = await _put(session, "# F\n\nFirst.\n", uri="few.md")
+    await _history(session, few.document_id, [200] * 30)
+    await _put(session, "# F\n\nSecond.\n", uri="few.md")
+    assert len(await _revision_ids(session, few.document_id)) == 31
+
+
+async def test_prune_is_scoped_to_the_filed_document(session):
+    filed = await _put(session, "# A\n\nFirst.\n", uri="a.md")
+    other = await _put(session, "# B\n\nFirst.\n", uri="b.md")
+    await _history(session, filed.document_id, [200] * 60)
+    await _history(session, other.document_id, [200] * 60)
+    untouched = await _revision_ids(session, other.document_id)
+    await _put(session, "# A\n\nSecond.\n", uri="a.md")
+    assert len(await _revision_ids(session, filed.document_id)) == 51
+    assert await _revision_ids(session, other.document_id) == untouched
+
+
+async def test_prune_journals_one_count_only_event_first(session):
+    from sqlalchemy import event
+    from sqlalchemy.engine import Engine
+
+    filed = await _put(session, "# A\n\nFirst.\n")
+    await _history(session, filed.document_id, [100] * 20 + [10] * 40)
+    statements: list[tuple[str, str]] = []
+
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        statements.append((statement, str(parameters)))
+
+    event.listen(Engine, "before_cursor_execute", capture)
+    try:
+        await _put(session, "# A\n\nSecond.\n")
+    finally:
+        event.remove(Engine, "before_cursor_execute", capture)
+
+    assert await _pruned_events(session, filed.document_id) == [("document", {"pruned": 10})]
+    journal = next(
+        i for i, (sql, params) in enumerate(statements)
+        if sql.lstrip().upper().startswith("INSERT INTO EVENTS")
+        and "document_revisions_pruned" in params
+    )
+    delete = next(
+        i for i, (sql, _) in enumerate(statements)
+        if sql.lstrip().upper().startswith("DELETE FROM DOCUMENT_REVISIONS")
+    )
+    assert journal < delete
+
+
+async def test_a_failed_prune_delete_rolls_the_filing_back(session):
+    from sqlalchemy.exc import DBAPIError
+
+    filed = await _put(session, "# A\n\nFirst.\n")
+    await _history(session, filed.document_id, [100] * 20 + [10] * 40)
+    await session.execute(text(
+        "CREATE FUNCTION pg_temp.refuse_revision_delete() RETURNS trigger "
+        "LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'revision delete refused'; END $$"
+    ))
+    await session.execute(text(
+        "CREATE TRIGGER refuse_revision_delete BEFORE DELETE ON document_revisions "
+        "FOR EACH STATEMENT EXECUTE FUNCTION pg_temp.refuse_revision_delete()"
+    ))
+    revisions = await _revisions(session, filed.document_id)
+    events = (await session.execute(text("SELECT count(*) FROM events"))).scalar_one()
+
+    with pytest.raises(DBAPIError, match="revision delete refused"):
+        await _put(session, "# A\n\nSecond.\n")
+
+    content = (await session.execute(
+        text("SELECT content FROM documents WHERE id = CAST(:d AS uuid)"),
+        {"d": filed.document_id},
+    )).scalar_one()
+    assert content == "# A\n\nFirst.\n"
+    assert await _revisions(session, filed.document_id) == revisions
+    assert (await session.execute(text("SELECT count(*) FROM events"))).scalar_one() == events
+
+
+async def test_unjournalled_prune_is_skipped_and_the_put_succeeds(session, monkeypatch):
+    import app.services.document_ingest as ingest
+
+    real = ingest.record_event
+
+    async def refuse_the_prune(session, *, event_type, **kwargs):
+        if event_type == "document_revisions_pruned":
+            return False
+        return await real(session, event_type=event_type, **kwargs)
+
+    monkeypatch.setattr(ingest, "record_event", refuse_the_prune)
+    filed = await _put(session, "# A\n\nFirst.\n")
+    await _history(session, filed.document_id, [100] * 20 + [10] * 40)
+    second = await _put(session, "# A\n\nSecond.\n")
+    assert second.outcome == "updated"
+    revisions = await _revisions(session, filed.document_id)
+    assert len(revisions) == 61
+    assert revisions[-1][0] == "# A\n\nSecond.\n"
+
+
+async def test_before_cursor_naming_a_pruned_revision_answers_404(
+    client, auth_headers, session, mcp_server,
+):
+    import json
+
+    filed = await _put(session, "# A\n\nFirst.\n")
+    await _history(session, filed.document_id, [100] * 20 + [10] * 40)
+    pruned = (await _revision_ids(session, filed.document_id))[0]
+    await _put(session, "# A\n\nSecond.\n")
+
+    answer = await client.get(
+        f"/api/v1/documents/{filed.document_id}/revisions",
+        params={"before": pruned}, headers=auth_headers,
+    )
+    assert answer.status_code == 404
+    tool = json.loads(await mcp_server.document_revisions(
+        document_id=filed.document_id, before=pruned,
+    ))
+    assert tool["status"] == "unresolved"
+
+
+async def test_unchanged_repush_prunes_nothing(session):
+    filed = await _put(session, "# A\n\nFirst.\n")
+    await _history(session, filed.document_id, [200] * 60)
+    again = await _put(session, "# A\n\nFirst.\n")
+    assert again.outcome == "unchanged"
+    assert len(await _revision_ids(session, filed.document_id)) == 60
+    assert await _pruned_events(session, filed.document_id) == []

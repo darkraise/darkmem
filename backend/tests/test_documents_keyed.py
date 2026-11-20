@@ -221,7 +221,7 @@ async def test_the_revision_routes_refuse_what_names_nothing(client, session, sc
     assert (await client.get(f"{V1}/{a['document_id']}/revisions/{b_revision}", headers=read)).status_code == 404
     assert (await client.get(
         f"{V1}/{a['document_id']}/revisions", params={"before": b_revision}, headers=read,
-    )).status_code == 422
+    )).status_code == 404
     assert (await client.get(
         f"{V1}/{a['document_id']}/revisions", params={"limit": 201}, headers=read,
     )).status_code == 422

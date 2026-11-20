@@ -76,6 +76,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories import documents as documents_repo
 from app.services.block_embeddings import carry_document_vectors, document_vectors_by_text
+from app.services.document_revisions import REVISION_KEEP_DAYS, REVISION_KEEP_NEWEST
 from app.services.events import record_event
 from app.taxonomy import normalize_block_type
 from app.utils.ids import new_id
@@ -98,6 +99,7 @@ __all__ = [
 ]
 
 DOCUMENT_FILED_EVENT = "document_filed"
+REVISIONS_PRUNED_EVENT = "document_revisions_pruned"
 OBJECT_TYPE = "document"
 
 class DocumentHashConflict(Exception):
@@ -395,6 +397,10 @@ async def _file_document_without_savepoint(
     else:
         changed = await documents_repo.latest_revision_hash(session, resolved_id) != content_hash
     if stored_content is not None and changed:
+        await _prune_revisions(
+            session, resolved_id,
+            project=project, actor=actor, api_key_id=api_key_id, source=source,
+        )
         await documents_repo.insert_revision(
             session,
             revision_id=new_id(),
@@ -516,6 +522,41 @@ async def file_documents_isolated(
         else:
             results.append(result)
     return results
+
+
+async def _prune_revisions(
+    session: AsyncSession,
+    document_id: UUID,
+    *,
+    project: str,
+    actor: str | None,
+    api_key_id: UUID | None,
+    source: str | None,
+) -> None:
+    # Runs before this filing's own revision is written, so the window keeps
+    # the newest earlier revisions and the new one rides on top of them. The
+    # count is journalled first and the rows go only if that row landed: an
+    # unrecorded erase of content is worse than keeping it one more filing.
+    # A failed delete raises into the filing's savepoint and refuses the put.
+    ids = await documents_repo.prunable_revision_ids(
+        session, document_id,
+        keep_newest=REVISION_KEEP_NEWEST, keep_days=REVISION_KEEP_DAYS,
+    )
+    if not ids:
+        return
+    landed = await record_event(
+        session,
+        event_type=REVISIONS_PRUNED_EVENT,
+        object_type=OBJECT_TYPE,
+        object_id=document_id,
+        project=project,
+        actor=actor,
+        api_key_id=api_key_id,
+        source=source,
+        payload={"pruned": len(ids)},
+    )
+    if landed:
+        await documents_repo.delete_revisions(session, ids)
 
 
 def _resolve_tree(drafts: Sequence[BlockDraft]) -> list[documents_repo.BlockRow]:
