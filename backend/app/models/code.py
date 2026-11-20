@@ -35,7 +35,13 @@ class Repository(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    files: Mapped[list["CodeFile"]] = relationship(back_populates="repository", cascade="all, delete-orphan", lazy="selectin")
+    # Never loaded with the row: no caller reads the collection, and an eager
+    # load here pulled every file and symbol of the repository on each read.
+    # Deletes rely on the foreign keys' ON DELETE CASCADE.
+    files: Mapped[list["CodeFile"]] = relationship(
+        back_populates="repository", cascade="all, delete-orphan",
+        lazy="raise", passive_deletes=True,
+    )
 
 
 class CodeFile(Base):
@@ -50,7 +56,10 @@ class CodeFile(Base):
     indexed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     repository: Mapped["Repository"] = relationship(back_populates="files")
-    symbols: Mapped[list["CodeSymbol"]] = relationship(back_populates="file", cascade="all, delete-orphan", lazy="selectin")
+    symbols: Mapped[list["CodeSymbol"]] = relationship(
+        back_populates="file", cascade="all, delete-orphan",
+        lazy="raise", passive_deletes=True,
+    )
 
 
 class CodeSymbol(Base):
