@@ -101,6 +101,50 @@ async def test_a_row_the_database_refuses_is_dropped_alone(committed):
     assert mcp_call_log.dropped_calls() == 1
 
 
+@pytest.mark.asyncio
+async def test_an_entry_that_cannot_become_a_row_is_dropped_alone(committed, monkeypatch):
+    tool = f"flush-probe-{uuid.uuid4().hex[:8]}"
+    _queue(3, tool=tool)
+    _queue(1, tool="unbuildable")
+    real = mcp_call_log._to_row
+
+    def to_row(pending, *, log_query_text):
+        if pending.tool == "unbuildable":
+            raise TypeError("an argument json cannot carry")
+        return real(pending, log_query_text=log_query_text)
+
+    monkeypatch.setattr(mcp_call_log, "_to_row", to_row)
+    assert await mcp_call_log.flush_once(committed) == 3
+    assert await _count(committed, tool) == 3
+    assert not mcp_call_log._buffer
+    assert mcp_call_log.dropped_calls() == 1
+
+
+@pytest.mark.asyncio
+async def test_a_statement_error_is_settled_not_retried_for_ever(committed):
+    tool = f"flush-probe-{uuid.uuid4().hex[:8]}"
+    _queue(2, tool=tool)
+    _queue(1, tool="refused\x00tool")
+
+    class StatementFailsInBulk(_InsertFailsOnce):
+        def __call__(self):
+            session = self.factory()
+            real_execute = session.execute
+
+            async def execute(statement, *args, **kwargs):
+                if statement is mcp_call_log._INSERT_SQL and len(args[0]) > 1:
+                    raise ValueError("driver could not encode a parameter")
+                return await real_execute(statement, *args, **kwargs)
+
+            session.execute = execute
+            return session
+
+    assert await mcp_call_log.flush_once(StatementFailsInBulk(committed)) == 2
+    assert await _count(committed, tool) == 2
+    assert not mcp_call_log._buffer
+    assert mcp_call_log.dropped_calls() == 1
+
+
 def test_buffer_overflow_is_counted(monkeypatch):
     monkeypatch.setattr(mcp_call_log, "_BUFFER_MAX", 10)
     _queue(6)
