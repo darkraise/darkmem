@@ -211,3 +211,22 @@ async def test_prune_orphan_entities_keeps_entity_with_surviving_relation(sessio
     names = await _entity_names(session)
     assert {"p", "q"} <= names
     assert stats["relations_pruned"] == 0
+
+
+async def test_entity_terms_for_memories_filters_types_and_ids(session):
+    a, b, c = uuid4(), uuid4(), uuid4()
+    session.add_all([Memory(id=m, content="x", source="test") for m in (a, b, c)])
+    await session.flush()
+    graph = PostgresGraphRepository(session)
+    for name, entity_type, asserting in (
+        ("DarkFoto", "project", (a, b)),
+        ("pgvector", "tool", (a,)),
+        ("some idea", "concept", (a,)),
+        ("git", "tool", (c,)),
+    ):
+        for memory_id in asserting:
+            await graph.create_entity(name, entity_type, {}, memory_id)
+
+    terms = await graph.entity_terms_for_memories([str(a), str(b)])
+    assert terms == {str(a): {"darkfoto", "pgvector"}, str(b): {"darkfoto"}}
+    assert await graph.entity_terms_for_memories([]) == {}

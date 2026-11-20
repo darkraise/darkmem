@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 # read paths that traverse the graph want a neighbourhood, not a component.
 MAX_TRAVERSAL_DEPTH = 5
 
+ENTITY_TERM_TYPES = ("project", "tool", "artifact", "service", "protocol", "language")
+
 
 class PostgresGraphRepository:
     def __init__(self, session: AsyncSession):
@@ -484,6 +486,25 @@ class PostgresGraphRepository:
         ]
 
         return {"entities": entities, "relations": relations, "truncated": truncated}
+
+    async def entity_terms_for_memories(self, memory_ids: list[str]) -> dict[str, set[str]]:
+        if not memory_ids:
+            return {}
+        ids = [UUID(m) for m in memory_ids]
+        rows = await self.session.execute(
+            text("""
+                SELECT m.mid, lower(e.name) AS name
+                FROM entities e, unnest(e.memory_ids) AS m(mid)
+                WHERE e.memory_ids && CAST(:ids AS uuid[])
+                  AND e.entity_type = ANY(CAST(:types AS text[]))
+                  AND m.mid = ANY(CAST(:ids AS uuid[]))
+            """),
+            {"ids": ids, "types": list(ENTITY_TERM_TYPES)},
+        )
+        terms: dict[str, set[str]] = {}
+        for mid, name in rows.all():
+            terms.setdefault(str(mid), set()).add(name)
+        return terms
 
     async def get_entities_for_memories(self, memory_ids: list[str], limit: int) -> dict:
         """Entities asserted by any of ``memory_ids``, most-asserted first, and
