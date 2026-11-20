@@ -520,3 +520,61 @@ async def test_phase5_gate_fires_for_a_family_relation(setup_database):
                     {"id": str(candidate_id)},
                 )
                 await s.commit()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_supersessions_leave_one_pointer_and_one_event(setup_database):
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from tests.conftest import test_engine
+
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    now = datetime.now(timezone.utc)
+    project = f"supersession-race-{uuid.uuid4().hex[:8]}"
+    candidate = _mem(project=project, created_at=now - timedelta(days=1))
+    first = _mem(project=project, technologies=[], created_at=now)
+    second = _mem(project=project, technologies=[], created_at=now)
+    async with factory() as seed:
+        seed.add_all([candidate, first, second])
+        await seed.commit()
+
+    try:
+        async with factory() as session_a, factory() as session_b, factory() as probe:
+            await _detect(session_a, first, now=now)
+            pid_b = (await session_b.execute(text("SELECT pg_backend_pid()"))).scalar_one()
+            racing = asyncio.create_task(_detect(session_b, second, now=now))
+            for _ in range(200):
+                waiting = (await probe.execute(
+                    text("SELECT count(*) FROM pg_locks WHERE pid = :pid AND NOT granted"),
+                    {"pid": pid_b},
+                )).scalar_one()
+                await probe.rollback()
+                if waiting:
+                    break
+                await asyncio.sleep(0.05)
+            assert waiting, "the second writer never queued behind the first"
+            await session_a.commit()
+            await asyncio.wait_for(racing, 10)
+            await session_b.commit()
+
+        async with factory() as check:
+            assert await _status(check, candidate.id) == ("superseded", first.id)
+            events = (await check.execute(
+                text(
+                    "SELECT count(*) FROM events WHERE event_type = 'superseded' "
+                    "AND object_id = CAST(:id AS uuid)"
+                ),
+                {"id": str(candidate.id)},
+            )).scalar_one()
+        assert events == 1
+    finally:
+        async with factory() as cleanup:
+            await cleanup.execute(
+                text("DELETE FROM memories WHERE id = CAST(:id AS uuid)"),
+                {"id": str(candidate.id)},
+            )
+            await cleanup.execute(
+                text("DELETE FROM memories WHERE id = ANY(CAST(:ids AS uuid[]))"),
+                {"ids": [str(first.id), str(second.id)]},
+            )
+            await cleanup.commit()

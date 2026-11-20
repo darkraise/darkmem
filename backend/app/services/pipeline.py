@@ -704,13 +704,31 @@ class ProcessingPipeline:
                             # endpoints by (name, entity_type) — entity uniqueness
                             # — instead of name alone, which can bind to a
                             # same-named entity of a different type.
-                            name_to_type: dict[str, str] = {}
+                            name_to_type: dict[str, str] = {
+                                entity["name"].strip().lower(): entity["type"]
+                                for entity in extraction.get("entities", [])
+                            }
+                            # Concurrent writers upsert shared rows and hold
+                            # the locks until commit, so every writer takes
+                            # them in one global order or two can deadlock.
+                            entities = sorted(
+                                extraction.get("entities", []),
+                                key=lambda e: (e["name"].strip().lower(), e["type"]),
+                            )
+                            relationships = sorted(
+                                extraction.get("relationships", []),
+                                key=lambda r: (
+                                    (r["source"] or "").strip().lower(),
+                                    (r["target"] or "").strip().lower(),
+                                    r["type"],
+                                ),
+                            )
                             # Build a display-name map keyed by the canonical
                             # lower-cased name. The canonical name is what we
                             # write to ``entities.name``; the original casing
                             # is preserved in properties so the UI can render
                             # ``Darkmem`` instead of ``darkmem``.
-                            for entity in extraction.get("entities", []):
+                            for entity in entities:
                                 display_name = entity["name"]
                                 canonical_name = display_name.strip().lower()
                                 props = dict(entity.get("properties") or {})
@@ -720,7 +738,6 @@ class ProcessingPipeline:
                                     name=canonical_name, entity_type=entity["type"],
                                     properties=props, memory_id=memory_id,
                                 )
-                                name_to_type[canonical_name] = entity["type"]
                                 # Keyed by ``canonical_name`` — the name this row is
                                 # actually written under — never by the pre-rewrite
                                 # variant name. Phase 3 embeds raw extracted names,
@@ -737,7 +754,7 @@ class ProcessingPipeline:
                                     await graph_repo.upsert_entity_embedding(
                                         created["id"], emb, fingerprint=entity_fingerprint,
                                     )
-                            for rel in extraction.get("relationships", []):
+                            for rel in relationships:
                                 source_name = (rel["source"] or "").strip().lower()
                                 target_name = (rel["target"] or "").strip().lower()
                                 await graph_repo.create_relationship(

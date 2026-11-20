@@ -230,3 +230,61 @@ async def test_entity_terms_for_memories_filters_types_and_ids(session):
     terms = await graph.entity_terms_for_memories([str(a), str(b)])
     assert terms == {str(a): {"darkfoto", "pgvector"}, str(b): {"darkfoto"}}
     assert await graph.entity_terms_for_memories([]) == {}
+
+
+async def test_memory_id_predicates_use_the_gin_index(session):
+    from sqlalchemy import event
+
+    from app.services.fact_provenance import _asserted_triples
+
+    mid = uuid4()
+    await _mk_memory(session, mid)
+    await session.execute(text("""
+        INSERT INTO entities (id, name, entity_type, properties, memory_ids)
+        SELECT gen_random_uuid(), 'gin-filler-' || n, 'tool', '{}'::jsonb,
+               ARRAY[gen_random_uuid()]
+        FROM generate_series(1, 200) AS n
+    """))
+    await session.execute(text("""
+        INSERT INTO entity_relations
+            (id, source_entity_id, target_entity_id, rel_type, properties, weight, memory_ids)
+        SELECT gen_random_uuid(), s.id, t.id, 'USES', '{}'::jsonb, 0.5, ARRAY[gen_random_uuid()]
+        FROM entities s
+        JOIN entities t ON t.name = 'gin-filler-' || (split_part(s.name, '-', 3)::int % 200 + 1)
+        WHERE s.name LIKE 'gin-filler-%'
+    """))
+    graph = PostgresGraphRepository(session)
+    for name in ("gin-a", "gin-b"):
+        await graph.create_entity(name, "tool", {}, mid)
+    await graph.create_relationship(
+        "gin-a", "gin-b", "USES", {}, 0.5, mid, source_type="tool", target_type="tool",
+    )
+
+    captured: list[tuple[str, object]] = []
+
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        if "memory_ids" in statement and str(mid) in (parameters or ()):
+            captured.append((statement, parameters))
+
+    sync_engine = session.bind.sync_engine
+    event.listen(sync_engine, "before_cursor_execute", capture)
+    try:
+        await graph.technologies_for_memory(mid)
+        await graph.get_entities_by_memory_id(str(mid))
+        await _asserted_triples(session, mid)
+        await graph.delete_by_memory_id(mid)
+    finally:
+        event.remove(sync_engine, "before_cursor_execute", capture)
+
+    assert len(captured) == 5
+    await session.execute(text("SET LOCAL enable_seqscan = off"))
+    connection = await session.connection()
+    for statement, parameters in captured:
+        plan = "\n".join(
+            row[0] for row in (await connection.exec_driver_sql(
+                "EXPLAIN " + statement, parameters,
+            )).all()
+        )
+        assert (
+            "ix_entities_memory_ids" in plan or "ix_entity_relations_memory_ids" in plan
+        ), f"{statement}\n{plan}"

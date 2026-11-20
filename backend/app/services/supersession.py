@@ -195,11 +195,19 @@ async def detect_supersessions(
     if not old_ids:
         return []
 
-    await session.execute(
+    # The status predicate is re-checked after a concurrent writer's commit, so
+    # a candidate another memory superseded in the meantime is left alone.
+    flipped = await session.execute(
         update(Memory)
         .where(Memory.id.in_(old_ids))
+        .where(Memory.status == "active")
         .values(status="superseded", superseded_by=new_memory_id)
+        .returning(Memory.id)
     )
+    returned = set(flipped.scalars().all())
+    old_ids = [memory_id for memory_id in old_ids if memory_id in returned]
+    if not old_ids:
+        return []
 
     # One row per flipped memory, before/after the mutation above. A journal
     # failure here (record_event never raises) must not undo the supersession

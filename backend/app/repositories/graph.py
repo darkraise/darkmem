@@ -579,7 +579,7 @@ class PostgresGraphRepository:
                 text("""
                     UPDATE entities
                     SET memory_ids = array_remove(memory_ids, CAST(:mid AS uuid))
-                    WHERE CAST(:mid AS uuid) = ANY(memory_ids)
+                    WHERE memory_ids @> ARRAY[CAST(:mid AS uuid)]
                     RETURNING id
                 """),
                 {"mid": mid},
@@ -590,7 +590,7 @@ class PostgresGraphRepository:
                 text("""
                     UPDATE entity_relations
                     SET memory_ids = array_remove(memory_ids, CAST(:mid AS uuid))
-                    WHERE CAST(:mid AS uuid) = ANY(memory_ids)
+                    WHERE memory_ids @> ARRAY[CAST(:mid AS uuid)]
                     RETURNING id
                 """),
                 {"mid": mid},
@@ -904,7 +904,7 @@ class PostgresGraphRepository:
             text("""
                 SELECT DISTINCT lower(name) AS name
                 FROM entities
-                WHERE CAST(:mid AS uuid) = ANY(memory_ids)
+                WHERE memory_ids @> ARRAY[CAST(:mid AS uuid)]
                   AND entity_type = ANY(CAST(:types AS text[]))
                 ORDER BY 1
             """),
@@ -917,7 +917,7 @@ class PostgresGraphRepository:
             text("""
                 SELECT id, name, entity_type, properties, memory_ids
                 FROM entities
-                WHERE CAST(:mid AS uuid) = ANY(memory_ids)
+                WHERE memory_ids @> ARRAY[CAST(:mid AS uuid)]
             """),
             {"mid": memory_id},
         )

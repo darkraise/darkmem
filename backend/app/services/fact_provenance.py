@@ -172,7 +172,7 @@ _ASSERTED_TRIPLES = text("""
     FROM entity_relations r
     JOIN entities se ON se.id = r.source_entity_id
     JOIN entities oe ON oe.id = r.target_entity_id
-    WHERE CAST(:mid AS uuid) = ANY(r.memory_ids)
+    WHERE r.memory_ids @> ARRAY[CAST(:mid AS uuid)]
 """)
 
 _WITHDRAW = text("DELETE FROM fact_sources WHERE id = ANY(CAST(:ids AS uuid[]))")
