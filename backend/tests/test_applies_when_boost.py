@@ -422,7 +422,7 @@ def test_the_boost_flag_is_neither_a_list_weight_nor_a_rank_arm():
 
 
 def test_the_boost_cannot_reach_the_fusion_or_the_arm_factor():
-    assert set(inspect.signature(rrf_fuse).parameters) == {"lists", "limit"}
+    assert set(inspect.signature(rrf_fuse).parameters) == {"lists", "limit", "key"}
     for magnitude in MAGNITUDES:
         assert rank_fusion_factor({"confidence": 0.9}, _weights(magnitude)) == 1.0
 

@@ -359,6 +359,10 @@ class MemoriesBusy(Exception):
     """A candidate's memories stayed locked past the wait; it lifts next tick."""
 
 
+def _memory_lock_deadline() -> float:
+    return asyncio.get_running_loop().time() + MEMORY_LOCK_WAIT_SECONDS
+
+
 # FOR UPDATE, not a bare read: the Tier-B withdrawal sweep expires a fact under
 # the same lock, so holding it from this read through the provenance write is
 # what stops a source landing on a row that is being expired out from under it.
@@ -535,8 +539,9 @@ async def _still_asserting(session: AsyncSession, candidate: _Candidate) -> set[
     }
 
 
-async def _share_lock_memories(session: AsyncSession, memory_ids: list[str]) -> None:
-    deadline = asyncio.get_running_loop().time() + MEMORY_LOCK_WAIT_SECONDS
+async def _share_lock_memories(
+    session: AsyncSession, memory_ids: list[str], deadline: float,
+) -> None:
     while True:
         try:
             async with session.begin_nested():
@@ -550,7 +555,9 @@ async def _share_lock_memories(session: AsyncSession, memory_ids: list[str]) -> 
         await asyncio.sleep(_MEMORY_LOCK_POLL_SECONDS)
 
 
-async def _lift_one(session: AsyncSession, candidate: _Candidate) -> _LiftedOne:
+async def _lift_one(
+    session: AsyncSession, candidate: _Candidate, lock_deadline: float | None = None,
+) -> _LiftedOne:
     """Resolve or mint the fact, add the missing sources, emit the difference.
 
     One event per newly written ``fact_sources`` row: the payload doc 08 §4.3
@@ -568,7 +575,10 @@ async def _lift_one(session: AsyncSession, candidate: _Candidate) -> _LiftedOne:
     if not candidate.origins:
         return _LiftedOne()
 
-    await _share_lock_memories(session, sorted(candidate.origins))
+    await _share_lock_memories(
+        session, sorted(candidate.origins),
+        _memory_lock_deadline() if lock_deadline is None else lock_deadline,
+    )
     fact_id = await _open_fact_id(session, candidate.triple_key)
     live = await _still_asserting(session, candidate)
     if not live:
@@ -650,10 +660,14 @@ async def run_lift(
         min_asserting_memories=min_asserting_memories,
     )
     created = added = 0
+    # One wait budget for the whole tick, not one per candidate: every share
+    # lock taken so far is held until the caller commits, so a re-extraction
+    # blocked on one of them waits out every later candidate's retries too.
+    lock_deadline = _memory_lock_deadline()
     for candidate in candidates:
         try:
             async with session.begin_nested():
-                lifted = await _lift_one(session, candidate)
+                lifted = await _lift_one(session, candidate, lock_deadline)
         except MemoriesBusy:
             logger.info(
                 "fact lifting deferred for %s in project %s: an asserting memory "
