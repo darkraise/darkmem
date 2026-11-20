@@ -558,6 +558,22 @@ def make_code_enrichment_runner(app, session_factory: async_sessionmaker[AsyncSe
     return run
 
 
+async def _arm_enabled(
+    session_factory: async_sessionmaker[AsyncSession], flag: str,
+) -> bool:
+    """Whether the graph rank arm an artefact job serves is switched on.
+
+    `ppr_snapshot` and `relation_embedding_refresh` each have exactly one
+    reader, a rank arm behind its own flag. While the flag is off the artefact
+    has no reader, so the job skips its tick. Arming a flag takes effect on
+    the job's next tick, or at once through a manual trigger.
+    """
+    from app.services import feature_flags
+
+    async with session_factory() as session:
+        return bool((await feature_flags.get_feature_flags_dict(session)).get(flag))
+
+
 def make_ppr_snapshot_runner(
     app,
     session_factory: async_sessionmaker[AsyncSession],
@@ -601,6 +617,8 @@ def make_ppr_snapshot_runner(
         fingerprint: str | None = None
         llm = getattr(app.state, "llm", None)
         with lease_llm(llm):
+            if not await _arm_enabled(session_factory, "ppr_enabled"):
+                return
             if llm is not None:
                 try:
                     async with session_factory() as session:
@@ -664,6 +682,8 @@ def make_relation_embedding_runner(
         with lease_llm(llm):
             if llm is None:
                 logger.info("relation_embedding_refresh skipped: no LLM orchestrator")
+                return
+            if not await _arm_enabled(session_factory, "dual_level_enabled"):
                 return
 
             registry = getattr(app.state, "job_registry", None)
