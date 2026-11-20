@@ -256,3 +256,27 @@ async def test_attachments_retention_round_trips(session):
     )
     loaded = await bc.load_destinations(session, masked=False)
     assert loaded[0].attachments_retention_keep == 7
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("user", "-oProxyCommand=x"),
+        ("host", "-oProxyCommand=x"),
+        ("host", "a b"),
+        ("remote_dir", "/srv\n-rf"),
+    ],
+)
+async def test_ssh_destination_refuses_option_shaped_fields(session, field, value):
+    bad = {**SSH, "ssh": {**SSH["ssh"], field: value}}
+    with pytest.raises(bc.DestinationInvalid, match=field):
+        await bc.save_destinations(session, {"destinations": [bad]})
+
+
+@pytest.mark.parametrize(
+    "field,value", [("user", "backup"), ("host", "192.168.0.50"), ("host", "nas.lan")],
+)
+async def test_ssh_destination_accepts_plain_fields(session, field, value):
+    good = {**SSH, "ssh": {**SSH["ssh"], field: value}}
+    saved = await bc.save_destinations(session, {"destinations": [good]})
+    assert getattr(saved[0].ssh, field) == value

@@ -201,6 +201,15 @@ async def update_provider(
             name, row, update_data, await verification_provider(session),
         )
 
+        keeps_stored_key = update_data.get("api_key", MASKED_KEY) == MASKED_KEY
+        if keeps_stored_key and row.api_key and (
+            body.api_kind != row.api_kind or body.base_url != row.base_url
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="base_url or api_kind changed, so enter api_key again",
+            )
+
         row.api_kind = body.api_kind
         row.base_url = body.base_url
         if "api_key" in update_data and update_data["api_key"] != MASKED_KEY:

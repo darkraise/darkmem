@@ -27,7 +27,7 @@ from app.services.community_detector import CommunityDetector
 from app.services.heritage_resolver import AccessResolver, HeritageResolver
 from app.services.llm import LLMOrchestrator
 from app.services.process_tracer import ProcessTracer
-from app.services.repo_manager import RepoManager
+from app.services.repo_manager import RepoManager, _sanitize_url
 from app.services.symbol_table import SymbolEntry, SymbolTable
 from app.services.type_env import TypeEnvironment, build_type_env, propagate_types
 from app.utils.graph_keys import compose_key, split_symbol_key
@@ -583,7 +583,7 @@ class CodePipeline:
                     )
                 else:
                     repo.status = "error"
-                    repo.status_message = str(exc)[:500]
+                    repo.status_message = _sanitize_url(str(exc))[:500]
                     try:
                         await self._delete_all_repo_data(repo.id)
                     except Exception:
@@ -601,7 +601,7 @@ class CodePipeline:
                     entity_id=repo_id,
                     pipeline_name="code_index",
                     failed_step="other",
-                    error_message=f"{type(exc).__name__}: {exc}"[:2000],
+                    error_message=_sanitize_url(f"{type(exc).__name__}: {exc}")[:2000],
                 )
                 await self.session.commit()
             except Exception as e2:

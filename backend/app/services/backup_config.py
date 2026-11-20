@@ -16,6 +16,8 @@ check before bytes leave the host.
 """
 from __future__ import annotations
 
+import re
+
 from pydantic import BaseModel, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -86,6 +88,30 @@ class DestinationConfig(BaseModel):
     worker: WorkerSettings | None = None
 
 
+# ssh/scp take `user@host` ahead of `--`, so an option-shaped value there is
+# an option, not an address (`-oProxyCommand=` runs a command).
+_SSH_USER = re.compile(r"[A-Za-z0-9._][A-Za-z0-9._-]*")
+_SSH_HOST = re.compile(r"[A-Za-z0-9_\[][A-Za-z0-9._:\[\]%-]*")
+
+# The fields a stored secret is bound to: a masked secret is kept only while
+# every one of them is unchanged, so a session cannot send a stored secret to a
+# new endpoint without entering it again.
+CONNECTION_FIELDS: dict[str, tuple[str, ...]] = {
+    "ssh": ("host", "port", "user"),
+    "s3": ("endpoint_url",),
+    "worker": ("url",),
+}
+
+
+def _validate_ssh(name: str, ssh: SshSettings) -> None:
+    if not _SSH_USER.fullmatch(ssh.user):
+        raise DestinationInvalid(f"{name}: ssh user must be letters, digits, '.', '_' or '-', not starting with '-'")
+    if not _SSH_HOST.fullmatch(ssh.host):
+        raise DestinationInvalid(f"{name}: ssh host must be a hostname or IP address")
+    if "\n" in ssh.remote_dir or "\r" in ssh.remote_dir:
+        raise DestinationInvalid(f"{name}: ssh remote_dir must not contain a line break")
+
+
 def _validate(items: list[DestinationConfig]) -> None:
     names = [d.name for d in items]
     if len(names) != len(set(names)):
@@ -102,6 +128,8 @@ def _validate(items: list[DestinationConfig]) -> None:
             )
         if d.kind == "ssh" and d.ssh is None:
             raise DestinationInvalid(f"{d.name}: ssh settings required")
+        if d.ssh is not None:
+            _validate_ssh(d.name, d.ssh)
         if d.kind == "s3" and d.s3 is None:
             raise DestinationInvalid(f"{d.name}: s3 settings required")
         if d.kind == "worker" and d.worker is None:
@@ -171,6 +199,14 @@ async def save_destinations(
                 if prev_sub is None or not getattr(prev_sub, f, None):
                     raise DestinationInvalid(
                         f"{d.name}: masked {f} with no stored value"
+                    )
+                moved = [
+                    c for c in CONNECTION_FIELDS.get(group, ())
+                    if getattr(sub, c, None) != getattr(prev_sub, c, None)
+                ]
+                if moved:
+                    raise DestinationInvalid(
+                        f"{d.name}: {', '.join(moved)} changed, so enter {f} again"
                     )
                 setattr(sub, f, getattr(prev_sub, f))
 

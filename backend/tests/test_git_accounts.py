@@ -1,4 +1,5 @@
 """Git forge accounts: CRUD, the default invariant, and repo token resolution."""
+import base64
 import uuid
 
 import httpx
@@ -413,18 +414,16 @@ async def test_get_credential_reports_the_accounts_provider(session):
     assert await RepoManager(session).get_credential(repo) == ("glpat_x", "gitlab")
 
 
-def test_auth_url_uses_the_forges_own_git_username():
-    assert RepoManager._auth_url("https://github.com/o/r", "T", "github") == (
-        "https://x-access-token:T@github.com/o/r"
-    )
+def test_auth_env_uses_the_forges_own_git_username():
+    def basic_user(provider):
+        value = RepoManager._auth_env("T", provider)["GIT_CONFIG_VALUE_0"]
+        return base64.b64decode(value.removeprefix("Authorization: Basic ")).decode()
+
+    assert basic_user("github") == "x-access-token:T"
     # GitLab accepts only `oauth2` (or gitlab-ci-token); GitHub's spelling
     # authenticates as nobody there.
-    assert RepoManager._auth_url("https://gitlab.com/o/r", "T", "gitlab") == (
-        "https://oauth2:T@gitlab.com/o/r"
-    )
-    assert RepoManager._auth_url("https://host:8443/o/r", "T", "github") == (
-        "https://x-access-token:T@host:8443/o/r"
-    )
+    assert basic_user("gitlab") == "oauth2:T"
+    assert basic_user("unknown-forge") == "x-access-token:T"
 
 
 # --------------------------------------------------------------------------

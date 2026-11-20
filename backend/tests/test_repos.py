@@ -11,7 +11,7 @@ from app.services.repo_manager import RepoManager, _sanitize_url
 @pytest.mark.parametrize("failure", ["error", "timeout", "checkout_warning"])
 async def test_git_diagnostics_scrub_every_forge(tmp_path, monkeypatch, caplog, provider, failure):
     token = "SENTINEL_GIT_TOKEN"
-    url = RepoManager._auth_url("https://forge.example/org/repo.git", token, provider)
+    url = f"https://{FORGES[provider].git_username}:{token}@forge.example/org/repo.git"
     command = ["git", "clone", url]
 
     def run_git(*args, **kwargs):

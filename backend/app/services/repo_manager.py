@@ -1,11 +1,12 @@
 import asyncio
+import base64
 import logging
 import os
 import re
 import shutil
 from collections.abc import Callable
 from pathlib import Path
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse
 from uuid import UUID
 
 from sqlalchemy import case, func, select, update
@@ -499,18 +500,17 @@ class RepoManager:
                 credential = await self.get_credential(repo)
                 token = credential[0] if credential else None
                 env: dict[str, str] = {}
-                # Fetch from an explicit (optionally authed) URL rather than
-                # persisting the token into .git/config via `remote set-url`;
-                # reset to FETCH_HEAD since the remote-tracking ref isn't updated
-                # when fetching from a bare URL.
+                # Fetch from the explicit URL with the credential in the child's
+                # environment, never the argv or .git/config; reset to
+                # FETCH_HEAD since the remote-tracking ref isn't updated when
+                # fetching from a bare URL.
                 fetch_target = "origin"
+                fetch_env = env
                 if token and repo.url:
-                    fetch_target = self._auth_url(repo.url, token, credential[1])
-                    # Fail fast instead of hanging on an interactive credential
-                    # prompt if the embedded token is rejected.
-                    env["GIT_TERMINAL_PROMPT"] = "0"
+                    fetch_target = repo.url
+                    fetch_env = self._auth_env(token, credential[1])
 
-                await self._run_git(cwd, ["git", "fetch", fetch_target, repo.default_branch], env=env)
+                await self._run_git(cwd, ["git", "fetch", fetch_target, repo.default_branch], env=fetch_env)
                 if is_local:
                     # `reset --hard` moves the branch ref as well as the tree, so
                     # on the operator's own checkout it discards uncommitted edits
@@ -566,17 +566,15 @@ class RepoManager:
 
         dest.parent.mkdir(parents=True, exist_ok=True)
 
-        url = repo.url
         credential = await self.get_credential(repo)
         token = credential[0] if credential else None
-        if token:
-            url = self._auth_url(repo.url, token, credential[1])
+        env = self._auth_env(token, credential[1]) if token else None
 
         abs_dest = str(dest.resolve())
-        cmd = ["git", "clone", "--branch", repo.default_branch, "--single-branch", url, abs_dest]
-        await self._run_git(dest.parent, cmd)
-        # git clone records the (token-bearing) URL in .git/config; reset the
-        # remote to the bare URL so the credential isn't persisted on disk.
+        cmd = ["git", "clone", "--branch", repo.default_branch, "--single-branch", repo.url, abs_dest]
+        await self._run_git(dest.parent, cmd, env=env)
+        # The credential never enters the clone URL, but reset the remote to the
+        # bare URL anyway so a row whose URL carried userinfo leaves none on disk.
         if token:
             try:
                 await self._run_git(dest, ["git", "remote", "set-url", "origin", repo.url])
@@ -584,19 +582,27 @@ class RepoManager:
                 logger.warning("Failed to scrub auth token from %s remote URL", repo.name)
 
     @staticmethod
-    def _auth_url(url: str, token: str, provider: str = "github") -> str:
+    def _auth_env(token: str, provider: str = "github") -> dict[str, str]:
+        """The child environment that authenticates one git network command.
+
+        An `http.extraHeader` through `GIT_CONFIG_*` keeps the token out of the
+        argv (visible in the process table) and out of `.git/config`.
+        """
         from app.services.git_forges import FORGES
-        parsed = urlparse(url)
         # GitHub takes any username and reads the token as the password, but
         # GitLab accepts only `oauth2`, so this is not cosmetic. An unknown
         # provider keeps GitHub's spelling, which is the widest-accepted one.
         forge = FORGES.get(provider)
         git_username = forge.git_username if forge else "x-access-token"
-        netloc = f"{git_username}:{token}@{parsed.hostname}"
-        if parsed.port:
-            netloc += f":{parsed.port}"
-        authed = parsed._replace(netloc=netloc)
-        return urlunparse(authed)
+        basic = base64.b64encode(f"{git_username}:{token}".encode()).decode()
+        return {
+            "GIT_CONFIG_COUNT": "1",
+            "GIT_CONFIG_KEY_0": "http.extraHeader",
+            "GIT_CONFIG_VALUE_0": f"Authorization: Basic {basic}",
+            # Fail fast instead of hanging on an interactive credential prompt
+            # if the token is rejected.
+            "GIT_TERMINAL_PROMPT": "0",
+        }
 
     @staticmethod
     async def _run_git(cwd: Path, cmd: list[str], env: dict[str, str] | None = None) -> str:

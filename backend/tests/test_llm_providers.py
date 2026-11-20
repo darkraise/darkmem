@@ -248,14 +248,14 @@ async def test_masked_key_sentinel_does_not_rotate(client, auth_headers, session
     )
     await client.put(
         "/api/v1/config/llm-providers/k",
-        json={"api_kind": "openai", "base_url": "http://y/v1", "api_key": "***"},
+        json={"api_kind": "openai", "base_url": "http://x/v1", "api_key": "***"},
         headers=auth_headers,
     )
     stored = (await session.execute(
         text("SELECT api_key, base_url FROM llm_providers WHERE name = 'k'")
     )).one()
     assert stored[0] == "real"
-    assert stored[1] == "http://y/v1"
+    assert stored[1] == "http://x/v1"
 
 
 @pytest.mark.asyncio
