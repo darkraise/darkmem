@@ -89,13 +89,13 @@
 | 82 | B4-13: a transient fetch failure deletes the managed clone and re-clones it, with no claim held | docs/dforge/plans/2026-11-20-audit-remaining.md | A36 (Task 29) | done | 4a02245 |
 | 83 | B4-14: a file whose parse times out or raises is re-detected as drift on every tick | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 30 contracts | done | 25029ab |
 | 84 | B4-15: query-per-item loops in phases 03, 05 and 06 | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 30 contracts | done | 25029ab |
-| 85 | B4-16: phase 08 seeds every file's type environment with every symbol's return type, keyed by function name | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 31 contracts | doing | - |
-| 86 | B4-17: Leiden and process tracing rewrite the repo's whole community/process layer on every run, under non-deterministic keys | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 31 contracts | doing | - |
-| 87 | B4-18: property nodes are keyed by bare name and deleted together with the first owner's file | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 31 contracts | doing | - |
+| 85 | B4-16: phase 08 seeds every file's type environment with every symbol's return type, keyed by function name | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 31 contracts | done | 6bb6606 |
+| 86 | B4-17: Leiden and process tracing rewrite the repo's whole community/process layer on every run, under non-deterministic keys | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 31 contracts | done | 6bb6606 |
+| 87 | B4-18: property nodes are keyed by bare name and deleted together with the first owner's file | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 31 contracts | done | 6bb6606 |
 | 88 | B4-19: failure paths store unsanitised exception text; tokens sit in the git argv | docs/dforge/plans/2026-11-20-audit-remaining.md | A36 (Task 29) | done | 9124abd |
 | 89 | B4-20: a local checkout's fetch lane fast-forwards whichever branch is checked out | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 3 contracts | done | 4a02245 |
 | 90 | B4-21 and removal 5: the wiki config row is orphaned on repo delete, and the cache check is dead | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 32 contracts | doing | - |
-| 91 | B4-22: process_tracer reads a signature property nothing writes | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 31 contracts | doing | - |
+| 91 | B4-22: process_tracer reads a signature property nothing writes | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 31 contracts | done | 6bb6606 |
 | 92 | B4-23: code_deriver strips and rewrites every repo's assertions hourly, whether or not HEAD moved | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 30 contracts | done | 25029ab |
 | 93 | B4-24: cancel_repo_task does not check that the task belongs to the repository in the URL | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 29 contracts | done | 4a02245 |
 | 94 | B4-25: doc and comment drift in code_pipeline and repo_allowlist; CodeFile.last_commit_sha is served but never written | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 32 contracts | doing | - |
