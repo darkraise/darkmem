@@ -246,6 +246,16 @@ def _reset_login_rate_limiter():
     login_rate_limiter.reset()
 
 
+@pytest.fixture(autouse=True)
+def _reset_embedder_cooldown():
+    """A failed query embed parks the semantic arm for a minute, process-wide;
+    one test's fake embedder must not park it for the next test's."""
+    from app.services import hybrid_search
+    hybrid_search._embedder_retry_at = 0.0
+    yield
+    hybrid_search._embedder_retry_at = 0.0
+
+
 @pytest_asyncio.fixture
 async def auth_headers(session):
     hashed = hash_password("test-admin-password")

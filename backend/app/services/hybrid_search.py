@@ -63,6 +63,10 @@ class ChannelTrace:
     reranked: bool = False
 
 
+#: ``(vector, fingerprint, failed)``; see :meth:`HybridSearchService.embed_query`.
+QueryEmbedding = tuple[list[float] | None, str | None, bool]
+
+
 class HybridSearchService:
     def __init__(self, llm: LLMOrchestrator, session: AsyncSession):
         self.llm = llm
@@ -72,8 +76,13 @@ class HybridSearchService:
         self, query: str, *, flags: dict, limit: int = 20,
         semantic_weight: float = 0.7, filters: MemoryFilter | None = None,
         with_trace: bool = False,
+        embedded: QueryEmbedding | None = None,
     ) -> list[dict] | ChannelTrace:
-        """Share candidate selection and ranking between memory search doors."""
+        """Share candidate selection and ranking between memory search doors.
+
+        ``embedded`` is :meth:`embed_query`'s answer when the caller already
+        embedded the query for another channel; ``None`` embeds it here.
+        """
         trace = None
         hybrid_enabled = flags.get("hybrid_search_enabled", True)
         if hybrid_enabled:
@@ -81,7 +90,7 @@ class HybridSearchService:
             response = await search(
                 query, limit=limit, semantic_weight=semantic_weight, filters=filters,
                 ppr_weight=ppr_list_weight(flags), dual_weight=dual_list_weight(flags),
-                access_signals=access_arms_active(flags),
+                access_signals=access_arms_active(flags), embedded=embedded,
             )
             if with_trace:
                 trace = response
@@ -98,7 +107,10 @@ class HybridSearchService:
                     semantic_ran=False,
                 )
         else:
-            vector, fingerprint = await self.llm.embed(query)
+            if embedded is not None and embedded[0] is not None:
+                vector, fingerprint, _ = embedded
+            else:
+                vector, fingerprint = await self.llm.embed(query)
             results = await PostgresVectorRepository(self.session).search(
                 vector, fingerprint=fingerprint, limit=limit, filters=filters,
             )
@@ -173,6 +185,7 @@ class HybridSearchService:
         ppr_weight: float = 0.0,
         dual_weight: float = 0.0,
         access_signals: bool = False,
+        embedded: QueryEmbedding | None = None,
     ) -> list[dict]:
         """The fused rows, ``limit`` of them.
 
@@ -189,25 +202,12 @@ class HybridSearchService:
         :func:`rank_fusion.ppr_list_weight` rather than reading the flag pair
         themselves.
         """
-        fetch_n = fusion_fetch_depth(limit)
-        vector, fingerprint, embed_failed = await self._embed_query(query)
-        semantic_results, keyword_results, _, _ = await self._run_channels(
-            query, vector, fingerprint, fetch_n, filters, semantic_failed=embed_failed,
+        trace = await self.search_with_trace(
+            query, limit=limit, semantic_weight=semantic_weight, filters=filters,
+            ppr_weight=ppr_weight, dual_weight=dual_weight,
+            access_signals=access_signals, embedded=embedded,
         )
-        ppr_results = await self._ppr_search(
-            semantic_results, filters, ppr_weight, fetch_n,
-        )
-        dual_results = await self._dual_level_search(
-            vector, fingerprint, filters, dual_weight, fetch_n,
-        )
-        fused = self._rrf_fuse(
-            semantic_results, keyword_results, semantic_weight, limit,
-            ppr_results, ppr_weight, dual_results, dual_weight,
-        )
-        if access_signals:
-            await self._attach_access_signals(fused)
-        self._record_access(fused)
-        return fused
+        return trace.results
 
     async def search_with_trace(
         self,
@@ -218,14 +218,16 @@ class HybridSearchService:
         ppr_weight: float = 0.0,
         dual_weight: float = 0.0,
         access_signals: bool = False,
+        embedded: QueryEmbedding | None = None,
     ) -> ChannelTrace:
-        """Same channels and fusion as :meth:`search`, plus what each channel
-        contributed per row — the input the retrieval trace envelope needs
-        (doc 07 §8). Only the caller that wants a trace pays for this; the
-        plain ``search`` path above never builds ``channel_scores``.
+        """The fused rows plus what each channel contributed per row, the input
+        the retrieval trace envelope needs (doc 07 §8). :meth:`search` is this
+        method's ``results``.
         """
         fetch_n = fusion_fetch_depth(limit)
-        vector, fingerprint, embed_failed = await self._embed_query(query)
+        if embedded is None:
+            embedded = await self.embed_query(query)
+        vector, fingerprint, embed_failed = embedded
         semantic_results, keyword_results, semantic_failed, keyword_failed = await self._run_channels(
             query, vector, fingerprint, fetch_n, filters, semantic_failed=embed_failed,
         )
@@ -264,7 +266,7 @@ class HybridSearchService:
             semantic_ran=not settings.read_only,
         )
 
-    async def _embed_query(self, query: str) -> tuple[list[float] | None, str | None, bool]:
+    async def embed_query(self, query: str) -> QueryEmbedding:
         """``(vector, fingerprint, failed)`` for the semantic arm.
 
         An embedder that cannot be reached is the semantic arm failing, the

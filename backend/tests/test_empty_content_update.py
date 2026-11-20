@@ -325,38 +325,3 @@ def test_the_reranker_still_refuses_an_empty_document_directly():
         _resolve_document_text({"content": "", "payload": {"content": ""}}, "content")
 
     assert RerankerService is not None
-
-
-# ─────────────── 4. the composition's own window ───────────────
-
-
-class _NeverAskedReranker:
-    async def rerank(self, *args, **kwargs):  # pragma: no cover - never reached
-        raise AssertionError("the empty row must be refused before the reranker is called")
-
-
-@pytest.mark.asyncio
-async def test_the_composition_refuses_an_empty_row_before_the_reranker(session):
-    """T2.81's second closure: the log-and-pass-through became a raise.
-
-    ``derive_rerank_scores`` used to warn that a textless row "will be scored
-    against an empty document" and hand it on — a promise the producer's own
-    raise makes false. The two had to move together.
-
-    **This path has no live caller.** ``LayerCompositionService`` is
-    instantiated under ``app/`` (MCP's ``knowledge_search``), but nothing
-    passes it a ``reranker``, so ``derive_rerank_scores`` returns before it
-    reaches a row. The guard is for T2.56/T2.58, and the test drives it
-    directly because no productive caller can reach it yet.
-    """
-    from app.services import layer_composition as lc
-
-    service = lc.LayerCompositionService(None, session, reranker=_NeverAskedReranker())
-    textless = lc.memory_candidate(
-        {"memory_id": uuid.uuid4(), "payload": {}, "project": "p", "status": "active"},
-        channel_rank=1,
-    )
-    rows = lc.compose([textless]).rows
-
-    with pytest.raises(ValueError, match="resolves to no text"):
-        await service.derive_rerank_scores("q", rows)

@@ -383,7 +383,7 @@ async def test_adding_a_cold_source_never_lowers_a_facts_rank(session):
 # fixture, the same fifty real searches, now proven to move the score.
 
 
-@pytest.mark.parametrize("method_name", ["search", "search_with_trace"])
+@pytest.mark.parametrize("method_name", ["search_with_trace"])
 async def test_a_facts_channel_search_feeds_the_direct_counter(session, method_name):
     """The flip of T2.65's gap-pinning test (same name it would have had,
     renamed because the assertions invert): fifty real ``FactsChannel``

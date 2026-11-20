@@ -88,7 +88,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.fact_sources import FactSourceRepository
 from app.repositories.vector import MemoryFilter
 from app.schemas.retrieval_trace import ChannelStatus, RetrievalEnvelope
-from app.config import settings
 from app.services.claim_gates import ungated_mapping, unserved_status
 from app.services.fact_badge import (
     BADGE_BEARING_ID_KINDS,
@@ -138,7 +137,6 @@ __all__ = [
     "ComposedResult",
     "LayerCandidate",
     "LayerCompositionService",
-    "RERANK_WINDOW",
     "article_candidate",
     "compose",
     "composition_key",
@@ -1047,14 +1045,6 @@ def compose(
 # reporting a channel that never ran can never be mistaken for one that did.
 ARTICLE_CHANNEL_OWNER = "T3.02"
 
-# How many of the surviving, provisionally-ordered rows the reranker sees.
-RERANK_WINDOW = 40
-
-# The key the composition stamps on a document handed to the reranker, so the
-# returned scores can be mapped back to composition keys rather than to
-# whatever id the producer's row happened to carry.
-RERANK_KEY_FIELD = "_composition_key"
-
 # Where each layer keeps the text a reranker must actually read. A **closed
 # dispatch**, not a fall-through chain, because the fall-through is what fails
 # silently: ``RerankerService`` resolves ``content`` then ``payload.content``
@@ -1111,6 +1101,11 @@ class ComposedResult:
     rows: list[ComposedRow]
     envelope: RetrievalEnvelope
     channel_scores: dict[str, dict[str, float]] = field(default_factory=dict)
+
+
+def _arm_scores(scores: Mapping[str, float]) -> dict[str, float]:
+    """A channel's per-arm scores for one row, copied as numbers only."""
+    return {arm: float(score) for arm, score in scores.items()}
 
 
 def _namespaced(prefix: str, statuses: Mapping[str, ChannelStatus]) -> dict:
@@ -1181,10 +1176,9 @@ class LayerCompositionService:
     :meth:`search` is the single entry point, and it is not Chat-aware: MCP's
     ``knowledge_search`` (T2.72) and ``ChatService`` (T2.58) both spend it, and
     the two scope parameters the second one needed are axes any caller has
-    rather than a chat mode. T2.56 is the remaining consumer. **No caller
-    constructs this with a ``reranker``**, so :meth:`derive_rerank_scores`
-    returns before it looks at a row — which is why the empty-text raise in it
-    is a guard against a future caller rather than a live path.
+    rather than a chat mode. T2.56 is the remaining consumer. The memory
+    channel's own rerank (``reranker_enabled``) is the only rerank a search
+    runs, so :func:`compose` is handed no ``rerank_scores`` here.
 
     **It deliberately takes no ``with_trace``**, which is a correction to the
     seam rather than an omission. On ``memory.py`` that flag chooses between
@@ -1197,92 +1191,9 @@ class LayerCompositionService:
     T2.58 inherits this signature without the flag.
     """
 
-    def __init__(self, llm, session: AsyncSession, *, reranker=None):
+    def __init__(self, llm, session: AsyncSession):
         self.llm = llm
         self.session = session
-        self.reranker = reranker
-
-    async def derive_rerank_scores(
-        self, query: str, rows: list[ComposedRow]
-    ) -> dict[str, float] | None:
-        """The rerank mapping, over a window this module slices itself.
-
-        Derived naively from ``RerankerService.rerank``'s return, no key could
-        ever be missing: it stamps its own unscored tail through
-        ``setdefault(…, 0.0)``, which is exactly the collapse of "never asked"
-        into "rated 0" that the terminal band exists to prevent. It also
-        truncates to ``top_k`` (defaulting to 10), which would silently drop
-        rows and contradict the guarantee that nothing is dropped.
-
-        So both bounds are pinned. ``top_k=len(window)`` makes the truncation
-        a no-op. ``max_candidates=len(window)`` makes the reranker's **own**
-        head the whole window: without it the tail is empty only because
-        ``RERANK_WINDOW`` happens to equal that parameter's default, and
-        raising the window would quietly let ``setdefault`` zeros into the
-        mapping as scored rows while every length assertion still passed.
-
-        A mapping that is empty, or all-zero, is **no usable signal**. The
-        reranker's outer failure handler stamps every document ``0.0`` and
-        returns them in input order, which is indistinguishable from a model
-        that rated everything 0; serving that as a rerank would collapse the
-        whole window into one band ordered by tier alone — a large silent
-        behaviour change out of an outage.
-
-        **A row with no text raises here rather than being logged past**
-        (T2.81). The producer refuses an empty document (T2.69), so passing one
-        through was a warning that promised a scoring that could not happen;
-        the two had to move together, and the raise names the composed row
-        instead of the producer's contract.
-        """
-        if self.reranker is None:
-            return None
-        window = list(rows)[:RERANK_WINDOW]
-        if not window:
-            return None
-
-        documents = []
-        for row in window:
-            document_text = rerank_document_text(row)
-            if not document_text:
-                # Not a warning-and-carry-on. ``RerankerService`` refuses an
-                # empty document rather than scoring one (T2.69), so passing
-                # this through would raise a few lines later from inside the
-                # producer, naming the producer's contract instead of the row
-                # that broke it. Raising here says which composed row carries
-                # no text, which is the only question a reader has.
-                raise ValueError(
-                    f"{row.key} resolves to no text under "
-                    f"{RERANK_TEXT_FIELDS[row.id_kind]}, so it cannot be "
-                    "reranked; a row is never scored against an empty document"
-                )
-            documents.append(
-                {
-                    **dict(ungated_mapping(row.row)),
-                    "content": document_text,
-                    RERANK_KEY_FIELD: row.key,
-                }
-            )
-        scored = await self.reranker.rerank(
-            query,
-            documents,
-            top_k=len(window),
-            max_candidates=len(window),
-        )
-        if len(scored) != len(window):
-            raise RuntimeError(
-                f"the reranker returned {len(scored)} rows for a window of "
-                f"{len(window)}; the window must survive intact"
-            )
-
-        scores = {
-            document[RERANK_KEY_FIELD]: float(document["rerank_score"])
-            for document in scored
-        }
-        if not scores:
-            return None
-        if all(value == 0.0 for value in scores.values()):
-            return None
-        return scores
 
     async def derive_badges(
         self, candidates: list[LayerCandidate]
@@ -1359,33 +1270,24 @@ class LayerCompositionService:
             (fact_id, ref) for fact_id, group in refs.items() for ref in group
         )
 
-    async def _article_channel(self, query: str, project: str, limit: int):
+    async def _article_channel(
+        self, vector: list[float] | None, fingerprint: str | None,
+        project: str, limit: int,
+    ):
         """The L3 channel, or an empty trace when nothing can serve it.
 
-        The query has to be embedded to search a vector partition, and the
-        fingerprint that embedding carries is what selects the partition — a
-        vector from one embedder compared against another's rows has no defined
-        cosine distance. An install with no embedder therefore has no L3
-        channel, which is an absence rather than a failure and is reported as
-        one.
+        It reads the vector the memory channel's query embed produced, and that
+        vector's fingerprint selects the partition — a vector from one embedder
+        compared against another's rows has no defined cosine distance. No
+        vector (no embedder, a read-only instance, an embed that failed) means
+        the arm was never asked, which is an absence rather than a failure: an
+        embedder outage is already reported by the memory channel's semantic
+        arm, and reporting it here too would flag L3 degraded for a layer that
+        was never reached.
         """
         from app.services.articles_channel import ArticleChannelTrace, ArticlesChannel
 
-        llm = getattr(self, "llm", None)
-        # Read-only takes the same branch an absent orchestrator does, which is
-        # already the honest one: `semantic_ran=False` says the arm was never
-        # asked. A backup worker makes no external call by ruling.
-        if llm is None or settings.read_only:
-            return ArticleChannelTrace(results=[], semantic_ran=False)
-        try:
-            vector, fingerprint = await llm.embed(query)
-        except Exception:
-            # Could not ask, rather than asked and broke — the same distinction
-            # an absent partition draws. An embedder outage is already reported
-            # by the memory channel's own semantic arm, and reporting it a
-            # second time here would flag L3 degraded for a layer that was
-            # never reached.
-            logger.warning("Layer composition: no embedding for the articles channel")
+        if vector is None or fingerprint is None:
             return ArticleChannelTrace(results=[], semantic_ran=False)
         return await ArticlesChannel(self.session).search_with_trace(
             vector, fingerprint=fingerprint, project=project, limit=limit
@@ -1428,12 +1330,18 @@ class LayerCompositionService:
         candidates: list[LayerCandidate] = []
         channel_scores: dict[str, dict[str, float]] = {}
 
+        # One query embed serves the memory channel's semantic arm and the
+        # article channel; it never raises (a failure is reported as the
+        # memory channel's semantic arm failing).
+        hybrid = HybridSearchService(self.llm, self.session)
+        embedded = await hybrid.embed_query(query)
+
         memory_failed = False
         try:
-            memory_trace = await HybridSearchService(self.llm, self.session).search_ranked(
+            memory_trace = await hybrid.search_ranked(
                 query, flags=weights, limit=limit,
                 filters=MemoryFilter(project=project, statuses=statuses),
-                with_trace=True,
+                with_trace=True, embedded=embedded,
             )
         except Exception:
             logger.error("Layer composition: the memory channel failed outright")
@@ -1460,7 +1368,7 @@ class LayerCompositionService:
                 for rank, row in enumerate(memory_trace.results, start=1)
             )
             channel_scores.update({
-                composition_key("memory", _admit_id(row_id)): dict(scores)
+                composition_key("memory", _admit_id(row_id)): _arm_scores(scores)
                 for row_id, scores in memory_trace.channel_scores.items()
             })
 
@@ -1496,7 +1404,7 @@ class LayerCompositionService:
                     for rank, row in enumerate(fact_trace.results, start=1)
                 )
                 channel_scores.update({
-                    composition_key("fact", _admit_id(row_id)): dict(scores)
+                    composition_key("fact", _admit_id(row_id)): _arm_scores(scores)
                     for row_id, scores in fact_trace.arm_scores.items()
                 })
 
@@ -1515,7 +1423,9 @@ class LayerCompositionService:
             channels["article.semantic"] = ChannelStatus(ran=False)
         else:
             try:
-                article_trace = await self._article_channel(query, project, limit)
+                article_trace = await self._article_channel(
+                    embedded[0], embedded[1], project, limit,
+                )
             except Exception:
                 logger.error("Layer composition: the articles channel failed outright")
                 channels["article.semantic"] = ChannelStatus(ran=True, failed=True)
@@ -1526,7 +1436,7 @@ class LayerCompositionService:
                     for rank, row in enumerate(article_trace.results, start=1)
                 )
                 channel_scores.update({
-                    composition_key("article", _admit_id(row_id)): dict(scores)
+                    composition_key("article", _admit_id(row_id)): _arm_scores(scores)
                     for row_id, scores in article_trace.arm_scores.items()
                 })
 
@@ -1545,33 +1455,12 @@ class LayerCompositionService:
 
         fact_ids = [c.id for c in candidates if c.id_kind == "fact"]
         evidence = await latest_verified_evidence(self.session, fact_ids)
-        # Derived once and handed to both passes. The badge is a label and
-        # never an ordering signal, so it cannot move a row between the
-        # provisional pass and the final one; deriving it twice would only buy
-        # a second round of the producer's queries.
         badges = await self.derive_badges(candidates)
-
-        # The provisional pass is deliberately **ungrouped**, and that is what
-        # implements doc 07 §11's resolved rerank-before-grouping order rather
-        # than merely documenting it: the reranker is handed this list, so a
-        # memory that will end up nested is still scored for query-relevance
-        # here. Grouping it first would hide a highly-relevant supporting
-        # memory from the model that was supposed to rate it, and the trace
-        # would then carry a nested row with no rerank verdict at all.
-        provisional = compose(
-            candidates,
-            weights=weights,
-            declared_context=declared_context,
-            evidence=evidence,
-            badges=badges,
-        )
-        rerank_scores = await self.derive_rerank_scores(query, provisional.rows)
         result = compose(
             candidates,
             weights=weights,
             declared_context=declared_context,
             evidence=evidence,
-            rerank_scores=rerank_scores,
             fact_sources=await self.derive_support_map(fact_ids),
             badges=badges,
             # Each channel fetches up to ``limit`` of its own, so the union is

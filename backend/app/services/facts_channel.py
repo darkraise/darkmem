@@ -53,9 +53,8 @@ leaves open is now available — but *not to a query on ``knowledge_triples``*.
 It rides the ``verified`` event's payload as a ``contradiction`` block, which is
 why the sentence above says "not constructible from a query on this channel"
 rather than the original "not constructible today", which stopped being true.
-Composing it onto a served row is T2.43's, reading the journal the way
-``review_queue`` already does; :data:`DISPUTE_COUNTERPART_OWNER` names T2.64
-because that is where the data comes from. A reader must not take the block's
+``layer_composition.dispute_label`` composes it onto a served row, reading the
+journal the way ``review_queue`` already does. A reader must not take the block's
 absence for "no counterpart exists" — it is also absent on a recovery, on a
 caller-overridden verdict, and on any dispute predating that commit.
 
@@ -66,13 +65,10 @@ channel serves ``knowledge_triples`` rows directly, calling nothing
 analogous to ``access_stats.spawn_record_access``. ``fact_access_stats``
 (``app.services.fact_access_stats``) is the fix: the fact-keyed analogue of
 ``memory_access_stats``, fed from this channel's own serving path the same
-way the memory hybrid feeds its counter. Both :meth:`FactsChannel.search`
-and :meth:`FactsChannel.search_with_trace` call
-``fact_access_stats.spawn_record_access`` on the fused, served rows —
-duplicated per method rather than hoisted into the shared ``_run_arms``,
-matching ``hybrid_search.HybridSearchService``'s own idiom, because what
-gets counted is what a caller actually receives, and only the two public
-methods produce that. See ``fact_access_stats``'s module docstring for why
+way the memory hybrid feeds its counter. :meth:`FactsChannel.search_with_trace`
+calls ``fact_access_stats.spawn_record_access`` on the fused, served rows
+rather than in the shared ``_run_arms``, because what gets counted is what a
+caller actually receives. See ``fact_access_stats``'s module docstring for why
 the write stays off this channel's hot path and how a counting failure
 degrades (never this channel's own request).
 """
@@ -94,7 +90,6 @@ from app.services.rank_fusion import RankedList, rrf_fuse
 logger = logging.getLogger(__name__)
 
 __all__ = [
-    "DISPUTE_COUNTERPART_OWNER",
     "FactChannelTrace",
     "FactsChannel",
     "KEYWORD_ARM",
@@ -116,10 +111,6 @@ SEMANTIC_ARM = "semantic"
 # ``RankArm.activation`` names an arm's activation task, so a channel running
 # without its semantic modality can never be mistaken for a channel that has one.
 SEMANTIC_ARM_OWNER = "T2.33"
-
-# The task that will make a dispute's counterpart readable. Carried on the
-# label for the same reason.
-DISPUTE_COUNTERPART_OWNER = "T2.64"
 
 # The two arms split the channel's weight evenly, and the even split is a
 # deliberate non-claim: no measurement says fact text outranks an endpoint name
@@ -182,9 +173,9 @@ class FactChannelTrace:
         ``RetrievalEnvelope.channels`` as they stand.** That dict is flat, and
         the memory hybrid already populates ``keyword`` and ``semantic`` in it,
         so a naive merge overwrites the memory channel's entries and a memory
-        keyword outage disappears from the envelope's ``partial`` flag. Nothing
-        consumes this method yet; whoever composes the four layers owns the
-        namespacing, and merging before deciding it loses status silently.
+        keyword outage disappears from the envelope's ``partial`` flag, which
+        is why ``LayerCompositionService.search`` namespaces them under
+        ``fact.`` before merging.
         """
         return {
             KEYWORD_ARM: ChannelStatus(ran=True, failed=self.keyword_failed),
@@ -196,19 +187,6 @@ class FactChannelTrace:
 class FactsChannel:
     def __init__(self, session: AsyncSession):
         self.session = session
-
-    async def search(
-        self,
-        query: str,
-        *,
-        project: str,
-        limit: int = 20,
-        keyword_weight: float = KEYWORD_ARM_WEIGHT,
-    ) -> list[dict]:
-        keyword_rows, name_rows, _, _ = await self._run_arms(query, project, limit)
-        fused = self._fuse(keyword_rows, name_rows, keyword_weight, limit)
-        self._record_access(fused)
-        return fused
 
     async def search_with_trace(
         self,
@@ -346,25 +324,6 @@ class FactsChannel:
         )
 
 
-def _dispute_label(row) -> dict | None:
-    """The dispute half of the row's labels, or ``None`` when undisputed.
-
-    ``counterpart`` is structurally ``None``: the contradiction finding that
-    knows the competing claim is computed inside adjudication and never
-    persisted, and this surface may not re-derive it. Emitting the key with a
-    named owner is the honest shape — a consumer can tell "no counterpart is
-    knowable yet" from "this fact has no counterpart", which dropping the key
-    would collapse.
-    """
-    if row["verification_status"] != DISPUTED:
-        return None
-    return {
-        "review_state": row["review_state"],
-        "counterpart": None,
-        "counterpart_owner": DISPUTE_COUNTERPART_OWNER,
-    }
-
-
 def _row_to_candidate(row, arm: str) -> dict:
     fact_id = str(row["id"])
     return {
@@ -406,5 +365,4 @@ def _row_to_candidate(row, arm: str) -> dict:
             "reference_time": row["reference_time"],
         },
         "created_at": row["created_at"],
-        "dispute": _dispute_label(row),
     }

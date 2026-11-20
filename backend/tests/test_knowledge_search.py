@@ -14,9 +14,9 @@ What this module pins, and the mutation that breaks each one:
   plausible document, which is precisely how ``code_search`` and
   ``code_blast_radius`` drifted while sharing a service.
 
-* **Parity on the order, not the shape.** T2.72's finding 2: the reranker is a
-  door-side constructor argument, so the moment one door passes one the two
-  rank differently while every row-shape test stays green. The assertions here
+* **Parity on the order, not the shape.** T2.72's finding 2: anything one door
+  hands the composition and the other does not makes the two rank differently
+  while every row-shape test stays green. The assertions here
   compare the id sequences the doors produce over one corpus, including the
   order of the memories nested under a fact, and the deep case runs over a
   corpus longer than ``FUSION_FETCH_DEPTH`` so that a door reading its arms to
@@ -28,9 +28,7 @@ What this module pins, and the mutation that breaks each one:
   defect *inside* the composition are three different answers. Both doors used
   to catch bare ``RuntimeError``, and the composition raises that base for its
   own bugs — the grouping fixpoint that stopped decreasing
-  (``layer_composition._group_within_limit``), a reranker that returned a
-  window of the wrong length (``derive_rerank_scores``) — so a bug over a
-  healthy vault was served as "the vault is down". That is the
+  (``layer_composition._group_within_limit``) — so a bug over a healthy vault was served as "the vault is down". That is the
   failed-versus-empty conflation T2.66 spent a task eliminating, pointed at
   the operator rather than at the code.
 
@@ -49,7 +47,6 @@ import ast
 import inspect
 import json
 import math
-import pathlib
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -529,63 +526,24 @@ def test_fuse_is_not_a_parameter_of_the_composition_search():
     assertion closes the gap structurally rather than behaviourally: if
     ``fuse`` cannot be a keyword ``search`` accepts, no call site can thread
     it into the composition at all, regardless of what that call site does
-    with it. Copies ``test_neither_door_constructs_the_composition_with_a_reranker``'s
-    structural-guard idiom for the same class of purity property."""
+    with it."""
     assert "fuse" not in inspect.signature(LayerCompositionService.search).parameters
-
-
-async def test_neither_door_constructs_the_composition_with_a_reranker(session):
-    """T2.72's finding 2, as a build failure rather than a review note.
-
-    ``LayerCompositionService`` takes its reranker as a **constructor
-    argument**, so reranking is a property of whoever built the service rather
-    than of the composition. A door that passed one would rank differently from
-    its twin while every row-shape parity test stayed green, and
-    ``envelope.reranked`` would report the difference on one door only.
-
-    The scan is deliberately total rather than door-scoped: activating the
-    reranker is a both-doors decision that must be taken inside the service and
-    re-measured (the arm-activation discipline ``rank_fusion.RANK_ARMS``
-    carries), so a caller reintroducing the asymmetry fails here whichever
-    module it lives in.
-
-    **What it does not catch:** a reranker passed positionally (the parameter is
-    keyword-only, so this is a TypeError rather than a silent divergence), one
-    assigned after construction (``service.reranker = …``, an ``Attribute``
-    target), and anything outside ``backend/app``.
-    """
-    app_root = pathlib.Path(knowledge_route.__file__).resolve().parents[2]
-    offenders = []
-    for path in sorted(app_root.rglob("*.py")):
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if not isinstance(node, ast.Call):
-                continue
-            func = node.func
-            name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
-            if name != "LayerCompositionService":
-                continue
-            if any(keyword.arg == "reranker" for keyword in node.keywords):
-                offenders.append(f"{path.relative_to(app_root.parent)}:{node.lineno}")
-    assert offenders == [], (
-        "a caller constructs the composition with a reranker of its own, so "
-        f"its ranking is no longer its twin's: {offenders}"
-    )
 
 
 async def test_the_doors_construct_and_call_the_composition_identically(
     client, auth_headers, session, monkeypatch
 ):
     """The behavioural half of the same property. The scan above sees a literal
-    keyword; this sees whatever each door actually passed, including a reranker
-    resolved at runtime and any scope axis one door defaults differently."""
+    keyword; this sees whatever each door actually passed, including any scope
+    axis one door defaults differently."""
     await _corpus(session)
     seen: list[dict] = []
     original_init = LayerCompositionService.__init__
     original_search = LayerCompositionService.search
 
-    def _init(self, llm, session_, *, reranker=None):
-        seen.append({"reranker": reranker})
-        original_init(self, llm, session_, reranker=reranker)
+    def _init(self, llm, session_):
+        seen.append({})
+        original_init(self, llm, session_)
 
     async def _search(self, query, **kwargs):
         seen[-1].update({"query": query, **kwargs})
@@ -598,7 +556,6 @@ async def test_the_doors_construct_and_call_the_composition_identically(
     await _mcp_body()
 
     assert len(seen) == 2
-    assert seen[0]["reranker"] is None
     assert seen[0] == seen[1]
 
 
@@ -678,18 +635,18 @@ async def test_a_composition_defect_is_not_served_as_unavailable(
 ):
     """T2.72's finding 1, over a healthy vault.
 
-    ``derive_rerank_scores`` and the grouping fixpoint both raise plain
-    ``RuntimeError`` for a defect in this module's own code. While the doors
+    The grouping fixpoint raises a plain ``RuntimeError`` for a defect in the
+    composition's own code. While the doors
     caught that base, such a bug arrived as ``{"status": "unavailable"}`` on a
     vault whose every channel had answered — sending an operator to the
     database and the channel list for a fault that is in neither.
     """
     await _corpus(session)
 
-    async def _defect(self, query, rows):
-        raise RuntimeError("the reranker returned 3 rows for a window of 5")
+    async def _defect(self, candidates):
+        raise RuntimeError("a defect in the composition's own code")
 
-    monkeypatch.setattr(LayerCompositionService, "derive_rerank_scores", _defect)
+    monkeypatch.setattr(LayerCompositionService, "derive_badges", _defect)
 
     with pytest.raises(RuntimeError) as rest_raised:
         await _rest(client, auth_headers)
@@ -698,7 +655,7 @@ async def test_a_composition_defect_is_not_served_as_unavailable(
 
     for raised in (rest_raised, tool_raised):
         assert not isinstance(raised.value, CompositionUnavailable)
-        assert "window" in str(raised.value)
+        assert "own code" in str(raised.value)
 
 
 async def test_a_one_sided_outage_reaches_the_route_as_partial(

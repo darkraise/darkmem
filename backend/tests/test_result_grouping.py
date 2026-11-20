@@ -460,24 +460,6 @@ class _FakeLLM:
         return [0.0], "fp"
 
 
-class _RecordingReranker:
-    """Records the window it was asked to score, and scores it as told."""
-
-    def __init__(self, scores=None):
-        self.seen: list[str] = []
-        self._scores = scores or {}
-
-    async def rerank(self, query, documents, *, top_k, max_candidates):
-        self.seen = [document[lc.RERANK_KEY_FIELD] for document in documents]
-        return [
-            {
-                **document,
-                "rerank_score": self._scores.get(document[lc.RERANK_KEY_FIELD], 1.0),
-            }
-            for document in documents
-        ]
-
-
 def _stub_channels(monkeypatch, memory_rows, fact_rows):
     async def _memory(self, *args, **kwargs):
         return hybrid_search.ChannelTrace(results=list(memory_rows))
@@ -489,55 +471,17 @@ def _stub_channels(monkeypatch, memory_rows, fact_rows):
     monkeypatch.setattr(facts_channel.FactsChannel, "search_with_trace", _facts)
 
 
-@pytest.mark.asyncio
-async def test_the_reranker_scores_a_memory_that_will_be_nested(session, monkeypatch):
-    """Doc 07 §11's resolved order, asserted where reversing it is observable.
-
-    Grouping before the rerank removes the supporting memory from the list the
-    model is handed, so the row the collapse is about is the one row never
-    scored for query-relevance.
-    """
-    fact_id, memory_id = uuid4(), uuid4()
-    _stub_channels(monkeypatch, [_memory_row(memory_id)], [_fact_row(fact_id)])
-    reranker = _RecordingReranker()
-
-    service = lc.LayerCompositionService(_FakeLLM(), session, reranker=reranker)
-    monkeypatch.setattr(
-        service, "derive_support_map", _constant_support({fact_id: [memory_id]}),
-    )
-    result = await service.search("q", project=PROJECT)
-
-    assert f"memory:{memory_id}" in reranker.seen
-    assert f"fact:{fact_id}" in reranker.seen
-    assert len(result.rows) == 1
-    assert [n.id for n in result.rows[0].supported_by] == [str(memory_id)]
-
-
-def _constant_support(pairs: dict):
-    async def _derive(fact_ids):
-        return lc.support_map(
-            (fact_id, memory_id)
-            for fact_id, memory_ids in pairs.items()
-            for memory_id in memory_ids
-        )
-
-    return _derive
-
-
-@pytest.mark.asyncio
-async def test_a_nested_row_carries_the_band_the_rerank_gave_it(session, monkeypatch):
+def test_a_nested_row_carries_the_band_the_rerank_gave_it():
     """The verdict on the nested row survives the collapse that hides the row."""
     fact_id, memory_id = uuid4(), uuid4()
-    _stub_channels(monkeypatch, [_memory_row(memory_id)], [_fact_row(fact_id)])
-    reranker = _RecordingReranker(
-        {f"memory:{memory_id}": 9.0, f"fact:{fact_id}": 2.0}
-    )
+    memory = lc.memory_candidate(_memory_row(memory_id), channel_rank=1)
+    fact = lc.fact_candidate(_fact_row(fact_id), channel_rank=1)
 
-    service = lc.LayerCompositionService(_FakeLLM(), session, reranker=reranker)
-    monkeypatch.setattr(
-        service, "derive_support_map", _constant_support({fact_id: [memory_id]}),
+    result = lc.compose(
+        [memory, fact],
+        rerank_scores={memory.key: 9.0, fact.key: 2.0},
+        fact_sources=lc.support_map([(fact_id, memory_id)]),
     )
-    result = await service.search("q", project=PROJECT)
 
     group = result.rows[0]
     assert group.band == 2

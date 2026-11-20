@@ -38,7 +38,6 @@ from app.repositories.knowledge_triples import (
 from app.services import fact_access_stats
 from app.services.facts_channel import (
     ARM_FETCH_MULTIPLIER,
-    DISPUTE_COUNTERPART_OWNER,
     KEYWORD_ARM,
     LAYER,
     NAME_ARM,
@@ -140,7 +139,7 @@ async def test_a_fact_in_another_project_is_unreachable(session):
     mine = await _open_fact(session)
     await _open_fact(session, project=OTHER_PROJECT, subject="other")
 
-    rows = await FactsChannel(session).search(RARE_TERM, project=PROJECT)
+    rows = (await FactsChannel(session).search_with_trace(RARE_TERM, project=PROJECT)).results
 
     assert _ids(rows) == {mine["id"]}
 
@@ -150,7 +149,7 @@ async def test_the_channel_cannot_be_called_without_a_project(session):
     """``project`` is keyword-only and required, the same structural choice
     ``get_live`` makes: an optional scope is a scope a caller can forget."""
     with pytest.raises(TypeError):
-        await FactsChannel(session).search(RARE_TERM)  # type: ignore[call-arg]
+        (await FactsChannel(session).search_with_trace(RARE_TERM)).results  # type: ignore[call-arg]
 
 
 # ── the belief window ────────────────────────────────────────────────
@@ -166,7 +165,7 @@ async def test_a_window_closed_fact_does_not_surface_as_current(session):
     await repo.close_window(closed["id"], NOW - timedelta(days=1))
     current = await _open_fact(session, obj="postgres")
 
-    rows = await FactsChannel(session).search(RARE_TERM, project=PROJECT)
+    rows = (await FactsChannel(session).search_with_trace(RARE_TERM, project=PROJECT)).results
 
     assert _ids(rows) == {current["id"]}
     assert await repo.get_live(project=PROJECT, limit=50)  # still live history
@@ -179,7 +178,7 @@ async def test_an_expired_fact_does_not_surface_at_all(session):
     await repo.expire(gone["id"])
     kept = await _open_fact(session, obj="postgres")
 
-    rows = await FactsChannel(session).search(RARE_TERM, project=PROJECT)
+    rows = (await FactsChannel(session).search_with_trace(RARE_TERM, project=PROJECT)).results
 
     assert _ids(rows) == {kept["id"]}
 
@@ -205,7 +204,7 @@ async def test_every_row_carries_its_verification_state_and_belief_window(sessio
     fact = await _open_fact(session, confidence=0.8, applies_when={"env": "prod"})
     await _set_status(session, fact["id"], "corroborated")
 
-    (row,) = await FactsChannel(session).search(RARE_TERM, project=PROJECT)
+    (row,) = (await FactsChannel(session).search_with_trace(RARE_TERM, project=PROJECT)).results
 
     assert row["verification_status"] == "corroborated"
     assert row["review_state"] is None
@@ -238,7 +237,7 @@ async def test_a_row_carries_the_under_sourced_overlay_it_is_wearing(session, ma
             {"t": NOW, "id": fact["id"]},
         )
 
-    (row,) = await FactsChannel(session).search(RARE_TERM, project=PROJECT)
+    (row,) = (await FactsChannel(session).search_with_trace(RARE_TERM, project=PROJECT)).results
 
     assert row["verification_status"] == "corroborated"
     assert row["demotion_pending_since"] == (NOW if marked else None)
@@ -250,7 +249,7 @@ async def test_the_belief_window_labels_show_the_scope_actually_held(session):
     is what makes a scope failure observable instead of silent."""
     await _open_fact(session)
 
-    (row,) = await FactsChannel(session).search(RARE_TERM, project=PROJECT)
+    (row,) = (await FactsChannel(session).search_with_trace(RARE_TERM, project=PROJECT)).results
 
     assert row["belief_window"]["invalid_at"] is None
     assert row["belief_window"]["expired_at"] is None
@@ -260,7 +259,7 @@ async def test_the_belief_window_labels_show_the_scope_actually_held(session):
 async def test_the_id_spelling_is_one_string_under_both_keys(session):
     fact = await _open_fact(session)
 
-    (row,) = await FactsChannel(session).search(RARE_TERM, project=PROJECT)
+    (row,) = (await FactsChannel(session).search_with_trace(RARE_TERM, project=PROJECT)).results
 
     assert isinstance(row["fact_id"], str)
     assert row["fact_id"] == row["id"] == str(uuid.UUID(fact["id"]))
@@ -273,7 +272,7 @@ async def test_the_shared_fusion_can_key_a_fact_row(session):
     T2.43 would silently lose every fact."""
     await _open_fact(session)
 
-    (row,) = await FactsChannel(session).search(RARE_TERM, project=PROJECT)
+    (row,) = (await FactsChannel(session).search_with_trace(RARE_TERM, project=PROJECT)).results
 
     assert normalize_row_id(row) == row["fact_id"]
 
@@ -284,7 +283,7 @@ async def test_applies_when_arrives_as_a_mapping_the_context_matcher_can_read(se
 
     await _open_fact(session, applies_when={"env": "prod"})
 
-    (row,) = await FactsChannel(session).search(RARE_TERM, project=PROJECT)
+    (row,) = (await FactsChannel(session).search_with_trace(RARE_TERM, project=PROJECT)).results
     context = row_context_from_applies_when(row["applies_when"])
 
     assert context is not None
@@ -302,7 +301,7 @@ async def test_a_disputed_fact_is_returned(session):
     await _set_status(session, disputed["id"], "disputed", review_state="open")
     plain = await _open_fact(session, obj="postgres")
 
-    rows = await FactsChannel(session).search(RARE_TERM, project=PROJECT)
+    rows = (await FactsChannel(session).search_with_trace(RARE_TERM, project=PROJECT)).results
 
     assert _ids(rows) == {disputed["id"], plain["id"]}
 
@@ -313,7 +312,7 @@ async def test_a_disputed_fact_is_returned_when_it_is_the_only_match(session):
     disputed = await _open_fact(session)
     await _set_status(session, disputed["id"], "disputed", review_state="open")
 
-    rows = await FactsChannel(session).search(RARE_TERM, project=PROJECT)
+    rows = (await FactsChannel(session).search_with_trace(RARE_TERM, project=PROJECT)).results
 
     assert _ids(rows) == {disputed["id"]}
 
@@ -328,48 +327,9 @@ async def test_no_verification_status_is_filtered_out(session, status):
     fact = await _open_fact(session)
     await _set_status(session, fact["id"], status)
 
-    (row,) = await FactsChannel(session).search(RARE_TERM, project=PROJECT)
+    (row,) = (await FactsChannel(session).search_with_trace(RARE_TERM, project=PROJECT)).results
 
     assert row["verification_status"] == status
-
-
-@pytest.mark.asyncio
-async def test_a_disputed_row_is_labelled_with_what_its_own_row_carries(session):
-    disputed = await _open_fact(session)
-    await _set_status(session, disputed["id"], "disputed", review_state="open")
-
-    (row,) = await FactsChannel(session).search(RARE_TERM, project=PROJECT)
-
-    assert row["dispute"] == {
-        "review_state": "open",
-        "counterpart": None,
-        "counterpart_owner": DISPUTE_COUNTERPART_OWNER,
-    }
-
-
-@pytest.mark.asyncio
-async def test_the_counterpart_half_is_absent_and_names_its_owner(session):
-    """The honest subset. The competing claim is computed inside adjudication
-    and never persisted, and this surface may not re-derive it — so the key is
-    emitted empty with an owner rather than dropped, which would collapse
-    "not knowable yet" into "this fact has no counterpart"."""
-    disputed = await _open_fact(session)
-    await _set_status(session, disputed["id"], "disputed", review_state="open")
-
-    (row,) = await FactsChannel(session).search(RARE_TERM, project=PROJECT)
-
-    assert "counterpart" in row["dispute"]
-    assert row["dispute"]["counterpart"] is None
-    assert row["dispute"]["counterpart_owner"] == "T2.64"
-
-
-@pytest.mark.asyncio
-async def test_an_undisputed_row_carries_no_dispute_label(session):
-    await _open_fact(session)
-
-    (row,) = await FactsChannel(session).search(RARE_TERM, project=PROJECT)
-
-    assert row["dispute"] is None
 
 
 _SCAN_TOKENS = (
@@ -474,21 +434,6 @@ async def test_the_trace_carries_each_arms_contribution(session):
     assert trace.arm_scores[fact["id"]].keys() == {KEYWORD_ARM, NAME_ARM}
 
 
-@pytest.mark.asyncio
-async def test_the_traced_and_untraced_paths_cannot_disagree(session):
-    """A caller that does not ask for a trace does not pay for the bookkeeping,
-    but must not get a different answer for it — otherwise the trace explains a
-    ranking nobody was served."""
-    for i in range(3):
-        await _open_fact(session, obj=f"store{i}")
-
-    channel = FactsChannel(session)
-    plain = await channel.search(RARE_TERM, project=PROJECT)
-    traced = await channel.search_with_trace(RARE_TERM, project=PROJECT)
-
-    assert [row["fact_id"] for row in plain] == [row["fact_id"] for row in traced.results]
-
-
 # ── the honest-partial-results contract ──────────────────────────────
 
 
@@ -538,7 +483,7 @@ async def test_a_both_sided_failure_raises_rather_than_returning_empty(session):
     _break(channel, "name_query")
 
     with pytest.raises(RuntimeError, match="both the keyword and name arms"):
-        await channel.search(RARE_TERM, project=PROJECT)
+        await channel.search_with_trace(RARE_TERM, project=PROJECT)
 
 
 @pytest.mark.asyncio
@@ -547,7 +492,8 @@ async def test_a_genuine_no_match_is_an_empty_list_not_a_raise(session):
     outage."""
     await _open_fact(session)
 
-    assert await FactsChannel(session).search("nothingmatchesthis", project=PROJECT) == []
+    trace = await FactsChannel(session).search_with_trace("nothingmatchesthis", project=PROJECT)
+    assert trace.results == []
 
 
 # ── the same contract under a *database-level* failure (T2.66) ───────
@@ -677,7 +623,7 @@ async def test_a_both_sided_database_failure_raises_rather_than_returning_empty(
     await _open_fact(session)
 
     with pytest.raises(RuntimeError, match="both the keyword and name arms"):
-        await FactsChannel(session).search(_BOTH_ARMS_POISON, project=PROJECT)
+        (await FactsChannel(session).search_with_trace(_BOTH_ARMS_POISON, project=PROJECT)).results
 
     await _assert_the_session_survived(session)
 
@@ -689,7 +635,7 @@ async def test_a_both_sided_database_failure_raises_rather_than_returning_empty(
 async def test_rows_carry_rrf_score_as_the_ordering_signal(session):
     await _open_fact(session)
 
-    (row,) = await FactsChannel(session).search(RARE_TERM, project=PROJECT)
+    (row,) = (await FactsChannel(session).search_with_trace(RARE_TERM, project=PROJECT)).results
 
     assert row["rrf_score"] > 0
 
@@ -703,7 +649,7 @@ async def test_a_name_only_match_carries_rank_mass(session):
     seeded = await _open_fact(session, subject="darkmem", obj=RARE_TERM,
                               fact="the store is reached over a socket")
 
-    (row,) = await FactsChannel(session).search(RARE_TERM, project=PROJECT)
+    (row,) = (await FactsChannel(session).search_with_trace(RARE_TERM, project=PROJECT)).results
 
     assert row["fact_id"] == seeded["id"]
     assert row["rrf_score"] > 0
@@ -716,7 +662,7 @@ async def test_a_fact_both_arms_find_outranks_one_only_one_arm_finds(session):
     one = await _open_fact(session, subject="darkmem", obj="redis",
                            fact="darkmem uses postgres for the queue too")
 
-    rows = await FactsChannel(session).search("postgres", project=PROJECT)
+    rows = (await FactsChannel(session).search_with_trace("postgres", project=PROJECT)).results
 
     assert [row["fact_id"] for row in rows][0] == both["id"]
     assert one["id"] in _ids(rows)
@@ -736,7 +682,7 @@ async def test_each_arm_fetches_past_the_limit_so_the_fuse_can_reorder(session):
         return original(query, project, limit)
 
     channel.keyword_query = spy
-    await channel.search(RARE_TERM, project=PROJECT, limit=7)
+    await channel.search_with_trace(RARE_TERM, project=PROJECT, limit=7)
 
     assert seen == [7 * ARM_FETCH_MULTIPLIER]
 
@@ -746,7 +692,7 @@ async def test_the_limit_bounds_the_result(session):
     for i in range(5):
         await _open_fact(session, obj=f"store{i}")
 
-    rows = await FactsChannel(session).search(RARE_TERM, project=PROJECT, limit=2)
+    rows = (await FactsChannel(session).search_with_trace(RARE_TERM, project=PROJECT, limit=2)).results
 
     assert len(rows) == 2
 
@@ -886,14 +832,11 @@ async def _drain_fact_heat_tasks() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("method_name", ["search", "search_with_trace"])
+@pytest.mark.parametrize("method_name", ["search_with_trace"])
 async def test_a_served_fact_schedules_its_heat_write_without_awaiting_it(
     session, monkeypatch, method_name,
 ):
-    """The off-hot-path proof, on both public methods. Duplicated per method
-    rather than hoisted into ``_run_arms`` — matching the module docstring's
-    stated reason, and the exact shape a fix landed on only one method would
-    leave uncaught, per T2.65's own review finding on this channel."""
+    """The off-hot-path proof, on the channel's public method."""
     fact_id = (await _open_fact(session, subject="heat-scheduling"))["id"]
     await session.commit()
 
@@ -926,7 +869,7 @@ async def test_a_served_fact_schedules_its_heat_write_without_awaiting_it(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("method_name", ["search", "search_with_trace"])
+@pytest.mark.parametrize("method_name", ["search_with_trace"])
 async def test_a_heat_write_failure_never_reaches_the_caller(session, monkeypatch, method_name):
     """The clause every counter in this corpus repeats: a counting failure
     degrades to "this search's heat is lost", never to "this search failed".
@@ -959,11 +902,11 @@ async def test_a_heat_write_failure_never_reaches_the_caller(session, monkeypatc
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("method_name", ["search", "search_with_trace"])
+@pytest.mark.parametrize("method_name", ["search_with_trace"])
 async def test_fifty_real_searches_actually_write_the_direct_counter(
     monkeypatch, method_name,
 ):
-    """The end-to-end proof behind T2.84's Done-when, on both methods: real
+    """The end-to-end proof behind T2.84's Done-when: real
     SQL, not a fake flush, and the real (default) ``async_session_factory``
     -- not the transactional ``session`` fixture, whose writes live inside a
     SAVEPOINT one connection deep and are invisible to the background

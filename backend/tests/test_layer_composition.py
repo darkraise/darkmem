@@ -22,7 +22,6 @@ from app.services import rank_fusion
 from app.services.embedder_registry import child_table
 from app.services.events import record_event
 from app.services.fact_badge import CLAIM_VOCABULARY, Badge, badge_for_fact
-from app.services.reranker import RerankerService
 from app.services.verified_evidence import latest_verified_evidence
 from tests._reachability_scan import ReachabilityRules, app_sources, find_forbidden_reach
 
@@ -573,18 +572,6 @@ class _FakeLLM:
         return self._vector, self._fingerprint
 
 
-class _StubOrchestrator:
-    """Counts the reranker's LLM calls and answers each with a fixed score."""
-
-    def __init__(self, score=7):
-        self.calls = 0
-        self.score = score
-
-    async def chat_completion(self, purpose, messages, **kwargs):
-        self.calls += 1
-        return json.dumps({"score": self.score})
-
-
 @pytest.mark.asyncio
 async def test_a_memory_keyword_outage_still_reads_partial(session, monkeypatch):
     memory_trace = hybrid_search.ChannelTrace(
@@ -637,44 +624,11 @@ async def test_the_envelope_reports_the_conflict_tally_at_zero(session, monkeypa
     assert result.envelope.reranked is False
 
 
-@pytest.mark.asyncio
-async def test_the_rerank_mapping_covers_only_the_scored_window(session):
-    orchestrator = _StubOrchestrator()
-    service = lc.LayerCompositionService(
-        _FakeLLM([0.0], "fp"), session, reranker=RerankerService(orchestrator),
-    )
-    candidates = [
-        lc.memory_candidate(_memory_row(uuid4()), channel_rank=rank)
-        for rank in range(1, 46)
-    ]
-    rows = lc.compose(candidates).rows
-    assert len(rows) == 45
-
-    scores = await service.derive_rerank_scores("q", rows)
-
-    assert orchestrator.calls == lc.RERANK_WINDOW
-    assert len(scores) == lc.RERANK_WINDOW
-    window_keys = {r.key for r in rows[: lc.RERANK_WINDOW]}
-    assert set(scores) == window_keys
-    for tail_row in rows[lc.RERANK_WINDOW:]:
-        assert tail_row.key not in scores
-
-
-@pytest.mark.asyncio
-async def test_a_total_rerank_failure_degrades_to_the_deterministic_order(session):
-    class _DeadOrchestrator:
-        async def chat_completion(self, *args, **kwargs):
-            raise RuntimeError("reranker outage")
-
-    service = lc.LayerCompositionService(
-        _FakeLLM([0.0], "fp"), session, reranker=RerankerService(_DeadOrchestrator()),
-    )
+def test_no_rerank_mapping_serves_the_deterministic_order():
     candidates = [
         lc.memory_candidate(_memory_row(uuid4()), channel_rank=rank) for rank in (1, 2, 3)
     ]
     rows = lc.compose(candidates).rows
-
-    assert await service.derive_rerank_scores("q", rows) is None
     # The degraded path must serve the deterministic order itself, not merely
     # report reranked=False: a total outage stamps every doc 0.0, which read
     # as a rerank would collapse the window into one tier-ordered band.
@@ -684,14 +638,6 @@ async def test_a_total_rerank_failure_degrades_to_the_deterministic_order(sessio
     collapsed = lc.compose(candidates, rerank_scores={c.key: 0.0 for c in candidates})
     assert {r.band for r in collapsed.rows} == {1}
     assert [r.band for r in degraded.rows] == [1, 2, 3]
-
-
-@pytest.mark.asyncio
-async def test_an_empty_rerank_mapping_is_no_signal(session):
-    service = lc.LayerCompositionService(
-        _FakeLLM([0.0], "fp"), session, reranker=RerankerService(_StubOrchestrator()),
-    )
-    assert await service.derive_rerank_scores("q", []) is None
 
 
 @pytest.mark.asyncio
@@ -888,38 +834,11 @@ def test_the_composition_is_on_the_hot_path_floor():
 # ─────────── the reranker reads each layer's own text (F1) ───────────
 
 
-class _PromptSpy:
-    """Captures the prompt each scoring call actually sends."""
-
-    def __init__(self):
-        self.prompts: list[str] = []
-
-    async def chat_completion(self, purpose, messages, **kwargs):
-        # The user message, not messages[0]: the reranker sends a system
-        # message carrying its anti-injection guard ahead of the ask.
-        self.prompts.append(messages[-1]["content"])
-        return json.dumps({"score": 5})
-
-    @property
-    def documents(self) -> list[str]:
-        return [
-            p.split("<document>\n", 1)[1].split("\n</document>", 1)[0]
-            for p in self.prompts
-        ]
-
-
-@pytest.mark.asyncio
-async def test_every_layer_is_reranked_against_its_own_text(session):
+def test_every_layer_is_reranked_against_its_own_text():
     """A fact's text lives under ``fact``, which none of the reranker's own
     fall-through keys reach. Unnormalised it is scored against an empty
     document — and because the model then returns a real number rather than a
-    zero, neither the all-zero guard nor the terminal band can see it, so the
-    band recompute would re-rank verified facts on noise while the envelope
-    reported the signal as sound."""
-    spy = _PromptSpy()
-    service = lc.LayerCompositionService(
-        _FakeLLM([0.0], "fp"), session, reranker=RerankerService(spy),
-    )
+    zero, neither the all-zero guard nor the terminal band can see it."""
     memory = lc.memory_candidate(
         {**_memory_row(uuid4()), "payload": {"content": "MEMORY-TEXT"}}, channel_rank=1,
     )
@@ -932,14 +851,8 @@ async def test_every_layer_is_reranked_against_its_own_text(session):
     )
     rows = lc.compose([memory, fact, article]).rows
 
-    await service.derive_rerank_scores("q", rows)
-
-    documents = spy.documents
-    assert len(documents) == 3
-    assert "FACT-TEXT" in documents
-    assert "MEMORY-TEXT" in documents
-    assert "ARTICLE-TEXT" in documents
-    assert "" not in documents
+    documents = [lc.rerank_document_text(row) for row in rows]
+    assert sorted(documents) == ["ARTICLE-TEXT", "FACT-TEXT", "MEMORY-TEXT"]
 
 
 def test_a_layer_with_no_declared_text_field_cannot_be_reranked():
@@ -1862,3 +1775,53 @@ async def test_the_disputed_arm_of_the_badge_read_is_batched_too(session, monkey
         f"{len(one)} queries for one dispute, {len(many)} for twelve:\n"
         + "\n".join(many)
     )
+
+
+class _CountingLLM(_FakeLLM):
+    def __init__(self, vector, fingerprint):
+        super().__init__(vector, fingerprint)
+        self.embeds = 0
+
+    async def embed(self, query: str):
+        self.embeds += 1
+        return await super().embed(query)
+
+
+@pytest.mark.asyncio
+async def test_project_scoped_search_embeds_the_query_once(session, monkeypatch):
+    from app.services.embedder_registry import embedder_registry
+    from tests import test_articles_channel as articles
+
+    monkeypatch.setattr(hybrid_search, "_embedder_retry_at", 0.0)
+    embedder_registry._known.clear()
+    try:
+        await articles._article(
+            session, subject_key="redis::tool", project=articles.PROJECT,
+            vector=[1.0, 0.0, 0.0, 0.0],
+        )
+        llm = _CountingLLM([1.0, 0.0, 0.0, 0.0], articles.FINGERPRINT)
+        result = await lc.LayerCompositionService(llm, session).search(
+            "redis", project=articles.PROJECT,
+        )
+    finally:
+        embedder_registry._known.clear()
+
+    assert result.envelope.channels["article.semantic"].ran is True
+    assert any(row.id_kind == "article" for row in result.rows)
+    assert llm.embeds == 1
+
+
+@pytest.mark.asyncio
+async def test_compose_runs_once_per_request(session, monkeypatch):
+    calls = []
+    real_compose = lc.compose
+
+    def _counting(*args, **kwargs):
+        calls.append(1)
+        return real_compose(*args, **kwargs)
+
+    monkeypatch.setattr(lc, "compose", _counting)
+    await lc.LayerCompositionService(_FakeLLM([0.0], "fp"), session).search(
+        "anything", project=None,
+    )
+    assert len(calls) == 1

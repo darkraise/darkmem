@@ -474,7 +474,7 @@ async def test_semantic_search_preserves_the_rerank_verdict(session, monkeypatch
 
     async def search(
         self, query, limit=20, semantic_weight=0.7, filters=None,
-        ppr_weight=0.0, dual_weight=0.0, access_signals=False,
+        ppr_weight=0.0, dual_weight=0.0, access_signals=False, embedded=None,
     ):
         return [dict(row) for row in fused]
 
@@ -581,3 +581,33 @@ async def test_search_orders_by_rrf_score_not_by_the_surviving_score_key(session
         "fixture must disagree, or it proves nothing"
     )
     assert results[0]["rrf_score"] > results[1]["rrf_score"]
+
+
+@pytest.mark.asyncio
+async def test_search_is_search_with_trace_results(session):
+    import ast
+    import textwrap
+
+    await _seed_partition(session)
+    seeded = [
+        ("alpha beta gamma delta epsilon", [1.0, 0.0, 0.0, 0.0]),
+        ("kubernetes ingress controller tuning", [0.0, 1.0, 0.0, 0.0]),
+        ("postgres vacuum and ingress logs", [0.5, 0.5, 0.0, 0.0]),
+    ]
+    for content, vector in seeded:
+        memory_id = await _seed_memory(session, content=content, confidence=CONFIDENCE_DEFAULT)
+        await _seed_embedding(session, memory_id, vector)
+
+    svc = HybridSearchService(_StubLLM(), session)
+    for query in ("kubernetes ingress", "postgres vacuum", "epsilon"):
+        plain = await svc.search(query, limit=10)
+        traced = await svc.search_with_trace(query, limit=10)
+        assert plain == traced.results
+
+    body = ast.parse(textwrap.dedent(inspect.getsource(HybridSearchService.search)))
+    called = {
+        node.func.attr for node in ast.walk(body)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    }
+    assert "search_with_trace" in called
+    assert not called & {"_rrf_fuse", "_run_channels", "embed_query", "_embed_query"}
